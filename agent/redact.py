@@ -430,14 +430,15 @@ def redact_sensitive_text(text: str, *, force: bool = False, code_file: bool = F
     if "eyJ" in text:
         text = _JWT_RE.sub(lambda m: _mask_token(m.group(0)), text)
 
-    # NOTE: Web-URL redaction (query params + userinfo + HTTP access-log
-    # request targets) is intentionally OFF. Many legitimate workflows pass
-    # opaque tokens through query strings — magic-link checkouts, OAuth
-    # callbacks the agent is meant to follow, pre-signed share URLs — and
-    # blanket-redacting param values by name breaks those skills mid-flow.
-    # Known credential shapes (sk-, ghp_, JWTs, etc.) inside URLs are still
-    # caught by _PREFIX_RE and _JWT_RE above. DB connection-string passwords
-    # are still caught by _DB_CONNSTR_RE.
+    # URL userinfo (http(s)://user:pass@host) — redact for non-DB schemes.
+    # DB schemes are handled above by _DB_CONNSTR_RE.
+    text = _redact_url_userinfo(text)
+
+    # URL query params containing opaque tokens (?access_token=…&code=…)
+    text = _redact_url_query_params(text)
+
+    # HTTP access-log request targets ("GET /path?secret=… HTTP/1.1")
+    text = _redact_http_request_target_query_params(text)
 
     # Form-urlencoded bodies (only triggers on clean k=v&k=v inputs).
     if "&" in text and "=" in text:
