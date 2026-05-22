@@ -122,8 +122,9 @@ export default {
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
 
   // 发送消息（SSE 流式）
-  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, provider }) {
+  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, provider, attachments }) {
     const body = { model, messages, stream, provider: provider || '' }
+    if (attachments && attachments.length > 0) body.attachments = attachments
     try {
       const resp = await request('/chat/completions', {
         method: 'POST',
