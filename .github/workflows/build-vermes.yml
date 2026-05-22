@@ -21,10 +21,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install dependencies (macOS)
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install pyinstaller fastapi uvicorn pywebview python-dotenv
+          pip3 install -e . pyinstaller
 
       - name: Build macOS .app (PyInstaller)
         run: |
@@ -93,11 +93,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller fastapi uvicorn pywebview python-dotenv
+          pip install -e . pyinstaller
 
       - name: Install NSIS
         run: |
           choco install nsis --version=3.10 -y --no-progress
+
+      - name: Ensure WebView2 Runtime
+        run: |
+          winget install Microsoft.EdgeWebView2Runtime --silent --accept-package-agreements 2>&1 || echo "WebView2 may already be installed"
 
       - name: Build Windows .exe (PyInstaller)
         run: |
