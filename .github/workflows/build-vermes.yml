@@ -95,26 +95,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller fastapi uvicorn pywebview python-dotenv
 
+      - name: Install NSIS
+        run: |
+          choco install nsis --version=3.10 -y --no-progress
+
       - name: Build Windows .exe (PyInstaller)
         run: |
           if (Test-Path "vermes-gui.spec") { pyinstaller vermes-gui.spec --noconfirm }
           elseif (Test-Path "vermes.spec") { pyinstaller vermes.spec --noconfirm }
           else { pyinstaller --name Vermes --onefile --windowed cli.py }
 
-      - name: Package exe → .zip
+      - name: Package exe → .zip & NSIS installer
         run: |
           if (Test-Path "dist\Vermes") {
             Compress-Archive -Path "dist\Vermes\*" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
+            # Build NSIS installer
+            if (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe") {
+              & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" "packaging\vermes-installer.nsi"
+            }
           } elseif (Test-Path "dist\vermes") {
             Compress-Archive -Path "dist\vermes\*" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
           } elseif (Test-Path "dist\Vermes.exe") {
             Compress-Archive -Path "dist\Vermes.exe" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
           }
 
-      - name: Upload Release Asset (Windows x64)
+      - name: Upload Release Assets (Windows x64)
         uses: softprops/action-gh-release@v1
         with:
-          files: Vermes-${{ github.ref_name }}-windows-x64.zip
+          files: |
+            Vermes-${{ github.ref_name }}-windows-x64.zip
+            Vermes-${{ github.ref_name }}-windows-x64-Installer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
