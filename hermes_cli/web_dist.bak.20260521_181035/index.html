@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Vermes - 开箱即用的 AI 助手" />
+    <title>Vermes - 开箱即用的 AI 助手</title>
+    <script type="module" crossorigin src="/assets/index-Dy27C40m.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BFN4TVdO.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="vermes-onboarding" style="display:none">
+      <div class="onb-wrap">
+        <div class="onb-card">
+          <div class="onb-logo">V</div>
+          <h1 class="onb-title">欢迎使用 Vermes</h1>
+          <p class="onb-sub">只需 3 步，开始你的 AI 之旅</p>
+          <div class="onb-steps">
+            <div class="onb-step" id="onb-step-1">
+              <div class="onb-step-num">1</div>
+              <div class="onb-step-body">
+                <h2>选择模型提供商</h2>
+                <div class="onb-providers" id="onb-providers"></div>
+              </div>
+            </div>
+            <div class="onb-step" id="onb-step-2">
+              <div class="onb-step-num">2</div>
+              <div class="onb-step-body">
+                <h2>填写 API Key</h2>
+                <p class="onb-hint" id="onb-hint"></p>
+                <input type="password" id="onb-apikey" class="onb-input" placeholder="粘贴你的 API Key" autocomplete="off" />
+                <a id="onb-signup" href="#" target="_blank" class="onb-link">没有 Key？点击注册 →</a>
+              </div>
+            </div>
+            <div class="onb-step" id="onb-step-3">
+              <div class="onb-step-num">3</div>
+              <div class="onb-step-body">
+                <h2>选择或输入模型</h2>
+                <select id="onb-models" class="onb-select"><option value="">请先选择提供商</option></select>
+                <div id="onb-custom-model-wrap" style="display:none;margin-top:8px">
+                  <input type="text" id="onb-custom-model" class="onb-input" placeholder="输入自定义模型名称，如 gpt-4-1106-preview" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <button id="onb-start" class="onb-btn" disabled>开始使用 Vermes</button>
+          <p id="onb-error" class="onb-error"></p>
+        </div>
+      </div>
+    </div>
+    <style>
+      .onb-wrap{position:fixed;inset:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+      .onb-card{background:#161616;border:1px solid #2a2a2a;border-radius:16px;padding:48px 40px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;text-align:center;color:#e0e0e0}
+      .onb-logo{width:64px;height:64px;margin:0 auto 20px;background:linear-gradient(135deg,#00FF88,#00CC6A);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#0a0a0a}
+      .onb-title{font-size:24px;font-weight:700;margin:0 0 8px}
+      .onb-sub{color:#888;font-size:14px;margin:0 0 32px}
+      .onb-step{display:flex;gap:16px;margin-bottom:24px;text-align:left}
+      .onb-step-num{width:32px;height:32px;min-width:32px;background:#00FF8820;color:#00FF88;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+      .onb-step-body{flex:1;min-width:0}
+      .onb-step-body h2{font-size:15px;margin:0 0 8px;font-weight:600}
+      .onb-hint{font-size:12px;color:#888;margin:0 0 8px}
+      .onb-providers{display:flex;flex-wrap:wrap;gap:8px}
+      .onb-prov-btn{padding:8px 14px;background:#1e1e1e;border:1px solid #333;border-radius:8px;color:#ccc;cursor:pointer;font-size:13px;transition:all .15s}
+      .onb-prov-btn:hover{border-color:#00FF88;color:#fff}
+      .onb-prov-btn.active{border-color:#00FF88;background:#00FF8820;color:#00FF88}
+      .onb-input{width:100%;padding:10px 14px;background:#1e1e1e;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;box-sizing:border-box;outline:none}
+      .onb-input:focus{border-color:#00FF88}
+      .onb-link{display:inline-block;margin-top:8px;color:#00FF88;font-size:12px;text-decoration:none}
+      .onb-link:hover{text-decoration:underline}
+      .onb-select{width:100%;padding:10px 14px;background:#1e1e1e;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;box-sizing:border-box;outline:none}
+      .onb-select:focus{border-color:#00FF88}
+      .onb-btn{width:100%;padding:14px;background:#00FF88;color:#0a0a0a;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-top:16px;transition:opacity .15s}
+      .onb-btn:disabled{opacity:.3;cursor:not-allowed}
+      .onb-btn:not(:disabled):hover{opacity:.85}
+      .onb-error{color:#ff4444;font-size:13px;margin-top:12px;min-height:20px}
+      .onb-group-label{font-size:11px;color:#666;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px}
+    </style>
+    <script>
+    (function(){
+      const OB=document.getElementById('vermes-onboarding');
+      const ROOT=document.getElementById('root');
+      const providers=[
+        // ---- 国内 ----
+        {id:'vbit',name:'vbit.top',url:'https://vbit.top',env:'VBIT_API_KEY',base_url:'https://api.vbit.top/v1',models:['qwen-turbo','qwen-plus','qwen-max','deepseek-chat','deepseek-reasoner','gpt-4o','gpt-4o-mini','claude-sonnet-4-20250514','gemini-2.5-flash'],group:'国内'},
+        {id:'deepseek',name:'DeepSeek',url:'https://platform.deepseek.com',env:'DEEPSEEK_API_KEY',models:['deepseek-chat','deepseek-reasoner'],group:'国内'},
+        {id:'alibaba',name:'通义千问',url:'https://dashscope.console.aliyun.com',env:'QWEN_API_KEY',models:['qwen-turbo','qwen-plus','qwen-max','qwen-long'],group:'国内'},
+        {id:'zhipu',name:'智谱 (GLM)',url:'https://open.bigmodel.cn',env:'ZHIPU_API_KEY',base_url:'https://open.bigmodel.cn/api/paas/v4',models:['glm-4-plus','glm-4-flash','glm-4-long'],group:'国内'},
+        {id:'doubao',name:'豆包 (字节)',url:'https://console.volcengine.com/ark',env:'DOUBAO_API_KEY',base_url:'https://ark.cn-beijing.volces.com/api/v3',models:['doubao-1.5-pro-32k','doubao-1.5-lite-32k'],group:'国内'},
+        {id:'moonshot',name:'Kimi (月之暗面)',url:'https://platform.moonshot.cn',env:'MOONSHOT_API_KEY',base_url:'https://api.moonshot.cn/v1',models:['moonshot-v1-8k','moonshot-v1-32k','moonshot-v1-128k'],group:'国内'},
+        {id:'baichuan',name:'百川',url:'https://platform.baichuan-ai.com',env:'BAICHUAN_API_KEY',base_url:'https://api.baichuan-ai.com/v1',models:['Baichuan4','Baichuan3-Turbo'],group:'国内'},
+        {id:'yi',name:'零一万物 (Yi)',url:'https://platform.lingyiwanwu.com',env:'YI_API_KEY',base_url:'https://api.lingyiwanwu.com/v1',models:['yi-lightning','yi-large'],group:'国内'},
+        {id:'spark',name:'讯飞星火',url:'https://xinghuo.xfyun.cn',env:'SPARK_API_KEY',base_url:'https://spark-api-open.xf-yun.com/v1',models:['generalv3.5','4.0Ultra'],group:'国内'},
+        {id:'siliconflow',name:'硅基流动',url:'https://siliconflow.cn',env:'SILICONFLOW_API_KEY',base_url:'https://api.siliconflow.cn/v1',models:['Qwen/Qwen2.5-72B-Instruct','deepseek-ai/DeepSeek-V3'],group:'国内'},
+        // ---- 国际 ----
+        {id:'openai',name:'OpenAI',url:'https://platform.openai.com/api-keys',env:'OPENAI_API_KEY',models:['gpt-4o','gpt-4o-mini','gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','o3','o4-mini'],group:'国际'},
+        {id:'anthropic',name:'Anthropic (Claude)',url:'https://console.anthropic.com',env:'ANTHROPIC_API_KEY',models:['claude-sonnet-4-20250514','claude-haiku-4-20250414','claude-opus-4-20250514'],group:'国际'},
+        {id:'gemini',name:'Google Gemini',url:'https://aistudio.google.com/apikey',env:'GEMINI_API_KEY',models:['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash'],group:'国际'},
+        {id:'openrouter',name:'OpenRouter',url:'https://openrouter.ai/keys',env:'OPENROUTER_API_KEY',base_url:'https://openrouter.ai/api/v1',models:['deepseek/deepseek-chat-v3-0324','openai/gpt-4o','anthropic/claude-sonnet-4','google/gemini-2.5-flash-preview'],group:'国际'},
+        {id:'mistral',name:'Mistral',url:'https://console.mistral.ai',env:'MISTRAL_API_KEY',base_url:'https://api.mistral.ai/v1',models:['mistral-large-latest','mistral-medium-latest','codestral-latest'],group:'国际'},
+        {id:'cohere',name:'Cohere',url:'https://dashboard.cohere.com',env:'COHERE_API_KEY',base_url:'https://api.cohere.ai/v1',models:['command-r-plus','command-r'],group:'国际'},
+        // ---- 本地 ----
+        {id:'ollama',name:'Ollama (本地)',url:'',env:'',models:['qwen3:8b','llama3:8b','gemma3:4b'],local:true,group:'本地'},
+        {id:'custom',name:'自定义 OpenAI 兼容',url:'',env:'CUSTOM_API_KEY',base_url:'',models:[],custom:true,group:'本地'},
+      ];
+      let selected=null;
+      const TK=window.__HERMES_SESSION_TOKEN__||'';
+      const headers={'Content-Type':'application/json','X-Hermes-Session-Token':TK};
+
+      // Check onboarding — show onboarding if fetch fails OR if not configured
+      fetch('/api/onboarding',{headers}).then(r=>{
+        if(!r.ok)throw new Error('not ok');
+        return r.json();
+      }).then(d=>{
+        if(d.configured){OB.style.display='none';return}
+        OB.style.display='block';ROOT.style.display='none';showProviders();
+      }).catch(()=>{
+        // API failed — still show onboarding (better than blank screen)
+        OB.style.display='block';ROOT.style.display='none';showProviders();
+      });
+
+      function showProviders(){
+        const c=document.getElementById('onb-providers');
+        let lastGroup='';
+        providers.forEach(p=>{
+          if(p.group!==lastGroup){
+            const lbl=document.createElement('div');lbl.className='onb-group-label';lbl.textContent=p.group;
+            c.appendChild(lbl);lastGroup=p.group;
+          }
+          const b=document.createElement('button');b.className='onb-prov-btn';b.textContent=p.name;
+          b.onclick=(e)=>{e.preventDefault();selectProvider(p,b)};
+          c.appendChild(b);
+        });
+      }
+
+      function selectProvider(p,btn){
+        selected=p;
+        document.querySelectorAll('.onb-prov-btn').forEach(b=>b.classList.remove('active'));
+        if(btn)btn.classList.add('active');
+        const hint=document.getElementById('onb-hint');
+        const inp=document.getElementById('onb-apikey');
+        const link=document.getElementById('onb-signup');
+        const sel=document.getElementById('onb-models');
+        const customWrap=document.getElementById('onb-custom-model-wrap');
+        const baseURLEl=document.getElementById('onb-baseurl');
+
+        // Reset
+        customWrap.style.display='none';
+        if(baseURLEl)baseURLEl.parentElement.style.display='none';
+
+        if(p.local){
+          hint.textContent='本地运行，无需 API Key';inp.style.display='none';link.style.display='none';
+        } else if(p.custom){
+          hint.textContent='输入任何 OpenAI 兼容 API';inp.style.display='';inp.placeholder='API Key（可选）';link.style.display='none';
+          // Show base URL input
+          if(!document.getElementById('onb-baseurl')){
+            const wrap=document.createElement('div');wrap.style.marginTop='8px';wrap.innerHTML='<input type="text" id="onb-baseurl" class="onb-input" placeholder="Base URL，如 https://api.example.com/v1" />';
+            inp.parentElement.insertBefore(wrap,inp.nextSibling);
+          }else{
+            document.getElementById('onb-baseurl').parentElement.style.display='';
+          }
+        } else {
+          hint.textContent='环境变量: '+p.env;inp.style.display='';inp.placeholder='粘贴你的 API Key';link.style.display='';link.href=p.url;inp.value='';inp.focus();
+        }
+
+        // Populate models
+        sel.innerHTML='';
+        if(p.models&&p.models.length){
+          p.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)});
+          const oCustom=document.createElement('option');oCustom.value='__custom__';oCustom.textContent='✏️ 自定义输入...';sel.appendChild(oCustom);
+        } else {
+          const o=document.createElement('option');o.value='';o.textContent='请在下方输入模型名称';sel.appendChild(o);
+          customWrap.style.display='block';
+        }
+        sel.onchange=()=>{
+          if(sel.value==='__custom__'){customWrap.style.display='block';document.getElementById('onb-custom-model').focus()}
+          else{customWrap.style.display='none'}
+          checkReady();
+        };
+        checkReady();
+        if(!p.local&&!p.custom){inp.oninput=checkReady}
+        else{inp.oninput=checkReady}
+      }
+
+      function checkReady(){
+        const btn=document.getElementById('onb-start');
+        const sel=document.getElementById('onb-models');
+        const model=sel.value==='__custom__'?(document.getElementById('onb-custom-model')||{}).value:sel.value;
+        const key=document.getElementById('onb-apikey').value;
+        const baseURLEl=document.getElementById('onb-baseurl');
+        const baseURL=baseURLEl?baseURLEl.value:'';
+        if(!selected)return btn.disabled=true;
+        if(selected.local){btn.disabled=!model}
+        else if(selected.custom){btn.disabled=!model||!baseURL}
+        else{btn.disabled=!model||!key}
+      }
+
+      // Listen for custom model input changes
+      document.addEventListener('input',e=>{
+        if(e.target.id==='onb-custom-model'||e.target.id==='onb-baseurl')checkReady();
+      });
+
+      document.getElementById('onb-start').onclick=async function(){
+        const p=selected;
+        const sel=document.getElementById('onb-models');
+        const model=sel.value==='__custom__'?document.getElementById('onb-custom-model').value:sel.value;
+        const key=document.getElementById('onb-apikey').value;
+        const baseURLEl=document.getElementById('onb-baseurl');
+        const baseURL=baseURLEl?baseURLEl.value:(p.base_url||'');
+        const btn=this;btn.disabled=true;btn.textContent='配置中...';
+        const errEl=document.getElementById('onb-error');errEl.textContent='';
+        try{
+          // Step 1: Save API key
+          if(!p.local&&key){
+            const envR=await fetch('/api/env',{method:'PUT',headers,body:JSON.stringify({key:p.env,value:key})});
+            if(!envR.ok)throw new Error('API Key 保存失败 ('+envR.status+')');
+          }
+          // Step 2: Save model config
+          const cfg={model:{default:model,provider:p.id}};
+          if(baseURL)cfg.model.base_url=baseURL;
+          const cfgR=await fetch('/api/config',{method:'PUT',headers,body:JSON.stringify({config:cfg})});
+          if(!cfgR.ok)throw new Error('模型配置保存失败 ('+cfgR.status+')');
+          // Step 3: If custom provider, also save base_url as env
+          if(p.custom&&baseURL){
+            await fetch('/api/env',{method:'PUT',headers,body:JSON.stringify({key:'CUSTOM_BASE_URL',value:baseURL})});
+          }
+          // Success
+          OB.style.display='none';ROOT.style.display='';window.location.hash='#/chat';location.reload();
+        }catch(e){
+          btn.disabled=false;btn.textContent='开始使用 Vermes';errEl.textContent=e.message||'配置失败，请重试';
+        }
+      };
+    })();
+    </script>
+  </body>
+</html>
