@@ -1,0 +1,342 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import api from '../services/api'
+
+const SESSIONS_KEY = 'vermes-sessions'
+const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
+
+function loadFromStorage(key) {
+  try { return JSON.parse(localStorage.getItem(key)) || [] } catch(e) { return [] }
+}
+function saveToStorage(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)) } catch(e) {}
+}
+
+// 文件转 base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1] // 去掉 data:xxx;base64, 前缀
+      resolve({
+        name: file.name,
+        size: file.size,
+        mimeType: file.type || 'application/octet-stream',
+        base64: base64,
+        type: file.type.startsWith('image/') ? 'image' : 'file',
+      })
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+export const useChatStore = defineStore('chat', () => {
+  const sessions = ref(loadFromStorage(SESSIONS_KEY))
+  const currentSessionId = ref(null)
+  const messages = ref([])
+  const loading = ref(false)
+  const abortController = ref(null)
+  const sidebarOpen = ref(true)
+  const theme = ref('dark')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'qwen-turbo')
+  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || '')
+  const uploading = ref(false)
+
+  const currentSession = computed(() =>
+    sessions.value.find(s => s.id === currentSessionId.value)
+  )
+
+  const filteredMessages = computed(() => {
+    if (!currentSessionId.value) return []
+    return messages.value.filter(m => m.sessionId === currentSessionId.value)
+  })
+
+  async function autoClaimIfNeeded() {
+    // Already claimed before
+    if (localStorage.getItem('vermes-trial-claimed')) return
+    try {
+      const data = await api.post('/claim')
+      if (data.success) {
+        localStorage.setItem('vermes-trial-claimed', '1')
+        // Auto-set vbit trial token as provider key
+        const saved = localStorage.getItem('vermes-providers')
+        let providers = saved ? JSON.parse(saved) : []
+        const vbit = providers.find(p => p.id === 'vbit')
+        if (vbit) {
+          vbit.key = data.data.token
+        } else {
+          providers.push({ id: 'vbit', name: 'vbit.top', key: data.data.token, baseUrl: 'https://api.vbit.top/v1' })
+        }
+        localStorage.setItem('vermes-providers', JSON.stringify(providers.map(p => ({
+          id: p.id, name: p.name,
+          key: p.key ? '***saved***' : '',
+          baseUrl: p.baseUrl
+        }))))
+        console.log('Auto-claimed trial token')
+      }
+    } catch (e) {
+      console.warn('Auto-claim failed (non-critical):', e.message)
+    }
+  }
+
+  async function init() {
+    try {
+      const t = await fetchToken()
+      api.setToken(t)
+      // Auto-claim trial token on first launch (non-blocking)
+      autoClaimIfNeeded()
+      sessions.value = loadFromStorage(SESSIONS_KEY)
+      if (sessions.value.length > 0) {
+        const lastId = localStorage.getItem('vermes-last-session') || sessions.value[0].id
+        await switchSession(lastId)
+      } else {
+        await createSession('新会话')
+      }
+    } catch (e) {
+      console.error('init failed:', e)
+      // 即使 token 获取失败也创建默认会话，保证 UI 可用
+      if (sessions.value.length === 0) {
+        createSession('新会话')
+      }
+    }
+  }
+
+  async function fetchToken() {
+    try {
+      const resp = await fetch('/')
+      const html = await resp.text()
+      const m = html.match(/window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/)
+              || html.match(/window\.__OPENCLAW_SESSION_KEY__\s*=\s*"([^"]+)"/)
+      return m ? m[1] : ''
+    } catch(e) {
+      return ''
+    }
+  }
+
+  function persistSessions() {
+    saveToStorage(SESSIONS_KEY, sessions.value)
+  }
+
+  function persistMessages(sessionId) {
+    saveToStorage(MESSAGES_KEY_PREFIX + sessionId,
+      messages.value.filter(m => m.sessionId === sessionId))
+  }
+
+  function createSession(name) {
+    const s = { id: Date.now().toString(), name: name || '新会话', createdAt: new Date().toISOString() }
+    sessions.value.unshift(s)
+    persistSessions()
+    switchSession(s.id)
+  }
+
+  async function switchSession(id) {
+    if (currentSessionId.value) persistMessages(currentSessionId.value)
+    currentSessionId.value = id
+    localStorage.setItem('vermes-last-session', id)
+    messages.value = loadFromStorage(MESSAGES_KEY_PREFIX + id)
+  }
+
+  async function sendMessage(content, attachments) {
+    if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) return
+    if (loading.value) return
+
+    // ✅ 云端模型配额检查
+    const isCloud = api.isCloudModel(currentProvider.value)
+    const quotaCheck = api.checkQuota(isCloud)
+    if (!quotaCheck.allowed) {
+      messages.value.push({
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: quotaCheck.message || '💡 今日云端请求次数已用完',
+        timestamp: Date.now()
+      })
+      return
+    }
+
+    const uid = Date.now().toString()
+
+    // 处理附件：转 base64 并构建用户消息
+    let userContent = content?.trim() || ''
+    let processedAttachments = []
+
+    if (attachments && attachments.length > 0) {
+      uploading.value = true
+      try {
+        for (const att of attachments) {
+          // 如果已经是处理过的格式（有 base64），直接用
+          if (att.base64) {
+            processedAttachments.push(att)
+          } else if (att.file instanceof File) {
+            // 原始 File 对象，需要转 base64
+            const converted = await fileToBase64(att.file)
+            processedAttachments.push(converted)
+          }
+        }
+
+        // 构建带附件的用户消息内容
+        const parts = []
+        for (const att of processedAttachments) {
+          if (att.type === 'image') {
+            parts.push(`![${att.name}](data:${att.mimeType};base64,${att.base64})`)
+          } else {
+            parts.push(`📎 **附件:** ${att.name} (${formatSize(att.size)})`)
+          }
+        }
+        if (userContent) parts.unshift(userContent)
+        userContent = parts.join('\n\n')
+      } finally {
+        uploading.value = false
+      }
+    }
+
+    // 添加用户消息
+    messages.value.push({
+      id: uid, role: 'user', content: userContent,
+      sessionId: currentSessionId.value, timestamp: Date.now(),
+      attachments: processedAttachments
+    })
+    persistMessages(currentSessionId.value)
+
+    loading.value = true
+
+    // 添加 AI 回复占位
+    const aid = (Date.now() + 1).toString()
+    messages.value.push({
+      id: aid, role: 'assistant', content: '',
+      sessionId: currentSessionId.value, timestamp: Date.now(),
+      streaming: true, toolInvocations: []
+    })
+
+    const ac = new AbortController()
+    abortController.value = ac
+
+    // 构建发送给 API 的消息历史（只发文本，不含 base64 图片避免超长）
+    const apiMessages = messages.value
+      .filter(m => m.sessionId === currentSessionId.value && !m.streaming)
+      .map(m => ({
+        role: m.role,
+        // 对于用户消息中的图片，用简短描述替代 base64
+        content: m.role === 'user' && m.content.includes('data:image')
+          ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '[图片]')
+          : m.content,
+      }))
+
+    try {
+      await api.sendMessage({
+        model: currentModel.value,
+        provider: currentProvider.value,
+        messages: apiMessages,
+        stream: true,
+        signal: ac.signal,
+        onChunk: (chunk) => {
+          const am = messages.value.find(m => m.id === aid)
+          if (am) am.content += chunk
+        },
+        onTool: (tool) => {
+          const am = messages.value.find(m => m.id === aid)
+          if (am) am.toolInvocations.push(tool)
+        },
+        onDone: () => {
+          const am = messages.value.find(m => m.id === aid)
+          if (am) am.streaming = false
+          loading.value = false
+          abortController.value = null
+          // ✅ 扣减云端配额
+          if (quotaCheck.source === 'free_daily') {
+            api.useQuota(1)
+          }
+          persistMessages(currentSessionId.value)
+        },
+        onError: (err) => {
+          console.error('API error:', err)
+          const am = messages.value.find(m => m.id === aid)
+          if (am) { am.content = '❌ 错误: ' + err.message; am.streaming = false }
+          loading.value = false
+          abortController.value = null
+          persistMessages(currentSessionId.value)
+        }
+      })
+    } catch (e) {
+      console.error('Send error:', e)
+      const am = messages.value.find(m => m.id === aid)
+      if (am) { am.content = '❌ 发送失败: ' + e.message; am.streaming = false }
+      loading.value = false
+      abortController.value = null
+      persistMessages(currentSessionId.value)
+    }
+  }
+
+  async function stopGeneration() {
+    if (abortController.value) {
+      abortController.value.abort()
+      abortController.value = null
+    }
+    loading.value = false
+    const am = messages.value.find(m => m.streaming)
+    if (am) am.streaming = false
+  }
+
+  function toggleTheme() {
+    theme.value = theme.value === 'dark' ? 'light' : 'dark'
+    // Tailwind darkMode: 'class' 需要在 <html> 上加/删 dark class
+    if (theme.value === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+    localStorage.setItem('vermes-theme', theme.value)
+  }
+
+  function toggleSidebar() {
+    sidebarOpen.value = !sidebarOpen.value
+  }
+
+  function deleteSession(id) {
+    const idx = sessions.value.findIndex(s => s.id === id)
+    if (idx === -1) return
+    sessions.value.splice(idx, 1)
+    localStorage.removeItem(MESSAGES_KEY_PREFIX + id)
+    persistSessions()
+    if (currentSessionId.value === id) {
+      if (sessions.value.length > 0) {
+        switchSession(sessions.value[0].id)
+      } else {
+        createSession('新会话')
+      }
+    }
+  }
+
+  function renameSession(id, name) {
+    const s = sessions.value.find(s => s.id === id)
+    if (s) { s.name = name; persistSessions() }
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  // 初始化主题：同步 <html> 的 dark class
+  const saved = localStorage.getItem('vermes-theme')
+  if (saved) {
+    theme.value = saved
+    if (saved === 'dark') document.documentElement.classList.add('dark')
+    else document.documentElement.classList.remove('dark')
+  } else {
+    // 默认跟随系统
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      theme.value = 'dark'
+      document.documentElement.classList.add('dark')
+    }
+  }
+
+  return {
+    sessions, currentSessionId, messages, loading, abortController,
+    sidebarOpen, theme, currentModel, currentProvider, uploading,
+    currentSession, filteredMessages,
+    init, createSession, switchSession, sendMessage, stopGeneration,
+    toggleTheme, toggleSidebar, deleteSession, renameSession, formatSize,
+  }
+})

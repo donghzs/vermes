@@ -1,0 +1,205 @@
+Metadata-Version: 2.4
+Name: vermes
+Version: 1.0.0
+Summary: Vermes — 开箱即用的 AI Agent，融合官方 Hermes 引擎 + QClaw 技能生态
+Author: Vermes Team
+License: MIT
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: openai==2.24.0
+Requires-Dist: python-dotenv==1.2.2
+Requires-Dist: fire==0.7.1
+Requires-Dist: httpx[socks]==0.28.1
+Requires-Dist: rich==14.3.3
+Requires-Dist: tenacity==9.1.4
+Requires-Dist: pyyaml==6.0.3
+Requires-Dist: ruamel.yaml==0.18.17
+Requires-Dist: requests==2.33.0
+Requires-Dist: jinja2==3.1.6
+Requires-Dist: pydantic==2.12.5
+Requires-Dist: prompt_toolkit==3.0.52
+Requires-Dist: croniter==6.0.0
+Requires-Dist: PyJWT[crypto]==2.12.1
+Requires-Dist: tzdata==2025.3; sys_platform == "win32"
+Requires-Dist: psutil==7.2.2
+Provides-Extra: anthropic
+Requires-Dist: anthropic==0.86.0; extra == "anthropic"
+Provides-Extra: exa
+Requires-Dist: exa-py==2.10.2; extra == "exa"
+Provides-Extra: firecrawl
+Requires-Dist: firecrawl-py==4.17.0; extra == "firecrawl"
+Provides-Extra: parallel-web
+Requires-Dist: parallel-web==0.4.2; extra == "parallel-web"
+Provides-Extra: fal
+Requires-Dist: fal-client==0.13.1; extra == "fal"
+Provides-Extra: edge-tts
+Requires-Dist: edge-tts==7.2.7; extra == "edge-tts"
+Provides-Extra: modal
+Requires-Dist: modal==1.3.4; extra == "modal"
+Provides-Extra: daytona
+Requires-Dist: daytona==0.155.0; extra == "daytona"
+Provides-Extra: vercel
+Requires-Dist: vercel==0.5.7; extra == "vercel"
+Provides-Extra: hindsight
+Requires-Dist: hindsight-client==0.6.1; extra == "hindsight"
+Provides-Extra: dev
+Requires-Dist: debugpy==1.8.20; extra == "dev"
+Requires-Dist: pytest==9.0.2; extra == "dev"
+Requires-Dist: pytest-asyncio==1.3.0; extra == "dev"
+Requires-Dist: pytest-xdist==3.8.0; extra == "dev"
+Requires-Dist: pytest-split==0.11.0; extra == "dev"
+Requires-Dist: mcp==1.26.0; extra == "dev"
+Requires-Dist: ty==0.0.21; extra == "dev"
+Requires-Dist: ruff==0.15.10; extra == "dev"
+Provides-Extra: messaging
+Requires-Dist: python-telegram-bot[webhooks]==22.6; extra == "messaging"
+Requires-Dist: discord.py[voice]==2.7.1; extra == "messaging"
+Requires-Dist: aiohttp==3.13.3; extra == "messaging"
+Requires-Dist: brotlicffi==1.2.0.1; extra == "messaging"
+Requires-Dist: slack-bolt==1.27.0; extra == "messaging"
+Requires-Dist: slack-sdk==3.40.1; extra == "messaging"
+Requires-Dist: qrcode==7.4.2; extra == "messaging"
+Provides-Extra: cron
+Provides-Extra: slack
+Requires-Dist: slack-bolt==1.27.0; extra == "slack"
+Requires-Dist: slack-sdk==3.40.1; extra == "slack"
+Requires-Dist: aiohttp==3.13.3; extra == "slack"
+Provides-Extra: matrix
+Requires-Dist: mautrix[encryption]==0.21.0; extra == "matrix"
+Requires-Dist: Markdown==3.10.2; extra == "matrix"
+Requires-Dist: aiosqlite==0.22.1; extra == "matrix"
+Requires-Dist: asyncpg==0.31.0; extra == "matrix"
+Requires-Dist: aiohttp-socks==0.11.0; extra == "matrix"
+Provides-Extra: cli
+Requires-Dist: simple-term-menu==1.6.6; extra == "cli"
+Provides-Extra: tts-premium
+Requires-Dist: elevenlabs==1.59.0; extra == "tts-premium"
+Provides-Extra: voice
+Requires-Dist: faster-whisper==1.2.1; extra == "voice"
+Requires-Dist: sounddevice==0.5.5; extra == "voice"
+Requires-Dist: numpy==2.4.3; extra == "voice"
+Provides-Extra: pty
+Requires-Dist: ptyprocess==0.7.0; sys_platform != "win32" and extra == "pty"
+Requires-Dist: pywinpty==2.0.15; sys_platform == "win32" and extra == "pty"
+Provides-Extra: honcho
+Requires-Dist: honcho-ai==2.0.1; extra == "honcho"
+Provides-Extra: mcp
+Requires-Dist: mcp==1.26.0; extra == "mcp"
+Provides-Extra: homeassistant
+Requires-Dist: aiohttp==3.13.3; extra == "homeassistant"
+Provides-Extra: sms
+Requires-Dist: aiohttp==3.13.3; extra == "sms"
+Provides-Extra: computer-use
+Requires-Dist: mcp==1.26.0; extra == "computer-use"
+Provides-Extra: acp
+Requires-Dist: agent-client-protocol==0.9.0; extra == "acp"
+Provides-Extra: bedrock
+Requires-Dist: boto3==1.42.89; extra == "bedrock"
+Provides-Extra: azure-identity
+Requires-Dist: azure-identity==1.25.3; extra == "azure-identity"
+Provides-Extra: termux
+Requires-Dist: python-telegram-bot[webhooks]==22.6; extra == "termux"
+Requires-Dist: vermes[cron]; extra == "termux"
+Requires-Dist: vermes[cli]; extra == "termux"
+Requires-Dist: vermes[pty]; extra == "termux"
+Requires-Dist: vermes[mcp]; extra == "termux"
+Requires-Dist: vermes[honcho]; extra == "termux"
+Requires-Dist: vermes[acp]; extra == "termux"
+Provides-Extra: termux-all
+Requires-Dist: vermes[termux]; extra == "termux-all"
+Requires-Dist: vermes[google]; extra == "termux-all"
+Requires-Dist: vermes[homeassistant]; extra == "termux-all"
+Requires-Dist: vermes[sms]; extra == "termux-all"
+Requires-Dist: vermes[web]; extra == "termux-all"
+Provides-Extra: dingtalk
+Requires-Dist: dingtalk-stream==0.24.3; extra == "dingtalk"
+Requires-Dist: alibabacloud-dingtalk==2.2.42; extra == "dingtalk"
+Requires-Dist: qrcode==7.4.2; extra == "dingtalk"
+Provides-Extra: feishu
+Requires-Dist: lark-oapi==1.5.3; extra == "feishu"
+Requires-Dist: qrcode==7.4.2; extra == "feishu"
+Provides-Extra: google
+Requires-Dist: google-api-python-client==2.194.0; extra == "google"
+Requires-Dist: google-auth-oauthlib==1.3.1; extra == "google"
+Requires-Dist: google-auth-httplib2==0.3.1; extra == "google"
+Provides-Extra: youtube
+Requires-Dist: youtube-transcript-api==1.2.4; extra == "youtube"
+Provides-Extra: web
+Requires-Dist: fastapi==0.133.1; extra == "web"
+Requires-Dist: uvicorn[standard]==0.41.0; extra == "web"
+Provides-Extra: all
+Requires-Dist: vermes[cron]; extra == "all"
+Requires-Dist: vermes[cli]; extra == "all"
+Requires-Dist: vermes[dev]; extra == "all"
+Requires-Dist: vermes[pty]; extra == "all"
+Requires-Dist: vermes[mcp]; extra == "all"
+Requires-Dist: vermes[homeassistant]; extra == "all"
+Requires-Dist: vermes[sms]; extra == "all"
+Requires-Dist: vermes[acp]; extra == "all"
+Requires-Dist: vermes[google]; extra == "all"
+Requires-Dist: vermes[web]; extra == "all"
+Requires-Dist: vermes[youtube]; extra == "all"
+Dynamic: license-file
+
+# Vermes 🚀
+
+> 你的 AI，即刻启程 — 开箱即用的中文 AI Agent
+
+Vermes 基于官方 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 引擎，
+融合 [QClaw](https://skillhub.cn) 技能生态，为中文用户提供开箱即用的 AI Agent 体验。
+
+## ✨ 特性
+
+- 🧠 **自进化 Agent** — 从经验中学习，创建和改进技能
+- 🛠 **30+ 内置技能** — 文档、搜索、邮件、天气、代码...
+- 🏪 **技能商店** — 随时通过 Skillhub 扩展能力
+- 🌐 **多模型支持** — DeepSeek、Qwen、OpenAI、Ollama...
+- 💻 **全平台** — macOS / Windows / Linux
+- 🇨🇳 **中文优先** — 默认中文交互，预置国内模型
+
+## 📦 安装
+
+### macOS / Linux
+```bash
+curl -fsSL https://install.vbit.top | bash
+```
+
+### pip
+```bash
+pip install vermes
+vermes setup
+vermes
+```
+
+## 🚀 快速开始
+
+1. `vermes setup` — 选择模型和提供商（推荐 DeepSeek）
+2. `vermes` — 开始对话！
+
+## 🏪 技能商店
+
+```bash
+vermes skills search 天气   # 搜索技能
+vermes skills install weather  # 安装技能
+```
+
+或直接在对话中让 Vermes 帮你安装。
+
+## 📁 配置
+
+| 文件 | 路径 | 说明 |
+|------|------|------|
+| 配置 | `~/.vermes/config.yaml` | 模型、工具、Agent 设置 |
+| 环境 | `~/.vermes/.env` | API Keys（安全存储） |
+| 技能 | `~/.vermes/skills/` | 自定义技能目录 |
+| 人格 | `~/.vermes/SOUL.md` | Agent 个性定义 |
+
+## 🙏 致谢
+
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research — 核心引擎
+- [QClaw / Skillhub](https://skillhub.cn) — 技能生态
+
+## 📄 许可
+
+MIT License
