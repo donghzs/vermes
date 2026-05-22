@@ -9,7 +9,7 @@ import sys
 import os
 import time
 import threading
-import fcntl
+import platform
 
 APP_TITLE = "Vermes - AI Agent"
 APP_URL   = "http://127.0.0.1:9119"
@@ -25,15 +25,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def acquire_lock():
     """获取单例锁。成功返回 lock file object，失败返回 None（已有实例在运行）。"""
     os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
-    f = open(LOCK_FILE, "w")
-    try:
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        f.write(str(os.getpid()))
-        f.flush()
-        return f  # 持有锁，调用者需要保持 f 不被 GC
-    except (IOError, OSError):
-        f.close()
-        return None
+    if platform.system() == "Windows":
+        try:
+            # Windows: 独占写方式打开，已有实例则失败
+            f = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            f = open(f, "w")
+            f.write(str(os.getpid()))
+            f.flush()
+            return f
+        except (OSError, IOError):
+            return None
+    else:
+        import fcntl
+        f = open(LOCK_FILE, "w")
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            f.write(str(os.getpid()))
+            f.flush()
+            return f
+        except (IOError, OSError):
+            f.close()
+            return None
 
 
 def wait_for_server(timeout=15):
@@ -89,7 +101,9 @@ def main(lock_fd):
     # 保持 lock_fd 存活，防止 GC 关闭文件导致锁释放
     webview.start(debug=False, func=None)
     # 窗口关闭后释放锁
-    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    if platform.system() != "Windows":
+        import fcntl
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
     lock_fd.close()
 
 
