@@ -70,44 +70,32 @@ function quickStart(text) {
   send()
 }
 
-// 微信扫码登录
+// 微信扫码登录 - 使用 iframe 嵌入（pywebview 兼容）
+const showWeChatModal = ref(false)
+
 function openWeChatQR() {
-  const popup = window.open('https://vbit.top/api/wechat/qr', 'wechat', 'width=420,height=550')
-  
-  // ✅ 方式1：监听 postMessage（popup 跨域通知）
-  window.addEventListener('message', function onWxMsg(e) {
-    if (e.data?.type === 'wechat_callback' && e.data?.token) {
-      window.removeEventListener('message', onWxMsg)
-      console.log('[Vermes🔐] 收到微信登录 postMessage:', e.data.name, e.data.token?.substring(0,10))
-      // 自己的 localStorage，不存在跨域问题
-      localStorage.setItem('vermes_token', e.data.token)
-      localStorage.setItem('vermes_wechat_token', e.data.token)
-      if (e.data.name) localStorage.setItem('vermes_wechat_name', e.data.name)
-      if (e.data.avatar) localStorage.setItem('vermes_wechat_avatar', e.data.avatar)
-      localStorage.removeItem('vermes_quota')
-      // 更新 Vue 状态
-      isLoggedIn.value = true
-      userName.value = e.data.name || '微信用户'
-      userAvatar.value = e.data.avatar || ''
-    }
-  })
-  
-  // ✅ 方式2：轮询兜底（兼容 popup 直接写 localStorage 的情况）
-  const checkCallback = setInterval(() => {
-    const wxToken = localStorage.getItem('vermes_wechat_token')
-    if (wxToken && !isLoggedIn.value) {
-      clearInterval(checkCallback)
-      localStorage.setItem('vermes_token', wxToken)
-      isLoggedIn.value = true
-      userName.value = localStorage.getItem('vermes_wechat_name') || '微信用户'
-      userAvatar.value = localStorage.getItem('vermes_wechat_avatar') || ''
-      console.log('[Vermes🔐] WeChat login via polling! token:', wxToken.substring(0,10))
-    }
-    // popup 关闭后停止轮询
-    if (popup?.closed) {
-      clearInterval(checkCallback)
-    }
-  }, 2000)
+  showWeChatModal.value = true
+}
+
+// 监听 iframe 发来的 postMessage
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'wechat_callback' && e.data?.token) {
+    console.log('[Vermes🔐] 收到微信登录 postMessage:', e.data.name, e.data.token?.substring(0,10))
+    showWeChatModal.value = false
+    localStorage.setItem('vermes_token', e.data.token)
+    localStorage.setItem('vermes_wechat_token', e.data.token)
+    if (e.data.name) localStorage.setItem('vermes_wechat_name', e.data.name)
+    if (e.data.avatar) localStorage.setItem('vermes_wechat_avatar', e.data.avatar)
+    localStorage.removeItem('vermes_quota')
+    isLoggedIn.value = true
+    userName.value = e.data.name || '微信用户'
+    userAvatar.value = e.data.avatar || ''
+  }
+})
+
+// iframe 加载完成后的处理
+function onIframeLoad() {
+  console.log('[Vermes🔐] WeChat iframe loaded')
 }
 
 async function send() {
@@ -308,6 +296,17 @@ watch(() => chat.filteredMessages, async () => {
       </div>
     </div>
   </div>
+
+
+  <!-- 微信登录弹窗 -->
+  <div v-if="showWeChatModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showWeChatModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative">
+      <button @click="showWeChatModal = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg">✕</button>
+      <h3 class="font-bold text-lg mb-4">微信扫码登录</h3>
+      <iframe src="https://vbit.top/api/wechat/qr" class="w-full h-96 border-0 rounded-lg"></iframe>
+    </div>
+  </div>
+
 </template>
 
 <style scoped>
