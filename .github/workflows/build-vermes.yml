@@ -101,30 +101,57 @@ jobs:
 
       - name: Build Windows .exe (PyInstaller)
         run: |
-          if (Test-Path "vermes-gui.spec") { pyinstaller vermes-gui.spec --noconfirm }
-          elseif (Test-Path "vermes.spec") { pyinstaller vermes.spec --noconfirm }
-          else { pyinstaller --name Vermes --onefile --windowed cli.py }
+          echo "Building with vermes-gui.spec..."
+          & "C:\hostedtoolcache\windows\Python\3.11.9\x64\python.exe" -m PyInstaller vermes-gui.spec --noconfirm 2>&1
+          echo "Exit code: $LASTEXITCODE"
+          echo "=== dist contents ==="
+          Get-ChildItem dist -Recurse -Depth 0 | Select-Object Name, FullName | Format-Table -AutoSize
 
       - name: Package exe → .zip & NSIS installer
         run: |
-          echo "Checking dist folder..."
-          dir dist /s /b 2>&1 | head -20
+          $ErrorActionPreference = 'Stop'
+          $ref = "${{ github.ref_name }}"
+          echo "ref=$ref"
+          echo "=== dist folder ==="
+          Get-ChildItem dist -Recurse | Select-Object Mode, Length, Name | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host $_ }
+          
+          # Find the .exe or folder
           if (Test-Path "dist\Vermes") {
-            Compress-Archive -Path "dist\Vermes\*" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
-            echo "ZIP created: Vermes-${{ github.ref_name }}-windows-x64.zip"
-            # Build NSIS installer
-            $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-            if (Test-Path $nsis) {
-              & $nsis "packaging\vermes-installer.nsi"
-              if (Test-Path "Vermes-${{ github.ref_name }}-windows-x64-Installer.exe") {
-                echo "Installer created!"
-              }
-            } else { echo "NSIS not found at $nsis" }
+            echo "Found: dist\Vermes (folder)"
+            $src = "dist\Vermes"
           } elseif (Test-Path "dist\vermes") {
-            Compress-Archive -Path "dist\vermes\*" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
+            echo "Found: dist\vermes (folder)"
+            $src = "dist\vermes"
           } elseif (Test-Path "dist\Vermes.exe") {
-            Compress-Archive -Path "dist\Vermes.exe" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
-          } else { echo "No dist folder found!" }
+            echo "Found: dist\Vermes.exe (onefile)"
+            $src = "dist\Vermes.exe"
+          } else {
+            echo "ERROR: No build output found!"
+            exit 1
+          }
+          
+          # Create zip
+          echo "Creating ZIP..."
+          if (Test-Path $src -PathType Container) {
+            Compress-Archive -Path "$src\*" -DestinationPath "Vermes-${ref}-windows-x64.zip" -Force
+          } else {
+            Compress-Archive -Path $src -DestinationPath "Vermes-${ref}-windows-x64.zip" -Force
+          }
+          echo "ZIP: Vermes-${ref}-windows-x64.zip"
+          
+          # NSIS installer (optional)
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (Test-Path $nsis) {
+            echo "Found NSIS, building installer..."
+            & $nsis "packaging\vermes-installer.nsi" 2>&1
+            if (Test-Path "Vermes-${ref}-windows-x64-Installer.exe") {
+              echo "Installer created!"
+            } else {
+              echo "NSIS script failed, continuing without installer..."
+            }
+          } else {
+            echo "NSIS not found at $nsis, continuing without installer..."
+          }
 
       - name: Upload Release Assets (Windows x64)
         uses: softprops/action-gh-release@v1
