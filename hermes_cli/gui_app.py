@@ -3,6 +3,7 @@
 Vermes GUI App — 双击即开原生窗口，无需浏览器。
 pywebview 6.x: create_window → start(func=...)
 单例锁：确保同一时间只有一个实例运行。
+自动端口分配：避免与本机测试实例冲突。
 """
 
 import sys
@@ -11,10 +12,11 @@ import time
 import threading
 import platform
 
-APP_TITLE = "Vermes - AI Agent"
-APP_URL   = "http://127.0.0.1:9119"
-WINDOW_W  = 1200
-WINDOW_H  = 800
+APP_TITLE    = "Vermes - AI Agent"
+DEFAULT_PORT = 9119
+PORT_FILE     = os.path.expanduser("~/.vermes/gui_port.txt")
+WINDOW_W     = 1200
+WINDOW_H     = 800
 
 LOCK_FILE = os.path.expanduser("~/.vermes/gui_app.lock")
 
@@ -27,7 +29,6 @@ def acquire_lock():
     os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
     if platform.system() == "Windows":
         try:
-            # Windows: 独占写方式打开，已有实例则失败
             f = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             f = open(f, "w")
             f.write(str(os.getpid()))
@@ -48,13 +49,30 @@ def acquire_lock():
             return None
 
 
-def wait_for_server(timeout=15):
+def find_available_port(start_port=9119, max_tries=20):
+    """从 start_port 开始找第一个可用的端口。"""
+    import socket
+    for port in range(start_port, start_port + max_tries):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            result = s.connect_ex(('127.0.0.1', port))
+            s.close()
+            if result != 0:  # 连接失败 = 端口可用
+                return port
+        except Exception:
+            pass
+    return None  # 都不可用
+
+
+def wait_for_server(port, timeout=15):
     """等待后端服务器就绪，最多等 timeout 秒。"""
     import urllib.request
+    url = f"http://127.0.0.1:{port}"
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            req = urllib.request.Request(APP_URL, method="HEAD")
+            req = urllib.request.Request(url, method="HEAD")
             with urllib.request.urlopen(req, timeout=2) as resp:
                 if resp.status == 200:
                     return True
@@ -65,9 +83,8 @@ def wait_for_server(timeout=15):
 
 
 def start_server():
-    """后台启动 uvicorn + FastAPI。
-    不设 HERMES_WEB_DIST，让 web_server.py 用 __file__.parent/web_dist 自动定位。
-    PyInstaller 打包后 __file__ 指向临时目录中的 hermes_cli/，web_dist 就在旁边。
+    """后台启动 uvicorn + FastAPI，自动找可用端口。
+    把实际端口写入 PORT_FILE，供 main() 读取。
     """
     os.environ["VERMES_WEB_SKIP_BUILD"] = "1"
 
@@ -78,20 +95,36 @@ def start_server():
         print(f"[Vermes] 依赖缺失: {e}")
         return
 
+    # 找可用端口
+    port = find_available_port(DEFAULT_PORT)
+    if port is None:
+        print(f"[Vermes] ❌ 错误：9119-9138 端口全部被占用，无法启动后端！")
+        return
+
+    # 写入端口文件，让 main() 知道正确的 URL
+    try:
+        with open(PORT_FILE, "w") as f:
+            f.write(str(port))
+    except Exception as e:
+        print(f"[Vermes] ⚠️ 无法写入端口文件: {e}")
+
+    print(f"[Vermes] 后端启动在端口 {port}")
     uvicorn.run(fastapi_app,
                 host="127.0.0.1",
-                port=9119,
+                port=port,
                 log_level="warning",
                 lifespan="off")
 
 
-def main(lock_fd):
+def main(lock_fd, port):
     """pywebview.start 会在 GUI 初始化后调用此函数。
     所有窗口 API 必须在主线程调用，因此放在这里。"""
     import webview
+    url = f"http://127.0.0.1:{port}"
+    print(f"[Vermes] 打开窗口：{url}")
     win = webview.create_window(
         title=APP_TITLE,
-        url=APP_URL,
+        url=url,
         width=WINDOW_W,
         height=WINDOW_H,
         min_size=(800, 600),
@@ -100,7 +133,7 @@ def main(lock_fd):
     )
     # 保持 lock_fd 存活，防止 GC 关闭文件导致锁释放
     webview.start(debug=False, func=None)
-    # 窗口关闭后释放锁
+    # 窗口关闭后释放
     if platform.system() != "Windows":
         import fcntl
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
@@ -112,7 +145,6 @@ if __name__ == "__main__":
     if lock_fd is None:
         # 已有实例在运行，尝试激活它的窗口（macOS）
         print("[Vermes] 已有实例在运行，退出。")
-        # 用 AppleScript 激活已有窗口
         os.system('osascript -e "tell application \\"Python\\" to activate" 2>/dev/null')
         os.system('osascript -e "tell application \\"Vermes\\" to activate" 2>/dev/null')
         sys.exit(0)
@@ -121,11 +153,23 @@ if __name__ == "__main__":
     t = threading.Thread(target=start_server, daemon=True)
     t.start()
 
-    print("[Vermes] 等待后端服务器就绪...")
-    if wait_for_server(timeout=15):
+    # 读取端口文件（start_server 会写入）
+    port = DEFAULT_PORT  # 兜底
+    for _ in range(30):  # 最多等 15 秒
+        try:
+            if os.path.exists(PORT_FILE):
+                with open(PORT_FILE, "r") as f:
+                    port = int(f.read().strip())
+                    break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    print(f"[Vermes] 等待后端服务器就绪 (port={port})...")
+    if wait_for_server(port, timeout=15):
         print("[Vermes] 后端就绪，打开窗口。")
     else:
         print("[Vermes] 警告：后端未就绪，仍尝试打开窗口。")
 
     # GUI 在主线程启动（macOS 要求）
-    main(lock_fd)
+    main(lock_fd, port)
