@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '../services/api'
+import api, { isCloudModel, checkQuota, useQuota } from '../services/api'
 
 const SESSIONS_KEY = 'vermes-sessions'
 const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
@@ -94,7 +94,7 @@ export const useChatStore = defineStore('chat', () => {
         await createSession('新会话')
       }
     } catch (e) {
-      console.error('init failed:', e)
+      console.error('❌ init failed:', e)
       // 即使 token 获取失败也创建默认会话，保证 UI 可用
       if (sessions.value.length === 0) {
         createSession('新会话')
@@ -138,12 +138,24 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function sendMessage(content, attachments) {
-    if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) return
-    if (loading.value) return
+    console.log('[Vermes💬 sendMessage] content:', JSON.stringify(content), 'attachments:', attachments?.length, 'currentSessionId:', currentSessionId.value, 'messages count:', messages.value.length)
+    if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) {
+      console.warn('[Vermes💬 sendMessage] BLOCKED: empty content and no attachments')
+      return
+    }
+    if (loading.value) {
+      console.warn('[Vermes💬 sendMessage] BLOCKED: already loading')
+      return
+    }
+    if (!currentSessionId.value) {
+      console.error('[Vermes💬 sendMessage] ERROR: currentSessionId is null! sessions:', sessions.value.length)
+      alert('会话未初始化，请刷新页面重试')
+      return
+    }
 
     // ✅ 云端模型配额检查
-    const isCloud = api.isCloudModel(currentProvider.value)
-    const quotaCheck = api.checkQuota(isCloud)
+    const isCloud = isCloudModel(currentProvider.value)
+    const quotaCheck = checkQuota(isCloud)
     if (!quotaCheck.allowed) {
       messages.value.push({
         id: Date.now().toString(),
@@ -191,6 +203,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 添加用户消息
+    console.log('[Vermes💬 sendMessage] Adding user message, sessionId:', currentSessionId.value)
     messages.value.push({
       id: uid, role: 'user', content: userContent,
       sessionId: currentSessionId.value, timestamp: Date.now(),
@@ -227,6 +240,13 @@ export const useChatStore = defineStore('chat', () => {
         model: currentModel.value,
         provider: currentProvider.value,
         messages: apiMessages,
+        attachments: processedAttachments.map(a => ({
+          name: a.name,
+          type: a.type,
+          data: a.base64,
+          mime: a.mimeType || 'application/octet-stream',
+          size: a.size,
+        })),
         stream: true,
         signal: ac.signal,
         onChunk: (chunk) => {
@@ -244,18 +264,26 @@ export const useChatStore = defineStore('chat', () => {
           abortController.value = null
           // ✅ 扣减云端配额
           if (quotaCheck.source === 'free_daily') {
-            api.useQuota(1)
+            useQuota(1)
           }
           persistMessages(currentSessionId.value)
         },
         onError: (err) => {
-          console.error('API error:', err)
+          console.error('❌ API error:', err)
           const am = messages.value.find(m => m.id === aid)
           if (am) { am.content = '❌ 错误: ' + err.message; am.streaming = false }
           loading.value = false
           abortController.value = null
           persistMessages(currentSessionId.value)
         }
+      }).catch(e => {
+        // 外层 catch：SSE 流异常时的兜底
+        console.error('❌ sendMessage outer catch:', e)
+        const am = messages.value.find(m => m.id === aid)
+        if (am) { am.content = '❌ 发送失败: ' + e.message; am.streaming = false }
+        loading.value = false
+        abortController.value = null
+        persistMessages(currentSessionId.value)
       })
     } catch (e) {
       console.error('Send error:', e)

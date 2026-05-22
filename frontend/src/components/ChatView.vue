@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, computed } from 'vue'
+import { ref, watch, nextTick, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import MarkdownIt from 'markdown-it'
 
@@ -10,13 +10,15 @@ const inputRef = ref(null)
 const chatContainer = ref(null)
 
 // ✅ 登录状态
-const isLoggedIn = computed(() => !!localStorage.getItem('vermes_token'))
-const userAvatar = computed(() => localStorage.getItem('vermes_wechat_avatar') || '')
-const userName = computed(() => localStorage.getItem('vermes_wechat_name') || '已登录')
+const isLoggedIn = ref(!!localStorage.getItem('vermes_token'))
+const userAvatar = ref(localStorage.getItem('vermes_wechat_avatar') || '')
+const userName = ref(localStorage.getItem('vermes_wechat_name') || '已登录')
 const inputText = ref('')
 const fileInput = ref(null)
 const uploadedFiles = ref([])
 const showModelSelect = ref(false)
+
+// ✅ App.vue 已调用 chat.init()，这里不需要重复
 
 // 模型列表：优先从 Settings 同步的模型，否则用默认列表
 const defaultModels = [
@@ -70,33 +72,62 @@ function quickStart(text) {
 
 // 微信扫码登录
 function openWeChatQR() {
-  window.open('https://vbit.top/api/wechat/qr', 'wechat', 'width=420,height=550')
+  const popup = window.open('https://vbit.top/api/wechat/qr', 'wechat', 'width=420,height=550')
+  
+  // ✅ 方式1：监听 postMessage（popup 跨域通知）
+  window.addEventListener('message', function onWxMsg(e) {
+    if (e.data?.type === 'wechat_callback' && e.data?.token) {
+      window.removeEventListener('message', onWxMsg)
+      console.log('[Vermes🔐] 收到微信登录 postMessage:', e.data.name, e.data.token?.substring(0,10))
+      // 自己的 localStorage，不存在跨域问题
+      localStorage.setItem('vermes_token', e.data.token)
+      localStorage.setItem('vermes_wechat_token', e.data.token)
+      if (e.data.name) localStorage.setItem('vermes_wechat_name', e.data.name)
+      if (e.data.avatar) localStorage.setItem('vermes_wechat_avatar', e.data.avatar)
+      localStorage.removeItem('vermes_quota')
+      // 更新 Vue 状态
+      isLoggedIn.value = true
+      userName.value = e.data.name || '微信用户'
+      userAvatar.value = e.data.avatar || ''
+    }
+  })
+  
+  // ✅ 方式2：轮询兜底（兼容 popup 直接写 localStorage 的情况）
   const checkCallback = setInterval(() => {
     const wxToken = localStorage.getItem('vermes_wechat_token')
-    if (wxToken) {
+    if (wxToken && !isLoggedIn.value) {
       clearInterval(checkCallback)
       localStorage.setItem('vermes_token', wxToken)
-      localStorage.removeItem('vermes_quota')
-      window.location.reload()
+      isLoggedIn.value = true
+      userName.value = localStorage.getItem('vermes_wechat_name') || '微信用户'
+      userAvatar.value = localStorage.getItem('vermes_wechat_avatar') || ''
+      console.log('[Vermes🔐] WeChat login via polling! token:', wxToken.substring(0,10))
+    }
+    // popup 关闭后停止轮询
+    if (popup?.closed) {
+      clearInterval(checkCallback)
     }
   }, 2000)
 }
 
 async function send() {
-  console.log('[Vermes] send() called, input:', JSON.stringify(inputText.value), 'files:', uploadedFiles.value.length)
-  if ((!inputText.value.trim() && uploadedFiles.value.length === 0) || chat.loading) {
-    console.log('[Vermes] send() blocked: empty input or loading')
+  const input = inputText.value.trim()
+  const files = [...uploadedFiles.value]
+  const model = chat.currentModel
+  const provider = chat.currentProvider
+  console.log('[Vermes📤] send() input:', JSON.stringify(input), 'files:', files.length, 'model:', model, 'provider:', provider)
+  if ((!input && files.length === 0) || chat.loading) {
+    console.log('[Vermes📤] send() blocked: empty or loading, loading:', chat.loading)
     return
   }
-  const text = inputText.value.trim()
   inputText.value = ''
-  const files = [...uploadedFiles.value]
   uploadedFiles.value = []
   try {
-    await chat.sendMessage(text, files)
-    console.log('[Vermes] send() completed successfully')
+    await chat.sendMessage(input, files)
+    console.log('[Vermes📤] send() → sendMessage() completed')
   } catch(e) {
-    console.error('[Vermes] send() error:', e)
+    console.error('[Vermes📤] send() → sendMessage() error:', e)
+    alert('❌ 发送失败：' + e.message)
   }
 }
 
@@ -135,20 +166,31 @@ watch(() => chat.filteredMessages, async () => {
     <!-- 顶部栏 -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
       <div class="flex items-center gap-3">
+        <!-- ✅ 微信头像 - 左上角醒目展示 -->
+        <div v-if="isLoggedIn && userAvatar" class="flex items-center gap-2 cursor-pointer group relative" @click="openWeChatQR()">
+          <img :src="userAvatar" class="w-8 h-8 rounded-full object-cover ring-2 ring-green-400 shadow-sm" @error="$event.target.style.display='none'" />
+          <div class="flex flex-col leading-tight">
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-200 group-hover:text-green-600 dark:group-hover:text-green-400 transition max-w-[80px] truncate">{{ userName }}</span>
+            <span class="text-[10px] text-green-500">已登录</span>
+          </div>
+        </div>
+        <div v-else-if="isLoggedIn" class="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/30 rounded-full text-xs text-green-600 dark:text-green-400">
+          <span class="w-6 h-6 rounded-full bg-green-400 flex items-center justify-center text-white text-xs font-bold">V</span>
+          {{ userName }}
+        </div>
+        <div v-else @click="openWeChatQR()" class="flex items-center gap-2 cursor-pointer group">
+          <div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-gray-400 text-xs">?</div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-xs text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition">未登录</span>
+            <span class="text-[10px] text-gray-300 dark:text-gray-600">点击登录</span>
+          </div>
+        </div>
+
+        <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
+
         <button @click="chat.toggleSidebar()" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="切换侧边栏">☰</button>
         <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新会话' }}</h2>
         <span class="text-xs text-gray-400">{{ chat.filteredMessages.length }} 条消息</span>
-        <!-- ✅ 登录状态 -->
-        <span v-if="isLoggedIn" class="flex items-center gap-1.5 px-2 py-0.5 bg-green-50 dark:bg-green-900/30 rounded-full text-xs text-green-600 dark:text-green-400">
-          <span class="w-4 h-4 rounded-full bg-green-400 flex items-center justify-center overflow-hidden">
-            <img v-if="userAvatar" :src="userAvatar" class="w-full h-full object-cover" @error="$event.target.style.display='none'" />
-            <span v-else class="text-white text-xs">V</span>
-          </span>
-          {{ userName }}
-        </span>
-        <span v-else class="flex items-center gap-1 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-full text-xs text-gray-400">
-          未登录
-        </span>
       </div>
       <!-- 模型选择器 -->
       <div class="relative">
@@ -195,9 +237,9 @@ watch(() => chat.filteredMessages, async () => {
           <div v-if="!isLoggedIn" @click="openWeChatQR()" class="w-full px-5 py-3.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-medium text-sm transition shadow-sm flex items-center justify-center gap-2 cursor-pointer">
             <span>💚 微信扫码登录（10万免费Token）</span>
           </div>
-          <div v-else class="w-full px-5 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-sm flex items-center gap-2">
-            <span>✅ 已登录：{{ userName }}</span>
-            <img v-if="userAvatar" :src="userAvatar" class="w-5 h-5 rounded-full object-cover" @error="$event.target.style.display='none'" />
+          <div v-else class="w-full px-5 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-sm flex items-center gap-3">
+            <img v-if="userAvatar" :src="userAvatar" class="w-7 h-7 rounded-full object-cover ring-2 ring-green-400" @error="$event.target.style.display='none'" />
+            <span class="font-medium">✅ 已登录：{{ userName }}</span>
           </div>
           <a href="https://openrouter.ai/" target="_blank" class="w-full px-5 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-300 font-medium text-sm transition border border-blue-200 dark:border-blue-800 flex items-center justify-between">
             <span>🌐 获取 OpenRouter 200+大模型（含免费）</span>
