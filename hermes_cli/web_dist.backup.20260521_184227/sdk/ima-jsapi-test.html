@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>IMA JSAPI SDK 测试页面</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; background: #f5f6f7; color: #333; }
+    h1 { font-size: 18px; margin-bottom: 16px; }
+    .section { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .section h2 { font-size: 14px; color: #666; margin-bottom: 10px; }
+    .btn { display: inline-block; padding: 6px 14px; border: none; border-radius: 4px; background: #1677ff; color: #fff; font-size: 13px; cursor: pointer; margin: 4px 4px 4px 0; }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { opacity: 0.7; }
+    .btn.green { background: #52c41a; }
+    .btn.orange { background: #fa8c16; }
+    .log-area { margin-top: 12px; background: #1e1e1e; color: #d4d4d4; border-radius: 6px; padding: 12px; font-family: 'Menlo', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+    .log-entry { margin-bottom: 4px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+    .log-entry.success { color: #73d13d; }
+    .log-entry.error { color: #ff4d4f; }
+    .log-entry.info { color: #69b1ff; }
+    .clear-btn { float: right; padding: 2px 8px; font-size: 11px; background: #666; }
+  </style>
+</head>
+<body>
+  <h1>🧪 IMA JSAPI SDK 本地测试</h1>
+  <p style="font-size:12px;color:#999;margin-bottom:16px;">此页面模拟 IMA iframe 环境，测试 QClawBridge 各方法与宿主端的通信</p>
+
+  <div class="section">
+    <h2>基础能力</h2>
+    <button class="btn" onclick="testGetDeviceInfo()">getDeviceInfo</button>
+    <button class="btn" onclick="testGetToken()">getToken</button>
+    <button class="btn" onclick="testRefreshToken()">refreshToken</button>
+    <button class="btn" onclick="testGetAccountInfo()">getAccountInfo</button>
+  </div>
+
+  <div class="section">
+    <h2>业务交互</h2>
+    <button class="btn green" onclick="testAddKnowledgeTask()">addKnowledgeTask</button>
+    <button class="btn green" onclick="testOpenMedia()">openMedia</button>
+    <button class="btn green" onclick="testDownload()">download</button>
+    <button class="btn green" onclick="testOpenBrowser()">openBrowser</button>
+    <button class="btn green" onclick="testOpenApp()">openApp</button>
+  </div>
+
+  <div class="section">
+    <h2>加密相关</h2>
+    <button class="btn orange" onclick="testEncryptData()">encryptData</button>
+    <button class="btn orange" onclick="testDecryptData()">decryptData</button>
+    <button class="btn orange" onclick="testSetCryptoToken()">setCryptoToken</button>
+    <button class="btn orange" onclick="testClearCryptoSession()">clearCryptoSession</button>
+  </div>
+
+  <div class="section">
+    <h2>日志 <button class="btn clear-btn" onclick="clearLog()">清空</button></h2>
+    <div id="logArea" class="log-area"><span style="color:#666">点击上方按钮测试各 JSAPI 方法...</span></div>
+  </div>
+
+  <!-- 引入 SDK -->
+  <script src="./ima-jsapi-sdk.js"></script>
+  <script>
+    var logArea = document.getElementById('logArea');
+    var firstLog = true;
+
+    function log(type, method, data) {
+      if (firstLog) { logArea.innerHTML = ''; firstLog = false; }
+      var entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      var time = new Date().toLocaleTimeString();
+      entry.textContent = '[' + time + '] [' + method + '] ' + JSON.stringify(data, null, 2);
+      logArea.appendChild(entry);
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function clearLog() {
+      logArea.innerHTML = '';
+      firstLog = true;
+    }
+
+    async function testGetDeviceInfo() {
+      log('info', 'getDeviceInfo', '请求中...');
+      try {
+        var res = await window.QClawBridge.getDeviceInfo();
+        log('success', 'getDeviceInfo', res);
+      } catch (e) {
+        log('error', 'getDeviceInfo', e);
+      }
+    }
+
+    async function testGetToken() {
+      log('info', 'getToken', '请求中...');
+      try {
+        var res = await window.QClawBridge.getToken();
+        log('success', 'getToken', res);
+      } catch (e) {
+        log('error', 'getToken', e);
+      }
+    }
+
+    async function testRefreshToken() {
+      log('info', 'refreshToken', '请求中...');
+      try {
+        var res = await window.QClawBridge.refreshToken();
+        log('success', 'refreshToken', res);
+      } catch (e) {
+        log('error', 'refreshToken', e);
+      }
+    }
+
+    async function testGetAccountInfo() {
+      log('info', 'getAccountInfo', '请求中...');
+      try {
+        var res = await window.QClawBridge.getAccountInfo();
+        log('success', 'getAccountInfo', res);
+      } catch (e) {
+        log('error', 'getAccountInfo', e);
+      }
+    }
+
+    async function testAddKnowledgeTask() {
+      log('info', 'addKnowledgeTask', '请求中...');
+      try {
+        var res = await window.QClawBridge.addKnowledgeTask({
+          medias: [
+            { id: 'test_media_001', mediaType: 1, title: '测试文档.pdf' },
+            { id: 'test_media_002', mediaType: 3, title: '测试表格.xlsx' },
+          ]
+        });
+        log('success', 'addKnowledgeTask', res);
+      } catch (e) {
+        log('error', 'addKnowledgeTask', e);
+      }
+    }
+
+    async function testOpenMedia() {
+      log('info', 'openMedia', '请求中...');
+      try {
+        var res = await window.QClawBridge.openMedia({
+          id: 'test_media_001',
+          mediaType: 1,
+        });
+        log('success', 'openMedia', res);
+      } catch (e) {
+        log('error', 'openMedia', e);
+      }
+    }
+
+    async function testDownload() {
+      log('info', 'download', '请求中...');
+      try {
+        var res = await window.QClawBridge.download({
+          url: 'https://www.example.com/test-file.pdf',
+        });
+        log('success', 'download', res);
+      } catch (e) {
+        log('error', 'download', e);
+      }
+    }
+
+    async function testOpenBrowser() {
+      log('info', 'openBrowser', '请求中...');
+      try {
+        var res = await window.QClawBridge.openBrowser({
+          url: 'https://ima.qq.com',
+        });
+        log('success', 'openBrowser', res);
+      } catch (e) {
+        log('error', 'openBrowser', e);
+      }
+    }
+
+    async function testOpenApp() {
+      log('info', 'openApp', '请求中...');
+      try {
+        var res = await window.QClawBridge.openApp({
+          schema: 'imacopilot://open',
+          url: 'https://ima.qq.com',
+        });
+        log('success', 'openApp', res);
+      } catch (e) {
+        log('error', 'openApp', e);
+      }
+    }
+
+    async function testEncryptData() {
+      log('info', 'encryptData', '请求中...');
+      try {
+        var res = await window.QClawBridge.encryptData({
+          data: JSON.stringify({ test: 'hello world' }),
+        });
+        log('success', 'encryptData', res);
+      } catch (e) {
+        log('error', 'encryptData', e);
+      }
+    }
+
+    async function testDecryptData() {
+      log('info', 'decryptData', '先加密再解密验证...');
+      try {
+        // 先加密一段数据
+        var encRes = await window.QClawBridge.encryptData({
+          data: JSON.stringify({ test: 'decrypt验证' }),
+        });
+        if (encRes.code !== 0) {
+          log('error', 'decryptData', '前置加密失败: ' + JSON.stringify(encRes));
+          return;
+        }
+        var parsed = JSON.parse(encRes.data);
+        log('info', 'decryptData', '用加密结果解密: data.length=' + parsed.data.length);
+        // 再解密
+        var res = await window.QClawBridge.decryptData({ data: parsed.data });
+        log('success', 'decryptData', res);
+      } catch (e) {
+        log('error', 'decryptData', e);
+      }
+    }
+
+    async function testSetCryptoToken() {
+      log('info', 'setCryptoToken', '请求中...');
+      try {
+        var res = await window.QClawBridge.setCryptoToken({
+          token: 'test_crypto_token_123',
+          expire: Math.floor(Date.now() / 1000) + 3600,
+        });
+        log('success', 'setCryptoToken', res);
+      } catch (e) {
+        log('error', 'setCryptoToken', e);
+      }
+    }
+
+    async function testClearCryptoSession() {
+      log('info', 'clearCryptoSession', '请求中...');
+      try {
+        var res = await window.QClawBridge.clearCryptoSession();
+        log('success', 'clearCryptoSession', res);
+      } catch (e) {
+        log('error', 'clearCryptoSession', e);
+      }
+    }
+
+    // 启动时验证 SDK 已加载
+    if (window.QClawBridge) {
+      log('info', 'SDK', { status: 'loaded', version: window.QClawBridge.version });
+    } else {
+      log('error', 'SDK', 'QClawBridge 未加载！');
+    }
+  </script>
+</body>
+</html>

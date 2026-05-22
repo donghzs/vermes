@@ -1,0 +1,1 @@
+import{u as a,a as c}from"./e-C4_WHn0v.js";import{c as o}from"./c-CAXDqyLB.js";const m="rgba(255, 255, 255, 0.85)",p="#535353",I=()=>{const{isDarkAppearance:r}=a(),{isStudio:t}=c(),e=o(()=>t.value||r.value),n=o(()=>e.value?m:p);return{shouldUseDark:e,themedColor:n,resolveIcon:(u,s)=>o(()=>e.value&&s?s:u)}};export{I as u};

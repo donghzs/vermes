@@ -1,0 +1,33 @@
+<svg width="30" height="51" viewBox="0 0 30 51" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M10 1L3.78871 1L1 3.8V9.9999H10V1Z" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M10 3L5.39122 3L3 5.40002V10H10V3Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<path d="M3 1H2V2H1V3H0V10H1V4H2V3H3V2H4V1H10V0H3V1Z" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect width="7" height="31" transform="matrix(-1 0 0 1 7 10)" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect width="7" height="31" transform="matrix(-1 0 0 1 8 10)" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M10 10H3V41H10V10Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<path d="M1 47H2V48H1V47ZM2 48H3V49H2V48ZM3 49H4V50H3V49ZM4 51V50H10V51H4Z" fill="#665647" style="fill:#665647;fill:color(display-p3 0.4000 0.3373 0.2784);fill-opacity:1;"/>
+<path d="M1 41L1 46L4 49L9.9999 49L9.9999 41L1 41Z" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M3 41L3 44.6088L5.40002 47L10 47L10 41L3 41Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<path d="M0 41H1V46H2V47H0V41ZM2 47H3V48H2V47ZM3 48H4V49H3V48ZM4 50V49H10V50H4Z" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect x="10" y="7" width="7" height="10" transform="rotate(-90 10 7)" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect x="10" y="8" width="7" height="10" transform="rotate(-90 10 8)" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M10 10L10 3L20 3L20 10L10 10Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<rect x="10" y="10" width="10" height="31" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<rect x="20" y="44" width="7" height="10" transform="rotate(90 20 44)" fill="#665647" style="fill:#665647;fill:color(display-p3 0.4000 0.3373 0.2784);fill-opacity:1;"/>
+<path d="M20 44L20 50L10 50L10 44L20 44Z" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect x="20" y="43" width="6" height="10" transform="rotate(90 20 43)" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<rect x="20" y="41" width="6" height="10" transform="rotate(90 20 41)" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<path d="M20 1L26.2113 1L29 3.8V9.9999H20V1Z" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M20 3L24.6088 3L27 5.40002V10H20V3Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<rect x="20" width="7" height="1" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<path d="M28 2H29V4H28V3H27V2H26V1H28V2Z" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect x="29" y="3" width="1" height="7" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect x="23" y="10" width="7" height="31" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<rect x="22" y="10" width="7" height="31" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M20 10H27V41H20V10Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<path d="M30 46H29V47H30V46ZM29 47H28V48H29V47ZM28 48H27V49H28V48ZM27 50V49H26V50H27ZM26 50H20V51H26V50Z" fill="#665647" style="fill:#665647;fill:color(display-p3 0.4000 0.3373 0.2784);fill-opacity:1;"/>
+<path d="M29 41L29 46L26 49L20.0001 49L20.0001 41L29 41Z" fill="#FFE3BD" style="fill:#FFE3BD;fill:color(display-p3 1.0000 0.8902 0.7412);fill-opacity:1;"/>
+<path d="M27 41L27 44.6088L24.6 47L20 47L20 41L27 41Z" fill="#FAE9C8" style="fill:#FAE9C8;fill:color(display-p3 0.9800 0.9147 0.7840);fill-opacity:1;"/>
+<path d="M30 41H29V46H28V47H30V41ZM28 47H27V48H28V47ZM27 48H26V49H27V48ZM26 50V49H20V50H26Z" fill="#A6805B" style="fill:#A6805B;fill:color(display-p3 0.6510 0.5020 0.3569);fill-opacity:1;"/>
+<path d="M13.474 22.574L12.004 22.574L12.004 19.746L9.12 19.746L9.12 12.004L10.59 12.004L10.59 18.276L12.004 18.276L12.004 10.786L13.474 10.786L13.474 22.574ZM14.482 15.574L15.952 15.574L15.952 17.352L17.296 18.752L18.556 17.38L18.556 14.146L20.04 14.146L20.04 17.954L19.844 18.164L18.332 19.816L19.592 21.104L20.726 21.104L20.726 22.588L18.99 22.588L18.78 22.364L17.338 20.894L16.008 22.35L15.798 22.588L14.034 22.588L14.034 21.104L15.14 21.104L16.302 19.83L14.692 18.178L14.482 17.968L14.482 15.574ZM14.65 10.786L16.12 10.786L16.12 12.004L20.726 12.004L20.726 13.46L16.12 13.46L16.12 14.93L13.894 14.93L13.894 13.446L14.65 13.446L14.65 10.786ZM9.736 33.576L11.234 33.576L11.234 35.732L11.864 36.264L11.864 32.806L13.362 32.806L13.362 34.038L14.762 34.038L14.762 35.508L13.362 35.508L13.362 36.936L20.866 36.936L20.866 38.42L12.13 38.42L11.92 38.252L10.814 37.314L10.282 38.644L8.924 38.112L9.736 35.984L9.736 33.576ZM20.628 34.738L20.628 36.208L15.476 36.208L15.476 30.93L18.878 30.93L18.878 28.844L15.28 28.844L15.28 27.36L20.362 27.36L20.362 32.4L16.946 32.4L16.946 34.738L20.628 34.738ZM9.554 32.4L9.554 30.93L11.542 30.93L11.542 29.67L9.75 29.67L9.75 28.2L11.542 28.2L11.542 26.772L13.012 26.772L13.012 28.2L14.762 28.2L14.762 29.67L13.012 29.67L13.012 30.93L14.986 30.93L14.986 32.4L9.554 32.4Z" fill="#A66C53" style="fill:#A66C53;fill:color(display-p3 0.6500 0.4225 0.3250);fill-opacity:1;"/>
+</svg>

@@ -1,0 +1,28 @@
+{
+  "name": "@tencent/qclaw-ima-jsapi-sdk",
+  "version": "1.1.2",
+  "description": "QClaw IMA JSAPI SDK - iframe 端桥接层，通过 postMessage 与 QClaw 宿主通信",
+  "main": "ima-jsapi-sdk.js",
+  "module": "ima-jsapi-sdk.mjs",
+  "types": "ima-jsapi-sdk.d.ts",
+  "exports": {
+    ".": {
+      "import": "./ima-jsapi-sdk.mjs",
+      "require": "./ima-jsapi-sdk.js",
+      "types": "./ima-jsapi-sdk.d.ts",
+      "default": "./ima-jsapi-sdk.mjs"
+    }
+  },
+  "files": [
+    "ima-jsapi-sdk.js",
+    "ima-jsapi-sdk.mjs",
+    "ima-jsapi-sdk.d.ts",
+    "README.md"
+  ],
+  "keywords": ["qclaw", "ima", "jsapi", "sdk", "iframe", "postMessage"],
+  "author": "xuankehuang",
+  "license": "UNLICENSED",
+  "publishConfig": {
+    "registry": "https://mirrors.tencent.com/npm/"
+  }
+}

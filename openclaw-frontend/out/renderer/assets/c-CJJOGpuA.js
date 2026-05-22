@@ -1,0 +1,1 @@
+var o;const t=((o=window.electronAPI)==null?void 0:o.platform)==="darwin";var n;const w=((n=window.electronAPI)==null?void 0:n.platform)==="win32";var i;(i=window.electronAPI)==null||i.platform;export{t as a,w as i};
