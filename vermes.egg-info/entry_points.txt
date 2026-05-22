@@ -1,0 +1,5 @@
+[console_scripts]
+hermes = hermes_cli.main:main
+hermes-acp = acp_adapter.entry:main
+vermes = hermes_cli.main:main
+vermes-agent = run_agent:main
