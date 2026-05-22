@@ -1,0 +1,5 @@
+name: vbit-provider
+kind: model-provider
+version: 1.0.0
+description: vbit.top (胜比特)
+author: Vermes Team
