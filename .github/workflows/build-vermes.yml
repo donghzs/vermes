@@ -107,17 +107,24 @@ jobs:
 
       - name: Package exe → .zip & NSIS installer
         run: |
+          echo "Checking dist folder..."
+          dir dist /s /b 2>&1 | head -20
           if (Test-Path "dist\Vermes") {
             Compress-Archive -Path "dist\Vermes\*" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
+            echo "ZIP created: Vermes-${{ github.ref_name }}-windows-x64.zip"
             # Build NSIS installer
-            if (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe") {
-              & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" "packaging\vermes-installer.nsi"
-            }
+            $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+            if (Test-Path $nsis) {
+              & $nsis "packaging\vermes-installer.nsi"
+              if (Test-Path "Vermes-${{ github.ref_name }}-windows-x64-Installer.exe") {
+                echo "Installer created!"
+              }
+            } else { echo "NSIS not found at $nsis" }
           } elseif (Test-Path "dist\vermes") {
             Compress-Archive -Path "dist\vermes\*" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
           } elseif (Test-Path "dist\Vermes.exe") {
             Compress-Archive -Path "dist\Vermes.exe" -DestinationPath "Vermes-${{ github.ref_name }}-windows-x64.zip" -Force
-          }
+          } else { echo "No dist folder found!" }
 
       - name: Upload Release Assets (Windows x64)
         uses: softprops/action-gh-release@v1
