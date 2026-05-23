@@ -1,6 +1,8 @@
 import { ref } from 'vue'
 
-const CURRENT_VERSION = '1.0.0'
+const CURRENT_VERSION = '1.0.8'
+const VERSION_URL = 'https://vbit.top/vermes/version.json'
+const DISMISS_KEY = 'vermes_update_dismissed'
 
 export const useUpdateStore = () => {
   const hasUpdate = ref(false)
@@ -9,24 +11,25 @@ export const useUpdateStore = () => {
 
   async function checkUpdate() {
     if (checked.value) return
+    checked.value = true
 
     try {
-      // 从 vbit.top 获取最新版本号
-      const res = await fetch('https://vbit.top/api/vermes/version')
+      const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(5000) })
         .then(r => r.json())
         .catch(() => null)
 
-      if (res && res.version) {
+      if (res && res.version && isNewer(res.version, CURRENT_VERSION)) {
+        // 用户已手动关闭过此版本的提示，不再显示
+        if (localStorage.getItem(DISMISS_KEY) === res.version) return
         latestVersion.value = res.version
-        hasUpdate.value = compareVersions(res.version, CURRENT_VERSION)
-        checked.value = true
+        hasUpdate.value = true
       }
     } catch (e) {
-      console.warn('Version check failed:', e.message)
+      // 网络问题静默忽略
     }
   }
 
-  function compareVersions(latest, current) {
+  function isNewer(latest, current) {
     const l = latest.split('.').map(Number)
     const c = current.split('.').map(Number)
     for (let i = 0; i < 3; i++) {
@@ -36,11 +39,18 @@ export const useUpdateStore = () => {
     return false
   }
 
+  function dismissUpdate() {
+    hasUpdate.value = false
+    // 记住用户关闭了此版本的提示，下次不再打扰
+    localStorage.setItem(DISMISS_KEY, latestVersion.value)
+  }
+
   return {
     hasUpdate,
     latestVersion,
     currentVersion: CURRENT_VERSION,
     checkUpdate,
+    dismissUpdate,
     checked
   }
 }

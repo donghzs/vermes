@@ -11,6 +11,7 @@ import os
 import time
 import threading
 import platform
+import webbrowser
 
 APP_TITLE    = "Vermes - AI Agent"
 DEFAULT_PORT = 9119
@@ -22,6 +23,20 @@ LOCK_FILE = os.path.expanduser("~/.vermes/gui_app.lock")
 
 # 确保 hermes_cli 可导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+
+class VermesAPI:
+    """暴露给前端 JavaScript 的 Python API。"""
+
+    def open_external_browser(self, url):
+        """用系统默认浏览器打开 URL（pywebview 环境微信登录用）。"""
+        print(f"[Vermes API] 打开系统浏览器: {url}")
+        try:
+            webbrowser.open(url)
+            return {"success": True}
+        except Exception as e:
+            print(f"[Vermes API] ❌ 打开浏览器失败: {e}")
+            return {"success": False, "error": str(e)}
 
 
 def acquire_lock():
@@ -72,7 +87,7 @@ def wait_for_server(port, timeout=15):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            req = urllib.request.Request(url, method="HEAD")
+            req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=2) as resp:
                 if resp.status == 200:
                     return True
@@ -116,28 +131,32 @@ def start_server():
                 lifespan="off")
 
 
+def on_dom_ready():
+    """窗口 DOM 就绪后调用（pywebview 6.x）。"""
+    print("[Vermes] DOM 就绪，窗口已打开。")
+
+
 def main(lock_fd, port):
-    """pywebview.start 会在 GUI 初始化后调用此函数。
-    所有窗口 API 必须在主线程调用，因此放在这里。"""
-    import webview
+    """浏览器模式：用系统默认浏览器打开 Vermes 界面。"""
     url = f"http://127.0.0.1:{port}"
-    print(f"[Vermes] 打开窗口：{url}")
-    win = webview.create_window(
-        title=APP_TITLE,
-        url=url,
-        width=WINDOW_W,
-        height=WINDOW_H,
-        min_size=(800, 600),
-        resizable=True,
-        focus=True,
-    )
-    # 保持 lock_fd 存活，防止 GC 关闭文件导致锁释放
-    webview.start(debug=False, func=None)
-    # 窗口关闭后释放
-    if platform.system() != "Windows":
-        import fcntl
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-    lock_fd.close()
+    print(f"[Vermes] 打开浏览器：{url}")
+    try:
+        webbrowser.open(url)
+        print("[Vermes] ✅ 浏览器已打开")
+    except Exception as e:
+        print(f"[Vermes] ❌ 打开浏览器失败: {e}")
+
+    # 保持进程运行（后端在后台线程）
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("[Vermes] 退出。")
+    finally:
+        if platform.system() != "Windows":
+            import fcntl
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
 
 if __name__ == "__main__":
