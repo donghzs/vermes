@@ -34,7 +34,7 @@ onMounted(async () => {
     <div v-if="update.hasUpdate" class="bg-blue-500 text-white text-center py-2 px-4 text-sm flex items-center justify-center gap-2 shrink-0">
       <span>🎉 发现新版本 v{{ update.latestVersion }}</span>
       <a href="https://vbit.top/vermes" target="_blank" class="underline hover:no-underline font-medium">立即更新</a>
-      <button @click="update.hasUpdate = false" class="ml-2 text-white/60 hover:text-white">✕</button>
+      <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
     </div>
     <div class="flex flex-1 overflow-hidden">
       <Sidebar />

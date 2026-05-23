@@ -289,7 +289,7 @@ mcp_servers:
   company_api:
     url: "https://mcp.mycompany.com/v1/mcp"
     headers:
-      Authorization: "Bearer sk-xxxxxxxxxxxxxxxxxxxx"
+      Authorization: "Bearer sk-xxxxxx（替换为你的真实API Key）"
       X-Team-Id: "engineering"
     timeout: 180
     connect_timeout: 30
@@ -316,7 +316,7 @@ mcp_servers:
   company_api:
     url: "https://mcp.internal.company.com/mcp"
     headers:
-      Authorization: "Bearer sk-xxxxxxxxxxxxxxxxxxxx"
+      Authorization: "Bearer sk-xxxxxx（替换为你的真实API Key）"
     timeout: 300
 ```
 

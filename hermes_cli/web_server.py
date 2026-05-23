@@ -3412,9 +3412,18 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     if provider == "ollama" and not api_key:
         api_key = "ollama"
 
-    # Strip provider prefix from model name (e.g. "openrouter/owl-alpha" -> "owl-alpha")
+    # Strip provider prefix from model name.
+    # For OpenRouter: strip "openrouter/" prefix if present, otherwise keep full model name.
+    #   e.g. "openrouter/anthropic/claude-sonnet-4" -> "anthropic/claude-sonnet-4"
+    #        "deepseek/deepseek-chat-v4" -> "deepseek/deepseek-chat-v4" (not stripped!)
+    # For other providers: strip the first segment (assumed to be provider prefix).
+    #   e.g. "openrouter/deepseek-chat-v4" (via non-OpenRouter provider) -> "deepseek-chat-v4"
     actual_model = model
-    if "/" in model and provider != "ollama":
+    if provider == "openrouter" and model.startswith("openrouter/"):
+        actual_model = model[len("openrouter/"):]
+    elif provider == "vbit" and model.startswith("vbit/"):
+        actual_model = model[len("vbit/"):]
+    elif "/" in model and provider not in ("ollama", "openrouter", "vbit"):
         actual_model = model.split("/", 1)[1]
 
     return provider, base_url, api_key, actual_model
@@ -3559,7 +3568,7 @@ async def chat_completions(req: ChatRequest):
             def run_sync():
                 return agent.run_conversation(
                     user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
+                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 and not req.attachments else (conversation_history if len(conversation_history) > 1 else None),
                     stream_callback=stream_callback,
                 )
 
@@ -3601,7 +3610,7 @@ async def chat_completions(req: ChatRequest):
             def run_sync():
                 return agent.run_conversation(
                     user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
+                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 and not req.attachments else (conversation_history if len(conversation_history) > 1 else None),
                 )
 
             loop = asyncio.get_event_loop()
@@ -5102,6 +5111,20 @@ _mount_plugin_api_routes()
 mount_spa(app)
 
 
+def _find_available_port(host: str, start_port: int, max_tries: int = 100) -> int:
+    """Find an available port starting from start_port."""
+    import socket
+    for p in range(start_port, start_port + max_tries):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                s.bind((host, p))
+            return p
+        except OSError:
+            continue
+    raise SystemExit(f"No available port found in range {start_port}-{start_port + max_tries - 1}")
+
+
 def start_server(
     host: str = "127.0.0.1",
     port: int = 9119,
@@ -5115,6 +5138,13 @@ def start_server(
 
     global _DASHBOARD_EMBEDDED_CHAT_ENABLED
     _DASHBOARD_EMBEDDED_CHAT_ENABLED = embedded_chat
+
+    # Auto-find available port if the requested one is taken
+    actual_port = _find_available_port(host, port)
+    if actual_port != port:
+        _log.info("Port %d is in use, using port %d instead.", port, actual_port)
+        print(f"  Port {port} is in use, using port {actual_port} instead.")
+        port = actual_port
 
     _LOCALHOST = ("127.0.0.1", "localhost", "::1")
     if host not in _LOCALHOST and not allow_public:

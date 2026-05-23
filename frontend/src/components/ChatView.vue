@@ -70,11 +70,53 @@ function quickStart(text) {
   send()
 }
 
-// 微信扫码登录 - 使用 iframe 嵌入（pywebview 兼容）
+// 微信扫码登录 - 使用微信官方 WxLogin JS SDK 在弹窗内直接显示二维码
 const showWeChatModal = ref(false)
+const wechatState = ref('')
+const isPywebview = !!(window.pywebview || window.webkit?.messageHandlers || (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('Vermes')))
 
 function openWeChatQR() {
+  console.log('[Vermes🔐] openWeChatQR() 调用')
+  // 生成随机 state
+  wechatState.value = Math.random().toString(36).substring(2, 18)
   showWeChatModal.value = true
+  // 等 DOM 渲染后初始化微信二维码
+  nextTick(() => {
+    const container = document.getElementById('wechat-qr-container')
+    if (!container) return
+    container.innerHTML = ''
+    // 动态加载微信 WxLogin JS
+    if (typeof WxLogin !== 'undefined') {
+      initWxLogin(container)
+    } else {
+      const script = document.createElement('script')
+      script.src = 'https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js'
+      script.onload = () => initWxLogin(container)
+      script.onerror = () => {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666">微信登录加载失败<br><a href="https://vbit.top/api/wechat/qr" target="_blank" style="color:#07c160">点击这里扫码登录</a></div>'
+      }
+      document.head.appendChild(script)
+    }
+  })
+}
+
+function initWxLogin(container) {
+  try {
+    new WxLogin({
+      self_redirect: false,
+      id: 'wechat-qr-container',
+      appid: 'wxfd680141e93226be',
+      scope: 'snsapi_login',
+      redirect_uri: encodeURIComponent('https://vbit.top/api/wechat/callback'),
+      state: wechatState.value,
+      style: 'black',
+      href: ''
+    })
+    console.log('[Vermes🔐] WxLogin 初始化成功')
+  } catch(e) {
+    console.error('[Vermes🔐] WxLogin 初始化失败:', e)
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:#666">微信登录初始化失败</div>'
+  }
 }
 
 // 监听 iframe 发来的 postMessage
@@ -84,12 +126,12 @@ window.addEventListener('message', (e) => {
     showWeChatModal.value = false
     localStorage.setItem('vermes_token', e.data.token)
     localStorage.setItem('vermes_wechat_token', e.data.token)
-    if (e.data.name) localStorage.setItem('vermes_wechat_name', e.data.name)
-    if (e.data.avatar) localStorage.setItem('vermes_wechat_avatar', e.data.avatar)
+    if (e.data.userName) localStorage.setItem('vermes_wechat_name', e.data.userName)
+    if (e.data.userAvatar) localStorage.setItem('vermes_wechat_avatar', e.data.userAvatar)
     localStorage.removeItem('vermes_quota')
     isLoggedIn.value = true
-    userName.value = e.data.name || '微信用户'
-    userAvatar.value = e.data.avatar || ''
+    userName.value = e.data.userName || '微信用户'
+    userAvatar.value = e.data.userAvatar || ''
   }
 })
 
@@ -303,7 +345,7 @@ watch(() => chat.filteredMessages, async () => {
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative">
       <button @click="showWeChatModal = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg">✕</button>
       <h3 class="font-bold text-lg mb-4">微信扫码登录</h3>
-      <iframe src="https://vbit.top/api/wechat/qr" class="w-full h-96 border-0 rounded-lg"></iframe>
+      <div id="wechat-qr-container" class="w-full flex items-center justify-center" style="min-height:300px"></div>
     </div>
   </div>
 

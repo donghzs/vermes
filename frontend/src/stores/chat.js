@@ -247,7 +247,7 @@ export const useChatStore = defineStore('chat', () => {
           mime: a.mimeType || 'application/octet-stream',
           size: a.size,
         })),
-        stream: true,
+        stream: false,
         signal: ac.signal,
         onChunk: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
@@ -257,12 +257,16 @@ export const useChatStore = defineStore('chat', () => {
           const am = messages.value.find(m => m.id === aid)
           if (am) am.toolInvocations.push(tool)
         },
-        onDone: () => {
+        onDone: (data) => {
           const am = messages.value.find(m => m.id === aid)
-          if (am) am.streaming = false
+          if (am) {
+            if (data?.choices?.[0]?.message?.content) {
+              am.content = data.choices[0].message.content
+            }
+            am.streaming = false
+          }
           loading.value = false
           abortController.value = null
-          // ✅ 扣减云端配额
           if (quotaCheck.source === 'free_daily') {
             useQuota(1)
           }

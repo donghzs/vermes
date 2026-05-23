@@ -53,6 +53,11 @@ hiddenimports = [
     'psutil', 'tenacity', 'pydantic', 'jinja2',
     'psutil', 'edge_tts',
 
+    # Missing modules (PyInstaller动态检测不到的)
+    'hermes_cli.web_server', 'hermes_cli.gateway',
+    'gateway', 'gateway.status', 'gateway.config',
+    'run_agent',
+
     # Provider backends
     'openai', 'anthropic',
 
