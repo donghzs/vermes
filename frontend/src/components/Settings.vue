@@ -107,6 +107,17 @@ function saveProvidersToStorage() {
 
 function save() {
   saveProvidersToStorage()
+  // Sync API keys to backend
+  for (const p of providers.value) {
+    if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
+      const envKey = p.id.toUpperCase() + '_API_KEY'
+      fetch('/api/env', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: envKey, value: p.key })
+      }).catch(e => console.warn('Save env failed:', e))
+    }
+  }
   saved.value = true
   setTimeout(() => saved.value = false, 2000)
 }
