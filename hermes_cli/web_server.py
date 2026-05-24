@@ -3393,7 +3393,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
                 break
 
     # Normalize common provider aliases
-    provider_aliases = {"通义千问": "qwen", "vbit.top": "vbit", "Ollama (本地)": "ollama", "OpenRouter": "openrouter", "openrouter": "openrouter", "DeepSeek": "deepseek", "通义千问": "qwen"}
+    provider_aliases = {"通义千问": "qwen", "vbit.top": "vbit", "Ollama (本地)": "ollama", "OpenRouter": "openrouter", "DeepSeek": "deepseek"}
     provider = provider.lower(); provider = provider_aliases.get(provider, provider)
 
     # Priority 3: use config.yaml default provider
