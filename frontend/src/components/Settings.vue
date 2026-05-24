@@ -95,6 +95,46 @@ function removeModel(p, modelId) {
   saveProvidersToStorage()
 }
 
+async function setCurrentModel(p, modelId) {
+  // Normalize provider name for backend
+  const providerMap = {
+    'openai': 'openai', 'deepseek': 'deepseek', 'qwen': 'qwen',
+    'openrouter': 'openrouter', 'vbit': 'vbit', 'ollama': 'ollama',
+    '通义千问': 'qwen', 'DeepSeek': 'deepseek', 'OpenRouter': 'openrouter',
+    'OpenAI': 'openai', 'vbit.top': 'vbit', 'Ollama (本地)': 'ollama',
+  }
+  const provider = providerMap[p.id] || p.id
+
+  try {
+    // 1. 同步到后端 config.yaml
+    const resp = await fetch('/api/model/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'main', provider, model: modelId })
+    })
+    const data = await resp.json()
+    if (!data.ok) {
+      alert('设置失败: ' + (data.detail || JSON.stringify(data)))
+      return
+    }
+
+    // 2. 同步到前端状态
+    localStorage.setItem('vermes-current-model', modelId)
+    localStorage.setItem('vermes-current-provider', p.name)
+
+    // 3. 如果当前 Chat 页面有 store，也刷新它
+    const event = new CustomEvent('model-changed', {
+      detail: { model: modelId, provider: p.name }
+    })
+    window.dispatchEvent(event)
+
+    saved.value = true
+    setTimeout(() => saved.value = false, 2000)
+  } catch (e) {
+    alert('设置失败: ' + e.message)
+  }
+}
+
 function saveProvidersToStorage() {
   const data = providers.value.map(p => ({
     id: p.id, name: p.name,
@@ -107,8 +147,9 @@ function saveProvidersToStorage() {
 
 function save() {
   saveProvidersToStorage()
-  // Sync API keys to backend
+  // Sync API keys + base_url to backend
   for (const p of providers.value) {
+    // Save API key
     if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
       const envKey = p.id.toUpperCase() + '_API_KEY'
       fetch('/api/env', {
@@ -116,6 +157,14 @@ function save() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: envKey, value: p.key })
       }).catch(e => console.warn('Save env failed:', e))
+    }
+    // Save custom provider base_url to config.yaml
+    if (p.id === 'custom' && p.baseUrl) {
+      fetch('/api/provider/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider_id: 'custom', base_url: p.baseUrl })
+      }).catch(e => console.warn('Save custom base_url failed:', e))
     }
   }
   saved.value = true
@@ -232,7 +281,12 @@ onMounted(() => {
               <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
               <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
-                <button @click="removeModel(p, m)" class="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                <div class="flex items-center gap-2">
+                  <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">
+                    ✓ 设为当前
+                  </button>
+                  <button @click="removeModel(p, m)" class="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                </div>
               </div>
             </div>
 

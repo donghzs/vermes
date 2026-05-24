@@ -30,18 +30,18 @@ if "%1"=="--clean" (
     if exist dist rmdir /s /q dist
 )
 
-REM Build
-echo 🔨 Building Vermes.exe...
-pyinstaller vermes.spec --noconfirm
+REM Build — 使用 vermes-gui.spec（入口 gui_app.py，含 pywebview + web_server）
+echo 🔨 Building Vermes.exe (GUI mode)...
+pyinstaller vermes-gui.spec --noconfirm --clean
 
 REM Check result
-if exist "dist\vermes\vermes.exe" (
+if exist "dist\Vermes\Vermes.exe" (
     echo.
     echo ✅ Build successful!
-    echo    Location: %cd%\dist\vermes\
+    echo    Location: %cd%\dist\Vermes\
     echo.
-    echo    To test: dist\vermes\vermes.exe
-    echo    To distribute: Create ZIP of dist\vermes\ folder
+    echo    To test: dist\Vermes\Vermes.exe
+    echo    To distribute: Create ZIP of dist\Vermes\ folder
     echo.
 ) else (
     echo ❌ Build failed. Check the output above.
