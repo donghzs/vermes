@@ -1,13 +1,24 @@
 <script setup>
 import { ref, watch, nextTick, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import MarkdownIt from 'markdown-it'
 
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
+const router = useRouter()
 const chat = useChatStore()
 const inputRef = ref(null)
 const chatContainer = ref(null)
+
+// 监听模型变更事件（来自 Settings 页面的「设为当前」）
+onMounted(() => {
+  const handler = (e) => {
+    chat.currentModel = e.detail.model
+    chat.currentProvider = e.detail.provider
+  }
+  window.addEventListener('model-changed', handler)
+})
 
 // ✅ 登录状态
 const isLoggedIn = ref(!!localStorage.getItem('vermes_token'))
@@ -22,12 +33,13 @@ const showModelSelect = ref(false)
 
 // 模型列表：优先从 Settings 同步的模型，否则用默认列表
 const defaultModels = [
-  { id: 'qwen-turbo', name: 'Qwen Turbo', provider: 'qwen' },
-  { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'deepseek' },
-  { id: 'deepseek-reasoner', name: 'DeepSeek R1', provider: 'deepseek' },
+  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash (免费)', provider: 'vbit.top' },
+  { id: 'openrouter/owl-alpha', name: 'Owl Alpha (免费)', provider: 'vbit.top' },
+  { id: 'qwen/qwen3-coder', name: 'Qwen3 Coder (免费)', provider: 'vbit.top' },
+  { id: 'deepseek-chat', name: 'DeepSeek Chat (自有Key)', provider: 'deepseek' },
+  { id: 'deepseek-reasoner', name: 'DeepSeek R1 (自有Key)', provider: 'deepseek' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
   { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'openrouter' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'openrouter' },
 ]
 
 const models = computed(() => {
@@ -75,29 +87,95 @@ const showWeChatModal = ref(false)
 const wechatState = ref('')
 const isPywebview = !!(window.pywebview || window.webkit?.messageHandlers || (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('Vermes')))
 
+let pollTimer = null
+
 function openWeChatQR() {
   console.log('[Vermes🔐] openWeChatQR() 调用')
-  // 生成随机 state
-  wechatState.value = Math.random().toString(36).substring(2, 18)
-  showWeChatModal.value = true
-  // 等 DOM 渲染后初始化微信二维码
-  nextTick(() => {
-    const container = document.getElementById('wechat-qr-container')
-    if (!container) return
-    container.innerHTML = ''
-    // 动态加载微信 WxLogin JS
-    if (typeof WxLogin !== 'undefined') {
-      initWxLogin(container)
-    } else {
-      const script = document.createElement('script')
-      script.src = 'https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js'
-      script.onload = () => initWxLogin(container)
-      script.onerror = () => {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666">微信登录加载失败<br><a href="https://vbit.top/api/wechat/qr" target="_blank" style="color:#07c160">点击这里扫码登录</a></div>'
+  // 先同步打开空窗口（确保不被弹窗拦截），后续 fetch 完成后导航过去
+  const win = window.open('', 'wechat-login', 'width=600,height=600,menubar=no,toolbar=no,location=no')
+  // 从服务端获取注册好的 state
+  fetch('https://vbit.top/api/wechat/qrurl')
+    .then(r => r.json())
+    .then(data => {
+      wechatState.value = data.state
+      showWeChatModal.value = true
+      if (win && !win.closed) {
+        win.location.href = data.url
+      } else {
+        // 弹窗被拦截，显示手动按钮
+        nextTick(() => {
+          const container = document.getElementById('wechat-qr-container')
+          if (!container) return
+          container.innerHTML = ''
+          const link = document.createElement('a')
+          link.href = data.url
+          link.target = '_blank'
+          link.textContent = '📱 点此打开微信扫码'
+          link.style.cssText = 'display:block;text-align:center;padding:16px;font-size:16px;background:#07c160;color:white;border:none;border-radius:12px;cursor:pointer;font-weight:600;text-decoration:none;'
+          container.appendChild(link)
+        })
       }
-      document.head.appendChild(script)
+      // 启动轮询
+      startPolling()
+    })
+    .catch(() => {
+      // fallback: 纯前端方式
+      wechatState.value = Math.random().toString(36).substring(2, 18)
+      showWeChatModal.value = true
+      nextTick(() => {
+        const container = document.getElementById('wechat-qr-container')
+        if (!container) return
+        container.innerHTML = ''
+        const link = document.createElement('a')
+        const url = `https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=${encodeURIComponent('https://vbit.top/api/wechat/callback')}&response_type=code&scope=snsapi_login&state=${wechatState.value}#wechat_redirect`
+        link.href = url
+        link.target = '_blank'
+        link.textContent = '📱 点此打开微信扫码'
+        link.style.cssText = 'display:block;text-align:center;padding:16px;font-size:16px;background:#07c160;color:white;border:none;border-radius:12px;cursor:pointer;font-weight:600;text-decoration:none;'
+        container.appendChild(link)
+        startPolling()
+      })
+    })
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(`https://vbit.top/api/wechat/poll?state=${wechatState.value}`)
+      const data = await resp.json()
+      if (data.expired) {
+        stopPolling()
+        console.log('[Vermes🔐] 微信登录 session 已过期')
+        return
+      }
+      if (data.scanned && data.token) {
+        stopPolling()
+        console.log('[Vermes🔐] 轮询获取到登录信息:', data.userName)
+        onWeChatLogin(data)
+      }
+    } catch(e) {
+      // 网络错误静默忽略
     }
-  })
+  }, 2000)
+  // 5 分钟后自动停止
+  setTimeout(() => stopPolling(), 5 * 60 * 1000)
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+function onWeChatLogin(data) {
+  showWeChatModal.value = false
+  localStorage.setItem('vermes_token', data.token)
+  localStorage.setItem('vermes_wechat_token', data.token)
+  if (data.userName) localStorage.setItem('vermes_wechat_name', data.userName)
+  if (data.userAvatar) localStorage.setItem('vermes_wechat_avatar', data.userAvatar)
+  localStorage.removeItem('vermes_quota')
+  isLoggedIn.value = true
+  userName.value = data.userName || '微信用户'
+  userAvatar.value = data.userAvatar || ''
 }
 
 function initWxLogin(container) {
@@ -119,19 +197,12 @@ function initWxLogin(container) {
   }
 }
 
-// 监听 iframe 发来的 postMessage
+// 监听 iframe 发来的 postMessage（WxLogin 双层 iframe 可能传不到，作为备选）
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'wechat_callback' && e.data?.token) {
-    console.log('[Vermes🔐] 收到微信登录 postMessage:', e.data.name, e.data.token?.substring(0,10))
-    showWeChatModal.value = false
-    localStorage.setItem('vermes_token', e.data.token)
-    localStorage.setItem('vermes_wechat_token', e.data.token)
-    if (e.data.userName) localStorage.setItem('vermes_wechat_name', e.data.userName)
-    if (e.data.userAvatar) localStorage.setItem('vermes_wechat_avatar', e.data.userAvatar)
-    localStorage.removeItem('vermes_quota')
-    isLoggedIn.value = true
-    userName.value = e.data.userName || '微信用户'
-    userAvatar.value = e.data.userAvatar || ''
+    console.log('[Vermes🔐] 收到微信登录 postMessage:', e.data.userName, e.data.token?.substring(0,10))
+    stopPolling()
+    onWeChatLogin(e.data)
   }
 })
 
@@ -346,6 +417,36 @@ watch(() => chat.filteredMessages, async () => {
       <button @click="showWeChatModal = false" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg">✕</button>
       <h3 class="font-bold text-lg mb-4">微信扫码登录</h3>
       <div id="wechat-qr-container" class="w-full flex items-center justify-center" style="min-height:300px"></div>
+    </div>
+  </div>
+
+  <!-- 配额耗尽弹窗 -->
+  <div v-if="chat.showQuotaModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="chat.showQuotaModal = false">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
+      <div class="text-4xl mb-3">{{ chat.quotaModalType === 'trial_expired' ? '📱' : '⏰' }}</div>
+      <h3 class="font-bold text-lg mb-2">
+        {{ chat.quotaModalType === 'trial_expired' ? '免费体验已用完' : '今日免费额度已用完' }}
+      </h3>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
+        {{ chat.quotaModalType === 'trial_expired'
+          ? '微信扫码登录后可继续免费使用，不限次数。'
+          : '明天再来吧，或配置自己的 API Key 继续使用。' }}
+      </p>
+      <div class="flex flex-col gap-3">
+        <button v-if="chat.quotaModalType === 'trial_expired'"
+          @click="chat.showQuotaModal = false; openWeChatQR()"
+          class="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition">
+          📱 微信扫码免费续杯
+        </button>
+        <button @click="chat.showQuotaModal = false; router.push('/settings')"
+          class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
+          🔑 配置自己的 API Key
+        </button>
+        <button @click="chat.showQuotaModal = false"
+          class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+          {{ chat.quotaModalType === 'trial_expired' ? '先不用了' : '好的，明天再来' }}
+        </button>
+      </div>
     </div>
   </div>
 

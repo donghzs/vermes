@@ -23,6 +23,7 @@ LOCK_FILE = os.path.expanduser("~/.vermes/gui_app.lock")
 
 # 确保 hermes_cli 可导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from hermes_cli.shutdown_signal import shutdown_event
 
 
 class VermesAPI:
@@ -137,19 +138,36 @@ def on_dom_ready():
 
 
 def main(lock_fd, port):
-    """浏览器模式：用系统默认浏览器打开 Vermes 界面。"""
+    """原生窗口优先，失败回退浏览器。"""
     url = f"http://127.0.0.1:{port}"
-    print(f"[Vermes] 打开浏览器：{url}")
+    print(f"[Vermes] 打开界面：{url}")
+    try:
+        import webview
+        webview.create_window(
+            title=APP_TITLE,
+            url=url,
+            width=WINDOW_W,
+            height=WINDOW_H,
+            resizable=True,
+        )
+        webview.start(gui='edgechromium', private_mode=False)
+        print("[Vermes] 原生窗口已关闭")
+        return
+    except Exception as e:
+        print(f"[Vermes] 原生窗口失败: {e}")
+
+    # 回退到浏览器
+    print("[Vermes] 回退到浏览器模式...")
     try:
         webbrowser.open(url)
         print("[Vermes] ✅ 浏览器已打开")
     except Exception as e:
         print(f"[Vermes] ❌ 打开浏览器失败: {e}")
 
-    # 保持进程运行（后端在后台线程）
+    # 保持进程运行，等待退出信号
     try:
-        while True:
-            time.sleep(1)
+        shutdown_event.wait()
+        print("[Vermes] 收到退出信号，关闭后端...")
     except KeyboardInterrupt:
         print("[Vermes] 退出。")
     finally:
@@ -157,15 +175,28 @@ def main(lock_fd, port):
             import fcntl
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
+        os._exit(0)
 
 
 if __name__ == "__main__":
     lock_fd = acquire_lock()
     if lock_fd is None:
-        # 已有实例在运行，尝试激活它的窗口（macOS）
-        print("[Vermes] 已有实例在运行，退出。")
-        os.system('osascript -e "tell application \\"Python\\" to activate" 2>/dev/null')
-        os.system('osascript -e "tell application \\"Vermes\\" to activate" 2>/dev/null')
+        # 已有实例在运行，读取端口文件重新打开浏览器
+        print("[Vermes] 已有实例在运行，重新打开浏览器...")
+        port = DEFAULT_PORT
+        try:
+            if os.path.exists(PORT_FILE):
+                with open(PORT_FILE, "r") as f:
+                    port = int(f.read().strip())
+        except Exception:
+            pass
+        url = f"http://127.0.0.1:{port}"
+        print(f"[Vermes] 打开浏览器：{url}")
+        try:
+            webbrowser.open(url)
+            print("[Vermes] ✅ 浏览器已打开")
+        except Exception as e:
+            print(f"[Vermes] ❌ 打开浏览器失败: {e}")
         sys.exit(0)
 
     # 服务器在后台线程启动（不阻塞）
@@ -173,8 +204,8 @@ if __name__ == "__main__":
     t.start()
 
     # 读取端口文件（start_server 会写入）
-    port = DEFAULT_PORT  # 兜底
-    for _ in range(30):  # 最多等 15 秒
+    port = DEFAULT_PORT
+    for _ in range(60):  # 最多等 30 秒（find_available_port 可能扫 20 个端口）
         try:
             if os.path.exists(PORT_FILE):
                 with open(PORT_FILE, "r") as f:
@@ -183,6 +214,14 @@ if __name__ == "__main__":
         except Exception:
             pass
         time.sleep(0.5)
+    else:
+        # 端口文件超时未写入，自动扫描实际运行端口
+        print("[Vermes] 端口文件未就绪，自动扫描后端端口...")
+        for scan_port in range(DEFAULT_PORT, DEFAULT_PORT + 20):
+            if wait_for_server(scan_port, timeout=8):
+                port = scan_port
+                print(f"[Vermes] 发现后端在端口 {port}")
+                break
 
     print(f"[Vermes] 等待后端服务器就绪 (port={port})...")
     if wait_for_server(port, timeout=15):

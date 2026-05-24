@@ -89,7 +89,7 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        'tkinter', 'unittest', 'test', 'tests', 'pytest',
+        'tkinter', 'test', 'tests', 'pytest',
         'debugpy', 'IPython', 'jupyter', 'notebook', 'sphinx',
     ],
     win_no_prefer_redirects=False,
