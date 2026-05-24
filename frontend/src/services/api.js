@@ -42,7 +42,7 @@ export function checkQuota(isCloud) {
   
   if (quota.remaining <= 0) {
     return { allowed: false, unlimited: false, remaining: 0,
-      message: '💡 今日云端免费次数已用完\n🔐 扫码登录后可继续使用（每日100→∞次）' }
+      message: '' } // message not used anymore, modal handles it
   }
   
   return { allowed: true, unlimited: false, remaining: quota.remaining, source: 'free_daily' }

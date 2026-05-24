@@ -1330,6 +1330,17 @@ async def set_env_var(body: EnvVarUpdate):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.post("/api/shutdown")
+async def shutdown_server():
+    """关闭后端服务器（前端关闭标签页时调用）。"""
+    try:
+        from hermes_cli.shutdown_signal import shutdown_event
+        shutdown_event.set()
+        return {"ok": True}
+    except Exception:
+        return {"ok": False}
+
+
 @app.delete("/api/env")
 async def remove_env_var(body: EnvVarDelete):
     try:
@@ -3398,6 +3409,15 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     # Get base_url
     base_url = PROVIDER_BASE_URL_SHARED.get(provider, "")
 
+    # Custom provider: read base_url from config.yaml providers section
+    if not base_url and provider == "custom":
+        cfg_path = home / "config.yaml"
+        if cfg_path.exists():
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f) or {}
+            custom_cfg = (cfg.get("providers", {}).get("custom", {}))
+            base_url = custom_cfg.get("base_url", "")
+
     # Get api_key from .env
     api_key = ""
     env_var = PROVIDER_ENV_MAP_SHARED.get(provider)
@@ -3440,6 +3460,7 @@ async def chat_completions(req: ChatRequest):
     conversation loop — including tool calls — before returning the response.
     """
     from run_agent import AIAgent
+    import httpx
 
     # Resolve provider/credentials based on requested model
     requested_model = req.model or "deepseek-chat"
@@ -4296,6 +4317,9 @@ def mount_spa(application: FastAPI):
             html = html.replace('href="/ds-assets/', f'href="{prefix}/ds-assets/')
             html = html.replace('src="/ds-assets/', f'src="{prefix}/ds-assets/')
         html = html.replace("</head>", f"{token_script}</head>", 1)
+        # Inject shutdown-on-close script
+        html = html.replace("</body>",
+            '<script>window.addEventListener("beforeunload",function(){navigator.sendBeacon("/api/shutdown","close")});</script></body>', 1)
         return HTMLResponse(
             html,
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
@@ -5371,6 +5395,7 @@ async def add_provider(body: ProviderAddRequest):
 @app.post("/api/provider/verify")
 async def verify_provider(body: ProviderAddRequest):
     """Verify API key by calling provider's API."""
+    import httpx
     template = PROVIDER_TEMPLATES.get(body.provider_id)
     if not template:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {body.provider_id}")
@@ -5424,6 +5449,7 @@ async def provider_sync_models(request: Request):
 @app.post("/api/model/discover")
 async def discover_models():
     """Scan local Ollama for available models."""
+    import httpx
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get("http://localhost:11434/api/tags")

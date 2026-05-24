@@ -39,9 +39,11 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref('dark')
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'qwen-turbo')
-  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || '')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek/deepseek-v4-flash')
+  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit.top')
   const uploading = ref(false)
+  const showQuotaModal = ref(false)
+  const quotaModalType = ref('') // 'trial_expired' | 'wechat_expired'
 
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
@@ -56,27 +58,58 @@ export const useChatStore = defineStore('chat', () => {
     // Already claimed before
     if (localStorage.getItem('vermes-trial-claimed')) return
     try {
-      const data = await api.post('/claim')
-      if (data.success) {
+      // Call api.vbit.top directly for trial token
+      const resp = await fetch('https://api.vbit.top/api/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: 'vermes-' + (localStorage.getItem('vermes-device-id') || Date.now().toString()) })
+      })
+      const data = await resp.json()
+      if (data.success && data.data?.token) {
+        const token = data.data.token
+        // Save device ID for reuse
+        if (!localStorage.getItem('vermes-device-id')) {
+          localStorage.setItem('vermes-device-id', Date.now().toString())
+        }
+        // Save trial token as vbit provider key in backend .env
+        await fetch('/api/env', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'VBIT_API_KEY', value: token })
+        }).catch(() => {})
+        // Set model to free OpenRouter model via vbit provider
+        await fetch('/api/model/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek/deepseek-v4-flash' })
+        }).catch(() => {})
+        // Set frontend state
+        localStorage.setItem('vermes-current-model', 'deepseek/deepseek-v4-flash')
+        localStorage.setItem('vermes-current-provider', 'vbit.top')
+        currentModel.value = 'deepseek/deepseek-v4-flash'
+        currentProvider.value = 'vbit.top'
+        // Mark claimed
         localStorage.setItem('vermes-trial-claimed', '1')
-        // Auto-set vbit trial token as provider key
+        // Also update the providers list for model dropdown
         const saved = localStorage.getItem('vermes-providers')
         let providers = saved ? JSON.parse(saved) : []
         const vbit = providers.find(p => p.id === 'vbit')
         if (vbit) {
-          vbit.key = data.data.token
+          vbit.key = '***saved***'
+          vbit.models = ['deepseek/deepseek-v4-flash', 'openrouter/owl-alpha']
         } else {
-          providers.push({ id: 'vbit', name: 'vbit.top', key: data.data.token, baseUrl: 'https://api.vbit.top/v1' })
+          providers.push({ id: 'vbit', name: 'vbit.top', key: '***saved***', baseUrl: 'https://api.vbit.top/v1', models: ['deepseek/deepseek-v4-flash', 'openrouter/owl-alpha'] })
         }
         localStorage.setItem('vermes-providers', JSON.stringify(providers.map(p => ({
           id: p.id, name: p.name,
           key: p.key ? '***saved***' : '',
-          baseUrl: p.baseUrl
+          baseUrl: p.baseUrl,
+          models: p.models || []
         }))))
-        console.log('Auto-claimed trial token')
+        console.log('[Vermes✅] Trial token claimed, using deepseek-chat via vbit.top')
       }
     } catch (e) {
-      console.warn('Auto-claim failed (non-critical):', e.message)
+      console.warn('[Vermes⚠️] Auto-claim failed:', e.message)
     }
   }
 
@@ -84,8 +117,8 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const t = await fetchToken()
       api.setToken(t)
-      // Auto-claim trial token on first launch (non-blocking)
-      autoClaimIfNeeded()
+      // Auto-claim trial token on first launch (blocking — ensures default model works)
+      await autoClaimIfNeeded()
       sessions.value = loadFromStorage(SESSIONS_KEY)
       if (sessions.value.length > 0) {
         const lastId = localStorage.getItem('vermes-last-session') || sessions.value[0].id
@@ -157,12 +190,10 @@ export const useChatStore = defineStore('chat', () => {
     const isCloud = isCloudModel(currentProvider.value)
     const quotaCheck = checkQuota(isCloud)
     if (!quotaCheck.allowed) {
-      messages.value.push({
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: quotaCheck.message || '💡 今日云端请求次数已用完',
-        timestamp: Date.now()
-      })
+      // 触发配额弹窗而非插入消息
+      const isLoggedIn = !!localStorage.getItem('vermes_token')
+      quotaModalType.value = isLoggedIn ? 'wechat_expired' : 'trial_expired'
+      showQuotaModal.value = true
       return
     }
 
@@ -367,6 +398,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions, currentSessionId, messages, loading, abortController,
     sidebarOpen, theme, currentModel, currentProvider, uploading,
+    showQuotaModal, quotaModalType,
     currentSession, filteredMessages,
     init, createSession, switchSession, sendMessage, stopGeneration,
     toggleTheme, toggleSidebar, deleteSession, renameSession, formatSize,

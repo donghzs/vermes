@@ -73,3 +73,12 @@ models-dev-upstream/
 hermes_cli/tui_dist/*
 hermes_cli/scripts/
 docs/superpowers/*
+# PyInstaller build artifacts
+build/
+dist/Vermes.app/
+dist/Vermes/
+frontend/dist/
+
+# Local release binaries (not committed)
+*.dmg
+*.zip
