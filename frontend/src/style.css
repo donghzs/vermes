@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #10b981;
+  --primary-dark: #059669;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Markdown 样式 */
+.markdown-body h1 { @apply text-2xl font-bold mb-4 mt-6; }
+.markdown-body h2 { @apply text-xl font-bold mb-3 mt-5; }
+.markdown-body h3 { @apply text-lg font-bold mb-2 mt-4; }
+.markdown-body p { @apply mb-3 leading-relaxed; }
+.markdown-body ul { @apply list-disc pl-6 mb-3; }
+.markdown-body ol { @apply list-decimal pl-6 mb-3; }
+.markdown-body li { @apply mb-1; }
+.markdown-body code {
+  @apply bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm;
+}
+.markdown-body pre {
+  @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-3;
+}
+.markdown-body pre code {
+  @apply bg-transparent p-0 text-sm;
+}
+.markdown-body blockquote {
+  @apply border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-3;
+}
+.markdown-body table { @apply w-full border-collapse mb-3; }
+.markdown-body th { @apply bg-gray-100 dark:bg-gray-800 px-3 py-2 text-left font-semibold border border-gray-300 dark:border-gray-600; }
+.markdown-body td { @apply px-3 py-2 border border-gray-300 dark:border-gray-600; }
+.markdown-body a { @apply text-green-600 dark:text-green-400 hover:underline; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-600 rounded; }
