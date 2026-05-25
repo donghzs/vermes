@@ -45,6 +45,9 @@ export const useChatStore = defineStore('chat', () => {
   const showQuotaModal = ref(false)
   const quotaModalType = ref('') // 'trial_expired' | 'wechat_expired'
 
+  // 在线模式标志
+  const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
+
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
   )
@@ -59,18 +62,26 @@ export const useChatStore = defineStore('chat', () => {
     if (localStorage.getItem('vermes-trial-claimed')) return
     try {
       // Call api.vbit.top directly for trial token
-      const resp = await fetch('https://api.vbit.top/api/claim', {
+      const resp = await fetch('/api/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ device_id: 'vermes-' + (localStorage.getItem('vermes-device-id') || Date.now().toString()) })
       })
       const data = await resp.json()
+      // Handle both full token and token_prefix (repeat claim)
+      let token = null
       if (data.success && data.data?.token) {
-        const token = data.data.token
+        token = data.data.token
+      } else if (data.success && data.data?.token_prefix) {
+        // Repeat claim — try saved token from previous session
+        token = localStorage.getItem('vermes-trial-token')
+      }
+      if (token) {
         // Save device ID for reuse
         if (!localStorage.getItem('vermes-device-id')) {
           localStorage.setItem('vermes-device-id', Date.now().toString())
         }
+        localStorage.setItem('vermes-trial-token', token)  // save for repeat claim
         // Save trial token as vbit provider key in backend .env
         await fetch('/api/env', {
           method: 'PUT',
@@ -117,8 +128,26 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const t = await fetchToken()
       api.setToken(t)
-      // Auto-claim trial token on first launch (blocking — ensures default model works)
-      await autoClaimIfNeeded()
+      // 在线模式：不自动领 token，强制微信登录
+      if (isOnline) {
+        const wechatToken = localStorage.getItem('vermes_wechat_token') || localStorage.getItem('vermes_token')
+        if (!wechatToken) {
+          // 未登录：清空之前用户的会话数据，保证每个访客独立
+          localStorage.removeItem('vermes-sessions')
+          localStorage.removeItem('vermes-msgs-')
+          localStorage.removeItem('vermes-last-session')
+          localStorage.removeItem('vermes-trial-claimed')
+          localStorage.removeItem('vermes-providers')
+          localStorage.removeItem('vermes-current-model')
+          localStorage.removeItem('vermes-current-provider')
+          sessions.value = []
+          // 不创建会话、不加载 UI，只显示登录界面
+          return
+        }
+      } else {
+        // 桌面模式：自动领试用 token
+        await autoClaimIfNeeded()
+      }
       sessions.value = loadFromStorage(SESSIONS_KEY)
       if (sessions.value.length > 0) {
         const lastId = localStorage.getItem('vermes-last-session') || sessions.value[0].id
