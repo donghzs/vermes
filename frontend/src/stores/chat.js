@@ -39,7 +39,7 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref('dark')
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek/deepseek-v4-flash')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek-chat')
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit.top')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
@@ -58,6 +58,20 @@ export const useChatStore = defineStore('chat', () => {
   })
 
   async function autoClaimIfNeeded() {
+    // First, check if user already configured their own API key (non-vbit provider)
+    try {
+      const savedProviders = localStorage.getItem('vermes-providers')
+      if (savedProviders) {
+        const providers = JSON.parse(savedProviders)
+        const hasRealKey = providers.some(p => 
+          p.key === '***saved***' && p.id !== 'vbit' && p.models && p.models.length > 0
+        )
+        if (hasRealKey) {
+          console.log('[Vermesℹ️] 用户已配置自有 API Key，跳过免费试用')
+          return
+        }
+      }
+    } catch(e) {}
     // Already claimed before
     if (localStorage.getItem('vermes-trial-claimed')) return
     try {
@@ -75,6 +89,9 @@ export const useChatStore = defineStore('chat', () => {
       } else if (data.success && data.data?.token_prefix) {
         // Repeat claim — try saved token from previous session
         token = localStorage.getItem('vermes-trial-token')
+      } else if (!data.success && data.error && data.error.includes('同IP')) {
+        // IP rate limited — already have a token from this device, use saved one
+        token = localStorage.getItem('vermes-trial-token')
       }
       if (token) {
         // Save device ID for reuse
@@ -88,16 +105,16 @@ export const useChatStore = defineStore('chat', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key: 'VBIT_API_KEY', value: token })
         }).catch(() => {})
-        // Set model to free OpenRouter model via vbit provider
+        // Set model to DeepSeek via vbit provider
         await fetch('/api/model/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek/deepseek-v4-flash' })
+          body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek-chat' })
         }).catch(() => {})
         // Set frontend state
-        localStorage.setItem('vermes-current-model', 'deepseek/deepseek-v4-flash')
+        localStorage.setItem('vermes-current-model', 'deepseek-chat')
         localStorage.setItem('vermes-current-provider', 'vbit.top')
-        currentModel.value = 'deepseek/deepseek-v4-flash'
+        currentModel.value = 'deepseek-chat'
         currentProvider.value = 'vbit.top'
         // Mark claimed
         localStorage.setItem('vermes-trial-claimed', '1')
@@ -107,9 +124,9 @@ export const useChatStore = defineStore('chat', () => {
         const vbit = providers.find(p => p.id === 'vbit')
         if (vbit) {
           vbit.key = '***saved***'
-          vbit.models = ['deepseek/deepseek-v4-flash', 'openrouter/owl-alpha']
+          vbit.models = ['deepseek-chat']
         } else {
-          providers.push({ id: 'vbit', name: 'vbit.top', key: '***saved***', baseUrl: 'https://api.vbit.top/v1', models: ['deepseek/deepseek-v4-flash', 'openrouter/owl-alpha'] })
+          providers.push({ id: 'vbit', name: 'vbit.top', key: '***saved***', baseUrl: 'https://api.vbit.top/v1', models: ['deepseek-chat'] })
         }
         localStorage.setItem('vermes-providers', JSON.stringify(providers.map(p => ({
           id: p.id, name: p.name,
@@ -121,6 +138,8 @@ export const useChatStore = defineStore('chat', () => {
       }
     } catch (e) {
       console.warn('[Vermes⚠️] Auto-claim failed:', e.message)
+      // IP限频（同IP已领过）=> 现有 token 应仍有效，不弹窗
+      // 其他错误（网络等）=> 也不弹窗，让第一次聊天时 checkQuota 处理
     }
   }
 
@@ -334,8 +353,16 @@ export const useChatStore = defineStore('chat', () => {
         },
         onError: (err) => {
           console.error('❌ API error:', err)
-          const am = messages.value.find(m => m.id === aid)
-          if (am) { am.content = '❌ 错误: ' + err.message; am.streaming = false }
+          // Token 402 = trial exhausted, show quota modal
+          if (err.message.includes('402') || err.message.includes('免费体验Token')) {
+            quotaModalType.value = 'trial_expired'
+            showQuotaModal.value = true
+            const am = messages.value.find(m => m.id === aid)
+            if (am) { am.content = '💡 免费体验次数已用完'; am.streaming = false }
+          } else {
+            const am = messages.value.find(m => m.id === aid)
+            if (am) { am.content = '❌ 错误: ' + err.message; am.streaming = false }
+          }
           loading.value = false
           abortController.value = null
           persistMessages(currentSessionId.value)
