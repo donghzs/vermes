@@ -97,6 +97,19 @@ hiddenimports = [
     'starlette.middleware.cors',
     'starlette.staticfiles',
     'starlette.websockets',
+
+    # CLI dependencies (required by main.py)
+    'prompt_toolkit',
+    'prompt_toolkit.shortcuts',
+    'prompt_toolkit.layout',
+    'prompt_toolkit.widgets',
+    'prompt_toolkit.application',
+    'prompt_toolkit.key_binding',
+    'prompt_toolkit.styles',
+    'prompt_toolkit.filters',
+    'prompt_toolkit.formatted_text',
+    'prompt_toolkit.history',
+    'prompt_toolkit.completion',
 ]
 
 # Platform-specific hidden imports
@@ -207,8 +220,8 @@ if sys.platform == 'darwin':
         icon='packaging/vermes.icns',
         bundle_identifier='cn.vermes.agent',
         info_plist={
-            'CFBundleShortVersionString': '1.0.0',
-            'CFBundleVersion': '1.0.0',
+            'CFBundleShortVersionString': '1.1.0',
+            'CFBundleVersion': '1.1.0',
             'CFBundleDisplayName': 'Vermes',
             'CFBundleName': 'Vermes',
             'CFBundleIdentifier': 'cn.vermes.agent',

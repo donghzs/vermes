@@ -3471,9 +3471,58 @@ async def chat_completions(req: ChatRequest):
     
     if not base_url:
         raise HTTPException(status_code=500, detail=f"No base_url found for provider '{provider}'. Check config.yaml.")
-    if not api_key and provider != "ollama":
+
+    # Auto-claim trial token when no API key configured (zero-config onboarding)
+    if (not api_key or api_key.startswith("unknown")) and provider != "ollama":
+        # If the key starts with "unknown", it's a stale token_prefix — clear it
+        if api_key and api_key.startswith("unknown"):
+            api_key = ""
+            remove_env_value("VBIT_API_KEY")
         env_hint = PROVIDER_ENV_MAP_SHARED.get(provider, "API_KEY")
-        raise HTTPException(status_code=500, detail=f"No API key found for provider '{provider}'. Set {env_hint} in .env.")
+        # Try auto-claim for vbit provider (free trial)
+        if provider == "vbit":
+            try:
+                # Check if .env already has VBIT_API_KEY (frontend may have claimed earlier)
+                from hermes_constants import get_hermes_home
+                env_path = get_hermes_home() / ".env"
+                if env_path.exists():
+                    for line in env_path.read_text().splitlines():
+                        line = line.strip()
+                        if line.startswith("VBIT_API_KEY=") or line.startswith("VBIT_API_KEY ="):
+                            existing = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if existing:
+                                api_key = existing
+                                break
+                if not api_key:
+                    claim_result = await claim_trial_token()
+                    if claim_result.get("success") and (claim_result.get("token") or claim_result.get("token_prefix")):
+                        token = claim_result.get("token") or claim_result.get("token_prefix")
+                        # Write token to .env
+                        env_content = ""
+                        if env_path.exists():
+                            env_content = env_path.read_text()
+                        lines = env_content.splitlines()
+                        found = False
+                        new_lines = []
+                        for line in lines:
+                            if line.startswith("VBIT_API_KEY=") or line.startswith("VBIT_API_KEY ="):
+                                new_lines.append(f"VBIT_API_KEY={token}")
+                                found = True
+                            else:
+                                new_lines.append(line)
+                        if not found:
+                            new_lines.append(f"VBIT_API_KEY={token}")
+                        env_path.write_text("\n".join(new_lines) + "\n")
+                        api_key = token
+                    else:
+                        err_msg = claim_result.get("error", "Trial token claim failed")
+                        raise HTTPException(status_code=402, detail=f"免费体验Token暂时无法领取: {err_msg}. 请微信扫码登录或配置自己的API Key。")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=503, detail=f"自动领取Token失败: {str(e)}. 请在设置页配置API Key。")
+        else:
+            raise HTTPException(status_code=500, detail=f"No API key found for provider '{provider}'. Set {env_hint} in .env 或在设置页添加Key。")
 
     # Build conversation messages for the agent
     conversation_history = []
@@ -4355,6 +4404,9 @@ def mount_spa(application: FastAPI):
 
     @application.get("/{full_path:path}")
     async def serve_spa(full_path: str, request: Request):
+        # Don't catch API routes — let the main app handle them
+        if full_path.startswith("api/"):
+            return JSONResponse({"error": "Not found"}, status_code=404)
         prefix = _normalise_prefix(request.headers.get("x-forwarded-prefix"))
         file_path = WEB_DIST / full_path
         # Prevent path traversal via url-encoded sequences (%2e%2e/)
@@ -5135,7 +5187,6 @@ def _mount_plugin_api_routes():
 # Mount plugin API routes before the SPA catch-all.
 _mount_plugin_api_routes()
 
-mount_spa(app)
 
 
 def _find_available_port(host: str, start_port: int, max_tries: int = 100) -> int:
@@ -5298,7 +5349,7 @@ async def wechat_qrurl_proxy():
     try:
         import httpx
         async with httpx.AsyncClient(verify=False) as client:
-            resp = await client.post(
+            resp = await client.get(
                 "https://vbit.top/api/wechat/qrurl",
                 timeout=15
             )
@@ -5309,15 +5360,54 @@ async def wechat_qrurl_proxy():
 
 @app.get("/api/wechat/poll")
 async def wechat_poll_proxy(state: str):
-    """Proxy WeChat poll request to vbit.top."""
+    """Proxy WeChat poll request to vbit.top, with token validation."""
     try:
         import httpx
-        async with httpx.AsyncClient(verify=False) as client:
+        async with httpx.AsyncClient(verify=False, timeout=15) as client:
             resp = await client.get(
                 f"https://vbit.top/api/wechat/poll?state={state}",
-                timeout=15
             )
-            return resp.json()
+            data = resp.json()
+
+        # If scanned and token exists, validate it against One-API
+        if data.get("scanned") and data.get("token"):
+            token = data["token"]
+            # Quick validation: test if One-API accepts this token
+            try:
+                async with httpx.AsyncClient(verify=False, timeout=5) as vc:
+                    test_resp = await vc.get(
+                        "https://api.vbit.top/v1/models",
+                        headers={"Authorization": f"Bearer {token}"}
+                    )
+                    if test_resp.status_code == 401 or "无效的令牌" in test_resp.text:
+                        # Token is invalid — create a real One-API token
+                        import json as _json
+                        # Use the root ONEAPI_KEY from our .env
+                        from hermes_cli.config import load_env
+                        env = load_env()
+                        admin_key = env.get("ONEAPI_KEY", "")
+                        create_resp = await vc.post(
+                            "http://82.156.45.139:8083/api/token/",
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {admin_key}"
+                            },
+                            json={
+                                "name": f"wx-{data.get('openid', 'user')[:8]}",
+                                "remain_quota": 500,
+                                "models": "deepseek-chat",
+                                "unlimited_quota": False,
+                            }
+                        )
+                        create_data = create_resp.json()
+                        if create_data.get("success"):
+                            new_token = create_data["data"]["key"]
+                            data["token"] = new_token
+                            _log.info(f"[WeChat] Replaced invalid token with valid One-API token")
+            except Exception as e:
+                _log.warning(f"[WeChat] Token validation failed: {e}")
+
+        return data
     except ImportError:
         return {"success": False, "error": "httpx not available"}
 
@@ -5496,3 +5586,6 @@ async def discover_models():
             return {"ok": True, "models": models, "base_url": "http://localhost:11434/v1"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+# Mount SPA sub-app LAST so API routes take priority over its catch-all
+mount_spa(app)

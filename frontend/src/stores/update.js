@@ -14,7 +14,9 @@ export const useUpdateStore = () => {
     checked.value = true
 
     try {
-      const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(5000) })
+      // 添加缓存破坏参数，确保获取最新版本信息
+      const cacheBuster = '?t=' + Date.now()
+      const res = await fetch(VERSION_URL + cacheBuster, { signal: AbortSignal.timeout(5000) })
         .then(r => r.json())
         .catch(() => null)
 
