@@ -3,6 +3,9 @@ import { ref } from 'vue'
 const token = ref('')
 let baseUrl = ''
 
+// 在线模式标志（通过 window.__VERMES_ONLINE__ 设置）
+const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
+
 // ✅ 计费模型标识（云端收费，本地免费）
 const CLOUD_MODELS = ['deepseek', 'openrouter', 'vbit', 'qwen', 'openai', 'anthropic', 'gemini']
 export function isCloudModel(provider) {
@@ -12,6 +15,23 @@ export function isCloudModel(provider) {
 }
 
 // 计费配额管理
+const WECHAT_QUOTA_KEY = 'vermes_wechat_quota'
+export function getWechatDailyQuota() {
+  const data = localStorage.getItem(WECHAT_QUOTA_KEY)
+  const today = new Date().toDateString()
+  if (!data) return { remaining: 500, date: today }
+  try {
+    const q = JSON.parse(data)
+    if (q.date !== today) return { remaining: 500, date: today }
+    return q
+  } catch { return { remaining: 500, date: today } }
+}
+
+export function useWechatQuota(count = 1) {
+  const quota = getWechatDailyQuota()
+  const newRemaining = Math.max(0, quota.remaining - count)
+  localStorage.setItem(WECHAT_QUOTA_KEY, JSON.stringify({ remaining: newRemaining, date: quota.date }))
+}
 export function getRemainingQuota() {
   const data = localStorage.getItem('vermes_quota')
   if (!data) return null
@@ -22,11 +42,27 @@ export function saveQuota(remaining) {
   localStorage.setItem('vermes_quota', JSON.stringify({ remaining, date: new Date().toDateString() }))
 }
 
-// 检查云端模型请求是否允许
+  // 检查云端模型请求是否允许
 export function checkQuota(isCloud) {
-  // 已登录用户无限
+  // 在线模式：必须微信登录
+  if (isOnline) {
+    const token = localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')
+    if (!token) {
+      return { allowed: false, unlimited: false, remaining: 0, source: 'trial_expired', requireLogin: true }
+    }
+    // 已登录：通过 One-API 的剩余配额（由 One-API 管理，不做本地限流）
+    return { allowed: true, unlimited: true, remaining: 999, source: 'wechat_online' }
+  }
+  // 已登录用户每天 500 次（桌面版）
   const token = localStorage.getItem('vermes_token')
-  if (token) return { allowed: true, unlimited: true, remaining: Infinity, source: 'logged_in' }
+  if (token) {
+    const quota = getWechatDailyQuota()
+    if (quota.remaining <= 0) {
+      return { allowed: false, unlimited: false, remaining: 0, source: 'wechat_daily' }
+    }
+    useWechatQuota(1)
+    return { allowed: true, unlimited: false, remaining: quota.remaining - 1, source: 'wechat_daily' }
+  }
   
   // 本地模型无限
   if (!isCloud) return { allowed: true, unlimited: true, remaining: Infinity, source: 'local' }
@@ -57,12 +93,21 @@ export function useQuota(count = 1) {
 
 function buildHeaders(extra = {}) {
   const h = { ...extra }
-  if (token.value) h['X-Hermes-Session-Token'] = token.value
+  if (isOnline) {
+    // 在线模式：用 One-API Bearer token
+    const onlineToken = localStorage.getItem('vermes_wechat_token') || localStorage.getItem('vermes_token')
+    if (onlineToken) h['Authorization'] = `Bearer ${onlineToken}`
+  } else if (token.value) {
+    // 桌面模式：用 Hermes session token
+    h['X-Hermes-Session-Token'] = token.value
+  }
   return h
 }
 
 async function request(path, options = {}) {
-  const url = baseUrl ? `${baseUrl}/api${path}` : `/api${path}`
+  // 在线模式：使用 /v1/ 路径（nginx 代理到 One-API）
+  const apiPrefix = isOnline ? '/v1' : '/api'
+  const url = baseUrl ? `${baseUrl}${apiPrefix}${path}` : `${apiPrefix}${path}`
 
   // 超时处理：默认 60s，如果调用者已传 signal 则合并
   const timeoutMs = options.timeout ?? 60000

@@ -94,7 +94,7 @@ function openWeChatQR() {
   // 先同步打开空窗口（确保不被弹窗拦截），后续 fetch 完成后导航过去
   const win = window.open('', 'wechat-login', 'width=600,height=600,menubar=no,toolbar=no,location=no')
   // 从服务端获取注册好的 state
-  fetch('https://vbit.top/api/wechat/qrurl')
+  fetch('/api/wechat/qrurl')
     .then(r => r.json())
     .then(data => {
       wechatState.value = data.state
@@ -142,7 +142,7 @@ function startPolling() {
   stopPolling()
   pollTimer = setInterval(async () => {
     try {
-      const resp = await fetch(`https://vbit.top/api/wechat/poll?state=${wechatState.value}`)
+      const resp = await fetch(`/api/wechat/poll?state=${wechatState.value}`)
       const data = await resp.json()
       if (data.expired) {
         stopPolling()
@@ -168,6 +168,7 @@ function stopPolling() {
 
 function onWeChatLogin(data) {
   showWeChatModal.value = false
+  chat.showQuotaModal = false
   localStorage.setItem('vermes_token', data.token)
   localStorage.setItem('vermes_wechat_token', data.token)
   if (data.userName) localStorage.setItem('vermes_wechat_name', data.userName)
@@ -176,6 +177,10 @@ function onWeChatLogin(data) {
   isLoggedIn.value = true
   userName.value = data.userName || '微信用户'
   userAvatar.value = data.userAvatar || ''
+  // 登录后创建新会话
+  if (chat.sessions.length === 0) {
+    chat.createSession('新会话')
+  }
 }
 
 function initWxLogin(container) {
@@ -264,6 +269,29 @@ watch(() => chat.filteredMessages, async () => {
 
 <template>
   <div class="flex flex-col h-full">
+    <!-- 在线模式未登录：显示精简登录页 -->
+    <div v-if="chat.isOnline && !isLoggedIn && chat.sessions.length === 0"
+      class="flex-1 flex flex-col items-center justify-center px-8 py-16 bg-gray-50 dark:bg-gray-900">
+      <div class="text-center max-w-sm">
+        <div class="text-5xl mb-4 flex justify-center">
+          <div class="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center text-white font-bold text-2xl">V</div>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Vermes</h1>
+        <p class="text-gray-400 text-sm mb-8 leading-relaxed">
+          开源 AI Agent 桌面客户端<br>
+          基于 Hermes Agent 汉化<br>
+          请使用微信扫码登录后使用
+        </p>
+        <button @click="openWeChatQR()"
+          class="w-full px-6 py-4 bg-green-500 hover:bg-green-600 text-white rounded-2xl text-base font-semibold transition shadow-lg shadow-green-500/20 hover:shadow-green-500/30 flex items-center justify-center gap-2">
+          <span style="font-size:20px">💚</span> 微信扫码登录
+        </button>
+        <p class="text-xs text-gray-500 mt-4">扫码即登录，无需注册</p>
+      </div>
+    </div>
+
+    <!-- 已登录/桌面模式：完整聊天 UI -->
+    <template v-if="!(chat.isOnline && !isLoggedIn && chat.sessions.length === 0)">
     <!-- 顶部栏 -->
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
       <div class="flex items-center gap-3">
@@ -408,6 +436,7 @@ watch(() => chat.filteredMessages, async () => {
         <button v-else @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
       </div>
     </div>
+  </template>
   </div>
 
 
@@ -425,20 +454,27 @@ watch(() => chat.filteredMessages, async () => {
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
       <div class="text-4xl mb-3">{{ chat.quotaModalType === 'trial_expired' ? '📱' : '⏰' }}</div>
       <h3 class="font-bold text-lg mb-2">
-        {{ chat.quotaModalType === 'trial_expired' ? '免费体验已用完' : '今日免费额度已用完' }}
+        {{ chat.quotaModalType === 'trial_expired' ? '免费体验已用完' : '今日免费额度已用完（500次/天）' }}
       </h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
         {{ chat.quotaModalType === 'trial_expired'
-          ? '微信扫码登录后可继续免费使用，不限次数。'
+          ? '每天可免费使用 500 次，用完请明天再来。'
           : '明天再来吧，或配置自己的 API Key 继续使用。' }}
       </p>
       <div class="flex flex-col gap-3">
-        <button v-if="chat.quotaModalType === 'trial_expired'"
+        <!-- 在线模式：必须微信登录才可使用 -->
+        <button v-if="chat.isOnline"
+          @click="chat.showQuotaModal = false; openWeChatQR()"
+          class="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition">
+          📱 微信扫码登录
+        </button>
+        <!-- 桌面模式：微信续杯按钮 -->
+        <button v-if="chat.quotaModalType === 'trial_expired' && !chat.isOnline"
           @click="chat.showQuotaModal = false; openWeChatQR()"
           class="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition">
           📱 微信扫码免费续杯
         </button>
-        <button @click="chat.showQuotaModal = false; router.push('/settings')"
+        <button v-if="!chat.isOnline" @click="chat.showQuotaModal = false; router.push('/settings')"
           class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
           🔑 配置自己的 API Key
         </button>

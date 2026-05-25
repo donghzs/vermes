@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-const CURRENT_VERSION = '1.0.1'
+const CURRENT_VERSION = '1.1.0'
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
 const DISMISS_KEY = 'vermes_update_dismissed'
 
