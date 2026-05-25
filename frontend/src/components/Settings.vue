@@ -95,6 +95,44 @@ function removeModel(p, modelId) {
   saveProvidersToStorage()
 }
 
+async function deleteProvider(p) {
+  if (!confirm(`确定清除 ${p.name} 的 API Key 和模型配置？`)) return
+  // Clear backend env var
+  const envKey = p.id.toUpperCase() + '_API_KEY'
+  try {
+    await fetch('/api/env', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: envKey })
+    })
+  } catch(e) { /* backend may not have this key */ }
+  // Clear local state
+  p.key = ''
+  p.models = []
+  saveProvidersToStorage()
+  saved.value = true
+  setTimeout(() => saved.value = false, 2000)
+}
+
+function clearAllSettings() {
+  if (!confirm('清除所有本地配置？\n\n这将清除：\n- 所有提供商 API Key 和模型列表\n- 当前模型选择\n- 微信登录状态\n- 试用 Token\n\n聊天记录不受影响。')) return
+  const keys = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith('vermes-') && k !== 'vermes-sessions' && !k.startsWith('vermes-msgs-')) {
+      keys.push(k)
+    }
+  }
+  for (const k of keys) localStorage.removeItem(k)
+  // Also reset provider form state
+  for (const p of providers.value) {
+    p.key = ''
+    p.models = []
+  }
+  saved.value = true
+  setTimeout(() => saved.value = false, 2000)
+}
+
 async function setCurrentModel(p, modelId) {
   // Normalize provider name for backend
   const providerMap = {
@@ -147,6 +185,7 @@ function saveProvidersToStorage() {
 
 function save() {
   saveProvidersToStorage()
+  let firstRealKey = null
   // Sync API keys + base_url to backend
   for (const p of providers.value) {
     // Save API key
@@ -157,6 +196,10 @@ function save() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: envKey, value: p.key })
       }).catch(e => console.warn('Save env failed:', e))
+      // Find first model to auto-switch if not already on vbit trial
+      if (!firstRealKey && p.models && p.models.length > 0 && p.id !== 'vbit') {
+        firstRealKey = { id: p.id, name: p.name, model: p.models[0] }
+      }
     }
     // Save custom provider base_url to config.yaml
     if (p.id === 'custom' && p.baseUrl) {
@@ -165,6 +208,19 @@ function save() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider_id: 'custom', base_url: p.baseUrl })
       }).catch(e => console.warn('Save custom base_url failed:', e))
+    }
+  }
+  // Auto-switch to first real provider that has models synced
+  if (firstRealKey) {
+    const currentProvider = localStorage.getItem('vermes-current-provider')
+    // Only auto-switch if currently on vbit trial or no provider set
+    if (!currentProvider || currentProvider === 'vbit.top') {
+      localStorage.setItem('vermes-current-model', firstRealKey.model)
+      localStorage.setItem('vermes-current-provider', firstRealKey.name)
+      const event = new CustomEvent('model-changed', {
+        detail: { model: firstRealKey.model, provider: firstRealKey.name }
+      })
+      window.dispatchEvent(event)
     }
   }
   saved.value = true
@@ -178,6 +234,15 @@ function toggleProvider(id) {
 }
 
 onMounted(() => {
+  // 清理旧的配置历史残留
+  const staleKeys = ['vermes-selected-model']
+  for (const k of staleKeys) {
+    if (localStorage.getItem(k)) {
+      localStorage.removeItem(k)
+      console.log('Cleaned stale key:', k)
+    }
+  }
+
   const saved_data = localStorage.getItem('vermes-providers')
   if (saved_data) {
     try {
@@ -274,6 +339,9 @@ onMounted(() => {
               <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">
                 💾 保存配置
               </button>
+              <button @click="deleteProvider(p)" class="px-4 py-1.5 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 rounded-lg text-xs font-medium transition">
+                🗑 清除配置
+              </button>
             </div>
 
             <!-- Synced models list -->
@@ -299,6 +367,14 @@ onMounted(() => {
         </div>
 
         <span v-if="saved" class="text-green-500 text-sm">✅ 已保存</span>
+
+        <!-- Clear all -->
+        <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <button @click="clearAllSettings()" class="px-4 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-500 rounded-lg text-xs font-medium transition w-full border border-red-200 dark:border-red-800">
+            🔄 清除所有本地配置（保留聊天记录）
+          </button>
+          <p class="text-xs text-gray-400 mt-2 text-center">清除 API Key、模型列表、微信登录状态、试用 Token 等配置历史</p>
+        </div>
       </div>
 
       <!-- 关于 -->
