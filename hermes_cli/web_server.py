@@ -175,6 +175,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/provider/sync-models",
     # Trial token
     "/api/claim",
+    # WeChat login proxy
+    "/api/wechat/qrurl",
+    "/api/wechat/poll",
     # Env vars (settings page needs to read/save keys)
     "/api/env",
     "/api/env/reveal",
@@ -5275,7 +5278,8 @@ async def claim_trial_token():
             resp = httpx.post(
                 "https://api.vbit.top/api/claim",
                 json={"device_id": fp, "hardware_uuid": str(uuid.getnode())},
-                timeout=15
+                timeout=15,
+                verify=False
             )
             result = resp.json()
         except Exception as e:
@@ -5285,6 +5289,37 @@ async def claim_trial_token():
             return result
         return {"success": False, "error": result.get("error", "Unknown error")}
 
+
+# --- WeChat login proxy endpoints ---
+
+@app.post("/api/wechat/qrurl")
+async def wechat_qrurl_proxy():
+    """Proxy WeChat QR URL request to vbit.top."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.post(
+                "https://vbit.top/api/wechat/qrurl",
+                timeout=15
+            )
+            return resp.json()
+    except ImportError:
+        return {"success": False, "error": "httpx not available"}
+
+
+@app.get("/api/wechat/poll")
+async def wechat_poll_proxy(state: str):
+    """Proxy WeChat poll request to vbit.top."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.get(
+                f"https://vbit.top/api/wechat/poll?state={state}",
+                timeout=15
+            )
+            return resp.json()
+    except ImportError:
+        return {"success": False, "error": "httpx not available"}
 
 
 # --- Provider management endpoints (added 2026-05-20) ---
