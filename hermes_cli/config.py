@@ -353,8 +353,19 @@ def get_container_exec_info() -> Optional[dict]:
 # Config paths
 # =============================================================================
 
-# Re-export from hermes_constants — canonical definition lives there.
-from hermes_constants import get_hermes_home  # noqa: F811,E402
+# Local replacement for hermes_constants.get_hermes_home
+# (hermes_constants is from Hermes Agent, not available in standalone Vermes builds)
+import os
+from pathlib import Path
+
+def get_hermes_home() -> Path:
+    """Get the application home directory."""
+    # Use VERMES_HOME env var if set, otherwise ~/.vermes
+    env_home = os.environ.get("VERMES_HOME") or os.environ.get("HERMES_HOME")
+    if env_home:
+        return Path(env_home)
+    return Path.home() / ".vermes"
+
 from utils import atomic_replace
 
 def get_config_path() -> Path:
