@@ -10,7 +10,8 @@ import os
 block_cipher = None
 
 # Collect data files
-datas = [
+datas = []
+for src, dst in [
     ('hermes_cli/web_dist', 'hermes_cli/web_dist'),
     ('locales', 'locales'),
     ('skills', 'skills'),
@@ -19,7 +20,11 @@ datas = [
     ('README.md', '.'),
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
-]
+]:
+    if os.path.exists(src):
+        datas.append((src, dst))
+    else:
+        print(f"[Vermes] Skipping missing data path: {src}")
 
 # Hidden imports
 hiddenimports = [
@@ -94,6 +99,19 @@ a = Analysis(
     excludes=[
         'tkinter', 'test', 'tests', 'pytest',
         'debugpy', 'IPython', 'jupyter', 'notebook', 'sphinx',
+        # ML libraries - too large for desktop app
+        'torch', 'torchvision', 'torchaudio', 'torch.distributed',
+        'scipy', 'scipy.spatial', 'scipy.special', 'scipy.io',
+        'sklearn', 'sklearn.neighbors', 'sklearn.linear_model',
+        'pandas', 'pandas.io',
+        'datasets', 'diffusers', 'accelerate', 'peft',
+        'bitsandbytes', 'xformers', 'sentencepiece',
+        'transformers', 'triton',
+        'PIL', 'PIL.ImageFilter',
+        'fsspec', 'sqlalchemy',
+        'dateutil',
+        'huggingface_hub',
+        'google', 'protobuf',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

@@ -73,7 +73,13 @@ except ImportError:
             f"Install with: {sys.executable} -m pip install 'fastapi' 'uvicorn[standard]'"
         )
 
-WEB_DIST = Path(os.environ["HERMES_WEB_DIST"]) if "HERMES_WEB_DIST" in os.environ else Path(__file__).parent / "web_dist"
+if "HERMES_WEB_DIST" in os.environ:
+    WEB_DIST = Path(os.environ["HERMES_WEB_DIST"])
+elif getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # PyInstaller COLLECT/onedir: data dest='hermes_cli/web_dist' → {MEIPASS}/hermes_cli/web_dist
+    WEB_DIST = Path(sys._MEIPASS) / "hermes_cli" / "web_dist"
+else:
+    WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
 app = FastAPI(title="Vermes", version=__version__)

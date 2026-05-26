@@ -53,7 +53,6 @@ ignored/
 environments/benchmarks/evals/
 
 # Web UI build output
-hermes_cli/web_dist/
 
 # Web UI assets — synced from @nous-research/ui at build time via
 # `npm run sync-assets` (see web/package.json).
@@ -82,3 +81,6 @@ frontend/dist/
 # Local release binaries (not committed)
 *.dmg
 *.zip
+dist/
+frontend/dist/
+vermes-onefile.spec

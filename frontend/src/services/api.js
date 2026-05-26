@@ -118,10 +118,21 @@ async function request(path, options = {}) {
     timeoutId = setTimeout(() => controller.abort(new Error(`请求超时（${timeoutMs / 1000}s）`)), timeoutMs)
   }
 
-  // 合并调用者传入的 signal（如停止生成）
-  const combinedSignal = options.signal
-    ? AbortSignal.any([controller.signal, options.signal])
-    : controller.signal
+  // 合并调用者传入的 signal（如停止生成）— 兼容旧版 Safari/WebKit
+  let combinedSignal
+  if (options.signal) {
+    try {
+      // AbortSignal.any() 需要 Safari 15.4+
+      combinedSignal = AbortSignal.any([controller.signal, options.signal])
+    } catch {
+      // 降级：用 controller.timeout 替代
+      const onAbort = () => { try { controller.abort() } catch(e) {} }
+      options.signal.addEventListener('abort', onAbort, { once: true })
+      combinedSignal = controller.signal
+    }
+  } else {
+    combinedSignal = controller.signal
+  }
 
   try {
     const resp = await fetch(url, {

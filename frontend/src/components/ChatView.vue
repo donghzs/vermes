@@ -130,17 +130,14 @@ let wechatPopup = null  // 微信登录弹窗引用，登录后自动关闭
 
 async function openWeChatQR() {
   console.log('[Vermes🔐] 微信扫码登录...')
-  // 同步弹窗（避免被拦截）
-  const win = window.open('', 'wechat-login', 'width=600,height=700,menubar=no,toolbar=no,location=no')
-  wechatPopup = win
   qrLoading.value = true
   try {
     const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
     const data = await res.json()
     wechatState.value = data.state
-    if (win && !win.closed) {
-      win.location.href = data.url
-    } else {
+    // 弹窗打开官方微信 OAuth 页面
+    wechatPopup = window.open(data.url, 'wechat-login', 'width=600,height=700,menubar=no,toolbar=no,location=no')
+    if (!wechatPopup || wechatPopup.closed) {
       // 弹窗被拦截，显示二维码弹窗
       showWeChatModal.value = true
       const qrUrl = await QRCode.toDataURL(data.url, { width: 280, margin: 2 })
