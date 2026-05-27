@@ -5393,15 +5393,17 @@ async def claim_trial_token():
 @app.get("/api/quota/check")
 async def quota_check_proxy(device_id: str):
     """Proxy quota check to vbit.top."""
+    print(f"[DEBUG] quota_check_proxy called with device_id={device_id}")
     try:
         import httpx
+        url = f"https://api.vbit.top/api/quota/check?device_id={device_id}"
+        print(f"[DEBUG] proxying to: {url}")
         async with httpx.AsyncClient(verify=False) as client:
-            resp = await client.get(
-                f"https://api.vbit.top/api/quota/check?device_id={device_id}",
-                timeout=10
-            )
+            resp = await client.get(url, timeout=10)
+            print(f"[DEBUG] response status: {resp.status_code}")
             return resp.json()
     except Exception as e:
+        print(f"[DEBUG] error: {e}")
         return {"success": False, "error": str(e)}
 
 
