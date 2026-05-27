@@ -183,7 +183,7 @@ const showWeChatModal = ref(false)
 
 let pollTimer = null
 async function openWeChatQR() {
-  console.log('[Vermes🔐] 微信扫码登录...')
+  console.log('[Vermes🔐] 微信登录...')
   showWeChatModal.value = true
   qrLoading.value = true
   qrError.value = ''
@@ -192,9 +192,8 @@ async function openWeChatQR() {
     const data = await res.json()
     wechatState.value = data.state
     wechatOAuthUrl.value = data.url
-    // 在原生窗口内渲染二维码（不弹浏览器）
-    const qrUrl = await QRCode.toDataURL(data.url, { width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
-    qrCodeDataUrl.value = qrUrl
+    // 直接打开微信官方授权页（桌面会调起微信客户端，手机会打开微信内置浏览器）
+    window.open(data.url, '_blank')
     startPolling()
   } catch(e) {
     console.error('[Vermes🔐] 加载微信登录失败:', e)
@@ -450,19 +449,19 @@ watch(() => chat.filteredMessages, async () => {
   <div v-if="showWeChatModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showWeChatModal = false">
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
       <button @click="showWeChatModal = false" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg">✕</button>
-      <h3 class="font-bold text-lg mb-4">微信扫码登录</h3>
-      <div v-if="qrLoading" class="flex items-center justify-center" style="min-height:200px">
+      <h3 class="font-bold text-lg mb-4">微信登录</h3>
+      <div v-if="qrLoading" class="flex items-center justify-center" style="min-height:120px">
         <span class="text-gray-400 text-sm">加载中...</span>
       </div>
-      <img v-else-if="qrCodeDataUrl" :src="qrCodeDataUrl" alt="微信扫码" class="mx-auto rounded-xl shadow-lg" style="width:220px;height:220px" />
-      <p class="text-xs text-gray-400 mt-3">使用微信扫一扫登录</p>
-      <div v-if="wechatOAuthUrl" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-        <a :href="wechatOAuthUrl" target="_blank" rel="noopener"
-          class="inline-flex items-center gap-1.5 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
-          📱 点击直接授权登录
+      <template v-else>
+        <div class="text-5xl mb-4">💬</div>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">已打开微信授权页面，请在微信中确认登录</p>
+        <a v-if="wechatOAuthUrl" :href="wechatOAuthUrl" target="_blank" rel="noopener"
+          class="inline-flex items-center gap-1.5 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
+          📱 重新打开授权页
         </a>
-        <p class="text-xs text-gray-400 mt-1.5">手机用户点击上方按钮直接授权</p>
-      </div>
+        <p v-if="qrError" class="text-xs text-red-400 mt-2">{{ qrError }}</p>
+      </template>
     </div>
   </div>
 
