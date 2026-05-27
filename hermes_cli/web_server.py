@@ -189,7 +189,6 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # WeChat login proxy
     "/api/wechat/qrurl",
     "/api/wechat/poll",
-    "/api/wechat/exchange-code",
     # Env vars (settings page needs to read/save keys)
     "/api/env",
     "/api/env/reveal",
@@ -5581,117 +5580,6 @@ async def wechat_poll_proxy(state: str):
     except ImportError:
         return {"success": False, "error": "httpx not available"}
 
-
-# --- WeChat JS SDK embedded QR code flow ---
-
-@app.post("/api/wechat/exchange-code")
-async def wechat_exchange_code(request: Request):
-    """Exchange WeChat OAuth code for token (JS SDK embedded QR flow).
-
-    Security: AppSecret stays server-side. Frontend only sends code.
-    """
-    try:
-        import httpx
-        from hermes_cli.config import load_env
-
-        body = await request.json()
-        code = body.get("code", "")
-        if not code:
-            return {"success": False, "error": "missing code"}
-
-        env = load_env()
-        appid = env.get("WECHAT_APPID", "")
-        secret = env.get("WECHAT_SECRET", "")
-        if not appid or not secret:
-            return {"success": False, "error": "server misconfigured: WECHAT_APPID/WECHAT_SECRET not set"}
-
-        async with httpx.AsyncClient(verify=True, timeout=15) as client:
-            # Step 1: Exchange code for access_token
-            token_resp = await client.get(
-                "https://api.weixin.qq.com/sns/oauth2/access_token",
-                params={
-                    "appid": appid,
-                    "secret": secret,
-                    "code": code,
-                    "grant_type": "authorization_code",
-                },
-            )
-            token_data = token_resp.json()
-            openid = token_data.get("openid", "")
-            access_token = token_data.get("access_token", "")
-
-            if not openid or not access_token:
-                _log.warning(f"[WeChat] code exchange failed: {token_data}")
-                return {"success": False, "error": token_data.get("errmsg", "code exchange failed")}
-
-            # Step 2: Get user info
-            user_name = "微信用户"
-            user_avatar = ""
-            try:
-                info_resp = await client.get(
-                    "https://api.weixin.qq.com/sns/userinfo",
-                    params={"access_token": access_token, "openid": openid, "lang": "zh_CN"},
-                )
-                info_data = info_resp.json()
-                user_name = info_data.get("nickname", user_name)
-                user_avatar = info_data.get("headimgurl", "")
-            except Exception:
-                pass
-
-            # Step 3: Get or create One-API token
-            oneapi_url = os.environ.get("ONEAPI_URL", "http://127.0.0.1:8083")
-            admin_key = env.get("ONEAPI_KEY", "")
-            token_key = ""
-
-            if admin_key:
-                try:
-                    # Check existing token
-                    list_resp = await client.get(
-                        f"{oneapi_url}/api/token/?p=0&size=100",
-                        headers={"Authorization": f"Bearer {admin_key}"},
-                    )
-                    tokens = list_resp.json().get("data", [])
-                    existing = next((t for t in tokens if t.get("name") == f"wechat_{openid}"), None)
-                    if existing:
-                        token_key = existing.get("key", "")
-
-                    if not token_key:
-                        # Create new token
-                        create_resp = await client.post(
-                            f"{oneapi_url}/api/token/",
-                            headers={
-                                "Content-Type": "application/json",
-                                "Authorization": f"Bearer {admin_key}",
-                            },
-                            json={
-                                "name": f"wechat_{openid}",
-                                "remain_quota": 3500000,
-                                "models": "deepseek-chat,MiMo-V2.5",
-                                "unlimited_quota": False,
-                            },
-                        )
-                        create_data = create_resp.json()
-                        if create_data.get("success"):
-                            token_key = create_data["data"]["key"]
-                except Exception as e:
-                    _log.warning(f"[WeChat] One-API token error: {e}")
-
-            if not token_key:
-                return {"success": False, "error": "failed to create token"}
-
-            return {
-                "success": True,
-                "token": token_key,
-                "openid": openid,
-                "userName": user_name,
-                "userAvatar": user_avatar,
-            }
-
-    except ImportError:
-        return {"success": False, "error": "httpx not available"}
-    except Exception as e:
-        _log.exception("[WeChat] exchange-code error")
-        return {"success": False, "error": str(e)}
 
 # Provider templates for cloud model addition
 PROVIDER_TEMPLATES = {
