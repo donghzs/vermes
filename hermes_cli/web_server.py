@@ -3683,6 +3683,9 @@ async def chat_completions(req: ChatRequest):
 
     if req.stream:
         # Streaming: run agent OR fall back to proxy
+        # 精确计费：解析 SSE 流中的 usage 字段
+        _stream_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
         async def stream_from_proxy():
             import httpx
             async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
@@ -3696,8 +3699,35 @@ async def chat_completions(req: ChatRequest):
                         if line.startswith("data: "):
                             data_content = line[6:]
                             if data_content.strip() == "[DONE]":
-                                return
+                                break
+                            # 解析 usage（One-API 最后一个 chunk 带有 usage）
+                            try:
+                                chunk_data = json.loads(data_content)
+                                if "usage" in chunk_data and chunk_data["usage"].get("total_tokens", 0) > 0:
+                                    _stream_usage["prompt_tokens"] = chunk_data["usage"].get("prompt_tokens", 0)
+                                    _stream_usage["completion_tokens"] = chunk_data["usage"].get("completion_tokens", 0)
+                                    _stream_usage["total_tokens"] = chunk_data["usage"]["total_tokens"]
+                            except (json.JSONDecodeError, KeyError, TypeError):
+                                pass
                             yield line + "\n\n"
+            # 流结束后自动上报消费到服务端
+            wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
+            if wechat_openid and _stream_usage["total_tokens"] > 0:
+                try:
+                    import httpx as _hx
+                    # 积分换算: 1 积分 = 720 One-API quota
+                    # DeepSeek V4 Flash: prompt=0.1/1K, completion=0.3/1K (相对单位)
+                    # 简化为: 积分 ≈ total_tokens / 1000 (大约每次对话 5-30 积分)
+                    points = max(1, _stream_usage["total_tokens"] // 1000)
+                    _hx.post(
+                        "https://api.vbit.top/api/quota/spend",
+                        json={"wechat_openid": wechat_openid, "quota_consumed": points * 720},
+                        headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "vermes_quota_secret_2026")},
+                        timeout=5, verify=True
+                    )
+                    _log.info(f"[Quota] 自动上报: {points}积分 ({_stream_usage['total_tokens']} tokens)")
+                except Exception as e:
+                    _log.warning(f"[Quota] 自动上报失败: {e}")
             yield "data: [DONE]\n\n"
         
         if agent is None:
@@ -5377,7 +5407,7 @@ async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
             "https://api.vbit.top/api/claim",
             json={"wechat_openid": wechat_openid, "device_id": fp},
             timeout=15,
-            verify=False
+            verify=True
         )
         return resp.json()
     except Exception as e:
@@ -5402,7 +5432,7 @@ async def claim_trial_token(request: Request):
                 "https://api.vbit.top/api/claim",
                 json={"wechat_openid": wechat_openid, "device_id": fp},
                 timeout=15,
-                verify=False
+                verify=True
             )
             result = resp.json()
         except Exception as e:
@@ -5424,7 +5454,7 @@ async def quota_check_proxy(request: Request):
         import httpx
         qs = str(request.url.query)
         url = f"https://api.vbit.top/api/quota/check?{qs}"
-        async with httpx.AsyncClient(verify=False) as client:
+        async with httpx.AsyncClient(verify=True) as client:
             resp = await client.get(url, timeout=10)
             return resp.json()
     except Exception as e:
@@ -5433,14 +5463,15 @@ async def quota_check_proxy(request: Request):
 
 @app.post("/api/quota/spend")
 async def quota_spend_proxy(request: Request):
-    """Proxy quota spend to vbit.top."""
+    """Proxy quota spend to vbit.top (with internal auth)."""
     try:
         import httpx
         body = await request.json()
-        async with httpx.AsyncClient(verify=False) as client:
+        async with httpx.AsyncClient(verify=True) as client:
             resp = await client.post(
                 "https://api.vbit.top/api/quota/spend",
                 json=body,
+                headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "vermes_quota_secret_2026")},
                 timeout=10
             )
             return resp.json()
@@ -5455,7 +5486,7 @@ async def referral_code_proxy(request: Request):
         import httpx
         qs = str(request.url.query)
         url = f"https://api.vbit.top/api/quota/referral/code?{qs}"
-        async with httpx.AsyncClient(verify=False) as client:
+        async with httpx.AsyncClient(verify=True) as client:
             resp = await client.get(url, timeout=10)
             return resp.json()
     except Exception as e:
@@ -5468,7 +5499,7 @@ async def referral_bind_proxy(request: Request):
     try:
         import httpx
         body = await request.json()
-        async with httpx.AsyncClient(verify=False) as client:
+        async with httpx.AsyncClient(verify=True) as client:
             resp = await client.post(
                 "https://api.vbit.top/api/quota/referral/bind",
                 json=body,
@@ -5486,7 +5517,7 @@ async def wechat_qrurl_proxy():
     """Proxy WeChat QR URL request to vbit.top."""
     try:
         import httpx
-        async with httpx.AsyncClient(verify=False) as client:
+        async with httpx.AsyncClient(verify=True) as client:
             resp = await client.get(
                 "https://vbit.top/api/wechat/qrurl",
                 timeout=15
@@ -5501,7 +5532,7 @@ async def wechat_poll_proxy(state: str):
     """Proxy WeChat poll request to vbit.top, with token validation."""
     try:
         import httpx
-        async with httpx.AsyncClient(verify=False, timeout=15) as client:
+        async with httpx.AsyncClient(verify=True, timeout=15) as client:
             resp = await client.get(
                 f"https://vbit.top/api/wechat/poll?state={state}",
             )
@@ -5512,7 +5543,7 @@ async def wechat_poll_proxy(state: str):
             token = data["token"]
             # Quick validation: test if One-API accepts this token
             try:
-                async with httpx.AsyncClient(verify=False, timeout=5) as vc:
+                async with httpx.AsyncClient(verify=True, timeout=5) as vc:
                     test_resp = await vc.get(
                         "https://api.vbit.top/v1/models",
                         headers={"Authorization": f"Bearer {token}"}
