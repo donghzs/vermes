@@ -24,11 +24,12 @@ export function isCloudModel(provider) {
   return CLOUD_MODELS.some(m => p.includes(m))
 }
 
-// ── 服务端配额查询（v2：仅限微信登录用户） ──
-export async function checkQuotaServer(wechatOpenid) {
+// ── 服务端配额查询 ──
+export async function checkQuotaServer(deviceId, wechatOpenid) {
   try {
     let url = '/api/quota/check?'
     if (wechatOpenid) url += `wechat_openid=${encodeURIComponent(wechatOpenid)}`
+    else url += `device_id=${encodeURIComponent(deviceId)}`
     const resp = await fetch(url)
     return await resp.json()
   } catch (e) {
@@ -37,10 +38,11 @@ export async function checkQuotaServer(wechatOpenid) {
   }
 }
 
-export async function reportQuotaSpend(quotaConsumed, wechatOpenid) {
+export async function reportQuotaSpend(deviceId, quotaConsumed, wechatOpenid) {
   try {
     const body = { quota_consumed: quotaConsumed }
     if (wechatOpenid) body.wechat_openid = wechatOpenid
+    else body.device_id = deviceId
     await fetch('/api/quota/spend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,37 +80,49 @@ export function saveQuota(remaining) {
 }
 
   // 检查云端模型请求是否允许
-// v2: 配额检查（简化版，仅限微信登录用户使用免费体验）
 export function checkQuota(isCloud) {
+  // 试用已过期
+  if (isTrialExpired() && !localStorage.getItem('vermes_token')) {
+    return { allowed: false, unlimited: false, remaining: 0, source: 'trial_expired' }
+  }
+  // 在线模式：必须微信登录
+  if (isOnline) {
+    const token = localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')
+    if (!token) {
+      return { allowed: false, unlimited: false, remaining: 0, source: 'trial_expired', requireLogin: true }
+    }
+    // 已登录：通过 One-API 的剩余配额（由 One-API 管理，不做本地限流）
+    return { allowed: true, unlimited: true, remaining: 999, source: 'wechat_online' }
+  }
+  // 已登录用户每天 500 次（桌面版）
+  const token = localStorage.getItem('vermes_token')
+  if (token) {
+    const quota = getWechatDailyQuota()
+    if (quota.remaining <= 0) {
+      return { allowed: false, unlimited: false, remaining: 0, source: 'wechat_daily' }
+    }
+    useWechatQuota(1)
+    return { allowed: true, unlimited: false, remaining: quota.remaining - 1, source: 'wechat_daily' }
+  }
+  
   // 本地模型无限
   if (!isCloud) return { allowed: true, unlimited: true, remaining: Infinity, source: 'local' }
   
-  // 云端模型：必须有微信登录
-  const token = localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')
-  const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+  // 未登录云端模型：每天 100 次
+  const quota = getRemainingQuota()
+  const today = new Date().toDateString()
   
-  // 未登录
-  if (!token || !wechatOpenid) {
-    return { allowed: false, unlimited: false, remaining: 0, source: 'need_login', requireLogin: true }
+  if (!quota || quota.date !== today) {
+    saveQuota(100)
+    return { allowed: true, unlimited: false, remaining: 100, source: 'free_daily' }
   }
   
-  // 试用已过期
-  if (isTrialExpired()) {
-    return { allowed: false, unlimited: false, remaining: 0, source: 'trial_expired' }
-  }
-  
-  // 在线模式：服务端控制配额，本地放行（服务端 checkQuotaServer 做精细检查）
-  if (isOnline) {
-    return { allowed: true, unlimited: true, remaining: 999, source: 'wechat_online' }
-  }
-  
-  // 桌面版：本地计数（配合服务端）
-  const quota = getWechatDailyQuota()
   if (quota.remaining <= 0) {
-    return { allowed: false, unlimited: false, remaining: 0, source: 'wechat_daily' }
+    return { allowed: false, unlimited: false, remaining: 0,
+      message: '' } // message not used anymore, modal handles it
   }
-  useWechatQuota(1)
-  return { allowed: true, unlimited: false, remaining: quota.remaining - 1, source: 'wechat_daily' }
+  
+  return { allowed: true, unlimited: false, remaining: quota.remaining, source: 'free_daily' }
 }
 
 export function useQuota(count = 1) {
