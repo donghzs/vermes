@@ -172,14 +172,18 @@ async function openWeChatQR() {
   if (isPywebview) {
     // pywebview: 原生窗口打开 OAuth（同步阻塞直到用户完成授权）
     try {
+      const loginState = Date.now().toString()
       const result = await window.pywebview.api.open_oauth_window(
         'https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=' +
         encodeURIComponent('https://vbit.top/api/wechat/callback') +
-        '&response_type=code&scope=snsapi_login&state=' + Date.now() + '#wechat_redirect'
+        '&response_type=code&scope=snsapi_login&state=' + loginState + '#wechat_redirect'
       )
-      if (result && result.success && result.code) {
-        console.log('[Vermes🔐] 原生窗口获取到 code')
-        await exchangeWechatCode(result.code)
+      if (result && result.success) {
+        // callback 处理器已完成 code→token 换取并存入 wechatSessions[state]
+        // 用 state 轮询拿到登录结果
+        console.log('[Vermes🔐] 原生窗口获取到 code，开始轮询 state:', result.state)
+        wechatState.value = result.state || loginState
+        await pollForResult()
       } else {
         qrError.value = result?.error === 'timeout or cancelled' ? '已取消' : '登录失败'
       }
@@ -207,26 +211,24 @@ async function openWeChatQR() {
   }
 }
 
-// 用 code 换 token（安全：AppSecret 只在后端）
-async function exchangeWechatCode(code) {
-  try {
-    const resp = await fetch('/api/wechat/exchange-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    })
-    const data = await resp.json()
-    if (data.success && data.token) {
-      console.log('[Vermes🔐] code 换 token 成功:', data.userName)
-      onWeChatLogin(data)
-    } else {
-      console.error('[Vermes🔐] code 换 token 失败:', data.error)
-      qrError.value = '登录失败: ' + (data.error || '未知错误')
-    }
-  } catch(e) {
-    console.error('[Vermes🔐] exchange-code 请求失败:', e)
-    qrError.value = '网络错误，请重试'
+// pywebview 原生窗口登录后：callback 已完成 code→token，用 state 轮询拿结果
+async function pollForResult() {
+  const state = wechatState.value
+  if (!state) { qrError.value = '登录失败：state 丢失'; return }
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    try {
+      const resp = await fetch(`/api/wechat/poll?state=${state}`)
+      const data = await resp.json()
+      if (data.expired) { qrError.value = '登录已过期，请重试'; return }
+      if (data.scanned && data.token) {
+        console.log('[Vermes🔐] 轮询获取到登录信息:', data.userName)
+        onWeChatLogin(data)
+        return
+      }
+    } catch(e) {}
   }
+  qrError.value = '登录超时，请重试'
 }
 
 function startPolling() {
