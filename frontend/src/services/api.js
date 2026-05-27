@@ -50,7 +50,7 @@ export async function reportQuotaSpend(quotaConsumed, wechatOpenid) {
 }
 
 // 计费配额管理
-const WECHAT_QUOTA_KEY = 'vermes_wechat_quota'
+export const WECHAT_QUOTA_KEY = 'vermes_wechat_quota'
 export function getWechatDailyQuota() {
   const data = localStorage.getItem(WECHAT_QUOTA_KEY)
   const today = new Date().toDateString()
@@ -242,6 +242,7 @@ export default {
     // 传 wechat_openid 让后端能在没有 API key 时自动 claim
     const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
     if (wechatOpenid) body.wechat_openid = wechatOpenid
+    let usageInfo = null  // 收集 SSE 流中的 usage 数据
     try {
       const resp = await request('/chat/completions', {
         method: 'POST',
@@ -272,9 +273,13 @@ export default {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           const data = line.slice(6)
-          if (data === '[DONE]') { onDone?.(); return }
+          if (data === '[DONE]') { onDone?.(usageInfo); return }
           try {
             const json = JSON.parse(data)
+            // 解析 usage（最后一个 chunk 带有精确 token 统计）
+            if (json.usage && json.usage.total_tokens > 0) {
+              usageInfo = json.usage
+            }
             // 工具调用
             const toolCall = json.choices?.[0]?.delta?.tool_calls?.[0]
             if (toolCall?.function?.name) {
@@ -285,7 +290,7 @@ export default {
           } catch (e) {}
         }
       }
-      onDone?.()
+      onDone?.(usageInfo)
     } catch (e) {
       if (e.name !== 'AbortError') onError?.(e)
       else onDone?.()

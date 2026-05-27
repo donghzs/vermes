@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, reportQuotaSpend } from '../services/api'
+import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, reportQuotaSpend, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
 
 // ── v2: 未登录拦截弹窗类型 ──
 const QUOTA_NEED_LOGIN = 'need_login'
@@ -366,12 +366,9 @@ export const useChatStore = defineStore('chat', () => {
           const am = messages.value.find(m => m.id === aid)
           if (am) am.toolInvocations.push(tool)
         },
-        onDone: (data) => {
+        onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
-            if (data?.choices?.[0]?.message?.content) {
-              am.content = data.choices[0].message.content
-            }
             am.streaming = false
           }
           loading.value = false
@@ -379,14 +376,19 @@ export const useChatStore = defineStore('chat', () => {
           if (quotaCheck.source === 'free_daily') {
             useQuota(1)
           }
-          // 上报服务端消费（v2: 仅微信用户）
+          // 精确计费：后端已自动上报消费（基于 SSE 流 usage token 数）
+          // 前端只需刷新配额显示
           const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
           if (wechatOpenid && isCloud) {
-            const respLen = am?.content?.length || 0
-            const estimatedPoints = Math.max(10, Math.ceil(respLen / 100) * 50)
-            reportQuotaSpend(estimatedPoints * 720, wechatOpenid).then(() => {
-              window.dispatchEvent(new Event('quota-updated'))
-            })
+            // 如果 onDone 传回了 usage，用精确 token 数更新本地积分
+            const usageData = typeof usageInfo === 'object' ? usageInfo : null
+            if (usageData && usageData.total_tokens > 0) {
+              const consumedPoints = Math.max(1, Math.ceil(usageData.total_tokens / 1000))
+              const localQuota = getWechatDailyQuota()
+              const newRemaining = Math.max(0, localQuota.remaining - consumedPoints)
+              localStorage.setItem(WECHAT_QUOTA_KEY, JSON.stringify({ remaining: newRemaining, date: localQuota.date }))
+            }
+            window.dispatchEvent(new Event('quota-updated'))
           }
           persistMessages(currentSessionId.value)
         },
