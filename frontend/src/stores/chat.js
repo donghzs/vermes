@@ -39,7 +39,7 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref('dark')
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek-chat')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'mimo-v2-flash')
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
@@ -58,6 +58,11 @@ export const useChatStore = defineStore('chat', () => {
   })
 
   async function autoClaimIfNeeded() {
+    // MiMo 不需要领 vbit token（用小米自己的 API Key）
+    if (currentProvider.value === 'xiaomi') {
+      console.log('[Vermesℹ️] 使用 MiMo，跳过 vbit token 领取')
+      return
+    }
     // First, check if user already configured their own API key (non-vbit provider)
     try {
       const savedProviders = localStorage.getItem('vermes-providers')
@@ -112,10 +117,10 @@ export const useChatStore = defineStore('chat', () => {
           body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek-chat' })
         }).catch(() => {})
         // Set frontend state
-        localStorage.setItem('vermes-current-model', 'deepseek-chat')
-        localStorage.setItem('vermes-current-provider', 'vbit')
-        currentModel.value = 'deepseek-chat'
-        currentProvider.value = 'vbit.top'
+        localStorage.setItem('vermes-current-model', 'mimo-v2-flash')
+        localStorage.setItem('vermes-current-provider', 'xiaomi')
+        currentModel.value = 'mimo-v2-flash'
+        currentProvider.value = 'xiaomi'
         // Mark claimed
         localStorage.setItem('vermes-trial-claimed', '1')
         // Also update the providers list for model dropdown

@@ -2,6 +2,7 @@
 import { ref, watch, nextTick, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
+import { getRemainingQuota, getWechatDailyQuota, getTrialDaysLeft, isTrialExpired } from '../services/api'
 import MarkdownIt from 'markdown-it'
 import QRCode from 'qrcode'
 
@@ -75,11 +76,27 @@ const fileInput = ref(null)
 const uploadedFiles = ref([])
 const showModelSelect = ref(false)
 
+// 剩余配额显示
+const quotaDisplay = computed(() => {
+  if (isTrialExpired()) return { text: '试用已结束', remaining: 0 }
+  const loggedIn = !!localStorage.getItem('vermes_token')
+  const daysLeft = getTrialDaysLeft()
+  if (loggedIn) {
+    const q = getWechatDailyQuota()
+    return { text: `剩余 ${q.remaining} 次/天 · ${daysLeft}天后到期`, remaining: q.remaining }
+  }
+  const q = getRemainingQuota()
+  const today = new Date().toDateString()
+  const remaining = (q && q.date === today) ? q.remaining : 100
+  return { text: `剩余 ${remaining}/100 次/天 · ${daysLeft}天后到期`, remaining }
+})
+
 // ✅ App.vue 已调用 chat.init()，这里不需要重复
 
 // 模型列表
 const defaultModels = [
-  { id: 'deepseek-chat', name: '🚀 DeepSeek V4 Flash (限时免费体验)', provider: 'vbit.top' },
+  { id: 'deepseek-chat', name: '🚀 DeepSeek V4 Flash', provider: 'vbit.top' },
+  { id: 'mimo-v2-flash', name: '⚡ MiMo V2 Flash (免费)', provider: 'xiaomi' },
 ]
 
 const models = computed(() => {
@@ -305,6 +322,10 @@ watch(() => chat.filteredMessages, async () => {
         <button @click="chat.toggleSidebar()" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="切换侧边栏">☰</button>
         <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新会话' }}</h2>
         <span class="text-xs text-gray-400">{{ chat.filteredMessages.length }} 条消息</span>
+        <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
+          :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
+          {{ quotaDisplay.text }}
+        </span>
       </div>
       <!-- 模型选择器 -->
       <div class="relative">
@@ -399,20 +420,21 @@ watch(() => chat.filteredMessages, async () => {
   <!-- 配额耗尽弹窗 -->
   <div v-if="chat.showQuotaModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="chat.showQuotaModal = false">
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
-      <div class="text-4xl mb-3">{{ chat.quotaModalType === 'trial_expired' ? '📱' : '⏰' }}</div>
+      <div class="text-4xl mb-3">{{ chat.quotaModalType === 'trial_expired' ? '⏰' : '📱' }}</div>
       <h3 class="font-bold text-lg mb-2">
-        {{ chat.quotaModalType === 'trial_expired' ? '免费体验已用完' : '今日免费额度已用完（500次/天）' }}
+        {{ chat.quotaModalType === 'trial_expired' ? '今日免费额度已用完' : '今日微信额度已用完（500次/天）' }}
       </h3>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
         {{ chat.quotaModalType === 'trial_expired'
-          ? '每天可免费使用 500 次，用完请明天再来。'
+          ? '免费体验限 100 次/天，明天再来或微信扫码升级。'
           : '明天再来吧，或配置自己的 API Key 继续使用。' }}
       </p>
+      <p class="text-xs text-amber-500 mb-5">🎁 免费体验截止：2026年6月26日</p>
       <div class="flex flex-col gap-3">
         <button v-if="chat.quotaModalType === 'trial_expired'"
           @click="chat.showQuotaModal = false; openWeChatQR()"
           class="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition">
-          📱 微信扫码免费续杯
+          📱 微信扫码升级（500次/天）
         </button>
         <button v-if="!chat.isOnline" @click="chat.showQuotaModal = false; router.push('/settings')"
           class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
