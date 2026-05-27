@@ -326,7 +326,7 @@ export const useChatStore = defineStore('chat', () => {
           mime: a.mimeType || 'application/octet-stream',
           size: a.size,
         })),
-        stream: false,
+        stream: true,
         signal: ac.signal,
         onChunk: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
