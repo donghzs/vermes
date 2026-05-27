@@ -243,7 +243,7 @@ export const useChatStore = defineStore('chat', () => {
     const isCloud = isCloudModel(currentProvider.value)
     if (isCloud) {
       const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
-      const isLoggedIn = !!localStorage.getItem('vermes_token')
+      const isLoggedIn = !!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token'))
       
       // 未登录 → 弹出「请先登录」弹窗
       if (!isLoggedIn || !wechatOpenid) {

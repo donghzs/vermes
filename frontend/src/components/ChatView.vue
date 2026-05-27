@@ -24,7 +24,7 @@ onMounted(() => {
 })
 
 // ✅ 登录状态
-const isLoggedIn = ref(!!localStorage.getItem('vermes_token'))
+const isLoggedIn = ref(!!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')))
 const userAvatar = ref(localStorage.getItem('vermes_wechat_avatar') || '')
 const userName = ref(localStorage.getItem('vermes_wechat_name') || '已登录')
 
@@ -180,6 +180,7 @@ const showWeChatModal = ref(false)
 // wechatState, qrCodeDataUrl, qrLoading, qrError already declared above
 
 let pollTimer = null
+let pollTimeout = null
 function openWeChatPopup() {
   if (!wechatOAuthUrl.value) return
   const w = 420, h = 620
@@ -230,11 +231,12 @@ function startPolling() {
       }
     } catch(e) {}
   }, 2000)
-  setTimeout(() => stopPolling(), 5 * 60 * 1000)
+  pollTimeout = setTimeout(() => stopPolling(), 5 * 60 * 1000)
 }
 
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null }
 }
 
 function onWeChatLogin(data) {
@@ -265,6 +267,7 @@ function onWeChatLogin(data) {
 
 // 监听 postMessage（微信回调窗口通知）
 window.addEventListener('message', (e) => {
+  if (e.origin && e.origin !== 'https://vbit.top') return
   if (e.data?.type === 'wechat_callback' && e.data?.token) {
     console.log('[Vermes🔐] 收到微信登录 postMessage')
     stopPolling()
@@ -455,9 +458,9 @@ watch(() => chat.filteredMessages, async () => {
   </div>
 
   <!-- 微信登录弹窗（点击未登录头像触发的二维码弹窗） -->
-  <div v-if="showWeChatModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showWeChatModal = false">
+  <div v-if="showWeChatModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showWeChatModal = false; stopPolling()">
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
-      <button @click="showWeChatModal = false" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg">✕</button>
+      <button @click="showWeChatModal = false; stopPolling()" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg">✕</button>
       <h3 class="font-bold text-lg mb-4">微信登录</h3>
       <div v-if="qrLoading" class="flex items-center justify-center" style="min-height:120px">
         <span class="text-gray-400 text-sm">加载中...</span>
