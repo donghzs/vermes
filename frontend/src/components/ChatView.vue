@@ -180,6 +180,13 @@ const showWeChatModal = ref(false)
 // wechatState, qrCodeDataUrl, qrLoading, qrError already declared above
 
 let pollTimer = null
+function openWeChatPopup() {
+  if (!wechatOAuthUrl.value) return
+  const w = 420, h = 620
+  const left = Math.round((screen.width - w) / 2)
+  const top = Math.round((screen.height - h) / 2)
+  window.open(wechatOAuthUrl.value, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
+}
 async function openWeChatQR() {
   console.log('[Vermes🔐] 微信登录...')
   qrError.value = ''
@@ -188,8 +195,11 @@ async function openWeChatQR() {
     const data = await res.json()
     wechatState.value = data.state
     wechatOAuthUrl.value = data.url
-    // 打开微信授权小弹窗
-    const popup = window.open(data.url, 'wechat-login', 'width=450,height=650,top=100,left=200,menubar=no,toolbar=no,location=no,status=no')
+    // 打开微信授权弹窗（自动居中）
+    const w = 420, h = 620
+    const left = Math.round((screen.width - w) / 2)
+    const top = Math.round((screen.height - h) / 2)
+    const popup = window.open(data.url, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
     if (!popup || popup.closed) {
       // 弹窗被拦截，显示备用弹窗
       showWeChatModal.value = true
@@ -229,10 +239,10 @@ function stopPolling() {
 
 function onWeChatLogin(data) {
   showWeChatModal.value = false
-  chat.showQuotaModal = false  // 关闭配额弹窗
+  chat.showQuotaModal = false
   qrCodeDataUrl.value = ''
-  // 关闭二维码弹窗
-  showWeChatModal.value = false
+  // 尝试关闭微信授权弹窗
+  try { window.open('', 'wechat-login')?.close() } catch(e) {}
   localStorage.setItem('vermes_wechat_token', data.token)
   if (data.openid) localStorage.setItem('vermes_wechat_openid', data.openid)
   // 同步到后端 .env，让聊天时后端能用这个 token
@@ -455,7 +465,7 @@ watch(() => chat.filteredMessages, async () => {
       <template v-else>
         <div class="text-5xl mb-4">💬</div>
         <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">已打开微信授权页面，请在微信中确认登录</p>
-        <button v-if="wechatOAuthUrl" @click="window.open(wechatOAuthUrl, 'wechat-login', 'width=450,height=650,top=100,left=200,menubar=no,toolbar=no,location=no,status=no')"
+        <button v-if="wechatOAuthUrl" @click="openWeChatPopup()"
           class="inline-flex items-center gap-1.5 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
           📱 重新打开授权页
         </button>
