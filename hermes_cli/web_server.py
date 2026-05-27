@@ -3722,7 +3722,7 @@ async def chat_completions(req: ChatRequest):
                     _hx.post(
                         "https://api.vbit.top/api/quota/spend",
                         json={"wechat_openid": wechat_openid, "quota_consumed": points * 720},
-                        headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "vermes_quota_secret_2026")},
+                        headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "")},
                         timeout=5, verify=True
                     )
                     _log.info(f"[Quota] 自动上报: {points}积分 ({_stream_usage['total_tokens']} tokens)")
@@ -5471,7 +5471,7 @@ async def quota_spend_proxy(request: Request):
             resp = await client.post(
                 "https://api.vbit.top/api/quota/spend",
                 json=body,
-                headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "vermes_quota_secret_2026")},
+                headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "")},
                 timeout=10
             )
             return resp.json()
@@ -5556,15 +5556,15 @@ async def wechat_poll_proxy(state: str):
                         env = load_env()
                         admin_key = env.get("ONEAPI_KEY", "")
                         create_resp = await vc.post(
-                            "http://82.156.45.139:8083/api/token/",
+                            os.environ.get("ONEAPI_URL", "http://127.0.0.1:8083") + "/api/token/",
                             headers={
                                 "Content-Type": "application/json",
                                 "Authorization": f"Bearer {admin_key}"
                             },
                             json={
                                 "name": f"wx-{data.get('openid', 'user')[:8]}",
-                                "remain_quota": 500,
-                                "models": "deepseek-chat",
+                                "remain_quota": 3500000,
+                                "models": "deepseek-v4-flash,mimo-v2.5",
                                 "unlimited_quota": False,
                             }
                         )
@@ -5816,9 +5816,23 @@ async def provider_sync_models(request: Request):
     if not base_url:
         return {"ok": False, "error": "base_url required (or provide provider_id)"}
 
+    # SSRF protection: only allow https:// URLs or localhost for development
+    _allowed_schemes = ("https://", "http://localhost", "http://127.0.0.1", "http://0.0.0.0")
+    if not any(base_url.startswith(s) for s in _allowed_schemes):
+        return {"ok": False, "error": "base_url must use https:// (or localhost for development)"}
+
+    # When using user-provided base_url (not from template), do NOT send API key
+    # to prevent key leakage to malicious servers
     headers = {}
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        # Only send API key if base_url matches a known provider template
+        _known_domains = [t.get("base_url", "") for t in PROVIDER_TEMPLATES.values()]
+        _is_known = any(base_url.rstrip("/") == u.rstrip("/") for u in _known_domains if u)
+        if _is_known or provider_id:
+            headers["Authorization"] = f"Bearer {api_key}"
+        else:
+            _log.warning(f"[SSRF] Refusing to send API key to unknown base_url: {base_url}")
+            # Still allow model list fetch without key (public /models endpoint)
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

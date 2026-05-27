@@ -102,13 +102,13 @@ export function checkQuota(isCloud) {
     return { allowed: true, unlimited: true, remaining: 999, source: 'wechat_online' }
   }
   
-  // 桌面版：本地计数（配合服务端）
+  // 桌面版：本地缓存作为 UI 显示参考，服务端精确扣减（H5 双重扣减修复）
   const quota = getWechatDailyQuota()
   if (quota.remaining <= 0) {
     return { allowed: false, unlimited: false, remaining: 0, source: 'wechat_daily' }
   }
-  useWechatQuota(1)
-  return { allowed: true, unlimited: false, remaining: quota.remaining - 1, source: 'wechat_daily' }
+  // 不再本地 useWechatQuota(1) —— 服务端 /spend 精确扣减，本地只读不写
+  return { allowed: true, unlimited: false, remaining: quota.remaining, source: 'wechat_daily' }
 }
 
 export function useQuota(count = 1) {
