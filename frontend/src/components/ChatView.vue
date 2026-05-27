@@ -474,7 +474,7 @@ watch(() => chat.filteredMessages, async () => {
         <div class="text-4xl mb-3">🔐</div>
         <h3 class="font-bold text-lg mb-2">需要登录后使用</h3>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">免费体验仅限微信登录用户</p>
-        <p class="text-xs text-gray-400 mb-5">符合公安备案要求，请登录后使用</p>
+        <p class="text-xs text-gray-400 mb-5">免费体验仅限微信登录用户</p>
         <div class="flex flex-col gap-3">
           <button @click="wechatLogin"
             class="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition">
