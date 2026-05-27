@@ -29,6 +29,8 @@ from hermes_cli.shutdown_signal import shutdown_event
 class VermesAPI:
     """暴露给前端 JavaScript 的 Python API。"""
 
+    _oauth_result = None  # 存储 OAuth 结果
+
     def open_external_browser(self, url):
         """用系统默认浏览器打开 URL。"""
         print(f"[Vermes API] 打开系统浏览器: {url}")
@@ -38,6 +40,80 @@ class VermesAPI:
         except Exception as e:
             print(f"[Vermes API] ❌ 打开浏览器失败: {e}")
             return {"success": False, "error": str(e)}
+
+    def open_oauth_window(self, url):
+        """打开微信 OAuth 原生窗口，监控 URL 获取 code（同步阻塞直到完成）。"""
+        import webview
+        import threading
+        import time
+
+        print(f"[Vermes API] 打开 OAuth 原生窗口")
+        VermesAPI._oauth_result = None
+        result_ready = threading.Event()
+
+        win = webview.create_window(
+            '微信登录', url,
+            width=420, height=620, resizable=False,
+            easy_drag=True, text_select=False,
+        )
+
+        def on_loaded():
+            """页面加载完成后检查 URL"""
+            try:
+                current_url = win.evaluate_js('window.location.href')
+                print(f"[Vermes API] 页面加载: {current_url[:80]}...")
+                if 'code=' in current_url and 'vbit.top' in current_url:
+                    import urllib.parse
+                    parsed = urllib.parse.urlparse(current_url)
+                    params = urllib.parse.parse_qs(parsed.query)
+                    code = params.get('code', [''])[0]
+                    state = params.get('state', [''])[0]
+                    if code:
+                        print(f"[Vermes API] ✅ 获取到 code: {code[:10]}...")
+                        VermesAPI._oauth_result = {"success": True, "code": code, "state": result_ready.set() or True}
+                        try:
+                            win.destroy()
+                        except Exception:
+                            pass
+            except Exception as e:
+                if 'destroyed' not in str(e).lower():
+                    print(f"[Vermes API] URL 检查失败: {e}")
+
+        def poll_url():
+            """备用轮询：每 1.5 秒检查一次 URL"""
+            while not result_ready.is_set():
+                time.sleep(1.5)
+                try:
+                    if not hasattr(win, 'evaluate_js'):
+                        break
+                    current_url = win.evaluate_js('window.location.href')
+                    if current_url and 'code=' in current_url and 'vbit.top' in current_url:
+                        import urllib.parse
+                        parsed = urllib.parse.urlparse(current_url)
+                        params = urllib.parse.parse_qs(parsed.query)
+                        code = params.get('code', [''])[0]
+                        if code and not VermesAPI._oauth_result:
+                            print(f"[Vermes API] ✅ 轮询获取到 code: {code[:10]}...")
+                            VermesAPI._oauth_result = {"success": True, "code": code}
+                            result_ready.set()
+                            try:
+                                win.destroy()
+                            except Exception:
+                                pass
+                            break
+                except Exception:
+                    break
+
+        win.events.loaded += on_loaded
+        poller = threading.Thread(target=poll_url, daemon=True)
+        poller.start()
+
+        # 等待结果（最多 5 分钟）
+        result_ready.wait(timeout=300)
+
+        if VermesAPI._oauth_result:
+            return VermesAPI._oauth_result
+        return {"success": False, "error": "timeout or cancelled"}
 
 
 def acquire_lock():
