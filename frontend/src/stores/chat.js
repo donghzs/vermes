@@ -39,7 +39,7 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref('dark')
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek-chat')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'MiMo-V2.5')
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
@@ -112,9 +112,9 @@ export const useChatStore = defineStore('chat', () => {
           body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek-chat' })
         }).catch(() => {})
         // Set frontend state
-        localStorage.setItem('vermes-current-model', 'deepseek-chat')
+        localStorage.setItem('vermes-current-model', 'MiMo-V2.5')
         localStorage.setItem('vermes-current-provider', 'vbit')
-        currentModel.value = 'deepseek-chat'
+        currentModel.value = 'MiMo-V2.5'
         currentProvider.value = 'vbit.top'
         // Mark claimed
         localStorage.setItem('vermes-trial-claimed', '1')
