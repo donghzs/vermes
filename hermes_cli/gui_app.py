@@ -233,7 +233,11 @@ def main(port):
         import threading
         threading.Thread(target=_load_real_url, daemon=True).start()
 
-        webview.start(gui='edgechromium', private_mode=False)
+        # macOS 用 cocoa，Windows 用 edgechromium，其他平台自动选择
+        gui = None
+        if platform.system() == 'Windows':
+            gui = 'edgechromium'
+        webview.start(gui=gui, private_mode=False)
         print("[Vermes] 原生窗口已关闭")
         return
     except Exception as e:
