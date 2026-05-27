@@ -4,6 +4,60 @@ import api, { isCloudModel, checkQuota, useQuota } from '../services/api'
 
 const SESSIONS_KEY = 'vermes-sessions'
 const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
+const IMAGE_DB = 'vermes-images'
+const IMAGE_STORE = 'attachments'
+
+// ── IndexedDB 图片存储（无大小限制） ──
+function openImageDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IMAGE_DB, 1)
+    req.onupgradeneeded = () => req.result.createObjectStore(IMAGE_STORE)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function saveImage(key, base64Data) {
+  try {
+    const db = await openImageDB()
+    const tx = db.transaction(IMAGE_STORE, 'readwrite')
+    tx.objectStore(IMAGE_STORE).put(base64Data, key)
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
+  } catch(e) { console.warn('[Vermes] 图片存储失败:', e) }
+}
+
+async function loadImage(key) {
+  try {
+    const db = await openImageDB()
+    const tx = db.transaction(IMAGE_STORE, 'readonly')
+    const req = tx.objectStore(IMAGE_STORE).get(key)
+    return new Promise((res) => { req.onsuccess = () => res(req.result); req.onerror = () => res(null) })
+  } catch { return null }
+}
+
+async function deleteImages(keys) {
+  try {
+    const db = await openImageDB()
+    const tx = db.transaction(IMAGE_STORE, 'readwrite')
+    const store = tx.objectStore(IMAGE_STORE)
+    keys.forEach(k => store.delete(k))
+  } catch {}
+}
+
+// ── 持久化：base64 提取到 IndexedDB，localStorage 只存文本 ──
+const BASE64_RE = /!\[([^\]]*)\]\(data:image[^)]+\)/g
+
+function stripBase64FromContent(content, messageId) {
+  const images = {}
+  let idx = 0
+  const prefix = messageId || Date.now().toString()
+  const stripped = content.replace(BASE64_RE, (match, name) => {
+    const key = `${prefix}-${idx++}`
+    images[key] = match
+    return `🖼️ ${name || '图片'}`
+  })
+  return { stripped, images }
+}
 
 function loadFromStorage(key) {
   try { return JSON.parse(localStorage.getItem(key)) || [] } catch(e) { return [] }
@@ -200,8 +254,22 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function persistMessages(sessionId) {
-    saveToStorage(MESSAGES_KEY_PREFIX + sessionId,
-      messages.value.filter(m => m.sessionId === sessionId))
+    const msgs = messages.value.filter(m => m.sessionId === sessionId)
+    // 剥离 base64 图片到 IndexedDB，localStorage 只存文本
+    const lean = []
+    for (const m of msgs) {
+      if (m.role === 'user' && m.content && m.content.includes('data:image')) {
+        const { stripped, images } = stripBase64FromContent(m.content, m.id)
+        // 异步存图片到 IndexedDB（不阻塞）
+        for (const [key, data] of Object.entries(images)) {
+          saveImage(key, data)
+        }
+        lean.push({ ...m, content: stripped, _imageKeys: Object.keys(images) })
+      } else {
+        lean.push(m)
+      }
+    }
+    saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)
   }
 
   function createSession(name) {
@@ -215,7 +283,20 @@ export const useChatStore = defineStore('chat', () => {
     if (currentSessionId.value) persistMessages(currentSessionId.value)
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
-    messages.value = loadFromStorage(MESSAGES_KEY_PREFIX + id)
+    const stored = loadFromStorage(MESSAGES_KEY_PREFIX + id)
+    // 从 IndexedDB 恢复图片
+    for (const m of stored) {
+      if (m._imageKeys && m._imageKeys.length > 0) {
+        const parts = [m.content]
+        for (const key of m._imageKeys) {
+          const img = await loadImage(key)
+          if (img) parts.push(img)
+        }
+        m.content = parts.join('\n\n')
+        delete m._imageKeys
+      }
+    }
+    messages.value = stored
   }
 
   async function sendMessage(content, attachments) {
