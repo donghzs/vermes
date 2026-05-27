@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-const CURRENT_VERSION = '1.1.0'
+const CURRENT_VERSION = '1.1.3'
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
 const DISMISS_KEY = 'vermes_update_dismissed'
 
@@ -14,20 +14,24 @@ export const useUpdateStore = () => {
     checked.value = true
 
     try {
-      // 添加缓存破坏参数，确保获取最新版本信息
       const cacheBuster = '?t=' + Date.now()
       const res = await fetch(VERSION_URL + cacheBuster, { signal: AbortSignal.timeout(5000) })
         .then(r => r.json())
         .catch(() => null)
 
+      console.log('[Vermes Update] current:', CURRENT_VERSION, 'remote:', res?.version, 'isNewer:', res?.version ? isNewer(res.version, CURRENT_VERSION) : 'N/A')
+
       if (res && res.version && isNewer(res.version, CURRENT_VERSION)) {
-        // 用户已手动关闭过此版本的提示，不再显示
-        if (localStorage.getItem(DISMISS_KEY) === res.version) return
+        if (localStorage.getItem(DISMISS_KEY) === res.version) {
+          console.log('[Vermes Update] dismissed, skip')
+          return
+        }
         latestVersion.value = res.version
         hasUpdate.value = true
+        console.log('[Vermes Update] showing banner for', res.version)
       }
     } catch (e) {
-      // 网络问题静默忽略
+      console.warn('[Vermes Update] error:', e)
     }
   }
 

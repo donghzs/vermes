@@ -91,7 +91,7 @@ const models = computed(() => {
       for (const p of providers) {
         if (p.models && p.models.length > 0) {
           for (const m of p.models) {
-            synced.push({ id: m, name: m, provider: p.name, group: p.name })
+            synced.push({ id: m, name: m, provider: p.id, group: p.name })
           }
         }
       }
@@ -253,7 +253,13 @@ function handleFileSelect(e) {
 }
 
 function removeFile(idx) { uploadedFiles.value.splice(idx, 1) }
-function selectModel(m) { chat.currentModel = m.id; chat.currentProvider = m.provider || m.group || ''; showModelSelect.value = false }
+function selectModel(m) {
+  chat.currentModel = m.id
+  chat.currentProvider = m.provider || m.group || ''
+  localStorage.setItem('vermes-current-model', m.id)
+  localStorage.setItem('vermes-current-provider', m.provider || m.group || '')
+  showModelSelect.value = false
+}
 
 function currentModelName() {
   const m = models.value.find(m => m.id === chat.currentModel)

@@ -40,7 +40,7 @@ export const useChatStore = defineStore('chat', () => {
   const sidebarOpen = ref(true)
   const theme = ref('dark')
   const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek-chat')
-  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit.top')
+  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
   const quotaModalType = ref('') // 'trial_expired' | 'wechat_expired'
@@ -113,7 +113,7 @@ export const useChatStore = defineStore('chat', () => {
         }).catch(() => {})
         // Set frontend state
         localStorage.setItem('vermes-current-model', 'deepseek-chat')
-        localStorage.setItem('vermes-current-provider', 'vbit.top')
+        localStorage.setItem('vermes-current-provider', 'vbit')
         currentModel.value = 'deepseek-chat'
         currentProvider.value = 'vbit.top'
         // Mark claimed
