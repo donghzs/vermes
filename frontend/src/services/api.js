@@ -37,18 +37,6 @@ export async function checkQuotaServer(wechatOpenid) {
   }
 }
 
-export async function reportQuotaSpend(quotaConsumed, wechatOpenid) {
-  try {
-    const body = { quota_consumed: quotaConsumed }
-    if (wechatOpenid) body.wechat_openid = wechatOpenid
-    await fetch('/api/quota/spend', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-  } catch (e) { console.warn('[Vermes] 上报消费失败:', e) }
-}
-
 // 计费配额管理
 export const WECHAT_QUOTA_KEY = 'vermes_wechat_quota'
 export function getWechatDailyQuota() {

@@ -28,6 +28,8 @@ onUnmounted(() => {
   window.removeEventListener('model-changed', _modelChangedHandler)
   window.removeEventListener('quota-updated', _quotaUpdatedHandler)
   window.removeEventListener('message', _postMessageHandler)
+  // 清理残留的 ObjectURL
+  uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
 })
 
 // ✅ 登录状态
@@ -36,16 +38,12 @@ const userAvatar = ref(localStorage.getItem('vermes_wechat_avatar') || '')
 const userName = ref(localStorage.getItem('vermes_wechat_name') || '已登录')
 
 // 生成二维码
-const qrCodeDataUrl = ref('')
 const wechatState = ref('')
 const wechatOAuthUrl = ref('')
 const qrLoading = ref(false)
 const qrError = ref('')
 
-async function loadQR() {
-  // 已废弃，直接调用 openWeChatQR
-  await openWeChatQR()
-}
+// 微信登录统一入口（弹窗 + 轮询）
 
 // 登出功能
 function logout() {
@@ -57,7 +55,6 @@ function logout() {
   isLoggedIn.value = false
   userAvatar.value = ''
   userName.value = '访客'
-  qrCodeDataUrl.value = ''
   stopPolling()
   console.log('[Vermes🔐] 已退出微信登录')
 }
@@ -164,10 +161,11 @@ function quickStart(text) {
 
 // 微信扫码登录 - 弹窗打开官方 OAuth 页面
 const showWeChatModal = ref(false)
-// wechatState, qrCodeDataUrl, qrLoading, qrError already declared above
+// wechatState, qrLoading, qrError already declared above
 
 let pollTimer = null
 let pollTimeout = null
+let isPollingActive = false
 function openWeChatPopup() {
   if (!wechatOAuthUrl.value) return
   const w = 420, h = 620
@@ -202,7 +200,9 @@ async function openWeChatQR() {
 
 function startPolling() {
   stopPolling()
+  isPollingActive = true
   pollTimer = setInterval(async () => {
+    if (!isPollingActive) return
     try {
       const resp = await fetch(`/api/wechat/poll?state=${wechatState.value}`)
       const data = await resp.json()
@@ -212,6 +212,7 @@ function startPolling() {
         return
       }
       if (data.scanned && data.token) {
+        isPollingActive = false  // 防止并发 fetch 重复触发 onWeChatLogin
         stopPolling()
         console.log('[Vermes🔐] 轮询获取到登录信息:', data.userName)
         onWeChatLogin(data)
@@ -222,6 +223,7 @@ function startPolling() {
 }
 
 function stopPolling() {
+  isPollingActive = false
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null }
 }
@@ -229,7 +231,7 @@ function stopPolling() {
 function onWeChatLogin(data) {
   showWeChatModal.value = false
   chat.showQuotaModal = false
-  qrCodeDataUrl.value = ''
+  stopPolling()
   // 尝试关闭微信授权弹窗
   try { window.open('', 'wechat-login')?.close() } catch(e) {}
   localStorage.setItem('vermes_wechat_token', data.token)
@@ -276,6 +278,7 @@ async function send() {
     return
   }
   inputText.value = ''
+  uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
   uploadedFiles.value = []
   try {
     await chat.sendMessage(input, files)
@@ -302,7 +305,11 @@ function handleFileSelect(e) {
   e.target.value = ''
 }
 
-function removeFile(idx) { uploadedFiles.value.splice(idx, 1) }
+function removeFile(idx) {
+  const f = uploadedFiles.value[idx]
+  if (f?.preview) URL.revokeObjectURL(f.preview)
+  uploadedFiles.value.splice(idx, 1)
+}
 
 function copyReferralCode() {
   if (!referralCode.value) return

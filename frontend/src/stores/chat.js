@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, reportQuotaSpend, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
+import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
 
 // ── H2/M11 修复：避免 Date.now() 碰撞 ──
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
@@ -159,7 +159,7 @@ export const useChatStore = defineStore('chat', () => {
       console.error('❌ init failed:', e)
       // 即使 token 获取失败也创建默认会话，保证 UI 可用
       if (sessions.value.length === 0) {
-        createSession('新会话')
+        await createSession('新会话')
       }
     }
   }
@@ -199,11 +199,11 @@ export const useChatStore = defineStore('chat', () => {
     saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)
   }
 
-  function createSession(name) {
+  async function createSession(name) {
     const s = { id: uid(), name: name || '新会话', createdAt: new Date().toISOString() }
     sessions.value.unshift(s)
     persistSessions()
-    switchSession(s.id)
+    await switchSession(s.id)
   }
 
   async function switchSession(id) {
@@ -455,7 +455,7 @@ export const useChatStore = defineStore('chat', () => {
     sidebarOpen.value = !sidebarOpen.value
   }
 
-  function deleteSession(id) {
+  async function deleteSession(id) {
     const idx = sessions.value.findIndex(s => s.id === id)
     if (idx === -1) return
     sessions.value.splice(idx, 1)
@@ -463,9 +463,9 @@ export const useChatStore = defineStore('chat', () => {
     persistSessions()
     if (currentSessionId.value === id) {
       if (sessions.value.length > 0) {
-        switchSession(sessions.value[0].id)
+        await switchSession(sessions.value[0].id)
       } else {
-        createSession('新会话')
+        await createSession('新会话')
       }
     }
   }

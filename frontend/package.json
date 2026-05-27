@@ -9,12 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.7.0",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.0.0",
-    "marked": "^18.0.4",
     "pinia": "^2.1.7",
-    "qrcode": "^1.5.4",
     "vue": "^3.4.0",
     "vue-router": "^4.3.0"
   },
