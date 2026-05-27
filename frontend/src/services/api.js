@@ -25,9 +25,12 @@ export function isCloudModel(provider) {
 }
 
 // ── 服务端配额查询 ──
-export async function checkQuotaServer(deviceId) {
+export async function checkQuotaServer(deviceId, wechatOpenid) {
   try {
-    const resp = await fetch(`/api/quota/check?device_id=${encodeURIComponent(deviceId)}`)
+    let url = '/api/quota/check?'
+    if (wechatOpenid) url += `wechat_openid=${encodeURIComponent(wechatOpenid)}`
+    else url += `device_id=${encodeURIComponent(deviceId)}`
+    const resp = await fetch(url)
     return await resp.json()
   } catch (e) {
     console.warn('[Vermes] 服务端配额查询失败:', e)
@@ -35,12 +38,15 @@ export async function checkQuotaServer(deviceId) {
   }
 }
 
-export async function reportQuotaSpend(deviceId, quotaConsumed) {
+export async function reportQuotaSpend(deviceId, quotaConsumed, wechatOpenid) {
   try {
+    const body = { quota_consumed: quotaConsumed }
+    if (wechatOpenid) body.wechat_openid = wechatOpenid
+    else body.device_id = deviceId
     await fetch('/api/quota/spend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId, quota_consumed: quotaConsumed })
+      body: JSON.stringify(body)
     })
   } catch (e) { console.warn('[Vermes] 上报消费失败:', e) }
 }

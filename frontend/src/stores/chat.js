@@ -321,8 +321,9 @@ export const useChatStore = defineStore('chat', () => {
     const isCloud = isCloudModel(currentProvider.value)
     if (isCloud) {
       const deviceId = localStorage.getItem('vermes_device_id')
-      if (deviceId) {
-        const serverCheck = await checkQuotaServer(deviceId)
+      const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+      if (deviceId || wechatOpenid) {
+        const serverCheck = await checkQuotaServer(deviceId, wechatOpenid)
         if (serverCheck.success && serverCheck.data.trial_expired) {
           quotaModalType.value = 'trial_expired'
           showQuotaModal.value = true
@@ -449,10 +450,11 @@ export const useChatStore = defineStore('chat', () => {
           }
           // 上报服务端消费（估算: 每100字符 ≈ 50积分）
           const deviceId = localStorage.getItem('vermes_device_id')
-          if (deviceId && isCloud) {
+          const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+          if ((deviceId || wechatOpenid) && isCloud) {
             const respLen = am?.content?.length || 0
             const estimatedPoints = Math.max(10, Math.ceil(respLen / 100) * 50)
-            reportQuotaSpend(deviceId, estimatedPoints * 720).then(() => {
+            reportQuotaSpend(deviceId, estimatedPoints * 720, wechatOpenid).then(() => {
               // 刷新配额显示
               window.dispatchEvent(new Event('quota-updated'))
             })
