@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
@@ -322,6 +322,17 @@ function toggleProvider(id) {
   expandedProvider.value = expandedProvider.value === id ? null : id
 }
 
+// H1 修复：事件处理提升到组件作用域，onUnmounted 可访问
+const _onTrialToken = (e) => {
+  const { token } = e.detail
+  if (!token) return
+  const vbit = providers.value.find(p => p.id === 'vbit')
+  if (vbit) {
+    vbit.key = token
+    saveProvidersToStorage()
+  }
+}
+
 onMounted(() => {
   // 加载用户已保存的配置
   const saved_data = localStorage.getItem('vermes-providers')
@@ -347,17 +358,11 @@ onMounted(() => {
     } catch(e) {}
   }
   // 不再自动同步、不再填充模板模型 —— 用户自己点同步或手动添加
-  // Listen for trial token
-  const onTrial = (e) => {
-    const { token } = e.detail
-    if (!token) return
-    const vbit = providers.value.find(p => p.id === 'vbit')
-    if (vbit) {
-      vbit.key = token
-      saveProvidersToStorage()
-    }
-  }
-  window.addEventListener('trial-token', onTrial)
+  window.addEventListener('trial-token', _onTrialToken)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('trial-token', _onTrialToken)
 })
 </script>
 

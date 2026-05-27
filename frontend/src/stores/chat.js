@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, reportQuotaSpend, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
 
+// ── H2/M11 修复：避免 Date.now() 碰撞 ──
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
+
 // ── v2: 未登录拦截弹窗类型 ──
 const QUOTA_NEED_LOGIN = 'need_login'
 
@@ -53,7 +56,7 @@ const BASE64_RE = /!\[([^\]]*)\]\(data:image[^)]+\)/g
 function stripBase64FromContent(content, messageId) {
   const images = {}
   let idx = 0
-  const prefix = messageId || Date.now().toString()
+  const prefix = messageId || uid()
   const stripped = content.replace(BASE64_RE, (match, name) => {
     const key = `${prefix}-${idx++}`
     images[key] = match
@@ -197,7 +200,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function createSession(name) {
-    const s = { id: Date.now().toString(), name: name || '新会话', createdAt: new Date().toISOString() }
+    const s = { id: uid(), name: name || '新会话', createdAt: new Date().toISOString() }
     sessions.value.unshift(s)
     persistSessions()
     switchSession(s.id)
@@ -275,7 +278,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    const uid = Date.now().toString()
+    const msgId = uid()
 
     // 处理附件：转 base64 并构建用户消息
     let userContent = content?.trim() || ''
@@ -314,7 +317,7 @@ export const useChatStore = defineStore('chat', () => {
     // 添加用户消息
     console.log('[Vermes💬 sendMessage] Adding user message, sessionId:', currentSessionId.value)
     messages.value.push({
-      id: uid, role: 'user', content: userContent,
+      id: msgId, role: 'user', content: userContent,
       sessionId: currentSessionId.value, timestamp: Date.now(),
       attachments: processedAttachments
     })
@@ -323,7 +326,7 @@ export const useChatStore = defineStore('chat', () => {
     loading.value = true
 
     // 添加 AI 回复占位
-    const aid = (Date.now() + 1).toString()
+    const aid = uid()
     messages.value.push({
       id: aid, role: 'assistant', content: '',
       sessionId: currentSessionId.value, timestamp: Date.now(),
