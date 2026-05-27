@@ -2,7 +2,7 @@
 """
 Vermes GUI App — 双击即开原生窗口，无需浏览器。
 pywebview 6.x: create_window → start(func=...)
-单例锁：确保同一时间只有一个实例运行。
+无单例锁：允许多开，每次自动找可用端口。
 自动端口分配：避免与本机测试实例冲突。
 """
 
@@ -19,7 +19,6 @@ PORT_FILE     = os.path.expanduser("~/.vermes/gui_port.txt")
 WINDOW_W     = 1200
 WINDOW_H     = 800
 
-LOCK_FILE = os.path.expanduser("~/.vermes/gui_app.lock")
 
 # 确保 hermes_cli 可导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -125,31 +124,6 @@ class VermesAPI:
         return {"success": False, "error": "timeout or cancelled"}
 
 
-def acquire_lock():
-    """获取单例锁。成功返回 lock file object，失败返回 None（已有实例在运行）。"""
-    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
-    if platform.system() == "Windows":
-        try:
-            f = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            f = open(f, "w")
-            f.write(str(os.getpid()))
-            f.flush()
-            return f
-        except (OSError, IOError):
-            return None
-    else:
-        import fcntl
-        f = open(LOCK_FILE, "w")
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            f.write(str(os.getpid()))
-            f.flush()
-            return f
-        except (IOError, OSError):
-            f.close()
-            return None
-
-
 def find_available_port(start_port=9119, max_tries=20):
     """从 start_port 开始找第一个可用的端口。"""
     import socket
@@ -222,7 +196,7 @@ def on_dom_ready():
     print("[Vermes] DOM 就绪，窗口已打开。")
 
 
-def main(lock_fd, port):
+def main(port):
     """原生窗口优先，失败回退浏览器。"""
     url = f"http://127.0.0.1:{port}"
     print(f"[Vermes] 打开界面：{url}")
@@ -249,20 +223,10 @@ def main(lock_fd, port):
     except KeyboardInterrupt:
         print("[Vermes] 退出。")
     finally:
-        if platform.system() != "Windows":
-            import fcntl
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
         os._exit(0)
 
 
 if __name__ == "__main__":
-    lock_fd = acquire_lock()
-    if lock_fd is None:
-        # 已有实例在运行，静默退出
-        print("[Vermes] 已有实例在运行，请切换到已打开的窗口。")
-        sys.exit(0)
-
     # 服务器在后台线程启动（不阻塞）
     t = threading.Thread(target=start_server, daemon=True)
     t.start()
@@ -294,4 +258,4 @@ if __name__ == "__main__":
         print("[Vermes] 警告：后端未就绪，仍尝试打开窗口。")
 
     # GUI 在主线程启动（macOS 要求）
-    main(lock_fd, port)
+    main(port)
