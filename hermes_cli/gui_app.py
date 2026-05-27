@@ -104,7 +104,15 @@ class VermesAPI:
                 except Exception:
                     break
 
+        def on_closed():
+            """用户手动关闭窗口"""
+            if not result_ready.is_set():
+                print("[Vermes API] OAuth 窗口被用户关闭")
+                VermesAPI._oauth_result = {"success": False, "error": "cancelled"}
+                result_ready.set()
+
         win.events.loaded += on_loaded
+        win.events.closed += on_closed
         poller = threading.Thread(target=poll_url, daemon=True)
         poller.start()
 
