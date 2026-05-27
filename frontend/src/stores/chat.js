@@ -100,7 +100,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
-  const quotaModalType = ref('') // 'trial_expired' | 'wechat_expired'
+  const quotaModalType = ref('need_login') // 'need_login' | 'trial_expired' | 'wechat_expired'
 
   // 在线模式标志
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
