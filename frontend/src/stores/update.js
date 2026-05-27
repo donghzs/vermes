@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 
-const CURRENT_VERSION = '1.1.3'
+/* global __APP_VERSION__ */
+const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
 const DISMISS_KEY = 'vermes_update_dismissed'
 
