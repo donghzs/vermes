@@ -28,7 +28,6 @@ onUnmounted(() => {
   window.removeEventListener('model-changed', _modelChangedHandler)
   window.removeEventListener('quota-updated', _quotaUpdatedHandler)
   window.removeEventListener('message', _postMessageHandler)
-  window.removeEventListener('message', _wxLoginHandler)
   // 清理残留的 ObjectURL
   uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
 })
@@ -160,78 +159,53 @@ function quickStart(text) {
 
 // 微信扫码登录 - 内嵌二维码（WxLogin.js SDK）
 const showWeChatModal = ref(false)
-const wechatQrReady = ref(false)
+const isPywebview = typeof window !== 'undefined' && !!window.pywebview
 
 let pollTimer = null
 let pollTimeout = null
 let isPollingActive = false
 
-function loadWxLoginScript() {
-  return new Promise((resolve, reject) => {
-    if (document.getElementById('wx-login-sdk')) { resolve(); return }
-    const s = document.createElement('script')
-    s.id = 'wx-login-sdk'
-    s.src = 'https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js'
-    s.onload = resolve
-    s.onerror = reject
-    document.head.appendChild(s)
-  })
-}
-
 async function openWeChatQR() {
-  console.log('[Vermes🔐] 微信登录（内嵌二维码）...')
+  console.log('[Vermes🔐] 微信登录...')
   qrError.value = ''
-  showWeChatModal.value = true
-  wechatQrReady.value = false
 
-  try {
-    // 从后端获取 state（用于轮询备用通道）
-    const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-    const data = await res.json()
-    wechatState.value = data.state
-
-    // 加载 WxLogin.js SDK
-    await loadWxLoginScript()
-
-    // 等待 DOM 更新后渲染二维码
-    await nextTick()
-    const container = document.getElementById('wechat-login-container')
-    if (!container) { qrError.value = '容器未找到'; return }
-    container.innerHTML = ''
-
-    new window.WxLogin({
-      self_redirect: false,
-      id: 'wechat-login-container',
-      appid: 'wxfd680141e93226be',
-      scope: 'snsapi_login',
-      redirect_uri: encodeURIComponent('https://vbit.top/api/wechat/callback'),
-      state: data.state,
-      stylelite: '1',
-      color_scheme: 'auto',
-    })
-    wechatQrReady.value = true
-    // 同时启动轮询作为备用检测通道
-    startPolling()
-  } catch(e) {
-    console.error('[Vermes🔐] 加载微信登录失败:', e)
-    qrError.value = '加载失败，请重试'
+  if (isPywebview) {
+    // pywebview: 原生窗口打开 OAuth（同步阻塞直到用户完成授权）
+    try {
+      const result = await window.pywebview.api.open_oauth_window(
+        'https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=' +
+        encodeURIComponent('https://vbit.top/api/wechat/callback') +
+        '&response_type=code&scope=snsapi_login&state=' + Date.now() + '#wechat_redirect'
+      )
+      if (result && result.success && result.code) {
+        console.log('[Vermes🔐] 原生窗口获取到 code')
+        await exchangeWechatCode(result.code)
+      } else {
+        qrError.value = result?.error === 'timeout or cancelled' ? '已取消' : '登录失败'
+      }
+    } catch(e) {
+      console.error('[Vermes🔐] 原生窗口登录失败:', e)
+      qrError.value = '登录失败，请重试'
+    }
+  } else {
+    // 浏览器开发模式: 弹窗 + 轮询
+    showWeChatModal.value = true
+    try {
+      const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      const data = await res.json()
+      wechatState.value = data.state
+      const w = 420, h = 620
+      const left = Math.round((screen.width - w) / 2)
+      const top = Math.round((screen.height - h) / 2)
+      const popup = window.open(data.url, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
+      if (!popup || popup.closed) showWeChatModal.value = true
+      startPolling()
+    } catch(e) {
+      console.error('[Vermes🔐] 加载微信登录失败:', e)
+      qrError.value = '加载失败，请重试'
+    }
   }
 }
-
-// 监听 WxLogin.js SDK 的 postMessage（用户扫码确认后触发）
-const _wxLoginHandler = async (e) => {
-  if (!e.data || typeof e.data !== 'string') return
-  // WxLogin.js 发送的 postMessage 包含 code
-  try {
-    const parsed = JSON.parse(e.data)
-    if (parsed.code) {
-      console.log('[Vermes🔐] WxLogin 收到 code')
-      stopPolling()
-      await exchangeWechatCode(parsed.code)
-    }
-  } catch {}
-}
-window.addEventListener('message', _wxLoginHandler)
 
 // 用 code 换 token（安全：AppSecret 只在后端）
 async function exchangeWechatCode(code) {
@@ -511,17 +485,13 @@ watch(() => chat.filteredMessages, async () => {
     </div>
   </div>
 
-  <!-- 微信登录弹窗（内嵌二维码） -->
+  <!-- 微信登录弹窗（仅浏览器开发模式使用） -->
   <div v-if="showWeChatModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showWeChatModal = false; stopPolling()">
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
       <button @click="showWeChatModal = false; stopPolling()" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg">✕</button>
-      <h3 class="font-bold text-lg mb-3">微信扫码登录</h3>
-      <div id="wechat-login-container" style="min-height:280px; display:flex; align-items:center; justify-content:center;">
-        <div v-if="!wechatQrReady" class="flex items-center justify-center" style="min-height:280px">
-          <span class="text-gray-400 text-sm">加载二维码...</span>
-        </div>
-      </div>
-      <p class="text-xs text-gray-400 mt-3">使用微信扫一扫登录</p>
+      <h3 class="font-bold text-lg mb-3">微信登录</h3>
+      <div class="text-5xl mb-4">💬</div>
+      <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">请在弹出的窗口中完成微信授权</p>
       <p v-if="qrError" class="text-xs text-red-400 mt-2">{{ qrError }}</p>
     </div>
   </div>
