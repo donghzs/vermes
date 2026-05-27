@@ -2,7 +2,7 @@
 import { ref, watch, nextTick, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
-import { getRemainingQuota, getWechatDailyQuota, getTrialDaysLeft, isTrialExpired } from '../services/api'
+import { getRemainingQuota, getWechatDailyQuota, getTrialDaysLeft, isTrialExpired, checkQuotaServer } from '../services/api'
 import MarkdownIt from 'markdown-it'
 import QRCode from 'qrcode'
 
@@ -20,6 +20,7 @@ onMounted(() => {
     chat.currentProvider = e.detail.provider
   }
   window.addEventListener('model-changed', handler)
+  window.addEventListener('quota-updated', () => refreshQuota())
 })
 
 // ✅ 登录状态
@@ -76,27 +77,48 @@ const fileInput = ref(null)
 const uploadedFiles = ref([])
 const showModelSelect = ref(false)
 
-// 剩余配额显示
+// ── 服务端积分配额 ──
+const serverQuota = ref({ remaining: 200, total_limit: 200, spent_today: 0, bonus_points: 0, days_left: 31, trial_expired: false, is_wechat: false })
+const referralCode = ref('')
+
+async function refreshQuota() {
+  try {
+    const deviceId = localStorage.getItem('vermes_device_id')
+    if (!deviceId) return
+    const resp = await checkQuotaServer(deviceId)
+    if (resp.success) {
+      serverQuota.value = resp.data
+    }
+  } catch (e) { console.warn('[Vermes] 刷新配额失败:', e) }
+}
+
+async function loadReferralCode() {
+  try {
+    const deviceId = localStorage.getItem('vermes_device_id')
+    if (!deviceId) return
+    const resp = await fetch(`/api/quota/referral/code?device_id=${encodeURIComponent(deviceId)}`)
+    const data = await resp.json()
+    if (data.success) referralCode.value = data.data.code
+  } catch (e) {}
+}
+
+onMounted(() => {
+  refreshQuota()
+  loadReferralCode()
+})
+
 const quotaDisplay = computed(() => {
-  if (isTrialExpired()) return { text: '试用已结束', remaining: 0 }
-  const loggedIn = !!localStorage.getItem('vermes_token')
-  const daysLeft = getTrialDaysLeft()
-  if (loggedIn) {
-    const q = getWechatDailyQuota()
-    return { text: `剩余 ${q.remaining} 次/天 · ${daysLeft}天后到期`, remaining: q.remaining }
-  }
-  const q = getRemainingQuota()
-  const today = new Date().toDateString()
-  const remaining = (q && q.date === today) ? q.remaining : 100
-  return { text: `剩余 ${remaining}/100 次/天 · ${daysLeft}天后到期`, remaining }
+  if (serverQuota.value.trial_expired) return { text: '试用已结束', remaining: 0 }
+  const q = serverQuota.value
+  return { text: `✨ ${q.remaining}/${q.total_limit} 积分 · ${q.days_left}天`, remaining: q.remaining }
 })
 
 // ✅ App.vue 已调用 chat.init()，这里不需要重复
 
 // 模型列表
 const defaultModels = [
-  { id: 'MiMo-V2.5', name: '⚡ MiMo V2.5（小米·免费）', provider: 'vbit.top' },
-  { id: 'deepseek-chat', name: '🚀 DeepSeek V4 Flash', provider: 'vbit.top' },
+  { id: 'mimo-v2.5', name: '⚡ MiMo V2.5（小米）', provider: 'vbit.top' },
+  { id: 'deepseek-v4-flash', name: '🚀 DeepSeek V4 Flash', provider: 'vbit.top' },
 ]
 
 const models = computed(() => {
@@ -261,6 +283,16 @@ function handleFileSelect(e) {
 }
 
 function removeFile(idx) { uploadedFiles.value.splice(idx, 1) }
+
+function copyReferralCode() {
+  if (!referralCode.value) return
+  const text = `我在用 Vermes AI 助手，免费体验中！用我的推荐码 ${referralCode.value} 注册，我俩都能获得额外 200 积分/天。下载: https://vbit.top/vermes/#downloads`
+  navigator.clipboard.writeText(text).then(() => {
+    alert('✅ 推荐码已复制到剪贴板！分享给朋友即可获得 +200 积分/天')
+  }).catch(() => {
+    prompt('复制以下内容分享给朋友:', text)
+  })
+}
 function selectModel(m) {
   chat.currentModel = m.id
   chat.currentProvider = m.provider || m.group || ''
@@ -411,29 +443,42 @@ watch(() => chat.filteredMessages, async () => {
   <!-- 配额耗尽弹窗 -->
   <div v-if="chat.showQuotaModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="chat.showQuotaModal = false">
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
-      <div class="text-4xl mb-3">{{ chat.quotaModalType === 'trial_expired' ? '⏰' : '📱' }}</div>
+      <div class="text-4xl mb-3">{{ chat.quotaModalType === 'trial_expired' ? '⏰' : '💡' }}</div>
       <h3 class="font-bold text-lg mb-2">
-        {{ chat.quotaModalType === 'trial_expired' ? '今日免费额度已用完' : '今日微信额度已用完（500次/天）' }}
+        {{ chat.quotaModalType === 'trial_expired' ? '免费体验已过期' : '今日积分已用完' }}
       </h3>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">
         {{ chat.quotaModalType === 'trial_expired'
-          ? '免费体验限 100 次/天，明天再来或微信扫码升级。'
-          : '明天再来吧，或配置自己的 API Key 继续使用。' }}
+          ? '免费体验截止至 2026年6月26日'
+          : `今日已用 ${serverQuota.spent_today}/${serverQuota.total_limit} 积分` }}
       </p>
-      <p class="text-xs text-amber-500 mb-5">🎁 免费体验截止：2026年6月26日</p>
+      <p v-if="serverQuota.bonus_points > 0" class="text-xs text-green-500 mb-3">
+        🎁 推荐奖励: +{{ serverQuota.bonus_points }} 积分/天
+      </p>
+      <p class="text-xs text-amber-500 mb-5">⏰ 每日积分凌晨自动重置</p>
       <div class="flex flex-col gap-3">
-        <button v-if="chat.quotaModalType === 'trial_expired'"
-          @click="chat.showQuotaModal = false; openWeChatQR()"
+        <!-- 选项1: 推荐朋友 -->
+        <button @click="copyReferralCode"
           class="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition">
-          📱 微信扫码升级（500次/天）
+          🎁 推荐朋友 +200 积分
         </button>
+        <p v-if="referralCode" class="text-xs text-gray-400 -mt-1">
+          你的推荐码: <span class="font-mono text-green-500">{{ referralCode }}</span>
+          <button @click="copyReferralCode" class="ml-1 text-green-500 hover:underline">复制</button>
+        </p>
+        <!-- 选项2: 明天再来 -->
+        <button @click="chat.showQuotaModal = false"
+          class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
+          ⏰ 明天再来（凌晨重置）
+        </button>
+        <!-- 选项3: 配置自己的 API Key -->
         <button v-if="!chat.isOnline" @click="chat.showQuotaModal = false; router.push('/settings')"
           class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
           🔑 配置自己的 API Key
         </button>
         <button @click="chat.showQuotaModal = false"
           class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
-          {{ chat.quotaModalType === 'trial_expired' ? '先不用了' : '好的，明天再来' }}
+          关闭
         </button>
       </div>
     </div>
