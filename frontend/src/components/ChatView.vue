@@ -96,7 +96,7 @@ const quotaDisplay = computed(() => {
 // 模型列表
 const defaultModels = [
   { id: 'deepseek-chat', name: '🚀 DeepSeek V4 Flash', provider: 'vbit.top' },
-  { id: 'mimo-v2-flash', name: '⚡ MiMo V2 Flash (免费)', provider: 'xiaomi' },
+  { id: 'MiMo-V2.5', name: '⚡ MiMo V2.5 (小米)', provider: 'vbit.top' },
 ]
 
 const models = computed(() => {
