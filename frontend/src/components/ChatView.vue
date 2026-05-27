@@ -192,8 +192,8 @@ async function openWeChatQR() {
     const data = await res.json()
     wechatState.value = data.state
     wechatOAuthUrl.value = data.url
-    // 直接打开微信官方授权页（桌面会调起微信客户端，手机会打开微信内置浏览器）
-    window.open(data.url, '_blank')
+    // 打开微信授权小弹窗（不是新标签页）
+    window.open(data.url, 'wechat-login', 'width=450,height=650,top=100,left=200,menubar=no,toolbar=no,location=no,status=no')
     startPolling()
   } catch(e) {
     console.error('[Vermes🔐] 加载微信登录失败:', e)
@@ -456,10 +456,10 @@ watch(() => chat.filteredMessages, async () => {
       <template v-else>
         <div class="text-5xl mb-4">💬</div>
         <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">已打开微信授权页面，请在微信中确认登录</p>
-        <a v-if="wechatOAuthUrl" :href="wechatOAuthUrl" target="_blank" rel="noopener"
+        <button v-if="wechatOAuthUrl" @click="window.open(wechatOAuthUrl, 'wechat-login', 'width=450,height=650,top=100,left=200,menubar=no,toolbar=no,location=no,status=no')"
           class="inline-flex items-center gap-1.5 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
           📱 重新打开授权页
-        </a>
+        </button>
         <p v-if="qrError" class="text-xs text-red-400 mt-2">{{ qrError }}</p>
       </template>
     </div>
