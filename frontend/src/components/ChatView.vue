@@ -500,9 +500,32 @@ watch(() => chat.filteredMessages, async () => {
       </template>
 
       <!-- 今日积分已用完 -->
+      <template v-else-if="chat.quotaModalType === 'wechat_expired'">
+        <div class="text-4xl mb-3">⏰</div>
+        <h3 class="font-bold text-lg mb-2">今日额度已用完</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">微信登录用户每天 500 积分</p>
+        <p class="text-xs text-amber-500 mb-5">⏰ 每日积分凌晨自动重置</p>
+        <div class="flex flex-col gap-3">
+          <button @click="chat.showQuotaModal = false"
+            class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
+            ⏰ 明天再来（凌晨重置）
+          </button>
+          <button @click="chat.showQuotaModal = false; router.push('/settings')"
+            class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
+            🔑 配置自己的 API Key
+          </button>
+          <button @click="chat.showQuotaModal = false"
+            class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+            关闭
+          </button>
+        </div>
+      </template>
+
+      <!-- 默认: 未知类型（防御性兜底） -->
       <template v-else>
         <div class="text-4xl mb-3">💡</div>
-        <h3 class="font-bold text-lg mb-2">今日积分已用完</h3>
+        <h3 class="font-bold text-lg mb-2">提示</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">请登录或配置 API Key 继续使用</p>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">
           今日已用 {{ serverQuota.spent_today }}/{{ serverQuota.total_limit }} 积分
         </p>
