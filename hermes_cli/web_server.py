@@ -3265,7 +3265,19 @@ def _get_chat_credentials() -> tuple[str, str, str]:
         "siliconflow": "SILICONFLOW_API_KEY",
         "mistral": "MISTRAL_API_KEY",
         "cohere": "COHERE_API_KEY",
-        "custom": "CUSTOM_API_KEY",
+    
+    "minimax": "MINIMAX_API_KEY",
+    "baidu": "BAIDU_API_KEY",
+    "xinghuo": "XINGHUO_API_KEY",
+    "stepfun": "STEPFUN_API_KEY",
+    "yi": "YI_API_KEY",
+    "baichuan": "BAICHUAN_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "together": "TOGETHER_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "custom": "CUSTOM_API_KEY",
+
         "ollama": None,  # Local, no key needed
     }
     
@@ -3289,6 +3301,18 @@ def _get_chat_credentials() -> tuple[str, str, str]:
         "mistral": "https://api.mistral.ai/v1",
         "cohere": "https://api.cohere.ai/v1",
         "ollama": "http://localhost:11434/v1",
+
+    "minimax": "https://api.minimax.chat/v1",
+    "baidu": "https://qianfan.baidubce.com/v2",
+    "xinghuo": "https://spark-api.xf-yun.com/v1",
+    "stepfun": "https://api.stepfun.com/v1",
+    "yi": "https://api.lingyiwanwu.com/v1",
+    "baichuan": "https://api.baichuan-ai.com/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "together": "https://api.together.xyz/v1",
+    "anthropic": "https://api.anthropic.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta",
+
     }
     
     if cfg_path.exists():
@@ -3356,6 +3380,7 @@ PROVIDER_ENV_MAP_SHARED = {
     "mistral": "MISTRAL_API_KEY",
     "cohere": "COHERE_API_KEY",
     "custom": "CUSTOM_API_KEY",
+    "xiaomi": "XIAOMI_API_KEY",
     "ollama": None,
 }
 
@@ -3378,6 +3403,7 @@ PROVIDER_BASE_URL_SHARED = {
     "mistral": "https://api.mistral.ai/v1",
     "cohere": "https://api.cohere.ai/v1",
     "ollama": "http://localhost:11434/v1",
+    "xiaomi": "https://api.xiaomimimo.com/v1",
 }
 
 
@@ -3402,7 +3428,14 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
                 break
 
     # Normalize common provider aliases
-    provider_aliases = {"通义千问": "qwen", "vbit.top": "vbit", "Ollama (本地)": "ollama", "OpenRouter": "openrouter", "DeepSeek": "deepseek"}
+    provider_aliases = {
+        "通义千问": "qwen", "vbit.top": "vbit", "Ollama (本地)": "ollama",
+        "OpenRouter": "openrouter", "DeepSeek": "deepseek", "小米 MiMo": "xiaomi", "小米 mimo": "xiaomi",
+        "自定义提供商": "custom", "蚂蚁百灵": "ant-ling", "MiniMax": "minimax",
+        "百度文心": "baidu", "讯飞星火": "xinghuo", "阶跃星辰": "stepfun",
+        "零一万物": "yi", "百川智能": "baichuan", "Groq (极速推理)": "groq",
+        "Together AI": "together", "Anthropic Claude": "anthropic", "Google Gemini": "gemini",
+    }
     provider = provider.lower(); provider = provider_aliases.get(provider, provider)
 
     # Priority 3: use config.yaml default provider
@@ -3415,17 +3448,15 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
         else:
             provider = "deepseek"
 
-    # Get base_url
-    base_url = PROVIDER_BASE_URL_SHARED.get(provider, "")
-
-    # Custom provider: read base_url from config.yaml providers section
-    if not base_url and provider == "custom":
-        cfg_path = home / "config.yaml"
-        if cfg_path.exists():
-            with open(cfg_path) as f:
-                cfg = yaml.safe_load(f) or {}
-            custom_cfg = (cfg.get("providers", {}).get("custom", {}))
-            base_url = custom_cfg.get("base_url", "")
+    # Get base_url — check config.yaml override first (user-set), then hardcoded defaults
+    base_url = ""
+    cfg_path = home / "config.yaml"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        base_url = cfg.get("providers", {}).get(provider, {}).get("base_url", "")
+    if not base_url:
+        base_url = PROVIDER_BASE_URL_SHARED.get(provider, "")
 
     # Get api_key from .env
     api_key = ""
@@ -5426,61 +5457,128 @@ PROVIDER_TEMPLATES = {
         "name": "OpenAI",
         "base_url": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
-        "models": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "models": [],
     },
     "deepseek": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
         "api_key_env": "DEEPSEEK_API_KEY",
-        "models": ["deepseek-chat", "deepseek-coder"],
+        "models": [],
     },
     "qwen": {
         "name": "Qwen (阿里通义)",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "api_key_env": "QWEN_API_KEY",
-        "models": ["qwen-turbo", "qwen-plus", "qwen-max"],
+        "models": [],
     },
     "zhipu": {
         "name": "智谱 GLM",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "api_key_env": "ZHIPU_API_KEY",
-        "models": ["glm-4", "glm-4-plus", "glm-4-air"],
+        "models": [],
     },
     "doubao": {
         "name": "字节豆包",
         "base_url": "https://ark.cn-beijing.volces.com/api/v3",
         "api_key_env": "DOUBAO_API_KEY",
-        "models": ["doubao-pro-32k", "doubao-lite-32k"],
+        "models": [],
     },
     "kimi": {
         "name": "Kimi",
         "base_url": "https://api.moonshot.cn/v1",
         "api_key_env": "KIMI_API_KEY",
-        "models": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+        "models": [],
     },
     "ant-ling": {
         "name": "蚂蚁百灵",
         "base_url": "https://api.ant-ling.com/v1",
         "api_key_env": "ANT_LING_API_KEY",
-        "models": ["Ling-2.6-1T", "Ling-2.6-flash"],
+        "models": [],
     },
     "openrouter": {
         "name": "OpenRouter",
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
-        "models": ["openai/gpt-4", "anthropic/claude-opus-4", "google/gemini-pro"],
+        "models": [],
     },
     "vbit": {
         "name": "vbit.top (胜比特)",
         "base_url": "https://api.vbit.top/v1",
         "api_key_env": "VBIT_API_KEY",
-        "models": [
-            "qwen-turbo", "qwen-plus", "qwen-max",
-            "deepseek-chat", "deepseek-reasoner",
-            "gpt-4o", "gpt-4o-mini",
-            "claude-sonnet-4-20250514", "claude-haiku-4-20250414",
-            "gemini-2.5-flash", "gemini-2.5-pro",
-        ],
+        "models": [],
+    },
+    "xiaomi": {
+        "name": "小米 MiMo",
+        "base_url": "https://api.xiaomimimo.com/v1",
+        "api_key_env": "XIAOMI_API_KEY",
+        "models": [],
+    },
+
+    "minimax": {
+        "name": "MiniMax",
+        "base_url": "https://api.minimax.chat/v1",
+        "api_key_env": "MINIMAX_API_KEY",
+        "models": [],
+    },
+    "baidu": {
+        "name": "百度文心",
+        "base_url": "https://qianfan.baidubce.com/v2",
+        "api_key_env": "BAIDU_API_KEY",
+        "models": [],
+    },
+    "xinghuo": {
+        "name": "讯飞星火",
+        "base_url": "https://spark-api.xf-yun.com/v1",
+        "api_key_env": "XINGHUO_API_KEY",
+        "models": [],
+    },
+    "stepfun": {
+        "name": "阶跃星辰 StepFun",
+        "base_url": "https://api.stepfun.com/v1",
+        "api_key_env": "STEPFUN_API_KEY",
+        "models": [],
+    },
+    "yi": {
+        "name": "零一万物 Yi",
+        "base_url": "https://api.lingyiwanwu.com/v1",
+        "api_key_env": "YI_API_KEY",
+        "models": [],
+    },
+    "baichuan": {
+        "name": "百川智能",
+        "base_url": "https://api.baichuan-ai.com/v1",
+        "api_key_env": "BAICHUAN_API_KEY",
+        "models": [],
+    },
+    "groq": {
+        "name": "Groq (极速推理)",
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key_env": "GROQ_API_KEY",
+        "models": [],
+    },
+    "together": {
+        "name": "Together AI",
+        "base_url": "https://api.together.xyz/v1",
+        "api_key_env": "TOGETHER_API_KEY",
+        "models": [],
+    },
+    "anthropic": {
+        "name": "Anthropic (Claude)",
+        "base_url": "https://api.anthropic.com/v1",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "models": [],
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "api_key_env": "GEMINI_API_KEY",
+        "models": [],
+    },
+    "custom": {
+        "name": "自定义提供商",
+        "base_url": "",
+        "api_key_env": "CUSTOM_API_KEY",
+        "models": [],
     },
 }
 
@@ -5493,7 +5591,7 @@ def get_provider_templates():
             "name": tpl["name"],
             "base_url": tpl["base_url"],
             "api_key_env": tpl["api_key_env"],
-            "models": tpl["models"],
+            "models": [],
         }
     return {"templates": result}
 
@@ -5509,8 +5607,7 @@ async def add_provider(body: ProviderAddRequest):
     if not template:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {body.provider_id}")
     
-    env_path = get_env_path()
-    save_env_value(env_path, template["api_key_env"], body.api_key)
+    save_env_value(template["api_key_env"], body.api_key)
     
     if body.base_url and body.base_url != template["base_url"]:
         cfg = load_config()
@@ -5547,7 +5644,7 @@ async def verify_provider(body: ProviderAddRequest):
             elif "models" in data:
                 models = [m["name"] for m in data["models"]]
             else:
-                models = template["models"]
+                models = template.get("models", [])
             return {"ok": True, "models": models}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Verification failed: {str(e)}")
@@ -5555,25 +5652,60 @@ async def verify_provider(body: ProviderAddRequest):
 
 @app.post("/api/provider/sync-models")
 async def provider_sync_models(request: Request):
-    """Sync available models from a specific provider by base_url + api_key."""
+    """Sync available models from a provider.
+    Accepts either (provider_id) OR (base_url + api_key).
+    With provider_id: auto-resolves base_url + api_key from config/.env.
+    """
     import httpx
     body = await request.json()
+    provider_id = body.get("provider_id", "")
     base_url = body.get("base_url", "").rstrip("/")
     api_key = body.get("api_key", "")
+
+    # Resolve from provider_id if given
+    if provider_id:
+        template = PROVIDER_TEMPLATES.get(provider_id, {})
+        if not base_url:
+            base_url = template.get("base_url", "")
+        env_var = template.get("api_key_env", "")
+        # Try load_env() first (standard config reading)
+        if not api_key and env_var:
+            from hermes_cli.config import load_env
+            env = load_env()
+            api_key = env.get(env_var, "")
+        # Fallback: try config.yaml providers section
+        if not api_key:
+            from hermes_cli.config import get_config_path, load_config
+            cfg_path = get_config_path()
+            if cfg_path.exists():
+                cfg = load_config()
+                api_key = cfg.get("providers", {}).get(provider_id, {}).get("api_key", api_key)
+
     if not base_url:
-        return {"ok": False, "error": "base_url required"}
+        return {"ok": False, "error": "base_url required (or provide provider_id)"}
+
     headers = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # Try /models first (OpenAI format)
             resp = await client.get(f"{base_url}/models", headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
-                model_list = [m.get("id", m.get("name", "")) for m in data.get("data", [])]
-                return {"ok": True, "models": model_list}
+                raw = data.get("data", data.get("models", []))
+                model_list = []
+                for m in raw:
+                    if isinstance(m, dict):
+                        model_list.append(m.get("id", m.get("name", "")))
+                    elif isinstance(m, str):
+                        model_list.append(m)
+                model_list = [m for m in model_list if m]
+                if model_list:
+                    return {"ok": True, "models": model_list}
             else:
-                return {"ok": False, "error": f"API returned {resp.status_code}"}
+                return {"ok": False, "error": f"API returned {resp.status_code} from {base_url}/models"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -5589,7 +5721,6 @@ async def discover_models():
             
             data = resp.json()
             models = [m["name"] for m in data.get("models", [])]
-            return {"ok": True, "models": models, "base_url": "http://localhost:11434/v1"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

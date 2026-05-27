@@ -2,9 +2,11 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
+import { useUpdateStore } from '../stores/update'
 import * as api from '../services/api'
 
 const chat = useChatStore()
+const update = useUpdateStore()
 const router = useRouter()
 
 const providers = ref([
@@ -13,7 +15,20 @@ const providers = ref([
   { id: 'qwen', name: '通义千问', key: '', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: [], syncing: false },
   { id: 'openrouter', name: 'OpenRouter', key: '', baseUrl: 'https://openrouter.ai/api/v1', models: [], syncing: false },
   { id: 'vbit', name: 'vbit.top', key: '', baseUrl: 'https://api.vbit.top/v1', models: [], syncing: false },
+  { id: 'xiaomi', name: '小米 MiMo', key: '', baseUrl: 'https://api.xiaomimimo.com/v1', models: [], syncing: false },
+  { id: 'ant-ling', name: '蚂蚁百灵', key: '', baseUrl: 'https://api.ant-ling.com/v1', models: [], syncing: false },
   { id: 'ollama', name: 'Ollama (本地)', key: 'ollama', baseUrl: 'http://localhost:11434/v1', models: [], syncing: false },
+
+  { id: 'minimax', name: 'MiniMax', key: '', baseUrl: 'https://api.minimax.chat/v1', models: [], syncing: false },
+  { id: 'baidu', name: '百度文心', key: '', baseUrl: 'https://qianfan.baidubce.com/v2', models: [], syncing: false },
+  { id: 'xinghuo', name: '讯飞星火', key: '', baseUrl: 'https://spark-api.xf-yun.com/v1', models: [], syncing: false },
+  { id: 'stepfun', name: '阶跃星辰', key: '', baseUrl: 'https://api.stepfun.com/v1', models: [], syncing: false },
+  { id: 'yi', name: '零一万物', key: '', baseUrl: 'https://api.lingyiwanwu.com/v1', models: [], syncing: false },
+  { id: 'baichuan', name: '百川智能', key: '', baseUrl: 'https://api.baichuan-ai.com/v1', models: [], syncing: false },
+  { id: 'groq', name: 'Groq (极速推理)', key: '', baseUrl: 'https://api.groq.com/openai/v1', models: [], syncing: false },
+  { id: 'together', name: 'Together AI', key: '', baseUrl: 'https://api.together.xyz/v1', models: [], syncing: false },
+  { id: 'anthropic', name: 'Anthropic Claude', key: '', baseUrl: 'https://api.anthropic.com/v1', models: [], syncing: false },
+  { id: 'gemini', name: 'Google Gemini', key: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', models: [], syncing: false },
   { id: 'custom', name: '自定义提供商', key: '', baseUrl: '', models: [], syncing: false },
 ])
 
@@ -59,20 +74,36 @@ async function syncModels(p) {
       }
       return
     }
+    // 优先用 provider_id 让后端自动解析 key/url，也支持自定义 base_url 覆盖
+    const body = { provider_id: p.id }
+    if (p.baseUrl && p.baseUrl !== p.defaultBaseUrl) body.base_url = p.baseUrl
+    if (p.key && p.key !== '●●●●●●●●') body.api_key = p.key
     const resp = await fetch('/api/provider/sync-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base_url: p.baseUrl, api_key: p.key === '●●●●●●●●' ? '' : p.key })
+      body: JSON.stringify(body)
     })
     const data = await resp.json()
-    if (data.ok) {
-      p.models = data.models
+    if (data.ok && data.models && data.models.length > 0) {
+      // 同步成功：保留用户手动添加的模型（以同步结果为基础，去重合并）
+      const synced = new Set(data.models)
+      const manual = (p.models || []).filter(m => !synced.has(m))
+      p.models = [...data.models, ...manual]
       saveProvidersToStorage()
+      if (manual.length > 0) {
+        alert('✅ 已同步 ' + data.models.length + ' 个模型，保留 ' + manual.length + ' 个手动添加的模型')
+      }
     } else {
-      alert('同步失败: ' + (data.error || '未知错误'))
+      // API 返回空或失败：保留现有模型，提示用户手动添加
+      if (data.error) {
+        alert('⚠️ 同步失败: ' + data.error + '\n\n已保留现有 ' + (p.models||[]).length + ' 个模型，你仍可以手动添加模型。')
+      } else {
+        alert('⚠️ 该接口未返回模型列表\n\n请手动添加模型名称，或联系厂商确认 /models 端点是否可用。')
+      }
     }
   } catch (e) {
-    alert('同步失败: ' + e.message)
+    // 网络错误：不清除现有模型
+    alert('⚠️ 同步请求失败: ' + e.message + '\n\n已保留现有 ' + (p.models||[]).length + ' 个模型。')
   } finally {
     p.syncing = false
   }
@@ -138,8 +169,10 @@ async function setCurrentModel(p, modelId) {
   const providerMap = {
     'openai': 'openai', 'deepseek': 'deepseek', 'qwen': 'qwen',
     'openrouter': 'openrouter', 'vbit': 'vbit', 'ollama': 'ollama',
+    'xiaomi': 'xiaomi',
     '通义千问': 'qwen', 'DeepSeek': 'deepseek', 'OpenRouter': 'openrouter',
     'OpenAI': 'openai', 'vbit.top': 'vbit', 'Ollama (本地)': 'ollama',
+    '小米 MiMo': 'xiaomi',
   }
   const provider = providerMap[p.id] || p.id
 
@@ -174,40 +207,75 @@ async function setCurrentModel(p, modelId) {
 }
 
 function saveProvidersToStorage() {
-  const data = providers.value.map(p => ({
-    id: p.id, name: p.name,
-    key: p.key ? '***saved***' : '',
-    baseUrl: p.baseUrl,
-    models: p.models || []
-  }))
+  // 只要用户展开过这个厂商（有key/有模型/baseUrl被改过），就保存下来
+  const data = providers.value
+    .filter(p =>
+      (p.key && p.key !== '●●●●●●●●' && p.key.trim() !== '') ||
+      (p.models && p.models.length > 0) ||
+      (p.baseUrl && p.baseUrl !== getDefaultBaseUrl(p.id))
+    )
+    .map(p => ({
+      id: p.id, name: p.name,
+      key: (p.key && p.key !== '●●●●●●●●') ? '***saved***' : '',
+      baseUrl: p.baseUrl,
+      models: p.models || []
+    }))
   localStorage.setItem('vermes-providers', JSON.stringify(data))
 }
 
-function save() {
+function getDefaultBaseUrl(id) {
+  const defaults = {
+    openai: 'https://api.openai.com/v1',
+    deepseek: 'https://api.deepseek.com',
+    qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    openrouter: 'https://openrouter.ai/api/v1',
+    vbit: 'https://api.vbit.top/v1',
+    xiaomi: 'https://api.xiaomimimo.com/v1',
+    'ant-ling': 'https://api.ant-ling.com/v1',
+    ollama: 'http://localhost:11434/v1',
+    minimax: 'https://api.minimax.chat/v1',
+    baidu: 'https://qianfan.baidubce.com/v2',
+    xinghuo: 'https://spark-api.xf-yun.com/v1',
+    stepfun: 'https://api.stepfun.com/v1',
+    yi: 'https://api.lingyiwanwu.com/v1',
+    baichuan: 'https://api.baichuan-ai.com/v1',
+    groq: 'https://api.groq.com/openai/v1',
+    together: 'https://api.together.xyz/v1',
+    anthropic: 'https://api.anthropic.com/v1',
+    gemini: 'https://generativelanguage.googleapis.com/v1beta',
+  }
+  return defaults[id] || ''
+}
+
+async function save() {
   saveProvidersToStorage()
   let firstRealKey = null
-  // Sync API keys + base_url to backend
+  // Sync API keys + base_url to backend — await each to avoid race conditions
   for (const p of providers.value) {
     // Save API key
     if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
       const envKey = p.id.toUpperCase() + '_API_KEY'
-      fetch('/api/env', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: envKey, value: p.key })
-      }).catch(e => console.warn('Save env failed:', e))
+      try {
+        await fetch('/api/env', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: envKey, value: p.key })
+        })
+      } catch(e) { console.warn('Save env failed:', e) }
       // Find first model to auto-switch if not already on vbit trial
       if (!firstRealKey && p.models && p.models.length > 0 && p.id !== 'vbit') {
         firstRealKey = { id: p.id, name: p.name, model: p.models[0] }
       }
     }
-    // Save custom provider base_url to config.yaml
-    if (p.id === 'custom' && p.baseUrl) {
-      fetch('/api/provider/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider_id: 'custom', base_url: p.baseUrl })
-      }).catch(e => console.warn('Save custom base_url failed:', e))
+    // Save base_url to config.yaml for ALL providers (supports custom URLs like token-plan)
+    if (p.baseUrl) {
+      try {
+        await fetch('/api/provider/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider_id: p.id, base_url: p.baseUrl, api_key: p.key && p.key !== '●●●●●●●●' ? p.key : '' })
+        })
+      } catch(e) { console.warn('Save base_url failed:', e) }
     }
   }
   // Auto-switch to first real provider that has models synced
@@ -234,15 +302,7 @@ function toggleProvider(id) {
 }
 
 onMounted(() => {
-  // 清理旧的配置历史残留
-  const staleKeys = ['vermes-selected-model']
-  for (const k of staleKeys) {
-    if (localStorage.getItem(k)) {
-      localStorage.removeItem(k)
-      console.log('Cleaned stale key:', k)
-    }
-  }
-
+  // 加载用户已保存的配置
   const saved_data = localStorage.getItem('vermes-providers')
   if (saved_data) {
     try {
@@ -252,11 +312,20 @@ onMounted(() => {
         if (target) {
           if (p.key === '***saved***') target.key = '●●●●●●●●'
           if (p.baseUrl) target.baseUrl = p.baseUrl
-          if (p.models) target.models = p.models
+          if (p.models && p.models.length > 0) target.models = p.models
+        } else {
+          // 用户手动添加的厂商不在默认列表中，追加进去
+          providers.value.push({
+            id: p.id, name: p.name,
+            key: p.key === '***saved***' ? '●●●●●●●●' : (p.key || ''),
+            baseUrl: p.baseUrl || '',
+            models: p.models || [], syncing: false
+          })
         }
       }
     } catch(e) {}
   }
+  // 不再自动同步、不再填充模板模型 —— 用户自己点同步或手动添加
   // Listen for trial token
   const onTrial = (e) => {
     const { token } = e.detail
@@ -296,11 +365,19 @@ onMounted(() => {
 
         <!-- 推荐提示 -->
         <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3 mb-3">
+          <span class="text-xl">🎯</span>
+          <div class="flex-1">
+            <div class="font-medium text-blue-700 dark:text-blue-300 text-sm">小白用户首选：DeepSeek（高性价比）</div>
+            <div class="text-xs text-blue-600 dark:text-blue-400 mt-1">注册即送额度，价格极低，中文理解强，是入门 AI 对话的最佳选择。</div>
+            <a href="https://platform.deepseek.com/" target="_blank" class="inline-block mt-2 text-xs text-blue-500 hover:text-blue-600 font-medium">→ 去 DeepSeek 官网注册 ↗</a>
+          </div>
+        </div>
+        <div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-start gap-3 mb-3">
           <span class="text-xl">🆓</span>
           <div class="flex-1">
-            <div class="font-medium text-blue-700 dark:text-blue-300 text-sm">推荐：OpenRouter 免费模型</div>
-            <div class="text-xs text-blue-600 dark:text-blue-400 mt-1">注册 OpenRouter 即可使用 owl-alpha、tencent/hy3-preview 等免费模型，无需付费。</div>
-            <a href="https://openrouter.ai/" target="_blank" class="inline-block mt-2 text-xs text-blue-500 hover:text-blue-600 font-medium">→ 去 openrouter.ai 注册 ↗</a>
+            <div class="font-medium text-green-700 dark:text-green-300 text-sm">推荐：OpenRouter 免费模型</div>
+            <div class="text-xs text-green-600 dark:text-green-400 mt-1">无需付费，注册 OpenRouter 即可使用 owl-alpha、tencent/hy3-preview 等免费模型。</div>
+            <a href="https://openrouter.ai/" target="_blank" class="inline-block mt-2 text-xs text-green-500 hover:text-green-600 font-medium">→ 去 openrouter.ai 注册 ↗</a>
           </div>
         </div>
 
@@ -383,7 +460,7 @@ onMounted(() => {
           <div class="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mx-auto">V</div>
           <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">Vermes</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400">AI Agent by vbit.top</p>
-          <p class="text-xs text-gray-400">版本 1.0.0 · 基于 Hermes Agent</p>
+          <p class="text-xs text-gray-400">版本 {{ update.currentVersion }} · 基于 Hermes Agent</p>
           <a href="https://vbit.top" target="_blank" class="text-sm text-green-600 dark:text-green-400 hover:underline">访问 vbit.top →</a>
         </div>
       </div>
