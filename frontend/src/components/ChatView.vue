@@ -162,16 +162,21 @@ function quickStart(text) {
 // 微信扫码登录 - 弹窗打开官方 OAuth 页面
 const showWeChatModal = ref(false)
 // wechatState, qrLoading, qrError already declared above
+const isPywebview = typeof window !== 'undefined' && !!window.pywebview
 
 let pollTimer = null
 let pollTimeout = null
 let isPollingActive = false
 function openWeChatPopup() {
   if (!wechatOAuthUrl.value) return
-  const w = 420, h = 620
-  const left = Math.round((screen.width - w) / 2)
-  const top = Math.round((screen.height - h) / 2)
-  window.open(wechatOAuthUrl.value, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
+  if (isPywebview) {
+    window.pywebview.api.open_oauth_window(wechatOAuthUrl.value)
+  } else {
+    const w = 420, h = 620
+    const left = Math.round((screen.width - w) / 2)
+    const top = Math.round((screen.height - h) / 2)
+    window.open(wechatOAuthUrl.value, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
+  }
 }
 async function openWeChatQR() {
   console.log('[Vermes🔐] 微信登录...')
@@ -181,14 +186,18 @@ async function openWeChatQR() {
     const data = await res.json()
     wechatState.value = data.state
     wechatOAuthUrl.value = data.url
-    // 打开微信授权弹窗（自动居中）
-    const w = 420, h = 620
-    const left = Math.round((screen.width - w) / 2)
-    const top = Math.round((screen.height - h) / 2)
-    const popup = window.open(data.url, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
-    if (!popup || popup.closed) {
-      // 弹窗被拦截，显示备用弹窗
-      showWeChatModal.value = true
+    if (isPywebview) {
+      // pywebview: 原生窗口打开微信授权
+      window.pywebview.api.open_oauth_window(data.url)
+    } else {
+      // 浏览器: window.open 弹窗
+      const w = 420, h = 620
+      const left = Math.round((screen.width - w) / 2)
+      const top = Math.round((screen.height - h) / 2)
+      const popup = window.open(data.url, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
+      if (!popup || popup.closed) {
+        showWeChatModal.value = true
+      }
     }
     startPolling()
   } catch(e) {
@@ -232,8 +241,12 @@ function onWeChatLogin(data) {
   showWeChatModal.value = false
   chat.showQuotaModal = false
   stopPolling()
-  // 尝试关闭微信授权弹窗
-  try { window.open('', 'wechat-login')?.close() } catch(e) {}
+  // 关闭 OAuth 弹窗
+  if (isPywebview) {
+    window.pywebview.api.close_oauth_window()
+  } else {
+    try { window.open('', 'wechat-login')?.close() } catch(e) {}
+  }
   localStorage.setItem('vermes_wechat_token', data.token)
   if (data.openid) localStorage.setItem('vermes_wechat_openid', data.openid)
   // 同步到后端 .env，让聊天时后端能用这个 token
