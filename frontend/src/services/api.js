@@ -7,7 +7,17 @@ let baseUrl = ''
 const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
 
 // ✅ 计费模型标识（云端收费，本地免费）
-const CLOUD_MODELS = ['deepseek', 'openrouter', 'vbit', 'qwen', 'openai', 'anthropic', 'gemini']
+const CLOUD_MODELS = ['deepseek', 'openrouter', 'vbit', 'qwen', 'openai', 'anthropic', 'gemini', 'xiaomi']
+
+// ✅ 免费试用截止日期
+export const TRIAL_EXPIRY = new Date('2026-06-26T23:59:59+08:00')
+export function isTrialExpired() {
+  return new Date() > TRIAL_EXPIRY
+}
+export function getTrialDaysLeft() {
+  const diff = TRIAL_EXPIRY - new Date()
+  return Math.max(0, Math.ceil(diff / 86400000))
+}
 export function isCloudModel(provider) {
   if (!provider) return false
   const p = provider.toLowerCase()
@@ -44,6 +54,10 @@ export function saveQuota(remaining) {
 
   // 检查云端模型请求是否允许
 export function checkQuota(isCloud) {
+  // 试用已过期
+  if (isTrialExpired() && !localStorage.getItem('vermes_token')) {
+    return { allowed: false, unlimited: false, remaining: 0, source: 'trial_expired' }
+  }
   // 在线模式：必须微信登录
   if (isOnline) {
     const token = localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')
