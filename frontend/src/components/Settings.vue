@@ -51,6 +51,27 @@ const allModels = computed(() => {
   return list
 })
 
+// Provider ID → 后端环境变量名映射（与 PROVIDER_ENV_MAP_SHARED 一致）
+function getEnvKey(providerId) {
+  const map = {
+    deepseek: 'DEEPSEEK_API_KEY', openai: 'OPENAI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY',
+    openrouter: 'OPENROUTER_API_KEY', vbit: 'VBIT_API_KEY',
+    alibaba: 'QWEN_API_KEY', qwen: 'QWEN_API_KEY',
+    zhipu: 'ZHIPU_API_KEY', doubao: 'DOUBAO_API_KEY',
+    moonshot: 'MOONSHOT_API_KEY', baichuan: 'BAICHUAN_API_KEY',
+    yi: 'YI_API_KEY', spark: 'SPARK_API_KEY',
+    siliconflow: 'SILICONFLOW_API_KEY', mistral: 'MISTRAL_API_KEY',
+    cohere: 'COHERE_API_KEY', custom: 'CUSTOM_API_KEY',
+    xiaomi: 'XIAOMI_API_KEY', ollama: null,
+    'ant-ling': 'ANT_LING_API_KEY', minimax: 'MINIMAX_API_KEY',
+    baidu: 'BAIDU_API_KEY', xinghuo: 'XINGHUO_API_KEY',
+    stepfun: 'STEPFUN_API_KEY', groq: 'GROQ_API_KEY',
+    together: 'TOGETHER_API_KEY',
+  }
+  return map[providerId] || providerId.toUpperCase() + '_API_KEY'
+}
+
 async function syncModels(p) {
   if (!p.key && p.id !== 'ollama') {
     alert('请先填写 API Key')
@@ -129,7 +150,7 @@ function removeModel(p, modelId) {
 async function deleteProvider(p) {
   if (!confirm(`确定清除 ${p.name} 的 API Key 和模型配置？`)) return
   // Clear backend env var
-  const envKey = p.id.toUpperCase() + '_API_KEY'
+  const envKey = getEnvKey(p.id)
   try {
     await fetch('/api/env', {
       method: 'DELETE',
@@ -254,7 +275,7 @@ async function save() {
   for (const p of providers.value) {
     // Save API key
     if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
-      const envKey = p.id.toUpperCase() + '_API_KEY'
+      const envKey = getEnvKey(p.id)
       try {
         await fetch('/api/env', {
           method: 'PUT',
