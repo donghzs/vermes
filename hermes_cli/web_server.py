@@ -3213,6 +3213,7 @@ class ChatRequest(BaseModel):
     provider: str | None = None
     stream: bool = True
     attachments: list[AttachmentData] | None = None
+    wechat_openid: str | None = None
 
 
 def _get_chat_credentials() -> tuple[str, str, str]:
@@ -3552,31 +3553,37 @@ async def chat_completions(req: ChatRequest):
                                 api_key = existing
                                 break
                 if not api_key:
-                    # v2: 跳过自动 claim
-                    # claim_result = await claim_trial_token()
-                    claim_result = {"success": False, "error": "请先微信登录"}
-                    if claim_result.get("success") and (claim_result.get("token") or claim_result.get("token_prefix")):
-                        token = claim_result.get("token") or claim_result.get("token_prefix")
-                        # Write token to .env
-                        env_content = ""
-                        if env_path.exists():
-                            env_content = env_path.read_text()
-                        lines = env_content.splitlines()
-                        found = False
-                        new_lines = []
-                        for line in lines:
-                            if line.startswith("VBIT_API_KEY=") or line.startswith("VBIT_API_KEY ="):
+                    # v2: 尝试用 wechat_openid 领取 token
+                    wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
+                    if wechat_openid:
+                        # 调用 /api/claim 获取 One-API token
+                        claim_result = await claim_trial_token_wrapper(wechat_openid)
+                        if claim_result.get("success") and claim_result.get("token"):
+                            token = claim_result["token"]
+                            # Write token to .env
+                            env_content = ""
+                            if env_path.exists():
+                                env_content = env_path.read_text()
+                            lines = env_content.splitlines()
+                            found = False
+                            new_lines = []
+                            for line in lines:
+                                if line.startswith("VBIT_API_KEY=") or line.startswith("VBIT_API_KEY ="):
+                                    new_lines.append(f"VBIT_API_KEY={token}")
+                                    found = True
+                                else:
+                                    new_lines.append(line)
+                            if not found:
                                 new_lines.append(f"VBIT_API_KEY={token}")
-                                found = True
-                            else:
-                                new_lines.append(line)
-                        if not found:
-                            new_lines.append(f"VBIT_API_KEY={token}")
-                        env_path.write_text("\n".join(new_lines) + "\n")
-                        api_key = token
+                            env_path.write_text("\n".join(new_lines) + "\n")
+                            api_key = token
+                            _log.info(f"[Claim] 微信用户自动领取 token 成功，已写入 .env")
+                        else:
+                            err_msg = claim_result.get("error", "领取失败")
+                            raise HTTPException(status_code=402, detail=f"免费体验Token领取失败: {err_msg}. 请重新微信扫码登录或配置自己的API Key。")
                     else:
-                        err_msg = claim_result.get("error", "Trial token claim failed")
-                        raise HTTPException(status_code=402, detail=f"免费体验Token暂时无法领取: {err_msg}. 请微信扫码登录或配置自己的API Key。")
+                        # 没有 openid，提示登录
+                        raise HTTPException(status_code=402, detail="请先微信扫码登录后再使用免费体验，或在设置页配置自己的API Key。")
             except HTTPException:
                 raise
             except Exception as e:
@@ -5360,6 +5367,21 @@ def _generate_device_fingerprint() -> str:
     ]
     raw = "|".join(p for p in parts if p)
     return hashlib.sha256(raw.encode()).hexdigest()
+
+async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
+    """Internal: Claim trial token using wechat_openid. Returns the vbit API result."""
+    fp = _generate_device_fingerprint()
+    import httpx
+    try:
+        resp = httpx.post(
+            "https://api.vbit.top/api/claim",
+            json={"wechat_openid": wechat_openid, "device_id": fp},
+            timeout=15,
+            verify=False
+        )
+        return resp.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/api/claim")
 async def claim_trial_token(request: Request):

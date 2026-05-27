@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { getRemainingQuota, getWechatDailyQuota, getTrialDaysLeft, isTrialExpired, checkQuotaServer } from '../services/api'
 import MarkdownIt from 'markdown-it'
-import QRCode from 'qrcode'
 
 const md = new MarkdownIt({ html: true, breaks: true, linkify: true })
 
@@ -36,25 +35,8 @@ const qrLoading = ref(false)
 const qrError = ref('')
 
 async function loadQR() {
-  if (isLoggedIn.value) return
-  qrLoading.value = true
-  qrError.value = ''
-  try {
-    const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-    const data = await res.json()
-    wechatState.value = data.state
-    // 生成二维码图片（200x200，白色背景填充留白边）
-    const qrUrl = await QRCode.toDataURL(data.url, {
-      width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' }
-    })
-    qrCodeDataUrl.value = qrUrl
-    startPolling()
-  } catch(e) {
-    console.error('[Vermes🔐] 加载二维码失败:', e)
-    qrError.value = '加载失败，请重试'
-  } finally {
-    qrLoading.value = false
-  }
+  // 已废弃，直接调用 openWeChatQR
+  await openWeChatQR()
 }
 
 // 登出功能
@@ -66,19 +48,16 @@ function logout() {
   localStorage.removeItem('vermes_wechat_openid')
   isLoggedIn.value = false
   userAvatar.value = ''
-  userName.value = '已登录'
+  userName.value = '访客'
   qrCodeDataUrl.value = ''
-  // 重新加载二维码
-  loadQR()
+  stopPolling()
   console.log('[Vermes🔐] 已退出微信登录')
 }
 
-// v2: 未登录弹窗的「微信登录」按钮 → 直接打开微信开放平台扫码页
-function wechatLogin() {
+// 微信登录统一入口（弹窗 + 轮询）
+async function wechatLogin() {
   chat.showQuotaModal = false
-  // 固定超链接：微信开放平台扫码登录
-  const wxUrl = 'https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=https%3A%2F%2Fvbit.top%2Fapi%2Fwechat%2Fcallback&response_type=code&scope=snsapi_login&state=' + Date.now() + '#wechat_redirect'
-  window.open(wxUrl, '_blank')
+  await openWeChatQR()
 }
 
 const inputText = ref('')

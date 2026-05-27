@@ -239,6 +239,9 @@ export default {
   async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, provider, attachments }) {
     const body = { model, messages, stream, provider: provider || '' }
     if (attachments && attachments.length > 0) body.attachments = attachments
+    // 传 wechat_openid 让后端能在没有 API key 时自动 claim
+    const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+    if (wechatOpenid) body.wechat_openid = wechatOpenid
     try {
       const resp = await request('/chat/completions', {
         method: 'POST',
