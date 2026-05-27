@@ -202,13 +202,37 @@ def main(port):
     print(f"[Vermes] 打开界面：{url}")
     try:
         import webview
-        webview.create_window(
+
+        # 加载页：先显示一个加载动画，等后端就绪后跳转真实页面
+        loading_html = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Vermes</title>
+<style>
+  body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0a0a;color:#e5e5e5;font-family:system-ui,sans-serif}
+  .spin{width:40px;height:40px;border:3px solid #333;border-top-color:#22c55e;border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  p{margin-top:16px;color:#888;font-size:14px}
+</style></head>
+<body><div style="text-align:center"><div class="spin"></div><p>正在启动 Vermes...</p></div></body></html>"""
+
+        win = webview.create_window(
             title=APP_TITLE,
-            url=url,
+            html=loading_html,
             width=WINDOW_W,
             height=WINDOW_H,
             resizable=True,
         )
+
+        def _load_real_url():
+            """后台等待服务器就绪后切换到真实页面。"""
+            if wait_for_server(port, timeout=20):
+                print(f"[Vermes] 后端就绪，加载 {url}")
+            else:
+                print(f"[Vermes] ⚠️ 后端超时，仍尝试加载 {url}")
+            win.load_url(url)
+
+        import threading
+        threading.Thread(target=_load_real_url, daemon=True).start()
+
         webview.start(gui='edgechromium', private_mode=False)
         print("[Vermes] 原生窗口已关闭")
         return
