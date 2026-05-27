@@ -3386,6 +3386,13 @@ PROVIDER_ENV_MAP_SHARED = {
     "cohere": "COHERE_API_KEY",
     "custom": "CUSTOM_API_KEY",
     "xiaomi": "XIAOMI_API_KEY",
+    "ant-ling": "ANT_LING_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
+    "baidu": "BAIDU_API_KEY",
+    "xinghuo": "XINGHUO_API_KEY",
+    "stepfun": "STEPFUN_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "together": "TOGETHER_API_KEY",
     "ollama": None,
 }
 
@@ -3409,6 +3416,13 @@ PROVIDER_BASE_URL_SHARED = {
     "cohere": "https://api.cohere.ai/v1",
     "ollama": "http://localhost:11434/v1",
     "xiaomi": "https://api.xiaomimimo.com/v1",
+    "ant-ling": "https://api.ant-ling.com/v1",
+    "minimax": "https://api.minimax.chat/v1",
+    "baidu": "https://qianfan.baidubce.com/v2",
+    "xinghuo": "https://spark-api.xf-yun.com/v1",
+    "stepfun": "https://api.stepfun.com/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "together": "https://api.together.xyz/v1",
 }
 
 
