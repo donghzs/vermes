@@ -129,11 +129,17 @@ export const useChatStore = defineStore('chat', () => {
     // Already claimed before
     if (localStorage.getItem('vermes-trial-claimed')) return
     try {
+      // 确保 device_id 存在
+      if (!localStorage.getItem('vermes-device-id')) {
+        localStorage.setItem('vermes-device-id', Date.now().toString())
+      }
+      const deviceId = 'vermes-' + localStorage.getItem('vermes-device-id')
+      localStorage.setItem('vermes_device_id', deviceId)
       // Call api.vbit.top directly for trial token
       const resp = await fetch('/api/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: 'vermes-' + (localStorage.getItem('vermes-device-id') || Date.now().toString()) })
+        body: JSON.stringify({ device_id: deviceId })
       })
       const data = await resp.json()
       // Handle both full token and token_prefix (repeat claim)
@@ -148,11 +154,6 @@ export const useChatStore = defineStore('chat', () => {
         token = localStorage.getItem('vermes-trial-token')
       }
       if (token) {
-        // Save device ID for reuse
-        if (!localStorage.getItem('vermes-device-id')) {
-          localStorage.setItem('vermes-device-id', Date.now().toString())
-        }
-        localStorage.setItem('vermes_device_id', localStorage.getItem('vermes-device-id') || Date.now().toString())
         localStorage.setItem('vermes-trial-token', token)  // save for repeat claim
         // Save trial token as vbit provider key in backend .env
         await fetch('/api/env', {

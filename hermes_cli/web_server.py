@@ -181,6 +181,11 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/provider/sync-models",
     # Trial token
     "/api/claim",
+    # Quota system
+    "/api/quota/check",
+    "/api/quota/spend",
+    "/api/quota/referral/code",
+    "/api/quota/referral/bind",
     # WeChat login proxy
     "/api/wechat/qrurl",
     "/api/wechat/poll",
@@ -5381,6 +5386,72 @@ async def claim_trial_token():
         if result.get("success"):
             return result
         return {"success": False, "error": result.get("error", "Unknown error")}
+
+
+# --- Quota system proxy endpoints ---
+
+@app.get("/api/quota/check")
+async def quota_check_proxy(device_id: str):
+    """Proxy quota check to vbit.top."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.get(
+                f"https://api.vbit.top/api/quota/check?device_id={device_id}",
+                timeout=10
+            )
+            return resp.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/quota/spend")
+async def quota_spend_proxy(request: Request):
+    """Proxy quota spend to vbit.top."""
+    try:
+        import httpx
+        body = await request.json()
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.post(
+                "https://api.vbit.top/api/quota/spend",
+                json=body,
+                timeout=10
+            )
+            return resp.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/quota/referral/code")
+async def referral_code_proxy(device_id: str):
+    """Proxy referral code to vbit.top."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.get(
+                f"https://api.vbit.top/api/quota/referral/code?device_id={device_id}",
+                timeout=10
+            )
+            return resp.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/quota/referral/bind")
+async def referral_bind_proxy(request: Request):
+    """Proxy referral bind to vbit.top."""
+    try:
+        import httpx
+        body = await request.json()
+        async with httpx.AsyncClient(verify=False) as client:
+            resp = await client.post(
+                "https://api.vbit.top/api/quota/referral/bind",
+                json=body,
+                timeout=10
+            )
+            return resp.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # --- WeChat login proxy endpoints ---
