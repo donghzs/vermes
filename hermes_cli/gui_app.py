@@ -52,8 +52,8 @@ class VermesAPI:
 
         win = webview.create_window(
             '微信登录', url,
-            width=420, height=620, resizable=False,
-            easy_drag=True, text_select=False,
+            width=380, height=540, resizable=False,
+            confirm_close=False,
         )
 
         def on_loaded():
