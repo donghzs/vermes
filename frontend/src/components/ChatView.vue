@@ -143,23 +143,18 @@ const showWeChatModal = ref(false)
 // wechatState, qrCodeDataUrl, qrLoading, qrError already declared above
 
 let pollTimer = null
-let wechatPopup = null  // 微信登录弹窗引用，登录后自动关闭
-
 async function openWeChatQR() {
   console.log('[Vermes🔐] 微信扫码登录...')
+  showWeChatModal.value = true
   qrLoading.value = true
+  qrError.value = ''
   try {
     const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
     const data = await res.json()
     wechatState.value = data.state
-    // 弹窗打开官方微信 OAuth 页面
-    wechatPopup = window.open(data.url, 'wechat-login', 'width=600,height=700,menubar=no,toolbar=no,location=no')
-    if (!wechatPopup || wechatPopup.closed) {
-      // 弹窗被拦截，显示二维码弹窗
-      showWeChatModal.value = true
-      const qrUrl = await QRCode.toDataURL(data.url, { width: 280, margin: 2 })
-      qrCodeDataUrl.value = qrUrl
-    }
+    // 在原生窗口内渲染二维码（不弹浏览器）
+    const qrUrl = await QRCode.toDataURL(data.url, { width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
+    qrCodeDataUrl.value = qrUrl
     startPolling()
   } catch(e) {
     console.error('[Vermes🔐] 加载微信登录失败:', e)
@@ -198,12 +193,8 @@ function onWeChatLogin(data) {
   showWeChatModal.value = false
   chat.showQuotaModal = false  // 关闭配额弹窗
   qrCodeDataUrl.value = ''
-  // 关闭微信登录弹窗
-  if (wechatPopup && !wechatPopup.closed) {
-    try { wechatPopup.close() } catch(e) {}
-    wechatPopup = null
-  }
-  localStorage.setItem('vermes_token', data.token)
+  // 关闭二维码弹窗
+  showWeChatModal.value = false
   localStorage.setItem('vermes_wechat_token', data.token)
   // 同步到后端 .env，让聊天时后端能用这个 token
   fetch('/api/env', {
