@@ -84,19 +84,26 @@ const referralCode = ref('')
 async function refreshQuota() {
   try {
     const deviceId = localStorage.getItem('vermes_device_id')
-    if (!deviceId) return
-    const resp = await checkQuotaServer(deviceId)
-    if (resp.success) {
-      serverQuota.value = resp.data
-    }
+    const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+    if (!deviceId && !wechatOpenid) return
+    let url = '/api/quota/check?'
+    if (wechatOpenid) url += `wechat_openid=${encodeURIComponent(wechatOpenid)}`
+    else url += `device_id=${encodeURIComponent(deviceId)}`
+    const resp = await fetch(url)
+    const data = await resp.json()
+    if (data.success) serverQuota.value = data.data
   } catch (e) { console.warn('[Vermes] 刷新配额失败:', e) }
 }
 
 async function loadReferralCode() {
   try {
     const deviceId = localStorage.getItem('vermes_device_id')
-    if (!deviceId) return
-    const resp = await fetch(`/api/quota/referral/code?device_id=${encodeURIComponent(deviceId)}`)
+    const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+    if (!deviceId && !wechatOpenid) return
+    let url = '/api/quota/referral/code?'
+    if (wechatOpenid) url += `wechat_openid=${encodeURIComponent(wechatOpenid)}`
+    else url += `device_id=${encodeURIComponent(deviceId)}`
+    const resp = await fetch(url)
     const data = await resp.json()
     if (data.success) referralCode.value = data.data.code
   } catch (e) {}
@@ -218,6 +225,7 @@ function onWeChatLogin(data) {
   // 关闭二维码弹窗
   showWeChatModal.value = false
   localStorage.setItem('vermes_wechat_token', data.token)
+  if (data.openid) localStorage.setItem('vermes_wechat_openid', data.openid)
   // 同步到后端 .env，让聊天时后端能用这个 token
   fetch('/api/env', {
     method: 'PUT',
