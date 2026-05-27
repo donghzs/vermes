@@ -24,6 +24,27 @@ export function isCloudModel(provider) {
   return CLOUD_MODELS.some(m => p.includes(m))
 }
 
+// ── 服务端配额查询 ──
+export async function checkQuotaServer(deviceId) {
+  try {
+    const resp = await fetch(`/api/quota/check?device_id=${encodeURIComponent(deviceId)}`)
+    return await resp.json()
+  } catch (e) {
+    console.warn('[Vermes] 服务端配额查询失败:', e)
+    return { success: false }
+  }
+}
+
+export async function reportQuotaSpend(deviceId, quotaConsumed) {
+  try {
+    await fetch('/api/quota/spend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId, quota_consumed: quotaConsumed })
+    })
+  } catch (e) { console.warn('[Vermes] 上报消费失败:', e) }
+}
+
 // 计费配额管理
 const WECHAT_QUOTA_KEY = 'vermes_wechat_quota'
 export function getWechatDailyQuota() {
@@ -123,52 +144,83 @@ async function request(path, options = {}) {
   const apiPrefix = isOnline ? '/v1' : '/api'
   const url = baseUrl ? `${baseUrl}${apiPrefix}${path}` : `${apiPrefix}${path}`
 
-  // 超时处理：默认 60s，如果调用者已传 signal 则合并
-  const timeoutMs = options.timeout ?? 60000
-  const controller = new AbortController()
-  let timeoutId = null
+  const maxRetries = 3
+  const retryableStatuses = [429, 500, 502, 503, 504]
 
-  if (timeoutMs > 0) {
-    timeoutId = setTimeout(() => controller.abort(new Error(`请求超时（${timeoutMs / 1000}s）`)), timeoutMs)
-  }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // 超时处理：默认 60s，如果调用者已传 signal 则合并
+    const timeoutMs = options.timeout ?? 60000
+    const controller = new AbortController()
+    let timeoutId = null
 
-  // 合并调用者传入的 signal（如停止生成）— 兼容旧版 Safari/WebKit
-  let combinedSignal
-  if (options.signal) {
-    try {
-      // AbortSignal.any() 需要 Safari 15.4+
-      combinedSignal = AbortSignal.any([controller.signal, options.signal])
-    } catch {
-      // 降级：用 controller.timeout 替代
-      const onAbort = () => { try { controller.abort() } catch(e) {} }
-      options.signal.addEventListener('abort', onAbort, { once: true })
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => controller.abort(new Error(`请求超时（${timeoutMs / 1000}s）`)), timeoutMs)
+    }
+
+    // 合并调用者传入的 signal（如停止生成）— 兼容旧版 Safari/WebKit
+    let combinedSignal
+    if (options.signal) {
+      try {
+        combinedSignal = AbortSignal.any([controller.signal, options.signal])
+      } catch {
+        const onAbort = () => { try { controller.abort() } catch(e) {} }
+        options.signal.addEventListener('abort', onAbort, { once: true })
+        combinedSignal = controller.signal
+      }
+    } else {
       combinedSignal = controller.signal
     }
-  } else {
-    combinedSignal = controller.signal
-  }
 
-  try {
-    const resp = await fetch(url, {
-      ...options,
-      headers: { ...buildHeaders(options.headers), ...(options.headers || {}) },
-      signal: combinedSignal,
-    })
-    clearTimeout(timeoutId)
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '')
-      if (resp.status === 429 || text.includes('insufficient_quota') || text.includes('额度已用尽')) {
-        throw new Error('体验额度已用完 💡 请在设置中配置自己的 API Key 继续使用')
+    try {
+      const resp = await fetch(url, {
+        ...options,
+        headers: { ...buildHeaders(options.headers), ...(options.headers || {}) },
+        signal: combinedSignal,
+      })
+      clearTimeout(timeoutId)
+
+      // 429: 尊重 Retry-After 头
+      if (resp.status === 429) {
+        const retryAfter = resp.headers.get('Retry-After')
+        const text = await resp.text().catch(() => '')
+        if (text.includes('insufficient_quota') || text.includes('额度已用尽')) {
+          throw new Error('体验额度已用完 💡 请在设置中配置自己的 API Key 继续使用')
+        }
+        if (attempt < maxRetries) {
+          const delay = retryAfter ? parseInt(retryAfter) * 1000 : Math.min(1000 * Math.pow(2, attempt), 8000)
+          await new Promise(r => setTimeout(r, delay))
+          continue
+        }
+        throw new Error(`API 429: ${text}`)
       }
-      throw new Error(`API ${resp.status}: ${text}`)
+
+      // 5xx: 可重试
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '')
+        if (retryableStatuses.includes(resp.status) && attempt < maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 8000)
+          await new Promise(r => setTimeout(r, delay))
+          continue
+        }
+        throw new Error(`API ${resp.status}: ${text}`)
+      }
+      return resp
+    } catch (e) {
+      clearTimeout(timeoutId)
+      // 用户主动取消 → 不重试
+      if (options.signal?.aborted) throw e
+      // 超时 → 不重试
+      if (e.name === 'AbortError') {
+        throw new Error(`请求超时（${timeoutMs / 1000}秒），请检查网络或切换模型`)
+      }
+      // 网络错误 → 可重试
+      if (attempt < maxRetries && (e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError') || e.message?.includes('fetch'))) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 8000)
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+      throw e
     }
-    return resp
-  } catch (e) {
-    clearTimeout(timeoutId)
-    if (e.name === 'AbortError' && !options.signal?.aborted) {
-      throw new Error(`请求超时（${timeoutMs / 1000}秒），请检查网络或切换模型`)
-    }
-    throw e
   }
 }
 

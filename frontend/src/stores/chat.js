@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { isCloudModel, checkQuota, useQuota } from '../services/api'
+import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, reportQuotaSpend } from '../services/api'
 
 const SESSIONS_KEY = 'vermes-sessions'
 const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
@@ -93,7 +93,7 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref('dark')
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'MiMo-V2.5')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'mimo-v2.5')
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
@@ -152,6 +152,7 @@ export const useChatStore = defineStore('chat', () => {
         if (!localStorage.getItem('vermes-device-id')) {
           localStorage.setItem('vermes-device-id', Date.now().toString())
         }
+        localStorage.setItem('vermes_device_id', localStorage.getItem('vermes-device-id') || Date.now().toString())
         localStorage.setItem('vermes-trial-token', token)  // save for repeat claim
         // Save trial token as vbit provider key in backend .env
         await fetch('/api/env', {
@@ -163,12 +164,12 @@ export const useChatStore = defineStore('chat', () => {
         await fetch('/api/model/set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek-chat' })
+          body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek-v4-flash' })
         }).catch(() => {})
         // Set frontend state
-        localStorage.setItem('vermes-current-model', 'MiMo-V2.5')
+        localStorage.setItem('vermes-current-model', 'mimo-v2.5')
         localStorage.setItem('vermes-current-provider', 'vbit')
-        currentModel.value = 'MiMo-V2.5'
+        currentModel.value = 'mimo-v2.5'
         currentProvider.value = 'vbit.top'
         // Mark claimed
         localStorage.setItem('vermes-trial-claimed', '1')
@@ -178,9 +179,9 @@ export const useChatStore = defineStore('chat', () => {
         const vbit = providers.find(p => p.id === 'vbit')
         if (vbit) {
           vbit.key = '***saved***'
-          vbit.models = ['deepseek-chat']
+          vbit.models = ['deepseek-v4-flash', 'mimo-v2.5']
         } else {
-          providers.push({ id: 'vbit', name: 'vbit.top', key: '***saved***', baseUrl: 'https://api.vbit.top/v1', models: ['deepseek-chat'] })
+          providers.push({ id: 'vbit', name: 'vbit.top', key: '***saved***', baseUrl: 'https://api.vbit.top/v1', models: ['deepseek-v4-flash', 'mimo-v2.5'] })
         }
         localStorage.setItem('vermes-providers', JSON.stringify(providers.map(p => ({
           id: p.id, name: p.name,
@@ -188,7 +189,7 @@ export const useChatStore = defineStore('chat', () => {
           baseUrl: p.baseUrl,
           models: p.models || []
         }))))
-        console.log('[Vermes✅] Trial token claimed, using deepseek-chat via vbit.top')
+        console.log('[Vermes✅] Trial token claimed, using deepseek-v4-flash/mimo-v2.5 via vbit.top')
       }
     } catch (e) {
       console.warn('[Vermes⚠️] Auto-claim failed:', e.message)
@@ -315,11 +316,26 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // ✅ 云端模型配额检查
+    // ✅ 云端模型配额检查（服务端优先）
     const isCloud = isCloudModel(currentProvider.value)
+    if (isCloud) {
+      const deviceId = localStorage.getItem('vermes_device_id')
+      if (deviceId) {
+        const serverCheck = await checkQuotaServer(deviceId)
+        if (serverCheck.success && serverCheck.data.trial_expired) {
+          quotaModalType.value = 'trial_expired'
+          showQuotaModal.value = true
+          return
+        }
+        if (serverCheck.success && serverCheck.data.remaining <= 0) {
+          quotaModalType.value = 'wechat_expired'
+          showQuotaModal.value = true
+          return
+        }
+      }
+    }
     const quotaCheck = checkQuota(isCloud)
     if (!quotaCheck.allowed) {
-      // 触发配额弹窗而非插入消息
       const isLoggedIn = !!localStorage.getItem('vermes_token')
       quotaModalType.value = isLoggedIn ? 'wechat_expired' : 'trial_expired'
       showQuotaModal.value = true
@@ -391,7 +407,7 @@ export const useChatStore = defineStore('chat', () => {
         role: m.role,
         // 对于用户消息中的图片，用简短描述替代 base64
         content: m.role === 'user' && m.content.includes('data:image')
-          ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '[图片]')
+          ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '').trim()
           : m.content,
       }))
 
@@ -429,6 +445,16 @@ export const useChatStore = defineStore('chat', () => {
           abortController.value = null
           if (quotaCheck.source === 'free_daily') {
             useQuota(1)
+          }
+          // 上报服务端消费（估算: 每100字符 ≈ 50积分）
+          const deviceId = localStorage.getItem('vermes_device_id')
+          if (deviceId && isCloud) {
+            const respLen = am?.content?.length || 0
+            const estimatedPoints = Math.max(10, Math.ceil(respLen / 100) * 50)
+            reportQuotaSpend(deviceId, estimatedPoints * 720).then(() => {
+              // 刷新配额显示
+              window.dispatchEvent(new Event('quota-updated'))
+            })
           }
           persistMessages(currentSessionId.value)
         },

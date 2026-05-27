@@ -3598,7 +3598,12 @@ async def chat_completions(req: ChatRequest):
                 conversation_history[last_user_idx]["content"] = parts
 
     # Extract the last user message as the agent input
+    # 当有附件时，把多模态内容（含图片）直接传给 user_message
     user_message = ""
+    if req.attachments and conversation_history:
+        last_content = conversation_history[-1].get("content", "")
+        if isinstance(last_content, list):
+            user_message = last_content
     for m in reversed(req.messages):
         if m.role == "user":
             content = m.content
@@ -3678,7 +3683,7 @@ async def chat_completions(req: ChatRequest):
             def run_sync():
                 return agent.run_conversation(
                     user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 and not req.attachments else (conversation_history if len(conversation_history) > 1 else None),
+                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                     stream_callback=stream_callback,
                 )
 
@@ -3720,7 +3725,7 @@ async def chat_completions(req: ChatRequest):
             def run_sync():
                 return agent.run_conversation(
                     user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 and not req.attachments else (conversation_history if len(conversation_history) > 1 else None),
+                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                 )
 
             loop = asyncio.get_event_loop()
