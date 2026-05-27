@@ -3535,7 +3535,9 @@ async def chat_completions(req: ChatRequest):
             api_key = ""
             remove_env_value("VBIT_API_KEY")
         env_hint = PROVIDER_ENV_MAP_SHARED.get(provider, "API_KEY")
-        # Try auto-claim for vbit provider (free trial)
+        # v2: 不再自动 claim trial token
+        # 免费体验仅限微信登录用户，需先登录
+        # claim_result = await claim_trial_token()
         if provider == "vbit":
             try:
                 # Check if .env already has VBIT_API_KEY (frontend may have claimed earlier)
@@ -3550,7 +3552,9 @@ async def chat_completions(req: ChatRequest):
                                 api_key = existing
                                 break
                 if not api_key:
-                    claim_result = await claim_trial_token()
+                    # v2: 跳过自动 claim
+                    # claim_result = await claim_trial_token()
+                    claim_result = {"success": False, "error": "请先微信登录"}
                     if claim_result.get("success") and (claim_result.get("token") or claim_result.get("token_prefix")):
                         token = claim_result.get("token") or claim_result.get("token_prefix")
                         # Write token to .env
@@ -5358,38 +5362,23 @@ def _generate_device_fingerprint() -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 @app.post("/api/claim")
-async def claim_trial_token():
-    """Claim a trial API token from vbit.top."""
+async def claim_trial_token(request: Request):
+    """v2: Claim trial token — requires wechat_openid."""
     try:
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        wechat_openid = body.get("wechat_openid") or os.environ.get("VERMES_WECHAT_OPENID", "")
+        
+        # v2: 必须有微信 openid
+        if not wechat_openid:
+            return {"success": False, "error": "请先微信登录后再领取体验Token", "require_login": True}
+        
+        fp = _generate_device_fingerprint()
+        
         import httpx
-    except ImportError:
-        import urllib.request, urllib.error, json
-
-        fp = _generate_device_fingerprint()
-        payload = json.dumps({"device_id": fp, "hardware_uuid": str(uuid.getnode())}).encode()
-        req = urllib.request.Request(
-            "https://api.vbit.top/api/claim",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                result = json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            return {"success": False, "error": f"HTTP {e.code}: {e.reason}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-        if result.get("success"):
-            return result
-        return {"success": False, "error": result.get("error", "Unknown error")}
-    else:
-        fp = _generate_device_fingerprint()
         try:
             resp = httpx.post(
                 "https://api.vbit.top/api/claim",
-                json={"device_id": fp, "hardware_uuid": str(uuid.getnode())},
+                json={"wechat_openid": wechat_openid, "device_id": fp},
                 timeout=15,
                 verify=False
             )
@@ -5400,6 +5389,8 @@ async def claim_trial_token():
         if result.get("success"):
             return result
         return {"success": False, "error": result.get("error", "Unknown error")}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # --- Quota system proxy endpoints ---

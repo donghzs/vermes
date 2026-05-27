@@ -2,9 +2,6 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, reportQuotaSpend } from '../services/api'
 
-// ── v2: 未登录拦截弹窗类型 ──
-const QUOTA_NEED_LOGIN = 'need_login'
-
 const SESSIONS_KEY = 'vermes-sessions'
 const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
 const IMAGE_DB = 'vermes-images'
@@ -114,11 +111,92 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.filter(m => m.sessionId === currentSessionId.value)
   })
 
-  // v2: 桌面版不再自动 claim trial token
-  // 免费体验仅限微信登录用户，未登录用户发消息时会弹出引导登录的弹窗
   async function autoClaimIfNeeded() {
-    // 不再自动 claim，改为引导微信登录
-    console.log('[Vermesℹ️] v2: 免费体验仅限微信登录，跳过自动 claim')
+    // First, check if user already configured their own API key (non-vbit provider)
+    try {
+      const savedProviders = localStorage.getItem('vermes-providers')
+      if (savedProviders) {
+        const providers = JSON.parse(savedProviders)
+        const hasRealKey = providers.some(p => 
+          p.key === '***saved***' && p.id !== 'vbit' && p.models && p.models.length > 0
+        )
+        if (hasRealKey) {
+          console.log('[Vermesℹ️] 用户已配置自有 API Key，跳过免费试用')
+          return
+        }
+      }
+    } catch(e) {}
+    // Already claimed before
+    if (localStorage.getItem('vermes-trial-claimed')) return
+    try {
+      // 确保 device_id 存在
+      if (!localStorage.getItem('vermes-device-id')) {
+        localStorage.setItem('vermes-device-id', Date.now().toString())
+      }
+      const deviceId = 'vermes-' + localStorage.getItem('vermes-device-id')
+      localStorage.setItem('vermes_device_id', deviceId)
+      // Call api.vbit.top directly for trial token
+      const resp = await fetch('/api/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId })
+      })
+      const data = await resp.json()
+      // Handle both full token and token_prefix (repeat claim)
+      let token = null
+      if (data.success && data.data?.token) {
+        token = data.data.token
+      } else if (data.success && data.data?.token_prefix) {
+        // Repeat claim — try saved token from previous session
+        token = localStorage.getItem('vermes-trial-token')
+      } else if (!data.success && data.error && data.error.includes('同IP')) {
+        // IP rate limited — already have a token from this device, use saved one
+        token = localStorage.getItem('vermes-trial-token')
+      }
+      if (token) {
+        localStorage.setItem('vermes-trial-token', token)  // save for repeat claim
+        // Save trial token as vbit provider key in backend .env
+        await fetch('/api/env', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'VBIT_API_KEY', value: token })
+        }).catch(() => {})
+        // Set model to DeepSeek via vbit provider
+        await fetch('/api/model/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: 'main', provider: 'vbit', model: 'deepseek-v4-flash' })
+        }).catch(() => {})
+        // Set frontend state
+        localStorage.setItem('vermes-current-model', 'mimo-v2.5')
+        localStorage.setItem('vermes-current-provider', 'vbit')
+        currentModel.value = 'mimo-v2.5'
+        currentProvider.value = 'vbit.top'
+        // Mark claimed
+        localStorage.setItem('vermes-trial-claimed', '1')
+        // Also update the providers list for model dropdown
+        const saved = localStorage.getItem('vermes-providers')
+        let providers = saved ? JSON.parse(saved) : []
+        const vbit = providers.find(p => p.id === 'vbit')
+        if (vbit) {
+          vbit.key = '***saved***'
+          vbit.models = ['deepseek-v4-flash', 'mimo-v2.5']
+        } else {
+          providers.push({ id: 'vbit', name: 'vbit.top', key: '***saved***', baseUrl: 'https://api.vbit.top/v1', models: ['deepseek-v4-flash', 'mimo-v2.5'] })
+        }
+        localStorage.setItem('vermes-providers', JSON.stringify(providers.map(p => ({
+          id: p.id, name: p.name,
+          key: p.key ? '***saved***' : '',
+          baseUrl: p.baseUrl,
+          models: p.models || []
+        }))))
+        console.log('[Vermes✅] Trial token claimed, using deepseek-v4-flash/mimo-v2.5 via vbit.top')
+      }
+    } catch (e) {
+      console.warn('[Vermes⚠️] Auto-claim failed:', e.message)
+      // IP限频（同IP已领过）=> 现有 token 应仍有效，不弹窗
+      // 其他错误（网络等）=> 也不弹窗，让第一次聊天时 checkQuota 处理
+    }
   }
 
   async function init() {
@@ -239,38 +317,29 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // ✅ v2: 云端模型配额检查（必须微信登录）
+    // ✅ 云端模型配额检查（服务端优先）
     const isCloud = isCloudModel(currentProvider.value)
     if (isCloud) {
+      const deviceId = localStorage.getItem('vermes_device_id')
       const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
-      const isLoggedIn = !!localStorage.getItem('vermes_token')
-      
-      // 未登录 → 弹出「请先登录」弹窗
-      if (!isLoggedIn || !wechatOpenid) {
-        quotaModalType.value = QUOTA_NEED_LOGIN
-        showQuotaModal.value = true
-        return
-      }
-      
-      // 已登录：查询服务端积分
-      const serverCheck = await checkQuotaServer(wechatOpenid)
-      if (serverCheck.success) {
-        if (serverCheck.data.trial_expired) {
+      if (deviceId || wechatOpenid) {
+        const serverCheck = await checkQuotaServer(deviceId, wechatOpenid)
+        if (serverCheck.success && serverCheck.data.trial_expired) {
           quotaModalType.value = 'trial_expired'
           showQuotaModal.value = true
           return
         }
-        if (serverCheck.data.remaining <= 0) {
+        if (serverCheck.success && serverCheck.data.remaining <= 0) {
           quotaModalType.value = 'wechat_expired'
           showQuotaModal.value = true
           return
         }
       }
     }
-    
     const quotaCheck = checkQuota(isCloud)
     if (!quotaCheck.allowed) {
-      quotaModalType.value = 'wechat_expired'
+      const isLoggedIn = !!localStorage.getItem('vermes_token')
+      quotaModalType.value = isLoggedIn ? 'wechat_expired' : 'trial_expired'
       showQuotaModal.value = true
       return
     }
@@ -379,12 +448,14 @@ export const useChatStore = defineStore('chat', () => {
           if (quotaCheck.source === 'free_daily') {
             useQuota(1)
           }
-          // 上报服务端消费（v2: 仅微信用户）
+          // 上报服务端消费（估算: 每100字符 ≈ 50积分）
+          const deviceId = localStorage.getItem('vermes_device_id')
           const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
-          if (wechatOpenid && isCloud) {
+          if ((deviceId || wechatOpenid) && isCloud) {
             const respLen = am?.content?.length || 0
             const estimatedPoints = Math.max(10, Math.ceil(respLen / 100) * 50)
-            reportQuotaSpend(estimatedPoints * 720, wechatOpenid).then(() => {
+            reportQuotaSpend(deviceId, estimatedPoints * 720, wechatOpenid).then(() => {
+              // 刷新配额显示
               window.dispatchEvent(new Event('quota-updated'))
             })
           }
