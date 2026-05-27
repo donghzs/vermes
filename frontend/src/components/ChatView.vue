@@ -191,6 +191,7 @@ async function openWeChatQR() {
     const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
     const data = await res.json()
     wechatState.value = data.state
+    wechatOAuthUrl.value = data.url
     // 在原生窗口内渲染二维码（不弹浏览器）
     const qrUrl = await QRCode.toDataURL(data.url, { width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
     qrCodeDataUrl.value = qrUrl
@@ -455,6 +456,13 @@ watch(() => chat.filteredMessages, async () => {
       </div>
       <img v-else-if="qrCodeDataUrl" :src="qrCodeDataUrl" alt="微信扫码" class="mx-auto rounded-xl shadow-lg" style="width:220px;height:220px" />
       <p class="text-xs text-gray-400 mt-3">使用微信扫一扫登录</p>
+      <div v-if="wechatOAuthUrl" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+        <a :href="wechatOAuthUrl" target="_blank" rel="noopener"
+          class="inline-flex items-center gap-1.5 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition">
+          📱 点击直接授权登录
+        </a>
+        <p class="text-xs text-gray-400 mt-1.5">手机用户点击上方按钮直接授权</p>
+      </div>
     </div>
   </div>
 
