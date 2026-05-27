@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, computed, onMounted } from 'vue'
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { getRemainingQuota, getWechatDailyQuota, getTrialDaysLeft, isTrialExpired, checkQuotaServer } from '../services/api'
@@ -13,13 +13,21 @@ const inputRef = ref(null)
 const chatContainer = ref(null)
 
 // 监听模型变更事件（来自 Settings 页面的「设为当前」）
+const _modelChangedHandler = (e) => {
+  chat.currentModel = e.detail.model
+  chat.currentProvider = e.detail.provider
+}
+const _quotaUpdatedHandler = () => refreshQuota()
+
 onMounted(() => {
-  const handler = (e) => {
-    chat.currentModel = e.detail.model
-    chat.currentProvider = e.detail.provider
-  }
-  window.addEventListener('model-changed', handler)
-  window.addEventListener('quota-updated', () => refreshQuota())
+  window.addEventListener('model-changed', _modelChangedHandler)
+  window.addEventListener('quota-updated', _quotaUpdatedHandler)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('model-changed', _modelChangedHandler)
+  window.removeEventListener('quota-updated', _quotaUpdatedHandler)
+  window.removeEventListener('message', _postMessageHandler)
 })
 
 // ✅ 登录状态
@@ -244,15 +252,18 @@ function onWeChatLogin(data) {
   }
 }
 
-// 监听 postMessage（微信回调窗口通知）
-window.addEventListener('message', (e) => {
+// 监听 postMessage（微信回调窗口通知 — S1 修复后 callback 不再发 postMessage，但保留兼容）
+const _postMessageHandler = (e) => {
   if (e.origin && e.origin !== 'https://vbit.top') return
   if (e.data?.type === 'wechat_callback' && e.data?.token) {
     console.log('[Vermes🔐] 收到微信登录 postMessage')
     stopPolling()
     onWeChatLogin(e.data)
   }
-})
+}
+window.addEventListener('message', _postMessageHandler)
+
+// 清理 postMessage 监听器（已合入上面 onUnmounted）
 
 async function send() {
   const input = inputText.value.trim()
