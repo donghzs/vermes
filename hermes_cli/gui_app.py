@@ -69,8 +69,9 @@ class VermesAPI:
                     code = params.get('code', [''])[0]
                     state = params.get('state', [''])[0]
                     if code:
-                        print(f"[Vermes API] ✅ 获取到 code: {code[:10]}...")
-                        VermesAPI._oauth_result = {"success": True, "code": code, "state": result_ready.set() or True}
+                        print(f"[Vermes API] ✅ 获取到 code: {code[:10]}... state: {state}")
+                        VermesAPI._oauth_result = {"success": True, "code": code, "state": state}
+                        result_ready.set()
                         try:
                             win.destroy()
                         except Exception:
