@@ -29,8 +29,6 @@ from hermes_cli.shutdown_signal import shutdown_event
 class VermesAPI:
     """暴露给前端 JavaScript 的 Python API。"""
 
-    _oauth_window = None  # 微信 OAuth 弹窗引用
-
     def open_external_browser(self, url):
         """用系统默认浏览器打开 URL。"""
         print(f"[Vermes API] 打开系统浏览器: {url}")
@@ -39,38 +37,6 @@ class VermesAPI:
             return {"success": True}
         except Exception as e:
             print(f"[Vermes API] ❌ 打开浏览器失败: {e}")
-            return {"success": False, "error": str(e)}
-
-    def open_oauth_window(self, url):
-        """打开微信 OAuth 原生窗口（不弹浏览器）。"""
-        try:
-            import webview
-            print(f"[Vermes API] 打开 OAuth 原生窗口: {url[:80]}...")
-            VermesAPI._oauth_window = webview.create_window(
-                '微信登录', url,
-                width=420, height=620, resizable=False,
-                easy_drag=True, text_select=False,
-            )
-            def on_closed():
-                print("[Vermes API] OAuth 窗口已关闭")
-                VermesAPI._oauth_window = None
-            VermesAPI._oauth_window.events.closed += on_closed
-            return {"success": True}
-        except Exception as e:
-            print(f"[Vermes API] ❌ 打开 OAuth 窗口失败: {e}")
-            return {"success": False, "error": str(e)}
-
-    def close_oauth_window(self):
-        """关闭微信 OAuth 原生窗口。"""
-        try:
-            if VermesAPI._oauth_window:
-                print("[Vermes API] 关闭 OAuth 窗口")
-                VermesAPI._oauth_window.destroy()
-                VermesAPI._oauth_window = None
-                return {"success": True}
-            return {"success": False, "error": "no window"}
-        except Exception as e:
-            print(f"[Vermes API] ❌ 关闭 OAuth 窗口失败: {e}")
             return {"success": False, "error": str(e)}
 
 
