@@ -2,7 +2,7 @@
 """
 Vermes GUI App — 双击即开原生窗口，无需浏览器。
 pywebview 6.x: create_window → start(func=...)
-无单例锁：允许多开，每次自动找可用端口。
+单例锁：防止多开，第二次打开自动聚焦已有窗口。
 自动端口分配：避免与本机测试实例冲突。
 """
 
@@ -12,12 +12,60 @@ import time
 import threading
 import platform
 import webbrowser
+import socket
 
 APP_TITLE    = "Vermes - AI Agent"
 DEFAULT_PORT = 9119
 PORT_FILE     = os.path.expanduser("~/.vermes/gui_port.txt")
+LOCK_FILE     = os.path.expanduser("~/.vermes/gui_app.lock")
 WINDOW_W     = 1200
 WINDOW_H     = 800
+
+
+def acquire_lock():
+    """获取单例锁。成功返回 True，失败返回 False（已有实例在运行）。"""
+    try:
+        # 检查锁文件中的PID是否还在运行
+        if os.path.exists(LOCK_FILE):
+            old_pid = open(LOCK_FILE).read().strip()
+            if old_pid.isdigit():
+                try:
+                    os.kill(int(old_pid), 0)  # 检查进程是否存在
+                    return False  # 旧进程还在运行
+                except OSError:
+                    pass  # 旧进程已退出，可以继续
+        # 写入当前PID
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        return True
+    except Exception:
+        return True  # 锁文件异常，允许运行
+
+
+def release_lock():
+    """释放单例锁。"""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
+
+
+def find_existing_port():
+    """检查是否有已运行的实例，返回其端口。"""
+    if os.path.exists(PORT_FILE):
+        try:
+            port = int(open(PORT_FILE).read().strip())
+            # 检查端口是否在监听
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            if s.connect_ex(('127.0.0.1', port)) == 0:
+                s.close()
+                return port
+            s.close()
+        except Exception:
+            pass
+    return None
 
 
 # 确保 hermes_cli 可导入
@@ -261,6 +309,21 @@ def main(port):
 
 def run_gui():
     """Entry point for GUI mode (called from main.py when frozen + no args)."""
+    # 单例锁：防止多开
+    if not acquire_lock():
+        # 已有实例在运行，打开浏览器指向已有实例
+        existing_port = find_existing_port()
+        if existing_port:
+            print(f"[Vermes] 已有实例在运行 (port={existing_port})，打开浏览器...")
+            webbrowser.open(f"http://127.0.0.1:{existing_port}")
+        else:
+            print("[Vermes] 已有实例在运行，但无法找到端口。")
+        sys.exit(0)
+
+    # 注册退出清理
+    import atexit
+    atexit.register(release_lock)
+
     # 服务器在后台线程启动（不阻塞）
     t = threading.Thread(target=start_server, daemon=True)
     t.start()
