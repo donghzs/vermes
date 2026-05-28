@@ -264,6 +264,13 @@ export default {
           if (data === '[DONE]') { onDone?.(usageInfo); return }
           try {
             const json = JSON.parse(data)
+            // 检查上游错误（如 One-API 额度耗尽）
+            if (json.error) {
+              const errMsg = json.error.message || '服务端错误'
+              onError?.(new Error(errMsg))
+              reader.cancel()
+              return
+            }
             // 解析 usage（最后一个 chunk 带有精确 token 统计）
             if (json.usage && json.usage.total_tokens > 0) {
               usageInfo = json.usage

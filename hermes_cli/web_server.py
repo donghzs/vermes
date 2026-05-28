@@ -3711,6 +3711,21 @@ async def chat_completions(req: ChatRequest):
                     headers={"Authorization": f"Bearer {api_key}"},
                     json={"model": model, "messages": conversation_history, "stream": True},
                 ) as resp:
+                    # 检查上游错误（如额度耗尽、token 无效等）
+                    if resp.status_code >= 400:
+                        error_body = ""
+                        async for chunk in resp.aiter_bytes():
+                            error_body += chunk.decode(errors="replace")
+                        try:
+                            err_json = json.loads(error_body)
+                            err_msg = err_json.get("error", {}).get("message", error_body[:200])
+                        except Exception:
+                            err_msg = error_body[:200]
+                        _log.warning(f"[Proxy] 上游错误 {resp.status_code}: {err_msg}")
+                        # 以 SSE error 事件返回给前端
+                        yield f'data: {json.dumps({"error": {"message": err_msg, "type": "one_api_error", "code": resp.status_code}})}\n\n'
+                        yield "data: [DONE]\n\n"
+                        return
                     async for line in resp.aiter_lines():
                         if line.startswith("data: "):
                             data_content = line[6:]
