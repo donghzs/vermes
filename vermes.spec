@@ -23,6 +23,11 @@ datas = [
     ('skills', 'skills'),
     ('plugins', 'plugins'),
     ('tools', 'tools'),
+    ('gateway', 'gateway'),
+    ('agent', 'agent'),
+    ('hermes_constants.py', '.'),
+    ('model_tools.py', '.'),
+    ('run_agent.py', '.'),
     ('README.md', '.'),
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
@@ -30,6 +35,28 @@ datas = [
 
 # Hidden imports that PyInstaller might miss
 hiddenimports = [
+    # run_agent and its dependencies
+    'run_agent',
+    'hermes_constants',
+    'model_tools',
+    'agent',
+    'agent.process_bootstrap',
+    'agent.iteration_budget',
+    'agent.error_classifier',
+    'agent.prompt_builder',
+    'agent.model_metadata',
+    'agent.prompt_caching',
+    'agent.display',
+    'agent.message_sanitization',
+    'agent.tool_dispatch_helpers',
+    'agent.tool_guardrails',
+    'agent.trajectory',
+    'agent.memory_manager',
+    'agent.think_scrubber',
+    'agent.retry_utils',
+    'agent.browser_provider',
+    'agent.browser_registry',
+
     # Core
     'uvicorn.logging',
     'uvicorn.loops',
@@ -41,6 +68,33 @@ hiddenimports = [
     'uvicorn.protocols.websockets.auto',
     'uvicorn.lifespan',
     'uvicorn.lifespan.on',
+    # gateway/ 包 (web_server.py 依赖 gateway.status, gateway.config)
+    'gateway',
+    'gateway.status',
+    'gateway.config',
+    'gateway.run',
+    'gateway.session',
+    'gateway.restart',
+    'gateway.delivery',
+    'gateway.memory_monitor',
+    'gateway.display_config',
+    'gateway.stream_consumer',
+    'gateway.runtime_footer',
+    'gateway.platforms',
+    'gateway.platforms.base',
+    'gateway.platform_registry',
+    'gateway.hooks',
+    'gateway.builtin_hooks',
+
+    # Plugins (browser_tool.py top-level imports)
+    'plugins',
+    'plugins.browser',
+    'plugins.browser.browserbase',
+    'plugins.browser.browserbase.provider',
+    'plugins.browser.browser_use',
+    'plugins.browser.browser_use.provider',
+    'plugins.browser.firecrawl',
+    'plugins.browser.firecrawl.provider',
 
     # HTTP clients
     'httpx',
@@ -129,7 +183,7 @@ elif sys.platform == 'darwin':
 # Main entry point
 a = Analysis(
     ['hermes_cli/main.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

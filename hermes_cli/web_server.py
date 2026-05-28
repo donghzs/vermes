@@ -47,7 +47,20 @@ from hermes_cli.config import (
     check_config_version,
     redact_key,
 )
-from gateway.status import get_running_pid, read_runtime_status
+# gateway.status — 延迟导入，PyInstaller bundle 中可能不包含 gateway 包
+def _get_gateway_pid():
+    try:
+        from gateway.status import get_running_pid
+        return get_running_pid()
+    except ImportError:
+        return None
+
+def _read_gateway_status():
+    try:
+        from gateway.status import read_runtime_status
+        return read_runtime_status()
+    except ImportError:
+        return None
 
 try:
     from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -623,7 +636,7 @@ async def get_status():
     # Try local PID check first (same-host).  If that fails and a remote
     # GATEWAY_HEALTH_URL is configured, probe the gateway over HTTP so the
     # dashboard works when the gateway runs in a separate container.
-    gateway_pid = get_running_pid()
+    gateway_pid = _get_gateway_pid()
     gateway_running = gateway_pid is not None
     remote_health_body: dict | None = None
 
@@ -655,7 +668,7 @@ async def get_status():
 
     # Prefer the detailed health endpoint response (has full state) when the
     # local runtime status file is absent or stale (cross-container).
-    runtime = read_runtime_status()
+    runtime = _read_gateway_status()
     if runtime is None and remote_health_body and remote_health_body.get("gateway_state"):
         runtime = remote_health_body
 

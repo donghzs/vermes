@@ -17,6 +17,11 @@ for src, dst in [
     ('skills', 'skills'),
     ('plugins', 'plugins'),
     ('tools', 'tools'),
+    ('agent', 'agent'),
+    ('gateway', 'gateway'),
+    ('hermes_constants.py', '.'),
+    ('model_tools.py', '.'),
+    ('run_agent.py', '.'),
     ('README.md', '.'),
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
@@ -36,6 +41,7 @@ hiddenimports = [
 
     # HTTP
     'httpx', 'httpx._transports', 'httpx._transports.default',
+    'requests', 'urllib3',
 
     # Async
     'anyio', 'anyio._backends', 'anyio._backends._asyncio',
@@ -64,7 +70,15 @@ hiddenimports = [
     # Missing modules (PyInstaller动态检测不到的)
     'hermes_cli.web_server', 'hermes_cli.gateway',
     'gateway', 'gateway.status', 'gateway.config',
-    'run_agent',
+    'run_agent', 'hermes_constants', 'model_tools',
+    'agent', 'agent.process_bootstrap', 'agent.iteration_budget',
+    'agent.error_classifier', 'agent.prompt_builder',
+    'agent.model_metadata', 'agent.prompt_caching',
+    'agent.display', 'agent.message_sanitization',
+    'agent.tool_dispatch_helpers', 'agent.tool_guardrails',
+    'agent.trajectory', 'agent.memory_manager',
+    'agent.think_scrubber', 'agent.retry_utils',
+    'agent.browser_provider', 'agent.browser_registry',
 
     # Provider backends
     'openai', 'anthropic',
