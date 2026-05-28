@@ -54,6 +54,7 @@ class VermesAPI:
             '微信登录', url,
             width=380, height=540, resizable=False,
             confirm_close=False,
+            js_api=VermesAPI(),
         )
 
         def on_loaded():
@@ -220,6 +221,7 @@ def main(port):
             width=WINDOW_W,
             height=WINDOW_H,
             resizable=True,
+            js_api=VermesAPI(),
         )
 
         def _load_real_url():
