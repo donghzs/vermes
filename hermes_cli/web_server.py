@@ -3672,27 +3672,30 @@ async def chat_completions(req: ChatRequest):
             )
             return resp
 
-        # Try to create AIAgent instance with tool calling enabled
-    # If model context < 64K, fall back to simple proxy mode
+        # vbit 通道直接走 Proxy 直通（One-API 原生支持流式，无需 Agent 缓冲）
+    # 其他通道走 Agent 模式（支持 tool calling）
     use_agent_mode = True
     agent = None
-    try:
-        agent = AIAgent(
-            base_url=base_url,
-            api_key=api_key,
-            provider=provider,
-            model=model,
-            max_iterations=30,
-            quiet_mode=True,
-            verbose_logging=False,
-            platform="web",
-        )
-    except ValueError as e:
-        if "context window" in str(e).lower():
-            print(f"[WARN] Model {model} context too small, falling back to proxy mode: {e}")
-            use_agent_mode = False
-        else:
-            raise
+    if provider == "vbit":
+        use_agent_mode = False
+    else:
+        try:
+            agent = AIAgent(
+                base_url=base_url,
+                api_key=api_key,
+                provider=provider,
+                model=model,
+                max_iterations=30,
+                quiet_mode=True,
+                verbose_logging=False,
+                platform="web",
+            )
+        except ValueError as e:
+            if "context window" in str(e).lower():
+                print(f"[WARN] Model {model} context too small, falling back to proxy mode: {e}")
+                use_agent_mode = False
+            else:
+                raise
 
     if req.stream:
         # Streaming: run agent OR fall back to proxy
