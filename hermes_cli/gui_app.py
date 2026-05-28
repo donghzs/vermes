@@ -163,11 +163,14 @@ def start_server():
     把实际端口写入 PORT_FILE，供 main() 读取。
     """
     os.environ["VERMES_WEB_SKIP_BUILD"] = "1"
+    _startup_log = os.path.expanduser("~/.vermes/gui_startup.log")
 
     try:
         import uvicorn
         from hermes_cli.web_server import app as fastapi_app
-    except ImportError as e:
+    except Exception as e:
+        with open(_startup_log, "a") as _f:
+            _f.write(f"[{time.strftime('%H:%M:%S')}] start_server IMPORT ERROR: {type(e).__name__}: {e}\n")
         print(f"[Vermes] 依赖缺失: {e}")
         return
 
@@ -256,14 +259,15 @@ def main(port):
         os._exit(0)
 
 
-if __name__ == "__main__":
+def run_gui():
+    """Entry point for GUI mode (called from main.py when frozen + no args)."""
     # 服务器在后台线程启动（不阻塞）
     t = threading.Thread(target=start_server, daemon=True)
     t.start()
 
     # 读取端口文件（start_server 会写入）
     port = DEFAULT_PORT
-    for _ in range(60):  # 最多等 30 秒（find_available_port 可能扫 20 个端口）
+    for _ in range(60):
         try:
             if os.path.exists(PORT_FILE):
                 with open(PORT_FILE, "r") as f:
@@ -273,7 +277,6 @@ if __name__ == "__main__":
             pass
         time.sleep(0.5)
     else:
-        # 端口文件超时未写入，自动扫描实际运行端口
         print("[Vermes] 端口文件未就绪，自动扫描后端端口...")
         for scan_port in range(DEFAULT_PORT, DEFAULT_PORT + 20):
             if wait_for_server(scan_port, timeout=8):
@@ -287,5 +290,8 @@ if __name__ == "__main__":
     else:
         print("[Vermes] 警告：后端未就绪，仍尝试打开窗口。")
 
-    # GUI 在主线程启动（macOS 要求）
     main(port)
+
+
+if __name__ == "__main__":
+    run_gui()
