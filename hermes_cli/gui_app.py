@@ -240,7 +240,7 @@ def start_server():
     uvicorn.run(fastapi_app,
                 host="127.0.0.1",
                 port=port,
-                log_level="warning",
+                log_level="info",
                 lifespan="off")
 
 
