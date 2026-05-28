@@ -3672,13 +3672,10 @@ async def chat_completions(req: ChatRequest):
             )
             return resp
 
-        # vbit 通道直接走 Proxy 直通（One-API 原生支持流式，无需 Agent 缓冲）
-    # 其他通道走 Agent 模式（支持 tool calling）
+        # 所有 provider 统一走 Agent 模式（支持 tool calling + 流式输出）
     use_agent_mode = True
     agent = None
-    if provider == "vbit":
-        use_agent_mode = False
-    else:
+    if True:
         try:
             agent = AIAgent(
                 base_url=base_url,
