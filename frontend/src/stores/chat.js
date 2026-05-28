@@ -394,15 +394,16 @@ export const useChatStore = defineStore('chat', () => {
         },
         onError: (err) => {
           console.error('❌ API error:', err)
-          // Token 402 = trial exhausted, show quota modal
-          if (err.message.includes('402') || err.message.includes('免费体验Token')) {
-            quotaModalType.value = 'trial_expired'
+          const msg = err.message || ''
+          // One-API 额度耗尽 / 积分用完 / Token 失效 → 弹窗提示
+          if (msg.includes('额度已用尽') || msg.includes('insufficient_quota') || msg.includes('体验额度已用完') || msg.includes('402') || msg.includes('免费体验Token')) {
+            quotaModalType.value = 'wechat_expired'
             showQuotaModal.value = true
             const am = messages.value.find(m => m.id === aid)
-            if (am) { am.content = '💡 免费体验次数已用完'; am.streaming = false }
+            if (am) { am.content = '💡 今日免费额度已用完，请明天再来或配置自己的 API Key'; am.streaming = false }
           } else {
             const am = messages.value.find(m => m.id === aid)
-            if (am) { am.content = '❌ 错误: ' + err.message; am.streaming = false }
+            if (am) { am.content = '❌ 错误: ' + msg; am.streaming = false }
           }
           loading.value = false
           abortController.value = null
