@@ -88,6 +88,7 @@ hiddenimports = [
     'starlette.routing', 'starlette.middleware',
     'starlette.middleware.cors', 'starlette.staticfiles',
     'starlette.websockets',
+    'websockets',
 
     # Utils
     'proxy_tools',
