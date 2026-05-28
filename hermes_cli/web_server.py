@@ -3762,12 +3762,17 @@ async def chat_completions(req: ChatRequest):
 
             def run_sync():
                 try:
+                    _log.info(f"[Stream] Agent starting, model={model}, provider={provider}")
                     result = agent.run_conversation(
                         user_message=user_message,
                         conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                         stream_callback=stream_callback,
                     )
+                    _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
                     return result
+                except Exception as e:
+                    _log.error(f"[Stream] Agent error: {e}")
+                    raise
                 finally:
                     _agent_done.set()
 
@@ -3807,12 +3812,20 @@ async def chat_completions(req: ChatRequest):
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
     else:
         # Non-streaming: run agent OR fall back to proxy
+        _usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         if agent is None:
             # Proxy mode for small context models
             proxy_resp = await call_proxy()
             proxy_data = proxy_resp.json()
             msg = proxy_data.get("choices", [{}])[0].get("message", {})
             final_response = msg.get("content", "Proxy error")
+            # Extract usage from One-API response
+            if "usage" in proxy_data and proxy_data["usage"]:
+                _usage = {
+                    "prompt_tokens": proxy_data["usage"].get("prompt_tokens", 0),
+                    "completion_tokens": proxy_data["usage"].get("completion_tokens", 0),
+                    "total_tokens": proxy_data["usage"].get("total_tokens", 0),
+                }
         else:
             # Agent mode for models with sufficient context
             def run_sync():
@@ -3827,6 +3840,34 @@ async def chat_completions(req: ChatRequest):
             final_response = result.get("final_response", "") if result else ""
             if not final_response and result and result.get("error"):
                 final_response = f"Error: {result['error']}"
+            # Agent mode: estimate tokens from input+output length
+            _input_chars = sum(len(str(m.get("content", ""))) for m in conversation_history)
+            _output_chars = len(final_response or "")
+            _usage = {
+                "prompt_tokens": max(1, _input_chars // 3),
+                "completion_tokens": max(1, _output_chars // 3),
+                "total_tokens": max(1, (_input_chars + _output_chars) // 3),
+            }
+
+        # Non-streaming spend reporting
+        wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
+        if wechat_openid and _usage["total_tokens"] > 0:
+            try:
+                import httpx as _hx
+                points = max(1, _usage["total_tokens"] // 1000)
+                _secret = os.environ.get("VERMES_INTERNAL_SECRET", "")
+                if _secret:
+                    _hx.post(
+                        "https://api.vbit.top/api/quota/spend",
+                        json={"wechat_openid": wechat_openid, "quota_consumed": points * 720},
+                        headers={"X-Vermes-Secret": _secret},
+                        timeout=5, verify=True
+                    )
+                    _log.info(f"[Quota] 非流式上报: {points}积分 ({_usage['total_tokens']} tokens)")
+                else:
+                    _log.warning("[Quota] VERMES_INTERNAL_SECRET 未设置，跳过积分上报")
+            except Exception as e:
+                _log.warning(f"[Quota] 非流式上报失败: {e}")
         
         return {
             "id": "vermes-agent",
@@ -3838,7 +3879,7 @@ async def chat_completions(req: ChatRequest):
                 "message": {"role": "assistant", "content": final_response},
                 "finish_reason": "stop"
             }],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            "usage": _usage
         }
 
 @app.get("/api/chat/models")
