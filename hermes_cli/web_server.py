@@ -3747,32 +3747,52 @@ async def chat_completions(req: ChatRequest):
             # Proxy streaming mode
             return StreamingResponse(stream_from_proxy(), media_type="text/event-stream")
         else:
-            # Agent mode
-            collected_deltas = []
+            # Agent mode — 实时流式输出
+            import asyncio as _aio
+            _delta_queue: _aio.Queue = _aio.Queue()
+            _agent_done = _aio.Event()
 
             def stream_callback(delta: str):
-                collected_deltas.append(delta)
+                """被agent调用，实时放入队列"""
+                if delta is not None:
+                    _delta_queue.put_nowait(delta)
+                else:
+                    # delta=None 表示agent完成
+                    _agent_done.set()
 
             def run_sync():
-                return agent.run_conversation(
-                    user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
-                    stream_callback=stream_callback,
-                )
+                try:
+                    result = agent.run_conversation(
+                        user_message=user_message,
+                        conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
+                        stream_callback=stream_callback,
+                    )
+                    return result
+                finally:
+                    _agent_done.set()
 
             async def stream_generator():
                 loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(None, run_sync)
+                # 在后台线程运行agent
+                agent_task = loop.run_in_executor(None, run_sync)
                 
-                for delta in collected_deltas:
-                    chunk = {
-                        "id": "vermes-agent",
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": model,
-                        "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
-                    }
-                    yield f"data: {json.dumps(chunk)}\n\n"
+                # 实时yield每个delta
+                while not _agent_done.is_set() or not _delta_queue.empty():
+                    try:
+                        delta = await _aio.wait_for(_delta_queue.get(), timeout=0.1)
+                        chunk = {
+                            "id": "vermes-agent",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model,
+                            "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                    except _aio.TimeoutError:
+                        continue
+                
+                # 等待agent完成
+                await agent_task
                 
                 final_chunk = {
                     "id": "vermes-agent",
