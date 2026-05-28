@@ -92,15 +92,21 @@ from agent.browser_provider import BrowserProvider as CloudBrowserProvider  # no
 from agent.browser_registry import (  # noqa: F401  (test-patchable surface)
     get_provider as _registry_get_browser_provider,
 )
-from plugins.browser.browserbase.provider import (  # noqa: F401  (legacy import surface)
-    BrowserbaseBrowserProvider as BrowserbaseProvider,
-)
-from plugins.browser.browser_use.provider import (  # noqa: F401
-    BrowserUseBrowserProvider as BrowserUseProvider,
-)
-from plugins.browser.firecrawl.provider import (  # noqa: F401
-    FirecrawlBrowserProvider as FirecrawlProvider,
-)
+# plugins.* imports — PyInstaller bundle 中 plugins 包缺少 __path__，用 try/except 兜底
+try:
+    from plugins.browser.browserbase.provider import (  # noqa: F401  (legacy import surface)
+        BrowserbaseBrowserProvider as BrowserbaseProvider,
+    )
+    from plugins.browser.browser_use.provider import (  # noqa: F401
+        BrowserUseBrowserProvider as BrowserUseProvider,
+    )
+    from plugins.browser.firecrawl.provider import (  # noqa: F401
+        FirecrawlBrowserProvider as FirecrawlProvider,
+    )
+except (ImportError, ModuleNotFoundError):
+    BrowserbaseProvider = None  # type: ignore[assignment,misc]
+    BrowserUseProvider = None  # type: ignore[assignment,misc]
+    FirecrawlProvider = None  # type: ignore[assignment,misc]
 from tools.tool_backend_helpers import normalize_browser_cloud_provider
 
 # Camofox local anti-detection browser backend (optional).

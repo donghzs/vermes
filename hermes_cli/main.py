@@ -10337,6 +10337,16 @@ def _plugin_cli_discovery_needed() -> bool:
 
 def main():
     """Main entry point for hermes CLI."""
+    # ── GUI auto-detect: when launched as macOS .app with no args, run GUI mode ──
+    import sys as _sys
+    if getattr(_sys, 'frozen', False) and len(_sys.argv) <= 1:
+        try:
+            from hermes_cli.gui_app import run_gui
+            run_gui()
+            return
+        except Exception as _gui_err:
+            print(f"[Vermes] GUI 启动失败，回退 CLI 模式: {_gui_err}")
+
     # Force UTF-8 stdio on Windows before anything prints.  No-op elsewhere.
     try:
         from hermes_cli.stdio import configure_windows_stdio
