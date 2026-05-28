@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { isCloudModel, checkQuota, useQuota, checkQuotaServer, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
+import api, { isCloudModel, checkQuota, checkQuotaServer, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
 
 // ── H2/M11 修复：避免 Date.now() 碰撞 ──
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
@@ -376,9 +376,6 @@ export const useChatStore = defineStore('chat', () => {
           }
           loading.value = false
           abortController.value = null
-          if (quotaCheck.source === 'free_daily') {
-            useQuota(1)
-          }
           // 精确计费：后端已自动上报消费（基于 SSE 流 usage token 数）
           // 前端只需刷新配额显示
           const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
