@@ -3723,9 +3723,9 @@ async def chat_completions(req: ChatRequest):
                             except (json.JSONDecodeError, KeyError, TypeError):
                                 pass
                             yield line + "\n\n"
-            # 流结束后自动上报消费到服务端
+            # 流结束后自动上报消费到服务端（仅 vbit 通道扣积分，用户自带 Key 不扣）
             wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-            if wechat_openid and _stream_usage["total_tokens"] > 0:
+            if wechat_openid and _stream_usage["total_tokens"] > 0 and provider == "vbit":
                 try:
                     import httpx as _hx
                     # 积分换算: 1 积分 = 720 One-API quota
@@ -3749,14 +3749,17 @@ async def chat_completions(req: ChatRequest):
         else:
             # Agent mode — 实时流式输出
             import asyncio as _aio
-            _delta_queue: _aio.Queue = _aio.Queue()
+            import queue as _queue  # 线程安全的队列
+            _delta_queue: _queue.Queue = _queue.Queue()
             _agent_done = _aio.Event()
 
             def stream_callback(delta: str):
                 """被agent调用，实时放入队列"""
                 if delta is not None:
+                    print(f"[Stream] DELTA: {delta[:50]}", flush=True)
                     _delta_queue.put_nowait(delta)
                 else:
+                    print(f"[Stream] AGENT DONE (delta=None)", flush=True)
                     # delta=None 表示agent完成
                     _agent_done.set()
 
@@ -3781,20 +3784,21 @@ async def chat_completions(req: ChatRequest):
                 # 在后台线程运行agent
                 agent_task = loop.run_in_executor(None, run_sync)
                 
-                # 实时yield每个delta
+                # 实时yield每个delta（线程安全）
                 while not _agent_done.is_set() or not _delta_queue.empty():
                     try:
-                        delta = await _aio.wait_for(_delta_queue.get(), timeout=0.1)
-                        chunk = {
-                            "id": "vermes-agent",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": model,
-                            "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
-                        }
-                        yield f"data: {json.dumps(chunk)}\n\n"
-                    except _aio.TimeoutError:
+                        delta = _delta_queue.get_nowait()
+                    except _queue.Empty:
+                        await _aio.sleep(0.05)
                         continue
+                    chunk = {
+                        "id": "vermes-agent",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
                 
                 # 等待agent完成并提取 usage
                 try:
@@ -3802,9 +3806,9 @@ async def chat_completions(req: ChatRequest):
                 except Exception:
                     _agent_result = {}
                 
-                # 流式 spend 上报
+                # 流式 spend 上报（仅 vbit 通道扣积分，用户自带 Key 不扣）
                 _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-                if _wechat_openid and _agent_result:
+                if _wechat_openid and _agent_result and provider == "vbit":
                     _total = _agent_result.get("total_tokens", 0)
                     if _total > 0:
                         try:
@@ -3874,9 +3878,9 @@ async def chat_completions(req: ChatRequest):
                 "total_tokens": max(1, (_input_chars + _output_chars) // 3),
             }
 
-        # Non-streaming spend reporting
+        # Non-streaming spend reporting（仅 vbit 通道扣积分，用户自带 Key 不扣）
         wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-        if wechat_openid and _usage["total_tokens"] > 0:
+        if wechat_openid and _usage["total_tokens"] > 0 and provider == "vbit":
             try:
                 import httpx as _hx
                 points = max(1, _usage["total_tokens"] // 1000)
