@@ -13,6 +13,7 @@ import threading
 import platform
 import webbrowser
 import socket
+import subprocess
 
 APP_TITLE    = "Vermes - AI Agent"
 DEFAULT_PORT = 9119
@@ -311,11 +312,17 @@ def run_gui():
     """Entry point for GUI mode (called from main.py when frozen + no args)."""
     # 单例锁：防止多开
     if not acquire_lock():
-        # 已有实例在运行，打开浏览器指向已有实例
+        # 已有实例在运行，聚焦已有窗口
         existing_port = find_existing_port()
         if existing_port:
-            print(f"[Vermes] 已有实例在运行 (port={existing_port})，打开浏览器...")
-            webbrowser.open(f"http://127.0.0.1:{existing_port}")
+            print(f"[Vermes] 已有实例在运行 (port={existing_port})，聚焦窗口...")
+            # 尝试聚焦已有的.app窗口
+            try:
+                subprocess.run(['open', '-a', 'Vermes'], timeout=3, 
+                             capture_output=True, check=False)
+            except Exception:
+                # 回退：打开浏览器
+                webbrowser.open(f"http://127.0.0.1:{existing_port}")
         else:
             print("[Vermes] 已有实例在运行，但无法找到端口。")
         sys.exit(0)
