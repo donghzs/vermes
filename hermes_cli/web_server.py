@@ -3796,8 +3796,33 @@ async def chat_completions(req: ChatRequest):
                     except _aio.TimeoutError:
                         continue
                 
-                # 等待agent完成
-                await agent_task
+                # 等待agent完成并提取 usage
+                try:
+                    _agent_result = await agent_task
+                except Exception:
+                    _agent_result = {}
+                
+                # 流式 spend 上报
+                _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
+                if _wechat_openid and _agent_result:
+                    _total = _agent_result.get("total_tokens", 0)
+                    if _total > 0:
+                        try:
+                            import httpx as _hx2
+                            _pts = max(1, _total // 1000)
+                            _sec = os.environ.get("VERMES_INTERNAL_SECRET", "")
+                            if _sec:
+                                _hx2.post(
+                                    "https://api.vbit.top/api/quota/spend",
+                                    json={"wechat_openid": _wechat_openid, "quota_consumed": _pts * 720},
+                                    headers={"X-Vermes-Secret": _sec},
+                                    timeout=5, verify=True
+                                )
+                                _log.info(f"[Quota] 流式上报: {_pts}积分 ({_total} tokens)")
+                            else:
+                                _log.warning("[Quota] VERMES_INTERNAL_SECRET 未设置，跳过积分上报")
+                        except Exception as _qe:
+                            _log.warning(f"[Quota] 流式上报失败: {_qe}")
                 
                 final_chunk = {
                     "id": "vermes-agent",
@@ -5455,7 +5480,7 @@ def start_server(
     # proxy_headers=False so _ws_client_is_allowed sees the real connection peer
     # rather than X-Forwarded-For's rewritten value (which would defeat the
     # loopback gate when behind a reverse proxy).
-    uvicorn.run(app, host=host, port=port, log_level="warning", proxy_headers=False)
+    uvicorn.run(app, host=host, port=port, log_level="info", proxy_headers=False)
 
 # --- Trial Token claim endpoint (added 2026-05-22) ---
 
