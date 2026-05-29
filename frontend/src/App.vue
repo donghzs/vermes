@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import Sidebar from './components/Sidebar.vue'
+import ToastContainer from './components/ToastContainer.vue'
 import { useChatStore } from './stores/chat'
 import { useUpdateStore } from './stores/update'
 
@@ -42,5 +43,6 @@ onMounted(async () => {
         <router-view />
       </div>
     </div>
+    <ToastContainer />
   </div>
 </template>

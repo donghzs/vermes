@@ -15,13 +15,14 @@ vbit = ProviderProfile(
     description="vbit.top — One-API 统一网关，多模型聚合",
     signup_url="https://vbit.top",
     fallback_models=(
+        "mimo-v2.5",
         "qwen-turbo",
         "deepseek-chat",
         "deepseek-reasoner",
         "gpt-4o",
         "claude-sonnet-4-20250514",
     ),
-    base_url="https://api.vbit.top/v1",
+    base_url="https://vbit.top/v1",
     default_aux_model="qwen-turbo",
 )
 

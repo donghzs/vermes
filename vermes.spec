@@ -151,6 +151,7 @@ hiddenimports = [
     'starlette.middleware.cors',
     'starlette.staticfiles',
     'starlette.websockets',
+    'websockets',
 
     # CLI dependencies (required by main.py)
     'prompt_toolkit',
@@ -193,7 +194,8 @@ a = Analysis(
     excludes=[
         # Exclude unused heavy packages
         'tkinter',
-        'unittest',
+        # 'unittest' MUST NOT be excluded — agent/conversation_loop.py uses unittest.mock.Mock
+        # 'unittest',
         'test',
         'tests',
         'pytest',

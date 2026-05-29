@@ -1066,8 +1066,11 @@ def run_conversation(
                     # No display/TTS consumer. Still prefer streaming for
                     # health checking, but skip for Mock clients in tests
                     # (mocks return SimpleNamespace, not stream iterators).
-                    from unittest.mock import Mock
-                    if isinstance(getattr(agent, "client", None), Mock):
+                    try:
+                        from unittest.mock import Mock
+                    except ImportError:
+                        Mock = None
+                    if Mock is not None and isinstance(getattr(agent, "client", None), Mock):
                         _use_streaming = False
 
                 if _use_streaming:

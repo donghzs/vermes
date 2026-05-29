@@ -869,6 +869,7 @@ async def get_action_status(name: str, lines: int = 200):
     }
 
 
+@app.get("/api/sessions")
 async def get_sessions(limit: int = 20, offset: int = 0):
     try:
         from hermes_state import SessionDB
@@ -890,6 +891,7 @@ async def get_sessions(limit: int = 20, offset: int = 0):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/api/sessions/search")
 async def search_sessions(q: str = "", limit: int = 20):
     """Full-text search across session message content using FTS5."""
     if not q or not q.strip():
@@ -992,16 +994,19 @@ async def get_onboarding():
     return {"configured": len(missing) == 0, "missing": missing}
 
 
+@app.get("/api/config")
 async def get_config():
     config = _normalize_config_for_web(load_config())
     # Strip internal keys that the frontend shouldn't see or send back
     return {k: v for k, v in config.items() if not k.startswith("_")}
 
 
+@app.get("/api/config/defaults")
 async def get_defaults():
     return DEFAULT_CONFIG
 
 
+@app.get("/api/config/schema")
 async def get_schema():
     return {"fields": CONFIG_SCHEMA, "category_order": _CATEGORY_ORDER}
 
@@ -1016,6 +1021,7 @@ _EMPTY_MODEL_INFO: dict = {
 }
 
 
+@app.get("/api/model/info")
 def get_model_info():
     """Return resolved model metadata for the currently configured model.
 
@@ -1113,6 +1119,7 @@ _AUX_TASK_SLOTS: Tuple[str, ...] = (
 )
 
 
+@app.get("/api/model/options")
 def get_model_options():
     """Return authenticated providers + their curated model lists.
 
@@ -1130,6 +1137,7 @@ def get_model_options():
         raise HTTPException(status_code=500, detail="Failed to list model options")
 
 
+@app.get("/api/model/auxiliary")
 def get_auxiliary_models():
     """Return current auxiliary task assignments.
 
@@ -1173,6 +1181,7 @@ def get_auxiliary_models():
         raise HTTPException(status_code=500, detail="Failed to read auxiliary config")
 
 
+@app.post("/api/model/set")
 async def set_model_assignment(body: ModelAssignment):
     """Assign a model to the main slot or an auxiliary task slot.
 
@@ -1312,6 +1321,7 @@ def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+@app.put("/api/config")
 async def update_config(body: ConfigUpdate):
     try:
         save_config(_denormalize_config_from_web(body.config))
@@ -1321,6 +1331,7 @@ async def update_config(body: ConfigUpdate):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/api/env")
 async def get_env_vars():
     env_on_disk = load_env()
     result = {}
@@ -1347,6 +1358,7 @@ _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
     "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
 })
 
+@app.put("/api/env")
 async def set_env_var(body: EnvVarUpdate, request: Request):
     _require_token(request)
     if body.key not in _ENV_WRITE_ALLOWED_KEYS:
@@ -1371,6 +1383,7 @@ async def shutdown_server():
         return {"ok": False}
 
 
+@app.delete("/api/env")
 async def remove_env_var(body: EnvVarDelete):
     try:
         removed = remove_env_value(body.key)
@@ -1384,6 +1397,7 @@ async def remove_env_var(body: EnvVarDelete):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.post("/api/env/reveal")
 async def reveal_env_var(body: EnvVarReveal, request: Request):
     """Return the real (unredacted) value of a single env var.
 
@@ -1658,6 +1672,7 @@ def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
     return {"logged_in": False}
 
 
+@app.get("/api/providers/oauth")
 async def list_oauth_providers():
     """Enumerate every OAuth-capable LLM provider with current status.
 
@@ -1689,6 +1704,7 @@ async def list_oauth_providers():
     return {"providers": providers}
 
 
+@app.delete("/api/providers/oauth/{provider_id}")
 async def disconnect_oauth_provider(provider_id: str, request: Request):
     """Disconnect an OAuth provider. Token-protected (matches /env/reveal)."""
     _require_token(request)
@@ -2416,6 +2432,7 @@ def _codex_full_login_worker(session_id: str) -> None:
                 s["error_message"] = str(e)
 
 
+@app.post("/api/providers/oauth/{provider_id}/start")
 async def start_oauth_login(provider_id: str, request: Request):
     """Initiate an OAuth login flow. Token-protected."""
     _require_token(request)
@@ -2453,6 +2470,7 @@ class OAuthSubmitBody(BaseModel):
     code: str
 
 
+@app.post("/api/providers/oauth/{provider_id}/submit")
 async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Request):
     """Submit the auth code for PKCE flows. Token-protected."""
     _require_token(request)
@@ -2463,6 +2481,7 @@ async def submit_oauth_code(provider_id: str, body: OAuthSubmitBody, request: Re
     raise HTTPException(status_code=400, detail=f"submit not supported for {provider_id}")
 
 
+@app.get("/api/providers/oauth/{provider_id}/poll/{session_id}")
 async def poll_oauth_session(provider_id: str, session_id: str):
     """Poll a device-code session's status (no auth — read-only state)."""
     with _oauth_sessions_lock:
@@ -2479,6 +2498,7 @@ async def poll_oauth_session(provider_id: str, session_id: str):
     }
 
 
+@app.delete("/api/providers/oauth/sessions/{session_id}")
 async def cancel_oauth_session(session_id: str, request: Request):
     """Cancel a pending OAuth session. Token-protected."""
     _require_token(request)
@@ -2592,6 +2612,7 @@ def _session_latest_descendant(session_id: str):
     finally:
         db.close()
 
+@app.get("/api/sessions/{session_id}")
 async def get_session_detail(session_id: str):
     from hermes_state import SessionDB
     db = SessionDB()
@@ -2606,6 +2627,7 @@ async def get_session_detail(session_id: str):
 
 
 
+@app.get("/api/sessions/{session_id}/latest-descendant")
 async def get_session_latest_descendant(session_id: str):
     latest, path = _session_latest_descendant(session_id)
     if not latest:
@@ -2617,6 +2639,7 @@ async def get_session_latest_descendant(session_id: str):
         "changed": bool(path and latest != path[0]),
     }
 
+@app.get("/api/sessions/{session_id}/messages")
 async def get_session_messages(session_id: str):
     from hermes_state import SessionDB
     db = SessionDB()
@@ -2630,6 +2653,7 @@ async def get_session_messages(session_id: str):
         db.close()
 
 
+@app.delete("/api/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
     from hermes_state import SessionDB
     db = SessionDB()
@@ -3536,6 +3560,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
 
 
 
+@app.post("/api/chat/completions")
 async def chat_completions(req: ChatRequest):
     """Agent-powered chat: uses AIAgent with tool calling capabilities.
     
@@ -3975,6 +4000,7 @@ async def chat_completions(req: ChatRequest):
             "usage": _usage
         }
 
+@app.get("/api/chat/models")
 async def chat_models():
     """Return available models from the configured LLM provider."""
     import httpx
@@ -4004,6 +4030,7 @@ class RawConfigUpdate(BaseModel):
     yaml_text: str
 
 
+@app.get("/api/config/raw")
 async def get_config_raw():
     path = get_config_path()
     if not path.exists():
@@ -4011,6 +4038,7 @@ async def get_config_raw():
     return {"yaml": path.read_text(encoding="utf-8")}
 
 
+@app.put("/api/config/raw")
 async def update_config_raw(body: RawConfigUpdate):
     try:
         parsed = yaml.safe_load(body.yaml_text)
@@ -4096,6 +4124,7 @@ async def get_usage_analytics(days: int = 30):
         db.close()
 
 
+@app.get("/api/analytics/models")
 async def get_models_analytics(days: int = 30):
     """Rich per-model analytics for the Models dashboard page.
 
@@ -4938,6 +4967,7 @@ def _discover_user_themes() -> list:
     return result
 
 
+@app.get("/api/dashboard/themes")
 async def get_dashboard_themes():
     """Return available themes and the currently active one.
 
@@ -4972,6 +5002,7 @@ class ThemeSetBody(BaseModel):
     name: str
 
 
+@app.put("/api/dashboard/theme")
 async def set_dashboard_theme(body: ThemeSetBody):
     """Set the active dashboard theme (persists to config.yaml)."""
     config = load_config()
@@ -5078,6 +5109,7 @@ def _get_dashboard_plugins(force_rescan: bool = False) -> list:
     return _dashboard_plugins_cache
 
 
+@app.get("/api/dashboard/plugins")
 async def get_dashboard_plugins():
     """Return discovered dashboard plugins (excludes user-hidden ones)."""
     plugins = _get_dashboard_plugins()
@@ -5092,6 +5124,7 @@ async def get_dashboard_plugins():
     ]
 
 
+@app.get("/api/dashboard/plugins/rescan")
 async def rescan_dashboard_plugins():
     """Force re-scan of dashboard plugins."""
     plugins = _get_dashboard_plugins(force_rescan=True)
@@ -5223,6 +5256,7 @@ def _merged_plugins_hub() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/dashboard/plugins/hub")
 async def get_plugins_hub(request: Request):
     """Unified agent plugins + dashboard extension metadata (session protected)."""
     _require_token(request)
@@ -5233,6 +5267,7 @@ async def get_plugins_hub(request: Request):
         raise HTTPException(status_code=500, detail="Failed to build plugins hub.") from exc
 
 
+@app.post("/api/dashboard/agent-plugins/install")
 async def post_agent_plugin_install(request: Request, body: _AgentPluginInstallBody):
     _require_token(request)
     from hermes_cli.plugins_cmd import dashboard_install_plugin
@@ -5260,6 +5295,7 @@ def _validate_plugin_name(name: str) -> str:
     return name
 
 
+@app.post("/api/dashboard/agent-plugins/{name}/enable")
 async def post_agent_plugin_enable(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
@@ -5271,6 +5307,7 @@ async def post_agent_plugin_enable(request: Request, name: str):
     return result
 
 
+@app.post("/api/dashboard/agent-plugins/{name}/disable")
 async def post_agent_plugin_disable(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
@@ -5282,6 +5319,7 @@ async def post_agent_plugin_disable(request: Request, name: str):
     return result
 
 
+@app.post("/api/dashboard/agent-plugins/{name}/update")
 async def post_agent_plugin_update(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
@@ -5294,6 +5332,7 @@ async def post_agent_plugin_update(request: Request, name: str):
     return result
 
 
+@app.delete("/api/dashboard/agent-plugins/{name}")
 async def delete_agent_plugin(request: Request, name: str):
     _require_token(request)
     name = _validate_plugin_name(name)
@@ -5311,6 +5350,7 @@ class _PluginProvidersPutBody(BaseModel):
     context_engine: Optional[str] = None
 
 
+@app.put("/api/dashboard/plugin-providers")
 async def put_plugin_providers(request: Request, body: _PluginProvidersPutBody):
     """Persist memory provider / context engine selection (writes config.yaml)."""
     _require_token(request)
@@ -5330,6 +5370,7 @@ class _PluginVisibilityBody(BaseModel):
     hidden: bool
 
 
+@app.post("/api/dashboard/plugins/{name}/visibility")
 async def post_plugin_visibility(request: Request, name: str, body: _PluginVisibilityBody):
     """Toggle a plugin's sidebar visibility (persists to config.yaml dashboard.hidden_plugins)."""
     _require_token(request)
@@ -5352,6 +5393,7 @@ async def post_plugin_visibility(request: Request, name: str, body: _PluginVisib
     return {"ok": True, "name": name, "hidden": body.hidden}
 
 
+@app.get("/dashboard-plugins/{plugin_name}/{file_path:path}")
 async def serve_plugin_asset(plugin_name: str, file_path: str):
     """Serve static assets from a dashboard plugin directory.
 
@@ -5563,6 +5605,7 @@ async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.post("/api/claim")
 async def claim_trial_token(request: Request):
     """v2: Claim trial token — requires wechat_openid."""
     try:
@@ -5596,6 +5639,7 @@ async def claim_trial_token(request: Request):
 
 # --- Quota system proxy endpoints ---
 
+@app.get("/api/quota/check")
 async def quota_check_proxy(request: Request):
     """Proxy quota check to vbit.top."""
     try:
@@ -5609,6 +5653,7 @@ async def quota_check_proxy(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.post("/api/quota/spend")
 async def quota_spend_proxy(request: Request):
     """Proxy quota spend to vbit.top (with internal auth)."""
     try:
@@ -5626,6 +5671,7 @@ async def quota_spend_proxy(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/quota/referral/code")
 async def referral_code_proxy(request: Request):
     """Proxy referral code to vbit.top."""
     try:
@@ -5639,6 +5685,7 @@ async def referral_code_proxy(request: Request):
         return {"success": False, "error": str(e)}
 
 
+@app.post("/api/quota/referral/bind")
 async def referral_bind_proxy(request: Request):
     """Proxy referral bind to vbit.top."""
     try:
@@ -5657,6 +5704,7 @@ async def referral_bind_proxy(request: Request):
 
 # --- WeChat login proxy endpoints ---
 
+@app.post("/api/wechat/qrurl")
 async def wechat_qrurl_proxy():
     """Proxy WeChat QR URL request to vbit.top."""
     try:
@@ -5671,6 +5719,7 @@ async def wechat_qrurl_proxy():
         return {"success": False, "error": "httpx not available"}
 
 
+@app.get("/api/wechat/poll")
 async def wechat_poll_proxy(state: str):
     """Proxy WeChat poll request to vbit.top, with token validation."""
     try:
@@ -5855,6 +5904,7 @@ PROVIDER_TEMPLATES = {
     },
 }
 
+@app.get("/api/providers/templates")
 def get_provider_templates():
     """Return preset provider templates for cloud model addition."""
     result = {}
@@ -5872,6 +5922,7 @@ class ProviderAddRequest(BaseModel):
     api_key: str
     base_url: Optional[str] = None
 
+@app.post("/api/provider/add")
 async def add_provider(body: ProviderAddRequest):
     """Add a new provider by writing API key to .env file."""
     template = PROVIDER_TEMPLATES.get(body.provider_id)
@@ -5891,6 +5942,7 @@ async def add_provider(body: ProviderAddRequest):
     
     return {"ok": True, "provider": body.provider_id}
 
+@app.post("/api/provider/verify")
 async def verify_provider(body: ProviderAddRequest):
     """Verify API key by calling provider's API."""
     import httpx
@@ -5920,6 +5972,7 @@ async def verify_provider(body: ProviderAddRequest):
         raise HTTPException(status_code=400, detail=f"Verification failed: {str(e)}")
 
 
+@app.post("/api/provider/sync-models")
 async def provider_sync_models(request: Request):
     """Sync available models from a provider.
     Accepts either (provider_id) OR (base_url + api_key).
@@ -5992,6 +6045,7 @@ async def provider_sync_models(request: Request):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.post("/api/model/discover")
 async def discover_models():
     """Scan local Ollama for available models."""
     import httpx
@@ -6007,22 +6061,4 @@ async def discover_models():
         return {"ok": False, "error": str(e)}
 
 # Mount SPA sub-app LAST so API routes take priority over its catch-all
-# ─────────────────────────────────────────────────────────────────
-# Blueprint 注册（功能域路由模块化）
-# 函数已全部定义完毕，导入 blueprints 不会产生循环依赖问题
-# ─────────────────────────────────────────────────────────────────
-# 注意：所有已迁移路由的 @app 装饰器已移除
-# Blueprint 中的 register_to(app) 函数负责向 app 注册路由
-import blueprints
-
-# 批量调用各 Blueprint 的 register_to（位于各 blueprint/*.py 文件中）
-blueprints.chat.register_to(app)
-blueprints.quota.register_to(app)
-blueprints.wechat.register_to(app)
-blueprints.models.register_to(app)
-blueprints.config.register_to(app)
-blueprints.providers.register_to(app)
-blueprints.dashboard.register_to(app)
-blueprints.session.register_to(app)
-
 mount_spa(app)
