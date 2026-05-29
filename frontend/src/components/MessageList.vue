@@ -18,6 +18,21 @@ import go from 'highlight.js/lib/languages/go'
 import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
+
+// 工具结果展开状态
+const expandedTools = ref(new Set())
+
+function toggleToolExpand(toolId) {
+  if (expandedTools.value.has(toolId)) {
+    expandedTools.value.delete(toolId)
+  } else {
+    expandedTools.value.add(toolId)
+  }
+}
+
+function isToolExpanded(toolId) {
+  return expandedTools.value.has(toolId)
+}
 import markdown from 'highlight.js/lib/languages/markdown'
 import typescript from 'highlight.js/lib/languages/typescript'
 import jsx from 'highlight.js/lib/languages/javascript'
@@ -272,14 +287,27 @@ watch(() => chat.filteredMessages.length, async () => {
           <!-- 工具调用展示 -->
           <div v-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="mt-2 space-y-1">
             <div v-for="tool in msg.toolInvocations" :key="tool.id || tool.name"
-                 class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg"
-                 :class="tool.status === 'running' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : tool.status === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400'">
-              <span v-if="tool.status === 'running'" class="animate-spin">⏳</span>
-              <span v-else-if="tool.status === 'error'">❌</span>
-              <span v-else>✅</span>
-              <span class="font-medium">{{ ({thinking:'思考中',read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
-              <span v-if="tool.duration" class="text-[10px] opacity-60">{{ tool.duration }}s</span>
-              <span v-if="tool.status === 'running'" class="text-[10px] opacity-60">执行中...</span>
+                 class="text-xs rounded-lg overflow-hidden"
+                 :class="tool.status === 'running' ? 'bg-blue-50 dark:bg-blue-900/20' : tool.status === 'error' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-700/50'">
+              <!-- 工具头部（可点击展开） -->
+              <div class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/30 transition"
+                   :class="tool.status === 'running' ? 'text-blue-600 dark:text-blue-400' : tool.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'"
+                   @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
+                <span v-if="tool.status === 'running'" class="animate-spin">⏳</span>
+                <span v-else-if="tool.status === 'error'">❌</span>
+                <span v-else>✅</span>
+                <span class="font-medium flex-1">{{ ({thinking:'思考中',read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
+                <span v-if="tool.duration" class="text-[10px] opacity-60">{{ tool.duration }}s</span>
+                <span v-if="tool.status === 'running'" class="text-[10px] opacity-60">执行中...</span>
+                <span v-if="tool.result_preview" class="text-[10px] opacity-60">
+                  {{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}
+                </span>
+              </div>
+              <!-- 工具结果摘要（可折叠） -->
+              <div v-if="tool.result_preview && isToolExpanded(tool.id || tool.name)"
+                   class="px-3 py-2 border-t border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800/50">
+                <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ tool.result_preview }}</pre>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-2 mt-1"
