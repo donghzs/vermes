@@ -5,7 +5,67 @@ import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 
-const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
+// P3-4: 按需导入highlight.js核心和常用语言
+import hljs from 'highlight.js/lib/core'
+import javascript from 'highlight.js/lib/languages/javascript'
+import python from 'highlight.js/lib/languages/python'
+import bash from 'highlight.js/lib/languages/bash'
+import json from 'highlight.js/lib/languages/json'
+import html from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import java from 'highlight.js/lib/languages/java'
+import go from 'highlight.js/lib/languages/go'
+import rust from 'highlight.js/lib/languages/rust'
+import sql from 'highlight.js/lib/languages/sql'
+import yaml from 'highlight.js/lib/languages/yaml'
+import markdown from 'highlight.js/lib/languages/markdown'
+import typescript from 'highlight.js/lib/languages/typescript'
+import jsx from 'highlight.js/lib/languages/javascript'
+
+// 注册常用语言
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('jsx', jsx)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('py', python)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('html', html)
+hljs.registerLanguage('xml', html)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('yml', yaml)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('md', markdown)
+
+// P3-4: 配置markdown-it使用highlight.js
+const md = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: true,
+  highlight: function (str, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        const highlighted = hljs.highlight(str, { language: lang }).value
+        return `<pre class="hljs"><code>${highlighted}</code></pre>`
+      } catch (__) {}
+    }
+    // 无语言标记时尝试自动检测
+    try {
+      const result = hljs.highlightAuto(str, ['javascript', 'python', 'bash', 'json', 'html', 'css'])
+      return `<pre class="hljs"><code>${result.value}</code></pre>`
+    } catch (__) {}
+    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`
+  }
+})
 const chat = useChatStore()
 
 const chatContainer = ref(null)
@@ -15,7 +75,7 @@ const props = defineProps({
   inputText: String,
 })
 
-const emit = defineEmits(['quickStart'])
+const emit = defineEmits(['quickStart', 'editMessage'])
 
 // ── P2-15: 真正虚拟滚动 ──
 const ITEM_HEIGHT = 80 // 每条消息预估高度（px）
@@ -202,6 +262,25 @@ function startFromTemplate(tpl) {
   chat.createSession(tpl.name, tpl)
 }
 
+// ── P3-5: 消息时间显示 ──
+function formatTime(timestamp) {
+  if (!timestamp) return ''
+  const now = Date.now()
+  const diff = now - timestamp
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+  
+  if (diff < minute) return '刚刚'
+  if (diff < hour) return Math.floor(diff / minute) + '分钟前'
+  if (diff < day) return Math.floor(diff / hour) + '小时前'
+  if (diff < 2 * day) return '昨天'
+  if (diff < 7 * day) return Math.floor(diff / day) + '天前'
+  
+  const date = new Date(timestamp)
+  return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 // 自动滚动到底部
 watch(() => chat.filteredMessages.length, async () => {
   await nextTick()
@@ -259,6 +338,10 @@ watch(() => chat.filteredMessages.length, async () => {
           {{ msg.role === 'user' ? '我' : 'V' }}
         </div>
         <div class="max-w-[75%] min-w-0">
+          <!-- P3-8: 对比模式标签 -->
+          <div v-if="msg._compareModel" class="text-[10px] text-purple-500 dark:text-purple-400 mb-1 font-medium px-1">
+            🔬 {{ msg._compareModel }}
+          </div>
           <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed" :class="msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md shadow-sm'">
             <template v-if="msg.role === 'user'">
               <img v-if="msg.content && msg.content.includes('data:image')" :src="msg.content.match(/data:image[^)]+/)?.[0]" class="max-w-full rounded-lg mb-2" />
@@ -272,17 +355,24 @@ watch(() => chat.filteredMessages.length, async () => {
               <span v-if="msg.streaming" class="typing-cursor"></span>
             </template>
           </div>
-          <div v-if="msg.content && !msg.streaming"
-               class="flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          <div class="flex items-center gap-2 mt-1"
                :class="msg.role === 'user' ? 'justify-end' : ''">
-            <button @click="copyMessage(msg)"
-                    class="text-xs text-gray-400 hover:text-green-500 transition flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-              📋 复制
-            </button>
-            <button v-if="msg.role === 'assistant' && isLastAssistant(msg)" @click="regenerate(msg)"
-                    class="text-xs text-gray-400 hover:text-green-500 transition flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-              🔄 重新生成
-            </button>
+            <span class="text-[10px] text-gray-400">{{ formatTime(msg.timestamp) }}</span>
+            <div v-if="msg.content && !msg.streaming"
+                 class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <button @click="copyMessage(msg)"
+                      class="text-xs text-gray-400 hover:text-green-500 transition flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                📋 复制
+              </button>
+              <button v-if="msg.role === 'user'" @click="emit('editMessage', msg)"
+                      class="text-xs text-gray-400 hover:text-green-500 transition flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                ✏️ 编辑
+              </button>
+              <button v-if="msg.role === 'assistant' && isLastAssistant(msg)" @click="regenerate(msg)"
+                      class="text-xs text-gray-400 hover:text-green-500 transition flex items-center gap-1 px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                🔄 重新生成
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -305,6 +395,65 @@ watch(() => chat.filteredMessages.length, async () => {
 .dark .vermes-md :deep(code) { background: rgba(255,255,255,0.1); }
 .vermes-md :deep(pre) { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
 .vermes-md :deep(pre code) { background: none; padding: 0; color: inherit; font-size: 1em; }
+
+/* P3-4: highlight.js 完整 token 样式（Catppuccin Mocha 配色） */
+.vermes-md :deep(pre.hljs) { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
+.vermes-md :deep(pre.hljs code) { background: none; padding: 0; color: inherit; font-size: 1em; }
+.dark .vermes-md :deep(pre.hljs) { background: #1e1e2e; }
+/* 关键字/控制流 */
+.vermes-md :deep(.hljs-keyword) { color: #c678dd; }
+.vermes-md :deep(.hljs-selector-tag) { color: #c678dd; }
+.vermes-md :deep(.hljs-type) { color: #e6c07b; }
+.vermes-md :deep(.hljs-section) { color: #c678dd; }
+.vermes-md :deep(.hljs-name) { color: #c678dd; }
+.vermes-md :deep(.hljs-tag) { color: #c678dd; }
+/* 字符串/模板 */
+.vermes-md :deep(.hljs-string) { color: #98c379; }
+.vermes-md :deep(.hljs-template-variable) { color: #98c379; }
+.vermes-md :deep(.hljs-template-tag) { color: #98c379; }
+.vermes-md :deep(.hljs-regexp) { color: #98c379; }
+.vermes-md :deep(.hljs-addition) { color: #98c379; }
+.vermes-md :deep(.hljs-attribute) { color: #98c379; }
+/* 注释 */
+.vermes-md :deep(.hljs-comment) { color: #5c6370; font-style: italic; }
+.vermes-md :deep(.hljs-quote) { color: #5c6370; font-style: italic; }
+.vermes-md :deep(.hljs-doctag) { color: #98c379; }
+/* 函数/方法 */
+.vermes-md :deep(.hljs-function) { color: #61afef; }
+.vermes-md :deep(.hljs-title) { color: #61afef; }
+.vermes-md :deep(.hljs-title.function_) { color: #61afef; }
+.vermes-md :deep(.hljs-title.class_) { color: #e6c07b; }
+.vermes-md :deep(.hljs-title.class_.inherited__) { color: #e6c07b; }
+.vermes-md :deep(.hljs-built_in) { color: #e6c07b; }
+/* 字面量 */
+.vermes-md :deep(.hljs-number) { color: #d19a66; }
+.vermes-md :deep(.hljs-literal) { color: #56b6c2; }
+.vermes-md :deep(.hljs-boolean) { color: #d19a66; }
+.vermes-md :deep(.hljs-variable) { color: #e06c75; }
+.vermes-md :deep(.hljs-variable.constant_) { color: #d19a66; }
+/* 参数/属性 */
+.vermes-md :deep(.hljs-params) { color: #abb2bf; }
+.vermes-md :deep(.hljs-attr) { color: #d19a66; }
+.vermes-md :deep(.hljs-property) { color: #abb2bf; }
+.vermes-md :deep(.hljs-symbol) { color: #98c379; }
+/* 元信息 */
+.vermes-md :deep(.hljs-meta) { color: #56b6c2; }
+.vermes-md :deep(.hljs-meta .hljs-keyword) { color: #c678dd; }
+.vermes-md :deep(.hljs-meta .hljs-string) { color: #98c379; }
+/* 操作符/标点 */
+.vermes-md :deep(.hljs-operator) { color: #abb2bf; }
+.vermes-md :deep(.hljs-punctuation) { color: #abb2bf; }
+.vermes-md :deep(.hljs-subst) { color: #abb2bf; }
+.vermes-md :deep(.hljs-link) { color: #61afef; text-decoration: underline; }
+.vermes-md :deep(.hljs-emphasis) { font-style: italic; }
+.vermes-md :deep(.hljs-strong) { font-weight: 700; }
+/* 删除/差异 */
+.vermes-md :deep(.hljs-deletion) { color: #e06c75; }
+/* 选择器 */
+.vermes-md :deep(.hljs-selector-class) { color: #e6c07b; }
+.vermes-md :deep(.hljs-selector-id) { color: #e6c07b; }
+.vermes-md :deep(.hljs-selector-attr) { color: #d19a66; }
+.vermes-md :deep(.hljs-selector-pseudo) { color: #c678dd; }
 .vermes-md :deep(blockquote) { border-left: 3px solid #22c55e; padding-left: 12px; margin: 0.5em 0; color: #666; }
 .dark .vermes-md :deep(blockquote) { color: #aaa; }
 .vermes-md :deep(table) { width: 100%; border-collapse: collapse; margin: 0.6em 0; font-size: 0.9em; }
