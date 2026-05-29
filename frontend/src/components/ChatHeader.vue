@@ -52,12 +52,28 @@ const modelGroups = computed(() => {
   return groups
 })
 
-function selectModel(m) {
+function selectModel(m, event) {
+  // P3-8: Shift/Cmd+click → 多选对比模式
+  if (event && (event.shiftKey || event.metaKey || event.ctrlKey)) {
+    const idx = chat.compareModels.findIndex(cm => cm.id === m.id)
+    if (idx >= 0) {
+      chat.compareModels.splice(idx, 1)
+    } else {
+      chat.compareModels.push({ id: m.id, provider: m.provider || m.group || '', name: m.name })
+    }
+    return  // 不关闭下拉、不改变主模型
+  }
+  // 普通点击 → 单选模式
   chat.currentModel = m.id
   chat.currentProvider = m.provider || m.group || ''
   localStorage.setItem('vermes-current-model', m.id)
   localStorage.setItem('vermes-current-provider', m.provider || m.group || '')
+  chat.compareModels = []
   showModelSelect.value = false
+}
+
+function isModelSelected(m) {
+  return chat.compareModels.some(cm => cm.id === m.id) || m.id === chat.currentModel
 }
 
 function currentModelName() {
@@ -117,13 +133,16 @@ function closeDropdowns() {
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </button>
       <div v-if="showModelSelect" class="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto py-1">
+        <div class="px-3 py-1.5 text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700 mb-1">
+          💡 <kbd class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[9px]">Shift</kbd>+点击可多选对比
+        </div>
         <template v-for="(group, gName) in modelGroups" :key="gName">
           <div class="px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">{{ gName }}</div>
-          <div v-for="m in group" :key="m.id" @click="selectModel(m)"
+          <div v-for="m in group" :key="m.id" @click="selectModel(m, $event)"
             class="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between"
-            :class="{ 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400': m.id === chat.currentModel }">
+            :class="{ 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400': isModelSelected(m) }">
             <span>{{ m.name }}</span>
-            <span v-if="m.id === chat.currentModel" class="text-green-500 text-xs">✓</span>
+            <span v-if="isModelSelected(m)" class="text-green-500 text-xs">✓</span>
           </div>
         </template>
       </div>

@@ -12,6 +12,14 @@ const historyResults = computed(() => {
   return chat.searchAllMessages(historyKeyword.value, historyDateFilter.value)
 })
 
+// P3-6: 高亮搜索关键词
+function highlightText(text, keyword) {
+  if (!keyword || !text) return text
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  return text.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 text-gray-900 dark:text-gray-100 rounded px-0.5">$1</mark>')
+}
+
 function jumpToHistoryItem(item) {
   chat.switchSession(item.sessionId)
   show.value = false
@@ -60,7 +68,8 @@ defineExpose({ toggle })
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-300 truncate">
             <span class="text-[10px] px-1 py-0.5 rounded mr-1" :class="item.role === 'user' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'">{{ item.role === 'user' ? '我' : 'AI' }}</span>
-            {{ item.snippet }}
+            <span v-if="historyKeyword" v-html="highlightText(item.snippet, historyKeyword)"></span>
+            <span v-else>{{ item.snippet }}</span>
           </div>
         </div>
       </div>
