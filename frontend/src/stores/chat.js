@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { isCloudModel, checkQuota, checkQuotaServer, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
+import { showToast } from '../utils/toast'
+import { saveImage, loadImage, deleteImages, loadFromStorage, saveToStorage, stripBase64FromContent, fileToBase64 } from './chat-storage'
 
 // ── H2/M11 修复：避免 Date.now() 碰撞 ──
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
@@ -10,86 +12,22 @@ const QUOTA_NEED_LOGIN = 'need_login'
 
 const SESSIONS_KEY = 'vermes-sessions'
 const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
-const IMAGE_DB = 'vermes-images'
-const IMAGE_STORE = 'attachments'
 
-// ── IndexedDB 图片存储（无大小限制） ──
-function openImageDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IMAGE_DB, 1)
-    req.onupgradeneeded = () => req.result.createObjectStore(IMAGE_STORE)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
+// ── 会话模板 ──
+export const SESSION_TEMPLATES = [
+  { id: 'blank', name: '空白会话', icon: '💬', systemPrompt: '' },
+  { id: 'translator', name: '翻译助手', icon: '🌐', systemPrompt: '你是一位专业的翻译助手。请将用户输入的内容准确翻译为目标语言。如果用户没有指定目标语言，请将中文翻译为英文，或将非中文内容翻译为中文。保持原文的语气和风格。' },
+  { id: 'coder', name: '代码助手', icon: '💻', systemPrompt: '你是一位专业的编程助手。帮助用户编写、调试和优化代码。提供清晰的代码示例和详细解释。使用最佳实践和设计模式。' },
+  { id: 'writer', name: '写作助手', icon: '✍️', systemPrompt: '你是一位专业的写作助手。帮助用户撰写、润色和改进各类文本。注意语法、逻辑和表达的准确性与优美性。' },
+]
 
-async function saveImage(key, base64Data) {
-  try {
-    const db = await openImageDB()
-    const tx = db.transaction(IMAGE_STORE, 'readwrite')
-    tx.objectStore(IMAGE_STORE).put(base64Data, key)
-    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
-  } catch(e) { console.warn('[Vermes] 图片存储失败:', e) }
-}
-
-async function loadImage(key) {
-  try {
-    const db = await openImageDB()
-    const tx = db.transaction(IMAGE_STORE, 'readonly')
-    const req = tx.objectStore(IMAGE_STORE).get(key)
-    return new Promise((res) => { req.onsuccess = () => res(req.result); req.onerror = () => res(null) })
-  } catch { return null }
-}
-
-async function deleteImages(keys) {
-  try {
-    const db = await openImageDB()
-    const tx = db.transaction(IMAGE_STORE, 'readwrite')
-    const store = tx.objectStore(IMAGE_STORE)
-    keys.forEach(k => store.delete(k))
-  } catch {}
-}
-
-// ── 持久化：base64 提取到 IndexedDB，localStorage 只存文本 ──
-const BASE64_RE = /!\[([^\]]*)\]\(data:image[^)]+\)/g
-
-function stripBase64FromContent(content, messageId) {
-  const images = {}
-  let idx = 0
-  const prefix = messageId || uid()
-  const stripped = content.replace(BASE64_RE, (match, name) => {
-    const key = `${prefix}-${idx++}`
-    images[key] = match
-    return `🖼️ ${name || '图片'}`
-  })
-  return { stripped, images }
-}
-
-function loadFromStorage(key) {
-  try { return JSON.parse(localStorage.getItem(key)) || [] } catch(e) { return [] }
-}
-function saveToStorage(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)) } catch(e) {}
-}
-
-// 文件转 base64
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1] // 去掉 data:xxx;base64, 前缀
-      resolve({
-        name: file.name,
-        size: file.size,
-        mimeType: file.type || 'application/octet-stream',
-        base64: base64,
-        type: file.type.startsWith('image/') ? 'image' : 'file',
-      })
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
+// ── 快速开始建议 ──
+export const QUICK_START_SUGGESTIONS = [
+  { text: '帮我写一封邮件', icon: '📧' },
+  { text: '解释量子计算', icon: '🔬' },
+  { text: '翻译这段话', icon: '🌐' },
+  { text: '写一段 Python 代码', icon: '💻' },
+]
 
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref(loadFromStorage(SESSIONS_KEY))
@@ -199,11 +137,25 @@ export const useChatStore = defineStore('chat', () => {
     saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)
   }
 
-  async function createSession(name) {
-    const s = { id: uid(), name: name || '新会话', createdAt: new Date().toISOString() }
+  async function createSession(name, template) {
+    const tpl = template || SESSION_TEMPLATES[0]
+    const s = {
+      id: uid(),
+      name: name || tpl.name || '新会话',
+      createdAt: new Date().toISOString(),
+      templateId: tpl.id,
+    }
     sessions.value.unshift(s)
     persistSessions()
     await switchSession(s.id)
+    // 如果模板有 systemPrompt，添加一条系统消息
+    if (tpl.systemPrompt) {
+      messages.value.push({
+        id: uid(), role: 'system', content: tpl.systemPrompt,
+        sessionId: s.id, timestamp: Date.now(),
+      })
+      persistMessages(s.id)
+    }
   }
 
   async function switchSession(id) {
@@ -211,19 +163,43 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
     const stored = loadFromStorage(MESSAGES_KEY_PREFIX + id)
-    // 从 IndexedDB 恢复图片
-    for (const m of stored) {
+    
+    // P2-20: 先显示文本消息，图片异步加载
+    // 先设置消息（不含图片）
+    messages.value = stored.map(m => ({ ...m }))
+    
+    // 异步加载图片（不阻塞UI）
+    const imageLoadPromises = []
+    for (let i = 0; i < stored.length; i++) {
+      const m = stored[i]
       if (m._imageKeys && m._imageKeys.length > 0) {
-        const parts = [m.content]
-        for (const key of m._imageKeys) {
-          const img = await loadImage(key)
-          if (img) parts.push(img)
-        }
-        m.content = parts.join('\n\n')
-        delete m._imageKeys
+        // 为每个消息创建图片加载Promise
+        const promise = (async () => {
+          const parts = [m.content]
+          // 并行加载该消息的所有图片
+          const imgPromises = m._imageKeys.map(key => loadImage(key))
+          const imgs = await Promise.all(imgPromises)
+          for (const img of imgs) {
+            if (img) parts.push(img)
+          }
+          // 更新消息内容
+          const msgIndex = messages.value.findIndex(msg => msg.id === m.id)
+          if (msgIndex >= 0) {
+            messages.value[msgIndex].content = parts.join('\n\n')
+            delete messages.value[msgIndex]._imageKeys
+          }
+        })()
+        imageLoadPromises.push(promise)
       }
     }
-    messages.value = stored
+    
+    // 不等待图片加载完成，让UI立即响应
+    // 图片会在加载完成后自动更新显示
+    if (imageLoadPromises.length > 0) {
+      Promise.all(imageLoadPromises).catch(e => {
+        console.warn('[Vermes] 图片加载失败:', e)
+      })
+    }
   }
 
   async function sendMessage(content, attachments) {
@@ -238,13 +214,14 @@ export const useChatStore = defineStore('chat', () => {
     }
     if (!currentSessionId.value) {
       console.error('[Vermes💬 sendMessage] ERROR: currentSessionId is null! sessions:', sessions.value.length)
-      alert('会话未初始化，请刷新页面重试')
+      showToast('会话未初始化，请刷新页面重试', 'error')
       return
     }
 
-    // ✅ v2: 云端模型配额检查（必须微信登录）
+    // ✅ v2: 云端模型配额检查（仅 vbit 免费体验通道检查积分，用户自带 Key 不检查）
     const isCloud = isCloudModel(currentProvider.value)
-    if (isCloud) {
+    const isVbitFreeTrial = String(currentProvider.value).toLowerCase() === 'vbit'
+    if (isCloud && isVbitFreeTrial) {
       const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
       const isLoggedIn = !!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token'))
       
@@ -271,11 +248,14 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
     
-    const quotaCheck = checkQuota(isCloud)
-    if (!quotaCheck.allowed) {
-      quotaModalType.value = 'wechat_expired'
-      showQuotaModal.value = true
-      return
+    // 仅 vbit 免费体验通道检查本地配额缓存，用户自带 Key 跳过
+    if (isVbitFreeTrial) {
+      const quotaCheck = checkQuota(isCloud)
+      if (!quotaCheck.allowed) {
+        quotaModalType.value = 'wechat_expired'
+        showQuotaModal.value = true
+        return
+      }
     }
 
     const msgId = uid()
@@ -361,6 +341,10 @@ export const useChatStore = defineStore('chat', () => {
         })),
         stream: true,
         signal: ac.signal,
+        onStreamStart: (streamId) => {
+          // P1-10: 记录 stream_id 用于 stop 通知
+          activeStreamId.value = streamId
+        },
         onChunk: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) am.content += chunk
@@ -376,10 +360,9 @@ export const useChatStore = defineStore('chat', () => {
           }
           loading.value = false
           abortController.value = null
-          // 精确计费：后端已自动上报消费（基于 SSE 流 usage token 数）
-          // 前端只需刷新配额显示
+          activeStreamId.value = null
           const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
-          if (wechatOpenid && isCloud) {
+          if (wechatOpenid && isVbitFreeTrial) {
             // 如果 onDone 传回了 usage，用精确 token 数更新本地积分
             const usageData = typeof usageInfo === 'object' ? usageInfo : null
             if (usageData && usageData.total_tokens > 0) {
@@ -428,7 +411,25 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  const activeStreamId = ref(null)
+
   async function stopGeneration() {
+    // P1-10: 通知后端停止生成
+    if (activeStreamId.value) {
+      try {
+        const token = localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) headers['X-Hermes-Session-Token'] = token
+        fetch('/api/stop-generation', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ stream_id: activeStreamId.value })
+        }).catch(() => {})  // best effort, don't block
+        activeStreamId.value = null
+      } catch (e) {
+        // ignore
+      }
+    }
     if (abortController.value) {
       abortController.value.abort()
       abortController.value = null
@@ -473,10 +474,134 @@ export const useChatStore = defineStore('chat', () => {
     if (s) { s.name = name; persistSessions() }
   }
 
+  function pinSession(id, pinned) {
+    const s = sessions.value.find(s => s.id === id)
+    if (s) { s.pinned = pinned; persistSessions() }
+  }
+
+  function getMessageCount(sessionId) {
+    try {
+      const msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
+      return msgs.length
+    } catch { return 0 }
+  }
+
+  function getFirstMessage(sessionId) {
+    try {
+      const msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
+      const userMsg = msgs.find(m => m.role === 'user')
+      if (userMsg) {
+        const text = userMsg.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '🖼️图片').replace(/📎[^\n]*/g, '📎附件')
+        return text.length > 40 ? text.slice(0, 40) + '...' : text
+      }
+      return ''
+    } catch { return '' }
+  }
+
   function formatSize(bytes) {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  // ── 跨会话历史搜索 ──
+  function searchAllMessages(keyword, dateFilter) {
+    const results = []
+    const now = Date.now()
+    let cutoff = 0
+    if (dateFilter === 'today') cutoff = now - 86400000
+    else if (dateFilter === 'week') cutoff = now - 7 * 86400000
+    else if (dateFilter === 'month') cutoff = now - 30 * 86400000
+    for (const s of sessions.value) {
+      try {
+        const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + s.id)
+        for (const m of msgs) {
+          if (m.role === 'system') continue
+          if (cutoff && m.timestamp < cutoff) continue
+          if (keyword && !m.content?.toLowerCase().includes(keyword.toLowerCase())) continue
+          results.push({
+            ...m,
+            sessionName: s.name,
+            sessionId: s.id,
+            snippet: (m.content || '').slice(0, 50),
+          })
+        }
+      } catch {}
+    }
+    results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    return results
+  }
+
+  // ── 会话统计 ──
+  function getSessionStats(sessionId) {
+    const msgs = messages.value.filter(m => m.sessionId === sessionId && m.role !== 'system')
+    if (msgs.length === 0) return { count: 0, duration: '0 分钟', model: currentModel.value }
+    const first = msgs[0].timestamp
+    const last = msgs[msgs.length - 1].timestamp
+    const diffMs = last - first
+    let duration
+    if (diffMs < 60000) duration = `${Math.max(1, Math.round(diffMs / 1000))} 秒`
+    else if (diffMs < 3600000) duration = `${Math.round(diffMs / 60000)} 分钟`
+    else duration = `${(diffMs / 3600000).toFixed(1)} 小时`
+    return { count: msgs.length, duration, model: currentModel.value }
+  }
+
+  // ── 会话导出 ──
+  function exportSession(sessionId, format) {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + sessionId).filter(m => m.role !== 'system')
+    let content, filename, mimeType
+    if (format === 'json') {
+      content = JSON.stringify({ session, messages: msgs }, null, 2)
+      filename = `${session.name || '会话'}.json`
+      mimeType = 'application/json'
+    } else {
+      const lines = [`# ${session.name || '会话'}`, '', `导出时间: ${new Date().toLocaleString('zh-CN')}`, '']
+      for (const m of msgs) {
+        lines.push(`## ${m.role === 'user' ? 'User' : 'Assistant'}`)
+        lines.push('')
+        lines.push(m.content || '')
+        lines.push('')
+      }
+      content = lines.join('\n')
+      filename = `${session.name || '会话'}.md`
+      mimeType = 'text/markdown'
+    }
+    const blob = new Blob([content], { type: mimeType + ';charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // ── 会话导入 ──
+  async function importSession(jsonText) {
+    try {
+      const data = JSON.parse(jsonText)
+      if (!data.session || !Array.isArray(data.messages)) {
+        throw new Error('无效的会话格式')
+      }
+      const s = {
+        id: uid(),
+        name: (data.session.name || '导入会话') + ' (导入)',
+        createdAt: data.session.createdAt || new Date().toISOString(),
+        templateId: data.session.templateId || 'blank',
+      }
+      sessions.value.unshift(s)
+      persistSessions()
+      const importedMsgs = data.messages.map(m => ({
+        ...m,
+        id: uid(),
+        sessionId: s.id,
+        streaming: false,
+      }))
+      messages.value.push(...importedMsgs)
+      persistMessages(s.id)
+      return { success: true, name: s.name }
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
   }
 
   // 初始化主题：同步 <html> 的 dark class
@@ -493,12 +618,26 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // P1-13: 监听系统主题变化（仅在用户未手动设置主题时跟随系统）
+  if (!saved) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      theme.value = e.matches ? 'dark' : 'light'
+      if (e.matches) {
+        document.documentElement.classList.add('dark')
+      } else {
+        document.documentElement.classList.remove('dark')
+      }
+    })
+  }
+
   return {
     sessions, currentSessionId, messages, loading, abortController,
     sidebarOpen, theme, currentModel, currentProvider, uploading,
     showQuotaModal, quotaModalType,
     currentSession, filteredMessages,
     init, createSession, switchSession, sendMessage, stopGeneration,
-    toggleTheme, toggleSidebar, deleteSession, renameSession, formatSize,
+    toggleTheme, toggleSidebar, deleteSession, renameSession, pinSession,
+    getMessageCount, getFirstMessage, formatSize,
+    searchAllMessages, getSessionStats, exportSession, importSession,
   }
 })

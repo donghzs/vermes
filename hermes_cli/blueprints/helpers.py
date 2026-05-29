@@ -1,0 +1,212 @@
+"""
+Blueprint 共享辅助函数
+
+被 web_server.py 和各 Blueprint 共用，避免循环导入。
+所有依赖 hermes_cli.web_server 的辅助函数放在这里。
+"""
+
+import asyncio
+import json
+import time
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
+
+
+# ════════════════════════════════════════════════════════════════
+# 1. Chat 核心辅助
+# ════════════════════════════════════════════════════════════════
+
+def _get_chat_credentials() -> Tuple[str, str, str]:
+    """Return (base_url, api_key, default_model) from config.yaml + .env."""
+    from hermes_cli.config import get_hermes_home
+
+    home = get_hermes_home()
+    cfg_path = home / "config.yaml"
+    env_path = home / ".env"
+
+    base_url = ""
+    default_model = ""
+    api_key = ""
+    provider = ""
+
+    PROVIDER_ENV_MAP = {
+        "deepseek": "DEEPSEEK_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "vbit": "VBIT_API_KEY",
+        "alibaba": "QWEN_API_KEY",
+        "qwen": "QWEN_API_KEY",
+        "zhipu": "ZHIPU_API_KEY",
+        "doubao": "DOUBAO_API_KEY",
+        "moonshot": "MOONSHOT_API_KEY",
+        "baichuan": "BAICHUAN_API_KEY",
+        "yi": "YI_API_KEY",
+        "spark": "SPARK_API_KEY",
+        "siliconflow": "SILICONFLOW_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+        "cohere": "COHERE_API_KEY",
+        "custom": "CUSTOM_API_KEY",
+        "xiaomi": "XIAOMI_API_KEY",
+        "ant-ling": "ANT_LING_API_KEY",
+        "ollama": None,
+    }
+
+    PROVIDER_BASE_URL = {
+        "deepseek": "https://api.deepseek.com/v1",
+        "openai": "https://api.openai.com/v1",
+        "anthropic": "https://api.anthropic.com/v1",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta",
+        "openrouter": "https://openrouter.ai/api/v1",
+        "vbit": "https://vbit.top/v1",
+        "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "zhipu": "https://open.bigmodel.cn/api/paas/v4",
+        "doubao": "https://ark.cn-beijing.volces.com/api/v3",
+        "moonshot": "https://api.moonshot.cn/v1",
+        "baichuan": "https://api.baichuan-ai.com/v1",
+        "yi": "https://api.lingyiwanwu.com/v1",
+        "spark": "https://spark-api-open.xf-yun.com/v1",
+        "siliconflow": "https://api.siliconflow.cn/v1",
+        "mistral": "https://api.mistral.ai/v1",
+        "cohere": "https://api.cohere.ai/v1",
+        "ollama": "http://localhost:11434/v1",
+        "xiaomi": "https://api.xiaomi.com/v1",
+        "ant-ling": "https://api.ant-ling.com/v1",
+    }
+
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        m = cfg.get("model", {})
+        base_url = m.get("base_url", "")
+        default_model = m.get("default", "")
+        provider = m.get("provider", "")
+
+    env_var_name = PROVIDER_ENV_MAP.get(provider, "OPENAI_API_KEY")
+    if not base_url and provider:
+        base_url = PROVIDER_BASE_URL.get(provider, "")
+
+    if env_path.exists():
+        env_content = env_path.read_text()
+        for line in env_content.splitlines():
+            line = line.strip()
+            if env_var_name and line.startswith(f"{env_var_name}="):
+                api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+
+    return base_url, api_key, default_model
+
+
+def _resolve_model_provider(
+    model: str, explicit_provider: Optional[str] = None
+) -> Tuple[str, str, str]:
+    """Resolve provider, base_url, and model name from a model string or explicit provider."""
+    PROVIDER_BASE_URL = {
+        "deepseek": "https://api.deepseek.com/v1",
+        "openai": "https://api.openai.com/v1",
+        "anthropic": "https://api.anthropic.com/v1",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta",
+        "openrouter": "https://openrouter.ai/api/v1",
+        "vbit": "https://vbit.top/v1",
+        "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "zhipu": "https://open.bigmodel.cn/api/paas/v4",
+        "doubao": "https://ark.cn-beijing.volces.com/api/v3",
+        "moonshot": "https://api.moonshot.cn/v1",
+        "baichuan": "https://api.baichuan-ai.com/v1",
+        "yi": "https://api.lingyiwanwu.com/v1",
+        "spark": "https://spark-api-open.xf-yun.com/v1",
+        "siliconflow": "https://api.siliconflow.cn/v1",
+        "mistral": "https://api.mistral.ai/v1",
+        "cohere": "https://api.cohere.ai/v1",
+        "ollama": "http://localhost:11434/v1",
+        "xiaomi": "https://api.xiaomi.com/v1",
+        "ant-ling": "https://api.ant-ling.com/v1",
+    }
+
+    MODEL_PROVIDER_MAP = {
+        "deepseek-chat": "deepseek",
+        "deepseek-reasoner": "deepseek",
+        "deepseek-v4-flash": "deepseek",
+        "deepseek-v4": "deepseek",
+        "gpt-4o": "vbit",
+        "claude-opus-4": "vbit",
+        "gpt-4": "openai",
+        "claude-": "anthropic",
+        "gemini-": "gemini",
+        "openrouter/": "openrouter",
+    }
+
+    if explicit_provider:
+        provider = explicit_provider
+        base_url = PROVIDER_BASE_URL.get(provider, "")
+        return provider, base_url, model
+
+    # Infer from model name
+    for prefix, p in MODEL_PROVIDER_MAP.items():
+        if model.startswith(prefix):
+            return p, PROVIDER_BASE_URL.get(p, ""), model
+
+    return "", "", model
+
+
+# ════════════════════════════════════════════════════════════════
+# 2. 配额 / 微信登录 辅助
+# ════════════════════════════════════════════════════════════════
+
+async def _claim_trial_token(wechat_openid: str) -> dict:
+    """Call vbit backend to claim trial token for WeChat user."""
+    import httpx
+
+    try:
+        resp = httpx.get(
+            f"https://vbit.top/api/claim?device_id={wechat_openid}",
+            timeout=10,
+        )
+        data = resp.json()
+        if data.get("success"):
+            return {"success": True, "token": data.get("token", "")}
+        return {"success": False, "error": data.get("error", "领取失败")}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _check_quota(wechat_openid: str) -> dict:
+    """Check quota for WeChat user via vbit backend."""
+    import httpx
+
+    try:
+        resp = httpx.get(
+            "https://vbit.top/api/quota/check",
+            params={"wechat_openid": wechat_openid},
+            timeout=10,
+        )
+        return resp.json()
+    except Exception:
+        return {"success": False}
+
+
+async def _spend_quota(wechat_openid: str, tokens_used: int) -> dict:
+    """Report token usage to vbit backend for quota deduction."""
+    import httpx
+
+    try:
+        resp = httpx.post(
+            "https://vbit.top/api/quota/spend",
+            json={"wechat_openid": wechat_openid, "tokens_used": tokens_used},
+            timeout=10,
+        )
+        return resp.json()
+    except Exception:
+        return {"success": False}
+
+
+# ════════════════════════════════════════════════════════════════
+# 3. SSE 流状态（Blueprint 间共享）
+# ════════════════════════════════════════════════════════════════
+
+_active_streams: Dict[str, asyncio.Event] = {}
