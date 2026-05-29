@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES } from '../stores/chat'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
@@ -68,95 +68,14 @@ const md = new MarkdownIt({
 })
 const chat = useChatStore()
 
-const chatContainer = ref(null)
-const loadMoreTrigger = ref(null) // 用于Intersection Observer的触发元素
-
 const props = defineProps({
   inputText: String,
 })
 
 const emit = defineEmits(['quickStart', 'editMessage'])
 
-// ── P2-15: 真正虚拟滚动 ──
-const ITEM_HEIGHT = 80 // 每条消息预估高度（px）
-const BUFFER_SIZE = 5 // 上下缓冲条数
-const containerHeight = ref(0)
-const scrollTop = ref(0)
-
-// 计算可见区域的起始和结束索引
-const visibleRange = computed(() => {
-  const msgs = chat.filteredMessages
-  const total = msgs.length
-  if (total === 0) return { start: 0, end: 0 }
-  
-  const startIdx = Math.max(0, Math.floor(scrollTop.value / ITEM_HEIGHT) - BUFFER_SIZE)
-  const visibleCount = Math.ceil(containerHeight.value / ITEM_HEIGHT) + BUFFER_SIZE * 2
-  const endIdx = Math.min(total, startIdx + visibleCount)
-  
-  return { start: startIdx, end: endIdx }
-})
-
-// 只渲染可见区域的消息
-const visibleMessages = computed(() => {
-  const msgs = chat.filteredMessages
-  const { start, end } = visibleRange.value
-  return msgs.slice(start, end).map((msg, idx) => ({
-    ...msg,
-    _virtualIdx: start + idx,
-    _virtualOffset: (start + idx) * ITEM_HEIGHT
-  }))
-})
-
-// 总高度（用于滚动条）
-const totalHeight = computed(() => {
-  return chat.filteredMessages.length * ITEM_HEIGHT
-})
-
-// 顶部占位高度
-const topPlaceholderHeight = computed(() => {
-  return visibleRange.value.start * ITEM_HEIGHT
-})
-
-// 底部占位高度
-const bottomPlaceholderHeight = computed(() => {
-  return (chat.filteredMessages.length - visibleRange.value.end) * ITEM_HEIGHT
-})
-
-// 处理滚动事件
-function onScroll(e) {
-  scrollTop.value = e.target.scrollTop
-}
-
-// 滚动到底部
-function scrollToBottom() {
-  if (chatContainer.value) {
-    chatContainer.value.scrollTop = totalHeight.value
-  }
-}
-
-// 监听消息变化，自动滚动到底部（只在用户已经在底部时）
-watch(() => chat.filteredMessages.length, async () => {
-  await nextTick()
-  if (chatContainer.value && chat.loading) {
-    scrollToBottom()
-  }
-})
-
-// 监听容器高度变化
-onMounted(() => {
-  if (chatContainer.value) {
-    containerHeight.value = chatContainer.value.clientHeight
-    const resizeObserver = new ResizeObserver((entries) => {
-      containerHeight.value = entries[0].contentRect.height
-    })
-    resizeObserver.observe(chatContainer.value)
-    
-    // 初始添加代码块复制按钮
-    addCopyButtonsToPreElements(chatContainer.value)
-    
-    return () => resizeObserver.disconnect()
-  }
-})
+// ── P2-15: 普通消息列表（去掉虚拟滚动，避免高度不一导致重叠） ──
+const chatContainer = ref(null)
 
 // ── Markdown 渲染 ──
 function renderMd(content) {
@@ -296,7 +215,7 @@ watch(() => chat.filteredMessages.length, async () => {
 </script>
 
 <template>
-  <div ref="chatContainer" class="flex-1 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative" @scroll="onScroll">
+  <div ref="chatContainer" class="flex-1 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative">
     <!-- 欢迎页 -->
     <div v-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-16">
       <div class="text-center mb-8">
@@ -324,16 +243,11 @@ watch(() => chat.filteredMessages.length, async () => {
       </div>
     </div>
 
-    <!-- 虚拟滚动消息列表 -->
-    <div v-else class="relative" :style="{ height: totalHeight + 'px' }">
-      <!-- 顶部占位 -->
-      <div :style="{ height: topPlaceholderHeight + 'px' }"></div>
-      
-      <!-- 可见区域消息 -->
-      <div v-for="msg in visibleMessages" :key="msg.id"
-           class="flex gap-3 group absolute w-full px-4"
-           :class="msg.role === 'user' ? 'flex-row-reverse' : ''"
-           :style="{ top: msg._virtualOffset + 'px' }">
+    <!-- 消息列表 -->
+    <div v-else>
+      <div v-for="msg in chat.filteredMessages" :key="msg.id"
+           class="flex gap-3 group px-4 py-2"
+           :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
         <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
           {{ msg.role === 'user' ? '我' : 'V' }}
         </div>
@@ -376,9 +290,6 @@ watch(() => chat.filteredMessages.length, async () => {
           </div>
         </div>
       </div>
-      
-      <!-- 底部占位 -->
-      <div :style="{ height: bottomPlaceholderHeight + 'px' }"></div>
     </div>
   </div>
 </template>
