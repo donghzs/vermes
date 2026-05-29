@@ -3619,11 +3619,25 @@ async def chat_completions(req: ChatRequest):
                     else:
                         _agent_done.set()
 
+            def tool_event_callback(event_type: str, data: dict):
+                """被agent调用，发送工具调用事件到前端"""
+                event = {"type": event_type, **data}
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+                else:
+                    _delta_queue.put_nowait(event)
+
             def run_sync():
                 try:
                     _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
                     # P0-fix: 直接设置stream_delta_callback，这是Agent实际使用的回调属性
                     agent.stream_delta_callback = stream_callback
+                    # Agent 模式：工具调用事件回调，让前端看到工具调用过程
+                    agent.tool_event_callback = tool_event_callback
                     result = agent.run_conversation(
                         user_message=user_message,
                         conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
@@ -3668,14 +3682,19 @@ async def chat_completions(req: ChatRequest):
                                     return
                             continue
 
-                        chunk = {
-                            "id": "vermes-agent",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": model,
-                            "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
-                        }
-                        yield f"data: {json.dumps(chunk)}\n\n"
+                        # 区分工具事件（dict）和文本delta（str）
+                        if isinstance(delta, dict):
+                            # 工具调用事件，直接作为SSE事件发送
+                            yield f"data: {json.dumps(delta)}\n\n"
+                        else:
+                            chunk = {
+                                "id": "vermes-agent",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": model,
+                                "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                            }
+                            yield f"data: {json.dumps(chunk)}\n\n"
                 finally:
                     # P1-10: 清理 stream 追踪
                     _active_streams.pop(_stream_id, None)
