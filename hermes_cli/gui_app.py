@@ -273,6 +273,7 @@ def main(port):
             width=WINDOW_W,
             height=WINDOW_H,
             resizable=True,
+            text_select=True,
             js_api=VermesAPI(),
         )
 

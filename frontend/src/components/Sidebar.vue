@@ -1,7 +1,8 @@
 <script setup>
-import { ref } from 'vue'
-import { useChatStore } from '../stores/chat'
+import { ref, computed, nextTick, watch } from 'vue'
+import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
 import { useRouter } from 'vue-router'
+import { toast } from '../utils/toast'
 
 const chat = useChatStore()
 const router = useRouter()
@@ -13,12 +14,113 @@ function formatTime(ts) {
   return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
-// 右键菜单
-const contextMenu = ref({ show: false, x: 0, y: 0, sessionId: null })
+// ── 搜索 ──
+const searchQuery = ref('')
+
+// ── 日期分组 ──
+const DATE_LABELS = ['今天', '昨天', '本周', '本月', '更早']
+
+function getDateGroup(ts) {
+  if (!ts) return '更早'
+  const d = new Date(ts)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  if (d >= startOfToday) return '今天'
+  if (d >= startOfYesterday) return '昨天'
+  if (d >= startOfWeek) return '本周'
+  if (d >= startOfMonth) return '本月'
+  return '更早'
+}
+
+// 按搜索过滤后的会话列表
+const filteredSessions = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return chat.sessions
+  return chat.sessions.filter(s => (s.name || '新会话').toLowerCase().includes(q))
+})
+
+// 置顶 + 分组
+const groupedSessions = computed(() => {
+  const list = filteredSessions.value
+  const pinned = list.filter(s => s.pinned).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  const unpinned = list.filter(s => !s.pinned)
+
+  const groups = {}
+  for (const label of DATE_LABELS) groups[label] = []
+
+  for (const s of unpinned) {
+    const g = getDateGroup(s.createdAt)
+    groups[g].push(s)
+  }
+  // 每组内部按 createdAt 降序
+  for (const label of DATE_LABELS) {
+    groups[label].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  }
+
+  // 按固定顺序返回带标签的组
+  const result = []
+  for (const label of DATE_LABELS) {
+    if (groups[label].length > 0) {
+      result.push({ type: 'header', label, key: `h-${label}` })
+      for (const s of groups[label]) result.push({ type: 'session', data: s, key: s.id })
+    }
+  }
+  return { pinned, items: result }
+})
+
+// ── 重命名 ──
+const renamingId = ref(null)
+const renameInput = ref('')
+const renameRef = ref(null)
+
+function startRename(s) {
+  renamingId.value = s.id
+  renameInput.value = s.name || '新会话'
+  closeContextMenu()
+  nextTick(() => {
+    const el = document.querySelector('.rename-input')
+    if (el) { el.focus(); el.select() }
+  })
+}
+
+function confirmRename() {
+  if (renamingId.value && renameInput.value.trim()) {
+    chat.renameSession(renamingId.value, renameInput.value.trim())
+  }
+  renamingId.value = null
+}
+
+function cancelRename() {
+  renamingId.value = null
+}
+
+// ── 置顶 ──
+function togglePin(s) {
+  chat.pinSession(s.id, !s.pinned)
+  closeContextMenu()
+}
+
+// ── 消息数 ──
+function getMessageCount(sessionId) {
+  return chat.getMessageCount(sessionId)
+}
+
+function getFirstMessagePreview(sessionId) {
+  return chat.getFirstMessage(sessionId)
+}
+
+// ── 右键菜单 ──
+const contextMenu = ref({ show: false, x: 0, y: 0, session: null })
 
 function onContextMenu(e, s) {
   e.preventDefault()
-  contextMenu.value = { show: true, x: e.clientX, y: e.clientY, sessionId: s.id }
+  contextMenu.value = { show: true, x: e.clientX, y: e.clientY, session: s }
 }
 
 function closeContextMenu() { contextMenu.value.show = false }
@@ -27,73 +129,238 @@ function handleDelete(id) {
   if (confirm('确定删除此会话？')) chat.deleteSession(id)
   closeContextMenu()
 }
+
+// ── 模板选择 ──
+const showTemplateMenu = ref(false)
+
+function selectTemplate(tpl) {
+  chat.createSession(tpl.name, tpl)
+  showTemplateMenu.value = false
+}
+
+// ── 导出 ──
+function handleExport(id, format) {
+  chat.exportSession(id, format)
+  closeContextMenu()
+}
+
+// ── 导入 ──
+const importInput = ref(null)
+
+function triggerImport() {
+  importInput.value?.click()
+}
+
+async function handleImportFile(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  const text = await file.text()
+  const result = await chat.importSession(text)
+  if (result.success) {
+    toast.success(`导入成功：${result.name}`)
+  } else {
+    toast.error(`导入失败：${result.error}`)
+  }
+  e.target.value = ''
+}
 </script>
 
 <template>
   <div
     class="bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300"
-    :class="chat.sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'"
+    :class="chat.sidebarOpen ? 'w-64' : 'w-10'"
     @click.self="closeContextMenu()"
   >
-    <!-- 顶部 Logo -->
-    <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex items-center gap-2">
-        <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">V</div>
-        <span class="font-semibold text-gray-800 dark:text-gray-200">Vermes</span>
+    <!-- 收起状态：窄边栏 -->
+    <template v-if="!chat.sidebarOpen">
+      <div class="flex flex-col items-center py-3 gap-2">
+        <button @click="chat.toggleSidebar()" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="展开侧边栏">
+          <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center text-white font-bold text-xs">V</div>
+        </button>
+        <button @click="chat.createSession('新会话')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition text-sm" title="新会话">
+          ➕
+        </button>
       </div>
-    </div>
+    </template>
 
-    <!-- 新会话按钮 -->
-    <div class="p-3">
-      <button
-        @click="chat.createSession('新会话')"
-        class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition"
-      >＋ 新会话</button>
-    </div>
+    <!-- 展开状态：完整侧边栏 -->
+    <template v-else>
+      <!-- 顶部 Logo -->
+      <div class="p-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">V</div>
+          <span class="font-semibold text-gray-800 dark:text-gray-200">Vermes</span>
+        </div>
+      </div>
 
-    <!-- 会话列表 -->
-    <div class="flex-1 overflow-y-auto" @click="closeContextMenu()">
-      <div
-        v-for="s in chat.sessions" :key="s.id"
-        @click="chat.switchSession(s.id)"
-        @contextmenu.prevent="onContextMenu($event, s)"
-        class="px-3 py-2 mx-2 rounded-lg cursor-pointer text-sm transition group relative"
-        :class="s.id === chat.currentSessionId
-          ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'"
-      >
-        <div class="truncate font-medium">{{ s.name || '新会话' }}</div>
-        <div class="text-xs text-gray-400 mt-0.5 flex justify-between items-center">
-          <span>{{ formatTime(s.createdAt) }}</span>
+      <!-- 新会话按钮 + 模板选择 -->
+      <div class="p-3 shrink-0 relative">
+        <button
+          @click="showTemplateMenu = !showTemplateMenu"
+          class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition"
+        >＋ 新会话</button>
+        <div v-if="showTemplateMenu" class="absolute left-3 right-3 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1">
+          <div v-for="tpl in SESSION_TEMPLATES" :key="tpl.id"
+            @click="selectTemplate(tpl)"
+            class="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+            <span>{{ tpl.icon }}</span>
+            <span class="text-gray-700 dark:text-gray-300">{{ tpl.name }}</span>
+          </div>
+        </div>
+      </div>
+      <!-- 点击外部关闭模板菜单 -->
+      <div v-if="showTemplateMenu" @click="showTemplateMenu = false" class="fixed inset-0 z-40"></div>
+
+      <!-- 导入按钮 -->
+      <div class="px-3 pb-2 shrink-0">
+        <input ref="importInput" type="file" accept=".json" class="hidden" @change="handleImportFile" />
+        <button @click="triggerImport()" class="w-full px-3 py-1.5 text-xs border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 transition">
+          📥 导入会话
+        </button>
+      </div>
+
+      <!-- 搜索框 -->
+      <div class="px-3 pb-2 shrink-0">
+        <div class="relative">
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">🔍</span>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索会话..."
+            class="w-full pl-7 pr-7 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-green-400 focus:border-green-400 transition"
+          />
           <button
-            @click.stop="handleDelete(s.id)"
-            class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"
-            title="删除会话"
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xs"
           >×</button>
         </div>
       </div>
-      <div v-if="chat.sessions.length === 0" class="text-center text-gray-400 dark:text-gray-500 text-xs py-6">暂无会话</div>
-    </div>
 
-    <!-- 底部工具栏 -->
-    <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
-      <button @click="chat.toggleTheme()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
-        {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
-      </button>
-      <button v-if="!chat.isOnline" @click="goSettings()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
-        ⚙️
-      </button>
-    </div>
+      <!-- 会话列表 -->
+      <div class="flex-1 overflow-y-auto" @click="closeContextMenu()">
+
+        <!-- 置顶会话 -->
+        <template v-if="groupedSessions.pinned.length > 0">
+          <div class="px-4 pt-1 pb-0.5 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">📌 已置顶</div>
+          <div
+            v-for="s in groupedSessions.pinned" :key="'p-' + s.id"
+            @click="chat.switchSession(s.id)"
+            @contextmenu.prevent="onContextMenu($event, s)"
+            class="px-3 py-2 mx-2 mb-0.5 rounded-lg cursor-pointer text-sm transition-all duration-200 group relative"
+            :class="s.id === chat.currentSessionId
+              ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 shadow-sm'
+              : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:shadow-sm'"
+            :style="s.id === chat.currentSessionId ? 'border-left: 3px solid #22c55e' : 'border-left: 3px solid transparent'"
+          >
+            <!-- 重命名模式 -->
+            <div v-if="renamingId === s.id" @click.stop>
+              <input
+                v-model="renameInput"
+                class="rename-input w-full text-sm bg-white dark:bg-gray-700 border border-green-400 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-400 text-gray-700 dark:text-gray-200"
+                @keydown.enter="confirmRename"
+                @keydown.escape="cancelRename"
+                @blur="confirmRename"
+              />
+            </div>
+            <template v-else>
+              <div class="flex items-center gap-1">
+                <span class="text-[10px] shrink-0">📌</span>
+                <div class="truncate font-medium flex-1">{{ s.name || '新会话' }}</div>
+                <span v-if="getMessageCount(s.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(s.id) }}</span>
+              </div>
+              <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(s.id)">{{ getFirstMessagePreview(s.id) }}</div>
+              <div class="text-[10px] text-gray-400 mt-0.5 flex justify-between items-center">
+                <span>{{ formatTime(s.createdAt) }}</span>
+                <button
+                  @click.stop="handleDelete(s.id)"
+                  class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"
+                  title="删除会话"
+                >×</button>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- 按日期分组的会话 -->
+        <template v-for="item in groupedSessions.items" :key="item.key">
+          <!-- 分组标题 -->
+          <div v-if="item.type === 'header'" class="px-4 pt-3 pb-0.5 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            {{ item.label }}
+          </div>
+          <!-- 会话项 -->
+          <div
+            v-else-if="item.type === 'session'"
+            @click="chat.switchSession(item.data.id)"
+            @contextmenu.prevent="onContextMenu($event, item.data)"
+            class="px-3 py-2 mx-2 mb-0.5 rounded-lg cursor-pointer text-sm transition-all duration-200 group relative"
+            :class="item.data.id === chat.currentSessionId
+              ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 shadow-sm'
+              : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 hover:shadow-sm'"
+            :style="item.data.id === chat.currentSessionId ? 'border-left: 3px solid #22c55e' : 'border-left: 3px solid transparent'"
+          >
+            <!-- 重命名模式 -->
+            <div v-if="renamingId === item.data.id" @click.stop>
+              <input
+                v-model="renameInput"
+                class="rename-input w-full text-sm bg-white dark:bg-gray-700 border border-green-400 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-green-400 text-gray-700 dark:text-gray-200"
+                @keydown.enter="confirmRename"
+                @keydown.escape="cancelRename"
+                @blur="confirmRename"
+              />
+            </div>
+            <template v-else>
+              <div class="flex items-center gap-1">
+                <div class="truncate font-medium flex-1">{{ item.data.name || '新会话' }}</div>
+                <span v-if="getMessageCount(item.data.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(item.data.id) }}</span>
+              </div>
+              <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(item.data.id)">{{ getFirstMessagePreview(item.data.id) }}</div>
+              <div class="text-[10px] text-gray-400 mt-0.5 flex justify-between items-center">
+                <span>{{ formatTime(item.data.createdAt) }}</span>
+                <button
+                  @click.stop="handleDelete(item.data.id)"
+                  class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"
+                  title="删除会话"
+                >×</button>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- 空状态 -->
+        <div v-if="groupedSessions.pinned.length === 0 && groupedSessions.items.length === 0" class="text-center text-gray-400 dark:text-gray-500 text-xs py-6">
+          {{ searchQuery ? '没有匹配的会话' : '暂无会话' }}
+        </div>
+      </div>
+
+      <!-- 底部工具栏 -->
+      <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 shrink-0">
+        <button @click="chat.toggleTheme()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
+          {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
+        </button>
+        <button v-if="!chat.isOnline" @click="goSettings()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
+          ⚙️
+        </button>
+      </div>
+    </template>
   </div>
 
   <!-- 右键菜单 -->
   <Teleport to="body">
     <div v-if="contextMenu.show"
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-      class="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[120px]"
+      class="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1 min-w-[140px]"
       @click.stop
     >
-      <button @click="handleDelete(contextMenu.sessionId)" class="w-full px-3 py-1.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition">🗑 删除会话</button>
+      <button @click="startRename(contextMenu.session)" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">✏️ 重命名</button>
+      <button @click="togglePin(contextMenu.session)" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+        {{ contextMenu.session?.pinned ? '📌 取消置顶' : '📌 置顶' }}
+      </button>
+      <div class="border-t border-gray-200 dark:border-gray-600 my-1"></div>
+      <button @click="handleDelete(contextMenu.session?.id)" class="w-full px-3 py-1.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition">🗑 删除会话</button>
+      <div class="border-t border-gray-200 dark:border-gray-600 my-1"></div>
+      <button @click="handleExport(contextMenu.session?.id, 'markdown')" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">📄 导出 Markdown</button>
+      <button @click="handleExport(contextMenu.session?.id, 'json')" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">📋 导出 JSON</button>
     </div>
   </Teleport>
 </template>

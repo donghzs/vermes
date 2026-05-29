@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
 import * as api from '../services/api'
+import { toast } from '../utils/toast'
+import ProviderCard from './ProviderCard.vue'
 
 const chat = useChatStore()
 const update = useUpdateStore()
@@ -36,7 +38,27 @@ const providers = ref([
 const customModelInputs = ref({})
 const activeTab = ref('providers')
 const saved = ref(false)
-const expandedProvider = ref(null)
+// P2-16: 支持同时展开多个提供商面板
+const expandedProviders = ref(new Set())
+function isExpanded(id) { return expandedProviders.value.has(id) }
+function toggleProvider(id) {
+  if (expandedProviders.value.has(id)) {
+    expandedProviders.value.delete(id)
+  } else {
+    expandedProviders.value.add(id)
+  }
+}
+
+const showAdvanced = ref(false) // P2-16: 高级模式开关
+
+// P2-16: 推荐提供商（默认显示）
+const RECOMMENDED_IDS = ['vbit', 'deepseek', 'ollama']
+const recommendedProviders = computed(() => 
+  providers.value.filter(p => RECOMMENDED_IDS.includes(p.id))
+)
+const advancedProviders = computed(() => 
+  providers.value.filter(p => !RECOMMENDED_IDS.includes(p.id))
+)
 
 // All synced models across providers
 const allModels = computed(() => {
@@ -74,11 +96,11 @@ function getEnvKey(providerId) {
 
 async function syncModels(p) {
   if (!p.key && p.id !== 'ollama') {
-    alert('请先填写 API Key')
+    toast.warning('请先填写 API Key')
     return
   }
   if (!p.baseUrl) {
-    alert('请先填写 Base URL')
+    toast.warning('请先填写 Base URL')
     return
   }
   p.syncing = true
@@ -91,7 +113,7 @@ async function syncModels(p) {
         p.models = data.models
         saveProvidersToStorage()
       } else {
-        alert('同步失败: ' + (data.error || 'Ollama 未运行'))
+        toast.error('同步失败: ' + (data.error || 'Ollama 未运行'))
       }
       return
     }
@@ -112,19 +134,19 @@ async function syncModels(p) {
       p.models = [...data.models, ...manual]
       saveProvidersToStorage()
       if (manual.length > 0) {
-        alert('✅ 已同步 ' + data.models.length + ' 个模型，保留 ' + manual.length + ' 个手动添加的模型')
+        toast.success('已同步 ' + data.models.length + ' 个模型，保留 ' + manual.length + ' 个手动添加的模型')
       }
     } else {
       // API 返回空或失败：保留现有模型，提示用户手动添加
       if (data.error) {
-        alert('⚠️ 同步失败: ' + data.error + '\n\n已保留现有 ' + (p.models||[]).length + ' 个模型，你仍可以手动添加模型。')
+        toast.error('同步失败: ' + data.error + '\n\n已保留现有 ' + (p.models||[]).length + ' 个模型')
       } else {
-        alert('⚠️ 该接口未返回模型列表\n\n请手动添加模型名称，或联系厂商确认 /models 端点是否可用。')
+        toast.warning('该接口未返回模型列表，请手动添加模型名称')
       }
     }
   } catch (e) {
     // 网络错误：不清除现有模型
-    alert('⚠️ 同步请求失败: ' + e.message + '\n\n已保留现有 ' + (p.models||[]).length + ' 个模型。')
+    toast.error('同步请求失败: ' + e.message)
   } finally {
     p.syncing = false
   }
@@ -206,7 +228,7 @@ async function setCurrentModel(p, modelId) {
     })
     const data = await resp.json()
     if (!data.ok) {
-      alert('设置失败: ' + (data.detail || JSON.stringify(data)))
+      toast.error('设置失败: ' + (data.detail || JSON.stringify(data)))
       return
     }
 
@@ -223,7 +245,7 @@ async function setCurrentModel(p, modelId) {
     saved.value = true
     setTimeout(() => saved.value = false, 2000)
   } catch (e) {
-    alert('设置失败: ' + e.message)
+    toast.error('设置失败: ' + e.message)
   }
 }
 
@@ -318,9 +340,7 @@ async function save() {
 
 function back() { router.push('/') }
 
-function toggleProvider(id) {
-  expandedProvider.value = expandedProvider.value === id ? null : id
-}
+
 
 // H1 修复：事件处理提升到组件作用域，onUnmounted 可访问
 const _onTrialToken = (e) => {
@@ -389,82 +409,269 @@ onUnmounted(() => {
       <div v-if="activeTab === 'providers'" class="max-w-2xl space-y-3">
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">配置 API Key 后点击「同步模型」自动获取可用模型，也可手动添加自定义模型。</p>
 
-        <!-- 推荐提示 -->
-        <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3 mb-3">
-          <span class="text-xl">🎯</span>
-          <div class="flex-1">
-            <div class="font-medium text-blue-700 dark:text-blue-300 text-sm">小白用户首选：DeepSeek（高性价比）</div>
-            <div class="text-xs text-blue-600 dark:text-blue-400 mt-1">注册即送额度，价格极低，中文理解强，是入门 AI 对话的最佳选择。</div>
-            <a href="https://platform.deepseek.com/" target="_blank" class="inline-block mt-2 text-xs text-blue-500 hover:text-blue-600 font-medium">→ 去 DeepSeek 官网注册 ↗</a>
+        <!-- 🌟 推荐模式（默认显示） -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">🌟</span>
+            <h3 class="font-medium text-gray-800 dark:text-gray-200">推荐</h3>
           </div>
-        </div>
-        <div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-start gap-3 mb-3">
-          <span class="text-xl">🆓</span>
-          <div class="flex-1">
-            <div class="font-medium text-green-700 dark:text-green-300 text-sm">推荐：OpenRouter 免费模型</div>
-            <div class="text-xs text-green-600 dark:text-green-400 mt-1">无需付费，注册 OpenRouter 即可使用 owl-alpha、tencent/hy3-preview 等免费模型。</div>
-            <a href="https://openrouter.ai/" target="_blank" class="inline-block mt-2 text-xs text-green-500 hover:text-green-600 font-medium">→ 去 openrouter.ai 注册 ↗</a>
+
+          <!-- vbit.top 免费体验 -->
+          <div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4">
+            <div class="flex items-center gap-3 mb-2">
+              <div class="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white font-bold">V</div>
+              <div>
+                <div class="font-medium text-green-700 dark:text-green-300">🔥 vbit.top 免费体验</div>
+                <div class="text-xs text-green-600 dark:text-green-400">微信扫码登录即可使用，每天 500 积分</div>
+              </div>
+            </div>
+            <div class="text-xs text-green-600 dark:text-green-400">
+              ✅ 无需注册 · ✅ 无需 API Key · ✅ 开箱即用
+            </div>
+          </div>
+
+          <!-- DeepSeek -->
+          <div v-for="p in providers.filter(p => p.id === 'deepseek')" :key="p.id" 
+               class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400">
+                  D
+                </div>
+                <div class="text-left">
+                  <div class="font-medium text-gray-800 dark:text-gray-200">🚀 DeepSeek</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">国产高性价比，注册即送额度</div>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-gray-400 transition-transform" :class="isExpanded(p.id) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div v-if="isExpanded(p.id)" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
+              <div class="pt-3">
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+                <input v-model="p.key" type="password" placeholder="sk-..." class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <a href="https://platform.deepseek.com/" target="_blank" class="inline-block mt-1 text-xs text-blue-500 hover:text-blue-600">→ 去 DeepSeek 官网获取 Key ↗</a>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+                <input v-model="p.baseUrl" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+              <div class="flex gap-2">
+                <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+                  <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                  {{ p.syncing ? '同步中...' : '🔄 同步模型' }}
+                </button>
+                <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">💾 保存</button>
+              </div>
+              <div v-if="p.models.length > 0" class="space-y-1">
+                <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
+                <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
+                  <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 本地模型 -->
+          <div v-for="p in providers.filter(p => p.id === 'ollama')" :key="p.id"
+               class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400">
+                  💻
+                </div>
+                <div class="text-left">
+                  <div class="font-medium text-gray-800 dark:text-gray-200">💻 本地模型</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">完全免费，数据不离开你的电脑</div>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-gray-400 transition-transform" :class="isExpanded(p.id) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div v-if="isExpanded(p.id)" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
+              <div class="pt-3 text-xs text-gray-500 dark:text-gray-400">
+                <p>支持 Ollama、vMLX 等本地推理引擎。</p>
+                <p class="mt-1">安装 Ollama 后点击「同步模型」自动检测已安装的模型。</p>
+              </div>
+              <div class="flex gap-2">
+                <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+                  <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                  {{ p.syncing ? '同步中...' : '🔄 检测本地模型' }}
+                </button>
+              </div>
+              <div v-if="p.models.length > 0" class="space-y-1">
+                <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">已安装模型</div>
+                <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
+                  <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div v-for="p in providers" :key="p.id" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <!-- Provider header (clickable) -->
-          <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold" :class="p.key ? 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'">
-                {{ p.name.charAt(0) }}
-              </div>
-              <div class="text-left">
-                <div class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ p.name }}</div>
-                <div class="text-xs text-gray-400">{{ p.models.length }} 个模型 · {{ p.key ? '已配置' : '未配置' }}</div>
-              </div>
-            </div>
-            <svg class="w-4 h-4 text-gray-400 transition-transform" :class="expandedProvider === p.id ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        <!-- ⚙️ 高级模式（点击展开） -->
+        <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <button @click="showAdvanced = !showAdvanced" class="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition">
+            <svg class="w-4 h-4 transition-transform" :class="showAdvanced ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            ⚙️ 高级选项（其他提供商）
           </button>
 
-          <!-- Expanded content -->
-          <div v-if="expandedProvider === p.id" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
-            <div class="pt-3">
-              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
-              <input v-model="p.key" :type="p.id === 'ollama' ? 'text' : 'password'" :placeholder="p.id === 'ollama' ? 'ollama' : 'sk-...'" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
-            </div>
+          <div v-if="showAdvanced" class="mt-3 space-y-3">
+            <!-- 国产模型 -->
             <div>
-              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
-              <input v-model="p.baseUrl" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
-            </div>
-
-            <!-- Sync button -->
-            <div class="flex gap-2">
-              <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
-                <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                {{ p.syncing ? '同步中...' : '🔄 同步模型' }}
-              </button>
-              <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">
-                💾 保存配置
-              </button>
-              <button @click="deleteProvider(p)" class="px-4 py-1.5 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 rounded-lg text-xs font-medium transition">
-                🗑 清除配置
-              </button>
-            </div>
-
-            <!-- Synced models list -->
-            <div v-if="p.models.length > 0" class="space-y-1">
-              <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
-              <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
-                <div class="flex items-center gap-2">
-                  <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">
-                    ✓ 设为当前
+              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🇨🇳 国产模型</div>
+              <div class="space-y-2">
+                <div v-for="p in advancedProviders.filter(p => ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan'].includes(p.id))" :key="p.id"
+                     class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+                    <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold" :class="p.key ? 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'">
+                        {{ p.name.charAt(0) }}
+                      </div>
+                      <div class="text-left">
+                        <div class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ p.name }}</div>
+                        <div class="text-xs text-gray-400">{{ p.models.length }} 个模型 · {{ p.key ? '已配置' : '未配置' }}</div>
+                      </div>
+                    </div>
+                    <svg class="w-4 h-4 text-gray-400 transition-transform" :class="isExpanded(p.id) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                   </button>
-                  <button @click="removeModel(p, m)" class="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                  <div v-if="isExpanded(p.id)" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
+                    <div class="pt-3">
+                      <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+                      <input v-model="p.key" type="password" placeholder="sk-..." class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+                      <input v-model="p.baseUrl" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                    <div class="flex gap-2">
+                      <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+                        <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        {{ p.syncing ? '同步中...' : '🔄 同步模型' }}
+                      </button>
+                      <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">💾 保存</button>
+                      <button @click="deleteProvider(p)" class="px-4 py-1.5 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 rounded-lg text-xs font-medium transition">🗑 清除</button>
+                    </div>
+                    <div v-if="p.models.length > 0" class="space-y-1">
+                      <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
+                      <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
+                        <div class="flex items-center gap-2">
+                          <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
+                          <button @click="removeModel(p, m)" class="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex gap-2">
+                      <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Custom model input -->
-            <div class="flex gap-2">
-              <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
-              <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
+            <!-- 国际模型 -->
+            <div>
+              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🌍 国际模型</div>
+              <div class="space-y-2">
+                <div v-for="p in advancedProviders.filter(p => ['openai','anthropic','gemini','openrouter','groq','together'].includes(p.id))" :key="p.id"
+                     class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+                    <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold" :class="p.key ? 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'">
+                        {{ p.name.charAt(0) }}
+                      </div>
+                      <div class="text-left">
+                        <div class="font-medium text-gray-800 dark:text-gray-200 text-sm">{{ p.name }}</div>
+                        <div class="text-xs text-gray-400">{{ p.models.length }} 个模型 · {{ p.key ? '已配置' : '未配置' }}</div>
+                      </div>
+                    </div>
+                    <svg class="w-4 h-4 text-gray-400 transition-transform" :class="isExpanded(p.id) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </button>
+                  <div v-if="isExpanded(p.id)" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
+                    <div class="pt-3">
+                      <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+                      <input v-model="p.key" type="password" placeholder="sk-..." class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+                      <input v-model="p.baseUrl" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                    <div class="flex gap-2">
+                      <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+                        <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        {{ p.syncing ? '同步中...' : '🔄 同步模型' }}
+                      </button>
+                      <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">💾 保存</button>
+                      <button @click="deleteProvider(p)" class="px-4 py-1.5 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 rounded-lg text-xs font-medium transition">🗑 清除</button>
+                    </div>
+                    <div v-if="p.models.length > 0" class="space-y-1">
+                      <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
+                      <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
+                        <div class="flex items-center gap-2">
+                          <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
+                          <button @click="removeModel(p, m)" class="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex gap-2">
+                      <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 自定义提供商 -->
+            <div>
+              <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🔧 自定义</div>
+              <div v-for="p in advancedProviders.filter(p => p.id === 'custom')" :key="p.id"
+                   class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold bg-gray-100 dark:bg-gray-700 text-gray-400">+</div>
+                    <div class="text-left">
+                      <div class="font-medium text-gray-800 dark:text-gray-200 text-sm">自定义提供商</div>
+                      <div class="text-xs text-gray-400">添加 OpenAI 兼容的自定义 API</div>
+                    </div>
+                  </div>
+                  <svg class="w-4 h-4 text-gray-400 transition-transform" :class="isExpanded(p.id) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div v-if="isExpanded(p.id)" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
+                  <div class="pt-3">
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+                    <input v-model="p.key" type="password" placeholder="sk-..." class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+                    <input v-model="p.baseUrl" type="text" placeholder="https://your-api.com/v1" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  </div>
+                  <div class="flex gap-2">
+                    <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+                      <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                      {{ p.syncing ? '同步中...' : '🔄 同步模型' }}
+                    </button>
+                    <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">💾 保存</button>
+                  </div>
+                  <div v-if="p.models.length > 0" class="space-y-1">
+                    <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
+                    <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
+                      <div class="flex items-center gap-2">
+                        <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
+                        <button @click="removeModel(p, m)" class="text-gray-400 hover:text-red-500 text-xs">✕</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
