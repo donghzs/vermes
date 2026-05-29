@@ -560,6 +560,17 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             except Exception as cb_err:
                 logging.debug(f"Tool start callback error: {cb_err}")
 
+        # Agent 模式：发送工具调用开始事件到前端
+        if not _execution_blocked and hasattr(agent, 'tool_event_callback') and agent.tool_event_callback:
+            try:
+                agent.tool_event_callback("tool_start", {
+                    "tool_call_id": tool_call.id,
+                    "tool_name": function_name,
+                    "arguments": function_args,
+                })
+            except Exception:
+                pass
+
         # Checkpoint: snapshot working dir before file-mutating tools
         if not _execution_blocked and function_name in {"write_file", "patch"} and agent._checkpoint_mgr.enabled:
             try:
@@ -825,6 +836,20 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 )
             except Exception as cb_err:
                 logging.debug(f"Tool progress callback error: {cb_err}")
+
+        # Agent 模式：发送工具调用完成事件到前端
+        if not _execution_blocked and hasattr(agent, 'tool_event_callback') and agent.tool_event_callback:
+            try:
+                result_preview = str(function_result)[:300] if function_result else ""
+                agent.tool_event_callback("tool_end", {
+                    "tool_call_id": tool_call.id,
+                    "tool_name": function_name,
+                    "duration": round(tool_duration, 2),
+                    "is_error": _is_error_result,
+                    "result_preview": result_preview,
+                })
+            except Exception:
+                pass
 
         agent._current_tool = None
         agent._touch_activity(f"tool completed: {function_name} ({tool_duration:.1f}s)")
