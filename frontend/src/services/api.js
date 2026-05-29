@@ -283,8 +283,9 @@ export default {
             // Agent 模式：推理链可视化事件
             if (json.type === 'thinking') {
               // 思考事件作为工具卡片显示，不混入文本内容
-              onTool?.({ type: 'tool_start', tool_call_id: 'thinking-' + Date.now(), name: 'thinking', arguments: { message: json.message } })
-              onTool?.({ type: 'tool_end', tool_call_id: 'thinking-' + Date.now(), name: 'thinking', duration: 0, is_error: false })
+              const thinkId = 'thinking-' + json.iteration
+              onTool?.({ type: 'tool_start', tool_call_id: thinkId, name: 'thinking', arguments: { message: json.message } })
+              onTool?.({ type: 'tool_end', tool_call_id: thinkId, name: 'thinking', duration: 0, is_error: false })
               continue
             }
             if (json.type === 'ping') {
