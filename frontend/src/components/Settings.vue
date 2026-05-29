@@ -469,6 +469,10 @@ onUnmounted(() => {
                   <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
                 </div>
               </div>
+              <div class="flex gap-2">
+                <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
+              </div>
             </div>
           </div>
 
@@ -504,6 +508,10 @@ onUnmounted(() => {
                   <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
                   <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
                 </div>
+              </div>
+              <div class="flex gap-2">
+                <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
               </div>
             </div>
           </div>
