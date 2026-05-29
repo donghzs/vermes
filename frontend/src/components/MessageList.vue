@@ -269,6 +269,19 @@ watch(() => chat.filteredMessages.length, async () => {
               <span v-if="msg.streaming" class="typing-cursor"></span>
             </template>
           </div>
+          <!-- 工具调用展示 -->
+          <div v-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="mt-2 space-y-1">
+            <div v-for="tool in msg.toolInvocations" :key="tool.id || tool.name"
+                 class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg"
+                 :class="tool.status === 'running' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : tool.status === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400'">
+              <span v-if="tool.status === 'running'" class="animate-spin">⏳</span>
+              <span v-else-if="tool.status === 'error'">❌</span>
+              <span v-else>✅</span>
+              <span class="font-medium">{{ tool.name }}</span>
+              <span v-if="tool.duration" class="text-[10px] opacity-60">{{ tool.duration }}s</span>
+              <span v-if="tool.status === 'running'" class="text-[10px] opacity-60">执行中...</span>
+            </div>
+          </div>
           <div class="flex items-center gap-2 mt-1"
                :class="msg.role === 'user' ? 'justify-end' : ''">
             <span class="text-[10px] text-gray-400">{{ formatTime(msg.timestamp) }}</span>
