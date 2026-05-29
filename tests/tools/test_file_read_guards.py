@@ -80,9 +80,45 @@ class TestDevicePathBlocking(unittest.TestCase):
         self.assertFalse(_is_blocked_device("/proc/self/fd/3"))
         self.assertFalse(_is_blocked_device("/proc/self/maps"))
 
+    def test_normpath_alias_to_blocked_device_is_blocked(self):
+        self.assertTrue(_is_blocked_device("/dev/../dev/zero"))
+        self.assertTrue(_is_blocked_device("/dev/./urandom"))
+
     def test_normal_files_not_blocked(self):
         self.assertFalse(_is_blocked_device("/tmp/test.py"))
         self.assertFalse(_is_blocked_device("/home/user/.bashrc"))
+
+    def test_symlink_to_blocked_device_is_blocked(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            link_path = os.path.join(tmpdir, "zero-link")
+            try:
+                os.symlink("/dev/zero", link_path)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            self.assertTrue(_is_blocked_device(link_path))
+
+    def test_symlink_to_regular_file_not_blocked(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_path = os.path.join(tmpdir, "regular.txt")
+            link_path = os.path.join(tmpdir, "regular-link")
+            with open(target_path, "w", encoding="utf-8") as handle:
+                handle.write("safe\n")
+            try:
+                os.symlink(target_path, link_path)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            self.assertFalse(_is_blocked_device(link_path))
+
+    def test_symlink_to_blocked_alias_is_blocked_before_realpath(self):
+        if not os.path.exists("/dev/stdin"):
+            self.skipTest("/dev/stdin is not available on this platform")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            link_path = os.path.join(tmpdir, "stdin-link")
+            try:
+                os.symlink("/dev/../dev/stdin", link_path)
+            except OSError as exc:
+                self.skipTest(f"symlink unavailable: {exc}")
+            self.assertTrue(_is_blocked_device(link_path))
 
     def test_read_file_tool_rejects_device(self):
         """read_file_tool returns an error without any file I/O."""

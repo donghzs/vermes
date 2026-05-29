@@ -135,13 +135,81 @@ def _is_blocked_device(filepath: str) -> bool:
     through (e.g. /dev/stdin → /proc/self/fd/0 → /dev/pts/0), defeating
     the check.
     """
-    normalized = os.path.expanduser(filepath)
+    try:
+        if Path(filepath).expanduser().is_absolute():
+            return None
+        workspace_root = _authoritative_workspace_root(task_id)
+        if not workspace_root:
+            return None  # No authoritative workspace root to compare against.
+        root = Path(workspace_root).expanduser().resolve()
+        # Is `resolved` inside `root`?
+        try:
+            resolved.relative_to(root)
+            return None  # Inside the workspace — expected.
+        except ValueError:
+            return (
+                f"Relative path {filepath!r} resolved to {str(resolved)!r}, which is "
+                f"OUTSIDE the active workspace ({str(root)!r}). The edit will land in "
+                f"a different directory than the terminal's cwd. If this is not "
+                f"intended (e.g. a git-worktree session writing into the main "
+                f"checkout), pass an absolute path under the workspace instead."
+            )
+    except Exception:
+        return None
+
+
+def _is_blocked_device_path(path: str) -> bool:
+    """Return True for concrete device/fd paths that can hang reads."""
+    normalized = os.path.normpath(os.path.expanduser(path))
     if normalized in _BLOCKED_DEVICE_PATHS:
         return True
     # /proc/self/fd/0-2 and /proc/<pid>/fd/0-2 are Linux aliases for stdio
     if normalized.startswith("/proc/") and normalized.endswith(
         ("/fd/0", "/fd/1", "/fd/2")
     ):
+        return True
+    # /proc/*/environ, /proc/*/cmdline, /proc/*/maps can leak secrets,
+    # command-line args, and memory layout from the host process (issue #4427)
+    if normalized.startswith("/proc/") and normalized.endswith(
+        ("/environ", "/cmdline", "/maps")
+    ):
+        return True
+    return False
+
+
+def _is_blocked_device(filepath: str) -> bool:
+    """Return True if the path would hang the process (infinite output or blocking input).
+
+    Check the literal path first so aliases like /dev/stdin are caught before
+    they resolve to terminal-specific paths. Then check each symlink hop before
+    the final resolved path so aliases to devices cannot bypass the guard.
+    """
+    normalized = os.path.normpath(os.path.expanduser(filepath))
+    if _is_blocked_device_path(normalized):
+        return True
+
+    seen: set[str] = set()
+    current = normalized
+    for _ in range(20):
+        try:
+            target = os.readlink(current)
+        except OSError:
+            break
+        if not os.path.isabs(target):
+            target = os.path.join(os.path.dirname(current), target)
+        target = os.path.normpath(target)
+        if _is_blocked_device_path(target):
+            return True
+        if target in seen:
+            break
+        seen.add(target)
+        current = target
+
+    try:
+        resolved = os.path.normpath(os.path.realpath(normalized))
+    except (OSError, ValueError):
+        return False
+    if _is_blocked_device_path(resolved):
         return True
     return False
 
