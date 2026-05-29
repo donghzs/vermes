@@ -224,7 +224,7 @@ export default {
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
 
   // 发送消息（SSE 流式）
-  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, provider, attachments }) {
+  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, provider, attachments }) {
     const body = { model, messages, stream, provider: provider || '' }
     if (attachments && attachments.length > 0) body.attachments = attachments
     // 传 wechat_openid 让后端能在没有 API key 时自动 claim
@@ -264,6 +264,11 @@ export default {
           if (data === '[DONE]') { onDone?.(usageInfo); return }
           try {
             const json = JSON.parse(data)
+            // P1-10: 捕获 stream_id 用于 stop 通知
+            if (json.type === 'stream_start' && json.stream_id) {
+              onStreamStart?.(json.stream_id)
+              continue
+            }
             // 检查上游错误（如 One-API 额度耗尽）
             if (json.error) {
               const errMsg = json.error.message || '服务端错误'

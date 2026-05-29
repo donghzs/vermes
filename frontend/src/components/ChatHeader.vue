@@ -1,0 +1,145 @@
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useChatStore } from '../stores/chat'
+
+const chat = useChatStore()
+
+const props = defineProps({
+  isLoggedIn: Boolean,
+  userAvatar: String,
+  userName: String,
+  quotaDisplay: Object,
+})
+
+const emit = defineEmits(['logout', 'openWeChatQR', 'toggleHistory'])
+
+const showModelSelect = ref(false)
+const showStats = ref(false)
+const sessionStats = computed(() => chat.getSessionStats(chat.currentSessionId))
+
+// 模型列表
+const defaultModels = [
+  { id: 'mimo-v2.5', name: '⚡ MiMo V2.5（小米）', provider: 'vbit.top' },
+  { id: 'deepseek-v4-flash', name: '🚀 DeepSeek V4 Flash', provider: 'vbit.top' },
+]
+
+const models = computed(() => {
+  try {
+    const saved = localStorage.getItem('vermes-providers')
+    if (saved) {
+      const providers = JSON.parse(saved)
+      const synced = []
+      for (const p of providers) {
+        if (p.models && p.models.length > 0) {
+          for (const m of p.models) {
+            synced.push({ id: m, name: m, provider: p.id, group: p.name })
+          }
+        }
+      }
+      if (synced.length > 0) return synced
+    }
+  } catch(e) {}
+  return defaultModels
+})
+
+const modelGroups = computed(() => {
+  const groups = {}
+  for (const m of models.value) {
+    const g = m.group || m.provider || '其他'
+    if (!groups[g]) groups[g] = []
+    groups[g].push(m)
+  }
+  return groups
+})
+
+function selectModel(m) {
+  chat.currentModel = m.id
+  chat.currentProvider = m.provider || m.group || ''
+  localStorage.setItem('vermes-current-model', m.id)
+  localStorage.setItem('vermes-current-provider', m.provider || m.group || '')
+  showModelSelect.value = false
+}
+
+function currentModelName() {
+  const m = models.value.find(m => m.id === chat.currentModel)
+  return m ? m.name : chat.currentModel
+}
+
+function closeDropdowns() {
+  showModelSelect.value = false
+  showStats.value = false
+}
+</script>
+
+<template>
+  <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
+    <div class="flex items-center gap-3">
+      <!-- 微信头像 -->
+      <div v-if="isLoggedIn && userAvatar" class="flex items-center gap-2 cursor-pointer group relative">
+        <img :src="userAvatar" class="w-8 h-8 rounded-full object-cover ring-2 ring-green-400 shadow-sm" @error="$event.target.style.display='none'" />
+        <div class="flex flex-col leading-tight">
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-200 group-hover:text-green-600 dark:group-hover:text-green-400 transition max-w-[80px] truncate">{{ userName }}</span>
+          <span class="text-[10px] text-green-500">已登录</span>
+        </div>
+        <button @click="emit('logout')" class="ml-1 text-[10px] text-red-400 hover:text-red-600 transition opacity-0 group-hover:opacity-100" title="退出登录">退出</button>
+      </div>
+      <div v-else-if="isLoggedIn" class="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/30 rounded-full text-xs text-green-600 dark:text-green-400">
+        <span class="w-6 h-6 rounded-full bg-green-400 flex items-center justify-center text-white text-xs font-bold">V</span>
+        {{ userName }}
+        <button @click="emit('logout')" class="ml-1 text-[10px] text-red-400 hover:text-red-600 transition" title="退出登录">退出</button>
+      </div>
+      <div v-else @click="emit('openWeChatQR')" class="flex items-center gap-2 cursor-pointer group">
+        <div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-gray-400 text-xs">?</div>
+        <div class="flex flex-col leading-tight">
+          <span class="text-xs text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition">微信未登录</span>
+          <span class="text-[10px] text-gray-300 dark:text-gray-600">点击登录</span>
+        </div>
+      </div>
+
+      <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
+
+      <button @click="chat.toggleSidebar()" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition" title="切换侧边栏">☰</button>
+      <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新会话' }}</h2>
+      <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages.length }} 条消息</span>
+      <button @click="emit('toggleHistory')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋</button>
+      <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
+        :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
+        {{ quotaDisplay.text }}
+      </span>
+    </div>
+
+    <!-- 模型选择器 -->
+    <div class="relative">
+      <button @click.stop="showModelSelect = !showModelSelect"
+        class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+        {{ currentModelName() }}
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div v-if="showModelSelect" class="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto py-1">
+        <template v-for="(group, gName) in modelGroups" :key="gName">
+          <div class="px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">{{ gName }}</div>
+          <div v-for="m in group" :key="m.id" @click="selectModel(m)"
+            class="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between"
+            :class="{ 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400': m.id === chat.currentModel }">
+            <span>{{ m.name }}</span>
+            <span v-if="m.id === chat.currentModel" class="text-green-500 text-xs">✓</span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- 点击外部关闭下拉 -->
+  <div v-if="showModelSelect || showStats" @click="closeDropdowns" class="fixed inset-0 z-40"></div>
+
+  <!-- 统计弹窗 -->
+  <div v-if="showStats" class="absolute right-60 top-14 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-4 min-w-[200px]">
+    <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">📊 会话统计</div>
+    <div class="space-y-2 text-sm">
+      <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">消息总数</span><span class="text-gray-800 dark:text-gray-200 font-medium">{{ sessionStats.count }}</span></div>
+      <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">会话时长</span><span class="text-gray-800 dark:text-gray-200 font-medium">{{ sessionStats.duration }}</span></div>
+      <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">当前模型</span><span class="text-gray-800 dark:text-gray-200 font-medium">{{ sessionStats.model }}</span></div>
+    </div>
+  </div>
+</template>
