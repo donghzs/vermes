@@ -277,7 +277,7 @@ watch(() => chat.filteredMessages.length, async () => {
               <span v-if="tool.status === 'running'" class="animate-spin">⏳</span>
               <span v-else-if="tool.status === 'error'">❌</span>
               <span v-else>✅</span>
-              <span class="font-medium">{{ tool.name }}</span>
+              <span class="font-medium">{{ ({thinking:'思考中',read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
               <span v-if="tool.duration" class="text-[10px] opacity-60">{{ tool.duration }}s</span>
               <span v-if="tool.status === 'running'" class="text-[10px] opacity-60">执行中...</span>
             </div>
