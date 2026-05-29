@@ -3612,12 +3612,9 @@ async def chat_completions(req: ChatRequest):
                     else:
                         _delta_queue.put_nowait(delta)
                 else:
-                    # delta=None 表示agent完成
-                    _log.info(f"[Stream] AGENT DONE (delta=None)")
-                    if loop and loop.is_running():
-                        loop.call_soon_threadsafe(_agent_done.set)
-                    else:
-                        _agent_done.set()
+                    # delta=None 只是"本轮结束"信号（工具执行前），不是agent完成
+                    # agent完成由 stream_generator 循环中 agent_task.done() 判断
+                    _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
 
             def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
                 """Agent内置回调 — 工具启动/完成时发送事件到前端"""
@@ -3715,14 +3712,13 @@ async def chat_completions(req: ChatRequest):
                             # 等待 delta，超时 1s 以定期检查 cancel/agent_done/ping
                             delta = await asyncio.wait_for(_delta_queue.get(), timeout=1.0)
                         except asyncio.TimeoutError:
-                            # 超时：检查 agent 是否已异常退出
+                            # 超时：检查 agent 是否已完成且队列已空
                             if agent_task.done():
-                                exc = agent_task.exception()
-                                if exc:
-                                    _log.error(f"[Stream] Agent异常: {exc}")
-                                    yield f'data: {json.dumps({"error": {"message": str(exc), "type": "agent_error", "code": 500}})}\n\n'
-                                    yield "data: [DONE]\n\n"
-                                    return
+                                if _delta_queue.empty():
+                                    _agent_done.set()
+                                    break
+                                # 队列还有数据，继续处理
+                                continue
                             continue
 
                         # 区分工具事件（dict）和文本delta（str）
