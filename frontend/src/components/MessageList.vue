@@ -138,10 +138,22 @@ watch(() => chat.filteredMessages.length, async () => {
   }
 })
 
-// 初始挂载时也添加
+// 初始挂载时也添加 + 滚到底部
 onMounted(() => {
   if (chatContainer.value) {
     addCopyButtonsToPreElements(chatContainer.value)
+    // 打开会话时默认滚到最新消息（底部）
+    nextTick(() => {
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+    })
+  }
+})
+
+// 切换会话时滚到底部
+watch(() => chat.currentSessionId, async () => {
+  await nextTick()
+  if (chatContainer.value) {
+    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
   }
 })
 
