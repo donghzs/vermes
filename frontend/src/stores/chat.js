@@ -42,6 +42,7 @@ export const useChatStore = defineStore('chat', () => {
   const uploading = ref(false)
   const showQuotaModal = ref(false)
   const quotaModalType = ref('need_login') // 'need_login' | 'trial_expired' | 'wechat_expired'
+  const compareModels = ref([]) // P3-8: 多模型对比
 
   // 在线模式标志
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
@@ -202,8 +203,10 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessage(content, attachments) {
-    console.log('[Vermes💬 sendMessage] content:', JSON.stringify(content), 'attachments:', attachments?.length, 'currentSessionId:', currentSessionId.value, 'messages count:', messages.value.length)
+  async function sendMessage(content, attachments, _model_, _provider_) {
+    const modelId = _model_ || currentModel.value
+    const providerId = _provider_ || currentProvider.value
+    console.log('[Vermes💬 sendMessage] content:', JSON.stringify(content), 'attachments:', attachments?.length, 'currentSessionId:', currentSessionId.value, 'messages count:', messages.value.length, 'model:', modelId, 'provider:', providerId)
     if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) {
       console.warn('[Vermes💬 sendMessage] BLOCKED: empty content and no attachments')
       return
@@ -219,8 +222,8 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // ✅ v2: 云端模型配额检查（仅 vbit 免费体验通道检查积分，用户自带 Key 不检查）
-    const isCloud = isCloudModel(currentProvider.value)
-    const isVbitFreeTrial = String(currentProvider.value).toLowerCase() === 'vbit'
+    const isCloud = isCloudModel(providerId)
+    const isVbitFreeTrial = String(providerId).toLowerCase() === 'vbit'
     if (isCloud && isVbitFreeTrial) {
       const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
       const isLoggedIn = !!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token'))
@@ -329,8 +332,8 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       await api.sendMessage({
-        model: currentModel.value,
-        provider: currentProvider.value,
+        model: modelId,
+        provider: providerId,
         messages: apiMessages,
         attachments: processedAttachments.map(a => ({
           name: a.name,
@@ -409,6 +412,150 @@ export const useChatStore = defineStore('chat', () => {
       abortController.value = null
       persistMessages(currentSessionId.value)
     }
+  }
+
+  // P3-8: 多模型对比 — 并行向多个模型发送同一问题
+  async function sendCompareMessage(content, attachments, models) {
+    // models: [{id, provider, name}, ...]
+    if (!models || models.length < 2) return
+    if (loading.value) return
+    if (!currentSessionId.value) {
+      showToast('会话未初始化', 'error')
+      return
+    }
+
+    // Quota check: vbit 通道按模型数倍增
+    const providerId = currentProvider.value
+    const isVbitFreeTrial = String(providerId).toLowerCase() === 'vbit'
+    if (isVbitFreeTrial) {
+      const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+      const isLoggedIn = !!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token'))
+      if (!isLoggedIn || !wechatOpenid) {
+        quotaModalType.value = QUOTA_NEED_LOGIN
+        showQuotaModal.value = true
+        return
+      }
+      const serverCheck = await checkQuotaServer(wechatOpenid)
+      if (serverCheck.success) {
+        if (serverCheck.data.trial_expired) {
+          quotaModalType.value = 'trial_expired'
+          showQuotaModal.value = true
+          return
+        }
+        if (serverCheck.data.remaining < models.length) {
+          toast.error(`对比需要 ${models.length} 积分，当前仅剩 ${serverCheck.data.remaining}`)
+          return
+        }
+      }
+    }
+
+    // 构建用户消息（只创建一次）
+    let userContent = content?.trim() || ''
+    let processedAttachments = []
+    if (attachments && attachments.length > 0) {
+      uploading.value = true
+      try {
+        for (const att of attachments) {
+          if (att.base64) processedAttachments.push(att)
+          else if (att.file instanceof File) processedAttachments.push(await fileToBase64(att.file))
+        }
+        const parts = []
+        for (const att of processedAttachments) {
+          if (att.type === 'image') parts.push(`![${att.name}](data:${att.mimeType};base64,${att.base64})`)
+          else parts.push(`📎 **附件:** ${att.name} (${formatSize(att.size)})`)
+        }
+        if (userContent) parts.unshift(userContent)
+        userContent = parts.join('\n\n')
+      } finally { uploading.value = false }
+    }
+
+    const msgId = uid()
+    messages.value.push({
+      id: msgId, role: 'user', content: userContent,
+      sessionId: currentSessionId.value, timestamp: Date.now(),
+    })
+    persistMessages(currentSessionId.value)
+
+    loading.value = true
+
+    // 为每个模型创建独立消息并并行发送
+    const modelLabel = (m) => `**[🔬 ${m.name || m.id}]**\n`
+    const aides = []
+    for (const m of models) {
+      const aid = uid()
+      aides.push(aid)
+      messages.value.push({
+        id: aid, role: 'assistant', content: modelLabel(m),
+        sessionId: currentSessionId.value, timestamp: Date.now(),
+        streaming: true, toolInvocations: [], _compareModel: m.name || m.id,
+      })
+    }
+
+    // 构建 API 消息（不含 compare 模型消息）
+    const apiMessages = messages.value
+      .filter(m => m.sessionId === currentSessionId.value && !m.streaming)
+      .map(m => ({
+        role: m.role,
+        content: m.role === 'user' && m.content.includes('data:image')
+          ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '').trim()
+          : m.content,
+      }))
+
+    const attachPayload = processedAttachments.map(a => ({
+      name: a.name, type: a.type, data: a.base64,
+      mime: a.mimeType || 'application/octet-stream', size: a.size,
+    }))
+
+    const tasks = models.map((model, idx) => {
+      const aid = aides[idx]
+      return (async () => {
+        const ac = new AbortController()
+        try {
+          await api.sendMessage({
+            model: model.id,
+            provider: model.provider || providerId,
+            messages: apiMessages,
+            attachments: attachPayload,
+            stream: true,
+            signal: ac.signal,
+            onChunk: (chunk) => {
+              const am = messages.value.find(m => m.id === aid)
+              if (am) am.content += chunk
+            },
+            onTool: (tool) => {
+              const am = messages.value.find(m => m.id === aid)
+              if (am) am.toolInvocations.push(tool)
+            },
+            onDone: () => {
+              const am = messages.value.find(m => m.id === aid)
+              if (am) am.streaming = false
+            },
+            onError: (err) => {
+              const am = messages.value.find(m => m.id === aid)
+              if (am) {
+                am.content = modelLabel(model) + '❌ 错误: ' + (err.message || '未知')
+                am.streaming = false
+              }
+            },
+          })
+        } catch (e) {
+          const am = messages.value.find(m => m.id === aid)
+          if (am) {
+            am.content = modelLabel(model) + '❌ 发送失败: ' + e.message
+            am.streaming = false
+          }
+        }
+      })()
+    })
+
+    await Promise.allSettled(tasks)
+    loading.value = false
+    const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
+    if (wechatOpenid && isVbitFreeTrial) {
+      window.dispatchEvent(new Event('quota-updated'))
+    }
+    persistMessages(currentSessionId.value)
+    compareModels.value = []
   }
 
   const activeStreamId = ref(null)
@@ -633,9 +780,9 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions, currentSessionId, messages, loading, abortController,
     sidebarOpen, theme, currentModel, currentProvider, uploading,
-    showQuotaModal, quotaModalType,
+    showQuotaModal, quotaModalType, compareModels,
     currentSession, filteredMessages,
-    init, createSession, switchSession, sendMessage, stopGeneration,
+    init, createSession, switchSession, sendMessage, sendCompareMessage, stopGeneration,
     toggleTheme, toggleSidebar, deleteSession, renameSession, pinSession,
     getMessageCount, getFirstMessage, formatSize,
     searchAllMessages, getSessionStats, exportSession, importSession,

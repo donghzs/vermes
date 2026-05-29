@@ -68,6 +68,14 @@ defineExpose({ inputText, uploadedFiles, inputRef })
 
 <template>
   <div class="px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+    <!-- P3-8: 对比模式标签 -->
+    <div v-if="chat.compareModels && chat.compareModels.length >= 2" class="flex items-center gap-2 mb-2">
+      <span class="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full font-medium">
+        🔬 对比模式 ({{ chat.compareModels.length }}个模型)
+      </span>
+      <span v-for="m in chat.compareModels" :key="m.id" class="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full">{{ m.name }}</span>
+      <button @click="chat.compareModels = []" class="text-[10px] text-red-400 hover:text-red-600">✕ 取消</button>
+    </div>
     <div v-if="chat.uploading" class="mb-2 text-xs text-blue-500 flex items-center gap-1"><span class="animate-spin">⏳</span> 正在处理附件...</div>
     <div v-if="uploadedFiles.length > 0" class="flex flex-wrap gap-2 mb-2">
       <div v-for="(f, idx) in uploadedFiles" :key="idx" class="flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg px-3 py-1.5 text-xs">
