@@ -3621,6 +3621,7 @@ async def chat_completions(req: ChatRequest):
 
             def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
                 """Agent内置回调 — 工具启动/完成时发送事件到前端"""
+                _log.info(f"[ToolEvent] {event_type}: {tool_name}")
                 import uuid
                 # 对齐前端SSE解析器期望的字段: tool_call_id, tool_name, arguments
                 if event_type == "tool.started":
@@ -3650,6 +3651,7 @@ async def chat_completions(req: ChatRequest):
 
             def thinking_handler(iteration: int, prev_tools: list):
                 """Agent内置回调 — 每步推理时发送思考状态到前端"""
+                _log.info(f"[ThinkEvent] iteration={iteration}, prev_tools={[t.get('name') for t in (prev_tools or [])]}")
                 tool_names = [t.get("name", "?") for t in (prev_tools or [])]
                 msg = f"🤔 正在推理第 {iteration} 步..."
                 if tool_names:
@@ -3693,6 +3695,9 @@ async def chat_completions(req: ChatRequest):
                     # 在后台线程运行agent
                     agent_task = loop.run_in_executor(None, run_sync)
 
+                    # 保活心跳：每15秒发送一次ping，防止前端误判断连
+                    last_ping = time.time()
+
                     # P1-11: 用 asyncio.Queue.get() 替代 50ms 轮询，延迟从 ~50ms 降至 ~0ms
                     while not _agent_done.is_set() or not _delta_queue.empty():
                         # P1-10: 检查前端是否请求停止
@@ -3701,9 +3706,14 @@ async def chat_completions(req: ChatRequest):
                             agent_task.cancel()
                             break
 
+                        # 保活心跳
+                        if time.time() - last_ping > 15:
+                            yield f'data: {json.dumps({"type": "ping"})}\n\n'
+                            last_ping = time.time()
+
                         try:
-                            # 等待 delta，超时 0.5s 以定期检查 cancel/agent_done
-                            delta = await asyncio.wait_for(_delta_queue.get(), timeout=0.5)
+                            # 等待 delta，超时 1s 以定期检查 cancel/agent_done/ping
+                            delta = await asyncio.wait_for(_delta_queue.get(), timeout=1.0)
                         except asyncio.TimeoutError:
                             # 超时：检查 agent 是否已异常退出
                             if agent_task.done():
@@ -3717,8 +3727,10 @@ async def chat_completions(req: ChatRequest):
 
                         # 区分工具事件（dict）和文本delta（str）
                         if isinstance(delta, dict):
-                            # 工具调用事件，直接作为SSE事件发送
+                            # 工具调用/思考事件，直接作为SSE事件发送
+                            _log.info(f"[Stream] SSE dict event: type={delta.get('type')}")
                             yield f"data: {json.dumps(delta)}\n\n"
+                            last_ping = time.time()  # 有活动就重置心跳
                         else:
                             chunk = {
                                 "id": "vermes-agent",
@@ -3728,6 +3740,7 @@ async def chat_completions(req: ChatRequest):
                                 "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
                             }
                             yield f"data: {json.dumps(chunk)}\n\n"
+                            last_ping = time.time()
                 finally:
                     # P1-10: 清理 stream 追踪
                     _active_streams.pop(_stream_id, None)
