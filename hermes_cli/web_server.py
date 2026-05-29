@@ -3619,9 +3619,42 @@ async def chat_completions(req: ChatRequest):
                     else:
                         _agent_done.set()
 
-            def tool_event_callback(event_type: str, data: dict):
-                """被agent调用，发送工具调用事件到前端"""
-                event = {"type": event_type, **data}
+            def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
+                """Agent内置回调 — 工具启动/完成时发送事件到前端"""
+                import uuid
+                # 对齐前端SSE解析器期望的字段: tool_call_id, tool_name, arguments
+                if event_type == "tool.started":
+                    event = {
+                        "type": "tool_start",
+                        "tool_call_id": str(uuid.uuid4())[:8],
+                        "tool_name": tool_name,
+                        "arguments": args or {},
+                    }
+                else:
+                    event = {
+                        "type": "tool_end",
+                        "tool_call_id": str(uuid.uuid4())[:8],
+                        "tool_name": tool_name,
+                        "duration": kwargs.get("duration", 0),
+                        "is_error": kwargs.get("is_error", False),
+                        "result_preview": preview or "",
+                    }
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+                else:
+                    _delta_queue.put_nowait(event)
+
+            def thinking_handler(iteration: int, prev_tools: list):
+                """Agent内置回调 — 每步推理时发送思考状态到前端"""
+                tool_names = [t.get("name", "?") for t in (prev_tools or [])]
+                msg = f"🤔 正在推理第 {iteration} 步..."
+                if tool_names:
+                    msg += f" (已完成: {', '.join(tool_names)})"
+                event = {"type": "thinking", "iteration": iteration, "message": msg}
                 try:
                     loop = asyncio.get_event_loop()
                 except RuntimeError:
@@ -3634,14 +3667,14 @@ async def chat_completions(req: ChatRequest):
             def run_sync():
                 try:
                     _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
-                    # P0-fix: 直接设置stream_delta_callback，这是Agent实际使用的回调属性
-                    agent.stream_delta_callback = stream_callback
-                    # Agent 模式：工具调用事件回调，让前端看到工具调用过程
-                    agent.tool_event_callback = tool_event_callback
+                    # 设置Agent的内置回调（完整推理链可视化）
+                    agent.stream_delta_callback = stream_callback      # 文本流式输出
+                    agent.tool_progress_callback = tool_progress_handler  # 工具事件
+                    agent.step_callback = thinking_handler             # 推理步骤
                     result = agent.run_conversation(
                         user_message=user_message,
                         conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
-                        stream_callback=None,  # 不传给run_conversation，避免重复注册
+                        stream_callback=None,
                     )
                     _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
                     return result

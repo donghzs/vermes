@@ -280,19 +280,23 @@ export default {
             if (json.usage && json.usage.total_tokens > 0) {
               usageInfo = json.usage
             }
+            // Agent 模式：推理链可视化事件
+            if (json.type === 'thinking') {
+              onChunk?.(`\n💭 ${json.message}\n`)
+              continue
+            }
+            if (json.type === 'tool_start') {
+              onTool?.({ type: 'tool_start', tool_call_id: json.tool_call_id, name: json.tool_name, arguments: json.arguments })
+              continue  // 由MessageList工具卡片渲染，不重复输出文本
+            }
+            if (json.type === 'tool_end') {
+              onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error })
+              continue
+            }
             // 工具调用（标准OpenAI格式）
             const toolCall = json.choices?.[0]?.delta?.tool_calls?.[0]
             if (toolCall?.function?.name) {
               onTool?.(toolCall.function)
-            }
-            // Agent 模式：工具调用事件（tool_start/tool_end）
-            if (json.type === 'tool_start') {
-              onTool?.({ type: 'tool_start', tool_call_id: json.tool_call_id, name: json.tool_name, arguments: json.arguments })
-              continue
-            }
-            if (json.type === 'tool_end') {
-              onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error, result_preview: json.result_preview })
-              continue
             }
             const delta = json.choices?.[0]?.delta?.content || ''
             if (delta && onChunk) onChunk(delta)
