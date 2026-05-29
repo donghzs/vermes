@@ -285,9 +285,15 @@ export default {
               onChunk?.(`\n💭 ${json.message}\n`)
               continue
             }
+            if (json.type === 'ping') {
+              // 保活心跳，忽略
+              continue
+            }
             if (json.type === 'tool_start') {
               onTool?.({ type: 'tool_start', tool_call_id: json.tool_call_id, name: json.tool_name, arguments: json.arguments })
-              continue  // 由MessageList工具卡片渲染，不重复输出文本
+              // 工具卡片渲染的同时，在消息内容中插入一行状态提示
+              onChunk?.(`\n🔧 **${json.tool_name}**\n`)
+              continue
             }
             if (json.type === 'tool_end') {
               onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error })
