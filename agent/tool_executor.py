@@ -385,8 +385,16 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
 
             if not blocked and agent.tool_progress_callback:
                 try:
+                    # 生成工具结果摘要（前200字符）
+                    result_preview = ""
+                    if function_result and not is_error:
+                        try:
+                            result_str = str(function_result)
+                            result_preview = result_str[:200] + ("..." if len(result_str) > 200 else "")
+                        except:
+                            result_preview = ""
                     agent.tool_progress_callback(
-                        "tool.completed", function_name, None, None,
+                        "tool.completed", function_name, result_preview, None,
                         duration=tool_duration, is_error=is_error,
                     )
                 except Exception as cb_err:

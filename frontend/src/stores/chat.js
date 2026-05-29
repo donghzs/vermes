@@ -384,6 +384,7 @@ export const useChatStore = defineStore('chat', () => {
             if (inv) {
               inv.status = tool.is_error ? 'error' : 'done'
               inv.duration = tool.duration
+              inv.result_preview = tool.result_preview || ''
             }
           }
         },
