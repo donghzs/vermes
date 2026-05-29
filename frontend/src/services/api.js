@@ -296,7 +296,7 @@ export default {
               continue
             }
             if (json.type === 'tool_end') {
-              onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error })
+              onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error, result_preview: json.result_preview || '' })
               continue
             }
             // 工具调用（标准OpenAI格式）
