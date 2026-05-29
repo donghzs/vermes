@@ -355,26 +355,22 @@ export const useChatStore = defineStore('chat', () => {
         onTool: (tool) => {
           const am = messages.value.find(m => m.id === aid)
           if (!am) return
+          // api.js传入的type: 'tool_start' | 'tool_end'
+          // 转换为MessageList模板需要的status: 'running' | 'done' | 'error'
           if (tool.type === 'tool_start') {
-            // 工具开始：添加到 toolInvocations
             am.toolInvocations.push({
-              id: tool.tool_call_id,
+              id: tool.tool_call_id || tool.name,
               name: tool.name,
               arguments: tool.arguments,
               status: 'running',
               startTime: Date.now()
             })
           } else if (tool.type === 'tool_end') {
-            // 工具完成：更新对应 toolInvocation
-            const inv = am.toolInvocations.find(t => t.id === tool.tool_call_id)
+            const inv = am.toolInvocations.find(t => t.id === tool.tool_call_id || t.name === tool.name)
             if (inv) {
               inv.status = tool.is_error ? 'error' : 'done'
               inv.duration = tool.duration
-              inv.result_preview = tool.result_preview
             }
-          } else {
-            // 兼容旧格式
-            am.toolInvocations.push(tool)
           }
         },
         onDone: (usageInfo) => {
