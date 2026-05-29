@@ -168,6 +168,20 @@ export const useChatStore = defineStore('chat', () => {
     // P2-20: 先显示文本消息，图片异步加载
     // 先设置消息（不含图片）
     messages.value = stored.map(m => ({ ...m }))
+
+    // 修复：重置中断的工具调用状态（页面重载说明工具已中断）
+    for (const m of messages.value) {
+      if (m.toolInvocations) {
+        for (const t of m.toolInvocations) {
+          if (t.status === 'running') {
+            t.status = 'error'
+            t.duration = t.duration || 0
+          }
+        }
+      }
+      // 同时清理残留的 streaming 状态
+      if (m.streaming) m.streaming = false
+    }
     
     // 异步加载图片（不阻塞UI）
     const imageLoadPromises = []
