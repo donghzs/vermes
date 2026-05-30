@@ -13,6 +13,7 @@ block_cipher = None
 datas = []
 for src, dst in [
     ('hermes_cli/web_dist', 'hermes_cli/web_dist'),
+    ('hermes_cli/blueprints', 'hermes_cli/blueprints'),
     ('locales', 'locales'),
     ('skills', 'skills'),
     ('plugins', 'plugins'),
@@ -69,6 +70,14 @@ hiddenimports = [
 
     # Missing modules (PyInstaller动态检测不到的)
     'hermes_cli.web_server', 'hermes_cli.gateway',
+    'hermes_cli.blueprints', 'hermes_cli.blueprints.chat',
+    'hermes_cli.blueprints.config', 'hermes_cli.blueprints.dashboard',
+    'hermes_cli.blueprints.helpers', 'hermes_cli.blueprints.models',
+    'hermes_cli.blueprints.providers', 'hermes_cli.blueprints.quota',
+    'hermes_cli.blueprints.session', 'hermes_cli.blueprints.state',
+    'hermes_cli.blueprints.wechat',
+    'hermes_cli.update_manager',
+    'hermes_cli.shutdown_signal',
     'gateway', 'gateway.status', 'gateway.config',
     'run_agent', 'hermes_constants', 'model_tools',
     'agent', 'agent.process_bootstrap', 'agent.iteration_budget',
