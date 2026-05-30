@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 
 const chat = useChatStore()
@@ -8,8 +8,16 @@ const show = ref(false)
 const historyKeyword = ref('')
 const historyDateFilter = ref('all')
 
+// #10 搜索防抖 300ms
+const debouncedKeyword = ref('')
+let debounceTimer = null
+watch(historyKeyword, (val) => {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => { debouncedKeyword.value = val }, 300)
+})
+
 const historyResults = computed(() => {
-  return chat.searchAllMessages(historyKeyword.value, historyDateFilter.value)
+  return chat.searchAllMessages(debouncedKeyword.value, historyDateFilter.value)
 })
 
 // P3-6: 高亮搜索关键词
