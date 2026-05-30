@@ -53,7 +53,34 @@ def _resolve_max_tokens(model: str) -> int:
 
     优先级: 用户配置 > 模型已知限制 > 安全默认值 8192
     不同模型的输出限制差异很大，这里覆盖主流模型。
+
+    配置方式（在 config.yaml 中）：
+    ```yaml
+    model:
+      max_tokens: 8192  # 自定义 max_tokens，优先级最高
+    ```
     """
+    # 优先级 1: 从 config.yaml 读取用户配置
+    try:
+        from hermes_constants import get_hermes_home
+        home = get_hermes_home()
+        cfg_path = home / "config.yaml"
+        if cfg_path.exists():
+            import yaml
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f) or {}
+            user_max_tokens = cfg.get("model", {}).get("max_tokens")
+            if user_max_tokens is not None:
+                try:
+                    value = int(user_max_tokens)
+                    if value > 0:
+                        return value
+                except (TypeError, ValueError):
+                    pass
+    except Exception:
+        pass
+
+    # 优先级 2: 按模型类型返回硬编码默认值
     m = (model or "").lower()
     # 推理模型（通常支持更长输出）
     if any(k in m for k in ["deepseek-reasoner", "o1", "o3", "o4"]):
