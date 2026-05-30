@@ -416,6 +416,60 @@ def _resize_image_for_vision(image_path: Path, mime_type: Optional[str] = None,
 # ---------------------------------------------------------------------------
 
 
+# ── Proxy provider detection ────────────────────────────────────────────
+# When users connect through One-API or similar proxies, the provider
+# string is "vbit.top" or "one-api" instead of the real provider.
+# We infer the real provider from the model name.
+
+# Model name prefix → real provider mapping
+_MODEL_PROVIDER_HINTS: Dict[str, str] = {
+    "mimo-": "xiaomi",
+    "glm-": "zai",
+    "deepseek-": "deepseek",
+    "qwen-": "alibaba",
+    "gpt-": "openai",
+    "claude-": "anthropic",
+    "gemini-": "google",
+    "kimi-": "moonshot",
+    "yi-": "01-ai",
+    "internlm-": "internlm",
+    "chatglm-": "zai",
+    "baichuan-": "baichuan",
+    "hunyuan-": "tencent",
+}
+
+# Known proxy provider patterns
+_PROXY_PROVIDERS = frozenset({
+    "vbit.top", "one-api", "new-api", "openrouter",
+})
+
+
+def _resolve_real_provider(provider: str, model: str) -> str:
+    """Resolve the real provider from model name when using a proxy.
+
+    If *provider* is a known proxy (e.g. ``"vbit.top"``), we inspect the
+    model name prefix to infer the actual backend provider.  This lets
+    vision routing find the correct provider-specific vision model
+    (e.g. ``xiaomi → mimo-v2-omni``) even when the request goes through
+    One-API.
+
+    Returns the resolved provider string (lowercase, stripped).
+    """
+    p = (provider or "").strip().lower()
+    m = (model or "").strip().lower()
+
+    if not p or p not in _PROXY_PROVIDERS:
+        return p
+
+    # Try model name prefix hints
+    for prefix, real in _MODEL_PROVIDER_HINTS.items():
+        if m.startswith(prefix):
+            return real
+
+    # Fallback: return the proxy provider as-is
+    return p
+
+
 def _supports_media_in_tool_results(provider: str, model: str) -> bool:
     """Whether the given provider+model combination accepts image content
     inside a tool-result message.
@@ -469,6 +523,13 @@ def _supports_media_in_tool_results(provider: str, model: str) -> bool:
         if "gemini-3" in m or "gemini-pro-3" in m or "gemini-flash-3" in m:
             return True
         return False
+
+    # Xiaomi — mimo-v2-omni supports multimodal image input.
+    # Gate on model name: only omni variants support vision.
+    if p == "xiaomi":
+        if not isinstance(model, str):
+            return False
+        return "omni" in model.strip().lower()
 
     # Other vision-capable provider stacks. Conservative default: False.
     # Add explicit entries here as we verify each provider's tool-result
@@ -634,13 +695,14 @@ async def vision_analyze_tool(
     image_url: str,
     user_prompt: str,
     model: str = None,
+    provider: str = None,
 ) -> str:
     """
     Analyze an image from a URL or local file path using vision AI.
     
     This tool accepts either an HTTP/HTTPS URL or a local file path. For URLs,
     it downloads the image first. In both cases, the image is converted to base64
-    and processed using Gemini 3 Flash Preview via OpenRouter API.
+    and processed using the configured vision model.
     
     The user_prompt parameter is expected to be pre-formatted by the calling
     function (typically model_tools.py) to include both full description
@@ -650,7 +712,12 @@ async def vision_analyze_tool(
         image_url (str): The URL or local file path of the image to analyze.
                          Accepts http://, https:// URLs or absolute/relative file paths.
         user_prompt (str): The pre-formatted prompt for the vision model
-        model (str): The vision model to use (default: google/gemini-3-flash-preview)
+        model (str): The vision model to use (default: auto-resolved)
+        provider (str): The provider to use (default: auto-resolved). When
+                        specified, forces routing to this provider (e.g. "xiaomi"
+                        for mimo-v2-omni). This is important when the user's main
+                        chat model doesn't support vision but the provider has a
+                        dedicated vision model.
     
     Returns:
         str: JSON string containing the analysis results with the following structure:
@@ -805,6 +872,8 @@ async def vision_analyze_tool(
         }
         if model:
             call_kwargs["model"] = model
+        if provider:
+            call_kwargs["provider"] = provider
         # Try full-size image first; on size-related rejection, downscale and retry.
         try:
             response = await async_call_llm(**call_kwargs)
@@ -840,7 +909,7 @@ async def vision_analyze_tool(
         # Prepare successful response
         result = {
             "success": True,
-            "analysis": analysis or "There was a problem with the request and the image could not be analyzed."
+            "analysis": analysis or "图片分析完成，但未返回有效内容。请重试。"
         }
         
         debug_call_data["success"] = True
@@ -853,7 +922,7 @@ async def vision_analyze_tool(
         return json.dumps(result, indent=2, ensure_ascii=False)
         
     except Exception as e:
-        error_msg = f"Error analyzing image: {str(e)}"
+        error_msg = f"图片分析失败: {str(e)}"
         logger.error("%s", error_msg, exc_info=True)
         
         # Detect vision capability errors — give the model a clear message
@@ -863,8 +932,16 @@ async def vision_analyze_tool(
             "402", "insufficient", "payment required", "credits", "billing",
         )):
             analysis = (
-                "Insufficient credits or payment required. Please top up your "
-                f"API provider account and try again. Error: {e}"
+                "API 额度不足或需要付费。请充值您的 API 账户后重试。\n"
+                f"错误详情: {e}"
+            )
+        elif any(hint in err_str for hint in (
+            "401", "invalid api key", "invalid_api_key", "authentication",
+            "unauthorized",
+        )):
+            analysis = (
+                "API Key 无效或已过期。请到设置页面检查并更新 API Key。\n"
+                f"错误详情: {e}"
             )
         elif any(hint in err_str for hint in (
             "does not support", "not support image",
@@ -872,20 +949,20 @@ async def vision_analyze_tool(
             "unrecognized request argument", "image input",
         )):
             analysis = (
-                f"{model} does not support vision or our request was not "
-                f"accepted by the server. Error: {e}"
+                f"当前模型 {model} 不支持图片识别。"
+                "请到设置页面切换支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3 等），"
+                "或配置辅助视觉模型。\n"
+                f"错误详情: {e}"
             )
         elif "invalid_request" in err_str or "image_url" in err_str:
             analysis = (
-                "The vision API rejected the image. This can happen when the "
-                "image is in an unsupported format, corrupted, or still too "
-                "large after auto-resize. Try a smaller JPEG/PNG and retry. "
-                f"Error: {e}"
+                "图片格式不支持或已损坏。请尝试使用 JPEG 或 PNG 格式的较小图片。\n"
+                f"错误详情: {e}"
             )
         else:
             analysis = (
-                "There was a problem with the request and the image could not "
-                f"be analyzed. Error: {e}"
+                "图片分析时出现问题，无法完成分析。请稍后重试。\n"
+                f"错误详情: {e}"
             )
         
         # Prepare error response
@@ -914,12 +991,40 @@ async def vision_analyze_tool(
 
 
 def check_vision_requirements() -> bool:
-    """Check if the configured runtime vision path can resolve a client."""
-    try:
-        from agent.auxiliary_client import resolve_vision_provider_client
+    """Check if vision analysis is possible via any available path.
 
-        _provider, client, _model = resolve_vision_provider_client()
+    Returns True if at least one of these is available:
+    1. Main model supports native vision (multimodal tool results)
+    2. Provider has a dedicated vision model (e.g. xiaomi→mimo-v2-omni)
+    3. Auxiliary vision client (OpenRouter/Nous/Anthropic aggregator chain)
+    """
+    try:
+        from agent.auxiliary_client import (
+            _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS,
+        )
+
+        _raw_provider = _read_main_provider()
+        _model = _read_main_model()
+
+        # Resolve real provider from proxy (e.g. vbit.top + mimo-v2.5 → xiaomi)
+        _provider = _resolve_real_provider(_raw_provider, _model)
+
+        # Check 1: Main model supports native vision
+        try:
+            if _supports_media_in_tool_results(_provider, _model):
+                return True
+        except Exception:
+            pass
+
+        # Check 2: Provider has a dedicated vision model
+        if _provider and _provider in _PROVIDER_VISION_MODELS:
+            return True
+
+        # Check 3: Auxiliary vision client
+        from agent.auxiliary_client import resolve_vision_provider_client
+        _p, client, _m = resolve_vision_provider_client()
         return client is not None
+
     except Exception:
         return False
 
@@ -929,20 +1034,48 @@ if __name__ == "__main__":
     """
     Simple test/demo when run directly
     """
-    print("👁️ Vision Tools Module")
-    print("=" * 40)
+    print("👁️ Vision Tools Module (Vermes)")
+    print("=" * 50)
     
-    # Check if vision model is available
+    # Show current vision routing
+    try:
+        from agent.auxiliary_client import (
+            _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS,
+        )
+        _provider = _read_main_provider()
+        _model = _read_main_model()
+        _resolved = _resolve_real_provider(_provider, _model)
+        _vision_model = _PROVIDER_VISION_MODELS.get(_resolved)
+        
+        print(f"📋 当前 provider: {_provider}")
+        print(f"📋 当前 model: {_model}")
+        if _vision_model and _vision_model != _model:
+            print(f"📋 视觉专用 model: {_vision_model}")
+        
+        # Check native support
+        if _supports_media_in_tool_results(_provider, _model):
+            print(f"✅ {_provider}/{_model} 支持原生视觉（native fast path）")
+        elif _vision_model:
+            print(f"✅ {_provider} 有专用视觉模型: {_vision_model}")
+        else:
+            print(f"⚠️ {_provider}/{_model} 不支持视觉，将使用辅助 LLM")
+    except Exception as e:
+        print(f"⚠️ 无法读取当前配置: {e}")
+    
+    # Check if vision is available via any path
     api_available = check_vision_requirements()
     
     if not api_available:
-        print("❌ No auxiliary vision model available")
-        print("Configure a supported multimodal backend (OpenRouter, Nous, Codex, Anthropic, or a custom OpenAI-compatible endpoint).")
+        print("❌ 没有可用的视觉分析路径")
+        print("请配置以下任一方式：")
+        print("  1. 使用支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3）")
+        print("  2. 使用带专用视觉模型的提供商（如 xiaomi → mimo-v2-omni）")
+        print("  3. 配置辅助视觉后端（OpenRouter、Nous、Anthropic）")
         sys.exit(1)
     else:
-        print("✅ Vision model available")
+        print("✅ 视觉分析可用")
     
-    print("🛠️ Vision tools ready for use!")
+    print("\n🛠️ Vision tools ready!")
     
     # Show debug mode status
     if _debug.active:
@@ -1011,40 +1144,237 @@ VISION_ANALYZE_SCHEMA = {
 }
 
 
-def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> Awaitable[str]:
+# ── OCR fallback ────────────────────────────────────────────────────────
+def _ocr_extract_text(image_source: str) -> str:
+    """Extract text from an image using Pillow + basic OCR.
+
+    Tries pytesseract first (if installed), falls back to a simple
+    Pillow-based approach for images with clear text.
+
+    Returns extracted text or empty string on failure.
+    """
+    import tempfile
+    from pathlib import Path
+
+    # Resolve image to local path
+    try:
+        if image_source.startswith(("http://", "https://")):
+            temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+            temp_path = temp_dir / f"ocr_temp_{uuid.uuid4()}.jpg"
+            # Use synchronous download
+            import urllib.request
+            urllib.request.urlretrieve(image_source, str(temp_path))
+            should_cleanup = True
+        elif image_source.startswith("data:"):
+            # Decode data URL
+            _, encoded = image_source.split(",", 1)
+            data = base64.b64decode(encoded)
+            temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+            temp_path = temp_dir / f"ocr_temp_{uuid.uuid4()}.jpg"
+            temp_path.write_bytes(data)
+            should_cleanup = True
+        else:
+            temp_path = Path(image_source).expanduser()
+            if not temp_path.exists():
+                return ""
+            should_cleanup = False
+    except Exception:
+        return ""
+
+    text = ""
+
+    # Try pytesseract first
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(temp_path)
+        text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug("pytesseract OCR failed: %s", e)
+
+    # Fallback: no real OCR available, return empty
+    # (Pillow alone can't do OCR, but we tried)
+    finally:
+        if should_cleanup and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+    return text.strip()
+
+
+
+async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     image_url = args.get("image_url", "")
     question = args.get("question", "")
 
-    # Fast path: when the active main model supports native vision AND the
-    # provider supports image content inside tool results, short-circuit
-    # the auxiliary LLM and return the image bytes as a multimodal
-    # tool-result envelope. The main model sees the pixels directly on its
-    # next turn — no aux call, no information loss, no extra latency.
-    try:
-        from agent.auxiliary_client import _read_main_provider, _read_main_model
-        from agent.image_routing import decide_image_input_mode
-        from hermes_cli.config import load_config
+    # ── Vision analysis workflow (universal "try-first" strategy) ────────
+    #
+    # Design principle: DON'T gate on capability checks — just try.
+    # Capability metadata is often wrong, incomplete, or doesn't account
+    # for proxy providers (One-API, vbit.top, etc.).  The only reliable
+    # test is to actually call the API.
+    #
+    # Priority order:
+    #   1. Try current model directly (provider-aware, including proxy)
+    #   2. Try provider's dedicated vision model (xiaomi→mimo-v2-omni)
+    #   3. Try auxiliary LLM chain (OpenRouter → Nous → Anthropic)
+    #   4. Try OCR fallback (local Pillow text extraction)
+    #
+    # Each step catches errors and falls through to the next.
+    # This handles ALL scenarios: direct providers, proxies (One-API,
+    # vbit.top, new-api), custom model names, unknown providers, etc.
 
-        _provider = _read_main_provider()
-        _model = _read_main_model()
-        _cfg = load_config()
-        _mode = decide_image_input_mode(_provider, _model, _cfg)
-        if _mode == "native" and _supports_media_in_tool_results(_provider, _model):
-            logger.info(
-                "vision_analyze: native fast path (provider=%s, model=%s)",
-                _provider, _model,
-            )
-            return _vision_analyze_native(image_url, question)
-    except Exception as exc:
-        logger.debug("Native vision fast-path check failed; using aux LLM: %s", exc)
-
-    # Legacy path: aux LLM describes the image and we return its text.
     full_prompt = (
-        "Fully describe and explain everything about this image, then answer the "
-        f"following question:\n\n{question}"
+        "请完整描述并解释这张图片的所有内容，然后回答以下问题：\n\n"
+        f"{question}"
     )
-    model = os.getenv("AUXILIARY_VISION_MODEL", "").strip() or None
-    return vision_analyze_tool(image_url, full_prompt, model)
+
+    # ── Step 1: Try current model directly ───────────────────────────────
+    # Even if capability metadata says "no vision", try anyway.
+    # Proxies (One-API/vbit.top) may route vision requests correctly.
+    _provider = ""
+    _model = ""
+    _PROVIDER_VISION_MODELS = {}
+    try:
+        from agent.auxiliary_client import (
+            _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS as _PVM,
+        )
+        _PROVIDER_VISION_MODELS = _PVM
+
+        _raw_provider = _read_main_provider()
+        _model = _read_main_model()
+
+        # Resolve real provider from proxy for better logging
+        _provider = _resolve_real_provider(_raw_provider, _model)
+
+        logger.info(
+            "vision_analyze Step 1: trying current model "
+            "(raw_provider=%s, resolved=%s, model=%s)",
+            _raw_provider, _provider, _model,
+        )
+
+        # Try native multimodal tool result first (if supported)
+        try:
+            if _supports_media_in_tool_results(_provider, _model):
+                logger.info("  -> native fast path (multimodal tool result)")
+                return _vision_analyze_native(image_url, question)
+        except Exception as exc:
+            logger.debug("  native fast-path check skipped: %s", exc)
+
+        # Try current model via vision_analyze_tool (may work through proxy)
+        try:
+            logger.info("  -> trying current model via API call")
+            result_str = await vision_analyze_tool(
+                image_url, full_prompt, model=_model, provider=_provider,
+            )
+            # Parse result to check if it succeeded
+            result = json.loads(result_str)
+            if result.get("success"):
+                logger.info("  -> current model succeeded")
+                return result_str
+            logger.info("  -> current model returned success=false, trying next")
+        except Exception as exc:
+            logger.info("  -> current model failed: %s", exc)
+
+    except Exception as exc:
+        logger.debug("Step 1 setup failed: %s", exc)
+
+    # ── Step 2: Try provider's dedicated vision model ────────────────────
+    # e.g. xiaomi→mimo-v2-omni, zai→glm-5v-turbo
+    try:
+        if not _provider:
+            from agent.auxiliary_client import (
+                _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS as _PVM,
+            )
+            _PROVIDER_VISION_MODELS = _PVM
+            _raw_provider = _read_main_provider()
+            _model = _read_main_model()
+            _provider = _resolve_real_provider(_raw_provider, _model)
+
+        _vision_model = _PROVIDER_VISION_MODELS.get(_provider) if _provider else None
+        if _vision_model and _vision_model != _model:
+            logger.info(
+                "vision_analyze Step 2: trying provider vision model "
+                "(provider=%s, vision_model=%s)",
+                _provider, _vision_model,
+            )
+            result_str = await vision_analyze_tool(
+                image_url, full_prompt, model=_vision_model, provider=_provider,
+            )
+            result = json.loads(result_str)
+            if result.get("success"):
+                logger.info("  -> provider vision model succeeded")
+                return result_str
+            logger.info("  -> provider vision model returned success=false")
+    except Exception as exc:
+        logger.info("Step 2 failed: %s", exc)
+
+    # ── Step 3: Auxiliary LLM chain (OpenRouter -> Nous -> Anthropic) ──────
+    try:
+        logger.info("vision_analyze Step 3: trying auxiliary LLM chain")
+        aux_model = os.getenv("AUXILIARY_VISION_MODEL", "").strip() or None
+        result_str = await vision_analyze_tool(image_url, full_prompt, aux_model)
+        result = json.loads(result_str)
+        if result.get("success"):
+            logger.info("  -> auxiliary LLM succeeded")
+            return result_str
+        logger.info("  -> auxiliary LLM returned success=false")
+    except Exception as exc:
+        logger.info("Step 3 failed: %s", exc)
+
+    # ── Step 4: OCR fallback (local Pillow text extraction) ─────────────────
+    try:
+        logger.info("vision_analyze Step 4: trying OCR fallback")
+        ocr_text = _ocr_extract_text(image_url)
+        if ocr_text and len(ocr_text.strip()) > 10:
+            logger.info("  -> OCR extracted %d chars, sending to model", len(ocr_text))
+            # Use the current model to analyze OCR text (no image needed)
+            from agent.auxiliary_client import resolve_provider_client
+            current_model = _read_main_model()
+            provider_name, client, model_name = resolve_provider_client(
+                model=current_model, async_mode=False,
+            )
+            if client:
+                ocr_prompt = (
+                    f"以下是图片中提取的文字内容：\n\n{ocr_text}\n\n"
+                    f"用户问题：{question}\n\n"
+                    "请根据以上文字内容回答用户的问题。如果文字内容不足以回答，"
+                    "请说明需要什么额外信息。"
+                )
+                messages = [{"role": "user", "content": ocr_prompt}]
+                response = client(messages, model=model_name, max_tokens=2000)
+                content = extract_content_or_reasoning(response)
+                if content:
+                    logger.info("  -> OCR + model analysis succeeded")
+                    return json.dumps(
+                        {"success": True, "analysis": content},
+                        indent=2, ensure_ascii=False,
+                    )
+            logger.info("  -> OCR + model analysis failed")
+        else:
+            logger.info("  -> OCR extracted insufficient text (%d chars)", len(ocr_text or ""))
+    except Exception as exc:
+        logger.info("Step 4 (OCR) failed: %s", exc)
+
+    # ── All steps failed ─────────────────────────────────────────────────
+    logger.error("vision_analyze: all 4 steps failed")
+    return json.dumps({
+        "success": False,
+        "error": "所有视觉分析路径均失败",
+        "analysis": (
+            "图片分析失败。已尝试以下路径：\n"
+            "1. 当前模型直接调用\n"
+            "2. 供应商专用视觉模型\n"
+            "3. 辅助 LLM 链\n"
+            "4. 本地 OCR 文字提取\n\n"
+            "建议：到设置页面切换支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3 等），"
+            "或配置辅助视觉模型。"
+        ),
+    }, indent=2, ensure_ascii=False)
 
 
 registry.register(

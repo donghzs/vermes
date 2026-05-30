@@ -158,6 +158,19 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
                 embedded_ip in _CGNAT_NETWORK)
 
     # Standard IPv4/IPv6 address checking
+    if isinstance(ip, ipaddress.IPv6Address):
+        # IPv6: only block truly dangerous ranges, not "private" ranges
+        # that Python misclassifies (e.g. 2001::/16 Teredo is global unicast)
+        if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+            return True
+        # Unique Local Address (fc00::/7) — truly private, block
+        if ip.packed[0] & 0xfe == 0xfc:
+            return True
+        # Documentation range (2001:db8::/32) — block
+        if ip.packed[0] == 0x20 and ip.packed[1] == 0x01 and ip.packed[2] == 0x0d and ip.packed[3] == 0xb8:
+            return True
+        return False
+    # IPv4: standard checks
     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
         return True
     if ip.is_multicast or ip.is_unspecified:
