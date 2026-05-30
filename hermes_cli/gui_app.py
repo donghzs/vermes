@@ -238,7 +238,7 @@ def start_server():
 
     print(f"[Vermes] 后端启动在端口 {port}")
     uvicorn.run(fastapi_app,
-                host="127.0.0.1",
+                host="0.0.0.0",
                 port=port,
                 log_level="info",
                 lifespan="off")
