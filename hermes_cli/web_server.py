@@ -4085,8 +4085,7 @@ async def chat_completions(req: ChatRequest):
                 except RuntimeError:
                     loop = None
                 if delta is not None:
-                    # 调试日志：记录delta内容
-                    _log.info(f"[Stream] DELTA: {delta[:50] if len(delta) > 50 else delta}")
+                    _log.info(f"[Stream] DELTA: {repr(delta[:60])}")
                     if loop and loop.is_running():
                         loop.call_soon_threadsafe(_delta_queue.put_nowait, delta)
                     else:
@@ -4125,6 +4124,18 @@ async def chat_completions(req: ChatRequest):
                     loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
                 else:
                     _delta_queue.put_nowait(event)
+
+                # 工具完成后发送思考状态，提示前端 agent 仍在工作
+                if event_type == "tool.completed":
+                    thinking_event = {
+                        "type": "thinking",
+                        "iteration": 0,
+                        "message": "🤔 工具执行完成，正在继续思考...",
+                    }
+                    if loop and loop.is_running():
+                        loop.call_soon_threadsafe(_delta_queue.put_nowait, thinking_event)
+                    else:
+                        _delta_queue.put_nowait(thinking_event)
 
             def thinking_handler(iteration: int, prev_tools: list):
                 """Agent内置回调 — 每步推理时发送思考状态到前端"""
@@ -4183,6 +4194,8 @@ async def chat_completions(req: ChatRequest):
                         # P1-10: 检查前端是否请求停止
                         if _cancel_event.is_set():
                             _log.info(f"[Stream] Frontend requested stop, stream_id={_stream_id}")
+                            # 设置 agent 中断标志，让 agent 内部停止推理
+                            agent._interrupt_requested = True
                             agent_task.cancel()
                             break
 
@@ -4204,6 +4217,7 @@ async def chat_completions(req: ChatRequest):
                                 continue
                             continue
 
+                        _log.info(f"[Stream] Queue item: type={type(delta).__name__}, size={_delta_queue.qsize()}")
                         # 区分工具事件（dict）和文本delta（str）
                         if isinstance(delta, dict):
                             # 工具调用/思考事件，直接作为SSE事件发送
