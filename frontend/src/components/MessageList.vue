@@ -1,6 +1,6 @@
 <script setup>
 import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
-import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES } from '../stores/chat'
+import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarget } from '../stores/chat'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
@@ -209,6 +209,7 @@ watch(() => chat.filteredMessages.length, async () => {
       autoExpandImportantTools(msg.toolInvocations)
     }
   })
+  // 流式中不在此处滚动（由 store 的 _scheduleScroll RAF 调度处理）
 })
 
 // ── 回到底部按钮 ──
@@ -245,10 +246,16 @@ onMounted(() => {
   if (chatContainer.value) {
     addCopyButtonsToPreElements(chatContainer.value)
     chatContainer.value.addEventListener('scroll', checkScrollPosition)
+    // ── 长任务优化: 注入滚动容器给 store 的滚动调度器 ──
+    setScrollTarget(chatContainer.value)
     nextTick(() => {
       scrollToLastUserMsg()
     })
   }
+})
+
+onUnmounted(() => {
+  setScrollTarget(null)
 })
 
 // 切换会话时滚到最新用户消息（多次尝试，确保长列表渲染完成）
@@ -331,18 +338,17 @@ function formatTime(timestamp) {
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-// 自动滚动到底部
-watch(() => chat.filteredMessages.length, async () => {
-  await nextTick()
-  if (chatContainer.value) {
-    // 只在用户已经在底部时自动滚动
-    const container = chatContainer.value
-    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
-    if (isAtBottom || chat.loading) {
-      container.scrollTop = container.scrollHeight
-    }
-  }
-})
+// ── 长任务优化 #3: 流式耗时显示 ──
+function streamElapsed(startTime) {
+  if (!startTime) return ''
+  const sec = Math.round((Date.now() - startTime) / 1000)
+  if (sec < 60) return `${sec}s`
+  const min = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${min}m${s}s`
+}
+
+
 </script>
 
 <template>
@@ -396,15 +402,26 @@ watch(() => chat.filteredMessages.length, async () => {
               <div v-if="cleanUserContent(msg.content)" style="white-space:pre-wrap;word-break:break-word;">{{ cleanUserContent(msg.content) }}</div>
             </template>
             <template v-else>
-              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg.content)" @click="handleContentClick($event)"></div>
+              <!-- ── 长任务优化 #5: 内容分片 ── -->
+              <!-- 流式中只渲染最新 8K 字符，避免超长内容卡顿 -->
+              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg.streaming && msg.content.length > 8000 ? msg.content.slice(-8000) : msg.content)" @click="handleContentClick($event)"></div>
               <span v-else class="text-gray-400 text-xs">等待中...</span>
               <span v-if="msg.streaming" class="typing-cursor"></span>
             </template>
           </div>
           <!-- 工具调用展示：流式中=单条状态，完成后=紧凑时间线 -->
           <div v-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="mt-2">
-            <!-- 流式中：只显示当前正在执行的（thinking或tool） -->
+            <!-- 流式中：进度条 + 当前工具 -->
             <template v-if="msg.streaming">
+              <!-- ── 长任务优化 #3: 进度指示器 ── -->
+              <div v-if="msg._streamStartTime"
+                   class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[11px] bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                <span class="animate-pulse">●</span>
+                <span>第 {{ msg._currentStep || 1 }} 步</span>
+                <span class="opacity-60">·</span>
+                <span class="opacity-60">{{ streamElapsed(msg._streamStartTime) }}</span>
+                <span v-if="msg._toolCount" class="opacity-60">· {{ msg._toolCount }} 工具</span>
+              </div>
               <div v-if="currentRunningTool(msg.toolInvocations)"
                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
                 <span class="animate-spin text-xs">⏳</span>

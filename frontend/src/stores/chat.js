@@ -7,6 +7,30 @@ import { saveImage, loadImage, deleteImages, loadFromStorage, saveToStorage, str
 // ── H2/M11 修复：避免 Date.now() 碰撞 ──
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
 
+// ── 长任务优化: 滚动调度 ──
+// 避免每个 delta 都触发 smooth scroll，改为 RAF 节流
+let _scrollRafId = null
+let _scrollTarget = null // 滚动目标元素（由 MessageList 设置）
+function _scheduleScroll() {
+  if (_scrollRafId) return // 已有待执行的 RAF
+  _scrollRafId = requestAnimationFrame(() => {
+    _scrollRafId = null
+    if (_scrollTarget) {
+      const c = _scrollTarget
+      const isNearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 200
+      if (isNearBottom) {
+        c.scrollTop = c.scrollHeight // 直接跳，不用 smooth（流式中 smooth 会累积延迟）
+      }
+    }
+  })
+}
+function _flushScroll() {
+  if (_scrollRafId) { cancelAnimationFrame(_scrollRafId); _scrollRafId = null }
+  if (_scrollTarget) _scrollTarget.scrollTop = _scrollTarget.scrollHeight
+}
+/** 由 MessageList onMounted 调用，注入滚动容器引用 */
+export function setScrollTarget(el) { _scrollTarget = el }
+
 // ── v2: 未登录拦截弹窗类型 ──
 const QUOTA_NEED_LOGIN = 'need_login'
 
@@ -375,7 +399,21 @@ export const useChatStore = defineStore('chat', () => {
         },
         onChunk: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
-          if (am) am.content += chunk
+          if (!am) return
+          // ── 长任务优化 #1: 流式缓冲 ──
+          // 不每个 delta 都更新 DOM，累积到缓冲区，100ms 批量刷新
+          if (!am._streamBuffer) {
+            am._streamBuffer = ''
+            am._streamBufTimer = setInterval(() => {
+              if (am._streamBuffer) {
+                am.content += am._streamBuffer
+                am._streamBuffer = ''
+                // 批量刷新后触发滚动
+                _scheduleScroll()
+              }
+            }, 80) // 80ms ≈ 12fps，流畅且不卡
+          }
+          am._streamBuffer += chunk
         },
         onTool: (tool) => {
           const am = messages.value.find(m => m.id === aid)
@@ -397,6 +435,9 @@ export const useChatStore = defineStore('chat', () => {
               status: 'running',
               startTime: Date.now()
             })
+            // ── 长任务优化 #3: 进度追踪 ──
+            am._toolCount = (am._toolCount || 0) + 1
+            _scheduleScroll()
           } else if (tool.type === 'tool_end') {
             const inv = am.toolInvocations.find(t => t.id === tool.tool_call_id || t.name === tool.name)
             if (inv) {
@@ -406,9 +447,25 @@ export const useChatStore = defineStore('chat', () => {
             }
           }
         },
+        onThinking: (event) => {
+          const am = messages.value.find(m => m.id === aid)
+          if (!am) return
+          // ── 长任务优化 #3: 进度追踪 ──
+          am._currentStep = event.iteration || ((am._currentStep || 0) + 1)
+          if (!am._streamStartTime) am._streamStartTime = Date.now()
+        },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
+            // 清理流式缓冲
+            if (am._streamBufTimer) {
+              clearInterval(am._streamBufTimer)
+              am._streamBufTimer = null
+            }
+            if (am._streamBuffer) {
+              am.content += am._streamBuffer
+              am._streamBuffer = ''
+            }
             // 关闭所有仍在 running 的 thinking 卡片
             for (const t of am.toolInvocations || []) {
               if (t.name === 'thinking' && t.status === 'running') {
@@ -417,7 +474,11 @@ export const useChatStore = defineStore('chat', () => {
               }
             }
             am.streaming = false
+            am._currentStep = null
+            am._streamStartTime = null
+            am._toolCount = null
           }
+          _flushScroll()
           loading.value = false
           abortController.value = null
           activeStreamId.value = null
@@ -450,6 +511,13 @@ export const useChatStore = defineStore('chat', () => {
             const am = messages.value.find(m => m.id === aid)
             if (am) { am.content = friendlyMsg; am.streaming = false }
           }
+          // 错误时也要清理缓冲
+          const am = messages.value.find(m => m.id === aid)
+          if (am && am._streamBufTimer) {
+            clearInterval(am._streamBufTimer)
+            am._streamBufTimer = null
+            if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
+          }
           loading.value = false
           abortController.value = null
           persistMessages(currentSessionId.value)
@@ -458,7 +526,11 @@ export const useChatStore = defineStore('chat', () => {
         // 外层 catch：SSE 流异常时的兜底
         console.error('❌ sendMessage outer catch:', e)
         const am = messages.value.find(m => m.id === aid)
-        if (am) { am.content = '❌ 发送失败: ' + e.message; am.streaming = false }
+        if (am) {
+          if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
+          if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
+          am.content = '❌ 发送失败: ' + e.message; am.streaming = false
+        }
         loading.value = false
         abortController.value = null
         persistMessages(currentSessionId.value)
