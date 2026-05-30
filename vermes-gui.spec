@@ -23,6 +23,14 @@ for src, dst in [
     ('hermes_constants.py', '.'),
     ('model_tools.py', '.'),
     ('run_agent.py', '.'),
+    ('toolsets.py', '.'),
+    ('toolset_distributions.py', '.'),
+    ('utils.py', '.'),
+    ('hermes_bootstrap.py', '.'),
+    ('hermes_logging.py', '.'),
+    ('hermes_state.py', '.'),
+    ('hermes_time.py', '.'),
+    ('hermes_cli/__init__.py', 'hermes_cli'),
     ('README.md', '.'),
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
@@ -101,6 +109,8 @@ hiddenimports = [
 
     # Utils
     'proxy_tools',
+    'toolsets',
+    'toolset_distributions',
 ]
 
 # Platform specific
