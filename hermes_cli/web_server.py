@@ -3964,6 +3964,23 @@ async def chat_completions(req: ChatRequest):
                     user_message = content
                 break
 
+    # ── 快速回复模式：简单消息跳过 Agent，直接调模型 ──
+    _SIMPLE_KEYWORDS = {'搜索', '查', '查找', '查询', '写', '生成', '代码', '文件', '帮', '下载', '上传',
+                        '执行', '运行', '安装', '部署', '配置', '创建', '删除', '修改', '编辑',
+                        '分析', '总结', '翻译', '计算', '测试', '调试', '抓取', '爬取',
+                        'search', 'find', 'write', 'generate', 'code', 'file', 'download',
+                        'upload', 'execute', 'run', 'install', 'deploy', 'create', 'delete',
+                        'analyze', 'summarize', 'translate', 'calculate', 'test', 'debug'}
+
+    def _is_simple_message(msg):
+        """判断是否为简单消息（可跳过 Agent 直接回复）"""
+        if not isinstance(msg, str) or len(msg) > 100:
+            return False
+        if req.attachments:
+            return False
+        msg_lower = msg.lower().strip()
+        return not any(kw in msg_lower for kw in _SIMPLE_KEYWORDS)
+
     # Proxy call helper for fallback mode
     async def call_proxy():
         import httpx
@@ -3981,8 +3998,9 @@ async def chat_completions(req: ChatRequest):
 
         # 所有 provider 统一走 Agent 模式（支持 tool calling + 流式输出）
     use_agent_mode = True
+    _use_simple_mode = _is_simple_message(user_message)
     agent = None
-    if True:
+    if not _use_simple_mode:
         try:
             agent = AIAgent(
                 base_url=base_url,
@@ -4000,6 +4018,47 @@ async def chat_completions(req: ChatRequest):
                 use_agent_mode = False
             else:
                 raise
+
+    # ── 快速回复模式：简单消息直接调模型，跳过 Agent 工具链 ──
+    if _use_simple_mode and isinstance(user_message, str) and not req.attachments:
+        import httpx
+        _log.info(f"[SimpleMode] 快速回复: {user_message[:50]}")
+        if req.stream:
+            async def simple_stream():
+                yield f'data: {json.dumps({"type": "stream_start", "stream_id": "simple"})}\n\n'
+                full = ""
+                async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{base_url.rstrip('/')}/chat/completions",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        json={"model": model, "messages": conversation_history, "stream": True},
+                    ) as resp:
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            data = line[6:]
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if delta:
+                                    full += delta
+                                    yield f"data: {json.dumps(chunk)}\n\n"
+                            except Exception:
+                                pass
+                yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                yield "data: [DONE]\n"
+            return StreamingResponse(simple_stream(), media_type="text/event-stream")
+        else:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                resp = await client.post(
+                    f"{base_url.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={"model": model, "messages": conversation_history, "stream": False},
+                )
+                return JSONResponse(resp.json())
 
     if req.stream:
         # Streaming: run agent OR fall back to proxy
