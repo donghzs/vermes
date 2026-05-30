@@ -1,8 +1,5 @@
 ; Vermes AI Agent - Inno Setup 安装包脚本
-; 用法: 在 A11 上用 Inno Setup Compiler 打开此文件编译
-; 输出: Vermes-Setup-x64.exe (~90MB)
-;
-; 前置条件: PyInstaller COLLECT 构建已完成 (dist/Vermes/ 目录)
+; 从项目根目录编译: ISCC vermes-inno-setup.iss
 
 #define MyAppName "Vermes"
 #define MyAppVersion "2.0.4"
@@ -28,10 +25,8 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; 安装包图标
 SetupIconFile=packaging\vermes.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; 外观
 WizardImageFile=packaging\vermes-wizard.bmp
 WizardSmallImageFile=packaging\vermes-icon-small.bmp
 
@@ -44,7 +39,6 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; PyInstaller COLLECT 输出的整个目录
 Source: "dist\Vermes\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -54,33 +48,27 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
 
 [Run]
-; 安装完成后可选启动
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
-; 清理用户数据（可选，询问用户）
 Type: filesandordirs; Name: "{localappdata}\vermes"
 
 [Registry]
-; 注册 vermes:// 协议（可选，用于深度链接）
 Root: HKA; Subkey: "Software\Classes\vermes"; ValueType: string; ValueName: ""; ValueData: "URL:Vermes Protocol"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\vermes"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\vermes\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Code]
-// 安装前检查是否正在运行
 function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
 begin
   Result := True;
-  // 安装前结束正在运行的 Vermes（不依赖 {app}，直接杀进程）
   Exec('taskkill', '/F /IM Vermes.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
 end;
 
-// 卸载前检查是否正在运行
 function InitializeUninstall(): Boolean;
 var
   ResultCode: Integer;

@@ -204,7 +204,7 @@ async function request(path, options = {}) {
   }
 }
 
-export default {
+const api = {
   async get(path) {
     const resp = await request(path)
     return resp.json()
@@ -367,3 +367,5 @@ export default {
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
 }
+
+export default api
