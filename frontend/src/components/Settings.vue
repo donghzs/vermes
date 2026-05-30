@@ -232,13 +232,13 @@ async function setCurrentModel(p, modelId) {
       return
     }
 
-    // 2. 同步到前端状态
+    // 2. 同步到前端状态（存 provider ID 而非显示名，chat.js 用 ID 匹配）
     localStorage.setItem('vermes-current-model', modelId)
-    localStorage.setItem('vermes-current-provider', p.name)
+    localStorage.setItem('vermes-current-provider', provider)
 
     // 3. 如果当前 Chat 页面有 store，也刷新它
     const event = new CustomEvent('model-changed', {
-      detail: { model: modelId, provider: p.name }
+      detail: { model: modelId, provider }
     })
     window.dispatchEvent(event)
 
