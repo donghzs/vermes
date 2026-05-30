@@ -8,7 +8,7 @@
 
 ## 亮点功能
 
-- 🆓 **免费体验** — 无需注册，每天 100 次对话
+- 🆓 **免费体验** — 微信扫码登录，每天 100 积分
 - 🧠 **AI Agent** — 搜索、代码、文件操作一应俱全
 - 🖼️ **图片识别** — 拖拽上传，多图识别
 - 📎 **文件处理** — PDF/Word/Excel 自动提取
@@ -29,13 +29,13 @@ DeepSeek · 小米 MiMo · 通义千问 · OpenAI · Anthropic · Gemini · Open
 | 平台 | 文件 | 大小 |
 |------|------|------|
 | 🪟 Windows | `Vermes-Setup-x64.exe` | ~58 MB |
-| 🍎 macOS | `Vermes-v2.0.4-macos-arm64.dmg` | ~56 MB |
-| 📦 源码 | [GitHub](https://github.com/donghzs/vermes) | — |
+| 🍎 macOS | `Vermes-macos-arm64.dmg` | ~56 MB |
+| 📦 源码 | [GitHub](https://github.com/donghzs/ermes) | — |
 
 ## 快速上手
 
 ### 免费试用
-直接打开就能用，每天 100 次对话，无需注册。
+微信扫码登录即可使用，每天 100 积分。
 
 ### 配置自己的模型
 1. 点击 **⚙️ 设置**
@@ -47,4 +47,4 @@ DeepSeek · 小米 MiMo · 通义千问 · OpenAI · Anthropic · Gemini · Open
 
 ---
 
-**公众号：** 胜比特 | **官网：** https://vbit.top
+**公众号：** 胜比特 | **官网：** https://bit.top
