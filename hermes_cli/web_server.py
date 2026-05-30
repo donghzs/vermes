@@ -4125,34 +4125,26 @@ async def chat_completions(req: ChatRequest):
                 else:
                     _delta_queue.put_nowait(event)
 
-                # 工具完成后发送思考状态，提示前端 agent 仍在工作
-                if event_type == "tool.completed":
-                    thinking_event = {
-                        "type": "thinking",
-                        "iteration": 0,
-                        "message": "🤔 工具执行完成，正在继续思考...",
-                    }
-                    if loop and loop.is_running():
-                        loop.call_soon_threadsafe(_delta_queue.put_nowait, thinking_event)
-                    else:
-                        _delta_queue.put_nowait(thinking_event)
+
 
             def thinking_handler(iteration: int, prev_tools: list):
-                """Agent内置回调 — 每步推理时发送思考状态到前端"""
+                """Agent内置回调 — 推理步骤状态，精简模式避免刷屏"""
                 _log.info(f"[ThinkEvent] iteration={iteration}, prev_tools={[t.get('name') for t in (prev_tools or [])]}")
-                tool_names = [t.get("name", "?") for t in (prev_tools or [])]
-                msg = f"🤔 正在推理第 {iteration} 步..."
-                if tool_names:
-                    msg += f" (已完成: {', '.join(tool_names)})"
-                event = {"type": "thinking", "iteration": iteration, "message": msg}
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-                else:
-                    _delta_queue.put_nowait(event)
+                # 只在前3步和每5步显示，避免刷屏
+                if iteration <= 3 or iteration % 5 == 0:
+                    tool_names = [t.get("name", "?") for t in (prev_tools or [])]
+                    msg = f"🤔 推理第 {iteration} 步"
+                    if tool_names:
+                        msg += f" — 已用: {', '.join(tool_names)}"
+                    event = {"type": "thinking", "iteration": iteration, "message": msg}
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = None
+                    if loop and loop.is_running():
+                        loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+                    else:
+                        _delta_queue.put_nowait(event)
 
             def run_sync():
                 try:
