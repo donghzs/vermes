@@ -977,9 +977,17 @@ def _build_child_agent(
         child_depth=child_depth,
     )
     # Extract parent's API key so subagents inherit auth (e.g. Nous Portal).
+    # Try agent.api_key first, then _client_kwargs as fallback.
+    # Ensure we never pass an empty string when the parent actually has a key.
     parent_api_key = getattr(parent_agent, "api_key", None)
-    if (not parent_api_key) and hasattr(parent_agent, "_client_kwargs"):
-        parent_api_key = parent_agent._client_kwargs.get("api_key")
+    if not parent_api_key and hasattr(parent_agent, "_client_kwargs"):
+        parent_api_key = parent_agent._client_kwargs.get("api_key") or parent_api_key
+    # Also extract parent's base_url from _client_kwargs as fallback —
+    # ensures custom URLs (e.g. token-plan-cn.xiaomimimo.com) are always
+    # inherited, even if agent.base_url was somehow cleared.
+    _parent_base_url = getattr(parent_agent, "base_url", None)
+    if not _parent_base_url and hasattr(parent_agent, "_client_kwargs"):
+        _parent_base_url = parent_agent._client_kwargs.get("base_url") or _parent_base_url
 
     # Resolve the child's effective model early so it can ride on every event.
     effective_model_for_cb = model or getattr(parent_agent, "model", None)
@@ -1018,10 +1026,16 @@ def _build_child_agent(
         child_thinking_cb = _child_thinking
 
     # Resolve effective credentials: config override > parent inherit
-    effective_model = model or parent_agent.model
-    effective_provider = override_provider or getattr(parent_agent, "provider", None)
-    effective_base_url = override_base_url or parent_agent.base_url
-    effective_api_key = override_api_key or parent_api_key
+    # When delegation is unconfigured, override_* are all None and we
+    # fall back to parent.  Use explicit `is None` checks (not `or`) so
+    # empty strings from the parent are still passed through — otherwise
+    # an empty api_key would trigger init_agent's provider-router path,
+    # which resolves DEFAULT base_urls (e.g. api.xiaomimimo.com) and
+    # blows away the parent's custom URL (e.g. token-plan-cn.xiaomimimo.com).
+    effective_model = model if model is not None else parent_agent.model
+    effective_provider = override_provider if override_provider is not None else getattr(parent_agent, "provider", None)
+    effective_base_url = override_base_url if override_base_url is not None else (_parent_base_url or parent_agent.base_url)
+    effective_api_key = override_api_key if override_api_key is not None else parent_api_key
     # Bug #20558 / PR #20563: api_mode must NOT be inherited when the child uses a
     # different provider than the parent — each provider has its own API surface
     # (e.g. MiniMax uses anthropic_messages, DeepSeek uses chat_completions).
@@ -2416,13 +2430,17 @@ def _resolve_delegation_credentials(cfg: dict, parent_agent) -> dict:
         }
 
     if not configured_provider:
-        # No provider override — child inherits everything from parent
+        # No provider override — signal inheritance from parent.
+        # Return explicit "inherit" sentinel so _build_child_agent knows
+        # to copy ALL credentials from parent_agent verbatim, including
+        # custom base_url (e.g. token-plan-cn.xiaomimimo.com) and api_key.
         return {
             "model": configured_model,
             "provider": None,
             "base_url": None,
             "api_key": None,
             "api_mode": None,
+            "_inherit_from_parent": True,
         }
 
     # Provider is configured — resolve full credentials
