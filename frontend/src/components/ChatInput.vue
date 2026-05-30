@@ -109,7 +109,7 @@ defineExpose({ inputText, uploadedFiles, inputRef })
 </script>
 
 <template>
-  <div class="px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700"
+  <div class="px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 relative"
        @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <!-- 拖拽高亮遮罩 -->
     <div v-if="isDragging" class="absolute inset-0 bg-green-500/10 border-2 border-dashed border-green-500 rounded-xl z-50 flex items-center justify-center pointer-events-none">
