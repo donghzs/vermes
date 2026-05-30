@@ -666,6 +666,12 @@ export const useChatStore = defineStore('chat', () => {
   async function deleteSession(id) {
     const idx = sessions.value.findIndex(s => s.id === id)
     if (idx === -1) return
+    // 清理 IndexedDB 中的图片数据
+    try {
+      const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + id)
+      const imageKeys = msgs.flatMap(m => m._imageKeys || [])
+      if (imageKeys.length > 0) await deleteImages(imageKeys)
+    } catch(e) { console.warn('[Vermes] 清理图片数据失败:', e) }
     sessions.value.splice(idx, 1)
     localStorage.removeItem(MESSAGES_KEY_PREFIX + id)
     persistSessions()
@@ -755,19 +761,40 @@ export const useChatStore = defineStore('chat', () => {
     return { count: msgs.length, duration, model: currentModel.value }
   }
 
-  // ── 会话导出 ──
-  function exportSession(sessionId, format) {
+  // ── 会话导出（从 IndexedDB 恢复图片数据） ──
+  async function exportSession(sessionId, format) {
     const session = sessions.value.find(s => s.id === sessionId)
     if (!session) return
     const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + sessionId).filter(m => m.role !== 'system')
+
+    // 恢复 IndexedDB 中的图片到消息内容
+    const restoredMsgs = []
+    for (const m of msgs) {
+      const restored = { ...m }
+      if (m._imageKeys && m._imageKeys.length > 0) {
+        // 从 IndexedDB 加载图片并替换占位符
+        let content = m.content || ''
+        for (const key of m._imageKeys) {
+          const base64 = await loadImage(key)
+          if (base64) {
+            // 替换第一个 "🖼️ 图片" 占位符为原始 base64
+            content = content.replace('🖼️ 图片', base64)
+          }
+        }
+        restored.content = content
+        delete restored._imageKeys
+      }
+      restoredMsgs.push(restored)
+    }
+
     let content, filename, mimeType
     if (format === 'json') {
-      content = JSON.stringify({ session, messages: msgs }, null, 2)
+      content = JSON.stringify({ session, messages: restoredMsgs }, null, 2)
       filename = `${session.name || '会话'}.json`
       mimeType = 'application/json'
     } else {
       const lines = [`# ${session.name || '会话'}`, '', `导出时间: ${new Date().toLocaleString('zh-CN')}`, '']
-      for (const m of msgs) {
+      for (const m of restoredMsgs) {
         lines.push(`## ${m.role === 'user' ? 'User' : 'Assistant'}`)
         lines.push('')
         lines.push(m.content || '')
