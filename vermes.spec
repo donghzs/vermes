@@ -20,6 +20,8 @@ block_cipher = None
 datas = [
     ('hermes_cli/web_dist', 'hermes_cli/web_dist'),
     ('hermes_cli/blueprints', 'hermes_cli/blueprints'),
+    ('hermes_cli/update_manager.py', 'hermes_cli'),
+    ('migrations', 'migrations'),
     ('locales', 'locales'),
     ('skills', 'skills'),
     ('plugins', 'plugins'),
