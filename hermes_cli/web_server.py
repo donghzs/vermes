@@ -205,9 +205,12 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # WeChat login proxy
     "/api/wechat/qrurl",
     "/api/wechat/poll",
-    # 自更新
+    # 自更新系统
     "/api/update/download",
     "/api/update/apply",
+    "/api/update/progress",
+    "/api/update/backups",
+    "/api/update/rollback",
     # Env vars (settings page needs to read/save keys)
     "/api/env",
     "/api/env/reveal",
@@ -1312,161 +1315,276 @@ async def shutdown_server():
         return {"ok": False}
 
 
-# ── 自更新系统 ──────────────────────────────────────────────────────
+# ── 自更新系统 v2 ────────────────────────────────────────────────────
+# 完整的自更新管理器：异步下载 + SSE 进度 + 原子替换 + 备份 + 回滚
+from hermes_cli.update_manager import (
+    UpdateStatus,
+    download_with_progress,
+    extract_to_staging,
+    backup_current_version,
+    backup_user_data,
+    atomic_replace_macos,
+    atomic_replace_windows,
+    check_data_compatibility,
+    run_migrations,
+    get_data_version,
+    set_data_version,
+    list_backups,
+    rollback_to_version,
+    get_progress,
+    get_app_path,
+    get_current_version,
+    STAGING_DIR,
+    PENDING_FILE,
+    UPDATE_DIR,
+    _set_progress,
+    _reset_progress,
+    _progress_event,
+)
 
-import hashlib
 import platform as _platform
-
-_UPDATE_DIR = os.path.expanduser("~/.vermes/update")
-_UPDATE_STAGING = os.path.join(_UPDATE_DIR, "staging")
-_UPDATE_PENDING = os.path.join(_UPDATE_DIR, "pending.json")
-
 
 class UpdateDownloadRequest(BaseModel):
     version: str
-    url: str           # DMG 或 ZIP 的下载地址
+    url: str
+    sha256: str = ""           # 预期 SHA256（可选）
+    min_data_version: str = ""  # 最低数据版本（可选）
 
 
 class UpdateApplyRequest(BaseModel):
     version: str
 
 
+class UpdateRollbackRequest(BaseModel):
+    version: str
+
+
 @app.post("/api/update/download")
 async def update_download(body: UpdateDownloadRequest):
-    """下载新版本到 ~/.vermes/update/staging/"""
-    import urllib.request
-    import ssl
-    import shutil as _shutil
+    """下载新版本，SSE 流式返回进度
 
-    os.makedirs(_UPDATE_STAGING, exist_ok=True)
+    返回 text/event-stream，每个事件格式：
+    data: {"status": "downloading", "progress": 45.2, "message": "...", ...}
+
+    最终事件：
+    data: {"status": "done", "progress": 100, "message": "下载完成"}
+    或
+    data: {"status": "error", "error": "..."}
+    """
+    from fastapi.responses import StreamingResponse
 
     url = body.url
     if not url:
         raise HTTPException(status_code=400, detail="缺少下载地址")
 
-    # 判断文件类型
     is_dmg = url.endswith(".dmg")
     is_zip = url.endswith(".zip")
     if not is_dmg and not is_zip:
         raise HTTPException(status_code=400, detail="不支持的文件格式（仅支持 .dmg 和 .zip）")
 
-    filename = url.split("/")[-1]
-    download_path = os.path.join(_UPDATE_DIR, filename)
-
-    _log.info(f"[Update] 下载 v{body.version}: {url}")
-
-    try:
-        # SSL 降级（和 claim 一样的逻辑）
-        ctx = ssl.create_default_context()
-        try:
-            import certifi
-            ctx = ssl.create_default_context(cafile=certifi.where())
-        except Exception:
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-
-        req = urllib.request.Request(url, headers={"User-Agent": "Vermes-Updater/1.0"})
-        with urllib.request.urlopen(req, context=ctx, timeout=300) as resp:
-            total = int(resp.headers.get("Content-Length", 0))
-            downloaded = 0
-            with open(download_path, "wb") as f:
-                while True:
-                    chunk = resp.read(65536)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-
-        _log.info(f"[Update] 下载完成: {download_path} ({downloaded} bytes)")
-
-        # 解压到 staging
-        if os.path.exists(_UPDATE_STAGING):
-            _shutil.rmtree(_UPDATE_STAGING)
-        os.makedirs(_UPDATE_STAGING, exist_ok=True)
-
-        if is_dmg:
-            # macOS: 挂载 DMG，复制 .app，卸载
-            mount_point = os.path.join(_UPDATE_DIR, "mount")
-            os.makedirs(mount_point, exist_ok=True)
-            r = subprocess.run(
-                ["hdiutil", "attach", download_path, "-mountpoint", mount_point, "-nobrowse", "-quiet"],
-                capture_output=True, text=True, timeout=60
+    # 兼容性检查
+    if body.min_data_version:
+        if not check_data_compatibility(body.min_data_version):
+            raise HTTPException(
+                status_code=409,
+                detail=f"当前数据版本不兼容，需要 {body.min_data_version}+，当前 {get_data_version()}"
             )
-            if r.returncode != 0:
-                raise Exception(f"挂载 DMG 失败: {r.stderr}")
 
-            # 找 .app 目录
-            app_found = False
-            for item in os.listdir(mount_point):
-                if item.endswith(".app"):
-                    src = os.path.join(mount_point, item)
-                    dst = os.path.join(_UPDATE_STAGING, item)
-                    _shutil.copytree(src, dst)
-                    app_found = True
-                    _log.info(f"[Update] 已提取 {item}")
-                    break
+    filename = url.split("/")[-1]
+    download_path = str(UPDATE_DIR / filename)
 
-            # 卸载
-            subprocess.run(["hdiutil", "detach", mount_point, "-quiet"], capture_output=True, timeout=30)
+    _reset_progress()
+    _set_progress(version=body.version, message="准备下载...")
 
-            if not app_found:
-                raise Exception("DMG 中未找到 .app")
+    async def sse_stream():
+        try:
+            # 确保目录存在
+            UPDATE_DIR.mkdir(parents=True, exist_ok=True)
 
-        elif is_zip:
-            import zipfile
-            with zipfile.ZipFile(download_path, "r") as zf:
-                zf.extractall(_UPDATE_STAGING)
-            _log.info(f"[Update] 已解压 ZIP 到 {_UPDATE_STAGING}")
+            # 下载
+            yield f"data: {json.dumps(get_progress())}\n\n"
 
-        # 清理下载文件
-        os.remove(download_path)
+            sha256 = await download_with_progress(
+                url=url,
+                dest_path=download_path,
+                expected_sha256=body.sha256,
+            )
 
-        return {"ok": True, "version": body.version, "staging_path": _UPDATE_STAGING}
+            # 解压
+            yield f"data: {json.dumps(get_progress())}\n\n"
 
-    except Exception as e:
-        _log.exception(f"[Update] 下载失败: {e}")
-        # 清理残留
-        for p in [download_path, _UPDATE_STAGING]:
-            try:
-                if os.path.isdir(p):
-                    _shutil.rmtree(p)
-                elif os.path.exists(p):
-                    os.remove(p)
-            except Exception:
-                pass
-        raise HTTPException(status_code=500, detail=str(e))
+            extract_to_staging(download_path)
+
+            # 清理下载文件
+            if os.path.exists(download_path):
+                os.remove(download_path)
+
+            _set_progress(
+                status=UpdateStatus.DONE,
+                progress=100,
+                message="下载完成，准备应用更新",
+            )
+            yield f"data: {json.dumps(get_progress())}\n\n"
+
+        except Exception as e:
+            _log.exception(f"[Update] 下载失败: {e}")
+            _set_progress(
+                status=UpdateStatus.ERROR,
+                error=str(e),
+                message=f"下载失败: {e}",
+            )
+            yield f"data: {json.dumps(get_progress())}\n\n"
+            # 清理残留
+            for p in [download_path, str(STAGING_DIR)]:
+                try:
+                    if os.path.isdir(p):
+                        shutil.rmtree(p)
+                    elif os.path.exists(p):
+                        os.remove(p)
+                except Exception:
+                    pass
+
+    return StreamingResponse(
+        sse_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/update/progress")
+async def update_progress_sse():
+    """SSE 端点：实时推送更新进度
+
+    用于在下载过程中持续获取进度更新。
+    """
+    from fastapi.responses import StreamingResponse
+
+    async def event_stream():
+        last_data = None
+        while True:
+            await _progress_event.wait()
+            _progress_event.clear()
+
+            data = json.dumps(get_progress())
+            if data != last_data:
+                yield f"data: {data}\n\n"
+                last_data = data
+
+            if get_progress()["status"] in ("done", "error", "idle"):
+                break
+
+            await asyncio.sleep(0.1)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/update/apply")
 async def update_apply(body: UpdateApplyRequest):
-    """写 pending.json + 触发 shutdown，下次启动时自动应用更新。"""
-    import json
+    """应用更新：备份 → 原子替换 → 写 pending.json → shutdown
 
-    if not os.path.exists(_UPDATE_STAGING):
+    更新流程：
+    1. 备份当前版本到 ~/.vermes/backup/v{version}/
+    2. 备份用户数据到 ~/.vermes/backup/user-data-backup.tar.gz
+    3. 原子替换应用文件
+    4. 写 pending.json（含迁移信息）
+    5. 触发 shutdown → 重启时完成最后步骤
+    """
+    import json as _json
+
+    if not STAGING_DIR.exists():
         raise HTTPException(status_code=400, detail="没有待应用的更新（staging 目录不存在）")
 
-    # 写 pending.json
-    pending = {
-        "version": body.version,
-        "staging_path": _UPDATE_STAGING,
-        "platform": _platform.system(),
-        "timestamp": time.time()
-    }
-    os.makedirs(_UPDATE_DIR, exist_ok=True)
-    with open(_UPDATE_PENDING, "w") as f:
-        json.dump(pending, f, indent=2)
+    current_version = get_current_version()
 
-    _log.info(f"[Update] pending.json 已写入，准备 shutdown 重启...")
-
-    # 触发 shutdown
     try:
-        from hermes_cli.shutdown_signal import shutdown_event
-        shutdown_event.set()
-    except Exception:
-        pass
+        # 1. 备份当前版本
+        _set_progress(status=UpdateStatus.BACKING_UP, message="正在备份当前版本...")
+        backup_path = backup_current_version(current_version)
+        if backup_path:
+            _log.info(f"[Update] 已备份 v{current_version} 到 {backup_path}")
 
-    return {"ok": True, "message": "更新将在重启后生效"}
+        # 2. 备份用户数据
+        data_backup = backup_user_data()
+        if data_backup:
+            _log.info(f"[Update] 已备份用户数据到 {data_backup}")
 
+        # 3. 写 pending.json（重启后由 gui_app 应用）
+        pending = {
+            "version": body.version,
+            "staging_path": str(STAGING_DIR),
+            "platform": _platform.system(),
+            "timestamp": time.time(),
+            "previous_version": current_version,
+            "data_version": get_data_version(),
+        }
+        UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+        PENDING_FILE.write_text(_json.dumps(pending, indent=2), encoding="utf-8")
+
+        _log.info(f"[Update] pending.json 已写入，准备 shutdown 重启...")
+
+        # 4. 触发 shutdown
+        try:
+            from hermes_cli.shutdown_signal import shutdown_event
+            shutdown_event.set()
+        except Exception:
+            pass
+
+        return {"ok": True, "message": "更新将在重启后生效", "backup_path": backup_path}
+
+    except Exception as e:
+        _log.exception(f"[Update] 应用更新失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/update/backups")
+async def get_backups():
+    """列出所有可用的备份版本（用于回滚）"""
+    return {
+        "ok": True,
+        "backups": list_backups(),
+        "current_version": get_current_version(),
+    }
+
+
+@app.post("/api/update/rollback")
+async def update_rollback(body: UpdateRollbackRequest):
+    """回滚到指定版本
+
+    1. 从备份中找到目标版本
+    2. 写入 pending.json（is_rollback=True）
+    3. shutdown → 重启时应用旧版本
+    """
+    try:
+        success = rollback_to_version(body.version)
+        if not success:
+            raise HTTPException(status_code=500, detail="回滚失败")
+
+        # 触发 shutdown
+        try:
+            from hermes_cli.shutdown_signal import shutdown_event
+            shutdown_event.set()
+        except Exception:
+            pass
+
+        return {"ok": True, "message": f"将在重启后回滚到 v{body.version}"}
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        _log.exception(f"[Update] 回滚失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 async def remove_env_var(body: EnvVarDelete):
     try:
@@ -5868,7 +5986,7 @@ async def discover_models():
 # ─────────────────────────────────────────────────────────────────
 # 注意：所有已迁移路由的 @app 装饰器已移除
 # Blueprint 中的 register_to(app) 函数负责向 app 注册路由
-import blueprints
+from hermes_cli import blueprints
 
 # 批量调用各 Blueprint 的 register_to（位于各 blueprint/*.py 文件中）
 blueprints.chat.register_to(app)
