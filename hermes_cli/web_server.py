@@ -48,17 +48,16 @@ from hermes_cli.config import (
     redact_key,
 )
 # ── max_tokens 策略 ─────────────────────────────────────────────────
-def _resolve_max_tokens(model: str) -> int:
-    """按模型类型返回合理的 max_tokens 上限。
-
-    优先级: 用户配置 > 模型已知限制 > 安全默认值 8192
-    不同模型的输出限制差异很大，这里覆盖主流模型。
+def _resolve_max_tokens(model: str) -> int | None:
+    """返回 max_tokens 上限，优先用户配置。
 
     配置方式（在 config.yaml 中）：
     ```yaml
     model:
       max_tokens: 8192  # 自定义 max_tokens，优先级最高
     ```
+
+    如果用户未配置，返回 None（不设置上限，让模型自己决定）。
     """
     # 优先级 1: 从 config.yaml 读取用户配置
     try:
@@ -80,34 +79,8 @@ def _resolve_max_tokens(model: str) -> int:
     except Exception:
         pass
 
-    # 优先级 2: 按模型类型返回硬编码默认值
-    m = (model or "").lower()
-    # 推理模型（通常支持更长输出）
-    if any(k in m for k in ["deepseek-reasoner", "o1", "o3", "o4"]):
-        return 16384
-    # Claude 系列
-    if "claude" in m:
-        return 8192
-    # GPT-4o / GPT-5
-    if "gpt-4o" in m or "gpt-5" in m:
-        return 16384
-    # GPT-4 / GPT-3.5
-    if "gpt-4" in m or "gpt-3.5" in m:
-        return 4096
-    # DeepSeek
-    if "deepseek" in m:
-        return 8192
-    # MiMo
-    if "mimo" in m:
-        return 8192
-    # Qwen
-    if "qwen" in m:
-        return 8192
-    # Gemini
-    if "gemini" in m:
-        return 8192
-    # 默认：大多数模型支持 8192
-    return 8192
+    # 优先级 2: 不设置上限，让模型自己决定
+    return None
 
 
 # ── 附件文本提取 ──
