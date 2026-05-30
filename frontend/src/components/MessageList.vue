@@ -133,6 +133,24 @@ function renderMd(content) {
   try { return DOMPurify.sanitize(md.render(content), { ADD_ATTR: ['target', 'rel'] }) } catch(e) { return content }
 }
 
+// ── 用户消息图片提取 ──
+function extractImages(content) {
+  if (!content) return []
+  const re = /!\[.*?\]\((data:image\/[^)]+)\)/g
+  const urls = []
+  let m
+  while ((m = re.exec(content)) !== null) {
+    urls.push(m[1])
+  }
+  return urls
+}
+
+// ── 用户消息文本清理：去掉 base64 图片引用避免显示乱码 ──
+function cleanUserContent(content) {
+  if (!content) return ''
+  return content.replace(/!\[.*?\]\(data:image\/[^)]+\)/g, '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 // ── 链接点击拦截（pywebview/浏览器兼容） ──
 function handleContentClick(e) {
   const a = e.target.closest('a[href]')
@@ -345,10 +363,10 @@ watch(() => chat.filteredMessages.length, async () => {
           </div>
           <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed" :class="msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md shadow-sm'">
             <template v-if="msg.role === 'user'">
-              <img v-if="msg.content && msg.content.includes('data:image')" :src="msg.content.match(/data:image[^)]+/)?.[0]" class="max-w-full rounded-lg mb-2" />
-              <template v-if="!msg.content?.match(/^!\[.*\]\(data:image/)">
-                <div style="white-space:pre-wrap;word-break:break-word;">{{ msg.content }}</div>
-              </template>
+              <!-- 图片附件：从 markdown ![](data:image/...) 中提取显示 -->
+              <img v-for="(imgUrl, idx) in extractImages(msg.content)" :key="'uimg-' + idx" :src="imgUrl" class="max-w-full rounded-lg mb-2" />
+              <!-- 文本内容：去掉 base64 避免显示乱码 -->
+              <div v-if="cleanUserContent(msg.content)" style="white-space:pre-wrap;word-break:break-word;">{{ cleanUserContent(msg.content) }}</div>
             </template>
             <template v-else>
               <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg.content)" @click="handleContentClick($event)"></div>
