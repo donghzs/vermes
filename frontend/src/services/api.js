@@ -224,7 +224,7 @@ export default {
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
 
   // 发送消息（SSE 流式）
-  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, provider, attachments }) {
+  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments }) {
     const body = { model, messages, stream, provider: provider || '' }
     if (attachments && attachments.length > 0) body.attachments = attachments
     // 传 wechat_openid 让后端能在没有 API key 时自动 claim
@@ -286,6 +286,8 @@ export default {
               const thinkId = 'thinking-' + json.iteration
               onTool?.({ type: 'tool_start', tool_call_id: thinkId, name: 'thinking', arguments: { message: json.message } })
               onTool?.({ type: 'tool_end', tool_call_id: thinkId, name: 'thinking', duration: 0, is_error: false })
+              // 进度追踪回调
+              onThinking?.(json)
               continue
             }
             if (json.type === 'ping') {
@@ -318,6 +320,23 @@ export default {
       }
       onDone?.(usageInfo)
     } catch (e) {
+      // ── 长任务优化 #4: 断线重连 ──
+      // 非用户主动取消 + 非 API 错误 = 网络断开，尝试重连
+      if (e.name !== 'AbortError' && !signal?.aborted) {
+        console.warn('[Vermes SSE] Connection lost, retrying in 2s...', e.message)
+        await new Promise(r => setTimeout(r, 2000))
+        if (!signal?.aborted) {
+          try {
+            // 重新发起请求（后端会创建新 stream）
+            await api.sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments })
+            return
+          } catch (retryErr) {
+            console.error('[Vermes SSE] Retry failed:', retryErr)
+            onError?.(retryErr)
+            return
+          }
+        }
+      }
       if (e.name !== 'AbortError') onError?.(e)
       else onDone?.()
     }
