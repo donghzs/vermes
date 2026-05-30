@@ -1436,7 +1436,8 @@ _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
 })
 
 async def set_env_var(body: EnvVarUpdate, request: Request):
-    _require_token(request)
+    # /api/env is in _PUBLIC_API_PATHS — auth middleware already handles access control
+    # No need for a second _require_token check here
     if body.key not in _ENV_WRITE_ALLOWED_KEYS:
         raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed")
     try:
@@ -4141,11 +4142,11 @@ async def chat_completions(req: ChatRequest):
                     agent.step_callback = thinking_handler             # 推理步骤
                     # max_tokens 策略：按模型类型设置合理的输出上限
                     _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
+                    agent.max_tokens = _max_tokens
                     result = agent.run_conversation(
                         user_message=user_message,
                         conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                         stream_callback=None,
-                        max_tokens=_max_tokens,
                     )
                     _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
                     return result
