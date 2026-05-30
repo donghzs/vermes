@@ -47,6 +47,128 @@ from hermes_cli.config import (
     check_config_version,
     redact_key,
 )
+# ── max_tokens 策略 ─────────────────────────────────────────────────
+def _resolve_max_tokens(model: str) -> int:
+    """按模型类型返回合理的 max_tokens 上限。
+
+    优先级: 用户配置 > 模型已知限制 > 安全默认值 8192
+    不同模型的输出限制差异很大，这里覆盖主流模型。
+    """
+    m = (model or "").lower()
+    # 推理模型（通常支持更长输出）
+    if any(k in m for k in ["deepseek-reasoner", "o1", "o3", "o4"]):
+        return 16384
+    # Claude 系列
+    if "claude" in m:
+        return 8192
+    # GPT-4o / GPT-5
+    if "gpt-4o" in m or "gpt-5" in m:
+        return 16384
+    # GPT-4 / GPT-3.5
+    if "gpt-4" in m or "gpt-3.5" in m:
+        return 4096
+    # DeepSeek
+    if "deepseek" in m:
+        return 8192
+    # MiMo
+    if "mimo" in m:
+        return 8192
+    # Qwen
+    if "qwen" in m:
+        return 8192
+    # Gemini
+    if "gemini" in m:
+        return 8192
+    # 默认：大多数模型支持 8192
+    return 8192
+
+
+# ── 附件文本提取 ──
+_ALLOWED_MIME_TYPES: frozenset = frozenset({
+    # Images
+    "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/bmp",
+    # Documents
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",        # xlsx
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation", # pptx
+    # Text / Code
+    "text/plain", "text/markdown", "text/x-markdown", "text/csv",
+    "application/json", "application/x-yaml", "text/yaml",
+    "text/html", "text/css", "text/javascript", "application/javascript",
+    "text/x-python", "application/x-python",
+    # Archives (metadata only)
+    "application/zip", "application/x-zip-compressed",
+    "application/x-tar", "application/gzip",
+})
+_MAX_ATTACHMENT_SIZE: int = 50 * 1024 * 1024  # 50 MB total per request
+_MAX_SINGLE_ATTACHMENT_SIZE: int = 20 * 1024 * 1024  # 20 MB per file
+
+def _extract_file_text(name: str, mime: str, b64_data: str) -> str | None:
+    """Extract readable text from an uploaded file.
+
+    Returns extracted text, or None if the file should be treated as binary.
+    Results are truncated to ~50 KB to avoid context bloat.
+    """
+    import base64 as b64mod
+    try:
+        raw = b64mod.b64decode(b64_data)
+    except Exception:
+        return None
+
+    # PDF
+    if mime == "application/pdf" or name.lower().endswith(".pdf"):
+        try:
+            import fitz  # pymupdf
+            doc = fitz.open(stream=raw, filetype="pdf")
+            parts = []
+            for page in doc:
+                parts.append(page.get_text())
+            doc.close()
+            text = "\n".join(parts)
+            return text[:50000] + ("\n... (truncated)" if len(text) > 50000 else "")
+        except Exception as exc:
+            return f"[PDF extraction failed: {exc}]"
+
+    # DOCX
+    if mime in ("application/vnd.openxmlformats-officedocument.wordprocessingml.document",) or name.lower().endswith(".docx"):
+        try:
+            import docx
+            from io import BytesIO
+            doc = docx.Document(BytesIO(raw))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            text = "\n".join(paragraphs)
+            return text[:50000] + ("\n... (truncated)" if len(text) > 50000 else "")
+        except Exception as exc:
+            return f"[DOCX extraction failed: {exc}]"
+
+    # XLSX (first sheet, tab-separated)
+    if mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" or name.lower().endswith(".xlsx"):
+        try:
+            import openpyxl
+            from io import BytesIO
+            wb = openpyxl.load_workbook(BytesIO(raw), data_only=True)
+            rows = []
+            for sheet in wb.worksheets[:1]:
+                for row in sheet.iter_rows(values_only=True):
+                    rows.append("\t".join(str(c) if c is not None else "" for c in row))
+            text = "\n".join(rows)
+            return text[:50000] + ("\n... (truncated)" if len(text) > 50000 else "")
+        except Exception:
+            pass  # fall through to binary
+
+    # Plain text / code — try UTF-8
+    if mime.startswith("text/") or mime in ("application/json", "application/javascript", "application/x-yaml"):
+        try:
+            text = raw.decode("utf-8", errors="replace")
+            return text[:50000] + ("\n... (truncated)" if len(text) > 50000 else "")
+        except Exception:
+            pass
+
+    # Unknown / binary — return None so caller shows metadata only
+    return None
+
+
 # gateway.status — 延迟导入，PyInstaller bundle 中可能不包含 gateway 包
 def _get_gateway_pid():
     try:
@@ -158,7 +280,17 @@ async def request_logging_middleware(request: Request, call_next):
                 for key in ("api_key", "password", "token", "secret"):
                     if key in body_log:
                         body_log[key] = "***"
-                print(f"  Body: {json.dumps(body_log, ensure_ascii=False)[:500]}", flush=True)
+                # Skip large base64 attachments in logs — show summary only
+                if "attachments" in body_log and isinstance(body_log["attachments"], list):
+                    att_summary = []
+                    for att in body_log["attachments"]:
+                        if isinstance(att, dict):
+                            att_copy = {k: v for k, v in att.items() if k != "data"}
+                            att_copy["data"] = f"<{len(att.get('data', ''))} chars base64>"
+                            att_summary.append(att_copy)
+                    body_log["attachments"] = att_summary
+                body_json = json.dumps(body_log, ensure_ascii=False)
+                print(f"  Body: {body_json[:500]}{'... (truncated)' if len(body_json) > 500 else ''}", flush=True)
         except Exception:
             print(f"  Body: <could not parse JSON>", flush=True)
     response = await call_next(request)
@@ -3346,6 +3478,45 @@ class ChatRequest(BaseModel):
     wechat_openid: str | None = None
 
 
+def _validate_attachments(attachments: list[AttachmentData] | None) -> tuple[list[AttachmentData], str | None]:
+    """Validate attachment MIME types and sizes.
+
+    Returns (filtered_attachments, error_message).
+    error_message is None when all attachments are valid.
+    """
+    if not attachments:
+        return [], None
+
+    total_size = 0
+    filtered = []
+    errors = []
+
+    for att in attachments:
+        # Size check per file
+        if att.size > _MAX_SINGLE_ATTACHMENT_SIZE:
+            errors.append(f"{att.name}: 单文件超过 20MB 限制")
+            continue
+
+        total_size += att.size
+
+        # MIME whitelist check
+        mime = (att.mime or "application/octet-stream").lower()
+        if mime not in _ALLOWED_MIME_TYPES:
+            # Allow common image types even if MIME is generic
+            if not mime.startswith("image/"):
+                errors.append(f"{att.name}: 不支持的文件类型 ({mime})")
+                continue
+
+        filtered.append(att)
+
+    if total_size > _MAX_ATTACHMENT_SIZE:
+        errors.append(f"附件总大小 {total_size / 1024 / 1024:.1f}MB 超过 50MB 限制")
+
+    if errors:
+        return filtered, "; ".join(errors)
+    return filtered, None
+
+
 def _get_chat_credentials() -> tuple[str, str, str]:
     """Return (base_url, api_key, default_model) from config.yaml + .env.
     
@@ -3658,6 +3829,14 @@ async def chat_completions(req: ChatRequest):
     if not base_url:
         raise HTTPException(status_code=500, detail=f"No base_url found for provider '{provider}'. Check config.yaml.")
 
+    # Validate attachments (MIME whitelist + size limits)
+    validated_attachments, att_error = _validate_attachments(req.attachments)
+    if att_error:
+        # Log but don't block — let user know which files were rejected
+        print(f"[Attachment validation] {att_error}", flush=True)
+        # Still proceed with valid attachments; frontend will show toast via SSE error event
+    req.attachments = validated_attachments
+
     # Auto-claim trial token when no API key configured (zero-config onboarding)
     if (not api_key or api_key.startswith("unknown")) and provider != "ollama":
         # If the key starts with "unknown", it's a stale token_prefix — clear it
@@ -3746,12 +3925,10 @@ async def chat_completions(req: ChatRequest):
                     data_url = f"data:{att.mime};base64,{att.data}"
                     parts.append({"type": "image_url", "image_url": {"url": data_url}})
                 else:
-                    try:
-                        text = b64mod.b64decode(att.data).decode("utf-8", errors="replace")
-                        if len(text) > 50000:
-                            text = text[:50000] + "\n... (truncated)"
-                        parts.append({"type": "text", "text": f"\ud83d\udcce {att.name}:\n```\n{text}\n```"})
-                    except Exception:
+                    extracted = _extract_file_text(att.name, att.mime, att.data)
+                    if extracted:
+                        parts.append({"type": "text", "text": f"\ud83d\udcce {att.name}:\n```\n{extracted}\n```"})
+                    else:
                         parts.append({"type": "text", "text": f"\ud83d\udcce {att.name}: (binary file, {att.size} bytes)"})
             if parts:
                 conversation_history[last_user_idx]["content"] = parts
@@ -3962,10 +4139,13 @@ async def chat_completions(req: ChatRequest):
                     agent.stream_delta_callback = stream_callback      # 文本流式输出
                     agent.tool_progress_callback = tool_progress_handler  # 工具事件
                     agent.step_callback = thinking_handler             # 推理步骤
+                    # max_tokens 策略：按模型类型设置合理的输出上限
+                    _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                     result = agent.run_conversation(
                         user_message=user_message,
                         conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                         stream_callback=None,
+                        max_tokens=_max_tokens,
                     )
                     _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
                     return result
