@@ -339,4 +339,7 @@ export default {
   // 配置
   getConfig() { return this.get('/config') },
   getModels() { return this.get('/models') },
+
+  // 设置 token（桌面模式用）
+  setToken(t) { token.value = t },
 }
