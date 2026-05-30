@@ -90,7 +90,7 @@ class VermesAPI:
             return {"success": False, "error": str(e)}
 
     def open_oauth_window(self, url):
-        """打开微信 OAuth 原生窗口，监控 URL 获取 code（同步阻塞直到完成）。"""
+        """打开微信 OAuth 原生窗口，居中在主窗口中央，监控 URL 获取 code。"""
         import webview
         import threading
         import time
@@ -99,12 +99,29 @@ class VermesAPI:
         VermesAPI._oauth_result = None
         result_ready = threading.Event()
 
-        win = webview.create_window(
-            '微信登录', url,
-            width=380, height=540, resizable=False,
-            confirm_close=False,
+        # ── 计算居中位置（相对于主窗口） ──
+        ow, oh = 420, 580
+        ox, oy = None, None
+        try:
+            main_win = webview.windows[0]
+            mx, my = main_win.x, main_win.y
+            mw, mh = main_win.width, main_win.height
+            ox = int(mx + (mw - ow) / 2)
+            oy = int(my + (mh - oh) / 2)
+            print(f"[Vermes API] 主窗口=({mx},{my}) {mw}x{mh} → OAuth窗口居中=({ox},{oy})")
+        except Exception as e:
+            print(f"[Vermes API] 获取主窗口位置失败({e})，使用屏幕居中")
+
+        create_kwargs = dict(
+            width=ow, height=oh,
+            resizable=False, confirm_close=False,
             js_api=VermesAPI(),
         )
+        if ox is not None and oy is not None:
+            create_kwargs['x'] = ox
+            create_kwargs['y'] = oy
+
+        win = webview.create_window('微信登录', url, **create_kwargs)
 
         def on_loaded():
             """页面加载完成后检查 URL"""

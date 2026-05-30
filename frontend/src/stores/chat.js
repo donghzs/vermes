@@ -62,7 +62,7 @@ export const useChatStore = defineStore('chat', () => {
   const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref('dark')
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'mimo-v2.5')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek-v4-flash')
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)

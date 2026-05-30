@@ -8,6 +8,7 @@ const emit = defineEmits(['loginSuccess', 'loginError'])
 
 // ── 状态 ──
 const showModal = ref(false)
+const showOverlay = ref(false) // pywebview 模式下的遮罩
 const isPywebview = typeof window !== 'undefined' && !!window.pywebview
 const qrError = ref('')
 const wechatState = ref('')
@@ -19,7 +20,8 @@ let isPollingActive = false
 async function openLogin() {
   qrError.value = ''
   if (isPywebview) {
-    // pywebview 原生窗口
+    // pywebview 原生窗口：先显示遮罩，再打开居中的 OAuth 子窗口
+    showOverlay.value = true
     try {
       const loginState = Date.now().toString()
       const result = await window.pywebview.api.open_oauth_window(
@@ -27,14 +29,17 @@ async function openLogin() {
         encodeURIComponent('https://vbit.top/api/wechat/callback') +
         '&response_type=code&scope=snsapi_login&state=' + loginState + '#wechat_redirect'
       )
+      showOverlay.value = false
       if (result && result.success) {
         wechatState.value = result.state || loginState
-        await pollForResult()
+        // code 已获取，用它向 vbit.top 换 token
+        await exchangeCodeForToken(result.code, wechatState.value)
       } else {
         qrError.value = result?.error === 'timeout or cancelled' ? '已取消' : '登录失败'
         emit('loginError', qrError.value)
       }
     } catch(e) {
+      showOverlay.value = false
       qrError.value = '登录失败，请重试'
       emit('loginError', qrError.value)
     }
@@ -57,10 +62,8 @@ async function openLogin() {
   }
 }
 
-// ── 轮询结果（pywebview模式） ──
-async function pollForResult() {
-  const state = wechatState.value
-  if (!state) { qrError.value = '登录失败：state 丢失'; return }
+// ── pywebview 模式：用 code 向后端换 token ──
+async function exchangeCodeForToken(code, state) {
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 1000))
     try {
@@ -168,7 +171,17 @@ defineExpose({ openLogin, logout })
 </script>
 
 <template>
-  <!-- 微信登录弹窗（浏览器开发模式） -->
+  <!-- pywebview 模式：暗色遮罩（OAuth 子窗口打开时显示） -->
+  <div v-if="showOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-xs w-full mx-4 relative text-center shadow-2xl">
+      <div class="text-5xl mb-4 animate-pulse">💬</div>
+      <h3 class="font-bold text-lg mb-2 text-gray-800 dark:text-gray-200">微信扫码登录</h3>
+      <p class="text-sm text-gray-500 dark:text-gray-400">请在弹出窗口中扫码...</p>
+      <p v-if="qrError" class="text-xs text-red-400 mt-3">{{ qrError }}</p>
+    </div>
+  </div>
+
+  <!-- 浏览器模式：微信登录弹窗 -->
   <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showModal = false; stopPolling()">
     <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
       <button @click="showModal = false; stopPolling()" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg">✕</button>
