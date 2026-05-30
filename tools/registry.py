@@ -48,7 +48,7 @@ def _module_registers_tools(module_path: Path) -> bool:
     try:
         source = module_path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(module_path))
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, UnicodeDecodeError):
         return False
 
     return any(_is_registry_register_call(stmt) for stmt in tree.body)
