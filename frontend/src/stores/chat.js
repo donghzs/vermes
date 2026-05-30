@@ -217,7 +217,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessage(content, attachments, _model_, _provider_) {
+  async function sendMessage(content, attachments, _model_, _provider_, _isRegenerate_) {
     const modelId = _model_ || currentModel.value
     const providerId = _provider_ || currentProvider.value
     console.log('[Vermes💬 sendMessage] content:', JSON.stringify(content), 'attachments:', attachments?.length, 'currentSessionId:', currentSessionId.value, 'messages count:', messages.value.length, 'model:', modelId, 'provider:', providerId)
@@ -311,14 +311,16 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    // 添加用户消息
-    console.log('[Vermes💬 sendMessage] Adding user message, sessionId:', currentSessionId.value)
-    messages.value.push({
-      id: msgId, role: 'user', content: userContent,
-      sessionId: currentSessionId.value, timestamp: Date.now(),
-      attachments: processedAttachments
-    })
-    persistMessages(currentSessionId.value)
+    // 添加用户消息（regenerate 时跳过，已有 user 消息）
+    if (!_isRegenerate_) {
+      console.log('[Vermes💬 sendMessage] Adding user message, sessionId:', currentSessionId.value)
+      messages.value.push({
+        id: msgId, role: 'user', content: userContent,
+        sessionId: currentSessionId.value, timestamp: Date.now(),
+        attachments: processedAttachments
+      })
+      persistMessages(currentSessionId.value)
+    }
 
     loading.value = true
 
@@ -524,6 +526,10 @@ export const useChatStore = defineStore('chat', () => {
 
     loading.value = true
 
+    // 存储所有对比模式的 AbortController
+    const compareAbortControllers = []
+    _compareAbortControllers.value = compareAbortControllers
+
     // 为每个模型创建独立消息并并行发送
     const modelLabel = (m) => `**[🔬 ${m.name || m.id}]**\n`
     const aides = []
@@ -556,6 +562,7 @@ export const useChatStore = defineStore('chat', () => {
       const aid = aides[idx]
       return (async () => {
         const ac = new AbortController()
+        compareAbortControllers.push(ac)
         try {
           await api.sendMessage({
             model: model.id,
@@ -605,6 +612,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const activeStreamId = ref(null)
+  const _compareAbortControllers = ref([])
 
   async function stopGeneration() {
     // P1-10: 通知后端停止生成
@@ -613,7 +621,8 @@ export const useChatStore = defineStore('chat', () => {
         const token = localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token')
         const headers = { 'Content-Type': 'application/json' }
         if (token) headers['X-Hermes-Session-Token'] = token
-        fetch('/api/stop-generation', {
+        const apiPrefix = (typeof window !== 'undefined' && window.__VERMES_ONLINE__) ? '/v1' : '/api'
+        fetch(`${apiPrefix}/stop-generation`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ stream_id: activeStreamId.value })
@@ -623,13 +632,20 @@ export const useChatStore = defineStore('chat', () => {
         // ignore
       }
     }
+    // 中断普通模式的 AbortController
     if (abortController.value) {
       abortController.value.abort()
       abortController.value = null
     }
+    // 中断对比模式的所有 AbortController
+    for (const ac of _compareAbortControllers.value) {
+      try { ac.abort() } catch(e) {}
+    }
+    _compareAbortControllers.value = []
     loading.value = false
-    const am = messages.value.find(m => m.streaming)
-    if (am) am.streaming = false
+    // 关闭所有 streaming 消息
+    messages.value.filter(m => m.streaming).forEach(m => { m.streaming = false })
+    persistMessages(currentSessionId.value)
   }
 
   function toggleTheme() {
