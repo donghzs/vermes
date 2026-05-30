@@ -105,12 +105,15 @@ function handleLoginSuccess(data) {
   chat.showQuotaModal = false
   stopPolling()
   
-  // 保存登录信息
+  // 保存登录信息（先清理旧数据防止身份错位）
+  localStorage.removeItem('vermes_wechat_openid')
+  localStorage.removeItem('vermes_wechat_name')
+  localStorage.removeItem('vermes_wechat_avatar')
+  localStorage.removeItem('vermes_quota')
   localStorage.setItem('vermes_wechat_token', data.token)
   if (data.openid) localStorage.setItem('vermes_wechat_openid', data.openid)
   if (data.userName) localStorage.setItem('vermes_wechat_name', data.userName)
   if (data.userAvatar) localStorage.setItem('vermes_wechat_avatar', data.userAvatar)
-  localStorage.removeItem('vermes_quota')
   
   // 同步到后端
   fetch('/api/env', {
