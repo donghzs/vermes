@@ -36,8 +36,19 @@ export const useUpdateStore = () => {
         }
         latestVersion.value = res.version
         hasUpdate.value = true
-        downloadUrl.value = res.download_url || res.mac_url || res.win_url || ''
-        releaseNotes.value = res.releaseNotes || ''
+        // download_url 可以是字符串或 {macos_dmg, windows_zip} 嵌套对象
+        if (typeof res.download_url === 'string') {
+          downloadUrl.value = res.download_url
+        } else if (res.download_url && typeof res.download_url === 'object') {
+          // 按平台选择
+          const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
+          downloadUrl.value = isMac
+            ? (res.download_url.macos_dmg || res.download_url.macos_zip || '')
+            : (res.download_url.windows_zip || '')
+        } else {
+          downloadUrl.value = res.mac_url || res.win_url || ''
+        }
+        releaseNotes.value = res.releaseNotes || res.notes || ''
         console.log('[Vermes Update] showing banner for', res.version)
       }
     } catch (e) {
