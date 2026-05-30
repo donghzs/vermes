@@ -132,10 +132,36 @@ function handleDelete(id) {
 
 // ── 模板选择 ──
 const showTemplateMenu = ref(false)
+const showCustomPrompt = ref(false)
+const customPromptInput = ref('')
+const customPromptRef = ref(null)
 
 function selectTemplate(tpl) {
+  if (tpl.id === 'custom') {
+    // 自定义模板：弹出输入框
+    showTemplateMenu.value = false
+    customPromptInput.value = ''
+    showCustomPrompt.value = true
+    nextTick(() => customPromptRef.value?.focus())
+    return
+  }
   chat.createSession(tpl.name, tpl)
   showTemplateMenu.value = false
+}
+
+function confirmCustomPrompt() {
+  const prompt = customPromptInput.value.trim()
+  if (!prompt) {
+    // 空的就当空白会话
+    chat.createSession('新会话', SESSION_TEMPLATES[0])
+  } else {
+    chat.createSession('自定义', { id: 'custom', name: '自定义', icon: '⚙️', systemPrompt: prompt })
+  }
+  showCustomPrompt.value = false
+}
+
+function cancelCustomPrompt() {
+  showCustomPrompt.value = false
 }
 
 // ── 导出 ──
@@ -210,6 +236,33 @@ async function handleImportFile(e) {
       </div>
       <!-- 点击外部关闭模板菜单 -->
       <div v-if="showTemplateMenu" @click="showTemplateMenu = false" class="fixed inset-0 z-40"></div>
+
+      <!-- 自定义提示词输入弹窗 -->
+      <Teleport to="body">
+        <div v-if="showCustomPrompt" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" @click.self="cancelCustomPrompt">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[480px] max-w-[90vw] p-5 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 mb-1">⚙️ 自定义系统提示词</h3>
+            <p class="text-xs text-gray-400 mb-3">设定 AI 的角色、行为和规则，留空则创建空白会话</p>
+            <textarea
+              ref="customPromptRef"
+              v-model="customPromptInput"
+              rows="6"
+              placeholder="例如：你是一位资深的产品经理，擅长需求分析和竞品调研。回答要结构化，使用表格对比..."
+              class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-green-400 resize-y transition"
+              @keydown.meta.enter="confirmCustomPrompt"
+              @keydown.ctrl.enter="confirmCustomPrompt"
+              @keydown.escape="cancelCustomPrompt"
+            ></textarea>
+            <div class="flex justify-between items-center mt-3">
+              <span class="text-[10px] text-gray-400">⌘/Ctrl+Enter 确认</span>
+              <div class="flex gap-2">
+                <button @click="cancelCustomPrompt" class="px-4 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition">取消</button>
+                <button @click="confirmCustomPrompt" class="px-4 py-1.5 text-sm bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition">创建会话</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- 导入按钮 -->
       <div class="px-3 pb-2 shrink-0">
