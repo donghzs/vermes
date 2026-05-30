@@ -52,7 +52,7 @@ function toggleProvider(id) {
 const showAdvanced = ref(false) // P2-16: 高级模式开关
 
 // P2-16: 推荐提供商（默认显示）
-const RECOMMENDED_IDS = ['vbit', 'deepseek', 'ollama']
+const RECOMMENDED_IDS = ['vbit', 'deepseek', 'xiaomi', 'ollama']
 const recommendedProviders = computed(() => 
   providers.value.filter(p => RECOMMENDED_IDS.includes(p.id))
 )
@@ -477,6 +477,52 @@ onUnmounted(() => {
           </div>
 
           <!-- 本地模型 -->
+          <!-- 小米 MiMo — 紧跟 DeepSeek 下方 -->
+          <div v-for="p in providers.filter(p => p.id === 'xiaomi')" :key="'rec-'+p.id"
+               class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400">
+                  Mi
+                </div>
+                <div class="text-left">
+                  <div class="font-medium text-gray-800 dark:text-gray-200">🚀 小米 MiMo</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">国产高性价比，注册即送额度</div>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-gray-400 transition-transform" :class="isExpanded(p.id) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div v-if="isExpanded(p.id)" class="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700">
+              <div class="pt-3">
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+                <input v-model="p.key" type="password" placeholder="sk-..." class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <a href="https://platform.xiaomimimo.com?ref=KE64RG" target="_blank" class="inline-block mt-1 text-xs text-blue-500 hover:text-blue-600">→ 去小米 MiMo 官网获取 Key ↗</a>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+                <input v-model="p.baseUrl" type="text" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+              <div class="flex gap-2">
+                <button @click="syncModels(p)" :disabled="p.syncing" class="px-4 py-1.5 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+                  <svg v-if="p.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                  {{ p.syncing ? '同步中...' : '🔄 同步模型' }}
+                </button>
+                <button @click="save()" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">💾 保存</button>
+              </div>
+              <div v-if="p.models.length > 0" class="space-y-1">
+                <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">可用模型</div>
+                <div v-for="m in p.models" :key="m" class="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ m }}</span>
+                  <button @click="setCurrentModel(p, m)" class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/60 transition font-medium">✓ 设为当前</button>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <input v-model="customModelInputs[p.id]" @keyup.enter="addCustomModel(p)" placeholder="手动输入模型名..." class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <button @click="addCustomModel(p)" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition">+ 添加</button>
+              </div>
+            </div>
+          </div>
+
           <div v-for="p in providers.filter(p => p.id === 'ollama')" :key="p.id"
                class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <button @click="toggleProvider(p.id)" class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750 transition">
