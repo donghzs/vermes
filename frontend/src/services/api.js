@@ -282,7 +282,7 @@ export default {
             }
             // Agent 模式：推理链可视化事件
             if (json.type === 'thinking') {
-              // 思考事件作为工具卡片显示，不混入文本内容
+              // 思考事件作为工具卡片显示：立即开始+结束（后端不发thinking的tool_end）
               const thinkId = 'thinking-' + json.iteration
               onTool?.({ type: 'tool_start', tool_call_id: thinkId, name: 'thinking', arguments: { message: json.message } })
               onTool?.({ type: 'tool_end', tool_call_id: thinkId, name: 'thinking', duration: 0, is_error: false })
@@ -294,8 +294,7 @@ export default {
             }
             if (json.type === 'tool_start') {
               onTool?.({ type: 'tool_start', tool_call_id: json.tool_call_id, name: json.tool_name, arguments: json.arguments })
-              // 工具卡片渲染的同时，在消息内容中插入一行状态提示
-              onChunk?.(`\n🔧 **${json.tool_name}**\n`)
+              // 不在消息文本中插入工具名——工具卡片已独立展示
               continue
             }
             if (json.type === 'tool_end') {
