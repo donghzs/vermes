@@ -3468,21 +3468,24 @@ async def chat_completions(req: ChatRequest):
                 conversation_history[last_user_idx]["content"] = parts
 
     # Extract the last user message as the agent input
-    # 当有附件时，把多模态内容（含图片）直接传给 user_message
+    # 提取用户消息（保留多模态内容：含图片时不被文本提取覆盖）
     user_message = ""
     if req.attachments and conversation_history:
         last_content = conversation_history[-1].get("content", "")
         if isinstance(last_content, list):
+            # 多模态消息（含图片）：保持原格式传给Agent，不被后续文本提取覆盖
             user_message = last_content
-    for m in reversed(req.messages):
-        if m.role == "user":
-            content = m.content
-            if isinstance(content, list):
-                text_parts = [p.get("text", "") for p in content if p.get("type") == "text"]
-                user_message = "\n".join(text_parts) or "[image/document attached]"
-            else:
-                user_message = content
-            break
+    # 仅当 user_message 尚未设置为多模态时，才从 req.messages 提取纯文本
+    if not isinstance(user_message, list):
+        for m in reversed(req.messages):
+            if m.role == "user":
+                content = m.content
+                if isinstance(content, list):
+                    text_parts = [p.get("text", "") for p in content if p.get("type") == "text"]
+                    user_message = "\n".join(text_parts) or "[image/document attached]"
+                else:
+                    user_message = content
+                break
 
     # Proxy call helper for fallback mode
     async def call_proxy():
