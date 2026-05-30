@@ -211,26 +211,52 @@ watch(() => chat.filteredMessages.length, async () => {
   })
 })
 
-// 初始挂载时也添加 + 滚到底部
+// ── 回到底部按钮 ──
+const showScrollBtn = ref(false)
+
+function checkScrollPosition() {
+  if (!chatContainer.value) return
+  const c = chatContainer.value
+  // 距离底部超过 300px 时显示按钮
+  showScrollBtn.value = c.scrollHeight - c.scrollTop - c.clientHeight > 300
+}
+
+function scrollToBottom() {
+  if (chatContainer.value) {
+    chatContainer.value.scrollTo({ top: chatContainer.value.scrollHeight, behavior: 'smooth' })
+  }
+}
+
+// 滚到最后一条用户消息位置
+function scrollToLastUserMsg() {
+  if (!chatContainer.value) return
+  const container = chatContainer.value
+  const userMsgs = container.querySelectorAll('[data-role="user"]')
+  if (userMsgs.length > 0) {
+    const lastUser = userMsgs[userMsgs.length - 1]
+    lastUser.scrollIntoView({ block: 'start', behavior: 'instant' })
+  } else {
+    container.scrollTop = container.scrollHeight
+  }
+}
+
+// 初始挂载时也添加 + 滚到最新用户消息
 onMounted(() => {
   if (chatContainer.value) {
     addCopyButtonsToPreElements(chatContainer.value)
-    // 打开会话时默认滚到最新消息（底部）
+    chatContainer.value.addEventListener('scroll', checkScrollPosition)
     nextTick(() => {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+      scrollToLastUserMsg()
     })
   }
 })
 
-// 切换会话时滚到底部（多次尝试，确保长列表渲染完成）
+// 切换会话时滚到最新用户消息（多次尝试，确保长列表渲染完成）
 watch(() => chat.currentSessionId, async () => {
-  // 等待 messages 更新 + DOM 渲染 + 图片懒加载
   for (let i = 0; i < 5; i++) {
     await nextTick()
-    if (chatContainer.value) {
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
-    }
   }
+  scrollToLastUserMsg()
 })
 
 // ── 消息复制 ──
@@ -351,6 +377,7 @@ watch(() => chat.filteredMessages.length, async () => {
     <!-- 消息列表 -->
     <div v-else>
       <div v-for="msg in chat.filteredMessages" :key="msg.id"
+           :data-role="msg.role"
            class="flex gap-3 group px-4 py-2"
            :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
         <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
@@ -431,6 +458,12 @@ watch(() => chat.filteredMessages.length, async () => {
       </div>
     </div>
   </div>
+  <!-- 回到底部浮动按钮 -->
+  <button v-if="showScrollBtn" @click="scrollToBottom"
+    class="fixed bottom-24 right-6 z-50 w-10 h-10 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110"
+    title="回到底部">
+    ↓
+  </button>
 </template>
 
 <style scoped>
