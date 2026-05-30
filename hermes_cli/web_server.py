@@ -1393,8 +1393,8 @@ async def update_download(body: UpdateDownloadRequest):
     filename = url.split("/")[-1]
     download_path = str(UPDATE_DIR / filename)
 
-    _reset_progress()
-    _set_progress(version=body.version, message="准备下载...")
+    await _reset_progress()
+    await _set_progress(version=body.version, message="准备下载...")
 
     async def sse_stream():
         try:
@@ -1419,7 +1419,7 @@ async def update_download(body: UpdateDownloadRequest):
             if os.path.exists(download_path):
                 os.remove(download_path)
 
-            _set_progress(
+            await _set_progress(
                 status=UpdateStatus.DONE,
                 progress=100,
                 message="下载完成，准备应用更新",
@@ -1428,7 +1428,7 @@ async def update_download(body: UpdateDownloadRequest):
 
         except Exception as e:
             _log.exception(f"[Update] 下载失败: {e}")
-            _set_progress(
+            await _set_progress(
                 status=UpdateStatus.ERROR,
                 error=str(e),
                 message=f"下载失败: {e}",
@@ -1510,7 +1510,7 @@ async def update_apply(body: UpdateApplyRequest):
 
     try:
         # 1. 备份当前版本
-        _set_progress(status=UpdateStatus.BACKING_UP, message="正在备份当前版本...")
+        await _set_progress(status=UpdateStatus.BACKING_UP, message="正在备份当前版本...")
         backup_path = backup_current_version(current_version)
         if backup_path:
             _log.info(f"[Update] 已备份 v{current_version} 到 {backup_path}")

@@ -296,7 +296,7 @@ def main(port):
         # 防止更新 ZIP 覆盖时丢失 localStorage（聊天记录、用户偏好）
         storage_path = os.path.expanduser('~/.vermes/webview_data')
         os.makedirs(storage_path, exist_ok=True)
-        webview.start(gui=gui, private_mode=False, storage_path=storage_path)
+        webview.start(gui=gui, private_mode=False, storage_path=storage_path, debug=False)
         print("[Vermes] 原生窗口已关闭")
         return
     except Exception as e:
@@ -316,65 +316,62 @@ def main(port):
 def _apply_pending_update_if_any():
     """启动时检查 ~/.vermes/update/pending，如果有待应用的更新就执行。
 
-    更新流程：
-    1. 后端下载新版到 ~/.vermes/update/staging/
-    2. 写 pending.json（含 platform、version、staging_path）
-    3. 后端 shutdown → 进程退出
-    4. gui_app 重启时检测到 pending.json → 应用更新 → 清理
+    使用 update_manager 的原子替换机制：
+    1. 复制新版到临时位置
+    2. 验证关键文件存在
+    3. rename 原子切换
+    4. 清理旧版本
     """
-    import json
-    pending_file = os.path.expanduser('~/.vermes/update/pending.json')
-    if not os.path.exists(pending_file):
-        return
     try:
-        with open(pending_file, 'r') as f:
-            pending = json.load(f)
-        version = pending.get('version', 'unknown')
-        staging = pending.get('staging_path', '')
-        print(f"[Vermes Update] 发现待应用更新 v{version}，正在应用...")
-
-        if platform.system() == 'Darwin':
-            # macOS: staging 里是 .app 目录
-            app_path = os.path.join(staging, 'Vermes.app')
-            target = '/Applications/Vermes.app'
-            if os.path.exists(app_path):
-                import shutil
-                if os.path.exists(target):
-                    shutil.rmtree(target)
-                shutil.copytree(app_path, target)
-                print(f"[Vermes Update] ✅ 已更新到 v{version}")
-                # 重启到新版本
-                subprocess.Popen(['open', target])
-                sys.exit(0)
-        elif platform.system() == 'Windows':
-            # Windows: staging 里是解压后的目录
-            exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-            for item in os.listdir(staging):
-                src = os.path.join(staging, item)
-                dst = os.path.join(exe_dir, item)
-                import shutil
-                if os.path.isdir(src):
-                    if os.path.exists(dst):
-                        shutil.rmtree(dst)
-                    shutil.copytree(src, dst)
-                else:
-                    shutil.copy2(src, dst)
-            print(f"[Vermes Update] ✅ 已更新到 v{version}")
-            # 重启
-            subprocess.Popen([os.path.join(exe_dir, 'Vermes.exe')])
-            sys.exit(0)
-
-        # 更新成功后清理
-        os.remove(pending_file)
-        import shutil
-        shutil.rmtree(staging, ignore_errors=True)
-    except Exception as e:
-        print(f"[Vermes Update] ❌ 应用更新失败: {e}")
-        # 不阻塞启动，继续正常运行
+        from hermes_cli.update_manager import apply_pending_update
+        apply_pending_update()
+    except ImportError:
+        # fallback: 如果 update_manager 不可用，使用旧逻辑
+        import json
+        pending_file = os.path.expanduser('~/.vermes/update/pending.json')
+        if not os.path.exists(pending_file):
+            return
         try:
+            with open(pending_file, 'r') as f:
+                pending = json.load(f)
+            version = pending.get('version', 'unknown')
+            staging = pending.get('staging_path', '')
+            print(f"[Vermes Update] 发现待应用更新 v{version}，正在应用...")
+
+            import shutil
+            if platform.system() == 'Darwin':
+                app_path = os.path.join(staging, 'Vermes.app')
+                target = '/Applications/Vermes.app'
+                if os.path.exists(app_path):
+                    if os.path.exists(target):
+                        shutil.rmtree(target)
+                    shutil.copytree(app_path, target)
+                    print(f"[Vermes Update] ✅ 已更新到 v{version}")
+                    subprocess.Popen(['open', target])
+                    sys.exit(0)
+            elif platform.system() == 'Windows':
+                exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+                for item in os.listdir(staging):
+                    src = os.path.join(staging, item)
+                    dst = os.path.join(exe_dir, item)
+                    if os.path.isdir(src):
+                        if os.path.exists(dst):
+                            shutil.rmtree(dst)
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+                print(f"[Vermes Update] ✅ 已更新到 v{version}")
+                subprocess.Popen([os.path.join(exe_dir, 'Vermes.exe')])
+                sys.exit(0)
+
             os.remove(pending_file)
-        except Exception:
-            pass
+            shutil.rmtree(staging, ignore_errors=True)
+        except Exception as e:
+            print(f"[Vermes Update] ❌ 应用更新失败: {e}")
+            try:
+                os.remove(pending_file)
+            except Exception:
+                pass
 
 
 def run_gui():
