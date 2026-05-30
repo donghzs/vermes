@@ -126,14 +126,47 @@ if caps is None:
 
 ---
 
-## 六、待 QClaw 处理
+## 六、待处理
+
+### 🔥 P0 — 自更新系统（QClaw + Hermes 协作）
+
+**目标**：用户看到新版本提示 → 点击"立即更新" → 自动下载 → 自动覆盖 → 自动重启
+
+**架构设计**：
+```
+前端 update banner → 点击"立即更新"
+  → POST /api/update/download（后端下载新版本到 ~/.vermes/update/）
+  → POST /api/update/apply（后端写更新脚本 → shutdown → 脚本替换文件 → 重启）
+```
+
+**需要改动**：
+
+| # | 任务 | 负责 | 说明 |
+|---|------|------|------|
+| 1 | `version.json` 加 `download_url` 字段 | QClaw | mac_url + win_url 指向具体文件 |
+| 2 | 后端 `/api/update/download` 端点 | QClaw | 下载到 `~/.vermes/update/`，返回进度 |
+| 3 | 后端 `/api/update/apply` 端点 | QClaw | 写更新脚本 → shutdown → 脚本替换 → 重启 |
+| 4 | 更新脚本（跨平台） | QClaw | macOS: bash（hdiutil mount/copy）/ Windows: bat（xcopy/restart） |
+| 5 | 前端 update.js 改造 | Hermes | 点击"立即更新" → 调 API → 显示进度 → 自动重启 |
+| 6 | gui_app.py 启动时检查待应用更新 | Hermes | `~/.vermes/update/pending` 标记文件 |
+| 7 | WebView2 数据目录迁移到 `~/.vermes/` | Hermes | Windows `private_mode=False` + 自定义 `user_data_dir` |
+
+**关键细节**：
+- macOS: 下载 DMG → `hdiutil attach` → `cp -R /Volumes/Vermes/Vermes.app /Applications/` → `hdiutil detach` → `open /Applications/Vermes.app`
+- Windows: 下载 ZIP → 解压到 `~/.vermes/update/staging/` → 写 bat 脚本（等待进程退出 → xcopy 覆盖 → 启动 EXE）→ 执行 bat → 退出当前进程
+- 更新脚本必须独立于 Python 进程运行（subprocess + CREATE_NEW_PROCESS_GROUP）
+- 下载支持断点续传（HTTP Range）
+- 下载完校验 MD5（version.json 里加 `md5` 字段）
+
+### 待 QClaw 处理
 
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
-| P3 剩余 5 项 | P3 | P3-2 配额拆分 / P3-3 Blueprint 迁移 / P3-5 消息时间 / P3-7 消息编辑 / P3-8 多模型对比 |
-| 上传 DMG 到 vbit.top | P1 | `/tmp/Vermes-2.0.4-macos-arm64.dmg` → vbit 服务器 |
-| Windows 构建 | P1 | 基于当前代码重新打包 Windows 版 |
-| Settings.vue 剩余 alert() | P2 | P3 范围外，可后续清理 |
+| 上传最新 DMG 到服务器 | P0 | `/tmp/Vermes-2.0.4-macos-arm64.dmg`（68MB）→ vbit 服务器 |
+| Git commit + push | P0 | 12 个未提交文件 + 本地 2 个新 commit 待 push |
+| 服务器旧 DMG 清理 | P1 | 保留 2.0.3 + 2.0.4 最新版 |
+| P3 剩余 5 项 | P3 | 配额拆分 / Blueprint 迁移 / 消息时间 / 消息编辑 / 多模型对比 |
+| One-API 健康检查 cron | P2 | Token 更新机制 |
 
 ---
 
