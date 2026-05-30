@@ -55,6 +55,24 @@ logger = logging.getLogger(__name__)
 # Mirrors the constant in ``run_agent`` for tests/imports that look here.
 _MAX_TOOL_WORKERS = 8
 
+# ── 工具结果预览长度策略 ──────────────────────────────────────────
+# 按工具类型区分 result_preview 长度，平衡信息量和上下文占用
+_TOOL_RESULT_PREVIEW_LENGTHS = {
+    "read_file": 2000,        # 代码文件需要更多上下文
+    "search_files": 1500,     # 搜索结果需要更多匹配行
+    "execute_code": 1000,     # 代码执行结果适中
+    "terminal": 800,          # 命令输出适中
+    "session_search": 800,    # 搜索结果需要足够信息
+    "web_search": 500,        # 网页搜索摘要够用
+    "vision_analyze": 1000,   # 图片分析需要详细描述
+    "delegate_task": 500,     # 任务委派摘要适中
+    "default": 200            # 其他工具保持默认
+}
+
+def _get_tool_preview_length(tool_name: str) -> int:
+    """根据工具类型返回 result_preview 的最大长度"""
+    return _TOOL_RESULT_PREVIEW_LENGTHS.get(tool_name, _TOOL_RESULT_PREVIEW_LENGTHS["default"])
+
 
 def _ra():
     """Lazy reference to ``run_agent`` so patches like ``run_agent._set_interrupt`` work."""
@@ -385,12 +403,13 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
 
             if not blocked and agent.tool_progress_callback:
                 try:
-                    # 生成工具结果摘要（前200字符）
+                    # 生成工具结果摘要（按工具类型区分长度）
                     result_preview = ""
                     if function_result and not is_error:
                         try:
                             result_str = str(function_result)
-                            result_preview = result_str[:200] + ("..." if len(result_str) > 200 else "")
+                            preview_len = _get_tool_preview_length(name)
+                            result_preview = result_str[:preview_len] + ("..." if len(result_str) > preview_len else "")
                         except:
                             result_preview = ""
                     agent.tool_progress_callback(
@@ -788,8 +807,9 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             tool_duration = time.time() - tool_start_time
 
         if isinstance(function_result, str):
+            preview_len = _get_tool_preview_length(function_name)
             result_preview = function_result if agent.verbose_logging else (
-                function_result[:200] if len(function_result) > 200 else function_result
+                function_result[:preview_len] if len(function_result) > preview_len else function_result
             )
             _result_len = len(function_result)
         else:
@@ -807,8 +827,9 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 function_result,
                 failed=_is_error_result,
             )
+            preview_len = _get_tool_preview_length(function_name)
             result_preview = function_result if agent.verbose_logging else (
-                function_result[:200] if len(function_result) > 200 else function_result
+                function_result[:preview_len] if len(function_result) > preview_len else function_result
             )
         if _is_error_result:
             logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)

@@ -22,6 +22,9 @@ import yaml from 'highlight.js/lib/languages/yaml'
 // 工具结果展开状态
 const expandedTools = ref(new Set())
 
+// 默认展开的重要工具（用户通常需要查看结果的工具）
+const DEFAULT_EXPANDED_TOOLS = new Set(['read_file', 'terminal', 'search_files', 'execute_code'])
+
 function toggleToolExpand(toolId) {
   if (expandedTools.value.has(toolId)) {
     expandedTools.value.delete(toolId)
@@ -32,6 +35,16 @@ function toggleToolExpand(toolId) {
 
 function isToolExpanded(toolId) {
   return expandedTools.value.has(toolId)
+}
+
+// 自动展开重要工具的结果
+function autoExpandImportantTools(tools) {
+  if (!tools) return
+  tools.forEach(tool => {
+    if (tool.name && DEFAULT_EXPANDED_TOOLS.has(tool.name) && tool.result_preview) {
+      expandedTools.value.add(tool.id || tool.name)
+    }
+  })
 }
 
 // 流式中：获取当前正在执行的工具/思考的中文描述
@@ -172,6 +185,12 @@ watch(() => chat.filteredMessages.length, async () => {
   if (chatContainer.value) {
     addCopyButtonsToPreElements(chatContainer.value)
   }
+  // 自动展开重要工具的结果
+  chat.filteredMessages.forEach(msg => {
+    if (msg.toolInvocations) {
+      autoExpandImportantTools(msg.toolInvocations)
+    }
+  })
 })
 
 // 初始挂载时也添加 + 滚到底部
