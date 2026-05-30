@@ -336,14 +336,23 @@ export const useChatStore = defineStore('chat', () => {
     abortController.value = ac
 
     // 构建发送给 API 的消息历史
-    // #2 修复：保留图片上下文，只剥离当前消息的附件（已在 attachments 里发送）
-    const currentMsgId = msgId
-    const apiMessages = messages.value
+    // #2 修复：保留图片上下文，但限制最近 5 条用户消息的图片避免请求体过大
+    const allMsgs = messages.value
       .filter(m => m.sessionId === currentSessionId.value && !m.streaming)
-      .map(m => ({
-        role: m.role,
-        content: m.content,
-      }))
+    
+    // 找出最近 5 条有图片的用户消息 ID
+    const recentImageMsgIds = new Set(
+      allMsgs.filter(m => m.role === 'user' && m.content?.includes('data:image'))
+        .slice(-5).map(m => m.id)
+    )
+    
+    const apiMessages = allMsgs.map(m => ({
+      role: m.role,
+      // 超过最近 5 条的图片消息，剥离 base64 避免超长
+      content: m.role === 'user' && m.content?.includes('data:image') && !recentImageMsgIds.has(m.id)
+        ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '[图片]').trim()
+        : m.content,
+    }))
 
     try {
       await api.sendMessage({
