@@ -9,6 +9,13 @@ export const useUpdateStore = () => {
   const hasUpdate = ref(false)
   const latestVersion = ref('')
   const checked = ref(false)
+  const downloadUrl = ref('')
+  const releaseNotes = ref('')
+  // 自更新状态
+  const updating = ref(false)
+  const updateProgress = ref(0)     // 0-100
+  const updateStatus = ref('')      // 'downloading' | 'applying' | 'done' | 'error'
+  const updateError = ref('')
 
   async function checkUpdate() {
     if (checked.value) return
@@ -29,6 +36,8 @@ export const useUpdateStore = () => {
         }
         latestVersion.value = res.version
         hasUpdate.value = true
+        downloadUrl.value = res.download_url || res.mac_url || res.win_url || ''
+        releaseNotes.value = res.releaseNotes || ''
         console.log('[Vermes Update] showing banner for', res.version)
       }
     } catch (e) {
@@ -48,16 +57,80 @@ export const useUpdateStore = () => {
 
   function dismissUpdate() {
     hasUpdate.value = false
-    // 记住用户关闭了此版本的提示，下次不再打扰
     localStorage.setItem(DISMISS_KEY, latestVersion.value)
+  }
+
+  /**
+   * 自更新：下载 → 写 pending.json → shutdown → 重启时自动应用
+   */
+  async function startUpdate() {
+    if (updating.value) return
+    updating.value = true
+    updateError.value = ''
+    updateProgress.value = 0
+    updateStatus.value = 'downloading'
+
+    try {
+      // 1. 调后端下载接口
+      const res = await fetch('/api/update/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: latestVersion.value,
+          url: downloadUrl.value
+        })
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `下载失败 (${res.status})`)
+      }
+
+      // 2. SSE 进度流（如果后端支持）
+      // 或者简单轮询
+      updateProgress.value = 50
+      updateStatus.value = 'applying'
+
+      // 3. 调后端应用接口（写 pending.json + shutdown）
+      const applyRes = await fetch('/api/update/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: latestVersion.value })
+      })
+
+      if (!applyRes.ok) {
+        const err = await applyRes.json().catch(() => ({}))
+        throw new Error(err.error || `应用失败 (${applyRes.status})`)
+      }
+
+      updateProgress.value = 100
+      updateStatus.value = 'done'
+
+      // 4. 后端会自动 shutdown，前端显示提示
+      console.log('[Vermes Update] 更新已提交，应用将自动重启...')
+
+    } catch (e) {
+      console.error('[Vermes Update] error:', e)
+      updateStatus.value = 'error'
+      updateError.value = e.message || '更新失败'
+      updating.value = false
+    }
   }
 
   return {
     hasUpdate,
     latestVersion,
     currentVersion: CURRENT_VERSION,
+    downloadUrl,
+    releaseNotes,
     checkUpdate,
     dismissUpdate,
-    checked
+    checked,
+    // 自更新
+    updating,
+    updateProgress,
+    updateStatus,
+    updateError,
+    startUpdate
   }
 }
