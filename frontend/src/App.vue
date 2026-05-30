@@ -33,9 +33,20 @@ onMounted(async () => {
   <div v-else class="flex flex-col h-screen bg-white dark:bg-gray-900" :data-theme="theme">
     <!-- 更新提示条 -->
     <div v-if="update.hasUpdate" class="bg-blue-500 text-white text-center py-2 px-4 text-sm flex items-center justify-center gap-2 shrink-0">
-      <span>🎉 发现新版本 v{{ update.latestVersion }}</span>
-      <a href="https://vbit.top/vermes" target="_blank" class="underline hover:no-underline font-medium">立即更新</a>
-      <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
+      <template v-if="!update.updating">
+        <span>🎉 发现新版本 v{{ update.latestVersion }}</span>
+        <button @click="update.startUpdate()" class="underline hover:no-underline font-medium">立即更新</button>
+        <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
+      </template>
+      <template v-else>
+        <span v-if="update.updateStatus === 'downloading'">⬇️ 正在下载 v{{ update.latestVersion }}...</span>
+        <span v-else-if="update.updateStatus === 'applying'">⚙️ 正在应用更新...</span>
+        <span v-else-if="update.updateStatus === 'done'">✅ 更新完成，即将重启...</span>
+        <span v-else-if="update.updateStatus === 'error'">❌ {{ update.updateError }}</span>
+        <div v-if="update.updateStatus !== 'error'" class="w-24 h-1.5 bg-white/30 rounded-full overflow-hidden">
+          <div class="h-full bg-white rounded-full transition-all duration-300" :style="{width: update.updateProgress + '%'}"></div>
+        </div>
+      </template>
     </div>
     <div class="flex flex-1 overflow-hidden">
       <Sidebar />
