@@ -288,6 +288,17 @@ _API_KEY_PROVIDER_AUX_MODELS: Dict[str, str] = _API_KEY_PROVIDER_AUX_MODELS_FALL
 _PROVIDER_VISION_MODELS: Dict[str, str] = {
     "xiaomi": "mimo-v2-omni",
     "zai": "glm-5v-turbo",
+    "deepseek": "deepseek-chat",
+    "alibaba": "qwen-vl-max",
+    "moonshot": "moonshot-v1-8k-vision-preview",
+    "minimax": "MiniMax-M2.7",
+    "minimax-cn": "MiniMax-M2.7",
+    "copilot": "gpt-4o",
+    "nvidia": "nvidia/nebula-minimax-2",
+    "tencent-tokenhub": "hy3-preview",
+    "stepfun": "step-3.5-vision",
+    "siliconflow": "Qwen/Qwen2.5-VL-72B-Instruct",
+    "baidu": "ernie-4.5-vl-400b",
 }
 
 # Providers whose endpoint does not accept image input, even though the
