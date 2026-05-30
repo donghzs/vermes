@@ -66,7 +66,7 @@ const allModels = computed(() => {
   for (const p of providers.value) {
     if (p.models && p.models.length > 0) {
       for (const m of p.models) {
-        list.push({ id: m, provider: p.name, providerId: p.id })
+        list.push({ id: m, provider: p.id, providerId: p.id })
       }
     }
   }
@@ -317,11 +317,11 @@ async function save() {
   if (firstRealKey) {
     const currentProvider = localStorage.getItem('vermes-current-provider')
     // Only auto-switch if currently on vbit trial or no provider set
-    if (!currentProvider || currentProvider === 'vbit.top') {
+    if (!currentProvider || currentProvider === 'vbit.top' || currentProvider === 'vbit') {
       localStorage.setItem('vermes-current-model', firstRealKey.model)
-      localStorage.setItem('vermes-current-provider', firstRealKey.name)
+      localStorage.setItem('vermes-current-provider', firstRealKey.id)
       const event = new CustomEvent('model-changed', {
-        detail: { model: firstRealKey.model, provider: firstRealKey.name }
+        detail: { model: firstRealKey.model, provider: firstRealKey.id }
       })
       window.dispatchEvent(event)
     }
