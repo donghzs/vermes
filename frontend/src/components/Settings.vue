@@ -208,16 +208,8 @@ function clearAllSettings() {
 }
 
 async function setCurrentModel(p, modelId) {
-  // Normalize provider name for backend
-  const providerMap = {
-    'openai': 'openai', 'deepseek': 'deepseek', 'qwen': 'qwen',
-    'openrouter': 'openrouter', 'vbit': 'vbit', 'ollama': 'ollama',
-    'xiaomi': 'xiaomi',
-    '通义千问': 'qwen', 'DeepSeek': 'deepseek', 'OpenRouter': 'openrouter',
-    'OpenAI': 'openai', 'vbit.top': 'vbit', 'Ollama (本地)': 'ollama',
-    '小米 MiMo': 'xiaomi',
-  }
-  const provider = providerMap[p.id] || p.id
+  // p.id 就是后端期望的 provider ID（如 'xiaomi', 'deepseek', 'custom'）
+  const provider = p.id
 
   try {
     // 1. 同步到后端 config.yaml
