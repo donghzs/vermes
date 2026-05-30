@@ -205,6 +205,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # WeChat login proxy
     "/api/wechat/qrurl",
     "/api/wechat/poll",
+    # 自更新
+    "/api/update/download",
+    "/api/update/apply",
     # Env vars (settings page needs to read/save keys)
     "/api/env",
     "/api/env/reveal",
@@ -1307,6 +1310,162 @@ async def shutdown_server():
         return {"ok": True}
     except Exception:
         return {"ok": False}
+
+
+# ── 自更新系统 ──────────────────────────────────────────────────────
+
+import hashlib
+import platform as _platform
+
+_UPDATE_DIR = os.path.expanduser("~/.vermes/update")
+_UPDATE_STAGING = os.path.join(_UPDATE_DIR, "staging")
+_UPDATE_PENDING = os.path.join(_UPDATE_DIR, "pending.json")
+
+
+class UpdateDownloadRequest(BaseModel):
+    version: str
+    url: str           # DMG 或 ZIP 的下载地址
+
+
+class UpdateApplyRequest(BaseModel):
+    version: str
+
+
+@app.post("/api/update/download")
+async def update_download(body: UpdateDownloadRequest):
+    """下载新版本到 ~/.vermes/update/staging/"""
+    import urllib.request
+    import ssl
+    import shutil as _shutil
+
+    os.makedirs(_UPDATE_STAGING, exist_ok=True)
+
+    url = body.url
+    if not url:
+        raise HTTPException(status_code=400, detail="缺少下载地址")
+
+    # 判断文件类型
+    is_dmg = url.endswith(".dmg")
+    is_zip = url.endswith(".zip")
+    if not is_dmg and not is_zip:
+        raise HTTPException(status_code=400, detail="不支持的文件格式（仅支持 .dmg 和 .zip）")
+
+    filename = url.split("/")[-1]
+    download_path = os.path.join(_UPDATE_DIR, filename)
+
+    _log.info(f"[Update] 下载 v{body.version}: {url}")
+
+    try:
+        # SSL 降级（和 claim 一样的逻辑）
+        ctx = ssl.create_default_context()
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(url, headers={"User-Agent": "Vermes-Updater/1.0"})
+        with urllib.request.urlopen(req, context=ctx, timeout=300) as resp:
+            total = int(resp.headers.get("Content-Length", 0))
+            downloaded = 0
+            with open(download_path, "wb") as f:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+
+        _log.info(f"[Update] 下载完成: {download_path} ({downloaded} bytes)")
+
+        # 解压到 staging
+        if os.path.exists(_UPDATE_STAGING):
+            _shutil.rmtree(_UPDATE_STAGING)
+        os.makedirs(_UPDATE_STAGING, exist_ok=True)
+
+        if is_dmg:
+            # macOS: 挂载 DMG，复制 .app，卸载
+            mount_point = os.path.join(_UPDATE_DIR, "mount")
+            os.makedirs(mount_point, exist_ok=True)
+            r = subprocess.run(
+                ["hdiutil", "attach", download_path, "-mountpoint", mount_point, "-nobrowse", "-quiet"],
+                capture_output=True, text=True, timeout=60
+            )
+            if r.returncode != 0:
+                raise Exception(f"挂载 DMG 失败: {r.stderr}")
+
+            # 找 .app 目录
+            app_found = False
+            for item in os.listdir(mount_point):
+                if item.endswith(".app"):
+                    src = os.path.join(mount_point, item)
+                    dst = os.path.join(_UPDATE_STAGING, item)
+                    _shutil.copytree(src, dst)
+                    app_found = True
+                    _log.info(f"[Update] 已提取 {item}")
+                    break
+
+            # 卸载
+            subprocess.run(["hdiutil", "detach", mount_point, "-quiet"], capture_output=True, timeout=30)
+
+            if not app_found:
+                raise Exception("DMG 中未找到 .app")
+
+        elif is_zip:
+            import zipfile
+            with zipfile.ZipFile(download_path, "r") as zf:
+                zf.extractall(_UPDATE_STAGING)
+            _log.info(f"[Update] 已解压 ZIP 到 {_UPDATE_STAGING}")
+
+        # 清理下载文件
+        os.remove(download_path)
+
+        return {"ok": True, "version": body.version, "staging_path": _UPDATE_STAGING}
+
+    except Exception as e:
+        _log.exception(f"[Update] 下载失败: {e}")
+        # 清理残留
+        for p in [download_path, _UPDATE_STAGING]:
+            try:
+                if os.path.isdir(p):
+                    _shutil.rmtree(p)
+                elif os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/update/apply")
+async def update_apply(body: UpdateApplyRequest):
+    """写 pending.json + 触发 shutdown，下次启动时自动应用更新。"""
+    import json
+
+    if not os.path.exists(_UPDATE_STAGING):
+        raise HTTPException(status_code=400, detail="没有待应用的更新（staging 目录不存在）")
+
+    # 写 pending.json
+    pending = {
+        "version": body.version,
+        "staging_path": _UPDATE_STAGING,
+        "platform": _platform.system(),
+        "timestamp": time.time()
+    }
+    os.makedirs(_UPDATE_DIR, exist_ok=True)
+    with open(_UPDATE_PENDING, "w") as f:
+        json.dump(pending, f, indent=2)
+
+    _log.info(f"[Update] pending.json 已写入，准备 shutdown 重启...")
+
+    # 触发 shutdown
+    try:
+        from hermes_cli.shutdown_signal import shutdown_event
+        shutdown_event.set()
+    except Exception:
+        pass
+
+    return {"ok": True, "message": "更新将在重启后生效"}
 
 
 async def remove_env_var(body: EnvVarDelete):
