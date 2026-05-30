@@ -124,7 +124,7 @@ async function request(path, options = {}) {
   const apiPrefix = isOnline ? '/v1' : '/api'
   const url = baseUrl ? `${baseUrl}${apiPrefix}${path}` : `${apiPrefix}${path}`
 
-  const maxRetries = 3
+  const maxRetries = options.method && options.method !== 'GET' ? 0 : 3
   const retryableStatuses = [429, 500, 502, 503, 504]
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -308,7 +308,12 @@ export default {
             }
             const delta = json.choices?.[0]?.delta?.content || ''
             if (delta && onChunk) onChunk(delta)
-          } catch (e) {}
+          } catch (e) {
+            // SSE 数据解析失败（可能是截断的 JSON 或非 JSON 行如 "pong"）
+            if (line.trim() && line.trim() !== 'pong') {
+              console.warn('[Vermes SSE] parse error:', e.message, 'line:', line.slice(0, 100))
+            }
+          }
         }
       }
       onDone?.(usageInfo)
