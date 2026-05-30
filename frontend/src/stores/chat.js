@@ -372,6 +372,13 @@ export const useChatStore = defineStore('chat', () => {
           // api.js传入的type: 'tool_start' | 'tool_end'
           // 转换为MessageList模板需要的status: 'running' | 'done' | 'error'
           if (tool.type === 'tool_start') {
+            // 新工具开始时，自动结束之前的 thinking 卡片
+            for (const t of am.toolInvocations) {
+              if (t.name === 'thinking' && t.status === 'running') {
+                t.status = 'done'
+                t.duration = Math.round((Date.now() - t.startTime) / 1000)
+              }
+            }
             am.toolInvocations.push({
               id: tool.tool_call_id || tool.name,
               name: tool.name,
@@ -391,6 +398,13 @@ export const useChatStore = defineStore('chat', () => {
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
+            // 关闭所有仍在 running 的 thinking 卡片
+            for (const t of am.toolInvocations || []) {
+              if (t.name === 'thinking' && t.status === 'running') {
+                t.status = 'done'
+                t.duration = Math.round((Date.now() - t.startTime) / 1000)
+              }
+            }
             am.streaming = false
           }
           loading.value = false
