@@ -335,15 +335,14 @@ export const useChatStore = defineStore('chat', () => {
     const ac = new AbortController()
     abortController.value = ac
 
-    // 构建发送给 API 的消息历史（只发文本，不含 base64 图片避免超长）
+    // 构建发送给 API 的消息历史
+    // #2 修复：保留图片上下文，只剥离当前消息的附件（已在 attachments 里发送）
+    const currentMsgId = msgId
     const apiMessages = messages.value
       .filter(m => m.sessionId === currentSessionId.value && !m.streaming)
       .map(m => ({
         role: m.role,
-        // 对于用户消息中的图片，用简短描述替代 base64
-        content: m.role === 'user' && m.content.includes('data:image')
-          ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '').trim()
-          : m.content,
+        content: m.content,
       }))
 
     try {

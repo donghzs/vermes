@@ -73,7 +73,7 @@ export function fileToBase64(file) {
         size: file.size,
         mimeType: file.type || 'application/octet-stream',
         base64: base64,
-        type: file.type.startsWith('image/') ? 'image' : 'file',
+        type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file',
       })
     }
     reader.onerror = reject
