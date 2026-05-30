@@ -38,6 +38,7 @@ const providers = ref([
 const customModelInputs = ref({})
 const activeTab = ref('providers')
 const saved = ref(false)
+const maxTokensInput = ref(null)  // max_tokens 全局设置
 // P2-16: 支持同时展开多个提供商面板
 const expandedProviders = ref(new Set())
 function isExpanded(id) { return expandedProviders.value.has(id) }
@@ -241,6 +242,42 @@ async function setCurrentModel(p, modelId) {
   }
 }
 
+async function loadMaxTokens() {
+  try {
+    const resp = await fetch('/api/model/info')
+    const data = await resp.json()
+    maxTokensInput.value = data.config_max_tokens || null
+  } catch (e) {
+    // ignore — will stay null (no limit)
+  }
+}
+
+async function saveMaxTokens() {
+  const val = maxTokensInput.value
+  // val 为 null/空/0 时表示不设置（清除）
+  const maxTokens = val > 0 ? val : 0
+  try {
+    const resp = await fetch('/api/model/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'main',
+        provider: localStorage.getItem('vermes-current-provider') || '',
+        model: localStorage.getItem('vermes-current-model') || '',
+        max_tokens: maxTokens
+      })
+    })
+    const data = await resp.json()
+    if (!data.ok) {
+      toast.error('保存失败: ' + (data.detail || JSON.stringify(data)))
+      return
+    }
+    toast.success(maxTokens > 0 ? `已设置 max_tokens = ${maxTokens}` : '已清除 max_tokens（让模型自己决定）')
+  } catch (e) {
+    toast.error('保存失败: ' + e.message)
+  }
+}
+
 function saveProvidersToStorage() {
   // 只要用户展开过这个厂商（有key/有模型/baseUrl被改过），就保存下来
   const data = providers.value
@@ -371,6 +408,8 @@ onMounted(() => {
   }
   // 不再自动同步、不再填充模板模型 —— 用户自己点同步或手动添加
   window.addEventListener('trial-token', _onTrialToken)
+  // 加载当前 max_tokens 设置
+  loadMaxTokens()
 })
 
 onUnmounted(() => {
@@ -400,6 +439,24 @@ onUnmounted(() => {
       <!-- 提供商配置 -->
       <div v-if="activeTab === 'providers'" class="max-w-2xl space-y-3">
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">配置 API Key 后点击「同步模型」自动获取可用模型，也可手动添加自定义模型。</p>
+
+        <!-- ⚙️ 全局模型设置 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-lg">⚙️</span>
+            <h3 class="font-medium text-gray-800 dark:text-gray-200">模型设置</h3>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">输出上限 (max_tokens)</label>
+            <input v-model.number="maxTokensInput" type="number" min="0" placeholder="不设置（让模型自己决定）"
+              class="w-40 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500" />
+            <button @click="saveMaxTokens()" class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition">保存</button>
+          </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            不设置 = 让模型自己决定输出长度（推荐）。
+            设置固定值可控制成本，如 4096 = 约 2000 中文字。
+          </p>
+        </div>
 
         <!-- 🌟 推荐模式（默认显示） -->
         <div class="space-y-3">

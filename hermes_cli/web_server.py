@@ -707,6 +707,7 @@ class ModelAssignment(BaseModel):
     provider: str
     model: str
     task: str = ""
+    max_tokens: Optional[int] = None  # 可选：设置 model.max_tokens（输出上限）
 
 
 _GATEWAY_HEALTH_URL = os.getenv("GATEWAY_HEALTH_URL")
@@ -1109,11 +1110,13 @@ def get_model_info():
             provider = model_cfg.get("provider", "")
             base_url = model_cfg.get("base_url", "")
             config_ctx = model_cfg.get("context_length")
+            config_max_tokens = model_cfg.get("max_tokens")
         else:
             model_name = str(model_cfg) if model_cfg else ""
             provider = ""
             base_url = ""
             config_ctx = None
+            config_max_tokens = None
 
         if not model_name:
             return dict(_EMPTY_MODEL_INFO, provider=provider)
@@ -1161,6 +1164,7 @@ def get_model_info():
             "auto_context_length": auto_ctx,
             "config_context_length": config_ctx_int,
             "effective_context_length": effective_ctx,
+            "config_max_tokens": config_max_tokens,
             "capabilities": caps,
         }
     except Exception:
@@ -1275,6 +1279,12 @@ async def set_model_assignment(body: ModelAssignment):
                 model_cfg = {}
             model_cfg["provider"] = provider
             model_cfg["default"] = model
+            # max_tokens 可选：设置输出上限（None=不修改，0=清除让模型自己决定）
+            if body.max_tokens is not None:
+                if body.max_tokens > 0:
+                    model_cfg["max_tokens"] = body.max_tokens
+                else:
+                    model_cfg.pop("max_tokens", None)
             # Clear stale base_url so the resolver picks the provider's own default.
             if "base_url" in model_cfg and model_cfg.get("base_url"):
                 model_cfg["base_url"] = ""
