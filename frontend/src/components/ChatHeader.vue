@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
+import HelpGuide from './HelpGuide.vue'
 
 const chat = useChatStore()
+const showHelp = ref(false)
 
 const props = defineProps({
   isLoggedIn: Boolean,
@@ -118,6 +120,7 @@ function closeDropdowns() {
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新会话' }}</h2>
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages.length }} 条消息</span>
       <button @click="emit('toggleHistory')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋</button>
+      <button @click="showHelp = true" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓</button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
         {{ quotaDisplay.text }}
@@ -161,4 +164,7 @@ function closeDropdowns() {
       <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">当前模型</span><span class="text-gray-800 dark:text-gray-200 font-medium">{{ sessionStats.model }}</span></div>
     </div>
   </div>
+
+  <!-- 使用帮助弹窗 -->
+  <HelpGuide v-if="showHelp" @close="showHelp = false" />
 </template>
