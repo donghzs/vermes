@@ -3989,7 +3989,7 @@ async def chat_completions(req: ChatRequest):
                 api_key=api_key,
                 provider=provider,
                 model=model,
-                max_iterations=100,
+                max_iterations=1000,
                 quiet_mode=True,
                 verbose_logging=False,
                 platform="web",
