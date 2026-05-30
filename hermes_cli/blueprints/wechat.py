@@ -27,8 +27,9 @@ async def wechat_qrurl_proxy():
                 "https://vbit.top/api/wechat/qrurl", timeout=15
             )
             return resp.json()
-    except ImportError:
-        return {"success": False, "error": "httpx not available"}
+    except Exception as e:
+        _log.warning(f"[WeChat] qrurl proxy failed: {e}")
+        return {"success": False, "error": str(e)}
 
 
 async def wechat_poll_proxy(state: str):
@@ -77,8 +78,9 @@ async def wechat_poll_proxy(state: str):
                 _log.warning(f"[WeChat] Token validation failed: {e}")
 
         return data
-    except ImportError:
-        return {"success": False, "error": "httpx not available"}
+    except Exception as e:
+        _log.warning(f"[WeChat] poll proxy failed: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # ── registration ───────────────────────────────────────────────

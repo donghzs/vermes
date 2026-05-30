@@ -91,6 +91,18 @@ const md = new MarkdownIt({
     return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`
   }
 })
+
+// 链接默认在新窗口打开，防止 WebView 导航走导致白屏
+const defaultLinkRenderer = md.renderer.rules.link_open || function(tokens, idx, options, env, self) {
+  return self.renderToken(tokens, idx, options)
+}
+md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
+  const token = tokens[idx]
+  token.attrSet('target', '_blank')
+  token.attrSet('rel', 'noopener noreferrer')
+  return defaultLinkRenderer(tokens, idx, options, env, self)
+}
+
 const chat = useChatStore()
 
 const props = defineProps({
@@ -105,7 +117,21 @@ const chatContainer = ref(null)
 // ── Markdown 渲染 ──
 function renderMd(content) {
   if (!content) return ''
-  try { return DOMPurify.sanitize(md.render(content)) } catch(e) { return content }
+  try { return DOMPurify.sanitize(md.render(content), { ADD_ATTR: ['target', 'rel'] }) } catch(e) { return content }
+}
+
+// ── 链接点击拦截（pywebview/浏览器兼容） ──
+function handleContentClick(e) {
+  const a = e.target.closest('a[href]')
+  if (a) {
+    e.preventDefault()
+    const url = a.href
+    if (window.pywebview?.api?.open_external_browser) {
+      window.pywebview.api.open_external_browser(url)
+    } else {
+      window.open(url, '_blank')
+    }
+  }
 }
 
 // ── 代码块复制按钮（DOM 操作方式，比正则替换更可靠） ──
@@ -159,11 +185,14 @@ onMounted(() => {
   }
 })
 
-// 切换会话时滚到底部
+// 切换会话时滚到底部（多次尝试，确保长列表渲染完成）
 watch(() => chat.currentSessionId, async () => {
-  await nextTick()
-  if (chatContainer.value) {
-    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+  // 等待 messages 更新 + DOM 渲染 + 图片懒加载
+  for (let i = 0; i < 5; i++) {
+    await nextTick()
+    if (chatContainer.value) {
+      chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+    }
   }
 })
 
@@ -199,9 +228,11 @@ async function regenerate(msg) {
     if (msgs[i].role === 'user') { userMsg = msgs[i]; break }
   }
   if (!userMsg) { toast.warning('未找到对应的用户消息'); return }
+  // 删除旧的 assistant 消息
   const globalIndex = chat.messages.findIndex(m => m.id === msg.id)
   if (globalIndex >= 0) chat.messages.splice(globalIndex, 1)
-  await chat.sendMessage(userMsg.content)
+  // 重新发送，传 _isRegenerate=true 让 sendMessage 跳过添加 user 消息
+  await chat.sendMessage(userMsg.content, userMsg.attachments || [], null, null, true)
 }
 
 function isLastAssistant(msg) {
@@ -301,7 +332,7 @@ watch(() => chat.filteredMessages.length, async () => {
               </template>
             </template>
             <template v-else>
-              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg.content)"></div>
+              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg.content)" @click="handleContentClick($event)"></div>
               <span v-else class="text-gray-400 text-xs">等待中...</span>
               <span v-if="msg.streaming" class="typing-cursor"></span>
             </template>
@@ -366,6 +397,9 @@ watch(() => chat.filteredMessages.length, async () => {
 </template>
 
 <style scoped>
+.vermes-md :deep(a) { color: #61afef; text-decoration: underline; cursor: pointer; }
+.dark .vermes-md :deep(a) { color: #82b1ff; }
+.vermes-md :deep(a:hover) { color: #82b1ff; opacity: 0.85; }
 .vermes-md :deep(p) { margin: 0.4em 0; line-height: 1.7; }
 .vermes-md :deep(h1), .vermes-md :deep(h2), .vermes-md :deep(h3) { font-weight: 600; margin: 0.6em 0 0.3em; }
 .vermes-md :deep(h1) { font-size: 1.2em; }
