@@ -1933,6 +1933,12 @@ def run_conversation(
                     and _status_ok
                 ):
                     agent._vision_supported = False
+                    # Record in class-level cache so _model_supports_vision()
+                    # also returns False for this model in future turns/sessions
+                    _provider = (getattr(agent, "provider", "") or "").strip()
+                    _model = (getattr(agent, "model", "") or "").strip()
+                    if _provider and _model:
+                        agent._no_vision_models.add(f"{_provider}/{_model}".lower())
                     _imgs_removed = _strip_images_from_messages(messages)
                     if isinstance(api_messages, list):
                         _strip_images_from_messages(api_messages)

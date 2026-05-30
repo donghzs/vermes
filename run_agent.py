@@ -3182,25 +3182,37 @@ class AIAgent:
         self._anthropic_image_fallback_cache[cache_key] = note
         return note
 
-    def _model_supports_vision(self) -> bool:
-        """Return True if the active provider+model reports native vision.
+    # Class-level set: models that failed with "does not support image" errors.
+    # Once a model fails, we skip vision for it in future turns (runtime cache).
+    _no_vision_models: set = set()
 
-        Used to decide whether to strip image content parts from API-bound
-        messages (for non-vision models) or let the provider adapter handle
-        them natively (for vision-capable models).
+    def _model_supports_vision(self) -> bool:
+        """Return True if the active provider+model supports native vision.
+
+        Resolution order:
+          1. Runtime cache — models that previously failed with image errors
+             are recorded in ``_no_vision_models`` and return False.
+          2. models.dev registry — known capabilities from the community DB.
+          3. Default: True — trust the model. If it doesn't support images,
+             the API will error and the caller records the model in the
+             runtime cache for graceful degradation next turn.
         """
         try:
-            from agent.models_dev import get_model_capabilities
             provider = (getattr(self, "provider", "") or "").strip()
             model = (getattr(self, "model", "") or "").strip()
             if not provider or not model:
+                return True  # Unknown → try anyway
+            cache_key = f"{provider}/{model}".lower()
+            if cache_key in self._no_vision_models:
                 return False
+            from agent.models_dev import get_model_capabilities
             caps = get_model_capabilities(provider, model)
-            if caps is None:
-                return False
-            return bool(caps.supports_vision)
+            if caps is not None:
+                return bool(caps.supports_vision)
+            # Not in registry → default True (trust the model)
+            return True
         except Exception:
-            return False
+            return True  # On error → try anyway, let API decide
 
     def _preprocess_anthropic_content(self, content: Any, role: str) -> Any:
         if not self._content_has_image_parts(content):

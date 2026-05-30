@@ -33,6 +33,16 @@ function toggleToolExpand(toolId) {
 function isToolExpanded(toolId) {
   return expandedTools.value.has(toolId)
 }
+
+// 流式中：获取当前正在执行的工具/思考的中文描述
+function currentRunningTool(tools) {
+  const running = tools.filter(t => t.status === 'running')
+  if (running.length === 0) return null
+  const t = running[running.length - 1] // 取最后一个running
+  if (t.name === 'thinking') return '思考中...'
+  const map = {read_file:'读取文件...',write_file:'写入文件...',search_files:'搜索文件...',terminal:'执行命令...',web_search:'搜索网页...',vision_analyze:'分析图片...',list_directory:'列出目录...',edit_file:'编辑文件...',memory:'记忆操作...',execute_command:'执行命令...',google_search:'搜索...',browse_url:'浏览网页...'}
+  return map[t.name] || t.name + '...'
+}
 import markdown from 'highlight.js/lib/languages/markdown'
 import typescript from 'highlight.js/lib/languages/typescript'
 import jsx from 'highlight.js/lib/languages/javascript'
@@ -296,31 +306,39 @@ watch(() => chat.filteredMessages.length, async () => {
               <span v-if="msg.streaming" class="typing-cursor"></span>
             </template>
           </div>
-          <!-- 工具调用展示 -->
-          <div v-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="mt-2 space-y-1">
-            <div v-for="tool in msg.toolInvocations" :key="tool.id || tool.name"
-                 class="text-xs rounded-lg overflow-hidden"
-                 :class="tool.status === 'running' ? 'bg-blue-50 dark:bg-blue-900/20' : tool.status === 'error' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-700/50'">
-              <!-- 工具头部（可点击展开） -->
-              <div class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600/30 transition"
-                   :class="tool.status === 'running' ? 'text-blue-600 dark:text-blue-400' : tool.status === 'error' ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'"
-                   @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
-                <span v-if="tool.status === 'running'" class="animate-spin">⏳</span>
-                <span v-else-if="tool.status === 'error'">❌</span>
-                <span v-else>✅</span>
-                <span class="font-medium flex-1">{{ ({thinking:'思考中',read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
-                <span v-if="tool.duration" class="text-[10px] opacity-60">{{ tool.duration }}s</span>
-                <span v-if="tool.status === 'running'" class="text-[10px] opacity-60">执行中...</span>
-                <span v-if="tool.result_preview" class="text-[10px] opacity-60">
-                  {{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}
+          <!-- 工具调用展示：流式中=单条状态，完成后=紧凑时间线 -->
+          <div v-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="mt-2">
+            <!-- 流式中：只显示当前正在执行的（thinking或tool） -->
+            <template v-if="msg.streaming">
+              <div v-if="currentRunningTool(msg.toolInvocations)"
+                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                <span class="animate-spin text-xs">⏳</span>
+                <span>{{ currentRunningTool(msg.toolInvocations) }}</span>
+              </div>
+            </template>
+            <!-- 完成后：紧凑时间线（只显示真实工具，不含thinking） -->
+            <template v-else>
+              <div v-if="msg.toolInvocations.filter(t => t.name !== 'thinking').length > 0"
+                   class="flex flex-wrap gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                <span v-for="tool in msg.toolInvocations.filter(t => t.name !== 'thinking')"
+                      :key="'done-' + (tool.id || tool.name)"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                      :class="tool.status === 'error' ? 'text-red-500' : ''"
+                      @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
+                  <span>{{ tool.status === 'error' ? '❌' : '✅' }}</span>
+                  <span>{{ ({read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
+                  <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
+                  <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
                 </span>
               </div>
-              <!-- 工具结果摘要（可折叠） -->
-              <div v-if="tool.result_preview && isToolExpanded(tool.id || tool.name)"
-                   class="px-3 py-2 border-t border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800/50">
-                <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ tool.result_preview }}</pre>
-              </div>
-            </div>
+              <!-- 可折叠的结果摘要 -->
+              <template v-for="tool in msg.toolInvocations.filter(t => t.name !== 'thinking')" :key="'preview-' + (tool.id || tool.name)">
+                <div v-if="tool.result_preview && isToolExpanded(tool.id || tool.name)"
+                     class="mt-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ tool.result_preview }}</pre>
+                </div>
+              </template>
+            </template>
           </div>
           <div class="flex items-center gap-2 mt-1"
                :class="msg.role === 'user' ? 'justify-end' : ''">
