@@ -19,6 +19,7 @@ block_cipher = None
 # Collect all data files from hermes_cli (web_dist, locales, etc.)
 datas = [
     ('hermes_cli/web_dist', 'hermes_cli/web_dist'),
+    ('hermes_cli/blueprints', 'hermes_cli/blueprints'),
     ('locales', 'locales'),
     ('skills', 'skills'),
     ('plugins', 'plugins'),
@@ -141,6 +142,17 @@ hiddenimports = [
     'tenacity',
     'pydantic',
     'jinja2',
+
+    # Blueprints
+    'hermes_cli.blueprints',
+    'hermes_cli.blueprints.chat',
+    'hermes_cli.blueprints.quota',
+    'hermes_cli.blueprints.wechat',
+    'hermes_cli.blueprints.models',
+    'hermes_cli.blueprints.config',
+    'hermes_cli.blueprints.providers',
+    'hermes_cli.blueprints.dashboard',
+    'hermes_cli.blueprints.session',
 
     # Web server
     'multipart',
