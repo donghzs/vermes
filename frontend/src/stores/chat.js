@@ -19,6 +19,7 @@ export const SESSION_TEMPLATES = [
   { id: 'translator', name: '翻译助手', icon: '🌐', systemPrompt: '你是一位专业的翻译助手。请将用户输入的内容准确翻译为目标语言。如果用户没有指定目标语言，请将中文翻译为英文，或将非中文内容翻译为中文。保持原文的语气和风格。' },
   { id: 'coder', name: '代码助手', icon: '💻', systemPrompt: '你是一位专业的编程助手。帮助用户编写、调试和优化代码。提供清晰的代码示例和详细解释。使用最佳实践和设计模式。' },
   { id: 'writer', name: '写作助手', icon: '✍️', systemPrompt: '你是一位专业的写作助手。帮助用户撰写、润色和改进各类文本。注意语法、逻辑和表达的准确性与优美性。' },
+  { id: 'custom', name: '自定义', icon: '⚙️', systemPrompt: '' },
 ]
 
 // ── 快速开始建议 ──
