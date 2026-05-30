@@ -1286,9 +1286,21 @@ async def get_env_vars():
 # Allowed keys for /api/env PUT – prevent arbitrary .env writes
 _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
     "DEFAULT_MODEL", "DEFAULT_PROVIDER", "THEME", "LANGUAGE",
+    # 主流 provider
     "VBIT_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY",
     "QWEN_API_KEY", "ZHIPU_API_KEY", "MISTRAL_API_KEY",
     "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+    # 国产 provider
+    "XIAOMI_API_KEY", "DOUBAO_API_KEY", "MOONSHOT_API_KEY",
+    "BAICHUAN_API_KEY", "YI_API_KEY", "SPARK_API_KEY",
+    "SILICONFLOW_API_KEY", "Baidu_API_KEY", "BAIDU_API_KEY",
+    "XINGHUO_API_KEY", "STEPFUN_API_KEY", "MINIMAX_API_KEY",
+    "ANT_LING_API_KEY",
+    # 国际 provider
+    "GEMINI_API_KEY", "GROQ_API_KEY", "TOGETHER_API_KEY",
+    "COHERE_API_KEY",
+    # 自定义
+    "CUSTOM_API_KEY",
 })
 
 async def set_env_var(body: EnvVarUpdate, request: Request):
