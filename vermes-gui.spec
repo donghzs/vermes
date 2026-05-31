@@ -18,6 +18,7 @@ for src, dst in [
     ('skills', 'skills'),
     ('plugins', 'plugins'),
     ('tools', 'tools'),
+    ('cron', 'cron'),
     ('agent', 'agent'),
     ('gateway', 'gateway'),
     ('hermes_constants.py', '.'),
