@@ -983,7 +983,7 @@ def check_vision_requirements() -> bool:
             return True
 
         # Check 2.5: Another user-configured provider has vision
-        for cand_provider, _ in _CROSS_PROVIDER_VISION_MODELS:
+        for cand_provider, _ in _build_vision_candidates(_provider or ""):
             if cand_provider == _provider:
                 continue
             try:
@@ -1220,6 +1220,67 @@ _CROSS_PROVIDER_VISION_MODELS = (
     ("baidu", "ernie-4.5-vl-400b"),
 )
 
+# Vermes 内置 provider（排在最后，优先用用户自己的）
+_BUILTIN_PROVIDERS = {"vbit"}
+
+
+def _build_vision_candidates(main_provider: str) -> list[tuple[str, str | None]]:
+    """动态构建视觉候选列表：用户已配置的 provider 优先，内置 provider 最后。
+
+    只包含用户在 .env 中有 API key 的 provider。
+    返回 [(provider_id, vision_model), ...]
+    """
+    # provider → 视觉模型映射
+    _VISION_MODEL_MAP = dict(_CROSS_PROVIDER_VISION_MODELS)
+
+    try:
+        from hermes_cli.config import load_env, load_config
+        env = load_env()
+        cfg = load_config()
+    except Exception:
+        return list(_CROSS_PROVIDER_VISION_MODELS)
+
+    # .env key → provider 映射
+    _ENV_KEY_MAP = {
+        "ANTHROPIC_API_KEY": "anthropic", "OPENAI_API_KEY": "openai",
+        "GEMINI_API_KEY": "gemini", "OPENROUTER_API_KEY": "openrouter",
+        "DEEPSEEK_API_KEY": "deepseek", "QWEN_API_KEY": "alibaba",
+        "ZHIPU_API_KEY": "zai", "XIAOMI_API_KEY": "xiaomi",
+        "MOONSHOT_API_KEY": "moonshot", "MINIMAX_API_KEY": "minimax",
+        "NVIDIA_API_KEY": "nvidia", "SILICONFLOW_API_KEY": "siliconflow",
+        "STEPFUN_API_KEY": "stepfun", "TENCENT_API_KEY": "tencent-tokenhub",
+        "BAIDU_API_KEY": "baidu", "VBIT_API_KEY": "vbit",
+        "CUSTOM_API_KEY": "custom", "ONEAPI_KEY": "oneapi",
+    }
+
+    # 收集用户已配置的 provider（有 API key）
+    user_providers = set()
+    for env_key, provider in _ENV_KEY_MAP.items():
+        if env.get(env_key):
+            user_providers.add(provider)
+
+    # 也从 config.yaml providers 段收集
+    cfg_providers = cfg.get("providers", {})
+    for p in cfg_providers:
+        if isinstance(cfg_providers[p], dict):
+            user_providers.add(p)
+
+    # 排除当前主 provider（Step 1/2 已试过）
+    user_providers.discard(main_provider)
+
+    # 分组：用户 provider 在前，内置 provider 在后
+    user_candidates = []
+    builtin_candidates = []
+    for prov in user_providers:
+        model = _VISION_MODEL_MAP.get(prov)
+        if model:
+            if prov in _BUILTIN_PROVIDERS:
+                builtin_candidates.append((prov, model))
+            else:
+                user_candidates.append((prov, model))
+
+    return user_candidates + builtin_candidates
+
 
 async def _try_other_provider_vision(
     image_url: str,
@@ -1248,28 +1309,10 @@ async def _try_other_provider_vision(
     except Exception:
         env = {}
 
-    # Provider → env key mapping (matches frontend getEnvKey)
-    _ENV_MAP = {
-        "anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY", "copilot": "OPENAI_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY", "deepseek": "DEEPSEEK_API_KEY",
-        "alibaba": "QWEN_API_KEY", "zai": "ZHIPU_API_KEY",
-        "xiaomi": "XIAOMI_API_KEY", "moonshot": "MOONSHOT_API_KEY",
-        "minimax": "MINIMAX_API_KEY", "minimax-cn": "MINIMAX_API_KEY",
-        "nvidia": "NVIDIA_API_KEY", "siliconflow": "SILICONFLOW_API_KEY",
-        "stepfun": "STEPFUN_API_KEY", "tencent-tokenhub": "TENCENT_API_KEY",
-        "baidu": "BAIDU_API_KEY",
-    }
+    # 动态构建候选列表：用户已配置的 provider 优先，内置 provider 最后
+    candidates = _build_vision_candidates(main_norm)
 
-    # Build candidates from _CROSS_PROVIDER_VISION_MODELS — only if user has key
-    for cand_provider, cand_vision_model in _CROSS_PROVIDER_VISION_MODELS:
-        if cand_provider == main_norm:
-            continue  # already tried in Steps 1–2
-
-        # Check if user has an API key for this provider
-        env_key = _ENV_MAP.get(cand_provider)
-        if env_key and not env.get(env_key):
-            continue  # no key configured, skip
+    for cand_provider, cand_vision_model in candidates:
 
         try:
             from agent.auxiliary_client import resolve_provider_client
