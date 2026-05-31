@@ -43,9 +43,9 @@ export function useQuota() {
         }
         return
       }
-      const resp = await fetch(
-        '/api/quota/check?wechat_openid=' + encodeURIComponent(wechatOpenid)
-      )
+      const resp = await fetch('/api/quota/check', {
+        headers: { 'X-WeChat-Openid': wechatOpenid }
+      })
       const data = await resp.json()
       if (data.success) serverQuota.value = data.data
     } catch (e) {
