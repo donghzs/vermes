@@ -1586,8 +1586,14 @@ def _resolve_child_python(mode: str) -> str:
     python so ``import pandas`` etc. work. Falls back to ``sys.executable``
     if no venv is detected, the candidate binary is missing/not executable,
     or it fails a Python 3.8+ version check.
+
+    When running as a PyInstaller bundle (``sys.frozen``), ``sys.executable``
+    is the bundled exe (e.g. ``Vermes.exe``), not Python.  In that case we
+    always search for a real system Python.
     """
-    if mode != "project":
+    _is_frozen = getattr(sys, "frozen", False)
+
+    if mode != "project" and not _is_frozen:
         return sys.executable
 
     if _IS_WINDOWS:
@@ -1615,6 +1621,16 @@ def _resolve_child_python(mode: str) -> str:
                     "Using sys.executable instead.", var, candidate,
                 )
                 return sys.executable
+
+    # Frozen bundle fallback: search PATH for a real Python
+    if _is_frozen:
+        for exe in exe_names:
+            import shutil
+            found = shutil.which(exe)
+            if found and _is_usable_python(found):
+                logger.info("execute_code: frozen bundle — using system Python %s", found)
+                return found
+        logger.warning("execute_code: frozen bundle — no system Python found on PATH")
 
     return sys.executable
 
