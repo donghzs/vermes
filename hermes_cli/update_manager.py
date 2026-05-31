@@ -759,8 +759,8 @@ def apply_pending_update() -> Optional[str]:
             # 重启前等待旧进程释放端口
             print(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
             _cleanup_after_apply()
-            # 给旧进程时间释放端口（uvicorn 优雅关闭需要 ~1s）
-            time.sleep(2)
+            time.sleep(1)  # uvicorn 优雅关闭
+            _wait_port_release(9119, timeout=10)
             subprocess.Popen(["open", str(app_path)])
             import sys
             sys.exit(0)
@@ -772,7 +772,8 @@ def apply_pending_update() -> Optional[str]:
             # 重启前等待旧进程释放端口
             print(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
             _cleanup_after_apply()
-            time.sleep(2)
+            time.sleep(1)  # uvicorn 优雅关闭
+            _wait_port_release(9119, timeout=10)
             subprocess.Popen([str(app_path / "Vermes.exe")])
             import sys
             sys.exit(0)
@@ -784,6 +785,20 @@ def apply_pending_update() -> Optional[str]:
         return None
 
     return version
+
+
+def _wait_port_release(port: int, timeout: float = 10.0) -> bool:
+    """等待端口释放，返回是否成功。"""
+    import socket
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                pass  # 端口仍被占用
+        except (ConnectionRefusedError, OSError):
+            return True  # 端口已释放
+        time.sleep(0.5)
+    return False
 
 
 def _cleanup_after_apply():

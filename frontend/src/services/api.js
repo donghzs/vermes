@@ -27,9 +27,9 @@ export function isCloudModel(provider) {
 // ── 服务端配额查询（v2：仅限微信登录用户） ──
 export async function checkQuotaServer(wechatOpenid) {
   try {
-    let url = '/api/quota/check?'
-    if (wechatOpenid) url += `wechat_openid=${encodeURIComponent(wechatOpenid)}`
-    const resp = await fetch(url)
+    const headers = {}
+    if (wechatOpenid) headers['X-WeChat-Openid'] = wechatOpenid
+    const resp = await fetch('/api/quota/check', { headers })
     return await resp.json()
   } catch (e) {
     console.warn('[Vermes] 服务端配额查询失败:', e)
