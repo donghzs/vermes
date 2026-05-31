@@ -1218,6 +1218,8 @@ _CROSS_PROVIDER_VISION_MODELS = (
     ("minimax", "MiniMax-M2.7"),
     ("siliconflow", "Qwen/Qwen2.5-VL-72B-Instruct"),
     ("baidu", "ernie-4.5-vl-400b"),
+    # Vermes 自带免费体验服务（底层 xiaomi 模型）
+    ("vbit", "mimo-v2-omni"),
 )
 
 # Vermes 内置 provider（排在最后，优先用用户自己的）
