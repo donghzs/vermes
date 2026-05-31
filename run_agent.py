@@ -3666,29 +3666,37 @@ class AIAgent:
         self._anthropic_image_fallback_cache[cache_key] = note
         return note
 
+    # Class-level set: models that failed with "does not support image" errors.
+    # Once a model fails, we skip vision for it in future turns (runtime cache).
+    _no_vision_models: set = set()
+
     def _model_supports_vision(self) -> bool:
-        """Return True if the active provider+model reports native vision.
+        """Return True if the active provider+model supports native vision.
 
-        Used to decide whether to strip image content parts from API-bound
-        messages (for non-vision models) or let the provider adapter handle
-        them natively (for vision-capable models).
-
-        Resolution order (see ``agent.image_routing._supports_vision_override``):
-          1. ``model.supports_vision`` (top-level, single-model shortcut)
-          2. ``providers.<provider>.models.<model>.supports_vision``
-          3. models.dev capability lookup
-        Custom/local models absent from models.dev would otherwise be
-        misclassified as non-vision and have their images stripped.
+        Resolution order:
+          1. Runtime cache — models that previously failed with image errors
+             are recorded in ``_no_vision_models`` and return False.
+          2. models.dev registry — known capabilities from the community DB.
+          3. Default: True — trust the model. If it doesn't support images,
+             the API will error and the caller records the model in the
+             runtime cache for graceful degradation next turn.
         """
         try:
-            from hermes_cli.config import load_config
-            from agent.image_routing import _lookup_supports_vision
-            cfg = load_config()
             provider = (getattr(self, "provider", "") or "").strip()
             model = (getattr(self, "model", "") or "").strip()
-            return _lookup_supports_vision(provider, model, cfg) is not False
+            if not provider or not model:
+                return True  # Unknown → try anyway
+            cache_key = f"{provider}/{model}".lower()
+            if cache_key in self._no_vision_models:
+                return False
+            from agent.models_dev import get_model_capabilities
+            caps = get_model_capabilities(provider, model)
+            if caps is not None:
+                return bool(caps.supports_vision)
+            # Not in registry → default True (trust the model)
+            return True
         except Exception:
-            return False
+            return True  # On error → try anyway, let API decide
 
     def _preprocess_anthropic_content(self, content: Any, role: str) -> Any:
         if not self._content_has_image_parts(content):
