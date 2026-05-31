@@ -20,6 +20,8 @@ for src, dst in [
     ('tools', 'tools'),
     ('cron', 'cron'),
     ('agent', 'agent'),
+    ('acp_adapter', 'acp_adapter'),
+    ('acp_registry', 'acp_registry'),
     ('gateway', 'gateway'),
     ('hermes_constants.py', '.'),
     ('model_tools.py', '.'),
