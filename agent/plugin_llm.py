@@ -2,7 +2,7 @@
 Plugin LLM facade — host-owned LLM access for trusted plugins.
 ==============================================================
 
-Plugins built on Vermes often need to make their own LLM calls
+Plugins built on Hermes Agent often need to make their own LLM calls
 out-of-band — a hook that rewrites a tool error before the user sees
 it, a gateway adapter that translates inbound text, a slash command
 that summarises a paste, a scheduled job that scores yesterday's

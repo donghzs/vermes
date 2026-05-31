@@ -1,11 +1,11 @@
 """
-Session Insights Engine for Vermes.
+Session Insights Engine for Hermes Agent.
 
 Analyzes historical session data from the SQLite state database to produce
 comprehensive usage insights — token consumption, cost estimates, tool usage
 patterns, activity trends, model/platform breakdowns, and session metrics.
 
-Inspired by Claude Code's /insights command, adapted for Vermes's
+Inspired by Claude Code's /insights command, adapted for Hermes Agent's
 multi-platform architecture with additional cost estimation and platform
 breakdown capabilities.
 
