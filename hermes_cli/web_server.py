@@ -3783,6 +3783,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     # Get base_url — check config.yaml override first (user-set), then hardcoded defaults
     base_url = ""
     cfg_path = home / "config.yaml"
+    cfg = {}
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
@@ -3798,6 +3799,19 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
         for line in env_content.splitlines():
             line = line.strip()
             if line.startswith(f"{env_var}="):
+                api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+
+    # Fallback: 从 config.yaml providers.{provider}.api_key 读取（自定义 provider）
+    if not api_key:
+        api_key = cfg.get("providers", {}).get(provider, {}).get("api_key", "")
+
+    # Fallback: 尝试 PROVIDER_ID_API_KEY 格式（自定义 provider 存入 .env）
+    if not api_key and env_path.exists():
+        custom_env_key = f"{provider.upper().replace('-', '_')}_API_KEY"
+        env_content = env_path.read_text(encoding="utf-8")
+        for line in env_content.splitlines():
+            line = line.strip()
+            if line.startswith(f"{custom_env_key}="):
                 api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
 
     # Ollama doesn't need a key
@@ -6061,17 +6075,26 @@ class ProviderAddRequest(BaseModel):
 async def add_provider(body: ProviderAddRequest):
     """Add a new provider by writing API key to .env file."""
     template = PROVIDER_TEMPLATES.get(body.provider_id)
-    if not template:
-        raise HTTPException(status_code=400, detail=f"Unknown provider: {body.provider_id}")
+    if template:
+        save_env_value(template["api_key_env"], body.api_key)
+    else:
+        # 自定义 provider：用 PROVIDER_ID_API_KEY 格式存入 .env
+        env_key = f"{body.provider_id.upper().replace('-', '_')}_API_KEY"
+        save_env_value(env_key, body.api_key)
     
-    save_env_value(template["api_key_env"], body.api_key)
-    
-    if body.base_url and body.base_url != template["base_url"]:
+    if body.base_url:
         cfg = load_config()
         providers = cfg.get("providers", {})
         if not isinstance(providers, dict):
             providers = {}
-        providers[body.provider_id] = {"base_url": body.base_url}
+        entry = providers.get(body.provider_id, {})
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["base_url"] = body.base_url
+        # 自定义 provider 同时存 api_key 到 config.yaml（作为 fallback）
+        if not template and body.api_key:
+            entry["api_key"] = body.api_key
+        providers[body.provider_id] = entry
         cfg["providers"] = providers
         save_config(cfg)
     
