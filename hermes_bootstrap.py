@@ -118,6 +118,31 @@ def apply_windows_utf8_bootstrap() -> bool:
             except (OSError, ValueError):
                 pass
 
+    # ── Force subprocess.Popen to use UTF-8 on Windows ──
+    # On Chinese Windows the default encoding is GBK.  When caller passes
+    # ``text=True`` without explicit ``encoding``, subprocess._readerthread
+    # decodes with GBK → UnicodeDecodeError → tool output lost → "no response".
+    # Monkey-patch Popen to inject encoding='utf-8' when text=True but no
+    # encoding is specified.
+    import subprocess as _sp
+    _OrigPopen = _sp.Popen
+    class _Utf8Popen(_OrigPopen):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("text") or kwargs.get("universal_newlines"):
+                kwargs.setdefault("encoding", "utf-8")
+                kwargs.setdefault("errors", "replace")
+            super().__init__(*args, **kwargs)
+    _sp.Popen = _Utf8Popen
+
+    # Also patch subprocess.run which calls Popen internally
+    _OrigRun = _sp.run
+    def _utf8_run(*args, **kwargs):
+        if kwargs.get("text") or kwargs.get("universal_newlines"):
+            kwargs.setdefault("encoding", "utf-8")
+            kwargs.setdefault("errors", "replace")
+        return _OrigRun(*args, **kwargs)
+    _sp.run = _utf8_run
+
     _bootstrap_applied = True
     return True
 
