@@ -15,6 +15,19 @@ import webbrowser
 import socket
 import subprocess
 
+# ── 无 console 模式下重定向 stdout/stderr 到日志文件 ──
+# PyInstaller console=False 时 stdout/stderr 断开，后端静默失败。
+# 必须在最开始重定向，否则后续 print 全部丢失。
+if sys.platform == 'win32' and getattr(sys, 'frozen', False):
+    _log_dir = os.path.expanduser("~/.vermes")
+    os.makedirs(_log_dir, exist_ok=True)
+    _log_path = os.path.join(_log_dir, "gui_app.log")
+    if sys.stdout is None or not hasattr(sys.stdout, 'fileno') or sys.stdout.fileno() < 0:
+        sys.stdout = open(_log_path, "a", encoding="utf-8", buffering=1)
+    if sys.stderr is None or not hasattr(sys.stderr, 'fileno') or sys.stderr.fileno() < 0:
+        sys.stderr = sys.stdout
+    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Vermes GUI started (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)})")
+
 APP_TITLE    = "Vermes - AI Agent"
 DEFAULT_PORT = 9119
 PORT_FILE     = os.path.expanduser("~/.vermes/gui_port.txt")
