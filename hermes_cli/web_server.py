@@ -66,7 +66,7 @@ def _resolve_max_tokens(model: str) -> int | None:
         cfg_path = home / "config.yaml"
         if cfg_path.exists():
             import yaml
-            with open(cfg_path) as f:
+            with open(cfg_path, encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
             user_max_tokens = cfg.get("model", {}).get("max_tokens")
             if user_max_tokens is not None:
@@ -3634,7 +3634,7 @@ def _get_chat_credentials() -> tuple[str, str, str]:
     }
     
     if cfg_path.exists():
-        with open(cfg_path) as f:
+        with open(cfg_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         m = cfg.get("model", {})
         base_url = m.get("base_url", "")
@@ -3649,7 +3649,7 @@ def _get_chat_credentials() -> tuple[str, str, str]:
         base_url = PROVIDER_BASE_URL.get(provider, "")
     
     if env_path.exists():
-        env_content = env_path.read_text()
+        env_content = env_path.read_text(encoding="utf-8")
         for line in env_content.splitlines():
             line = line.strip()
             if env_var_name and line.startswith(f"{env_var_name}="):
@@ -3774,7 +3774,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     if not provider:
         cfg_path = home / "config.yaml"
         if cfg_path.exists():
-            with open(cfg_path) as f:
+            with open(cfg_path, encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
             provider = cfg.get("model", {}).get("provider", "deepseek")
         else:
@@ -3784,7 +3784,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     base_url = ""
     cfg_path = home / "config.yaml"
     if cfg_path.exists():
-        with open(cfg_path) as f:
+        with open(cfg_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         base_url = cfg.get("providers", {}).get(provider, {}).get("base_url", "")
     if not base_url:
@@ -3794,7 +3794,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
     api_key = ""
     env_var = PROVIDER_ENV_MAP_SHARED.get(provider)
     if env_var and env_path.exists():
-        env_content = env_path.read_text()
+        env_content = env_path.read_text(encoding="utf-8")
         for line in env_content.splitlines():
             line = line.strip()
             if line.startswith(f"{env_var}="):
@@ -3864,7 +3864,7 @@ async def chat_completions(req: ChatRequest):
                 from hermes_constants import get_hermes_home
                 env_path = get_hermes_home() / ".env"
                 if env_path.exists():
-                    for line in env_path.read_text().splitlines():
+                    for line in env_path.read_text(encoding="utf-8").splitlines():
                         line = line.strip()
                         if line.startswith("VBIT_API_KEY=") or line.startswith("VBIT_API_KEY ="):
                             existing = line.split("=", 1)[1].strip().strip('"').strip("'")
@@ -3882,7 +3882,7 @@ async def chat_completions(req: ChatRequest):
                             # Write token to .env
                             env_content = ""
                             if env_path.exists():
-                                env_content = env_path.read_text()
+                                env_content = env_path.read_text(encoding="utf-8")
                             lines = env_content.splitlines()
                             found = False
                             new_lines = []
