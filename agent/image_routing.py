@@ -291,10 +291,14 @@ def decide_image_input_mode(
 ) -> str:
     """Return ``"native"`` or ``"text"`` for the given turn.
 
+    国内版：直接返回 native，不做保守预判。
+    让模型自己处理图片，失败时内部自动回退到 vision_analyze 工具链。
+    用户无感知，体验优先。
+
     Args:
-      provider: active inference provider ID (e.g. ``"anthropic"``, ``"openrouter"``).
-      model:    active model slug as it would be sent to the provider.
-      cfg:      loaded config.yaml dict, or None. When None, behaves as auto.
+      provider: active inference provider ID.
+      model:    active model slug.
+      cfg:      loaded config.yaml dict, or None.
     """
     mode_cfg = "auto"
     if isinstance(cfg, dict):
@@ -302,19 +306,14 @@ def decide_image_input_mode(
         if isinstance(agent_cfg, dict):
             mode_cfg = _coerce_mode(agent_cfg.get("image_input_mode"))
 
-    if mode_cfg == "native":
-        return "native"
+    # 尊重用户显式配置
     if mode_cfg == "text":
         return "text"
 
-    # auto
-    if _explicit_aux_vision_override(cfg):
-        return "text"
-
-    supports = _lookup_supports_vision(provider, model, cfg)
-    if supports is True:
-        return "native"
-    return "text"
+    # 默认直接 native，不预判模型能力
+    # 模型支持 vision → 直接处理
+    # 模型不支持 → 内部错误处理会触发 vision_analyze 回退链
+    return "native"
 
 
 # Image size handling is REACTIVE rather than proactive: we attempt native

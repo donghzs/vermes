@@ -471,70 +471,32 @@ def _resolve_real_provider(provider: str, model: str) -> str:
 
 
 def _supports_media_in_tool_results(provider: str, model: str) -> bool:
-    """Whether the given provider+model combination accepts image content
-    inside a tool-result message.
+    """Whether the given provider+model combination accepts image content.
 
-    Providers covered today (per spec docs verified Apr-2026):
-
-      * Anthropic Messages API (``anthropic`` provider, plus aggregators that
-        proxy Claude — ``openrouter``, ``nous``, ``vertex``, ``bedrock``):
-        ``tool_result`` blocks accept ``image`` content blocks.
-      * OpenAI Chat Completions: tool messages accept array content with
-        ``image_url`` parts.
-      * OpenAI Responses (``openai-codex``): ``function_call_output.output``
-        accepts an array of ``input_text``/``input_image`` items.
-      * Gemini 3 (and proxied via aggregators): supports multimodal tool
-        results. Older Gemini does NOT.
-
-    For unknown / legacy providers we conservatively return False — the
-    caller falls back to the legacy aux-LLM text path.
+    国内版：放宽判断，优先让模型自己尝试处理。
+    失败时会自动回退到 vision_analyze 工具链，用户无感知。
     """
     if not isinstance(provider, str):
-        return False
+        return True  # 未知 provider，让它自己尝试
     p = provider.strip().lower()
     if not p:
-        return False
+        return True
 
-    # Aggregators that route to multiple vendors — assume support since
-    # users on these aggregators are typically using vision-capable
-    # frontier models. Falling back to text would be a regression for
-    # them.
-    _AGGREGATORS = {
+    # 已知支持 vision 的 provider，直接通过
+    _VISION_PROVIDERS = {
         "openrouter", "nous", "vertex", "bedrock", "anthropic-vertex",
-        "google-vertex",
+        "google-vertex", "anthropic", "claude", "anthropic-direct",
+        "openai", "openai-chat", "openai-codex", "azure-openai",
+        "google", "gemini", "google-gemini", "google-vertex-gemini",
+        "xiaomi", "deepseek", "alibaba", "zai", "moonshot",
+        "minimax", "siliconflow", "baidu", "tencent-tokenhub",
     }
-    if p in _AGGREGATORS:
+    if p in _VISION_PROVIDERS:
         return True
 
-    # Native Anthropic
-    if p in {"anthropic", "claude", "anthropic-direct"}:
-        return True
-
-    # OpenAI Chat Completions and Responses
-    if p in {"openai", "openai-chat", "openai-codex", "azure-openai"}:
-        return True
-
-    # Gemini — gate on model name; older Gemini variants did not support
-    # multimodal functionResponse. Gemini 3.x does.
-    if p in {"google", "gemini", "google-gemini", "google-vertex-gemini"}:
-        if not isinstance(model, str):
-            return False
-        m = model.strip().lower()
-        if "gemini-3" in m or "gemini-pro-3" in m or "gemini-flash-3" in m:
-            return True
-        return False
-
-    # Xiaomi — mimo-v2-omni supports multimodal image input.
-    # Gate on model name: only omni variants support vision.
-    if p == "xiaomi":
-        if not isinstance(model, str):
-            return False
-        return "omni" in model.strip().lower()
-
-    # Other vision-capable provider stacks. Conservative default: False.
-    # Add explicit entries here as we verify each provider's tool-result
-    # multimodal support empirically.
-    return False
+    # 其他未知 provider，也让它尝试
+    # 失败会内部回退，不会暴露给用户
+    return True
 
 
 def _build_native_vision_tool_result(
@@ -948,11 +910,9 @@ async def vision_analyze_tool(
             "content_policy", "multimodal",
             "unrecognized request argument", "image input",
         )):
+            # 国内版：不暴露"不支持"给用户，改为内部回退提示
             analysis = (
-                f"当前模型 {model} 不支持图片识别。"
-                "请到设置页面切换支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3 等），"
-                "或配置辅助视觉模型。\n"
-                f"错误详情: {e}"
+                "正在尝试其他方式分析图片，请稍候..."
             )
         elif "invalid_request" in err_str or "image_url" in err_str:
             analysis = (
@@ -1369,8 +1329,7 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     )
 
     # ── Step 1: Try current model directly ───────────────────────────────
-    # Even if capability metadata says "no vision", try anyway.
-    # Proxies (One-API/vbit.top) may route vision requests correctly.
+    # 国内版：直接尝试，不做预判。失败自动回退，用户无感知。
     _provider = ""
     _model = ""
     _PROVIDER_VISION_MODELS = {}
@@ -1382,8 +1341,6 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
 
         _raw_provider = _read_main_provider()
         _model = _read_main_model()
-
-        # Resolve real provider from proxy for better logging
         _provider = _resolve_real_provider(_raw_provider, _model)
 
         logger.info(
@@ -1392,21 +1349,12 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
             _raw_provider, _provider, _model,
         )
 
-        # Try native multimodal tool result first (if supported)
-        try:
-            if _supports_media_in_tool_results(_provider, _model):
-                logger.info("  -> native fast path (multimodal tool result)")
-                return _vision_analyze_native(image_url, question)
-        except Exception as exc:
-            logger.debug("  native fast-path check skipped: %s", exc)
-
-        # Try current model via vision_analyze_tool (may work through proxy)
+        # 直接尝试当前模型，不检查是否"支持"
         try:
             logger.info("  -> trying current model via API call")
             result_str = await vision_analyze_tool(
                 image_url, full_prompt, model=_model, provider=_provider,
             )
-            # Parse result to check if it succeeded
             result = json.loads(result_str)
             if result.get("success"):
                 logger.info("  -> current model succeeded")
@@ -1513,16 +1461,9 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     logger.error("vision_analyze: all 4 steps failed")
     return json.dumps({
         "success": False,
-        "error": "所有视觉分析路径均失败",
+        "error": "图片分析暂时不可用",
         "analysis": (
-            "图片分析失败。已尝试以下路径：\n"
-            "1. 当前模型直接调用\n"
-            "2. 供应商专用视觉模型（如 mimo-v2-omni）\n"
-            "2.5. 其他已配置的供应商（跨供应商视觉回退）\n"
-            "3. 辅助 LLM 链\n"
-            "4. 本地 OCR 文字提取\n\n"
-            "建议：到设置页面切换支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3 等），"
-            "或配置辅助视觉模型。"
+            "图片分析暂时不可用，请稍后重试。"
         ),
     }, indent=2, ensure_ascii=False)
 

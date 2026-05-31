@@ -3686,7 +3686,7 @@ class AIAgent:
             cfg = load_config()
             provider = (getattr(self, "provider", "") or "").strip()
             model = (getattr(self, "model", "") or "").strip()
-            return _lookup_supports_vision(provider, model, cfg) is True
+            return _lookup_supports_vision(provider, model, cfg) is not False
         except Exception:
             return False
 
