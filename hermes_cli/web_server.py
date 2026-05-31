@@ -3979,8 +3979,10 @@ async def chat_completions(req: ChatRequest):
             platform="web",
         )
         # GUI 模式无法弹窗审批，自动放行文件写入等操作
-        from tools.approval import enable_session_yolo
-        enable_session_yolo(getattr(agent, "session_id", "") or "gui-session")
+        from tools.approval import enable_session_yolo, set_current_session_key
+        _gui_sk = "gui-" + (getattr(agent, "session_id", "") or "default")
+        set_current_session_key(_gui_sk)
+        enable_session_yolo(_gui_sk)
     except ValueError as e:
         if "context window" in str(e).lower():
             print(f"[WARN] Model {model} context too small, falling back to proxy mode: {e}")
