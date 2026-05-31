@@ -1,4 +1,4 @@
-"""Shared constants for Vermes.
+"""Shared constants for Hermes Agent.
 
 Import-safe module with no dependencies — can be imported from anywhere
 without risk of circular imports.
@@ -41,16 +41,16 @@ def get_hermes_home_override() -> str | None:
 
 
 def get_hermes_home() -> Path:
-    """Return the Hermes home directory (default: ~/.hermes).
+    """Return the Hermes home directory (default: ~/.vermes).
 
-    Reads HERMES_HOME env var, falls back to ~/.hermes.
+    Reads HERMES_HOME env var, falls back to ~/.vermes.
     This is the single source of truth — all other copies should import this.
 
     When ``HERMES_HOME`` is unset but an ``active_profile`` file indicates
     a non-default profile is active, logs a loud one-shot warning to
     ``errors.log`` so cross-profile data corruption is diagnosable instead
     of silent.  Behavior is unchanged otherwise — we still return
-    ``~/.hermes`` — because raising here would brick 30+ module-level
+    ``~/.vermes`` — because raising here would brick 30+ module-level
     callers that import this at load time.  Subprocess spawners are
     expected to propagate ``HERMES_HOME`` explicitly (see the systemd
     template in ``hermes_cli/gateway.py`` and the kanban dispatcher in
@@ -90,7 +90,7 @@ def get_hermes_home() -> Path:
             # on consoles where a StreamHandler is already attached.
             import sys
             msg = (
-                f"[VERMES_HOME fallback] VERMES_HOME/HERMES_HOME is unset but active "
+                f"[VERMES_HOME fallback] HERMES_HOME is unset but active "
                 f"profile is {active!r}. Falling back to ~/.vermes, which "
                 f"is the DEFAULT profile — not {active!r}. Any data this "
                 f"process writes will land in the wrong profile. The "
@@ -111,11 +111,11 @@ def get_default_hermes_root() -> Path:
 
     In standard deployments this is ``~/.vermes``.
 
-    In Docker or custom deployments where ``VERMES_HOME`` points outside
-    ``~/.vermes`` (e.g. ``/opt/data``), returns ``VERMES_HOME`` directly
+    In Docker or custom deployments where ``HERMES_HOME`` points outside
+    ``~/.vermes`` (e.g. ``/opt/data``), returns ``HERMES_HOME`` directly
     — that IS the root.
 
-    In profile mode where ``VERMES_HOME`` is ``<root>/profiles/<name>``,
+    In profile mode where ``HERMES_HOME`` is ``<root>/profiles/<name>``,
     returns ``<root>`` so that ``profile list`` can see all profiles.
     Works both for standard (``~/.vermes/profiles/coder``) and Docker
     (``/opt/data/profiles/coder``) layouts.
@@ -123,13 +123,13 @@ def get_default_hermes_root() -> Path:
     Import-safe — no dependencies beyond stdlib.
     """
     native_home = Path.home() / ".vermes"
-    env_home = os.environ.get("VERMES_HOME", "") or os.environ.get("HERMES_HOME", "")
+    env_home = os.environ.get("HERMES_HOME", "")
     if not env_home:
         return native_home
     env_path = Path(env_home)
     try:
         env_path.resolve().relative_to(native_home.resolve())
-        # VERMES_HOME/HERMES_HOME is under ~/.vermes (normal or profile mode)
+        # HERMES_HOME is under ~/.vermes (normal or profile mode)
         return native_home
     except ValueError:
         pass
@@ -141,7 +141,7 @@ def get_default_hermes_root() -> Path:
     if env_path.parent.name == "profiles":
         return env_path.parent.parent
 
-    # Not a profile path — VERMES_HOME/HERMES_HOME itself is the root
+    # Not a profile path — HERMES_HOME itself is the root
     return env_path
 
 
@@ -177,6 +177,25 @@ def get_optional_skills_dir(default: Path | None = None) -> Path:
     if default is not None:
         return default
     return get_hermes_home() / "optional-skills"
+
+
+def get_optional_mcps_dir(default: Path | None = None) -> Path:
+    """Return the optional-mcps directory, honoring package-manager wrappers.
+
+    Mirrors :func:`get_optional_skills_dir` for the MCP catalog (Nous-approved
+    Model Context Protocol servers shipped with the repo but disabled by
+    default). Packaged installs may ship ``optional-mcps`` outside the Python
+    package tree and expose it via ``HERMES_OPTIONAL_MCPS``.
+    """
+    override = os.getenv("HERMES_OPTIONAL_MCPS", "").strip()
+    if override:
+        return Path(override)
+    packaged = _get_packaged_data_dir("optional-mcps")
+    if packaged is not None:
+        return packaged
+    if default is not None:
+        return default
+    return get_hermes_home() / "optional-mcps"
 
 
 def get_bundled_skills_dir(default: Path | None = None) -> Path:
@@ -225,12 +244,12 @@ def display_hermes_home() -> str:
 
     Uses ``~/`` shorthand for readability::
 
-        default:  ``~/.hermes``
-        profile:  ``~/.hermes/profiles/coder``
+        default:  ``~/.vermes``
+        profile:  ``~/.vermes/profiles/coder``
         custom:   ``/opt/hermes-custom``
 
     Use this in **user-facing** print/log messages instead of hardcoding
-    ``~/.hermes``.  For code that needs a real ``Path``, use
+    ``~/.vermes``.  For code that needs a real ``Path``, use
     :func:`get_hermes_home` instead.
     """
     home = get_hermes_home()
@@ -238,6 +257,26 @@ def display_hermes_home() -> str:
         return "~/" + str(home.relative_to(Path.home()))
     except ValueError:
         return str(home)
+
+
+def secure_parent_dir(path: Path) -> None:
+    """Chmod ``0o700`` on the parent directory of *path*, but only if safe.
+
+    Refuses to chmod ``/`` or any top-level directory (resolved parent with
+    fewer than 3 parts, i.e. ``/`` or any direct child like ``/usr``) to
+    prevent catastrophic host bricking when ``HERMES_HOME`` or other path
+    env vars resolve to an unexpected location.
+
+    See https://github.com/NousResearch/hermes-agent/issues/25821.
+    """
+    parent = path.parent.resolve()
+    # Refuse root and its direct children (/usr, /home, /var, /tmp, …).
+    if parent == Path("/") or len(parent.parts) < 3:
+        return
+    try:
+        os.chmod(parent, 0o700)
+    except OSError:
+        pass
 
 
 def get_subprocess_home() -> str | None:
@@ -417,7 +456,13 @@ def apply_ipv4_preference(force: bool = False) -> None:
     socket.getaddrinfo = _ipv4_getaddrinfo  # type: ignore[assignment]
 
 
+# ─── Streaming Response Constants ────────────────────────────────────────────
+
+# Response ID for partial stream stubs used during error recovery
+PARTIAL_STREAM_STUB_ID = "partial-stream-stub"
+
+FINISH_REASON_LENGTH = "length"
+
+
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODELS_URL = f"{OPENROUTER_BASE_URL}/models"
-
-AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
