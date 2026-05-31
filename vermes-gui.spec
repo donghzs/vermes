@@ -44,10 +44,11 @@ for src, dst in [
 # Hidden imports
 hiddenimports = [
     # Core
-    'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
+    'uvicorn', 'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
     'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
     'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto',
     'uvicorn.lifespan', 'uvicorn.lifespan.on',
+    'fastapi', 'starlette',
 
     # HTTP
     'httpx', 'httpx._transports', 'httpx._transports.default',
