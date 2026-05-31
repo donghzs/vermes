@@ -559,7 +559,7 @@ class CopilotACPClient:
                     },
                     "clientInfo": {
                         "name": "hermes-agent",
-                        "title": "Vermes",
+                        "title": "Hermes Agent",
                         "version": "0.0.0",
                     },
                 },
