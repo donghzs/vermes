@@ -953,7 +953,9 @@ def handle_function_call(
                 return edit_block_message
         except Exception as _edit_approval_err:
             logger.debug("ACP edit approval guard error: %s", _edit_approval_err)
-            if function_name in {"write_file", "patch"}:
+            # 只在 ACP 模式下阻止 write_file/patch，其他模式下忽略异常
+            from acp_adapter.edit_approval import get_edit_approval_requester
+            if get_edit_approval_requester() is not None and function_name in {"write_file", "patch"}:
                 return json.dumps({"error": "Edit approval denied: approval guard failed"}, ensure_ascii=False)
 
         # Notify the read-loop tracker when a non-read/search tool runs,
