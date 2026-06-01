@@ -132,6 +132,81 @@ def _resolve_max_tokens(model: str) -> int | None:
     return None
 
 
+# ── Vision helpers ──────────────────────────────────────────────────
+
+# Providers/models known to support vision (image_url in messages).
+# Aggressive strategy: unknown models default to True (try first, fallback on error).
+_VISION_KNOWN_GOOD = {
+    # OpenAI family
+    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview",
+    "gpt-5", "gpt-5.4-mini", "gpt-5.4-nano",
+    # Google
+    "gemini-2", "gemini-2.5", "gemini-3", "gemini-pro",
+    # Anthropic
+    "claude-3", "claude-3.5", "claude-4", "claude-sonnet", "claude-opus",
+    # Chinese providers
+    "qwen-vl", "qwen2-vl", "qwen-vl-max",
+    "deepseek",  # DeepSeek V3+ supports vision via OpenAI-compatible API
+    "step-1v", "step-2",
+    "yi-vision",
+    "hunyuan",  # Tencent
+    # Agnes
+    "agnes",
+    # Xiaomi
+    "mimo",
+}
+_VISION_KNOWN_BAD = {
+    # Models that definitively do NOT support vision
+    "gpt-3.5-turbo", "text-davinci", "code-", "codex",
+    "llama-2", "llama-3.0", "mistral-7b", "mixtral-8x7b",
+}
+
+
+def _model_supports_vision(model: str) -> bool:
+    """Check if a model likely supports vision (image_url).
+
+    Aggressive strategy: default True for unknown models.
+    Known-good prefixes are whitelisted; known-bad are blacklisted.
+    Runtime errors from the API will naturally fallback (caller's responsibility).
+    """
+    model_lower = model.lower()
+    for prefix in _VISION_KNOWN_BAD:
+        if model_lower.startswith(prefix):
+            return False
+    for prefix in _VISION_KNOWN_GOOD:
+        if model_lower.startswith(prefix):
+            return True
+    # Unknown model → aggressive: assume it supports vision
+    return True
+
+
+def _decode_data_url(data_url: str) -> tuple[str, bytes] | None:
+    """Parse a data URL (data:mime;base64,...) into (mime, raw_bytes).
+
+    Returns (mime_type, decoded_bytes) or None if parsing fails.
+    """
+    try:
+        if not data_url.startswith("data:"):
+            return None
+        header, b64_part = data_url.split(",", 1)
+        # header = "data:image/png;base64"
+        mime = header.split(";")[0].split(":", 1)[1] if ":" in header else "application/octet-stream"
+        raw = b64mod.b64decode(b64_part)
+        return mime, raw
+    except Exception:
+        return None
+
+
+def _strip_markdown_images(text: str) -> str:
+    """Remove markdown image embeds (base64 data URLs) from text.
+
+    Replaces ![alt](data:...) with [图片] to save tokens.
+    The actual image data is already in attachments.
+    """
+    import re
+    return re.sub(r'!\[.*?\]\(data:image[^)]+\)', '[图片]', text)
+
+
 # ── Pydantic models ─────────────────────────────────────────────────
 
 class ChatMessage(BaseModel):
@@ -468,14 +543,17 @@ async def chat_completions(req: ChatRequest):
         else:
             raise HTTPException(status_code=500, detail=f"No API key found for provider '{provider}'. Set {env_hint} in .env 或在设置页添加Key。")
 
-    # Build conversation messages
+    # Build conversation messages — strip inline base64 images from all messages
+    # (actual image data is in attachments, markdown embeds waste tokens)
     conversation_history = []
     for m in req.messages:
         content = m.content
-        if isinstance(content, list):
-            conversation_history.append({"role": m.role, "content": content})
-        else:
-            conversation_history.append({"role": m.role, "content": content})
+        if isinstance(content, str):
+            content = _strip_markdown_images(content)
+        conversation_history.append({"role": m.role, "content": content})
+
+    # ── Vision capability check ──
+    supports_vision = _model_supports_vision(model or "")
 
     # Process attachments: inject into the last user message
     if req.attachments:
@@ -490,8 +568,12 @@ async def chat_completions(req: ChatRequest):
                 parts.append({"type": "text", "text": existing_content})
             for att in req.attachments:
                 if att.type == "image":
-                    data_url = f"data:{att.mime};base64,{att.data}"
-                    parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                    if supports_vision:
+                        data_url = f"data:{att.mime};base64,{att.data}"
+                        parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                    else:
+                        # Model doesn't support vision — add text note instead
+                        parts.append({"type": "text", "text": f"[用户发送了图片 {att.name}，但当前模型不支持图片理解。请切换到支持视觉的模型（如 GPT-4o、Gemini、DeepSeek）以查看图片。]"})
                 else:
                     extracted = _extract_file_text(att.name, att.mime, att.data)
                     if extracted:

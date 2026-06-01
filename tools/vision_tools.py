@@ -75,6 +75,43 @@ _VISION_DOWNLOAD_TIMEOUT = _resolve_download_timeout()
 _VISION_MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
 
 
+def _decode_data_url(data_url: str) -> tuple[bytes, str]:
+    """Decode a base64 data URL and return (binary_data, file_extension).
+    
+    Args:
+        data_url: A data URL string like "data:image/png;base64,iVBORw0KG..."
+        
+    Returns:
+        Tuple of (decoded_bytes, file_extension)
+        
+    Raises:
+        ValueError: If the data URL is malformed
+    """
+    if "," not in data_url:
+        raise ValueError("Invalid data URL format: missing comma separator")
+    
+    header, encoded = data_url.split(",", 1)
+    data = base64.b64decode(encoded)
+    
+    # Extract MIME type from header (e.g., "data:image/png;base64")
+    mime_match = re.match(r"data:([^;,]+)(?:;base64)?", header)
+    ext = "png"  # default fallback
+    if mime_match:
+        mime_type = mime_match.group(1)
+        ext = {
+            "image/png": "png",
+            "image/jpeg": "jpg",
+            "image/jpg": "jpg",
+            "image/gif": "gif",
+            "image/webp": "webp",
+            "image/bmp": "bmp",
+            "image/heic": "heic",
+            "image/heif": "heif",
+        }.get(mime_type, "png")
+    
+    return data, ext
+
+
 def _validate_image_url(url: str) -> bool:
     """
     Basic validation of image URL format.
@@ -594,27 +631,7 @@ async def _vision_analyze_native(
         elif image_url.startswith("data:"):
             # Data URL (base64-encoded image) -- decode and save to temp file
             try:
-                if "," not in image_url:
-                    return tool_error("Invalid data URL format: missing comma separator", success=False)
-                header, encoded = image_url.split(",", 1)
-                
-                # Extract MIME type from header
-                mime_match = re.match(r"data:([^;,]+)(?:;base64)?", header)
-                if mime_match:
-                    mime_type = mime_match.group(1)
-                    ext_map = {
-                        "image/png": "png",
-                        "image/jpeg": "jpg",
-                        "image/jpg": "jpg",
-                        "image/gif": "gif",
-                        "image/webp": "webp",
-                        "image/bmp": "bmp",
-                    }
-                    ext = ext_map.get(mime_type, "png")
-                else:
-                    ext = "png"
-                
-                data = base64.b64decode(encoded)
+                data, ext = _decode_data_url(image_url)
                 temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
                 temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.{ext}"
                 temp_image_path.write_bytes(data)
@@ -630,10 +647,19 @@ async def _vision_analyze_native(
             await _download_image(image_url, temp_image_path)
             should_cleanup = True
         else:
-            return tool_error(
-                "Invalid image source. Provide an HTTP/HTTPS URL, a valid local file path, or a data URL.",
-                success=False,
+            # Provide helpful error message with configuration hints
+            error_msg = (
+                "Invalid image source. Provide one of:\n"
+                "  • HTTP/HTTPS URL (e.g., https://example.com/image.jpg)\n"
+                "  • Local file path (e.g., /Users/you/Desktop/photo.png)\n"
+                "  • Base64 data URL (data:image/png;base64,...)\n\n"
+                "If using a text-only model that doesn't support vision, "
+                "ensure a vision-capable provider is configured:\n"
+                "  • OPENROUTER_API_KEY  (for OpenRouter vision models)\n"
+                "  • XIAOMI_API_KEY      (for MiMo vision models)\n"
+                "Add these to ~/.vermes/.env and restart Vermes."
             )
+            return tool_error(error_msg, success=False)
 
         image_size_bytes = temp_image_path.stat().st_size
         detected_mime_type = _detect_image_mime_type(temp_image_path)
@@ -768,35 +794,9 @@ async def vision_analyze_tool(
             should_cleanup = False  # Don't delete cached/local files
         elif image_url.startswith("data:"):
             # Data URL (base64-encoded image) -- decode and save to temp file
-            # Format: data:image/png;base64,<base64_data>
             logger.info("Decoding data URL...")
             try:
-                # Split header and data
-                if "," not in image_url:
-                    raise ValueError("Invalid data URL format: missing comma separator")
-                header, encoded = image_url.split(",", 1)
-                
-                # Extract MIME type from header (e.g., "data:image/png;base64")
-                mime_match = re.match(r"data:([^;,]+)(?:;base64)?", header)
-                if mime_match:
-                    mime_type = mime_match.group(1)
-                    # Map MIME to extension
-                    ext_map = {
-                        "image/png": "png",
-                        "image/jpeg": "jpg",
-                        "image/jpg": "jpg",
-                        "image/gif": "gif",
-                        "image/webp": "webp",
-                        "image/bmp": "bmp",
-                    }
-                    ext = ext_map.get(mime_type, "png")
-                else:
-                    ext = "png"
-                
-                # Decode base64 data
-                data = base64.b64decode(encoded)
-                
-                # Save to temporary file
+                data, ext = _decode_data_url(image_url)
                 temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
                 temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.{ext}"
                 temp_image_path.write_bytes(data)
@@ -815,8 +815,17 @@ async def vision_analyze_tool(
             await _download_image(image_url, temp_image_path)
             should_cleanup = True
         else:
+            # Provide helpful error message with configuration hints
             raise ValueError(
-                "Invalid image source. Provide an HTTP/HTTPS URL, a valid local file path, or a data URL."
+                "Invalid image source. Provide one of:\n"
+                "  • HTTP/HTTPS URL (e.g., https://example.com/image.jpg)\n"
+                "  • Local file path (e.g., /Users/you/Desktop/photo.png)\n"
+                "  • Base64 data URL (data:image/png;base64,...)\n\n"
+                "If using a text-only model that doesn't support vision, "
+                "ensure a vision-capable provider is configured:\n"
+                "  • OPENROUTER_API_KEY  (for OpenRouter vision models)\n"
+                "  • XIAOMI_API_KEY      (for MiMo vision models)\n"
+                "Add these to ~/.vermes/.env and restart Vermes."
             )
         
         # Get image file size for logging
@@ -1741,6 +1750,20 @@ async def video_analyze_tool(
             logger.info("Using local video file: %s", video_url)
             temp_video_path = local_path
             should_cleanup = False
+        elif video_url.startswith("data:"):
+            # Data URL (base64-encoded video) -- decode and save to temp file
+            logger.info("Decoding video data URL...")
+            try:
+                data, ext = _decode_data_url(video_url)
+                # Video files typically use mp4, but respect the declared type
+                video_ext = ext if ext in ("mp4", "webm", "mov", "mkv") else "mp4"
+                temp_dir = get_hermes_dir("cache/video", "temp_video_files")
+                temp_video_path = temp_dir / f"temp_video_{uuid.uuid4()}.{video_ext}"
+                temp_video_path.write_bytes(data)
+                should_cleanup = True
+                logger.info("Video data URL decoded and saved (%.1f KB)", len(data) / 1024)
+            except Exception as e:
+                raise ValueError(f"Failed to decode video data URL: {e}")
         elif _validate_image_url(video_url):
             blocked = check_website_access(video_url)
             if blocked:
@@ -1751,7 +1774,7 @@ async def video_analyze_tool(
             should_cleanup = True
         else:
             raise ValueError(
-                "Invalid video source. Provide an HTTP/HTTPS URL or a valid local file path."
+                "Invalid video source. Provide an HTTP/HTTPS URL, a valid local file path, or a data URL."
             )
 
         video_size_bytes = temp_video_path.stat().st_size
@@ -1953,3 +1976,27 @@ registry.register(
     is_async=True,
     emoji="🎬",
 )
+
+
+def check_vision_fallback_config() -> dict[str, bool]:
+    """Check if vision fallback providers are configured.
+    
+    Returns a dict with provider names as keys and whether they're configured.
+    Logs warnings for missing providers.
+    """
+    providers = {
+        "OPENROUTER_API_KEY": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+        "XIAOMI_API_KEY": bool(os.getenv("XIAOMI_API_KEY", "").strip()),
+        "ANTHROPIC_API_KEY": bool(os.getenv("ANTHROPIC_API_KEY", "").strip()),
+        "NOUS_API_KEY": bool(os.getenv("NOUS_API_KEY", "").strip()),
+    }
+    
+    configured = [k for k, v in providers.items() if v]
+    missing = [k for k, v in providers.items() if not v]
+    
+    if configured:
+        logger.info("Vision fallback providers configured: %s", ", ".join(configured))
+    if missing:
+        logger.debug("Vision fallback providers not configured: %s", ", ".join(missing))
+    
+    return providers
