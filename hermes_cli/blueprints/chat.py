@@ -235,6 +235,9 @@ MODEL_PROVIDER_MAP = {
     "deepseek-chat": "deepseek",
     "deepseek-reasoner": "deepseek",
     "deepseek-v4-flash": "deepseek",
+    "agnes-2.0-flash": "agnes",
+    "agnes-": "agnes",
+    "mimo-v2-tts": "xiaomi",
     "openrouter/": "openrouter",
     "qwen2.5:": "ollama",
     "qwen3.6:": "ollama",
@@ -246,6 +249,7 @@ MODEL_PROVIDER_MAP = {
     "gpt-4": "openai",
     "gpt-3.5": "openai",
     "claude-": "anthropic",
+    "agnes-": "agnes",
 }
 
 # Unified provider registry (single source of truth)
@@ -276,6 +280,7 @@ PROVIDERS = {
     "stepfun": {"env_key": "STEPFUN_API_KEY", "base_url": "https://api.stepfun.com/v1"},
     "groq": {"env_key": "GROQ_API_KEY", "base_url": "https://api.groq.com/openai/v1"},
     "together": {"env_key": "TOGETHER_API_KEY", "base_url": "https://api.together.xyz/v1"},
+    "agnes": {"env_key": "AGNES_API_KEY", "base_url": "https://apihub.agnes-ai.com/v1"},
     "ollama": {"env_key": None, "base_url": "http://localhost:11434/v1"},
 }
 
@@ -310,9 +315,9 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
         if cfg_path.exists():
             with open(cfg_path, encoding="utf-8") as f:
                 cfg = yaml.safe_load(f) or {}
-            provider = cfg.get("model", {}).get("provider", "deepseek")
+            provider = cfg.get("model", {}).get("provider", "agnes")
         else:
-            provider = "deepseek"
+            provider = "agnes"
 
     # Get base_url
     base_url = ""
@@ -397,7 +402,7 @@ async def chat_completions(req: ChatRequest):
     """Agent-powered chat: uses AIAgent with tool calling capabilities."""
     from run_agent import AIAgent
 
-    requested_model = req.model or "deepseek-chat"
+    requested_model = req.model or "agnes-2.0-flash"
     provider, base_url, api_key, model = _resolve_model_provider(requested_model, req.provider)
 
     if not base_url:
