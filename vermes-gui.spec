@@ -177,7 +177,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # <-- 必须！否则黑屏/白屏时无法调试
+    console=False,  # 无 CMD 窗口，日志写文件
     icon='packaging/vermes.icns' if sys.platform == 'darwin' else 'packaging/vermes.ico',
 )
 
