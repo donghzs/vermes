@@ -50,6 +50,7 @@ export const useChatStore = defineStore('chat', () => {
   const _compareAbortControllers = ref([])
 
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
+  const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
 
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
@@ -334,7 +335,7 @@ export const useChatStore = defineStore('chat', () => {
           name: a.name, type: a.type, data: a.base64,
           mime: a.mimeType || 'application/octet-stream', size: a.size,
         })),
-        stream: true, signal: ac.signal,
+        stream: !isWindows, signal: ac.signal,
         onStreamStart: (streamId) => { activeStreamId.value = streamId },
         onChunk: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
@@ -518,7 +519,7 @@ export const useChatStore = defineStore('chat', () => {
           await api.sendMessage({
             model: model.id, provider: model.provider || providerId,
             messages: apiMessages, attachments: attachPayload,
-            stream: true, signal: ac.signal,
+            stream: !isWindows, signal: ac.signal,
             onChunk: (chunk) => { const am = messages.value.find(m => m.id === aid); if (am) am.content += chunk },
             onTool: (tool) => { const am = messages.value.find(m => m.id === aid); if (am) am.toolInvocations.push(tool) },
             onDone: () => { const am = messages.value.find(m => m.id === aid); if (am) am.streaming = false },
