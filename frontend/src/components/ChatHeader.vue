@@ -21,7 +21,7 @@ const sessionStats = computed(() => chat.getSessionStats(chat.currentSessionId))
 
 // 模型列表
 const defaultModels = [
-  { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'vbit.top' },
+  { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
 ]
 
 const models = computed(() => {

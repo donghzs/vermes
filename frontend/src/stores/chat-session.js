@@ -67,7 +67,7 @@ function trimOldSessionResults(MESSAGES_KEY_PREFIX, currentSessionId) {
         }
       }
       if (changed) {
-        localStorage.setItem(key, JSON.stringify(msgs))
+        try { localStorage.setItem(key, JSON.stringify(msgs)) } catch { /* still full, skip */ }
         freed = true
         try {
           localStorage.setItem('__vermes_quotacheck', '1')

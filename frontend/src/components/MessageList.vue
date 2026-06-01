@@ -416,33 +416,6 @@ function streamElapsed(startTime) {
       </div>
     </div>
 
-    <!-- 欢迎页 -->
-    <div v-else-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-16">
-      <div class="text-center mb-8">
-        <div class="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4 shadow-lg">V</div>
-        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">欢迎使用 Vermes</h1>
-        <p class="text-gray-400 text-sm mt-2">选择一个快速开始，或在下方输入你的需求</p>
-      </div>
-      <div class="flex flex-wrap justify-center gap-2 mb-8 max-w-lg">
-        <button v-for="sug in QUICK_START_SUGGESTIONS" :key="sug.text"
-          @click="quickStart(sug.text)"
-          class="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-sm text-gray-600 dark:text-gray-300 hover:border-green-400 hover:text-green-600 dark:hover:text-green-400 transition shadow-sm">
-          {{ sug.icon }} {{ sug.text }}
-        </button>
-      </div>
-      <div class="text-center">
-        <p class="text-xs text-gray-400 mb-3">或选择一个模板开始</p>
-        <div class="flex flex-wrap justify-center gap-3">
-          <button v-for="tpl in SESSION_TEMPLATES.filter(t => t.id !== 'blank')" :key="tpl.id"
-            @click="startFromTemplate(tpl)"
-            class="px-5 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-300 hover:border-green-400 hover:shadow-md transition flex items-center gap-2">
-            <span class="text-lg">{{ tpl.icon }}</span>
-            <span>{{ tpl.name }}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 消息列表 -->
     <div v-else>
       <div v-for="msg in chat.filteredMessages" :key="msg.id"
@@ -475,6 +448,7 @@ function streamElapsed(startTime) {
                 📄 内容较长，点击展开全部 ({{ msg.content.length.toLocaleString() }} 字符)
               </button>
               <span v-else-if="msg.streaming" class="thinking-inline">正在思考<span class="thinking-dots"><span>●</span><span>●</span><span>●</span></span></span>
+              <span v-else-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="text-gray-400 text-xs">✅ 任务完成</span>
               <span v-else class="text-gray-400 text-xs">正在思考...</span>
               <span v-if="msg.streaming && msg.content" class="typing-cursor"></span>
             </template>

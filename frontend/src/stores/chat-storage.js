@@ -112,7 +112,7 @@ export async function migrateFromLocalStorage(MESSAGES_KEY_PREFIX) {
   if (migrated > 0) {
     console.log(`[Vermes] 已迁移 ${migrated} 个会话从 localStorage 到 IndexedDB`)
   }
-  localStorage.setItem(MIGRATION_KEY, 'v1')
+  try { localStorage.setItem(MIGRATION_KEY, 'v1') } catch(e) { /* storage full */ }
   return migrated
 }
 
