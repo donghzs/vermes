@@ -3,12 +3,15 @@ import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 import { readFileSync } from 'node:fs'
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+// Read version from Python __init__.py — single source of truth
+const initPy = readFileSync(new URL('../hermes_cli/__init__.py', import.meta.url), 'utf-8')
+const versionMatch = initPy.match(/__version__\s*=\s*['"]([^'"]+)['"]/)
+const appVersion = versionMatch ? versionMatch[1] : '0.0.0'
 
 export default defineConfig({
   plugins: [vue()],
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   resolve: {
     alias: {
