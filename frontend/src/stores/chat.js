@@ -316,10 +316,13 @@ export const useChatStore = defineStore('chat', () => {
     abortController.value = ac
 
     const allMsgs = messages.value.filter(m => m.sessionId === currentSessionId.value && !m.streaming)
+    // Limit context window: send last 50 messages to avoid overwhelming the model
+    const MAX_CONTEXT_MESSAGES = 50
+    const contextMsgs = allMsgs.length > MAX_CONTEXT_MESSAGES ? allMsgs.slice(-MAX_CONTEXT_MESSAGES) : allMsgs
     const recentImageMsgIds = new Set(
-      allMsgs.filter(m => m.role === 'user' && m.content?.includes('data:image') && m.id !== msgId).slice(-5).map(m => m.id)
+      contextMsgs.filter(m => m.role === 'user' && m.content?.includes('data:image') && m.id !== msgId).slice(-5).map(m => m.id)
     )
-    const apiMessages = allMsgs.map(m => ({
+    const apiMessages = contextMsgs.map(m => ({
       role: m.role,
       // Strip ALL base64 images: current msg (already in attachments) + old msgs (save tokens)
       // Keep last 5 recent image messages' base64 only for visual context continuity
@@ -497,8 +500,10 @@ export const useChatStore = defineStore('chat', () => {
       })
     }
 
-    const apiMessages = messages.value
+    const allCompareMsgs = messages.value
       .filter(m => m.sessionId === currentSessionId.value && !m.streaming)
+    const contextCompareMsgs = allCompareMsgs.length > 50 ? allCompareMsgs.slice(-50) : allCompareMsgs
+    const apiMessages = contextCompareMsgs
       .map(m => ({
         role: m.role,
         content: m.role === 'user' && m.content.includes('data:image')
