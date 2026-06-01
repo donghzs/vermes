@@ -576,7 +576,12 @@ export const useChatStore = defineStore('chat', () => {
     for (const ac of _compareAbortControllers.value) { try { ac.abort() } catch(e) {} }
     _compareAbortControllers.value = []
     loading.value = false
-    messages.value.filter(m => m.streaming).forEach(m => { m.streaming = false })
+    // Clean up streaming state on all active messages
+    messages.value.filter(m => m.streaming).forEach(m => {
+      m.streaming = false
+      if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
+      if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
+    })
     persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
   }
 
