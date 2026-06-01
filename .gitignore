@@ -94,3 +94,6 @@ NATIVE-WINDOW-REPORT-*.md
 
 # Backup files
 backups/
+
+# Archive (old reports, release notes)
+archive/

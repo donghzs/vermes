@@ -448,9 +448,7 @@ function streamElapsed(startTime) {
                 📄 内容较长，点击展开全部 ({{ msg.content.length.toLocaleString() }} 字符)
               </button>
               <span v-else-if="msg.streaming" class="thinking-inline">正在思考<span class="thinking-dots"><span>●</span><span>●</span><span>●</span></span></span>
-              <span v-else-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="text-gray-400 text-xs">✅ 任务完成</span>
-              <span v-else-if="!msg.streaming" class="text-gray-400 text-xs">✅ 完成</span>
-              <span v-else class="text-gray-400 text-xs">正在思考...</span>
+              <span v-else class="text-gray-400 text-xs">●●●</span>
               <span v-if="msg.streaming && msg.content" class="typing-cursor"></span>
             </template>
           </div>
