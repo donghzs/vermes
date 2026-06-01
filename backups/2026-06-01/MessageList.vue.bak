@@ -47,65 +47,14 @@ function autoExpandImportantTools(tools) {
   })
 }
 
-// 流式中：获取当前正在执行的工具的中文描述
+// 流式中：获取当前正在执行的工具/思考的中文描述
 function currentRunningTool(tools) {
   const running = tools.filter(t => t.status === 'running')
   if (running.length === 0) return null
   const t = running[running.length - 1] // 取最后一个running
+  if (t.name === 'thinking') return '思考中...'
   const map = {read_file:'读取文件...',write_file:'写入文件...',search_files:'搜索文件...',terminal:'执行命令...',web_search:'搜索网页...',vision_analyze:'分析图片...',list_directory:'列出目录...',edit_file:'编辑文件...',memory:'记忆操作...',execute_command:'执行命令...',google_search:'搜索...',browse_url:'浏览网页...'}
   return map[t.name] || t.name + '...'
-}
-
-// 工具结果预览模板化
-const _toolPreviewCache = new WeakMap()
-
-function formatToolPreview(tool) {
-  if (!tool.result_preview) return null
-  // 缓存：同一 tool 对象 + 同一 result_preview 只解析一次
-  if (_toolPreviewCache.has(tool)) {
-    const cached = _toolPreviewCache.get(tool)
-    if (cached.raw === tool.result_preview) return cached
-  }
-  const preview = tool.result_preview
-  let result
-
-  // terminal 工具：直接显示原始预览
-  if (tool.name === 'terminal') {
-    result = { type: 'terminal', command: null, output: preview, raw: preview }
-    _toolPreviewCache.set(tool, result)
-    return result
-  }
-
-  // search_files 工具：提取文件列表和匹配行
-  if (tool.name === 'search_files') {
-    const fileMatches = []
-    const lines = preview.split('\n')
-    let currentFile = null
-    for (const line of lines) {
-      if (line.match(/^[^:]+\.\w+:/)) {
-        currentFile = line.replace(/:$/, '')
-        fileMatches.push({ file: currentFile, matches: [] })
-      } else if (currentFile && line.trim()) {
-        fileMatches[fileMatches.length - 1].matches.push(line.trim())
-      }
-    }
-    result = { type: 'search', files: fileMatches, raw: preview }
-    _toolPreviewCache.set(tool, result)
-    return result
-  }
-
-  // read_file 工具：提取行号范围
-  if (tool.name === 'read_file') {
-    const lineMatch = preview.match(/\((\d+)-(\d+)\)/)
-    result = { type: 'file', lineRange: lineMatch ? `${lineMatch[1]}-${lineMatch[2]}` : null, content: preview, raw: preview }
-    _toolPreviewCache.set(tool, result)
-    return result
-  }
-
-  // 默认：纯文本
-  result = { type: 'text', raw: preview }
-  _toolPreviewCache.set(tool, result)
-  return result
 }
 import markdown from 'highlight.js/lib/languages/markdown'
 import typescript from 'highlight.js/lib/languages/typescript'
@@ -404,20 +353,8 @@ function streamElapsed(startTime) {
 
 <template>
   <div ref="chatContainer" class="flex-1 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative">
-    <!-- 骨架屏：loading 且无消息（切换会话/loading 中） -->
-    <div v-if="chat.filteredMessages.length === 0 && chat.loading" class="space-y-4 px-4 py-6">
-      <div v-for="i in 3" :key="'skeleton-'+i" class="flex gap-3" :class="i % 2 === 0 ? 'flex-row-reverse' : ''">
-        <div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-shrink-0"></div>
-        <div class="max-w-[75%] space-y-2">
-          <div class="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" :style="{width: (120 + i * 60) + 'px'}"></div>
-          <div class="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" :style="{width: (80 + i * 40) + 'px'}"></div>
-          <div v-if="i < 3" class="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse w-24"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- 欢迎页 -->
-    <div v-else-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-16">
+    <div v-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-16">
       <div class="text-center mb-8">
         <div class="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center text-white text-3xl font-bold mx-auto mb-4 shadow-lg">V</div>
         <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">欢迎使用 Vermes</h1>
@@ -467,16 +404,9 @@ function streamElapsed(startTime) {
             <template v-else>
               <!-- ── 长任务优化 #5: 内容分片 ── -->
               <!-- 流式中只渲染最新 8K 字符，避免超长内容卡顿 -->
-              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg._expanded || !msg.streaming || msg.content.length <= 8000 ? msg.content : msg.content.slice(-8000))" @click="handleContentClick($event)"></div>
-              <!-- 展开按钮：流式中内容超过 8K 时显示 -->
-              <button v-if="msg.streaming && msg.content && msg.content.length > 8000 && !msg._expanded"
-                      @click="msg._expanded = true"
-                      class="mt-2 text-xs text-green-600 dark:text-green-400 hover:underline">
-                📄 内容较长，点击展开全部 ({{ msg.content.length.toLocaleString() }} 字符)
-              </button>
-              <span v-else-if="msg.streaming" class="thinking-inline">正在思考<span class="thinking-dots"><span>●</span><span>●</span><span>●</span></span></span>
-              <span v-else class="text-gray-400 text-xs">正在思考...</span>
-              <span v-if="msg.streaming && msg.content" class="typing-cursor"></span>
+              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg.streaming && msg.content.length > 8000 ? msg.content.slice(-8000) : msg.content)" @click="handleContentClick($event)"></div>
+              <span v-else class="text-gray-400 text-xs">等待中...</span>
+              <span v-if="msg.streaming" class="typing-cursor"></span>
             </template>
           </div>
           <!-- 工具调用展示：流式中=单条状态，完成后=紧凑时间线 -->
@@ -493,21 +423,16 @@ function streamElapsed(startTime) {
                 <span v-if="msg._toolCount" class="opacity-60">· {{ msg._toolCount }} 工具</span>
               </div>
               <div v-if="currentRunningTool(msg.toolInvocations)"
-                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 tool-running">
+                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
                 <span class="animate-spin text-xs">⏳</span>
                 <span>{{ currentRunningTool(msg.toolInvocations) }}</span>
               </div>
-              <!-- "正在思考"动画（无工具执行时显示） -->
-              <div v-else-if="msg.streaming && msg._streamStartTime"
-                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                <span class="thinking-indicator">正在思考</span>
-              </div>
             </template>
-            <!-- 完成后：紧凑时间线 -->
+            <!-- 完成后：紧凑时间线（只显示真实工具，不含thinking） -->
             <template v-else>
-              <div v-if="msg.toolInvocations.length > 0"
+              <div v-if="msg.toolInvocations.filter(t => t.name !== 'thinking').length > 0"
                    class="flex flex-wrap gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-                <span v-for="tool in msg.toolInvocations"
+                <span v-for="tool in msg.toolInvocations.filter(t => t.name !== 'thinking')"
                       :key="'done-' + (tool.id || tool.name)"
                       class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                       :class="tool.status === 'error' ? 'text-red-500' : ''"
@@ -519,40 +444,10 @@ function streamElapsed(startTime) {
                 </span>
               </div>
               <!-- 可折叠的结果摘要 -->
-              <template v-for="tool in msg.toolInvocations" :key="'preview-' + (tool.id || tool.name)">
+              <template v-for="tool in msg.toolInvocations.filter(t => t.name !== 'thinking')" :key="'preview-' + (tool.id || tool.name)">
                 <div v-if="tool.result_preview && isToolExpanded(tool.id || tool.name)"
                      class="mt-1 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-                  <!-- terminal 工具模板 -->
-                  <template v-if="formatToolPreview(tool)?.type === 'terminal'">
-                    <div v-if="formatToolPreview(tool).command" class="text-[11px] text-green-600 dark:text-green-400 font-mono mb-1">
-                      $ {{ formatToolPreview(tool).command }}
-                    </div>
-                    <pre v-if="formatToolPreview(tool).output" class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ formatToolPreview(tool).output }}</pre>
-                  </template>
-                  <!-- search_files 工具模板 -->
-                  <template v-else-if="formatToolPreview(tool)?.type === 'search'">
-                    <div v-for="(file, idx) in formatToolPreview(tool).files" :key="'file-' + idx" class="mb-2">
-                      <div class="text-[11px] text-blue-600 dark:text-blue-400 font-mono">📄 {{ file.file }}</div>
-                      <div v-for="(match, mIdx) in file.matches.slice(0, 3)" :key="'match-' + mIdx"
-                           class="text-[11px] text-gray-600 dark:text-gray-300 font-mono pl-3">
-                        {{ match }}
-                      </div>
-                      <div v-if="file.matches.length > 3" class="text-[10px] text-gray-400 pl-3">
-                        ... 还有 {{ file.matches.length - 3 }} 个匹配
-                      </div>
-                    </div>
-                  </template>
-                  <!-- read_file 工具模板 -->
-                  <template v-else-if="formatToolPreview(tool)?.type === 'file'">
-                    <div v-if="formatToolPreview(tool).lineRange" class="text-[11px] text-gray-500 dark:text-gray-400 font-mono mb-1">
-                      📄 行 {{ formatToolPreview(tool).lineRange }}
-                    </div>
-                    <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ formatToolPreview(tool).content }}</pre>
-                  </template>
-                  <!-- 默认模板 -->
-                  <template v-else>
-                    <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ tool.result_preview }}</pre>
-                  </template>
+                  <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ tool.result_preview }}</pre>
                 </div>
               </template>
             </template>
@@ -690,56 +585,5 @@ function streamElapsed(startTime) {
 }
 .dark .typing-cursor {
   background: #4ade80;
-}
-
-/* 工具卡片脉冲动效 */
-@keyframes tool-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
-}
-.tool-running {
-  animation: tool-pulse 2s infinite;
-  border-color: #3b82f6;
-}
-.dark .tool-running {
-  border-color: #60a5fa;
-}
-
-/* "正在思考"进度区域动画 */
-@keyframes thinking-dots-progress {
-  0%, 20% { content: '.'; }
-  40% { content: '..'; }
-  60%, 100% { content: '...'; }
-}
-.thinking-indicator::after {
-  content: '';
-  animation: thinking-dots-progress 1.5s infinite;
-}
-
-/* "正在思考"内联动画（跟随打字机光标） */
-.thinking-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  color: #9ca3af;
-  font-size: 0.75rem;
-}
-.dark .thinking-inline {
-  color: #6b7280;
-}
-.thinking-dots {
-  display: inline-flex;
-  gap: 2px;
-}
-.thinking-dots span {
-  animation: thinking-inline-pulse 1.4s infinite;
-  opacity: 0.4;
-}
-.thinking-dots span:nth-child(1) { animation-delay: 0s; }
-.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes thinking-inline-pulse {
-  0%, 80%, 100% { opacity: 0.4; }
-  40% { opacity: 1; }
 }
 </style>

@@ -9,7 +9,7 @@ const router = useRouter()
 
 // 引导步骤
 const currentStep = ref(1)
-const selectedMode = ref(null) // 'wechat' | 'free' | 'apikey' | 'local'
+const selectedMode = ref(null) // 'wechat' | 'apikey' | 'local'
 const isClaiming = ref(false)
 
 // 选择使用方式
@@ -93,21 +93,9 @@ const quickStarts = [
             <div class="w-12 h-12 bg-green-100 dark:bg-green-900/50 rounded-xl flex items-center justify-center text-2xl">💬</div>
             <div class="flex-1">
               <div class="font-semibold text-gray-800 dark:text-gray-200">微信扫码登录</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">最简单，每天免费500积分</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">最简单，Agnes AI 全模态免费</div>
             </div>
             <span class="text-xs bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400 px-2 py-1 rounded-full font-medium">推荐</span>
-          </div>
-        </button>
-
-        <!-- 免费体验 -->
-        <button @click="selectMode('free')"
-                class="w-full p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition text-left">
-          <div class="flex items-center gap-4">
-            <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900/50 rounded-xl flex items-center justify-center text-2xl">🆓</div>
-            <div class="flex-1">
-              <div class="font-semibold text-gray-800 dark:text-gray-200">免费体验</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">无需注册，直接使用</div>
-            </div>
           </div>
         </button>
 
@@ -139,41 +127,33 @@ const quickStarts = [
 
     <!-- Step 2: 根据选择引导配置 -->
     <div v-else-if="currentStep === 2" class="w-full max-w-md">
-      <!-- 微信扫码 -->
+      <!-- 微信扫码登录（免费体验） -->
       <div v-if="selectedMode === 'wechat'" class="text-center">
         <div class="text-6xl mb-6">💬</div>
-        <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">微信扫码登录</h2>
-        <p class="text-gray-500 dark:text-gray-400 mb-6">点击右上角的微信登录按钮，扫码即可</p>
+        <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">微信扫码登录，免费体验</h2>
+        <p class="text-gray-500 dark:text-gray-400 mb-6">登录后自动领取免费额度，使用 Agnes AI</p>
+        <div class="bg-green-50 dark:bg-green-900/30 rounded-2xl p-6 border border-green-200 dark:border-green-800 mb-6">
+          <div class="text-sm text-green-700 dark:text-green-300 space-y-2">
+            <p>✅ Agnes AI 全模态免费</p>
+            <p>✅ 支持对话 / 图片 / 视频生成</p>
+            <p>✅ 微信扫码即用，无需其他注册</p>
+          </div>
+        </div>
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 mb-6">
           <div class="text-sm text-gray-600 dark:text-gray-300 space-y-2">
             <p>1. 点击顶部栏的 👤 头像</p>
             <p>2. 用微信扫描二维码</p>
-            <p>3. 授权后自动登录</p>
-          </div>
-        </div>
-        <button @click="finishGuide()" class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-medium transition">
-          我已登录，继续 →
-        </button>
-      </div>
-
-      <!-- 免费体验 -->
-      <div v-else-if="selectedMode === 'free'" class="text-center">
-        <div class="text-6xl mb-6">🆓</div>
-        <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">免费体验</h2>
-        <p class="text-gray-500 dark:text-gray-400 mb-6">无需任何配置，直接开始对话</p>
-        <div class="bg-green-50 dark:bg-green-900/30 rounded-2xl p-6 border border-green-200 dark:border-green-800 mb-6">
-          <div class="text-sm text-green-700 dark:text-green-300 space-y-2">
-            <p>✅ 每天 100 次免费调用</p>
-            <p>✅ 支持基础对话功能</p>
-            <p>✅ 无需注册账号</p>
+            <p>3. 授权后自动领取免费额度</p>
           </div>
         </div>
         <button @click="claimFreeTrial()" 
                 :disabled="isClaiming"
                 class="px-6 py-3 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl font-medium transition">
-          {{ isClaiming ? '领取中...' : '开始体验 →' }}
+          {{ isClaiming ? '领取中...' : '我已登录，领取免费额度 →' }}
         </button>
       </div>
+
+
 
       <!-- 配置API Key -->
       <div v-else-if="selectedMode === 'apikey'" class="text-center">

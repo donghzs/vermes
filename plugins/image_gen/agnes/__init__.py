@@ -178,7 +178,7 @@ class AgnesImageGenProvider(ImageGenProvider):
             "model": model_id,
             "prompt": prompt,
             "size": size,
-            "response_format": "b64_json",
+            "response_format": "url",
         }
 
         # img2img support: check for image URLs in kwargs

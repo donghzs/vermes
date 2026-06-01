@@ -250,6 +250,9 @@ class AgnesVideoGenProvider(VideoGenProvider):
         # Poll for completion
         deadline = time.time() + POLL_TIMEOUT
         while time.time() < deadline:
+            # NOTE: video_generate tool is synchronous (is_async=False),
+            # so time.sleep is safe here. If the tool becomes async in the
+            # future, change to asyncio.sleep and make generate() async.
             time.sleep(POLL_INTERVAL)
             try:
                 result_resp = httpx.get(

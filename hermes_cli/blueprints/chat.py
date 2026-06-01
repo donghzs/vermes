@@ -418,7 +418,7 @@ async def chat_completions(req: ChatRequest):
             api_key = ""
             remove_env_value("VBIT_API_KEY")
         env_hint = (PROVIDERS.get(provider) or {}).get("env_key", "API_KEY")
-        if provider == "vbit":
+        if provider in ("vbit", "agnes"):
             try:
                 from hermes_constants import get_hermes_home
                 env_path = get_hermes_home() / ".env"

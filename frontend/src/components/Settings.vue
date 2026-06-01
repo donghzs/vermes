@@ -35,8 +35,8 @@ const DEFAULT_BASE_URLS = {
 }
 
 const RECOMMENDED_IDS = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama']
-const CHINESE_IDS = ['agnes','xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
-const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together','agnes']
+const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
+const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
 
 // 推荐区提供商的额外配置
 const PROVIDER_EXTRAS = {
@@ -356,10 +356,10 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
               <div class="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white font-bold">V</div>
               <div>
                 <div class="font-medium text-green-700 dark:text-green-300">🔥 vbit.top 免费体验</div>
-                <div class="text-xs text-green-600 dark:text-green-400">微信扫码登录即可使用，每天 500 积分</div>
+                <div class="text-xs text-green-600 dark:text-green-400">微信扫码登录即可免费使用 Agnes AI</div>
               </div>
             </div>
-            <div class="text-xs text-green-600 dark:text-green-400">✅ 无需注册 · ✅ 无需 API Key · ✅ 开箱即用</div>
+            <div class="text-xs text-green-600 dark:text-green-400">✅ 微信登录即用 · ✅ 无需 API Key · ✅ Agnes AI 免费驱动</div>
           </div>
 
           <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
