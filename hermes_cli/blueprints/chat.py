@@ -861,8 +861,9 @@ async def chat_completions(req: ChatRequest):
                 try:
                     yield f"data: {json.dumps(final_chunk)}\n\n"
                     yield "data: [DONE]\n\n"
-                except Exception:
-                    pass  # client disconnected
+                    _log.info(f"[Stream] [DONE] sent, stream_id={_stream_id}")
+                except Exception as _done_err:
+                    _log.warning(f"[Stream] Failed to send [DONE]: {_done_err}, stream_id={_stream_id}")
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
     else:
