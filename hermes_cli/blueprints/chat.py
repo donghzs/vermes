@@ -827,11 +827,21 @@ async def chat_completions(req: ChatRequest):
                 finally:
                     _active_streams.pop(_stream_id, None)
 
-                # Wait for agent and report quota
-                try:
-                    _agent_result = await agent_task
-                except Exception:
-                    _agent_result = {}
+                # Wait for agent — if cancelled, DON'T block waiting for it
+                _agent_result = {}
+                if _cancel_event.is_set():
+                    _log.info(f"[Stream] Cancelled, skipping agent_task await, stream_id={_stream_id}")
+                    # Set done so any waiters know
+                    _agent_done.set()
+                else:
+                    try:
+                        _agent_result = await asyncio.wait_for(agent_task, timeout=300)
+                    except asyncio.TimeoutError:
+                        _log.warning(f"[Stream] Agent task timeout (300s), stream_id={_stream_id}")
+                        agent._interrupt_requested = True
+                        _agent_result = {}
+                    except Exception:
+                        _agent_result = {}
 
                 _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
                 if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
