@@ -32,6 +32,7 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Dict, Optional
@@ -590,6 +591,36 @@ async def _vision_analyze_native(
         if local_path.is_file():
             temp_image_path = local_path
             should_cleanup = False
+        elif image_url.startswith("data:"):
+            # Data URL (base64-encoded image) -- decode and save to temp file
+            try:
+                if "," not in image_url:
+                    return tool_error("Invalid data URL format: missing comma separator", success=False)
+                header, encoded = image_url.split(",", 1)
+                
+                # Extract MIME type from header
+                mime_match = re.match(r"data:([^;,]+)(?:;base64)?", header)
+                if mime_match:
+                    mime_type = mime_match.group(1)
+                    ext_map = {
+                        "image/png": "png",
+                        "image/jpeg": "jpg",
+                        "image/jpg": "jpg",
+                        "image/gif": "gif",
+                        "image/webp": "webp",
+                        "image/bmp": "bmp",
+                    }
+                    ext = ext_map.get(mime_type, "png")
+                else:
+                    ext = "png"
+                
+                data = base64.b64decode(encoded)
+                temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+                temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.{ext}"
+                temp_image_path.write_bytes(data)
+                should_cleanup = True
+            except Exception as e:
+                return tool_error(f"Failed to decode data URL: {e}", success=False)
         elif _validate_image_url(image_url):
             blocked = check_website_access(image_url)
             if blocked:
@@ -600,8 +631,7 @@ async def _vision_analyze_native(
             should_cleanup = True
         else:
             return tool_error(
-                "Invalid image source. Provide an HTTP/HTTPS URL or a "
-                "valid local file path.",
+                "Invalid image source. Provide an HTTP/HTTPS URL, a valid local file path, or a data URL.",
                 success=False,
             )
 
@@ -736,6 +766,44 @@ async def vision_analyze_tool(
             logger.info("Using local image file: %s", image_url)
             temp_image_path = local_path
             should_cleanup = False  # Don't delete cached/local files
+        elif image_url.startswith("data:"):
+            # Data URL (base64-encoded image) -- decode and save to temp file
+            # Format: data:image/png;base64,<base64_data>
+            logger.info("Decoding data URL...")
+            try:
+                # Split header and data
+                if "," not in image_url:
+                    raise ValueError("Invalid data URL format: missing comma separator")
+                header, encoded = image_url.split(",", 1)
+                
+                # Extract MIME type from header (e.g., "data:image/png;base64")
+                mime_match = re.match(r"data:([^;,]+)(?:;base64)?", header)
+                if mime_match:
+                    mime_type = mime_match.group(1)
+                    # Map MIME to extension
+                    ext_map = {
+                        "image/png": "png",
+                        "image/jpeg": "jpg",
+                        "image/jpg": "jpg",
+                        "image/gif": "gif",
+                        "image/webp": "webp",
+                        "image/bmp": "bmp",
+                    }
+                    ext = ext_map.get(mime_type, "png")
+                else:
+                    ext = "png"
+                
+                # Decode base64 data
+                data = base64.b64decode(encoded)
+                
+                # Save to temporary file
+                temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+                temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.{ext}"
+                temp_image_path.write_bytes(data)
+                should_cleanup = True
+                logger.info("Data URL decoded and saved to temp file (%.1f KB)", len(data) / 1024)
+            except Exception as e:
+                raise ValueError(f"Failed to decode data URL: {e}")
         elif _validate_image_url(image_url):
             # Remote URL -- download to a temporary location
             blocked = check_website_access(image_url)
@@ -748,7 +816,7 @@ async def vision_analyze_tool(
             should_cleanup = True
         else:
             raise ValueError(
-                "Invalid image source. Provide an HTTP/HTTPS URL or a valid local file path."
+                "Invalid image source. Provide an HTTP/HTTPS URL, a valid local file path, or a data URL."
             )
         
         # Get image file size for logging
