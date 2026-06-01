@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
+import { loadMessagesFromIDB } from '../stores/chat-storage'
 
 const chat = useChatStore()
 const router = useRouter()
@@ -106,14 +107,65 @@ function togglePin(s) {
   closeContextMenu()
 }
 
-// ── 消息数 ──
+// ── 消息数 & 首条消息缓存（IndexedDB 异步加载） ──
+const sessionMeta = ref(new Map())  // sessionId → { count, firstMsg }
+
+async function loadSessionMeta(sessionId) {
+  try {
+    const msgs = await loadMessagesFromIDB(sessionId)
+    if (msgs && msgs.length > 0) {
+      const userMsg = msgs.find(m => m.role === 'user')
+      const text = userMsg ? userMsg.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '🖼️图片').replace(/📎[^\n]*/g, '📎附件') : ''
+      sessionMeta.value.set(sessionId, {
+        count: msgs.length,
+        firstMsg: text.length > 40 ? text.slice(0, 40) + '...' : text
+      })
+      return
+    }
+  } catch {}
+  // 降级 localStorage
+  try {
+    const msgs = JSON.parse(localStorage.getItem('vermes-msgs-' + sessionId)) || []
+    const userMsg = msgs.find(m => m.role === 'user')
+    const text = userMsg ? userMsg.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '🖼️图片').replace(/📎[^\n]*/g, '📎附件') : ''
+    sessionMeta.value.set(sessionId, {
+      count: msgs.length,
+      firstMsg: text.length > 40 ? text.slice(0, 40) + '...' : text
+    })
+  } catch {
+    sessionMeta.value.set(sessionId, { count: 0, firstMsg: '' })
+  }
+}
+
+// 批量加载所有会话元数据
+async function loadAllSessionMeta() {
+  const promises = chat.sessions.map(s => loadSessionMeta(s.id))
+  await Promise.all(promises)
+}
+
 function getMessageCount(sessionId) {
+  const meta = sessionMeta.value.get(sessionId)
+  if (meta) return meta.count
+  // 同步降级（旧数据）
   return chat.getMessageCount(sessionId)
 }
 
 function getFirstMessagePreview(sessionId) {
+  const meta = sessionMeta.value.get(sessionId)
+  if (meta) return meta.firstMsg
+  // 同步降级
   return chat.getFirstMessage(sessionId)
 }
+
+// 会话变化时刷新元数据
+watch(() => chat.sessions.length, async () => {
+  await loadAllSessionMeta()
+})
+
+// 组件挂载时加载元数据
+onMounted(async () => {
+  await loadAllSessionMeta()
+})
 
 // ── 右键菜单 ──
 const contextMenu = ref({ show: false, x: 0, y: 0, session: null })

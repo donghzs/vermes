@@ -63,7 +63,7 @@ async def wechat_poll_proxy(state: str):
                             json={
                                 "name": f"wx-{data.get('openid', 'user')[:8]}",
                                 "remain_quota": 3500000,
-                                "models": "deepseek-v4-flash,mimo-v2.5",
+                                "models": "agnes-2.0-flash",
                                 "unlimited_quota": False,
                             },
                         )

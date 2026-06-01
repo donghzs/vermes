@@ -10,7 +10,6 @@ import ChatInput from './ChatInput.vue'
 import QuotaModal from './QuotaModal.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import WechatLogin from './WechatLogin.vue'
-import WelcomeGuide from './WelcomeGuide.vue'
 
 const router = useRouter()
 const chat = useChatStore()
@@ -22,10 +21,6 @@ const ERROR_MAP = {
   'fetch failed': '🌐 网络连接失败，请检查网络后重试',
   '401': '🔑 API Key 无效或已过期，请到设置页重新配置',
   'Unauthorized': '🔑 API Key 无效或已过期，请到设置页重新配置',
-  '403': '🚫 访问被拒绝，请检查 API Key 权限或模型可用性',
-  'Forbidden': '🚫 访问被拒绝，请检查 API Key 权限或模型可用性',
-  '404': '❓ 请求的资源不存在，请检查模型名称是否正确',
-  'Not Found': '❓ 请求的资源不存在，请检查模型名称是否正确',
   '429': '⏳ 请求太频繁，请稍后再试',
   'Too Many Requests': '⏳ 请求太频繁，请稍后再试',
   '402': '💰 免费额度已用完',
@@ -33,11 +28,7 @@ const ERROR_MAP = {
   '500': '⚠️ 服务暂时不可用，请切换其他模型或稍后重试',
   '502': '⚠️ 服务暂时不可用，请稍后重试',
   '503': '⚠️ 服务暂时不可用，请稍后重试',
-  '504': '⏱️ 网关超时，请稍后重试',
   'timeout': '⏱️ 请求超时，请检查网络或切换模型',
-  'ECONNREFUSED': '🌐 连接被拒绝，服务可能未启动',
-  'ENOTFOUND': '🌐 DNS 解析失败，请检查网络连接',
-  'CERT_': '🔒 SSL 证书错误，请检查系统时间或网络环境',
 }
 
 function getFriendlyError(error) {
@@ -98,7 +89,7 @@ function onQuickStart(text) {
 async function onSend(input, files) {
   const model = chat.currentModel
   const provider = chat.currentProvider
-  // [debug] send() called
+  console.log('[Vermes📤] send() input:', JSON.stringify(input), 'files:', files?.length, 'model:', model, 'provider:', provider)
   if ((!input && !files?.length) || chat.loading) return
   try {
     // P3-8: 多模型对比模式
@@ -107,7 +98,7 @@ async function onSend(input, files) {
     } else {
       await chat.sendMessage(input, files)
     }
-    // send completed
+    console.log('[Vermes📤] send() → completed')
   } catch(e) {
     console.error('[Vermes📤] send() error:', e)
     toast.error(getFriendlyError(e))
@@ -179,8 +170,5 @@ onUnmounted(() => {
       @wechatLogin="openWeChatQR"
       @copyReferralCode="copyReferralCode"
     />
-
-    <!-- 新手引导 -->
-    <WelcomeGuide />
   </div>
 </template>

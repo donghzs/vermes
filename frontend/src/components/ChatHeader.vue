@@ -21,8 +21,7 @@ const sessionStats = computed(() => chat.getSessionStats(chat.currentSessionId))
 
 // 模型列表
 const defaultModels = [
-  { id: 'mimo-v2.5', name: '⚡ MiMo V2.5（小米）', provider: 'vbit.top' },
-  { id: 'deepseek-v4-flash', name: '🚀 DeepSeek V4 Flash', provider: 'vbit.top' },
+  { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'vbit.top' },
 ]
 
 const models = computed(() => {

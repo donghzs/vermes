@@ -11,7 +11,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { isCloudModel, checkQuota, checkQuotaServer, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
 import { showToast } from '../utils/toast'
-import { loadFromStorage, saveToStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, loadImage, deleteImages } from './chat-storage'
+import { loadFromStorage, saveToStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, loadImage, deleteImages, loadMessagesFromIDB, saveMessagesToIDB, migrateFromLocalStorage } from './chat-storage'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import {
   uid, SESSIONS_KEY, MESSAGES_KEY_PREFIX, MAX_SESSIONS, QUOTA_NEED_LOGIN,
@@ -22,6 +22,7 @@ import {
   getMessageCount as _getMessageCount, getFirstMessage as _getFirstMessage,
   searchAllMessages as _searchAllMessages, getSessionStats as _getSessionStats,
   exportSession as _exportSession, importSession as _importSession,
+  migrateFromLocalStorage as _migrateFromLocalStorage,
 } from './chat-session'
 import { friendlyError, formatSize } from './chat-quota'
 
@@ -39,7 +40,7 @@ export const useChatStore = defineStore('chat', () => {
   const sidebarOpen = ref(true)
   const theme = ref('dark')
   let _beforeunloadRegistered = false
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'deepseek-v4-flash')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'agnes-2.0-flash')
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
@@ -67,6 +68,8 @@ export const useChatStore = defineStore('chat', () => {
   // ── 初始化 ──
   async function init() {
     onStorageWriteFailure(() => evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId.value))
+    // 启动时迁移 localStorage → IndexedDB（一次性）
+    try { await _migrateFromLocalStorage(MESSAGES_KEY_PREFIX) } catch(e) {}
     try {
       const t = await fetchToken()
       api.setToken(t)
@@ -163,14 +166,17 @@ export const useChatStore = defineStore('chat', () => {
     }
     currentSessionId.value = id
     try { localStorage.setItem('vermes-last-session', id) } catch(e) { evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId.value) }
-    let stored = loadFromStorage(MESSAGES_KEY_PREFIX + id)
+    // 优先从 IndexedDB 读取
+    let stored = await loadMessagesFromIDB(id)
+    if (!stored || stored.length === 0) {
+      stored = loadFromStorage(MESSAGES_KEY_PREFIX + id)  // 降级 localStorage
+    }
 
     if (stored.length === 0) {
       const memMsgs = messages.value.filter(m => m.sessionId === id)
       if (memMsgs.length > 0) {
-        console.warn('[Vermes] localStorage 为空，从内存恢复会话消息:', id, 'count:', memMsgs.length)
         stored = memMsgs
-        saveToStorage(MESSAGES_KEY_PREFIX + id, memMsgs)
+        await saveMessagesToIDB(id, memMsgs)
       }
     }
 
@@ -243,8 +249,9 @@ export const useChatStore = defineStore('chat', () => {
 
     // 云端模型配额检查
     const isCloud = isCloudModel(providerId)
-    const isVbitFreeTrial = String(providerId).toLowerCase() === 'vbit'
-    if (isCloud && isVbitFreeTrial) {
+    const isVbitFreeTrial = ['vbit', 'vbit.top'].includes(String(providerId).toLowerCase())
+    // 免费体验必须微信登录
+    if (isVbitFreeTrial) {
       const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
       const isLoggedIn = !!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token'))
       if (!isLoggedIn || !wechatOpenid) {
@@ -257,8 +264,6 @@ export const useChatStore = defineStore('chat', () => {
         if (serverCheck.data.trial_expired) { quotaModalType.value = 'trial_expired'; showQuotaModal.value = true; return }
         if (serverCheck.data.remaining <= 0) { quotaModalType.value = 'wechat_expired'; showQuotaModal.value = true; return }
       }
-    }
-    if (isVbitFreeTrial) {
       const quotaCheck = checkQuota(isCloud)
       if (!quotaCheck.allowed) { quotaModalType.value = 'wechat_expired'; showQuotaModal.value = true; return }
     }
@@ -428,7 +433,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!currentSessionId.value) { showToast('会话未初始化', 'error'); return }
 
     const providerId = currentProvider.value
-    const isVbitFreeTrial = String(providerId).toLowerCase() === 'vbit'
+    const isVbitFreeTrial = ['vbit', 'vbit.top'].includes(String(providerId).toLowerCase())
     if (isVbitFreeTrial) {
       const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
       const isLoggedIn = !!(localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token'))
