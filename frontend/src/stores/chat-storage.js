@@ -2,13 +2,33 @@
 const IMAGE_DB = 'vermes-images'
 const IMAGE_STORE = 'attachments'
 
+// ── IndexedDB 消息存储（突破 localStorage 5MB 限制） ──
+const MSG_DB = 'vermes-messages'
+const MSG_STORE = 'sessions'
+const MSG_DB_VERSION = 1
+
+// 连接缓存：避免每次操作都 open
+let _imageDBPromise = null
 function openImageDB() {
-  return new Promise((resolve, reject) => {
+  return _imageDBPromise || (_imageDBPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(IMAGE_DB, 1)
     req.onupgradeneeded = () => req.result.createObjectStore(IMAGE_STORE)
     req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
+    req.onerror = () => { _imageDBPromise = null; reject(req.error) }
+  }))
+}
+
+let _msgDBPromise = null
+function openMsgDB() {
+  return _msgDBPromise || (_msgDBPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(MSG_DB, MSG_DB_VERSION)
+    req.onupgradeneeded = () => {
+      const store = req.result.createObjectStore(MSG_STORE)
+      store.createIndex('sessionId', 'sessionId', { unique: false })
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => { _msgDBPromise = null; reject(req.error) }
+  }))
 }
 
 export async function saveImage(key, base64Data) {
@@ -36,6 +56,64 @@ export async function deleteImages(keys) {
     const store = tx.objectStore(IMAGE_STORE)
     keys.forEach(k => store.delete(k))
   } catch {}
+}
+
+// ── IndexedDB 消息 CRUD ──
+
+export async function saveMessagesToIDB(sessionId, messages) {
+  try {
+    const db = await openMsgDB()
+    const tx = db.transaction(MSG_STORE, 'readwrite')
+    tx.objectStore(MSG_STORE).put(messages, sessionId)
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
+  } catch(e) { console.warn('[Vermes] 消息 IndexedDB 写入失败:', e) }
+}
+
+export async function loadMessagesFromIDB(sessionId) {
+  try {
+    const db = await openMsgDB()
+    const tx = db.transaction(MSG_STORE, 'readonly')
+    const req = tx.objectStore(MSG_STORE).get(sessionId)
+    return new Promise((res) => { req.onsuccess = () => res(req.result || []); req.onerror = () => res([]) })
+  } catch { return [] }
+}
+
+export async function deleteMessagesFromIDB(sessionId) {
+  try {
+    const db = await openMsgDB()
+    const tx = db.transaction(MSG_STORE, 'readwrite')
+    tx.objectStore(MSG_STORE).delete(sessionId)
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
+  } catch(e) { console.warn('[Vermes] 消息 IndexedDB 删除失败:', e) }
+}
+
+// ── 一次性迁移：localStorage → IndexedDB ──
+const MIGRATION_KEY = 'vermes-idb-migrated'
+
+export async function migrateFromLocalStorage(MESSAGES_KEY_PREFIX) {
+  if (localStorage.getItem(MIGRATION_KEY) === 'v1') return 0
+  let migrated = 0
+  const keys = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith(MESSAGES_KEY_PREFIX)) keys.push(key)
+  }
+  for (const key of keys) {
+    try {
+      const sessionId = key.slice(MESSAGES_KEY_PREFIX.length)
+      const msgs = JSON.parse(localStorage.getItem(key))
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        await saveMessagesToIDB(sessionId, msgs)
+        localStorage.removeItem(key)
+        migrated++
+      }
+    } catch(e) { console.warn('[Vermes] 迁移会话失败:', key, e) }
+  }
+  if (migrated > 0) {
+    console.log(`[Vermes] 已迁移 ${migrated} 个会话从 localStorage 到 IndexedDB`)
+  }
+  localStorage.setItem(MIGRATION_KEY, 'v1')
+  return migrated
 }
 
 // ── localStorage 辅助 ──

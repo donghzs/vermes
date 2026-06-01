@@ -604,6 +604,7 @@ async def chat_completions(req: ChatRequest):
             _agent_done = asyncio.Event()
             _stream_id = secrets.token_urlsafe(16)
             _cancel_event = asyncio.Event()
+            _tool_ids = {}  # tool_name → tool_call_id 配对
             _active_streams[_stream_id] = _cancel_event
 
             def stream_callback(delta: str):
@@ -624,6 +625,7 @@ async def chat_completions(req: ChatRequest):
                 _log.info(f"[ToolEvent] {event_type}: {tool_name}")
                 if event_type == "tool.started":
                     _tool_id = secrets.token_urlsafe(8)
+                    _tool_ids[tool_name] = _tool_id
                     event = {
                         "type": "tool_start",
                         "tool_call_id": _tool_id,
@@ -633,7 +635,7 @@ async def chat_completions(req: ChatRequest):
                 else:
                     event = {
                         "type": "tool_end",
-                        "tool_call_id": kwargs.get("tool_id", secrets.token_urlsafe(8)),
+                        "tool_call_id": _tool_ids.pop(tool_name, secrets.token_urlsafe(8)),
                         "tool_name": tool_name,
                         "duration": kwargs.get("duration", 0),
                         "is_error": kwargs.get("is_error", False),
