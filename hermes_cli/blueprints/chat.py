@@ -452,6 +452,9 @@ async def chat_completions(req: ChatRequest):
                                 new_lines.append(f"VBIT_API_KEY={token}")
                             env_path.write_text("\n".join(new_lines) + "\n")
                             api_key = token
+                            # agnes provider 用 vbit 免费通道时，切到 vbit base_url
+                            if provider == "agnes":
+                                base_url = PROVIDERS["vbit"]["base_url"]
                             _log.info(f"[Claim] 微信用户自动领取 token 成功，已写入 .env")
                         else:
                             err_msg = claim_result.get("error", "领取失败")
@@ -593,7 +596,7 @@ async def chat_completions(req: ChatRequest):
                             yield line + "\n\n"
             # Stream-end quota reporting
             wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-            if provider == "vbit":
+            if provider in ("vbit", "agnes"):
                 _report_quota(wechat_openid, _stream_usage["total_tokens"], "流式")
             yield "data: [DONE]\n\n"
 
@@ -749,7 +752,7 @@ async def chat_completions(req: ChatRequest):
                     _agent_result = {}
 
                 _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-                if _wechat_openid and _agent_result and provider == "vbit":
+                if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
                     _total = _agent_result.get("total_tokens", 0)
                     _report_quota(_wechat_openid, _total, "Agent流式")
 
@@ -801,7 +804,7 @@ async def chat_completions(req: ChatRequest):
 
         # Non-streaming quota reporting
         wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-        if provider == "vbit":
+        if provider in ("vbit", "agnes"):
             _report_quota(wechat_openid, _usage["total_tokens"], "非流式")
 
         return {
