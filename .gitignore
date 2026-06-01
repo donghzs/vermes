@@ -91,3 +91,6 @@ TASK-WINDOWS-BUILD.md
 QCLAW-HANDOVER-*.md
 FULL-TEST-REPORT-*.md
 NATIVE-WINDOW-REPORT-*.md
+
+# Backup files
+backups/
