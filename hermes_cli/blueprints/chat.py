@@ -205,53 +205,6 @@ def _get_chat_credentials() -> tuple[str, str, str]:
     api_key = ""
     provider = ""
 
-    PROVIDER_ENV_MAP = {
-        "deepseek": "DEEPSEEK_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY",
-        "vbit": "VBIT_API_KEY",
-        "alibaba": "QWEN_API_KEY",
-        "qwen": "QWEN_API_KEY",
-        "zhipu": "ZHIPU_API_KEY",
-        "doubao": "DOUBAO_API_KEY",
-        "moonshot": "MOONSHOT_API_KEY",
-        "baichuan": "BAICHUAN_API_KEY",
-        "yi": "YI_API_KEY",
-        "spark": "SPARK_API_KEY",
-        "siliconflow": "SILICONFLOW_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-        "cohere": "COHERE_API_KEY",
-        "custom": "CUSTOM_API_KEY",
-        "xiaomi": "XIAOMI_API_KEY",
-        "ant-ling": "ANT_LING_API_KEY",
-        "ollama": None,
-    }
-
-    PROVIDER_BASE_URL = {
-        "deepseek": "https://api.deepseek.com/v1",
-        "openai": "https://api.openai.com/v1",
-        "anthropic": "https://api.anthropic.com/v1",
-        "gemini": "https://generativelanguage.googleapis.com/v1beta",
-        "openrouter": "https://openrouter.ai/api/v1",
-        "vbit": "https://api.vbit.top/v1",
-        "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "zhipu": "https://open.bigmodel.cn/api/paas/v4",
-        "doubao": "https://ark.cn-beijing.volces.com/api/v3",
-        "moonshot": "https://api.moonshot.cn/v1",
-        "baichuan": "https://api.baichuan-ai.com/v1",
-        "yi": "https://api.lingyiwanwu.com/v1",
-        "spark": "https://spark-api-open.xf-yun.com/v1",
-        "siliconflow": "https://api.siliconflow.cn/v1",
-        "mistral": "https://api.mistral.ai/v1",
-        "cohere": "https://api.cohere.ai/v1",
-        "ollama": "http://localhost:11434/v1",
-        "xiaomi": "https://api.xiaomimimo.com/v1",
-        "ant-ling": "https://api.ant-ling.com/v1",
-    }
-
     if cfg_path.exists():
         with open(cfg_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
@@ -260,9 +213,10 @@ def _get_chat_credentials() -> tuple[str, str, str]:
         default_model = m.get("default", "")
         provider = m.get("provider", "")
 
-    env_var_name = PROVIDER_ENV_MAP.get(provider, "OPENAI_API_KEY")
+    prov_def = PROVIDERS.get(provider) or {}
+    env_var_name = prov_def.get("env_key") or "OPENAI_API_KEY"
     if not base_url and provider:
-        base_url = PROVIDER_BASE_URL.get(provider, "")
+        base_url = prov_def.get("base_url", "")
 
     if env_path.exists():
         env_content = env_path.read_text(encoding="utf-8")
@@ -294,63 +248,35 @@ MODEL_PROVIDER_MAP = {
     "claude-": "anthropic",
 }
 
-PROVIDER_ENV_MAP_SHARED = {
-    "deepseek": "DEEPSEEK_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-    "vbit": "VBIT_API_KEY",
-    "alibaba": "QWEN_API_KEY",
-    "qwen": "QWEN_API_KEY",
-    "zhipu": "ZHIPU_API_KEY",
-    "doubao": "DOUBAO_API_KEY",
-    "moonshot": "MOONSHOT_API_KEY",
-    "baichuan": "BAICHUAN_API_KEY",
-    "yi": "YI_API_KEY",
-    "spark": "SPARK_API_KEY",
-    "siliconflow": "SILICONFLOW_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
-    "cohere": "COHERE_API_KEY",
-    "custom": "CUSTOM_API_KEY",
-    "xiaomi": "XIAOMI_API_KEY",
-    "ant-ling": "ANT_LING_API_KEY",
-    "minimax": "MINIMAX_API_KEY",
-    "baidu": "BAIDU_API_KEY",
-    "xinghuo": "XINGHUO_API_KEY",
-    "stepfun": "STEPFUN_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "together": "TOGETHER_API_KEY",
-    "ollama": None,
-}
-
-PROVIDER_BASE_URL_SHARED = {
-    "deepseek": "https://api.deepseek.com/v1",
-    "openai": "https://api.openai.com/v1",
-    "anthropic": "https://api.anthropic.com/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta",
-    "openrouter": "https://openrouter.ai/api/v1",
-    "vbit": "https://api.vbit.top/v1",
-    "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "zhipu": "https://open.bigmodel.cn/api/paas/v4",
-    "doubao": "https://ark.cn-beijing.volces.com/api/v3",
-    "moonshot": "https://api.moonshot.cn/v1",
-    "baichuan": "https://api.baichuan-ai.com/v1",
-    "yi": "https://api.lingyiwanwu.com/v1",
-    "spark": "https://spark-api-open.xf-yun.com/v1",
-    "siliconflow": "https://api.siliconflow.cn/v1",
-    "mistral": "https://api.mistral.ai/v1",
-    "cohere": "https://api.cohere.ai/v1",
-    "ollama": "http://localhost:11434/v1",
-    "xiaomi": "https://api.xiaomimimo.com/v1",
-    "ant-ling": "https://api.ant-ling.com/v1",
-    "minimax": "https://api.minimax.chat/v1",
-    "baidu": "https://qianfan.baidubce.com/v2",
-    "xinghuo": "https://spark-api.xf-yun.com/v1",
-    "stepfun": "https://api.stepfun.com/v1",
-    "groq": "https://api.groq.com/openai/v1",
-    "together": "https://api.together.xyz/v1",
+# Unified provider registry (single source of truth)
+PROVIDERS = {
+    "deepseek": {"env_key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1"},
+    "openai": {"env_key": "OPENAI_API_KEY", "base_url": "https://api.openai.com/v1"},
+    "anthropic": {"env_key": "ANTHROPIC_API_KEY", "base_url": "https://api.anthropic.com/v1"},
+    "gemini": {"env_key": "GEMINI_API_KEY", "base_url": "https://generativelanguage.googleapis.com/v1beta"},
+    "openrouter": {"env_key": "OPENROUTER_API_KEY", "base_url": "https://openrouter.ai/api/v1"},
+    "vbit": {"env_key": "VBIT_API_KEY", "base_url": "https://api.vbit.top/v1"},
+    "alibaba": {"env_key": "QWEN_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+    "qwen": {"env_key": "QWEN_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+    "zhipu": {"env_key": "ZHIPU_API_KEY", "base_url": "https://open.bigmodel.cn/api/paas/v4"},
+    "doubao": {"env_key": "DOUBAO_API_KEY", "base_url": "https://ark.cn-beijing.volces.com/api/v3"},
+    "moonshot": {"env_key": "MOONSHOT_API_KEY", "base_url": "https://api.moonshot.cn/v1"},
+    "baichuan": {"env_key": "BAICHUAN_API_KEY", "base_url": "https://api.baichuan-ai.com/v1"},
+    "yi": {"env_key": "YI_API_KEY", "base_url": "https://api.lingyiwanwu.com/v1"},
+    "spark": {"env_key": "SPARK_API_KEY", "base_url": "https://spark-api-open.xf-yun.com/v1"},
+    "siliconflow": {"env_key": "SILICONFLOW_API_KEY", "base_url": "https://api.siliconflow.cn/v1"},
+    "mistral": {"env_key": "MISTRAL_API_KEY", "base_url": "https://api.mistral.ai/v1"},
+    "cohere": {"env_key": "COHERE_API_KEY", "base_url": "https://api.cohere.ai/v1"},
+    "custom": {"env_key": "CUSTOM_API_KEY", "base_url": ""},
+    "xiaomi": {"env_key": "XIAOMI_API_KEY", "base_url": "https://api.xiaomimimo.com/v1"},
+    "ant-ling": {"env_key": "ANT_LING_API_KEY", "base_url": "https://api.ant-ling.com/v1"},
+    "minimax": {"env_key": "MINIMAX_API_KEY", "base_url": "https://api.minimax.chat/v1"},
+    "baidu": {"env_key": "BAIDU_API_KEY", "base_url": "https://qianfan.baidubce.com/v2"},
+    "xinghuo": {"env_key": "XINGHUO_API_KEY", "base_url": "https://spark-api.xf-yun.com/v1"},
+    "stepfun": {"env_key": "STEPFUN_API_KEY", "base_url": "https://api.stepfun.com/v1"},
+    "groq": {"env_key": "GROQ_API_KEY", "base_url": "https://api.groq.com/openai/v1"},
+    "together": {"env_key": "TOGETHER_API_KEY", "base_url": "https://api.together.xyz/v1"},
+    "ollama": {"env_key": None, "base_url": "http://localhost:11434/v1"},
 }
 
 
@@ -397,11 +323,11 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
             cfg = yaml.safe_load(f) or {}
         base_url = cfg.get("providers", {}).get(provider, {}).get("base_url", "")
     if not base_url:
-        base_url = PROVIDER_BASE_URL_SHARED.get(provider, "")
+        base_url = (PROVIDERS.get(provider) or {}).get("base_url", "")
 
     # Get api_key
     api_key = ""
-    env_var = PROVIDER_ENV_MAP_SHARED.get(provider)
+    env_var = (PROVIDERS.get(provider) or {}).get("env_key")
     if env_var and env_path.exists():
         env_content = env_path.read_text(encoding="utf-8")
         for line in env_content.splitlines():
@@ -443,6 +369,28 @@ async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
     return await _claim_trial_token(wechat_openid)
 
 
+def _report_quota(wechat_openid: str, total_tokens: int, mode: str = ""):
+    """Report token usage to vbit backend for quota deduction."""
+    if not wechat_openid or total_tokens <= 0:
+        return
+    secret = os.environ.get("VERMES_INTERNAL_SECRET", "")
+    if not secret:
+        _log.warning("[Quota] VERMES_INTERNAL_SECRET 未设置，跳过积分上报")
+        return
+    try:
+        import httpx
+        points = max(1, total_tokens // 1000)
+        httpx.post(
+            "https://api.vbit.top/api/quota/spend",
+            json={"wechat_openid": wechat_openid, "quota_consumed": points * 720},
+            headers={"X-Vermes-Secret": secret},
+            timeout=5, verify=True,
+        )
+        _log.info(f"[Quota] {mode}上报: {points}积分 ({total_tokens} tokens)")
+    except Exception as e:
+        _log.warning(f"[Quota] {mode}上报失败: {e}")
+
+
 # ── Route handlers ───────────────────────────────────────────────────
 
 async def chat_completions(req: ChatRequest):
@@ -466,7 +414,7 @@ async def chat_completions(req: ChatRequest):
         if api_key and api_key.startswith("unknown"):
             api_key = ""
             remove_env_value("VBIT_API_KEY")
-        env_hint = PROVIDER_ENV_MAP_SHARED.get(provider, "API_KEY")
+        env_hint = (PROVIDERS.get(provider) or {}).get("env_key", "API_KEY")
         if provider == "vbit":
             try:
                 from hermes_constants import get_hermes_home
@@ -642,19 +590,8 @@ async def chat_completions(req: ChatRequest):
                             yield line + "\n\n"
             # Stream-end quota reporting
             wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-            if wechat_openid and _stream_usage["total_tokens"] > 0 and provider == "vbit":
-                try:
-                    import httpx as _hx
-                    points = max(1, _stream_usage["total_tokens"] // 1000)
-                    _hx.post(
-                        "https://api.vbit.top/api/quota/spend",
-                        json={"wechat_openid": wechat_openid, "quota_consumed": points * 720},
-                        headers={"X-Vermes-Secret": os.environ.get("VERMES_INTERNAL_SECRET", "")},
-                        timeout=5, verify=True
-                    )
-                    _log.info(f"[Quota] 自动上报: {points}积分 ({_stream_usage['total_tokens']} tokens)")
-                except Exception as e:
-                    _log.warning(f"[Quota] 自动上报失败: {e}")
+            if provider == "vbit":
+                _report_quota(wechat_openid, _stream_usage["total_tokens"], "流式")
             yield "data: [DONE]\n\n"
 
         if agent is None:
@@ -671,7 +608,7 @@ async def chat_completions(req: ChatRequest):
 
             def stream_callback(delta: str):
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
                     loop = None
                 if delta is not None:
@@ -685,25 +622,25 @@ async def chat_completions(req: ChatRequest):
 
             def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
                 _log.info(f"[ToolEvent] {event_type}: {tool_name}")
-                import uuid
                 if event_type == "tool.started":
+                    _tool_id = secrets.token_urlsafe(8)
                     event = {
                         "type": "tool_start",
-                        "tool_call_id": str(uuid.uuid4())[:8],
+                        "tool_call_id": _tool_id,
                         "tool_name": tool_name,
                         "arguments": args or {},
                     }
                 else:
                     event = {
                         "type": "tool_end",
-                        "tool_call_id": str(uuid.uuid4())[:8],
+                        "tool_call_id": kwargs.get("tool_id", secrets.token_urlsafe(8)),
                         "tool_name": tool_name,
                         "duration": kwargs.get("duration", 0),
                         "is_error": kwargs.get("is_error", False),
                         "result_preview": preview or "",
                     }
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
                     loop = None
                 if loop and loop.is_running():
@@ -723,7 +660,7 @@ async def chat_completions(req: ChatRequest):
                     "message": msg
                 }
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
                     loop = None
                 if loop and loop.is_running():
@@ -756,7 +693,7 @@ async def chat_completions(req: ChatRequest):
                 try:
                     yield f'data: {json.dumps({"type": "stream_start", "stream_id": _stream_id})}\n\n'
 
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     agent_task = loop.run_in_executor(None, run_sync)
 
                     last_ping = time.time()
@@ -809,23 +746,7 @@ async def chat_completions(req: ChatRequest):
                 _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
                 if _wechat_openid and _agent_result and provider == "vbit":
                     _total = _agent_result.get("total_tokens", 0)
-                    if _total > 0:
-                        try:
-                            import httpx as _hx2
-                            _pts = max(1, _total // 1000)
-                            _sec = os.environ.get("VERMES_INTERNAL_SECRET", "")
-                            if _sec:
-                                _hx2.post(
-                                    "https://api.vbit.top/api/quota/spend",
-                                    json={"wechat_openid": _wechat_openid, "quota_consumed": _pts * 720},
-                                    headers={"X-Vermes-Secret": _sec},
-                                    timeout=5, verify=True
-                                )
-                                _log.info(f"[Quota] 流式上报: {_pts}积分 ({_total} tokens)")
-                            else:
-                                _log.warning("[Quota] VERMES_INTERNAL_SECRET 未设置，跳过积分上报")
-                        except Exception as _qe:
-                            _log.warning(f"[Quota] 流式上报失败: {_qe}")
+                    _report_quota(_wechat_openid, _total, "Agent流式")
 
                 final_chunk = {
                     "id": "vermes-agent",
@@ -859,7 +780,7 @@ async def chat_completions(req: ChatRequest):
                     conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                 )
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, run_sync)
 
             final_response = result.get("final_response", "") if result else ""
@@ -875,23 +796,8 @@ async def chat_completions(req: ChatRequest):
 
         # Non-streaming quota reporting
         wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-        if wechat_openid and _usage["total_tokens"] > 0 and provider == "vbit":
-            try:
-                import httpx as _hx
-                points = max(1, _usage["total_tokens"] // 1000)
-                _secret = os.environ.get("VERMES_INTERNAL_SECRET", "")
-                if _secret:
-                    _hx.post(
-                        "https://api.vbit.top/api/quota/spend",
-                        json={"wechat_openid": wechat_openid, "quota_consumed": points * 720},
-                        headers={"X-Vermes-Secret": _secret},
-                        timeout=5, verify=True
-                    )
-                    _log.info(f"[Quota] 非流式上报: {points}积分 ({_usage['total_tokens']} tokens)")
-                else:
-                    _log.warning("[Quota] VERMES_INTERNAL_SECRET 未设置，跳过积分上报")
-            except Exception as e:
-                _log.warning(f"[Quota] 非流式上报失败: {e}")
+        if provider == "vbit":
+            _report_quota(wechat_openid, _usage["total_tokens"], "非流式")
 
         return {
             "id": "vermes-agent",

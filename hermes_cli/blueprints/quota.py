@@ -39,13 +39,12 @@ async def _claim_trial_token(wechat_openid: str) -> dict:
     """Internal: Claim trial token using wechat_openid. Returns the vbit API result."""
     fp = _generate_device_fingerprint()
     try:
-        resp = httpx.post(
-            "https://api.vbit.top/api/claim",
-            json={"wechat_openid": wechat_openid, "device_id": fp},
-            timeout=15,
-            verify=True,
-        )
-        return resp.json()
+        async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
+            resp = await client.post(
+                "https://api.vbit.top/api/claim",
+                json={"wechat_openid": wechat_openid, "device_id": fp},
+            )
+            return resp.json()
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -71,13 +70,12 @@ async def claim_trial_token(request: Request):
 
         fp = _generate_device_fingerprint()
         try:
-            resp = httpx.post(
-                "https://api.vbit.top/api/claim",
-                json={"wechat_openid": wechat_openid, "device_id": fp},
-                timeout=15,
-                verify=True,
-            )
-            result = resp.json()
+            async with httpx.AsyncClient(timeout=15.0, verify=True) as client:
+                resp = await client.post(
+                    "https://api.vbit.top/api/claim",
+                    json={"wechat_openid": wechat_openid, "device_id": fp},
+                )
+                result = resp.json()
         except Exception as e:
             return {"success": False, "error": str(e)}
 
