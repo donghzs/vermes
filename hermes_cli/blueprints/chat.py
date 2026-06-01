@@ -786,8 +786,6 @@ async def chat_completions(req: ChatRequest):
                     loop = asyncio.get_running_loop()
                     agent_task = loop.run_in_executor(None, run_sync)
 
-                    last_ping = time.time()
-
                     while not _agent_done.is_set() or not _delta_queue.empty():
                         if _cancel_event.is_set():
                             _log.info(f"[Stream] Frontend requested stop, stream_id={_stream_id}")
@@ -795,23 +793,23 @@ async def chat_completions(req: ChatRequest):
                             agent_task.cancel()
                             break
 
-                        if time.time() - last_ping > 15:
-                            yield f'data: {json.dumps({"type": "ping"})}\n\n'
-                            last_ping = time.time()
-
                         try:
-                            delta = await asyncio.wait_for(_delta_queue.get(), timeout=1.0)
+                            delta = await asyncio.wait_for(_delta_queue.get(), timeout=0.5)
                         except asyncio.TimeoutError:
                             if agent_task.done():
+                                exc = agent_task.exception()
+                                if exc:
+                                    _log.error(f"[Stream] Agent error: {exc}")
+                                    yield f'data: {json.dumps({"error": {"message": str(exc), "type": "agent_error", "code": 500}})}\n\n'
+                                    yield "data: [DONE]\n\n"
+                                    return
                                 if _delta_queue.empty():
                                     _agent_done.set()
                                     break
-                                continue
                             continue
 
                         if isinstance(delta, dict):
                             yield f"data: {json.dumps(delta)}\n\n"
-                            last_ping = time.time()
                         else:
                             chunk = {
                                 "id": "vermes-agent",
@@ -821,42 +819,31 @@ async def chat_completions(req: ChatRequest):
                                 "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
                             }
                             yield f"data: {json.dumps(chunk)}\n\n"
-                            last_ping = time.time()
-
-                    # Wait for agent
-                    _agent_result = {}
-                    if not _cancel_event.is_set():
-                        try:
-                            _agent_result = await asyncio.wait_for(agent_task, timeout=300)
-                        except (asyncio.TimeoutError, Exception) as _e:
-                            _log.warning(f"[Stream] Agent task error: {_e}, stream_id={_stream_id}")
-
-                    # Report quota
-                    try:
-                        _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-                        if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
-                            _total = _agent_result.get("total_tokens", 0)
-                            _report_quota(_wechat_openid, _total, "Agent流式")
-                    except Exception:
-                        pass
-
-                except Exception as _gen_err:
-                    _log.error(f"[Stream] Generator error: {_gen_err}, stream_id={_stream_id}")
                 finally:
-                    # ALWAYS send [DONE] — this is critical
                     _active_streams.pop(_stream_id, None)
-                    final_chunk = {
-                        "id": "vermes-agent",
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": model,
-                        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-                    }
-                    try:
-                        yield f"data: {json.dumps(final_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
-                    except Exception:
-                        pass
+
+                # Wait for agent (v2.0.4 style — direct await, no timeout wrapper)
+                try:
+                    _agent_result = await agent_task
+                except Exception:
+                    _agent_result = {}
+
+                # Report quota
+                _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
+                if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
+                    _total = _agent_result.get("total_tokens", 0)
+                    _report_quota(_wechat_openid, _total, "Agent流式")
+
+                # Send [DONE]
+                final_chunk = {
+                    "id": "vermes-agent",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+                }
+                yield f"data: {json.dumps(final_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
     else:
