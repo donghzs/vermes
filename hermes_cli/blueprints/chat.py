@@ -235,7 +235,6 @@ MODEL_PROVIDER_MAP = {
     "deepseek-chat": "deepseek",
     "deepseek-reasoner": "deepseek",
     "deepseek-v4-flash": "deepseek",
-    "agnes-2.0-flash": "agnes",
     "agnes-": "agnes",
     "openrouter/": "openrouter",
     "qwen2.5:": "ollama",
@@ -248,7 +247,6 @@ MODEL_PROVIDER_MAP = {
     "gpt-4": "openai",
     "gpt-3.5": "openai",
     "claude-": "anthropic",
-    "agnes-": "agnes",
 }
 
 # Unified provider registry (single source of truth)
