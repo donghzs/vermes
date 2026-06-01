@@ -430,6 +430,16 @@ def _apply_pending_update_if_any():
 
 def run_gui():
     """Entry point for GUI mode (called from main.py when frozen + no args)."""
+    # ── 隐藏 CMD 窗口（Windows console=True 时） ──
+    if platform.system() == 'Windows' and getattr(sys, 'frozen', False):
+        try:
+            import ctypes
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+        except Exception:
+            pass
+
     # ── 启动时检查是否有待应用的更新 ──
     _apply_pending_update_if_any()
 
