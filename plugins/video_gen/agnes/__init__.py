@@ -35,13 +35,17 @@ MODELS: Dict[str, Dict[str, Any]] = {
     "agnes-video-v2.0": {
         "display": "Agnes Video 2.0",
         "speed": "~60-180s",
-        "strengths": "Text-to-video, 768x1152, 24fps, up to 10s",
+        "strengths": "Text/Image/Multi-image/Keyframe-to-video, 768x1152, 24fps, up to 10s",
         "tier": "free",
         "aspect_ratios": ("16:9", "9:16", "1:1"),
         "frame_rates": (24,),
         "frame_counts": (81, 121, 161, 241),
         "max_duration": 10,
         "min_duration": 3,
+        "supports_image_to_video": True,
+        "supports_multi_image": True,
+        "supports_keyframes": True,
+        "max_reference_images": 5,
     },
 }
 
@@ -215,6 +219,16 @@ class AgnesVideoGenProvider(VideoGenProvider):
         }
         if seed is not None:
             payload["seed"] = seed
+
+        # 图像转视频：单图
+        if image_url:
+            payload["image"] = image_url
+        # 多图/关键帧：通过 kwargs 传入
+        elif kwargs.get("images"):
+            extra_body = {"image": kwargs["images"]}
+            if kwargs.get("mode") == "keyframes":
+                extra_body["mode"] = "keyframes"
+            payload["extra_body"] = extra_body
 
         # Submit async task
         try:
