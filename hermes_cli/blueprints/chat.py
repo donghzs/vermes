@@ -237,7 +237,6 @@ MODEL_PROVIDER_MAP = {
     "deepseek-v4-flash": "deepseek",
     "agnes-2.0-flash": "agnes",
     "agnes-": "agnes",
-    "mimo-v2-tts": "xiaomi",
     "openrouter/": "openrouter",
     "qwen2.5:": "ollama",
     "qwen3.6:": "ollama",
@@ -307,6 +306,7 @@ def _resolve_model_provider(model: str, explicit_provider: str | None = None) ->
         "百度文心": "baidu", "讯飞星火": "xinghuo", "阶跃星辰": "stepfun",
         "零一万物": "yi", "百川智能": "baichuan", "Groq (极速推理)": "groq",
         "Together AI": "together", "Anthropic Claude": "anthropic", "Google Gemini": "gemini",
+        "Agnes AI": "agnes",
     }
     provider = provider.lower(); provider = provider_aliases.get(provider, provider)
 

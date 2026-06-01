@@ -29,17 +29,19 @@ const DEFAULT_BASE_URLS = {
   baichuan: 'https://api.baichuan-ai.com/v1',
   groq: 'https://api.groq.com/openai/v1',
   together: 'https://api.together.xyz/v1',
+  agnes: 'https://apihub.agnes-ai.com/v1',
   anthropic: 'https://api.anthropic.com/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 }
 
-const RECOMMENDED_IDS = ['vbit', 'deepseek', 'xiaomi', 'ollama']
-const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
-const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
+const RECOMMENDED_IDS = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama']
+const CHINESE_IDS = ['agnes','xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
+const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together','agnes']
 
 // 推荐区提供商的额外配置
 const PROVIDER_EXTRAS = {
   vbit: { iconClass: 'bg-green-500 text-white w-10 h-10', iconText: 'V', isSpecial: true },
+  agnes: { iconClass: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400', iconText: 'A', description: '全球前十 AI Lab，文本/图片/视频全模态无限期免费', linkUrl: 'https://platform.agnes-ai.com/', linkText: '→ 去 Agnes AI 官网获取 Key ↗' },
   deepseek: { iconClass: 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400', iconText: 'D', description: '国产高性价比，注册即送额度', linkUrl: 'https://platform.deepseek.com/', linkText: '→ 去 DeepSeek 官网获取 Key ↗' },
   xiaomi: { iconClass: 'bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400', iconText: 'Mi', description: '国产高性价比，注册即送额度', linkUrl: 'https://platform.xiaomimimo.com?ref=KE64RG', linkText: '→ 去小米 MiMo 官网获取 Key ↗' },
   ollama: { iconClass: 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400', iconText: '💻', description: '完全免费，数据不离开你的电脑', hideKeyInput: true },
@@ -49,6 +51,7 @@ const providers = ref([
   { id: 'openai', name: 'OpenAI', key: '', baseUrl: DEFAULT_BASE_URLS.openai, models: [], syncing: false },
   { id: 'deepseek', name: 'DeepSeek', key: '', baseUrl: DEFAULT_BASE_URLS.deepseek, models: [], syncing: false },
   { id: 'qwen', name: '通义千问', key: '', baseUrl: DEFAULT_BASE_URLS.qwen, models: [], syncing: false },
+  { id: 'agnes', name: 'Agnes AI', key: '', baseUrl: DEFAULT_BASE_URLS.agnes, models: [], syncing: false },
   { id: 'openrouter', name: 'OpenRouter', key: '', baseUrl: DEFAULT_BASE_URLS.openrouter, models: [], syncing: false },
   { id: 'vbit', name: 'vbit.top', key: '', baseUrl: DEFAULT_BASE_URLS.vbit, models: [], syncing: false },
   { id: 'xiaomi', name: '小米 MiMo', key: '', baseUrl: DEFAULT_BASE_URLS.xiaomi, models: [], syncing: false },
@@ -98,7 +101,7 @@ function getEnvKey(providerId) {
     yi: 'YI_API_KEY', spark: 'SPARK_API_KEY',
     siliconflow: 'SILICONFLOW_API_KEY', mistral: 'MISTRAL_API_KEY',
     cohere: 'COHERE_API_KEY', custom: 'CUSTOM_API_KEY',
-    xiaomi: 'XIAOMI_API_KEY', ollama: null,
+    xiaomi: 'XIAOMI_API_KEY', ollama: null, agnes: 'AGNES_API_KEY',
     'ant-ling': 'ANT_LING_API_KEY', minimax: 'MINIMAX_API_KEY',
     baidu: 'BAIDU_API_KEY', xinghuo: 'XINGHUO_API_KEY',
     stepfun: 'STEPFUN_API_KEY', groq: 'GROQ_API_KEY',
@@ -211,16 +214,28 @@ function saveProvidersToStorage() {
 async function save() {
   saveProvidersToStorage()
   let firstRealKey = null
+  
+  // 并行保存所有提供商配置
+  const savePromises = []
   for (const p of providers.value) {
     if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
       const envKey = getEnvKey(p.id)
-      try { await fetch('/api/env', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: envKey, value: p.key }) }) } catch(e) {}
+      savePromises.push(
+        fetch('/api/env', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: envKey, value: p.key }) })
+          .catch(() => {})
+      )
       if (!firstRealKey && p.models && p.models.length > 0 && p.id !== 'vbit') firstRealKey = { id: p.id, name: p.name, model: p.models[0] }
     }
     if (p.baseUrl) {
-      try { await fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider_id: p.id, base_url: p.baseUrl, api_key: p.key && p.key !== '●●●●●●●●' ? p.key : '' }) }) } catch(e) {}
+      savePromises.push(
+        fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider_id: p.id, base_url: p.baseUrl, api_key: p.key && p.key !== '●●●●●●●●' ? p.key : '' }) })
+          .catch(() => {})
+      )
     }
   }
+  
+  await Promise.all(savePromises)
+  
   if (firstRealKey) {
     const currentProvider = localStorage.getItem('vermes-current-provider')
     if (!currentProvider || currentProvider === 'vbit.top' || currentProvider === 'vbit') {
@@ -347,9 +362,9 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             <div class="text-xs text-green-600 dark:text-green-400">✅ 无需注册 · ✅ 无需 API Key · ✅ 开箱即用</div>
           </div>
 
-          <!-- DeepSeek / MiMo / Ollama — 使用 ProviderCard -->
+          <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
           <ProviderCard
-            v-for="p in providers.filter(pr => ['deepseek','xiaomi','ollama'].includes(pr.id))"
+            v-for="p in providers.filter(pr => ['deepseek','agnes','xiaomi','ollama'].includes(pr.id))"
             :key="p.id"
             :provider="p"
             :expanded="isExpanded(p.id)"
