@@ -5,11 +5,14 @@ Vermes 桌面版不需要此功能（工具列表在启动时静态加载），
 但 agent/tool_executor.py 和 model_tools.py 会 import 它。
 """
 
+import json
 from typing import Any, Dict, List, FrozenSet, Optional
 from dataclasses import dataclass, field
 
 # 工具调用名称常量
 TOOL_CALL_NAME = "tool_search"
+TOOL_SEARCH_NAME = "tool_search"
+TOOL_DESCRIBE_NAME = "tool_describe"
 
 # Bridge tools（连接外部服务的工具）
 _BRIDGE_TOOLS = frozenset({
@@ -66,3 +69,13 @@ def assemble_tool_defs(tool_defs: list, context_length: int = 0, config: Optiona
         threshold_tokens=0,
         tool_defs=tool_defs,
     )
+
+
+def dispatch_tool_search(function_args: Dict[str, Any], current_tool_defs: Optional[list] = None) -> str:
+    """Dispatch tool_search call. Vermes returns empty result."""
+    return json.dumps({"results": [], "message": "tool_search not available in Vermes desktop"}, ensure_ascii=False)
+
+
+def dispatch_tool_describe(function_args: Dict[str, Any], current_tool_defs: Optional[list] = None) -> str:
+    """Dispatch tool_describe call. Vermes returns empty result."""
+    return json.dumps({"description": "", "message": "tool_describe not available in Vermes desktop"}, ensure_ascii=False)
