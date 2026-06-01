@@ -84,3 +84,10 @@ frontend/dist/
 dist/
 frontend/dist/
 vermes-onefile.spec
+
+# Security: docs with credentials
+SECURITY-AUDIT-REPORT-*.md
+TASK-WINDOWS-BUILD.md
+QCLAW-HANDOVER-*.md
+FULL-TEST-REPORT-*.md
+NATIVE-WINDOW-REPORT-*.md
