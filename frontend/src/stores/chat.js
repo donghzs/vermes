@@ -335,7 +335,7 @@ export const useChatStore = defineStore('chat', () => {
           name: a.name, type: a.type, data: a.base64,
           mime: a.mimeType || 'application/octet-stream', size: a.size,
         })),
-        stream: !isWindows, signal: ac.signal,
+        stream: true, signal: ac.signal,
         onStreamStart: (streamId) => { activeStreamId.value = streamId },
         onChunk: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
@@ -519,7 +519,7 @@ export const useChatStore = defineStore('chat', () => {
           await api.sendMessage({
             model: model.id, provider: model.provider || providerId,
             messages: apiMessages, attachments: attachPayload,
-            stream: !isWindows, signal: ac.signal,
+            stream: true, signal: ac.signal,
             onChunk: (chunk) => { const am = messages.value.find(m => m.id === aid); if (am) am.content += chunk },
             onTool: (tool) => { const am = messages.value.find(m => m.id === aid); if (am) am.toolInvocations.push(tool) },
             onDone: () => { const am = messages.value.find(m => m.id === aid); if (am) am.streaming = false },

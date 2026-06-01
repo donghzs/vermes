@@ -312,9 +312,22 @@ def on_dom_ready():
 
 
 def main(port):
-    """原生窗口优先，失败回退浏览器。"""
+    """原生窗口优先，失败回退浏览器。Windows 直接用浏览器（WebView2 SSE 兼容问题）。"""
     url = f"http://127.0.0.1:{port}"
     print(f"[Vermes] 打开界面：{url}")
+
+    if win_adapter.IS_WINDOWS:
+        # Windows: 直接用系统浏览器，绕过 pywebview WebView2 的 SSE 兼容问题
+        print("[Vermes] Windows: 用系统浏览器打开（SSE 兼容）")
+        webbrowser.open(url)
+        try:
+            shutdown_event.wait()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            os._exit(0)
+        return
+
     try:
         import webview
 
