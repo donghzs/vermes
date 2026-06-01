@@ -355,7 +355,7 @@ def main(port):
         win.events.closing += lambda: _on_closing()
 
         # Windows 系统托盘：状态图标 + 退出入口（pywebview 不支持关闭拦截，暂不做最小化到托盘）
-        if platform.system() == 'Windows':
+        if win_adapter.IS_WINDOWS:
             win_adapter.create_tray_icon(on_show=None, on_quit=lambda: win.destroy())
 
         def _load_real_url():
@@ -371,7 +371,7 @@ def main(port):
 
         # macOS 用 cocoa，Windows 用 edgechromium，其他平台自动选择
         gui = None
-        if platform.system() == 'Windows':
+        if win_adapter.IS_WINDOWS:
             gui = 'edgechromium'
         # WebView2 数据目录固定到 ~/.vermes/webview_data/
         # 防止更新 ZIP 覆盖时丢失 localStorage（聊天记录、用户偏好）
@@ -431,7 +431,7 @@ def _apply_pending_update_if_any():
                     print(f"[Vermes Update] ✅ 已更新到 v{version}")
                     subprocess.Popen(['open', target])
                     sys.exit(0)
-            elif platform.system() == 'Windows':
+            elif win_adapter.IS_WINDOWS:
                 exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
                 for item in os.listdir(staging):
                     src = os.path.join(staging, item)
@@ -469,7 +469,7 @@ def run_gui():
             print(f"[Vermes] 已有实例在运行 (port={existing_port})，聚焦窗口...")
             # 跨平台聚焦：Windows 用 Win32 API，Mac 用 open -a
             focused = False
-            if platform.system() == 'Windows':
+            if win_adapter.IS_WINDOWS:
                 focused = win_adapter.focus_existing_window("Vermes")
             else:
                 try:
