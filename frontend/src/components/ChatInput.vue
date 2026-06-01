@@ -142,7 +142,7 @@ defineExpose({ inputText, uploadedFiles, inputRef })
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         placeholder="输入消息，Enter 发送，Shift+Enter 换行..." rows="1"
         @input="autoResize"
-        class="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none overflow-hidden"></textarea>
+        class="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none overflow-y-auto"></textarea>
       <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-5 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition">停止</button>
       <button v-else @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
     </div>
