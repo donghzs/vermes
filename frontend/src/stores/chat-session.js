@@ -2,7 +2,7 @@
  * chat-session.js — 会话管理 + localStorage 三级清理
  */
 
-import { saveToStorage, loadFromStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, saveImage, loadImage, deleteImages } from './chat-storage'
+import { saveToStorage, loadFromStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, saveImage, loadImage, deleteImages, saveMessagesToIDB, loadMessagesFromIDB, deleteMessagesFromIDB, migrateFromLocalStorage } from './chat-storage'
 
 // ── 常量 ──
 const SESSIONS_KEY = 'vermes-sessions'
@@ -98,6 +98,7 @@ function deleteOldestSession(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId
   let deleted = 0
   for (const { key, sid } of keysToDelete) {
     localStorage.removeItem(key)
+    deleteMessagesFromIDB(sid).catch(() => {})  // 同步清理 IDB
     deleted++
     try {
       localStorage.setItem('__vermes_quotacheck', '1')
@@ -142,12 +143,8 @@ async function persistMessages(sessionId, messages, currentSessionId, SESSIONS_K
       lean.push(m)
     }
   }
-  if (!saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)) {
-    evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId)
-    if (!saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)) {
-      trimCurrentSessionMessages(sessionId, lean, MESSAGES_KEY_PREFIX)
-    }
-  }
+  // 优先写 IndexedDB（无大小限制）
+  await saveMessagesToIDB(sessionId, lean)
   if (imageSavePromises.length > 0) {
     try { await Promise.all(imageSavePromises) } catch(e) { console.warn('[Vermes] 图片批量存储失败:', e) }
   }
@@ -192,12 +189,13 @@ async function deleteSession(sessions, messages, id, SESSIONS_KEY, MESSAGES_KEY_
   const idx = sessions.findIndex(s => s.id === id)
   if (idx === -1) return
   try {
-    const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + id)
-    const imageKeys = msgs.flatMap(m => m._imageKeys || [])
+    const msgs = await loadMessagesFromIDB(id)
+    const imageKeys = (msgs || []).flatMap(m => m._imageKeys || [])
     if (imageKeys.length > 0) await deleteImages(imageKeys)
   } catch(e) { console.warn('[Vermes] 清理图片数据失败:', e) }
   sessions.splice(idx, 1)
-  localStorage.removeItem(MESSAGES_KEY_PREFIX + id)
+  localStorage.removeItem(MESSAGES_KEY_PREFIX + id)  // 兼容旧数据
+  await deleteMessagesFromIDB(id)
   saveToStorage(SESSIONS_KEY, sessions)
 }
 
@@ -212,13 +210,25 @@ function pinSession(sessions, id, pinned, SESSIONS_KEY) {
 }
 
 function getMessageCount(sessionId) {
+  // 同步函数，兼容旧 localStorage 数据
   try {
     const msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
     return msgs.length
   } catch { return 0 }
 }
 
+async function getMessageCountAsync(sessionId) {
+  const msgs = await loadMessagesFromIDB(sessionId)
+  if (msgs && msgs.length > 0) return msgs.length
+  // 降级到 localStorage
+  try {
+    const localMsgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
+    return localMsgs.length
+  } catch { return 0 }
+}
+
 function getFirstMessage(sessionId) {
+  // 同步函数，兼容旧 localStorage 数据
   try {
     const msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
     const userMsg = msgs.find(m => m.role === 'user')
@@ -230,8 +240,22 @@ function getFirstMessage(sessionId) {
   } catch { return '' }
 }
 
+async function getFirstMessageAsync(sessionId) {
+  let msgs = await loadMessagesFromIDB(sessionId)
+  if (!msgs || msgs.length === 0) {
+    try { msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || [] } catch { msgs = [] }
+  }
+  const userMsg = msgs.find(m => m.role === 'user')
+  if (userMsg) {
+    const text = userMsg.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '🖼️图片').replace(/📎[^\n]*/g, '📎附件')
+    return text.length > 40 ? text.slice(0, 40) + '...' : text
+  }
+  return ''
+}
+
 // ── 跨会话搜索 ──
 function searchAllMessages(sessions, keyword, dateFilter, MESSAGES_KEY_PREFIX) {
+  // 同步版本（兼容旧 localStorage 数据）
   const results = []
   const now = Date.now()
   let cutoff = 0
@@ -258,6 +282,34 @@ function searchAllMessages(sessions, keyword, dateFilter, MESSAGES_KEY_PREFIX) {
   return results
 }
 
+async function searchAllMessagesAsync(sessions, keyword, dateFilter, MESSAGES_KEY_PREFIX) {
+  const results = []
+  const now = Date.now()
+  let cutoff = 0
+  if (dateFilter === 'today') cutoff = now - 86400000
+  else if (dateFilter === 'week') cutoff = now - 7 * 86400000
+  else if (dateFilter === 'month') cutoff = now - 30 * 86400000
+  for (const s of sessions) {
+    let msgs = await loadMessagesFromIDB(s.id)
+    if (!msgs || msgs.length === 0) {
+      try { msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + s.id)) || [] } catch { msgs = [] }
+    }
+    for (const m of msgs) {
+      if (m.role === 'system') continue
+      if (cutoff && m.timestamp < cutoff) continue
+      if (keyword && !m.content?.toLowerCase().includes(keyword.toLowerCase())) continue
+      results.push({
+        ...m,
+        sessionName: s.name,
+        sessionId: s.id,
+        snippet: (m.content || '').slice(0, 50),
+      })
+    }
+  }
+  results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+  return results
+}
+
 // ── 会话统计 ──
 function getSessionStats(messages, sessionId, currentModel) {
   const msgs = messages.filter(m => m.sessionId === sessionId && m.role !== 'system')
@@ -276,7 +328,12 @@ function getSessionStats(messages, sessionId, currentModel) {
 async function exportSession(sessions, sessionId, format) {
   const session = sessions.find(s => s.id === sessionId)
   if (!session) return
-  const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + sessionId).filter(m => m.role !== 'system')
+  // 优先从 IndexedDB 读取
+  let msgs = await loadMessagesFromIDB(sessionId)
+  if (!msgs || msgs.length === 0) {
+    try { msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || [] } catch { msgs = [] }
+  }
+  msgs = msgs.filter(m => m.role !== 'system')
   const restoredMsgs = []
   for (const m of msgs) {
     const restored = { ...m }
@@ -367,4 +424,9 @@ export {
   exportSession,
   importSession,
   trimCurrentSessionMessages,
+  // 异步版本（IndexedDB 优先）
+  getMessageCountAsync,
+  getFirstMessageAsync,
+  searchAllMessagesAsync,
+  migrateFromLocalStorage,
 }

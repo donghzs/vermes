@@ -10,6 +10,7 @@ const router = useRouter()
 // 引导步骤
 const currentStep = ref(1)
 const selectedMode = ref(null) // 'wechat' | 'free' | 'apikey' | 'local'
+const isClaiming = ref(false)
 
 // 选择使用方式
 function selectMode(mode) {
@@ -20,6 +21,35 @@ function selectMode(mode) {
 // 完成引导，进入聊天
 function finishGuide() {
   currentStep.value = 3
+}
+
+// 免费体验：自动领取 Token
+async function claimFreeTrial() {
+  isClaiming.value = true
+  try {
+    const wechatOpenid = localStorage.getItem('vermes_wechat_openid') || ''
+    const body = wechatOpenid ? { wechat_openid: wechatOpenid } : {}
+    const resp = await fetch('/api/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await resp.json()
+    if (data.success) {
+      toast.success('✅ 已领取免费体验额度！')
+      // 触发配置刷新
+      window.dispatchEvent(new CustomEvent('config-updated'))
+      finishGuide()
+    } else if (data.require_login) {
+      toast.warning('请先微信扫码登录后再领取免费体验')
+    } else {
+      toast.warning(data.error || data.message || '领取失败，请尝试其他方式')
+    }
+  } catch (e) {
+    toast.error('网络错误，请检查连接后重试')
+  } finally {
+    isClaiming.value = false
+  }
 }
 
 // 跳转到设置页
@@ -138,8 +168,10 @@ const quickStarts = [
             <p>✅ 无需注册账号</p>
           </div>
         </div>
-        <button @click="finishGuide()" class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-medium transition">
-          开始体验 →
+        <button @click="claimFreeTrial()" 
+                :disabled="isClaiming"
+                class="px-6 py-3 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl font-medium transition">
+          {{ isClaiming ? '领取中...' : '开始体验 →' }}
         </button>
       </div>
 
