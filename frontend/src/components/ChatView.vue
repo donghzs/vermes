@@ -98,7 +98,6 @@ function onQuickStart(text) {
 async function onSend(input, files) {
   const model = chat.currentModel
   const provider = chat.currentProvider
-  // [debug] send() called
   if ((!input && !files?.length) || chat.loading) return
   try {
     // P3-8: 多模型对比模式
@@ -159,6 +158,9 @@ onUnmounted(() => {
     <!-- 消息列表 -->
     <MessageList @quickStart="onQuickStart" @editMessage="onEditMessage" />
 
+    <!-- 新手引导 -->
+    <WelcomeGuide />
+
     <!-- 输入区 -->
     <ChatInput ref="chatInputRef" @send="onSend" />
 
@@ -179,8 +181,5 @@ onUnmounted(() => {
       @wechatLogin="openWeChatQR"
       @copyReferralCode="copyReferralCode"
     />
-
-    <!-- 新手引导 -->
-    <WelcomeGuide />
   </div>
 </template>

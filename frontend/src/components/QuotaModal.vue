@@ -40,6 +40,17 @@ function close() {
           </button>
           <button @click="close" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">关闭</button>
         </div>
+        <div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-left">
+          <p class="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">💡 为什么推荐使用自己的 API Key？</p>
+          <ul class="text-xs text-amber-600 dark:text-amber-500 space-y-1">
+            <li>• 配置自己的 Agnes AI API Key，享受免费额度</li>
+            <li>• 覆盖文本/图片/视频全模态，注册即送额度</li>
+            <li>• 自有 Key 体验更稳定，不受官方限流影响</li>
+          </ul>
+          <a href="https://platform.agnes-ai.com/" target="_blank" class="text-xs text-green-600 dark:text-green-400 hover:underline block mt-1">
+            → 去 Agnes AI 注册获取 Key
+          </a>
+        </div>
       </template>
 
       <!-- 免费体验已过期 -->
@@ -73,6 +84,16 @@ function close() {
           </button>
           <button @click="close" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">关闭</button>
         </div>
+        <div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-left">
+          <p class="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">💡 不想等明天？</p>
+          <ul class="text-xs text-amber-600 dark:text-amber-500 space-y-1">
+            <li>• 配置自己的 Agnes AI API Key，享受免费额度</li>
+            <li>• Agnes AI 免费赠送额度，覆盖文本/图片/视频全模态</li>
+          </ul>
+          <a href="https://platform.agnes-ai.com/" target="_blank" class="text-xs text-green-600 dark:text-green-400 hover:underline block mt-1">
+            → 去 Agnes AI 注册获取 Key
+          </a>
+        </div>
       </template>
 
       <!-- 默认兜底 -->
@@ -102,9 +123,19 @@ function close() {
           </button>
           <button @click="close(); router.push('/settings')"
             class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
-            🔑 配置自己的 API Key
+            🔑 配置自己的 API Key（无限额）
           </button>
           <button @click="close" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">关闭</button>
+        </div>
+        <div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-left">
+          <p class="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">💡 推荐配置自己的 Agnes AI API Key</p>
+          <ul class="text-xs text-amber-600 dark:text-amber-500 space-y-1">
+            <li>• 配置自己的 Agnes API Key，享受免费额度</li>
+            <li>• 覆盖文本/图片/视频全模态，注册即送额度</li>
+          </ul>
+          <a href="https://platform.agnes-ai.com/" target="_blank" class="text-xs text-green-600 dark:text-green-400 hover:underline block mt-1">
+            → 去 Agnes AI 注册获取 Key
+          </a>
         </div>
       </template>
     </div>

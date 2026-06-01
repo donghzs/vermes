@@ -106,7 +106,7 @@ const quickStarts = [
             <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900/50 rounded-xl flex items-center justify-center text-2xl">🔑</div>
             <div class="flex-1">
               <div class="font-semibold text-gray-800 dark:text-gray-200">配置自己的 API Key</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">使用 DeepSeek、OpenAI 等</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">使用 DeepSeek、OpenAI、Agnes AI 等</div>
             </div>
           </div>
         </button>
