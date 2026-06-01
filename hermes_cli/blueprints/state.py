@@ -8,4 +8,5 @@ import asyncio
 from typing import Dict
 
 # SSE 流式生成追踪（chat + stop_generation 共用）
-_active_streams: Dict[str, asyncio.Event] = {}
+# 所有蓝图统一从 blueprints.state 导入此变量
+_active_streams: dict = {}

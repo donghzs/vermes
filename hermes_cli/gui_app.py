@@ -28,6 +28,10 @@ if sys.platform == 'win32' and getattr(sys, 'frozen', False):
         sys.stderr = sys.stdout
     print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Vermes GUI started (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)})")
 
+# ── Windows 适配层初始化（DPI 感知 + UTF-8 编码） ──
+from hermes_cli import win_adapter
+win_adapter.init()
+
 APP_TITLE    = "Vermes - AI Agent"
 DEFAULT_PORT = 9119
 PORT_FILE     = os.path.expanduser("~/.vermes/gui_port.txt")
@@ -297,15 +301,34 @@ def main(port):
 </style></head>
 <body><div style="text-align:center"><div class="spin"></div><p>正在启动 Vermes...</p></div></body></html>"""
 
+        # 读取上次窗口位置
+        geo = win_adapter.load_window_geometry(WINDOW_W, WINDOW_H)
+
         win = webview.create_window(
             title=APP_TITLE,
             html=loading_html,
-            width=WINDOW_W,
-            height=WINDOW_H,
+            x=geo["x"],
+            y=geo["y"],
+            width=geo["w"],
+            height=geo["h"],
             resizable=True,
             text_select=True,
             js_api=VermesAPI(),
         )
+
+        # 窗口关闭时保存位置
+        def _on_closing():
+            try:
+                win_adapter.save_window_geometry(win.x, win.y, win.width, win.height)
+            except Exception:
+                pass
+            win_adapter.remove_tray_icon()
+
+        win.events.closing += lambda: _on_closing()
+
+        # Windows 系统托盘：状态图标 + 退出入口（pywebview 不支持关闭拦截，暂不做最小化到托盘）
+        if platform.system() == 'Windows':
+            win_adapter.create_tray_icon(on_show=None, on_quit=lambda: win.destroy())
 
         def _load_real_url():
             """后台等待服务器就绪后切换到真实页面。"""
@@ -328,6 +351,7 @@ def main(port):
         os.makedirs(storage_path, exist_ok=True)
         webview.start(gui=gui, private_mode=False, storage_path=storage_path, debug=False)
         print("[Vermes] 原生窗口已关闭")
+        win_adapter.remove_tray_icon()  # 安全兜底（_on_closing 已调过，这里防异常路径漏清理）
         return
     except Exception as e:
         print(f"[Vermes] ❌ 原生窗口失败: {e}")
@@ -415,16 +439,26 @@ def run_gui():
         existing_port = find_existing_port()
         if existing_port:
             print(f"[Vermes] 已有实例在运行 (port={existing_port})，聚焦窗口...")
-            # 尝试聚焦已有的.app窗口
-            try:
-                subprocess.run(['open', '-a', 'Vermes'], timeout=3, 
-                             capture_output=True, check=False)
-            except Exception:
-                # 回退：打开浏览器
+            # 跨平台聚焦：Windows 用 Win32 API，Mac 用 open -a
+            focused = False
+            if platform.system() == 'Windows':
+                focused = win_adapter.focus_existing_window("Vermes")
+            else:
+                try:
+                    subprocess.run(['open', '-a', 'Vermes'], timeout=3,
+                                 capture_output=True, check=False)
+                    focused = True
+                except Exception:
+                    pass
+            if not focused:
                 webbrowser.open(f"http://127.0.0.1:{existing_port}")
         else:
             print("[Vermes] 已有实例在运行，但无法找到端口。")
         sys.exit(0)
+
+    # 启动前检查：WebView2 运行时等
+    if not win_adapter.pre_launch_check():
+        sys.exit(1)
 
     # 注册退出清理
     import atexit

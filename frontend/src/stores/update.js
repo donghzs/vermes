@@ -39,11 +39,8 @@ export const useUpdateStore = () => {
         .then(r => r.json())
         .catch(() => null)
 
-      console.log('[Vermes Update] current:', CURRENT_VERSION, 'remote:', res?.version)
-
       if (res && res.version && isNewer(res.version, CURRENT_VERSION)) {
         if (localStorage.getItem(DISMISS_KEY) === res.version) {
-          console.log('[Vermes Update] dismissed, skip')
           return
         }
         latestVersion.value = res.version
@@ -77,7 +74,7 @@ export const useUpdateStore = () => {
         minDataVersion.value = res.min_data_version || ''
 
         releaseNotes.value = res.releaseNotes || res.notes || ''
-        console.log('[Vermes Update] showing banner for', res.version)
+        // [debug] update banner showing
       }
     } catch (e) {
       console.warn('[Vermes Update] error:', e)
@@ -96,7 +93,7 @@ export const useUpdateStore = () => {
 
   function dismissUpdate() {
     hasUpdate.value = false
-    localStorage.setItem(DISMISS_KEY, latestVersion.value)
+    try { localStorage.setItem(DISMISS_KEY, latestVersion.value) } catch(e) { /* storage full */ }
   }
 
   /**
@@ -188,7 +185,7 @@ export const useUpdateStore = () => {
 
       updateStatus.value = 'done'
       updateMessage.value = '✅ 更新完成，即将重启...'
-      console.log('[Vermes Update] 更新已提交，应用将自动重启...')
+      // 更新已提交，应用将自动重启
 
     } catch (e) {
       console.error('[Vermes Update] error:', e)

@@ -8,7 +8,6 @@ def register_to(app):
     app.add_api_route("/api/model/options", ws.get_model_options, methods=["GET"])
     app.add_api_route("/api/model/auxiliary", ws.get_auxiliary_models, methods=["GET"])
     app.add_api_route("/api/model/set", ws.set_model_assignment, methods=["POST"])
-    app.add_api_route("/api/analytics/models", ws.get_models_analytics, methods=["GET"])
     app.add_api_route("/api/model/discover", ws.discover_models, methods=["POST"])
 
 blueprint = models_bp

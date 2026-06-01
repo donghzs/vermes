@@ -760,7 +760,8 @@ def apply_pending_update() -> Optional[str]:
             print(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
             _cleanup_after_apply()
             time.sleep(1)  # uvicorn 优雅关闭
-            _wait_port_release(9119, timeout=10)
+            if not _wait_port_release(9119, timeout=10):
+                print("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
             subprocess.Popen(["open", str(app_path)])
             import sys
             sys.exit(0)
@@ -773,7 +774,8 @@ def apply_pending_update() -> Optional[str]:
             print(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
             _cleanup_after_apply()
             time.sleep(1)  # uvicorn 优雅关闭
-            _wait_port_release(9119, timeout=10)
+            if not _wait_port_release(9119, timeout=10):
+                print("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
             subprocess.Popen([str(app_path / "Vermes.exe")])
             import sys
             sys.exit(0)

@@ -9,17 +9,21 @@ const emit = defineEmits(['loginSuccess', 'loginError'])
 // ── 状态 ──
 const showModal = ref(false)
 const showOverlay = ref(false) // pywebview 模式下的遮罩
-const isPywebview = typeof window !== 'undefined' && !!window.pywebview
 const qrError = ref('')
 const wechatState = ref('')
 let pollTimer = null
 let pollTimeout = null
 let isPollingActive = false
 
+// 动态检测 pywebview（组件挂载时 API 可能还没注入）
+function checkPywebview() {
+  return typeof window !== 'undefined' && !!window.pywebview
+}
+
 // ── 打开微信登录 ──
 async function openLogin() {
   qrError.value = ''
-  if (isPywebview) {
+  if (checkPywebview()) {
     // pywebview 原生窗口：先显示遮罩，再打开居中的 OAuth 子窗口
     showOverlay.value = true
     try {
@@ -113,10 +117,10 @@ function handleLoginSuccess(data) {
   localStorage.removeItem('vermes_wechat_name')
   localStorage.removeItem('vermes_wechat_avatar')
   localStorage.removeItem('vermes_quota')
-  localStorage.setItem('vermes_wechat_token', data.token)
-  if (data.openid) localStorage.setItem('vermes_wechat_openid', data.openid)
-  if (data.userName) localStorage.setItem('vermes_wechat_name', data.userName)
-  if (data.userAvatar) localStorage.setItem('vermes_wechat_avatar', data.userAvatar)
+  try { localStorage.setItem('vermes_wechat_token', data.token) } catch(e) { /* storage full */ }
+  if (data.openid) try { localStorage.setItem('vermes_wechat_openid', data.openid) } catch(e) { /* storage full */ }
+  if (data.userName) try { localStorage.setItem('vermes_wechat_name', data.userName) } catch(e) { /* storage full */ }
+  if (data.userAvatar) try { localStorage.setItem('vermes_wechat_avatar', data.userAvatar) } catch(e) { /* storage full */ }
   
   // 同步到后端
   fetch('/api/env', {
@@ -143,8 +147,8 @@ function logout() {
   localStorage.removeItem('vermes_wechat_name')
   localStorage.removeItem('vermes_wechat_avatar')
   localStorage.removeItem('vermes_wechat_openid')
-  chat.stopPolling?.()
-  console.log('[Vermes🔐] 已退出微信登录')
+  stopPolling()
+  // 已退出微信登录
   emit('loginSuccess', { isLoggedIn: false, userName: '访客', userAvatar: '' })
 }
 

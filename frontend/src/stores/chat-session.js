@@ -1,0 +1,370 @@
+/**
+ * chat-session.js — 会话管理 + localStorage 三级清理
+ */
+
+import { saveToStorage, loadFromStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, saveImage, loadImage, deleteImages } from './chat-storage'
+
+// ── 常量 ──
+const SESSIONS_KEY = 'vermes-sessions'
+const MESSAGES_KEY_PREFIX = 'vermes-msgs-'
+const MAX_SESSIONS = 30  // localStorage 约 5MB，中等会话 ~100-200KB，30 个较安全
+
+const QUOTA_NEED_LOGIN = 'need_login'
+
+// ── 会话模板 ──
+export const SESSION_TEMPLATES = [
+  { id: 'blank', name: '空白会话', icon: '💬', systemPrompt: '' },
+  { id: 'translator', name: '翻译助手', icon: '🌐', systemPrompt: '你是一位专业的翻译助手。请将用户输入的内容准确翻译为目标语言。如果用户没有指定目标语言，请将中文翻译为英文，或将非中文内容翻译为中文。保持原文的语气和风格。' },
+  { id: 'coder', name: '代码助手', icon: '💻', systemPrompt: '你是一位专业的编程助手。帮助用户编写、调试和优化代码。提供清晰的代码示例和详细解释。使用最佳实践和设计模式。' },
+  { id: 'writer', name: '写作助手', icon: '✍️', systemPrompt: '你是一位专业的写作助手。帮助用户撰写、润色和改进各类文本。注意语法、逻辑和表达的准确性与优美性。' },
+  { id: 'custom', name: '自定义', icon: '⚙️', systemPrompt: '' },
+]
+
+// ── 快速开始建议 ──
+export const QUICK_START_SUGGESTIONS = [
+  { text: '帮我写一封邮件', icon: '📧' },
+  { text: '解释量子计算', icon: '🔬' },
+  { text: '翻译这段话', icon: '🌐' },
+  { text: '写一段 Python 代码', icon: '💻' },
+]
+
+// ── 三级清理策略 ──
+
+/**
+ * 第一级：裁剪旧会话工具结果（result_preview > 500 字符的截断）
+ * 返回：是否成功释放了空间
+ */
+function evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId) {
+  try {
+    console.warn('[Vermes] localStorage 满，开始智能清理...')
+    if (trimOldSessionResults(MESSAGES_KEY_PREFIX, currentSessionId)) return true
+    deleteOldestSession(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId)
+  } catch (e) {
+    console.error('[Vermes] 清理失败:', e)
+  }
+  return false
+}
+
+function trimOldSessionResults(MESSAGES_KEY_PREFIX, currentSessionId) {
+  let freed = false
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (!key || !key.startsWith(MESSAGES_KEY_PREFIX)) continue
+    const sid = key.slice(MESSAGES_KEY_PREFIX.length)
+    if (sid === currentSessionId) continue
+    try {
+      const msgs = JSON.parse(localStorage.getItem(key))
+      if (!Array.isArray(msgs)) continue
+      let changed = false
+      for (const m of msgs) {
+        if (m.toolInvocations) {
+          for (const t of m.toolInvocations) {
+            if (t.result_preview && t.result_preview.length > 500) {
+              t.result_preview = t.result_preview.slice(0, 500) + '\n... (已裁剪)'
+              changed = true
+            }
+          }
+        }
+      }
+      if (changed) {
+        localStorage.setItem(key, JSON.stringify(msgs))
+        freed = true
+        try {
+          localStorage.setItem('__vermes_quotacheck', '1')
+          localStorage.removeItem('__vermes_quotacheck')
+          console.warn('[Vermes] 裁剪旧会话工具结果后空间恢复')
+          return true
+        } catch { /* 还是满的，继续裁剪下一个会话 */ }
+      }
+    } catch { /* 解析失败跳过 */ }
+  }
+  return false
+}
+
+function deleteOldestSession(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId) {
+  const keysToDelete = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && key.startsWith(MESSAGES_KEY_PREFIX)) {
+      const sid = key.slice(MESSAGES_KEY_PREFIX.length)
+      if (sid !== currentSessionId) keysToDelete.push({ key, sid })
+    }
+  }
+  const sessionIds = loadFromStorage(SESSIONS_KEY).map(s => s.id)
+  keysToDelete.sort((a, b) => {
+    const ia = sessionIds.indexOf(a.sid), ib = sessionIds.indexOf(b.sid)
+    return (ib === -1 ? 999 : ib) - (ia === -1 ? 999 : ia)
+  })
+  let deleted = 0
+  for (const { key, sid } of keysToDelete) {
+    localStorage.removeItem(key)
+    deleted++
+    try {
+      localStorage.setItem('__vermes_quotacheck', '1')
+      localStorage.removeItem('__vermes_quotacheck')
+      console.warn(`[Vermes] 删除旧会话 ${sid.slice(0,8)} 后空间恢复（共删 ${deleted} 个）`)
+      return
+    } catch { /* 继续 */ }
+  }
+  console.warn(`[Vermes] 已删除 ${deleted} 个旧会话`)
+}
+
+/**
+ * 会话数量上限检查：超出 MAX_SESSIONS 时删最旧的非当前会话
+ */
+function enforceSessionLimit(sessions, currentSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX) {
+  while (sessions.length >= MAX_SESSIONS) {
+    const victim = [...sessions].reverse().find(s => s.id !== currentSessionId)
+    if (!victim) break
+    sessions.splice(sessions.findIndex(s => s.id === victim.id), 1)
+    try { localStorage.removeItem(MESSAGES_KEY_PREFIX + victim.id) } catch {}
+    console.warn(`[Vermes] 会话超限，删除旧会话: ${victim.name} (${victim.id.slice(0,8)})`)
+  }
+  saveToStorage(SESSIONS_KEY, sessions)
+}
+
+/**
+ * 保存指定会话的消息到 localStorage（剥离 base64 图片到 IndexedDB）
+ * 如果 localStorage 满了，触发三级清理
+ */
+async function persistMessages(sessionId, messages, currentSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX) {
+  let msgs = messages.filter(m => m.sessionId === sessionId)
+  const lean = []
+  const imageSavePromises = []
+  for (const m of msgs) {
+    if (m.role === 'user' && m.content && m.content.includes('data:image')) {
+      const { stripped, images } = stripBase64FromContent(m.content, m.id)
+      for (const [key, data] of Object.entries(images)) {
+        imageSavePromises.push(saveImage(key, data))
+      }
+      lean.push({ ...m, content: stripped, _imageKeys: Object.keys(images) })
+    } else {
+      lean.push(m)
+    }
+  }
+  if (!saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)) {
+    evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId)
+    if (!saveToStorage(MESSAGES_KEY_PREFIX + sessionId, lean)) {
+      trimCurrentSessionMessages(sessionId, lean, MESSAGES_KEY_PREFIX)
+    }
+  }
+  if (imageSavePromises.length > 0) {
+    try { await Promise.all(imageSavePromises) } catch(e) { console.warn('[Vermes] 图片批量存储失败:', e) }
+  }
+}
+
+/**
+ * 第三级：裁剪当前会话消息（保留 system + 最近 N 条）
+ */
+function trimCurrentSessionMessages(sessionId, lean, MESSAGES_KEY_PREFIX) {
+  const systemMsgs = lean.filter(m => m.role === 'system')
+  const otherMsgs = lean.filter(m => m.role !== 'system')
+  const keepCount = Math.max(20, 50 - systemMsgs.length)
+  const trimmed = [...systemMsgs, ...otherMsgs.slice(-keepCount)]
+  const keepIds = new Set(trimmed.map(m => m.id))
+  // 如果调用方需要同步裁剪内存，在外部做
+  if (saveToStorage(MESSAGES_KEY_PREFIX + sessionId, trimmed)) {
+    console.warn(`[Vermes] 当前会话消息裁剪: ${lean.length} → ${trimmed.length} 条`)
+  } else {
+    const minimal = [...systemMsgs, ...otherMsgs.slice(-10)]
+    saveToStorage(MESSAGES_KEY_PREFIX + sessionId, minimal)
+    console.warn(`[Vermes] 当前会话极端裁剪: ${lean.length} → ${minimal.length} 条`)
+  }
+}
+
+// ── 会话 CRUD ──
+
+async function createSession(sessions, messages, name, template, SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId) {
+  const tpl = template || SESSION_TEMPLATES[0]
+  const s = {
+    id: uid(),
+    name: name || tpl.name || '新会话',
+    createdAt: new Date().toISOString(),
+    templateId: tpl.id,
+  }
+  enforceSessionLimit(sessions, currentSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+  sessions.unshift(s)
+  saveToStorage(SESSIONS_KEY, sessions)
+  return s
+}
+
+async function deleteSession(sessions, messages, id, SESSIONS_KEY, MESSAGES_KEY_PREFIX) {
+  const idx = sessions.findIndex(s => s.id === id)
+  if (idx === -1) return
+  try {
+    const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + id)
+    const imageKeys = msgs.flatMap(m => m._imageKeys || [])
+    if (imageKeys.length > 0) await deleteImages(imageKeys)
+  } catch(e) { console.warn('[Vermes] 清理图片数据失败:', e) }
+  sessions.splice(idx, 1)
+  localStorage.removeItem(MESSAGES_KEY_PREFIX + id)
+  saveToStorage(SESSIONS_KEY, sessions)
+}
+
+function renameSession(sessions, id, name, SESSIONS_KEY) {
+  const s = sessions.find(s => s.id === id)
+  if (s) { s.name = name; saveToStorage(SESSIONS_KEY, sessions) }
+}
+
+function pinSession(sessions, id, pinned, SESSIONS_KEY) {
+  const s = sessions.find(s => s.id === id)
+  if (s) { s.pinned = pinned; saveToStorage(SESSIONS_KEY, sessions) }
+}
+
+function getMessageCount(sessionId) {
+  try {
+    const msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
+    return msgs.length
+  } catch { return 0 }
+}
+
+function getFirstMessage(sessionId) {
+  try {
+    const msgs = JSON.parse(localStorage.getItem(MESSAGES_KEY_PREFIX + sessionId)) || []
+    const userMsg = msgs.find(m => m.role === 'user')
+    if (userMsg) {
+      const text = userMsg.content.replace(/!\[[^\]]*\]\([^)]+\)/g, '🖼️图片').replace(/📎[^\n]*/g, '📎附件')
+      return text.length > 40 ? text.slice(0, 40) + '...' : text
+    }
+    return ''
+  } catch { return '' }
+}
+
+// ── 跨会话搜索 ──
+function searchAllMessages(sessions, keyword, dateFilter, MESSAGES_KEY_PREFIX) {
+  const results = []
+  const now = Date.now()
+  let cutoff = 0
+  if (dateFilter === 'today') cutoff = now - 86400000
+  else if (dateFilter === 'week') cutoff = now - 7 * 86400000
+  else if (dateFilter === 'month') cutoff = now - 30 * 86400000
+  for (const s of sessions) {
+    try {
+      const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + s.id)
+      for (const m of msgs) {
+        if (m.role === 'system') continue
+        if (cutoff && m.timestamp < cutoff) continue
+        if (keyword && !m.content?.toLowerCase().includes(keyword.toLowerCase())) continue
+        results.push({
+          ...m,
+          sessionName: s.name,
+          sessionId: s.id,
+          snippet: (m.content || '').slice(0, 50),
+        })
+      }
+    } catch {}
+  }
+  results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+  return results
+}
+
+// ── 会话统计 ──
+function getSessionStats(messages, sessionId, currentModel) {
+  const msgs = messages.filter(m => m.sessionId === sessionId && m.role !== 'system')
+  if (msgs.length === 0) return { count: 0, duration: '0 分钟', model: currentModel }
+  const first = msgs[0].timestamp
+  const last = msgs[msgs.length - 1].timestamp
+  const diffMs = last - first
+  let duration
+  if (diffMs < 60000) duration = `${Math.max(1, Math.round(diffMs / 1000))} 秒`
+  else if (diffMs < 3600000) duration = `${Math.round(diffMs / 60000)} 分钟`
+  else duration = `${(diffMs / 3600000).toFixed(1)} 小时`
+  return { count: msgs.length, duration, model: currentModel }
+}
+
+// ── 会话导出（从 IndexedDB 恢复图片数据） ──
+async function exportSession(sessions, sessionId, format) {
+  const session = sessions.find(s => s.id === sessionId)
+  if (!session) return
+  const msgs = loadFromStorage(MESSAGES_KEY_PREFIX + sessionId).filter(m => m.role !== 'system')
+  const restoredMsgs = []
+  for (const m of msgs) {
+    const restored = { ...m }
+    if (m._imageKeys && m._imageKeys.length > 0) {
+      let content = m.content || ''
+      for (const key of m._imageKeys) {
+        const base64 = await loadImage(key)
+        if (base64) content = content.replace('🖼️ 图片', base64)
+      }
+      restored.content = content
+      delete restored._imageKeys
+    }
+    restoredMsgs.push(restored)
+  }
+
+  let content, filename, mimeType
+  if (format === 'json') {
+    content = JSON.stringify({ session, messages: restoredMsgs }, null, 2)
+    filename = `${session.name || '会话'}.json`
+    mimeType = 'application/json'
+  } else {
+    const lines = [`# ${session.name || '会话'}`, '', `导出时间: ${new Date().toLocaleString('zh-CN')}`, '']
+    for (const m of restoredMsgs) {
+      lines.push(`## ${m.role === 'user' ? 'User' : 'Assistant'}`)
+      lines.push('')
+      lines.push(m.content || '')
+      lines.push('')
+    }
+    content = lines.join('\n')
+    filename = `${session.name || '会话'}.md`
+    mimeType = 'text/markdown'
+  }
+  const blob = new Blob([content], { type: mimeType + ';charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── 会话导入 ──
+async function importSession(sessions, messages, jsonText, SESSIONS_KEY, MESSAGES_KEY_PREFIX) {
+  try {
+    const data = JSON.parse(jsonText)
+    if (!data.session || !Array.isArray(data.messages)) {
+      throw new Error('无效的会话格式')
+    }
+    const s = {
+      id: uid(),
+      name: (data.session.name || '导入会话') + ' (导入)',
+      createdAt: data.session.createdAt || new Date().toISOString(),
+      templateId: data.session.templateId || 'blank',
+    }
+    sessions.unshift(s)
+    saveToStorage(SESSIONS_KEY, sessions)
+    const importedMsgs = data.messages.map(m => ({
+      ...m,
+      id: uid(),
+      sessionId: s.id,
+      streaming: false,
+    }))
+    messages.push(...importedMsgs)
+    persistMessages(s.id, messages, s.id, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+    return { success: true, name: s.name }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+}
+
+// ── 辅助函数 uid()（chat.js 也用，放这里 export） ──
+export function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
+
+export {
+  SESSIONS_KEY,
+  MESSAGES_KEY_PREFIX,
+  MAX_SESSIONS,
+  QUOTA_NEED_LOGIN,
+  evictOldSessions,
+  enforceSessionLimit,
+  persistMessages,
+  createSession,
+  deleteSession,
+  renameSession,
+  pinSession,
+  getMessageCount,
+  getFirstMessage,
+  searchAllMessages,
+  getSessionStats,
+  exportSession,
+  importSession,
+  trimCurrentSessionMessages,
+}
