@@ -68,8 +68,8 @@ function selectModel(m, event) {
   // 普通点击 → 单选模式
   chat.currentModel = m.id
   chat.currentProvider = m.provider || m.group || ''
-  localStorage.setItem('vermes-current-model', m.id)
-  localStorage.setItem('vermes-current-provider', m.provider || m.group || '')
+  try { localStorage.setItem('vermes-current-model', m.id) } catch(e) { /* storage full */ }
+  try { localStorage.setItem('vermes-current-provider', m.provider || m.group || '') } catch(e) { /* storage full */ }
   chat.compareModels = []
   showModelSelect.value = false
 }

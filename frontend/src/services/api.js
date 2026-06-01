@@ -53,7 +53,7 @@ export function getWechatDailyQuota() {
 export function useWechatQuota(count = 1) {
   const quota = getWechatDailyQuota()
   const newRemaining = Math.max(0, quota.remaining - count)
-  localStorage.setItem(WECHAT_QUOTA_KEY, JSON.stringify({ remaining: newRemaining, date: quota.date }))
+  try { localStorage.setItem(WECHAT_QUOTA_KEY, JSON.stringify({ remaining: newRemaining, date: quota.date })) } catch(e) { /* quota storage full */ }
 }
 export function getRemainingQuota() {
   const data = localStorage.getItem('vermes_quota')
@@ -62,7 +62,7 @@ export function getRemainingQuota() {
 }
 
 export function saveQuota(remaining) {
-  localStorage.setItem('vermes_quota', JSON.stringify({ remaining, date: new Date().toDateString() }))
+  try { localStorage.setItem('vermes_quota', JSON.stringify({ remaining, date: new Date().toDateString() })) } catch(e) { /* storage full */ }
 }
 
   // 检查云端模型请求是否允许
@@ -248,11 +248,42 @@ const api = {
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let lastReadTime = Date.now()
 
+      // WebView2 兼容：读取超时检测（60s 无数据则中断）
+      const READ_TIMEOUT_MS = 60000
+      let readTimer = null
+      const resetReadTimer = () => { lastReadTime = Date.now() }
+
+      try {
       while (true) {
-        const { done, value } = await reader.read()
+        // 给 reader.read() 加超时保护（WebView2 可能不返回 done=true）
+        const readPromise = reader.read()
+        const timeoutPromise = new Promise((_, reject) => {
+          readTimer = setTimeout(() => {
+            if (Date.now() - lastReadTime >= READ_TIMEOUT_MS) {
+              reject(new Error('stream_read_timeout'))
+            }
+          }, READ_TIMEOUT_MS)
+        })
+        let result
+        try {
+          result = await Promise.race([readPromise, timeoutPromise])
+        } catch (e) {
+          if (e.message === 'stream_read_timeout') {
+            console.warn('[Vermes] 流式读取超时，中断连接')
+            // 给用户提示：响应可能不完整
+            if (onChunk) onChunk('\n\n⚠️ 响应超时，内容可能不完整')
+            break
+          }
+          throw e
+        } finally {
+          clearTimeout(readTimer)
+        }
+        const { done, value } = result || {}
         if (done) break
         if (signal?.aborted) { reader.cancel(); break }
+        resetReadTimer()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -282,24 +313,28 @@ const api = {
             }
             // Agent 模式：推理链可视化事件
             if (json.type === 'thinking') {
-              // 思考事件作为工具卡片显示：立即开始+结束（后端不发thinking的tool_end）
-              const thinkId = 'thinking-' + json.iteration
-              onTool?.({ type: 'tool_start', tool_call_id: thinkId, name: 'thinking', arguments: { message: json.message } })
-              onTool?.({ type: 'tool_end', tool_call_id: thinkId, name: 'thinking', duration: 0, is_error: false })
-              // 进度追踪回调
-              onThinking?.(json)
+              // 思考事件节流：2秒内最多显示一次
+              const now = Date.now()
+              resetReadTimer()  // 重置读取超时（后端还在处理）
+              if (!window.__lastThinkingTime || now - window.__lastThinkingTime > 2000) {
+                window.__lastThinkingTime = now
+                // 只触发 onThinking 回调，不创建工具卡片（避免 toolCount 污染）
+                onThinking?.(json)
+              }
               continue
             }
             if (json.type === 'ping') {
-              // 保活心跳，忽略
+              // 保活心跳：重置读取超时计时器
+              resetReadTimer()
               continue
             }
             if (json.type === 'tool_start') {
+              resetReadTimer()  // 工具开始执行，重置超时
               onTool?.({ type: 'tool_start', tool_call_id: json.tool_call_id, name: json.tool_name, arguments: json.arguments })
-              // 不在消息文本中插入工具名——工具卡片已独立展示
               continue
             }
             if (json.type === 'tool_end') {
+              resetReadTimer()  // 工具执行完成，重置超时
               onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error, result_preview: json.result_preview || '' })
               continue
             }
@@ -317,6 +352,11 @@ const api = {
             }
           }
         }
+      }
+      } finally {
+        // 确保 reader 被释放（WebView2 可能不自动关闭）
+        try { reader.cancel() } catch(e) {}
+        clearTimeout(readTimer)
       }
       onDone?.(usageInfo)
     } catch (e) {

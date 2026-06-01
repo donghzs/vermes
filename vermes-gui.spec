@@ -90,6 +90,7 @@ hiddenimports = [
     'hermes_cli.blueprints.wechat',
     'hermes_cli.update_manager',
     'hermes_cli.shutdown_signal',
+    'hermes_cli.win_adapter',
     'gateway', 'gateway.status', 'gateway.config',
     'run_agent', 'hermes_constants', 'model_tools',
     'agent', 'agent.process_bootstrap', 'agent.iteration_budget',

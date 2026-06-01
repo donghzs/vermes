@@ -89,7 +89,7 @@ function onQuickStart(text) {
 async function onSend(input, files) {
   const model = chat.currentModel
   const provider = chat.currentProvider
-  console.log('[Vermes📤] send() input:', JSON.stringify(input), 'files:', files?.length, 'model:', model, 'provider:', provider)
+  // [debug] send() called
   if ((!input && !files?.length) || chat.loading) return
   try {
     // P3-8: 多模型对比模式
@@ -98,7 +98,7 @@ async function onSend(input, files) {
     } else {
       await chat.sendMessage(input, files)
     }
-    console.log('[Vermes📤] send() → completed')
+    // send completed
   } catch(e) {
     console.error('[Vermes📤] send() error:', e)
     toast.error(getFriendlyError(e))

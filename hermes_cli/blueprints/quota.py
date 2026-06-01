@@ -92,14 +92,20 @@ async def quota_check_proxy(request: Request):
     """Proxy quota check to vbit.top."""
     try:
         qs = str(request.url.query)
-        # 从 header 读取 openid（前端不再用 query param 传递）
+        # 从 header 读取 openid，转发到 vbit 也用 header（避免日志泄露）
         openid = request.headers.get("x-wechat-openid", "")
-        if openid and "wechat_openid" not in qs:
-            sep = "&" if qs else ""
-            qs += f"{sep}wechat_openid={openid}"
-        url = f"https://api.vbit.top/api/quota/check?{qs}"
+        headers = {}
+        if openid:
+            headers["X-WeChat-Openid"] = openid
+        # 移除旧的 query param 传递（如果有的话）
+        if "wechat_openid=" in qs:
+            import re
+            qs = re.sub(r'[&]?wechat_openid=[^&]*', '', qs).lstrip('&')
+        url = f"https://api.vbit.top/api/quota/check"
+        if qs:
+            url += f"?{qs}"
         async with httpx.AsyncClient(verify=True) as client:
-            resp = await client.get(url, timeout=10)
+            resp = await client.get(url, headers=headers, timeout=10)
             return resp.json()
     except Exception as e:
         return {"success": False, "error": str(e)}
