@@ -827,6 +827,8 @@ async def chat_completions(req: ChatRequest):
                 finally:
                     _active_streams.pop(_stream_id, None)
 
+                _log.info(f"[Stream] Post-loop start, stream_id={_stream_id}")
+
                 # Wait for agent
                 _agent_result = {}
                 if _cancel_event.is_set():
@@ -834,12 +836,16 @@ async def chat_completions(req: ChatRequest):
                     _agent_done.set()
                 else:
                     try:
+                        _log.info(f"[Stream] Awaiting agent_task, stream_id={_stream_id}")
                         _agent_result = await asyncio.wait_for(agent_task, timeout=300)
+                        _log.info(f"[Stream] Agent task done, stream_id={_stream_id}")
                     except asyncio.TimeoutError:
                         _log.warning(f"[Stream] Agent task timeout (300s), stream_id={_stream_id}")
                         agent._interrupt_requested = True
                     except Exception as _agent_err:
                         _log.error(f"[Stream] Agent task error: {_agent_err}, stream_id={_stream_id}")
+
+                _log.info(f"[Stream] Sending [DONE], stream_id={_stream_id}")
 
                 # Report quota
                 try:
