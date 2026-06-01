@@ -405,15 +405,7 @@ def init():
 
 def pre_launch_check() -> bool:
     """
-    启动前检查。返回 True 表示一切就绪，False 表示不应继续。
+    启动前检查。返回 True 表示一切就绪。
+    WebView2 检查已禁用 — pywebview 自己会处理缺失情况。
     """
-    if not IS_WINDOWS:
-        return True
-
-    # 检查 WebView2
-    result = check_webview2_runtime()
-    if not result["available"]:
-        show_webview2_missing_dialog()
-        return False
-
     return True

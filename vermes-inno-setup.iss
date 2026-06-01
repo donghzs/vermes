@@ -27,11 +27,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=packaging\vermes.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-WizardImageFile=packaging\vermes-wizard.bmp
-WizardSmallImageFile=packaging\vermes-icon-small.bmp
+; WizardImageFile=packaging\vermes-wizard.bmp
+; WizardSmallImageFile=packaging\vermes-icon-small.bmp
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
