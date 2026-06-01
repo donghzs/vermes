@@ -250,8 +250,9 @@ const api = {
       let buffer = ''
       let lastReadTime = Date.now()
 
-      // WebView2 兼容：读取超时检测（60s 无数据则中断）
-      const READ_TIMEOUT_MS = 60000
+      // WebView2 兼容：读取超时检测（300s 无数据则中断）
+      // 后端 agent_task 最多 300s，对齐；后端 ping 每 15s 保活
+      const READ_TIMEOUT_MS = 300000
       let readTimer = null
       const resetReadTimer = () => { lastReadTime = Date.now() }
 
