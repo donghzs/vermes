@@ -827,44 +827,42 @@ async def chat_completions(req: ChatRequest):
                 finally:
                     _active_streams.pop(_stream_id, None)
 
-                # Wait for agent and send [DONE] — MUST always reach [DONE]
-                # otherwise frontend loading stays stuck forever
-                try:
-                    _agent_result = {}
-                    if _cancel_event.is_set():
-                        _log.info(f"[Stream] Cancelled, skipping agent_task await, stream_id={_stream_id}")
-                        _agent_done.set()
-                    else:
-                        try:
-                            _agent_result = await asyncio.wait_for(agent_task, timeout=300)
-                        except asyncio.TimeoutError:
-                            _log.warning(f"[Stream] Agent task timeout (300s), stream_id={_stream_id}")
-                            agent._interrupt_requested = True
-                            _agent_result = {}
-                        except Exception as _agent_err:
-                            _log.error(f"[Stream] Agent task error: {_agent_err}, stream_id={_stream_id}")
-                            _agent_result = {}
+                # Wait for agent
+                _agent_result = {}
+                if _cancel_event.is_set():
+                    _log.info(f"[Stream] Cancelled, skipping agent_task await, stream_id={_stream_id}")
+                    _agent_done.set()
+                else:
+                    try:
+                        _agent_result = await asyncio.wait_for(agent_task, timeout=300)
+                    except asyncio.TimeoutError:
+                        _log.warning(f"[Stream] Agent task timeout (300s), stream_id={_stream_id}")
+                        agent._interrupt_requested = True
+                    except Exception as _agent_err:
+                        _log.error(f"[Stream] Agent task error: {_agent_err}, stream_id={_stream_id}")
 
+                # Report quota
+                try:
                     _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
                     if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
                         _total = _agent_result.get("total_tokens", 0)
                         _report_quota(_wechat_openid, _total, "Agent流式")
-                except Exception as _outer_err:
-                    _log.error(f"[Stream] Post-loop error: {_outer_err}, stream_id={_stream_id}")
-                finally:
-                    # ALWAYS send [DONE] — this is critical for frontend loading state
-                    final_chunk = {
-                        "id": "vermes-agent",
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": model,
-                        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-                    }
-                    try:
-                        yield f"data: {json.dumps(final_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
-                    except Exception:
-                        pass  # client disconnected
+                except Exception:
+                    pass
+
+                # ALWAYS send [DONE] — last thing in the generator
+                final_chunk = {
+                    "id": "vermes-agent",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+                }
+                try:
+                    yield f"data: {json.dumps(final_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception:
+                    pass  # client disconnected
 
             return StreamingResponse(stream_generator(), media_type="text/event-stream")
     else:
