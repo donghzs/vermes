@@ -306,16 +306,17 @@ export const useChatStore = defineStore('chat', () => {
     loading.value = true
     const aid = uid()
 
-    // Safety timeout: if loading stuck for >90s, force reset (SSE may have silently dropped)
+    // Safety timeout: if loading stuck for >300s, force reset
+    // (aligned with backend agent_task timeout; don't fire during normal long tool calls)
     const _loadingTimeout = setTimeout(() => {
       if (loading.value) {
-        console.warn('[Vermes] Loading timeout (90s) — force resetting')
+        console.warn('[Vermes] Loading timeout (300s) — force resetting')
         const am = messages.value.find(m => m.id === aid)
-        if (am) { am.content += '\n\n⚠️ 响应超时，请重试'; am.streaming = false }
+        if (am) { am.content += '\n\n⚠️ 响应超时(300s)，请重试'; am.streaming = false }
         loading.value = false; abortController.value = null
         persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
       }
-    }, 90000)
+    }, 300000)
 
     messages.value.push({
       id: aid, role: 'assistant', content: '',
