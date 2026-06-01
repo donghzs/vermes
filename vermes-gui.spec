@@ -177,7 +177,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # 无 CMD 窗口，日志写文件
+    console=True,  # 弹出 CMD 窗口，实时查看日志
     icon='packaging/vermes.icns' if sys.platform == 'darwin' else 'packaging/vermes.ico',
 )
 

@@ -316,10 +316,12 @@ export const useChatStore = defineStore('chat', () => {
 
     const allMsgs = messages.value.filter(m => m.sessionId === currentSessionId.value && !m.streaming)
     const recentImageMsgIds = new Set(
-      allMsgs.filter(m => m.role === 'user' && m.content?.includes('data:image')).slice(-5).map(m => m.id)
+      allMsgs.filter(m => m.role === 'user' && m.content?.includes('data:image') && m.id !== msgId).slice(-5).map(m => m.id)
     )
     const apiMessages = allMsgs.map(m => ({
       role: m.role,
+      // Strip ALL base64 images: current msg (already in attachments) + old msgs (save tokens)
+      // Keep last 5 recent image messages' base64 only for visual context continuity
       content: m.role === 'user' && m.content?.includes('data:image') && !recentImageMsgIds.has(m.id)
         ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '[图片]').trim() : m.content,
     }))

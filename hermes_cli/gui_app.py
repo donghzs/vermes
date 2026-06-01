@@ -15,17 +15,33 @@ import webbrowser
 import socket
 import subprocess
 
-# ── 无 console 模式下重定向 stdout/stderr 到日志文件 ──
-# PyInstaller console=False 时 stdout/stderr 断开，后端静默失败。
-# 必须在最开始重定向，否则后续 print 全部丢失。
+# ── 日志重定向：console=True 时输出到 CMD 窗口 + 日志文件 ──
+# 同时写入文件，方便事后排查。
 if sys.platform == 'win32' and getattr(sys, 'frozen', False):
+    import io
     _log_dir = os.path.expanduser("~/.vermes")
     os.makedirs(_log_dir, exist_ok=True)
     _log_path = os.path.join(_log_dir, "gui_app.log")
-    if sys.stdout is None or not hasattr(sys.stdout, 'fileno') or sys.stdout.fileno() < 0:
-        sys.stdout = open(_log_path, "a", encoding="utf-8", buffering=1)
-    if sys.stderr is None or not hasattr(sys.stderr, 'fileno') or sys.stderr.fileno() < 0:
-        sys.stderr = sys.stdout
+    class _Tee(io.TextIOBase):
+        """同时写入原始流和日志文件。"""
+        def __init__(self, orig, path):
+            self._orig = orig
+            self._file = open(path, "a", encoding="utf-8", buffering=1)
+        def write(self, s):
+            r = self._orig.write(s) if self._orig else len(s)
+            self._file.write(s)
+            return r
+        def flush(self):
+            if self._orig:
+                self._orig.flush()
+            self._file.flush()
+        def fileno(self):
+            return self._orig.fileno() if self._orig else -1
+    try:
+        sys.stdout = _Tee(sys.stdout, _log_path)
+        sys.stderr = _Tee(sys.stderr, _log_path)
+    except Exception:
+        pass
     print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Vermes GUI started (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)})")
 
 # ── Windows 适配层初始化（DPI 感知 + UTF-8 编码） ──
