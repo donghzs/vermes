@@ -287,11 +287,23 @@ def start_server():
         print(f"[Vermes] ⚠️ 无法写入端口文件: {e}")
 
     print(f"[Vermes] 后端启动在端口 {port}")
-    uvicorn.run(fastapi_app,
-                host="0.0.0.0",
-                port=port,
-                log_level="info",
-                lifespan="off")
+    try:
+        uvicorn.run(fastapi_app,
+                    host="0.0.0.0",
+                    port=port,
+                    log_level="info",
+                    lifespan="off")
+    except Exception as e:
+        print(f"[Vermes] ❌ 后端崩溃: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        # Write crash to startup log for post-mortem
+        try:
+            with open(_startup_log, "a") as f:
+                f.write(f"\n[{time.strftime('%H:%M:%S')}] BACKEND CRASH: {type(e).__name__}: {e}\n")
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
 
 
 def on_dom_ready():
