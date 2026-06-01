@@ -2,7 +2,7 @@
 ; 从项目根目录编译: ISCC vermes-inno-setup.iss
 
 #define MyAppName "Vermes"
-#define MyAppVersion "2.0.5"
+#define MyAppVersion "2.0.6"
 #define MyAppPublisher "胜比特"
 #define MyAppURL "https://vbit.top"
 #define MyAppExeName "Vermes.exe"

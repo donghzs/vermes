@@ -209,3 +209,48 @@ export function fileToBase64(file) {
     reader.readAsDataURL(file)
   })
 }
+
+// ── 后端 API 消息持久化 (pywebview macOS 不持久化 IndexedDB) ──
+
+export async function saveMessagesToAPI(sessionId, messages) {
+  try {
+    const resp = await fetch(`/api/gui/messages/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    })
+    return resp.ok
+  } catch (e) {
+    console.warn('[Vermes] API 消息保存失败:', e)
+    return false
+  }
+}
+
+export async function loadMessagesFromAPI(sessionId) {
+  try {
+    const resp = await fetch(`/api/gui/messages/${sessionId}`)
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return data.messages || []
+  } catch (e) {
+    console.warn('[Vermes] API 消息加载失败:', e)
+    return []
+  }
+}
+
+export async function deleteMessagesFromAPI(sessionId) {
+  try {
+    await fetch(`/api/gui/messages/${sessionId}`, { method: 'DELETE' })
+  } catch (e) { /* ignore */ }
+}
+
+export async function listSessionsFromAPI() {
+  try {
+    const resp = await fetch('/api/gui/sessions')
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return data.sessions || []
+  } catch (e) {
+    return []
+  }
+}

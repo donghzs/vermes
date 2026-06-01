@@ -11,7 +11,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { isCloudModel, checkQuota, checkQuotaServer, getWechatDailyQuota, WECHAT_QUOTA_KEY } from '../services/api'
 import { showToast } from '../utils/toast'
-import { loadFromStorage, saveToStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, loadImage, deleteImages, loadMessagesFromIDB, saveMessagesToIDB, migrateFromLocalStorage } from './chat-storage'
+import { loadFromStorage, saveToStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, loadImage, deleteImages, loadMessagesFromIDB, saveMessagesToIDB, migrateFromLocalStorage, saveMessagesToAPI, loadMessagesFromAPI, deleteMessagesFromAPI } from './chat-storage'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import {
   uid, SESSIONS_KEY, MESSAGES_KEY_PREFIX, MAX_SESSIONS, QUOTA_NEED_LOGIN,
@@ -166,8 +166,11 @@ export const useChatStore = defineStore('chat', () => {
     }
     currentSessionId.value = id
     try { localStorage.setItem('vermes-last-session', id) } catch(e) { evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId.value) }
-    // 优先从 IndexedDB 读取
-    let stored = await loadMessagesFromIDB(id)
+    // 优先从 API 读取（pywebview macOS 不持久化 IndexedDB）
+    let stored = await loadMessagesFromAPI(id)
+    if (!stored || stored.length === 0) {
+      stored = await loadMessagesFromIDB(id)  // 降级 IndexedDB
+    }
     if (!stored || stored.length === 0) {
       stored = loadFromStorage(MESSAGES_KEY_PREFIX + id)  // 降级 localStorage
     }
@@ -177,6 +180,7 @@ export const useChatStore = defineStore('chat', () => {
       if (memMsgs.length > 0) {
         stored = memMsgs
         await saveMessagesToIDB(id, memMsgs)
+        await saveMessagesToAPI(id, memMsgs)
       }
     }
 
@@ -296,6 +300,7 @@ export const useChatStore = defineStore('chat', () => {
         attachments: processedAttachments
       })
       await persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+      scheduleScroll()  // 用户发消息后滚到底部
     }
 
     loading.value = true
@@ -473,6 +478,7 @@ export const useChatStore = defineStore('chat', () => {
       sessionId: currentSessionId.value, timestamp: Date.now(),
     })
     persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+    scheduleScroll()  // 用户发消息后滚到底部
 
     loading.value = true
     const compareAbortControllers = []

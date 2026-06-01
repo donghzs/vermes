@@ -207,6 +207,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # Analytics (optional)
     "/api/analytics/usage",
     "/api/analytics/models",
+    # Vermes GUI 消息持久化
+    "/api/gui/messages",
+    "/api/gui/sessions",
 })
 
 
@@ -325,8 +328,9 @@ async def host_header_middleware(request: Request, call_next):
 async def auth_middleware(request: Request, call_next):
     """Require the session token on all /api/ routes except the public list."""
     path = request.url.path
-    if path.startswith("/api/") and path not in _PUBLIC_API_PATHS:
-        if not _has_valid_session_token(request):
+    if path.startswith("/api/"):
+        is_public = path in _PUBLIC_API_PATHS or any(path.startswith(p + "/") for p in _PUBLIC_API_PATHS)
+        if not is_public and not _has_valid_session_token(request):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized"},
