@@ -79,6 +79,21 @@ _log = logging.getLogger(__name__)
 
 app = FastAPI(title="Vermes", version=__version__)
 
+
+# ---------------------------------------------------------------------------
+# Global exception handler — catch unhandled errors to prevent backend crash
+# ---------------------------------------------------------------------------
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and return 500 instead of crashing."""
+    import traceback
+    _log.error(f"[Vermes] Unhandled exception on {request.method} {request.url.path}: {type(exc).__name__}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"message": f"Internal server error: {type(exc).__name__}: {str(exc)[:200]}", "type": "server_error"}},
+    )
+
 # ---------------------------------------------------------------------------
 # Session token for protecting sensitive endpoints (reveal).
 # Generated fresh on every server start — dies when the process exits.
