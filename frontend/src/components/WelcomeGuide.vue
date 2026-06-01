@@ -73,7 +73,7 @@ const quickStarts = [
 
 <template>
   <!-- 空会话时显示引导 -->
-  <div v-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-16 bg-gray-50 dark:bg-gray-900">
+  <div v-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-8 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
     
     <!-- Step 1: 选择使用方式 -->
     <div v-if="currentStep === 1" class="w-full max-w-md">
@@ -228,7 +228,7 @@ const quickStarts = [
     <!-- 底部通用说明 -->
     <div class="mt-8 text-center">
       <p class="text-xs text-gray-400 dark:text-gray-500">
-        Vermes · 本地 AI Agent · 数据仅在本地处理
+        Vermes AI Agent © Vbit.top
       </p>
     </div>
   </div>

@@ -2,7 +2,7 @@
  * chat-session.js — 会话管理 + localStorage 三级清理
  */
 
-import { saveToStorage, loadFromStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, saveImage, loadImage, deleteImages, saveMessagesToIDB, loadMessagesFromIDB, deleteMessagesFromIDB, migrateFromLocalStorage } from './chat-storage'
+import { saveToStorage, loadFromStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, saveImage, loadImage, deleteImages, saveMessagesToIDB, loadMessagesFromIDB, deleteMessagesFromIDB, migrateFromLocalStorage, saveMessagesToAPI, loadMessagesFromAPI, deleteMessagesFromAPI } from './chat-storage'
 
 // ── 常量 ──
 const SESSIONS_KEY = 'vermes-sessions'
@@ -145,6 +145,8 @@ async function persistMessages(sessionId, messages, currentSessionId, SESSIONS_K
   }
   // 优先写 IndexedDB（无大小限制）
   await saveMessagesToIDB(sessionId, lean)
+  // 同时写后端 API（pywebview macOS 不持久化 IndexedDB）
+  await saveMessagesToAPI(sessionId, lean)
   if (imageSavePromises.length > 0) {
     try { await Promise.all(imageSavePromises) } catch(e) { console.warn('[Vermes] 图片批量存储失败:', e) }
   }

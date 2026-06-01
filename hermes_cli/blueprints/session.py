@@ -8,7 +8,7 @@ import logging
 import re
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from hermes_cli.blueprints.helpers import _session_latest_descendant
 
@@ -166,6 +166,62 @@ def register_to(app):
         methods=["DELETE"],
         name="delete_session",
     )
+    # Vermes GUI 消息持久化
+    app.add_api_route("/api/gui/messages/{session_id}", save_gui_messages, methods=["POST"], name="save_gui_messages")
+    app.add_api_route("/api/gui/messages/{session_id}", load_gui_messages, methods=["GET"], name="load_gui_messages")
+    app.add_api_route("/api/gui/messages/{session_id}", delete_gui_messages, methods=["DELETE"], name="delete_gui_messages")
+    app.add_api_route("/api/gui/sessions", list_gui_sessions, methods=["GET"], name="list_gui_sessions")
 
 
 blueprint = session_bp
+
+
+# ── Vermes GUI 消息持久化 (JSON 文件存储) ─────────────────────────────
+
+import json as _json
+from pathlib import Path as _Path
+
+_MSG_DIR = _Path.home() / ".vermes" / "messages"
+
+async def save_gui_messages(session_id: str, request: Request):
+    """Save GUI messages for a session (JSON file storage)."""
+    _MSG_DIR.mkdir(parents=True, exist_ok=True)
+    body = await request.json()
+    messages = body.get("messages", [])
+    msg_file = _MSG_DIR / f"{session_id}.json"
+    msg_file.write_text(_json.dumps(messages, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "count": len(messages)}
+
+async def load_gui_messages(session_id: str):
+    """Load GUI messages for a session."""
+    msg_file = _MSG_DIR / f"{session_id}.json"
+    if not msg_file.exists():
+        return {"messages": []}
+    try:
+        messages = _json.loads(msg_file.read_text(encoding="utf-8"))
+        return {"messages": messages}
+    except Exception:
+        return {"messages": []}
+
+async def delete_gui_messages(session_id: str):
+    """Delete GUI messages for a session."""
+    msg_file = _MSG_DIR / f"{session_id}.json"
+    if msg_file.exists():
+        msg_file.unlink()
+    return {"ok": True}
+
+async def list_gui_sessions():
+    """List all GUI sessions with messages."""
+    _MSG_DIR.mkdir(parents=True, exist_ok=True)
+    sessions = []
+    for f in sorted(_MSG_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            msgs = _json.loads(f.read_text(encoding="utf-8"))
+            sessions.append({
+                "id": f.stem,
+                "message_count": len(msgs),
+                "last_modified": f.stat().st_mtime,
+            })
+        except Exception:
+            pass
+    return {"sessions": sessions}

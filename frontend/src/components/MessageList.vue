@@ -403,7 +403,7 @@ function streamElapsed(startTime) {
 </script>
 
 <template>
-  <div ref="chatContainer" class="flex-1 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative">
+  <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative">
     <!-- 骨架屏：loading 且无消息（切换会话/loading 中） -->
     <div v-if="chat.filteredMessages.length === 0 && chat.loading" class="space-y-4 px-4 py-6">
       <div v-for="i in 3" :key="'skeleton-'+i" class="flex gap-3" :class="i % 2 === 0 ? 'flex-row-reverse' : ''">
@@ -449,6 +449,7 @@ function streamElapsed(startTime) {
               </button>
               <span v-else-if="msg.streaming" class="thinking-inline">正在思考<span class="thinking-dots"><span>●</span><span>●</span><span>●</span></span></span>
               <span v-else-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="text-gray-400 text-xs">✅ 任务完成</span>
+              <span v-else-if="!msg.streaming" class="text-gray-400 text-xs">✅ 完成</span>
               <span v-else class="text-gray-400 text-xs">正在思考...</span>
               <span v-if="msg.streaming && msg.content" class="typing-cursor"></span>
             </template>

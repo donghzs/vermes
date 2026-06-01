@@ -210,7 +210,7 @@ const quickStarts = [
       <div class="px-6 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
         <div class="flex items-center justify-between">
           <p class="text-xs text-gray-400 dark:text-gray-500">
-            Vermes v2.0.4 · 本地 AI Agent · 数据仅在本地处理
+            Vermes AI Agent © Vbit.top
           </p>
           <a href="https://vbit.top" target="_blank" class="text-xs text-green-500 hover:text-green-600 transition">
             vbit.top ↗
