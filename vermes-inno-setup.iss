@@ -5,7 +5,7 @@
 #define MyAppVersion "2.0.6"
 #define MyAppPublisher "胜比特"
 #define MyAppURL "https://vbit.top"
-#define MyAppExeName "Vermes.exe"
+#define MyAppExeName "vermes-start.bat"
 
 [Setup]
 AppId={{B8E5C5A0-7F3D-4A2E-9C1B-1234567890AB}
@@ -26,7 +26,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=packaging\vermes.ico
-UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayIcon={app}\packaging\vermes.ico
 ; WizardImageFile=packaging\vermes-wizard.bmp
 ; WizardSmallImageFile=packaging\vermes-icon-small.bmp
 
@@ -40,6 +40,7 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 
 [Files]
 Source: "dist\Vermes\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "installer\vermes-start.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -65,7 +66,7 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  Exec('taskkill', '/F /IM Vermes.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill', '/F /FI "WINDOWTITLE eq Vermes*"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
 end;
 
@@ -74,6 +75,6 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  Exec('taskkill', '/F /IM Vermes.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill', '/F /FI "WINDOWTITLE eq Vermes*"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
 end;
