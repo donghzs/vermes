@@ -5,6 +5,9 @@ const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
 const DISMISS_KEY = 'vermes_update_dismissed'
 
+// 是否为 Electron 桌面环境
+const isDesktop = typeof window !== 'undefined' && window.vermes?.isDesktop
+
 export const useUpdateStore = () => {
   const hasUpdate = ref(false)
   const latestVersion = ref('')
@@ -16,8 +19,8 @@ export const useUpdateStore = () => {
 
   // 自更新状态
   const updating = ref(false)
-  const updateProgress = ref(0)     // 0-100
-  const updateStatus = ref('')      // 'downloading' | 'extracting' | 'verifying' | 'backing_up' | 'applying' | 'done' | 'error'
+  const updateProgress = ref(0)
+  const updateStatus = ref('')
   const updateError = ref('')
   const updateMessage = ref('')
   const downloadedBytes = ref(0)
@@ -29,10 +32,78 @@ export const useUpdateStore = () => {
   const backups = ref([])
   const showRollback = ref(false)
 
+  // Electron 事件监听清理函数
+  let _electronCleanups = []
+
   async function checkUpdate() {
     if (checked.value) return
     checked.value = true
 
+    // Electron 桌面模式：使用 electron-updater
+    if (isDesktop && window.vermes?.checkForUpdates) {
+      return checkUpdateElectron()
+    }
+
+    // Web 模式：从 vbit.top 获取版本信息
+    return checkUpdateWeb()
+  }
+
+  /** Electron 原生更新检查 */
+  async function checkUpdateElectron() {
+    try {
+      // 监听更新事件
+      if (window.vermes.onUpdateAvailable) {
+        _electronCleanups.push(
+          window.vermes.onUpdateAvailable((info) => {
+            latestVersion.value = info.version
+            hasUpdate.value = true
+            releaseNotes.value = info.releaseNotes || ''
+            if (localStorage.getItem(DISMISS_KEY) === info.version) {
+              hasUpdate.value = false
+            }
+          })
+        )
+      }
+      if (window.vermes.onUpdateNotAvailable) {
+        _electronCleanups.push(window.vermes.onUpdateNotAvailable(() => {}))
+      }
+      if (window.vermes.onUpdateProgress) {
+        _electronCleanups.push(
+          window.vermes.onUpdateProgress((progress) => {
+            updateProgress.value = progress.percent
+            downloadedBytes.value = progress.transferred
+            totalBytes.value = progress.total
+            speedBps.value = progress.bytesPerSecond
+            updateStatus.value = 'downloading'
+            updateMessage.value = `下载中 ${progress.percent.toFixed(0)}%`
+          })
+        )
+      }
+      if (window.vermes.onUpdateDownloaded) {
+        _electronCleanups.push(
+          window.vermes.onUpdateDownloaded((info) => {
+            updateStatus.value = 'done'
+            updateMessage.value = `✅ v${info.version} 已下载，重启后安装`
+          })
+        )
+      }
+      if (window.vermes.onUpdateError) {
+        _electronCleanups.push(
+          window.vermes.onUpdateError((err) => {
+            updateStatus.value = 'error'
+            updateError.value = err.message
+          })
+        )
+      }
+
+      await window.vermes.checkForUpdates()
+    } catch (e) {
+      console.warn('[Vermes Update] Electron check error:', e)
+    }
+  }
+
+  /** Web 模式：从 vbit.top 获取版本信息 */
+  async function checkUpdateWeb() {
     try {
       const cacheBuster = '?t=' + Date.now()
       const res = await fetch(VERSION_URL + cacheBuster, { signal: AbortSignal.timeout(5000) })
@@ -46,7 +117,6 @@ export const useUpdateStore = () => {
         latestVersion.value = res.version
         hasUpdate.value = true
 
-        // download_url 可以是字符串或 {macos_dmg, windows_zip} 嵌套对象
         if (typeof res.download_url === 'string') {
           downloadUrl.value = res.download_url
         } else if (res.download_url && typeof res.download_url === 'object') {
@@ -58,7 +128,6 @@ export const useUpdateStore = () => {
           downloadUrl.value = res.mac_url || res.win_url || ''
         }
 
-        // SHA256 校验和
         if (res.sha256) {
           const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
           if (typeof res.sha256 === 'object') {
@@ -70,11 +139,8 @@ export const useUpdateStore = () => {
           }
         }
 
-        // 最低数据版本
         minDataVersion.value = res.min_data_version || ''
-
         releaseNotes.value = res.releaseNotes || res.notes || ''
-        // [debug] update banner showing
       }
     } catch (e) {
       console.warn('[Vermes Update] error:', e)
@@ -93,24 +159,47 @@ export const useUpdateStore = () => {
 
   function dismissUpdate() {
     hasUpdate.value = false
-    try { localStorage.setItem(DISMISS_KEY, latestVersion.value) } catch(e) { /* storage full */ }
+    try { localStorage.setItem(DISMISS_KEY, latestVersion.value) } catch(e) {}
   }
 
   /**
-   * 自更新：SSE 流式下载 → 备份 → 原子替换 → shutdown
+   * 开始更新
+   * - Electron 模式：electron-updater 下载
+   * - Web 模式：后端 SSE 流式下载
    */
   async function startUpdate() {
     if (updating.value) return
     updating.value = true
     updateError.value = ''
     updateProgress.value = 0
-    updateStatus.value = 'downloading'
-    updateMessage.value = '准备下载...'
-    downloadedBytes.value = 0
-    totalBytes.value = 0
-    speedBps.value = 0
-    etaSeconds.value = 0
 
+    // Electron 桌面模式
+    if (isDesktop && window.vermes?.downloadUpdate) {
+      updateStatus.value = 'downloading'
+      updateMessage.value = '准备下载...'
+      try {
+        const result = await window.vermes.downloadUpdate()
+        if (!result.success) {
+          throw new Error(result.error || '下载失败')
+        }
+        // 下载完成后提示安装
+        updateStatus.value = 'done'
+        updateMessage.value = `✅ 更新已下载，点击安装重启`
+      } catch (e) {
+        updateStatus.value = 'error'
+        updateError.value = e.message
+        updateMessage.value = `❌ ${e.message || '更新失败'}`
+        updating.value = false
+      }
+      return
+    }
+
+    // Web 模式：后端 SSE 流式下载
+    return startUpdateWeb()
+  }
+
+  /** Web 模式：SSE 流式下载 */
+  async function startUpdateWeb() {
     try {
       // 1. SSE 流式下载
       const response = await fetch('/api/update/download', {
@@ -287,6 +376,12 @@ export const useUpdateStore = () => {
     speedBps,
     etaSeconds,
     startUpdate,
+    // Electron: 安装已下载的更新并重启
+    installUpdate: () => {
+      if (isDesktop && window.vermes?.installUpdate) {
+        window.vermes.installUpdate()
+      }
+    },
     // 回滚
     backups,
     showRollback,

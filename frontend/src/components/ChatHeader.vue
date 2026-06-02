@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import HelpGuide from './HelpGuide.vue'
+import { DEFAULT_MODELS } from '../config/defaults'
 
 const chat = useChatStore()
 const showHelp = ref(false)
@@ -20,9 +21,7 @@ const showStats = ref(false)
 const sessionStats = computed(() => chat.getSessionStats(chat.currentSessionId))
 
 // 模型列表
-const defaultModels = [
-  { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
-]
+const defaultModels = DEFAULT_MODELS
 
 const models = computed(() => {
   try {
