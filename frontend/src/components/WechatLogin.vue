@@ -3,101 +3,118 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 
 const chat = useChatStore()
-
 const emit = defineEmits(['loginSuccess', 'loginError'])
 
-// ── 状态 ──
 const showModal = ref(false)
-const showOverlay = ref(false) // pywebview 模式下的遮罩
 const qrError = ref('')
 const wechatState = ref('')
+const isElectron = ref(false)
+const loginHint = ref('')
 let pollTimer = null
 let pollTimeout = null
 let isPollingActive = false
+let oauthWindow = null
 
-// 动态检测 pywebview（组件挂载时 API 可能还没注入）
-function checkPywebview() {
-  return typeof window !== 'undefined' && !!window.pywebview
+function checkElectron() {
+  return typeof window !== 'undefined' && !!window.vermes?.isDesktop
 }
 
 // ── 打开微信登录 ──
 async function openLogin() {
   qrError.value = ''
-  if (checkPywebview()) {
-    // pywebview 原生窗口：先显示遮罩，再打开居中的 OAuth 子窗口
-    showOverlay.value = true
+  isElectron.value = checkElectron()
+
+  if (isElectron.value) {
+    // === Electron 模式 ===
+    // IPC → 主进程打开 BrowserWindow 子窗口显示微信扫码页
+    // 扫码后 vbit.top 回调 → 主进程等 3s 后关窗 → 前端轮询拿 token
+    showModal.value = true
+    // Electron 模式：通过 IPC 打开 OAuth 子窗口，传递前端生成的 state
     try {
       const loginState = Date.now().toString()
-      const result = await window.pywebview.api.open_oauth_window(
-        'https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=' +
-        encodeURIComponent('https://vbit.top/api/wechat/callback') +
-        '&response_type=code&scope=snsapi_login&state=' + loginState + '#wechat_redirect'
-      )
-      showOverlay.value = false
+      wechatState.value = loginState
+      const result = await window.vermes.wechatLogin(loginState)
       if (result && result.success) {
-        wechatState.value = result.state || loginState
-        // code 已获取，用它向 vbit.top 换 token
-        await exchangeCodeForToken(result.code, wechatState.value)
+        wechatState.value = result.state
+        loginHint.value = '扫码成功，正在验证登录状态…'
+        startPolling()
       } else {
-        qrError.value = result?.error === 'timeout or cancelled' ? '已取消' : '登录失败'
+        showModal.value = false
+        const errMap = { cancelled: '您取消了登录', timeout: '登录超时，请重试' }
+        qrError.value = errMap[result?.error] || '登录未完成，请重试'
         emit('loginError', qrError.value)
       }
-    } catch(e) {
-      showOverlay.value = false
+    } catch (e) {
+      showModal.value = false
       qrError.value = '登录失败，请重试'
       emit('loginError', qrError.value)
     }
   } else {
-    // 浏览器弹窗模式
-    showModal.value = true
+    // === 浏览器模式 ===
+    // 不用 iframe（sandbox/CSP/X-Frame-Options 全都会拦截）
+    // 也不在模态框内展示（WeChat URL 是 HTML 不是图片）
+    // 方案：window.open() 打开系统浏览器 → 轮询后端拿 token
     try {
-      const res = await fetch('/api/wechat/qrurl', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      const res = await fetch('/api/wechat/qrurl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
       const data = await res.json()
+      if (!data.state || !data.url) throw new Error('No state/url')
       wechatState.value = data.state
-      const w = 420, h = 620
-      const left = Math.round((screen.width - w) / 2)
-      const top = Math.round((screen.height - h) / 2)
-      window.open(data.url, 'wechat-login', `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`)
+
+      // 在系统浏览器中打开微信扫码页
+      oauthWindow = window.open(data.url, 'wechat_oauth', 'width=500,height=700')
+      if (!oauthWindow) {
+        // 弹窗被拦截 — 提示用户手动打开
+        loginHint.value = '请点击下方链接在浏览器中打开，然后用微信扫码'
+      } else {
+        loginHint.value = '请在打开的浏览器窗口中扫码登录'
+      }
+      showModal.value = true
       startPolling()
-    } catch(e) {
+    } catch (e) {
       qrError.value = '加载失败，请重试'
       emit('loginError', qrError.value)
     }
   }
 }
 
-// ── pywebview 模式：用 code 向后端换 token ──
-async function exchangeCodeForToken(code, state) {
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 1000))
-    try {
-      const resp = await fetch(`/api/wechat/poll?state=${state}`)
-      const data = await resp.json()
-      if (data.expired) { qrError.value = '登录已过期，请重试'; return }
-      if (data.scanned && data.token) { handleLoginSuccess(data); return }
-    } catch(e) {}
-  }
-  qrError.value = '登录超时，请重试'
-}
-
-// ── 轮询（浏览器模式） ──
+// ── 轮询后端：vbit.top 回调后会把 token 写入 state 对应记录 ──
 function startPolling() {
   stopPolling()
   isPollingActive = true
+  let pollCount = 0
   pollTimer = setInterval(async () => {
     if (!isPollingActive) return
+    pollCount++
     try {
       const resp = await fetch(`/api/wechat/poll?state=${wechatState.value}`)
       const data = await resp.json()
-      if (data.expired) { stopPolling(); return }
+      if (data.expired) {
+        stopPolling()
+        showModal.value = false
+        qrError.value = '二维码已过期，请重新登录'
+        return
+      }
       if (data.scanned && data.token) {
         isPollingActive = false
         stopPolling()
+        // 关闭浏览器弹窗
+        try { oauthWindow?.close() } catch (_) {}
         handleLoginSuccess(data)
       }
-    } catch(e) {}
+      // 超过 3 分钟提示
+      if (pollCount > 90) {
+        loginHint.value = '等待扫码中…请确保已在浏览器中完成扫码'
+      }
+    } catch (_) {}
   }, 2000)
-  pollTimeout = setTimeout(() => stopPolling(), 5 * 60 * 1000)
+  pollTimeout = setTimeout(() => {
+    stopPolling()
+    showModal.value = false
+    qrError.value = '登录超时，请重试'
+  }, 5 * 60 * 1000)
 }
 
 function stopPolling() {
@@ -111,32 +128,28 @@ function handleLoginSuccess(data) {
   showModal.value = false
   chat.showQuotaModal = false
   stopPolling()
-  
-  // 保存登录信息（先清理旧数据防止身份错位）
+
   localStorage.removeItem('vermes_wechat_openid')
   localStorage.removeItem('vermes_wechat_name')
   localStorage.removeItem('vermes_wechat_avatar')
   localStorage.removeItem('vermes_quota')
-  try { localStorage.setItem('vermes_wechat_token', data.token) } catch(e) { /* storage full */ }
-  if (data.openid) try { localStorage.setItem('vermes_wechat_openid', data.openid) } catch(e) { /* storage full */ }
-  if (data.userName) try { localStorage.setItem('vermes_wechat_name', data.userName) } catch(e) { /* storage full */ }
-  if (data.userAvatar) try { localStorage.setItem('vermes_wechat_avatar', data.userAvatar) } catch(e) { /* storage full */ }
-  
-  // 同步到后端
+  try { localStorage.setItem('vermes_wechat_token', data.token) } catch (_) {}
+  if (data.openid) try { localStorage.setItem('vermes_wechat_openid', data.openid) } catch (_) {}
+  if (data.userName) try { localStorage.setItem('vermes_wechat_name', data.userName) } catch (_) {}
+  if (data.userAvatar) try { localStorage.setItem('vermes_wechat_avatar', data.userAvatar) } catch (_) {}
+
   fetch('/api/env', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: 'VBIT_API_KEY', value: data.token })
   }).catch(() => {})
-  
-  // 通知父组件
+
   emit('loginSuccess', {
     isLoggedIn: true,
     userName: data.userName || '微信用户',
     userAvatar: data.userAvatar || ''
   })
-  
-  // 创建默认会话
+
   if (chat.sessions.length === 0) chat.createSession('新会话')
 }
 
@@ -148,51 +161,47 @@ function logout() {
   localStorage.removeItem('vermes_wechat_avatar')
   localStorage.removeItem('vermes_wechat_openid')
   stopPolling()
-  // 已退出微信登录
+  try { oauthWindow?.close() } catch (_) {}
   emit('loginSuccess', { isLoggedIn: false, userName: '访客', userAvatar: '' })
 }
 
-// ── postMessage监听（微信回调窗口通知） ──
+// postMessage 备用（如果 vbit.top 回调页支持）
 const _postMessageHandler = (e) => {
-  if (e.origin && e.origin !== 'https://vbit.top') return
+  if (e.origin !== 'https://vbit.top') return
   if (e.data?.type === 'wechat_callback' && e.data?.token) {
     stopPolling()
     handleLoginSuccess(e.data)
   }
 }
 
-onMounted(() => {
-  window.addEventListener('message', _postMessageHandler)
-})
-
+onMounted(() => window.addEventListener('message', _postMessageHandler))
 onUnmounted(() => {
   window.removeEventListener('message', _postMessageHandler)
   stopPolling()
+  try { oauthWindow?.close() } catch (_) {}
 })
 
-// ── 暴露方法给父组件 ──
 defineExpose({ openLogin, logout })
 </script>
 
 <template>
-  <!-- pywebview 模式：暗色遮罩（OAuth 子窗口打开时显示） -->
-  <div v-if="showOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-xs w-full mx-4 relative text-center shadow-2xl">
-      <div class="text-5xl mb-4 animate-pulse">💬</div>
-      <h3 class="font-bold text-lg mb-2 text-gray-800 dark:text-gray-200">微信扫码登录</h3>
-      <p class="text-sm text-gray-500 dark:text-gray-400">请在弹出窗口中扫码...</p>
-      <p v-if="qrError" class="text-xs text-red-400 mt-3">{{ qrError }}</p>
-    </div>
-  </div>
-
-  <!-- 浏览器模式：微信登录弹窗 -->
-  <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showModal = false; stopPolling()">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center">
-      <button @click="showModal = false; stopPolling()" class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg">✕</button>
+  <div
+    v-if="showModal"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    @click.self="showModal = false; stopPolling(); try { oauthWindow?.close() } catch (_) {}"
+  >
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4 relative text-center shadow-xl">
+      <button
+        @click="showModal = false; stopPolling(); try { oauthWindow?.close() } catch (_) {}"
+        class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition text-lg z-10"
+      >✕</button>
       <h3 class="font-bold text-lg mb-3">微信登录</h3>
-      <div class="text-5xl mb-4">💬</div>
-      <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">请在弹出的窗口中完成微信授权</p>
-      <p v-if="qrError" class="text-xs text-red-400 mt-2">{{ qrError }}</p>
+      <!-- 加载中 -->
+      <div class="flex items-center justify-center h-40 flex-col gap-3">
+        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-green-500"></div>
+        <p class="text-sm text-gray-500">{{ loginHint || '正在准备登录…' }}</p>
+      </div>
+      <p v-if="qrError" class="text-xs text-red-400 mt-3">{{ qrError }}</p>
     </div>
   </div>
 </template>
