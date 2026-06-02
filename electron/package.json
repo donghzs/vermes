@@ -61,7 +61,7 @@
       ]
     },
     "win": {
-      "icon": "assets/icon.png",
+      "icon": "assets/vermes.ico",
       "target": [
         {
           "target": "nsis",
