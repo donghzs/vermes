@@ -39,6 +39,11 @@ onMounted(async () => {
         <button @click="update.startUpdate()" class="underline hover:no-underline font-medium">立即更新</button>
         <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
       </div>
+      <!-- 已下载待安装（Electron 模式） -->
+      <div v-else-if="update.updateStatus === 'done' && update.installUpdate" class="flex items-center justify-center gap-2">
+        <span>{{ update.updateMessage }}</span>
+        <button @click="update.installUpdate()" class="bg-white text-blue-600 px-3 py-0.5 rounded font-medium hover:bg-blue-50">安装并重启</button>
+      </div>
       <!-- 更新中状态 -->
       <div v-else class="flex flex-col items-center gap-1">
         <div class="flex items-center gap-2">

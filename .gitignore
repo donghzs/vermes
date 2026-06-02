@@ -78,6 +78,12 @@ dist/Vermes.app/
 dist/Vermes/
 frontend/dist/
 
+# Electron build artifacts
+dist-electron/
+*.blockmap
+Vermes-*.zip
+Vermes-*.dmg
+
 # Local release binaries (not committed)
 *.dmg
 *.zip

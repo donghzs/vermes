@@ -25,6 +25,7 @@ import {
   migrateFromLocalStorage as _migrateFromLocalStorage,
 } from './chat-session'
 import { friendlyError, formatSize } from './chat-quota'
+import { DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID } from '../config/defaults'
 
 // 重导出供外部组件使用
 export { setScrollTarget }
@@ -40,8 +41,8 @@ export const useChatStore = defineStore('chat', () => {
   const sidebarOpen = ref(true)
   const theme = ref('dark')
   let _beforeunloadRegistered = false
-  const currentModel = ref(localStorage.getItem('vermes-current-model') || 'agnes-2.0-flash')
-  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || 'vbit')
+  const currentModel = ref(localStorage.getItem('vermes-current-model') || DEFAULT_MODEL_ID)
+  const currentProvider = ref(localStorage.getItem('vermes-current-provider') || DEFAULT_PROVIDER_ID)
   const uploading = ref(false)
   const showQuotaModal = ref(false)
   const quotaModalType = ref('need_login')
