@@ -231,7 +231,7 @@ async function createWindow() {
 }
 
 // ── 微信 OAuth 登录窗口 ──
-function openWechatOAuth(event) {
+function openWechatOAuth(frontendState) {
   return new Promise((resolve) => {
     const parent = mainWindow;
     const oauthWidth = 420;
@@ -270,7 +270,6 @@ function openWechatOAuth(event) {
             document.title = '__resize__' + h;
           }
         }).observe(document.body);
-        // 初始大小
         setTimeout(() => {
           const h = document.documentElement.scrollHeight;
           if (h > 400) document.title = '__resize__' + h;
@@ -278,7 +277,6 @@ function openWechatOAuth(event) {
       `).catch(() => {});
     });
 
-    // 监听标题变化来调整窗口大小
     oauthWin.on('page-title-updated', (e, title) => {
       if (title.startsWith('__resize__')) {
         e.preventDefault();
@@ -290,10 +288,10 @@ function openWechatOAuth(event) {
       }
     });
 
-    let oauthDone = false; // 回调已触发（vbit.top 正在处理）
+    let oauthDone = false;
 
-    // 微信 OAuth URL
-    const state = Date.now().toString();
+    // 使用前端传入的 state（保持一致）
+    const state = frontendState || Date.now().toString();
     const oauthUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=${encodeURIComponent('https://vbit.top/api/wechat/callback')}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
 
     oauthWin.loadURL(oauthUrl);
@@ -369,9 +367,9 @@ function checkOAuthUrl(url, onCallback) {
   } catch (_) {}
 }
 
-// IPC: 渲染进程调用微信登录
-ipcMain.handle('wechat-login', async () => {
-  return await openWechatOAuth();
+// IPC: 渲染进程调用微信登录（接收前端生成的 state）
+ipcMain.handle('wechat-login', async (event, state) => {
+  return await openWechatOAuth(state);
 });
 
 // IPC: 渲染进程调用打开外部链接

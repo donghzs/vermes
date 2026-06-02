@@ -18,8 +18,8 @@ contextBridge.exposeInMainWorld('vermes', {
   // 后端状态查询
   getBackendStatus: () => ipcRenderer.invoke('backend:status'),
   
-  // 微信 OAuth 登录
-  wechatLogin: () => ipcRenderer.invoke('wechat-login'),
+  // 微信 OAuth 登录（传递前端生成的 state）
+  wechatLogin: (state) => ipcRenderer.invoke('wechat-login', state),
   
   // 版本信息
   version: appVersion,
