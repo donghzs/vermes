@@ -45,11 +45,18 @@ for src, dst in [
 
 # Hidden imports
 hiddenimports = [
-    # Core
-    'uvicorn', 'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto',
+    # Core uvicorn (all submodules)
+    'uvicorn', 'uvicorn.__main__', 'uvicorn.main', 'uvicorn.config',
+    'uvicorn.server', 'uvicorn.workers', 'uvicorn.importer',
+    'uvicorn.logging', 'uvicorn._subprocess', 'uvicorn._compat', 'uvicorn._types',
+    'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.loops.asyncio', 'uvicorn.loops.uvloop',
     'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
+    'uvicorn.protocols.http.h11_impl', 'uvicorn.protocols.http.httptools_impl',
     'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto',
-    'uvicorn.lifespan', 'uvicorn.lifespan.on',
+    'uvicorn.protocols.websockets.wsproto_impl', 'uvicorn.protocols.websockets.websockets_impl',
+    'uvicorn.lifespan', 'uvicorn.lifespan.on', 'uvicorn.lifespan.off',
+    'uvicorn.middleware.asgi2', 'uvicorn.middleware.message_logger',
+    'uvicorn.middleware.proxy_headers', 'uvicorn.middleware.wsgi',
     'fastapi', 'starlette',
 
     # HTTP
