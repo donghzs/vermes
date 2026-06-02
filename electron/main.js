@@ -236,7 +236,8 @@ async function createWindow() {
 }
 
 // ── 微信 OAuth 登录窗口 ──
-function openWechatOAuth(frontendState) {
+// 接收前端调 /api/wechat/qrurl 返回的完整 OAuth URL（含 vbit.top 注册好的 state）
+function openWechatOAuth(oauthUrl) {
   return new Promise((resolve) => {
     const parent = mainWindow;
     const oauthWidth = 420;
@@ -295,10 +296,10 @@ function openWechatOAuth(frontendState) {
 
     let oauthDone = false;
 
-    // 使用前端传入的 state（保持一致）
-    const state = frontendState || Date.now().toString();
-    const oauthUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=${encodeURIComponent('https://vbit.top/api/wechat/callback')}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
-
+    // 直接使用前端传入的完整 OAuth URL（state 已由 vbit.top 注册）
+    // 从 URL 中提取 state 用于回调匹配
+    let state = '';
+    try { state = new URL(oauthUrl).searchParams.get('state') || ''; } catch (_) {}
     oauthWin.loadURL(oauthUrl);
 
     // 监听 URL 变化 — 检测回调（标记但不关闭窗口，让 vbit.top 完成处理）
@@ -372,9 +373,9 @@ function checkOAuthUrl(url, onCallback) {
   } catch (_) {}
 }
 
-// IPC: 渲染进程调用微信登录（接收前端生成的 state）
-ipcMain.handle('wechat-login', async (event, state) => {
-  return await openWechatOAuth(state);
+// IPC: 渲染进程传入完整 OAuth URL（调 /api/wechat/qrurl 获得）
+ipcMain.handle('wechat-login', async (event, oauthUrl) => {
+  return await openWechatOAuth(oauthUrl);
 });
 
 // IPC: 渲染进程调用打开外部链接
