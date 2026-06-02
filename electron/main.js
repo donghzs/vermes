@@ -212,6 +212,104 @@ async function createWindow() {
   });
 }
 
+// ── 微信 OAuth 登录窗口 ──
+function openWechatOAuth(event) {
+  return new Promise((resolve) => {
+    const parent = mainWindow;
+    const oauthWidth = 420;
+    const oauthHeight = 620;
+
+    // 居中在主窗口上
+    const parentBounds = parent.getBounds();
+    const x = Math.round(parentBounds.x + (parentBounds.width - oauthWidth) / 2);
+    const y = Math.round(parentBounds.y + (parentBounds.height - oauthHeight) / 2);
+
+    const oauthWin = new BrowserWindow({
+      width: oauthWidth,
+      height: oauthHeight,
+      x, y,
+      title: '微信登录',
+      parent: parent,
+      modal: false,
+      resizable: true,
+      minimizable: false,
+      maximizable: false,
+      icon: getIconPath(),
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    // 微信 OAuth URL
+    const state = Date.now().toString();
+    const oauthUrl = `https://open.weixin.qq.com/connect/qrconnect?appid=wxfd680141e93226be&redirect_uri=${encodeURIComponent('https://vbit.top/api/wechat/callback')}&response_type=code&scope=snsapi_login&state=${state}#wechat_redirect`;
+
+    oauthWin.loadURL(oauthUrl);
+
+    // 监听 URL 变化 — 检测回调
+    oauthWin.webContents.on('will-redirect', (e, url) => {
+      checkOAuthUrl(url, oauthWin, resolve, state);
+    });
+
+    oauthWin.webContents.on('will-navigate', (e, url) => {
+      checkOAuthUrl(url, oauthWin, resolve, state);
+    });
+
+    // 轮询 URL（微信可能不用标准 redirect）
+    const pollInterval = setInterval(() => {
+      if (oauthWin.isDestroyed()) { clearInterval(pollInterval); return; }
+      try {
+        const currentUrl = oauthWin.webContents.getURL();
+        checkOAuthUrl(currentUrl, oauthWin, resolve, state);
+      } catch (_) {}
+    }, 500);
+
+    // 用户关闭窗口
+    oauthWin.on('closed', () => {
+      clearInterval(pollInterval);
+      resolve({ success: false, error: 'cancelled' });
+    });
+
+    // 5 分钟超时
+    setTimeout(() => {
+      if (!oauthWin.isDestroyed()) {
+        clearInterval(pollInterval);
+        oauthWin.close();
+        resolve({ success: false, error: 'timeout' });
+      }
+    }, 5 * 60 * 1000);
+  });
+}
+
+function checkOAuthUrl(url, oauthWin, resolve, state) {
+  if (!url) return;
+  try {
+    const parsed = new URL(url);
+    // 检测回调 URL (vbit.top/api/wechat/callback?code=xxx&state=yyy)
+    if (parsed.hostname === 'vbit.top' && parsed.pathname.includes('callback')) {
+      const code = parsed.searchParams.get('code');
+      const returnedState = parsed.searchParams.get('state') || state;
+      if (code) {
+        console.log(`[Vermes] 微信 OAuth code 获取成功`);
+        if (!oauthWin.isDestroyed()) oauthWin.close();
+        resolve({ success: true, code, state: returnedState });
+      }
+    }
+    // 检测微信确认页面（授权成功后微信会跳转）
+    if (parsed.hostname === 'open.weixin.qq.com' && parsed.pathname.includes('connect/confirm')) {
+      // 用户已扫码确认，等待回调
+      console.log('[Vermes] 微信扫码确认，等待回调...');
+    }
+  } catch (_) {}
+}
+
+// IPC: 渲染进程调用微信登录
+ipcMain.handle('wechat-login', async () => {
+  return await openWechatOAuth();
+});
+
 // ── App 生命周期 ──
 app.whenReady().then(createWindow);
 

@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('vermes', {
   // 后端状态查询
   getBackendStatus: () => ipcRenderer.invoke('backend:status'),
   
+  // 微信 OAuth 登录
+  wechatLogin: () => ipcRenderer.invoke('wechat-login'),
+  
   // 版本信息
   version: require('../package.json').version,
 });
