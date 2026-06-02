@@ -198,7 +198,13 @@ async function createWindow() {
   // 加载完成后显示
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    mainWindow.webContents.openDevTools(); // DEBUG: 验证 window.vermes
     console.log('[Vermes] 窗口已显示');
+  });
+
+  // 固定窗口标题，防止页面 <title> 覆盖
+  mainWindow.on('page-title-updated', (e) => {
+    e.preventDefault();
   });
 
   mainWindow.on('closed', () => {
@@ -206,9 +212,21 @@ async function createWindow() {
   });
 
   // 外部链接用系统浏览器打开
+  // 拦截 target="_blank" 链接 — 统一由 shell.openExternal 打开系统浏览器
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // 拦截所有导航到非本地 URL 的请求（如页面内 bug 导致的跳转）
+  // 注意：正常消息链接由 window.vermes.openExternalBrowser() 显式调用
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    try {
+      const parsed = new URL(url);
+      // 允许本地后端访问
+      if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') return;
+    } catch (_) {}
+    e.preventDefault();
   });
 }
 
@@ -217,7 +235,7 @@ function openWechatOAuth(event) {
   return new Promise((resolve) => {
     const parent = mainWindow;
     const oauthWidth = 420;
-    const oauthHeight = 620;
+    const oauthHeight = 520;
 
     // 居中在主窗口上
     const parentBounds = parent.getBounds();
@@ -239,8 +257,40 @@ function openWechatOAuth(event) {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        webSecurity: false,  // 允许连接 localhost.weixin.qq.com (微信桌面本地服务)
       },
     });
+
+    // 内容加载后自动调整窗口大小
+    oauthWin.webContents.on('did-finish-load', () => {
+      oauthWin.webContents.executeJavaScript(`
+        new ResizeObserver(() => {
+          const h = document.documentElement.scrollHeight;
+          if (h > 400 && h < 900) {
+            document.title = '__resize__' + h;
+          }
+        }).observe(document.body);
+        // 初始大小
+        setTimeout(() => {
+          const h = document.documentElement.scrollHeight;
+          if (h > 400) document.title = '__resize__' + h;
+        }, 500);
+      `).catch(() => {});
+    });
+
+    // 监听标题变化来调整窗口大小
+    oauthWin.on('page-title-updated', (e, title) => {
+      if (title.startsWith('__resize__')) {
+        e.preventDefault();
+        const newHeight = parseInt(title.replace('__resize__', ''));
+        if (newHeight > 400 && newHeight < 900) {
+          const [currentWidth] = oauthWin.getSize();
+          oauthWin.setSize(currentWidth, newHeight);
+        }
+      }
+    });
+
+    let oauthDone = false; // 回调已触发（vbit.top 正在处理）
 
     // 微信 OAuth URL
     const state = Date.now().toString();
@@ -248,13 +298,26 @@ function openWechatOAuth(event) {
 
     oauthWin.loadURL(oauthUrl);
 
-    // 监听 URL 变化 — 检测回调
+    // 监听 URL 变化 — 检测回调（标记但不关闭窗口，让 vbit.top 完成处理）
+    const markDone = () => {
+      if (!oauthDone) {
+        oauthDone = true;
+        // Electron 不允许 renderer window.close()，主进程 3s 后自动关闭
+        setTimeout(() => {
+          if (!oauthWin.isDestroyed()) {
+            console.log('[Vermes] 回调处理完毕，关闭 OAuth 窗口');
+            oauthWin.close();
+          }
+        }, 3000);
+      }
+    };
+
     oauthWin.webContents.on('will-redirect', (e, url) => {
-      checkOAuthUrl(url, oauthWin, resolve, state);
+      checkOAuthUrl(url, markDone);
     });
 
     oauthWin.webContents.on('will-navigate', (e, url) => {
-      checkOAuthUrl(url, oauthWin, resolve, state);
+      checkOAuthUrl(url, markDone);
     });
 
     // 轮询 URL（微信可能不用标准 redirect）
@@ -262,14 +325,19 @@ function openWechatOAuth(event) {
       if (oauthWin.isDestroyed()) { clearInterval(pollInterval); return; }
       try {
         const currentUrl = oauthWin.webContents.getURL();
-        checkOAuthUrl(currentUrl, oauthWin, resolve, state);
+        checkOAuthUrl(currentUrl, markDone);
       } catch (_) {}
     }, 500);
 
-    // 用户关闭窗口
+    // 窗口关闭时裁决（vbit.top 成功页会 1.5s 后 window.close）
     oauthWin.on('closed', () => {
       clearInterval(pollInterval);
-      resolve({ success: false, error: 'cancelled' });
+      if (oauthDone) {
+        console.log(`[Vermes] 微信 OAuth 完成，token 已就绪`);
+        resolve({ success: true, state });
+      } else {
+        resolve({ success: false, error: 'cancelled' });
+      }
     });
 
     // 5 分钟超时
@@ -283,23 +351,19 @@ function openWechatOAuth(event) {
   });
 }
 
-function checkOAuthUrl(url, oauthWin, resolve, state) {
+function checkOAuthUrl(url, onCallback) {
   if (!url) return;
   try {
     const parsed = new URL(url);
-    // 检测回调 URL (vbit.top/api/wechat/callback?code=xxx&state=yyy)
+    // 检测回调 URL — 只标记，不关闭窗口，让 vbit.top 完成 token 创建
     if (parsed.hostname === 'vbit.top' && parsed.pathname.includes('callback')) {
-      const code = parsed.searchParams.get('code');
-      const returnedState = parsed.searchParams.get('state') || state;
-      if (code) {
-        console.log(`[Vermes] 微信 OAuth code 获取成功`);
-        if (!oauthWin.isDestroyed()) oauthWin.close();
-        resolve({ success: true, code, state: returnedState });
+      if (parsed.searchParams.get('code')) {
+        console.log(`[Vermes] 微信回调已触发，等待 vbit.top 处理…`);
+        onCallback();
       }
     }
     // 检测微信确认页面（授权成功后微信会跳转）
     if (parsed.hostname === 'open.weixin.qq.com' && parsed.pathname.includes('connect/confirm')) {
-      // 用户已扫码确认，等待回调
       console.log('[Vermes] 微信扫码确认，等待回调...');
     }
   } catch (_) {}
@@ -310,8 +374,26 @@ ipcMain.handle('wechat-login', async () => {
   return await openWechatOAuth();
 });
 
-// ── App 生命周期 ──
-app.whenReady().then(createWindow);
+// IPC: 渲染进程调用打开外部链接
+ipcMain.handle('shell:openExternal', (e, url) => {
+  shell.openExternal(url);
+});
+
+// ── 单实例锁 ──
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  // ── App 生命周期 ──
+  app.whenReady().then(createWindow);
+}
 
 app.on('window-all-closed', () => {
   stopBackend();
