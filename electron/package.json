@@ -1,0 +1,64 @@
+{
+  "name": "vermes-electron",
+  "version": "2.0.6",
+  "description": "Vermes - AI Agent Desktop (Electron Shell + Python Backend)",
+  "main": "main.js",
+  "author": "Vbit (vbit.top)",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --dir",
+    "dist:mac": "cd ../ && .venv/bin/pyinstaller vermes-backend.spec --noconfirm && cd electron && electron-builder --mac",
+    "dist:win": "cd ../ && python -m PyInstaller vermes-backend.spec --noconfirm && cd electron && electron-builder --win",
+    "dist:all": "npm run dist:mac && npm run dist:win"
+  },
+  "build": {
+    "appId": "com.vermes.desktop",
+    "productName": "Vermes",
+    "icon": "assets/icon.png",
+    "directories": {
+      "output": "../dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/vermes-backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../hermes_cli/web_dist",
+        "to": "app/hermes_cli/web_dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/vermes.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8"
+  }
+}
