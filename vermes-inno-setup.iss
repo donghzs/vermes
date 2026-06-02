@@ -1,5 +1,5 @@
 ; Vermes AI Agent - Inno Setup 安装包脚本
-; 从项目根目录编译: ISCC vermes-inno-setup.iss
+; 包含内嵌 Python 3.12 + 依赖 + 原生窗口
 
 #define MyAppName "Vermes"
 #define MyAppVersion "2.0.6"
@@ -16,7 +16,6 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-LicenseFile=
 OutputDir=installer-output
 OutputBaseFilename=Vermes-Setup-x64
 Compression=lzma2/ultra64
@@ -27,38 +26,56 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=packaging\vermes.ico
 UninstallDisplayIcon={app}\packaging\vermes.ico
-; WizardImageFile=packaging\vermes-wizard.bmp
-; WizardSmallImageFile=packaging\vermes-icon-small.bmp
 
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\Vermes\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Portable Python (extract during install)
+Source: "portable-python.zip"; DestDir: "{app}"; Flags: ignoreversion
+; App files (hermes_cli, agent, tools, skills, etc.)
+Source: "hermes_cli\*"; DestDir: "{app}\hermes_cli"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "agent\*"; DestDir: "{app}\agent"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "skills\*"; DestDir: "{app}\skills"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "plugins\*"; DestDir: "{app}\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "gateway\*"; DestDir: "{app}\gateway"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "cron\*"; DestDir: "{app}\cron"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "locales\*"; DestDir: "{app}\locales"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "acp_adapter\*"; DestDir: "{app}\acp_adapter"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "acp_registry\*"; DestDir: "{app}\acp_registry"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "packaging\vermes.ico"; DestDir: "{app}\packaging"; Flags: ignoreversion
+; Root Python files
+Source: "run_agent.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "hermes_constants.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "model_tools.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "toolsets.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "toolset_distributions.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "utils.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "hermes_bootstrap.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "hermes_logging.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "hermes_state.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "hermes_time.py"; DestDir: "{app}"; Flags: ignoreversion
+; Launcher
 Source: "installer\vermes-start.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\packaging\vermes.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\packaging\vermes.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; Extract portable Python
+Filename: "{sys}\cmd.exe"; Parameters: "/c cd /d ""{app}"" && powershell -command ""Expand-Archive -Path portable-python.zip -DestinationPath python -Force"" && del portable-python.zip"; StatusMsg: "Extracting Python runtime..."; Flags: runhidden waituntilterminated
+; Launch after install
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch Vermes"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 Type: filesandordirs; Name: "{localappdata}\vermes"
-
-[Registry]
-Root: HKA; Subkey: "Software\Classes\vermes"; ValueType: string; ValueName: ""; ValueData: "URL:Vermes Protocol"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\vermes"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\vermes\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Code]
 function InitializeSetup(): Boolean;
@@ -66,7 +83,7 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  Exec('taskkill', '/F /FI "WINDOWTITLE eq Vermes*"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('cmd.exe', '/c taskkill /F /FI "WINDOWTITLE eq Vermes*" 2>nul', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
 end;
 
@@ -75,6 +92,6 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  Exec('taskkill', '/F /FI "WINDOWTITLE eq Vermes*"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('cmd.exe', '/c taskkill /F /FI "WINDOWTITLE eq Vermes*" 2>nul', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Sleep(500);
 end;

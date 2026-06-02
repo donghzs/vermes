@@ -8,68 +8,44 @@ echo  ║   桌面端开箱即用的 AI Agent          ║
 echo  ╚══════════════════════════════════════╝
 echo.
 
-REM ── 1. Find Python ──────────────────────────
-set PYTHON=
-for %%P in (python3.12 python3.11 python3 python) do (
-    where %%P >nul 2>&1 && (
-        for /f "tokens=*" %%V in ('%%P --version 2^>^&1') do set PYVER=%%V
-        set PYTHON=%%P
-        goto :found_python
-    )
+REM ── Find bundled Python ─────────────────────
+set PYTHON=%~dp0python\python.exe
+if not exist "%PYTHON%" (
+    echo  [ERROR] Bundled Python not found at %PYTHON%
+    echo  Please reinstall Vermes.
+    pause
+    exit /b 1
 )
-echo  [ERROR] Python not found!
-echo  Please install Python 3.11+ from https://python.org
+
+echo  Python: bundled v3.12
+echo  Config: %USERPROFILE%\.vermes
 echo.
-pause
-exit /b 1
 
-:found_python
-echo  Python: %PYVER%
-
-REM ── 2. Check dependencies ───────────────────
-%PYTHON% -c "import fastapi, uvicorn, httpx" >nul 2>&1
-if errorlevel 1 (
-    echo  [WARN] Dependencies missing, installing...
-    %PYTHON% -m pip install fastapi uvicorn httpx pydantic yaml openai anthropic -q
-    echo  Done.
-)
-
-REM ── 3. Set config path ──────────────────────
-if not defined HERMES_HOME (
-    set HERMES_HOME=%USERPROFILE%\.vermes
-)
+REM ── Set environment ─────────────────────────
+set HERMES_HOME=%USERPROFILE%\.vermes
 if not exist "%HERMES_HOME%" mkdir "%HERMES_HOME%"
-echo  Config: %HERMES_HOME%
 
-REM ── 4. Check port availability ──────────────
+REM ── Check port ──────────────────────────────
 netstat -ano | findstr ":9119.*LISTEN" >nul 2>&1
 if not errorlevel 1 (
-    echo  [WARN] Port 9119 already in use
-    echo  Another instance may be running.
+    echo  [WARN] Port 9119 in use. Another instance running?
     echo.
-    set /p REPLY=  Kill it and restart? [Y/n] 
-    if /i "%REPLY%"=="n" (
+    set /p REPLY=  Kill and restart? [Y/n] 
+    if /i not "%REPLY%"=="n" (
+        for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":9119.*LISTEN"') do taskkill /PID %%P /F >nul 2>&1
+        timeout /t 1 /nobreak >nul
+    ) else (
         start http://127.0.0.1:9119
         pause
         exit /b 0
     )
-    for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":9119.*LISTEN"') do (
-        taskkill /PID %%P /F >nul 2>&1
-    )
-    timeout /t 1 /nobreak >nul
 )
 
-REM ── 5. Start backend ────────────────────────
-echo.
-echo  Starting Vermes backend on port 9119...
+REM ── Start backend + open native window ──────
+echo  Starting Vermes...
 echo  Close this window to stop.
 echo.
-
-REM Start browser after 3 second delay
-start /b cmd /c "timeout /t 3 /nobreak >nul && start http://127.0.0.1:9119"
-
-REM Run backend (blocking - keeps CMD open)
-%PYTHON% -m hermes_cli.web_server --port 9119
+"%PYTHON%" -m hermes_cli.gui_app --port 9119
 
 echo.
 echo  Vermes stopped.
