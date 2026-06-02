@@ -458,6 +458,25 @@ def _apply_pending_update_if_any():
 
 def run_gui():
     """Entry point for GUI mode (called from main.py when frozen + no args)."""
+    # Parse --no-server flag (connect to existing Gateway instead of starting new one)
+    no_server = "--no-server" in sys.argv
+    # Parse --port flag
+    port = DEFAULT_PORT
+    for i, arg in enumerate(sys.argv):
+        if arg == "--port" and i + 1 < len(sys.argv):
+            try:
+                port = int(sys.argv[i + 1])
+            except ValueError:
+                pass
+
+    if no_server:
+        # Skip server start, just open native window
+        print(f"[Vermes] --no-server mode, connecting to port {port}")
+        if not wait_for_server(port, timeout=10):
+            print(f"[Vermes] ERROR: Gateway not running on port {port}")
+            sys.exit(1)
+        main(port)
+        return
     # ── 启动时检查是否有待应用的更新 ──
     _apply_pending_update_if_any()
 
