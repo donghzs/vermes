@@ -1,22 +1,12 @@
 // preload.js — 安全的 Electron ↔ Renderer 桥接
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
-const fs = require('fs');
 
 let appVersion = '0.0.0';
 
-// 优先从 electron/package.json 读取版本（统一的版本来源）
+// 从 electron/package.json 读取版本（asar 内始终可用）
 try {
   appVersion = require('./package.json').version;
-} catch (_) {
-  // 打包模式 fallback：从 resources 目录的 version.txt 读取
-  try {
-    const versionPath = path.join(process.resourcesPath, 'version.txt');
-    if (fs.existsSync(versionPath)) {
-      appVersion = fs.readFileSync(versionPath, 'utf-8').trim();
-    }
-  } catch (__) {}
-}
+} catch (_) {}
 
 contextBridge.exposeInMainWorld('vermes', {
   platform: process.platform,

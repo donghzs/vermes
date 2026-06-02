@@ -79,7 +79,7 @@ def _get_chat_credentials() -> Tuple[str, str, str]:
     }
 
     if cfg_path.exists():
-        with open(cfg_path) as f:
+        with open(cfg_path, encoding='utf-8') as f:
             cfg = yaml.safe_load(f) or {}
         m = cfg.get("model", {})
         base_url = m.get("base_url", "")
