@@ -331,6 +331,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       await api.sendMessage({
         model: modelId, provider: providerId, messages: apiMessages,
+        session_id: currentSessionId.value,
         attachments: processedAttachments.map(a => ({
           name: a.name, type: a.type, data: a.base64,
           mime: a.mimeType || 'application/octet-stream', size: a.size,
@@ -519,6 +520,7 @@ export const useChatStore = defineStore('chat', () => {
           await api.sendMessage({
             model: model.id, provider: model.provider || providerId,
             messages: apiMessages, attachments: attachPayload,
+            session_id: currentSessionId.value,
             stream: true, signal: ac.signal,
             onChunk: (chunk) => { const am = messages.value.find(m => m.id === aid); if (am) am.content += chunk },
             onTool: (tool) => { const am = messages.value.find(m => m.id === aid); if (am) am.toolInvocations.push(tool) },

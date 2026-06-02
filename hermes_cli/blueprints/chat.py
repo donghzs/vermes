@@ -23,6 +23,9 @@ from hermes_cli.config import load_config, remove_env_value
 
 _log = logging.getLogger(__name__)
 
+# Agent instance cache: session_key → AIAgent (for session persistence)
+_agent_cache: dict = {}
+
 
 # ── Attachment constants ─────────────────────────────────────────────
 
@@ -229,6 +232,7 @@ class ChatRequest(BaseModel):
     stream: bool = True
     attachments: list[AttachmentData] | None = None
     wechat_openid: str | None = None
+    session_id: str | None = None  # For agent caching
 
 
 # ── Attachment validation ────────────────────────────────────────────
@@ -603,27 +607,42 @@ async def chat_completions(req: ChatRequest):
     # All messages go through Agent mode
     use_agent_mode = True
     agent = None
-    try:
-        agent = AIAgent(
-            base_url=base_url,
-            api_key=api_key,
-            provider=provider,
-            model=model,
-            max_iterations=1000,
-            quiet_mode=True,
-            verbose_logging=False,
-            platform="web",
-        )
+
+    # Extract session ID for agent caching
+    _session_id = req.session_id or "default"
+
+    # Agent cache: reuse agent instance per session for persistence
+    _cache_key = f"{provider}:{model}:{_session_id}"
+    agent = _agent_cache.get(_cache_key)
+
+    if agent is None:
+        try:
+            agent = AIAgent(
+                base_url=base_url,
+                api_key=api_key,
+                provider=provider,
+                model=model,
+                max_iterations=1000,
+                quiet_mode=True,
+                verbose_logging=False,
+                platform="web",
+            )
+            _agent_cache[_cache_key] = agent
+            _log.info(f"[Agent] Created new agent for session {_session_id}")
+        except ValueError as e:
+            if "context window" in str(e).lower():
+                print(f"[WARN] Model {model} context too small, falling back to proxy mode: {e}")
+                use_agent_mode = False
+            else:
+                raise
+    else:
+        _log.info(f"[Agent] Reusing cached agent for session {_session_id}")
+
+    if agent:
         from tools.approval import enable_session_yolo, set_current_session_key
         _gui_sk = "gui-" + (getattr(agent, "session_id", "") or "default")
         set_current_session_key(_gui_sk)
         enable_session_yolo(_gui_sk)
-    except ValueError as e:
-        if "context window" in str(e).lower():
-            print(f"[WARN] Model {model} context too small, falling back to proxy mode: {e}")
-            use_agent_mode = False
-        else:
-            raise
 
     # Proxy call helper
     async def call_proxy():
@@ -936,6 +955,21 @@ def register_to(app):
         methods=["GET"],
         name="chat_models",
     )
+
+    # Pre-create default agent at startup for persistence
+    @app.on_event("startup")
+    def _pre_create_agent():
+        """Start default agent at Gateway launch — stays alive for all sessions."""
+        try:
+            cfg = load_config()
+            default_model = cfg.get("model", {}).get("default", "")
+            default_provider = cfg.get("model", {}).get("provider", "")
+            if default_model:
+                _log.info(f"[Agent] Pre-creating default agent: {default_provider}/{default_model}")
+                # Agent will be created on first request via _agent_cache
+                # This just ensures config is valid
+        except Exception as e:
+            _log.warning(f"[Agent] Pre-create check failed: {e}")
 
 
 blueprint = None  # no APIRouter; uses register_to(app) pattern

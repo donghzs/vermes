@@ -224,8 +224,9 @@ const api = {
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
 
   // 发送消息（SSE 流式）
-  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments }) {
+  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments, session_id }) {
     const body = { model, messages, stream, provider: provider || '' }
+    if (session_id) body.session_id = session_id
     if (attachments && attachments.length > 0) body.attachments = attachments
     // 传 wechat_openid 让后端能在没有 API key 时自动 claim
     const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
