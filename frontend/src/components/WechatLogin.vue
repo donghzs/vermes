@@ -26,16 +26,21 @@ async function openLogin() {
 
   if (isElectron.value) {
     // === Electron 模式 ===
-    // IPC → 主进程打开 BrowserWindow 子窗口显示微信扫码页
-    // 扫码后 vbit.top 回调 → 主进程等 3s 后关窗 → 前端轮询拿 token
+    // 1. 调 /api/wechat/qrurl 拿 vbit.top 注册好的 state + OAuth URL
+    // 2. IPC → 主进程打开 BrowserWindow 子窗口
+    // 3. 扫码后 vbit.top 回调 → 前端轮询拿 token
     showModal.value = true
-    // Electron 模式：通过 IPC 打开 OAuth 子窗口，传递前端生成的 state
     try {
-      const loginState = Date.now().toString()
-      wechatState.value = loginState
-      const result = await window.vermes.wechatLogin(loginState)
+      const res = await fetch('/api/wechat/qrurl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      if (!data.state || !data.url) throw new Error('No state/url from vbit.top')
+      wechatState.value = data.state
+      // 传完整 OAuth URL（含 vbit.top 注册好的 state）给 Electron IPC
+      const result = await window.vermes.wechatLogin(data.url)
       if (result && result.success) {
-        wechatState.value = result.state
         loginHint.value = '扫码成功，正在验证登录状态…'
         startPolling()
       } else {
