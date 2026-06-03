@@ -220,15 +220,13 @@
   <!-- Logo -->
   <div class="logo" id="logo">
     <svg viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="4" width="64" height="64" rx="16" stroke="currentColor" stroke-width="2" fill="none" opacity="0.15"/>
-      <path d="M26 52 L36 20 L46 52 L41 52 L36 36 L31 52 Z" fill="currentColor" opacity="0.85"/>
-      <path d="M31 44 L41 44 L38.5 50 L33.5 50 Z" fill="currentColor" opacity="0.4"/>
+      <rect x="4" y="4" width="64" height="64" rx="16" fill="#00c878" opacity="0.9"/>
+      <path d="M22 18 L36 54 L50 18" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </svg>
   </div>
 
   <!-- Title -->
   <h1>Vermes</h1>
-  <div class="version" id="version">加载中…</div>
 
   <!-- Status area -->
   <div class="status-area" id="statusArea">
@@ -270,7 +268,7 @@
   </div>
 </div>
 
-<div class="footer-hint">Powered by Nous Research Hermes</div>
+<div class="footer-hint">Powered by vbit.top</div>
 
 <script>
   // ── IPC 通道 (通过 preload.js 暴露) ──
@@ -305,13 +303,6 @@
       bridge.retryInit();
     }
   };
-
-  // ── 插件版本 ──
-  if (bridge.version) {
-    document.getElementById('version').textContent = 'v' + bridge.version;
-  } else {
-    document.getElementById('version').textContent = '';
-  }
 
   // ── 监听 IPC 事件 ──
   // 这些由 main.js 从 preload bridge 发出
