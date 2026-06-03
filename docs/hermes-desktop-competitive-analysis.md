@@ -60,12 +60,12 @@ Electron 40.9.3
 | **安装包大小** | ~180MB (含 Electron) | ~120MB | **Vermes 略小** |
 | **功能丰富度** | 10+ 模块 (agent/cron/gateway/profiles...) | 对话+设置为主 | **Hermes 丰富** |
 | **中文支持** | 英文 Only | 中文优先 | **Vermes 胜** |
-| **Gateway** | Telegram/Discord/Slack/WhatsApp/Signal... | 无 | **Hermes 独占** |
+| **Gateway** | Telegram/Discord/Slack/WhatsApp/Signal... | 模块源码存在，桌面版未启用 | **Hermes 默认启用** |
 | **Provider** | 20+ (OpenRouter/Anthropic/OpenAI/DeepSeek...) | 自定义+预设 | **Hermes 更多** |
 | **技能系统** | 完整 Hub 生态+curator | 本地技能 | **Hermes 成熟** |
-| **MCP 支持** | 原生 MCP 客户端 | 无（待实现） | **Hermes 独占** |
-| **Cron 调度** | 内置 scheduler | 无 | **Hermes 独占** |
-| **Kanban 协**| 多 agent 工作流 | 无 | **Hermes 独占** |
+| **MCP 支持** | 原生 MCP 客户端 | 模块源码存在，桌面版未启用 | **Hermes 默认启用** |
+| **Cron 调度** | 内置 scheduler | 模块源码存在，桌面版未启用 | **Hermes 默认启用** |
+| **Kanban 协作**| 多 agent 工作流 | 模块源码存在，桌面版未启用 | **Hermes 默认启用** |
 | **记忆系统** | 多后端 (Honcho/Mem0/内置) | 内置 (会话可清、记忆永存) | **各有所长** |
 | **上下文压缩** | 基础压缩 | **三层防御+结构化摘要** | **Vermes 胜** |
 | **安全审计** | TIRITH 安全 + 秘密脱敏 | 基础安全检查 | **Hermes 更严** |
@@ -135,14 +135,25 @@ Vermes 不需要做全功能的 gateway，但可以做一个简单的"分享到�
 - 通过企业微信机器人分享对话
 - 或者通过转发链接
 
-### 3.3 不应该做的（没有竞争优势）
+### 3.3 优先级的现实评估
+
+上述四个模块（Gateway、Kanban、Cron、MCP）的源码在 Vermes 中**均已存在**，问题不是「做不做」，而是**桌面版默认启不启用**的优先级安排：
+
+| 模块 | 源码状态 | 桌面版默认启用 | ⏰ 建议优先级 | 理由 |
+|------|---------|--------------|-------------|------|
+| MCP 客户端 | ✅ 存在 | ❌ 未包入 PyInstaller | **下一版本开启** | MCP 是对用户最有实在价值的能力，社区生态已成熟 |
+| Cron 定时任务 | ✅ 存在 | ❌ 未包入 PyInstaller | **低** | 多数桌面用户不需要定时 Agent |
+| Kanban 工作流 | ✅ 存在 | ❌ 未包入 PyInstaller | **低** | 需要 UI 适配，桌面场景非核心 |
+| Gateway 多平台 | ✅ 存在 | ❌ 未包入 PyInstaller | **低** | Hermes 已做到极致，桌面版专注本地体验 |
+
+真正**不应该做**的：
 
 | 领域 | 原因 |
 |------|------|
-| 全功能 Gateway (Telegram/Discord/Slack/WhatsApp) | Hermes 已经做完了，而且做得很好。Vermes 团队规模不适合。 |
-| 多 Profile/多 Agent 工作流 (Kanban) | Hermes 的核心理念之一，Vermes 不需要复制。 |
-| Cron 调度系统 | 市场已有成熟的调度方案（crontab、systemd timer），用户不会为此选 Vermes。 |
-| MCP Server 模式（Hermes 做 MCP Server） | 方向不同。Vermes 应该消费 MCP 而不是提供 MCP。 |
+| 全功能 Gateway 与 Hermes 竞争 Telegram/Discord/Slack 集成 | Hermes 已经做完了，且做得很好。Vermes 桌面版不应该在 Gateway 上与其竞争。 |
+| 多 Profile/多 Agent 工作流 UI | 服务端管理功能，桌面版用户不需要。 |
+| Cron 调度系统作为卖点 | 桌面用户可以接受「没这个功能」，不会因此选择其他产品。 |
+| MCP Server 模式（Hermes 做 MCP Server） | 方向不同。Vermes 应该**消费** MCP 而不是**提供** MCP。 |
 | 竞争 GitHub Stars/社区规模 | 不是一个量级的竞争。Vermes 应该专注做好中文桌面端。 |
 
 ---
