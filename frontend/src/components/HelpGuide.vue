@@ -32,9 +32,12 @@ const faqs = [
 const shortcuts = [
   { key: 'Enter', desc: '发送消息' },
   { key: 'Shift + Enter', desc: '换行' },
+  { key: '⌘/Ctrl + K', desc: '聚焦输入框' },
+  { key: '⌘/Ctrl + N', desc: '新建会话' },
+  { key: '⌘/Ctrl + B', desc: '切换侧边栏' },
+  { key: '⌘/Ctrl + ,', desc: '打开设置' },
+  { key: 'Escape', desc: '停止生成' },
   { key: '拖拽文件', desc: '上传图片或文件' },
-  { key: '📎 按钮', desc: '选择文件上传' },
-  { key: '⚙️ 设置', desc: '配置模型和 API Key' },
 ]
 
 const quickStarts = [

@@ -48,6 +48,8 @@ export const useChatStore = defineStore('chat', () => {
   const quotaModalType = ref('need_login')
   const compareModels = ref([])
   const activeStreamId = ref(null)
+  const statusMessages = ref([])
+  const lastTokenUsage = ref(null)
   const _compareAbortControllers = ref([])
 
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
@@ -301,6 +303,9 @@ export const useChatStore = defineStore('chat', () => {
         attachments: processedAttachments
       })
       await persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+      // 更新会话最后活跃时间
+      const _s = sessions.value.find(s => s.id === currentSessionId.value)
+      if (_s) _s.lastActive = new Date().toISOString()
       scheduleScroll()  // 用户发消息后滚到底部
     }
 
@@ -373,6 +378,15 @@ export const useChatStore = defineStore('chat', () => {
           am._currentStep = event.iteration || ((am._currentStep || 0) + 1)
           if (!am._streamStartTime) am._streamStartTime = Date.now()
         },
+        onStatus: (event) => {
+          statusMessages.value.push({
+            id: uid(),
+            type: event.type,
+            message: event.message,
+            timestamp: Date.now(),
+          })
+          scheduleScroll()
+        },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
@@ -382,6 +396,10 @@ export const useChatStore = defineStore('chat', () => {
           }
           flushScroll()
           loading.value = false; abortController.value = null; activeStreamId.value = null
+          statusMessages.value = []
+          if (usageInfo && usageInfo.total_tokens > 0) {
+            lastTokenUsage.value = usageInfo
+          }
           const wechatOpenid = localStorage.getItem('vermes_wechat_openid')
           if (wechatOpenid && isVbitFreeTrial) {
             const usageData = typeof usageInfo === 'object' ? usageInfo : null
@@ -396,6 +414,7 @@ export const useChatStore = defineStore('chat', () => {
           persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
         },
         onError: (err) => {
+          statusMessages.value = []
           console.error('❌ API error:', err)
           const msg = err.message || ''
           if (msg.includes('额度已用尽') || msg.includes('insufficient_quota') || msg.includes('体验额度已用完') || msg.includes('402') || msg.includes('免费体验Token')) {
@@ -609,6 +628,7 @@ export const useChatStore = defineStore('chat', () => {
     sessions, currentSessionId, messages, loading, abortController,
     sidebarOpen, theme, currentModel, currentProvider, uploading,
     showQuotaModal, quotaModalType, compareModels, activeStreamId, isOnline,
+    statusMessages, lastTokenUsage,
     currentSession, filteredMessages,
     init, createSession, switchSession, sendMessage, sendCompareMessage, stopGeneration,
     toggleTheme, toggleSidebar, deleteSession, renameSession, pinSession,

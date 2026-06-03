@@ -9,6 +9,7 @@ const chat = useChatStore()
 const update = useUpdateStore()
 const theme = computed(() => chat.theme)
 const loading = ref(true)
+const showUpdateDetail = ref(false)
 
 onMounted(async () => {
   try {
@@ -34,10 +35,20 @@ onMounted(async () => {
     <!-- 更新提示条 -->
     <div v-if="update.hasUpdate" class="bg-blue-500 text-white text-center py-2 px-4 text-sm shrink-0">
       <!-- 未更新状态 -->
-      <div v-if="!update.updating" class="flex items-center justify-center gap-2">
-        <span>🎉 发现新版本 v{{ update.latestVersion }}</span>
-        <button @click="update.startUpdate()" class="underline hover:no-underline font-medium">立即更新</button>
-        <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
+      <div v-if="!update.updating">
+        <div class="flex items-center justify-center gap-2">
+          <span>🎉 发现新版本 v{{ update.latestVersion }}</span>
+          <button @click="showUpdateDetail = !showUpdateDetail" class="underline hover:no-underline text-white/80">更新内容</button>
+          <button @click="update.startUpdate()" class="bg-white text-blue-600 px-2 py-0.5 rounded font-medium hover:bg-blue-50">立即更新</button>
+          <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
+        </div>
+        <!-- 更新概要 -->
+        <div v-if="showUpdateDetail && update.releaseNotes" class="mt-1 text-xs text-white/80 max-w-lg mx-auto text-left leading-relaxed">
+          <div v-for="(line, i) in update.releaseNotes.split('\n')" :key="i" class="flex items-start gap-1">
+            <span class="text-white/50 mt-0.5">•</span>
+            <span>{{ line }}</span>
+          </div>
+        </div>
       </div>
       <!-- 已下载待安装（Electron 模式） -->
       <div v-else-if="update.updateStatus === 'done' && update.installUpdate" class="flex items-center justify-center gap-2">

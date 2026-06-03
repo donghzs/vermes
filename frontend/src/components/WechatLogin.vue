@@ -149,6 +149,9 @@ function handleLoginSuccess(data) {
     body: JSON.stringify({ key: 'VBIT_API_KEY', value: data.token })
   }).catch(() => {})
 
+  // 通知全局（WelcomeGuide 等组件需要感知登录状态）
+  window.dispatchEvent(new CustomEvent('wechat-login-success', { detail: data }))
+
   emit('loginSuccess', {
     isLoggedIn: true,
     userName: data.userName || '微信用户',

@@ -140,7 +140,14 @@ export const useUpdateStore = () => {
         }
 
         minDataVersion.value = res.min_data_version || ''
-        releaseNotes.value = res.releaseNotes || res.notes || ''
+        // 支持 releaseNotes/notes 字符串 或 changelog 数组
+        if (res.releaseNotes) {
+          releaseNotes.value = res.releaseNotes
+        } else if (res.notes) {
+          releaseNotes.value = res.notes
+        } else if (res.changelog && Array.isArray(res.changelog)) {
+          releaseNotes.value = res.changelog.join('\n')
+        }
       }
     } catch (e) {
       console.warn('[Vermes Update] error:', e)
