@@ -62,8 +62,17 @@ jobs:
           Get-ChildItem "hermes_cli/web_dist" -Recurse | Select-Object Mode, Length, Name
 
       - name: Sync version
-        shell: bash
-        run: bash scripts/sync-version.sh
+        shell: pwsh
+        run: |
+          # 从 hermes_cli/__init__.py 读取版本号
+          $initPy = Get-Content -Path "hermes_cli/__init__.py" -Raw
+          if ($initPy -match '__version__\s*=\s*"([^"]+)"') {
+            $ver = $matches[1]
+            Set-Content -Path "electron/version.txt" -Value $ver
+            Write-Host "Version synced: $ver"
+          } else {
+            Write-Host "⚠️ 无法读取版本号，使用已有配置"
+          }
 
       - name: PyInstaller build backend (vermes-backend.spec)
         run: |
