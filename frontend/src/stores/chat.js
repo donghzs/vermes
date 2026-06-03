@@ -27,6 +27,12 @@ import {
 import { friendlyError, formatSize } from './chat-quota'
 import { DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID } from '../config/defaults'
 
+// ── P1-6: 防御纵深 — 剥离字符串中的 HTML 标签 ──
+function stripHtml(str) {
+  if (!str) return str
+  return str.replace(/<[^>]*>/g, '')
+}
+
 // 重导出供外部组件使用
 export { setScrollTarget }
 export { SESSION_TEMPLATES, QUICK_START_SUGGESTIONS }
@@ -416,7 +422,7 @@ export const useChatStore = defineStore('chat', () => {
         onError: (err) => {
           statusMessages.value = []
           console.error('❌ API error:', err)
-          const msg = err.message || ''
+          const msg = stripHtml(err.message || '')  // P1-6: 剥离 HTML 标签防 XSS
           if (msg.includes('额度已用尽') || msg.includes('insufficient_quota') || msg.includes('体验额度已用完') || msg.includes('402') || msg.includes('免费体验Token')) {
             quotaModalType.value = 'wechat_expired'; showQuotaModal.value = true
             const am = messages.value.find(m => m.id === aid)
