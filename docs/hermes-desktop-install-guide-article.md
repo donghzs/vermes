@@ -108,7 +108,7 @@ hermes model           # 选择模型
 
 Hermes 功能强大，但对中文用户存在几个现实门槛：安装过程依赖 GitHub（国内网络不稳定）、配置流程偏 CLI 化、默认模型列表以海外模型为主。**Vermes 正是为了解决这些问题而诞生的**。
 
-Vermes 基于 Hermes Agent 引擎，融合了 QClaw/Skillhub 技能生态，目标是让中文用户在 macOS 上获得**真正的开箱即用体验**。
+Vermes 是从 Hermes Agent 源码 fork 并深度定制的桌面分发版，融合了 QClaw/Skillhub 技能生态，目标是让中文用户在桌面端获得**真正的开箱即用体验**。
 
 ### 3.1 Vermes 的核心差异
 
@@ -184,26 +184,28 @@ Vermes 当前版本 v2.0.7，基于 Hermes Agent 引擎深度定制。完全开�
 
 ### 4.3 决策参考
 
-| 需求 | 推荐 |
-|------|------|
-| 个人 macOS 桌面使用，中文 | ⭐ Vermes |
-| 服务器部署，多平台 Gateway | ⭐ Hermes |
-| 写代码 / 团队协作 | 两者都可，Hermes 社区更大 |
-| 公众号 / 微信内容创作 | ⭐ Vermes（独家） |
-| Telegram / Discord Agent | ⭐ Hermes（独家） |
-| 需要 MCP 生态 | ⭐ Hermes |
-| 需要 Cron / Kanban | ⭐ Hermes |
-| 第一次接触 AI Agent | ⭐ Vermes（零门槛） |
-| 免费使用 | 两者都是 MIT 开源 |
+| 需求 | 推荐 | 说明 |
+|------|------|------|
+| 个人 macOS 桌面使用，中文 | ⭐ Vermes | 开箱即用，零网络依赖 |
+| 服务器部署，多平台 Gateway | ⭐ Hermes | Gateway 默认启用，服务端更完整 |
+| 写代码 / 团队协作 | 两者都可 | Hermes 社区更大，Vermes 上手更快 |
+| 公众号 / 微信内容创作 | ⭐ Vermes | 独家功能 |
+| Telegram / Discord / Slack 集成 | ⭐ Hermes | 开箱即用，功能更成熟 |
+| 需要 MCP 生态 | 两者均可 | Vermes 源码同样包含 MCP 模块 |
+| 需要 Cron 定时任务 | 两者均可 | Vermes 源码同样包含 Cron 模块 |
+| 需要 Kanban 工作流 | 两者均可 | Vermes 源码同样包含 Kanban 模块 |
+| 第一次接触 AI Agent | ⭐ Vermes | 零门槛 |
 
-### 4.4 一个诚实的事实
+> **补充说明**：表中的"两者均可"选项，指的是该功能在 Vermes 源码项目中同样存在。两者的差异在于默认启用策略——Hermes 桌面版默认完整启用，Vermes 桌面版目前专注于核心聊天体验。如果你是开发者或高级用户，Vermes 同样可以通过源码构建来启用这些模块。
 
-Vermes 的功能集**小于** Hermes。这是事实——Vermes 不包含 Gateway、Kanban、MCP 集成、Cron 等功能。这不是 Vermes 的缺点，而是定位差异：
+### 4.4 定位差异
 
-- **Hermes** 是一款可以被任何客户端调用的**服务端 Agent 平台**
-- **Vermes** 是一款中文用户桌面上的**个人 AI 助手**
+Vermes 和 Hermes 在功能完整性上没有本质差距（源码同源），差异在于**产品定位**：
 
-选择哪个，取决于你需要的是平台还是助手。
+- **Hermes Desktop** 是一款面向全球用户的**服务端 Agent 平台**，默认启用全部功能模块
+- **Vermes** 是一款面向中文用户的**桌面端个人 AI 助手**，默认专注于开箱即用的聊天体验
+
+不是谁能做谁不能做的问题，是**先让谁用起来**的选择。Vermes 把安装门槛拉到最低，让第一次接触 AI Agent 的人也能 30 秒启动；高级用户想用 Gateway/Cron/Kanban/MCP，同样可以通过源码配置开启。
 
 ---
 
