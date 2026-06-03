@@ -47,4 +47,14 @@ contextBridge.exposeInMainWorld('vermes', {
     ipcRenderer.on('update:error', handler);
     return () => ipcRenderer.removeListener('update:error', handler);
   },
+
+  // ── 启动欢迎页（Splash）IPC ──
+  // splash.html 通过此通道接收初始化进度
+  onSplashMessage: (cb) => {
+    const handler = (_e, msg) => cb(msg);
+    ipcRenderer.on('splash:message', handler);
+    return () => ipcRenderer.removeListener('splash:message', handler);
+  },
+  // splash.html 触发重试
+  retryInit: () => ipcRenderer.send('splash:retry'),
 });

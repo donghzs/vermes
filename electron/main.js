@@ -51,7 +51,7 @@ function startBackend() {
     console.log('[Vermes] 启动后端...');
     const backendExe = getBackendExe();
     const backendArgs = getBackendArgs();
-    
+
     // 检查可执行文件是否存在
     if (!fs.existsSync(backendExe)) {
       console.warn(`[Vermes] 后端未找到: ${backendExe}，假设已在外部运行`);
@@ -115,6 +115,40 @@ function startBackend() {
   });
 }
 
+// ── 启动进度管理（后台初始化 + Splash 通信）──
+function sendSplash(msg) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send('splash:message', msg);
+    } catch (_) {}
+  }
+}
+
+async function runInitialization() {
+  // 1. 启动后端
+  sendSplash({ type: 'progress', label: '正在启动后端服务…', percent: 10 });
+  const started = await startBackend();
+
+  if (started) {
+    sendSplash({ type: 'progress', label: '后端已就绪', percent: 90 });
+    // 短暂展现 100% 状态再跳转
+    await new Promise(r => setTimeout(r, 400));
+    sendSplash({ type: 'progress', label: '加载界面…', percent: 100 });
+    await new Promise(r => setTimeout(r, 300));
+    // 跳转到主界面
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      sendSplash({ type: 'ready' });
+      mainWindow.loadURL(BACKEND_URL);
+    }
+  } else {
+    // 后端启动失败 / 超时
+    sendSplash({
+      type: 'error',
+      detail: '后端服务启动失败，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。',
+    });
+  }
+}
+
 function stopBackend() {
   if (backendProcess) {
     console.log('[Vermes] 关闭后端...');
@@ -134,9 +168,6 @@ function stopBackend() {
 
 // ── 创建窗口 ──
 async function createWindow() {
-  // 先尝试启动后端
-  await startBackend();
-
   const iconPath = fs.existsSync(getIconPath()) ? getIconPath() : undefined;
 
   mainWindow = new BrowserWindow({
@@ -154,6 +185,25 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       partition: 'persist:vermes',
     },
+  });
+
+  // 先加载启动欢迎页（立即显示，不等后端）
+  const splashPath = path.join(__dirname, 'splash.html');
+  if (fs.existsSync(splashPath)) {
+    mainWindow.loadFile(splashPath);
+  } else {
+    // fallback: 直接加载后端（开发环境 splash 不存在时）
+    mainWindow.loadURL(BACKEND_URL);
+  }
+
+  // 加载完成后立即显示窗口（不等后端就绪）
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    // 后端不在外部运行时，后台启动
+    if (!process.argv.includes('--external-backend')) {
+      runInitialization();
+    }
+    console.log('[Vermes] 窗口已显示（欢迎页）');
   });
 
   // 自定义菜单栏（macOS 保留默认菜单以支持 Cmd+Q 等）
@@ -197,15 +247,6 @@ async function createWindow() {
       ]}
     ]));
   }
-
-  mainWindow.loadURL(BACKEND_URL);
-
-  // 加载完成后显示
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    // mainWindow.webContents.openDevTools(); // 生产环境关闭
-    console.log('[Vermes] 窗口已显示');
-  });
 
   // 固定窗口标题，防止页面 <title> 覆盖
   mainWindow.on('page-title-updated', (e) => {
@@ -415,6 +456,12 @@ ipcMain.handle('wechat-login', async (event, oauthUrl) => {
 // IPC: 渲染进程调用打开外部链接
 ipcMain.handle('shell:openExternal', (e, url) => {
   shell.openExternal(url);
+});
+
+// IPC: Splash 重试初始化
+ipcMain.on('splash:retry', () => {
+  console.log('[Vermes] 用户点击重试初始化');
+  runInitialization();
 });
 
 // ── 自动更新 (electron-updater) ──

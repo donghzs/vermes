@@ -47,6 +47,16 @@ All notable changes to Vermes will be documented in this file.
 - **blueprints/__init__.py**: 补充 `storage` 模块导入
 - **blueprints/storage.py**: `utils.config` → `hermes_cli.config`
 
+### 启动欢迎页（Splash Screen）
+
+首次启动时后端需初始化（尤其 Windows 版 PyInstaller 解包耗时 3-10 秒），此前窗口不可见或白屏。本次:
+
+- **splash.html**: 自包含深色主题欢迎页，Vermes Logo + 动画加载点 + 进度条，`file://` 协议毫秒级渲染
+- **main.js**: 重构启动流程 — 窗口优先创建 + 立即加载 splash → `ready-to-show` 展示 → 后台 `startBackend()` → IPC 推送进度 → 就绪后 `loadURL(BACKEND_URL)` 无缝过渡
+- **main.js**: 失败时显示错误状态（红色警示 + 详情说明），`重试`按钮触发 `runInitialization()`
+- **preload.js**: 新增 `onSplashMessage` / `retryInit` IPC 通道
+- **package.json**: `splash.html` 加入打包 `files` 列表
+
 ### 更新概要展示
 
 - `update.js`: 读取 `version.json` changelog 数组 → join 为 releaseNotes 字符串
