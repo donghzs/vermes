@@ -401,6 +401,21 @@ async def get_defaults():
     return DEFAULT_CONFIG
 
 
+async def get_cloud_models():
+    """Return cloud/free/recommended provider metadata for the frontend.
+
+    Single source of truth derived from chat.PROVIDERS — eliminates the need
+    for hardcoded CLOUD_MODELS / RECOMMENDED_IDS in api.js / Settings.vue.
+    """
+    from hermes_cli.blueprints.chat import PROVIDERS
+    cloud = [pid for pid, info in PROVIDERS.items() if info.get("cloud", False)]
+    recommended = [
+        {"id": pid, "free": info.get("free", False)}
+        for pid, info in PROVIDERS.items() if info.get("recommended", False)
+    ]
+    return {"cloud_models": cloud, "recommended_providers": recommended}
+
+
 async def get_schema():
     return {"fields": CONFIG_SCHEMA, "category_order": _CATEGORY_ORDER}
 
@@ -510,6 +525,7 @@ def register_to(app):
     app.add_api_route("/api/config", get_config, methods=["GET"])
     app.add_api_route("/api/config", update_config, methods=["PUT"])
     app.add_api_route("/api/config/defaults", get_defaults, methods=["GET"])
+    app.add_api_route("/api/config/cloud-models", get_cloud_models, methods=["GET"])
     app.add_api_route("/api/config/schema", get_schema, methods=["GET"])
     app.add_api_route("/api/config/raw", get_config_raw, methods=["GET"])
     app.add_api_route("/api/config/raw", update_config_raw, methods=["PUT"])

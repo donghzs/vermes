@@ -14,11 +14,12 @@ from . import analytics
 from . import status
 from . import profiles
 from . import oauth
+from . import storage
 
 __all__ = [
     "quota_bp", "wechat_bp", "models_bp",
     "dashboard_bp", "session_bp",
     "chat", "config", "providers",
     "cron_jobs", "update", "skills_tools",
-    "analytics", "status", "profiles", "oauth",
+    "analytics", "status", "profiles", "oauth", "storage",
 ]
