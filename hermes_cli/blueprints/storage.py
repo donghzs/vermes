@@ -19,10 +19,9 @@ def _dir_size_mb(path: str) -> float:
 
 async def get_storage_usage():
     hermes_home = str(get_hermes_home())
-    home = str(pathlib.Path.home())
 
     sessions_db = os.path.join(hermes_home, "state.db")
-    memories_dir = os.path.join(home, ".hermes", "memories")
+    memories_dir = os.path.join(hermes_home, "memories")
     skills_dir = os.path.join(hermes_home, "skills")
 
     sessions_mb = (

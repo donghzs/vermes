@@ -4334,7 +4334,7 @@ def read_raw_config() -> Dict[str, Any]:
 
 
 def load_config() -> Dict[str, Any]:
-    """Load configuration from ~/.hermes/config.yaml.
+    """Load configuration from VERMES_HOME/config.yaml (or HERMES_HOME/config.yaml).
 
     Cached on the config file's (mtime_ns, size). Returns a deepcopy of
     the cached value when unchanged, since most call sites mutate the
@@ -4508,7 +4508,7 @@ _COMMENTED_SECTIONS = """
 
 
 def save_config(config: Dict[str, Any]):
-    """Save configuration to ~/.hermes/config.yaml."""
+    """Save configuration to VERMES_HOME/config.yaml (or HERMES_HOME/config.yaml)."""
     with _CONFIG_LOCK:
         if is_managed():
             managed_error("save configuration")
