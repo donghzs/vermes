@@ -85,13 +85,27 @@ app = FastAPI(title="Vermes", version=__version__)
 # ---------------------------------------------------------------------------
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Catch all unhandled exceptions and return 500 instead of crashing."""
+    """Catch all unhandled exceptions and return 500 without leaking internals.
+
+    Exception details are logged server-side only. The client receives a
+    generic message — no type names, stack traces, or API key fragments
+    reach the external response.
+    """
     import traceback
-    _log.error(f"[Vermes] Unhandled exception on {request.method} {request.url.path}: {type(exc).__name__}: {exc}")
+    _log.error(
+        "[Vermes] Unhandled exception on %s %s: %s: %s",
+        request.method, request.url.path, type(exc).__name__, exc,
+    )
     traceback.print_exc()
     return JSONResponse(
         status_code=500,
-        content={"error": {"message": f"Internal server error: {type(exc).__name__}: {str(exc)[:200]}", "type": "server_error"}},
+        content={
+            "error": {
+                "message": "Internal server error",
+                "type": "server_error",
+                "code": 500,
+            }
+        },
     )
 
 # ---------------------------------------------------------------------------

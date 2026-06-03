@@ -267,6 +267,40 @@ function openWechatOAuth(oauthUrl) {
       },
     });
 
+    // P1-7: OAuth 导航域白名单 — 即使 webSecurity=false，也限制可跳转域名
+    const OAUTH_ALLOWED_DOMAINS = new Set([
+      'vbit.top',
+      'weixin.qq.com',
+      'open.weixin.qq.com',
+      'localhost.weixin.qq.com',
+      'localhost',
+      '127.0.0.1',
+      'wx.tenpay.com',
+    ])
+    function isOAuthUrlAllowed(url) {
+      try {
+        const parsed = new URL(url)
+        const host = parsed.hostname.replace(/^www\./, '')
+        // 允许所有子域名匹配
+        for (const allowed of OAUTH_ALLOWED_DOMAINS) {
+          if (host === allowed || host.endsWith('.' + allowed)) return true
+        }
+        return false
+      } catch (_) { return false }
+    }
+    oauthWin.webContents.on('will-navigate', (e, url) => {
+      if (!isOAuthUrlAllowed(url)) {
+        console.warn(`[Vermes] OAuth 窗口阻止导航: ${url}`)
+        e.preventDefault()
+      }
+    })
+    oauthWin.webContents.on('will-redirect', (e, url) => {
+      if (!isOAuthUrlAllowed(url)) {
+        console.warn(`[Vermes] OAuth 窗口阻止跳转: ${url}`)
+        e.preventDefault()
+      }
+    })
+
     // 内容加载后自动调整窗口大小
     oauthWin.webContents.on('did-finish-load', () => {
       oauthWin.webContents.executeJavaScript(`

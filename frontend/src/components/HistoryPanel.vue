@@ -20,12 +20,19 @@ const historyResults = computed(() => {
   return chat.searchAllMessages(debouncedKeyword.value, historyDateFilter.value)
 })
 
-// P3-6: 高亮搜索关键词
+// P3-6: 高亮搜索关键词（HTML 实体转义后注入 <mark> 标签，防 XSS）
 function highlightText(text, keyword) {
   if (!keyword || !text) return text
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(`(${escaped})`, 'gi')
-  return text.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 text-gray-900 dark:text-gray-100 rounded px-0.5">$1</mark>')
+  // 先 HTML 实体转义，再安全注入 <mark> 标签
+  const safe = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+  return safe.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 text-gray-900 dark:text-gray-100 rounded px-0.5">$1</mark>')
 }
 
 function jumpToHistoryItem(item) {
