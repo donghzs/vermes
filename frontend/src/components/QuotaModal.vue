@@ -53,20 +53,6 @@ function close() {
         </div>
       </template>
 
-      <!-- 免费体验已过期 -->
-      <template v-else-if="chat.quotaModalType === 'trial_expired'">
-        <div class="text-4xl mb-3">⏰</div>
-        <h3 class="font-bold text-lg mb-2">免费体验已过期</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">免费体验截止至 2026年6月26日</p>
-        <div class="flex flex-col gap-3">
-          <button @click="close(); router.push('/settings')"
-            class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm transition">
-            🔑 配置自己的 API Key
-          </button>
-          <button @click="close" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">关闭</button>
-        </div>
-      </template>
-
       <!-- 今日积分已用完 -->
       <template v-else-if="chat.quotaModalType === 'wechat_expired'">
         <div class="text-4xl mb-3">⏰</div>

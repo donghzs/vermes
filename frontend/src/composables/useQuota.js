@@ -21,7 +21,6 @@ export function useQuota() {
     spent_today: 0,
     bonus_points: 0,
     days_left: 31,
-    trial_expired: false,
     is_wechat: false,
   })
   const referralCode = ref('')
@@ -36,8 +35,7 @@ export function useQuota() {
           total_limit: 500,
           spent_today: 0,
           bonus_points: 0,
-          days_left: Math.max(0, Math.ceil((new Date('2026-06-26') - new Date()) / 86400000)),
-          trial_expired: false,
+          days_left: 0,
           is_wechat: false,
           need_login: true,
         }
@@ -70,7 +68,6 @@ export function useQuota() {
   // ── 计算属性 ──
   const quotaDisplay = computed(() => {
     if (serverQuota.value.need_login) return { text: '🔐 登录后免费使用', remaining: 0 }
-    if (serverQuota.value.trial_expired) return { text: '试用已结束', remaining: 0 }
     const q = serverQuota.value
     return {
       text: `✨ ${q.remaining}/${q.total_limit} 积分 · ${q.days_left}天`,

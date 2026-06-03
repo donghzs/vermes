@@ -267,7 +267,6 @@ export const useChatStore = defineStore('chat', () => {
       }
       const serverCheck = await checkQuotaServer(wechatOpenid)
       if (serverCheck.success) {
-        if (serverCheck.data.trial_expired) { quotaModalType.value = 'trial_expired'; showQuotaModal.value = true; return }
         if (serverCheck.data.remaining <= 0) { quotaModalType.value = 'wechat_expired'; showQuotaModal.value = true; return }
       }
       const quotaCheck = checkQuota(isCloud)
@@ -451,7 +450,6 @@ export const useChatStore = defineStore('chat', () => {
       if (!isLoggedIn || !wechatOpenid) { quotaModalType.value = QUOTA_NEED_LOGIN; showQuotaModal.value = true; return }
       const serverCheck = await checkQuotaServer(wechatOpenid)
       if (serverCheck.success) {
-        if (serverCheck.data.trial_expired) { quotaModalType.value = 'trial_expired'; showQuotaModal.value = true; return }
         if (serverCheck.data.remaining < models.length) {
           showToast(`对比需要 ${models.length} 积分，当前仅剩 ${serverCheck.data.remaining}`, 'error')
           return
