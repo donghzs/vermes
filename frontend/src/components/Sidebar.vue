@@ -49,19 +49,19 @@ const filteredSessions = computed(() => {
 // 置顶 + 分组
 const groupedSessions = computed(() => {
   const list = filteredSessions.value
-  const pinned = list.filter(s => s.pinned).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  const pinned = list.filter(s => s.pinned).sort((a, b) => new Date(b.lastActive || b.createdAt) - new Date(a.lastActive || a.createdAt))
   const unpinned = list.filter(s => !s.pinned)
 
   const groups = {}
   for (const label of DATE_LABELS) groups[label] = []
 
   for (const s of unpinned) {
-    const g = getDateGroup(s.createdAt)
+    const g = getDateGroup(s.lastActive || s.createdAt)
     groups[g].push(s)
   }
-  // 每组内部按 createdAt 降序
+  // 每组内部按 lastActive/createdAt 降序
   for (const label of DATE_LABELS) {
-    groups[label].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    groups[label].sort((a, b) => new Date(b.lastActive || b.createdAt) - new Date(a.lastActive || a.createdAt))
   }
 
   // 按固定顺序返回带标签的组
@@ -376,7 +376,7 @@ async function handleImportFile(e) {
               </div>
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(s.id)">{{ getFirstMessagePreview(s.id) }}</div>
               <div class="text-[10px] text-gray-400 mt-0.5 flex justify-between items-center">
-                <span>{{ formatTime(s.createdAt) }}</span>
+                <span>{{ formatTime(s.lastActive || s.createdAt) }}</span>
                 <button
                   @click.stop="handleDelete(s.id)"
                   class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"

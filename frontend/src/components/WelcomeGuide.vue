@@ -1,21 +1,44 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
 
 const chat = useChatStore()
 const router = useRouter()
+const emit = defineEmits(['openWeChatQR'])
 
 // 引导步骤
 const currentStep = ref(1)
 const selectedMode = ref(null) // 'wechat' | 'apikey' | 'local'
 const isClaiming = ref(false)
+const wechatLoggedIn = ref(false) // 微信是否已登录
+
+// 监听微信登录成功事件
+const _loginHandler = () => {
+  wechatLoggedIn.value = !!(localStorage.getItem('vermes_wechat_token') || localStorage.getItem('vermes_token'))
+  if (wechatLoggedIn.value && selectedMode.value === 'wechat' && currentStep.value === 2) {
+    claimFreeTrial()
+  }
+}
+onMounted(() => window.addEventListener('wechat-login-success', _loginHandler))
+onUnmounted(() => window.removeEventListener('wechat-login-success', _loginHandler))
 
 // 选择使用方式
 function selectMode(mode) {
   selectedMode.value = mode
   currentStep.value = 2
+  // 微信模式：自动触发扫码登录
+  if (mode === 'wechat') {
+    // 检查是否已登录
+    wechatLoggedIn.value = !!(localStorage.getItem('vermes_wechat_token') || localStorage.getItem('vermes_token'))
+    if (wechatLoggedIn.value) {
+      claimFreeTrial()
+    } else {
+      // 通知 ChatView 打开微信扫码
+      emit('openWeChatQR')
+    }
+  }
 }
 
 // 完成引导，进入聊天
@@ -129,28 +152,37 @@ const quickStarts = [
     <div v-else-if="currentStep === 2" class="w-full max-w-md">
       <!-- 微信扫码登录（免费体验） -->
       <div v-if="selectedMode === 'wechat'" class="text-center">
-        <div class="text-6xl mb-6">💬</div>
-        <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">微信扫码登录，免费体验</h2>
-        <p class="text-gray-500 dark:text-gray-400 mb-6">登录后自动领取免费额度，使用 Agnes AI</p>
-        <div class="bg-green-50 dark:bg-green-900/30 rounded-2xl p-6 border border-green-200 dark:border-green-800 mb-6">
-          <div class="text-sm text-green-700 dark:text-green-300 space-y-2">
-            <p>✅ Agnes AI 全模态免费</p>
-            <p>✅ 支持对话 / 图片 / 视频生成</p>
-            <p>✅ 微信扫码即用，无需其他注册</p>
+        <!-- 已登录 → 自动领取 -->
+        <div v-if="wechatLoggedIn || isClaiming" class="text-center">
+          <div class="text-6xl mb-6">✅</div>
+          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">微信登录成功</h2>
+          <p class="text-gray-500 dark:text-gray-400 mb-6">正在领取免费额度…</p>
+          <div class="flex items-center justify-center gap-2">
+            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500"></div>
+            <span class="text-sm text-gray-500">领取中…</span>
           </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 mb-6">
-          <div class="text-sm text-gray-600 dark:text-gray-300 space-y-2">
-            <p>1. 点击顶部栏的 👤 头像</p>
-            <p>2. 用微信扫描二维码</p>
-            <p>3. 授权后自动领取免费额度</p>
+        <!-- 未登录 → 等待扫码 -->
+        <div v-else class="text-center">
+          <div class="text-6xl mb-6">💬</div>
+          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">微信扫码登录</h2>
+          <p class="text-gray-500 dark:text-gray-400 mb-4">请在弹出的窗口中用微信扫码</p>
+          <div class="bg-green-50 dark:bg-green-900/30 rounded-2xl p-5 border border-green-200 dark:border-green-800 mb-5">
+            <div class="text-sm text-green-700 dark:text-green-300 space-y-1.5">
+              <p>✅ Agnes AI 全模态免费</p>
+              <p>✅ 支持对话 / 图片 / 视频生成</p>
+              <p>✅ 扫码即用，无需其他注册</p>
+            </div>
           </div>
+          <div class="flex items-center justify-center gap-2 mb-4">
+            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500"></div>
+            <span class="text-sm text-gray-500">等待微信扫码中…</span>
+          </div>
+          <button @click="emit('openWeChatQR')" 
+                  class="text-sm text-green-500 hover:text-green-600 transition">
+            没有弹出扫码窗口？点击重试
+          </button>
         </div>
-        <button @click="claimFreeTrial()" 
-                :disabled="isClaiming"
-                class="px-6 py-3 bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white rounded-xl font-medium transition">
-          {{ isClaiming ? '领取中...' : '我已登录，领取免费额度 →' }}
-        </button>
       </div>
 
 

@@ -34,9 +34,12 @@ const DEFAULT_BASE_URLS = {
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 }
 
-const RECOMMENDED_IDS = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama']
+const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama']
 const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
 const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
+
+// 推荐列表从后端配置派生，fallback 到硬编码
+const RECOMMENDED_IDS = computed(() => api.getRecommendedIds().length > 0 ? api.getRecommendedIds() : RECOMMENDED_IDS_FALLBACK)
 
 // 推荐区提供商的额外配置
 const PROVIDER_EXTRAS = {
@@ -72,9 +75,11 @@ const providers = ref([
 
 const customModelInputs = ref({})
 const activeTab = ref('providers')
+const providerSearch = ref('')
 const saved = ref(false)
 const maxTokensInput = ref(null)
 const expandedProviders = ref(new Set())
+const storageUsage = ref(null)
 const showAdvanced = ref(false)
 
 function isExpanded(id) { return expandedProviders.value.has(id) }
@@ -83,10 +88,22 @@ function toggleProvider(id) {
   else expandedProviders.value.add(id)
 }
 
-const recommendedProviders = computed(() => providers.value.filter(p => RECOMMENDED_IDS.includes(p.id)))
-const chineseProviders = computed(() => providers.value.filter(p => CHINESE_IDS.includes(p.id) && !RECOMMENDED_IDS.includes(p.id)))
-const internationalProviders = computed(() => providers.value.filter(p => INTERNATIONAL_IDS.includes(p.id)))
-const customProviders = computed(() => providers.value.filter(p => p.id === 'custom'))
+const recommendedProviders = computed(() => {
+  const q = providerSearch.value.trim().toLowerCase()
+  return providers.value.filter(p => RECOMMENDED_IDS.includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+})
+const chineseProviders = computed(() => {
+  const q = providerSearch.value.trim().toLowerCase()
+  return providers.value.filter(p => CHINESE_IDS.includes(p.id) && !RECOMMENDED_IDS.includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+})
+const internationalProviders = computed(() => {
+  const q = providerSearch.value.trim().toLowerCase()
+  return providers.value.filter(p => INTERNATIONAL_IDS.includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+})
+const customProviders = computed(() => {
+  const q = providerSearch.value.trim().toLowerCase()
+  return providers.value.filter(p => p.id === 'custom' && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+})
 
 // ── Provider 操作 ──
 
@@ -267,6 +284,14 @@ function onCardSave() { save() }
 function onCardDelete(p) { deleteProvider(p) }
 function onCardSetModel(p, modelId) { setCurrentModel(p, modelId) }
 function onCardAddModel(p, modelId) { addCustomModel(p, modelId) }
+
+function addCustomProvider() {
+  const id = 'custom-' + Date.now()
+  providers.value.push({
+    id, name: '自定义', key: '', baseUrl: '', models: [], syncing: false
+  })
+  expandedProviders.value.add(id)
+}
 function onCardRemoveModel(p, modelId) { removeModel(p, modelId) }
 function onCardToggle(id) { toggleProvider(id) }
 
@@ -300,6 +325,8 @@ onMounted(() => {
   }
   window.addEventListener('trial-token', _onTrialToken)
   loadMaxTokens()
+  // 加载存储用量
+  fetch('/api/storage/usage').then(r => r.ok && r.json().then(d => storageUsage.value = d)).catch(() => {})
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -326,7 +353,13 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
 
       <!-- 提供商配置 -->
       <div v-if="activeTab === 'providers'" class="max-w-2xl space-y-3">
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">配置 API Key 后点击「同步模型」自动获取可用模型，也可手动添加自定义模型。</p>
+        <div class="flex items-center gap-3 mb-2">
+          <p class="text-sm text-gray-500 dark:text-gray-400 flex-1">配置 API Key 后点击「同步模型」自动获取可用模型</p>
+          <div class="relative">
+            <input v-model="providerSearch" placeholder="搜索提供商…" class="pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 w-40" />
+            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+          </div>
+        </div>
 
         <!-- ⚙️ 全局模型设置 -->
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
@@ -427,6 +460,10 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave"
                 @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel"
               />
+              <button @click="addCustomProvider"
+                class="mt-2 w-full py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-sm text-gray-400 hover:text-green-500 hover:border-green-400 dark:hover:border-green-600 transition">
+                ＋ 添加自定义提供商
+              </button>
             </div>
           </div>
         </div>
@@ -450,6 +487,30 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
           <p class="text-sm text-gray-500 dark:text-gray-400">AI Agent by vbit.top</p>
           <p class="text-xs text-gray-400">版本 {{ update.currentVersion }} · 基于 Hermes Agent</p>
           <a href="https://vbit.top" target="_blank" class="text-sm text-green-600 dark:text-green-400 hover:underline">访问 vbit.top →</a>
+        </div>
+
+        <!-- 存储用量 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-3">
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 text-center">存储用量</h3>
+          <div class="space-y-2 text-sm" v-if="storageUsage">
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">对话记录</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ storageUsage.sessions_db }} MB</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">记忆文件</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ storageUsage.memories }} MB</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">技能缓存</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ storageUsage.skills }} MB</span>
+            </div>
+            <div class="flex justify-between font-medium pt-1 border-t border-gray-200 dark:border-gray-700">
+              <span class="text-gray-600 dark:text-gray-400">总计</span>
+              <span class="text-gray-800 dark:text-gray-200">{{ storageUsage.total }} MB</span>
+            </div>
+          </div>
+          <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center">加载中...</div>
         </div>
       </div>
     </div>

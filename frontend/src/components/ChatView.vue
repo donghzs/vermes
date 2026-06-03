@@ -131,13 +131,44 @@ const _modelChangedHandler = (e) => {
   chat.currentProvider = e.detail.provider
 }
 
+// ── 全局快捷键 ──
+const _globalKeyHandler = (e) => {
+  const mod = e.metaKey || e.ctrlKey
+  // Cmd/Ctrl + K → 聚焦输入框
+  if (mod && e.key === 'k') {
+    e.preventDefault()
+    chatInputRef.value?.inputRef?.focus()
+  }
+  // Cmd/Ctrl + N → 新建会话
+  if (mod && e.key === 'n') {
+    e.preventDefault()
+    chat.newSession()
+  }
+  // Cmd/Ctrl + B → 切换侧边栏
+  if (mod && e.key === 'b') {
+    e.preventDefault()
+    chat.toggleSidebar()
+  }
+  // Cmd/Ctrl + , → 打开设置
+  if (mod && e.key === ',') {
+    e.preventDefault()
+    router.push('/settings')
+  }
+  // Escape → 停止生成
+  if (e.key === 'Escape' && chat.loading) {
+    chat.stopGeneration()
+  }
+}
+
 onMounted(() => {
   window.addEventListener('model-changed', _modelChangedHandler)
+  window.addEventListener('keydown', _globalKeyHandler)
   setupQuotaEvents()
 })
 
 onUnmounted(() => {
   window.removeEventListener('model-changed', _modelChangedHandler)
+  window.removeEventListener('keydown', _globalKeyHandler)
   teardownQuotaEvents()
 })
 </script>
@@ -158,7 +189,7 @@ onUnmounted(() => {
     <!-- 中间内容区：消息列表 / 引导页 -->
     <div class="flex-1 min-h-0 flex flex-col">
       <MessageList v-if="chat.filteredMessages.length > 0" @quickStart="onQuickStart" @editMessage="onEditMessage" />
-      <WelcomeGuide v-if="chat.filteredMessages.length === 0" />
+      <WelcomeGuide v-if="chat.filteredMessages.length === 0" @openWeChatQR="openWeChatQR" />
     </div>
 
     <!-- 输入区 -->

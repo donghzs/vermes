@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted, reactive } from 'vue'
 import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarget } from '../stores/chat'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
@@ -58,6 +58,7 @@ function currentRunningTool(tools) {
 
 // 工具结果预览模板化
 const _toolPreviewCache = new WeakMap()
+const _showAllTools = reactive({})
 
 function formatToolPreview(tool) {
   if (!tool.result_preview) return null
@@ -430,7 +431,7 @@ function streamElapsed(startTime) {
           <div v-if="msg._compareModel" class="text-[10px] text-purple-500 dark:text-purple-400 mb-1 font-medium px-1">
             🔬 {{ msg._compareModel }}
           </div>
-          <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed" :class="msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md shadow-sm'">
+          <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed" :class="msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md shadow-sm border-l-[3px] border-green-400 dark:border-green-500'">
             <template v-if="msg.role === 'user'">
               <!-- 图片附件：从 markdown ![](data:image/...) 中提取显示 -->
               <img v-for="(imgUrl, idx) in extractImages(msg.content)" :key="'uimg-' + idx" :src="imgUrl" class="max-w-full rounded-lg mb-2" />
@@ -479,15 +480,21 @@ function streamElapsed(startTime) {
             <template v-else>
               <div v-if="msg.toolInvocations.length > 0"
                    class="flex flex-wrap gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-                <span v-for="tool in msg.toolInvocations"
-                      :key="'done-' + (tool.id || tool.name)"
-                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                      :class="tool.status === 'error' ? 'text-red-500' : ''"
-                      @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
-                  <span>{{ tool.status === 'error' ? '❌' : '✅' }}</span>
-                  <span>{{ ({read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
-                  <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
-                  <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
+                <template v-for="(tool, idx) in msg.toolInvocations" :key="'done-' + (tool.id || tool.name)">
+                  <span v-if="idx < 5 || _showAllTools[msg.id]"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                        :class="tool.status === 'error' ? 'text-red-500' : ''"
+                        @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
+                    <span>{{ tool.status === 'error' ? '❌' : '✅' }}</span>
+                    <span>{{ ({read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
+                    <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
+                    <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
+                  </span>
+                </template>
+                <span v-if="msg.toolInvocations.length > 5 && !_showAllTools[msg.id]"
+                      @click="_showAllTools[msg.id] = true"
+                      class="px-2 py-0.5 rounded-full text-green-500 cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20">
+                  +{{ msg.toolInvocations.length - 5 }} 个工具
                 </span>
               </div>
               <!-- 可折叠的结果摘要 -->
@@ -550,8 +557,25 @@ function streamElapsed(startTime) {
           </div>
         </div>
       </div>
+    </div><!-- end msg -->
+  </div><!-- end message loop -->
+
+  <!-- 流式状态消息（压缩警告、lifecycle 通知等） -->
+  <div v-if="chat.statusMessages.length > 0" class="px-4 py-1 flex flex-col gap-1">
+    <div v-for="s in chat.statusMessages" :key="s.id"
+         class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-fade-in">
+      <span>{{ s.type === 'warn' ? '⚠️' : '📦' }}</span>
+      <span>{{ s.message }}</span>
     </div>
   </div>
+
+  <!-- token 用量 -->
+  <div v-if="chat.lastTokenUsage && !chat.loading" class="px-4 py-2 flex justify-end">
+    <span class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+      {{ chat.lastTokenUsage.prompt_tokens || 0 }} / {{ chat.lastTokenUsage.completion_tokens || 0 }} → {{ chat.lastTokenUsage.total_tokens }} tokens
+    </span>
+  </div>
+
   <!-- 回到底部浮动按钮 -->
   <button v-if="showScrollBtn" @click="scrollToBottom"
     class="fixed bottom-24 right-6 z-50 w-10 h-10 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110"
@@ -713,5 +737,14 @@ function streamElapsed(startTime) {
 @keyframes thinking-inline-pulse {
   0%, 80%, 100% { opacity: 0.4; }
   40% { opacity: 1; }
+}
+
+/* 状态消息淡入动画 */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
 }
 </style>

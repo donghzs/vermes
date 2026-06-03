@@ -7,12 +7,58 @@ let baseUrl = ''
 const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
 
 // ✅ 计费模型标识（云端收费，本地免费）
-const CLOUD_MODELS = ['deepseek', 'openrouter', 'vbit', 'qwen', 'openai', 'anthropic', 'gemini', 'xiaomi', 'agnes']
+// 启动时从后端拉取，fallback 到本地硬编码
+const CLOUD_MODELS_FALLBACK = ['deepseek', 'openrouter', 'vbit', 'qwen', 'openai', 'anthropic', 'gemini', 'xiaomi', 'agnes']
+const _cloudModels = ref(CLOUD_MODELS_FALLBACK)  // reactive，Vue computed 可追踪
 
 export function isCloudModel(provider) {
   if (!provider) return false
   const p = provider.toLowerCase()
-  return CLOUD_MODELS.some(m => p.includes(m))
+  return _cloudModels.value.some(m => p.includes(m))
+}
+
+// ✅ 推荐提供商（启动时从后端拉取，fallback 到本地硬编码）
+const RECOMMENDED_FALLBACK = [
+  { id: 'vbit', free: true },
+  { id: 'agnes', free: true },
+  { id: 'deepseek', free: false },
+  { id: 'xiaomi', free: false },
+  { id: 'ollama', free: true },
+]
+const _recommendedProviders = ref(RECOMMENDED_FALLBACK)  // reactive
+const _configLoaded = ref(false)  // 拉取完成标志
+
+export async function fetchProviderConfig() {
+  try {
+    const resp = await fetch('/api/config/cloud-models')
+    if (resp.ok) {
+      const data = await resp.json()
+      if (Array.isArray(data.cloud_models) && data.cloud_models.length > 0) {
+        _cloudModels.value = data.cloud_models
+      }
+      if (Array.isArray(data.recommended_providers) && data.recommended_providers.length > 0) {
+        _recommendedProviders.value = data.recommended_providers
+      }
+      _configLoaded.value = true
+      return
+    }
+  } catch (e) {
+    console.warn('[Vermes] provider config 拉取失败，使用本地 fallback:', e.message)
+  }
+  // fallback 不需要赋值，初始值已是 fallback
+  _configLoaded.value = true
+}
+
+export function getRecommendedIds() {
+  return _recommendedProviders.value.map(p => p.id)
+}
+
+export function getRecommendedProviders() {
+  return _recommendedProviders.value
+}
+
+export function isConfigLoaded() {
+  return _configLoaded.value
 }
 
 // ── 服务端配额查询（v2：仅限微信登录用户） ──
@@ -210,7 +256,7 @@ const api = {
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
 
   // 发送消息（SSE 流式）
-  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments, session_id }) {
+  async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id }) {
     const body = { model, messages, stream, provider: provider || '' }
     if (session_id) body.session_id = session_id
     if (attachments && attachments.length > 0) body.attachments = attachments
@@ -309,6 +355,11 @@ const api = {
                 // 只触发 onThinking 回调，不创建工具卡片（避免 toolCount 污染）
                 onThinking?.(json)
               }
+              continue
+            }
+            if (json.type === 'lifecycle' || json.type === 'warn') {
+              resetReadTimer()
+              onStatus?.(json)
               continue
             }
             if (json.type === 'ping') {

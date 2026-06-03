@@ -8,6 +8,11 @@ const chat = useChatStore()
 const inputText = ref('')
 const fileInput = ref(null)
 const uploadedFiles = ref([])
+
+// 空会话检测：无消息时强化输入框视觉引导
+function isEmptySession() {
+  return chat.filteredMessages.length === 0
+}
 const inputRef = ref(null)
 const isDragging = ref(false)
 
@@ -140,9 +145,10 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         class="hidden" @change="handleFileSelect" />
       <button @click="triggerFileUpload()" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base" title="上传文件/图片/视频">📎</button>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
-        placeholder="输入消息，Enter 发送，Shift+Enter 换行..." rows="1"
+        :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
         @input="autoResize"
-        class="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none overflow-y-auto"></textarea>
+        class="flex-1 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400 dark:focus:border-green-500 resize-none overflow-y-auto placeholder-gray-400 dark:placeholder-gray-500"
+        :class="isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500'"></textarea>
       <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-5 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition">停止</button>
       <button v-else @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
     </div>

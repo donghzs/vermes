@@ -179,6 +179,7 @@ async function createSession(sessions, messages, name, template, SESSIONS_KEY, M
     id: uid(),
     name: name || tpl.name || '新会话',
     createdAt: new Date().toISOString(),
+    lastActive: new Date().toISOString(),
     templateId: tpl.id,
   }
   enforceSessionLimit(sessions, currentSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
@@ -386,6 +387,7 @@ async function importSession(sessions, messages, jsonText, SESSIONS_KEY, MESSAGE
       id: uid(),
       name: (data.session.name || '导入会话') + ' (导入)',
       createdAt: data.session.createdAt || new Date().toISOString(),
+      lastActive: data.session.lastActive || new Date().toISOString(),
       templateId: data.session.templateId || 'blank',
     }
     sessions.unshift(s)

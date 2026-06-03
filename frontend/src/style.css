@@ -43,3 +43,7 @@ html, body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-600 rounded; }
+
+/* 暗色模式文字对比度优化：提升 gray-400 → gray-300 亮度 */
+.dark .text-gray-400 { color: #d1d5db; }
+.dark .text-gray-500 { color: #9ca3af; }

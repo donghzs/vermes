@@ -3,10 +3,14 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import './style.css'
 import router from './router'
+import { fetchProviderConfig } from './services/api'
 
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
+
+// 启动时拉取云端模型/推荐提供商配置（失败自动 fallback）
+fetchProviderConfig()
 
 // 全局错误捕获：把错误直接显示到页面上
 app.config.errorHandler = (err, instance, info) => {
