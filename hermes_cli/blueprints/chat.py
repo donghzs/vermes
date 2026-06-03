@@ -374,34 +374,34 @@ MODEL_PROVIDER_MAP = {
 
 # Unified provider registry (single source of truth)
 PROVIDERS = {
-    "deepseek": {"env_key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1"},
-    "openai": {"env_key": "OPENAI_API_KEY", "base_url": "https://api.openai.com/v1"},
-    "anthropic": {"env_key": "ANTHROPIC_API_KEY", "base_url": "https://api.anthropic.com/v1"},
-    "gemini": {"env_key": "GEMINI_API_KEY", "base_url": "https://generativelanguage.googleapis.com/v1beta"},
-    "openrouter": {"env_key": "OPENROUTER_API_KEY", "base_url": "https://openrouter.ai/api/v1"},
-    "vbit": {"env_key": "VBIT_API_KEY", "base_url": "https://api.vbit.top/v1"},
-    "alibaba": {"env_key": "QWEN_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-    "qwen": {"env_key": "QWEN_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-    "zhipu": {"env_key": "ZHIPU_API_KEY", "base_url": "https://open.bigmodel.cn/api/paas/v4"},
-    "doubao": {"env_key": "DOUBAO_API_KEY", "base_url": "https://ark.cn-beijing.volces.com/api/v3"},
-    "moonshot": {"env_key": "MOONSHOT_API_KEY", "base_url": "https://api.moonshot.cn/v1"},
-    "baichuan": {"env_key": "BAICHUAN_API_KEY", "base_url": "https://api.baichuan-ai.com/v1"},
-    "yi": {"env_key": "YI_API_KEY", "base_url": "https://api.lingyiwanwu.com/v1"},
-    "spark": {"env_key": "SPARK_API_KEY", "base_url": "https://spark-api-open.xf-yun.com/v1"},
-    "siliconflow": {"env_key": "SILICONFLOW_API_KEY", "base_url": "https://api.siliconflow.cn/v1"},
-    "mistral": {"env_key": "MISTRAL_API_KEY", "base_url": "https://api.mistral.ai/v1"},
-    "cohere": {"env_key": "COHERE_API_KEY", "base_url": "https://api.cohere.ai/v1"},
-    "custom": {"env_key": "CUSTOM_API_KEY", "base_url": ""},
-    "xiaomi": {"env_key": "XIAOMI_API_KEY", "base_url": "https://api.xiaomimimo.com/v1"},
-    "ant-ling": {"env_key": "ANT_LING_API_KEY", "base_url": "https://api.ant-ling.com/v1"},
-    "minimax": {"env_key": "MINIMAX_API_KEY", "base_url": "https://api.minimax.chat/v1"},
-    "baidu": {"env_key": "BAIDU_API_KEY", "base_url": "https://qianfan.baidubce.com/v2"},
-    "xinghuo": {"env_key": "XINGHUO_API_KEY", "base_url": "https://spark-api.xf-yun.com/v1"},
-    "stepfun": {"env_key": "STEPFUN_API_KEY", "base_url": "https://api.stepfun.com/v1"},
-    "groq": {"env_key": "GROQ_API_KEY", "base_url": "https://api.groq.com/openai/v1"},
-    "together": {"env_key": "TOGETHER_API_KEY", "base_url": "https://api.together.xyz/v1"},
-    "agnes": {"env_key": "AGNES_API_KEY", "base_url": "https://apihub.agnes-ai.com/v1"},
-    "ollama": {"env_key": None, "base_url": "http://localhost:11434/v1"},
+    "deepseek": {"env_key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "cloud": True, "free": False, "recommended": True},
+    "openai": {"env_key": "OPENAI_API_KEY", "base_url": "https://api.openai.com/v1", "cloud": True, "free": False, "recommended": False},
+    "anthropic": {"env_key": "ANTHROPIC_API_KEY", "base_url": "https://api.anthropic.com/v1", "cloud": True, "free": False, "recommended": False},
+    "gemini": {"env_key": "GEMINI_API_KEY", "base_url": "https://generativelanguage.googleapis.com/v1beta", "cloud": True, "free": False, "recommended": False},
+    "openrouter": {"env_key": "OPENROUTER_API_KEY", "base_url": "https://openrouter.ai/api/v1", "cloud": True, "free": False, "recommended": False},
+    "vbit": {"env_key": "VBIT_API_KEY", "base_url": "https://api.vbit.top/v1", "cloud": True, "free": True, "recommended": True},
+    "alibaba": {"env_key": "QWEN_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "cloud": True, "free": False, "recommended": False},
+    "qwen": {"env_key": "QWEN_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "cloud": True, "free": False, "recommended": False},
+    "zhipu": {"env_key": "ZHIPU_API_KEY", "base_url": "https://open.bigmodel.cn/api/paas/v4", "cloud": True, "free": False, "recommended": False},
+    "doubao": {"env_key": "DOUBAO_API_KEY", "base_url": "https://ark.cn-beijing.volces.com/api/v3", "cloud": True, "free": False, "recommended": False},
+    "moonshot": {"env_key": "MOONSHOT_API_KEY", "base_url": "https://api.moonshot.cn/v1", "cloud": True, "free": False, "recommended": False},
+    "baichuan": {"env_key": "BAICHUAN_API_KEY", "base_url": "https://api.baichuan-ai.com/v1", "cloud": True, "free": False, "recommended": False},
+    "yi": {"env_key": "YI_API_KEY", "base_url": "https://api.lingyiwanwu.com/v1", "cloud": True, "free": False, "recommended": False},
+    "spark": {"env_key": "SPARK_API_KEY", "base_url": "https://spark-api-open.xf-yun.com/v1", "cloud": True, "free": False, "recommended": False},
+    "siliconflow": {"env_key": "SILICONFLOW_API_KEY", "base_url": "https://api.siliconflow.cn/v1", "cloud": True, "free": False, "recommended": False},
+    "mistral": {"env_key": "MISTRAL_API_KEY", "base_url": "https://api.mistral.ai/v1", "cloud": True, "free": False, "recommended": False},
+    "cohere": {"env_key": "COHERE_API_KEY", "base_url": "https://api.cohere.ai/v1", "cloud": True, "free": False, "recommended": False},
+    "custom": {"env_key": "CUSTOM_API_KEY", "base_url": "", "cloud": False, "free": False, "recommended": False},
+    "xiaomi": {"env_key": "XIAOMI_API_KEY", "base_url": "https://api.xiaomimimo.com/v1", "cloud": True, "free": False, "recommended": True},
+    "ant-ling": {"env_key": "ANT_LING_API_KEY", "base_url": "https://api.ant-ling.com/v1", "cloud": True, "free": False, "recommended": False},
+    "minimax": {"env_key": "MINIMAX_API_KEY", "base_url": "https://api.minimax.chat/v1", "cloud": True, "free": False, "recommended": False},
+    "baidu": {"env_key": "BAIDU_API_KEY", "base_url": "https://qianfan.baidubce.com/v2", "cloud": True, "free": False, "recommended": False},
+    "xinghuo": {"env_key": "XINGHUO_API_KEY", "base_url": "https://spark-api.xf-yun.com/v1", "cloud": True, "free": False, "recommended": False},
+    "stepfun": {"env_key": "STEPFUN_API_KEY", "base_url": "https://api.stepfun.com/v1", "cloud": True, "free": False, "recommended": False},
+    "groq": {"env_key": "GROQ_API_KEY", "base_url": "https://api.groq.com/openai/v1", "cloud": True, "free": False, "recommended": False},
+    "together": {"env_key": "TOGETHER_API_KEY", "base_url": "https://api.together.xyz/v1", "cloud": True, "free": False, "recommended": False},
+    "agnes": {"env_key": "AGNES_API_KEY", "base_url": "https://apihub.agnes-ai.com/v1", "cloud": True, "free": True, "recommended": True},
+    "ollama": {"env_key": None, "base_url": "http://localhost:11434/v1", "cloud": False, "free": True, "recommended": True},
 }
 
 
@@ -758,6 +758,21 @@ async def chat_completions(req: ChatRequest):
             _tool_ids = {}  # tool_name → tool_call_id 配对
             _active_streams[_stream_id] = _cancel_event
 
+            def status_callback(event_type: str, message: str):
+                """Route lifecycle/warn events from AIAgent to SSE stream."""
+                event = {
+                    "type": "lifecycle" if event_type == "lifecycle" else "warn",
+                    "message": message,
+                }
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+                else:
+                    _delta_queue.put_nowait(event)
+
             def stream_callback(delta: str):
                 try:
                     loop = asyncio.get_running_loop()
@@ -827,6 +842,7 @@ async def chat_completions(req: ChatRequest):
                     agent.stream_delta_callback = stream_callback
                     agent.tool_progress_callback = tool_progress_handler
                     agent.step_callback = thinking_handler
+                    agent.status_callback = status_callback
                     _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                     agent.max_tokens = _max_tokens
                     result = agent.run_conversation(

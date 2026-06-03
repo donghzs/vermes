@@ -179,6 +179,7 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # Config (read/write for settings page)
     "/api/config",
     "/api/config/defaults",
+    "/api/config/cloud-models",
     "/api/config/schema",
     "/api/config/raw",
     # Model management
@@ -213,7 +214,6 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/update/rollback",
     # Env vars (settings page needs to read/save keys)
     "/api/env",
-    "/api/env/reveal",
     # Dashboard UI
     "/api/dashboard/themes",
     "/api/dashboard/plugins",
@@ -2808,6 +2808,7 @@ blueprints.providers.register_to(app)
 blueprints.dashboard.register_to(app)
 blueprints.session.register_to(app)
 blueprints.cron_jobs.register_to(app)
+blueprints.storage.register_to(app)
 blueprints.analytics.register_to(app)
 blueprints.skills_tools.register_to(app)
 blueprints.update.register_to(app)
