@@ -12,6 +12,7 @@ import logging
 import os
 import secrets
 import time
+from collections import OrderedDict
 from typing import Optional
 
 import yaml
@@ -24,7 +25,50 @@ from hermes_cli.config import load_config, remove_env_value
 _log = logging.getLogger(__name__)
 
 # Agent instance cache: session_key → AIAgent (for session persistence)
-_agent_cache: dict = {}
+# LRU with maxsize=20 -- oldest unused agent evicted when full
+# Also supports pop_for_session() for explicit session-delete cleanup
+
+
+class _AgentCache:
+    """LRU Agent 缓存，超限淘汰最久未用。"""
+    def __init__(self, maxsize: int = 20):
+        self._cache: OrderedDict = OrderedDict()
+        self._maxsize = maxsize
+
+    def get(self, key: str):
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
+
+    def put(self, key: str, agent):
+        self._cache[key] = agent
+        self._cache.move_to_end(key)
+        self._evict()
+
+    def pop_for_session(self, session_id: str):
+        """Delete all cached entries matching this session_id."""
+        keys = [k for k in self._cache if k.endswith(f":{session_id}")]
+        for k in keys:
+            del self._cache[k]
+        if keys:
+            _log.info(f"[Agent] Evicted {len(keys)} cached agent(s) for session {session_id}")
+
+    def _evict(self):
+        while len(self._cache) > self._maxsize:
+            key, agent = self._cache.popitem(last=False)
+            _log.info(f"[Agent] LRU evicted: {key}")
+
+    def __len__(self):
+        return len(self._cache)
+
+
+_agent_cache = _AgentCache(maxsize=20)
+
+
+def clean_agent_for_session(session_id: str):
+    """供 session.py 调用的 session 删除时清理接口。"""
+    _agent_cache.pop_for_session(session_id)
 
 
 # ── Attachment constants ─────────────────────────────────────────────
@@ -627,7 +671,7 @@ async def chat_completions(req: ChatRequest):
                 verbose_logging=False,
                 platform="web",
             )
-            _agent_cache[_cache_key] = agent
+            _agent_cache.put(_cache_key, agent)
             _log.info(f"[Agent] Created new agent for session {_session_id}")
         except ValueError as e:
             if "context window" in str(e).lower():
