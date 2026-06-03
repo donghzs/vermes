@@ -124,11 +124,14 @@ async def get_session_messages(session_id: str):
 
 async def delete_session_endpoint(session_id: str):
     from hermes_state import SessionDB
+    from hermes_cli.blueprints.chat import clean_agent_for_session
 
     db = SessionDB()
     try:
         if not db.delete_session(session_id):
             raise HTTPException(status_code=404, detail="Session not found")
+        # Sync cleanup: release cached Agent instance for this session
+        clean_agent_for_session(session_id)
         return {"ok": True}
     finally:
         db.close()

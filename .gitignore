@@ -70,6 +70,7 @@ result
 website/static/api/skills-index.json
 models-dev-upstream/
 hermes_cli/tui_dist/*
+scripts/
 hermes_cli/scripts/
 docs/superpowers/*
 # PyInstaller build artifacts
