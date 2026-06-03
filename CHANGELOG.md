@@ -21,6 +21,13 @@ All notable changes to Vermes will be documented in this file.
 - **P1-5** `/api/env/reveal` 从公开白名单移除，改 session token 鉴权
 - **P1-6** PROVIDERS 添加 cloud/free/recommended 字段 + `/api/config/cloud-models` 端点 + 前端动态拉取
 
+### 安全修复（预发布审计 — 5 项）
+
+- **P0-1/P0-6**: 全局异常处理器不再返回 `str(exc)`，改为通用 `"Internal server error"`，异常详情仅记日志
+- **P0-4**: HistoryPanel.vue 搜索高亮先 HTML 实体转义再注入 `<mark>` 标签，防 XSS
+- **P1-6**: SSE 错误消息入口 `stripHtml()` 防御纵深，剥离 HTML 标签
+- **P1-7**: OAuth 窗口添加导航域白名单（vbit.top / weixin.qq.com 等7个），限制 `will-navigate/will-redirect`
+
 ### UI/UX 8 项优化
 
 1. **微信登录直弹二维码**: WelcomeGuide 选微信→自动触发 WechatLogin 扫码→监听 `wechat-login-success`→自动领取
