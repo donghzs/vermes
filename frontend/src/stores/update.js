@@ -114,26 +114,36 @@ export const useUpdateStore = () => {
         if (localStorage.getItem(DISMISS_KEY) === res.version) {
           return
         }
-        latestVersion.value = res.version
+        // 统一去掉 v 前缀
+        latestVersion.value = res.version.replace(/^v/i, '')
         hasUpdate.value = true
 
+        // 解析下载 URL：优先 download_url 字段，回退到 macOS/windows 嵌套结构
+        const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
         if (typeof res.download_url === 'string') {
           downloadUrl.value = res.download_url
         } else if (res.download_url && typeof res.download_url === 'object') {
-          const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
           downloadUrl.value = isMac
             ? (res.download_url.macos_dmg || res.download_url.macos_zip || '')
-            : (res.download_url.windows_zip || '')
+            : (res.download_url.windows_zip || res.download_url.windows_exe || '')
+        } else if (res.macOS || res.windows) {
+          // 兼容 version.json 嵌套结构：{ macOS: { dmg: "..." }, windows: { exe: "..." } }
+          if (isMac && res.macOS) {
+            const rel = res.macOS.dmg || res.macOS.zip || ''
+            downloadUrl.value = rel.startsWith('/') ? `https://vbit.top${rel}` : rel
+          } else if (res.windows) {
+            const rel = res.windows.exe || res.windows.zip || ''
+            downloadUrl.value = rel.startsWith('/') ? `https://vbit.top${rel}` : rel
+          }
         } else {
           downloadUrl.value = res.mac_url || res.win_url || ''
         }
 
         if (res.sha256) {
-          const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
           if (typeof res.sha256 === 'object') {
             sha256.value = isMac
               ? (res.sha256.macos_dmg || res.sha256.macos_zip || '')
-              : (res.sha256.windows_zip || '')
+              : (res.sha256.windows_zip || res.sha256.windows_exe || '')
           } else {
             sha256.value = res.sha256
           }
@@ -155,8 +165,10 @@ export const useUpdateStore = () => {
   }
 
   function isNewer(latest, current) {
-    const l = latest.split('.').map(Number)
-    const c = current.split('.').map(Number)
+    // 兼容带 v 前缀的版本号（如 "v2.0.7"）
+    const stripV = (v) => v.replace(/^v/i, '')
+    const l = stripV(latest).split('.').map(Number)
+    const c = stripV(current).split('.').map(Number)
     for (let i = 0; i < 3; i++) {
       if ((l[i] || 0) > (c[i] || 0)) return true
       if ((l[i] || 0) < (c[i] || 0)) return false
