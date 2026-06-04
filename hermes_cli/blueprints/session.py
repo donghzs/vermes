@@ -54,12 +54,15 @@ async def search_sessions(q: str = "", limit: int = 20):
 
         db = SessionDB()
         try:
+            # 清洗 FTS5 特殊操作符，防止注入
+            cleaned = re.sub(r'\b(AND|OR|NOT|NEAR)\b', ' ', q.strip(), flags=re.IGNORECASE)
+            cleaned = re.sub(r'[()"*]', ' ', cleaned)
+            cleaned = cleaned.strip()
+            if not cleaned:
+                return {"results": []}
             terms = []
-            for token in re.findall(r'"[^"]*"|\S+', q.strip()):
-                if token.startswith('"') or token.endswith("*"):
-                    terms.append(token)
-                else:
-                    terms.append(token + "*")
+            for token in re.findall(r'\S+', cleaned):
+                terms.append(token + "*")
             prefix_query = " ".join(terms)
             matches = db.search_messages(query=prefix_query, limit=limit)
             seen: dict = {}
@@ -186,8 +189,23 @@ from pathlib import Path as _Path
 
 _MSG_DIR = _Path.home() / ".vermes" / "messages"
 
+
+def _validate_session_id(session_id: str) -> str:
+    """校验 session_id 防止路径穿越攻击"""
+    if not session_id or not isinstance(session_id, str):
+        raise ValueError("session_id 不能为空")
+    # 只允许字母、数字、连字符、下划线、点
+    if not re.match(r'^[a-zA-Z0-9._-]+$', session_id):
+        raise ValueError(f"session_id 含非法字符: {session_id!r}")
+    # 防止路径穿越（.. 或绝对路径）
+    resolved = (_MSG_DIR / f"{session_id}.json").resolve()
+    if not str(resolved).startswith(str(_MSG_DIR.resolve())):
+        raise ValueError(f"session_id 路径穿越: {session_id!r}")
+    return session_id
+
 async def save_gui_messages(session_id: str, request: Request):
     """Save GUI messages for a session (JSON file storage)."""
+    session_id = _validate_session_id(session_id)
     _MSG_DIR.mkdir(parents=True, exist_ok=True)
     body = await request.json()
     messages = body.get("messages", [])
@@ -197,6 +215,7 @@ async def save_gui_messages(session_id: str, request: Request):
 
 async def load_gui_messages(session_id: str):
     """Load GUI messages for a session."""
+    session_id = _validate_session_id(session_id)
     msg_file = _MSG_DIR / f"{session_id}.json"
     if not msg_file.exists():
         return {"messages": []}
@@ -208,6 +227,7 @@ async def load_gui_messages(session_id: str):
 
 async def delete_gui_messages(session_id: str):
     """Delete GUI messages for a session."""
+    session_id = _validate_session_id(session_id)
     msg_file = _MSG_DIR / f"{session_id}.json"
     if msg_file.exists():
         msg_file.unlink()

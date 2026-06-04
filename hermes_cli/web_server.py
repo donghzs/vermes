@@ -159,8 +159,10 @@ async def request_logging_middleware(request: Request, call_next):
             # Redact sensitive fields
             if isinstance(body, dict):
                 body_log = body.copy()
-                for key in ("api_key", "password", "token", "secret"):
-                    if key in body_log:
+                for key in ("api_key", "password", "token", "secret", "key", "value"):
+                    if key in body_log and isinstance(body_log[key], str) and len(body_log[key]) > 4:
+                        body_log[key] = body_log[key][:2] + "***" + body_log[key][-2:]
+                    elif key in body_log:
                         body_log[key] = "***"
                 # Skip large base64 attachments in logs — show summary only
                 if "attachments" in body_log and isinstance(body_log["attachments"], list):
@@ -239,6 +241,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # Vermes GUI 消息持久化
     "/api/gui/messages",
     "/api/gui/sessions",
+    # 存储用量（只读，无敏感信息）
+    "/api/storage/usage",
 })
 
 
@@ -1013,6 +1017,9 @@ async def set_env_var(body: EnvVarUpdate, request: Request):
 
 
 async def remove_env_var(body: EnvVarDelete):
+    # DELETE 也受白名单约束，防止删除关键环境变量
+    if body.key not in _ENV_WRITE_ALLOWED_KEYS:
+        raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed for deletion")
     try:
         removed = remove_env_value(body.key)
         if not removed:

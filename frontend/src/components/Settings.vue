@@ -38,8 +38,11 @@ const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama
 const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
 const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
 
-// 推荐列表从后端配置派生，fallback 到硬编码
-const RECOMMENDED_IDS = computed(() => api.getRecommendedIds().length > 0 ? api.getRecommendedIds() : RECOMMENDED_IDS_FALLBACK)
+// 推荐列表从后端配置派生，fallback 到硬编码（注意：必须是普通数组，不能是 computed ref，否则 .includes() 会报错）
+function getRecommendedIds() {
+  const ids = api.getRecommendedIds()
+  return ids.length > 0 ? ids : RECOMMENDED_IDS_FALLBACK
+}
 
 // 推荐区提供商的额外配置
 const PROVIDER_EXTRAS = {
@@ -90,11 +93,11 @@ function toggleProvider(id) {
 
 const recommendedProviders = computed(() => {
   const q = providerSearch.value.trim().toLowerCase()
-  return providers.value.filter(p => RECOMMENDED_IDS.includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+  return providers.value.filter(p => getRecommendedIds().includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
 })
 const chineseProviders = computed(() => {
   const q = providerSearch.value.trim().toLowerCase()
-  return providers.value.filter(p => CHINESE_IDS.includes(p.id) && !RECOMMENDED_IDS.includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+  return providers.value.filter(p => CHINESE_IDS.includes(p.id) && !getRecommendedIds().includes(p.id) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
 })
 const internationalProviders = computed(() => {
   const q = providerSearch.value.trim().toLowerCase()

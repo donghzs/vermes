@@ -407,7 +407,13 @@ async function importSession(sessions, messages, jsonText, SESSIONS_KEY, MESSAGE
 }
 
 // ── 辅助函数 uid()（chat.js 也用，放这里 export） ──
-export function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
+export function uid() { 
+  // 优先 crypto.randomUUID，fallback 到时间戳+随机
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) 
+}
 
 export {
   SESSIONS_KEY,

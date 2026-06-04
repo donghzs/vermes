@@ -129,7 +129,7 @@ export const useChatStore = defineStore('chat', () => {
                 lean.push(m)
               }
             }
-            try { localStorage.setItem(MESSAGES_KEY_PREFIX + currentSessionId.value, JSON.stringify(lean)) } catch {}
+            try { localStorage.setItem(MESSAGES_KEY_PREFIX + currentSessionId.value, JSON.stringify(lean)) } catch(e) { console.error('[Vermes] beforeunload 持久化失败:', e) }
           }
         }
       })
@@ -171,7 +171,13 @@ export const useChatStore = defineStore('chat', () => {
   async function switchSession(id) {
     flushStorageWrites()
     const oldSessionId = currentSessionId.value
+    // 清理旧会话的 streaming 状态和定时器，防止内存泄漏
     if (oldSessionId && oldSessionId !== id) {
+      messages.value.filter(m => m.streaming).forEach(m => {
+        m.streaming = false
+        if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
+        if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
+      })
       await persistMessages(oldSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     }
     currentSessionId.value = id

@@ -104,3 +104,4 @@ backups/
 
 # Archive (old reports, release notes)
 archive/
+cleanup-git-history.sh
