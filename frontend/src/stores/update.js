@@ -143,7 +143,7 @@ export const useUpdateStore = () => {
           if (typeof res.sha256 === 'object') {
             sha256.value = isMac
               ? (res.sha256.macos_dmg || res.sha256.macos_zip || '')
-              : (res.sha256.windows_zip || res.sha256.windows_exe || '')
+              : (res.sha256.windows_exe || res.sha256.windows_zip || '')
           } else {
             sha256.value = res.sha256
           }
@@ -165,10 +165,11 @@ export const useUpdateStore = () => {
   }
 
   function isNewer(latest, current) {
-    // 兼容带 v 前缀的版本号（如 "v2.0.7"）
+    // 兼容带 v 前缀的版本号（如 "v2.0.7"）和预发布后缀（如 "2.0.7-beta"）
     const stripV = (v) => v.replace(/^v/i, '')
-    const l = stripV(latest).split('.').map(Number)
-    const c = stripV(current).split('.').map(Number)
+    const stripPre = (v) => v.split(/[-+]/)[0]  // 去掉 -beta, -rc1, +build 等
+    const l = stripPre(stripV(latest)).split('.').map(Number)
+    const c = stripPre(stripV(current)).split('.').map(Number)
     for (let i = 0; i < 3; i++) {
       if ((l[i] || 0) > (c[i] || 0)) return true
       if ((l[i] || 0) < (c[i] || 0)) return false
