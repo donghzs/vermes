@@ -307,6 +307,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (chatContainer.value) {
+    chatContainer.value.removeEventListener('scroll', checkScrollPosition)
+  }
   setScrollTarget(null)
 })
 

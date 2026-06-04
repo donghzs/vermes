@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 from collections import OrderedDict
 from typing import Optional
@@ -30,27 +31,31 @@ _log = logging.getLogger(__name__)
 
 
 class _AgentCache:
-    """LRU Agent 缓存，超限淘汰最久未用。"""
+    """LRU Agent 缓存，超限淘汰最久未用。线程安全。"""
     def __init__(self, maxsize: int = 20):
         self._cache: OrderedDict = OrderedDict()
         self._maxsize = maxsize
+        self._lock = threading.Lock()
 
     def get(self, key: str):
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            return self._cache[key]
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
         return None
 
     def put(self, key: str, agent):
-        self._cache[key] = agent
-        self._cache.move_to_end(key)
-        self._evict()
+        with self._lock:
+            self._cache[key] = agent
+            self._cache.move_to_end(key)
+            self._evict()
 
     def pop_for_session(self, session_id: str):
         """Delete all cached entries matching this session_id."""
-        keys = [k for k in self._cache if k.endswith(f":{session_id}")]
-        for k in keys:
-            del self._cache[k]
+        with self._lock:
+            keys = [k for k in self._cache if k.endswith(f":{session_id}")]
+            for k in keys:
+                del self._cache[k]
         if keys:
             _log.info(f"[Agent] Evicted {len(keys)} cached agent(s) for session {session_id}")
 
@@ -60,7 +65,8 @@ class _AgentCache:
             _log.info(f"[Agent] LRU evicted: {key}")
 
     def __len__(self):
-        return len(self._cache)
+        with self._lock:
+            return len(self._cache)
 
 
 _agent_cache = _AgentCache(maxsize=20)

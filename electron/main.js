@@ -260,7 +260,7 @@ async function createWindow() {
   // 外部链接用系统浏览器打开
   // 拦截 target="_blank" 链接 — 统一由 shell.openExternal 打开系统浏览器
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    safeOpenExternal(url);
     return { action: 'deny' };
   });
 
@@ -453,9 +453,25 @@ ipcMain.handle('wechat-login', async (event, oauthUrl) => {
   return await openWechatOAuth(oauthUrl);
 });
 
+// ── URL 安全白名单工具 ──
+const ALLOWED_PROTOCOLS = ['https:', 'http:', 'mailto:'];
+function safeOpenExternal(url) {
+  try {
+    const parsed = new URL(url);
+    if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+      console.warn('[Vermes] 拒绝打开危险协议:', parsed.protocol, url);
+      return;
+    }
+  } catch (_) {
+    console.warn('[Vermes] 拒绝打开无效 URL:', url);
+    return;
+  }
+  shell.openExternal(url);
+}
+
 // IPC: 渲染进程调用打开外部链接
 ipcMain.handle('shell:openExternal', (e, url) => {
-  shell.openExternal(url);
+  safeOpenExternal(url);
 });
 
 // IPC: Splash 重试初始化

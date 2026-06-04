@@ -236,6 +236,10 @@ async function request(path, options = {}) {
   }
 }
 
+// SSE 断线重连计数器（防止无限递归）
+let _sseRetryCount = 0
+const SSE_MAX_RETRIES = 3
+
 const api = {
   async get(path) {
     const resp = await request(path)
@@ -257,6 +261,8 @@ const api = {
 
   // 发送消息（SSE 流式）
   async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id }) {
+    // 新的非重试请求，重置重试计数器
+    if (!signal?._isRetry) _sseRetryCount = 0
     const body = { model, messages, stream, provider: provider || '' }
     if (session_id) body.session_id = session_id
     if (attachments && attachments.length > 0) body.attachments = attachments
@@ -399,20 +405,27 @@ const api = {
       }
       onDone?.(usageInfo)
     } catch (e) {
-      // ── 长任务优化 #4: 断线重连 ──
+      // ── 长任务优化 #4: 断线重连（最多3次） ──
       // 非用户主动取消 + 非 API 错误 = 网络断开，尝试重连
-      if (e.name !== 'AbortError' && !signal?.aborted) {
-        console.warn('[Vermes SSE] Connection lost, retrying in 2s...', e.message)
-        await new Promise(r => setTimeout(r, 2000))
+      if (e.name !== 'AbortError' && !signal?.aborted && _sseRetryCount < SSE_MAX_RETRIES) {
+        _sseRetryCount++
+        const delay = 2000 * _sseRetryCount  // 2s, 4s, 6s 递增
+        console.warn(`[Vermes SSE] Connection lost, retry ${_sseRetryCount}/${SSE_MAX_RETRIES} in ${delay/1000}s...`, e.message)
+        await new Promise(r => setTimeout(r, delay))
         if (!signal?.aborted) {
           try {
             // 重新发起请求（后端会创建新 stream）
             await api.sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments })
+            _sseRetryCount = 0  // 成功后重置
             return
           } catch (retryErr) {
-            console.error('[Vermes SSE] Retry failed:', retryErr)
-            onError?.(retryErr)
-            return
+            console.error(`[Vermes SSE] Retry ${_sseRetryCount} failed:`, retryErr)
+            if (_sseRetryCount >= SSE_MAX_RETRIES) {
+              onError?.(new Error(`连接中断，已重试 ${SSE_MAX_RETRIES} 次仍失败`))
+              return
+            }
+            // 未达上限则继续循环（由外层递归处理）
+            throw retryErr
           }
         }
       }

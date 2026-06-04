@@ -18,6 +18,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tarfile
 import time
 from dataclasses import dataclass, field
@@ -324,13 +325,15 @@ async def download_with_progress(
         message="正在连接...",
     )
 
-    # SSL 配置（兼容旧服务器）
+    # SSL 配置（必须验证，防止中间人攻击）
     ssl_verify = True
     try:
         import certifi
         ssl_context = certifi.where()
     except Exception:
-        ssl_verify = False
+        # certifi 不可用时使用系统默认 CA 证书，仍然验证
+        ssl_context = True
+        _log.warning("[Update] certifi 不可用，使用系统 CA 证书")
 
     downloaded = 0
     start_time = time.time()
@@ -815,8 +818,6 @@ def _cleanup_after_apply():
 
 
 # ── 日志 ─────────────────────────────────────────────────────────────────
-
-import sys
 
 try:
     from hermes_cli.log_utils import get_logger
