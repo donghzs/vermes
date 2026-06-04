@@ -108,7 +108,7 @@ async def update_download(body: UpdateDownloadRequest):
             # 解压
             yield f"data: {json.dumps(get_progress())}\n\n"
 
-            extract_to_staging(download_path)
+            await extract_to_staging(download_path)
 
             # 清理下载文件
             if os.path.exists(download_path):

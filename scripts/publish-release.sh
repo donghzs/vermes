@@ -49,6 +49,12 @@ done
 # 去掉版本号的 v 前缀（防止手滑）
 VERSION="${VERSION#v}"
 
+# 验证版本号格式（仅允许 数字.数字.数字 后跟可选 -suffix）
+if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+  echo "❌ 版本号格式无效: $VERSION (需要 x.y.z 格式)"
+  exit 1
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Vermes 发布 v${VERSION}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -65,7 +71,7 @@ fi
 
 # ── 检测 SSH 连接 ──
 echo "📡 检查服务器连接..."
-if ! ssh $SCP_OPTS $SERVER "echo ok" > /dev/null 2>&1; then
+if ! ssh $SCP_OPTS "$SERVER" "echo ok" > /dev/null 2>&1; then
   echo "❌ 无法连接服务器 $SERVER"
   exit 1
 fi
@@ -88,7 +94,7 @@ if [ -n "$WIN_EXE" ]; then
   echo "⬆️  上传 Windows EXE: $WIN_EXE_FILENAME ($(du -h "$WIN_EXE" | cut -f1))"
   scp $SCP_OPTS "$WIN_EXE" "$SERVER:$DOWNLOADS_DIR/$WIN_EXE_FILENAME"
   # Windows 文件名可能有空格，URL encode
-  WIN_EXE_REMOTE="/vermes/downloads/$(python3 -c "import urllib.parse; print(urllib.parse.quote('$WIN_EXE_FILENAME'))")"
+  WIN_EXE_REMOTE="/vermes/downloads/$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$WIN_EXE_FILENAME")"
   echo "  ✅ 已上传"
 fi
 
@@ -96,19 +102,23 @@ fi
 echo "🔍 计算校验和..."
 
 MAC_SHA512_B64=""
+MAC_SHA256=""
 MAC_FILE_SIZE=0
 if [ -n "$MAC_DMG" ]; then
   MAC_SHA512_B64=$(shasum -a 512 "$MAC_DMG" | awk '{print $1}' | xxd -r -p | base64)
+  MAC_SHA256=$(shasum -a 256 "$MAC_DMG" | awk '{print $1}')
   MAC_FILE_SIZE=$(stat -f%z "$MAC_DMG" 2>/dev/null || stat --printf="%s" "$MAC_DMG")
-  echo "  Mac DMG: sha512=${MAC_SHA512_B64:0:20}... size=${MAC_FILE_SIZE}"
+  echo "  Mac DMG: sha256=${MAC_SHA256:0:16}... sha512=${MAC_SHA512_B64:0:20}... size=${MAC_FILE_SIZE}"
 fi
 
 WIN_SHA512_B64=""
+WIN_SHA256=""
 WIN_FILE_SIZE=0
 if [ -n "$WIN_EXE" ]; then
   WIN_SHA512_B64=$(shasum -a 512 "$WIN_EXE" | awk '{print $1}' | xxd -r -p | base64)
+  WIN_SHA256=$(shasum -a 256 "$WIN_EXE" | awk '{print $1}')
   WIN_FILE_SIZE=$(stat -f%z "$WIN_EXE" 2>/dev/null || stat --printf="%s" "$WIN_EXE")
-  echo "  Win EXE: sha512=${WIN_SHA512_B64:0:20}... size=${WIN_FILE_SIZE}"
+  echo "  Win EXE: sha256=${WIN_SHA256:0:16}... sha512=${WIN_SHA512_B64:0:20}... size=${WIN_FILE_SIZE}"
 fi
 
 # ── 生成 version.json ──
@@ -116,73 +126,83 @@ echo "📝 生成 version.json..."
 
 # 读取 CHANGELOG.md 中当前版本的内容作为默认 changelog
 if [ -z "$CHANGELOG" ]; then
-  # 从 CHANGELOG.md 提取当前版本的条目
-  CHANGELOG_FILE="$(dirname "$0")/../CHANGELOG.md"
+  CHANGELOG_FILE="$(cd "$(dirname "$0")/.." && pwd)/CHANGELOG.md"
   if [ -f "$CHANGELOG_FILE" ]; then
-    # 提取 [v2.0.8] 或 [2.0.8] 到下一个版本标题之间的内容
-    CHANGELOG=$(awk "/^## \\[${VERSION}\\]|^## \\[v${VERSION}\\]/{found=1; next} /^## \\[/{found=0} found && /^- /{gsub(/^[- ]+/, \"\"); print}" "$CHANGELOG_FILE" | head -10 | python3 -c "
-import sys, json
-lines = [l.strip() for l in sys.stdin if l.strip()]
-print(json.dumps(lines, ensure_ascii=False))
-")
-  fi
-  if [ -z "$CHANGELOG" ] || [ "$CHANGELOG" = "[]" ]; then
-    CHANGELOG='["版本更新"]'
+    CHANGELOG=$(awk "/^## \\[${VERSION}\\]|^## \\[v${VERSION}\\]/{found=1; next} /^## \\[/{found=0} found && /^- /{gsub(/^[- ]+/, \"\"); print}" "$CHANGELOG_FILE" | head -10)
   fi
 fi
 
-# 如果 CHANGELOG 不是 JSON 数组格式，转换它
-if ! echo "$CHANGELOG" | python3 -c "import sys,json; json.loads(sys.stdin.read())" 2>/dev/null; then
-  CHANGELOG=$(echo "$CHANGELOG" | python3 -c "
-import sys, json
-lines = [l.strip() for l in sys.stdin.read().split('\\n') if l.strip()]
-print(json.dumps(lines, ensure_ascii=False))
-")
-fi
-
-MAC_SIZE_HUMAN=""
-if [ -n "$MAC_DMG" ] && [ "$MAC_FILE_SIZE" -gt 0 ]; then
-  MAC_SIZE_HUMAN="$(python3 -c "print(f'{$MAC_FILE_SIZE / 1024 / 1024:.0f} MB')")"
-fi
-
-WIN_SIZE_HUMAN=""
-if [ -n "$WIN_EXE" ] && [ "$WIN_FILE_SIZE" -gt 0 ]; then
-  WIN_SIZE_HUMAN="$(python3 -c "print(f'{$WIN_FILE_SIZE / 1024 / 1024:.0f} MB')")"
-fi
-
+# 写入临时文件，用 python3 安全生成 JSON（避免 shell 变量注入）
 BUILD_DATE=$(date +%Y-%m-%d)
 
-# 生成 version.json
-python3 -c "
-import json, sys
+# 导出变量供 python3 使用
+export VER="$VERSION"
+export BDATE="$BUILD_DATE"
+export MAC_REMOTE="$MAC_DMG_REMOTE"
+export WIN_REMOTE="$WIN_EXE_REMOTE"
+export MAC_SHA="$MAC_SHA256"
+export WIN_SHA="$WIN_SHA256"
+export MAC_FSIZE="$MAC_FILE_SIZE"
+export WIN_FSIZE="$WIN_FILE_SIZE"
+
+# 将 changelog 写入临时文件（安全传递，避免注入）
+CHANGELOG_TMP="/tmp/vermes-changelog.txt"
+if [ -n "$CHANGELOG" ]; then
+  printf '%s\n' "$CHANGELOG" > "$CHANGELOG_TMP"
+else
+  echo "版本更新" > "$CHANGELOG_TMP"
+fi
+
+python3 << 'PYEOF'
+import json, os, sys
+
+version = os.environ["VER"]
+build_date = os.environ["BDATE"]
+mac_remote = os.environ["MAC_REMOTE"]
+win_remote = os.environ["WIN_REMOTE"]
+mac_sha = os.environ["MAC_SHA"]
+win_sha = os.environ["WIN_SHA"]
+mac_fsize = int(os.environ["MAC_FSIZE"] or "0")
+win_fsize = int(os.environ["WIN_FSIZE"] or "0")
+
+# 安全读取 changelog（从文件，不嵌入 shell 变量）
+changelog_path = "/tmp/vermes-changelog.txt"
+try:
+    with open(changelog_path, "r", encoding="utf-8") as f:
+        changelog = [line.strip() for line in f if line.strip()]
+except Exception:
+    changelog = ["版本更新"]
 
 data = {
-    'version': '${VERSION}',
-    'buildDate': '${BUILD_DATE}',
-    'download_url': {},
-    'sha256': {},
-    'macOS': {},
-    'windows': {},
-    'changelog': json.loads('${CHANGELOG}')
+    "version": version,
+    "buildDate": build_date,
+    "download_url": {},
+    "sha256": {},
+    "macOS": {},
+    "windows": {},
+    "changelog": changelog,
 }
 
-if '${MAC_DMG_REMOTE}':
-    data['download_url']['macos_dmg'] = 'https://vbit.top${MAC_DMG_REMOTE}'
-    data['macOS'] = {
-        'dmg': '${MAC_DMG_REMOTE}',
-        'size': '${MAC_SIZE_HUMAN}',
-        'arch': 'arm64 (Apple Silicon)'
+if mac_remote:
+    data["download_url"]["macos_dmg"] = f"https://vbit.top{mac_remote}"
+    data["sha256"]["macos_dmg"] = mac_sha
+    data["macOS"] = {
+        "dmg": mac_remote,
+        "size": f"{mac_fsize / 1024 / 1024:.0f} MB",
+        "arch": "arm64 (Apple Silicon)",
     }
 
-if '${WIN_EXE_REMOTE}':
-    data['download_url']['windows_exe'] = 'https://vbit.top${WIN_EXE_REMOTE}'
-    data['windows'] = {
-        'exe': '${WIN_EXE_REMOTE}',
-        'size': '${WIN_SIZE_HUMAN}'
+if win_remote:
+    data["download_url"]["windows_exe"] = f"https://vbit.top{win_remote}"
+    data["sha256"]["windows_exe"] = win_sha  # 注意：与 download_url 键名一致
+    data["windows"] = {
+        "exe": win_remote,
+        "size": f"{win_fsize / 1024 / 1024:.0f} MB",
     }
 
-print(json.dumps(data, indent=2, ensure_ascii=False))
-" > /tmp/vermes-version.json
+with open("/tmp/vermes-version.json", "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PYEOF
 
 cat /tmp/vermes-version.json
 echo "  ✅ version.json 已生成"
@@ -211,7 +231,7 @@ YMLEOF
 
   # 上传 DMG 到 updates 目录 + yml
   echo "⬆️  上传 Mac 更新文件"
-  ssh $SCP_OPTS $SERVER "mkdir -p $UPDATES_DIR/mac/arm64"
+  ssh $SCP_OPTS "$SERVER" "mkdir -p $UPDATES_DIR/mac/arm64"
   scp $SCP_OPTS "$MAC_DMG" "$SERVER:$UPDATES_DIR/mac/arm64/$MAC_DMG_YML_NAME"
   scp $SCP_OPTS /tmp/vermes-latest-mac.yml "$SERVER:$UPDATES_DIR/mac/arm64/latest-mac.yml"
   scp $SCP_OPTS /tmp/vermes-latest-mac.yml "$SERVER:$UPDATES_DIR/mac/arm64/latest.yml"
@@ -233,7 +253,7 @@ releaseDate: "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 YMLEOF
 
   echo "⬆️  上传 Windows 更新文件"
-  ssh $SCP_OPTS $SERVER "mkdir -p $UPDATES_DIR/win/x64"
+  ssh $SCP_OPTS "$SERVER" "mkdir -p $UPDATES_DIR/win/x64"
   scp $SCP_OPTS "$WIN_EXE" "$SERVER:$UPDATES_DIR/win/x64/$WIN_EXE_YML_NAME"
   scp $SCP_OPTS /tmp/vermes-latest.yml "$SERVER:$UPDATES_DIR/win/x64/latest.yml"
   echo "  ✅ Windows x64 更新文件已部署"
@@ -306,3 +326,6 @@ else
   echo "  ⚠️  v${VERSION} 发布完成，但有 ${ERRORS} 个验证失败"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi
+
+# 清理临时文件
+rm -f /tmp/vermes-changelog.txt /tmp/vermes-version.json /tmp/vermes-latest-mac.yml /tmp/vermes-latest.yml
