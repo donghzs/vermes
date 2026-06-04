@@ -766,7 +766,6 @@ def apply_pending_update() -> Optional[str]:
             if not _wait_port_release(9119, timeout=10):
                 print("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
             subprocess.Popen(["open", str(app_path)])
-            import sys
             sys.exit(0)
 
         elif platform.system() == "Windows":
@@ -780,7 +779,6 @@ def apply_pending_update() -> Optional[str]:
             if not _wait_port_release(9119, timeout=10):
                 print("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
             subprocess.Popen([str(app_path / "Vermes.exe")])
-            import sys
             sys.exit(0)
 
     except Exception as e:
