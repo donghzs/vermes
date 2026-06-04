@@ -17,7 +17,7 @@
 set -euo pipefail
 
 # ── 配置 ──
-SERVER="REDACTED_USER@REDACTED_SERVER_IP"
+SERVER="${DEPLOY_SERVER:-}"  # 设置环境变量: export DEPLOY_SERVER=<user>@<server-ip>
 REMOTE_BASE="/var/www/html/vermes"
 DOWNLOADS_DIR="$REMOTE_BASE/downloads"
 UPDATES_DIR="$REMOTE_BASE/updates"
@@ -70,6 +70,13 @@ if [ -n "$WIN_EXE" ] && [ ! -f "$WIN_EXE" ]; then
 fi
 
 # ── 检测 SSH 连接 ──
+if [ -z "$SERVER" ]; then
+  echo "❌ 未设置 DEPLOY_SERVER 环境变量"
+  echo "   用法: export DEPLOY_SERVER=<user>@<server-ip>"
+  echo "   然后重新运行此脚本"
+  exit 1
+fi
+
 echo "📡 检查服务器连接..."
 if ! ssh $SCP_OPTS "$SERVER" "echo ok" > /dev/null 2>&1; then
   echo "❌ 无法连接服务器 $SERVER"
