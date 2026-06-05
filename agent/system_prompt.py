@@ -40,6 +40,7 @@ from agent.prompt_builder import (
     TASK_COMPLETION_GUIDANCE,
     TOOL_USE_ENFORCEMENT_GUIDANCE,
     TOOL_USE_ENFORCEMENT_MODELS,
+    TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS,
 )
 
 
@@ -143,7 +144,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # Tool-use enforcement: tells the model to actually call tools instead
     # of describing intended actions.  Controlled by config.yaml
     # agent.tool_use_enforcement:
-    #   "auto" (default) — matches TOOL_USE_ENFORCEMENT_MODELS
+    #   "auto" (default) — enables for ALL models (except EXCLUDED_MODELS)
     #   true  — always inject (all models)
     #   false — never inject
     #   list  — custom model-name substrings to match
@@ -158,9 +159,13 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             model_lower = (agent.model or "").lower()
             _inject = any(p.lower() in model_lower for p in _enforce if isinstance(p, str))
         else:
-            # "auto" or any unrecognised value — use hardcoded defaults
+            # "auto" or any unrecognised value — enable for ALL models by
+            # default.  Only exclude models known to lack tool-calling support.
             model_lower = (agent.model or "").lower()
-            _inject = any(p in model_lower for p in TOOL_USE_ENFORCEMENT_MODELS)
+            _inject = not any(
+                p in model_lower
+                for p in TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS
+            )
         if _inject:
             stable_parts.append(TOOL_USE_ENFORCEMENT_GUIDANCE)
             _model_lower = (agent.model or "").lower()

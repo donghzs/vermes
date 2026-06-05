@@ -73,8 +73,9 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
-      "perMachine": true,
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "installerIcon": "assets/vermes.ico",
