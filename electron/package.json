@@ -80,7 +80,8 @@
       "createStartMenuShortcut": true,
       "installerIcon": "assets/vermes.ico",
       "uninstallerIcon": "assets/vermes.ico",
-      "language": "2052"
+      "language": "2052",
+      "include": "installer.nsh"
     }
   },
   "devDependencies": {
