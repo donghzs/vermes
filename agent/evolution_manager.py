@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 def get_evolution_dir() -> Path:
     """Get the evolution data directory."""
-    hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
-    return Path(hermes_home) / "evolution"
+    vermes_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
+    return Path(vermes_home) / "evolution"
 
 
 def get_self_model_db() -> Path:

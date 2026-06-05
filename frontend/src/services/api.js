@@ -415,7 +415,7 @@ const api = {
         if (!signal?.aborted) {
           try {
             // 重新发起请求（后端会创建新 stream）
-            await api.sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, provider, attachments })
+            await api.sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id })
             _sseRetryCount = 0  // 成功后重置
             return
           } catch (retryErr) {
