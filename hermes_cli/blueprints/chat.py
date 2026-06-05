@@ -321,6 +321,29 @@ def _validate_attachments(attachments: list[AttachmentData] | None) -> tuple[lis
 
 # ── Credential resolution ────────────────────────────────────────────
 
+def _load_toolsets_for_web() -> list[str] | None:
+    """Load enabled toolsets for web UI agent."""
+    import os
+    # Check environment variable first
+    env_toolsets = os.environ.get("HERMES_TUI_TOOLSETS", "")
+    if env_toolsets:
+        return [t.strip() for t in env_toolsets.split(",") if t.strip()]
+    # Fall back to config
+    try:
+        from hermes_constants import get_hermes_home
+        import yaml
+        cfg_path = os.path.join(get_hermes_home(), "config.yaml")
+        if os.path.exists(cfg_path):
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f) or {}
+            toolsets = cfg.get("toolsets")
+            if toolsets:
+                return toolsets if isinstance(toolsets, list) else [toolsets]
+    except Exception:
+        pass
+    return ["hermes-cli"]  # default
+
+
 def _get_chat_credentials() -> tuple[str, str, str]:
     """Return (base_url, api_key, default_model) from config.yaml + .env."""
     from hermes_constants import get_hermes_home
@@ -676,6 +699,7 @@ async def chat_completions(req: ChatRequest):
                 quiet_mode=True,
                 verbose_logging=False,
                 platform="web",
+                enabled_toolsets=_load_toolsets_for_web(),
             )
             _agent_cache.put(_cache_key, agent)
             _log.info(f"[Agent] Created new agent for session {_session_id}")
