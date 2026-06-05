@@ -53,9 +53,12 @@ export const useUpdateStore = () => {
     if (checked.value) return
     checked.value = true
 
-    // Electron 桌面模式：使用 electron-updater
+    // Electron 桌面模式：使用 electron-updater + Agent 框架更新
     if (isDesktop && window.vermes?.checkForUpdates) {
-      return checkUpdateElectron()
+      await checkUpdateElectron()
+      // 桌面端也要检查 Agent 框架更新
+      await checkAgentUpdate()
+      return
     }
 
     // Web 模式：并行检查壳更新 + Agent 框架更新
