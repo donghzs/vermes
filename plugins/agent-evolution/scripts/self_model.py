@@ -87,6 +87,23 @@ def init_db():
         pass  # Column already exists
     
     try:
+        cursor.execute("ALTER TABLE outcomes ADD COLUMN role TEXT DEFAULT 'default'")
+    except sqlite3.OperationalError:
+        pass
+    
+    # Create roles table (角色涌现)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT UNIQUE NOT NULL,
+            signature TEXT NOT NULL,
+            frequency INTEGER DEFAULT 1,
+            first_seen TEXT,
+            last_seen TEXT
+        )
+    ''')
+    
+    try:
         cursor.execute("ALTER TABLE outcomes ADD COLUMN domain TEXT DEFAULT '通用'")
     except sqlite3.OperationalError:
         pass
