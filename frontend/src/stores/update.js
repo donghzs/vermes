@@ -3,12 +3,15 @@ import { ref } from 'vue'
 /* global __APP_VERSION__ */
 const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
+const AGENT_VERSION_URL = '/api/agent/check'
 const DISMISS_KEY = 'vermes_update_dismissed'
+const AGENT_DISMISS_KEY = 'vermes_agent_update_dismissed'
 
 // 是否为 Electron 桌面环境
 const isDesktop = typeof window !== 'undefined' && window.vermes?.isDesktop
 
 export const useUpdateStore = () => {
+  // ── 应用更新（壳更新）
   const hasUpdate = ref(false)
   const latestVersion = ref('')
   const checked = ref(false)
@@ -17,7 +20,18 @@ export const useUpdateStore = () => {
   const sha256 = ref('')
   const minDataVersion = ref('')
 
-  // 自更新状态
+  // ── Agent 框架更新（脑更新）
+  const agentHasUpdate = ref(false)
+  const agentLatestVersion = ref('')
+  const agentCurrentVersion = ref('')
+  const agentChangelog = ref([])
+  const agentDownloadUrl = ref('')
+  const agentSha256 = ref('')
+  const agentMirrorUrl = ref('')
+  const agentSizeBytes = ref(0)
+  const agentChecked = ref(false)
+
+  // ── 通用更新状态
   const updating = ref(false)
   const updateProgress = ref(0)
   const updateStatus = ref('')
@@ -44,8 +58,11 @@ export const useUpdateStore = () => {
       return checkUpdateElectron()
     }
 
-    // Web 模式：从 vbit.top 获取版本信息
-    return checkUpdateWeb()
+    // Web 模式：并行检查壳更新 + Agent 框架更新
+    return Promise.all([
+      checkUpdateWeb(),
+      checkAgentUpdate(),
+    ])
   }
 
   /** Electron 原生更新检查 */
@@ -127,7 +144,7 @@ export const useUpdateStore = () => {
             ? (res.download_url.macos_dmg || res.download_url.macos_zip || '')
             : (res.download_url.windows_zip || res.download_url.windows_exe || '')
         } else if (res.macOS || res.windows) {
-          // 兼容 version.json 嵌套结构：{ macOS: { dmg: "..." }, windows: { exe: "..." } }
+          // 兼容 version.json 嵌套结构
           if (isMac && res.macOS) {
             const rel = res.macOS.dmg || res.macOS.zip || ''
             downloadUrl.value = rel.startsWith('/') ? `https://vbit.top${rel}` : rel
@@ -164,6 +181,36 @@ export const useUpdateStore = () => {
     }
   }
 
+  /** 检查 Agent 框架更新 */
+  async function checkAgentUpdate() {
+    if (agentChecked.value) return
+    try {
+      const res = await fetch(AGENT_VERSION_URL, { signal: AbortSignal.timeout(5000) })
+        .then(r => r.json())
+        .catch(() => null)
+
+      if (res && res.has_update) {
+        const ver = res.latest_version
+        if (localStorage.getItem(AGENT_DISMISS_KEY) === ver) {
+          return
+        }
+        agentHasUpdate.value = true
+        agentLatestVersion.value = ver
+        agentCurrentVersion.value = res.current_version
+        agentChangelog.value = res.changelog || []
+        agentDownloadUrl.value = res.download_url || ''
+        agentSha256.value = res.sha256 || ''
+        agentMirrorUrl.value = res.mirror_url || ''
+        agentSizeBytes.value = res.size_bytes || 0
+      } else if (res) {
+        agentCurrentVersion.value = res.current_version || '0.0.0'
+      }
+      agentChecked.value = true
+    } catch (e) {
+      console.warn('[Vermes Agent Update] check error:', e)
+    }
+  }
+
   function isNewer(latest, current) {
     // 兼容带 v 前缀的版本号（如 "v2.0.7"）和预发布后缀（如 "2.0.7-beta"）
     const stripV = (v) => v.replace(/^v/i, '')
@@ -180,6 +227,11 @@ export const useUpdateStore = () => {
   function dismissUpdate() {
     hasUpdate.value = false
     try { localStorage.setItem(DISMISS_KEY, latestVersion.value) } catch(e) {}
+  }
+
+  function dismissAgentUpdate() {
+    agentHasUpdate.value = false
+    try { localStorage.setItem(AGENT_DISMISS_KEY, agentLatestVersion.value) } catch(e) {}
   }
 
   /**
@@ -216,6 +268,90 @@ export const useUpdateStore = () => {
 
     // Web 模式：后端 SSE 流式下载
     return startUpdateWeb()
+  }
+
+  /** Agent 框架更新（脑更新，不重启壳） */
+  async function startAgentUpdate() {
+    if (updating.value) return
+    updating.value = true
+    updateError.value = ''
+    updateProgress.value = 0
+    updateStatus.value = 'downloading'
+    updateMessage.value = '准备下载 Agent 框架...'
+
+    try {
+      const response = await fetch('/api/agent/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version: agentLatestVersion.value,
+          url: agentDownloadUrl.value,
+          sha256: agentSha256.value,
+          mirror_url: agentMirrorUrl.value,
+        })
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.detail || `下载失败 (${response.status})`)
+      }
+
+      // 读取 SSE 流
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              updateProgress.value = data.progress || 0
+              updateStatus.value = data.status || ''
+              updateMessage.value = data.message || ''
+              updateError.value = data.error || ''
+              downloadedBytes.value = data.downloaded_bytes || 0
+              totalBytes.value = data.total_bytes || 0
+              speedBps.value = data.speed_bps || 0
+              etaSeconds.value = data.eta_seconds || 0
+
+              if (data.status === 'error') {
+                throw new Error(data.error || '下载失败')
+              }
+            } catch (parseErr) {
+              if (parseErr.message && !parseErr.message.includes('JSON')) {
+                throw parseErr
+              }
+            }
+          }
+        }
+      }
+
+      // Agent 更新完成 — gateway 自动重启，无需关闭窗口
+      updateStatus.value = 'done'
+      updateMessage.value = '✅ Agent 框架已更新，Gateway 正在重启...'
+      agentHasUpdate.value = false
+      agentCurrentVersion.value = agentLatestVersion.value
+
+      // 等待 gateway 重启完成后重新连接
+      setTimeout(() => {
+        updating.value = false
+      }, 3000)
+
+    } catch (e) {
+      console.error('[Vermes Agent Update] error:', e)
+      updateStatus.value = 'error'
+      updateError.value = e.message || '更新失败'
+      updateMessage.value = `❌ ${e.message || '更新失败'}`
+      updating.value = false
+    }
   }
 
   /** Web 模式：SSE 流式下载 */
@@ -385,6 +521,16 @@ export const useUpdateStore = () => {
     checkUpdate,
     dismissUpdate,
     checked,
+    // Agent 框架更新
+    agentHasUpdate,
+    agentLatestVersion,
+    agentCurrentVersion,
+    agentChangelog,
+    agentSizeBytes,
+    checkAgentUpdate,
+    dismissAgentUpdate,
+    agentChecked,
+    startAgentUpdate,
     // 自更新
     updating,
     updateProgress,

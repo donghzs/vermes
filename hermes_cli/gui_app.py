@@ -13,6 +13,9 @@ import threading
 import platform
 import webbrowser
 import socket
+
+# Gateway server 实例（用于 restart 时优雅关闭）
+server_instance = None
 import subprocess
 
 # ── 日志重定向：console=True 时输出到 CMD 窗口 + 日志文件 ──
@@ -104,6 +107,23 @@ def find_existing_port():
 
 # 确保 hermes_cli 可导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# ── Agent 框架热加载 ──────────────────────────────────────────────────
+_vermes_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
+_agent_dir = os.path.join(_vermes_home, "agent")
+if os.path.isdir(_agent_dir):
+    sys.path.insert(0, _agent_dir)
+    _ver_file = os.path.join(_agent_dir, ".version")
+    if os.path.exists(_ver_file):
+        try:
+            _ver = open(_ver_file, encoding="utf-8").read().strip()
+            print(f"[Vermes] Agent 框架 v{_ver} 已加载 ({_agent_dir})")
+        except Exception:
+            pass
+    else:
+        print(f"[Vermes] Agent 框架已加载 ({_agent_dir})")
+# ── 热加载结束 ────────────────────────────────────────────────────────
+
 from hermes_cli.shutdown_signal import shutdown_event
 
 
@@ -287,16 +307,15 @@ def start_server():
         print(f"[Vermes] ⚠️ 无法写入端口文件: {e}")
 
     print(f"[Vermes] 后端启动在端口 {port}")
+    global server_instance
     try:
         # 强制启用 agent 模式
         from hermes_cli import web_server as _ws
         _ws._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
 
-        uvicorn.run(fastapi_app,
-                    host="127.0.0.1",
-                    port=port,
-                    log_level="info",
-                    lifespan="off")
+        config = uvicorn.Config(fastapi_app, host="127.0.0.1", port=port, log_level="info", lifespan="off")
+        server_instance = uvicorn.Server(config)
+        server_instance.run()
     except Exception as e:
         print(f"[Vermes] ❌ 后端崩溃: {type(e).__name__}: {e}")
         import traceback
@@ -389,14 +408,46 @@ def main(port):
         print(f"[Vermes] ❌ 原生窗口失败: {e}")
         print("[Vermes] 请检查 pywebview 是否正确安装: pip install pywebview")
 
-    # 保持进程运行，等待退出信号
-    try:
-        shutdown_event.wait()
+    # 保持进程运行，等待退出/重启信号
+    from hermes_cli.shutdown_signal import restart_event
+
+    while True:
+        try:
+            # 等待任一信号
+            while not shutdown_event.is_set() and not restart_event.is_set():
+                shutdown_event.wait(timeout=1.0)
+                restart_event.wait(timeout=0.1)
+                if shutdown_event.is_set() or restart_event.is_set():
+                    break
+        except KeyboardInterrupt:
+            print("[Vermes] 退出。")
+            os._exit(0)
+
+        if restart_event.is_set():
+            print("[Vermes] 收到重启信号，重启 Gateway...")
+            restart_event.clear()
+            # 停止当前 uvicorn
+            if server_instance:
+                server_instance.should_exit = True
+                time.sleep(2)  # 等待 uvicorn 优雅关闭
+            # 重新启动 uvicorn
+            print("[Vermes] Gateway 重启中...")
+            import uvicorn
+            from hermes_cli.web_server import app as fastapi_app_restart
+            from hermes_cli.web_server import _DASHBOARD_EMBEDDED_CHAT_ENABLED
+            _DASHBOARD_EMBEDDED_CHAT_ENABLED = True
+            config = uvicorn.Config(fastapi_app_restart, host="127.0.0.1", port=port, log_level="info", lifespan="off")
+            server_instance = uvicorn.Server(config)
+            import threading
+            threading.Thread(target=server_instance.run, daemon=True).start()
+            print("[Vermes] ✅ Gateway 已重启")
+            continue  # 回到等待循环
+
+        # shutdown_event
         print("[Vermes] 收到退出信号，关闭后端...")
-    except KeyboardInterrupt:
-        print("[Vermes] 退出。")
-    finally:
-        os._exit(0)
+        break
+
+    os._exit(0)
 
 
 def _apply_pending_update_if_any():

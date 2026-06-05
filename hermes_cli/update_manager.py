@@ -815,6 +815,312 @@ def _cleanup_after_apply():
         pass
 
 
+# ── Agent 框架更新（壳定版 · 脑进化）───────────────────────────────────
+#
+# 设计：Agent 框架代码部署在 ~/.vermes/agent/，不放在 app bundle 内。
+# 壳（Electron / pywebview）定版不动，框架通过 tar.gz 热更新。
+# 启动时 backend_main.py 将 ~/.vermes/agent/ 插入 sys.path 前面，
+# 优先加载用户目录的框架代码，回退到 bundle 内置代码。
+
+AGENT_DIR = HERMES_HOME / "agent"          # ~/.vermes/agent/
+AGENT_VERSION_FILE = AGENT_DIR / ".version"  # 当前框架版本
+AGENT_UPDATE_DIR = UPDATE_DIR / "agent"     # 下载暂存
+
+# Agent 框架包应包含的顶层目录（白名单，防止解压出无关文件）
+AGENT_ALLOWED_TOP_DIRS = {
+    "agent", "hermes_cli", "plugins", "gateway", "tools",
+    "skills", "cron", "packaging",
+}
+AGENT_ALLOWED_TOP_FILES = {
+    "backend_main.py", "run_agent.py", "utils.py", "toolsets.py",
+    "hermes_bootstrap.py", "hermes_constants.py", "hermes_logging.py",
+    "hermes_state.py", "hermes_time.py", "model_tools.py",
+    "toolset_distributions.py",
+}
+
+
+def get_agent_version() -> str:
+    """获取当前 Agent 框架版本号"""
+    if AGENT_VERSION_FILE.exists():
+        try:
+            return AGENT_VERSION_FILE.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+    # 回退：从 __init__.py 读取
+    init_py = AGENT_DIR / "hermes_cli" / "__init__.py"
+    if init_py.exists():
+        try:
+            import re
+            m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', init_py.read_text(encoding="utf-8"))
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return "0.0.0"
+
+
+def _validate_agent_tar(tar_path: str) -> List[str]:
+    """校验 tar.gz 内容合法性，返回顶层条目列表
+
+    拒绝：
+    - 绝对路径条目（路径穿越）
+    - 不在白名单内的顶层目录/文件
+    """
+    top_entries = set()
+    with tarfile.open(tar_path, "r:gz") as tf:
+        for member in tf.getmembers():
+            name = member.name
+            # 路径穿越检查
+            if name.startswith("/") or ".." in name.split("/"):
+                raise ValueError(f"非法路径: {name}")
+            # 收集顶层条目
+            top = name.split("/")[0]
+            if top.startswith("."):
+                continue  # 允许 ._ 等 macOS 元数据（后面会过滤）
+            top_entries.add(top)
+
+    # 白名单校验
+    for entry in top_entries:
+        if entry not in AGENT_ALLOWED_TOP_DIRS and entry not in AGENT_ALLOWED_TOP_FILES:
+            _log.warning(f"[AgentUpdate] 未知顶层条目: {entry}（允许但记录）")
+
+    return list(top_entries)
+
+
+async def agent_download_and_verify(
+    version: str,
+    url: str,
+    sha256: str = "",
+    mirror_url: str = "",
+) -> str:
+    """下载 Agent 框架包并校验
+
+    Args:
+        version: 目标版本号
+        url: 主下载地址（vbit.top 镜像）
+        sha256: 预期 SHA256
+        mirror_url: 备用下载地址（GitHub）
+
+    Returns:
+        下载文件路径
+    """
+    AGENT_UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    filename = url.split("/")[-1]
+    download_path = str(AGENT_UPDATE_DIR / filename)
+
+    await _reset_progress()
+    await _set_progress(version=version, message="准备下载 Agent 框架...")
+
+    # 尝试主源
+    urls_to_try = [url]
+    if mirror_url and mirror_url != url:
+        urls_to_try.append(mirror_url)
+
+    last_error = None
+    for try_url in urls_to_try:
+        try:
+            actual_sha256 = await download_with_progress(
+                url=try_url,
+                dest_path=download_path,
+                expected_sha256=sha256,
+                timeout=300.0,
+            )
+            # 校验 tar.gz 内容
+            await _set_progress(
+                status=UpdateStatus.VERIFYING,
+                message="正在校验包内容...",
+                progress=99,
+            )
+            _validate_agent_tar(download_path)
+            return download_path
+
+        except Exception as e:
+            last_error = e
+            _log.warning(f"[AgentUpdate] 下载失败 ({try_url}): {e}")
+            # 清理失败的下载
+            if os.path.exists(download_path):
+                os.remove(download_path)
+            continue
+
+    raise RuntimeError(f"所有下载源均失败: {last_error}")
+
+
+async def agent_apply_update(version: str, tar_path: str) -> dict:
+    """应用 Agent 框架更新
+
+    流程：
+    1. 备份当前 ~/.vermes/agent/ 到 ~/.vermes/backup/agent-v{old_version}/
+    2. 解压 tar.gz 到临时目录
+    3. 过滤 macOS 元数据文件（._*）
+    4. 原子替换 ~/.vermes/agent/
+    5. 写入版本号
+    6. 触发 gateway 重启（不关壳）
+
+    Returns:
+        {"ok": True, "version": ..., "backup_path": ...}
+    """
+    current_version = get_agent_version()
+
+    # 1. 备份当前框架
+    await _set_progress(
+        status=UpdateStatus.BACKING_UP,
+        message=f"备份当前框架 v{current_version}...",
+    )
+    backup_path = BACKUP_DIR / f"agent-v{current_version}"
+    if AGENT_DIR.exists() and current_version != "0.0.0":
+        if backup_path.exists():
+            shutil.rmtree(backup_path)
+        shutil.copytree(AGENT_DIR, backup_path)
+        _log.info(f"[AgentUpdate] 已备份 v{current_version} 到 {backup_path}")
+    else:
+        backup_path = None
+
+    # 2. 解压到临时目录
+    await _set_progress(
+        status=UpdateStatus.EXTRACTING,
+        message="正在解压框架包...",
+        progress=99.5,
+    )
+    temp_dir = AGENT_UPDATE_DIR / "extract"
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    with tarfile.open(tar_path, "r:gz") as tf:
+        # 过滤 macOS 元数据和不在白名单的条目
+        safe_members = []
+        for member in tf.getmembers():
+            name = member.name
+            # 跳过 macOS resource fork
+            if "/._" in name or name.startswith("._"):
+                continue
+            # 路径穿越
+            if name.startswith("/") or ".." in name.split("/"):
+                continue
+            safe_members.append(member)
+        tf.extractall(temp_dir, members=safe_members)
+
+    # 3. 原子替换
+    await _set_progress(
+        status=UpdateStatus.APPLYING,
+        message="正在应用框架更新...",
+    )
+    old_agent = AGENT_DIR.parent / (AGENT_DIR.name + ".old")
+    new_agent = AGENT_DIR.parent / (AGENT_DIR.name + ".new")
+
+    try:
+        if new_agent.exists():
+            shutil.rmtree(new_agent)
+        # 检查 tar.gz 是否有顶层 agent/ 目录
+        extracted_items = list(temp_dir.iterdir())
+        if len(extracted_items) == 1 and extracted_items[0].is_dir() and extracted_items[0].name == "agent":
+            # tar.gz 包含顶层 agent/ 目录
+            shutil.copytree(extracted_items[0], new_agent)
+        else:
+            # tar.gz 内容直接是各子目录，套一层
+            shutil.copytree(temp_dir, new_agent)
+
+        # 原子切换
+        if AGENT_DIR.exists():
+            os.rename(str(AGENT_DIR), str(old_agent))
+        os.rename(str(new_agent), str(AGENT_DIR))
+
+        # 清理旧版本
+        if old_agent.exists():
+            shutil.rmtree(old_agent, ignore_errors=True)
+
+    except Exception as e:
+        # 回滚
+        if new_agent.exists():
+            shutil.rmtree(new_agent, ignore_errors=True)
+        if old_agent.exists() and not AGENT_DIR.exists():
+            os.rename(str(old_agent), str(AGENT_DIR))
+        raise RuntimeError(f"框架替换失败: {e}")
+
+    # 4. 写入版本号
+    AGENT_VERSION_FILE.write_text(version, encoding="utf-8")
+
+    # 5. 清理临时文件
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    if os.path.exists(tar_path):
+        os.remove(tar_path)
+    cleanup_old_backups()
+
+    await _set_progress(
+        status=UpdateStatus.DONE,
+        progress=100,
+        message=f"✅ Agent 框架已更新到 v{version}",
+    )
+
+    _log.info(f"[AgentUpdate] 框架更新完成: v{current_version} → v{version}")
+
+    return {
+        "ok": True,
+        "version": version,
+        "previous_version": current_version,
+        "backup_path": str(backup_path) if backup_path else None,
+    }
+
+
+def agent_rollback(version: str) -> dict:
+    """回滚 Agent 框架到指定版本
+
+    Returns:
+        {"ok": True, "version": ...}
+    """
+    backup_path = BACKUP_DIR / f"agent-v{version}"
+    if not backup_path.exists():
+        raise FileNotFoundError(f"备份 agent-v{version} 不存在")
+
+    old_agent = AGENT_DIR.parent / (AGENT_DIR.name + ".old")
+
+    try:
+        if AGENT_DIR.exists():
+            os.rename(str(AGENT_DIR), str(old_agent))
+        shutil.copytree(backup_path, AGENT_DIR)
+
+        # 更新版本号
+        AGENT_VERSION_FILE.write_text(version, encoding="utf-8")
+
+        if old_agent.exists():
+            shutil.rmtree(old_agent, ignore_errors=True)
+
+    except Exception as e:
+        # 回滚
+        if old_agent.exists() and not AGENT_DIR.exists():
+            os.rename(str(old_agent), str(AGENT_DIR))
+        raise RuntimeError(f"回滚失败: {e}")
+
+    _log.info(f"[AgentUpdate] 回滚完成: → v{version}")
+    return {"ok": True, "version": version}
+
+
+def agent_list_backups() -> List[Dict[str, Any]]:
+    """列出 Agent 框架的可用备份"""
+    backups = []
+    if not BACKUP_DIR.exists():
+        return backups
+
+    for item in sorted(BACKUP_DIR.iterdir(), reverse=True):
+        if item.is_dir() and item.name.startswith("agent-v"):
+            version = item.name.lstrip("agent-v")
+            meta = {}
+            meta_file = item / ".version"
+            if meta_file.exists():
+                try:
+                    version = meta_file.read_text(encoding="utf-8").strip()
+                except Exception:
+                    pass
+
+            backups.append({
+                "version": version,
+                "path": str(item),
+                "type": "agent",
+            })
+
+    return backups
+
+
 # ── 日志 ─────────────────────────────────────────────────────────────────
 
 try:
