@@ -32,75 +32,34 @@ onMounted(async () => {
     </div>
   </div>
   <div v-else class="flex flex-col h-screen bg-white dark:bg-gray-900" :data-theme="theme">
-    <!-- 应用更新提示条（壳更新，需重启应用） -->
-    <div v-if="update.hasUpdate" class="bg-blue-500 text-white text-center py-2 px-4 text-sm shrink-0">
-      <!-- 未更新状态 -->
-      <div v-if="!update.updating">
-        <div class="flex items-center justify-center gap-2">
-          <span>🎉 发现新版本 v{{ update.latestVersion }}</span>
-          <button @click="showUpdateDetail = !showUpdateDetail" class="underline hover:no-underline text-white/80">更新内容</button>
-          <button @click="update.startUpdate()" class="bg-white text-blue-600 px-2 py-0.5 rounded font-medium hover:bg-blue-50">立即更新</button>
-          <button @click="update.dismissUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
+    <!-- 统一更新提示条 -->
+    <div v-if="update.hasUpdate || update.agentHasUpdate" class="bg-emerald-600 text-white text-center py-2 px-4 text-sm shrink-0">
+      <div class="flex items-center justify-center gap-3 flex-wrap">
+        <!-- 壳更新 -->
+        <span v-if="update.hasUpdate">🎉 新版本 v{{ update.latestVersion }}</span>
+        <button v-if="update.hasUpdate" @click="update.startUpdate()" class="bg-white text-emerald-600 px-2 py-0.5 rounded font-medium hover:bg-emerald-50 text-xs">更新壳</button>
+        <!-- 分隔 -->
+        <span v-if="update.hasUpdate && update.agentHasUpdate" class="text-white/40">|</span>
+        <!-- Agent 框架更新 -->
+        <span v-if="update.agentHasUpdate">🧠 框架 v{{ update.agentLatestVersion }}</span>
+        <button v-if="update.agentHasUpdate" @click="update.startAgentUpdate()" class="bg-white text-emerald-600 px-2 py-0.5 rounded font-medium hover:bg-emerald-50 text-xs">更新框架</button>
+        <!-- 关闭 -->
+        <button @click="update.hasUpdate && update.dismissUpdate(); update.agentHasUpdate && update.dismissAgentUpdate()" class="text-white/60 hover:text-white ml-1">✕</button>
+      </div>
+      <!-- 更新详情 -->
+      <div v-if="showUpdateDetail" class="mt-1 text-xs text-white/80 max-w-lg mx-auto text-left leading-relaxed">
+        <div v-if="update.releaseNotes" v-for="(line, i) in update.releaseNotes.split('\n')" :key="'shell-'+i" class="flex items-start gap-1">
+          <span class="text-white/50 mt-0.5">•</span><span>{{ line }}</span>
         </div>
-        <!-- 更新概要 -->
-        <div v-if="showUpdateDetail && update.releaseNotes" class="mt-1 text-xs text-white/80 max-w-lg mx-auto text-left leading-relaxed">
-          <div v-for="(line, i) in update.releaseNotes.split('\n')" :key="i" class="flex items-start gap-1">
-            <span class="text-white/50 mt-0.5">•</span>
-            <span>{{ line }}</span>
-          </div>
+        <div v-if="update.agentChangelog.length" v-for="(line, i) in update.agentChangelog" :key="'agent-'+i" class="flex items-start gap-1">
+          <span class="text-white/50 mt-0.5">•</span><span>{{ line }}</span>
         </div>
       </div>
-      <!-- 已下载待安装（Electron 模式） -->
-      <div v-else-if="update.updateStatus === 'done' && update.installUpdate" class="flex items-center justify-center gap-2">
-        <span>{{ update.updateMessage }}</span>
-        <button @click="update.installUpdate()" class="bg-white text-blue-600 px-3 py-0.5 rounded font-medium hover:bg-blue-50">安装并重启</button>
-      </div>
-      <!-- 更新中状态 -->
-      <div v-else class="flex flex-col items-center gap-1">
-        <div class="flex items-center gap-2">
-          <span v-if="update.updateStatus === 'downloading'">⬇️ {{ update.updateMessage }}</span>
-          <span v-else-if="update.updateStatus === 'extracting'">📦 正在解压...</span>
-          <span v-else-if="update.updateStatus === 'verifying'">🔍 正在验证校验和...</span>
-          <span v-else-if="update.updateStatus === 'backing_up'">💾 正在备份...</span>
-          <span v-else-if="update.updateStatus === 'applying'">⚙️ 正在应用更新...</span>
-          <span v-else-if="update.updateStatus === 'done'">✅ {{ update.updateMessage }}</span>
-          <span v-else-if="update.updateStatus === 'error'">❌ {{ update.updateError }}</span>
-        </div>
-        <!-- 进度条 -->
+      <!-- 更新进度 -->
+      <div v-if="update.updating" class="mt-1 flex flex-col items-center gap-1">
+        <span class="text-xs">{{ update.updateMessage }}</span>
         <div v-if="update.updateStatus !== 'error'" class="w-48 h-1.5 bg-white/30 rounded-full overflow-hidden">
           <div class="h-full bg-white rounded-full transition-all duration-300" :style="{width: update.updateProgress + '%'}"></div>
-        </div>
-        <!-- 详细信息 -->
-        <div v-if="update.updateStatus === 'downloading'" class="text-xs text-white/70">
-          {{ update.formatBytes(update.downloadedBytes) }}
-          <span v-if="update.totalBytes"> / {{ update.formatBytes(update.totalBytes) }}</span>
-          <span v-if="update.speedBps"> · {{ update.formatSpeed(update.speedBps) }}</span>
-          <span v-if="update.etaSeconds > 0"> · 剩余 {{ update.formatEta(update.etaSeconds) }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Agent 框架更新提示条（脑更新，不重启壳） -->
-    <div v-if="update.agentHasUpdate" class="bg-emerald-600 text-white text-center py-2 px-4 text-sm shrink-0">
-      <div v-if="!update.updating" class="flex items-center justify-center gap-2">
-        <span>🧠 Agent 框架可更新到 v{{ update.agentLatestVersion }}</span>
-        <button @click="showUpdateDetail = !showUpdateDetail" class="underline hover:no-underline text-white/80">更新内容</button>
-        <button @click="update.startAgentUpdate()" class="bg-white text-emerald-600 px-2 py-0.5 rounded font-medium hover:bg-emerald-50">立即更新</button>
-        <button @click="update.dismissAgentUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
-      </div>
-      <div v-else class="flex flex-col items-center gap-1">
-        <div class="flex items-center gap-2">
-          <span>🧠 {{ update.updateMessage }}</span>
-        </div>
-        <div v-if="update.updateStatus !== 'error'" class="w-48 h-1.5 bg-white/30 rounded-full overflow-hidden">
-          <div class="h-full bg-white rounded-full transition-all duration-300" :style="{width: update.updateProgress + '%'}"></div>
-        </div>
-      </div>
-      <!-- Agent 更新内容 -->
-      <div v-if="showUpdateDetail && update.agentChangelog.length" class="mt-1 text-xs text-white/80 max-w-lg mx-auto text-left leading-relaxed">
-        <div v-for="(line, i) in update.agentChangelog" :key="i" class="flex items-start gap-1">
-          <span class="text-white/50 mt-0.5">•</span>
-          <span>{{ line }}</span>
         </div>
       </div>
     </div>
