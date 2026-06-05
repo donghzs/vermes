@@ -2,7 +2,7 @@
 ; 包含内嵌 Python 3.12 + 依赖 + 原生窗口
 
 #define MyAppName "Vermes"
-#define MyAppVersion "2.0.6"
+#define MyAppVersion "2.0.7"
 #define MyAppPublisher "胜比特"
 #define MyAppURL "https://vbit.top"
 #define MyAppExeName "vermes-start.bat"

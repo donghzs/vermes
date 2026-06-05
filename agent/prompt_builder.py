@@ -264,7 +264,16 @@ TOOL_USE_ENFORCEMENT_GUIDANCE = (
 
 # Model name substrings that trigger tool-use enforcement guidance.
 # Add new patterns here when a model family needs explicit steering.
-TOOL_USE_ENFORCEMENT_MODELS = ("gpt", "codex", "gemini", "gemma", "grok", "glm", "qwen", "deepseek")
+# NOTE: With the new default-on policy, this list is only used for
+# config.yaml ``agent.tool_use_enforcement`` list mode.  The "auto"
+# default now enables enforcement for ALL models — use
+# TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS to opt out specific models.
+TOOL_USE_ENFORCEMENT_MODELS = ("gpt", "codex", "gemini", "gemma", "grok", "glm", "qwen", "deepseek", "mimo")
+
+# Models excluded from tool-use enforcement when mode is "auto" (default).
+# Only list models that genuinely do NOT support function/tool calling.
+# Most modern models (including all OpenAI-compatible APIs) support it.
+TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS: tuple = ()
 
 # Universal "finish the job" guidance — applied to ALL models, not gated
 # by model family.  Addresses two cross-model failure modes:
