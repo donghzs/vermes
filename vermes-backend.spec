@@ -136,6 +136,7 @@ a = Analysis(
     excludes=[
         'tkinter', 'test', 'tests', 'pytest',
         'debugpy', 'IPython', 'jupyter', 'notebook', 'sphinx',
+        'ensurepip', '_ensurepip',
         # ML deps — too large
         'torch', 'torchvision', 'torchaudio', 'torch.distributed',
         'scipy', 'scipy.spatial', 'scipy.special', 'scipy.io',
