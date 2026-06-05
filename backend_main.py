@@ -12,6 +12,14 @@ import threading
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 阻止 PyInstaller 打包的 Python 自动运行 ensurepip
+os.environ.pop('PYTHONDONTWRITEBYTECODE', None)
+import importlib
+try:
+    importlib.import_module('ensurepip')._main = lambda *a, **kw: None
+except Exception:
+    pass
+
 # ── Agent 框架热加载 ──────────────────────────────────────────────────
 # 如果 ~/.vermes/agent/ 存在，将其插入 sys.path 最前面，优先加载
 # 这样 Agent 框架更新不需要修改 app bundle，只需替换 ~/.vermes/agent/
