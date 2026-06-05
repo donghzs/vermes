@@ -1234,9 +1234,31 @@ _VALID_CHANNEL_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
 
 
-def _is_public_bind() -> bool:
-    """True when bound to all-interfaces (operator used --insecure)."""
-    return getattr(app.state, "bound_host", "") in {"0.0.0.0", "::"}
+def _ws_client_reason(ws: "WebSocket") -> Optional[str]:
+    """Return a rejection reason for the client IP, or None when allowed.
+
+    Reasons are short machine-parseable tokens logged on the rejection path
+    so a "WS keeps closing" report can be diagnosed from agent.log without a
+    repro. ``None`` means the peer IP passed this gate.
+
+    See :func:`_ws_client_is_allowed` for the full policy rationale.
+    """
+    if getattr(app.state, "auth_required", False):
+        return None
+    bound_host = (getattr(app.state, "bound_host", "") or "").strip().lower()
+    if bound_host and bound_host not in _LOOPBACK_HOSTS:
+        return None
+    client_host = ws.client.host if ws.client else ""
+    if not client_host:
+        # Fail-closed: a loopback-bound dashboard with auth disabled must
+        # not accept a WebSocket with no identifiable peer. ASGI servers
+        # behind a misconfigured proxy or unix socket can deliver
+        # ws.client == None or "" — treating that as "allowed" would let
+        # an unidentified peer reach a loopback-only surface.
+        return f"missing_or_empty_peer bound={bound_host or '?'}"
+    if client_host in _LOOPBACK_HOSTS:
+        return None
+    return f"peer_not_loopback peer={client_host} bound={bound_host or '?'}"
 
 
 def _ws_client_is_allowed(ws: "WebSocket") -> bool:
@@ -1249,7 +1271,10 @@ def _ws_client_is_allowed(ws: "WebSocket") -> bool:
         return True
     client_host = ws.client.host if ws.client else ""
     if not client_host:
-        return True
+        # Fail-closed: see _ws_client_reason for rationale. An empty
+        # client_host on a loopback-bound dashboard with auth disabled
+        # must be rejected, not accepted as a default-allow.
+        return False
     return client_host in _LOOPBACK_HOSTS
 
 # Per-channel subscriber registry used by /api/pub (PTY-side gateway → dashboard)
