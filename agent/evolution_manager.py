@@ -147,39 +147,138 @@ def detect_domain(tool_name: str, args: Dict[str, Any]) -> str:
 
 
 def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") -> str:
-    """Detect active role from tool usage and user message.
+    """Detect active role from usage patterns.
     
-    Returns one of: engineer, trader, researcher, creator, companion
+    Roles are NOT predefined — they emerge from how the user communicates.
+    The first time a new pattern appears, a new role is created automatically.
+    Roles evolve over time as usage patterns change.
     """
-    msg = (user_message or "").lower()
+    if not is_evolution_active():
+        return "default"
     
-    # Trading signals
+    db_path = get_self_model_db()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Extract signature from current interaction
+    signature = _extract_signature(tool_name, args, user_message)
+    
+    if not signature:
+        conn.close()
+        return "default"
+    
+    # Find the most similar existing role
+    cursor.execute('''
+        SELECT role, signature, frequency FROM roles
+        ORDER BY frequency DESC
+    ''')
+    existing_roles = cursor.fetchall()
+    
+    best_match = None
+    best_score = 0.0
+    
+    for role_name, role_sig, freq in existing_roles:
+        score = _signature_similarity(signature, role_sig)
+        if score > best_score:
+            best_score = score
+            best_match = role_name
+    
+    # If similarity > 0.6, use existing role
+    if best_match and best_score > 0.6:
+        cursor.execute('''
+            UPDATE roles SET frequency = frequency + 1, last_seen = ?
+            WHERE role = ?
+        ''', (datetime.now().isoformat(), best_match))
+        conn.commit()
+        conn.close()
+        return best_match
+    
+    # Otherwise, create a new role from this pattern
+    new_role_name = _generate_role_name(signature, user_message)
+    cursor.execute('''
+        INSERT INTO roles (role, signature, frequency, first_seen, last_seen)
+        VALUES (?, ?, 1, ?, ?)
+    ''', (new_role_name, signature, datetime.now().isoformat(), datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    
+    logger.info("Evolution: new role emerged: %s (signature: %s)", new_role_name, signature[:50])
+    return new_role_name
+
+
+def _extract_signature(tool_name: str, args: Dict[str, Any], user_message: str) -> str:
+    """Extract a behavioral signature from the current interaction."""
+    parts = []
+    
+    if tool_name:
+        parts.append(f"tool:{tool_name}")
+    
     if tool_name == "terminal":
-        cmd = args.get("command", "").lower()
-        if any(x in cmd for x in ["trader", "binance", "exchange", "ccxt", "kline", "candle"]):
-            return "trader"
-    if any(x in msg for x in ["交易", "策略", "仓位", "止损", "k线", "行情", "量化", "trading", "strategy"]):
-        return "trader"
+        cmd = args.get("command", "").lower()[:100]
+        # Extract key verbs/tools from command
+        keywords = []
+        for word in ["git", "npm", "pip", "docker", "ssh", "python", "node", "curl", 
+                     "build", "test", "deploy", "install", "push", "pull", "clone"]:
+            if word in cmd:
+                keywords.append(word)
+        if keywords:
+            parts.append("cmds:" + ",".join(keywords[:5]))
     
-    # Research signals
-    if tool_name in ("web_search", "browser_navigate", "arxiv_search"):
-        return "researcher"
-    if any(x in msg for x in ["研究", "分析", "调研", "报告", "论文", "research", "analyze"]):
-        return "researcher"
+    if tool_name in ("read_file", "write_file", "patch"):
+        path = args.get("path", "").lower()
+        ext = path.rsplit(".", 1)[-1] if "." in path else ""
+        if ext:
+            parts.append(f"ext:{ext}")
     
-    # Creator signals
-    if any(x in msg for x in ["写", "设计", "创意", "文案", "文章", "write", "design", "create"]):
-        return "creator"
+    if user_message:
+        # Extract topic keywords (first 5 meaningful words)
+        words = [w for w in user_message.lower().split() if len(w) > 2][:5]
+        if words:
+            parts.append("topic:" + ",".join(words))
     
-    # Engineer signals (default for tool-heavy work)
-    if tool_name in ("terminal", "read_file", "write_file", "patch", "search_files"):
-        return "engineer"
+    return "|".join(parts) if parts else ""
+
+
+def _signature_similarity(sig1: str, sig2: str) -> float:
+    """Calculate similarity between two behavioral signatures."""
+    if not sig1 or not sig2:
+        return 0.0
     
-    # Companion (conversational)
-    if tool_name in ("memory", "skill_manage") or not tool_name:
-        return "companion"
+    set1 = set(sig1.split("|"))
+    set2 = set(sig2.split("|"))
     
-    return "engineer"  # default
+    if not set1 or not set2:
+        return 0.0
+    
+    intersection = set1 & set2
+    union = set1 | set2
+    
+    return len(intersection) / len(union) if union else 0.0
+
+
+def _generate_role_name(signature: str, user_message: str) -> str:
+    """Generate a human-readable role name from signature."""
+    parts = signature.split("|")
+    
+    # Try to derive name from tools and topics
+    tools = [p.split(":")[1] for p in parts if p.startswith("tool:")]
+    topics = [p.split(":")[1] for p in parts if p.startswith("topic:")]
+    cmds = [p.split(":")[1] for p in parts if p.startswith("cmds:")]
+    
+    # Build name from most distinctive elements
+    name_parts = []
+    
+    if topics:
+        name_parts.extend(topics[0].split(",")[:2])
+    if cmds:
+        name_parts.extend(cmds[0].split(",")[:2])
+    if tools and not name_parts:
+        name_parts.append(tools[0])
+    
+    if name_parts:
+        return "-".join(name_parts[:3])
+    
+    return f"role-{datetime.now().strftime('%H%M%S')}"
 
 
 def extract_error_info(result: str) -> Tuple[str, str]:
