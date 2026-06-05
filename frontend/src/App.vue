@@ -32,7 +32,7 @@ onMounted(async () => {
     </div>
   </div>
   <div v-else class="flex flex-col h-screen bg-white dark:bg-gray-900" :data-theme="theme">
-    <!-- 更新提示条 -->
+    <!-- 应用更新提示条（壳更新，需重启应用） -->
     <div v-if="update.hasUpdate" class="bg-blue-500 text-white text-center py-2 px-4 text-sm shrink-0">
       <!-- 未更新状态 -->
       <div v-if="!update.updating">
@@ -76,6 +76,31 @@ onMounted(async () => {
           <span v-if="update.totalBytes"> / {{ update.formatBytes(update.totalBytes) }}</span>
           <span v-if="update.speedBps"> · {{ update.formatSpeed(update.speedBps) }}</span>
           <span v-if="update.etaSeconds > 0"> · 剩余 {{ update.formatEta(update.etaSeconds) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent 框架更新提示条（脑更新，不重启壳） -->
+    <div v-if="update.agentHasUpdate" class="bg-emerald-600 text-white text-center py-2 px-4 text-sm shrink-0">
+      <div v-if="!update.updating" class="flex items-center justify-center gap-2">
+        <span>🧠 Agent 框架可更新到 v{{ update.agentLatestVersion }}</span>
+        <button @click="showUpdateDetail = !showUpdateDetail" class="underline hover:no-underline text-white/80">更新内容</button>
+        <button @click="update.startAgentUpdate()" class="bg-white text-emerald-600 px-2 py-0.5 rounded font-medium hover:bg-emerald-50">立即更新</button>
+        <button @click="update.dismissAgentUpdate()" class="ml-2 text-white/60 hover:text-white">✕</button>
+      </div>
+      <div v-else class="flex flex-col items-center gap-1">
+        <div class="flex items-center gap-2">
+          <span>🧠 {{ update.updateMessage }}</span>
+        </div>
+        <div v-if="update.updateStatus !== 'error'" class="w-48 h-1.5 bg-white/30 rounded-full overflow-hidden">
+          <div class="h-full bg-white rounded-full transition-all duration-300" :style="{width: update.updateProgress + '%'}"></div>
+        </div>
+      </div>
+      <!-- Agent 更新内容 -->
+      <div v-if="showUpdateDetail && update.agentChangelog.length" class="mt-1 text-xs text-white/80 max-w-lg mx-auto text-left leading-relaxed">
+        <div v-for="(line, i) in update.agentChangelog" :key="i" class="flex items-start gap-1">
+          <span class="text-white/50 mt-0.5">•</span>
+          <span>{{ line }}</span>
         </div>
       </div>
     </div>

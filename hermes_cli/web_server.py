@@ -2837,4 +2837,12 @@ blueprints.status.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 
+# ── /health 端点：Electron 后端就绪检测 ──
+@app.get("/health")
+async def health_check():
+    """Simple health endpoint for Electron splash screen backend detection."""
+    from hermes_cli import __version__
+    return {"status": "ok", "version": __version__}
+
+
 mount_spa(app)
