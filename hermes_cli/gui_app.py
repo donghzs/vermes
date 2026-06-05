@@ -434,8 +434,8 @@ def main(port):
             print("[Vermes] Gateway 重启中...")
             import uvicorn
             from hermes_cli.web_server import app as fastapi_app_restart
-            from hermes_cli.web_server import _DASHBOARD_EMBEDDED_CHAT_ENABLED
-            _DASHBOARD_EMBEDDED_CHAT_ENABLED = True
+            from hermes_cli import web_server as _ws_restart
+            _ws_restart._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
             config = uvicorn.Config(fastapi_app_restart, host="127.0.0.1", port=port, log_level="info", lifespan="off")
             server_instance = uvicorn.Server(config)
             import threading
