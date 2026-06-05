@@ -146,6 +146,42 @@ def detect_domain(tool_name: str, args: Dict[str, Any]) -> str:
         return "通用"
 
 
+def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") -> str:
+    """Detect active role from tool usage and user message.
+    
+    Returns one of: engineer, trader, researcher, creator, companion
+    """
+    msg = (user_message or "").lower()
+    
+    # Trading signals
+    if tool_name == "terminal":
+        cmd = args.get("command", "").lower()
+        if any(x in cmd for x in ["trader", "binance", "exchange", "ccxt", "kline", "candle"]):
+            return "trader"
+    if any(x in msg for x in ["交易", "策略", "仓位", "止损", "k线", "行情", "量化", "trading", "strategy"]):
+        return "trader"
+    
+    # Research signals
+    if tool_name in ("web_search", "browser_navigate", "arxiv_search"):
+        return "researcher"
+    if any(x in msg for x in ["研究", "分析", "调研", "报告", "论文", "research", "analyze"]):
+        return "researcher"
+    
+    # Creator signals
+    if any(x in msg for x in ["写", "设计", "创意", "文案", "文章", "write", "design", "create"]):
+        return "creator"
+    
+    # Engineer signals (default for tool-heavy work)
+    if tool_name in ("terminal", "read_file", "write_file", "patch", "search_files"):
+        return "engineer"
+    
+    # Companion (conversational)
+    if tool_name in ("memory", "skill_manage") or not tool_name:
+        return "companion"
+    
+    return "engineer"  # default
+
+
 def extract_error_info(result: str) -> Tuple[str, str]:
     """Extract error information from tool result.
     
@@ -230,6 +266,7 @@ def record_tool_outcome(
     result: str,
     is_error: bool,
     duration: float,
+    user_message: str = "",
 ) -> None:
     """Record tool execution outcome to self-model.db.
     
@@ -242,6 +279,7 @@ def record_tool_outcome(
         # Classify task and domain
         task = classify_task(tool_name, tool_args)
         domain = detect_domain(tool_name, tool_args)
+        role = detect_role(tool_name, tool_args, user_message)
         
         # Extract error info if failed
         error_type = ""
@@ -260,8 +298,8 @@ def record_tool_outcome(
         
         # Record outcome
         cursor.execute('''
-            INSERT INTO outcomes (timestamp, task, action, tool, success, duration, domain, error_type, error_msg, details)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO outcomes (timestamp, task, action, tool, success, duration, domain, role, error_type, error_msg, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             timestamp,
             task,
@@ -270,6 +308,7 @@ def record_tool_outcome(
             0 if is_error else 1,
             duration,
             domain,
+            role,
             error_type,
             error_msg,
             str(result)[:500]
@@ -406,6 +445,16 @@ def get_evolution_status() -> Dict[str, Any]:
         ''')
         top_domains = cursor.fetchall()
         
+        # Per-role stats
+        cursor.execute('''
+            SELECT role, COUNT(*) as total, SUM(success) as successes
+            FROM outcomes
+            WHERE role IS NOT NULL
+            GROUP BY role
+            ORDER BY total DESC
+        ''')
+        role_stats = cursor.fetchall()
+        
         # Recent failures
         cursor.execute('''
             SELECT tool, error_type, COUNT(*) as count
@@ -425,6 +474,7 @@ def get_evolution_status() -> Dict[str, Any]:
             "success_rate": round(success_rate, 1),
             "anti_patterns_count": anti_patterns_count,
             "top_domains": top_domains,
+            "role_stats": role_stats,
             "recent_failures": recent_failures,
         }
         
