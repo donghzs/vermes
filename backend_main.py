@@ -23,7 +23,11 @@ def main():
             except ValueError:
                 pass
 
-    print(f"[Vermes Backend] 启动 FastAPI, port={port}")
+    # 强制启用 agent 模式（WebSocket 聊天端点）
+    from hermes_cli import web_server
+    web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
+
+    print(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
     uvicorn.run(
         app,
         host="127.0.0.1",

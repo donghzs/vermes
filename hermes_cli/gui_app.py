@@ -288,6 +288,10 @@ def start_server():
 
     print(f"[Vermes] 后端启动在端口 {port}")
     try:
+        # 强制启用 agent 模式
+        from hermes_cli import web_server as _ws
+        _ws._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
+
         uvicorn.run(fastapi_app,
                     host="0.0.0.0",
                     port=port,
