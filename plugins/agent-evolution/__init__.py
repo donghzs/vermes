@@ -339,5 +339,33 @@ def register(ctx):
         tool_schemas=get_tool_schemas(),
         handler=handle_tool_call,
     )
+
+    # ── post_tool_call hook: 自动记录工具执行结果 ──────────────────
+    def on_post_tool_call(tool_name, args, result, task_id="", duration_ms=0, **kwargs):
+        """自动记录工具执行结果到进化系统"""
+        try:
+            from agent.evolution_manager import record_tool_outcome, is_evolution_active
+            if not is_evolution_active():
+                return
+
+            # 判断是否失败
+            is_error = any(indicator in str(result)
+                          for indicator in ["error", "Error", "failed", "Failed",
+                                          "permission denied", "Permission denied"])
+
+            # 记录结果
+            class MockAgent: pass
+            record_tool_outcome(
+                agent=MockAgent(),
+                tool_name=tool_name,
+                tool_args=args,
+                result=str(result),
+                is_error=is_error,
+                duration=duration_ms / 1000.0 if duration_ms else 0.0
+            )
+        except Exception as e:
+            logger.debug(f"Evolution hook failed: {e}")
+
+    ctx.register_hook("post_tool_call", on_post_tool_call)
     
     logger.info("Agent Evolution plugin registered")
