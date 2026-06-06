@@ -225,22 +225,20 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // 配额检查
     const msgId = uid()
 
-    // 检查是否是 Ollama 待下载模型
-    if (providerId === 'ollama') {
-      try {
-        const status = await checkOllamaStatus(modelId)
-        if (!status.installed) {
-          // 如果 Ollama 服务器不可用，不阻塞消息发送，通过流式状态报告
-          // 让 AIAgent 来捕获并报告错误
-          console.log('[Vermes] Ollama model status:', status)
-        }
-      } catch (e) {
-        // 忽略检查错误
-      }
-    }
+    // 处理 attachments（必须在 push 前完成）
+    const processedAttachments = (attachments && attachments.length > 0)
+      ? attachments.map(a => ({
+          name: a.name || '',
+          type: a.type || 'file',
+          data: a.data || a.preview || '',
+          mime: a.mimeType || '',
+          size: a.size || 0,
+        }))
+      : []
+
+    const userContent = content
 
     if (!_isRegenerate_) {
       messages.value.push({
@@ -255,22 +253,8 @@ export const useChatStore = defineStore('chat', () => {
       scheduleScroll()
     }
 
-    // 处理 attachments（如果有）
-    let processedAttachments = []
-    if (attachments && attachments.length > 0) {
-      processedAttachments = attachments.map(a => ({
-        name: a.name || '',
-        type: a.type || 'file',
-        data: a.data || a.preview || '',
-        mime: a.mimeType || '',
-        size: a.size || 0,
-      }))
-    }
-
     // P4: per-session loading
     if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = true
-
-    const userContent = content
     try {
       const allMsgs = messages.value
       const aid = uid()

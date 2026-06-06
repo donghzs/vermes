@@ -132,7 +132,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    runtime_hooks=[],
+    runtime_hooks=['runtime_hook_no_ensurepip.py'],
     excludes=[
         'tkinter', 'test', 'tests', 'pytest',
         'debugpy', 'IPython', 'jupyter', 'notebook', 'sphinx',

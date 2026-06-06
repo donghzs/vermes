@@ -840,13 +840,12 @@ AGENT_ALLOWED_TOP_FILES = {
 
 
 def get_agent_version() -> str:
-    """获取当前 Agent 框架版本号"""
-    if AGENT_VERSION_FILE.exists():
-        try:
-            return AGENT_VERSION_FILE.read_text(encoding="utf-8").strip()
-        except Exception:
-            pass
-    # 回退：从 __init__.py 读取
+    """获取当前 Agent 框架版本号
+
+    统一从 hermes_cli/__init__.py:__version__ 读取（单一版本来源）。
+    回退到 AGENT_VERSION_FILE，再回退到 "0.0.0"。
+    """
+    # 优先：从 __init__.py 读取（Shell 和 Agent 框架共用）
     init_py = AGENT_DIR / "hermes_cli" / "__init__.py"
     if init_py.exists():
         try:
@@ -854,6 +853,12 @@ def get_agent_version() -> str:
             m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', init_py.read_text(encoding="utf-8"))
             if m:
                 return m.group(1)
+        except Exception:
+            pass
+    # 回退：从 .version 文件读取
+    if AGENT_VERSION_FILE.exists():
+        try:
+            return AGENT_VERSION_FILE.read_text(encoding="utf-8").strip()
         except Exception:
             pass
     return "0.0.0"
