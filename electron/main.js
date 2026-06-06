@@ -611,8 +611,8 @@ async function getSessionToken() {
   try {
     const res = await fetch('http://127.0.0.1:9119/')
     const html = await res.text()
-    const m = html.match(/window\\.__HERMES_SESSION_TOKEN__\\s*=\\s*\"([^\"]+)\"/)
-            || html.match(/window\\.__OPENCLAW_SESSION_KEY__\\s*=\\s*\"([^\"]+)\"/)
+    const m = html.match(/window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/)
+            || html.match(/window\.__OPENCLAW_SESSION_KEY__\s*=\s*"([^"]+)"/)
     if (m && m[1]) {
       _cachedToken = m[1]
       return _cachedToken
