@@ -690,6 +690,25 @@ async def chat_completions(req: ChatRequest):
 
     if agent is None:
         try:
+            # ── 跨会话涌现：注入进化上下文 ────────────────────────────
+            _evo_prompt = ""
+            try:
+                from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+                _status = get_evolution_status()
+                if _status and _status.get('active') and _status.get('total_outcomes', 0) > 5:
+                    _parts = [
+                        f"[进化上下文]",
+                        f"历史记录: {_status['total_outcomes']} 条",
+                        f"成功率: {_status['success_rate']}%",
+                    ]
+                    _emotion = get_current_emotional_state()
+                    if _emotion:
+                        _parts.append(f"当前状态: {_emotion}")
+                    if _status.get('anti_patterns_count', 0) > 0:
+                        _parts.append(f"反模式: {_status['anti_patterns_count']} 条")
+                    _evo_prompt = "\n".join(_parts)
+            except Exception:
+                pass
             agent = AIAgent(
                 base_url=base_url,
                 api_key=api_key,
@@ -700,6 +719,7 @@ async def chat_completions(req: ChatRequest):
                 verbose_logging=False,
                 platform="web",
                 enabled_toolsets=_load_toolsets_for_web(),
+                ephemeral_system_prompt=_evo_prompt or None,
             )
             _agent_cache.put(_cache_key, agent)
             _log.info(f"[Agent] Created new agent for session {_session_id}")
