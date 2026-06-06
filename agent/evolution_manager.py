@@ -363,6 +363,26 @@ def _get_fusion_db() -> Path:
     return get_evolution_dir() / "fusion-state.db"
 
 
+def get_current_emotional_state() -> Optional[str]:
+    """读取最近情绪状态，用于影响决策。"""
+    db_path = _get_fusion_db()
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT emotion, intensity, trigger FROM emotional_state ORDER BY rowid DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return f"情绪:{row[0]}({row[1]:.1f})"
+    except Exception:
+        pass
+    return None
+
+
 def _record_emotional_state(
     tool_name: str,
     task: str,
@@ -636,6 +656,11 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
             advice_parts.append("⚠️ 相关反模式:")
             for pattern, correct, freq in anti_patterns[:2]:
                 advice_parts.append(f"  - {pattern} → {correct}")
+        
+        # ── 感性层：读取最近情绪状态 ──
+        emotion = get_current_emotional_state()
+        if emotion:
+            advice_parts.append(f"😌 当前{emotion}")
         
         return "\n".join(advice_parts) if advice_parts else None
         
