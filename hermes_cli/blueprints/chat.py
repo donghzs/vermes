@@ -1064,6 +1064,77 @@ async def chat_models():
     except Exception:
         pass
     return {"data": []}
+import asyncio
+
+
+async def agent_run(task: str, session_id: str = "api-default", model: str = None, provider: str = None):
+    """Run a task through the agent and return the result.
+
+    Lightweight REST API for external systems (curl, cron, scripts, webhooks).
+    Uses the same _agent_cache as chat, so evolution system works automatically.
+    """
+    from run_agent import AIAgent
+
+    # Resolve model/provider
+    requested_model = model or "agnes-2.0-flash"
+    resolved_provider, base_url, api_key, resolved_model = _resolve_model_provider(requested_model, provider)
+    if not base_url:
+        return {"ok": False, "error": "No base_url found"}
+
+    # Get or create agent from cache
+    _cache_key = f"{resolved_provider}:{resolved_model}:{session_id}"
+    agent = _agent_cache.get(_cache_key)
+
+    if agent is None:
+        try:
+            # Inject evolution context
+            _evo_prompt = ""
+            try:
+                from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+                _s = get_evolution_status()
+                if _s and _s.get("active") and _s.get("total_outcomes", 0) > 5:
+                    _parts = ["[进化上下文]",
+                              f"历史记录: {_s.get('total_outcomes', 0)} 条",
+                              f"成功率: {_s.get('success_rate', 0)}%"]
+                    _emotion = get_current_emotional_state()
+                    if _emotion:
+                        _parts.append(f"当前状态: {_emotion}")
+                    if _s.get("anti_patterns_count", 0) > 0:
+                        _parts.append(f"反模式: {_s.get('anti_patterns_count', 0)} 条")
+                    _evo_prompt = "\n".join(_parts)
+            except Exception:
+                pass
+
+            agent = AIAgent(
+                base_url=base_url,
+                api_key=api_key,
+                provider=resolved_provider,
+                model=resolved_model,
+                max_iterations=50,
+                quiet_mode=True,
+                verbose_logging=False,
+                platform="api",
+                session_id=session_id,
+                ephemeral_system_prompt=_evo_prompt or None,
+            )
+            _agent_cache.put(_cache_key, agent)
+            _log.info(f"[Agent] Created API agent for session {session_id}")
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # Run the task
+    try:
+        # Use run_conversation for synchronous response
+        result = agent.run_conversation(task)
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "response": result.get("final_response", ""),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 
 
 # ── Registration ─────────────────────────────────────────────────────
@@ -1094,6 +1165,12 @@ def register_to(app):
         chat_models,
         methods=["GET"],
         name="chat_models",
+    )
+    app.add_api_route(
+        "/api/agent/run",
+        agent_run,
+        methods=["POST"],
+        name="agent_run",
     )
     app.add_api_route(
         "/api/evolution/status",
