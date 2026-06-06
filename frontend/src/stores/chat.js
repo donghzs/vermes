@@ -50,7 +50,14 @@ export const useChatStore = defineStore('chat', () => {
   )
   const abortController = ref(null)
   const sidebarOpen = ref(true)
-  const theme = ref('dark')
+  const theme = ref(localStorage.getItem('vermes-theme') || 'dark')
+  function toggleTheme() {
+    theme.value = theme.value === 'dark' ? 'light' : 'dark'
+    localStorage.setItem('vermes-theme', theme.value)
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', theme.value === 'dark')
+    }
+  }
   let _beforeunloadRegistered = false
   const currentModel = ref(localStorage.getItem('vermes-current-model') || DEFAULT_MODEL_ID)
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || DEFAULT_PROVIDER_ID)
@@ -384,6 +391,52 @@ ${error}
   function getMessageCount(sessionId) { return _getMessageCount(sessionId) }
   function getFirstMessage(sessionId) { return _getFirstMessage(sessionId) }
 
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  function newSession() { createSession('新 Agent') }
+
+  function searchAllMessages(query, dateFilter) {
+    const results = []
+    const sessionsList = sessions.value
+    for (const s of sessionsList) {
+      const msgs = messages.value.filter(m => m.sessionId === s.id)
+      for (const m of msgs) {
+        if (!m.content) continue
+        if (query && !m.content.toLowerCase().includes(query.toLowerCase())) continue
+        if (dateFilter) {
+          const d = new Date(m.timestamp)
+          const now = new Date()
+          if (dateFilter === 'today' && d.toDateString() !== now.toDateString()) continue
+          if (dateFilter === 'week' && (now - d) > 7 * 24 * 60 * 60 * 1000) continue
+          if (dateFilter === 'month' && (now - d) > 30 * 24 * 60 * 60 * 1000) continue
+        }
+        results.push({ ...m, sessionName: s.name })
+      }
+    }
+    return results.sort((a, b) => b.timestamp - a.timestamp)
+  }
+
+  function getSessionStats(sessionId) {
+    if (!sessionId) return { total: 0, user: 0, assistant: 0, tool: 0 }
+    const msgs = messages.value.filter(m => m.sessionId === sessionId)
+    return {
+      total: msgs.length,
+      user: msgs.filter(m => m.role === 'user').length,
+      assistant: msgs.filter(m => m.role === 'assistant').length,
+      tool: msgs.filter(m => m.role === 'tool').length,
+    }
+  }
+
+  async function sendCompareMessage(content, attachments, modelIds) {
+    if (!modelIds || modelIds.length < 2) return
+    const promises = modelIds.map(mid => sendMessage(content, attachments, mid, null))
+    await Promise.all(promises)
+  }
+
   return {
     sessions, currentSessionId, currentSession, messages, loading,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
@@ -392,8 +445,9 @@ ${error}
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,
-    sendMessage, stopGeneration, toggleSidebar, persistSessions,
-    getMessageCount, getFirstMessage,
+    sendMessage, stopGeneration, toggleSidebar, toggleTheme, persistSessions,
+    getMessageCount, getFirstMessage, formatSize, newSession,
+    searchAllMessages, getSessionStats, sendCompareMessage,
   }
 })
 

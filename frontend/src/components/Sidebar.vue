@@ -448,6 +448,9 @@ async function handleImportFile(e) {
 
       <!-- 底部工具栏 -->
       <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 shrink-0">
+        <button @click="goSettings()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
+          ⚙
+        </button>
         <button @click="chat.toggleTheme()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
           {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
         </button>
