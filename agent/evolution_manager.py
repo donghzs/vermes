@@ -577,12 +577,13 @@ def record_tool_outcome(
             try:
                 advice = get_strategy_advice(tool_name, domain)
                 if advice:
-                    logger.info("Evolution advice [%s/%s]: %s", tool_name, domain, advice)
+                    return advice
             except Exception:
                 pass
         
     except Exception as e:
         logger.debug("Evolution recording failed: %s", e)
+    return None
 
 
 def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
