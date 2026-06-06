@@ -1898,6 +1898,26 @@ def _make_agent(sid: str, key: str, session_id: str | None = None):
             system_prompt = "\n\n".join(
                 part for part in (system_prompt, skills_prompt) if part
             ).strip()
+
+    # ── 跨会话涌现：注入进化上下文 ────────────────────────────────
+    try:
+        from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+        _status = get_evolution_status()
+        if _status and _status.get('active') and _status.get('total_outcomes', 0) > 5:
+            _parts = [
+                f"[进化上下文]",
+                f"历史记录: {_status['total_outcomes']} 条",
+                f"成功率: {_status['success_rate']}%",
+            ]
+            _emotion = get_current_emotional_state()
+            if _emotion:
+                _parts.append(f"当前状态: {_emotion}")
+            if _status.get('anti_patterns_count', 0) > 0:
+                _parts.append(f"反模式: {_status['anti_patterns_count']} 条")
+            system_prompt = system_prompt + "\n\n" + "\n".join(_parts)
+    except Exception:
+        pass  # 进化上下文注入非阻塞
+
     model, requested_provider = _resolve_startup_runtime()
     runtime = resolve_runtime_provider(
         requested=requested_provider,
