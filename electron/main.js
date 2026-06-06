@@ -604,24 +604,38 @@ app.on('activate', () => {
 const AGENT_CHECK_URL = 'http://127.0.0.1:9119/api/agent/check';
 const AGENT_UPDATE_URL = 'http://127.0.0.1:9119/api/agent/update';
 
-// 获取 session token（从后端 cookie 或配置）
+// 获取 session token（从后端 HTML 注入）
+let _cachedToken = null
 async function getSessionToken() {
-  // 从后端获取 token（后端启动时会生成）
+  if (_cachedToken) return _cachedToken
   try {
-    const res = await fetch('http://127.0.0.1:9119/api/status');
-    const data = await res.json();
-    // token 在 cookie 中，Electron 会自动携带
-    return true;
-  } catch {
-    return false;
+    const res = await fetch('http://127.0.0.1:9119/')
+    const html = await res.text()
+    const m = html.match(/window\\.__HERMES_SESSION_TOKEN__\\s*=\\s*\"([^\"]+)\"/)
+            || html.match(/window\\.__OPENCLAW_SESSION_KEY__\\s*=\\s*\"([^\"]+)\"/)
+    if (m && m[1]) {
+      _cachedToken = m[1]
+      return _cachedToken
+    }
+  } catch {}
+  return null
+}
+
+// 带认证的 fetch
+async function fetchWithAuth(url, opts = {}) {
+  const token = await getSessionToken()
+  const headers = { ...opts.headers }
+  if (token) {
+    headers['X-Hermes-Session-Token'] = token
   }
+  return fetch(url, { ...opts, headers })
 }
 
 ipcMain.handle('agent:check', async () => {
   try {
-    const res = await fetch(AGENT_CHECK_URL, {
+    const res = await fetchWithAuth(AGENT_CHECK_URL, {
       headers: { 'Accept': 'application/json' }
-    });
+    })
     if (res.status === 401) {
       return { error: 'Unauthorized', status: 401 };
     }
@@ -635,7 +649,7 @@ ipcMain.handle('agent:check', async () => {
 ipcMain.handle('agent:download', async (event, opts) => {
   try {
     const { version, url, sha256, mirror_url } = opts;
-    const res = await fetch(AGENT_UPDATE_URL, {
+    const res = await fetchWithAuth(AGENT_UPDATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ version, url, sha256, mirror_url })
