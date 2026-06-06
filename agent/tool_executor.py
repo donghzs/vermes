@@ -336,7 +336,9 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             # ── Evolution: auto-record tool outcome ───────────────────
             try:
                 from agent.evolution_manager import record_tool_outcome
-                record_tool_outcome(agent, function_name, function_args, result, is_error, duration)
+                _advice = record_tool_outcome(agent, function_name, function_args, result, is_error, duration)
+                if _advice and is_error:
+                    result = result + "\n\n📊 进化建议: " + _advice
             except Exception:
                 pass  # evolution is non-blocking
             results[index] = (function_name, function_args, result, duration, is_error, False)
@@ -938,7 +940,9 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         if not _execution_blocked:
             try:
                 from agent.evolution_manager import record_tool_outcome
-                record_tool_outcome(agent, function_name, function_args, function_result, _is_error_result, tool_duration)
+                _advice_seq = record_tool_outcome(agent, function_name, function_args, function_result, _is_error_result, tool_duration)
+                if _advice_seq and _is_error_result:
+                    function_result = function_result + "\n\n📊 进化建议: " + _advice_seq
             except Exception:
                 pass  # evolution is non-blocking
 
