@@ -30,6 +30,7 @@ import { loadFromStorage, saveToStorage, loadMessagesFromIDB, persistMessages } 
 import { uid, flushStorageWrites, scheduleScroll, flushScroll } from './chat-scroll'
 import { checkQuota, getWechatDailyQuota } from './chat-quota'
 import { checkOllamaStatus, deleteOllamaModel } from './providers'
+import { getChatTransport } from '../services/chat-transport'
 
 // 常量
 const SESSIONS_KEY = 'vermes-sessions'
@@ -258,17 +259,9 @@ export const useChatStore = defineStore('chat', () => {
         content: m.role === 'user' && m.content?.includes('data:image') && !recentImageMsgIds.has(m.id)
           ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '[图片]').trim() : m.content,
       }))
-
-      await api.sendMessage({
-        model: modelId, provider: providerId, messages: apiMessages,
-        session_id: currentSessionId.value,
-        attachments: processedAttachments.map(a => ({
-          name: a.name, type: a.type, data: a.base64,
-          mime: a.mimeType || 'application/octet-stream', size: a.size,
-        })),
-        stream: true, signal: ac.signal,
-        onStreamStart: (streamId) => { activeStreamId.value = streamId },
-        onChunk: (chunk) => {
+      const transport = getChatTransport()
+      transport.on(currentSessionId.value, {
+        onMessage: (chunk) => {
           const am = messages.value.find(m => m.id === aid)
           if (!am) return
           if (!am._streamBuffer) {
@@ -280,7 +273,7 @@ export const useChatStore = defineStore('chat', () => {
               }
             }, 80)
           }
-          if (chunk?.type === 'text') {
+          if (chunk?.type === 'text' || chunk?.type === 'delta') {
             am._streamBuffer += chunk.content || ''
           } else if (chunk?.type === 'tool') {
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
@@ -291,8 +284,8 @@ export const useChatStore = defineStore('chat', () => {
         onStatus: (event) => {
           statusMessages.value.push({
             id: uid(),
-            type: event.type,
-            message: event.message,
+            type: event.type || 'info',
+            message: event.message || event.content || '',
             timestamp: Date.now(),
           })
           scheduleScroll()
@@ -304,7 +297,6 @@ export const useChatStore = defineStore('chat', () => {
             am.streaming = false; am._currentStep = null; am._streamStartTime = null; am._toolCount = null
           }
           flushScroll()
-          // P4: per-session loading reset
           if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
           abortController.value = null; activeStreamId.value = null
           statusMessages.value = []
@@ -314,12 +306,25 @@ export const useChatStore = defineStore('chat', () => {
         },
         onError: (error) => {
           const am = messages.value.find(m => m.id === aid)
-          if (am) { am.streaming = false; am.content += `\n\n\`\`\`error\n${error}\n\`\`\``; am._streamStartTime = null }
+          if (am) { am.streaming = false; am.content += `
+
+\`\`\`error
+${error}
+\`\`\``; am._streamStartTime = null }
           flushScroll()
           if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
           abortController.value = null
           statusMessages.value.push({ id: uid(), type: 'error', message: error, timestamp: Date.now() })
         },
+      })
+      await transport.send(currentSessionId.value, {
+        messages: apiMessages,
+        model: modelId,
+        provider: providerId,
+        attachments: processedAttachments.map(a => ({
+          name: a.name, type: a.type, data: a.base64,
+          mime: a.mimeType || 'application/octet-stream', size: a.size,
+        })),
       })
     } catch(e) {
       const am = messages.value.find(m => m.id === aid)
@@ -337,6 +342,9 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 停止生成 ──
   function stopGeneration() {
+    // 通过 transport 停止（兼容 SSE 和未来 WebSocket）
+    const transport = getChatTransport()
+    if (currentSessionId.value) transport.stop(currentSessionId.value)
     if (abortController.value) {
       abortController.value.abort()
       abortController.value = null
