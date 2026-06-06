@@ -41,17 +41,29 @@ def is_evolution_active() -> bool:
     """Check if evolution system is active."""
     if not get_self_model_db().exists():
         return False
-    # 启用 WAL 模式（并发读写不阻塞）
+    _ensure_wal_mode()
+    return True
+
+
+_wal_initialized = None
+
+
+def _ensure_wal_mode() -> None:
+    """初始化 SQLite WAL 模式（全局只执行一次）。"""
+    global _wal_initialized
+    if _wal_initialized:
+        return
     try:
         for _db in [get_self_model_db(), _get_fusion_db()]:
             if _db.exists():
                 _conn = sqlite3.connect(str(_db))
                 _conn.execute("PRAGMA journal_mode=WAL")
                 _conn.execute("PRAGMA synchronous=NORMAL")
+                _conn.execute("PRAGMA busy_timeout=5000")
                 _conn.close()
+        _wal_initialized = True
     except Exception:
         pass
-    return True
 
 
 def classify_task(tool_name: str, args: Dict[str, Any]) -> str:
