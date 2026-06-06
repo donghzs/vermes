@@ -7,6 +7,14 @@ import { loadMessagesFromIDB } from '../stores/chat-storage'
 
 const chat = useChatStore()
 const router = useRouter()
+const evoStatus = ref(null)
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/evolution/status')
+    if (res.ok) evoStatus.value = await res.json()
+  } catch {}
+})
 
 function goSettings() { router.push('/settings') }
 
@@ -443,9 +451,16 @@ async function handleImportFile(e) {
         <button @click="chat.toggleTheme()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
           {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
         </button>
-        <button v-if="!chat.isOnline" @click="goSettings()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
-          ⚙️
-        </button>
+      </div>
+      <!-- 进化指示器 -->
+      <div v-if="evoStatus && evoStatus.active" class="px-3 pb-3 shrink-0">
+        <div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse"></span>
+          <span>🧠 {{ evoStatus.success_rate || 0 }}%</span>
+          <span class="text-gray-300 dark:text-gray-600">·</span>
+          <span>{{ evoStatus.total_outcomes || 0 }} 条</span>
+          <span v-if="evoStatus.current_emotion" class="text-gray-300 dark:text-gray-600">· {{ evoStatus.current_emotion }}</span>
+        </div>
       </div>
     </template>
   </div>
