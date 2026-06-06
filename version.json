@@ -2,18 +2,28 @@
   "version": "2.0.8",
   "buildDate": "2026-06-07",
   "download_url": {
-    "macos_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.7-arm64.dmg",
-    "macos_zip": "",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.0.7.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.0.8.exe"
   },
-  "sha256": {},
+  "sha256": {
+    "macos_arm64": "eb6aeee5cf0ff0be55947ce108501c625279630d79c06593bfc4107f972621e1",
+    "macos_x64": "593f00d69cdabcd8de686226a2d0495b30bdcbc3dd802b6e6405251759355c4b"
+  },
   "macOS": {
-    "dmg": "/vermes/downloads/Vermes-2.0.7-arm64.dmg",
-    "size": "",
-    "arch": "arm64 (Apple Silicon)"
+    "arm64": {
+      "dmg": "/vermes/downloads/Vermes-2.0.8-arm64.dmg",
+      "size": "153 MB",
+      "sha256": "eb6aeee5cf0ff0be55947ce108501c625279630d79c06593bfc4107f972621e1"
+    },
+    "x64": {
+      "dmg": "/vermes/downloads/Vermes-2.0.8.dmg",
+      "size": "157 MB",
+      "sha256": "593f00d69cdabcd8de686226a2d0495b30bdcbc3dd802b6e6405251759355c4b"
+    }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.0.7.exe",
+    "exe": "/vermes/downloads/Vermes-Setup-2.0.8.exe",
     "size": ""
   },
   "changelog": [
@@ -21,11 +31,11 @@
     "多会话并行：每会话独立 agent，per-session loading 不阻塞",
     "WebSocket 实时通道：停止生成 <1ms，为多端协作奠定基础",
     "跨会话涌现：每次会话启动注入进化上下文（历史记录/成功率/情绪/反模式）",
-    "成就系统：7 个里程碑自动解锁（第一步→初露锋芒→百次积累→精准执行→善于学习→经验丰富→失败是成功之母）",
+    "成就系统：7 个里程碑自动解锁",
     "四层进化 UX：Sidebar 指示器 + 每日签到简报 + 进化时刻 + 成就通知",
     "REST API /api/agent/run：外部系统（cron/脚本/webhook）可调用 agent",
-    "ChatTransport 抽象层：SSE/WebSocket 切换只需改 1 行工厂函数",
-    "Web 端 LSP + 浏览器工具激活（platform_toolsets.web 配置）",
+    "ChatTransport 抽象层：SSE/WebSocket 切换只需改 1 行",
+    "Web 端 LSP + 浏览器工具激活",
     "SQLite WAL + busy_timeout=5000：多 agent 并发写不锁库",
     "冷启动种子数据：新用户开箱即有进化记录",
     "Settings 页面 API 接入卡片：复制 curl + 一键测试"
