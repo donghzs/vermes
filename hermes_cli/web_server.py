@@ -1539,6 +1539,42 @@ async def events_ws(ws: WebSocket) -> None:
                     _event_channels.pop(channel, None)
 
 
+@app.websocket("/api/ws/chat")
+async def chat_ws(ws: WebSocket) -> None:
+    """Real-time chat WebSocket — 停止生成、会话切换、未来多端同步。
+    
+    消息发送继续走 SSE (/api/chat/completions)，
+    本端点只处理实时控制信号。
+    """
+    await ws.accept()
+    _active_chat_ws = ws
+    try:
+        while True:
+            raw = await ws.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            
+            msg_type = msg.get("type", "")
+            
+            if msg_type == "stop":
+                # 停止指定会话的生成
+                session_id = msg.get("session_id", "")
+                from hermes_cli.blueprints.chat import stop_agent_session
+                await stop_agent_session(session_id)
+                await ws.send_text(json.dumps({"type": "stopped", "session_id": session_id}))
+            
+            elif msg_type == "ping":
+                await ws.send_text(json.dumps({"type": "pong"}))
+                
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if _active_chat_ws == ws:
+            _active_chat_ws = None
+
+
 def _normalise_prefix(raw: Optional[str]) -> str:
     """Normalise an X-Forwarded-Prefix header value.
 
