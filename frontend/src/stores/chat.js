@@ -9,7 +9,6 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { api } from '../api'
 import { showToast } from '../utils/toast'
 import {
   SESSION_TEMPLATES,
@@ -26,10 +25,10 @@ import {
   getFirstMessage as _getFirstMessage,
   evictOldSessions as _evictOldSessions,
 } from './chat-session'
-import { loadFromStorage, saveToStorage, loadMessagesFromIDB, persistMessages } from './chat-storage'
-import { uid, flushStorageWrites, scheduleScroll, flushScroll } from './chat-scroll'
-import { checkQuota, getWechatDailyQuota } from './chat-quota'
-import { checkOllamaStatus, deleteOllamaModel } from './providers'
+import { loadFromStorage, saveToStorage, loadMessagesFromIDB } from './chat-storage'
+import { uid, persistMessages } from './chat-session'
+import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
+import { flushStorageWrites } from './chat-storage'
 import { getChatTransport } from '../services/chat-transport'
 
 // 常量
@@ -227,12 +226,6 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 配额检查
-    const quotaOk = await checkQuota(providerId, modelId)
-    if (quotaOk === false) {
-      showQuotaModal.value = true
-      return
-    }
-
     const msgId = uid()
 
     // 检查是否是 Ollama 待下载模型
@@ -419,3 +412,7 @@ ${error}
     getMessageCount, getFirstMessage,
   }
 })
+
+// Re-export for components that import from '../stores/chat'
+export { SESSION_TEMPLATES, QUICK_START_SUGGESTIONS } from './chat-session'
+export { setScrollTarget } from './chat-scroll'

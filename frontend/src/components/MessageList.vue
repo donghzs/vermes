@@ -52,7 +52,7 @@ function currentRunningTool(tools) {
   const running = tools.filter(t => t.status === 'running')
   if (running.length === 0) return null
   const t = running[running.length - 1] // 取最后一个running
-  const map = {read_file:'读取文件...',write_file:'写入文件...',search_files:'搜索文件...',terminal:'执行命令...',web_search:'搜索网页...',vision_analyze:'分析图片...',list_directory:'列出目录...',edit_file:'编辑文件...',memory:'记忆操作...',execute_command:'执行命令...',google_search:'搜索...',browse_url:'浏览网页...'}
+  const map = {read_file:'读取文件...',write_file:'写入文件...',search_files:'搜索文件...',terminal:'执行命令...',web_search:'搜索网页...',vision_analyze:'分析图片...',list_directory:'列出目录...',edit_file:'编辑文件...',memory:'记忆操作...',execute_command:'执行命令...',google_search:'搜索...',browse_url:'浏览网页...',browser_navigate:'浏览网页...',browser_click:'点击页面...',browser_type:'输入文本...',browser_snapshot:'截取页面...',browser_console:'执行控制台...',lsp_completion:'代码补全...',lsp_diagnose:'诊断代码...',code_execution:'执行代码...'}
   return map[t.name] || t.name + '...'
 }
 
@@ -489,7 +489,7 @@ function streamElapsed(startTime) {
                         :class="tool.status === 'error' ? 'text-red-500' : ''"
                         @click="tool.result_preview && toggleToolExpand(tool.id || tool.name)">
                     <span>{{ tool.status === 'error' ? '❌' : '✅' }}</span>
-                    <span>{{ ({read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页'})[tool.name] || tool.name }}</span>
+                    <span>{{ ({read_file:'读取文件',write_file:'写入文件',search_files:'搜索文件',terminal:'终端',web_search:'网页搜索',vision_analyze:'图片分析',list_directory:'列出目录',edit_file:'编辑文件',memory:'记忆',execute_command:'执行命令',google_search:'搜索',browse_url:'浏览网页',browser_navigate:'浏览网页',browser_click:'点击页面',browser_type:'输入文本',browser_snapshot:'截取页面',browser_console:'控制台',lsp_completion:'代码补全',lsp_diagnose:'诊断代码',code_execution:'执行代码'})[tool.name] || tool.name }}</span>
                     <span v-if="tool.duration" class="opacity-60">{{ tool.duration }}s</span>
                     <span v-if="tool.result_preview">{{ isToolExpanded(tool.id || tool.name) ? '▼' : '▶' }}</span>
                   </span>
