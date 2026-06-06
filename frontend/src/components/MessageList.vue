@@ -250,7 +250,7 @@ function addCopyButtonsToPreElements(container) {
 }
 
 // 监听消息变化，为新渲染的代码块添加复制按钮
-watch(() => chat.filteredMessages.length, async () => {
+watch(() => chat.filteredMessages?.length ?? 0, async () => {
   await nextTick()
   if (chatContainer.value) {
     addCopyButtonsToPreElements(chatContainer.value)
