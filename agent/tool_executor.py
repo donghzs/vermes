@@ -305,6 +305,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         # ContextVars are propagated by propagate_context_to_thread() at the
         # submit site below (GHSA-qg5c-hvr5-hjgr, #13617).
         start = time.time()
+        # ── Pre-flight: 查历史成功率 ──
+        try:
+            from agent.evolution_manager import get_strategy_advice, detect_domain
+            _domain = detect_domain(function_name, function_args)
+            _advice = get_strategy_advice(function_name, _domain)
+            if _advice:
+                agent._vprint(f"  📊 {_advice}")
+        except Exception:
+            pass
         try:
             try:
                 result = agent._invoke_tool(
@@ -573,6 +582,15 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         except json.JSONDecodeError as e:
             logger.warning(f"Unexpected JSON error after validation: {e}")
             function_args = {}
+            # ── Pre-flight: 查历史成功率（顺序路径） ──
+        try:
+            from agent.evolution_manager import get_strategy_advice, detect_domain
+            _domain = detect_domain(function_name, function_args)
+            _advice = get_strategy_advice(function_name, _domain)
+            if _advice:
+                agent._vprint(f"  📊 {_advice}")
+        except Exception:
+            pass
         if not isinstance(function_args, dict):
             function_args = {}
 
