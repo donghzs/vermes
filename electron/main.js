@@ -599,3 +599,92 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+// ── Agent 框架更新 IPC ──────────────────────────────────────────────
+const AGENT_CHECK_URL = 'http://127.0.0.1:9119/api/agent/check';
+const AGENT_UPDATE_URL = 'http://127.0.0.1:9119/api/agent/update';
+
+// 获取 session token（从后端 cookie 或配置）
+async function getSessionToken() {
+  // 从后端获取 token（后端启动时会生成）
+  try {
+    const res = await fetch('http://127.0.0.1:9119/api/status');
+    const data = await res.json();
+    // token 在 cookie 中，Electron 会自动携带
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+ipcMain.handle('agent:check', async () => {
+  try {
+    const res = await fetch(AGENT_CHECK_URL, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.status === 401) {
+      return { error: 'Unauthorized', status: 401 };
+    }
+    return await res.json();
+  } catch (err) {
+    console.error('[Vermes] 检查 Agent 更新失败:', err.message);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('agent:download', async (event, opts) => {
+  try {
+    const { version, url, sha256, mirror_url } = opts;
+    const res = await fetch(AGENT_UPDATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version, url, sha256, mirror_url })
+    });
+    
+    if (res.status === 401) {
+      mainWindow?.webContents.send('agent:update-error', 'Unauthorized');
+      return { error: 'Unauthorized' };
+    }
+    
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      mainWindow?.webContents.send('agent:update-error', err.detail || 'Download failed');
+      return { error: err.detail || 'Download failed' };
+    }
+    
+    // SSE 流式处理
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            mainWindow?.webContents.send('agent:update-progress', data);
+            
+            if (data.status === 'done') {
+              mainWindow?.webContents.send('agent:update-complete', data);
+            } else if (data.status === 'error') {
+              mainWindow?.webContents.send('agent:update-error', data.message);
+            }
+          } catch {}
+        }
+      }
+    }
+    
+    return { success: true };
+  } catch (err) {
+    console.error('[Vermes] Agent 更新失败:', err.message);
+    mainWindow?.webContents.send('agent:update-error', err.message);
+    return { error: err.message };
+  }
+});

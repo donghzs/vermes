@@ -10,6 +10,14 @@ const AGENT_DISMISS_KEY = 'vermes_agent_update_dismissed'
 // 是否为 Electron 桌面环境
 const isDesktop = typeof window !== 'undefined' && window.vermes?.isDesktop
 
+/** 获取 session token，用于 Agent 更新 API 认证 */
+function getAgentToken() {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage.getItem('vermes_token') || localStorage.getItem('vermes_wechat_token') || ''
+  }
+  return ''
+}
+
 export const useUpdateStore = () => {
   // ── 应用更新（壳更新）
   const hasUpdate = ref(false)
@@ -188,9 +196,23 @@ export const useUpdateStore = () => {
   async function checkAgentUpdate() {
     if (agentChecked.value) return
     try {
-      const res = await fetch(AGENT_VERSION_URL, { signal: AbortSignal.timeout(5000) })
-        .then(r => r.json())
-        .catch(() => null)
+      let res = null
+
+      // Electron 桌面模式：走 IPC
+      if (isDesktop && window.vermes?.checkAgentUpdate) {
+        res = await window.vermes.checkAgentUpdate()
+      } else {
+        // Web 模式：HTTP 带 token
+        const token = getAgentToken()
+        const headers = {}
+        if (token) headers['X-Hermes-Session-Token'] = token
+        res = await fetch(AGENT_VERSION_URL, {
+          signal: AbortSignal.timeout(5000),
+          headers,
+        })
+          .then(r => r.json())
+          .catch(() => null)
+      }
 
       if (res && res.has_update) {
         const ver = res.latest_version
@@ -283,70 +305,121 @@ export const useUpdateStore = () => {
     updateMessage.value = '准备下载 Agent 框架...'
 
     try {
-      const response = await fetch('/api/agent/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Electron 桌面模式：走 IPC
+      if (isDesktop && window.vermes?.downloadAgentUpdate) {
+        // 注册 IPC 事件监听
+        const unsubProgress = window.vermes.onAgentUpdateProgress((data) => {
+          updateProgress.value = data.progress || 0
+          updateStatus.value = data.status || ''
+          updateMessage.value = data.message || ''
+          downloadedBytes.value = data.downloaded_bytes || 0
+          totalBytes.value = data.total_bytes || 0
+          speedBps.value = data.speed_bps || 0
+          etaSeconds.value = data.eta_seconds || 0
+        })
+
+        const unsubComplete = window.vermes.onAgentUpdateComplete((data) => {
+          updateStatus.value = 'done'
+          updateMessage.value = '✅ Agent 框架已更新，Gateway 正在重启...'
+          agentHasUpdate.value = false
+          agentCurrentVersion.value = agentLatestVersion.value
+          setTimeout(() => { updating.value = false }, 3000)
+          unsubProgress()
+          unsubComplete()
+          unsubError()
+        })
+
+        const unsubError = window.vermes.onAgentUpdateError((err) => {
+          updateStatus.value = 'error'
+          updateError.value = err
+          updateMessage.value = `❌ ${err}`
+          updating.value = false
+          unsubProgress()
+          unsubComplete()
+          unsubError()
+        })
+
+        // 触发下载
+        const result = await window.vermes.downloadAgentUpdate({
           version: agentLatestVersion.value,
           url: agentDownloadUrl.value,
           sha256: agentSha256.value,
           mirror_url: agentMirrorUrl.value,
         })
-      })
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
-        throw new Error(err.detail || `下载失败 (${response.status})`)
-      }
+        if (result.error) {
+          throw new Error(result.error)
+        }
+      } else {
+        // Web 模式：HTTP 带 token
+        const token = getAgentToken()
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) headers['X-Hermes-Session-Token'] = token
+        const response = await fetch('/api/agent/update', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            version: agentLatestVersion.value,
+            url: agentDownloadUrl.value,
+            sha256: agentSha256.value,
+            mirror_url: agentMirrorUrl.value,
+          })
+        })
 
-      // 读取 SSE 流
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}))
+          throw new Error(err.detail || `下载失败 (${response.status})`)
+        }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        // 读取 SSE 流
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              updateProgress.value = data.progress || 0
-              updateStatus.value = data.status || ''
-              updateMessage.value = data.message || ''
-              updateError.value = data.error || ''
-              downloadedBytes.value = data.downloaded_bytes || 0
-              totalBytes.value = data.total_bytes || 0
-              speedBps.value = data.speed_bps || 0
-              etaSeconds.value = data.eta_seconds || 0
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-              if (data.status === 'error') {
-                throw new Error(data.error || '下载失败')
-              }
-            } catch (parseErr) {
-              if (parseErr.message && !parseErr.message.includes('JSON')) {
-                throw parseErr
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                updateProgress.value = data.progress || 0
+                updateStatus.value = data.status || ''
+                updateMessage.value = data.message || ''
+                updateError.value = data.error || ''
+                downloadedBytes.value = data.downloaded_bytes || 0
+                totalBytes.value = data.total_bytes || 0
+                speedBps.value = data.speed_bps || 0
+                etaSeconds.value = data.eta_seconds || 0
+
+                if (data.status === 'error') {
+                  throw new Error(data.error || '下载失败')
+                }
+              } catch (parseErr) {
+                if (parseErr.message && !parseErr.message.includes('JSON')) {
+                  throw parseErr
+                }
               }
             }
           }
         }
+
+        // Agent 更新完成 — gateway 自动重启，无需关闭窗口
+        updateStatus.value = 'done'
+        updateMessage.value = '✅ Agent 框架已更新，Gateway 正在重启...'
+        agentHasUpdate.value = false
+        agentCurrentVersion.value = agentLatestVersion.value
+
+        // 等待 gateway 重启完成后重新连接
+        setTimeout(() => {
+          updating.value = false
+        }, 3000)
       }
-
-      // Agent 更新完成 — gateway 自动重启，无需关闭窗口
-      updateStatus.value = 'done'
-      updateMessage.value = '✅ Agent 框架已更新，Gateway 正在重启...'
-      agentHasUpdate.value = false
-      agentCurrentVersion.value = agentLatestVersion.value
-
-      // 等待 gateway 重启完成后重新连接
-      setTimeout(() => {
-        updating.value = false
-      }, 3000)
 
     } catch (e) {
       console.error('[Vermes Agent Update] error:', e)
