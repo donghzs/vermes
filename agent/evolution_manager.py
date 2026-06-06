@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 def get_evolution_dir() -> Path:
     """Get the evolution data directory."""
-    vermes_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
-    return Path(vermes_home) / "evolution"
+    hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+    return Path(hermes_home) / "evolution"
 
 
 def get_self_model_db() -> Path:
@@ -396,8 +396,9 @@ def record_tool_outcome(
         timestamp = datetime.now().isoformat()
         
         # Record outcome
+        # 适配实际表结构: id, timestamp, task, action, tool, success, details, duration, domain, error_type, error_msg, role
         cursor.execute('''
-            INSERT INTO outcomes (timestamp, task, action, tool, success, duration, domain, role, error_type, error_msg, details)
+            INSERT INTO outcomes (timestamp, task, action, tool, success, details, duration, domain, error_type, error_msg, role)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             timestamp,
@@ -405,12 +406,12 @@ def record_tool_outcome(
             str(tool_args)[:200],
             tool_name,
             0 if is_error else 1,
+            str(result)[:500],
             duration,
             domain,
-            role,
             error_type,
             error_msg,
-            str(result)[:500]
+            role
         ))
         
         # If failed, check for anti-pattern
