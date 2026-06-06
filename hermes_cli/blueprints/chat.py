@@ -1064,10 +1064,14 @@ async def chat_models():
     except Exception:
         pass
     return {"data": []}
-import asyncio
+class AgentRunRequest(BaseModel):
+    task: str
+    session_id: str = "api-default"
+    model: str | None = None
+    provider: str | None = None
 
 
-async def agent_run(task: str, session_id: str = "api-default", model: str = None, provider: str = None):
+async def agent_run(req: AgentRunRequest):
     """Run a task through the agent and return the result.
 
     Lightweight REST API for external systems (curl, cron, scripts, webhooks).
@@ -1076,13 +1080,13 @@ async def agent_run(task: str, session_id: str = "api-default", model: str = Non
     from run_agent import AIAgent
 
     # Resolve model/provider
-    requested_model = model or "agnes-2.0-flash"
-    resolved_provider, base_url, api_key, resolved_model = _resolve_model_provider(requested_model, provider)
+    requested_model = req.model or "agnes-2.0-flash"
+    resolved_provider, base_url, api_key, resolved_model = _resolve_model_provider(requested_model, req.provider)
     if not base_url:
         return {"ok": False, "error": "No base_url found"}
 
     # Get or create agent from cache
-    _cache_key = f"{resolved_provider}:{resolved_model}:{session_id}"
+    _cache_key = f"{resolved_provider}:{resolved_model}:{req.session_id}"
     agent = _agent_cache.get(_cache_key)
 
     if agent is None:
@@ -1114,23 +1118,28 @@ async def agent_run(task: str, session_id: str = "api-default", model: str = Non
                 quiet_mode=True,
                 verbose_logging=False,
                 platform="api",
-                session_id=session_id,
+                session_id=req.session_id,
                 ephemeral_system_prompt=_evo_prompt or None,
             )
             _agent_cache.put(_cache_key, agent)
-            _log.info(f"[Agent] Created API agent for session {session_id}")
+            _log.info(f"[Agent] Created API agent for session {req.session_id}")
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    # Run the task
+    # Run the task with timeout
     try:
-        # Use run_conversation for synchronous response
-        result = agent.run_conversation(task)
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, agent.run_conversation, req.task),
+            timeout=120.0
+        )
         return {
             "ok": True,
-            "session_id": session_id,
+            "session_id": req.session_id,
             "response": result.get("final_response", ""),
         }
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "Task timed out (120s)"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
