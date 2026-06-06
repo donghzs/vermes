@@ -78,6 +78,34 @@ const providers = ref([
 
 const customModelInputs = ref({})
 const activeTab = ref('providers')
+
+// ── API 接入 ──
+const apiBaseUrl = ref(window.location.origin)
+const apiTesting = ref(false)
+const apiTestResult = ref(null)
+
+function copyApiCurl() {
+  const cmd = `curl -X POST ${apiBaseUrl.value}/api/agent/run -H 'Content-Type: application/json' -d '{"task":"检查磁盘空间"}'`
+  navigator.clipboard.writeText(cmd).then(() => toast.success('✅ 已复制'))
+}
+
+async function testApi() {
+  apiTesting.value = true
+  apiTestResult.value = null
+  try {
+    const r = await fetch('/api/agent/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: '回复“API 测试成功”这四个字', session_id: 'api-test' })
+    })
+    const data = await r.json()
+    apiTestResult.value = data
+  } catch (e) {
+    apiTestResult.value = { ok: false, error: e.message }
+  } finally {
+    apiTesting.value = false
+  }
+}
 const providerSearch = ref('')
 const saved = ref(false)
 const maxTokensInput = ref(null)
@@ -514,6 +542,32 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             </div>
           </div>
           <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center">加载中...</div>
+        </div>
+
+        <!-- 🔌 API 接入 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-3">
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 text-center">🔌 API 接入</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 text-center">让外部系统（cron/脚本/webhook）调用 Agent</p>
+          <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 font-mono text-[11px] text-gray-600 dark:text-gray-300 overflow-x-auto">
+            <div class="text-gray-400 mb-1"># 基础调用</div>
+            <div>curl -X POST {{ apiBaseUrl }}/api/agent/run \</div>
+            <div>  -H 'Content-Type: application/json' \</div>
+            <div>  -d '{"task":"检查磁盘空间"}'</div>
+            <div class="text-gray-400 mt-2 mb-1"># 定时任务</div>
+            <div>0 9 * * * curl -s {{ apiBaseUrl }}/api/agent/run \</div>
+            <div>  -d '{"task":"生成日报","session_id":"daily"}'</div>
+          </div>
+          <div class="flex gap-2">
+            <button @click="copyApiCurl" class="flex-1 px-3 py-2 rounded-lg text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition">
+              📋 复制 curl
+            </button>
+            <button @click="testApi" :disabled="apiTesting" class="flex-1 px-3 py-2 rounded-lg text-xs bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 transition border border-green-200 dark:border-green-800">
+              {{ apiTesting ? '⏳ 测试中...' : '🧪 测试 API' }}
+            </button>
+          </div>
+          <div v-if="apiTestResult !== null" class="text-xs rounded-lg p-3" :class="apiTestResult.ok ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'">
+            {{ apiTestResult.ok ? '✅ ' + apiTestResult.response : '❌ ' + apiTestResult.error }}
+          </div>
         </div>
       </div>
     </div>
