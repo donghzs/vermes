@@ -243,6 +243,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/gui/sessions",
     # 存储用量（只读，无敏感信息）
     "/api/storage/usage",
+    # Agent REST API（外部系统调用）
+    "/api/agent/run",
 })
 
 
