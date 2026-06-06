@@ -617,13 +617,26 @@ def record_tool_outcome(
             pass  # 指标记录非阻塞
 
         # ── P1: 反馈闭环 — 错误率高时发出警告 ─────────────────────
+        advice = None
         if is_error:
             try:
                 advice = get_strategy_advice(tool_name, domain)
-                if advice:
-                    return advice
             except Exception:
                 pass
+        
+        # ── 成就检查 ──────────────────────────────────────────────
+        achievement = _check_evolution_achievements(
+            status.get("total_outcomes", 0) if isinstance(status := get_evolution_status(), dict) else 0,
+            status.get("success_rate", 0) if isinstance(status, dict) else 0,
+            status.get("anti_patterns_count", 0) if isinstance(status, dict) else 0,
+            tool_name, is_error
+        )
+        
+        if achievement:
+            return achievement
+        if advice:
+            return advice
+        return None
         
     except Exception as e:
         logger.debug("Evolution recording failed: %s", e)
@@ -693,6 +706,50 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         return None
 
 
+_unlocked_achievements = set()  # track already-unlocked to avoid spam
+
+
+def _check_evolution_achievements(total: int, success_rate: float, anti_count: int, tool_name: str, is_error: bool) -> Optional[str]:
+    """Check if evolution milestones trigger achievements. Returns achievement msg or None."""
+    key = None
+    msg = None
+    
+    # Milestone achievements
+    if total >= 100 and "100_records" not in _unlocked_achievements:
+        key = "100_records"
+        msg = f"🏆 成就解锁：百次积累 — 已记录 {total} 次工具调用"
+    elif total >= 50 and "50_records" not in _unlocked_achievements:
+        key = "50_records"
+        msg = f"🏆 成就解锁：初露锋芒 — 已记录 {total} 次工具调用"
+    elif total >= 10 and "10_records" not in _unlocked_achievements:
+        key = "10_records"
+        msg = f"🏆 成就解锁：第一步 — 已记录 {total} 次工具调用"
+    
+    # Success rate achievements
+    if success_rate >= 90 and "high_accuracy" not in _unlocked_achievements:
+        key = "high_accuracy"
+        msg = f"🏆 成就解锁：精准执行 — 成功率 {success_rate:.0f}%"
+    
+    # Anti-pattern achievements
+    if anti_count >= 10 and "anti_pattern_master" not in _unlocked_achievements:
+        key = "anti_pattern_master"
+        msg = f"🏆 成就解锁：经验丰富 — 已识别 {anti_count} 个反模式"
+    elif anti_count >= 3 and "anti_pattern_learner" not in _unlocked_achievements:
+        key = "anti_pattern_learner"
+        msg = f"🏆 成就解锁：善于学习 — 已识别 {anti_count} 个反模式"
+    
+    # First error achievement
+    if is_error and "first_error" not in _unlocked_achievements:
+        key = "first_error"
+        msg = f"🏆 成就解锁：失败是成功之母 — 首次遇到错误 ({tool_name})"
+    
+    if key and msg:
+        _unlocked_achievements.add(key)
+        logger.info("Achievement: %s", msg)
+        return msg
+    return None
+
+
 def get_evolution_status() -> Dict[str, Any]:
     """Get current evolution system status."""
     if not is_evolution_active():
@@ -757,6 +814,7 @@ def get_evolution_status() -> Dict[str, Any]:
             "top_domains": top_domains,
             "role_stats": role_stats,
             "recent_failures": recent_failures,
+            "achievements": list(_unlocked_achievements),
         }
         
     except Exception as e:
