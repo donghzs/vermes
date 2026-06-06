@@ -2,10 +2,13 @@
 ; Force close running Vermes before installation
 
 !macro customInit
-  ; Kill any running Vermes processes before install
-  nsExec::ExecToLog 'taskkill /F /IM Vermes.exe /T 2>nul'
-  nsExec::ExecToLog 'taskkill /F /IM vermes-backend.exe /T 2>nul'
-  Sleep 1000
+  ; Kill any running Vermes processes before install (ignore errors)
+  nsExec::ExecToStack 'cmd /c taskkill /F /IM Vermes.exe /T'
+  Pop $0
+  nsExec::ExecToStack 'cmd /c taskkill /F /IM vermes-backend.exe /T'
+  Pop $0
+  ; Wait briefly for processes to exit
+  Sleep 500
 !macroend
 
 !macro customInstall
@@ -13,8 +16,10 @@
 !macroend
 
 !macro customUnInit
-  ; Kill before uninstall
-  nsExec::ExecToLog 'taskkill /F /IM Vermes.exe /T 2>nul'
-  nsExec::ExecToLog 'taskkill /F /IM vermes-backend.exe /T 2>nul'
-  Sleep 1000
+  ; Kill before uninstall (ignore errors)
+  nsExec::ExecToStack 'cmd /c taskkill /F /IM Vermes.exe /T'
+  Pop $0
+  nsExec::ExecToStack 'cmd /c taskkill /F /IM vermes-backend.exe /T'
+  Pop $0
+  Sleep 500
 !macroend
