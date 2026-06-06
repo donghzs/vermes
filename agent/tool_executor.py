@@ -309,11 +309,9 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         try:
             from agent.evolution_manager import get_strategy_advice, detect_domain
             _domain = detect_domain(function_name, function_args)
-            _advice = get_strategy_advice(function_name, _domain)
-            if _advice:
-                agent._vprint(f"  📊 {_advice}")
+            _pre_advice = get_strategy_advice(function_name, _domain)
         except Exception:
-            pass
+            _pre_advice = None
         try:
             try:
                 result = agent._invoke_tool(
@@ -328,6 +326,9 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 result = f"Error executing tool '{function_name}': {tool_error}"
                 logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
             duration = time.time() - start
+            # ── Pre-flight 建议注入 result（LLM 可见） ──
+            if _pre_advice:
+                result = result + "\n\n📊 历史提示: " + _pre_advice
             is_error, _ = _detect_tool_failure(function_name, result)
             if is_error:
                 logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
@@ -588,11 +589,9 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         try:
             from agent.evolution_manager import get_strategy_advice, detect_domain
             _domain = detect_domain(function_name, function_args)
-            _advice = get_strategy_advice(function_name, _domain)
-            if _advice:
-                agent._vprint(f"  📊 {_advice}")
+            _pre_advice_seq = get_strategy_advice(function_name, _domain)
         except Exception:
-            pass
+            _pre_advice_seq = None
         if not isinstance(function_args, dict):
             function_args = {}
 
@@ -907,6 +906,13 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 function_result = f"Error executing tool '{function_name}': {tool_error}"
                 logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
             tool_duration = time.time() - tool_start_time
+
+        # ── Pre-flight 建议注入 result（顺序路径） ──
+        if _pre_advice_seq:
+            if isinstance(function_result, str):
+                function_result = function_result + "\n\n📊 历史提示: " + _pre_advice_seq
+            else:
+                function_result["tool_advice"] = _pre_advice_seq
 
         if isinstance(function_result, str):
             result_preview = function_result if agent.verbose_logging else (
