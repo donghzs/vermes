@@ -43,7 +43,7 @@ function getDateGroup(ts) {
 const filteredSessions = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return chat.sessions
-  return chat.sessions.filter(s => (s.name || '新会话').toLowerCase().includes(q))
+  return chat.sessions.filter(s => (s.name || '新 Agent').toLowerCase().includes(q))
 })
 
 // 置顶 + 分组
@@ -82,7 +82,7 @@ const renameRef = ref(null)
 
 function startRename(s) {
   renamingId.value = s.id
-  renameInput.value = s.name || '新会话'
+  renameInput.value = s.name || '新 Agent'
   closeContextMenu()
   nextTick(() => {
     const el = document.querySelector('.rename-input')
@@ -205,7 +205,7 @@ function confirmCustomPrompt() {
   const prompt = customPromptInput.value.trim()
   if (!prompt) {
     // 空的就当空白会话
-    chat.createSession('新会话', SESSION_TEMPLATES[0])
+    chat.createSession('新 Agent', SESSION_TEMPLATES[0])
   } else {
     chat.createSession('自定义', { id: 'custom', name: '自定义', icon: '⚙️', systemPrompt: prompt })
   }
@@ -255,7 +255,7 @@ async function handleImportFile(e) {
         <button @click="chat.toggleSidebar()" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="展开侧边栏">
           <div class="w-6 h-6 bg-green-500 rounded flex items-center justify-center text-white font-bold text-xs">V</div>
         </button>
-        <button @click="chat.createSession('新会话')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition text-sm" title="新会话">
+        <button @click="chat.createSession('新 Agent')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition text-sm" title="新 Agent">
           ➕
         </button>
       </div>
@@ -271,12 +271,12 @@ async function handleImportFile(e) {
         </div>
       </div>
 
-      <!-- 新会话按钮 + 模板选择 -->
+      <!-- 新 Agent按钮 + 模板选择 -->
       <div class="p-3 shrink-0 relative">
         <button
           @click="showTemplateMenu = !showTemplateMenu"
           class="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition"
-        >＋ 新会话</button>
+        >＋ 新 Agent</button>
         <div v-if="showTemplateMenu" class="absolute left-3 right-3 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1">
           <div v-for="tpl in SESSION_TEMPLATES" :key="tpl.id"
             @click="selectTemplate(tpl)"
@@ -371,7 +371,7 @@ async function handleImportFile(e) {
             <template v-else>
               <div class="flex items-center gap-1">
                 <span class="text-[10px] shrink-0">📌</span>
-                <div class="truncate font-medium flex-1">{{ s.name || '新会话' }}</div>
+                <div class="truncate font-medium flex-1">{{ s.name || '新 Agent' }}</div>
                 <span v-if="getMessageCount(s.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(s.id) }}</span>
               </div>
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(s.id)">{{ getFirstMessagePreview(s.id) }}</div>
@@ -416,7 +416,7 @@ async function handleImportFile(e) {
             </div>
             <template v-else>
               <div class="flex items-center gap-1">
-                <div class="truncate font-medium flex-1">{{ item.data.name || '新会话' }}</div>
+                <div class="truncate font-medium flex-1">{{ item.data.name || '新 Agent' }}</div>
                 <span v-if="getMessageCount(item.data.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(item.data.id) }}</span>
               </div>
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(item.data.id)">{{ getFirstMessagePreview(item.data.id) }}</div>

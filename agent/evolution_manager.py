@@ -39,7 +39,19 @@ def get_self_model_db() -> Path:
 
 def is_evolution_active() -> bool:
     """Check if evolution system is active."""
-    return get_self_model_db().exists()
+    if not get_self_model_db().exists():
+        return False
+    # 启用 WAL 模式（并发读写不阻塞）
+    try:
+        for _db in [get_self_model_db(), _get_fusion_db()]:
+            if _db.exists():
+                _conn = sqlite3.connect(str(_db))
+                _conn.execute("PRAGMA journal_mode=WAL")
+                _conn.execute("PRAGMA synchronous=NORMAL")
+                _conn.close()
+    except Exception:
+        pass
+    return True
 
 
 def classify_task(tool_name: str, args: Dict[str, Any]) -> str:
