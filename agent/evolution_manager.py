@@ -358,6 +358,112 @@ def suggest_correction(tool_name: str, error_type: str, error_msg: str) -> str:
     return corrections.get(error_type, "检查错误信息，分析根因")
 
 
+def _get_fusion_db() -> Path:
+    """Get the fusion-state (感性层) database path."""
+    return get_evolution_dir() / "fusion-state.db"
+
+
+def _record_emotional_state(
+    tool_name: str,
+    task: str,
+    is_error: bool,
+    error_type: str,
+    duration: float,
+    domain: str,
+) -> None:
+    """Map execution outcome to emotional state and record to fusion-state.db.
+    
+    Maps:
+      - success + fast (duration < 2s) → "confident"
+      - success + slow       → "patient"
+      - error + permission   → "frustrated"
+      - error + not found    → "confused"  
+      - error + timeout      → "impatient"
+      - error + other        → "cautious"
+      - repetitive error     → "overwhelmed"
+    """
+    db_path = _get_fusion_db()
+    if not db_path.exists():
+        return
+    
+    # Map outcome to emotion
+    if is_error:
+        if error_type == "permission_denied":
+            emotion = "frustrated"
+        elif error_type in ("not_found", "file_not_found"):
+            emotion = "confused"
+        elif error_type == "timeout":
+            emotion = "impatient"
+        elif error_type in ("api_error", "general_error"):
+            emotion = "cautious"
+        else:
+            emotion = "concerned"
+        intensity = 0.6
+    else:
+        if duration < 2.0:
+            emotion = "confident"
+            intensity = 0.8
+        elif duration < 10.0:
+            emotion = "patient"
+            intensity = 0.5
+        else:
+            emotion = "persistent"
+            intensity = 0.4
+    
+    # Check recent error streak for intensity adjustment
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM emotional_state WHERE trigger LIKE ? AND timestamp > datetime('now', '-5 minutes')",
+            (f"{tool_name}:%",)
+        )
+        recent_count = cursor.fetchone()[0]
+        if recent_count > 3 and is_error:
+            emotion = "overwhelmed"
+            intensity = min(intensity + 0.3, 1.0)
+        elif recent_count > 5 and not is_error:
+            emotion = "determined"
+            intensity = min(intensity + 0.2, 1.0)
+        
+        timestamp = datetime.now().isoformat()
+        trigger = f"{tool_name}:{task}"
+        context = json.dumps({
+            "domain": domain,
+            "error_type": error_type,
+            "duration": round(duration, 2),
+        }, ensure_ascii=False)
+        
+        cursor.execute(
+            "INSERT INTO emotional_state (timestamp, emotion, intensity, trigger, context) VALUES (?, ?, ?, ?, ?)",
+            (timestamp, emotion, intensity, trigger, context),
+        )
+        conn.commit()
+        conn.close()
+        
+        logger.debug("Emotional state: %s (%.1f) — %s", emotion, intensity, trigger)
+    except Exception:
+        pass
+
+
+def _record_evolution_metric(metric: str, value: float, details: str = "") -> None:
+    """Record a metric to fusion-state.db evolution_metrics table."""
+    db_path = _get_fusion_db()
+    if not db_path.exists():
+        return
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO evolution_metrics (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+            (datetime.now().isoformat(), metric, value, details),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def record_tool_outcome(
     agent,
     tool_name: str,
@@ -449,6 +555,31 @@ def record_tool_outcome(
             "Evolution: recorded %s %s (success=%s, duration=%.2fs)",
             tool_name, task, not is_error, duration
         )
+
+        # ── 感性层：记录情绪状态 ──────────────────────────────────
+        try:
+            _record_emotional_state(tool_name, task, is_error, error_type, duration, domain)
+        except Exception:
+            pass  # 情绪记录非阻塞
+
+        # ── 指标记录 ──────────────────────────────────────────────
+        try:
+            _record_evolution_metric(
+                "tool.duration",
+                round(duration, 2),
+                f"{tool_name}:{task}:{'success' if not is_error else 'failed'}",
+            )
+        except Exception:
+            pass  # 指标记录非阻塞
+
+        # ── P1: 反馈闭环 — 错误率高时发出警告 ─────────────────────
+        if is_error:
+            try:
+                advice = get_strategy_advice(tool_name, domain)
+                if advice:
+                    logger.info("Evolution advice [%s/%s]: %s", tool_name, domain, advice)
+            except Exception:
+                pass
         
     except Exception as e:
         logger.debug("Evolution recording failed: %s", e)
