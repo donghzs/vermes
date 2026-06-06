@@ -409,7 +409,7 @@ function streamElapsed(startTime) {
 <template>
   <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-4 py-6 bg-gray-50 dark:bg-gray-900 relative">
     <!-- 骨架屏：loading 且无消息（切换会话/loading 中） -->
-    <div v-if="chat.filteredMessages.length === 0 && chat.loading" class="space-y-4 px-4 py-6">
+    <div v-if="(chat.filteredMessages?.length ?? 0) === 0 && chat.loading" class="space-y-4 px-4 py-6">
       <div v-for="i in 3" :key="'skeleton-'+i" class="flex gap-3" :class="i % 2 === 0 ? 'flex-row-reverse' : ''">
         <div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse flex-shrink-0"></div>
         <div class="max-w-[75%] space-y-2">
@@ -564,7 +564,7 @@ function streamElapsed(startTime) {
   </div><!-- end message loop -->
 
   <!-- 流式状态消息（压缩警告、lifecycle 通知等） -->
-  <div v-if="chat.statusMessages.length > 0" class="px-4 py-1 flex flex-col gap-1">
+  <div v-if="(chat.statusMessages?.length ?? 0) > 0" class="px-4 py-1 flex flex-col gap-1">
     <div v-for="s in chat.statusMessages" :key="s.id"
          class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-fade-in">
       <span>{{ s.type === 'warn' ? '⚠️' : '📦' }}</span>

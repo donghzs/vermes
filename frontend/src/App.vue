@@ -51,7 +51,7 @@ onMounted(async () => {
         <div v-if="update.releaseNotes" v-for="(line, i) in update.releaseNotes.split('\n')" :key="'shell-'+i" class="flex items-start gap-1">
           <span class="text-white/50 mt-0.5">•</span><span>{{ line }}</span>
         </div>
-        <div v-if="update.agentChangelog.length" v-for="(line, i) in update.agentChangelog" :key="'agent-'+i" class="flex items-start gap-1">
+        <div v-if="update.agentChangelog?.length" v-for="(line, i) in update.agentChangelog" :key="'agent-'+i" class="flex items-start gap-1">
           <span class="text-white/50 mt-0.5">•</span><span>{{ line }}</span>
         </div>
       </div>
