@@ -72,6 +72,18 @@ class _AgentCache:
 _agent_cache = _AgentCache(maxsize=20)
 
 
+async def stop_agent_session(session_id: str) -> dict:
+    """Interrupt agent generation for a given session."""
+    for key, agent in list(_agent_cache._cache.items()):
+        if session_id in key:
+            try:
+                agent.interrupt()
+            except Exception as e:
+                _log.warning(f"[Agent] Failed to interrupt {session_id}: {e}")
+            return {"ok": True, "session_id": session_id}
+    return {"ok": True, "session_id": session_id, "note": "no_active_agent"}
+
+
 def clean_agent_for_session(session_id: str):
     """供 session.py 调用的 session 删除时清理接口。"""
     _agent_cache.pop_for_session(session_id)

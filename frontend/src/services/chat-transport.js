@@ -220,8 +220,13 @@ let _instance = null
 export function getChatTransport() {
   if (!_instance) {
     // 后期切 WebSocket 只需改这一行：
-    _instance = new SSETransport()
-    // _instance = new WebSocketTransport('ws://127.0.0.1:9119/ws')
+    // 生产环境启用 WebSocket
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      _instance = new WebSocketTransport(`${wsProto}//${window.location.host}/api/ws/chat`)
+    } else {
+      _instance = new WebSocketTransport('ws://127.0.0.1:9119/api/ws/chat')
+    }
   }
   return _instance
 }
