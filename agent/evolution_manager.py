@@ -38,11 +38,104 @@ def get_self_model_db() -> Path:
 
 
 def is_evolution_active() -> bool:
-    """Check if evolution system is active."""
+    """Check if evolution system is active. Auto-seeds if first run."""
     if not get_self_model_db().exists():
-        return False
+        _seed_evolution_db()
     _ensure_wal_mode()
     return True
+
+
+def _seed_evolution_db() -> None:
+    """Seed evolution database for new users (first run)."""
+    db_path = get_self_model_db()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS outcomes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL, task TEXT NOT NULL,
+        action TEXT NOT NULL, tool TEXT NOT NULL,
+        success INTEGER NOT NULL, details TEXT,
+        duration REAL DEFAULT 0, domain TEXT DEFAULT '通用',
+        error_type TEXT DEFAULT '', error_msg TEXT DEFAULT '',
+        role TEXT DEFAULT 'default')""")
+    c.execute("""CREATE TABLE IF NOT EXISTS anti_patterns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL,
+        pattern TEXT NOT NULL, correct TEXT, domain TEXT,
+        frequency INTEGER DEFAULT 1, last_seen TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS strategies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT,
+        strategy TEXT, success_rate_when_used REAL,
+        times_used INTEGER DEFAULT 0, created TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS self_model (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
+        metric TEXT, value REAL, details TEXT)""")
+    
+    from datetime import datetime
+    ts = datetime.now().isoformat()
+    seeds = [
+        (ts, '终端命令', '{"command": "ls -la"}', 'terminal', 1,
+         '{"output": "total 0", "exit_code": 0}', 0.3, '系统管理', '', '', 'terminal'),
+        (ts, '文件读取', '{"path": "/etc/hosts"}', 'read_file', 1,
+         '127.0.0.1 localhost', 0.2, '系统管理', '', '', 'read_file'),
+        (ts, '代码搜索', '{"pattern": "class"}', 'search_files', 1,
+         '{"matches": ["file1.py", "file2.py"]}', 0.5, '通用', '', '', 'search_files'),
+        (ts, '网络搜索', '{"query": "python"}', 'web_search', 1,
+         '{"results": []}', 1.0, '网络研究', '', '', 'web_search'),
+        (ts, '代码修改', '{"path": "/tmp/test.py"}', 'patch', 1,
+         '{"success": true}', 0.4, 'Python开发', '', '', 'patch'),
+        (ts, '文件写入', '{"path": "/tmp/test.md"}', 'write_file', 1,
+         'ok', 0.3, '文档编写', '', '', 'write_file'),
+        (ts, '终端命令', '{"command": "pip install"}', 'terminal', 1,
+         '{"output": "Successfully installed"}', 2.0, 'Python开发', '', '', 'terminal'),
+        (ts, '终端命令', '{"command": "git status"}', 'terminal', 1,
+         '{"output": "clean"}', 0.5, '版本控制', '', '', 'terminal'),
+        (ts, '终端命令', '{"command": "npm install"}', 'terminal', 1,
+         '{"output": "added 100 packages"}', 3.0, '前端开发', '', '', 'terminal'),
+        (ts, '文件读取', '{"path": "/tmp/data.json"}', 'read_file', 1,
+         '{"name": "test"}', 0.2, '通用', '', '', 'read_file'),
+    ]
+    for s in seeds:
+        c.execute('''INSERT INTO outcomes 
+            (timestamp, task, action, tool, success, details, duration, domain, error_type, error_msg, role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', s)
+    
+    # Seed anti-patterns
+    ap_seeds = [
+        (ts, 'terminal:permission_denied', '检查文件权限，可能需要 sudo', '系统管理', 3, ts),
+        (ts, 'terminal:not_found', '检查路径是否正确', '系统管理', 2, ts),
+        (ts, 'terminal:connection_refused', '检查服务是否启动', '系统管理', 1, ts),
+    ]
+    for ap in ap_seeds:
+        c.execute('''INSERT INTO anti_patterns 
+            (timestamp, pattern, correct, domain, frequency, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?)''', ap)
+    
+    # Seed emotional state in fusion-state.db
+    _fusion_db = get_evolution_dir() / "fusion-state.db"
+    _fusion_db.parent.mkdir(parents=True, exist_ok=True)
+    fconn = sqlite3.connect(str(_fusion_db))
+    fc = fconn.cursor()
+    fc.execute("""CREATE TABLE IF NOT EXISTS emotional_state (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
+        emotion TEXT, intensity REAL, trigger TEXT, context TEXT)""")
+    fc.execute("""CREATE TABLE IF NOT EXISTS fusion_decisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
+        situation TEXT, rational_score REAL, emotional_score REAL,
+        final_decision TEXT, outcome TEXT)""")
+    fc.execute("""CREATE TABLE IF NOT EXISTS evolution_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
+        metric TEXT, value REAL, details TEXT)""")
+    fc.execute(
+        "INSERT INTO emotional_state (timestamp, emotion, intensity, trigger, context) VALUES (?, ?, ?, ?, ?)",
+        (ts, 'curious', 0.7, 'system:first_run', '{"source": "seed"}')
+    )
+    fc.commit()
+    fconn.close()
+    
+    conn.commit()
+    conn.close()
+    logger.info("Evolution DB seeded for first run: 10 outcomes, 3 anti-patterns")
 
 
 _wal_initialized = None
