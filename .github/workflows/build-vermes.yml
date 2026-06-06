@@ -141,10 +141,29 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install dependencies (macOS)
         run: |
           python3 -m pip install --upgrade pip
           pip3 install -e . pyinstaller
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          echo "Frontend built ✓"
+
+      - name: Sync frontend to web_dist
+        run: |
+          rm -rf hermes_cli/web_dist
+          cp -R frontend/dist hermes_cli/web_dist
+          echo "web_dist synced:"
+          ls -la hermes_cli/web_dist/assets/
 
       - name: Build macOS .app (PyInstaller)
         run: |
@@ -210,10 +229,32 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e . pyinstaller
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          echo "Frontend built ✓"
+
+      - name: Sync frontend to web_dist
+        shell: pwsh
+        run: |
+          if (Test-Path "hermes_cli/web_dist") {
+            Remove-Item -Recurse -Force "hermes_cli/web_dist"
+          }
+          Copy-Item -Recurse "frontend/dist" "hermes_cli/web_dist"
+          Write-Host "web_dist synced:"
+          Get-ChildItem "hermes_cli/web_dist" -Recurse | Select-Object Mode, Length, Name
 
       - name: Install NSIS
         run: |
@@ -298,10 +339,29 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
           pip3 install pyinstaller fastapi uvicorn pywebview python-dotenv
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          echo "Frontend built ✓"
+
+      - name: Sync frontend to web_dist
+        run: |
+          rm -rf hermes_cli/web_dist
+          cp -R frontend/dist hermes_cli/web_dist
+          echo "web_dist synced:"
+          ls -la hermes_cli/web_dist/assets/
 
       - name: Install system dependencies (WebView2 equivalent)
         run: |
