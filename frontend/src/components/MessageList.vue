@@ -434,7 +434,7 @@ function streamElapsed(startTime) {
           <div v-if="msg._compareModel" class="text-[10px] text-purple-500 dark:text-purple-400 mb-1 font-medium px-1">
             🔬 {{ msg._compareModel }}
           </div>
-          <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed" :class="msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md shadow-sm border-l-[3px] border-green-400 dark:border-green-500'">
+          <div class="px-4 py-3 rounded-2xl text-sm leading-relaxed" :class="msg._isBriefing ? 'evo-briefing' : msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-md' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md shadow-sm border-l-[3px] border-green-400 dark:border-green-500'">
             <template v-if="msg.role === 'user'">
               <!-- 图片附件：从 markdown ![](data:image/...) 中提取显示 -->
               <img v-for="(imgUrl, idx) in extractImages(msg.content)" :key="'uimg-' + idx" :src="imgUrl" class="max-w-full rounded-lg mb-2" />
@@ -588,6 +588,21 @@ function streamElapsed(startTime) {
 </template>
 
 <style scoped>
+/* ── 进化简报卡片 ── */
+.evo-briefing {
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(to bottom, #22c55e, #3b82f6) 1;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.03) 0%, rgba(59, 130, 246, 0.03) 100%);
+  animation: briefing-in 0.5s ease-out;
+}
+.dark .evo-briefing {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, rgba(59, 130, 246, 0.06) 100%);
+}
+@keyframes briefing-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .vermes-md :deep(a) { color: #61afef; text-decoration: underline; cursor: pointer; }
 .dark .vermes-md :deep(a) { color: #82b1ff; }
 .vermes-md :deep(a:hover) { color: #82b1ff; opacity: 0.85; }

@@ -76,6 +76,44 @@ export const useChatStore = defineStore('chat', () => {
     return messages.value.filter(m => m.sessionId === currentSessionId.value)
   })
 
+  // ── 进化签到简报（每日首次启动时注入） ──
+  async function injectEvolutionBriefing() {
+    const today = new Date().toISOString().slice(0, 10)
+    if (localStorage.getItem('vermes-evo-briefing-date') === today) return
+    try {
+      const r = await fetch('/api/evolution/status')
+      if (!r.ok) return
+      const s = await r.json()
+      if (!s.active || (s.total_outcomes || 0) < 5) return
+
+      const lines = ['📊 **进化简报**\n']
+      lines.push(`完成 **${s.total_outcomes}** 次工具调用，成功率 **${s.success_rate}%**`)
+      if (s.current_emotion) lines.push(`😌 当前状态: ${s.current_emotion}`)
+      if ((s.anti_patterns_count || 0) > 0) {
+        lines.push(`⚠️ 已识别 **${s.anti_patterns_count}** 个反模式`)
+      }
+      if (s.recent_failures?.length) {
+        const f = s.recent_failures[0]
+        lines.push(`最近遇到 ${f[0]} 的 ${f[1]} 问题，下次我会注意`)
+      }
+      if (s.top_domains?.length) {
+        lines.push(`活跃领域: ${s.top_domains.slice(0, 3).map(d => d[0]).join('、')}`)
+      }
+
+      messages.value.push({
+        id: `evo-briefing-${today}`,
+        role: 'assistant',
+        content: lines.join('\n'),
+        sessionId: currentSessionId.value,
+        timestamp: Date.now(),
+        streaming: false,
+        toolInvocations: [],
+        _isBriefing: true
+      })
+      localStorage.setItem('vermes-evo-briefing-date', today)
+    } catch { /* 静默失败 */ }
+  }
+
   // ── 初始化 ──
   async function init() {
     try {
@@ -86,6 +124,8 @@ export const useChatStore = defineStore('chat', () => {
       } else {
         await createSession('新 Agent')
       }
+      // 注入进化简报（非阻塞）
+      await injectEvolutionBriefing()
     } catch (e) {
       console.error('❌ init failed:', e)
       if (sessions.value.length === 0) {
