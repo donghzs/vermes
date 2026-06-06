@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "prebuild": "bash ../scripts/sync-version.sh",
+    "prebuild": "bash ../scripts/prebuild-check.sh --fix && bash ../scripts/sync-version.sh",
     "pack": "npm run prebuild && electron-builder --dir",
     "dist:mac": "npm run prebuild && cd ../ && .venv/bin/pyinstaller vermes-backend.spec --noconfirm && cd electron && electron-builder --mac",
     "dist:win": "npm run prebuild && cd ../ && python -m PyInstaller vermes-backend.spec --noconfirm && cd electron && electron-builder --win",
