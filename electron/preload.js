@@ -48,6 +48,27 @@ contextBridge.exposeInMainWorld('vermes', {
     return () => ipcRenderer.removeListener('update:error', handler);
   },
 
+  // Agent 框架更新 (IPC)
+  checkAgentUpdate: () => ipcRenderer.invoke('agent:check'),
+  downloadAgentUpdate: (opts) => ipcRenderer.invoke('agent:download', opts),
+
+  // Agent 更新事件监听
+  onAgentUpdateProgress: (cb) => {
+    const handler = (_e, progress) => cb(progress);
+    ipcRenderer.on('agent:update-progress', handler);
+    return () => ipcRenderer.removeListener('agent:update-progress', handler);
+  },
+  onAgentUpdateComplete: (cb) => {
+    const handler = (_e, info) => cb(info);
+    ipcRenderer.on('agent:update-complete', handler);
+    return () => ipcRenderer.removeListener('agent:update-complete', handler);
+  },
+  onAgentUpdateError: (cb) => {
+    const handler = (_e, err) => cb(err);
+    ipcRenderer.on('agent:update-error', handler);
+    return () => ipcRenderer.removeListener('agent:update-error', handler);
+  },
+
   // ── 启动欢迎页（Splash）IPC ──
   // splash.html 通过此通道接收初始化进度
   onSplashMessage: (cb) => {
