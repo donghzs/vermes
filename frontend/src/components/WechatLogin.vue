@@ -158,7 +158,7 @@ function handleLoginSuccess(data) {
     userAvatar: data.userAvatar || ''
   })
 
-  if (chat.sessions.length === 0) chat.createSession('新会话')
+  if (chat.sessions.length === 0) chat.createSession('新 Agent')
 }
 
 // ── 登出 ──
