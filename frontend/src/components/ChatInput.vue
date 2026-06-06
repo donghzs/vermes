@@ -11,7 +11,7 @@ const uploadedFiles = ref([])
 
 // 空会话检测：无消息时强化输入框视觉引导
 function isEmptySession() {
-  return chat.filteredMessages.length === 0
+  return (chat.filteredMessages?.length ?? 0) === 0
 }
 const inputRef = ref(null)
 const isDragging = ref(false)

@@ -188,8 +188,8 @@ onUnmounted(() => {
 
     <!-- 中间内容区：消息列表 / 引导页 -->
     <div class="flex-1 min-h-0 flex flex-col">
-      <MessageList v-if="chat.filteredMessages.length > 0" @quickStart="onQuickStart" @editMessage="onEditMessage" />
-      <WelcomeGuide v-if="chat.filteredMessages.length === 0" @openWeChatQR="openWeChatQR" />
+      <MessageList v-if="(chat.filteredMessages?.length ?? 0) > 0" @quickStart="onQuickStart" @editMessage="onEditMessage" />
+      <WelcomeGuide v-if="(chat.filteredMessages?.length ?? 0) === 0" @openWeChatQR="openWeChatQR" />
     </div>
 
     <!-- 输入区 -->

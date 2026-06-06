@@ -44,4 +44,16 @@ else
 fi
 echo "  ✅ frontend/package.json"
 
+# 4. 同步根目录 version.txt
+ROOT_VERSION_TXT="$ROOT_DIR/version.txt"
+echo "$VERSION" > "$ROOT_VERSION_TXT"
+echo "  ✅ version.txt"
+
+# 5. 同步 pyproject.toml 版本号
+PYPROJECT="$ROOT_DIR/pyproject.toml"
+if [ -f "$PYPROJECT" ]; then
+  sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" "$PYPROJECT" && rm -f "${PYPROJECT}.bak"
+  echo "  ✅ pyproject.toml"
+fi
+
 echo "Done — all version files synced to $VERSION"

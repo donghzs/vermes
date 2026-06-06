@@ -96,7 +96,7 @@ const quickStarts = [
 
 <template>
   <!-- 空会话时显示引导 -->
-  <div v-if="chat.filteredMessages.length === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-8 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
+  <div v-if="(chat.filteredMessages?.length ?? 0) === 0" class="flex-1 flex flex-col items-center justify-center px-8 py-8 bg-gray-50 dark:bg-gray-900 overflow-y-auto">
     
     <!-- Step 1: 选择使用方式 -->
     <div v-if="currentStep === 1" class="w-full max-w-md">
