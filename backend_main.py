@@ -20,25 +20,6 @@ try:
 except Exception:
     pass
 
-# ── Agent 框架热加载 ──────────────────────────────────────────────────
-# 如果 ~/.vermes/agent/ 存在，将其插入 sys.path 最前面，优先加载
-# 这样 Agent 框架更新不需要修改 app bundle，只需替换 ~/.vermes/agent/
-_vermes_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
-_agent_dir = os.path.join(_vermes_home, "agent")
-if os.path.isdir(_agent_dir):
-    sys.path.insert(0, _agent_dir)
-    # 读取版本号
-    _ver_file = os.path.join(_agent_dir, ".version")
-    if os.path.exists(_ver_file):
-        try:
-            _ver = open(_ver_file, encoding="utf-8").read().strip()
-            print(f"[Vermes] Agent 框架 v{_ver} 已加载 ({_agent_dir})")
-        except Exception:
-            pass
-    else:
-        print(f"[Vermes] Agent 框架已加载 ({_agent_dir})")
-# ── 热加载结束 ────────────────────────────────────────────────────────
-
 import uvicorn
 from hermes_cli.web_server import app
 import signal as _signal
