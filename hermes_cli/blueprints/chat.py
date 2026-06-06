@@ -340,7 +340,7 @@ def _load_toolsets_for_web() -> list[str] | None:
     env_toolsets = os.environ.get("HERMES_TUI_TOOLSETS", "")
     if env_toolsets:
         return [t.strip() for t in env_toolsets.split(",") if t.strip()]
-    # Fall back to config
+    # Fall back to config — platform_toolsets.web > toolsets > default
     try:
         from hermes_constants import get_hermes_home
         import yaml
@@ -348,6 +348,11 @@ def _load_toolsets_for_web() -> list[str] | None:
         if os.path.exists(cfg_path):
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}
+            # platform-specific toolsets take priority
+            platform_ts = cfg.get("platform_toolsets", {})
+            if isinstance(platform_ts, dict) and "web" in platform_ts:
+                return platform_ts["web"]
+            # fallback to global toolsets
             toolsets = cfg.get("toolsets")
             if toolsets:
                 return toolsets if isinstance(toolsets, list) else [toolsets]
@@ -1063,6 +1068,19 @@ async def chat_models():
 
 # ── Registration ─────────────────────────────────────────────────────
 
+
+async def evolution_status():
+    """Return evolution system status for the frontend."""
+    try:
+        from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+        status = get_evolution_status()
+        if isinstance(status, dict):
+            status["current_emotion"] = get_current_emotional_state()
+        return status
+    except Exception as e:
+        return {"active": False, "error": str(e)}
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -1076,6 +1094,12 @@ def register_to(app):
         chat_models,
         methods=["GET"],
         name="chat_models",
+    )
+    app.add_api_route(
+        "/api/evolution/status",
+        evolution_status,
+        methods=["GET"],
+        name="evolution_status",
     )
 
     # Pre-create default agent at startup for persistence
