@@ -1,6 +1,6 @@
 {
   "name": "vermes-electron",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "Vermes - AI Agent Desktop (Electron Shell + Python Backend)",
   "main": "main.js",
   "author": "Vbit (vbit.top)",
@@ -78,6 +78,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "runAfterFinish": false,
       "installerIcon": "assets/vermes.ico",
       "uninstallerIcon": "assets/vermes.ico",
       "language": "2052",
