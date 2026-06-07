@@ -25,7 +25,7 @@ import {
   getFirstMessage as _getFirstMessage,
   evictOldSessions as _evictOldSessions,
 } from './chat-session'
-import { loadFromStorage, saveToStorage, loadMessagesFromIDB } from './chat-storage'
+import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64 } from './chat-storage'
 import { uid, persistMessages } from './chat-session'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
@@ -72,6 +72,9 @@ export const useChatStore = defineStore('chat', () => {
 
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
   const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
+
+  // ── 缓存性能指标 ──
+  const cacheMetrics = ref(null)
 
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
@@ -125,7 +128,11 @@ export const useChatStore = defineStore('chat', () => {
     try {
       // 恢复最后使用的会话
       if (sessions.value.length > 0) {
-        const lastId = localStorage.getItem('vermes-last-session') || sessions.value[0].id
+        let lastId = localStorage.getItem('vermes-last-session')
+        // 验证 lastId 是有效会话（排除 "undefined"/"null" 字符串和不存在的 id）
+        if (!lastId || lastId === 'undefined' || lastId === 'null' || !sessions.value.find(s => s.id === lastId)) {
+          lastId = sessions.value[0].id
+        }
         await switchSession(lastId)
       } else {
         await createSession('新 Agent')
@@ -163,10 +170,13 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function switchSession(id) {
+    if (!id || id === 'undefined' || id === 'null') return
     flushStorageWrites()
     const oldSessionId = currentSessionId.value
     // 清理旧会话的 streaming 状态和定时器，防止内存泄漏
     if (oldSessionId && oldSessionId !== id) {
+      // 多会话并行: 不中止旧会话的 SSE，让它后台继续运行
+      // 流式消息最终会通过 onDone 持久化到 IDB，切回时可恢复
       messages.value.filter(m => m.streaming).forEach(m => {
         m.streaming = false
         if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
@@ -183,13 +193,18 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
 
-    // 加载新会话的消息
+    // 加载新会话消息 — 合并到全局消息池（不替换）
     try {
       const loaded = await loadMessagesFromIDB(id)
-      messages.value = loaded || []
+      if (loaded && loaded.length > 0) {
+        // 去重合并: 已在池中的跳过
+        const existingIds = new Set(messages.value.map(m => m.id))
+        for (const m of loaded) {
+          if (!existingIds.has(m.id)) messages.value.push(m)
+        }
+      }
     } catch (e) {
       console.error('[Vermes] 加载会话失败:', e)
-      messages.value = []
     }
     // 恢复新会话的 loading 状态
     // 检查新会话是否已有 loading 状态
@@ -199,7 +214,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function deleteSession(id) {
-    try { await fetch('/api/agent/clean/' + id, { method: 'DELETE' }) } catch {}
+    try { await fetch('/api/sessions/' + id, { method: 'DELETE' }) } catch {}
     await _deleteSession(sessions.value, messages.value, id, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     if (currentSessionId.value === id) {
       if (sessions.value.length > 0) {
@@ -234,16 +249,33 @@ export const useChatStore = defineStore('chat', () => {
 
     const msgId = uid()
 
-    // 处理 attachments（必须在 push 前完成）
-    const processedAttachments = (attachments && attachments.length > 0)
-      ? attachments.map(a => ({
-          name: a.name || '',
-          type: a.type || 'file',
-          data: a.data || a.preview || '',
-          mime: a.mimeType || '',
-          size: a.size || 0,
-        }))
-      : []
+    // 处理 attachments — 将 File 对象转为 base64
+    let processedAttachments = []
+    if (attachments && attachments.length > 0) {
+      processedAttachments = await Promise.all(
+        attachments.map(async (a) => {
+          // 如果有 file 对象，用 fileToBase64 转换
+          if (a.file instanceof File) {
+            const b64 = await fileToBase64(a.file)
+            return {
+              name: b64.name,
+              type: b64.type,
+              data: b64.base64,
+              mime: b64.mimeType,
+              size: b64.size,
+            }
+          }
+          // 已有 base64 数据
+          return {
+            name: a.name || '',
+            type: a.type || 'file',
+            data: a.data || a.base64 || '',
+            mime: a.mime || a.mimeType || '',
+            size: a.size || 0,
+          }
+        })
+      )
+    }
 
     const userContent = content
 
@@ -262,23 +294,21 @@ export const useChatStore = defineStore('chat', () => {
 
     // P4: per-session loading
     if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = true
+    const aid = uid()
     try {
-      const allMsgs = messages.value
-      const aid = uid()
       messages.value.push({
         id: aid, role: 'assistant', content: '',
         sessionId: currentSessionId.value, timestamp: Date.now(),
         streaming: true, toolInvocations: []
       })
 
-      const ac = new AbortController()
-      abortController.value = ac
-
       const allMsgsFiltered = messages.value.filter(m => m.sessionId === currentSessionId.value && !m.streaming)
       const recentImageMsgIds = new Set(
         allMsgsFiltered.filter(m => m.role === 'user' && m.content?.includes('data:image') && m.id !== msgId).slice(-5).map(m => m.id)
       )
-      const apiMessages = allMsgsFiltered.map(m => ({
+      const apiMessages = allMsgsFiltered
+        .filter(m => !(m.role === 'assistant' && !m.content)) // 过滤空助手消息
+        .map(m => ({
         role: m.role,
         content: m.role === 'user' && m.content?.includes('data:image') && !recentImageMsgIds.has(m.id)
           ? m.content.replace(/!\[.*?\]\(data:image[^)]+\)/g, '[图片]').trim() : m.content,
@@ -302,6 +332,8 @@ export const useChatStore = defineStore('chat', () => {
           } else if (chunk?.type === 'tool') {
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
             am._currentStep = chunk.name || ''
+            if (!am.toolInvocations) am.toolInvocations = []
+            am.toolInvocations.push({ name: chunk.name, status: 'running' })
           }
           scheduleScroll()
         },
@@ -317,28 +349,37 @@ export const useChatStore = defineStore('chat', () => {
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
+            if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
             am.streaming = false; am._currentStep = null; am._streamStartTime = null; am._toolCount = null
           }
           flushScroll()
           if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
-          abortController.value = null; activeStreamId.value = null
+          activeStreamId.value = null
           statusMessages.value = []
           if (usageInfo && usageInfo.total_tokens > 0) {
             lastTokenUsage.value = usageInfo
           }
+          // 持久化助手回复（防止崩溃丢失）
+          if (currentSessionId.value) {
+            persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+          }
         },
         onError: (error) => {
           const am = messages.value.find(m => m.id === aid)
-          if (am) { am.streaming = false; am.content += `
-
-\`\`\`error
-${error}
-\`\`\``; am._streamStartTime = null }
+          if (am) {
+            if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
+            am.streaming = false
+            am.content += `\n\n\`\`\`error\n${error}\n\`\`\``
+            am._streamStartTime = null
+          }
           flushScroll()
           if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
-          abortController.value = null
           statusMessages.value.push({ id: uid(), type: 'error', message: error, timestamp: Date.now() })
+          // 持久化（即使出错也保存已收到的部分内容）
+          if (currentSessionId.value) {
+            persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+          }
         },
       })
       await transport.send(currentSessionId.value, {
@@ -346,15 +387,17 @@ ${error}
         model: modelId,
         provider: providerId,
         attachments: processedAttachments.map(a => ({
-          name: a.name, type: a.type, data: a.base64,
-          mime: a.mimeType || 'application/octet-stream', size: a.size,
+          name: a.name, type: a.type, data: a.data || a.base64 || '',
+          mime: a.mime || a.mimeType || 'application/octet-stream', size: a.size,
         })),
       })
     } catch(e) {
       const am = messages.value.find(m => m.id === aid)
-      if (am) { am.streaming = false }
+      if (am) {
+        if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
+        am.streaming = false
+      }
       if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
-      abortController.value = null
       if (e.name === 'AbortError') {
         showToast('已停止', 'info')
       } else {
@@ -437,17 +480,29 @@ ${error}
     await Promise.all(promises)
   }
 
+  // ── 缓存性能指标 ──
+  async function refreshCacheMetrics() {
+    try {
+      const r = await fetch('/api/cache/metrics')
+      if (r.ok) cacheMetrics.value = await r.json()
+    } catch (e) {
+      console.error('[CacheMetrics] Failed:', e)
+    }
+  }
+
   return {
-    sessions, currentSessionId, currentSession, messages, loading,
+    sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, lastTokenUsage, streamConnected, isOnline, isWindows,
+    cacheMetrics,
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,
     sendMessage, stopGeneration, toggleSidebar, toggleTheme, persistSessions,
     getMessageCount, getFirstMessage, formatSize, newSession,
     searchAllMessages, getSessionStats, sendCompareMessage,
+    refreshCacheMetrics,
   }
 })
 
