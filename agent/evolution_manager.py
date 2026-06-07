@@ -18,12 +18,35 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# ── 线程安全连接管理 ──
+_db_lock = threading.Lock()
+_conn_cache: Dict[str, sqlite3.Connection] = {}
+
+
+def _get_conn(db_path) -> sqlite3.Connection:
+    """Return a thread-safe cached connection with WAL + busy_timeout."""
+    key = str(db_path)
+    with _db_lock:
+        if key in _conn_cache:
+            try:
+                _conn_cache[key].execute("SELECT 1")
+                return _conn_cache[key]
+            except sqlite3.ProgrammingError:
+                pass  # connection closed, recreate
+        conn = sqlite3.connect(key, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        _conn_cache[key] = conn
+        return conn
 
 
 def get_evolution_dir() -> Path:
@@ -44,7 +67,7 @@ def is_evolution_active() -> bool:
     else:
         # 检查表是否为空（之前种子数据可能未 commit）
         try:
-            conn = sqlite3.connect(str(get_self_model_db()))
+            conn = _get_conn(str(get_self_model_db()))
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM outcomes")
             count = c.fetchone()[0]
@@ -61,7 +84,7 @@ def _seed_evolution_db() -> None:
     """Seed evolution database for new users (first run)."""
     db_path = get_self_model_db()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = _get_conn(str(db_path))
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS outcomes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,7 +149,7 @@ def _seed_evolution_db() -> None:
     # Seed emotional state in fusion-state.db
     _fusion_db = get_evolution_dir() / "fusion-state.db"
     _fusion_db.parent.mkdir(parents=True, exist_ok=True)
-    fconn = sqlite3.connect(str(_fusion_db))
+    fconn = _get_conn(str(_fusion_db))
     fc = fconn.cursor()
     fc.execute("""CREATE TABLE IF NOT EXISTS emotional_state (
         id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
@@ -143,32 +166,17 @@ def _seed_evolution_db() -> None:
         (ts, 'curious', 0.7, 'system:first_run', '{"source": "seed"}')
     )
     fconn.commit()
-    fconn.close()
     
     conn.commit()
-    conn.close()
     logger.info("Evolution DB seeded for first run: 10 outcomes, 3 anti-patterns")
 
 
-_wal_initialized = None
+# _ensure_wal_mode deprecated — use _get_conn() which auto-sets WAL per connection
 
 
 def _ensure_wal_mode() -> None:
-    """初始化 SQLite WAL 模式（全局只执行一次）。"""
-    global _wal_initialized
-    if _wal_initialized:
-        return
-    try:
-        for _db in [get_self_model_db(), _get_fusion_db()]:
-            if _db.exists():
-                _conn = sqlite3.connect(str(_db))
-                _conn.execute("PRAGMA journal_mode=WAL")
-                _conn.execute("PRAGMA synchronous=NORMAL")
-                _conn.execute("PRAGMA busy_timeout=5000")
-                _conn.close()
-        _wal_initialized = True
-    except Exception:
-        pass
+    """Deprecated: _get_conn() handles WAL automatically. Kept for backward compat."""
+    pass
 
 
 def classify_task(tool_name: str, args: Dict[str, Any]) -> str:
@@ -286,7 +294,7 @@ def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") ->
         return "default"
     
     db_path = get_self_model_db()
-    conn = sqlite3.connect(db_path)
+    conn = _get_conn(db_path)
     cursor = conn.cursor()
     
     # Extract signature from current interaction
@@ -329,7 +337,6 @@ def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") ->
         VALUES (?, ?, 1, ?, ?)
     ''', (new_role_name, signature, datetime.now().isoformat(), datetime.now().isoformat()))
     conn.commit()
-    conn.close()
     
     logger.info("Evolution: new role emerged: %s (signature: %s)", new_role_name, signature[:50])
     return new_role_name
@@ -498,7 +505,7 @@ def get_current_emotional_state() -> Optional[str]:
     if not db_path.exists():
         return None
     try:
-        conn = sqlite3.connect(str(db_path))
+        conn = _get_conn(str(db_path))
         cursor = conn.cursor()
         cursor.execute(
             "SELECT emotion, intensity, trigger FROM emotional_state ORDER BY rowid DESC LIMIT 1"
@@ -561,7 +568,7 @@ def _record_emotional_state(
     
     # Check recent error streak for intensity adjustment
     try:
-        conn = sqlite3.connect(db_path)
+        conn = _get_conn(db_path)
         cursor = conn.cursor()
         cursor.execute(
             "SELECT COUNT(*) FROM emotional_state WHERE trigger LIKE ? AND timestamp > datetime('now', '-5 minutes')",
@@ -601,7 +608,7 @@ def _record_evolution_metric(metric: str, value: float, details: str = "") -> No
     if not db_path.exists():
         return
     try:
-        conn = sqlite3.connect(db_path)
+        conn = _get_conn(db_path)
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO evolution_metrics (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
@@ -645,7 +652,7 @@ def record_tool_outcome(
         
         # Record to database
         db_path = get_self_model_db()
-        conn = sqlite3.connect(db_path)
+        conn = _get_conn(db_path)
         cursor = conn.cursor()
         
         timestamp = datetime.now().isoformat()
@@ -755,7 +762,7 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
     
     try:
         db_path = get_self_model_db()
-        conn = sqlite3.connect(db_path)
+        conn = _get_conn(db_path)
         cursor = conn.cursor()
         
         # Get success rate for this tool+domain
@@ -862,7 +869,7 @@ def get_evolution_status() -> Dict[str, Any]:
     
     try:
         db_path = get_self_model_db()
-        conn = sqlite3.connect(db_path)
+        conn = _get_conn(db_path)
         cursor = conn.cursor()
         
         # Total outcomes
