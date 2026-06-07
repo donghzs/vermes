@@ -4,6 +4,9 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
+// 强制 Chromium 解析微信桌面本地服务域名 → 127.0.0.1
+app.commandLine.appendSwitch('host-resolver-rules', 'MAP localhost.weixin.qq.com 127.0.0.1');
+
 let mainWindow = null;
 let backendProcess = null;
 const BACKEND_URL = 'http://127.0.0.1:9119';

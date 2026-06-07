@@ -147,15 +147,16 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -e ".[dashboard]"
+          pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles
+          pip install -e ".[dashboard]" --no-deps || pip install -e ".[dashboard]"
 
       - name: Install Electron deps
         working-directory: electron
         run: npm ci
 
       - name: Version sync
-        run: bash scripts/sync-version.sh
+        run: python scripts/sync-version.py
+        shell: bash
 
       - name: PyInstaller build
         run: python -m PyInstaller vermes-backend.spec --noconfirm
