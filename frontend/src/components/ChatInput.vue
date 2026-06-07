@@ -124,7 +124,7 @@ async function onPaste(e) {
 async function send() {
   const input = inputText.value.trim()
   const files = [...uploadedFiles.value]
-  if ((!input && files.length === 0) || chat.loading) return
+  if (!input && files.length === 0) return
   inputText.value = ''
   uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
   uploadedFiles.value = []
@@ -170,8 +170,8 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         @input="autoResize" @paste="onPaste"
         class="flex-1 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400 dark:focus:border-green-500 resize-none overflow-y-auto placeholder-gray-400 dark:placeholder-gray-500"
         :class="isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500'"></textarea>
-      <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-5 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition">停止</button>
-      <button v-else @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
+      <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition" title="停止生成">⏹</button>
+      <button @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
     </div>
   </div>
 </template>
