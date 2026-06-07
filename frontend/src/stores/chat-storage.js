@@ -64,7 +64,9 @@ export async function saveMessagesToIDB(sessionId, messages) {
   try {
     const db = await openMsgDB()
     const tx = db.transaction(MSG_STORE, 'readwrite')
-    tx.objectStore(MSG_STORE).put(messages, sessionId)
+    // 深拷贝去掉 Vue 响应式代理（IDB structuredClone 不支持 Proxy）
+    const plain = JSON.parse(JSON.stringify(messages))
+    tx.objectStore(MSG_STORE).put(plain, sessionId)
     await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
   } catch(e) { console.warn('[Vermes] 消息 IndexedDB 写入失败:', e) }
 }

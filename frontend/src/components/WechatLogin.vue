@@ -24,6 +24,30 @@ async function openLogin() {
   qrError.value = ''
   isElectron.value = checkElectron()
 
+  // 先检查本地是否已有有效登录态
+  const existingToken = localStorage.getItem('vermes_wechat_token')
+  if (existingToken) {
+    try {
+      const checkResp = await fetch('/api/quota/check', {
+        headers: { 'X-WeChat-Openid': localStorage.getItem('vermes_wechat_openid') || '' }
+      })
+      if (checkResp.ok) {
+        const checkData = await checkResp.json()
+        if (checkData.success) {
+          // token 仍然有效，直接登录成功
+          emit('loginSuccess', {
+            isLoggedIn: true,
+            userName: localStorage.getItem('vermes_wechat_name') || '微信用户',
+            userAvatar: localStorage.getItem('vermes_wechat_avatar') || '',
+          })
+          return
+        }
+      }
+    } catch {}
+    // token 无效，清除后继续 OAuth 流程
+    localStorage.removeItem('vermes_wechat_token')
+  }
+
   if (isElectron.value) {
     // === Electron 模式 ===
     // 1. 调 /api/wechat/qrurl 拿 vbit.top 注册好的 state + OAuth URL

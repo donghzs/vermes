@@ -48,7 +48,6 @@ export const useChatStore = defineStore('chat', () => {
   const loading = computed(() =>
     currentSessionId.value ? sessionLoading.value[currentSessionId.value] || false : false
   )
-  const abortController = ref(null)
   const sidebarOpen = ref(true)
   const theme = ref(localStorage.getItem('vermes-theme') || 'dark')
   function toggleTheme() {
@@ -338,12 +337,18 @@ export const useChatStore = defineStore('chat', () => {
           scheduleScroll()
         },
         onStatus: (event) => {
-          statusMessages.value.push({
-            id: uid(),
-            type: event.type || 'info',
-            message: event.message || event.content || '',
-            timestamp: Date.now(),
-          })
+          // 只保留最新一条，避免推理步数淹没聊天
+          if (event.type === 'stream_start') return // 跳过 stream_start
+          if (statusMessages.value.length > 0 && statusMessages.value[statusMessages.value.length - 1].type === 'thinking') {
+            // 替换上一条 thinking，只显示最新步数
+            statusMessages.value[statusMessages.value.length - 1].message = event.message || ''
+          } else {
+            statusMessages.value.push({
+              id: uid(), type: event.type || 'info',
+              message: event.message || event.content || '',
+              timestamp: Date.now(),
+            })
+          }
           scheduleScroll()
         },
         onDone: (usageInfo) => {
@@ -409,23 +414,20 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 停止生成 ──
   function stopGeneration() {
-    // 通过 transport 停止（兼容 SSE 和未来 WebSocket）
     const transport = getChatTransport()
-    if (currentSessionId.value) transport.stop(currentSessionId.value)
-    if (abortController.value) {
-      abortController.value.abort()
-      abortController.value = null
+    if (currentSessionId.value) {
+      transport.stop(currentSessionId.value)
+      sessionLoading.value[currentSessionId.value] = false
     }
-    // 清理所有 streaming 消息
-    messages.value.filter(m => m.streaming).forEach(m => {
+    // 清理当前会话所有 streaming 消息
+    messages.value.filter(m => m.streaming && m.sessionId === currentSessionId.value).forEach(m => {
       m.streaming = false
       if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
+      if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
     })
-    // P4: per-session loading reset
-    if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
     activeStreamId.value = null
+    statusMessages.value = []
   }
-
   // ── 工具函数 ──
   function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
 

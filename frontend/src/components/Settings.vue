@@ -79,6 +79,29 @@ const providers = ref([
 const customModelInputs = ref({})
 const activeTab = ref('providers')
 
+// ── 缓存监控 ──
+const cacheMetrics = ref(null)
+const cacheRefreshing = ref(false)
+
+async function fetchCacheMetrics() {
+  cacheRefreshing.value = true
+  try {
+    const r = await fetch('/api/cache/metrics')
+    if (r.ok) cacheMetrics.value = await r.json()
+  } catch (e) {
+    console.error('[CacheMetrics]', e)
+  } finally {
+    cacheRefreshing.value = false
+  }
+}
+
+// 命中率颜色
+function hitRateColor(rate) {
+  if (rate >= 80) return 'text-green-600 dark:text-green-400'
+  if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-red-600 dark:text-red-400'
+}
+
 // ── API 接入 ──
 const apiBaseUrl = ref(window.location.origin)
 const apiTesting = ref(false)
@@ -358,6 +381,8 @@ onMounted(() => {
   loadMaxTokens()
   // 加载存储用量
   fetch('/api/storage/usage').then(r => r.ok && r.json().then(d => storageUsage.value = d)).catch(() => {})
+  // 加载缓存性能指标
+  fetchCacheMetrics()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -539,6 +564,45 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             <div class="flex justify-between font-medium pt-1 border-t border-gray-200 dark:border-gray-700">
               <span class="text-gray-600 dark:text-gray-400">总计</span>
               <span class="text-gray-800 dark:text-gray-200">{{ storageUsage.total }} MB</span>
+            </div>
+          </div>
+          <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center">加载中...</div>
+        </div>
+
+        <!-- 🧠 缓存性能 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-3">
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 text-center flex items-center justify-center gap-2">
+            🧠 缓存性能
+            <button @click="fetchCacheMetrics" :disabled="cacheRefreshing" class="text-xs text-green-600 hover:text-green-700 disabled:opacity-50">
+              {{ cacheRefreshing ? '⌛' : '🔄' }}
+            </button>
+          </h3>
+          <div class="space-y-2 text-sm" v-if="cacheMetrics">
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">命中次数</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ cacheMetrics.hits?.toLocaleString() || 0 }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">未命中</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ cacheMetrics.misses?.toLocaleString() || 0 }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">驱逐次数</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ cacheMetrics.evictions?.toLocaleString() || 0 }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">缓存用量</span>
+              <span class="text-gray-700 dark:text-gray-300">{{ cacheMetrics.current_size || 0 }} / {{ cacheMetrics.max_size || 20 }}</span>
+            </div>
+            <div class="flex justify-between font-medium pt-1 border-t border-gray-200 dark:border-gray-700">
+              <span class="text-gray-600 dark:text-gray-400">命中率</span>
+              <span :class="hitRateColor(cacheMetrics.hit_rate || 0)">{{ (cacheMetrics.hit_rate || 0).toFixed(1) }}%</span>
+            </div>
+            <!-- 命中率进度条 -->
+            <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-500"
+                :class="(cacheMetrics.hit_rate || 0) >= 80 ? 'bg-green-500' : (cacheMetrics.hit_rate || 0) >= 50 ? 'bg-yellow-500' : 'bg-red-500'"
+                :style="{ width: (cacheMetrics.hit_rate || 0) + '%' }"></div>
             </div>
           </div>
           <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center">加载中...</div>
