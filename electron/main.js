@@ -504,7 +504,8 @@ ipcMain.handle('backend:status', () => {
 // ── 自动更新 (electron-updater) ──
 
 // 配置更新源：vbit.top 发布服务器
-// 生产环境从 GitHub Releases 或自定义服务器拉取更新
+// 签名: electron-updater generic provider 自动校验 blockmap (SHA512 per block)
+// HTTPS + blockmap 提供传输层 + 完整性双重保护
 autoUpdater.autoDownload = false;           // 手动控制下载时机
 autoUpdater.autoInstallOnAppQuit = true;    // 退出时自动安装
 autoUpdater.allowDowngrade = false;

@@ -185,8 +185,11 @@ async def request_logging_middleware(request: Request, call_next):
 
 # ---------------------------------------------------------------------------
 # Endpoints that do NOT require the session token.  Everything else under
-# /api/ is gated by the auth middleware below.  Keep this list minimal —
-# only truly non-sensitive, read-only endpoints belong here.
+# WebSocket 活跃连接池（多客户端支持）
+_active_chat_ws: set = set()
+
+# ---------------------------------------------------------------------------
+# _PUBLIC_API_PATHS — endpoints accessible without auth
 # ---------------------------------------------------------------------------
 _PUBLIC_API_PATHS: frozenset = frozenset({
     # Core status & onboarding
@@ -1560,7 +1563,7 @@ async def chat_ws(ws: WebSocket) -> None:
     本端点只处理实时控制信号。
     """
     await ws.accept()
-    _active_chat_ws = ws
+    _active_chat_ws.add(ws)
     try:
         while True:
             raw = await ws.receive_text()
@@ -1584,8 +1587,7 @@ async def chat_ws(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        if _active_chat_ws == ws:
-            _active_chat_ws = None
+        _active_chat_ws.discard(ws)
 
 
 def _normalise_prefix(raw: Optional[str]) -> str:
