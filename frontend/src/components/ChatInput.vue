@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { toast } from '../utils/toast'
 
@@ -131,6 +131,10 @@ async function send() {
   if (inputRef.value) inputRef.value.style.height = 'auto'
   emit('send', input, files)
 }
+
+onUnmounted(() => {
+  uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
+})
 
 defineExpose({ inputText, uploadedFiles, inputRef })
 </script>
