@@ -162,12 +162,18 @@ export class WebSocketTransport extends ChatTransport {
     this._url = url
     this._ws = null
     this._reconnectTimer = null
+    this._retryCount = 0
+    this._maxRetries = 20
     this._connect()
   }
 
   _connect() {
     try {
       this._ws = new WebSocket(this._url)
+
+      this._ws.onopen = () => {
+        this._retryCount = 0  // reset on successful connection
+      }
 
       this._ws.onmessage = (e) => {
         try {
@@ -185,7 +191,10 @@ export class WebSocketTransport extends ChatTransport {
       }
 
       this._ws.onclose = () => {
-        this._reconnectTimer = setTimeout(() => this._connect(), 1000)
+        if (this._retryCount >= this._maxRetries) return  // give up after max retries
+        const delay = Math.min(1000 * Math.pow(2, this._retryCount), 30000)  // 1s→2s→4s→...→30s cap
+        this._retryCount++
+        this._reconnectTimer = setTimeout(() => this._connect(), delay)
       }
 
       this._ws.onerror = () => {
