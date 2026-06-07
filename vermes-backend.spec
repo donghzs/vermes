@@ -180,12 +180,12 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,  # 后台运行，不弹窗口
 )
 
 coll = COLLECT(
     exe, a.binaries, a.zipfiles, a.datas,
-    strip=False, upx=True,
+    strip=False, upx=False,
     name='vermes-backend',
 )
