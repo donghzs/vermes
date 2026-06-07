@@ -29,21 +29,21 @@ Write-Host "  Done"
 # Step 2: Install frontend deps
 Write-Host "`nStep 2: Install frontend deps"
 Push-Location "$ROOT\frontend"
-& "$NODE\npm.cmd" ci 2>&1 | Select-Object -Last 2
+cmd /c "npm ci" 2>&1 | Select-Object -Last 2
 Pop-Location
 Write-Host "  Done"
 
 # Step 3: Install electron deps  
 Write-Host "`nStep 3: Install electron deps"
 Push-Location "$ROOT\electron"
-& "$NODE\npm.cmd" ci 2>&1 | Select-Object -Last 2
+cmd /c "npm ci" 2>&1 | Select-Object -Last 2
 Pop-Location
 Write-Host "  Done"
 
 # Step 4: Build frontend
 Write-Host "`nStep 4: Build frontend"
 Push-Location "$ROOT\frontend"
-& "$NODE\npm.cmd" run build
+cmd /c "npm run build"
 Pop-Location
 Write-Host "  Done"
 
@@ -73,7 +73,7 @@ Write-Host "  Done"
 # Step 8: Electron NSIS build
 Write-Host "`nStep 8: Electron NSIS build"
 Push-Location "$ROOT\electron"
-& "$NODE\npx.cmd" electron-builder --win --x64
+cmd /c "npx electron-builder --win --x64"
 Pop-Location
 $setup = Get-ChildItem "$ROOT\dist-electron\Vermes Setup*.exe" | Select-Object -First 1
 if ($setup) { 
