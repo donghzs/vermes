@@ -2569,6 +2569,8 @@ async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
     return await _claim_trial_token(wechat_openid)
 
 # Provider templates for cloud model addition
+# ⚠️ FIXME v2.1.0: 与 blueprints/chat.py PROVIDERS 双重维护，已漂移。
+# 应统一到一处，参考 H4 audit。新 provider 必须两边加。
 PROVIDER_TEMPLATES = {
     "openai": {
         "name": "OpenAI",
