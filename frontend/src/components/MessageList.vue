@@ -564,8 +564,8 @@ function streamElapsed(startTime) {
   </div><!-- end message loop -->
 
   <!-- 流式状态消息（压缩警告、lifecycle 通知等） -->
-  <div v-if="(chat.statusMessages?.length ?? 0) > 0" class="px-4 py-1 flex flex-col gap-1">
-    <div v-for="s in chat.statusMessages" :key="s.id"
+  <div v-if="(chat.currentStatusMessages?.length ?? 0) > 0" class="px-4 py-1 flex flex-col gap-1">
+    <div v-for="s in chat.currentStatusMessages" :key="s.id"
          class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800/50 animate-fade-in">
       <span>{{ s.type === 'warn' ? '⚠️' : '📦' }}</span>
       <span>{{ s.message }}</span>

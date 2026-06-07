@@ -379,7 +379,8 @@ async function handleImportFile(e) {
             <template v-else>
               <div class="flex items-center gap-1">
                 <span class="text-[10px] shrink-0">📌</span>
-                <div class="truncate font-medium flex-1">{{ s.name || '新 Agent' }}</div>
+                <span class="truncate font-medium flex-1">{{ s.name || '新 Agent' }}</span>
+                <span v-if="chat.sessionLoading[s.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
                 <span v-if="getMessageCount(s.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(s.id) }}</span>
               </div>
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(s.id)">{{ getFirstMessagePreview(s.id) }}</div>
@@ -424,7 +425,8 @@ async function handleImportFile(e) {
             </div>
             <template v-else>
               <div class="flex items-center gap-1">
-                <div class="truncate font-medium flex-1">{{ item.data.name || '新 Agent' }}</div>
+                <span class="truncate font-medium flex-1">{{ item.data.name || '新 Agent' }}</span>
+                <span v-if="chat.sessionLoading[item.data.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
                 <span v-if="getMessageCount(item.data.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(item.data.id) }}</span>
               </div>
               <div class="text-xs text-gray-400 mt-0.5 truncate" v-if="getFirstMessagePreview(item.data.id)">{{ getFirstMessagePreview(item.data.id) }}</div>
