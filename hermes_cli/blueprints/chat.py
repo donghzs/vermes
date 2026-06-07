@@ -36,12 +36,20 @@ class _AgentCache:
         self._cache: OrderedDict = OrderedDict()
         self._maxsize = maxsize
         self._lock = threading.Lock()
+        # ── 性能监控指标 ──
+        self.metrics = {
+            'hits': 0,
+            'misses': 0,
+            'evictions': 0,
+        }
 
     def get(self, key: str):
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
+                self.metrics['hits'] += 1
                 return self._cache[key]
+            self.metrics['misses'] += 1
         return None
 
     def put(self, key: str, agent):
@@ -62,11 +70,23 @@ class _AgentCache:
     def _evict(self):
         while len(self._cache) > self._maxsize:
             key, agent = self._cache.popitem(last=False)
+            self.metrics['evictions'] += 1
             _log.info(f"[Agent] LRU evicted: {key}")
 
     def __len__(self):
         with self._lock:
             return len(self._cache)
+
+    def get_metrics(self):
+        """返回缓存性能指标。"""
+        with self._lock:
+            total = self.metrics['hits'] + self.metrics['misses']
+            return {
+                **self.metrics,
+                'hit_rate': self.metrics['hits'] / total if total > 0 else 0.0,
+                'current_size': len(self._cache),
+                'max_size': self._maxsize,
+            }
 
 
 _agent_cache = _AgentCache(maxsize=20)
@@ -1149,6 +1169,11 @@ async def agent_run(req: AgentRunRequest):
 # ── Registration ─────────────────────────────────────────────────────
 
 
+async def cache_metrics():
+    """Return agent cache performance metrics."""
+    return _agent_cache.get_metrics()
+
+
 async def evolution_status():
     """Return evolution system status for the frontend."""
     try:
@@ -1186,6 +1211,12 @@ def register_to(app):
         evolution_status,
         methods=["GET"],
         name="evolution_status",
+    )
+    app.add_api_route(
+        "/api/cache/metrics",
+        cache_metrics,
+        methods=["GET"],
+        name="cache_metrics",
     )
 
     # Pre-create default agent at startup for persistence
