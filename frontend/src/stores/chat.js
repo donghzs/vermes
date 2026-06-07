@@ -217,6 +217,11 @@ export const useChatStore = defineStore('chat', () => {
 
   async function deleteSession(id) {
     try { await fetch('/api/sessions/' + id, { method: 'DELETE' }) } catch {}
+    // 清理被删会话的 streaming 定时器
+    messages.value.filter(m => m.sessionId === id).forEach(m => {
+      if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
+      if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
+    })
     await _deleteSession(sessions.value, messages.value, id, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     if (currentSessionId.value === id) {
       if (sessions.value.length > 0) {
