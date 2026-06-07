@@ -25,8 +25,8 @@ class ChatTransport {
     throw new Error('implement in subclass')
   }
 
-  on(sessionId, { onMessage, onDone, onError }) {
-    this._handlers.set(sessionId, { onMessage, onDone, onError })
+  on(sessionId, { onMessage, onDone, onError, onStatus }) {
+    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus })
   }
 
   off(sessionId) {
@@ -49,7 +49,6 @@ export class SSETransport extends ChatTransport {
   }
 
   async send(sessionId, { messages, model, provider, attachments }) {
-    // 旧 session 的控制器还在，先清理
     const oldAc = this._controllers.get(sessionId)
     if (oldAc) oldAc.abort()
     this._controllers.delete(sessionId)
@@ -104,17 +103,25 @@ export class SSETransport extends ChatTransport {
           }
           try {
             const data = JSON.parse(raw)
-            if (data.type === 'delta' || data.type === 'text') {
-              this._emit(sessionId, 'onMessage', data)
-            } else if (data.type === 'tool') {
+            const deltaContent = data.choices?.[0]?.delta?.content
+            
+            if (data.type === 'stream_start' || data.type === 'thinking' || data.type === 'lifecycle') {
+              this._emit(sessionId, 'onStatus', { type: data.type, message: data.message || '' })
+            } else if (data.type === 'delta' || data.type === 'text') {
+              this._emit(sessionId, 'onMessage', { type: 'delta', content: data.content || deltaContent || '' })
+            } else if (data.type === 'tool' || data.type === 'tool_start' || data.type === 'tool_end') {
               this._emit(sessionId, 'onToolCall', data)
             } else if (data.type === 'status') {
               this._emit(sessionId, 'onStatus', data)
             } else if (data.type === 'error') {
               this._emit(sessionId, 'onError', data.message || data.content)
-            } else {
-              this._emit(sessionId, 'onMessage', data)
+            } else if (deltaContent) {
+              // OpenAI 格式 — 内容在 choices[0].delta.content
+              this._emit(sessionId, 'onMessage', { type: 'delta', content: deltaContent })
+            } else if (data.usage) {
+              this._emit(sessionId, 'onDone', data)
             }
+            // stream_start/thinking/lifecycle 等元事件已在上面处理
           } catch {}
         }
       }
@@ -129,14 +136,12 @@ export class SSETransport extends ChatTransport {
   }
 
   async stop(sessionId) {
-    // 中止当前请求
     const ac = this._controllers.get(sessionId)
     if (ac) ac.abort()
     this._controllers.delete(sessionId)
 
-    // 通知后端中断 agent
     try {
-      await fetch(`${this._baseUrl}/api/chat/stop`, {
+      await fetch(`${this._baseUrl}/api/stop-generation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
@@ -149,7 +154,7 @@ export class SSETransport extends ChatTransport {
   }
 }
 
-// ── WebSocket 实现（后期启用）────────────────────────
+// ── WebSocket 实现（HTTPS 生产环境）────────────────────
 
 export class WebSocketTransport extends ChatTransport {
   constructor(url) {
@@ -169,7 +174,6 @@ export class WebSocketTransport extends ChatTransport {
           const msg = JSON.parse(e.data)
           const sid = msg.sessionId || msg.session_id
           if (!sid) return
-
           if (msg.type === 'done' || msg.type === 'finish') {
             this._emit(sid, 'onDone', msg)
           } else if (msg.type === 'error') {
@@ -192,11 +196,7 @@ export class WebSocketTransport extends ChatTransport {
 
   async send(sessionId, payload) {
     if (this._ws?.readyState === WebSocket.OPEN) {
-      this._ws.send(JSON.stringify({
-        type: 'chat',
-        session_id: sessionId,
-        ...payload,
-      }))
+      this._ws.send(JSON.stringify({ type: 'chat', session_id: sessionId, ...payload }))
     }
   }
 
@@ -219,13 +219,12 @@ let _instance = null
 
 export function getChatTransport() {
   if (!_instance) {
-    // 后期切 WebSocket 只需改这一行：
-    // 生产环境启用 WebSocket
+    // HTTPS 生产环境用 WebSocket，本地用 SSE（更稳定）
     if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsProto = 'wss:'
       _instance = new WebSocketTransport(`${wsProto}//${window.location.host}/api/ws/chat`)
     } else {
-      _instance = new WebSocketTransport('ws://127.0.0.1:9119/api/ws/chat')
+      _instance = new SSETransport()
     }
   }
   return _instance

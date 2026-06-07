@@ -9,10 +9,6 @@ const inputText = ref('')
 const fileInput = ref(null)
 const uploadedFiles = ref([])
 
-// 空会话检测：无消息时强化输入框视觉引导
-function isEmptySession() {
-  return (chat.filteredMessages?.length ?? 0) === 0
-}
 const inputRef = ref(null)
 const isDragging = ref(false)
 
@@ -22,29 +18,48 @@ const emit = defineEmits(['send'])
 const MAX_SINGLE_FILE = 20 * 1024 * 1024   // 20MB
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024     // 50MB
 
+// 空会话检测
+function isEmptySession() {
+  return (chat.filteredMessages?.length ?? 0) === 0
+}
+
 // ── 文件上传 ──
 function triggerFileUpload() { fileInput.value?.click() }
 
-function addFiles(fileList) {
-  const files = Array.from(fileList)
-  let totalSize = uploadedFiles.value.reduce((s, f) => s + f.size, 0)
-  for (const f of files) {
-    if (f.size > MAX_SINGLE_FILE) {
-      toast.warning(`文件 ${f.name} 超过 20MB`)
-      continue
+async function urlToFile(url, name) {
+  try {
+    const resp = await fetch(url)
+    const blob = await resp.blob()
+    if (blob.size > MAX_SINGLE_FILE) {
+      toast.warning(`图片 ${name || url.slice(-20)} 超过 20MB`)
+      return null
     }
-    if (totalSize + f.size > MAX_TOTAL_SIZE) {
-      toast.warning(`附件总大小超过 50MB`)
-      break
-    }
-    totalSize += f.size
-    uploadedFiles.value.push({
-      name: f.name,
-      size: f.size,
-      file: f,
-      preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : null
-    })
+    return new File([blob], name || 'image.png', { type: blob.type || 'image/png' })
+  } catch {
+    return null
   }
+}
+
+function addFile(f) {
+  let totalSize = uploadedFiles.value.reduce((s, f) => s + f.size, 0)
+  if (f.size > MAX_SINGLE_FILE) {
+    toast.warning(`文件 ${f.name} 超过 20MB`)
+    return
+  }
+  if (totalSize + f.size > MAX_TOTAL_SIZE) {
+    toast.warning(`附件总大小超过 50MB`)
+    return
+  }
+  uploadedFiles.value.push({
+    name: f.name,
+    size: f.size,
+    file: f,
+    preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : null
+  })
+}
+
+function addFiles(fileList) {
+  for (const f of Array.from(fileList)) addFile(f)
 }
 
 function handleFileSelect(e) {
@@ -53,26 +68,26 @@ function handleFileSelect(e) {
 }
 
 // ── #1 拖拽上传 ──
-function onDragEnter(e) {
-  e.preventDefault()
-  isDragging.value = true
-}
-function onDragOver(e) {
-  e.preventDefault()
-  isDragging.value = true
-}
+function onDragEnter(e) { e.preventDefault(); isDragging.value = true }
+function onDragOver(e) { e.preventDefault(); isDragging.value = true }
 function onDragLeave(e) {
   e.preventDefault()
-  // 只在离开容器时取消高亮
-  if (!e.currentTarget.contains(e.relatedTarget)) {
-    isDragging.value = false
-  }
+  if (!e.currentTarget.contains(e.relatedTarget)) isDragging.value = false
 }
 function onDrop(e) {
   e.preventDefault()
   isDragging.value = false
+  // 文件拖放
   if (e.dataTransfer?.files?.length > 0) {
     addFiles(e.dataTransfer.files)
+  }
+  // 网页图片拖放（URL）
+  const html = e.dataTransfer?.getData('text/html')
+  if (html) {
+    const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i)
+    if (imgMatch?.[1]) {
+      urlToFile(imgMatch[1], 'dropped-image.png').then(f => { if (f) addFile(f) })
+    }
   }
 }
 
@@ -83,15 +98,26 @@ function removeFile(idx) {
 }
 
 // ── 多行输入 ──
-function insertNewline(e) {
-  e.preventDefault()
-  inputText.value += '\n'
-}
-
+function insertNewline(e) { e.preventDefault(); inputText.value += '\n' }
 function autoResize(e) {
   const el = e.target
   el.style.height = 'auto'
   el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+}
+
+// ── 粘贴图片 ──
+async function onPaste(e) {
+  const items = e.clipboardData?.items
+  if (!items) return
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault()
+      const blob = item.getAsFile()
+      if (blob) {
+        addFile(new File([blob], 'pasted-image.png', { type: blob.type }))
+      }
+    }
+  }
 }
 
 // ── 发送 ──
@@ -102,14 +128,10 @@ async function send() {
   inputText.value = ''
   uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
   uploadedFiles.value = []
-  // 重置 textarea 高度
-  if (inputRef.value) {
-    inputRef.value.style.height = 'auto'
-  }
+  if (inputRef.value) inputRef.value.style.height = 'auto'
   emit('send', input, files)
 }
 
-// 暴露给父组件
 defineExpose({ inputText, uploadedFiles, inputRef })
 </script>
 
@@ -118,9 +140,9 @@ defineExpose({ inputText, uploadedFiles, inputRef })
        @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <!-- 拖拽高亮遮罩 -->
     <div v-if="isDragging" class="absolute inset-0 bg-green-500/10 border-2 border-dashed border-green-500 rounded-xl z-50 flex items-center justify-center pointer-events-none">
-      <span class="text-green-600 dark:text-green-400 text-lg font-medium">📎 拖拽文件到这里</span>
+      <span class="text-green-600 dark:text-green-400 text-lg font-medium">📎 拖拽文件/图片到这里</span>
     </div>
-    <!-- P3-8: 对比模式标签 -->
+    <!-- 对比模式标签 -->
     <div v-if="chat.compareModels && chat.compareModels.length >= 2" class="flex items-center gap-2 mb-2">
       <span class="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full font-medium">
         🔬 对比模式 ({{ chat.compareModels.length }}个模型)
@@ -139,14 +161,13 @@ defineExpose({ inputText, uploadedFiles, inputRef })
       </div>
     </div>
     <div class="flex gap-3 items-end relative">
-      <!-- #8 accept 补全 -->
       <input ref="fileInput" type="file" multiple
         accept="image/*,video/*,.pdf,.txt,.md,.csv,.json,.py,.js,.ts,.html,.css,.yaml,.yml,.toml,.sh,.bash,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.swift,.kt,.docx,.xlsx,.pptx,.zip,.tar,.gz"
         class="hidden" @change="handleFileSelect" />
       <button @click="triggerFileUpload()" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base" title="上传文件/图片/视频">📎</button>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
-        @input="autoResize"
+        @input="autoResize" @paste="onPaste"
         class="flex-1 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400 dark:focus:border-green-500 resize-none overflow-y-auto placeholder-gray-400 dark:placeholder-gray-500"
         :class="isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500'"></textarea>
       <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-5 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition">停止</button>

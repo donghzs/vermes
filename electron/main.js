@@ -124,7 +124,10 @@ function sendSplash(msg) {
   }
 }
 
+let _initializing = false
 async function runInitialization() {
+  if (_initializing) return
+  _initializing = true
   // 1. 启动后端
   sendSplash({ type: 'progress', label: '正在启动后端服务…', percent: 10 });
   const started = await startBackend();
@@ -138,7 +141,9 @@ async function runInitialization() {
     // 跳转到主界面
     if (mainWindow && !mainWindow.isDestroyed()) {
       sendSplash({ type: 'ready' });
-      mainWindow.loadURL(BACKEND_URL);
+      mainWindow.loadURL(`${BACKEND_URL}?v=${app.getVersion()}`).catch(err => {
+        console.error('[Vermes] 加载主界面失败:', err.message);
+      });
     }
   } else {
     // 后端启动失败 / 超时
@@ -147,22 +152,24 @@ async function runInitialization() {
       detail: '后端服务启动失败，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。',
     });
   }
+  _initializing = false
 }
 
 function stopBackend() {
   if (backendProcess) {
     console.log('[Vermes] 关闭后端...');
+    const proc = backendProcess
+    backendProcess = null
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(backendProcess.pid), '/f', '/t']);
+      spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t']);
     } else {
-      backendProcess.kill('SIGTERM');
+      proc.kill('SIGTERM');
       setTimeout(() => {
-        if (backendProcess && !backendProcess.killed) {
-          backendProcess.kill('SIGKILL');
+        if (!proc.killed) {
+          try { proc.kill('SIGKILL'); } catch {}
         }
       }, 3000);
     }
-    backendProcess = null;
   }
 }
 
@@ -186,6 +193,12 @@ async function createWindow() {
       partition: 'persist:vermes',
     },
   });
+
+  // 清除缓存 — 防止旧前端 JS/CSS 被缓存导致白屏
+  const ses = mainWindow.webContents.session
+  ses.clearCache().catch(() => {})
+  // 只缓存运行时数据，不缓存静态资源（后端无 Cache-Control 头）
+  ses.setSpellCheckerEnabled(false)
 
   // 先加载启动欢迎页（立即显示，不等后端）
   const splashPath = path.join(__dirname, 'splash.html');
@@ -478,6 +491,11 @@ ipcMain.handle('shell:openExternal', (e, url) => {
 ipcMain.on('splash:retry', () => {
   console.log('[Vermes] 用户点击重试初始化');
   runInitialization();
+});
+
+// IPC: 后端状态查询
+ipcMain.handle('backend:status', () => {
+  return { running: !!backendProcess, pid: backendProcess?.pid || null };
 });
 
 // ── 自动更新 (electron-updater) ──

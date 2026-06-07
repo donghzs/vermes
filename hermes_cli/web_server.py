@@ -245,6 +245,17 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/storage/usage",
     # Agent REST API（外部系统调用）
     "/api/agent/run",
+    # Agent 更新检查
+    "/api/agent/check",
+    "/api/agent/update",
+    # 进化系统状态（Sidebar 指示器 + 每日简报）
+    "/api/evolution/status",
+    # 停止生成（前端 SSE 中断）
+    "/api/stop-generation",
+    # 会话管理（前端切换/删除会话）
+    "/api/sessions",
+    # 缓存性能指标
+    "/api/cache/metrics",
 })
 
 

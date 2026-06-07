@@ -7,8 +7,11 @@ const routes = [
   { path: '/settings', component: Settings },
 ]
 
+// Electron 桌面端加载在 /，Web 端加载在 /vermes/
+const base = (typeof window !== 'undefined' && window.__VERMES_ONLINE__) ? '/vermes/' : '/'
+
 const router = createRouter({
-  history: createWebHistory('/vermes/'),
+  history: createWebHistory(base),
   routes,
 })
 

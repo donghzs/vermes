@@ -41,6 +41,18 @@ def is_evolution_active() -> bool:
     """Check if evolution system is active. Auto-seeds if first run."""
     if not get_self_model_db().exists():
         _seed_evolution_db()
+    else:
+        # 检查表是否为空（之前种子数据可能未 commit）
+        try:
+            conn = sqlite3.connect(str(get_self_model_db()))
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM outcomes")
+            count = c.fetchone()[0]
+            conn.close()
+            if count == 0:
+                _seed_evolution_db()
+        except Exception:
+            pass
     _ensure_wal_mode()
     return True
 
@@ -130,7 +142,7 @@ def _seed_evolution_db() -> None:
         "INSERT INTO emotional_state (timestamp, emotion, intensity, trigger, context) VALUES (?, ?, ?, ?, ?)",
         (ts, 'curious', 0.7, 'system:first_run', '{"source": "seed"}')
     )
-    fc.commit()
+    fconn.commit()
     fconn.close()
     
     conn.commit()

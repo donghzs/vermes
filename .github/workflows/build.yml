@@ -1,0 +1,209 @@
+name: Vermes Build & Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      build_mac:
+        description: 'Build macOS DMG'
+        type: boolean
+        default: true
+      build_win:
+        description: 'Build Windows NSIS'
+        type: boolean
+        default: true
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ── 前端构建 + 校验 ──
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Sync to web_dist
+        run: |
+          mkdir -p hermes_cli/web_dist/assets
+          cp frontend/dist/index.html hermes_cli/web_dist/
+          cp frontend/dist/assets/* hermes_cli/web_dist/assets/
+
+      - name: Verify web_dist integrity
+        run: |
+          JS_REF=$(grep -o 'src="/assets/[^"]*"' hermes_cli/web_dist/index.html | sed 's|src="/assets/||;s|"||g')
+          CSS_REF=$(grep -o 'href="/assets/[^"]*"' hermes_cli/web_dist/index.html | sed 's|href="/assets/||;s|"||g')
+          test -f "hermes_cli/web_dist/assets/$JS_REF" || { echo "❌ JS missing: $JS_REF"; exit 1; }
+          test -f "hermes_cli/web_dist/assets/$CSS_REF" || { echo "❌ CSS missing: $CSS_REF"; exit 1; }
+          echo "✅ web_dist integrity OK"
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: hermes_cli/web_dist/
+
+  # ── macOS 构建 ──
+  build-mac:
+    needs: frontend
+    runs-on: macos-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.build_mac == 'true'
+      || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: hermes_cli/web_dist/
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e ".[dashboard]"
+
+      - name: Install Electron deps
+        working-directory: electron
+        run: npm ci
+
+      - name: Version sync
+        run: bash scripts/sync-version.sh
+
+      - name: PyInstaller build
+        run: pyinstaller vermes-backend.spec --noconfirm
+
+      - name: Electron build (DMG)
+        working-directory: electron
+        run: npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate checksums
+        run: |
+          cd dist-electron
+          for f in *.dmg; do
+            shasum -a 256 "$f" > "$f.sha256"
+            echo "✅ $f: $(du -h "$f" | cut -f1)"
+            cat "$f.sha256"
+          done
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vermes-macos
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.sha256
+
+  # ── Windows 构建 ──
+  build-win:
+    needs: frontend
+    runs-on: windows-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.build_win == 'true'
+      || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: hermes_cli/web_dist/
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e ".[dashboard]"
+
+      - name: Install Electron deps
+        working-directory: electron
+        run: npm ci
+
+      - name: Version sync
+        run: bash scripts/sync-version.sh
+
+      - name: PyInstaller build
+        run: python -m PyInstaller vermes-backend.spec --noconfirm
+
+      - name: Electron build (NSIS)
+        working-directory: electron
+        run: npx electron-builder --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate checksums
+        run: |
+          cd dist-electron
+          Get-ChildItem -Filter "*.exe" | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File "$($_.Name).sha256" -Encoding utf8
+            Write-Host "✅ $($_.Name): $([math]::Round($_.Length/1MB))MB"
+            Write-Host "   SHA256: $hash"
+          }
+        shell: powershell
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vermes-windows
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.sha256
+
+  # ── Release ──
+  release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/vermes-macos/*
+            release-artifacts/vermes-windows/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
