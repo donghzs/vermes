@@ -64,8 +64,16 @@ export const useChatStore = defineStore('chat', () => {
   const showQuotaModal = ref(false)
   const quotaModalType = ref('need_login')
   const compareModels = ref([])
-  const activeStreamId = ref(null)
-  const statusMessages = ref([])
+  const activeStreamId = ref(null)  // deprecated, use sessionActiveStreamIds
+  const statusMessages = ref([])     // deprecated, use sessionStatusMessages
+  const sessionStatusMessages = ref({})
+  const sessionActiveStreamIds = ref({})
+  const currentStatusMessages = computed(() => 
+    sessionStatusMessages.value[currentSessionId.value] || []
+  )
+  const currentActiveStreamId = computed(() =>
+    sessionActiveStreamIds.value[currentSessionId.value] || null
+  )
   const lastTokenUsage = ref(null)
   const _compareAbortControllers = ref([])
 
@@ -184,11 +192,6 @@ export const useChatStore = defineStore('chat', () => {
       await persistMessages(oldSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     }
 
-    // 持久化旧会话的 loading 状态
-    if (oldSessionId && sessionLoading.value[oldSessionId]) {
-      sessionLoading.value[oldSessionId] = false
-    }
-
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
 
@@ -240,7 +243,10 @@ export const useChatStore = defineStore('chat', () => {
     const providerId = _provider_ || currentProvider.value
 
     if ((!content || !content.trim()) && (!attachments || attachments.length === 0)) return
-    if (currentSessionId.value && sessionLoading.value[currentSessionId.value]) return
+    // CLI 体验: 如果 agent 正在工作，先停止再发新消息（等效 CLI 中直接输入）
+    if (currentSessionId.value && sessionLoading.value[currentSessionId.value]) {
+      stopGeneration()
+    }
     if (!currentSessionId.value) {
       showToast('会话未初始化，请刷新页面重试', 'error')
       return
@@ -293,6 +299,7 @@ export const useChatStore = defineStore('chat', () => {
 
     // P4: per-session loading
     if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = true
+    const sendSessionId = currentSessionId.value  // 锁定发送时所在的会话
     const aid = uid()
     try {
       messages.value.push({
@@ -339,16 +346,17 @@ export const useChatStore = defineStore('chat', () => {
         onStatus: (event) => {
           // 只保留最新一条，避免推理步数淹没聊天
           if (event.type === 'stream_start') return // 跳过 stream_start
-          if (statusMessages.value.length > 0 && statusMessages.value[statusMessages.value.length - 1].type === 'thinking') {
-            // 替换上一条 thinking，只显示最新步数
-            statusMessages.value[statusMessages.value.length - 1].message = event.message || ''
+          const arr = sessionStatusMessages.value[sendSessionId] || []
+          if (arr.length > 0 && arr[arr.length - 1].type === 'thinking') {
+            arr[arr.length - 1].message = event.message || ''
           } else {
-            statusMessages.value.push({
+            arr.push({
               id: uid(), type: event.type || 'info',
               message: event.message || event.content || '',
               timestamp: Date.now(),
             })
           }
+          sessionStatusMessages.value[sendSessionId] = arr
           scheduleScroll()
         },
         onDone: (usageInfo) => {
@@ -359,15 +367,15 @@ export const useChatStore = defineStore('chat', () => {
             am.streaming = false; am._currentStep = null; am._streamStartTime = null; am._toolCount = null
           }
           flushScroll()
-          if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
-          activeStreamId.value = null
-          statusMessages.value = []
+          if (sendSessionId) sessionLoading.value[sendSessionId] = false
+          sessionActiveStreamIds.value[sendSessionId] = null
+          sessionStatusMessages.value[sendSessionId] = []
           if (usageInfo && usageInfo.total_tokens > 0) {
             lastTokenUsage.value = usageInfo
           }
           // 持久化助手回复（防止崩溃丢失）
-          if (currentSessionId.value) {
-            persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+          if (sendSessionId) {
+            persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
         },
         onError: (error) => {
@@ -379,11 +387,13 @@ export const useChatStore = defineStore('chat', () => {
             am._streamStartTime = null
           }
           flushScroll()
-          if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
-          statusMessages.value.push({ id: uid(), type: 'error', message: error, timestamp: Date.now() })
+          if (sendSessionId) sessionLoading.value[sendSessionId] = false
+          const errMsgs = sessionStatusMessages.value[sendSessionId] || []
+          errMsgs.push({ id: uid(), type: 'error', message: error, timestamp: Date.now() })
+          sessionStatusMessages.value[sendSessionId] = errMsgs
           // 持久化（即使出错也保存已收到的部分内容）
-          if (currentSessionId.value) {
-            persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+          if (sendSessionId) {
+            persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
         },
       })
@@ -402,7 +412,7 @@ export const useChatStore = defineStore('chat', () => {
         if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
         am.streaming = false
       }
-      if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = false
+      if (sendSessionId) sessionLoading.value[sendSessionId] = false
       if (e.name === 'AbortError') {
         showToast('已停止', 'info')
       } else {
@@ -415,18 +425,21 @@ export const useChatStore = defineStore('chat', () => {
   // ── 停止生成 ──
   function stopGeneration() {
     const transport = getChatTransport()
-    if (currentSessionId.value) {
-      transport.stop(currentSessionId.value)
-      sessionLoading.value[currentSessionId.value] = false
+    const sid = currentSessionId.value
+    if (sid) {
+      transport.stop(sid)
+      sessionLoading.value[sid] = false
     }
     // 清理当前会话所有 streaming 消息
-    messages.value.filter(m => m.streaming && m.sessionId === currentSessionId.value).forEach(m => {
+    messages.value.filter(m => m.streaming && m.sessionId === sid).forEach(m => {
       m.streaming = false
       if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
       if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
     })
-    activeStreamId.value = null
-    statusMessages.value = []
+    if (sid) {
+      sessionActiveStreamIds.value[sid] = null
+      sessionStatusMessages.value[sid] = []
+    }
   }
   // ── 工具函数 ──
   function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
@@ -496,7 +509,9 @@ export const useChatStore = defineStore('chat', () => {
     sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
-    statusMessages, lastTokenUsage, streamConnected, isOnline, isWindows,
+    statusMessages, sessionStatusMessages, currentStatusMessages,
+    sessionActiveStreamIds, currentActiveStreamId,
+    lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
