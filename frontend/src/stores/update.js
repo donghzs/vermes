@@ -18,7 +18,9 @@ function getAgentToken() {
   return ''
 }
 
-export const useUpdateStore = () => {
+import { defineStore } from 'pinia'
+
+export const useUpdateStore = defineStore('update', () => {
   // ── 应用更新（壳更新）
   const hasUpdate = ref(false)
   const latestVersion = ref('')
@@ -634,4 +636,4 @@ export const useUpdateStore = () => {
     formatSpeed,
     formatEta,
   }
-}
+})
