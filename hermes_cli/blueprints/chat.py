@@ -987,6 +987,14 @@ async def chat_completions(req: ChatRequest):
                             yield f"data: {json.dumps(chunk)}\n\n"
                 finally:
                     _active_streams.pop(_stream_id, None)
+                    # Cancel agent if client disconnected mid-stream
+                    try:
+                        if agent_task and not agent_task.done():
+                            _log.info(f"[Stream] Client disconnected, cancelling agent, stream_id={_stream_id}")
+                            agent._interrupt_requested = True
+                            agent_task.cancel()
+                    except NameError:
+                        pass  # agent_task not yet created
 
                 # Wait for agent (v2.0.4 style — direct await, no timeout wrapper)
                 try:
