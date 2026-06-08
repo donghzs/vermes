@@ -13,7 +13,10 @@ function openImageDB() {
   return _imageDBPromise || (_imageDBPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(IMAGE_DB, 1)
     req.onupgradeneeded = () => req.result.createObjectStore(IMAGE_STORE)
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      req.result.onclose = () => { _imageDBPromise = null }
+      resolve(req.result)
+    }
     req.onerror = () => { _imageDBPromise = null; reject(req.error) }
   }))
 }
@@ -26,7 +29,10 @@ function openMsgDB() {
       const store = req.result.createObjectStore(MSG_STORE)
       store.createIndex('sessionId', 'sessionId', { unique: false })
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      req.result.onclose = () => { _msgDBPromise = null }
+      resolve(req.result)
+    }
     req.onerror = () => { _msgDBPromise = null; reject(req.error) }
   }))
 }
