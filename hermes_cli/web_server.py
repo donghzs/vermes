@@ -2570,6 +2570,19 @@ async def claim_trial_token_wrapper(wechat_openid: str) -> dict:
     from hermes_cli.blueprints.quota import _claim_trial_token
     return await _claim_trial_token(wechat_openid)
 
+async def discover_models():
+    """Scan local Ollama for available models."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get("http://localhost:11434/api/tags")
+            if resp.status_code != 200:
+                return {"ok": False, "error": "Ollama not running on localhost:11434"}
+            data = resp.json()
+            models = [m["name"] for m in data.get("models", [])]
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 # Mount SPA sub-app LAST so API routes take priority over its catch-all
 # ─────────────────────────────────────────────────────────────────
 # Blueprint 注册（功能域路由模块化）
