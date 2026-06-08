@@ -2,7 +2,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import HelpGuide from './HelpGuide.vue'
-import { DEFAULT_MODELS } from '../config/defaults'
+
+// 默认模型（未同步 provider 时的回退列表）
+const defaultModels = [
+  { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
+]
 
 const chat = useChatStore()
 const showHelp = ref(false)
@@ -44,7 +48,6 @@ function addToRecent(modelId) {
 }
 
 // 模型列表
-const defaultModels = DEFAULT_MODELS
 
 const models = computed(() => {
   try {

@@ -127,7 +127,7 @@ async def get_session_messages(session_id: str):
 
 async def delete_session_endpoint(session_id: str):
     from hermes_state import SessionDB
-    from hermes_cli.blueprints.chat import clean_agent_for_session
+    from hermes_cli.blueprints.agent_cache import clean_agent_for_session
 
     db = SessionDB()
     try:
