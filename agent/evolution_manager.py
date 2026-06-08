@@ -75,7 +75,6 @@ def is_evolution_active() -> bool:
                 _seed_evolution_db()
         except Exception:
             pass
-    _ensure_wal_mode()
     return True
 
 
