@@ -71,7 +71,6 @@ def is_evolution_active() -> bool:
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM outcomes")
             count = c.fetchone()[0]
-            conn.close()
             if count == 0:
                 _seed_evolution_db()
         except Exception:
@@ -301,7 +300,6 @@ def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") ->
     signature = _extract_signature(tool_name, args, user_message)
     
     if not signature:
-        conn.close()
         return "default"
     
     # Find the most similar existing role
@@ -327,7 +325,6 @@ def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") ->
             WHERE role = ?
         ''', (datetime.now().isoformat(), best_match))
         conn.commit()
-        conn.close()
         return best_match
     
     # Otherwise, create a new role from this pattern
@@ -511,7 +508,6 @@ def get_current_emotional_state() -> Optional[str]:
             "SELECT emotion, intensity, trigger FROM emotional_state ORDER BY rowid DESC LIMIT 1"
         )
         row = cursor.fetchone()
-        conn.close()
         if row:
             return f"情绪:{row[0]}({row[1]:.1f})"
     except Exception:
@@ -595,7 +591,6 @@ def _record_emotional_state(
             (timestamp, emotion, intensity, trigger, context),
         )
         conn.commit()
-        conn.close()
         
         logger.debug("Emotional state: %s (%.1f) — %s", emotion, intensity, trigger)
     except Exception:
@@ -615,7 +610,6 @@ def _record_evolution_metric(metric: str, value: float, details: str = "") -> No
             (datetime.now().isoformat(), metric, value, details),
         )
         conn.commit()
-        conn.close()
     except Exception:
         pass
 
@@ -705,7 +699,6 @@ def record_tool_outcome(
                 ))
         
         conn.commit()
-        conn.close()
         
         logger.debug(
             "Evolution: recorded %s %s (success=%s, duration=%.2fs)",
@@ -774,7 +767,6 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         
         row = cursor.fetchone()
         if not row or row[0] == 0:
-            conn.close()
             return None
         
         total, successes = row
@@ -791,7 +783,6 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         
         anti_patterns = cursor.fetchall()
         
-        conn.close()
         
         # Build advice
         advice_parts = []
@@ -916,7 +907,6 @@ def get_evolution_status() -> Dict[str, Any]:
         ''')
         recent_failures = cursor.fetchall()
         
-        conn.close()
         
         return {
             "active": True,
