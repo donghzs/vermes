@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import Sidebar from './components/Sidebar.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import { useChatStore } from './stores/chat'
@@ -27,12 +28,14 @@ onMounted(async () => {
     </div>
   </div>
   <div v-else class="flex flex-col h-screen bg-white dark:bg-gray-900" :data-theme="theme">
-    <div class="flex flex-1 overflow-hidden">
-      <Sidebar />
-      <div class="flex-1 flex flex-col h-full overflow-hidden">
-        <router-view />
+    <ErrorBoundary>
+      <div class="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <div class="flex-1 flex flex-col h-full overflow-hidden">
+          <router-view />
+        </div>
       </div>
-    </div>
-    <ToastContainer />
+      <ToastContainer />
+    </ErrorBoundary>
   </div>
 </template>
