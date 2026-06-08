@@ -75,7 +75,6 @@ export const useChatStore = defineStore('chat', () => {
     sessionActiveStreamIds.value[currentSessionId.value] || null
   )
   const lastTokenUsage = ref(null)
-  const _compareAbortControllers = ref([])
 
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
   const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
