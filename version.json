@@ -7,19 +7,19 @@
     "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.0.8.exe"
   },
   "sha256": {
-    "macos_arm64": "7609c7a5c4ac8970841c7afe62f92e178865276b3d7b016b184e3289e87da6dd",
-    "macos_x64": "2a596efdefc605bc154c146859628fe2c1e940272dd333a6cf6f8e80f663fee0"
+    "macos_arm64": "ffaf830bf17f009b5ded9c665a5ad1a545f670c7646534edb79a04850b9fca39",
+    "macos_x64": "64f4411d16c3db072ae84d24cca2c265d6941bd7d951ebd9cb84f17dbc054b4a"
   },
   "macOS": {
     "arm64": {
       "dmg": "/vermes/downloads/Vermes-2.0.8-arm64.dmg",
       "size": "160 MB",
-      "sha256": "7609c7a5c4ac8970841c7afe62f92e178865276b3d7b016b184e3289e87da6dd"
+      "sha256": "ffaf830bf17f009b5ded9c665a5ad1a545f670c7646534edb79a04850b9fca39"
     },
     "x64": {
       "dmg": "/vermes/downloads/Vermes-2.0.8.dmg",
       "size": "160 MB",
-      "sha256": "2a596efdefc605bc154c146859628fe2c1e940272dd333a6cf6f8e80f663fee0"
+      "sha256": "64f4411d16c3db072ae84d24cca2c265d6941bd7d951ebd9cb84f17dbc054b4a"
     }
   },
   "windows": {
