@@ -800,6 +800,10 @@ def _compute_from_scan(scan: Dict[str, Any], *, is_partial: bool = False) -> Dic
     for definition in ACHIEVEMENTS:
         result = evaluate_definition(definition, aggregate)
         unlock_id = definition["id"]
+        # 持久化修复：重启后已解锁成就保持可见，即使 scan 冷启动
+        if unlock_id in unlocks:
+            result["unlocked"] = True
+            result["state"] = "unlocked"
         if not is_partial and result["unlocked"] and unlock_id not in unlocks:
             unlocks[unlock_id] = {"unlocked_at": now, "first_tier": result.get("tier"), "evidence": evidence_for(definition, scan.get("sessions", []))}
         item = {**definition, **result}
