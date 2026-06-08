@@ -34,8 +34,8 @@ import { getChatTransport } from '../services/chat-transport'
 // 常量
 const SESSIONS_KEY = 'vermes-sessions'
 const MESSAGES_KEY_PREFIX = 'vermes-messages-'
-const DEFAULT_MODEL_ID = localStorage.getItem('vermes-default-model') || 'miMo'
-const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || 'xiaomi'
+const DEFAULT_MODEL_ID = localStorage.getItem('vermes-default-model') || ''
+const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || ''
 
 // ── 全局状态 ──
 const streamConnected = ref(false)

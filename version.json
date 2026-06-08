@@ -1,6 +1,6 @@
 {
-  "version": "2.0.8",
-  "buildDate": "2026-06-07",
+  "version": "2.0.9",
+  "buildDate": "2026-06-08",
   "download_url": {
     "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8-arm64.dmg",
     "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8.dmg",
@@ -27,17 +27,11 @@
     "size": ""
   },
   "changelog": [
-    "进化系统全链路闭环：pre-flight 策略建议 + post-flight 错误分析 + 感性层情绪",
-    "多会话并行：每会话独立 agent，per-session loading 不阻塞",
-    "WebSocket 实时通道：停止生成 <1ms，为多端协作奠定基础",
-    "跨会话涌现：每次会话启动注入进化上下文（历史记录/成功率/情绪/反模式）",
-    "成就系统：7 个里程碑自动解锁",
-    "四层进化 UX：Sidebar 指示器 + 每日签到简报 + 进化时刻 + 成就通知",
-    "REST API /api/agent/run：外部系统（cron/脚本/webhook）可调用 agent",
-    "ChatTransport 抽象层：SSE/WebSocket 切换只需改 1 行",
-    "Web 端 LSP + 浏览器工具激活",
-    "SQLite WAL + busy_timeout=5000：多 agent 并发写不锁库",
-    "冷启动种子数据：新用户开箱即有进化记录",
-    "Settings 页面 API 接入卡片：复制 curl + 一键测试"
+    "AgentCache 模块提取 — chat.py 1246→1092行 (-12.4%)",
+    "死代码删除 — web_server.py ~293行 + defaults.js",
+    "Proxy 回退移除 — 全入口强制 agent 模式，不透传 LLM",
+    "前端超时移除 — request + stream read 清零，等效 CLI",
+    "默认模型清空 — 前端不猜用户配什么",
+    "累计 bug 修复 14 个 — C1-C3/H1-H4/H8/P2×5"
   ]
 }

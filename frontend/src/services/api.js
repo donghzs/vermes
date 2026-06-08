@@ -160,8 +160,8 @@ async function request(path, options = {}) {
   const retryableStatuses = [429, 500, 502, 503, 504]
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // 超时处理：默认 60s，如果调用者已传 signal 则合并
-    const timeoutMs = options.timeout ?? 60000
+    // 超时处理：CLI 等效，不加人工超时限制
+    const timeoutMs = 0
     const controller = new AbortController()
     let timeoutId = null
 
@@ -287,43 +287,12 @@ const api = {
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let lastReadTime = Date.now()
-
-      // WebView2 兼容：读取超时检测（300s 无数据则中断）
-      // 后端 agent_task 最多 300s，对齐；后端 ping 每 15s 保活
-      const READ_TIMEOUT_MS = 300000
-      let readTimer = null
-      const resetReadTimer = () => { lastReadTime = Date.now() }
 
       try {
       while (true) {
-        // 给 reader.read() 加超时保护（WebView2 可能不返回 done=true）
-        const readPromise = reader.read()
-        const timeoutPromise = new Promise((_, reject) => {
-          readTimer = setTimeout(() => {
-            if (Date.now() - lastReadTime >= READ_TIMEOUT_MS) {
-              reject(new Error('stream_read_timeout'))
-            }
-          }, READ_TIMEOUT_MS)
-        })
-        let result
-        try {
-          result = await Promise.race([readPromise, timeoutPromise])
-        } catch (e) {
-          if (e.message === 'stream_read_timeout') {
-            console.warn('[Vermes] 流式读取超时，中断连接')
-            // 给用户提示：响应可能不完整
-            if (onChunk) onChunk('\n\n⚠️ 响应超时，内容可能不完整')
-            break
-          }
-          throw e
-        } finally {
-          clearTimeout(readTimer)
-        }
-        const { done, value } = result || {}
+        const { done, value } = await reader.read()
         if (done) break
         if (signal?.aborted) { reader.cancel(); break }
-        resetReadTimer()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -355,7 +324,6 @@ const api = {
             if (json.type === 'thinking') {
               // 思考事件节流：2秒内最多显示一次
               const now = Date.now()
-              resetReadTimer()  // 重置读取超时（后端还在处理）
               if (!window.__lastThinkingTime || now - window.__lastThinkingTime > 2000) {
                 window.__lastThinkingTime = now
                 // 只触发 onThinking 回调，不创建工具卡片（避免 toolCount 污染）
@@ -364,22 +332,18 @@ const api = {
               continue
             }
             if (json.type === 'lifecycle' || json.type === 'warn') {
-              resetReadTimer()
               onStatus?.(json)
               continue
             }
             if (json.type === 'ping') {
               // 保活心跳：重置读取超时计时器
-              resetReadTimer()
               continue
             }
             if (json.type === 'tool_start') {
-              resetReadTimer()  // 工具开始执行，重置超时
               onTool?.({ type: 'tool_start', tool_call_id: json.tool_call_id, name: json.tool_name, arguments: json.arguments })
               continue
             }
             if (json.type === 'tool_end') {
-              resetReadTimer()  // 工具执行完成，重置超时
               onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error, result_preview: json.result_preview || '' })
               continue
             }

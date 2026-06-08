@@ -11,9 +11,7 @@ import json
 import logging
 import os
 import secrets
-import threading
 import time
-from collections import OrderedDict
 from typing import Optional
 
 import yaml
@@ -25,88 +23,11 @@ from hermes_cli.config import load_config, remove_env_value
 
 _log = logging.getLogger(__name__)
 
-# Agent instance cache: session_key → AIAgent (for session persistence)
-# LRU with maxsize=20 -- oldest unused agent evicted when full
-# Also supports pop_for_session() for explicit session-delete cleanup
-
-
-class _AgentCache:
-    """LRU Agent 缓存，超限淘汰最久未用。线程安全。"""
-    def __init__(self, maxsize: int = 20):
-        self._cache: OrderedDict = OrderedDict()
-        self._maxsize = maxsize
-        self._lock = threading.Lock()
-        # ── 性能监控指标 ──
-        self.metrics = {
-            'hits': 0,
-            'misses': 0,
-            'evictions': 0,
-        }
-
-    def get(self, key: str):
-        with self._lock:
-            if key in self._cache:
-                self._cache.move_to_end(key)
-                self.metrics['hits'] += 1
-                return self._cache[key]
-            self.metrics['misses'] += 1
-        return None
-
-    def put(self, key: str, agent):
-        with self._lock:
-            self._cache[key] = agent
-            self._cache.move_to_end(key)
-            self._evict()
-
-    def pop_for_session(self, session_id: str):
-        """Delete all cached entries matching this session_id."""
-        with self._lock:
-            keys = [k for k in self._cache if k.endswith(f":{session_id}")]
-            for k in keys:
-                del self._cache[k]
-        if keys:
-            _log.info(f"[Agent] Evicted {len(keys)} cached agent(s) for session {session_id}")
-
-    def _evict(self):
-        while len(self._cache) > self._maxsize:
-            key, agent = self._cache.popitem(last=False)
-            self.metrics['evictions'] += 1
-            _log.info(f"[Agent] LRU evicted: {key}")
-
-    def __len__(self):
-        with self._lock:
-            return len(self._cache)
-
-    def get_metrics(self):
-        """返回缓存性能指标。"""
-        with self._lock:
-            total = self.metrics['hits'] + self.metrics['misses']
-            return {
-                **self.metrics,
-                'hit_rate': self.metrics['hits'] / total if total > 0 else 0.0,
-                'current_size': len(self._cache),
-                'max_size': self._maxsize,
-            }
-
-
-_agent_cache = _AgentCache(maxsize=20)
-
-
-async def stop_agent_session(session_id: str) -> dict:
-    """Interrupt agent generation for a given session."""
-    for key, agent in list(_agent_cache._cache.items()):
-        if session_id in key:
-            try:
-                agent.interrupt()
-            except Exception as e:
-                _log.warning(f"[Agent] Failed to interrupt {session_id}: {e}")
-            return {"ok": True, "session_id": session_id}
-    return {"ok": True, "session_id": session_id, "note": "no_active_agent"}
-
-
-def clean_agent_for_session(session_id: str):
-    """供 session.py 调用的 session 删除时清理接口。"""
-    _agent_cache.pop_for_session(session_id)
+from hermes_cli.blueprints.agent_cache import (
+    _agent_cache,
+    stop_agent_session,
+    clean_agent_for_session,
+)
 
 
 # ── Attachment constants ─────────────────────────────────────────────
@@ -714,8 +635,7 @@ async def chat_completions(req: ChatRequest):
                     user_message = content
                 break
 
-    # All messages go through Agent mode
-    use_agent_mode = True
+    # All messages go through Agent mode — no proxy fallback
     agent = None
 
     # Extract session ID for agent caching
@@ -726,8 +646,7 @@ async def chat_completions(req: ChatRequest):
     agent = _agent_cache.get(_cache_key)
 
     if agent is None:
-        try:
-            # ── 跨会话涌现：注入进化上下文 ────────────────────────────
+        # ── 跨会话涌现：注入进化上下文 ────────────────────────────
             _evo_prompt = ""
             try:
                 from agent.evolution_manager import get_evolution_status, get_current_emotional_state
@@ -760,12 +679,6 @@ async def chat_completions(req: ChatRequest):
             )
             _agent_cache.put(_cache_key, agent)
             _log.info(f"[Agent] Created new agent for session {_session_id}")
-        except ValueError as e:
-            if "context window" in str(e).lower():
-                print(f"[WARN] Model {model} context too small, falling back to proxy mode: {e}")
-                use_agent_mode = False
-            else:
-                raise
     else:
         _log.info(f"[Agent] Reusing cached agent for session {_session_id}")
 
@@ -775,285 +688,218 @@ async def chat_completions(req: ChatRequest):
         set_current_session_key(_gui_sk)
         enable_session_yolo(_gui_sk)
 
-    # Proxy call helper
-    async def call_proxy():
-        import httpx
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-            resp = await client.post(
-                f"{base_url.rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": model, "messages": conversation_history, "stream": False},
-            )
-            return resp
 
     if req.stream:
         # Streaming mode
         _stream_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-        async def stream_from_proxy():
-            import httpx
-            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url.rstrip('/')}/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json={"model": model, "messages": conversation_history, "stream": True},
-                ) as resp:
-                    if resp.status_code >= 400:
-                        error_body = ""
-                        async for chunk in resp.aiter_bytes():
-                            error_body += chunk.decode(errors="replace")
-                        try:
-                            err_json = json.loads(error_body)
-                            err_msg = err_json.get("error", {}).get("message", error_body[:200])
-                        except Exception:
-                            err_msg = error_body[:200]
-                        _log.warning(f"[Proxy] 上游错误 {resp.status_code}: {err_msg}")
-                        yield f'data: {json.dumps({"error": {"message": err_msg, "type": "one_api_error", "code": resp.status_code}})}\n\n'
-                        yield "data: [DONE]\n\n"
-                        return
-                    async for line in resp.aiter_lines():
-                        if line.startswith("data: "):
-                            data_content = line[6:]
-                            if data_content.strip() == "[DONE]":
+        # Agent mode streaming
+        from hermes_cli.blueprints.state import _active_streams
+
+        _delta_queue: asyncio.Queue = asyncio.Queue()
+        _agent_done = asyncio.Event()
+        _stream_id = secrets.token_urlsafe(16)
+        _cancel_event = asyncio.Event()
+        _tool_ids = {}  # tool_name → tool_call_id 配对
+        _active_streams[_stream_id] = _cancel_event
+
+        def status_callback(event_type: str, message: str):
+            """Route lifecycle/warn events from AIAgent to SSE stream."""
+            event = {
+                "type": "lifecycle" if event_type == "lifecycle" else "warn",
+                "message": message,
+            }
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+            else:
+                _delta_queue.put_nowait(event)
+
+        def stream_callback(delta: str):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if delta is not None:
+                _log.info(f"[Stream] DELTA: {repr(delta[:60])}")
+                if loop and loop.is_running():
+                    loop.call_soon_threadsafe(_delta_queue.put_nowait, delta)
+                else:
+                    _delta_queue.put_nowait(delta)
+            else:
+                _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
+
+        def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
+            _log.info(f"[ToolEvent] {event_type}: {tool_name}")
+            if event_type == "tool.started":
+                _tool_id = secrets.token_urlsafe(8)
+                _tool_ids[tool_name] = _tool_id
+                event = {
+                    "type": "tool_start",
+                    "tool_call_id": _tool_id,
+                    "tool_name": tool_name,
+                    "arguments": args or {},
+                }
+            else:
+                event = {
+                    "type": "tool_end",
+                    "tool_call_id": _tool_ids.pop(tool_name, secrets.token_urlsafe(8)),
+                    "tool_name": tool_name,
+                    "duration": kwargs.get("duration", 0),
+                    "is_error": kwargs.get("is_error", False),
+                    "result_preview": preview or "",
+                }
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+            else:
+                _delta_queue.put_nowait(event)
+
+        def thinking_handler(iteration: int, prev_tools: list):
+            _log.info(f"[ThinkEvent] iteration={iteration}, prev_tools={[t.get('name') for t in (prev_tools or [])]}")
+            tool_names = [t.get("name", "?") for t in (prev_tools or [])]
+            msg = f"🤔 推理第 {iteration} 步"
+            if tool_names:
+                msg += f" — 已用: {', '.join(tool_names)}"
+            event = {
+                "type": "thinking",
+                "iteration": iteration,
+                "message": msg
+            }
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+            else:
+                _delta_queue.put_nowait(event)
+
+        def run_sync():
+            try:
+                _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
+                agent.stream_delta_callback = stream_callback
+                agent.tool_progress_callback = tool_progress_handler
+                agent.step_callback = thinking_handler
+                agent.status_callback = status_callback
+                _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
+                agent.max_tokens = _max_tokens
+                result = agent.run_conversation(
+                    user_message=user_message,
+                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
+                    stream_callback=None,
+                )
+                _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
+                return result
+            except Exception as e:
+                _log.error(f"[Stream] Agent error: {e}")
+                raise
+            finally:
+                _agent_done.set()
+
+        async def stream_generator():
+            try:
+                yield f'data: {json.dumps({"type": "stream_start", "stream_id": _stream_id})}\n\n'
+
+                loop = asyncio.get_running_loop()
+                agent_task = loop.run_in_executor(None, run_sync)
+
+                while not _agent_done.is_set() or not _delta_queue.empty():
+                    if _cancel_event.is_set():
+                        _log.info(f"[Stream] Frontend requested stop, stream_id={_stream_id}")
+                        agent._interrupt_requested = True
+                        agent_task.cancel()
+                        break
+
+                    try:
+                        delta = await asyncio.wait_for(_delta_queue.get(), timeout=0.5)
+                    except asyncio.TimeoutError:
+                        if agent_task.done():
+                            exc = agent_task.exception()
+                            if exc:
+                                _log.error(f"[Stream] Agent error: {exc}")
+                                yield f'data: {json.dumps({"error": {"message": str(exc), "type": "agent_error", "code": 500}})}\n\n'
+                                yield "data: [DONE]\n\n"
+                                return
+                            if _delta_queue.empty():
+                                _agent_done.set()
                                 break
-                            try:
-                                chunk_data = json.loads(data_content)
-                                if "usage" in chunk_data and chunk_data["usage"].get("total_tokens", 0) > 0:
-                                    _stream_usage["prompt_tokens"] = chunk_data["usage"].get("prompt_tokens", 0)
-                                    _stream_usage["completion_tokens"] = chunk_data["usage"].get("completion_tokens", 0)
-                                    _stream_usage["total_tokens"] = chunk_data["usage"]["total_tokens"]
-                            except (json.JSONDecodeError, KeyError, TypeError):
-                                pass
-                            yield line + "\n\n"
-            # Stream-end quota reporting
-            wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-            if provider in ("vbit", "agnes"):
-                _report_quota(wechat_openid, _stream_usage["total_tokens"], "流式")
+                        continue
+
+                    if isinstance(delta, dict):
+                        yield f"data: {json.dumps(delta)}\n\n"
+                    else:
+                        chunk = {
+                            "id": "vermes-agent",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": model,
+                            "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n"
+            finally:
+                _active_streams.pop(_stream_id, None)
+                # Cancel agent if client disconnected mid-stream
+                try:
+                    if agent_task and not agent_task.done():
+                        _log.info(f"[Stream] Client disconnected, cancelling agent, stream_id={_stream_id}")
+                        agent._interrupt_requested = True
+                        agent_task.cancel()
+                except NameError:
+                    pass  # agent_task not yet created
+
+            # Wait for agent (v2.0.4 style — direct await, no timeout wrapper)
+            try:
+                _agent_result = await agent_task
+            except Exception:
+                _agent_result = {}
+
+            # Report quota
+            _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
+            if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
+                _total = _agent_result.get("total_tokens", 0)
+                _report_quota(_wechat_openid, _total, "Agent流式")
+
+            # Send [DONE]
+            final_chunk = {
+                "id": "vermes-agent",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+            }
+            yield f"data: {json.dumps(final_chunk)}\n\n"
             yield "data: [DONE]\n\n"
 
-        if agent is None:
-            return StreamingResponse(stream_from_proxy(), media_type="text/event-stream")
-        else:
-            # Agent mode streaming
-            from hermes_cli.blueprints.state import _active_streams
-
-            _delta_queue: asyncio.Queue = asyncio.Queue()
-            _agent_done = asyncio.Event()
-            _stream_id = secrets.token_urlsafe(16)
-            _cancel_event = asyncio.Event()
-            _tool_ids = {}  # tool_name → tool_call_id 配对
-            _active_streams[_stream_id] = _cancel_event
-
-            def status_callback(event_type: str, message: str):
-                """Route lifecycle/warn events from AIAgent to SSE stream."""
-                event = {
-                    "type": "lifecycle" if event_type == "lifecycle" else "warn",
-                    "message": message,
-                }
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-                else:
-                    _delta_queue.put_nowait(event)
-
-            def stream_callback(delta: str):
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if delta is not None:
-                    _log.info(f"[Stream] DELTA: {repr(delta[:60])}")
-                    if loop and loop.is_running():
-                        loop.call_soon_threadsafe(_delta_queue.put_nowait, delta)
-                    else:
-                        _delta_queue.put_nowait(delta)
-                else:
-                    _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
-
-            def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
-                _log.info(f"[ToolEvent] {event_type}: {tool_name}")
-                if event_type == "tool.started":
-                    _tool_id = secrets.token_urlsafe(8)
-                    _tool_ids[tool_name] = _tool_id
-                    event = {
-                        "type": "tool_start",
-                        "tool_call_id": _tool_id,
-                        "tool_name": tool_name,
-                        "arguments": args or {},
-                    }
-                else:
-                    event = {
-                        "type": "tool_end",
-                        "tool_call_id": _tool_ids.pop(tool_name, secrets.token_urlsafe(8)),
-                        "tool_name": tool_name,
-                        "duration": kwargs.get("duration", 0),
-                        "is_error": kwargs.get("is_error", False),
-                        "result_preview": preview or "",
-                    }
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-                else:
-                    _delta_queue.put_nowait(event)
-
-            def thinking_handler(iteration: int, prev_tools: list):
-                _log.info(f"[ThinkEvent] iteration={iteration}, prev_tools={[t.get('name') for t in (prev_tools or [])]}")
-                tool_names = [t.get("name", "?") for t in (prev_tools or [])]
-                msg = f"🤔 推理第 {iteration} 步"
-                if tool_names:
-                    msg += f" — 已用: {', '.join(tool_names)}"
-                event = {
-                    "type": "thinking",
-                    "iteration": iteration,
-                    "message": msg
-                }
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-                else:
-                    _delta_queue.put_nowait(event)
-
-            def run_sync():
-                try:
-                    _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
-                    agent.stream_delta_callback = stream_callback
-                    agent.tool_progress_callback = tool_progress_handler
-                    agent.step_callback = thinking_handler
-                    agent.status_callback = status_callback
-                    _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
-                    agent.max_tokens = _max_tokens
-                    result = agent.run_conversation(
-                        user_message=user_message,
-                        conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
-                        stream_callback=None,
-                    )
-                    _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
-                    return result
-                except Exception as e:
-                    _log.error(f"[Stream] Agent error: {e}")
-                    raise
-                finally:
-                    _agent_done.set()
-
-            async def stream_generator():
-                try:
-                    yield f'data: {json.dumps({"type": "stream_start", "stream_id": _stream_id})}\n\n'
-
-                    loop = asyncio.get_running_loop()
-                    agent_task = loop.run_in_executor(None, run_sync)
-
-                    while not _agent_done.is_set() or not _delta_queue.empty():
-                        if _cancel_event.is_set():
-                            _log.info(f"[Stream] Frontend requested stop, stream_id={_stream_id}")
-                            agent._interrupt_requested = True
-                            agent_task.cancel()
-                            break
-
-                        try:
-                            delta = await asyncio.wait_for(_delta_queue.get(), timeout=0.5)
-                        except asyncio.TimeoutError:
-                            if agent_task.done():
-                                exc = agent_task.exception()
-                                if exc:
-                                    _log.error(f"[Stream] Agent error: {exc}")
-                                    yield f'data: {json.dumps({"error": {"message": str(exc), "type": "agent_error", "code": 500}})}\n\n'
-                                    yield "data: [DONE]\n\n"
-                                    return
-                                if _delta_queue.empty():
-                                    _agent_done.set()
-                                    break
-                            continue
-
-                        if isinstance(delta, dict):
-                            yield f"data: {json.dumps(delta)}\n\n"
-                        else:
-                            chunk = {
-                                "id": "vermes-agent",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": model,
-                                "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
-                            }
-                            yield f"data: {json.dumps(chunk)}\n\n"
-                finally:
-                    _active_streams.pop(_stream_id, None)
-                    # Cancel agent if client disconnected mid-stream
-                    try:
-                        if agent_task and not agent_task.done():
-                            _log.info(f"[Stream] Client disconnected, cancelling agent, stream_id={_stream_id}")
-                            agent._interrupt_requested = True
-                            agent_task.cancel()
-                    except NameError:
-                        pass  # agent_task not yet created
-
-                # Wait for agent (v2.0.4 style — direct await, no timeout wrapper)
-                try:
-                    _agent_result = await agent_task
-                except Exception:
-                    _agent_result = {}
-
-                # Report quota
-                _wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
-                if _wechat_openid and _agent_result and provider in ("vbit", "agnes"):
-                    _total = _agent_result.get("total_tokens", 0)
-                    _report_quota(_wechat_openid, _total, "Agent流式")
-
-                # Send [DONE]
-                final_chunk = {
-                    "id": "vermes-agent",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-                }
-                yield f"data: {json.dumps(final_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(stream_generator(), media_type="text/event-stream")
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
     else:
         # Non-streaming mode
         _usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        if agent is None:
-            proxy_resp = await call_proxy()
-            proxy_data = proxy_resp.json()
-            msg = proxy_data.get("choices", [{}])[0].get("message", {})
-            final_response = msg.get("content", "Proxy error")
-            if "usage" in proxy_data and proxy_data["usage"]:
-                _usage = {
-                    "prompt_tokens": proxy_data["usage"].get("prompt_tokens", 0),
-                    "completion_tokens": proxy_data["usage"].get("completion_tokens", 0),
-                    "total_tokens": proxy_data["usage"].get("total_tokens", 0),
-                }
-        else:
-            def run_sync():
-                return agent.run_conversation(
-                    user_message=user_message,
-                    conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
-                )
+        def run_sync():
+            return agent.run_conversation(
+                user_message=user_message,
+                conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
+            )
 
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, run_sync)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, run_sync)
 
-            final_response = result.get("final_response", "") if result else ""
-            if not final_response and result and result.get("error"):
-                final_response = f"Error: {result['error']}"
-            _input_chars = sum(len(str(m.get("content", ""))) for m in conversation_history)
-            _output_chars = len(final_response or "")
-            _usage = {
-                "prompt_tokens": max(1, _input_chars // 3),
-                "completion_tokens": max(1, _output_chars // 3),
-                "total_tokens": max(1, (_input_chars + _output_chars) // 3),
-            }
+        final_response = result.get("final_response", "") if result else ""
+        if not final_response and result and result.get("error"):
+            final_response = f"Error: {result['error']}"
+        _input_chars = sum(len(str(m.get("content", ""))) for m in conversation_history)
+        _output_chars = len(final_response or "")
+        _usage = {
+            "prompt_tokens": max(1, _input_chars // 3),
+            "completion_tokens": max(1, _output_chars // 3),
+            "total_tokens": max(1, (_input_chars + _output_chars) // 3),
+        }
 
         # Non-streaming quota reporting
         wechat_openid = req.wechat_openid or os.environ.get("VERMES_WECHAT_OPENID", "")
