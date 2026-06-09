@@ -83,6 +83,24 @@ def is_evolution_active() -> bool:
             count = c.fetchone()[0]
             if count == 0:
                 _seed_evolution_db()
+            # 迁移：补建新增的表（已有 DB 不会触发 _seed_evolution_db）
+            c.execute("""CREATE TABLE IF NOT EXISTS relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT NOT NULL,
+                source_id INTEGER NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id INTEGER NOT NULL,
+                rel_type TEXT NOT NULL,
+                weight REAL DEFAULT 1.0,
+                timestamp TEXT NOT NULL)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT NOT NULL UNIQUE,
+                signature TEXT,
+                frequency INTEGER DEFAULT 0,
+                first_seen TEXT,
+                last_seen TEXT)""")
+            conn.commit()
         except Exception:
             pass
     _evolution_active = True
