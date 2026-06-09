@@ -121,6 +121,15 @@ def _seed_evolution_db() -> None:
         frequency INTEGER DEFAULT 0,
         first_seen TEXT,
         last_seen TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS relations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type TEXT NOT NULL,
+        source_id INTEGER NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id INTEGER NOT NULL,
+        rel_type TEXT NOT NULL,
+        weight REAL DEFAULT 1.0,
+        timestamp TEXT NOT NULL)""")
     
     from datetime import datetime
     ts = datetime.now().isoformat()
@@ -686,6 +695,7 @@ def record_tool_outcome(
             error_msg,
             role
         ))
+        outcome_id = cursor.lastrowid
         
         # If failed, check for anti-pattern
         if is_error and error_type:
@@ -714,9 +724,16 @@ def record_tool_outcome(
                     domain,
                     timestamp
                 ))
-        
+
+            # -- 关系记录 --
+            ap_id = existing[0] if existing else cursor.lastrowid
+            cursor.execute('''
+                INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', ('outcome', outcome_id, 'anti_pattern', ap_id, 'triggered', 1.0, timestamp))
+
         conn.commit()
-        
+
         logger.debug(
             "Evolution: recorded %s %s (success=%s, duration=%.2fs)",
             tool_name, task, not is_error, duration
@@ -939,3 +956,37 @@ def get_evolution_status() -> Dict[str, Any]:
     except Exception as e:
         logger.debug("Evolution status failed: %s", e)
         return {"active": True, "error": str(e)}
+
+
+def build_evolution_prompt() -> str:
+    """构建[进化上下文] + [行为准则]文本块，替代 3 处重复代码。
+
+    返回空字符串表示无可用的进化数据（首次运行 / 数据不足 5 条）。
+    由 cli.py / chat.py 调用，作为 ephemeral_system_prompt 注入。
+    """
+    try:
+        status = get_evolution_status()
+        if not status or not status.get("active") or status.get("total_outcomes", 0) <= 5:
+            return ""
+
+        parts = [
+            "[进化上下文]",
+            f"历史记录: {status['total_outcomes']} 条",
+            f"成功率: {status['success_rate']}%",
+        ]
+        emotion = get_current_emotional_state()
+        if emotion:
+            parts.append(f"当前状态: {emotion}")
+        if status.get("anti_patterns_count", 0) > 0:
+            parts.append(f"反模式: {status['anti_patterns_count']} 条")
+
+        return "\n".join(parts) + (
+            "\n\n[行为准则]\n"
+            "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么，不要因为成功率高就草率回复\n"
+            "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
+            "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具，别偷懒跳过\n"
+            "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
+            "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
+        )
+    except Exception:
+        return ""

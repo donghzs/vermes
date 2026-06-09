@@ -651,33 +651,11 @@ async def chat_completions(req: ChatRequest):
     agent = _agent_cache.get(_cache_key)
 
     if agent is None:
-        # ── 跨会话涌现：注入进化上下文 + 行为引导 ─────────────────
+        # ── 跨会话涌现：注入进化上下文 + 行为引导（提炼至 evolution_manager）──
             _evo_prompt = ""
             try:
-                from agent.evolution_manager import get_evolution_status, get_current_emotional_state
-                _status = get_evolution_status()
-                if _status and _status.get('active') and _status.get('total_outcomes', 0) > 5:
-                    _parts = [
-                        f"[进化上下文]",
-                        f"历史记录: {_status['total_outcomes']} 条",
-                        f"成功率: {_status['success_rate']}%",
-                    ]
-                    _emotion = get_current_emotional_state()
-                    if _emotion:
-                        _parts.append(f"当前状态: {_emotion}")
-                    if _status.get('anti_patterns_count', 0) > 0:
-                        _parts.append(f"反模式: {_status['anti_patterns_count']} 条")
-                    _evo_prompt = "\n".join(_parts)
-                    # ── 行为引导：对抗 agent 惰性 ──────────────────
-                    _behavior_guide = (
-                        "\n\n[行为准则]\n"
-                        "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么，不要因为成功率高就草率回复\n"
-                        "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
-                        "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具，别偷懒跳过\n"
-                        "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
-                        "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
-                    )
-                    _evo_prompt += _behavior_guide
+                from agent.evolution_manager import build_evolution_prompt
+                _evo_prompt = build_evolution_prompt() or ""
             except Exception:
                 pass
             # ── 推理配置：读取 config 中 agent.reasoning_effort ────
@@ -1025,28 +1003,8 @@ async def agent_run(req: AgentRunRequest):
     # Inject evolution context
     _evo_prompt = ""
     try:
-        from agent.evolution_manager import get_evolution_status, get_current_emotional_state
-        _s = get_evolution_status()
-        if _s and _s.get("active") and _s.get("total_outcomes", 0) > 5:
-            _parts = ["[进化上下文]",
-                      f"历史记录: {_s.get('total_outcomes', 0)} 条",
-                      f"成功率: {_s.get('success_rate', 0)}%"]
-            _emotion = get_current_emotional_state()
-            if _emotion:
-                _parts.append(f"当前状态: {_emotion}")
-            if _s.get("anti_patterns_count", 0) > 0:
-                _parts.append(f"反模式: {_s.get('anti_patterns_count', 0)} 条")
-            _evo_prompt = "\n".join(_parts)
-            # ── 行为引导 ──────────────────────────────────────
-            _behavior_guide = (
-                "\n\n[行为准则]\n"
-                "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么，不要因为成功率高就草率回复\n"
-                "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
-                "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具，别偷懒跳过\n"
-                "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
-                "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
-            )
-            _evo_prompt += _behavior_guide
+        from agent.evolution_manager import build_evolution_prompt
+        _evo_prompt = build_evolution_prompt() or ""
     except Exception:
         pass
 
