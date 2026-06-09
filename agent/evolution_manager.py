@@ -114,6 +114,13 @@ def _seed_evolution_db() -> None:
     c.execute("""CREATE TABLE IF NOT EXISTS self_model (
         id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT,
         metric TEXT, value REAL, details TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL UNIQUE,
+        signature TEXT,
+        frequency INTEGER DEFAULT 0,
+        first_seen TEXT,
+        last_seen TEXT)""")
     
     from datetime import datetime
     ts = datetime.now().isoformat()
