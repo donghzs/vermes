@@ -1,7 +1,13 @@
 import { ref } from 'vue'
 
-/* global __APP_VERSION__ */
-const CURRENT_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
+// 版本号从后端 /health 运行时读取，不编译时硬编码
+// 框架更新不触发前端重建
+let CURRENT_VERSION = '0.0.0'
+try {
+  const resp = await fetch('/health')
+  const data = await resp.json()
+  CURRENT_VERSION = data.version || '0.0.0'
+} catch { /* fall through */ }
 const VERSION_URL = 'https://vbit.top/vermes/version.json'
 const AGENT_VERSION_URL = '/api/agent/check'
 const DISMISS_KEY = 'vermes_update_dismissed'
