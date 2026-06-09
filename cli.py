@@ -4562,6 +4562,40 @@ class HermesCLI:
                 "credential_pool": getattr(self, "_credential_pool", None),
             }
             effective_model = model_override or self.model
+
+            # ── 进化上下文注入：行为引导 + 进化数据（与桌面端对等）──
+            _evo_block = ""
+            try:
+                from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+                _status = get_evolution_status()
+                if _status and _status.get("active") and _status.get("total_outcomes", 0) > 5:
+                    _parts = [
+                        "[进化上下文]",
+                        f"历史记录: {_status['total_outcomes']} 条",
+                        f"成功率: {_status['success_rate']}%",
+                    ]
+                    _emotion = get_current_emotional_state()
+                    if _emotion:
+                        _parts.append(f"当前状态: {_emotion}")
+                    if _status.get("anti_patterns_count", 0) > 0:
+                        _parts.append(f"反模式: {_status['anti_patterns_count']} 条")
+                    _evo_block = "\n".join(_parts)
+                    _evo_block += (
+                        "\n\n[行为准则]\n"
+                        "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么，不要因为成功率高就草率回复\n"
+                        "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
+                        "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具，别偷懒跳过\n"
+                        "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
+                        "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
+                    )
+            except Exception:
+                pass
+            _effective_ephemeral = (
+                (self.system_prompt + "\n\n" + _evo_block)
+                if self.system_prompt and _evo_block
+                else (_evo_block if _evo_block else self.system_prompt)
+            )
+
             self.agent = AIAgent(
                 model=effective_model,
                 api_key=runtime.get("api_key"),
@@ -4576,7 +4610,7 @@ class HermesCLI:
                 disabled_toolsets=self.disabled_toolsets,
                 verbose_logging=self.verbose,
                 quiet_mode=not self.verbose,
-                ephemeral_system_prompt=self.system_prompt if self.system_prompt else None,
+                ephemeral_system_prompt=_effective_ephemeral,
                 prefill_messages=self.prefill_messages or None,
                 reasoning_config=self.reasoning_config,
                 service_tier=self.service_tier,
