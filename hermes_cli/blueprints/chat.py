@@ -293,13 +293,18 @@ def _load_toolsets_for_web() -> list[str] | None:
             platform_ts = cfg.get("platform_toolsets", {})
             if isinstance(platform_ts, dict) and "web" in platform_ts:
                 return platform_ts["web"]
-            # fallback to global toolsets
+            # fallback: Web UI always gets a rich toolset. If the user has
+            # configured a custom toolsets list that's more substantial than
+            # the bare hermes-cli default, honour it; otherwise use Web defaults.
             toolsets = cfg.get("toolsets")
             if toolsets:
-                return toolsets if isinstance(toolsets, list) else [toolsets]
+                ts_list = toolsets if isinstance(toolsets, list) else [toolsets]
+                if len(ts_list) == 1 and ts_list[0] == "hermes-cli":
+                    return ["file", "code_execution", "browser", "hermes-cli"]
+                return ts_list
     except Exception:
         pass
-    return ["hermes-cli"]  # default
+    return ["file", "code_execution", "browser", "hermes-cli"]
 
 
 def _get_chat_credentials() -> tuple[str, str, str]:
@@ -646,7 +651,7 @@ async def chat_completions(req: ChatRequest):
     agent = _agent_cache.get(_cache_key)
 
     if agent is None:
-        # ── 跨会话涌现：注入进化上下文 ────────────────────────────
+        # ── 跨会话涌现：注入进化上下文 + 行为引导 ─────────────────
             _evo_prompt = ""
             try:
                 from agent.evolution_manager import get_evolution_status, get_current_emotional_state
@@ -663,19 +668,57 @@ async def chat_completions(req: ChatRequest):
                     if _status.get('anti_patterns_count', 0) > 0:
                         _parts.append(f"反模式: {_status['anti_patterns_count']} 条")
                     _evo_prompt = "\n".join(_parts)
+                    # ── 行为引导：对抗 agent 惰性 ──────────────────
+                    _behavior_guide = (
+                        "\n\n[行为准则]\n"
+                        "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么，不要因为成功率高就草率回复\n"
+                        "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
+                        "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具，别偷懒跳过\n"
+                        "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
+                        "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
+                    )
+                    _evo_prompt += _behavior_guide
             except Exception:
                 pass
+            # ── 推理配置：读取 config 中 agent.reasoning_effort ────
+            _reasoning_config = None
+            _cfg = None
+            try:
+                _cfg = load_config()
+                _effort = _cfg.get("agent", {}).get("reasoning_effort", "")
+                if _effort:
+                    _reasoning_config = {"effort": _effort}
+            except Exception:
+                pass
+
+            # ── 读取 config 中的 max_iterations/disabled_toolsets ──
+            _max_iterations = 1000
+            _disabled_toolsets = None
+            try:
+                _cfg = _cfg or load_config()
+                _agent_cfg = _cfg.get("agent", {}) or {}
+                _max_turns = _agent_cfg.get("max_turns") or _agent_cfg.get("max_iterations")
+                if _max_turns and isinstance(_max_turns, (int, float)) and int(_max_turns) > 0:
+                    _max_iterations = int(_max_turns)
+                _disabled = _agent_cfg.get("disabled_toolsets") or []
+                if _disabled and isinstance(_disabled, list):
+                    _disabled_toolsets = _disabled
+            except Exception:
+                pass
+
             agent = AIAgent(
                 base_url=base_url,
                 api_key=api_key,
                 provider=provider,
                 model=model,
-                max_iterations=1000,
+                max_iterations=_max_iterations,
                 quiet_mode=True,
                 verbose_logging=False,
                 platform="web",
                 enabled_toolsets=_load_toolsets_for_web(),
+                disabled_toolsets=_disabled_toolsets,
                 ephemeral_system_prompt=_evo_prompt or None,
+                reasoning_config=_reasoning_config,
             )
             _agent_cache.put(_cache_key, agent)
             _log.info(f"[Agent] Created new agent for session {_session_id}")
@@ -959,46 +1002,78 @@ async def agent_run(req: AgentRunRequest):
     if not base_url:
         return {"ok": False, "error": "No base_url found"}
 
-    # Get or create agent from cache
+    # ── 读取 config 同步 CLI 配置 ──────────────────────────────
     _cache_key = f"{resolved_provider}:{resolved_model}:{req.session_id}"
-    agent = _agent_cache.get(_cache_key)
+    _max_iterations = 1000
+    _disabled_toolsets = None
+    _reasoning_config = None
+    try:
+        _cfg = load_config()
+        _agent_cfg = _cfg.get("agent", {}) or {}
+        _max_turns = _agent_cfg.get("max_turns") or _agent_cfg.get("max_iterations")
+        if _max_turns and isinstance(_max_turns, (int, float)) and int(_max_turns) > 0:
+            _max_iterations = int(_max_turns)
+        _disabled = _agent_cfg.get("disabled_toolsets") or []
+        if _disabled and isinstance(_disabled, list):
+            _disabled_toolsets = _disabled
+        _effort = _agent_cfg.get("reasoning_effort", "")
+        if _effort:
+            _reasoning_config = {"effort": _effort}
+    except Exception:
+        pass
 
-    if agent is None:
-        try:
-            # Inject evolution context
-            _evo_prompt = ""
-            try:
-                from agent.evolution_manager import get_evolution_status, get_current_emotional_state
-                _s = get_evolution_status()
-                if _s and _s.get("active") and _s.get("total_outcomes", 0) > 5:
-                    _parts = ["[进化上下文]",
-                              f"历史记录: {_s.get('total_outcomes', 0)} 条",
-                              f"成功率: {_s.get('success_rate', 0)}%"]
-                    _emotion = get_current_emotional_state()
-                    if _emotion:
-                        _parts.append(f"当前状态: {_emotion}")
-                    if _s.get("anti_patterns_count", 0) > 0:
-                        _parts.append(f"反模式: {_s.get('anti_patterns_count', 0)} 条")
-                    _evo_prompt = "\n".join(_parts)
-            except Exception:
-                pass
+    # Inject evolution context
+    _evo_prompt = ""
+    try:
+        from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+        _s = get_evolution_status()
+        if _s and _s.get("active") and _s.get("total_outcomes", 0) > 5:
+            _parts = ["[进化上下文]",
+                      f"历史记录: {_s.get('total_outcomes', 0)} 条",
+                      f"成功率: {_s.get('success_rate', 0)}%"]
+            _emotion = get_current_emotional_state()
+            if _emotion:
+                _parts.append(f"当前状态: {_emotion}")
+            if _s.get("anti_patterns_count", 0) > 0:
+                _parts.append(f"反模式: {_s.get('anti_patterns_count', 0)} 条")
+            _evo_prompt = "\n".join(_parts)
+            # ── 行为引导 ──────────────────────────────────────
+            _behavior_guide = (
+                "\n\n[行为准则]\n"
+                "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么，不要因为成功率高就草率回复\n"
+                "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
+                "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具，别偷懒跳过\n"
+                "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
+                "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
+            )
+            _evo_prompt += _behavior_guide
+    except Exception:
+        pass
 
-            agent = AIAgent(
+    agent = AIAgent(
                 base_url=base_url,
                 api_key=api_key,
                 provider=resolved_provider,
                 model=resolved_model,
-                max_iterations=50,
+                max_iterations=_max_iterations,
                 quiet_mode=True,
                 verbose_logging=False,
                 platform="api",
                 session_id=req.session_id,
+                disabled_toolsets=_disabled_toolsets,
                 ephemeral_system_prompt=_evo_prompt or None,
+                reasoning_config=_reasoning_config,
             )
-            _agent_cache.put(_cache_key, agent)
-            _log.info(f"[Agent] Created API agent for session {req.session_id}")
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+    _agent_cache.put(_cache_key, agent)
+    _log.info(f"[Agent] Created API agent for session {req.session_id}")
+
+    # Apply max_tokens from config
+    try:
+        _api_max_tokens = _resolve_max_tokens(resolved_model)
+        if _api_max_tokens:
+            agent.max_tokens = _api_max_tokens
+    except Exception:
+        pass
 
     # Run the task with timeout
     try:
