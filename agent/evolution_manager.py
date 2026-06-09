@@ -548,7 +548,7 @@ def _record_emotional_state(
     error_type: str,
     duration: float,
     domain: str,
-) -> None:
+) -> Optional[int]:
     """Map execution outcome to emotional state and record to fusion-state.db.
     
     Maps:
@@ -619,8 +619,9 @@ def _record_emotional_state(
         conn.commit()
         
         logger.debug("Emotional state: %s (%.1f) — %s", emotion, intensity, trigger)
+        return cursor.lastrowid
     except Exception:
-        pass
+        return None
 
 
 def _record_evolution_metric(metric: str, value: float, details: str = "") -> None:
@@ -740,10 +741,28 @@ def record_tool_outcome(
         )
 
         # ── 感性层：记录情绪状态 ──────────────────────────────────
+        _emotion_id = None
         try:
-            _record_emotional_state(tool_name, task, is_error, error_type, duration, domain)
+            _emotion_id = _record_emotional_state(tool_name, task, is_error, error_type, duration, domain)
         except Exception:
             pass  # 情绪记录非阻塞
+
+        # ── DAG: outcome → emotional_state 边 ────────────────────────
+        if _emotion_id is not None:
+            try:
+                _ec = _get_conn(str(get_self_model_db()))
+                _ec.execute(
+                    "INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ('outcome', outcome_id, 'emotional_state', _emotion_id, 'caused_emotion', 0.5, timestamp),
+                )
+                _ec.commit()
+            except Exception:
+                pass
+
+        # ── DAG: anti_pattern → skill（预留，skills 表有 ID 后启用）─
+        # Skill 关联暂不实现，等 skill 系统提供技能 ID 后在此写入：
+        # rel_type='mitigated_by', target_type='skill'
 
         # ── 指标记录 ──────────────────────────────────────────────
         try:
