@@ -135,6 +135,14 @@ class MemoryStore:
         self.memory_entries = list(dict.fromkeys(self.memory_entries))
         self.user_entries = list(dict.fromkeys(self.user_entries))
 
+        # Rank entries: KV pairs first for system prompt efficiency
+        try:
+            from agent.hybrid_retriever import rank_entries
+            self.memory_entries = rank_entries(self.memory_entries)
+            self.user_entries = rank_entries(self.user_entries)
+        except Exception:
+            pass
+
         # Capture frozen snapshot for system prompt injection
         self._system_prompt_snapshot = {
             "memory": self._render_block("memory", self.memory_entries),
@@ -264,6 +272,13 @@ class MemoryStore:
             self._set_entries(target, entries)
             self.save_to_disk(target)
 
+            # Fire-and-forget: store embedding for future semantic retrieval
+            try:
+                from agent.hybrid_retriever import store_embedding
+                store_embedding(content, target)
+            except Exception:
+                pass
+
         return self._success_response(target, "Entry added.")
 
     def replace(self, target: str, old_text: str, new_content: str) -> Dict[str, Any]:
@@ -322,6 +337,14 @@ class MemoryStore:
             self._set_entries(target, entries)
             self.save_to_disk(target)
 
+            # Sync embedding: delete old, store new
+            try:
+                from agent.hybrid_retriever import store_embedding, delete_embedding
+                delete_embedding(old_text)
+                store_embedding(new_content, target)
+            except Exception:
+                pass
+
         return self._success_response(target, "Entry replaced.")
 
     def remove(self, target: str, old_text: str) -> Dict[str, Any]:
@@ -355,6 +378,13 @@ class MemoryStore:
             entries.pop(idx)
             self._set_entries(target, entries)
             self.save_to_disk(target)
+
+            # Sync embedding: remove old
+            try:
+                from agent.hybrid_retriever import delete_embedding
+                delete_embedding(old_text)
+            except Exception:
+                pass
 
         return self._success_response(target, "Entry removed.")
 

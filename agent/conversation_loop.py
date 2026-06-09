@@ -779,6 +779,22 @@ def run_conversation(
         except Exception:
             pass
 
+    # ── 内置记忆语义检索（HybridRetriever fallback chain）─────────────
+    try:
+        from agent.hybrid_retriever import search as _hr_search
+        _hr_results = _hr_search(_query if isinstance(_query, str) else "", top_k=3)
+        if _hr_results:
+            _hr_block = "\n".join(
+                f"- [{r['target']}] {r['content'][:200]}"
+                for r in _hr_results
+            )
+            if _ext_prefetch_cache:
+                _ext_prefetch_cache += "\n\n[Related memories]\n" + _hr_block
+            else:
+                _ext_prefetch_cache = "[Related memories]\n" + _hr_block
+    except Exception:
+        pass
+
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
     # turn to the codex app-server subprocess (terminal/file ops/patching
     # all run inside Codex). Default Hermes path is bypassed entirely.
