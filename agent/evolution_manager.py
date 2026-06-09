@@ -60,8 +60,18 @@ def get_self_model_db() -> Path:
     return get_evolution_dir() / "self-model.db"
 
 
+_evolution_active: bool | None = None
+
+
 def is_evolution_active() -> bool:
-    """Check if evolution system is active. Auto-seeds if first run."""
+    """Check if evolution system is active. Auto-seeds if first run.
+    
+    Cached after first call — evolution status never changes mid-process.
+    """
+    global _evolution_active
+    if _evolution_active is not None:
+        return _evolution_active
+    
     if not get_self_model_db().exists():
         _seed_evolution_db()
     else:
@@ -75,6 +85,7 @@ def is_evolution_active() -> bool:
                 _seed_evolution_db()
         except Exception:
             pass
+    _evolution_active = True
     return True
 
 
