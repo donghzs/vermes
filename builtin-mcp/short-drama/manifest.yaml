@@ -1,0 +1,24 @@
+name: short-drama
+description: 短剧创作全流程 — 剧本、图片、视频、标题卡
+version: 1.0
+triggers:
+  - 剧本
+  - 短剧
+  - 短视频
+  - 脚本
+  - 分镜
+  - 标题卡
+  - 视频生成
+  - 短剧创作
+command: hermes
+args: [mcp, run, short-drama]
+connect: lazy
+tools:
+  - name: generate_script
+    description: 根据提示词生成短剧剧本，返回 markdown
+  - name: generate_image
+    description: 根据描述生成图片，返回 URL
+  - name: generate_video
+    description: 文生视频或图生视频，轮询等待结果
+  - name: generate_title_card
+    description: 用 PIL 生成标题卡，保存到桌面

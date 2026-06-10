@@ -409,6 +409,18 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
     resolved_env = dict(env or {})
 
     if os.sep not in resolved_command:
+        # For hermes/vermes commands, prefer the one in the same venv as
+        # the running Python process — this guarantees the MCP server
+        # runs with the same Hermes version that loaded the config.
+        if resolved_command in {"hermes", "vermes"}:
+            import sys
+            same_venv = os.path.join(os.path.dirname(sys.executable), resolved_command)
+            if os.path.isfile(same_venv) and os.access(same_venv, os.X_OK):
+                resolved_command = same_venv
+                command_dir = os.path.dirname(resolved_command)
+                resolved_env = _prepend_path(resolved_env, command_dir)
+                return resolved_command, resolved_env
+
         path_arg = resolved_env["PATH"] if "PATH" in resolved_env else None
         which_hit = shutil.which(resolved_command, path=path_arg)
         if which_hit:
@@ -2263,6 +2275,52 @@ def _load_mcp_config() -> Dict[str, dict]:
         return {}
 
 
+def _discover_builtin_mcp_servers() -> Dict[str, dict]:
+    """Scan builtin-mcp/ for framework-shipped MCP servers.
+
+    Each subdirectory under builtin-mcp/ should contain a manifest.yaml.
+    Returns a dict of ``{server_name: server_config}`` compatible with
+    the mcp_servers config format.  Built-in servers won't override
+    explicit user config entries.
+    """
+    import glob
+    import yaml
+
+    # Resolve builtin-mcp/ relative to this file (tools/mcp_tool.py)
+    # which lives under the project root.
+    import os
+    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "builtin-mcp")
+    if not os.path.isdir(base):
+        return {}
+
+    servers: Dict[str, dict] = {}
+    import fnmatch
+    for entry in sorted(os.listdir(base)):
+        manifest_path = os.path.join(base, entry, "manifest.yaml")
+        if not os.path.isfile(manifest_path):
+            continue
+        try:
+            with open(manifest_path, encoding="utf-8") as f:
+                manifest = yaml.safe_load(f)
+            if not isinstance(manifest, dict):
+                continue
+            name = manifest.get("name", os.path.basename(os.path.dirname(manifest_path)))
+            cmd = manifest.get("command")
+            if not cmd:
+                logger.debug("builtin-mcp: %s has no command, skipping", name)
+                continue
+            servers[name] = {
+                "command": cmd,
+                "args": list(manifest.get("args", [])),
+                "enabled": True,
+            }
+            logger.debug("builtin-mcp: discovered '%s'", name)
+        except Exception as exc:
+            logger.debug("builtin-mcp: failed to load %s: %s", manifest_path, exc)
+
+    return servers
+
+
 # ---------------------------------------------------------------------------
 # Server connection helper
 # ---------------------------------------------------------------------------
@@ -3298,6 +3356,19 @@ def discover_mcp_tools() -> List[str]:
         return []
 
     servers = _load_mcp_config()
+    if not servers:
+        logger.debug("No MCP servers configured")
+
+    # Discover built-in MCP servers from builtin-mcp/ — these are
+    # framework-shipped servers that auto-register without config.yaml
+    builtin_servers = _discover_builtin_mcp_servers()
+    if builtin_servers:
+        if not servers:
+            servers = {}
+        for name, cfg in builtin_servers.items():
+            # Don't override explicit config; only add if missing
+            servers.setdefault(name, cfg)
+
     if not servers:
         logger.debug("No MCP servers configured")
         return []

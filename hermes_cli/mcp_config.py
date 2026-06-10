@@ -759,6 +759,7 @@ def mcp_command(args):
         "configure": cmd_mcp_configure,
         "config": cmd_mcp_configure,
         "login": cmd_mcp_login,
+        "run": cmd_mcp_run,
     }
 
     handler = handlers.get(action)
@@ -777,4 +778,31 @@ def mcp_command(args):
         _info("hermes mcp test <name>                        Test connection")
         _info("hermes mcp configure <name>                   Toggle tools")
         _info("hermes mcp login <name>                       Re-authenticate OAuth")
+        _info('hermes mcp run <name>                          Run a built-in MCP server (short-drama)')
         print()
+
+# ─── hermes mcp run ──────────────────────────────────────────────────────────
+
+def cmd_mcp_run(args):
+    """Run a built-in MCP server by name.
+
+    Uses the same Python interpreter that Hermes uses, guaranteeing
+    all package imports resolve correctly.
+    """
+    name = getattr(args, "name", None)
+    if name == "short-drama":
+        import sys
+        try:
+            import mcp_short_drama
+            mcp_short_drama.mcp.run(transport="stdio")
+        except ImportError:
+            _error("short-drama MCP server not installed.")
+            _info("Reinstall with: pip install -e .")
+            sys.exit(1)
+        except Exception as exc:
+            _error(f"short-drama MCP server failed: {exc}")
+            sys.exit(1)
+    else:
+        _error(f"Unknown built-in MCP server: {name!r}")
+        _info("Available: short-drama")
+        sys.exit(1)

@@ -12184,6 +12184,11 @@ Examples:
 
     _add_accept_hooks_flag(mcp_parser)
 
+    mcp_run_p = mcp_sub.add_parser(
+        "run", help="Run a built-in MCP server (short-drama)"
+    )
+    mcp_run_p.add_argument("name", help="Server name (short-drama)")
+
     def cmd_mcp(args):
         from hermes_cli.mcp_config import mcp_command
 
