@@ -1,0 +1,5 @@
+name: agnes-provider
+kind: model-provider
+version: 1.0.0
+description: Agnes AI (Sapiens AI) — agnes-2.0-flash, agnes-image-2.1-flash, agnes-video-v2.0
+author: Sapiens AI
