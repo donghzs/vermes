@@ -1014,6 +1014,14 @@ def run_conversation(
         # bytes are byte-stable across turns and upstream prompt caches
         # stay warm.
         effective_system = active_system_prompt or ""
+        # 每轮刷新进化上下文，压缩后行为准则不会丢失
+        try:
+            from agent.evolution_manager import build_evolution_prompt
+            _evo_fresh = build_evolution_prompt() or ""
+            if _evo_fresh:
+                agent.ephemeral_system_prompt = _evo_fresh
+        except Exception:
+            pass
         if agent.ephemeral_system_prompt:
             effective_system = (effective_system + "\n\n" + agent.ephemeral_system_prompt).strip()
         if effective_system:

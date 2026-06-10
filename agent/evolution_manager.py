@@ -183,6 +183,9 @@ def _seed_evolution_db() -> None:
         (ts, 'terminal:permission_denied', '检查文件权限，可能需要 sudo', '系统管理', 3, ts),
         (ts, 'terminal:not_found', '检查路径是否正确', '系统管理', 2, ts),
         (ts, 'terminal:connection_refused', '检查服务是否启动', '系统管理', 1, ts),
+        (ts, 'agent:lazy_shortcut',
+         '不要跳过工具调用或多步推理：先 read_file 审计源码再修改，做了就做完整，不要假设结果代替验证',
+         '通用', 100, ts),
     ]
     for ap in ap_seeds:
         c.execute('''INSERT INTO anti_patterns 
@@ -211,7 +214,7 @@ def _seed_evolution_db() -> None:
     fconn.commit()
     
     conn.commit()
-    logger.info("Evolution DB seeded for first run: 10 outcomes, 3 anti-patterns")
+    logger.info("Evolution DB seeded for first run: 10 outcomes, 4 anti-patterns")
 
 
 # _ensure_wal_mode deprecated — use _get_conn() which auto-sets WAL per connection
@@ -1004,7 +1007,15 @@ def build_evolution_prompt() -> str:
     try:
         status = get_evolution_status()
         if not status or not status.get("active") or status.get("total_outcomes", 0) <= 5:
-            return ""
+            # 数据不够时只返回行为准则（不含进化统计）
+            return (
+                "[行为准则]\n"
+                "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么\n"
+                "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
+                "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具\n"
+                "4. 回答要完整：给出详细解释和具体方案，不要一两句话敷衍\n"
+                "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径"
+            )
 
         parts = [
             "[进化上下文]",
