@@ -70,7 +70,6 @@ result
 website/static/api/skills-index.json
 models-dev-upstream/
 hermes_cli/tui_dist/*
-scripts/
 hermes_cli/scripts/
 docs/superpowers/*
 # PyInstaller build artifacts
@@ -79,12 +78,6 @@ dist/Vermes.app/
 dist/Vermes/
 frontend/dist/
 
-# Electron build artifacts
-dist-electron/
-*.blockmap
-Vermes-*.zip
-Vermes-*.dmg
-
 # Local release binaries (not committed)
 *.dmg
 *.zip
@@ -92,16 +85,6 @@ dist/
 frontend/dist/
 vermes-onefile.spec
 
-# Security: docs with credentials
-SECURITY-AUDIT-REPORT-*.md
-TASK-WINDOWS-BUILD.md
-QCLAW-HANDOVER-*.md
-FULL-TEST-REPORT-*.md
-NATIVE-WINDOW-REPORT-*.md
-
-# Backup files
-backups/
-
-# Archive (old reports, release notes)
+# Old reports and build artifacts (sensitive info risk)
 archive/
-cleanup-git-history.sh
+dist-electron/
