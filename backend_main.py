@@ -12,7 +12,6 @@ import threading
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-<<<<<<< HEAD
 # 阻止 PyInstaller 打包的 Python 自动运行 ensurepip
 os.environ.pop('PYTHONDONTWRITEBYTECODE', None)
 import importlib
@@ -20,26 +19,6 @@ try:
     importlib.import_module('ensurepip')._main = lambda *a, **kw: None
 except Exception:
     pass
-=======
-# ── Agent 框架热加载 ──────────────────────────────────────────────────
-# 如果 ~/.vermes/agent/ 存在，将其插入 sys.path 最前面，优先加载
-# 这样 Agent 框架更新不需要修改 app bundle，只需替换 ~/.vermes/agent/
-_vermes_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
-_agent_dir = os.path.join(_vermes_home, "agent")
-if os.path.isdir(_agent_dir):
-    sys.path.insert(0, _agent_dir)
-    # 读取版本号
-    _ver_file = os.path.join(_agent_dir, ".version")
-    if os.path.exists(_ver_file):
-        try:
-            _ver = open(_ver_file, encoding="utf-8").read().strip()
-            print(f"[Vermes] Agent 框架 v{_ver} 已加载 ({_agent_dir})")
-        except Exception:
-            pass
-    else:
-        print(f"[Vermes] Agent 框架已加载 ({_agent_dir})")
-# ── 热加载结束 ────────────────────────────────────────────────────────
->>>>>>> 53ba19b (feat: 三层保护 — 提交语法检查 + 启动预检 + 崩溃回滚)
 
 import uvicorn
 from hermes_cli.web_server import app
@@ -70,9 +49,7 @@ def main():
             except ValueError:
                 pass
 
-<<<<<<< HEAD
-=======
-    # ── 启动预检：关键文件语法检查 ────────────────────────────────
+# ── 启动预检：关键文件语法检查 ────────────────────────────────
     _KEY_FILES = [
         "hermes_cli/web_server.py",
         "backend_main.py",
@@ -122,7 +99,6 @@ def main():
             print("[Vermes] ✅ 启动稳定，看门狗已解除")
     threading.Thread(target=_clear_marker, daemon=True).start()
 
->>>>>>> 53ba19b (feat: 三层保护 — 提交语法检查 + 启动预检 + 崩溃回滚)
     # 强制启用 agent 模式（WebSocket 聊天端点）
     from hermes_cli import web_server
     web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True

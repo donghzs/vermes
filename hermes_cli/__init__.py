@@ -14,13 +14,8 @@ Provides subcommands for:
 import os
 import sys
 
-<<<<<<< HEAD
-__version__ = "2.0.9"
-__release_date__ = "2026.6.7"
-=======
 __version__ = "2.1.0"
-__release_date__ = "2026.5.29"
->>>>>>> ae4fdca (fix: 版本统一 2.1.0 + 缩进修复 + 清旧更新路由接 register_to)
+__release_date__ = "2026.6.10"
 
 
 def _ensure_utf8():

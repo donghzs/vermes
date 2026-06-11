@@ -1032,8 +1032,6 @@ async def set_env_var(body: EnvVarUpdate, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-<<<<<<< HEAD
-=======
 @app.post("/api/shutdown")
 async def shutdown_server():
     """关闭后端服务器（前端关闭标签页时调用）。"""
@@ -1046,7 +1044,6 @@ async def shutdown_server():
 
 
 @app.delete("/api/env")
->>>>>>> ae4fdca (fix: 版本统一 2.1.0 + 缩进修复 + 清旧更新路由接 register_to)
 async def remove_env_var(body: EnvVarDelete):
     # DELETE 也受白名单约束，防止删除关键环境变量
     if body.key not in _ENV_WRITE_ALLOWED_KEYS:
@@ -2616,7 +2613,6 @@ blueprints.config.register_to(app)
 blueprints.providers.register_to(app)
 blueprints.dashboard.register_to(app)
 blueprints.session.register_to(app)
-<<<<<<< HEAD
 blueprints.cron_jobs.register_to(app)
 blueprints.storage.register_to(app)
 blueprints.analytics.register_to(app)
@@ -2633,8 +2629,5 @@ async def health_check():
     from hermes_cli import __version__
     return {"status": "ok", "version": __version__}
 
-=======
-blueprints.update.register_to(app)
->>>>>>> ae4fdca (fix: 版本统一 2.1.0 + 缩进修复 + 清旧更新路由接 register_to)
 
 mount_spa(app)
