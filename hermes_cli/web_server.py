@@ -1032,34 +1032,6 @@ async def set_env_var(body: EnvVarUpdate, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/api/shutdown")
-async def shutdown_server():
-    """关闭后端服务器（前端关闭标签页时调用）。"""
-    try:
-        from hermes_cli.shutdown_signal import shutdown_event
-        shutdown_event.set()
-        return {"ok": True}
-    except Exception:
-        return {"ok": False}
-
-
-@app.delete("/api/env")
-async def remove_env_var(body: EnvVarDelete):
-    # DELETE 也受白名单约束，防止删除关键环境变量
-    if body.key not in _ENV_WRITE_ALLOWED_KEYS:
-        raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed for deletion")
-    try:
-        removed = remove_env_value(body.key)
-        if not removed:
-            raise HTTPException(status_code=404, detail=f"{body.key} not found in .env")
-        return {"ok": True, "key": body.key}
-    except HTTPException:
-        raise
-    except Exception:
-        _log.exception("DELETE /api/env failed")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 async def reveal_env_var(body: EnvVarReveal, request: Request):
     """Return the real (unredacted) value of a single env var.
 

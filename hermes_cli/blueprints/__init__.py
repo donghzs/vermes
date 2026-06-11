@@ -19,5 +19,8 @@ from . import storage
 __all__ = [
     "quota_bp", "wechat_bp", "models_bp",
     "dashboard_bp", "session_bp",
-    "update",
+    "chat", "config", "providers",
+    "cron_jobs", "update", "skills_tools",
+    "analytics", "status", "profiles",
+    "oauth", "storage",
 ]
