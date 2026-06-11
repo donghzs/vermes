@@ -52,3 +52,43 @@ api_key = os.environ['API_KEY']
 ```
 
 **跳过检查（不推荐）：** `git commit --no-verify`
+
+---
+
+## 🔧 Git 工作流规范
+
+Vermes 项目严格遵守 **分支工作流**，禁止直接在 main 上操作。
+
+### 核心规则
+
+| 规则 | 说明 |
+|------|------|
+| **1. 先建分支** | 任何改动，先 `git checkout -b feat/xxx` 或 `fix/xxx` |
+| **2. 分支粒度** | 一个功能/一个修复 = 一个分支。不要堆在一起 |
+| **3. 测试确认** | 分支上确认代码能跑、语法通过，再合 main |
+| **4. review 大改动** | >20 个文件的改动，先在 issue 或群里讨论 |
+| **5. 合入 main** | `git checkout main && git merge feat/xxx` |
+| **6. 不 force push** | `main` 分支永远 `--force` 禁止。出问题开新分支修 |
+| **7. 发布打 tag** | 发布时 `git tag vX.Y.Z && git push origin vX.Y.Z` |
+
+### 分支命名
+
+```
+feat/xxx      — 新功能
+fix/xxx       — 修 bug
+chore/xxx     — 工具链/配置/文档
+release/v*    — 发布分支
+```
+
+### 事故处理（如果 main 崩了）
+
+1. `git log` 找最后一个干净的提交
+2. `git checkout -b recovery/xxx <clean-hash>`
+3. 在 recovery 分支重新 cherry-pick 需要的改动
+4. 确认没问题后，用 recovery 分支覆盖 main
+5. **不要在 main 上直接 reset --hard**
+
+### 总结
+
+> main 是产品，不是草稿纸。
+> 每个分支解决的问题不超过一个。
