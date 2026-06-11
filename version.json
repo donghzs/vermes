@@ -1,6 +1,6 @@
 {
-  "version": "2.0.9",
-  "buildDate": "2026-06-08",
+  "version": "2.1.0",
+  "buildDate": "2026-06-11",
   "download_url": {
     "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8-arm64.dmg",
     "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8.dmg",

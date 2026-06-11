@@ -2,6 +2,56 @@
 
 All notable changes to Vermes will be documented in this file.
 
+## [v2.1.0] - 2026-06-11
+
+### 架构重建（从 v2.0.9 重新出发）
+
+从 v2.0.9 基线重建，跳过损坏的 d5d4b43 提交。包含其间的所有功能升级。
+
+### 进化系统
+
+- **进化闭环**: 桥+裁剪+覆盖 — 工具调用后自动记录到 self-model.db，失败根因分析，反模式学习
+- **疲劳裁剪**: 桥就绪后自动裁剪中间轮次，保留最近 3 轮 + MEMORY.md 沉淀
+- **HybridRetriever**: 记忆语义检索层（Phase 1）— embedding 存储/召回/排序
+- **DAG 跨层边**: outcome → emotional_state 关联，预留 skill 关联
+- **行为引导**: 全渠道对等（CLI/桌面端/飞书/Telegram/gateway），注入进化上下文
+- **多轮对话疲劳修复**: 每轮刷新进化上下文，防止 agent 变敷衍
+- **build_evolution_prompt() 公共函数**: 消除重复实现
+
+### 基础设施
+
+- **version.json** → 2.1.0
+- **electron/version.txt** → 2.1.0
+- **版本号运行时化**: 前端不再依赖编译时注入，从 /health 端点运行时读取
+- **builtin-mcp 自动发现**: builtin-mcp/ + manifest.yaml 免除 config.yaml 配置
+- **Agnes 模型插件**: 支持 agnes-2.0-flash / agnes-image / agnes-video
+- **uv.lock 重新生成**: 匹配最新 pyproject.toml
+
+### 安全与稳定性
+
+- **三层保护**:
+  - pre-commit: 敏感信息扫描 + py_compile 语法检查 + 文件大小异常检测
+  - 启动预检: 关键文件语法检查，语法错误直接退出并报错
+  - 崩溃看门狗: 10 秒健康检测，启动失败自动回滚备份版本
+- **分支工作流规范**: AGENTS.md 记录 — 禁止直接在 main 上操作
+- **`.gitignore` 加固**: archive/ + dist-electron/ 防止敏感信息提交
+- **清理 archive/reports/** 中的敏感文件
+
+### 清理与修复
+
+- **重复端点清理**: POST /api/shutdown / DELETE /api/env 迁移至 blueprints
+- **SimpleMode 清除**: 移除 bypass Agent 的快速回复路径
+- **缩进修复**: conversation_loop.py break outside loop 回归修复
+- **update.js await 兼容**: 移除 top-level await，兼容 Vite esbuild target
+- **冲突标记清理**: cherry-pick 残留的 <<<<<<< HEAD 标记全部清除
+
+### 代码规范
+
+- 26 次提交，全部语法通过
+- 294 个 agent/ .py 文件编译通过
+- 16 个 Blueprint 全部注册
+- **branch → merge → tag 工作流正式启用**
+
 ## [v2.0.7] - 2026-06-03
 
 ### 上下文生命周期通道（status_callback 全链路）
