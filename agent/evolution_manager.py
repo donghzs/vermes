@@ -662,6 +662,59 @@ def _record_evolution_metric(metric: str, value: float, details: str = "") -> No
         pass
 
 
+def _write_pattern_to_memory(
+    agent, tool_name: str, error_type: str,
+    error_msg: str, correction: str, domain: str, frequency: int,
+) -> None:
+    """将高频反模式写入 MEMORY.md，迭代覆盖或空间回收。"""
+    store = getattr(agent, '_memory_store', None)
+    if not store:
+        return
+
+    severity_map = {50: "轻", 100: "中", 200: "重", 500: "严重", 1000: "高危"}
+    severity = "轻"
+    for k in sorted(severity_map, reverse=True):
+        if frequency >= k:
+            severity = severity_map[k]
+            break
+
+    content = (
+        f"经验({severity}): 工具 {tool_name} 在 {domain} 场景下 "
+        f"出现 {error_type} 错误已达 {frequency} 次。"
+        f"建议: {correction}"
+    )
+
+    try:
+        entries = store.memory_entries
+
+        # 覆盖模式：同工具的经验迭代更新，不新增
+        pattern_sig = f"工具 {tool_name}"
+        for i, entry in enumerate(entries):
+            if pattern_sig in entry:
+                store.replace("memory", entry, content)
+                logger.info("闭环覆盖: 反模式 '%s:%s' (频率=%d, 等级=%s)",
+                            tool_name, error_type, frequency, severity)
+                return
+
+        # 新经验：检查空间，不足则回收最旧 3 条再写入
+        current_chars = store._char_count("memory")
+        limit = store._char_limit("memory")
+        new_chars = len(content) + len("\n§\n")
+
+        if current_chars + new_chars > limit * 0.8:
+            old_entries = entries[:3]
+            for old in old_entries:
+                store.remove("memory", old)
+            logger.info("空间回收: 删除 %d 条旧经验，腾出空间给新经验",
+                        len(old_entries))
+
+        store.add("memory", content)
+        logger.info("闭环新增: 反模式 '%s:%s' → MEMORY.md (频率=%d, 等级=%s)",
+                    tool_name, error_type, frequency, severity)
+    except Exception:
+        pass
+
+
 def record_tool_outcome(
     agent,
     tool_name: str,
@@ -753,6 +806,16 @@ def record_tool_outcome(
                 INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', ('outcome', outcome_id, 'anti_pattern', ap_id, 'triggered', 1.0, timestamp))
+
+            # ── 闭环：反模式达成里程碑 → 写入 MEMORY.md ──────────────
+            if existing:
+                new_freq = existing[1] + 1  # 刚 +1 后的频率
+                # 里程碑：50 → 100 → 200 → 500 → 1000，每次升级措辞
+                if new_freq in (50, 100, 200, 500, 1000):
+                    _write_pattern_to_memory(
+                        agent, tool_name, error_type, error_msg,
+                        correction, domain, new_freq,
+                    )
 
         conn.commit()
 

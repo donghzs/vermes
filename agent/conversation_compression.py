@@ -724,6 +724,48 @@ def try_shrink_image_parts_in_messages(api_messages: list) -> bool:
     return changed_count > 0
 
 
+def prune_context(
+    agent: Any,
+    messages: list,
+    system_message: str,
+) -> Tuple[list, str]:
+    """裁剪中间轮次，保留最近 3 轮交互。
+
+    仅在桥已写入经验时调用。不切会话、不调用 LLM、不旋转 session_id。
+    桥（MEMORY.md 中的反模式经验）已经替代了被剪掉的历史。
+    """
+    # 分离 system prompt 和对话消息
+    system_msgs = [m for m in messages if m.get("role") == "system"]
+    non_system = [m for m in messages if m.get("role") != "system"]
+
+    # 保留最近 3 轮（6 条消息）或全部（不够 3 轮时不裁剪）
+    tail = non_system[-6:] if len(non_system) >= 6 else non_system
+
+    # 给 system prompt 加裁剪标记
+    note = (
+        "[Note: Earlier conversation turns were pruned. "
+        "Persistent memory (MEMORY.md, USER.md) retains key learnings from this session.]"
+    )
+    if system_msgs:
+        sys_msg = system_msgs[0]
+        existing = sys_msg.get("content", "")
+        if isinstance(existing, str) and note not in existing:
+            sys_msg["content"] = existing + "\n\n" + note
+
+    pruned = system_msgs + tail
+
+    # 重建 system prompt 注入最新 MEMORY.md
+    agent._invalidate_system_prompt()
+    new_system_prompt = agent._build_system_prompt(system_message)
+    agent._cached_system_prompt = new_system_prompt
+
+    # 通知前端
+    agent._emit_status("🧹 已整理记忆，Vermes 现在更清醒了")
+    logger.info("Context pruned: kept %d system + %d tail messages (bridge ready)", len(system_msgs), len(tail))
+
+    return pruned, new_system_prompt
+
+
 __all__ = [
     "check_compression_model_feasibility",
     "replay_compression_warning",

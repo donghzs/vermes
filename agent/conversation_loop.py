@@ -651,14 +651,25 @@ def run_conversation(
             )
             # May need multiple passes for very large sessions with small
             # context windows (each pass summarises the middle N turns).
-            for _pass in range(3):
-                _orig_len = len(messages)
-                messages, active_system_prompt = agent._compress_context(
-                    messages, system_message, approx_tokens=_preflight_tokens,
-                    task_id=effective_task_id,
+            # If bridge is ready and fatigued, prune instead of compress.
+            _bridge_ready = (
+                agent._memory_store
+                and len(agent._memory_store.memory_entries) >= 3
+            )
+            if _bridge_ready and agent._user_turn_count > 25:
+                messages, active_system_prompt = agent._prune_context(
+                    messages, system_message,
                 )
-                if len(messages) >= _orig_len:
-                    break  # Cannot compress further
+                conversation_history = None
+            else:
+                for _pass in range(3):
+                    _orig_len = len(messages)
+                    messages, active_system_prompt = agent._compress_context(
+                        messages, system_message, approx_tokens=_preflight_tokens,
+                        task_id=effective_task_id,
+                    )
+                    if len(messages) >= _orig_len:
+                        break  # Cannot compress further
                 # Compression created a new session — clear the history
                 # reference so _flush_messages_to_session_db writes ALL
                 # compressed messages to the new session's SQLite, not
