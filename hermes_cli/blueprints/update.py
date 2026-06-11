@@ -33,6 +33,7 @@ from hermes_cli.update_manager import (
     _set_progress,
     _reset_progress,
     _progress_event,
+<<<<<<< HEAD
     # Agent 框架更新
     get_agent_version,
     agent_download_and_verify,
@@ -41,6 +42,23 @@ from hermes_cli.update_manager import (
     agent_list_backups,
 )
 
+=======
+)
+
+# Agent 框架更新 — 可选功能，update_manager 中不存在则降级
+try:
+    from hermes_cli.update_manager import (
+        get_agent_version,
+        agent_download_and_verify,
+        agent_apply_update,
+        agent_rollback,
+        agent_list_backups,
+    )
+    _AGENT_UPDATE_AVAILABLE = True
+except ImportError:
+    _AGENT_UPDATE_AVAILABLE = False
+
+>>>>>>> 53ba19b (feat: 三层保护 — 提交语法检查 + 启动预检 + 崩溃回滚)
 _log = logging.getLogger(__name__)
 
 
@@ -461,6 +479,7 @@ def register_to(app):
     )
 
     # ── Agent 框架更新（脑更新，下载 tar.gz，不重启壳）
+<<<<<<< HEAD
     app.add_api_route(
         "/api/agent/check", agent_check_update, methods=["GET"], name="agent_check_update"
     )
@@ -473,6 +492,23 @@ def register_to(app):
     app.add_api_route(
         "/api/agent/rollback", agent_update_rollback, methods=["POST"], name="agent_update_rollback"
     )
+=======
+    if _AGENT_UPDATE_AVAILABLE:
+        app.add_api_route(
+            "/api/agent/check", agent_check_update, methods=["GET"], name="agent_check_update"
+        )
+        app.add_api_route(
+            "/api/agent/update", agent_update_download, methods=["POST"], name="agent_update_download"
+        )
+        app.add_api_route(
+            "/api/agent/backups", agent_get_backups, methods=["GET"], name="agent_get_backups"
+        )
+        app.add_api_route(
+            "/api/agent/rollback", agent_update_rollback, methods=["POST"], name="agent_update_rollback"
+        )
+    else:
+        _log.info("[AgentUpdate] Agent 框架更新不可用（缺少 update_manager 支持）")
+>>>>>>> 53ba19b (feat: 三层保护 — 提交语法检查 + 启动预检 + 崩溃回滚)
 
 
 blueprint = None  # no APIRouter; uses register_to(app) pattern
