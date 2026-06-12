@@ -829,7 +829,17 @@ async def chat_completions(req: ChatRequest):
                 yield f'data: {json.dumps({"type": "stream_start", "stream_id": _stream_id})}\n\n'
 
                 loop = asyncio.get_running_loop()
-                agent_task = loop.run_in_executor(None, run_sync)
+                # 使用独立的 executor，不依赖系统默认 executor
+                # 系统默认 executor 可能被前一个失败的 agent 调用 shutdown 了
+                import concurrent.futures
+                _agent_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                try:
+                    agent_task = loop.run_in_executor(_agent_executor, run_sync)
+                except RuntimeError:
+                    # 如果 executor 也被 shutdown，重建一个
+                    import concurrent.futures as _cf
+                    _agent_executor = _cf.ThreadPoolExecutor(max_workers=1)
+                    agent_task = loop.run_in_executor(_agent_executor, run_sync)
 
                 while not _agent_done.is_set() or not _delta_queue.empty():
                     if _cancel_event.is_set():
@@ -909,7 +919,13 @@ async def chat_completions(req: ChatRequest):
             )
 
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, run_sync)
+        import concurrent.futures as _cf
+        _agent_executor = _cf.ThreadPoolExecutor(max_workers=1)
+        try:
+            result = await loop.run_in_executor(_agent_executor, run_sync)
+        except RuntimeError:
+            _agent_executor = _cf.ThreadPoolExecutor(max_workers=1)
+            result = await loop.run_in_executor(_agent_executor, run_sync)
 
         final_response = result.get("final_response", "") if result else ""
         if not final_response and result and result.get("error"):
