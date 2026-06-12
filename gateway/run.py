@@ -16129,14 +16129,6 @@ class GatewayRunner:
             if self._ephemeral_system_prompt:
                 combined_ephemeral = (combined_ephemeral + "\n\n" + self._ephemeral_system_prompt).strip()
 
-            # ── 行为引导：对抗 agent 惰性（与 CLI/桌面端对等）────
-            combined_ephemeral = (combined_ephemeral + "\n\n[行为准则]\n"
-                "1. 质量优先：每次回复前先拆解问题，想清楚用户真正要什么\n"
-                "2. 多步推理：复杂问题要分步思考，把推理过程展现出来\n"
-                "3. 工具要用到位：需要查资料、算数据、操作文件时立即调用工具\n"
-                "4. 回答要完整：给出详细解释和具体方案\n"
-                "5. 全新挑战：每次对话都是全新的，不要依赖历史模式走捷径").strip()
-
             # Re-read .env and config for fresh credentials (gateway is long-lived,
             # keys may change without restart). Keep config.yaml authoritative for
             # runtime budget settings bridged into env vars.
