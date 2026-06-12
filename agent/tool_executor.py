@@ -416,7 +416,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                             result_str = str(function_result)
                             preview_len = _get_tool_preview_length(name)
                             result_preview = result_str[:preview_len] + ("..." if len(result_str) > preview_len else "")
-                        except:
+                        except Exception:
                             result_preview = ""
                     agent.tool_progress_callback(
                         "tool.completed", function_name, result_preview, None,
