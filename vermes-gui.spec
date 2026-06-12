@@ -101,7 +101,7 @@ hiddenimports = [
     'hermes_cli.update_manager',
     'hermes_cli.shutdown_signal',
     'hermes_cli.win_adapter',
-    'gateway', 'gateway.status', 'gateway.config',
+    'gateway', 'gateway.status', 'gateway.config', 'gateway.session_context',
     'run_agent', 'hermes_constants', 'model_tools',
     'agent', 'agent.process_bootstrap', 'agent.iteration_budget',
     'agent.error_classifier', 'agent.prompt_builder',

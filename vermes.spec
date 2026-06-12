@@ -75,6 +75,7 @@ hiddenimports = [
     'gateway',
     'gateway.status',
     'gateway.config',
+    'gateway.session_context',
     'gateway.run',
     'gateway.session',
     'gateway.restart',
