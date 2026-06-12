@@ -2564,20 +2564,35 @@ class GatewayRunner:
         
         Checks HERMES_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
         agent.system_prompt in ~/.hermes/config.yaml.
+        
+        Also appends evolution system context (self-model.db stats, anti-patterns,
+        emotional state) so gateway channels get the same behavioral guidance
+        as CLI and desktop web UI.
         """
         prompt = os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "")
-        if prompt:
-            return prompt
+        if not prompt:
+            try:
+                import yaml as _y
+                cfg_path = _hermes_home / "config.yaml"
+                if cfg_path.exists():
+                    with open(cfg_path, encoding="utf-8") as _f:
+                        cfg = _y.safe_load(_f) or {}
+                    prompt = (cfg_get(cfg, "agent", "system_prompt", default="") or "").strip()
+            except Exception:
+                pass
+
+        # ── 追加进化上下文（非阻塞） ──────────────────────────
         try:
-            import yaml as _y
-            cfg_path = _hermes_home / "config.yaml"
-            if cfg_path.exists():
-                with open(cfg_path, encoding="utf-8") as _f:
-                    cfg = _y.safe_load(_f) or {}
-                return (cfg_get(cfg, "agent", "system_prompt", default="") or "").strip()
+            from agent.evolution_manager import build_evolution_prompt
+            _evo = build_evolution_prompt() or ""
+            if _evo and prompt:
+                prompt = prompt + "\n\n" + _evo
+            elif _evo and not prompt:
+                prompt = _evo
         except Exception:
             pass
-        return ""
+
+        return prompt
 
     @staticmethod
     def _load_reasoning_config() -> dict | None:
