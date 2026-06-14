@@ -888,6 +888,12 @@ class ContextCompressor(ContextEngine):
                 call_id = msg.get("tool_call_id", "")
                 tool_name, tool_args = call_id_to_tool.get(call_id, ("unknown", ""))
                 summary = _summarize_tool_result(tool_name, tool_args, content)
+                # Layer 3: 在摘要中保留工具完整性签名（如果存在）
+                # 签名格式 [⚙️ tool:name args={n} result=type:hash]
+                # 保护它不被压缩摘要替代，让后续回合能验证操作是否真实执行过
+                _sig_match = re.search(r'\[⚙️ tool:\w+ args=\{.*?result=\w+:[a-f0-9]+\]', content)
+                if _sig_match:
+                    summary = summary + " " + _sig_match.group()
                 result[i] = {**msg, "content": summary}
                 pruned += 1
 

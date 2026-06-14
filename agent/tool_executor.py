@@ -276,6 +276,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         else:
             logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
         results[index] = (function_name, function_args, result, duration, is_error, False)
+        # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
+        if not is_error and hasattr(agent, "_record_tool_signature"):
+            try:
+                agent._record_tool_signature(function_name, function_args, result)
+            except Exception:
+                pass
         # Tear down worker-tid tracking.  Clear any interrupt bit we may
         # have set so the next task scheduled onto this recycled tid
         # starts with a clean slate.
@@ -853,6 +859,13 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 )
             except Exception as _ver_err:
                 logging.debug("file-mutation verifier record failed: %s", _ver_err)
+
+        # 桥：记录工具完整性签名（sequential 路径）
+        if not _execution_blocked and not _is_error_result and hasattr(agent, "_record_tool_signature"):
+            try:
+                agent._record_tool_signature(function_name, function_args, function_result)
+            except Exception:
+                pass
 
         if not _execution_blocked and agent.tool_progress_callback:
             try:

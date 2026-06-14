@@ -284,6 +284,7 @@ def run_conversation(
     agent._last_content_tools_all_housekeeping = False
     agent._mute_post_response = False
     agent._unicode_sanitization_passes = 0
+    agent._turn_tool_signatures = []  # 清空上回合的工具签名
     agent._tool_guardrails.reset_for_turn()
     agent._tool_guardrail_halt_decision = None
     # True until the server rejects an image_url content part with an error
@@ -398,6 +399,25 @@ def run_conversation(
     messages.append(user_msg)
     current_turn_user_idx = len(messages) - 1
     agent._persist_user_message_idx = current_turn_user_idx
+
+    # ── 回合边界标记（抗"继续"后模型混淆）────────────────────────────
+    # 如果上下文已有 3 对以上的 tool_call↔result 记录，说明这是多轮对话
+    # 的"继续"，模型容易把旧回合的工具调用误认成当前回合的操作。
+    # 自动插入一个系统标记来分离边界，不加多余消耗。
+    _tool_pairs = 0
+    for _m in messages[:-1]:  # 不包括刚加的 user_msg
+        if isinstance(_m, dict) and _m.get("role") == "assistant" and _m.get("tool_calls"):
+            _tool_pairs += 1
+    if _tool_pairs >= 3:
+        _boundary_note = (
+            "\n\n[System: 这是新的一轮。前面列出的所有工具调用来自之前的回合。"
+            "本轮如果需要执行操作，请重新调用相应的工具来执行，不要依赖之前回合的结果。"
+            "不要在文本中声称「已完成」「已修改」「已安装」等操作，"
+            "除非你真的在本轮调用了对应的工具。]"
+        )
+        # 把边界标记合并到用户消息末尾，而不是单独一条消息
+        # 这样不增加消息数，模型也一定能看到
+        messages[-1]["content"] = messages[-1]["content"] + _boundary_note
     
     if not agent.quiet_mode:
         _print_preview = _summarize_user_message_for_log(user_message)
@@ -3957,6 +3977,28 @@ def run_conversation(
                     final_response = final_response.rstrip() + "\n\n" + footer
         except Exception as _ver_err:
             logger.debug("file-mutation verifier footer failed: %s", _ver_err)
+
+    # ── 操作链验证器（Layer 1）──────────────────────────────────────────
+    # 检测 AI 回复中是否包含"声称执行了操作"但没有实际工具调用的编造。
+    # 与 file_mutation_verifier 互补——它检查 write_file/patch 失败，
+    # 我们检查"无工具调用却声称完成操作"。
+    if final_response and not interrupted:
+        try:
+            # 精确检测：本回合最新一条 assistant 消息是否有 tool_calls
+            # 而不是在 10 条里乱找——40 条对话后模型会混淆"这回合"和"之前回合"
+            _turn_has_tool_calls = False
+            for _m in reversed(messages):
+                if isinstance(_m, dict) and _m.get("role") == "assistant":
+                    _turn_has_tool_calls = bool(_m.get("tool_calls"))
+                    break
+            if agent._operator_claim_verifier_enabled():
+                _claim_footer = agent._verify_tool_claim_chain(
+                    final_response, messages, _turn_has_tool_calls,
+                )
+                if _claim_footer:
+                    final_response = final_response.rstrip() + _claim_footer
+        except Exception as _oc_err:
+            logger.debug("operator-claim verifier failed: %s", _oc_err)
 
     # Plugin hook: transform_llm_output
     # Fired once per turn after the tool-calling loop completes.

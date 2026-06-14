@@ -2254,9 +2254,193 @@ class AIAgent:
                 "the model produced no follow-up text. Send `continue` to "
                 "let it summarize."
             )
-        # Unknown/diagnostic-only reasons (e.g. "unknown", guardrail_halt
-        # which already surfaces its own message) — don't second-guess.
+        # Unknown/diagnostic-only reasons — don't second-guess.
         return ""
+    # ── 工具操作链验证系统（抗 Agent 编造）──────────────────────────────────
+    # 三个作用：
+    # 1. Layer1: 验证 AI 回复中声称的操作是否有 tool_call 支撑
+    # 2. Layer2: 生成工具操作的完整性签名
+    # 3. 跨回合验证：确保"已完成"的操作确实有执行记录
+
+    # 声称执行了操作的关键词模式
+    # 设计原则：
+    # - 匹配操作完成后的宣称（"已安装""训练完成"），而不是操作建议（"建议安装""需要修改"）
+    # - 排除常见误报："配置文件"、"已经知道答案了"、"配置完成"等
+    # - 优先匹配明确的过去完成时操作声称
+    _OPERATION_CLAIM_PATTERNS = [
+        # 安装/构建类 — 匹配"已安装""安装成功""构建完成"
+        r"(?:已|成功|刚刚)(?:安装|构建|编译|部署|生成)(?:了|成功|完成|完毕)?",
+        r"(?:安装|构建|编译|部署|生成)(?:成功|完成|完毕)(?:了)?",
+        # 文件修改类 — 避免匹配"配置文件"（普通名词）
+        r"(?:已|成功|刚刚)(?:覆盖|替换|删除|重命名|写入)(?:了|成功|完成)?",
+        r"(?:覆盖|替换|删除|重命名|写入)(?:成功)(?:了)?",
+        r"(?:已|成功|刚刚)修改(?:了)?(?!设置|参数|方案)",  # 排除"修改设置/方案"
+        r"修改完成(?:了)?",
+        # 训练/运行类 — "已训练""训练完成""运行成功"
+        r"(?:已|正在|开始)(?:训练|运行|执行|测试|验证)(?:了|中|完成|成功|完毕)?",
+        r"(?:训练|运行|执行|测试)(?:完成|成功|完毕)(?:了)?",
+        r"(?:训练|运行|执行).{0,6}(?:进度)",
+        # 下载/获取类
+        r"(?:已|成功)(?:下载|克隆|拉取|导入|导出)(?:了|完成|成功)?",
+        # pip/npm 命令类 — 精确匹配"pip install 已完成"等
+        r"(?:pip|npm|apt).{1,10}(?:完成|成功)",
+        r"(?:完成)(?:pip|npm|apt).{0,8}(?:安装)",
+        # 创建/更新类
+        r"(?:已|成功|刚刚)(?:创建|保存|更新)(?:了|完成|成功)?",
+        r"(?:创建|保存|更新)(?:完成|成功)(?:了)?",
+    ]
+
+    @staticmethod
+    def _detect_operation_claims(text: str) -> list[dict]:
+        """检测文本中是否有声称执行了操作的声明。
+        
+        返回 [{claim, start, end}]，空列表表示无操作声明。
+        仅在有多步骤工具调用的回合触发。
+        """
+        if not text:
+            return []
+        claims = []
+        for pattern in AIAgent._OPERATION_CLAIM_PATTERNS:
+            for match in re.finditer(pattern, text):
+                # 取匹配前后文（最多前后 40 字）作为上下文
+                ctx_start = max(0, match.start() - 40)
+                ctx_end = min(len(text), match.end() + 40)
+                context = text[ctx_start:ctx_end].replace("\n", " ")
+                claims.append({
+                    "claim": match.group(),
+                    "start": match.start(),
+                    "end": match.end(),
+                    "context": context,
+                })
+        return claims
+
+    @staticmethod
+    def _has_recent_tool_calls(messages: list, lookback: int = 3) -> bool:
+        """检查最近 N 条消息中是否有工具调用。"""
+        for msg in reversed(messages[-lookback:]):
+            if isinstance(msg, dict):
+                role = msg.get("role")
+                if role == "tool":
+                    return True
+                if role == "assistant" and msg.get("tool_calls"):
+                    return True
+        return False
+
+    @staticmethod
+    def _get_tool_call_count_in_window(messages: list, window: int = 20) -> int:
+        """统计最近 N 条消息中的工具调用次数。"""
+        count = 0
+        for msg in reversed(messages[-window:]):
+            if isinstance(msg, dict) and msg.get("role") == "assistant" and msg.get("tool_calls"):
+                count += len(msg["tool_calls"])
+        return count
+
+    @staticmethod
+    def _build_tool_signature(tool_name: str, args: dict, result: Any) -> str:
+        """为工具执行结果生成完整性签名。
+        
+        格式: [tool:name args={key_count} result={type}:{hash_tail}]
+        保留这个签名在上下文中，压缩时不被摘要替代。
+        """
+        import hashlib
+        result_str = str(result) if result else ""
+        result_hash = hashlib.md5(result_str.encode("utf-8")).hexdigest()[:8]
+        key_count = len(args) if args else 0
+        return f"[⚙️ tool:{tool_name} args={{{key_count}}} result={type(result).__name__}:{result_hash}]"
+
+    def _extract_tool_signatures(self, messages: list) -> list[str]:
+        """从最近的 tool 结果消息中提取所有工具签名。
+        
+        供上下文压缩时保护签名用（避免被摘要替代）。
+        每条工具结果消息可能包含 0~N 个签名。
+        """
+        sigs = []
+        for msg in messages:
+            if isinstance(msg, dict) and msg.get("role") == "tool":
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    sigs.extend(re.findall(r"\[⚙️ tool:\w+ args=\{.*?result=\w+:[a-f0-9]+\]", content))
+        return sigs
+
+    def _verify_tool_claim_chain(
+        self,
+        assistant_response: str,
+        messages: list,
+        turn_has_tool_calls: bool,
+    ) -> str | None:
+        """验证 AI 的回复是否有工具执行支撑。
+        
+        检查条件：
+        1. 回复中包含了操作声称（如"已安装""已修改"）
+        2. 但本回合没有工具调用
+        3. 且之前有工具调用历史（不是第一轮）
+        
+        满足全部三个条件 → 判定为"未经验证的操作声称"
+        返回追加的警告文本，或 None。
+        """
+        if turn_has_tool_calls:
+            return None  # 有工具调用，验证通过
+        
+        # 检测操作声称
+        claims = self._detect_operation_claims(assistant_response)
+        if not claims:
+            return None  # 没有操作声称，不需要验证
+        
+        # 检查是否有工具调用历史
+        tool_count = self._get_tool_call_count_in_window(messages, window=30)
+        if tool_count == 0:
+            return None  # 之前也没有工具调用，可能是正常问答
+        
+        # 条件满足：有操作声称、但本回合没调工具、之前有工具历史
+        # 这很可能是编造 —— 追加验证 footer
+        return (
+            f"\n\n⚠️ **操作链验证器**: 上述回答中有 {len(claims)} 处操作声称"
+            f"（如「{claims[0]['claim']}」），但本回合没有执行任何工具调用。"
+            f"请确认这些操作是否真的已完成。如需实际执行，请让我调工具再做一次。"
+        )
+
+    def _operator_claim_verifier_enabled(self) -> bool:
+        """检查操作链验证器是否开启。
+        
+        Config path: ``display.operator_claim_verifier`` (bool, default True).
+        HERMES_OPERATOR_CLAIM_VERIFIER env var overrides config.
+        """
+        try:
+            env = os.environ.get("HERMES_OPERATOR_CLAIM_VERIFIER")
+            if env is not None:
+                return env.strip().lower() not in {"0", "false", "no", "off"}
+            try:
+                from hermes_cli.config import load_config as _load_config
+                _cfg = _load_config() or {}
+            except Exception:
+                _cfg = {}
+            _display = _cfg.get("display") if isinstance(_cfg, dict) else None
+            if isinstance(_display, dict) and "operator_claim_verifier" in _display:
+                return bool(_display.get("operator_claim_verifier"))
+        except Exception:
+            pass
+        return True  # safe default: verifier on
+
+    # ── 工具签名装饰器：在 tool_executor 执行工具后调用 ────────────────
+    def _record_tool_signature(
+        self,
+        tool_name: str,
+        args: dict,
+        result: Any,
+    ) -> None:
+        """记录工具执行的完整性签名到回合状态中。
+        
+        供 tool_executor 在每次工具执行完成后调用。
+        签名在上下文压缩时被保护，不会被摘要替代。
+        """
+        sig = self._build_tool_signature(tool_name, args, result)
+        if not hasattr(self, "_turn_tool_signatures"):
+            self._turn_tool_signatures = []
+        self._turn_tool_signatures.append({
+            "signature": sig,
+            "tool_name": tool_name,
+            "timestamp": time.time(),
+        })
 
     def _apply_pending_steer_to_tool_results(self, messages: list, num_tool_msgs: int) -> None:
         """Forwarder — see ``agent.agent_runtime_helpers.apply_pending_steer_to_tool_results``."""
