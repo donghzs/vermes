@@ -4,6 +4,7 @@ import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarg
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
+import { DOMPURIFY_BASE_CONFIG, enforceLinkSecurity } from '../utils/security'
 
 // P3-4: 按需导入highlight.js核心和常用语言
 import hljs from 'highlight.js/lib/core'
@@ -179,10 +180,21 @@ const emit = defineEmits(['quickStart', 'editMessage'])
 // ── P2-15: 普通消息列表（去掉虚拟滚动，避免高度不一导致重叠） ──
 const chatContainer = ref(null)
 
+// DOMPurify 加固配置 — 2.1.2 安全补丁
+// 使用集中式安全模块配置，保持与 security.js 同步
+DOMPurify.addHook('afterSanitizeAttributes', enforceLinkSecurity)
+
 // ── Markdown 渲染 ──
 function renderMd(content) {
   if (!content) return ''
-  try { return DOMPurify.sanitize(md.render(content), { ADD_ATTR: ['target', 'rel'] }) } catch(e) { return content }
+  try {
+    const rawHtml = md.render(content)
+    return DOMPurify.sanitize(rawHtml, DOMPURIFY_BASE_CONFIG)
+  } catch (e) {
+    console.error('[DOMPurify] sanitize failed:', e)
+    // 降级：纯文本转义
+    return content.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
 }
 
 // ── 用户消息图片提取 ──

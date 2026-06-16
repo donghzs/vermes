@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
+import DOMPurify from 'dompurify'
+import { DOMPURIFY_BASE_CONFIG, enforceLinkSecurity } from '../utils/security'
 
 const chat = useChatStore()
 
@@ -21,6 +23,7 @@ const historyResults = computed(() => {
 })
 
 // P3-6: 高亮搜索关键词（HTML 实体转义后注入 <mark> 标签，防 XSS）
+// 2.1.2 加固：最终输出仍走 DOMPurify 作为纵深防御
 function highlightText(text, keyword) {
   if (!keyword || !text) return text
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -32,7 +35,9 @@ function highlightText(text, keyword) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-  return safe.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 text-gray-900 dark:text-gray-100 rounded px-0.5">$1</mark>')
+  const highlighted = safe.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 text-gray-900 dark:text-gray-100 rounded px-0.5">$1</mark>')
+  // 纵深防御：即使已实体转义，仍通过 DOMPurify 确保 mark 标签安全
+  return DOMPurify.sanitize(highlighted, { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: ['class'] })
 }
 
 function jumpToHistoryItem(item) {
