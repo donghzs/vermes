@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { logger } from '@/utils/logger'
 
 // 版本号从后端 /health 运行时读取，不编译时硬编码
 // 框架更新不触发前端重建
@@ -133,7 +134,7 @@ export const useUpdateStore = defineStore('update', () => {
 
       await window.vermes.checkForUpdates()
     } catch (e) {
-      console.warn('[Vermes Update] Electron check error:', e)
+      logger.warn('[Vermes Update] Electron check error:', e)
     }
   }
 
@@ -195,7 +196,7 @@ export const useUpdateStore = defineStore('update', () => {
         }
       }
     } catch (e) {
-      console.warn('[Vermes Update] error:', e)
+      logger.warn('[Vermes Update] error:', e)
     }
   }
 
@@ -239,7 +240,7 @@ export const useUpdateStore = defineStore('update', () => {
       }
       agentChecked.value = true
     } catch (e) {
-      console.warn('[Vermes Agent Update] check error:', e)
+      logger.warn('[Vermes Agent Update] check error:', e)
     }
   }
 
@@ -536,7 +537,7 @@ export const useUpdateStore = defineStore('update', () => {
         showRollback.value = backups.value.length > 0
       }
     } catch (e) {
-      console.warn('[Vermes Update] loadBackups error:', e)
+      logger.warn('[Vermes Update] loadBackups error:', e)
     }
   }
 

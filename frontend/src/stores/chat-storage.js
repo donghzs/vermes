@@ -1,3 +1,5 @@
+import { logger } from '@/utils/logger'
+
 // ── IndexedDB 图片存储（无大小限制） ──
 const IMAGE_DB = 'vermes-images'
 const IMAGE_STORE = 'attachments'
@@ -43,7 +45,7 @@ export async function saveImage(key, base64Data) {
     const tx = db.transaction(IMAGE_STORE, 'readwrite')
     tx.objectStore(IMAGE_STORE).put(base64Data, key)
     await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
-  } catch(e) { console.warn('[Vermes] 图片存储失败:', e) }
+  } catch(e) { logger.warn('[Vermes] 图片存储失败:', e) }
 }
 
 export async function loadImage(key) {
@@ -74,7 +76,7 @@ export async function saveMessagesToIDB(sessionId, messages) {
     const plain = JSON.parse(JSON.stringify(messages))
     tx.objectStore(MSG_STORE).put(plain, sessionId)
     await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
-  } catch(e) { console.warn('[Vermes] 消息 IndexedDB 写入失败:', e) }
+  } catch(e) { logger.warn('[Vermes] 消息 IndexedDB 写入失败:', e) }
 }
 
 export async function loadMessagesFromIDB(sessionId) {
@@ -92,7 +94,7 @@ export async function deleteMessagesFromIDB(sessionId) {
     const tx = db.transaction(MSG_STORE, 'readwrite')
     tx.objectStore(MSG_STORE).delete(sessionId)
     await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
-  } catch(e) { console.warn('[Vermes] 消息 IndexedDB 删除失败:', e) }
+  } catch(e) { logger.warn('[Vermes] 消息 IndexedDB 删除失败:', e) }
 }
 
 // ── 一次性迁移：localStorage → IndexedDB ──
@@ -115,10 +117,10 @@ export async function migrateFromLocalStorage(MESSAGES_KEY_PREFIX) {
         localStorage.removeItem(key)
         migrated++
       }
-    } catch(e) { console.warn('[Vermes] 迁移会话失败:', key, e) }
+    } catch(e) { logger.warn('[Vermes] 迁移会话失败:', key, e) }
   }
   if (migrated > 0) {
-    console.log(`[Vermes] 已迁移 ${migrated} 个会话从 localStorage 到 IndexedDB`)
+    logger.log(`[Vermes] 已迁移 ${migrated} 个会话从 localStorage 到 IndexedDB`)
   }
   try { localStorage.setItem(MIGRATION_KEY, 'v1') } catch(e) { /* storage full */ }
   return migrated
@@ -143,7 +145,7 @@ function _flushWrites() {
   _pendingWrites.clear()
   // 通知调用方有写入失败，触发清理
   if (anyFailed && _onWriteFailure) {
-    try { _onWriteFailure() } catch(e) { console.warn('[Vermes] 写入失败回调异常:', e) }
+    try { _onWriteFailure() } catch(e) { logger.warn('[Vermes] 写入失败回调异常:', e) }
   }
 }
 
@@ -229,7 +231,7 @@ export async function saveMessagesToAPI(sessionId, messages) {
     })
     return resp.ok
   } catch (e) {
-    console.warn('[Vermes] API 消息保存失败:', e)
+    logger.warn('[Vermes] API 消息保存失败:', e)
     return false
   }
 }
@@ -241,7 +243,7 @@ export async function loadMessagesFromAPI(sessionId) {
     const data = await resp.json()
     return data.messages || []
   } catch (e) {
-    console.warn('[Vermes] API 消息加载失败:', e)
+    logger.warn('[Vermes] API 消息加载失败:', e)
     return []
   }
 }

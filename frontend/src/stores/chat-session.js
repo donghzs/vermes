@@ -3,6 +3,7 @@
  */
 
 import { saveToStorage, loadFromStorage, stripBase64FromContent, fileToBase64, flushStorageWrites, onStorageWriteFailure, saveImage, loadImage, deleteImages, saveMessagesToIDB, loadMessagesFromIDB, deleteMessagesFromIDB, migrateFromLocalStorage, saveMessagesToAPI, loadMessagesFromAPI, deleteMessagesFromAPI } from './chat-storage'
+import { logger } from '@/utils/logger'
 
 // ── 常量 ──
 const SESSIONS_KEY = 'vermes-sessions'
@@ -36,7 +37,7 @@ export const QUICK_START_SUGGESTIONS = [
  */
 function evictOldSessions(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId) {
   try {
-    console.warn('[Vermes] localStorage 满，开始智能清理...')
+    logger.warn('[Vermes] localStorage 满，开始智能清理...')
     if (trimOldSessionResults(MESSAGES_KEY_PREFIX, currentSessionId)) return true
     deleteOldestSession(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId)
   } catch (e) {
@@ -72,7 +73,7 @@ function trimOldSessionResults(MESSAGES_KEY_PREFIX, currentSessionId) {
         try {
           localStorage.setItem('__vermes_quotacheck', '1')
           localStorage.removeItem('__vermes_quotacheck')
-          console.warn('[Vermes] 裁剪旧会话工具结果后空间恢复')
+          logger.warn('[Vermes] 裁剪旧会话工具结果后空间恢复')
           return true
         } catch { /* 还是满的，继续裁剪下一个会话 */ }
       }
@@ -103,11 +104,11 @@ function deleteOldestSession(SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId
     try {
       localStorage.setItem('__vermes_quotacheck', '1')
       localStorage.removeItem('__vermes_quotacheck')
-      console.warn(`[Vermes] 删除旧会话 ${sid.slice(0,8)} 后空间恢复（共删 ${deleted} 个）`)
+      logger.warn(`[Vermes] 删除旧会话 ${sid.slice(0,8)} 后空间恢复（共删 ${deleted} 个）`)
       return
     } catch { /* 继续 */ }
   }
-  console.warn(`[Vermes] 已删除 ${deleted} 个旧会话`)
+  logger.warn(`[Vermes] 已删除 ${deleted} 个旧会话`)
 }
 
 /**
@@ -119,7 +120,7 @@ function enforceSessionLimit(sessions, currentSessionId, SESSIONS_KEY, MESSAGES_
     if (!victim) break
     sessions.splice(sessions.findIndex(s => s.id === victim.id), 1)
     try { localStorage.removeItem(MESSAGES_KEY_PREFIX + victim.id) } catch {}
-    console.warn(`[Vermes] 会话超限，删除旧会话: ${victim.name} (${victim.id.slice(0,8)})`)
+    logger.warn(`[Vermes] 会话超限，删除旧会话: ${victim.name} (${victim.id.slice(0,8)})`)
   }
   saveToStorage(SESSIONS_KEY, sessions)
 }
@@ -148,7 +149,7 @@ async function persistMessages(sessionId, messages, currentSessionId, SESSIONS_K
   // 同时写后端 API（pywebview macOS 不持久化 IndexedDB）
   await saveMessagesToAPI(sessionId, lean)
   if (imageSavePromises.length > 0) {
-    try { await Promise.all(imageSavePromises) } catch(e) { console.warn('[Vermes] 图片批量存储失败:', e) }
+    try { await Promise.all(imageSavePromises) } catch(e) { logger.warn('[Vermes] 图片批量存储失败:', e) }
   }
 }
 
@@ -163,11 +164,11 @@ function trimCurrentSessionMessages(sessionId, lean, MESSAGES_KEY_PREFIX) {
   const keepIds = new Set(trimmed.map(m => m.id))
   // 如果调用方需要同步裁剪内存，在外部做
   if (saveToStorage(MESSAGES_KEY_PREFIX + sessionId, trimmed)) {
-    console.warn(`[Vermes] 当前会话消息裁剪: ${lean.length} → ${trimmed.length} 条`)
+    logger.warn(`[Vermes] 当前会话消息裁剪: ${lean.length} → ${trimmed.length} 条`)
   } else {
     const minimal = [...systemMsgs, ...otherMsgs.slice(-10)]
     saveToStorage(MESSAGES_KEY_PREFIX + sessionId, minimal)
-    console.warn(`[Vermes] 当前会话极端裁剪: ${lean.length} → ${minimal.length} 条`)
+    logger.warn(`[Vermes] 当前会话极端裁剪: ${lean.length} → ${minimal.length} 条`)
   }
 }
 
@@ -195,7 +196,7 @@ async function deleteSession(sessions, messages, id, SESSIONS_KEY, MESSAGES_KEY_
     const msgs = await loadMessagesFromIDB(id)
     const imageKeys = (msgs || []).flatMap(m => m._imageKeys || [])
     if (imageKeys.length > 0) await deleteImages(imageKeys)
-  } catch(e) { console.warn('[Vermes] 清理图片数据失败:', e) }
+  } catch(e) { logger.warn('[Vermes] 清理图片数据失败:', e) }
   sessions.splice(idx, 1)
   localStorage.removeItem(MESSAGES_KEY_PREFIX + id)  // 兼容旧数据
   await deleteMessagesFromIDB(id)

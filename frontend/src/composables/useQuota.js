@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import { logger } from '@/utils/logger'
 import { toast } from '../utils/toast'
 
 /**
@@ -47,7 +48,7 @@ export function useQuota() {
       const data = await resp.json()
       if (data.success) serverQuota.value = data.data
     } catch (e) {
-      console.warn('[Vermes] 刷新配额失败:', e)
+      logger.warn('[Vermes] 刷新配额失败:', e)
     }
   }
 

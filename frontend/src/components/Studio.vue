@@ -297,6 +297,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { logger } from '@/utils/logger'
 
 // ── 状态 ──
 const router = useRouter()
@@ -605,14 +606,14 @@ async function _checkVideoStatus(videoId) {
       clearInterval(pollTimer)
       pollTimer = null
       result.value = data
-      console.log('STUDIO_VIDEO_COMPLETE:', JSON.stringify(data))
+      logger.log('STUDIO_VIDEO_COMPLETE:', JSON.stringify(data))
     } else if (data.note && data.note.includes('processing')) {
       result.value = { success: false, mode: 'video', video_id: videoId, note: data.note }
     } else if (data.error) {
       result.value = data
       clearInterval(pollTimer)
       pollTimer = null
-      console.log('STUDIO_VIDEO_ERROR:', JSON.stringify(data))
+      logger.log('STUDIO_VIDEO_ERROR:', JSON.stringify(data))
     }
   } catch (e) {
     // 轮询失败不中断

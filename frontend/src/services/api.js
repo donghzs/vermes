@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { logger } from '@/utils/logger'
 
 const token = ref('')
 let baseUrl = ''
@@ -43,7 +44,7 @@ export async function fetchProviderConfig() {
       return
     }
   } catch (e) {
-    console.warn('[Vermes] provider config 拉取失败，使用本地 fallback:', e.message)
+    logger.warn('[Vermes] provider config 拉取失败，使用本地 fallback:', e.message)
   }
   // fallback 不需要赋值，初始值已是 fallback
   _configLoaded.value = true
@@ -69,7 +70,7 @@ export async function checkQuotaServer(wechatOpenid) {
     const resp = await fetch('/api/quota/check', { headers })
     return await resp.json()
   } catch (e) {
-    console.warn('[Vermes] 服务端配额查询失败:', e)
+    logger.warn('[Vermes] 服务端配额查询失败:', e)
     return { success: false }
   }
 }
@@ -357,7 +358,7 @@ const api = {
           } catch (e) {
             // SSE 数据解析失败（可能是截断的 JSON 或非 JSON 行如 "pong"）
             if (line.trim() && line.trim() !== 'pong') {
-              console.warn('[Vermes SSE] parse error:', e.message, 'line:', line.slice(0, 100))
+              logger.warn('[Vermes SSE] parse error:', e.message, 'line:', line.slice(0, 100))
             }
           }
         }
@@ -374,7 +375,7 @@ const api = {
       if (e.name !== 'AbortError' && !signal?.aborted && _sseRetryCount < SSE_MAX_RETRIES) {
         _sseRetryCount++
         const delay = 2000 * _sseRetryCount  // 2s, 4s, 6s 递增
-        console.warn(`[Vermes SSE] Connection lost, retry ${_sseRetryCount}/${SSE_MAX_RETRIES} in ${delay/1000}s...`, e.message)
+        logger.warn(`[Vermes SSE] Connection lost, retry ${_sseRetryCount}/${SSE_MAX_RETRIES} in ${delay/1000}s...`, e.message)
         await new Promise(r => setTimeout(r, delay))
         if (!signal?.aborted) {
           try {

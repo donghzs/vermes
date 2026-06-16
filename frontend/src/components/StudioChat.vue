@@ -109,6 +109,7 @@
 <script setup>
 import { ref, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 
@@ -198,7 +199,7 @@ function saveMessages() {
 function restoreVideoPolls() {
   const key = apiKey.value || (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}').apiKey } catch { return '' } })()
   if (!key || !baseUrl.value) {
-    console.log('[VideoPoll] 无 Key/URL，跳过恢复。请先选预设')
+    logger.log('[VideoPoll] 无 Key/URL，跳过恢复。请先选预设')
     return
   }
   let count = 0
@@ -209,7 +210,7 @@ function restoreVideoPolls() {
       startVideoPoll(msg)
     }
   }
-  if (count) console.log(`[VideoPoll] 恢复了 ${count} 个视频任务`)
+  if (count) logger.log(`[VideoPoll] 恢复了 ${count} 个视频任务`)
 }
 restoreVideoPolls()
 
@@ -441,7 +442,7 @@ function startVideoPoll(msg) {
   if (!msg.video_id) return
   const root = apiRoot(baseUrl.value)
   let attempts = 0
-  console.log('[VideoPoll] 开始轮询:', msg.video_id)
+  logger.log('[VideoPoll] 开始轮询:', msg.video_id)
   
   // 立即查一次
   const check = async () => {
@@ -449,7 +450,7 @@ function startVideoPoll(msg) {
     try {
       const resp = await fetch(`/api/studio/status/${msg.video_id}?base_url=${encodeURIComponent(baseUrl.value)}&api_key=${encodeURIComponent(apiKey.value)}`)
       if (!resp.ok) {
-        console.log(`[VideoPoll] HTTP ${resp.status} (attempt ${attempts})`)
+        logger.log(`[VideoPoll] HTTP ${resp.status} (attempt ${attempts})`)
         if (attempts > 10) {
           msg.text = `🎬 查询失败，ID: ${msg.video_id}`
           clearInterval(msg._pollTimer)
@@ -457,7 +458,7 @@ function startVideoPoll(msg) {
         return
       }
       const data = await resp.json()
-      console.log(`[VideoPoll] 响应: success=${data.success} note=${data.note?.slice(0,30)} video=${!!data.video_url}`)
+      logger.log(`[VideoPoll] 响应: success=${data.success} note=${data.note?.slice(0,30)} video=${!!data.video_url}`)
       
       if (data.success && data.video_url) {
         msg.video_url = data.video_url
