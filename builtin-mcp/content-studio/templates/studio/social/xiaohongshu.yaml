@@ -1,0 +1,135 @@
+template:
+  name: "小红书种草"
+  version: "1.0.0"
+  description: "生成小红书种草文案 + 配图（Writer → Designer → Humanizer）"
+  category: "social"
+  
+  inputs:
+    - name: product_name
+      label: "产品名称"
+      type: text
+      required: true
+      
+    - name: target_audience
+      label: "目标人群"
+      type: text
+      required: true
+      
+    - name: tone
+      label: "文案风格"
+      type: select
+      options: ["活泼", "专业", "温柔", "幽默"]
+      default: "活泼"
+    
+    - name: image_style
+      label: "图片风格"
+      type: select
+      options: ["产品实拍", "场景展示", "ins风", "简约"]
+      default: "产品实拍"
+    
+    - name: key_selling_points
+      label: "核心卖点（逗号分隔）"
+      type: text
+      default: "颜值高,效果好,性价比高"
+  
+  pipeline:
+    # Stage 1: Writer Agent
+    - name: writer
+      agent: "writer"
+      prompt_template: |
+        你是一个小红书种草文案写作专家。
+        
+        产品信息:
+        - 产品名称: {{ product_name }}
+        - 目标人群: {{ target_audience }}
+        - 核心卖点: {{ key_selling_points }}
+        - 文案风格: {{ tone }}
+        
+        要求:
+        1. 标题要有吸引力，使用 emoji
+        2. 正文包含真实使用体验感
+        3. 突出 2-3 个核心卖点
+        4. 结尾引导互动（评论/收藏/点赞）
+        5. 添加 5-8 个相关标签
+        6. 总字数 300-500 字
+        
+        请按以下格式输出:
+        【标题】: ...
+        【正文】: ...
+        【标签】: ...
+      output:
+        - name: title
+          type: text
+        - name: copy
+          type: text
+        - name: keywords
+          type: list
+    
+    # Stage 2: Designer Agent
+    - name: designer
+      agent: "designer"
+      depends_on: [writer]
+      prompt_template: |
+        为以下小红书内容生成配图 prompt:
+        
+        产品名称: {{ product_name }}
+        图片风格: {{ image_style }}
+        文案摘要: {{ stage.writer.copy[:100] }}
+        关键词: {{ stage.writer.keywords }}
+        
+        要求:
+        - 1080x1350 竖图（小红书标准比例）
+        - 产品突出，背景简洁
+        - 符合中国审美
+      output:
+        - name: image_prompt
+          type: text
+        - name: image_url
+          type: url
+    
+    # Stage 3: Humanizer Agent
+    - name: humanizer
+      agent: "humanizer"
+      depends_on: [writer]
+      prompt_template: |
+        校验以下小红书文案是否像真人写的。
+        
+        原文: {{ stage.writer.copy }}
+        
+        如果 AI 感太强（比如用词过于正式、结构太规整），
+        请修改成更自然的口语化表达，加入真实使用感受。
+        如果已经很自然，保持原文。
+        
+        输出修改后的文案和 AI 概率评分（0-1，越低越像人）。
+      output:
+        - name: final_copy
+          type: text
+        - name: ai_score
+          type: number
+    
+    # Stage 4: Publisher Agent
+    - name: publisher
+      agent: "publisher"
+      depends_on: [designer, humanizer]
+      output_format:
+        - name: title
+          value: "{{ stage.writer.title }}"
+        - name: content
+          value: "{{ stage.humanizer.final_copy }}"
+        - name: image_prompt
+          value: "{{ stage.designer.image_prompt }}"
+        - name: tags
+          value: "{{ stage.writer.keywords }}"
+  
+  output:
+    file_type: "markdown"
+    filename: "{{ product_name }}_种草_{{ timestamp }}.md"
+    template: |
+      # {{ stage.writer.title }}
+      
+      {{ stage.humanizer.final_copy }}
+      
+      ---
+      📸 配图 Prompt: {{ stage.designer.image_prompt }}
+      📊 AI 评分: {{ stage.humanizer.ai_score }}
+      🏷️ 标签: {{ stage.writer.keywords }}

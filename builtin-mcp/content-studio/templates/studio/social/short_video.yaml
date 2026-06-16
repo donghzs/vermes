@@ -1,0 +1,76 @@
+name: 短视频脚本
+version: "1.0"
+description: 生成短视频脚本 + 分镜图 + 图生视频 完整管线
+
+inputs:
+  - name: product_name
+    label: 产品名称
+    type: text
+    required: true
+  - name: product_desc
+    label: 产品描述
+    type: text
+    required: true
+  - name: platform
+    label: 发布平台
+    type: select
+    required: true
+    options:
+      - 抖音
+      - 视频号
+      - 小红书
+    default: 抖音
+
+pipeline:
+  - name: Script
+    agent: writer
+    prompt_template: |
+      你是一个短视频脚本作家。
+      为产品「{{ inputs.product_name }}」写一个短视频脚本。
+      产品描述: {{ inputs.product_desc }}
+      发布平台: {{ inputs.platform }}
+      
+      要求:
+      1. 前3秒必须有吸引力（hook）
+      2. 时长控制在30-60秒
+      3. 包含画面描述和旁白
+      4. 适合 {{ inputs.platform }} 的风格
+      
+      请按以下格式输出:
+      【标题】xxx
+      【画面1】xxx | 【旁白】xxx
+      【画面2】xxx | 【旁白】xxx
+      ...
+      【CTA】xxx
+      
+  - name: Storyboard
+    agent: designer
+    depends_on:
+      - Script
+    prompt_template: |
+      为以下短视频脚本生成关键帧图片描述：
+      
+      {{ stage.Script.copy }}
+      
+      要求:
+      - 生成 3-5 个关键场景的图片描述
+      - 风格: 现代、简洁、高质量
+      - 每个场景用一句话描述画面
+
+  - name: Video-i2v
+    agent: video-i2v
+    depends_on:
+      - Storyboard
+    prompt_template: |
+      根据生成的图片描述，为产品「{{ inputs.product_name }}」创建流畅过渡视频。
+      产品描述: {{ inputs.product_desc }}
+      风格要求: 现代、有吸引力、专业感
+
+output_template: |
+  短视频脚本 - {{ inputs.product_name }}
+  平台: {{ inputs.platform }}
+  时间戳: {{ timestamp }}
+  
+  脚本: {{ stage.Script.copy }}
+  分镜图: {{ stage.Storyboard.image_url }}
+  视频: {{ stage.Video-i2v.video_url }}

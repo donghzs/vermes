@@ -1,0 +1,26 @@
+name: content-studio
+description: AI 内容创作 — 模板驱动的小红书/短视频/公众号文案+配图生成
+version: 1.0
+command: hermes
+args: [mcp, run, content-studio]
+connect: lazy
+triggers:
+  - 小红书
+  - 种草
+  - 短视频
+  - 内容创作
+  - 文案
+  - 公众号
+  - 朋友圈
+  - 配图
+  - 内容生成
+  - 图文
+  - 爆款
+  - 批量生成
+tools:
+  - name: list_templates
+    description: 列出所有可用的内容创作模板，包含名称、描述、输入字段
+  - name: get_template_detail
+    description: 获取单个模板的完整详情，包括输入字段说明和 pipeline 步骤
+  - name: run_template
+    description: 执行一个内容创作模板，生成文案+配图，返回完整结果
