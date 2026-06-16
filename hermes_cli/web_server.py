@@ -31,6 +31,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from hermes_cli import __version__
+import hermes_cli.vermes_log  # noqa: F401 — 安装 stdout 双写 + logging 文件输出
 from hermes_cli.config import (
     cfg_get,
     DEFAULT_CONFIG,
