@@ -88,3 +88,5 @@ vermes-onefile.spec
 # Old reports and build artifacts (sensitive info risk)
 archive/
 dist-electron/
+# Studio 测试文件 - 含真实 API Key，禁止提交
+test_studio_*.py
