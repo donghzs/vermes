@@ -285,6 +285,7 @@ def run_conversation(
     agent._mute_post_response = False
     agent._unicode_sanitization_passes = 0
     agent._turn_tool_signatures = []  # 清空上回合的工具签名
+    agent._operator_claim_rejection_count = getattr(agent, "_operator_claim_rejection_count", 0)  # 保持拒绝计数器
     agent._tool_guardrails.reset_for_turn()
     agent._tool_guardrail_halt_decision = None
     # True until the server rejects an image_url content part with an error
@@ -3987,6 +3988,8 @@ def run_conversation(
     # 并把 AI 的编造回复注入 messages 作为 system 反馈，让下一轮 AI
     # 看到自己的错误后重新调工具。这样用户只看到干净的警告，不会被
     # AI 的编造内容误导。
+    #
+    # 循环防护：连续拒绝 2 次后降级为软拒绝，避免无限循环。
     if final_response and not interrupted:
         try:
             # 精确检测：本回合最新一条 assistant 消息是否有 tool_calls
@@ -4001,33 +4004,55 @@ def run_conversation(
                     # 检查是否有工具调用历史（不是第一轮简单问答）
                     _tool_history = agent._get_tool_call_count_in_window(messages, window=30)
                     if _tool_history > 0:
-                        # 硬拒绝：把 AI 的编造回复作为 system 反馈注入
+                        # 递增拒绝计数器
+                        agent._operator_claim_rejection_count += 1
                         _first_claim = _claims[0]
-                        _rejection = (
-                            "\n\n[System: 检测到你的回复中包含未经验证的操作声称"
-                            f"（如「{_first_claim['claim']}」），"
-                            "但本回合没有执行任何工具调用。\n"
-                            "请在下一轮中调用对应的工具来实际执行这些操作，"
-                            "而不是在文本中声称完成。"
-                            "不要复述或继续上述回复的内容，直接调工具重新开始。]"
-                        )
-                        messages.append({
-                            "role": "user",
-                            "content": _rejection,
-                        })
-                        # 替换用户的 final_response 为拒绝提示
-                        final_response = (
-                            "⚠️ **操作链验证器拒绝了上述回复**\n\n"
-                            f"检测到 {len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
-                            "但本回合没有执行任何工具调用。\n\n"
-                            "AI 已收到反馈，下一轮会直接调工具来实际执行。"
-                            "请发「继续」让它重新开始。"
-                        )
-                        logger.info(
-                            "operator-claim verifier REJECTED response with %d claims "
-                            "(first: %s), injected rejection message",
-                            len(_claims), _first_claim['claim'],
-                        )
+                        
+                        if agent._operator_claim_rejection_count >= 2:
+                            # 降级：软拒绝（保留原回复 + 警告）
+                            final_response = final_response.rstrip() + (
+                                "\n\n⚠️ **操作链验证器警告**: 上述回答中有 "
+                                f"{len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
+                                "但本回合没有执行任何工具调用。"
+                                "请确认这些操作是否真实完成。"
+                            )
+                            logger.info(
+                                "operator-claim verifier SOFT reject (count=%d) "
+                                "with %d claims (first: %s)",
+                                agent._operator_claim_rejection_count,
+                                len(_claims), _first_claim['claim'],
+                            )
+                        else:
+                            # 硬拒绝（第1次）：把 AI 的编造回复作为 system 反馈注入
+                            _rejection = (
+                                "\n\n[System: 检测到你的回复中包含未经验证的操作声称"
+                                f"（如「{_first_claim['claim']}」），"
+                                "但本回合没有执行任何工具调用。\n"
+                                "请在下一轮中调用对应的工具来实际执行这些操作，"
+                                "而不是在文本中声称完成。"
+                                "不要复述或继续上述回复的内容，直接调工具重新开始。]"
+                            )
+                            messages.append({
+                                "role": "user",
+                                "content": _rejection,
+                            })
+                            # 替换用户的 final_response 为拒绝提示
+                            final_response = (
+                                "⚠️ **操作链验证器拒绝了上述回复**\n\n"
+                                f"检测到 {len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
+                                "但本回合没有执行任何工具调用。\n\n"
+                                "AI 已收到反馈，下一轮会直接调工具来实际执行。"
+                                "请发「继续」让它重新开始。"
+                            )
+                            logger.info(
+                                "operator-claim verifier HARD reject (count=%d) "
+                                "with %d claims (first: %s), injected rejection message",
+                                agent._operator_claim_rejection_count,
+                                len(_claims), _first_claim['claim'],
+                            )
+                elif _turn_has_tool_calls:
+                    # 本回合有工具调用，重置拒绝计数器
+                    agent._operator_claim_rejection_count = 0
         except Exception as _oc_err:
             logger.debug("operator-claim verifier failed: %s", _oc_err)
 
