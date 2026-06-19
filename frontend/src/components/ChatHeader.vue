@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import HelpGuide from './HelpGuide.vue'
 
@@ -24,6 +24,12 @@ const showModelSelect = ref(false)
 const showStats = ref(false)
 const sessionStats = computed(() => chat.getSessionStats(chat.currentSessionId))
 const modelSearch = ref('')
+
+// 模型列表刷新触发器 — Settings 保存/同步后递增，强制 computed 重算
+const _providersVersion = ref(0)
+function _onProvidersUpdated() { _providersVersion.value++ }
+onMounted(() => window.addEventListener('providers-updated', _onProvidersUpdated))
+onUnmounted(() => window.removeEventListener('providers-updated', _onProvidersUpdated))
 
 // 最近使用的模型（最多3个）
 const recentModels = computed(() => {
@@ -50,6 +56,7 @@ function addToRecent(modelId) {
 // 模型列表
 
 const models = computed(() => {
+  _providersVersion.value  // 依赖触发器
   try {
     const saved = localStorage.getItem('vermes-providers')
     if (saved) {

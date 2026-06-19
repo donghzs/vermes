@@ -280,6 +280,8 @@ function saveProvidersToStorage() {
       baseUrl: p.baseUrl, models: p.models || []
     }))
   try { localStorage.setItem('vermes-providers', JSON.stringify(data)) } catch(e) {}
+  // 通知 ChatHeader 等组件模型列表已更新
+  window.dispatchEvent(new CustomEvent('providers-updated'))
 }
 
 async function save() {
@@ -327,6 +329,7 @@ function clearAllSettings() {
   }
   for (const k of keys) localStorage.removeItem(k)
   for (const p of providers.value) { p.key = ''; p.models = [] }
+  window.dispatchEvent(new CustomEvent('providers-updated'))
   saved.value = true; setTimeout(() => saved.value = false, 2000)
 }
 
