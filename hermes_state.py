@@ -29,6 +29,89 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 logger = logging.getLogger(__name__)
 
+def _delegate_from_json(col: str = "model_config") -> str:
+    return f"json_extract(COALESCE({col}, '{{}}'), '$._delegate_from')"
+
+
+# A child session counts as a /branch (kept visible, never cascade-deleted) if
+# it carries the stable marker OR the legacy end_reason heuristic holds.
+_BRANCH_CHILD_SQL = (
+    "json_extract(COALESCE({a}.model_config, '{{}}'), '$._branched_from') IS NOT NULL"
+    " OR EXISTS (SELECT 1 FROM sessions p"
+    "            WHERE p.id = {a}.parent_session_id"
+    "            AND p.end_reason = 'branched'"
+    "            AND {a}.started_at >= p.ended_at)"
+)
+
+_COMPRESSION_CHILD_SQL = (
+    "EXISTS (SELECT 1 FROM sessions p"
+    "        WHERE p.id = {a}.parent_session_id"
+    "        AND p.end_reason = 'compression'"
+    "        AND {a}.started_at >= p.ended_at)"
+)
+
+# Rows that surface in pickers: roots + branch children (subagent runs and
+# compression continuations stay hidden).
+_LISTABLE_CHILD_SQL = f"(s.parent_session_id IS NULL OR {_BRANCH_CHILD_SQL.format(a='s')})"
+
+
+def _ephemeral_child_sql(alias: str = "s") -> str:
+    """Subagent runs (cascade-delete targets), not branches or compression tips."""
+    branch = _BRANCH_CHILD_SQL.format(a=alias)
+    compression = _COMPRESSION_CHILD_SQL.format(a=alias)
+    return (
+        f"({alias}.parent_session_id IS NOT NULL"
+        f" AND NOT ({branch})"
+        f" AND NOT ({compression}))"
+    )
+
+
+def _collect_delegate_child_ids(conn, parent_ids: List[str]) -> List[str]:
+    """Delegate-subagent ids to cascade-delete with *parent_ids*.
+
+    Only rows carrying the ``_delegate_from`` marker (set at creation, and
+    backfilled by the v16 migration) — generic untagged children keep the
+    orphan-don't-delete contract. Walks marker chains recursively so an
+    orchestrator subagent's own delegate children go too (FK safety).
+    """
+    df = _delegate_from_json()
+    seeds = {sid for sid in parent_ids if sid}
+    # Seed the visited set with the parents themselves. A delegation marker
+    # chain can loop back onto a parent — a cycle, or a parent that is also
+    # another parent's delegate child when several ids are deleted at once —
+    # and without this guard that parent would be collected as one of its own
+    # descendants and cascade-deleted along with all of its messages. Callers
+    # delete the parents separately, so parents must never appear in the
+    # returned child set. (#49148)
+    found: set[str] = set(seeds)
+    frontier = list(seeds)
+    while frontier:
+        ph = ",".join("?" * len(frontier))
+        cursor = conn.execute(
+            f"SELECT id FROM sessions WHERE {df} IN ({ph}) "
+            f"OR (parent_session_id IN ({ph}) AND {df} IS NOT NULL)",
+            frontier + frontier,
+        )
+        frontier = [row["id"] for row in cursor.fetchall() if row["id"] not in found]
+        found.update(frontier)
+    # Return only the discovered children — never the parents themselves.
+    return [sid for sid in found if sid not in seeds]
+
+
+def _delete_delegate_children(conn, parent_ids: List[str]) -> List[str]:
+    ids = _collect_delegate_child_ids(conn, parent_ids)
+    if ids:
+        ph = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM messages WHERE session_id IN ({ph})", ids)
+        # FK safety: orphan any untagged stragglers pointing at a doomed row.
+        conn.execute(
+            f"UPDATE sessions SET parent_session_id = NULL "
+            f"WHERE parent_session_id IN ({ph})",
+            ids,
+        )
+        conn.execute(f"DELETE FROM sessions WHERE id IN ({ph})", ids)
+    return ids
+
 T = TypeVar("T")
 
 DEFAULT_DB_PATH = get_hermes_home() / "state.db"
