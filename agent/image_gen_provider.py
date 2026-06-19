@@ -34,7 +34,7 @@ import datetime
 import logging
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,27 @@ class ImageGenProvider(abc.ABC):
     def display_name(self) -> str:
         """Human-readable label shown in ``hermes tools``. Defaults to ``name.title()``."""
         return self.name.title()
+
+    def capabilities(self) -> Dict[str, Any]:
+        """Declare what this provider can do.
+
+        Returns a dict with:
+          modalities: list of supported input modalities.
+              Values: "text" (always), "image" (image-to-image / edit),
+              "reference" (reference-image-guided generation).
+          max_reference_images: int — max reference images accepted.
+              0 means no reference support. Default 0.
+          edit_supports: optional list of model IDs that support editing.
+              If None, all models support editing. If a list, only those
+              models can do image-to-image.
+
+        Default: text-only (backward compatible).
+        """
+        return {
+            "modalities": ["text"],
+            "max_reference_images": 0,
+            "edit_supports": None,
+        }
 
     def is_available(self) -> bool:
         """Return True when this provider can service calls.
@@ -132,9 +153,21 @@ class ImageGenProvider(abc.ABC):
         self,
         prompt: str,
         aspect_ratio: str = DEFAULT_ASPECT_RATIO,
+        *,
+        image_url: Optional[str] = None,
+        reference_image_urls: Optional[Sequence[str]] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Generate an image.
+
+        When ``image_url`` is provided, the provider should perform
+        image-to-image (edit/transform) rather than text-to-image.
+        When ``reference_image_urls`` is provided, they serve as style
+        / composition references.
+
+        Implementations that do not support editing should return a
+        :func:`error_response` with ``error_type="modality_unsupported"``
+        so the agent gets an actionable message.
 
         Implementations should return the dict from :func:`success_response`
         or :func:`error_response`. ``kwargs`` may contain forward-compat
@@ -300,6 +333,25 @@ def success_response(
         for k, v in extra.items():
             payload.setdefault(k, v)
     return payload
+
+
+def normalize_reference_images(
+    refs: Optional[Sequence[str]],
+    max_count: int = 0,
+) -> List[str]:
+    """Normalize a ragged reference-image input into a clean list.
+
+    Accepts a single URL string, a list of URLs, or None.
+    Truncates to ``max_count`` if > 0. Filters out empty/None entries.
+    """
+    if not refs:
+        return []
+    if isinstance(refs, str):
+        refs = [refs]
+    result = [r for r in refs if r and isinstance(r, str) and r.strip()]
+    if max_count > 0 and len(result) > max_count:
+        result = result[:max_count]
+    return result
 
 
 def error_response(

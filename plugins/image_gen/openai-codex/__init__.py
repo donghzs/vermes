@@ -270,10 +270,27 @@ class OpenAICodexImageGenProvider(ImageGenProvider):
         self,
         prompt: str,
         aspect_ratio: str = DEFAULT_ASPECT_RATIO,
+        *,
+        image_url: Optional[str] = None,
+        reference_image_urls: Optional[list] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         prompt = (prompt or "").strip()
         aspect = resolve_aspect_ratio(aspect_ratio)
+
+        # openai-codex uses the Responses API which cannot edit images.
+        if image_url or reference_image_urls:
+            return error_response(
+                error=(
+                    "This model is not capable of image-to-image / editing — "
+                    "provide a text-only prompt, or switch to a backend that "
+                    "supports edits (OpenAI, Agnes, xAI) via `hermes tools` "
+                    "→ Image Generation."
+                ),
+                error_type="modality_unsupported",
+                provider="openai-codex",
+                aspect_ratio=aspect,
+            )
 
         if not prompt:
             return error_response(

@@ -157,10 +157,20 @@ class XAIImageGenProvider(ImageGenProvider):
             "post_setup": "xai_grok",
         }
 
+    def capabilities(self) -> Dict[str, Any]:
+        return {
+            "modalities": ["text", "image"],
+            "max_reference_images": 0,
+            "edit_supports": None,  # all xAI models support edit via /images/edits
+        }
+
     def generate(
         self,
         prompt: str,
         aspect_ratio: str = DEFAULT_ASPECT_RATIO,
+        *,
+        image_url: Optional[str] = None,
+        reference_image_urls: Optional[list] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Generate an image using xAI's grok-imagine-image."""
@@ -197,8 +207,11 @@ class XAIImageGenProvider(ImageGenProvider):
         base_url = str(creds.get("base_url") or "https://api.x.ai/v1").strip().rstrip("/")
 
         try:
+            endpoint = "/images/edits" if image_url else "/images/generations"
+            if image_url:
+                payload["image"] = image_url
             response = requests.post(
-                f"{base_url}/images/generations",
+                f"{base_url}{endpoint}",
                 headers=headers,
                 json=payload,
                 timeout=120,

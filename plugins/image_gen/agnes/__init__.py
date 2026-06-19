@@ -21,6 +21,7 @@ from agent.image_gen_provider import (
     DEFAULT_ASPECT_RATIO,
     ImageGenProvider,
     error_response,
+    normalize_reference_images,
     resolve_aspect_ratio,
     save_b64_image,
     success_response,
@@ -134,10 +135,20 @@ class AgnesImageGenProvider(ImageGenProvider):
             ],
         }
 
+    def capabilities(self) -> Dict[str, Any]:
+        return {
+            "modalities": ["text", "image"],
+            "max_reference_images": 4,
+            "edit_supports": ["agnes-image-2.0-flash"],
+        }
+
     def generate(
         self,
         prompt: str,
         aspect_ratio: str = DEFAULT_ASPECT_RATIO,
+        *,
+        image_url: Optional[str] = None,
+        reference_image_urls: Optional[list] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         prompt = (prompt or "").strip()
@@ -181,13 +192,30 @@ class AgnesImageGenProvider(ImageGenProvider):
             "response_format": "url",
         }
 
-        # img2img support: check for image URLs in kwargs
-        image_urls = kwargs.get("image_urls") or kwargs.get("images")
-        if image_urls and isinstance(image_urls, list) and MODELS.get(model_id, {}).get("supports_img2img"):
+        # img2img support: use image_url or reference_image_urls
+        all_images = []
+        if image_url:
+            all_images.append(image_url)
+        refs = normalize_reference_images(reference_image_urls, max_count=4)
+        all_images.extend(refs)
+        
+        if all_images and MODELS.get(model_id, {}).get("supports_img2img"):
             payload["extra_body"] = {
                 "tags": ["img2img"],
-                "image": image_urls,
+                "image": all_images,
             }
+        elif all_images and not MODELS.get(model_id, {}).get("supports_img2img"):
+            return error_response(
+                error=(
+                    f"Model '{model_id}' does not support image-to-image / editing. "
+                    f"Use 'agnes-image-2.0-flash' for img2img, or provide a text-only prompt."
+                ),
+                error_type="modality_unsupported",
+                provider="agnes",
+                model=model_id,
+                prompt=prompt,
+                aspect_ratio=aspect,
+            )
 
         try:
             resp = httpx.post(

@@ -929,24 +929,49 @@ from tools.registry import registry, tool_error
 IMAGE_GENERATE_SCHEMA = {
     "name": "image_generate",
     "description": (
-        "Generate high-quality images from text prompts. The underlying "
-        "backend (FAL, OpenAI, etc.) and model are user-configured and not "
-        "selectable by the agent. Returns either a URL or an absolute file "
-        "path in the `image` field; display it with markdown "
-        "![description](url-or-path) and the gateway will deliver it."
+        "Generate or edit high-quality images. By default this generates "
+        "an image from a text prompt. When ``image_url`` is provided, the "
+        "image is edited/transformed (image-to-image) instead. When "
+        "``reference_image_urls`` is provided, they serve as style or "
+        "composition references. The underlying backend (FAL, OpenAI, Agnes, "
+        "etc.) and model are user-configured and not selectable by the agent. "
+        "Returns either a URL or an absolute file path in the `image` field; "
+        "display it with markdown ![description](url-or-path) and the gateway "
+        "will deliver it."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "prompt": {
                 "type": "string",
-                "description": "The text prompt describing the desired image. Be detailed and descriptive.",
+                "description": (
+                    "The text prompt describing the desired image or edit. "
+                    "For image-to-image, describe what to change or transform."
+                ),
             },
             "aspect_ratio": {
                 "type": "string",
                 "enum": list(VALID_ASPECT_RATIOS),
                 "description": "The aspect ratio of the generated image. 'landscape' is 16:9 wide, 'portrait' is 16:9 tall, 'square' is 1:1.",
                 "default": DEFAULT_ASPECT_RATIO,
+            },
+            "image_url": {
+                "type": "string",
+                "description": (
+                    "Optional source image URL for image-to-image (edit/transform). "
+                    "When provided, the backend edits this image according to the "
+                    "prompt instead of generating from scratch. Not all models "
+                    "support this — a clear error is returned if unsupported."
+                ),
+            },
+            "reference_image_urls": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional list of reference image URLs for style/composition "
+                    "guidance. The backend uses these as visual references. "
+                    "Maximum count depends on the backend."
+                ),
             },
         },
         "required": ["prompt"],
@@ -990,7 +1015,13 @@ def _read_configured_image_provider():
     return None
 
 
-def _dispatch_to_plugin_provider(prompt: str, aspect_ratio: str):
+def _dispatch_to_plugin_provider(
+    prompt: str,
+    aspect_ratio: str,
+    *,
+    image_url: Optional[str] = None,
+    reference_image_urls: Optional[list] = None,
+):
     """Route the call to a plugin-registered provider when one is selected.
 
     Returns a JSON string on dispatch, or ``None`` to fall through to the
@@ -1046,6 +1077,10 @@ def _dispatch_to_plugin_provider(prompt: str, aspect_ratio: str):
         kwargs = {"prompt": prompt, "aspect_ratio": aspect_ratio}
         if configured_model:
             kwargs["model"] = configured_model
+        if image_url:
+            kwargs["image_url"] = image_url
+        if reference_image_urls:
+            kwargs["reference_image_urls"] = reference_image_urls
         result = provider.generate(**kwargs)
     except Exception as exc:
         logger.warning(
@@ -1073,12 +1108,31 @@ def _handle_image_generate(args, **kw):
     if not prompt:
         return tool_error("prompt is required for image generation")
     aspect_ratio = args.get("aspect_ratio", DEFAULT_ASPECT_RATIO)
+    image_url = args.get("image_url")
+    reference_image_urls = args.get("reference_image_urls")
 
     # Route to a plugin-registered provider if one is active (and it's
     # not the in-tree FAL path).
-    dispatched = _dispatch_to_plugin_provider(prompt, aspect_ratio)
+    dispatched = _dispatch_to_plugin_provider(
+        prompt, aspect_ratio,
+        image_url=image_url,
+        reference_image_urls=reference_image_urls,
+    )
     if dispatched is not None:
         return dispatched
+
+    # In-tree FAL path — does not support image-to-image edits.
+    if image_url or reference_image_urls:
+        return json.dumps({
+            "success": False,
+            "image": None,
+            "error": (
+                "The in-tree FAL backend does not support image-to-image / editing. "
+                "Switch to a provider that supports edits (OpenAI, Agnes, xAI) "
+                "via `hermes tools` → Image Generation."
+            ),
+            "error_type": "modality_unsupported",
+        })
 
     return image_generate_tool(
         prompt=prompt,

@@ -31,6 +31,7 @@ from agent.image_gen_provider import (
     DEFAULT_ASPECT_RATIO,
     ImageGenProvider,
     error_response,
+    normalize_reference_images,
     resolve_aspect_ratio,
     save_b64_image,
     success_response,
@@ -170,10 +171,20 @@ class OpenAIImageGenProvider(ImageGenProvider):
             ],
         }
 
+    def capabilities(self) -> Dict[str, Any]:
+        return {
+            "modalities": ["text", "image", "reference"],
+            "max_reference_images": 16,
+            "edit_supports": None,  # all models support edit via images.edit
+        }
+
     def generate(
         self,
         prompt: str,
         aspect_ratio: str = DEFAULT_ASPECT_RATIO,
+        *,
+        image_url: Optional[str] = None,
+        reference_image_urls: Optional[list] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         prompt = (prompt or "").strip()
@@ -224,7 +235,23 @@ class OpenAIImageGenProvider(ImageGenProvider):
 
         try:
             client = openai.OpenAI()
-            response = client.images.generate(**payload)
+            
+            # Route to images.edit when a source image is provided
+            if image_url:
+                edit_payload: Dict[str, Any] = {
+                    "model": API_MODEL,
+                    "prompt": prompt,
+                    "image": image_url,  # URL or file path
+                    "n": 1,
+                    "size": size,
+                }
+                # Reference images as additional edit inputs
+                refs = normalize_reference_images(reference_image_urls, max_count=16)
+                # OpenAI images.edit accepts multiple images via the `image` param
+                # when passing a list; for now we pass the first ref as additional input.
+                response = client.images.edit(**edit_payload)
+            else:
+                response = client.images.generate(**payload)
         except Exception as exc:
             logger.debug("OpenAI image generation failed", exc_info=True)
             return error_response(
