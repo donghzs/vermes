@@ -388,6 +388,107 @@ class MemoryStore:
 
         return self._success_response(target, "Entry removed.")
 
+    def apply_batch(self, target: str, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Apply a sequence of add/replace/remove ops to one target atomically.
+
+        All operations are validated and applied against the FINAL budget --
+        intermediate overflow is irrelevant. This lets the model free space
+        (remove/replace) and add new entries in a SINGLE tool call.
+
+        Semantics: all-or-nothing. If any op is malformed, doesn't match, or
+        the net result would exceed the char limit, NOTHING is written.
+        """
+        if not operations:
+            return {"success": False, "error": "operations list is empty."}
+
+        # Scan every add/replace content for injection/exfil BEFORE touching disk
+        for i, op in enumerate(operations):
+            act = (op or {}).get("action")
+            new_content = (op or {}).get("content")
+            if act in {"add", "replace"} and new_content:
+                scan_error = _scan_memory_content(new_content)
+                if scan_error:
+                    return {"success": False, "error": f"Operation {i + 1}: {scan_error}"}
+
+        with self._file_lock(self._path_for(target)):
+            bak = self._reload_target(target)
+            if bak:
+                return _drift_error(self._path_for(target), bak)
+
+            working: List[str] = list(self._entries_for(target))
+            limit = self._char_limit(target)
+
+            for i, op in enumerate(operations):
+                op = op or {}
+                act = op.get("action")
+                content = (op.get("content") or "").strip()
+                old_text = (op.get("old_text") or "").strip()
+                pos = f"Operation {i + 1} ({act or 'unknown'})"
+
+                if act == "add":
+                    if not content:
+                        return self._batch_error(target, f"{pos}: content is required.")
+                    if content in working:
+                        continue  # idempotent -- skip duplicate
+                    working.append(content)
+
+                elif act == "replace":
+                    if not old_text:
+                        return self._batch_error(target, f"{pos}: old_text is required.")
+                    if not content:
+                        return self._batch_error(target, f"{pos}: content is required (use action='remove' to delete).")
+                    matches = [j for j, e in enumerate(working) if old_text in e]
+                    if not matches:
+                        return self._batch_error(target, f"{pos}: no entry matched '{old_text}'.")
+                    if len({working[j] for j in matches}) > 1:
+                        return self._batch_error(target, f"{pos}: '{old_text}' matched multiple distinct entries -- be more specific.")
+                    working[matches[0]] = content
+
+                elif act == "remove":
+                    if not old_text:
+                        return self._batch_error(target, f"{pos}: old_text is required.")
+                    matches = [j for j, e in enumerate(working) if old_text in e]
+                    if not matches:
+                        return self._batch_error(target, f"{pos}: no entry matched '{old_text}'.")
+                    if len({working[j] for j in matches}) > 1:
+                        return self._batch_error(target, f"{pos}: '{old_text}' matched multiple distinct entries -- be more specific.")
+                    working.pop(matches[0])
+
+                else:
+                    return self._batch_error(target, f"{pos}: unknown action '{act}'. Use add, replace, or remove.")
+
+            # Budget check against the FINAL state only
+            new_total = len(ENTRY_DELIMITER.join(working)) if working else 0
+            if new_total > limit:
+                current = self._char_count(target)
+                return {
+                    "success": False,
+                    "error": (
+                        f"After applying all {len(operations)} operations, memory would be at "
+                        f"{new_total:,}/{limit:,} chars -- over the limit. Remove or shorten more "
+                        f"entries in the same batch (see current_entries below), then retry."
+                    ),
+                    "current_entries": self._entries_for(target),
+                    "usage": f"{current:,}/{limit:,}",
+                }
+
+            # Commit
+            self._set_entries(target, working)
+            self.save_to_disk(target)
+
+        return self._success_response(target, f"Applied {len(operations)} operation(s).")
+
+    def _batch_error(self, target: str, message: str) -> Dict[str, Any]:
+        """Build a batch-abort error that reports live (uncommitted) state."""
+        current = self._char_count(target)
+        limit = self._char_limit(target)
+        return {
+            "success": False,
+            "error": message + " No operations were applied (batch is all-or-nothing).",
+            "current_entries": self._entries_for(target),
+            "usage": f"{current:,}/{limit:,}",
+        }
+
     def format_for_system_prompt(self, target: str) -> Optional[str]:
         """
         Return the frozen snapshot for system prompt injection.
@@ -409,15 +510,18 @@ class MemoryStore:
         limit = self._char_limit(target)
         pct = min(100, int((current / limit) * 100)) if limit > 0 else 0
 
+        # Terminal response: confirm write landed, don't echo full entries
+        # (dumping them invites re-edits). Entries only shown on error paths.
         resp = {
             "success": True,
+            "done": True,
             "target": target,
-            "entries": entries,
             "usage": f"{pct}% — {current:,}/{limit:,} chars",
             "entry_count": len(entries),
         }
         if message:
             resp["message"] = message
+        resp["note"] = "Write saved. This update is complete — do not repeat it."
         return resp
 
     def _render_block(self, target: str, entries: List[str]) -> str:
@@ -493,14 +597,20 @@ class MemoryStore:
 
 
 def memory_tool(
-    action: str,
+    action: str = None,
     target: str = "memory",
     content: str = None,
     old_text: str = None,
+    operations: Optional[List[Dict[str, Any]]] = None,
     store: Optional[MemoryStore] = None,
 ) -> str:
     """
     Single entry point for the memory tool. Dispatches to MemoryStore methods.
+
+    Two shapes:
+      - Single op: action + (content / old_text).
+      - Batch:     operations=[{action, content?, old_text?}, ...] applied
+                   atomically against the final char budget in ONE call.
 
     Returns JSON string with results.
     """
@@ -510,6 +620,14 @@ def memory_tool(
     if target not in {"memory", "user"}:
         return tool_error(f"Invalid target '{target}'. Use 'memory' or 'user'.", success=False)
 
+    # --- Batch path -------------------------------------------------------
+    if operations:
+        if not isinstance(operations, list):
+            return tool_error("operations must be a list of {action, content?, old_text?} objects.", success=False)
+        result = store.apply_batch(target, operations)
+        return json.dumps(result, ensure_ascii=False)
+
+    # --- Single-op path ---------------------------------------------------
     if action == "add":
         if not content:
             return tool_error("Content is required for 'add' action.", success=False)
@@ -545,27 +663,26 @@ def check_memory_requirements() -> bool:
 MEMORY_SCHEMA = {
     "name": "memory",
     "description": (
-        "Save durable information to persistent memory that survives across sessions. "
-        "Memory is injected into future turns, so keep it compact and focused on facts "
-        "that will still matter later.\n\n"
-        "WHEN TO SAVE (do this proactively, don't wait to be asked):\n"
-        "- User corrects you or says 'remember this' / 'don't do that again'\n"
-        "- User shares a preference, habit, or personal detail (name, role, timezone, coding style)\n"
-        "- You discover something about the environment (OS, installed tools, project structure)\n"
-        "- You learn a convention, API quirk, or workflow specific to this user's setup\n"
-        "- You identify a stable fact that will be useful again in future sessions\n\n"
-        "PRIORITY: User preferences and corrections > environment facts > procedural knowledge. "
-        "The most valuable memory prevents the user from having to repeat themselves.\n\n"
-        "Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO "
-        "state to memory; use session_search to recall those from past transcripts.\n"
-        "If you've discovered a new way to do something, solved a problem that could be "
-        "necessary later, save it as a skill with the skill tool.\n\n"
-        "TWO TARGETS:\n"
-        "- 'user': who the user is -- name, role, preferences, communication style, pet peeves\n"
-        "- 'memory': your notes -- environment facts, project conventions, tool quirks, lessons learned\n\n"
-        "ACTIONS: add (new entry), replace (update existing -- old_text identifies it), "
-        "remove (delete -- old_text identifies it).\n\n"
-        "SKIP: trivial/obvious info, things easily re-discovered, raw data dumps, and temporary task state."
+        "Save durable facts to persistent memory that survive across sessions. Memory is "
+        "injected into every future turn, so keep entries compact and high-signal.\n\n"
+        "HOW: make ALL your changes in ONE call via an 'operations' array (each item: "
+        "{action, content?, old_text?}). The batch applies atomically and the char limit is "
+        "checked only on the FINAL result — so a single call can remove/replace stale entries "
+        "to free room AND add new ones, even when an add alone would overflow. The response "
+        "reports current/limit chars and confirms completion; one batch call finishes the "
+        "update, so don't repeat it. Use the bare action/content/old_text fields only for a "
+        "single lone change.\n\n"
+        "WHEN: save proactively when the user states a preference, correction, or personal "
+        "detail, or you learn a stable fact about their environment, conventions, or workflow. "
+        "Priority: user preferences & corrections > environment facts > procedures. The best "
+        "memory stops the user repeating themselves.\n\n"
+        "IF FULL: an add is rejected with the current entries shown. Reissue as ONE batch that "
+        "removes or shortens enough stale entries and adds the new one together.\n\n"
+        "TARGETS: 'user' = who the user is (name, role, preferences, style). 'memory' = your "
+        "notes (environment, conventions, tool quirks, lessons).\n\n"
+        "SKIP: trivial/obvious info, easily re-discovered facts, raw data dumps, task progress, "
+        "completed-work logs, temporary TODO state (use session_search for those). Reusable "
+        "procedures belong in a skill, not memory."
     ),
     "parameters": {
         "type": "object",
@@ -573,7 +690,7 @@ MEMORY_SCHEMA = {
             "action": {
                 "type": "string",
                 "enum": ["add", "replace", "remove"],
-                "description": "The action to perform."
+                "description": "The action to perform (single-op shape). Omit when using 'operations'."
             },
             "target": {
                 "type": "string",
@@ -582,14 +699,33 @@ MEMORY_SCHEMA = {
             },
             "content": {
                 "type": "string",
-                "description": "The entry content. Required for 'add' and 'replace'."
+                "description": "The entry content. Required for 'add' and 'replace' (single-op shape)."
             },
             "old_text": {
                 "type": "string",
-                "description": "Short unique substring identifying the entry to replace or remove."
+                "description": "Short unique substring identifying the entry to replace or remove (single-op shape)."
             },
         },
-        "required": ["action", "target"],
+        "required": ["target"],
+    },
+}
+
+# Add operations field to schema (done separately to keep the diff readable)
+MEMORY_SCHEMA["parameters"]["properties"]["operations"] = {
+    "type": "array",
+    "description": (
+        "Batch shape: a list of operations applied atomically in one call "
+        "against the final char budget. Preferred when making multiple changes "
+        "or consolidating to make room. Each item is {action, content?, old_text?}."
+    ),
+    "items": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["add", "replace", "remove"]},
+            "content": {"type": "string", "description": "Entry content for add/replace."},
+            "old_text": {"type": "string", "description": "Substring identifying the entry for replace/remove."},
+        },
+        "required": ["action"],
     },
 }
 
@@ -606,6 +742,7 @@ registry.register(
         target=args.get("target", "memory"),
         content=args.get("content"),
         old_text=args.get("old_text"),
+        operations=args.get("operations"),
         store=kw.get("store")),
     check_fn=check_memory_requirements,
     emoji="🧠",

@@ -735,6 +735,7 @@ class SessionDB:
                 err = str(fts_exc).lower()
                 if "fts5" not in err and "no such module" not in err:
                     raise
+                self._fts_enabled = False
                 logger.warning(
                     "SQLite FTS5 unavailable for %s; full-text session search "
                     "disabled. This usually means Hermes is running on an "
@@ -748,20 +749,30 @@ class SessionDB:
                 )
 
         # Trigram FTS5 for CJK/substring search
-        try:
-            cursor.execute("SELECT * FROM messages_fts_trigram LIMIT 0")
-        except sqlite3.OperationalError as exc:
-            if "no such table" not in str(exc).lower():
-                raise
+        # Only create if base FTS5 is available; some SQLite builds have FTS5
+        # but lack the optional trigram tokenizer — degrade gracefully.
+        if self._fts_enabled:
             try:
-                cursor.executescript(FTS_TRIGRAM_SQL)
-            except sqlite3.OperationalError as fts_exc:
-                err = str(fts_exc).lower()
-                if "fts5" not in err and "no such module" not in err:
+                cursor.execute("SELECT * FROM messages_fts_trigram LIMIT 0")
+            except sqlite3.OperationalError as exc:
+                if "no such table" not in str(exc).lower():
                     raise
-                # Same FTS5-unavailable cause already warned about above for
-                # messages_fts; the trigram table is an additional CJK index,
-                # so just degrade silently here. CJK search falls back to LIKE.
+                try:
+                    cursor.executescript(FTS_TRIGRAM_SQL)
+                except sqlite3.OperationalError as fts_exc:
+                    err = str(fts_exc).lower()
+                    # trigram tokenizer missing → base FTS5 still works, just no CJK
+                    if "no such tokenizer" in err:
+                        logger.info(
+                            "Trigram tokenizer unavailable for %s; "
+                            "CJK substring search falls back to LIKE.",
+                            self.db_path,
+                        )
+                    elif "fts5" in err or "no such module" in err:
+                        # Same FTS5-unavailable cause already warned about above
+                        pass
+                    else:
+                        raise
 
         self._conn.commit()
 
