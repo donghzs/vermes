@@ -4,17 +4,10 @@ import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
 import { loadMessagesFromIDB } from '../stores/chat-storage'
+import EvolutionPanel from './EvolutionPanel.vue'
 
 const chat = useChatStore()
 const router = useRouter()
-const evoStatus = ref(null)
-
-onMounted(async () => {
-  try {
-    const res = await fetch('/api/evolution/status')
-    if (res.ok) evoStatus.value = await res.json()
-  } catch {}
-})
 
 function goSettings() { router.push('/settings') }
 
@@ -457,15 +450,9 @@ async function handleImportFile(e) {
           {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
         </button>
       </div>
-      <!-- 进化指示器 -->
-      <div v-if="evoStatus && evoStatus.active" class="px-3 pb-3 shrink-0">
-        <div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-          <span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse"></span>
-          <span>🧠 {{ evoStatus.success_rate || 0 }}%</span>
-          <span class="text-gray-300 dark:text-gray-600">·</span>
-          <span>{{ evoStatus.total_outcomes || 0 }} 条</span>
-          <span v-if="evoStatus.current_emotion" class="text-gray-300 dark:text-gray-600">· {{ evoStatus.current_emotion }}</span>
-        </div>
+      <!-- 进化系统面板 -->
+      <div class="shrink-0">
+        <EvolutionPanel />
       </div>
     </template>
   </div>

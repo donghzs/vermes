@@ -24,7 +24,7 @@ import yaml from 'highlight.js/lib/languages/yaml'
 const expandedTools = ref(new Set())
 
 // 默认展开的重要工具（用户通常需要查看结果的工具）
-const DEFAULT_EXPANDED_TOOLS = new Set(['read_file', 'terminal', 'search_files', 'execute_code'])
+const DEFAULT_EXPANDED_TOOLS = new Set(['read_file', 'terminal', 'search_files', 'execute_code', 'get_diagnostics', 'lsp_diagnostics', 'browser_screenshot', 'browser_snapshot', 'browser_navigate'])
 
 function toggleToolExpand(toolId) {
   if (expandedTools.value.has(toolId)) {
@@ -100,6 +100,37 @@ function formatToolPreview(tool) {
   if (tool.name === 'read_file') {
     const lineMatch = preview.match(/\((\d+)-(\d+)\)/)
     result = { type: 'file', lineRange: lineMatch ? `${lineMatch[1]}-${lineMatch[2]}` : null, content: preview, raw: preview }
+    _toolPreviewCache.set(tool, result)
+    return result
+  }
+
+  // LSP 诊断工具：解析诊断结果
+  if (tool.name === 'get_diagnostics' || tool.name === 'lsp_diagnostics' || tool.name === 'lsp_diagnose') {
+    const diags = []
+    const lines = preview.split('\n')
+    for (const line of lines) {
+      const match = line.match(/^(.+):(\d+):(\d+):\s*(error|warning|info|hint):\s*(.+)$/i)
+      if (match) {
+        diags.push({ file: match[1], line: match[2], col: match[3], severity: match[4].toLowerCase(), message: match[5] })
+      }
+    }
+    result = { type: 'diagnostics', diags, raw: preview }
+    _toolPreviewCache.set(tool, result)
+    return result
+  }
+
+  // 浏览器截图工具
+  if (tool.name === 'browser_screenshot') {
+    const imgMatch = preview.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/)
+    result = { type: 'screenshot', imageUrl: imgMatch ? imgMatch[0] : null, raw: preview }
+    _toolPreviewCache.set(tool, result)
+    return result
+  }
+
+  // 浏览器快照/导航工具
+  if (tool.name === 'browser_snapshot' || tool.name === 'browser_navigate' || tool.name === 'browse_url') {
+    const urlMatch = preview.match(/URL:\s*(https?:\/\/[^\s]+)/) || preview.match(/^(https?:\/\/[^\s]+)/m)
+    result = { type: 'browser', url: urlMatch ? urlMatch[1] : null, content: preview, raw: preview }
     _toolPreviewCache.set(tool, result)
     return result
   }
@@ -542,6 +573,41 @@ function streamElapsed(startTime) {
                       📄 行 {{ formatToolPreview(tool).lineRange }}
                     </div>
                     <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ formatToolPreview(tool).content }}</pre>
+                  </template>
+                  <!-- LSP 诊断模板 -->
+                  <template v-else-if="formatToolPreview(tool)?.type === 'diagnostics'">
+                    <div class="space-y-1">
+                      <div v-for="(d, idx) in formatToolPreview(tool).diags" :key="'diag-' + idx"
+                           class="flex items-start gap-2 text-[11px] font-mono">
+                        <span :class="{
+                          'text-red-500': d.severity === 'error',
+                          'text-yellow-500': d.severity === 'warning',
+                          'text-blue-400': d.severity === 'info'
+                        }">{{ d.severity === 'error' ? '❌' : d.severity === 'warning' ? '⚠️' : 'ℹ️' }}</span>
+                        <span class="text-gray-500 dark:text-gray-400">{{ d.file }}:{{ d.line }}:{{ d.col }}</span>
+                        <span class="text-gray-700 dark:text-gray-300">{{ d.message }}</span>
+                      </div>
+                      <div v-if="formatToolPreview(tool).diags.length === 0" class="text-[11px] text-green-500">✅ 无诊断问题</div>
+                    </div>
+                  </template>
+                  <!-- 浏览器截图模板 -->
+                  <template v-else-if="formatToolPreview(tool)?.type === 'screenshot'">
+                    <div class="browser-screenshot">
+                      <img v-if="formatToolPreview(tool).imageUrl"
+                           :src="formatToolPreview(tool).imageUrl"
+                           class="max-w-full rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"
+                           @click="window.open(formatToolPreview(tool).imageUrl, '_blank')" />
+                      <span v-else class="text-[11px] text-gray-500">截图生成中...</span>
+                    </div>
+                  </template>
+                  <!-- 浏览器快照模板 -->
+                  <template v-else-if="formatToolPreview(tool)?.type === 'browser'">
+                    <div class="browser-result">
+                      <div v-if="formatToolPreview(tool).url" class="text-[11px] text-blue-500 dark:text-blue-400 font-mono mb-1">
+                        🌐 {{ formatToolPreview(tool).url }}
+                      </div>
+                      <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ formatToolPreview(tool).content }}</pre>
+                    </div>
                   </template>
                   <!-- 默认模板 -->
                   <template v-else>
