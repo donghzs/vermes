@@ -274,7 +274,8 @@ CREATE TABLE IF NOT EXISTS messages (
     codex_message_items TEXT,
     platform_message_id TEXT,
     observed INTEGER DEFAULT 0,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    compacted INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS state_meta (
@@ -1891,16 +1892,26 @@ class SessionDB:
 
         - The live-context load filters ``active = 1`` by default, so the model
           reloads ONLY the compacted set.
-        - The archived pre-compaction turns stay on disk and remain
-          FTS-searchable, and are recoverable via
-          ``get_messages(..., include_inactive=True)``.
+        - The archived pre-compaction turns stay on disk (active=0) and stay
+          DISCOVERABLE: they are marked compacted=1, and search_messages()
+          includes compacted=1 rows by default — so session_search still finds
+          them, unlike rewind/undo rows (active=0, compacted=0) which stay
+          hidden. They remain in the FTS index and are recoverable via
+          get_messages(..., include_inactive=True).
 
         Returns the new active count.
         """
 
         def _do(conn):
+            # Soft-archive the live turns: active=0 hides them from the live
+            # context load, compacted=1 marks them as "summarized away" (vs
+            # rewind/undo's active=0+compacted=0, which means "user took it
+            # back"). search_messages includes compacted=1 rows by default so
+            # the pre-compaction transcript stays discoverable; live-context
+            # loads (active=1 only) still exclude them.
             conn.execute(
-                "UPDATE messages SET active = 0 WHERE session_id = ? AND active = 1",
+                "UPDATE messages SET active = 0, compacted = 1 "
+                "WHERE session_id = ? AND active = 1",
                 (session_id,),
             )
             inserted, tool_calls_total = self._insert_message_rows(
@@ -2419,6 +2430,7 @@ class SessionDB:
         limit: int = 20,
         offset: int = 0,
         sort: str = None,
+        include_inactive: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Full-text search across session messages using FTS5.
@@ -2440,6 +2452,13 @@ class SessionDB:
         The short-CJK LIKE fallback already orders by timestamp DESC and
         ignores ``sort``. The trigram CJK path honours ``sort`` like the main
         FTS5 path.
+
+        Rewound (``active=0``, ``compacted=0``) rows are excluded by default —
+        the user took those back. Compaction-archived rows (``active=0``,
+        ``compacted=1``) ARE included by default: they were summarized away from
+        the live context but remain part of the conversation's record, so the
+        pre-compaction transcript stays discoverable after in-place compaction
+        (#38763). Pass ``include_inactive=True`` to search every row regardless.
         """
         if not self._fts_enabled:
             return []
@@ -2473,6 +2492,11 @@ class SessionDB:
         # Build WHERE clauses dynamically
         where_clauses = ["messages_fts MATCH ?"]
         params: list = [query]
+        if not include_inactive:
+            # Live rows (active=1) AND compaction-archived rows (compacted=1)
+            # are discoverable; only rewind/undo rows (active=0, compacted=0)
+            # are hidden. See archive_and_compact() / #38763.
+            where_clauses.append("(m.active = 1 OR m.compacted = 1)")
 
         if source_filter is not None:
             source_placeholders = ",".join("?" for _ in source_filter)
@@ -2552,6 +2576,8 @@ class SessionDB:
                 trigram_query = " ".join(parts)
                 tri_where = ["messages_fts_trigram MATCH ?"]
                 tri_params: list = [trigram_query]
+                if not include_inactive:
+                    tri_where.append("(m.active = 1 OR m.compacted = 1)")
                 if source_filter is not None:
                     tri_where.append(f"s.source IN ({','.join('?' for _ in source_filter)})")
                     tri_params.extend(source_filter)
