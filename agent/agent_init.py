@@ -1210,6 +1210,14 @@ def init_agent(
     # are noisy.
     agent._environment_probe = bool(_agent_section.get("environment_probe", True))
 
+    # Per-platform prompt-hint overrides (config.yaml → platform_hints).
+    # Lets an admin append to or replace Hermes' built-in platform hint
+    # for a single messaging platform without affecting other platforms.
+    _platform_hints_cfg = _agent_cfg.get("platform_hints", {})
+    if not isinstance(_platform_hints_cfg, dict):
+        _platform_hints_cfg = {}
+    agent._platform_hint_overrides = _platform_hints_cfg
+
     # App-level API retry count (wraps each model API call).  Default 3,
     # overridable via agent.api_max_retries in config.yaml.  See #11616.
     try:
