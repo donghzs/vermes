@@ -3109,7 +3109,7 @@ def interactive_setup() -> None:
     if home:
         save_env_value("GOOGLE_CHAT_HOME_CHANNEL", home.strip())
 
-    print()
+    logger.info()
     print_success("Google Chat configuration saved to ~/.hermes/.env")
     print_info("Restart the gateway: hermes gateway restart")
 

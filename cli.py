@@ -871,8 +871,8 @@ def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
 
     repo_root = repo_root or _git_repo_root()
     if not repo_root:
-        print("\033[31m✗ --worktree requires being inside a git repository.\033[0m")
-        print("  cd into your project repo first, then run hermes -w")
+        logger.info("\033[31m✗ --worktree requires being inside a git repository.\033[0m")
+        logger.info("  cd into your project repo first, then run hermes -w")
         return None
 
     short_id = uuid.uuid4().hex[:8]
@@ -904,10 +904,10 @@ def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
             capture_output=True, text=True, timeout=30, cwd=repo_root,
         )
         if result.returncode != 0:
-            print(f"\033[31m✗ Failed to create worktree: {result.stderr.strip()}\033[0m")
+            logger.warning(f"\033[31m✗ Failed to create worktree: {result.stderr.strip()}\033[0m")
             return None
     except Exception as e:
-        print(f"\033[31m✗ Failed to create worktree: {e}\033[0m")
+        logger.info(f"\033[31m✗ Failed to create worktree: {e}\033[0m")
         return None
 
     # Copy files listed in .worktreeinclude (gitignored files the agent needs)
@@ -983,8 +983,8 @@ def _setup_worktree(repo_root: str = None) -> Optional[Dict[str, str]]:
         "repo_root": repo_root,
     }
 
-    print(f"\033[32m✓ Worktree created:\033[0m {wt_path}")
-    print(f"  Branch: {branch_name}")
+    logger.info(f"\033[32m✓ Worktree created:\033[0m {wt_path}")
+    logger.info(f"  Branch: {branch_name}")
 
     return info
 
@@ -1025,8 +1025,8 @@ def _cleanup_worktree(info: Dict[str, str] = None) -> None:
         has_unpushed = True  # Assume unpushed on error — don't delete
 
     if has_unpushed:
-        print(f"\n\033[33m⚠ Worktree has unpushed commits, keeping: {wt_path}\033[0m")
-        print(f"  To clean up manually: git worktree remove --force {wt_path}")
+        logger.info(f"\n\033[33m⚠ Worktree has unpushed commits, keeping: {wt_path}\033[0m")
+        logger.info(f"  To clean up manually: git worktree remove --force {wt_path}")
         _active_worktree = None
         return
 
@@ -1050,7 +1050,7 @@ def _cleanup_worktree(info: Dict[str, str] = None) -> None:
         logger.debug("Failed to delete branch %s: %s", branch, e)
 
     _active_worktree = None
-    print(f"\033[32m✓ Worktree cleaned up: {wt_path}\033[0m")
+    logger.info(f"\033[32m✓ Worktree cleaned up: {wt_path}\033[0m")
 
 
 def _run_state_db_auto_maintenance(session_db) -> None:
@@ -1812,7 +1812,7 @@ def _replay_output_history() -> None:
 def _cprint(text: str):
     """Print ANSI-colored text through prompt_toolkit's native renderer.
 
-    Raw ANSI escapes written via print() are swallowed by patch_stdout's
+    Raw ANSI escapes written via logger.info() are swallowed by patch_stdout's
     StdoutProxy.  Routing through print_formatted_text(ANSI(...)) lets
     prompt_toolkit parse the escapes and render real colors.
 
@@ -1850,7 +1850,7 @@ def _cprint(text: str):
             # worker logging to a file). prompt_toolkit raises
             # NoConsoleScreenBufferError (Windows) or OSError (other).
             try:
-                print(text)
+                logger.info(text)
             except Exception:
                 pass
         return
@@ -2357,7 +2357,7 @@ class ChatConsole:
     Captures Rich's rendered ANSI output and routes it through _cprint
     so colors and markup render correctly inside the interactive chat loop.
     Drop-in replacement for Rich Console — just pass this to any function
-    that expects a console.print() interface.
+    that expects a console.logger.info() interface.
     """
 
     def __init__(self):
@@ -2375,7 +2375,7 @@ class ChatConsole:
         self._buffer.truncate()
         # Read terminal width at render time so panels adapt to current size
         self._inner.width = shutil.get_terminal_size((80, 24)).columns
-        self._inner.print(*args, **kwargs)
+        self._inner.logger.info(*args, **kwargs)
         output = self._buffer.getvalue()
         for line in output.rstrip("\n").split("\n"):
             _cprint(line)
@@ -2386,7 +2386,7 @@ class ChatConsole:
 
         Some slash command helpers use ``console.status(...)`` when running in
         the standalone CLI. Interactive chat routes those helpers through
-        ``ChatConsole()``, which historically only implemented ``print()``.
+        ``ChatConsole()``, which historically only implemented ``logger.info()``.
         Returning a silent context manager keeps slash commands compatible
         without duplicating the higher-level busy indicator already shown by
         ``HermesCLI._busy_command()``.
@@ -3847,12 +3847,12 @@ class HermesCLI:
 
     def _print_user_message_preview(self, user_input: str) -> None:
         """Render a user message using the normal chat scrollback style."""
-        ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
+        ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
         text = str(user_input or "")
         if "\n" in text:
-            ChatConsole().print(self._format_submitted_user_message_preview(text))
+            ChatConsole().logger.info(self._format_submitted_user_message_preview(text))
         else:
-            ChatConsole().print(f"[bold {_accent_hex()}]●[/] [bold]{_escape(text)}[/]")
+            ChatConsole().logger.info(f"[bold {_accent_hex()}]●[/] [bold]{_escape(text)}[/]")
 
     def _stream_reasoning_delta(self, text: str) -> None:
         """Stream reasoning/thinking tokens into a dim box above the response.
@@ -4242,7 +4242,7 @@ class HermesCLI:
         self._command_status = status
         self._invalidate(min_interval=0.0)
         try:
-            print(f"⏳ {status}")
+            logger.info(f"⏳ {status}")
             yield
         finally:
             self._command_running = False
@@ -4331,7 +4331,7 @@ class HermesCLI:
 
         if runtime is None:
             message = format_runtime_provider_error(_primary_exc) if _primary_exc else "Provider resolution failed."
-            ChatConsole().print(f"[bold red]{message}[/]")
+            ChatConsole().logger.info(f"[bold red]{message}[/]")
             return False
 
         api_key = runtime.get("api_key")
@@ -4362,11 +4362,11 @@ class HermesCLI:
                     base_url, _source,
                 )
             else:
-                print("\n⚠️  Provider resolver returned an empty API key. "
+                logger.info("\n⚠️  Provider resolver returned an empty API key. "
                       "Set OPENROUTER_API_KEY or run: hermes setup")
                 return False
         if not isinstance(base_url, str) or not base_url:
-            print("\n⚠️  Provider resolver returned an empty base URL. "
+            logger.info("\n⚠️  Provider resolver returned an empty base URL. "
                   "Check your provider config or run: hermes setup")
             return False
 
@@ -4514,7 +4514,7 @@ class HermesCLI:
             except Exception:
                 resolved_id = self.session_id
             if resolved_id and resolved_id != self.session_id:
-                ChatConsole().print(
+                ChatConsole().logger.info(
                     f"[{_DIM}]Session {_escape(self.session_id)} was compressed into "
                     f"{_escape(resolved_id)}; resuming the descendant with your "
                     f"transcript.[/]"
@@ -4531,14 +4531,14 @@ class HermesCLI:
                 title_part = ""
                 if session_meta.get("title"):
                     title_part = f" \"{session_meta['title']}\""
-                ChatConsole().print(
+                ChatConsole().logger.info(
                     f"[bold {_accent_hex()}]↻ Resumed session[/] "
                     f"[bold]{_escape(self.session_id)}[/]"
                     f"[bold {_accent_hex()}]{_escape(title_part)}[/] "
                     f"({msg_count} user message{'s' if msg_count != 1 else ''}, {len(restored)} total messages)"
                 )
             else:
-                ChatConsole().print(
+                ChatConsole().logger.info(
                     f"[bold {_accent_hex()}]Session {_escape(self.session_id)} found but has no messages. Starting fresh.[/]"
                 )
             # Re-open the session (clear ended_at so it's active again)
@@ -4652,7 +4652,7 @@ class HermesCLI:
                     # Keep _pending_title so it can be retried after row creation succeeds
             return True
         except Exception as e:
-            ChatConsole().print(f"[bold red]Failed to initialize agent: {e}[/]")
+            ChatConsole().logger.info(f"[bold red]Failed to initialize agent: {e}[/]")
             return False
     
     def _show_security_advisories(self):
@@ -4674,7 +4674,7 @@ class HermesCLI:
             if banner:
                 # Print to stderr — keeps stdout clean for piped automation,
                 # and Rich's banner rendering already wrote to stdout above.
-                print(banner, file=sys.stderr, flush=True)
+                logger.warning(banner, flush=True)
         except Exception:
             # Never let the security banner block startup. Failures are
             # logged at DEBUG by the advisory module.
@@ -5011,7 +5011,7 @@ class HermesCLI:
             width=width,
         )
         with _suspend_output_history():
-            console.print(panel)
+            console.logger.info(panel)
         return buf.getvalue().rstrip("\n").splitlines()
 
     def _try_attach_clipboard_image(self) -> bool:
@@ -5045,14 +5045,14 @@ class HermesCLI:
         from tools.checkpoint_manager import format_checkpoint_list
 
         if not hasattr(self, 'agent') or not self.agent:
-            print("  No active agent session.")
+            logger.info("  No active agent session.")
             return
 
         mgr = self.agent._checkpoint_mgr
         if not mgr.enabled:
-            print("  Checkpoints are not enabled.")
-            print("  Enable with: hermes --checkpoints")
-            print("  Or in config.yaml: checkpoints: { enabled: true }")
+            logger.info("  Checkpoints are not enabled.")
+            logger.info("  Enable with: hermes --checkpoints")
+            logger.info("  Or in config.yaml: checkpoints: { enabled: true }")
             return
 
         cwd = os.getenv("TERMINAL_CWD", os.getcwd())
@@ -5062,17 +5062,17 @@ class HermesCLI:
         if not args:
             # List checkpoints
             checkpoints = mgr.list_checkpoints(cwd)
-            print(format_checkpoint_list(checkpoints, cwd))
+            logger.info(format_checkpoint_list(checkpoints, cwd))
             return
 
         # Handle /rollback diff <N>
         if args[0].lower() == "diff":
             if len(args) < 2:
-                print("  Usage: /rollback diff <N>")
+                logger.info("  Usage: /rollback diff <N>")
                 return
             checkpoints = mgr.list_checkpoints(cwd)
             if not checkpoints:
-                print(f"  No checkpoints found for {cwd}")
+                logger.info(f"  No checkpoints found for {cwd}")
                 return
             target_hash = self._resolve_checkpoint_ref(args[1], checkpoints)
             if not target_hash:
@@ -5082,26 +5082,26 @@ class HermesCLI:
                 stat = result.get("stat", "")
                 diff = result.get("diff", "")
                 if not stat and not diff:
-                    print("  No changes since this checkpoint.")
+                    logger.info("  No changes since this checkpoint.")
                 else:
                     if stat:
-                        print(f"\n{stat}")
+                        logger.info(f"\n{stat}")
                     if diff:
                         # Limit diff output to avoid terminal flood
                         diff_lines = diff.splitlines()
                         if len(diff_lines) > 80:
-                            print("\n".join(diff_lines[:80]))
-                            print(f"\n  ... ({len(diff_lines) - 80} more lines, showing first 80)")
+                            logger.info("\n".join(diff_lines[:80]))
+                            logger.info(f"\n  ... ({len(diff_lines) - 80} more lines, showing first 80)")
                         else:
-                            print(f"\n{diff}")
+                            logger.info(f"\n{diff}")
             else:
-                print(f"  ❌ {result['error']}")
+                logger.info(f"  ❌ {result['error']}")
             return
 
         # Resolve checkpoint reference (number or hash)
         checkpoints = mgr.list_checkpoints(cwd)
         if not checkpoints:
-            print(f"  No checkpoints found for {cwd}")
+            logger.info(f"  No checkpoints found for {cwd}")
             return
 
         target_hash = self._resolve_checkpoint_ref(args[0], checkpoints)
@@ -5114,18 +5114,18 @@ class HermesCLI:
         result = mgr.restore(cwd, target_hash, file_path=file_path)
         if result["success"]:
             if file_path:
-                print(f"  ✅ Restored {file_path} from checkpoint {result['restored_to']}: {result['reason']}")
+                logger.info(f"  ✅ Restored {file_path} from checkpoint {result['restored_to']}: {result['reason']}")
             else:
-                print(f"  ✅ Restored to checkpoint {result['restored_to']}: {result['reason']}")
-            print("  A pre-rollback snapshot was saved automatically.")
+                logger.info(f"  ✅ Restored to checkpoint {result['restored_to']}: {result['reason']}")
+            logger.info("  A pre-rollback snapshot was saved automatically.")
 
             # Also undo the last conversation turn so the agent's context
             # matches the restored filesystem state
             if self.conversation_history:
                 self.undo_last()
-                print("  Chat turn undone to match restored file state.")
+                logger.info("  Chat turn undone to match restored file state.")
         else:
-            print(f"  ❌ {result['error']}")
+            logger.info(f"  ❌ {result['error']}")
 
     def _resolve_checkpoint_ref(self, ref: str, checkpoints: list) -> str | None:
         """Resolve a checkpoint number or hash to a full commit hash."""
@@ -5134,7 +5134,7 @@ class HermesCLI:
             if 0 <= idx < len(checkpoints):
                 return checkpoints[idx]["hash"]
             else:
-                print(f"  Invalid checkpoint number. Use 1-{len(checkpoints)}.")
+                logger.info(f"  Invalid checkpoint number. Use 1-{len(checkpoints)}.")
                 return None
         except ValueError:
             # Treat as a git hash
@@ -5161,12 +5161,12 @@ class HermesCLI:
         if subcmd in {"list", "ls"}:
             snaps = list_quick_snapshots()
             if not snaps:
-                print("  No state snapshots yet.")
-                print("  Create one: /snapshot create [label]")
+                logger.info("  No state snapshots yet.")
+                logger.info("  Create one: /snapshot create [label]")
                 return
-            print(f"  State snapshots ({display_hermes_home()}/state-snapshots/):\n")
-            print(f"  {'#':>3}  {'ID':<35} {'Files':>5} {'Size':>10} {'Label'}")
-            print(f"  {'─'*3}  {'─'*35} {'─'*5} {'─'*10} {'─'*20}")
+            logger.info(f"  State snapshots ({display_hermes_home()}/state-snapshots/):\n")
+            logger.info(f"  {'#':>3}  {'ID':<35} {'Files':>5} {'Size':>10} {'Label'}")
+            logger.info(f"  {'─'*3}  {'─'*35} {'─'*5} {'─'*10} {'─'*20}")
             for i, s in enumerate(snaps, 1):
                 size = s.get("total_size", 0)
                 if size < 1024:
@@ -5176,23 +5176,23 @@ class HermesCLI:
                 else:
                     size_str = f"{size / 1024 / 1024:.1f} MB"
                 label = s.get("label") or ""
-                print(f"  {i:3}  {s['id']:<35} {s.get('file_count', 0):>5} {size_str:>10} {label}")
+                logger.info(f"  {i:3}  {s['id']:<35} {s.get('file_count', 0):>5} {size_str:>10} {label}")
 
         elif subcmd == "create":
             label = " ".join(parts[2:]) if len(parts) > 2 else None
             snap_id = create_quick_snapshot(label=label)
             if snap_id:
-                print(f"  Snapshot created: {snap_id}")
+                logger.info(f"  Snapshot created: {snap_id}")
             else:
-                print("  No state files found to snapshot.")
+                logger.info("  No state files found to snapshot.")
 
         elif subcmd in {"restore", "rewind"}:
             if len(parts) < 3:
-                print("  Usage: /snapshot restore <snapshot-id>")
+                logger.info("  Usage: /snapshot restore <snapshot-id>")
                 # Show hint with most recent snapshot
                 snaps = list_quick_snapshots(limit=1)
                 if snaps:
-                    print(f"  Most recent: {snaps[0]['id']}")
+                    logger.info(f"  Most recent: {snaps[0]['id']}")
                 return
             snap_id = parts[2]
             # Allow restore by number (1-indexed)
@@ -5202,15 +5202,15 @@ class HermesCLI:
                 if 1 <= idx <= len(snaps):
                     snap_id = snaps[idx - 1]["id"]
                 else:
-                    print(f"  Invalid snapshot number. Use 1-{len(snaps)}.")
+                    logger.info(f"  Invalid snapshot number. Use 1-{len(snaps)}.")
                     return
             except ValueError:
                 pass
             if restore_quick_snapshot(snap_id):
-                print(f"  Restored state from: {snap_id}")
-                print("  Restart recommended for state.db changes to take effect.")
+                logger.info(f"  Restored state from: {snap_id}")
+                logger.info("  Restart recommended for state.db changes to take effect.")
             else:
-                print(f"  Snapshot not found: {snap_id}")
+                logger.info(f"  Snapshot not found: {snap_id}")
 
         elif subcmd == "prune":
             keep = 20
@@ -5218,14 +5218,14 @@ class HermesCLI:
                 try:
                     keep = int(parts[2])
                 except ValueError:
-                    print("  Usage: /snapshot prune [keep-count]")
+                    logger.info("  Usage: /snapshot prune [keep-count]")
                     return
             deleted = prune_quick_snapshots(keep=keep)
-            print(f"  Pruned {deleted} old snapshot(s) (keeping {keep}).")
+            logger.info(f"  Pruned {deleted} old snapshot(s) (keeping {keep}).")
 
         else:
-            print(f"  Unknown subcommand: {subcmd}")
-            print("  Usage: /snapshot [list|create [label]|restore <id>|prune [N]]")
+            logger.info(f"  Unknown subcommand: {subcmd}")
+            logger.info("  Usage: /snapshot [list|create [label]|restore <id>|prune [N]]")
 
     def _handle_stop_command(self):
         """Handle /stop — kill all running background processes.
@@ -5239,12 +5239,12 @@ class HermesCLI:
         running = [p for p in processes if p.get("status") == "running"]
 
         if not running:
-            print("  No running background processes.")
+            logger.info("  No running background processes.")
             return
 
-        print(f"  Stopping {len(running)} background process(es)...")
+        logger.info(f"  Stopping {len(running)} background process(es)...")
         killed = process_registry.kill_all()
-        print(f"  ✅ Stopped {killed} process(es).")
+        logger.info(f"  ✅ Stopped {killed} process(es).")
 
     def _handle_agents_command(self):
         """Handle /agents — show background processes and agent status."""
@@ -5636,12 +5636,12 @@ class HermesCLI:
             for cmd, desc in commands.items():
                 if not self._command_available(cmd):
                     continue
-                ChatConsole().print(f"    [bold {_accent_hex()}]{cmd:<15}[/] [dim]-[/] {_escape(desc)}")
+                ChatConsole().logger.info(f"    [bold {_accent_hex()}]{cmd:<15}[/] [dim]-[/] {_escape(desc)}")
 
         if _skill_commands:
             _cprint(f"\n  ⚡ {_BOLD}Skill Commands{_RST} ({len(_skill_commands)} installed):")
             for cmd, info in sorted(_skill_commands.items()):
-                ChatConsole().print(
+                ChatConsole().logger.info(
                     f"    [bold {_accent_hex()}]{cmd:<22}[/] [dim]-[/] {_escape(info['description'])}"
                 )
 
@@ -5651,7 +5651,7 @@ class HermesCLI:
             for cmd, info in sorted(_bundles_now.items()):
                 skill_count = len(info.get("skills", []))
                 desc = info.get("description") or f"Load {skill_count} skills"
-                ChatConsole().print(
+                ChatConsole().logger.info(
                     f"    [bold {_accent_hex()}]{cmd:<22}[/] [dim]-[/] "
                     f"{_escape(desc)} [dim]({skill_count} skills)[/]"
                 )
@@ -5669,18 +5669,18 @@ class HermesCLI:
         tools = get_tool_definitions(enabled_toolsets=self.enabled_toolsets, quiet_mode=True)
         
         if not tools:
-            print("(;_;) No tools available")
+            logger.info("(;_;) No tools available")
             return
         
         # Header
-        print()
+        logger.info()
         title = "(^_^)/ Available Tools"
         width = 78
         pad = width - len(title)
-        print("+" + "-" * width + "+")
-        print("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
-        print("+" + "-" * width + "+")
-        print()
+        logger.info("+" + "-" * width + "+")
+        logger.info("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
+        logger.info("+" + "-" * width + "+")
+        logger.info()
         
         # Group tools by toolset
         toolsets = {}
@@ -5698,13 +5698,13 @@ class HermesCLI:
         
         # Display by toolset
         for toolset in sorted(toolsets.keys()):
-            print(f"  [{toolset}]")
+            logger.info(f"  [{toolset}]")
             for name, desc in toolsets[toolset]:
-                print(f"    * {name:<20} - {desc}")
-            print()
+                logger.info(f"    * {name:<20} - {desc}")
+            logger.info()
         
-        print(f"  Total: {len(tools)} tools  ヽ(^o^)ノ")
-        print()
+        logger.info(f"  Total: {len(tools)} tools  ヽ(^o^)ノ")
+        logger.info()
 
     def _handle_tools_command(self, cmd: str):
         """Handle /tools [list|disable|enable] slash commands.
@@ -5723,7 +5723,7 @@ class HermesCLI:
 
         def _run_capture(ns: Namespace) -> None:
             """Run tools_disable_enable_command, routing its ANSI-colored
-            print() output through _cprint when inside the interactive TUI
+            logger.info() output through _cprint when inside the interactive TUI
             so escapes aren't mangled by patch_stdout's StdoutProxy into
             garbled '?[32m...?[0m' text.
 
@@ -5764,9 +5764,9 @@ class HermesCLI:
 
         names = parts[2:]
         if not names:
-            print(f"(._.) Usage: /tools {subcommand} <name> [name ...]")
-            print(f"  Built-in toolset:  /tools {subcommand} web")
-            print(f"  MCP tool:          /tools {subcommand} github:create_issue")
+            logger.info(f"(._.) Usage: /tools {subcommand} <name> [name ...]")
+            logger.info(f"  Built-in toolset:  /tools {subcommand} web")
+            logger.info(f"  MCP tool:          /tools {subcommand} github:create_issue")
             return
 
         # Apply the change directly — the user typing the command is implicit
@@ -5790,14 +5790,14 @@ class HermesCLI:
         all_toolsets = get_all_toolsets()
         
         # Header
-        print()
+        logger.info()
         title = "(^_^)b Available Toolsets"
         width = 58
         pad = width - len(title)
-        print("+" + "-" * width + "+")
-        print("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
-        print("+" + "-" * width + "+")
-        print()
+        logger.info("+" + "-" * width + "+")
+        logger.info("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
+        logger.info("+" + "-" * width + "+")
+        logger.info()
         
         for name in sorted(all_toolsets.keys()):
             info = get_toolset_info(name)
@@ -5807,14 +5807,14 @@ class HermesCLI:
                 
                 # Mark if currently enabled
                 marker = "(*)" if self.enabled_toolsets and name in self.enabled_toolsets else "   "
-                print(f"  {marker} {name:<18} [{tool_count:>2} tools] - {desc}")
+                logger.info(f"  {marker} {name:<18} [{tool_count:>2} tools] - {desc}")
         
-        print()
-        print("  (*) = currently enabled")
-        print()
-        print("  Tip: Use 'all' or '*' to enable all toolsets")
-        print("  Example: python cli.py --toolsets web,terminal")
-        print()
+        logger.info()
+        logger.info("  (*) = currently enabled")
+        logger.info()
+        logger.info("  Tip: Use 'all' or '*' to enable all toolsets")
+        logger.info("  Example: python cli.py --toolsets web,terminal")
+        logger.info()
     
     def _handle_profile_command(self):
         """Display active profile name and home directory."""
@@ -5824,10 +5824,10 @@ class HermesCLI:
         display = display_hermes_home()
         profile_name = get_active_profile_name()
 
-        print()
-        print(f"  Profile: {profile_name}")
-        print(f"  Home:    {display}")
-        print()
+        logger.info()
+        logger.info(f"  Profile: {profile_name}")
+        logger.info(f"  Home:    {display}")
+        logger.info()
 
     def show_config(self):
         """Display current configuration with kawaii ASCII art."""
@@ -5854,38 +5854,38 @@ class HermesCLI:
         else:
             api_key_display = "Not set!"
         
-        print()
+        logger.info()
         title = "(^_^) Configuration"
         width = 50
         pad = width - len(title)
-        print("+" + "-" * width + "+")
-        print("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
-        print("+" + "-" * width + "+")
-        print()
-        print("  -- Model --")
-        print(f"  Model:     {self.model}")
-        print(f"  Base URL:  {self.base_url}")
-        print(f"  API Key:   {api_key_display}")
-        print()
-        print("  -- Terminal --")
-        print(f"  Environment:  {terminal_env}")
+        logger.info("+" + "-" * width + "+")
+        logger.info("|" + " " * (pad // 2) + title + " " * (pad - pad // 2) + "|")
+        logger.info("+" + "-" * width + "+")
+        logger.info()
+        logger.info("  -- Model --")
+        logger.info(f"  Model:     {self.model}")
+        logger.info(f"  Base URL:  {self.base_url}")
+        logger.info(f"  API Key:   {api_key_display}")
+        logger.info()
+        logger.info("  -- Terminal --")
+        logger.info(f"  Environment:  {terminal_env}")
         if terminal_env == "ssh":
             ssh_host = os.getenv("TERMINAL_SSH_HOST", "not set")
             ssh_user = os.getenv("TERMINAL_SSH_USER", "not set")
             ssh_port = os.getenv("TERMINAL_SSH_PORT", "22")
-            print(f"  SSH Target:   {ssh_user}@{ssh_host}:{ssh_port}")
-        print(f"  Working Dir:  {terminal_cwd}")
-        print(f"  Timeout:      {terminal_timeout}s")
-        print()
-        print("  -- Agent --")
-        print(f"  Max Turns:  {self.max_turns}")
-        print(f"  Toolsets:   {', '.join(self.enabled_toolsets) if self.enabled_toolsets else 'all'}")
-        print(f"  Verbose:    {self.verbose}")
-        print()
-        print("  -- Session --")
-        print(f"  Started:     {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Config File: {config_path} {config_status}")
-        print()
+            logger.info(f"  SSH Target:   {ssh_user}@{ssh_host}:{ssh_port}")
+        logger.info(f"  Working Dir:  {terminal_cwd}")
+        logger.info(f"  Timeout:      {terminal_timeout}s")
+        logger.info()
+        logger.info("  -- Agent --")
+        logger.info(f"  Max Turns:  {self.max_turns}")
+        logger.info(f"  Toolsets:   {', '.join(self.enabled_toolsets) if self.enabled_toolsets else 'all'}")
+        logger.info(f"  Verbose:    {self.verbose}")
+        logger.info()
+        logger.info("  -- Session --")
+        logger.info(f"  Started:     {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"  Config File: {config_path} {config_status}")
+        logger.info()
     
     def _list_recent_sessions(self, limit: int = 10) -> list[dict[str, Any]]:
         """Return recent CLI sessions for in-chat browsing/resume affordances."""
@@ -5912,29 +5912,29 @@ class HermesCLI:
 
         from hermes_cli.main import _relative_time
 
-        print()
+        logger.info()
         if reason == "history":
-            print("(._.) No messages in the current chat yet — here are recent sessions you can resume:")
+            logger.info("(._.) No messages in the current chat yet — here are recent sessions you can resume:")
         else:
-            print("  Recent sessions:")
-        print()
-        print(f"  {'Title':<32} {'Preview':<40} {'Last Active':<13} {'ID'}")
-        print(f"  {'─' * 32} {'─' * 40} {'─' * 13} {'─' * 24}")
+            logger.info("  Recent sessions:")
+        logger.info()
+        logger.info(f"  {'Title':<32} {'Preview':<40} {'Last Active':<13} {'ID'}")
+        logger.info(f"  {'─' * 32} {'─' * 40} {'─' * 13} {'─' * 24}")
         for session in sessions:
             title = (session.get("title") or "—")[:30]
             preview = (session.get("preview") or "")[:38]
             last_active = _relative_time(session.get("last_active"))
-            print(f"  {title:<32} {preview:<40} {last_active:<13} {session['id']}")
-        print()
-        print("  Use /resume <session id or title> to continue where you left off.")
-        print()
+            logger.info(f"  {title:<32} {preview:<40} {last_active:<13} {session['id']}")
+        logger.info()
+        logger.info("  Use /resume <session id or title> to continue where you left off.")
+        logger.info()
         return True
 
     def show_history(self):
         """Display conversation history."""
         if not self.conversation_history:
             if not self._show_recent_sessions(reason="history"):
-                print("(._.) No conversation history yet.")
+                logger.info("(._.) No conversation history yet.")
             return
 
         preview_limit = 400
@@ -5947,14 +5947,14 @@ class HermesCLI:
                 return
 
             noun = "message" if hidden_tool_messages == 1 else "messages"
-            print("\n  [Tools]")
-            print(f"    ({hidden_tool_messages} tool {noun} hidden)")
+            logger.info("\n  [Tools]")
+            logger.info(f"    ({hidden_tool_messages} tool {noun} hidden)")
             hidden_tool_messages = 0
 
-        print()
-        print("+" + "-" * 50 + "+")
-        print("|" + " " * 12 + "(^_^) Conversation History" + " " * 11 + "|")
-        print("+" + "-" * 50 + "+")
+        logger.info()
+        logger.info("+" + "-" * 50 + "+")
+        logger.info("|" + " " * 12 + "(^_^) Conversation History" + " " * 11 + "|")
+        logger.info("+" + "-" * 50 + "+")
 
         for msg in self.conversation_history:
             role = msg.get("role", "unknown")
@@ -5973,13 +5973,13 @@ class HermesCLI:
             content_text = "" if content is None else str(content)
 
             if role == "user":
-                print(f"\n  [You #{visible_index}]")
-                print(
+                logger.info(f"\n  [You #{visible_index}]")
+                logger.info(
                     f"    {content_text[:preview_limit]}{'...' if len(content_text) > preview_limit else ''}"
                 )
                 continue
 
-            print(f"\n  [Hermes #{visible_index}]")
+            logger.info(f"\n  [Hermes #{visible_index}]")
             tool_calls = msg.get("tool_calls") or []
             if content_text:
                 preview = content_text[:preview_limit]
@@ -5992,10 +5992,10 @@ class HermesCLI:
             else:
                 preview = "(no text response)"
                 suffix = ""
-            print(f"    {preview}{suffix}")
+            logger.info(f"    {preview}{suffix}")
 
         flush_tool_summary()
-        print()
+        logger.info()
     
     def _notify_session_boundary(self, event_type: str) -> None:
         """Fire a session-boundary plugin hook (on_session_finalize or on_session_reset).
@@ -6110,9 +6110,9 @@ class HermesCLI:
 
         if not silent:
             if title:
-                print(f"(^_^)v New session started: {title}")
+                logger.info(f"(^_^)v New session started: {title}")
             else:
-                print("(^_^)v New session started!")
+                logger.info("(^_^)v New session started!")
 
     def _handle_handoff_command(self, cmd_original: str) -> bool:
         """Handle ``/handoff <platform>`` — transfer this CLI session to a gateway platform.
@@ -6552,7 +6552,7 @@ class HermesCLI:
         regardless of whether the user ever runs ``/save``.
         """
         if not self.conversation_history:
-            print("(;_;) No conversation to save.")
+            logger.info("(;_;) No conversation to save.")
             return
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -6560,7 +6560,7 @@ class HermesCLI:
         try:
             saved_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            print(f"(x_x) Failed to create save directory {saved_dir}: {e}")
+            logger.info(f"(x_x) Failed to create save directory {saved_dir}: {e}")
             return
         path = saved_dir / f"hermes_conversation_{timestamp}.json"
 
@@ -6572,11 +6572,11 @@ class HermesCLI:
                     "session_start": self.session_start.isoformat(),
                     "messages": self.conversation_history,
                 }, f, indent=2, ensure_ascii=False)
-            print(f"(^_^)v Conversation snapshot saved to: {path}")
+            logger.info(f"(^_^)v Conversation snapshot saved to: {path}")
             if self.session_id:
-                print(f"       Resume the live session with: hermes --resume {self.session_id}")
+                logger.info(f"       Resume the live session with: hermes --resume {self.session_id}")
         except Exception as e:
-            print(f"(x_x) Failed to save: {e}")
+            logger.info(f"(x_x) Failed to save: {e}")
     
     def retry_last(self):
         """Retry the last user message by removing the last exchange and re-sending.
@@ -6586,7 +6586,7 @@ class HermesCLI:
         Returns the message to re-send, or None if there's nothing to retry.
         """
         if not self.conversation_history:
-            print("(._.) No messages to retry.")
+            logger.info("(._.) No messages to retry.")
             return None
         
         # Walk backwards to find the last user message
@@ -6597,14 +6597,14 @@ class HermesCLI:
                 break
         
         if last_user_idx is None:
-            print("(._.) No user message found to retry.")
+            logger.info("(._.) No user message found to retry.")
             return None
         
         # Extract the message text and remove everything from that point forward
         last_message = self.conversation_history[last_user_idx].get("content", "")
         self.conversation_history = self.conversation_history[:last_user_idx]
         
-        print(f"(^_^)b Retrying: \"{last_message[:60]}{'...' if len(last_message) > 60 else ''}\"")
+        logger.info(f"(^_^)b Retrying: \"{last_message[:60]}{'...' if len(last_message) > 60 else ''}\"")
         return last_message
     
     def undo_last(self):
@@ -6614,7 +6614,7 @@ class HermesCLI:
         onward (including assistant responses, tool calls, etc.).
         """
         if not self.conversation_history:
-            print("(._.) No messages to undo.")
+            logger.info("(._.) No messages to undo.")
             return
         
         # Walk backwards to find the last user message
@@ -6625,7 +6625,7 @@ class HermesCLI:
                 break
         
         if last_user_idx is None:
-            print("(._.) No user message found to undo.")
+            logger.info("(._.) No user message found to undo.")
             return
         
         # Count how many messages we're removing
@@ -6635,9 +6635,9 @@ class HermesCLI:
         # Truncate history to before the last user message
         self.conversation_history = self.conversation_history[:last_user_idx]
         
-        print(f"(^_^)b Undid {removed_count} message(s). Removed: \"{removed_msg[:60]}{'...' if len(removed_msg) > 60 else ''}\"")
+        logger.info(f"(^_^)b Undid {removed_count} message(s). Removed: \"{removed_msg[:60]}{'...' if len(removed_msg) > 60 else ''}\"")
         remaining = len(self.conversation_history)
-        print(f"  {remaining} message(s) remaining in history.")
+        logger.info(f"  {remaining} message(s) remaining in history.")
     
     def _run_curses_picker(self, title: str, items: list[str], default_index: int = 0) -> int | None:
         """Run curses_single_select via run_in_terminal so prompt_toolkit handles terminal ownership cleanly."""
@@ -7354,7 +7354,7 @@ class HermesCLI:
 
     def _console_print(self, *args, **kwargs):
         """Print through the active command-safe console."""
-        self._output_console().print(*args, **kwargs)
+        self._output_console().logger.info(*args, **kwargs)
 
     @staticmethod
     def _resolve_personality_prompt(value) -> str:
@@ -7426,38 +7426,38 @@ class HermesCLI:
                 self.system_prompt = ""
                 self.agent = None  # Force re-init
                 if save_config_value("agent.system_prompt", ""):
-                    print("(^_^)b Personality cleared (saved to config)")
+                    logger.info("(^_^)b Personality cleared (saved to config)")
                 else:
-                    print("(^_^) Personality cleared (session only)")
-                print("  No personality overlay — using base agent behavior.")
+                    logger.info("(^_^) Personality cleared (session only)")
+                logger.info("  No personality overlay — using base agent behavior.")
             elif personality_name in self.personalities:
                 self.system_prompt = self._resolve_personality_prompt(self.personalities[personality_name])
                 self.agent = None  # Force re-init
                 if save_config_value("agent.system_prompt", self.system_prompt):
-                    print(f"(^_^)b Personality set to '{personality_name}' (saved to config)")
+                    logger.info(f"(^_^)b Personality set to '{personality_name}' (saved to config)")
                 else:
-                    print(f"(^_^) Personality set to '{personality_name}' (session only)")
-                print(f"  \"{self.system_prompt[:60]}{'...' if len(self.system_prompt) > 60 else ''}\"")
+                    logger.info(f"(^_^) Personality set to '{personality_name}' (session only)")
+                logger.info(f"  \"{self.system_prompt[:60]}{'...' if len(self.system_prompt) > 60 else ''}\"")
             else:
-                print(f"(._.) Unknown personality: {personality_name}")
-                print(f"  Available: none, {', '.join(self.personalities.keys())}")
+                logger.info(f"(._.) Unknown personality: {personality_name}")
+                logger.info(f"  Available: none, {', '.join(self.personalities.keys())}")
         else:
             # Show available personalities
-            print()
-            print("+" + "-" * 50 + "+")
-            print("|" + " " * 12 + "(^o^)/ Personalities" + " " * 15 + "|")
-            print("+" + "-" * 50 + "+")
-            print()
-            print(f"  {'none':<12} - (no personality overlay)")
+            logger.info()
+            logger.info("+" + "-" * 50 + "+")
+            logger.info("|" + " " * 12 + "(^o^)/ Personalities" + " " * 15 + "|")
+            logger.info("+" + "-" * 50 + "+")
+            logger.info()
+            logger.info(f"  {'none':<12} - (no personality overlay)")
             for name, prompt in self.personalities.items():
                 if isinstance(prompt, dict):
                     preview = prompt.get("description") or prompt.get("system_prompt", "")[:50]
                 else:
                     preview = str(prompt)[:50]
-                print(f"  {name:<12} - {preview}")
-            print()
-            print("  Usage: /personality <name>")
-            print()
+                logger.info(f"  {name:<12} - {preview}")
+            logger.info()
+            logger.info("  Usage: /personality <name>")
+            logger.info()
     
     def _handle_cron_command(self, cmd: str):
         """Handle the /cron command to manage scheduled tasks."""
@@ -7502,7 +7502,7 @@ class HermesCLI:
                     try:
                         opts["repeat"] = int(tokens[i + 1])
                     except ValueError:
-                        print("(._.) --repeat must be an integer")
+                        logger.info("(._.) --repeat must be an integer")
                         return None
                     i += 2
                 elif token == "--skill" and i + 1 < len(tokens):
@@ -7534,40 +7534,40 @@ class HermesCLI:
         tokens = shlex.split(cmd)
 
         if len(tokens) == 1:
-            print()
-            print("+" + "-" * 68 + "+")
-            print("|" + " " * 22 + "(^_^) Scheduled Tasks" + " " * 23 + "|")
-            print("+" + "-" * 68 + "+")
-            print()
-            print("  Commands:")
-            print("    /cron list")
-            print('    /cron add "every 2h" "Check server status" [--skill blogwatcher]')
-            print('    /cron edit <job_id> --schedule "every 4h" --prompt "New task"')
-            print("    /cron edit <job_id> --skill blogwatcher --skill maps")
-            print("    /cron edit <job_id> --remove-skill blogwatcher")
-            print("    /cron edit <job_id> --clear-skills")
-            print("    /cron pause <job_id>")
-            print("    /cron resume <job_id>")
-            print("    /cron run <job_id>")
-            print("    /cron remove <job_id>")
-            print()
+            logger.info()
+            logger.info("+" + "-" * 68 + "+")
+            logger.info("|" + " " * 22 + "(^_^) Scheduled Tasks" + " " * 23 + "|")
+            logger.info("+" + "-" * 68 + "+")
+            logger.info()
+            logger.info("  Commands:")
+            logger.info("    /cron list")
+            logger.info('    /cron add "every 2h" "Check server status" [--skill blogwatcher]')
+            logger.info('    /cron edit <job_id> --schedule "every 4h" --prompt "New task"')
+            logger.info("    /cron edit <job_id> --skill blogwatcher --skill maps")
+            logger.info("    /cron edit <job_id> --remove-skill blogwatcher")
+            logger.info("    /cron edit <job_id> --clear-skills")
+            logger.info("    /cron pause <job_id>")
+            logger.info("    /cron resume <job_id>")
+            logger.info("    /cron run <job_id>")
+            logger.info("    /cron remove <job_id>")
+            logger.info()
             result = _cron_api(action="list")
             jobs = result.get("jobs", []) if result.get("success") else []
             if jobs:
-                print("  Current Jobs:")
-                print("  " + "-" * 63)
+                logger.info("  Current Jobs:")
+                logger.info("  " + "-" * 63)
                 for job in jobs:
                     repeat_str = job.get("repeat", "?")
-                    print(f"    {job['job_id'][:12]:<12} | {job['schedule']:<15} | {repeat_str:<8}")
+                    logger.info(f"    {job['job_id'][:12]:<12} | {job['schedule']:<15} | {repeat_str:<8}")
                     if job.get("skills"):
-                        print(f"      Skills: {', '.join(job['skills'])}")
-                    print(f"      {job.get('prompt_preview', '')}")
+                        logger.info(f"      Skills: {', '.join(job['skills'])}")
+                    logger.info(f"      {job.get('prompt_preview', '')}")
                     if job.get("next_run_at"):
-                        print(f"      Next: {job['next_run_at']}")
-                    print()
+                        logger.info(f"      Next: {job['next_run_at']}")
+                    logger.info()
             else:
-                print("  No scheduled jobs. Use '/cron add' to create one.")
-            print()
+                logger.info("  No scheduled jobs. Use '/cron add' to create one.")
+            logger.info()
             return
 
         subcommand = tokens[1].lower()
@@ -7579,36 +7579,36 @@ class HermesCLI:
             result = _cron_api(action="list", include_disabled=opts["all"])
             jobs = result.get("jobs", []) if result.get("success") else []
             if not jobs:
-                print("(._.) No scheduled jobs.")
+                logger.info("(._.) No scheduled jobs.")
                 return
 
-            print()
-            print("Scheduled Jobs:")
-            print("-" * 80)
+            logger.info()
+            logger.info("Scheduled Jobs:")
+            logger.info("-" * 80)
             for job in jobs:
-                print(f"  ID: {job['job_id']}")
-                print(f"  Name: {job['name']}")
-                print(f"  State: {job.get('state', '?')}")
-                print(f"  Schedule: {job['schedule']} ({job.get('repeat', '?')})")
-                print(f"  Next run: {job.get('next_run_at', 'N/A')}")
+                logger.info(f"  ID: {job['job_id']}")
+                logger.info(f"  Name: {job['name']}")
+                logger.info(f"  State: {job.get('state', '?')}")
+                logger.info(f"  Schedule: {job['schedule']} ({job.get('repeat', '?')})")
+                logger.info(f"  Next run: {job.get('next_run_at', 'N/A')}")
                 if job.get("skills"):
-                    print(f"  Skills: {', '.join(job['skills'])}")
-                print(f"  Prompt: {job.get('prompt_preview', '')}")
+                    logger.info(f"  Skills: {', '.join(job['skills'])}")
+                logger.info(f"  Prompt: {job.get('prompt_preview', '')}")
                 if job.get("last_run_at"):
-                    print(f"  Last run: {job['last_run_at']} ({job.get('last_status', '?')})")
-                print()
+                    logger.info(f"  Last run: {job['last_run_at']} ({job.get('last_status', '?')})")
+                logger.info()
             return
 
         if subcommand in {"add", "create"}:
             positionals = opts["positionals"]
             if not positionals:
-                print("(._.) Usage: /cron add <schedule> <prompt>")
+                logger.info("(._.) Usage: /cron add <schedule> <prompt>")
                 return
             schedule = opts["schedule"] or positionals[0]
             prompt = opts["prompt"] or " ".join(positionals[1:])
             skills = _normalize_skills(opts["skills"])
             if not prompt and not skills:
-                print("(._.) Please provide a prompt or at least one skill")
+                logger.info("(._.) Please provide a prompt or at least one skill")
                 return
             result = _cron_api(
                 action="create",
@@ -7620,24 +7620,24 @@ class HermesCLI:
                 skills=skills or None,
             )
             if result.get("success"):
-                print(f"(^_^)b Created job: {result['job_id']}")
-                print(f"  Schedule: {result['schedule']}")
+                logger.info(f"(^_^)b Created job: {result['job_id']}")
+                logger.info(f"  Schedule: {result['schedule']}")
                 if result.get("skills"):
-                    print(f"  Skills: {', '.join(result['skills'])}")
-                print(f"  Next run: {result['next_run_at']}")
+                    logger.info(f"  Skills: {', '.join(result['skills'])}")
+                logger.info(f"  Next run: {result['next_run_at']}")
             else:
-                print(f"(x_x) Failed to create job: {result.get('error')}")
+                logger.info(f"(x_x) Failed to create job: {result.get('error')}")
             return
 
         if subcommand == "edit":
             positionals = opts["positionals"]
             if not positionals:
-                print("(._.) Usage: /cron edit <job_id> [--schedule ...] [--prompt ...] [--skill ...]")
+                logger.info("(._.) Usage: /cron edit <job_id> [--schedule ...] [--prompt ...] [--skill ...]")
                 return
             job_id = positionals[0]
             existing = get_job(job_id)
             if not existing:
-                print(f"(._.) Job not found: {job_id}")
+                logger.info(f"(._.) Job not found: {job_id}")
                 return
 
             final_skills = None
@@ -7667,42 +7667,42 @@ class HermesCLI:
             )
             if result.get("success"):
                 job = result["job"]
-                print(f"(^_^)b Updated job: {job['job_id']}")
-                print(f"  Schedule: {job['schedule']}")
+                logger.info(f"(^_^)b Updated job: {job['job_id']}")
+                logger.info(f"  Schedule: {job['schedule']}")
                 if job.get("skills"):
-                    print(f"  Skills: {', '.join(job['skills'])}")
+                    logger.info(f"  Skills: {', '.join(job['skills'])}")
                 else:
-                    print("  Skills: none")
+                    logger.info("  Skills: none")
             else:
-                print(f"(x_x) Failed to update job: {result.get('error')}")
+                logger.info(f"(x_x) Failed to update job: {result.get('error')}")
             return
 
         if subcommand in {"pause", "resume", "run", "remove", "rm", "delete"}:
             positionals = opts["positionals"]
             if not positionals:
-                print(f"(._.) Usage: /cron {subcommand} <job_id>")
+                logger.info(f"(._.) Usage: /cron {subcommand} <job_id>")
                 return
             job_id = positionals[0]
             action = "remove" if subcommand in {"remove", "rm", "delete"} else subcommand
             result = _cron_api(action=action, job_id=job_id, reason="paused from /cron" if action == "pause" else None)
             if not result.get("success"):
-                print(f"(x_x) Failed to {action} job: {result.get('error')}")
+                logger.info(f"(x_x) Failed to {action} job: {result.get('error')}")
                 return
             if action == "pause":
-                print(f"(^_^)b Paused job: {result['job']['name']} ({job_id})")
+                logger.info(f"(^_^)b Paused job: {result['job']['name']} ({job_id})")
             elif action == "resume":
-                print(f"(^_^)b Resumed job: {result['job']['name']} ({job_id})")
-                print(f"  Next run: {result['job'].get('next_run_at')}")
+                logger.info(f"(^_^)b Resumed job: {result['job']['name']} ({job_id})")
+                logger.info(f"  Next run: {result['job'].get('next_run_at')}")
             elif action == "run":
-                print(f"(^_^)b Triggered job: {result['job']['name']} ({job_id})")
-                print("  It will run on the next scheduler tick.")
+                logger.info(f"(^_^)b Triggered job: {result['job']['name']} ({job_id})")
+                logger.info("  It will run on the next scheduler tick.")
             else:
                 removed = result.get("removed_job", {})
-                print(f"(^_^)b Removed job: {removed.get('name', job_id)} ({job_id})")
+                logger.info(f"(^_^)b Removed job: {removed.get('name', job_id)} ({job_id})")
             return
 
-        print(f"(._.) Unknown cron command: {subcommand}")
-        print("  Available: list, add, edit, pause, resume, run, remove")
+        logger.info(f"(._.) Unknown cron command: {subcommand}")
+        logger.info("  Available: list, add, edit, pause, resume, run, remove")
 
     def _handle_curator_command(self, cmd: str):
         """Handle /curator slash command.
@@ -7724,7 +7724,7 @@ class HermesCLI:
             # don't kill the interactive session.
             pass
         except Exception as exc:
-            print(f"(._.) curator: {exc}")
+            logger.info(f"(._.) curator: {exc}")
 
     def _handle_kanban_command(self, cmd: str):
         """Handle the /kanban command — delegate to the shared kanban CLI.
@@ -7745,7 +7745,7 @@ class HermesCLI:
         except Exception as exc:  # pragma: no cover - defensive
             output = f"(._.) kanban error: {exc}"
         if output:
-            print(output)
+            logger.info(output)
 
     def _handle_skills_command(self, cmd: str):
         """Handle /skills slash command — delegates to hermes_cli.skills_hub."""
@@ -7756,17 +7756,17 @@ class HermesCLI:
         """Show status of the gateway and connected messaging platforms."""
         from gateway.config import load_gateway_config, Platform
         
-        print()
-        print("+" + "-" * 60 + "+")
-        print("|" + " " * 15 + "(✿◠‿◠) Gateway Status" + " " * 17 + "|")
-        print("+" + "-" * 60 + "+")
-        print()
+        logger.info()
+        logger.info("+" + "-" * 60 + "+")
+        logger.info("|" + " " * 15 + "(✿◠‿◠) Gateway Status" + " " * 17 + "|")
+        logger.info("+" + "-" * 60 + "+")
+        logger.info()
         
         try:
             config = load_gateway_config()
             
-            print("  Messaging Platform Configuration:")
-            print("  " + "-" * 55)
+            logger.info("  Messaging Platform Configuration:")
+            logger.info("  " + "-" * 55)
             
             platform_status = {
                 Platform.TELEGRAM: ("Telegram", "TELEGRAM_BOT_TOKEN"),
@@ -7780,34 +7780,34 @@ class HermesCLI:
                 if pconfig and pconfig.enabled:
                     home = config.get_home_channel(platform)
                     home_str = f" → {home.name}" if home else ""
-                    print(f"    ✓ {name:<12} Enabled{home_str}")
+                    logger.info(f"    ✓ {name:<12} Enabled{home_str}")
                 else:
-                    print(f"    ○ {name:<12} Not configured ({env_var})")
+                    logger.info(f"    ○ {name:<12} Not configured ({env_var})")
             
-            print()
-            print("  Session Reset Policy:")
-            print("  " + "-" * 55)
+            logger.info()
+            logger.info("  Session Reset Policy:")
+            logger.info("  " + "-" * 55)
             policy = config.default_reset_policy
-            print(f"    Mode: {policy.mode}")
-            print(f"    Daily reset at: {policy.at_hour}:00")
-            print(f"    Idle timeout: {policy.idle_minutes} minutes")
+            logger.info(f"    Mode: {policy.mode}")
+            logger.info(f"    Daily reset at: {policy.at_hour}:00")
+            logger.info(f"    Idle timeout: {policy.idle_minutes} minutes")
             
-            print()
-            print("  To start the gateway:")
-            print("    python cli.py --gateway")
-            print()
-            print(f"  Configuration file: {display_hermes_home()}/config.yaml")
-            print()
+            logger.info()
+            logger.info("  To start the gateway:")
+            logger.info("    python cli.py --gateway")
+            logger.info()
+            logger.info(f"  Configuration file: {display_hermes_home()}/config.yaml")
+            logger.info()
             
         except Exception as e:
-            print(f"  Error loading gateway config: {e}")
-            print()
-            print("  To configure the gateway:")
-            print("    1. Set environment variables:")
-            print("       TELEGRAM_BOT_TOKEN=your_token")
-            print("       DISCORD_BOT_TOKEN=your_token")
-            print(f"    2. Or configure settings in {display_hermes_home()}/config.yaml")
-            print()
+            logger.info(f"  Error loading gateway config: {e}")
+            logger.info()
+            logger.info("  To configure the gateway:")
+            logger.info("    1. Set environment variables:")
+            logger.info("       TELEGRAM_BOT_TOKEN=your_token")
+            logger.info("       DISCORD_BOT_TOKEN=your_token")
+            logger.info(f"    2. Or configure settings in {display_hermes_home()}/config.yaml")
+            logger.info()
     
     def process_command(self, command: str) -> bool:
         """
@@ -7886,7 +7886,7 @@ class HermesCLI:
                 cc = ChatConsole()
                 term_w = shutil.get_terminal_size().columns
                 if self.compact or term_w < 80:
-                    cc.print(_build_compact_banner())
+                    cc.logger.info(_build_compact_banner())
                 else:
                     tools = get_tool_definitions(enabled_toolsets=self.enabled_toolsets, quiet_mode=True)
                     cwd = os.getenv("TERMINAL_CWD", os.getcwd())
@@ -7912,12 +7912,12 @@ class HermesCLI:
                         _tip_color = get_active_skin().get_color("banner_dim", "#B8860B")
                     except Exception:
                         _tip_color = "#B8860B"
-                    cc.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
+                    cc.logger.info(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
                 except Exception:
                     pass
             else:
                 self.show_banner()
-                print("  ✨ (◕‿◕)✨ Fresh start! Screen cleared and conversation reset.\n")
+                logger.info("  ✨ (◕‿◕)✨ Fresh start! Screen cleared and conversation reset.\n")
                 # Show a random tip on new session
                 try:
                     from hermes_cli.tips import get_random_tip
@@ -8073,7 +8073,7 @@ class HermesCLI:
         elif canonical == "reload":
             from hermes_cli.config import reload_env
             count = reload_env()
-            print(f"  Reloaded .env ({count} var(s) updated)")
+            logger.info(f"  Reloaded .env ({count} var(s) updated)")
         elif canonical == "reload-mcp":
             # Interactive reload: confirm first (unless the user has opted out).
             # The auto-reload path (file watcher) calls _reload_mcp directly
@@ -8092,10 +8092,10 @@ class HermesCLI:
                 mgr = get_plugin_manager()
                 plugins = mgr.list_plugins()
                 if not plugins:
-                    print("No plugins installed.")
-                    print(f"Drop plugin directories into {display_hermes_home()}/plugins/ to get started.")
+                    logger.info("No plugins installed.")
+                    logger.info(f"Drop plugin directories into {display_hermes_home()}/plugins/ to get started.")
                 else:
-                    print(f"Plugins ({len(plugins)}):")
+                    logger.info(f"Plugins ({len(plugins)}):")
                     for p in plugins:
                         status = "✓" if p["enabled"] else "✗"
                         version = f" v{p['version']}" if p["version"] else ""
@@ -8105,9 +8105,9 @@ class HermesCLI:
                         parts = [x for x in [tools, hooks, commands] if x]
                         detail = f" ({', '.join(parts)})" if parts else ""
                         error = f" — {p['error']}" if p["error"] else ""
-                        print(f"  {status} {p['name']}{version}{detail}{error}")
+                        logger.info(f"  {status} {p['name']}{version}{detail}{error}")
             except Exception as e:
-                print(f"Plugin system error: {e}")
+                logger.info(f"Plugin system error: {e}")
         elif canonical == "rollback":
             self._handle_rollback_command(cmd_original)
         elif canonical == "snapshot":
@@ -8230,18 +8230,18 @@ class HermesCLI:
                 if bundle_result:
                     msg, loaded_names, missing = bundle_result
                     bundle_info = get_skill_bundles()[base_cmd]
-                    print(
+                    logger.info(
                         f"\n⚡ Loading bundle: {bundle_info['name']} "
                         f"({len(loaded_names)} skills)"
                     )
                     if missing:
-                        ChatConsole().print(
+                        ChatConsole().logger.info(
                             f"[yellow]Skipped missing skills: {', '.join(missing)}[/]"
                         )
                     if hasattr(self, '_pending_input'):
                         self._pending_input.put(msg)
                 else:
-                    ChatConsole().print(
+                    ChatConsole().logger.info(
                         f"[bold red]Failed to load bundle for {base_cmd}[/]"
                     )
             # Check for skill slash commands (/gif-search, /axolotl, etc.)
@@ -8252,11 +8252,11 @@ class HermesCLI:
                 )
                 if msg:
                     skill_name = _skill_commands[base_cmd]["name"]
-                    print(f"\n⚡ Loading skill: {skill_name}")
+                    logger.info(f"\n⚡ Loading skill: {skill_name}")
                     if hasattr(self, '_pending_input'):
                         self._pending_input.put(msg)
                 else:
-                    ChatConsole().print(f"[bold red]Failed to load skill for {base_cmd}[/]")
+                    ChatConsole().logger.info(f"[bold red]Failed to load skill for {base_cmd}[/]")
             else:
                 # Prefix matching: if input uniquely identifies one command, execute it.
                 # Matches against both built-in COMMANDS and installed skill commands so
@@ -8392,11 +8392,11 @@ class HermesCLI:
                 if self._app:
                     self._app.invalidate()
                     time.sleep(0.05)  # brief pause for refresh
-                print()
-                ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
+                logger.info()
+                ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
                 _cprint(f"  ✅ Background task #{task_num} complete")
                 _cprint(f"  Prompt: \"{prompt[:60]}{'...' if len(prompt) > 60 else ''}\"")
-                ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
+                ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
                 if response:
                     try:
                         from hermes_cli.skin_engine import get_active_skin
@@ -8410,7 +8410,7 @@ class HermesCLI:
                         _resp_text = "#FFF8DC"
 
                     _chat_console = ChatConsole()
-                    _chat_console.print(Panel(
+                    _chat_console.logger.info(Panel(
                         _render_final_assistant_content(response, mode=self.final_response_markdown),
                         title=f"[{_resp_color} bold]{label} (background #{task_num})[/]",
                         title_align="left",
@@ -8433,7 +8433,7 @@ class HermesCLI:
                 if self._app:
                     self._app.invalidate()
                     time.sleep(0.05)
-                print()
+                logger.info()
                 _cprint(f"  ❌ Background task #{task_num} failed: {e}")
             finally:
                 try:
@@ -8491,12 +8491,12 @@ class HermesCLI:
         for info in bundles:
             skill_count = len(info.get("skills", []))
             desc = info.get("description") or f"Load {skill_count} skills"
-            ChatConsole().print(
+            ChatConsole().logger.info(
                 f"    [bold {_accent_hex()}]/{info['slug']:<20}[/] "
                 f"[dim]-[/] {_escape(desc)} [dim]({skill_count} skills)[/]"
             )
             for s in info.get("skills", []):
-                ChatConsole().print(f"        [dim]· {_escape(s)}[/]")
+                ChatConsole().logger.info(f"        [dim]· {_escape(s)}[/]")
         _cprint(
             f"\n  {_DIM}Invoke a bundle with /<slug>. "
             f"Manage with `hermes bundles`.{_RST}"
@@ -8518,24 +8518,24 @@ class HermesCLI:
             cdp_url = connect_parts[2].strip() if len(connect_parts) > 2 else _DEFAULT_CDP
             parsed_cdp = urlparse(cdp_url if "://" in cdp_url else f"http://{cdp_url}")
             if parsed_cdp.scheme not in {"http", "https", "ws", "wss"}:
-                print()
-                print(
+                logger.info()
+                logger.info(
                     f"   ⚠ Unsupported browser url scheme: {parsed_cdp.scheme or '(missing)'} "
                     "(expected one of: http, https, ws, wss)"
                 )
-                print()
+                logger.info()
                 return
             try:
                 _port = parsed_cdp.port or (443 if parsed_cdp.scheme in {"https", "wss"} else 80)
             except ValueError:
-                print()
-                print(f"   ⚠ Invalid port in browser url: {cdp_url}")
-                print()
+                logger.info()
+                logger.info(f"   ⚠ Invalid port in browser url: {cdp_url}")
+                logger.info()
                 return
             if not parsed_cdp.hostname:
-                print()
-                print(f"   ⚠ Missing host in browser url: {cdp_url}")
-                print()
+                logger.info()
+                logger.info(f"   ⚠ Missing host in browser url: {cdp_url}")
+                logger.info()
                 return
             _host = parsed_cdp.hostname
             if parsed_cdp.path.startswith("/devtools/browser/"):
@@ -8555,7 +8555,7 @@ class HermesCLI:
             except Exception:
                 pass
 
-            print()
+            logger.info()
 
             # Check if Chrome is already listening on the debug port
             import socket
@@ -8570,10 +8570,10 @@ class HermesCLI:
                 pass
 
             if _already_open:
-                print(f"   ✓ Chrome is already listening on port {_port}")
+                logger.info(f"   ✓ Chrome is already listening on port {_port}")
             elif cdp_url == _DEFAULT_CDP:
                 # Try to auto-launch Chrome with remote debugging
-                print("   Chrome isn't running with remote debugging — attempting to launch...")
+                logger.info("   Chrome isn't running with remote debugging — attempting to launch...")
                 _launched = self._try_launch_chrome_debug(_port, _plat.system())
                 if _launched:
                     # Wait for the port to come up
@@ -8588,26 +8588,26 @@ class HermesCLI:
                         except (OSError, socket.timeout):
                             time.sleep(0.5)
                     if _already_open:
-                        print(f"   ✓ Chrome launched and listening on port {_port}")
+                        logger.info(f"   ✓ Chrome launched and listening on port {_port}")
                     else:
-                        print(f"   ⚠ Chrome launched but port {_port} isn't responding yet")
-                        print("     Try again in a few seconds — the debug instance may still be starting")
+                        logger.info(f"   ⚠ Chrome launched but port {_port} isn't responding yet")
+                        logger.info("     Try again in a few seconds — the debug instance may still be starting")
                 else:
-                    print("   ⚠ Could not auto-launch Chrome")
+                    logger.info("   ⚠ Could not auto-launch Chrome")
                     sys_name = _plat.system()
                     chrome_cmd = manual_chrome_debug_command(_port, sys_name)
                     if chrome_cmd:
-                        print(f"     Launch Chrome manually:")
-                        print(f"     {chrome_cmd}")
+                        logger.info(f"     Launch Chrome manually:")
+                        logger.info(f"     {chrome_cmd}")
                     else:
-                        print("     No Chrome/Chromium executable found in this environment")
+                        logger.info("     No Chrome/Chromium executable found in this environment")
             else:
-                print(f"   ⚠ Port {_port} is not reachable at {cdp_url}")
+                logger.info(f"   ⚠ Port {_port} is not reachable at {cdp_url}")
 
             if not _already_open:
-                print()
-                print("Browser not connected — start Chrome with remote debugging and retry /browser connect")
-                print()
+                logger.info()
+                logger.info("Browser not connected — start Chrome with remote debugging and retry /browser connect")
+                logger.info()
                 return
 
             os.environ["BROWSER_CDP_URL"] = cdp_url
@@ -8618,10 +8618,10 @@ class HermesCLI:
                 _ensure_cdp_supervisor("default")
             except Exception:
                 pass
-            print()
-            print("🌐 Browser connected to live Chrome via CDP")
-            print(f"   Endpoint: {cdp_url}")
-            print()
+            logger.info()
+            logger.info("🌐 Browser connected to live Chrome via CDP")
+            logger.info(f"   Endpoint: {cdp_url}")
+            logger.info()
 
             # Inject context message so the model knows
             if hasattr(self, '_pending_input'):
@@ -8644,10 +8644,10 @@ class HermesCLI:
                     cleanup_all_browsers()
                 except Exception:
                     pass
-                print()
-                print("🌐 Browser disconnected from live Chrome")
-                print("   Browser tools reverted to default mode (local headless or cloud provider)")
-                print()
+                logger.info()
+                logger.info("🌐 Browser disconnected from live Chrome")
+                logger.info("   Browser tools reverted to default mode (local headless or cloud provider)")
+                logger.info()
 
                 if hasattr(self, '_pending_input'):
                     self._pending_input.put(
@@ -8655,15 +8655,15 @@ class HermesCLI:
                         "Browser tools are back to default mode (headless local browser or cloud provider).]"
                     )
             else:
-                print()
-                print("Browser is not connected to live Chrome (already using default mode)")
-                print()
+                logger.info()
+                logger.info("Browser is not connected to live Chrome (already using default mode)")
+                logger.info()
 
         elif sub == "status":
-            print()
+            logger.info()
             if current:
-                print("🌐 Browser: connected to live Chrome via CDP")
-                print(f"   Endpoint: {current}")
+                logger.info("🌐 Browser: connected to live Chrome via CDP")
+                logger.info(f"   Endpoint: {current}")
 
                 _port = 9222
                 try:
@@ -8676,9 +8676,9 @@ class HermesCLI:
                     s.settimeout(1)
                     s.connect(("127.0.0.1", _port))
                     s.close()
-                    print("   Status: ✓ reachable")
+                    logger.info("   Status: ✓ reachable")
                 except (OSError, Exception):
-                    print("   Status: ⚠ not reachable (Chrome may not be running)")
+                    logger.info("   Status: ⚠ not reachable (Chrome may not be running)")
             else:
                 try:
                     from tools.browser_tool import _get_cloud_provider
@@ -8687,7 +8687,7 @@ class HermesCLI:
                     provider = None
 
                 if provider is not None:
-                    print(f"🌐 Browser: {provider.provider_name()} (cloud)")
+                    logger.info(f"🌐 Browser: {provider.provider_name()} (cloud)")
                 else:
                     # Show engine info for local mode
                     try:
@@ -8696,26 +8696,26 @@ class HermesCLI:
                     except Exception:
                         engine = "auto"
                     if engine == "lightpanda":
-                        print("🌐 Browser: local Lightpanda (agent-browser --engine lightpanda)")
-                        print("   ⚡ Lightpanda: faster navigation, no screenshot support")
-                        print("   Automatic Chrome fallback for screenshots and failed commands")
+                        logger.info("🌐 Browser: local Lightpanda (agent-browser --engine lightpanda)")
+                        logger.info("   ⚡ Lightpanda: faster navigation, no screenshot support")
+                        logger.info("   Automatic Chrome fallback for screenshots and failed commands")
                     elif engine == "chrome":
-                        print("🌐 Browser: local headless Chrome (agent-browser --engine chrome)")
+                        logger.info("🌐 Browser: local headless Chrome (agent-browser --engine chrome)")
                     else:
-                        print("🌐 Browser: local headless Chromium (agent-browser)")
-            print()
-            print("   /browser connect      — connect to your live Chrome")
-            print("   /browser disconnect   — revert to default")
-            print()
+                        logger.info("🌐 Browser: local headless Chromium (agent-browser)")
+            logger.info()
+            logger.info("   /browser connect      — connect to your live Chrome")
+            logger.info("   /browser disconnect   — revert to default")
+            logger.info()
 
         else:
-            print()
-            print("Usage: /browser connect|disconnect|status")
-            print()
-            print("   connect      Connect browser tools to your live Chrome session")
-            print("   disconnect   Revert to default browser backend")
-            print("   status       Show current browser mode")
-            print()
+            logger.info()
+            logger.info("Usage: /browser connect|disconnect|status")
+            logger.info()
+            logger.info("   connect      Connect browser tools to your live Chrome session")
+            logger.info("   disconnect   Revert to default browser backend")
+            logger.info("   status       Show current browser mode")
+            logger.info()
 
     # ────────────────────────────────────────────────────────────────
     # /goal — persistent cross-turn goals (Ralph-style loop)
@@ -9015,7 +9015,7 @@ class HermesCLI:
         try:
             from hermes_cli.skin_engine import list_skins, set_active_skin, get_active_skin_name
         except ImportError:
-            print("Skin engine not available.")
+            logger.info("Skin engine not available.")
             return
 
         parts = cmd.strip().split(maxsplit=1)
@@ -9023,21 +9023,21 @@ class HermesCLI:
             # Show current skin and list available
             current = get_active_skin_name()
             skins = list_skins()
-            print(f"\n  Current skin: {current}")
-            print("  Available skins:")
+            logger.info(f"\n  Current skin: {current}")
+            logger.info("  Available skins:")
             for s in skins:
                 marker = " ●" if s["name"] == current else "  "
                 source = f" ({s['source']})" if s["source"] == "user" else ""
-                print(f"   {marker} {s['name']}{source} — {s['description']}")
-            print("\n  Usage: /skin <name>")
-            print(f"  Custom skins: drop a YAML file in {display_hermes_home()}/skins/\n")
+                logger.info(f"   {marker} {s['name']}{source} — {s['description']}")
+            logger.info("\n  Usage: /skin <name>")
+            logger.info(f"  Custom skins: drop a YAML file in {display_hermes_home()}/skins/\n")
             return
 
         new_skin = parts[1].strip().lower()
         available = {s["name"] for s in list_skins()}
         if new_skin not in available:
-            print(f"  Unknown skin: {new_skin}")
-            print(f"  Available: {', '.join(sorted(available))}")
+            logger.info(f"  Unknown skin: {new_skin}")
+            logger.info(f"  Available: {', '.join(sorted(available))}")
             return
 
         set_active_skin(new_skin)
@@ -9045,12 +9045,12 @@ class HermesCLI:
         # _DIM is now a fixed dim+italic ANSI escape (terminal-default fg)
         # so it doesn't need re-resolving on skin switch.
         if save_config_value("display.skin", new_skin):
-            print(f"  Skin set to: {new_skin} (saved)")
+            logger.info(f"  Skin set to: {new_skin} (saved)")
         else:
-            print(f"  Skin set to: {new_skin}")
-        print("  Note: banner colors will update on next session start.")
+            logger.info(f"  Skin set to: {new_skin}")
+        logger.info("  Note: banner colors will update on next session start.")
         if self._apply_tui_skin_style():
-            print("  Prompt + TUI colors updated.")
+            logger.info("  Prompt + TUI colors updated.")
 
     def _handle_footer_command(self, cmd_original: str) -> None:
         """Toggle or inspect ``display.runtime_footer.enabled`` from the CLI.
@@ -9313,15 +9313,15 @@ class HermesCLI:
         Claude Code's ``/compact <focus>`` feature.
         """
         if not self.conversation_history or len(self.conversation_history) < 4:
-            print("(._.) Not enough conversation to compress (need at least 4 messages).")
+            logger.info("(._.) Not enough conversation to compress (need at least 4 messages).")
             return
 
         if not self.agent:
-            print("(._.) No active agent -- send a message first.")
+            logger.info("(._.) No active agent -- send a message first.")
             return
 
         if not self.agent.compression_enabled:
-            print("(._.) Compression is disabled in config.")
+            logger.info("(._.) Compression is disabled in config.")
             return
 
         # Extract optional focus topic from the command (e.g. "/compress database schema")
@@ -9349,10 +9349,10 @@ class HermesCLI:
                     tools=_tools,
                 )
                 if focus_topic:
-                    print(f"🗜️  Compressing {original_count} messages (~{approx_tokens:,} tokens), "
+                    logger.info(f"🗜️  Compressing {original_count} messages (~{approx_tokens:,} tokens), "
                           f"focus: \"{focus_topic}\"...")
                 else:
-                    print(f"🗜️  Compressing {original_count} messages (~{approx_tokens:,} tokens)...")
+                    logger.info(f"🗜️  Compressing {original_count} messages (~{approx_tokens:,} tokens)...")
 
                 # Pass None as system_message so _compress_context rebuilds
                 # the system prompt from scratch via _build_system_prompt(None).
@@ -9396,13 +9396,13 @@ class HermesCLI:
                     new_tokens,
                 )
                 icon = "🗜️" if summary["noop"] else "✅"
-                print(f"  {icon} {summary['headline']}")
-                print(f"     {summary['token_line']}")
+                logger.info(f"  {icon} {summary['headline']}")
+                logger.info(f"     {summary['token_line']}")
                 if summary["note"]:
-                    print(f"     {summary['note']}")
+                    logger.info(f"     {summary['note']}")
 
             except Exception as e:
-                print(f"  ❌ Compression failed: {e}")
+                logger.info(f"  ❌ Compression failed: {e}")
 
     def _handle_debug_command(self):
         """Handle /debug — upload debug report + logs and print paste URLs."""
@@ -9427,7 +9427,7 @@ class HermesCLI:
         from hermes_cli.config import is_managed, format_managed_message
 
         if is_managed():
-            print(f"  ✗ {format_managed_message('update Vermes')}")
+            logger.info(f"  ✗ {format_managed_message('update Vermes')}")
             return False
 
         # Use the prompt_toolkit-native modal so the confirmation panel
@@ -9444,16 +9444,16 @@ class HermesCLI:
             choices=choices,
         )
         if raw is None:
-            print("  🟡 /update cancelled.")
+            logger.info("  🟡 /update cancelled.")
             return False
         choice = self._normalize_slash_confirm_choice(raw, choices)
         if choice != "once":
-            print("  🟡 /update cancelled.")
+            logger.info("  🟡 /update cancelled.")
             return False
 
-        print()
-        print("  ⚕ Launching update...")
-        print()
+        logger.info()
+        logger.info("  ⚕ Launching update...")
+        logger.info()
 
         # Store the relaunch args so run() can exec them from the main thread
         # after prompt_toolkit exits and restores terminal modes.  Calling
@@ -9467,23 +9467,23 @@ class HermesCLI:
     def _show_usage(self):
         """Show rate limits (if available) and session token usage."""
         if not self.agent:
-            print("(._.) No active agent -- send a message first.")
+            logger.info("(._.) No active agent -- send a message first.")
             return
 
         agent = self.agent
         calls = agent.session_api_calls
 
         if calls == 0:
-            print("(._.) No API calls made yet in this session.")
+            logger.info("(._.) No API calls made yet in this session.")
             return
 
         # ── Rate limits (shown first when available) ────────────────
         rl_state = agent.get_rate_limit_state()
         if rl_state and rl_state.has_data:
             from agent.rate_limit_tracker import format_rate_limit_display
-            print()
-            print(format_rate_limit_display(rl_state))
-            print()
+            logger.info()
+            logger.info(format_rate_limit_display(rl_state))
+            logger.info()
 
         # ── Session token usage ─────────────────────────────────────
         input_tokens = getattr(agent, "session_input_tokens", 0) or 0
@@ -9515,35 +9515,35 @@ class HermesCLI:
         )
         elapsed = format_duration_compact((datetime.now() - self.session_start).total_seconds())
 
-        print("  📊 Session Token Usage")
-        print(f"  {'─' * 40}")
-        print(f"  Model:                     {agent.model}")
-        print(f"  Input tokens:              {input_tokens:>10,}")
-        print(f"  Cache read tokens:         {cache_read_tokens:>10,}")
-        print(f"  Cache write tokens:        {cache_write_tokens:>10,}")
-        print(f"  Output tokens:             {output_tokens:>10,}")
+        logger.info("  📊 Session Token Usage")
+        logger.info(f"  {'─' * 40}")
+        logger.info(f"  Model:                     {agent.model}")
+        logger.info(f"  Input tokens:              {input_tokens:>10,}")
+        logger.info(f"  Cache read tokens:         {cache_read_tokens:>10,}")
+        logger.info(f"  Cache write tokens:        {cache_write_tokens:>10,}")
+        logger.info(f"  Output tokens:             {output_tokens:>10,}")
         if reasoning_tokens:
-            print(f"  ↳ Reasoning (subset):      {reasoning_tokens:>10,}")
-        print(f"  Prompt tokens (total):     {prompt:>10,}")
-        print(f"  Completion tokens:         {completion:>10,}")
-        print(f"  Total tokens:              {total:>10,}")
-        print(f"  API calls:                 {calls:>10,}")
-        print(f"  Session duration:          {elapsed:>10}")
-        print(f"  Cost status:              {cost_result.status:>10}")
-        print(f"  Cost source:              {cost_result.source:>10}")
+            logger.info(f"  ↳ Reasoning (subset):      {reasoning_tokens:>10,}")
+        logger.info(f"  Prompt tokens (total):     {prompt:>10,}")
+        logger.info(f"  Completion tokens:         {completion:>10,}")
+        logger.info(f"  Total tokens:              {total:>10,}")
+        logger.info(f"  API calls:                 {calls:>10,}")
+        logger.info(f"  Session duration:          {elapsed:>10}")
+        logger.info(f"  Cost status:              {cost_result.status:>10}")
+        logger.info(f"  Cost source:              {cost_result.source:>10}")
         if cost_result.amount_usd is not None:
             prefix = "~" if cost_result.status == "estimated" else ""
-            print(f"  Total cost:              {prefix}${float(cost_result.amount_usd):>10.4f}")
+            logger.info(f"  Total cost:              {prefix}${float(cost_result.amount_usd):>10.4f}")
         elif cost_result.status == "included":
-            print(f"  Total cost:              {'included':>10}")
+            logger.info(f"  Total cost:              {'included':>10}")
         else:
-            print(f"  Total cost:              {'n/a':>10}")
-        print(f"  {'─' * 40}")
-        print(f"  Current context:  {last_prompt:,} / {ctx_len:,} ({pct:.0f}%)")
-        print(f"  Messages:         {msg_count}")
-        print(f"  Compressions:     {compressions}")
+            logger.info(f"  Total cost:              {'n/a':>10}")
+        logger.info(f"  {'─' * 40}")
+        logger.info(f"  Current context:  {last_prompt:,} / {ctx_len:,} ({pct:.0f}%)")
+        logger.info(f"  Messages:         {msg_count}")
+        logger.info(f"  Compressions:     {compressions}")
         if cost_result.status == "unknown":
-            print(f"  Note:             Pricing unknown for {agent.model}")
+            logger.info(f"  Note:             Pricing unknown for {agent.model}")
 
         # Account limits -- fetched off-thread with a hard timeout so slow
         # provider APIs don't hang the prompt.
@@ -9564,9 +9564,9 @@ class HermesCLI:
                     account_snapshot = None
         account_lines = [f"  {line}" for line in render_account_usage_lines(account_snapshot)]
         if account_lines:
-            print()
+            logger.info()
             for line in account_lines:
-                print(line)
+                logger.info(line)
 
         if self.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
@@ -9594,7 +9594,7 @@ class HermesCLI:
                 try:
                     days = int(parts[i + 1])
                 except ValueError:
-                    print(f"  Invalid --days value: {parts[i + 1]}")
+                    logger.info(f"  Invalid --days value: {parts[i + 1]}")
                     return
                 i += 2
             elif parts[i] == "--source" and i + 1 < len(parts):
@@ -9613,10 +9613,10 @@ class HermesCLI:
             db = SessionDB()
             engine = InsightsEngine(db)
             report = engine.generate(days=days, source=source)
-            print(engine.format_terminal(report))
+            logger.info(engine.format_terminal(report))
             db.close()
         except Exception as e:
-            print(f"  Error generating insights: {e}")
+            logger.info(f"  Error generating insights: {e}")
 
     def _check_config_mcp_changes(self) -> None:
         """Detect mcp_servers changes in config.yaml and auto-reload MCP connections.
@@ -9664,15 +9664,15 @@ class HermesCLI:
         # Notify user and reload.  Run in a separate thread with a hard
         # timeout so a hung MCP server cannot block the process_loop
         # indefinitely (which would freeze the entire TUI).
-        print()
-        print("🔄 MCP server config changed — reloading connections...")
+        logger.info()
+        logger.info("🔄 MCP server config changed — reloading connections...")
         _reload_thread = threading.Thread(
             target=self._reload_mcp, daemon=True
         )
         _reload_thread.start()
         _reload_thread.join(timeout=30)
         if _reload_thread.is_alive():
-            print("  ⚠️  MCP reload timed out (30s). Some servers may not have reconnected.")
+            logger.info("  ⚠️  MCP reload timed out (30s). Some servers may not have reconnected.")
 
     def _confirm_destructive_slash(self, command: str, detail: str) -> Optional[str]:
         """Prompt the user to confirm a destructive session slash command.
@@ -9720,23 +9720,23 @@ class HermesCLI:
             choices=choices,
         )
         if raw is None:
-            print(f"🟡 /{command} cancelled (no input).")
+            logger.info(f"🟡 /{command} cancelled (no input).")
             return None
         choice = self._normalize_slash_confirm_choice(raw, choices)
         if choice is None:
-            print(f"🟡 Unrecognized choice '{raw}'. /{command} cancelled.")
+            logger.info(f"🟡 Unrecognized choice '{raw}'. /{command} cancelled.")
             return None
 
         if choice == "cancel":
-            print(f"🟡 /{command} cancelled. Conversation unchanged.")
+            logger.info(f"🟡 /{command} cancelled. Conversation unchanged.")
             return None
 
         if choice == "always":
             if save_config_value("approvals.destructive_slash_confirm", False):
-                print("🔒 Future /clear, /new, /reset, and /undo will run without confirmation.")
-                print("   Re-enable via `approvals.destructive_slash_confirm: true` in config.yaml.")
+                logger.info("🔒 Future /clear, /new, /reset, and /undo will run without confirmation.")
+                logger.info("   Re-enable via `approvals.destructive_slash_confirm: true` in config.yaml.")
             else:
-                print("⚠️  Couldn't persist opt-out — proceeding once.")
+                logger.info("⚠️  Couldn't persist opt-out — proceeding once.")
 
         return choice
 
@@ -9786,23 +9786,23 @@ class HermesCLI:
             choices=choices,
         )
         if raw is None:
-            print("🟡 /reload-mcp cancelled (no input).")
+            logger.info("🟡 /reload-mcp cancelled (no input).")
             return
         choice = self._normalize_slash_confirm_choice(raw, choices)
         if choice is None:
-            print(f"🟡 Unrecognized choice '{raw}'. /reload-mcp cancelled.")
+            logger.info(f"🟡 Unrecognized choice '{raw}'. /reload-mcp cancelled.")
             return
 
         if choice == "cancel":
-            print("🟡 /reload-mcp cancelled. MCP tools unchanged.")
+            logger.info("🟡 /reload-mcp cancelled. MCP tools unchanged.")
             return
 
         if choice == "always":
             if save_config_value("approvals.mcp_reload_confirm", False):
-                print("🔒 Future /reload-mcp calls will run without confirmation.")
-                print("   Re-enable via `approvals.mcp_reload_confirm: true` in config.yaml.")
+                logger.info("🔒 Future /reload-mcp calls will run without confirmation.")
+                logger.info("   Re-enable via `approvals.mcp_reload_confirm: true` in config.yaml.")
             else:
-                print("⚠️  Couldn't persist opt-out — reloading once.")
+                logger.info("⚠️  Couldn't persist opt-out — reloading once.")
 
         with self._busy_command(self._slow_command_status(cmd_original)):
             self._reload_mcp()
@@ -9821,7 +9821,7 @@ class HermesCLI:
                 old_servers = set(_servers.keys())
 
             if not self._command_running:
-                print("🔄 Reloading MCP servers...")
+                logger.info("🔄 Reloading MCP servers...")
 
             # Shutdown existing connections
             shutdown_mcp_servers()
@@ -9838,15 +9838,15 @@ class HermesCLI:
             reconnected = connected_servers & old_servers
 
             if reconnected:
-                print(f"  ♻️  Reconnected: {', '.join(sorted(reconnected))}")
+                logger.info(f"  ♻️  Reconnected: {', '.join(sorted(reconnected))}")
             if added:
-                print(f"  ➕ Added: {', '.join(sorted(added))}")
+                logger.info(f"  ➕ Added: {', '.join(sorted(added))}")
             if removed:
-                print(f"  ➖ Removed: {', '.join(sorted(removed))}")
+                logger.info(f"  ➖ Removed: {', '.join(sorted(removed))}")
             if not connected_servers:
-                print("  No MCP servers connected.")
+                logger.info("  No MCP servers connected.")
             else:
-                print(f"  🔧 {len(new_tools)} tool(s) available from {len(connected_servers)} server(s)")
+                logger.info(f"  🔧 {len(new_tools)} tool(s) available from {len(connected_servers)} server(s)")
 
             # Refresh the agent's tool list so the model can call new tools
             if self.agent is not None:
@@ -9887,10 +9887,10 @@ class HermesCLI:
                 except Exception:
                     pass  # Best-effort
 
-            print(f"  ✅ Agent updated — {len(self.agent.tools if self.agent else [])} tool(s) available")
+            logger.info(f"  ✅ Agent updated — {len(self.agent.tools if self.agent else [])} tool(s) available")
 
         except Exception as e:
-            print(f"  ❌ MCP reload failed: {e}")
+            logger.info(f"  ❌ MCP reload failed: {e}")
 
     def _reload_skills(self) -> None:
         """Reload skills: rescan ~/.hermes/skills/ and queue a note for the
@@ -9909,7 +9909,7 @@ class HermesCLI:
             from agent.skill_commands import reload_skills, get_skill_commands
 
             if not self._command_running:
-                print("🔄 Reloading skills...")
+                logger.info("🔄 Reloading skills...")
 
             result = reload_skills()
 
@@ -9923,8 +9923,8 @@ class HermesCLI:
             total = result.get("total", 0)
 
             if not added and not removed:
-                print("  No new skills detected.")
-                print(f"  📚 {total} skill(s) available")
+                logger.info("  No new skills detected.")
+                logger.info(f"  📚 {total} skill(s) available")
                 return
 
             def _fmt_line(item: dict) -> str:
@@ -9933,14 +9933,14 @@ class HermesCLI:
                 return f"    - {nm}: {desc}" if desc else f"    - {nm}"
 
             if added:
-                print("  ➕ Added Skills:")
+                logger.info("  ➕ Added Skills:")
                 for item in added:
-                    print(f"  {_fmt_line(item)}")
+                    logger.info(f"  {_fmt_line(item)}")
             if removed:
-                print("  ➖ Removed Skills:")
+                logger.info("  ➖ Removed Skills:")
                 for item in removed:
-                    print(f"  {_fmt_line(item)}")
-            print(f"  📚 {total} skill(s) available")
+                    logger.info(f"  {_fmt_line(item)}")
+            logger.info(f"  📚 {total} skill(s) available")
 
             # Queue a one-shot note for the NEXT user turn. The CLI's agent
             # loop prepends ``_pending_skills_reload_note`` (if set) to the
@@ -9968,7 +9968,7 @@ class HermesCLI:
             self._pending_skills_reload_note = "\n".join(sections)
 
         except Exception as e:
-            print(f"  ❌ Skills reload failed: {e}")
+            logger.info(f"  ❌ Skills reload failed: {e}")
 
     # ====================================================================
     # Tool-call generation indicator (shown during streaming)
@@ -11122,8 +11122,8 @@ class HermesCLI:
         # Add user message to history
         self.conversation_history.append({"role": "user", "content": message})
 
-        ChatConsole().print(f"[{_accent_hex()}]{'─' * 40}[/]")
-        print(flush=True)
+        ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
+        logger.info(flush=True)
         
         try:
             # Run the conversation with interrupt monitoring
@@ -11288,7 +11288,7 @@ class HermesCLI:
                             # But if it does (race condition), don't interrupt.
                             if self._clarify_state or self._clarify_freetext:
                                 continue
-                            print("\n⚡ New message detected, interrupting...")
+                            logger.info("\n⚡ New message detected, interrupting...")
                             # Signal TTS to stop on interrupt
                             if stop_event is not None:
                                 stop_event.set()
@@ -11500,7 +11500,7 @@ class HermesCLI:
                     pass
                 else:
                     _chat_console = ChatConsole()
-                    _chat_console.print(Panel(
+                    _chat_console.logger.info(Panel(
                         _render_final_assistant_content(response, mode=self.final_response_markdown),
                         title=f"[{_resp_color} bold]{label}[/]",
                         title_align="left",
@@ -11553,9 +11553,9 @@ class HermesCLI:
                 n = len(all_parts)
                 preview = combined[:50] + ("..." if len(combined) > 50 else "")
                 if n > 1:
-                    print(f"\n⚡ Sending {n} messages after interrupt: '{preview}'")
+                    logger.info(f"\n⚡ Sending {n} messages after interrupt: '{preview}'")
                 else:
-                    print(f"\n⚡ Sending after interrupt: '{preview}'")
+                    logger.info(f"\n⚡ Sending after interrupt: '{preview}'")
                 self._pending_input.put(combined)
 
             # If a /steer was left over (agent finished before another tool
@@ -11563,13 +11563,13 @@ class HermesCLI:
             _leftover_steer = result.get("pending_steer") if result else None
             if _leftover_steer and hasattr(self, '_pending_input'):
                 preview = _leftover_steer[:60] + ("..." if len(_leftover_steer) > 60 else "")
-                print(f"\n⏩ Delivering leftover /steer as next turn: '{preview}'")
+                logger.info(f"\n⏩ Delivering leftover /steer as next turn: '{preview}'")
                 self._pending_input.put(_leftover_steer)
 
             return response
             
         except Exception as e:
-            print(f"Error: {e}")
+            logger.info(f"Error: {e}")
             return None
         finally:
             # Ensure streaming TTS resources are cleaned up even on error.
@@ -11588,7 +11588,7 @@ class HermesCLI:
     
     def _print_exit_summary(self):
         """Print session resume info on exit, similar to Claude Code."""
-        print()
+        logger.info()
         msg_count = len(self.conversation_history)
         if msg_count > 0:
             user_msgs = len([m for m in self.conversation_history if m.get("role") == "user"])
@@ -11611,23 +11611,23 @@ class HermesCLI:
                 except Exception:
                     pass
 
-            print("Resume this session with:")
-            print(f"  hermes --resume {self.session_id}")
+            logger.info("Resume this session with:")
+            logger.info(f"  hermes --resume {self.session_id}")
             if session_title:
-                print(f"  hermes -c \"{session_title}\"")
-            print()
-            print(f"Session:        {self.session_id}")
+                logger.info(f"  hermes -c \"{session_title}\"")
+            logger.info()
+            logger.info(f"Session:        {self.session_id}")
             if session_title:
-                print(f"Title:          {session_title}")
-            print(f"Duration:       {duration_str}")
-            print(f"Messages:       {msg_count} ({user_msgs} user, {tool_calls} tool calls)")
+                logger.info(f"Title:          {session_title}")
+            logger.info(f"Duration:       {duration_str}")
+            logger.info(f"Messages:       {msg_count} ({user_msgs} user, {tool_calls} tool calls)")
         else:
             try:
                 from hermes_cli.skin_engine import get_active_goodbye
                 goodbye = get_active_goodbye("Goodbye! ⚕")
             except Exception:
                 goodbye = "Goodbye! ⚕"
-            print(goodbye)
+            logger.info(goodbye)
 
     def _get_tui_prompt_symbols(self) -> tuple[str, str]:
         """Return ``(normal_prompt, state_suffix)`` for the active skin.
@@ -12553,13 +12553,13 @@ class HermesCLI:
 
             if self._agent_running and self.agent:
                 if now - self._last_ctrl_c_time < 2.0:
-                    print("\n⚡ Force exiting...")
+                    logger.info("\n⚡ Force exiting...")
                     self._should_exit = True
                     event.app.exit()
                     return
                 
                 self._last_ctrl_c_time = now
-                print("\n⚡ Interrupting agent... (press Ctrl+C again to force exit)")
+                logger.info("\n⚡ Interrupting agent... (press Ctrl+C again to force exit)")
                 self.agent.interrupt()
             # If there's text or images, clear them (like bash).
             # If everything is already empty, exit.
@@ -12652,7 +12652,7 @@ class HermesCLI:
                 return
 
             if self._agent_running and self.agent:
-                print("\n⚡ Interrupting agent...")
+                logger.info("\n⚡ Interrupting agent...")
                 self.agent.interrupt()
             elif event.app.current_buffer.text or self._attached_images:
                 event.app.current_buffer.reset()
@@ -13856,7 +13856,7 @@ class HermesCLI:
                     paste_refs = list(_paste_ref_re.finditer(user_input)) if isinstance(user_input, str) else []
                     if paste_refs:
                         user_input = self._expand_paste_references(user_input)
-                    print()
+                    logger.info()
                     self._print_user_message_preview(user_input)
                     
                     # Show image attachment count
@@ -14058,7 +14058,7 @@ class HermesCLI:
         try:
             os.fstat(0)
         except OSError:
-            print(
+            logger.info(
                 "Error: stdin (fd 0) is not available.\n"
                 "This can happen with certain Python installations (e.g. uv-managed cPython on macOS).\n"
                 "Try reinstalling Python via pyenv or Homebrew, then re-run: hermes setup"
@@ -14121,7 +14121,7 @@ class HermesCLI:
                 or "Bad file descriptor" in _msg
                 or "Invalid argument" in _msg
             ):
-                print(
+                logger.info(
                     f"\nError: stdin is not usable ({_stdin_err}).\n"
                     "This can happen with certain Python installations (e.g. uv-managed cPython on macOS)\n"
                     "where kqueue cannot register fd 0.\n"
@@ -14287,7 +14287,7 @@ def main(
     if gateway:
         import asyncio
         from gateway.run import start_gateway
-        print("Starting Hermes Gateway (messaging platforms)...")
+        logger.info("Starting Hermes Gateway (messaging platforms)...")
         asyncio.run(start_gateway())
         return
 
@@ -14486,11 +14486,11 @@ def main(
                         and result.get("error")
                         and (result.get("failed") or result.get("partial"))
                     ):
-                        print(f"Error: {result['error']}", file=sys.stderr)
+                        logger.warning(f"Error: {result['error']}")
                     elif response:
-                        print(response)
+                        logger.info(response)
                     # Session ID goes to stderr so piped stdout is clean.
-                    print(f"\nsession_id: {cli.session_id}", file=sys.stderr)
+                    logger.warning(f"\nsession_id: {cli.session_id}")
                     
                     # Ensure proper exit code for automation wrappers
                     sys.exit(1 if isinstance(result, dict) and result.get("failed") else 0)
@@ -14513,7 +14513,7 @@ def main(
             # invocations are fast.
             _query_label = query or ("[image attached]" if single_query_images else "")
             if _query_label:
-                cli.console.print(f"[bold blue]Query:[/] {_query_label}")
+                cli.console.logger.info(f"[bold blue]Query:[/] {_query_label}")
             # Surface security advisories before the agent runs — short
             # banner, doesn't depend on the welcome banner being shown.
             cli._show_security_advisories()

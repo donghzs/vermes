@@ -743,12 +743,12 @@ if _config_path.exists():
         # stderr so operators see it even though `logger` is not yet
         # initialized at module-import time (logger is defined further
         # down this module).
-        print(
+        logger.info(
             f"  Warning: config.yaml → env bridge failed: "
             f"{type(_bridge_err).__name__}: {_bridge_err}",
             file=sys.stderr,
         )
-        print(
+        logger.info(
             "  Gateway will fall back to .env values, which may not match "
             "your current config.yaml. Run `hermes doctor` to investigate.",
             file=sys.stderr,
@@ -761,21 +761,21 @@ try:
     if isinstance(_network_cfg, dict) and _network_cfg.get("force_ipv4"):
         apply_ipv4_preference(force=True)
 except Exception as _bootstrap_exc:
-    print(f"  Warning: IPv4 preference application failed: {_bootstrap_exc}", file=sys.stderr)
+    logger.warning(f"  Warning: IPv4 preference application failed: {_bootstrap_exc}")
 
 # Validate config structure early — log warnings so gateway operators see problems
 try:
     from hermes_cli.config import print_config_warnings
     print_config_warnings()
 except Exception as _bootstrap_exc:
-    print(f"  Warning: config validation failed: {_bootstrap_exc}", file=sys.stderr)
+    logger.warning(f"  Warning: config validation failed: {_bootstrap_exc}")
 
 # Warn if user has deprecated MESSAGING_CWD / TERMINAL_CWD in .env
 try:
     from hermes_cli.config import warn_deprecated_cwd_env_vars
     warn_deprecated_cwd_env_vars()
 except Exception as _bootstrap_exc:
-    print(f"  Warning: deprecation check failed: {_bootstrap_exc}", file=sys.stderr)
+    logger.warning(f"  Warning: deprecation check failed: {_bootstrap_exc}")
 
 # Gateway runs in quiet mode - suppress debug output and use cwd directly (no temp dirs)
 os.environ["HERMES_QUIET"] = "1"
@@ -17859,7 +17859,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
                 "Use 'hermes gateway restart' to replace it, or 'hermes gateway stop' first.",
                 existing_pid, hermes_home,
             )
-            print(
+            logger.info(
                 f"\n❌ Gateway already running (PID {existing_pid}).\n"
                 f"   Use 'hermes gateway restart' to replace it,\n"
                 f"   or 'hermes gateway stop' to kill it first.\n"

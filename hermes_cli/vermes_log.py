@@ -1,7 +1,7 @@
 """
 Vermes — 输出双写模块
 
-在 Vermes 层捕获所有 print() 输出和 logging 日志，同时写入：
+在 Vermes 层捕获所有 logger.info() 输出和 logging 日志，同时写入：
   1. 原始 stdout/stderr（用户体验不变）
   2. ~/.vermes/logs/vermes_YYYYMMDD.log（完整日志链）
 
@@ -13,6 +13,9 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
 
 
 class _TeeStream:

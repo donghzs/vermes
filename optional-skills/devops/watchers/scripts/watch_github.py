@@ -30,6 +30,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _watermark import Watermark, format_items_as_markdown  # type: ignore
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 VALID_SCOPES = ("issues", "pulls", "releases", "commits")
 
@@ -84,10 +89,10 @@ def main() -> int:
     args = p.parse_args()
 
     if not args.repo and not args.search:
-        print("watch_github: one of --repo or --search is required", file=sys.stderr)
+        logger.warning("watch_github: one of --repo or --search is required")
         return 2
     if args.repo and not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", args.repo):
-        print(f"watch_github: --repo must be owner/name (got {args.repo!r})", file=sys.stderr)
+        logger.warning(f"watch_github: --repo must be owner/name (got {args.repo!r})")
         return 2
 
     # URL + flattening strategy.
@@ -126,23 +131,23 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=args.timeout) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as e:
-        print(f"watch_github: HTTP {e.code} from {url}", file=sys.stderr)
+        logger.warning(f"watch_github: HTTP {e.code} from {url}")
         return 2
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"watch_github: network error: {e}", file=sys.stderr)
+        logger.warning(f"watch_github: network error: {e}")
         return 2
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        print(f"watch_github: response is not valid JSON: {e}", file=sys.stderr)
+        logger.warning(f"watch_github: response is not valid JSON: {e}")
         return 2
 
     # Drill into items_path if needed (search endpoint returns {"items":[...]}).
     if items_path:
         data = data.get(items_path) if isinstance(data, dict) else None
     if not isinstance(data, list):
-        print(f"watch_github: expected a list of items; got {type(data).__name__}",
+        logger.info(f"watch_github: expected a list of items; got {type(data).__name__}",
               file=sys.stderr)
         return 2
 

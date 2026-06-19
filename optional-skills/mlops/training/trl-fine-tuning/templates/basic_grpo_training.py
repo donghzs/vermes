@@ -17,6 +17,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig
 from trl import GRPOTrainer, GRPOConfig
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 # ==================== CONFIGURATION ====================
 
 MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
@@ -156,12 +161,12 @@ def main():
     """Main training function."""
 
     # Load data
-    print("Loading dataset...")
+    logger.info("Loading dataset...")
     dataset = get_dataset()
-    print(f"Dataset size: {len(dataset)}")
+    logger.info(f"Dataset size: {len(dataset)}")
 
     # Setup model
-    print("Loading model...")
+    logger.info("Loading model...")
     model, tokenizer = setup_model_and_tokenizer()
 
     # Training configuration
@@ -215,14 +220,14 @@ def main():
     )
 
     # Train
-    print("Starting training...")
+    logger.info("Starting training...")
     trainer.train()
 
     # Save final model
-    print(f"Saving model to {OUTPUT_DIR}/final")
+    logger.info(f"Saving model to {OUTPUT_DIR}/final")
     trainer.save_model(f"{OUTPUT_DIR}/final")
 
-    print("Training complete!")
+    logger.info("Training complete!")
 
 if __name__ == "__main__":
     main()

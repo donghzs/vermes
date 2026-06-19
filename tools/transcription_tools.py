@@ -23,7 +23,7 @@ Usage::
 
     result = transcribe_audio("/path/to/audio.ogg")
     if result["success"]:
-        print(result["transcript"])
+        logger.info(result["transcript"])
 """
 
 import logging

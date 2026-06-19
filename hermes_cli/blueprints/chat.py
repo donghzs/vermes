@@ -9,6 +9,8 @@ import asyncio
 import base64 as b64mod
 import json
 import logging
+
+logger = logging.getLogger(__name__)
 import os
 import secrets
 import time
@@ -524,7 +526,7 @@ async def chat_completions(req: ChatRequest):
     # Validate attachments
     validated_attachments, att_error = _validate_attachments(req.attachments)
     if att_error:
-        print(f"[Attachment validation] {att_error}", flush=True)
+        logger.info(f"[Attachment validation] {att_error}", flush=True)
     req.attachments = validated_attachments
 
     # Auto-claim trial token when no API key configured
@@ -1066,9 +1068,6 @@ async def agent_run(req: AgentRunRequest):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
-
-
 # ── Registration ─────────────────────────────────────────────────────
 
 
@@ -1081,6 +1080,7 @@ async def evolution_status():
     """Return evolution system status for the frontend."""
     try:
         from agent.evolution_manager import get_evolution_status, get_current_emotional_state
+
         status = get_evolution_status()
         if isinstance(status, dict):
             status["current_emotion"] = get_current_emotional_state()

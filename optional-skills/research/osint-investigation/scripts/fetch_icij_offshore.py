@@ -27,6 +27,11 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 BULK_URL = "https://offshoreleaks-data.icij.org/offshoreleaks/csv/full-oldb.LATEST.zip"
 
 COLUMNS = [
@@ -60,7 +65,7 @@ def _download(dest: Path, force: bool = False) -> Path:
         age_days = (time.time() - zip_path.stat().st_mtime) / 86400
         if age_days < 30:
             return zip_path
-    print(f"Downloading ICIJ bulk database (~70 MB) to {zip_path}", file=sys.stderr)
+    logger.warning(f"Downloading ICIJ bulk database (~70 MB) to {zip_path}")
     req = urllib.request.Request(
         BULK_URL,
         headers={"User-Agent": "hermes-agent osint-investigation skill"},
@@ -187,7 +192,7 @@ def fetch(
             bits.append(f"officer={officer!r}")
         if jurisdiction:
             bits.append(f"jurisdiction={jurisdiction!r}")
-        print(
+        logger.info(
             f"ICIJ: 0 matches for {', '.join(bits)}. "
             "The bulk database covers offshore leaks (Panama, Paradise, Pandora, "
             "Bahamas, Offshore Leaks). Most private US individuals are NOT in it.",
@@ -226,7 +231,7 @@ def main() -> int:
         force_refresh=a.force_refresh,
         limit=a.limit,
     )
-    print(f"Wrote {n} ICIJ Offshore Leaks rows to {a.out}")
+    logger.info(f"Wrote {n} ICIJ Offshore Leaks rows to {a.out}")
     return 0
 
 

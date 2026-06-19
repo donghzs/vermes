@@ -30,6 +30,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _watermark import Watermark, format_items_as_markdown  # type: ignore
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def _dig(obj, path: str):
     """Dotted-path lookup: _dig({'a':{'b':[1,2]}}, 'a.b') → [1,2]."""
@@ -84,21 +89,21 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=args.timeout) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as e:
-        print(f"watch_http_json: HTTP {e.code} from {args.url}", file=sys.stderr)
+        logger.warning(f"watch_http_json: HTTP {e.code} from {args.url}")
         return 2
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"watch_http_json: network error: {e}", file=sys.stderr)
+        logger.warning(f"watch_http_json: network error: {e}")
         return 2
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        print(f"watch_http_json: response is not valid JSON: {e}", file=sys.stderr)
+        logger.warning(f"watch_http_json: response is not valid JSON: {e}")
         return 2
 
     items = _dig(data, args.items_path) if args.items_path else data
     if not isinstance(items, list):
-        print(
+        logger.info(
             f"watch_http_json: items_path={args.items_path!r} did not resolve to a list "
             f"(got {type(items).__name__})",
             file=sys.stderr,

@@ -28,6 +28,11 @@ import datetime
 import hashlib
 import sys
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 EVIDENCE_TYPES = [
     "git",           # Local git repository data (commits, reflog, fsck)
     "gh_api",        # GitHub REST API responses
@@ -75,8 +80,8 @@ class EvidenceStore:
                 with open(filepath, "r", encoding="utf-8") as f:
                     self.data = json.load(f)
             except (json.JSONDecodeError, IOError) as e:
-                print(f"Error loading evidence store '{filepath}': {e}", file=sys.stderr)
-                print("Hint: The file might be corrupted. Check for manual edits or syntax errors.", file=sys.stderr)
+                logger.warning(f"Error loading evidence store '{filepath}': {e}")
+                logger.warning("Hint: The file might be corrupted. Check for manual edits or syntax errors.")
                 sys.exit(1)
 
     def _save(self):
@@ -268,7 +273,7 @@ def main():
             notes=args.notes,
         )
         if not getattr(args, "quiet", False):
-            print(f"✓ Added evidence: {eid}")
+            logger.info(f"✓ Added evidence: {eid}")
 
     elif args.command == "list":
         items = store.list_evidence(
@@ -276,37 +281,37 @@ def main():
             filter_actor=getattr(args, "filter_actor", None),
         )
         if not items:
-            print("No evidence found.")
+            logger.info("No evidence found.")
         for e in items:
             actor_str = f" | actor: {e['actor']}" if e.get("actor") else ""
             url_str = f" | {e['url']}" if e.get("url") else ""
-            print(f"[{e['id']}] {e['type']:12s} | {e['verification']:20s} | {e['source']}{actor_str}{url_str}")
+            logger.info(f"[{e['id']}] {e['type']:12s} | {e['verification']:20s} | {e['source']}{actor_str}{url_str}")
 
     elif args.command == "verify":
         issues = store.verify_integrity()
         if not issues:
-            print(f"✓ All {len(store.data['evidence'])} evidence entries passed SHA-256 integrity check.")
+            logger.info(f"✓ All {len(store.data['evidence'])} evidence entries passed SHA-256 integrity check.")
         else:
-            print(f"✗ {len(issues)} integrity issue(s) detected:")
+            logger.info(f"✗ {len(issues)} integrity issue(s) detected:")
             for i in issues:
-                print(f"  [{i['id']}] stored={i['stored_sha256'][:16]}... computed={i['computed_sha256'][:16]}...")
+                logger.info(f"  [{i['id']}] stored={i['stored_sha256'][:16]}... computed={i['computed_sha256'][:16]}...")
             sys.exit(1)
 
     elif args.command == "query":
         results = store.query(args.keyword)
-        print(f"Found {len(results)} result(s) for '{args.keyword}':")
+        logger.info(f"Found {len(results)} result(s) for '{args.keyword}':")
         for e in results:
-            print(f"  [{e['id']}] {e['type']} | {e['source']} | {e['content'][:80]}")
+            logger.info(f"  [{e['id']}] {e['type']} | {e['source']} | {e['content'][:80]}")
 
     elif args.command == "export":
-        print(store.export_markdown())
+        logger.info(store.export_markdown())
 
     elif args.command == "summary":
         s = store.summary()
-        print(f"Total evidence items : {s['total']}")
-        print(f"By type              : {json.dumps(s['by_type'], indent=2)}")
-        print(f"By verification      : {json.dumps(s['by_verification'], indent=2)}")
-        print(f"Unique actors        : {s['unique_actors']}")
+        logger.info(f"Total evidence items : {s['total']}")
+        logger.info(f"By type              : {json.dumps(s['by_type'], indent=2)}")
+        logger.info(f"By verification      : {json.dumps(s['by_verification'], indent=2)}")
+        logger.info(f"Unique actors        : {s['unique_actors']}")
 
 
 if __name__ == "__main__":

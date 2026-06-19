@@ -10,6 +10,9 @@ All logic lives in shared do_* functions. The CLI entry point and slash command
 handler are thin wrappers that parse args and delegate.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import re
 import shutil
@@ -1266,6 +1269,8 @@ def do_snapshot_import(input_path: str, force: bool = False,
                        console: Optional[Console] = None) -> None:
     """Re-install skills from a snapshot file."""
     from tools.skills_hub import TapsManager
+
+
 
     c = console or _console
     inp = Path(input_path)

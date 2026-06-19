@@ -13,6 +13,11 @@ import time
 import urllib.request
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 ENDPOINT = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
 COLUMNS = [
     "award_id",
@@ -99,7 +104,7 @@ def fetch(
         try:
             payload = _post(body)
         except Exception as e:  # noqa: BLE001
-            print(f"USAspending error on page {page}: {e}", file=sys.stderr)
+            logger.warning(f"USAspending error on page {page}: {e}")
             break
         results = payload.get("results", [])
         if not results:
@@ -162,7 +167,7 @@ def main() -> int:
         out_path=a.out,
         max_pages=a.max_pages,
     )
-    print(f"Wrote {n} USAspending rows to {a.out}")
+    logger.info(f"Wrote {n} USAspending rows to {a.out}")
     return 0
 
 

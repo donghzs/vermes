@@ -19,7 +19,7 @@ Usage:
     result = scan_skill(Path("skills/.hub/quarantine/some-skill"), source="community")
     allowed, reason = should_allow_install(result)
     if not allowed:
-        print(format_scan_report(result))
+        logger.info(format_scan_report(result))
 """
 
 import re
@@ -28,6 +28,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Tuple
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 

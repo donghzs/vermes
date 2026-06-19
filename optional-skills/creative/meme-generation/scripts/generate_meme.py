@@ -15,6 +15,9 @@ Any of the ~100 popular imgflip templates can also be used by name or ID —
 unknown templates get smart default text positioning based on their box_count.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import sys
@@ -82,6 +85,8 @@ def fetch_imgflip_templates() -> list:
     """Fetch popular meme templates from imgflip API. Cached for 24h."""
     import time
 
+
+
     CACHE_DIR.mkdir(exist_ok=True)
     # Check cache
     if IMGFLIP_CACHE_FILE.exists():
@@ -101,7 +106,7 @@ def fetch_imgflip_templates() -> list:
         if IMGFLIP_CACHE_FILE.exists():
             with open(IMGFLIP_CACHE_FILE) as f:
                 return json.load(f)
-        print(f"Warning: could not fetch imgflip templates: {e}", file=sys.stderr)
+        logger.warning(f"Warning: could not fetch imgflip templates: {e}")
         return []
 
 
@@ -347,12 +352,12 @@ def generate_meme(template_id: str, texts: list[str], output_path: str) -> str:
     tmpl = resolve_template(template_id)
 
     if tmpl is None:
-        print(f"Unknown template: {template_id}", file=sys.stderr)
-        print("Use --list to see curated templates or --search to find imgflip templates.", file=sys.stderr)
+        logger.warning(f"Unknown template: {template_id}")
+        logger.warning("Use --list to see curated templates or --search to find imgflip templates.")
         sys.exit(1)
 
     fields = tmpl["fields"]
-    print(f"Using template: {tmpl['name']} ({tmpl['source']}, {len(fields)} fields)", file=sys.stderr)
+    logger.warning(f"Using template: {tmpl['name']} ({tmpl['source']}, {len(fields)} fields)")
 
     img = get_template_image(tmpl["url"])
     img = _overlay_on_image(img, texts, fields)
@@ -369,7 +374,7 @@ def generate_from_image(
 ) -> str:
     """Generate a meme from a custom image (e.g. AI-generated). Returns the path."""
     img = Image.open(image_path).convert("RGBA")
-    print(f"Custom image: {img.size[0]}x{img.size[1]}, {len(texts)} text(s), mode={'bars' if use_bars else 'overlay'}", file=sys.stderr)
+    logger.warning(f"Custom image: {img.size[0]}x{img.size[1]}, {len(texts)} text(s), mode={'bars' if use_bars else 'overlay'}")
 
     if use_bars:
         result = _add_bars(img, texts)
@@ -387,13 +392,13 @@ def generate_from_image(
 def list_templates():
     """Print curated templates with custom positioning."""
     templates = load_curated_templates()
-    print(f"{'ID':<25} {'Name':<30} {'Fields':<8} Best for")
-    print("-" * 90)
+    logger.info(f"{'ID':<25} {'Name':<30} {'Fields':<8} Best for")
+    logger.info("-" * 90)
     for tid, tmpl in sorted(templates.items()):
         fields = len(tmpl["fields"])
-        print(f"{tid:<25} {tmpl['name']:<30} {fields:<8} {tmpl['best_for']}")
-    print(f"\n{len(templates)} curated templates with custom text positioning.")
-    print("Use --search to find any of the ~100 popular imgflip templates.")
+        logger.info(f"{tid:<25} {tmpl['name']:<30} {fields:<8} {tmpl['best_for']}")
+    logger.info(f"\n{len(templates)} curated templates with custom text positioning.")
+    logger.info("Use --search to find any of the ~100 popular imgflip templates.")
 
 
 def search_templates(query: str):
@@ -411,22 +416,22 @@ def search_templates(query: str):
             matches.append((meme["name"], meme["id"], meme.get("box_count", 2), has_custom))
 
     if not matches:
-        print(f"No templates found matching '{query}'")
+        logger.info(f"No templates found matching '{query}'")
         return
 
-    print(f"{'Name':<40} {'ID':<12} {'Fields':<8} Positioning")
-    print("-" * 75)
+    logger.info(f"{'Name':<40} {'ID':<12} {'Fields':<8} Positioning")
+    logger.info("-" * 75)
     for name, mid, boxes, positioning in matches:
-        print(f"{name:<40} {mid:<12} {boxes:<8} {positioning}")
-    print(f"\n{len(matches)} template(s) found. Use the name or ID as the first argument.")
+        logger.info(f"{name:<40} {mid:<12} {boxes:<8} {positioning}")
+    logger.info(f"\n{len(matches)} template(s) found. Use the name or ID as the first argument.")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: generate_meme.py <template_id_or_name> <output_path> <text1> [text2] ...")
-        print("       generate_meme.py --image <path> [--bars] <output_path> <text1> [text2] ...")
-        print("       generate_meme.py --list              # curated templates")
-        print("       generate_meme.py --search <query>    # search all imgflip templates")
+        logger.info("Usage: generate_meme.py <template_id_or_name> <output_path> <text1> [text2] ...")
+        logger.info("       generate_meme.py --image <path> [--bars] <output_path> <text1> [text2] ...")
+        logger.info("       generate_meme.py --list              # curated templates")
+        logger.info("       generate_meme.py --search <query>    # search all imgflip templates")
         sys.exit(1)
 
     if sys.argv[1] == "--list":
@@ -435,7 +440,7 @@ if __name__ == "__main__":
 
     if sys.argv[1] == "--search":
         if len(sys.argv) < 3:
-            print("Usage: generate_meme.py --search <query>")
+            logger.info("Usage: generate_meme.py --search <query>")
             sys.exit(1)
         search_templates(sys.argv[2])
         sys.exit(0)
@@ -444,7 +449,7 @@ if __name__ == "__main__":
         # Custom image mode: --image <path> [--bars] <output> <text1> ...
         args = sys.argv[2:]
         if len(args) < 3:
-            print("Usage: generate_meme.py --image <image_path> [--bars] <output_path> <text1> ...")
+            logger.info("Usage: generate_meme.py --image <image_path> [--bars] <output_path> <text1> ...")
             sys.exit(1)
         image_path = args.pop(0)
         use_bars = False
@@ -452,15 +457,15 @@ if __name__ == "__main__":
             use_bars = True
             args.pop(0)
         if len(args) < 2:
-            print("Need at least: output_path and one text argument")
+            logger.info("Need at least: output_path and one text argument")
             sys.exit(1)
         output_path = args.pop(0)
         result = generate_from_image(image_path, args, output_path, use_bars=use_bars)
-        print(f"Meme saved to: {result}")
+        logger.info(f"Meme saved to: {result}")
         sys.exit(0)
 
     if len(sys.argv) < 4:
-        print("Need at least: template_id_or_name, output_path, and one text argument")
+        logger.info("Need at least: template_id_or_name, output_path, and one text argument")
         sys.exit(1)
 
     template_id = sys.argv[1]
@@ -468,4 +473,4 @@ if __name__ == "__main__":
     texts = sys.argv[3:]
 
     result = generate_meme(template_id, texts, output_path)
-    print(f"Meme saved to: {result}")
+    logger.info(f"Meme saved to: {result}")

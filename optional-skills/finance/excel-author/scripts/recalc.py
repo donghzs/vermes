@@ -19,6 +19,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def find_libreoffice() -> str | None:
     for cmd in ("libreoffice", "soffice"):
@@ -76,11 +81,11 @@ def recalc(xlsx_path: str, timeout: int = 60) -> dict:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python recalc.py <path.xlsx> [timeout_seconds]", file=sys.stderr)
+        logger.warning("Usage: python recalc.py <path.xlsx> [timeout_seconds]")
         sys.exit(2)
     timeout = int(sys.argv[2]) if len(sys.argv) > 2 else 60
     result = recalc(sys.argv[1], timeout=timeout)
-    print(json.dumps(result, indent=2))
+    logger.info(json.dumps(result, indent=2))
     sys.exit(0 if result["status"] == "success" else 1)
 
 

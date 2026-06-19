@@ -26,6 +26,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 WEBSITE = SCRIPT_DIR.parent
 DOCS = WEBSITE / "docs"
@@ -298,8 +303,8 @@ def main() -> None:
     full = emit_llms_full()
     (STATIC / "llms.txt").write_text(index, encoding="utf-8")
     (STATIC / "llms-full.txt").write_text(full, encoding="utf-8")
-    print(f"Wrote {STATIC / 'llms.txt'} ({len(index):,} bytes)")
-    print(f"Wrote {STATIC / 'llms-full.txt'} ({len(full):,} bytes)")
+    logger.info(f"Wrote {STATIC / 'llms.txt'} ({len(index):,} bytes)")
+    logger.info(f"Wrote {STATIC / 'llms-full.txt'} ({len(full):,} bytes)")
 
 
 if __name__ == "__main__":

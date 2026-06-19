@@ -89,8 +89,8 @@ USAGE
     from hermes_cli.skin_engine import get_active_skin, list_skins, set_active_skin
 
     skin = get_active_skin()
-    print(skin.colors["banner_title"])    # "#FFD700"
-    print(skin.get_branding("agent_name"))  # "Vermes"
+    logger.info(skin.colors["banner_title"])    # "#FFD700"
+    logger.info(skin.get_branding("agent_name"))  # "Vermes"
 
     set_active_skin("ares")               # Switch to built-in ares skin
     set_active_skin("mytheme")            # Switch to user skin from ~/.hermes/skins/

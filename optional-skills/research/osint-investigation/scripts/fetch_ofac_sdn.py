@@ -21,6 +21,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 SDN_URL = "https://www.treasury.gov/ofac/downloads/sdn.csv"
 ADD_URL = "https://www.treasury.gov/ofac/downloads/add.csv"
 ALT_URL = "https://www.treasury.gov/ofac/downloads/alt.csv"
@@ -167,7 +172,7 @@ def main() -> int:
     p.add_argument("--out", required=True)
     a = p.parse_args()
     n = fetch(program=a.program, entity_type=a.entity_type, out_path=a.out)
-    print(f"Wrote {n} OFAC SDN rows to {a.out}")
+    logger.info(f"Wrote {n} OFAC SDN rows to {a.out}")
     return 0
 
 

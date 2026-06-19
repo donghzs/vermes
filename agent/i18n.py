@@ -15,9 +15,9 @@ crashes the agent.
 Usage::
 
     from agent.i18n import t
-    print(t("approval.choose_long"))                       # current lang
-    print(t("gateway.draining", count=3))                  # {count} formatted
-    print(t("approval.choose_long", lang="zh"))            # explicit override
+    logger.info(t("approval.choose_long"))                       # current lang
+    logger.info(t("gateway.draining", count=3))                  # {count} formatted
+    logger.info(t("approval.choose_long", lang="zh"))            # explicit override
 
 Language resolution order:
     1. Explicit ``lang=`` argument passed to :func:`t`

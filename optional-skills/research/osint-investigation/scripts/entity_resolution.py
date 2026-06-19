@@ -16,16 +16,22 @@ Output CSV columns:
     left_normalized, right_normalized, left_row, right_row,
     overlap_ratio, shared_tokens
 """
+
 from __future__ import annotations
 
 import argparse
 import csv
-import sys
+import sy
+import logging
+
+logger = logging.getLogger(__name__)
+s
 from pathlib import Path
 
 # Allow running directly or as a module.
 sys.path.insert(0, str(Path(__file__).parent))
 from _normalize import (  # noqa: E402
+
     normalize_name,
     normalize_aggressive,
     token_overlap_ratio,
@@ -36,7 +42,6 @@ CONFIDENCE = {
     "fuzzy": "medium",
     "token_overlap": "low",
 }
-
 
 def _read_csv(path: str, name_col: str) -> list[dict[str, str]]:
     rows = []
@@ -52,7 +57,6 @@ def _read_csv(path: str, name_col: str) -> list[dict[str, str]]:
             rows.append(row)
     return rows
 
-
 def _build_index(rows: list[dict[str, str]], name_col: str):
     """Index by exact-normalized and aggressive (sorted-token) form."""
     exact: dict[str, list[dict[str, str]]] = {}
@@ -66,7 +70,6 @@ def _build_index(rows: list[dict[str, str]], name_col: str):
         if a:
             aggressive.setdefault(a, []).append(row)
     return exact, aggressive
-
 
 def _emit(
     out_rows: list[dict[str, str]],
@@ -103,7 +106,6 @@ def _emit(
             "shared_tokens": str(shared) if shared else "",
         }
     )
-
 
 def resolve(
     left_path: str,
@@ -177,7 +179,6 @@ def resolve(
         writer.writerows(out_rows)
     return len(out_rows)
 
-
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--left", required=True, help="Left CSV path")
@@ -220,9 +221,8 @@ def main() -> int:
         min_shared=args.min_shared,
         skip_overlap=args.skip_overlap,
     )
-    print(f"Wrote {count} match rows to {args.out}")
+    logger.info(f"Wrote {count} match rows to {args.out}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

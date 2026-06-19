@@ -6,6 +6,9 @@ Provides options for:
 - Keep data: Remove code but keep ~/.hermes/ (configs, sessions, logs)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import shutil
 import subprocess
@@ -16,13 +19,13 @@ from hermes_constants import get_hermes_home
 from hermes_cli.colors import Colors, color
 
 def log_info(msg: str):
-    print(f"{color('→', Colors.CYAN)} {msg}")
+    logger.info(f"{color('→', Colors.CYAN)} {msg}")
 
 def log_success(msg: str):
-    print(f"{color('✓', Colors.GREEN)} {msg}")
+    logger.info(f"{color('✓', Colors.GREEN)} {msg}")
 
 def log_warn(msg: str):
-    print(f"{color('⚠', Colors.YELLOW)} {msg}")
+    logger.info(f"{color('⚠', Colors.YELLOW)} {msg}")
 
 def get_project_root() -> Path:
     """Get the project installation directory."""
@@ -392,6 +395,8 @@ def _uninstall_profile(profile) -> None:
     current HERMES_HOME and can't be easily switched in-process.
     """
     import sys as _sys
+
+
     name = profile.name
     profile_home = profile.path
 
@@ -450,49 +455,49 @@ def run_uninstall(args):
     is_default_profile = _is_default_hermes_home(hermes_home)
     named_profiles = _discover_named_profiles() if is_default_profile else []
 
-    print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.MAGENTA, Colors.BOLD))
-    print(color("│            ⚕ Vermes Uninstaller                  │", Colors.MAGENTA, Colors.BOLD))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.MAGENTA, Colors.BOLD))
-    print()
+    logger.info()
+    logger.info(color("┌─────────────────────────────────────────────────────────┐", Colors.MAGENTA, Colors.BOLD))
+    logger.info(color("│            ⚕ Vermes Uninstaller                  │", Colors.MAGENTA, Colors.BOLD))
+    logger.info(color("└─────────────────────────────────────────────────────────┘", Colors.MAGENTA, Colors.BOLD))
+    logger.info()
     
     # Show what will be affected
-    print(color("Current Installation:", Colors.CYAN, Colors.BOLD))
-    print(f"  Code:    {project_root}")
-    print(f"  Config:  {hermes_home / 'config.yaml'}")
-    print(f"  Secrets: {hermes_home / '.env'}")
-    print(f"  Data:    {hermes_home / 'cron/'}, {hermes_home / 'sessions/'}, {hermes_home / 'logs/'}")
-    print()
+    logger.info(color("Current Installation:", Colors.CYAN, Colors.BOLD))
+    logger.info(f"  Code:    {project_root}")
+    logger.info(f"  Config:  {hermes_home / 'config.yaml'}")
+    logger.info(f"  Secrets: {hermes_home / '.env'}")
+    logger.info(f"  Data:    {hermes_home / 'cron/'}, {hermes_home / 'sessions/'}, {hermes_home / 'logs/'}")
+    logger.info()
 
     if named_profiles:
-        print(color("Other profiles detected:", Colors.CYAN, Colors.BOLD))
+        logger.info(color("Other profiles detected:", Colors.CYAN, Colors.BOLD))
         for p in named_profiles:
             running = " (gateway running)" if getattr(p, "gateway_running", False) else ""
-            print(f"  • {p.name}{running}: {p.path}")
-        print()
+            logger.info(f"  • {p.name}{running}: {p.path}")
+        logger.info()
     
     # Ask for confirmation
-    print(color("Uninstall Options:", Colors.YELLOW, Colors.BOLD))
-    print()
-    print("  1) " + color("Keep data", Colors.GREEN) + " - Remove code only, keep configs/sessions/logs")
-    print("     (Recommended - you can reinstall later with your settings intact)")
-    print()
-    print("  2) " + color("Full uninstall", Colors.RED) + " - Remove everything including all data")
-    print("     (Warning: This deletes all configs, sessions, and logs permanently)")
-    print()
-    print("  3) " + color("Cancel", Colors.CYAN) + " - Don't uninstall")
-    print()
+    logger.info(color("Uninstall Options:", Colors.YELLOW, Colors.BOLD))
+    logger.info()
+    logger.info("  1) " + color("Keep data", Colors.GREEN) + " - Remove code only, keep configs/sessions/logs")
+    logger.info("     (Recommended - you can reinstall later with your settings intact)")
+    logger.info()
+    logger.info("  2) " + color("Full uninstall", Colors.RED) + " - Remove everything including all data")
+    logger.info("     (Warning: This deletes all configs, sessions, and logs permanently)")
+    logger.info()
+    logger.info("  3) " + color("Cancel", Colors.CYAN) + " - Don't uninstall")
+    logger.info()
     
     try:
         choice = input(color("Select option [1/2/3]: ", Colors.BOLD)).strip()
     except (KeyboardInterrupt, EOFError):
-        print()
-        print("Cancelled.")
+        logger.info()
+        logger.info("Cancelled.")
         return
     
     if choice == "3" or choice.lower() in {"c", "cancel", "q", "quit", "n", "no"}:
-        print()
-        print("Uninstall cancelled.")
+        logger.info()
+        logger.info("Uninstall cancelled.")
         return
     
     full_uninstall = (choice == "2")
@@ -503,52 +508,52 @@ def run_uninstall(args):
     # those leave zombie services and data behind.
     remove_profiles = False
     if full_uninstall and named_profiles:
-        print()
-        print(color("Other profiles will NOT be removed by default.", Colors.YELLOW))
-        print(f"Found {len(named_profiles)} named profile(s): " +
+        logger.info()
+        logger.info(color("Other profiles will NOT be removed by default.", Colors.YELLOW))
+        logger.info(f"Found {len(named_profiles)} named profile(s): " +
               ", ".join(p.name for p in named_profiles))
-        print()
+        logger.info()
         try:
             resp = input(color(
                 f"Also stop and remove these {len(named_profiles)} profile(s)? [y/N]: ",
                 Colors.BOLD
             )).strip().lower()
         except (KeyboardInterrupt, EOFError):
-            print()
-            print("Cancelled.")
+            logger.info()
+            logger.info("Cancelled.")
             return
         remove_profiles = resp in {"y", "yes"}
 
     # Final confirmation
-    print()
+    logger.info()
     if full_uninstall:
-        print(color("⚠️  WARNING: This will permanently delete ALL Hermes data!", Colors.RED, Colors.BOLD))
-        print(color("   Including: configs, API keys, sessions, scheduled jobs, logs", Colors.RED))
+        logger.info(color("⚠️  WARNING: This will permanently delete ALL Hermes data!", Colors.RED, Colors.BOLD))
+        logger.info(color("   Including: configs, API keys, sessions, scheduled jobs, logs", Colors.RED))
         if remove_profiles:
-            print(color(
+            logger.info(color(
                 f"   Plus {len(named_profiles)} profile(s): " +
                 ", ".join(p.name for p in named_profiles),
                 Colors.RED
             ))
     else:
-        print("This will remove the Hermes code but keep your configuration and data.")
+        logger.info("This will remove the Hermes code but keep your configuration and data.")
     
-    print()
+    logger.info()
     try:
         confirm = input(f"Type '{color('yes', Colors.YELLOW)}' to confirm: ").strip().lower()
     except (KeyboardInterrupt, EOFError):
-        print()
-        print("Cancelled.")
+        logger.info()
+        logger.info("Cancelled.")
         return
     
     if confirm != "yes":
-        print()
-        print("Uninstall cancelled.")
+        logger.info()
+        logger.info("Uninstall cancelled.")
         return
     
-    print()
-    print(color("Uninstalling...", Colors.CYAN, Colors.BOLD))
-    print()
+    logger.info()
+    logger.info(color("Uninstalling...", Colors.CYAN, Colors.BOLD))
+    logger.info()
     
     # 1. Stop and uninstall gateway service + kill standalone processes
     log_info("Checking for running gateway...")
@@ -652,29 +657,29 @@ def run_uninstall(args):
         log_info(f"Keeping configuration and data in {hermes_home}")
     
     # Done
-    print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.GREEN, Colors.BOLD))
-    print(color("│              ✓ Uninstall Complete!                      │", Colors.GREEN, Colors.BOLD))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.GREEN, Colors.BOLD))
-    print()
+    logger.info()
+    logger.info(color("┌─────────────────────────────────────────────────────────┐", Colors.GREEN, Colors.BOLD))
+    logger.info(color("│              ✓ Uninstall Complete!                      │", Colors.GREEN, Colors.BOLD))
+    logger.info(color("└─────────────────────────────────────────────────────────┘", Colors.GREEN, Colors.BOLD))
+    logger.info()
     
     if not full_uninstall:
-        print(color("Your configuration and data have been preserved:", Colors.CYAN))
-        print(f"  {hermes_home}/")
-        print()
-        print("To reinstall later with your existing settings:")
+        logger.info(color("Your configuration and data have been preserved:", Colors.CYAN))
+        logger.info(f"  {hermes_home}/")
+        logger.info()
+        logger.info("To reinstall later with your existing settings:")
         if _is_windows():
-            print(color("  iex (irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1)", Colors.DIM))
+            logger.info(color("  iex (irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1)", Colors.DIM))
         else:
-            print(color("  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash", Colors.DIM))
-        print()
+            logger.info(color("  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash", Colors.DIM))
+        logger.info()
 
     if _is_windows():
-        print(color("Open a new terminal (PowerShell / Windows Terminal) to pick up", Colors.YELLOW))
-        print(color("the updated User PATH and environment variables.", Colors.YELLOW))
+        logger.info(color("Open a new terminal (PowerShell / Windows Terminal) to pick up", Colors.YELLOW))
+        logger.info(color("the updated User PATH and environment variables.", Colors.YELLOW))
     else:
-        print(color("Reload your shell to complete the process:", Colors.YELLOW))
-        print("  source ~/.bashrc  # or ~/.zshrc")
-    print()
-    print("Thank you for using Vermes! ⚕")
-    print()
+        logger.info(color("Reload your shell to complete the process:", Colors.YELLOW))
+        logger.info("  source ~/.bashrc  # or ~/.zshrc")
+    logger.info()
+    logger.info("Thank you for using Vermes! ⚕")
+    logger.info()

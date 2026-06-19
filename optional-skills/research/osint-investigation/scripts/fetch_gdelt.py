@@ -20,6 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 BASE = "https://api.gdeltproject.org/api/v2/doc/doc"
 
 COLUMNS = [
@@ -72,18 +77,18 @@ def fetch(
         except RuntimeError as e:
             # GDELT requires 1 request per 5 seconds; back off and retry.
             if "429" in str(e) and attempt < 2:
-                print(
+                logger.info(
                     f"GDELT throttle hit; sleeping 6s before retry "
                     f"(attempt {attempt + 1}/3)",
                     file=sys.stderr,
                 )
                 time.sleep(6)
                 continue
-            print(f"GDELT error: {e}", file=sys.stderr)
+            logger.warning(f"GDELT error: {e}")
             payload = {}
             break
         except Exception as e:  # noqa: BLE001
-            print(f"GDELT error: {e}", file=sys.stderr)
+            logger.warning(f"GDELT error: {e}")
             payload = {}
             break
 
@@ -114,7 +119,7 @@ def fetch(
         w.writeheader()
         w.writerows(rows)
     if not rows:
-        print(
+        logger.info(
             f"GDELT: 0 articles for query={query!r}. "
             "GDELT indexes ~2015→present. Try widening the timespan or "
             "checking the query syntax (https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/).",
@@ -154,7 +159,7 @@ def main() -> int:
         limit=a.limit,
         out_path=a.out,
     )
-    print(f"Wrote {n} GDELT article rows to {a.out}")
+    logger.info(f"Wrote {n} GDELT article rows to {a.out}")
     return 0
 
 

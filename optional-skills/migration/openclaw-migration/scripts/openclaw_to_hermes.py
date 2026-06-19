@@ -7,7 +7,9 @@ reports exactly what was skipped and why.
 """
 
 from __future__ import annotations
+import logging
 
+logger = logging.getLogger(__name__)
 import argparse
 import hashlib
 import json
@@ -21,9 +23,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:
     import yaml
+
 except Exception:  # pragma: no cover - handled at runtime
     yaml = None
-
 
 ENTRY_DELIMITER = "\n§\n"
 DEFAULT_MEMORY_CHAR_LIMIT = 2200
@@ -223,7 +225,6 @@ MIGRATION_PRESETS: Dict[str, set[str]] = {
     "full": set(MIGRATION_OPTION_METADATA),
 }
 
-
 # ───────────────────────────────────────────────────────────────────────
 # Item shape constants — kept stable for downstream consumers of report.json.
 # Inspired by OpenClaw's src/plugin-sdk/migration.ts so both sides speak the
@@ -241,7 +242,6 @@ STATUS_PLANNED = "planned"
 REASON_TARGET_EXISTS = "Target exists and overwrite is disabled"
 REASON_BLOCKED_BY_APPLY_CONFLICT = "blocked by earlier apply conflict"
 
-
 @dataclass
 class ItemResult:
     kind: str
@@ -252,7 +252,6 @@ class ItemResult:
     details: Dict[str, Any] = field(default_factory=dict)
     sensitive: bool = False
 
-
 def parse_selection_values(values: Optional[Sequence[str]]) -> List[str]:
     parsed: List[str] = []
     for value in values or ():
@@ -261,7 +260,6 @@ def parse_selection_values(values: Optional[Sequence[str]]) -> List[str]:
             if part:
                 parsed.append(part)
     return parsed
-
 
 def resolve_selected_options(
     include: Optional[Sequence[str]] = None,
@@ -302,7 +300,6 @@ def resolve_selected_options(
     selected -= (set(exclude_values) - {"all"})
     return selected
 
-
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -310,18 +307,14 @@ def sha256_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip())
 
-
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-
 
 def resolve_secret_input(value: Any, env: Optional[Dict[str, str]] = None) -> Optional[str]:
     """Resolve an OpenClaw SecretInput value to a plain string.
@@ -345,13 +338,11 @@ def resolve_secret_input(value: Any, env: Optional[Dict[str, str]] = None) -> Op
         # File/exec sources can't be resolved here — return None
     return None
 
-
 def load_yaml_file(path: Path) -> Dict[str, Any]:
     if yaml is None or not path.exists():
         return {}
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
-
 
 def dump_yaml_file(path: Path, data: Dict[str, Any]) -> None:
     if yaml is None:
@@ -361,7 +352,6 @@ def dump_yaml_file(path: Path, data: Dict[str, Any]) -> None:
         yaml.safe_dump(data, sort_keys=False, allow_unicode=False),
         encoding="utf-8",
     )
-
 
 def parse_env_file(path: Path) -> Dict[str, str]:
     if not path.exists():
@@ -375,12 +365,10 @@ def parse_env_file(path: Path) -> Dict[str, str]:
         data[key.strip()] = value.strip()
     return data
 
-
 def save_env_file(path: Path, data: Dict[str, str]) -> None:
     ensure_parent(path)
     lines = [f"{key}={value}" for key, value in data.items()]
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-
 
 def backup_existing(path: Path, backup_root: Path) -> Optional[Path]:
     if not path.exists():
@@ -393,7 +381,6 @@ def backup_existing(path: Path, backup_root: Path) -> Optional[Path]:
     else:
         shutil.copy2(path, dest)
     return dest
-
 
 # ── Brand rewriting ─────────────────────────────────────────
 # Replace OpenClaw brand names with Hermes in migrated text so that
@@ -408,7 +395,6 @@ _REBRAND_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'\bClawdBot\b', re.IGNORECASE), 'Hermes'),
     (re.compile(r'\bMoltBot\b', re.IGNORECASE), 'Hermes'),
 ]
-
 
 def _case_preserving_replacement(replacement: str):
     """Return a re.sub replacement fn that lowercases the result when the
@@ -426,7 +412,6 @@ def _case_preserving_replacement(replacement: str):
         return replacement
     return _sub
 
-
 def rebrand_text(text: str) -> str:
     """Replace OpenClaw / ClawdBot / MoltBot brand names with Hermes.
 
@@ -437,7 +422,6 @@ def rebrand_text(text: str) -> str:
         text = pattern.sub(_case_preserving_replacement(replacement), text)
     return text
 
-
 def parse_existing_memory_entries(path: Path) -> List[str]:
     if not path.exists():
         return []
@@ -447,7 +431,6 @@ def parse_existing_memory_entries(path: Path) -> List[str]:
     if ENTRY_DELIMITER in raw:
         return [e.strip() for e in raw.split(ENTRY_DELIMITER) if e.strip()]
     return extract_markdown_entries(raw)
-
 
 def extract_markdown_entries(text: str) -> List[str]:
     entries: List[str] = []
@@ -524,7 +507,6 @@ def extract_markdown_entries(text: str) -> List[str]:
         deduped.append(entry.strip())
     return deduped
 
-
 def merge_entries(
     existing: Sequence[str],
     incoming: Sequence[str],
@@ -558,13 +540,11 @@ def merge_entries(
 
     return merged, stats, overflowed
 
-
 def relative_label(path: Path, root: Path) -> str:
     try:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
-
 
 # ───────────────────────────────────────────────────────────────────────
 # Secret redaction for migration reports.
@@ -601,10 +581,8 @@ _SECRET_VALUE_PATTERNS = (
     re.compile(r"\bAIza[0-9A-Za-z_\-]{12,}\b"),
 )
 
-
 def _normalize_secret_key(key: str) -> str:
     return re.sub(r"[^a-z0-9]", "", key.lower())
-
 
 def _is_secret_key(key: str) -> bool:
     normalized = _normalize_secret_key(key)
@@ -614,12 +592,10 @@ def _is_secret_key(key: str) -> bool:
         return True
     return any(marker in normalized for marker in _SECRET_KEY_MARKERS)
 
-
 def _redact_string(value: str) -> str:
     for pattern in _SECRET_VALUE_PATTERNS:
         value = pattern.sub(REDACTED_MIGRATION_VALUE, value)
     return value
-
 
 def redact_migration_value(value: Any) -> Any:
     """Return a deep copy of ``value`` with secret-looking content replaced.
@@ -630,7 +606,6 @@ def redact_migration_value(value: Any) -> Any:
     xox*-, AIza*, Bearer ...) and those substrings are replaced inline.
     """
     return _redact_internal(value, set())
-
 
 def _redact_internal(value: Any, seen: set) -> Any:
     if isinstance(value, str):
@@ -650,7 +625,6 @@ def _redact_internal(value: Any, seen: set) -> Any:
                 out[key] = _redact_internal(entry, seen)
         return out
     return value
-
 
 def write_report(output_dir: Path, report: Dict[str, Any]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -706,7 +680,6 @@ def write_report(output_dir: Path, report: Dict[str, Any]) -> None:
             lines.append(f"- {step}")
 
     (output_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
 
 class Migrator:
     def __init__(
@@ -2956,7 +2929,6 @@ class Migrator:
                 "\n".join(notes) + "\n", encoding="utf-8"
             )
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Migrate OpenClaw user state into Vermes.")
     parser.add_argument("--source", default=str(Path.home() / ".openclaw"), help="OpenClaw home directory")
@@ -3007,13 +2979,12 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def main() -> int:
     args = parse_args()
     try:
         selected_options = resolve_selected_options(args.include, args.exclude, preset=args.preset)
     except ValueError as exc:
-        print(json.dumps({"error": str(exc)}, indent=2, ensure_ascii=False))
+        logger.info(json.dumps({"error": str(exc)}, indent=2, ensure_ascii=False))
         return 2
     migrator = Migrator(
         source_root=Path(os.path.expanduser(args.source)).resolve(),
@@ -3033,7 +3004,7 @@ def main() -> int:
     # When --json is set, print the redacted report to stdout and skip the
     # human-readable terminal recap.  Useful for CI and scripted wrappers.
     if getattr(args, "json_output", False):
-        print(json.dumps(redact_migration_value(report), indent=2, ensure_ascii=False))
+        logger.info(json.dumps(redact_migration_value(report), indent=2, ensure_ascii=False))
         return 0
 
     # ── Human-readable terminal recap ─────────────────────────
@@ -3042,23 +3013,23 @@ def main() -> int:
     mode_label = "DRY RUN" if not args.execute else "EXECUTED"
     total = sum(s.values())
 
-    print()
-    print(f"  ╔══════════════════════════════════════════════════════╗")
-    print(f"  ║   OpenClaw -> Hermes Migration   [{mode_label:>8s}]   ║")
-    print(f"  ╠══════════════════════════════════════════════════════╣")
-    print(f"  ║  Source:  {str(report['source_root'])[:42]:<42s}  ║")
-    print(f"  ║  Target:  {str(report['target_root'])[:42]:<42s}  ║")
-    print(f"  ╠══════════════════════════════════════════════════════╣")
-    print(f"  ║  ✔ Migrated:  {s.get('migrated', 0):>3d}    ◆ Archived:  {s.get('archived', 0):>3d}        ║")
-    print(f"  ║  ⊘ Skipped:   {s.get('skipped', 0):>3d}    ⚠ Conflicts: {s.get('conflict', 0):>3d}        ║")
-    print(f"  ║  ✖ Errors:    {s.get('error', 0):>3d}    Total:       {total:>3d}        ║")
-    print(f"  ╚══════════════════════════════════════════════════════╝")
+    logger.info()
+    logger.info(f"  ╔══════════════════════════════════════════════════════╗")
+    logger.info(f"  ║   OpenClaw -> Hermes Migration   [{mode_label:>8s}]   ║")
+    logger.info(f"  ╠══════════════════════════════════════════════════════╣")
+    logger.info(f"  ║  Source:  {str(report['source_root'])[:42]:<42s}  ║")
+    logger.info(f"  ║  Target:  {str(report['target_root'])[:42]:<42s}  ║")
+    logger.info(f"  ╠══════════════════════════════════════════════════════╣")
+    logger.info(f"  ║  ✔ Migrated:  {s.get('migrated', 0):>3d}    ◆ Archived:  {s.get('archived', 0):>3d}        ║")
+    logger.info(f"  ║  ⊘ Skipped:   {s.get('skipped', 0):>3d}    ⚠ Conflicts: {s.get('conflict', 0):>3d}        ║")
+    logger.info(f"  ║  ✖ Errors:    {s.get('error', 0):>3d}    Total:       {total:>3d}        ║")
+    logger.info(f"  ╚══════════════════════════════════════════════════════╝")
 
     # Show what was migrated
     migrated = [i for i in items if i["status"] == "migrated"]
     if migrated:
-        print()
-        print("  Migrated:")
+        logger.info()
+        logger.info("  Migrated:")
         seen_kinds = set()
         for item in migrated:
             label = item["kind"]
@@ -3070,13 +3041,13 @@ def main() -> int:
                 dest = "~/.hermes/" + dest[len(str(report["target_root"])) + 1:]
             meta = MIGRATION_OPTION_METADATA.get(label, {})
             display = meta.get("label", label)
-            print(f"    ✔ {display:<35s} -> {dest}")
+            logger.info(f"    ✔ {display:<35s} -> {dest}")
 
     # Show what was archived
     archived = [i for i in items if i["status"] == "archived"]
     if archived:
-        print()
-        print("  Archived (manual review needed):")
+        logger.info()
+        logger.info("  Archived (manual review needed):")
         seen_kinds = set()
         for item in archived:
             label = item["kind"]
@@ -3087,50 +3058,49 @@ def main() -> int:
             meta = MIGRATION_OPTION_METADATA.get(label, {})
             display = meta.get("label", label)
             short_reason = reason[:50] + "..." if len(reason) > 50 else reason
-            print(f"    ◆ {display:<35s}  {short_reason}")
+            logger.info(f"    ◆ {display:<35s}  {short_reason}")
 
     # Show conflicts
     conflicts = [i for i in items if i["status"] == "conflict"]
     if conflicts:
-        print()
-        print("  Conflicts (use --overwrite to force):")
+        logger.info()
+        logger.info("  Conflicts (use --overwrite to force):")
         for item in conflicts:
-            print(f"    ⚠ {item['kind']}: {item.get('reason', '')}")
+            logger.info(f"    ⚠ {item['kind']}: {item.get('reason', '')}")
 
     # Show errors
     errors = [i for i in items if i["status"] == "error"]
     if errors:
-        print()
-        print("  Errors:")
+        logger.info()
+        logger.info("  Errors:")
         for item in errors:
-            print(f"    ✖ {item['kind']}: {item.get('reason', '')}")
+            logger.info(f"    ✖ {item['kind']}: {item.get('reason', '')}")
 
     # PM2 reassurance
-    print()
-    print("  ℹ PM2 processes (Discord/Telegram bots) are NOT affected.")
+    logger.info()
+    logger.info("  ℹ PM2 processes (Discord/Telegram bots) are NOT affected.")
 
     # Next steps
     if args.execute:
-        print()
-        print("  Next steps:")
-        print("    1. Review ~/.hermes/config.yaml")
-        print("    2. Run: hermes mcp list")
+        logger.info()
+        logger.info("  Next steps:")
+        logger.info("    1. Review ~/.hermes/config.yaml")
+        logger.info("    2. Run: hermes mcp list")
         if any(i["kind"] == "cron-jobs" and i["status"] == "archived" for i in items):
-            print("    3. Recreate cron jobs: hermes cron")
+            logger.info("    3. Recreate cron jobs: hermes cron")
         if report.get("output_dir"):
-            print(f"    → Full report: {report['output_dir']}/MIGRATION_NOTES.md")
+            logger.info(f"    → Full report: {report['output_dir']}/MIGRATION_NOTES.md")
     elif not args.execute:
-        print()
-        print("  This was a dry run. Add --execute to apply changes.")
+        logger.info()
+        logger.info("  This was a dry run. Add --execute to apply changes.")
 
-    print()
+    logger.info()
 
     # Also dump JSON for programmatic use
     if os.environ.get("MIGRATION_JSON_OUTPUT"):
-        print(json.dumps(report, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(report, indent=2, ensure_ascii=False))
 
     return 0 if s.get("error", 0) == 0 else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -40,7 +40,7 @@ def _warn_config_parse_failure(config_path: Path, exc: Exception) -> None:
     A YAML parse error in ``~/.hermes/config.yaml`` causes ``load_config()``
     to silently fall back to ``DEFAULT_CONFIG``, which means every user
     override (auxiliary providers, fallback chain, model overrides, etc.)
-    is dropped. Before this helper that was a one-line ``print(...)`` that
+    is dropped. Before this helper that was a one-line ``logger.info(...)`` that
     scrolled off-screen on the first invocation and was never seen again.
 
     Now: warn once per (path, mtime_ns, size) on stderr **and** in
@@ -297,7 +297,7 @@ def format_managed_message(action: str = "modify this Hermes installation") -> s
 
 def managed_error(action: str = "modify configuration"):
     """Print user-friendly error for managed mode."""
-    print(format_managed_message(action), file=sys.stderr)
+    logger.warning(format_managed_message(action))
 
 
 # =============================================================================
@@ -3521,7 +3521,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     try:
         fixes = sanitize_env_file()
         if fixes and not quiet:
-            print(f"  ✓ Repaired .env file ({fixes} corrupted entries fixed)")
+            logger.info(f"  ✓ Repaired .env file ({fixes} corrupted entries fixed)")
     except Exception:
         pass  # best-effort; don't block migration on sanitize failure
 
@@ -3549,7 +3549,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             config["display"] = display
             save_config(config)
             if not quiet:
-                print(f"  ✓ Migrated tool progress to config.yaml: {display['tool_progress']}")
+                logger.info(f"  ✓ Migrated tool progress to config.yaml: {display['tool_progress']}")
     
     # ── Version 4 → 5: add timezone field ──
     if current_ver < 5:
@@ -3565,7 +3565,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             save_config(config)
             if not quiet:
                 tz_display = config["timezone"] or "(server-local)"
-                print(f"  ✓ Added timezone to config.yaml: {tz_display}")
+                logger.info(f"  ✓ Added timezone to config.yaml: {tz_display}")
 
     # ── Version 8 → 9: clear ANTHROPIC_TOKEN from .env ──
     # The new Anthropic auth flow no longer uses this env var.
@@ -3575,7 +3575,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             if old_token:
                 save_env_value("ANTHROPIC_TOKEN", "")
                 if not quiet:
-                    print("  ✓ Cleared ANTHROPIC_TOKEN from .env (no longer used)")
+                    logger.info("  ✓ Cleared ANTHROPIC_TOKEN from .env (no longer used)")
         except Exception:
             pass
 
@@ -3637,10 +3637,10 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                 config.pop("custom_providers", None)
                 save_config(config)
                 if not quiet:
-                    print(f"  ✓ Migrated {migrated_count} custom provider(s) to providers: section")
+                    logger.info(f"  ✓ Migrated {migrated_count} custom provider(s) to providers: section")
                     for key in list(providers_dict.keys())[-migrated_count:]:
                         ep = providers_dict[key]
-                        print(f"    → {key}: {ep.get('api', '')}")
+                        logger.info(f"    → {key}: {ep.get('api', '')}")
 
     # ── Version 12 → 13: clear dead LLM_MODEL / OPENAI_MODEL from .env ──
     # These env vars were written by the old setup wizard but nothing reads
@@ -3653,7 +3653,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                 if old_val:
                     save_env_value(dead_var, "")
                     if not quiet:
-                        print(f"  ✓ Cleared {dead_var} from .env (no longer used — config.yaml is source of truth)")
+                        logger.info(f"  ✓ Cleared {dead_var} from .env (no longer used — config.yaml is source of truth)")
             except Exception:
                 pass
 
@@ -3705,7 +3705,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             config["stt"] = stt
             save_config(config)
             if not quiet:
-                print(f"  ✓ Migrated legacy stt.model to provider-specific config")
+                logger.info(f"  ✓ Migrated legacy stt.model to provider-specific config")
 
     # ── Version 14 → 15: add explicit gateway interim-message gate ──
     if current_ver < 15:
@@ -3719,7 +3719,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             results["config_added"].append("display.interim_assistant_messages=true (default)")
             save_config(config)
             if not quiet:
-                print("  ✓ Added display.interim_assistant_messages=true")
+                logger.info("  ✓ Added display.interim_assistant_messages=true")
 
     # ── Version 15 → 16: migrate tool_progress_overrides into display.platforms ──
     if current_ver < 16:
@@ -3742,7 +3742,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             save_config(config)
             if not quiet:
                 migrated = ", ".join(f"{p}={m}" for p, m in old_overrides.items())
-                print(f"  ✓ Migrated tool_progress_overrides → display.platforms: {migrated}")
+                logger.info(f"  ✓ Migrated tool_progress_overrides → display.platforms: {migrated}")
             results["config_added"].append("display.platforms (migrated from tool_progress_overrides)")
 
     # ── Version 16 → 17: remove legacy compression.summary_* keys ──
@@ -3778,9 +3778,9 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                 save_config(config)
                 if not quiet:
                     if migrated_keys:
-                        print(f"  ✓ Migrated compression.summary_* → auxiliary.compression: {', '.join(migrated_keys)}")
+                        logger.info(f"  ✓ Migrated compression.summary_* → auxiliary.compression: {', '.join(migrated_keys)}")
                     else:
-                        print("  ✓ Removed unused compression.summary_* keys")
+                        logger.info("  ✓ Removed unused compression.summary_* keys")
 
     # ── Version 20 → 21: plugins are now opt-in; grandfather existing user plugins ──
     # The loader now requires plugins to appear in ``plugins.enabled`` before
@@ -3837,12 +3837,12 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             )
             if not quiet:
                 if grandfathered:
-                    print(
+                    logger.info(
                         f"  ✓ Plugins now opt-in: grandfathered "
                         f"{len(grandfathered)} existing plugin(s) into plugins.enabled"
                     )
                 else:
-                    print(
+                    logger.info(
                         "  ✓ Plugins now opt-in: no existing plugins to grandfather. "
                         "Use `hermes plugins enable <name>` to activate."
                     )
@@ -3917,7 +3917,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     f"curator ({len(added_curator)} default key(s))"
                 )
                 if not quiet:
-                    print(
+                    logger.info(
                         "  ✓ Seeded curator defaults in config.yaml: "
                         f"{', '.join(added_curator)}"
                     )
@@ -3926,27 +3926,27 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     f"auxiliary.curator ({len(added_aux)} default key(s))"
                 )
                 if not quiet:
-                    print(
+                    logger.info(
                         "  ✓ Seeded auxiliary.curator defaults in config.yaml: "
                         f"{', '.join(added_aux)}"
                     )
 
     if current_ver < latest_ver and not quiet:
-        print(f"Config version: {current_ver} → {latest_ver}")
+        logger.info(f"Config version: {current_ver} → {latest_ver}")
     
     # Check for missing required env vars
     missing_env = get_missing_env_vars(required_only=True)
     
     if missing_env and not quiet:
-        print("\n⚠️  Missing required environment variables:")
+        logger.info("\n⚠️  Missing required environment variables:")
         for var in missing_env:
-            print(f"   • {var['name']}: {var['description']}")
+            logger.info(f"   • {var['name']}: {var['description']}")
     
     if interactive and missing_env:
-        print("\nLet's configure them now:\n")
+        logger.info("\nLet's configure them now:\n")
         for var in missing_env:
             if var.get("url"):
-                print(f"  Get your key at: {var['url']}")
+                logger.info(f"  Get your key at: {var['url']}")
             
             if var.get("password"):
                 import getpass
@@ -3957,10 +3957,10 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             if value:
                 save_env_value(var["name"], value)
                 results["env_added"].append(var["name"])
-                print(f"  ✓ Saved {var['name']}")
+                logger.info(f"  ✓ Saved {var['name']}")
             else:
                 results["warnings"].append(f"Skipped {var['name']} - some features may not work")
-            print()
+            logger.info()
     
     # Check for missing optional env vars and offer to configure interactively
     # Skip "advanced" vars (like OPENAI_BASE_URL) -- those are for power users
@@ -3983,23 +3983,23 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             if not get_env_value(name) and name in OPTIONAL_ENV_VARS
         ]
         if new_and_unset:
-            print(f"\n  {len(new_and_unset)} new optional key(s) in this update:")
+            logger.info(f"\n  {len(new_and_unset)} new optional key(s) in this update:")
             for name, info in new_and_unset:
-                print(f"    • {name} — {info.get('description', '')}")
-            print()
+                logger.info(f"    • {name} — {info.get('description', '')}")
+            logger.info()
             try:
                 answer = input("  Configure new keys? [y/N]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 answer = "n"
 
             if answer in {"y", "yes"}:
-                print()
+                logger.info()
                 for name, info in new_and_unset:
                     if info.get("url"):
-                        print(f"  {info.get('description', name)}")
-                        print(f"  Get your key at: {info['url']}")
+                        logger.info(f"  {info.get('description', name)}")
+                        logger.info(f"  Get your key at: {info['url']}")
                     else:
-                        print(f"  {info.get('description', name)}")
+                        logger.info(f"  {info.get('description', name)}")
                     if info.get("password"):
                         import getpass
                         value = getpass.getpass(f"  {info.get('prompt', name)} (Enter to skip): ")
@@ -4008,10 +4008,10 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     if value:
                         save_env_value(name, value)
                         results["env_added"].append(name)
-                        print(f"  ✓ Saved {name}")
-                    print()
+                        logger.info(f"  ✓ Saved {name}")
+                    logger.info()
             else:
-                print("  Set later with: hermes config set <key> <value>")
+                logger.info("  Set later with: hermes config set <key> <value>")
     
     # Check for missing config fields
     missing_config = get_missing_config_fields()
@@ -4026,7 +4026,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             _set_nested(config, key, default)
             results["config_added"].append(key)
             if not quiet:
-                print(f"  ✓ Added {key} = {default}")
+                logger.info(f"  ✓ Added {key} = {default}")
         
         # Update version and save
         config["_config_version"] = latest_ver
@@ -4043,18 +4043,18 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     # Prompt for any that are missing/empty.
     missing_skill_config = get_missing_skill_config_vars()
     if missing_skill_config and interactive and not quiet:
-        print(f"\n  {len(missing_skill_config)} skill setting(s) not configured:")
+        logger.info(f"\n  {len(missing_skill_config)} skill setting(s) not configured:")
         for var in missing_skill_config:
             skill_name = var.get("skill", "unknown")
-            print(f"    • {var['key']} — {var['description']} (from skill: {skill_name})")
-        print()
+            logger.info(f"    • {var['key']} — {var['description']} (from skill: {skill_name})")
+        logger.info()
         try:
             answer = input("  Configure skill settings? [y/N]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             answer = "n"
 
         if answer in {"y", "yes"}:
-            print()
+            logger.info()
             config = load_config()
             try:
                 from agent.skill_utils import SKILL_CONFIG_PREFIX
@@ -4070,15 +4070,15 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     storage_key = f"{SKILL_CONFIG_PREFIX}.{var['key']}"
                     _set_nested(config, storage_key, value)
                     results["config_added"].append(var["key"])
-                    print(f"  ✓ Saved {var['key']} = {value}")
+                    logger.info(f"  ✓ Saved {var['key']} = {value}")
                 else:
                     results["warnings"].append(
                         f"Skipped {var['key']} — skill '{var.get('skill', '?')}' may ask for it later"
                     )
-                print()
+                logger.info()
             save_config(config)
         else:
-            print("  Set later with: hermes config set <key> <value>")
+            logger.info("  Set later with: hermes config set <key> <value>")
 
     return results
 
@@ -4760,7 +4760,7 @@ def _check_non_ascii_credential(key: str, value: str) -> str:
             bad_chars.append(f"  position {i}: {ch!r} (U+{ord(ch):04X})")
     sanitized = value.encode("ascii", errors="ignore").decode("ascii")
 
-    print(
+    logger.info(
         f"\n  Warning: {key} contains non-ASCII characters that will break API requests.\n"
         f"  This usually happens when copy-pasting from a PDF, rich-text editor,\n"
         f"  or web page that substitutes lookalike Unicode glyphs for ASCII letters.\n"
@@ -4984,21 +4984,21 @@ def show_config():
     """Display current configuration."""
     config = load_config()
     
-    print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│              ⚕ Hermes Configuration                    │", Colors.CYAN))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
+    logger.info()
+    logger.info(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
+    logger.info(color("│              ⚕ Hermes Configuration                    │", Colors.CYAN))
+    logger.info(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
     
     # Paths
-    print()
-    print(color("◆ Paths", Colors.CYAN, Colors.BOLD))
-    print(f"  Config:       {get_config_path()}")
-    print(f"  Secrets:      {get_env_path()}")
-    print(f"  Install:      {get_project_root()}")
+    logger.info()
+    logger.info(color("◆ Paths", Colors.CYAN, Colors.BOLD))
+    logger.info(f"  Config:       {get_config_path()}")
+    logger.info(f"  Secrets:      {get_env_path()}")
+    logger.info(f"  Install:      {get_project_root()}")
     
     # API Keys
-    print()
-    print(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color("◆ API Keys", Colors.CYAN, Colors.BOLD))
     
     keys = [
         ("OPENROUTER_API_KEY", "OpenRouter"),
@@ -5014,84 +5014,84 @@ def show_config():
     
     for env_key, name in keys:
         value = get_env_value(env_key)
-        print(f"  {name:<14} {redact_key(value)}")
+        logger.info(f"  {name:<14} {redact_key(value)}")
     from hermes_cli.auth import get_anthropic_key
     anthropic_value = get_anthropic_key()
-    print(f"  {'Anthropic':<14} {redact_key(anthropic_value)}")
+    logger.info(f"  {'Anthropic':<14} {redact_key(anthropic_value)}")
     
     # Model settings
-    print()
-    print(color("◆ Model", Colors.CYAN, Colors.BOLD))
-    print(f"  Model:        {config.get('model', 'not set')}")
-    print(f"  Max turns:    {config.get('agent', {}).get('max_turns', DEFAULT_CONFIG['agent']['max_turns'])}")
+    logger.info()
+    logger.info(color("◆ Model", Colors.CYAN, Colors.BOLD))
+    logger.info(f"  Model:        {config.get('model', 'not set')}")
+    logger.info(f"  Max turns:    {config.get('agent', {}).get('max_turns', DEFAULT_CONFIG['agent']['max_turns'])}")
     
     # Display
-    print()
-    print(color("◆ Display", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color("◆ Display", Colors.CYAN, Colors.BOLD))
     display = config.get('display', {})
-    print(f"  Personality:  {display.get('personality', 'kawaii')}")
-    print(f"  Reasoning:    {'on' if display.get('show_reasoning', False) else 'off'}")
-    print(f"  Bell:         {'on' if display.get('bell_on_complete', False) else 'off'}")
+    logger.info(f"  Personality:  {display.get('personality', 'kawaii')}")
+    logger.info(f"  Reasoning:    {'on' if display.get('show_reasoning', False) else 'off'}")
+    logger.info(f"  Bell:         {'on' if display.get('bell_on_complete', False) else 'off'}")
     ump = display.get('user_message_preview', {}) if isinstance(display.get('user_message_preview', {}), dict) else {}
     ump_first = ump.get('first_lines', 2)
     ump_last = ump.get('last_lines', 2)
-    print(f"  User preview: first {ump_first} line(s), last {ump_last} line(s)")
+    logger.info(f"  User preview: first {ump_first} line(s), last {ump_last} line(s)")
 
     # Terminal
-    print()
-    print(color("◆ Terminal", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color("◆ Terminal", Colors.CYAN, Colors.BOLD))
     terminal = config.get('terminal', {})
-    print(f"  Backend:      {terminal.get('backend', 'local')}")
-    print(f"  Working dir:  {terminal.get('cwd', '.')}")
-    print(f"  Timeout:      {terminal.get('timeout', 60)}s")
+    logger.info(f"  Backend:      {terminal.get('backend', 'local')}")
+    logger.info(f"  Working dir:  {terminal.get('cwd', '.')}")
+    logger.info(f"  Timeout:      {terminal.get('timeout', 60)}s")
     
     if terminal.get('backend') == 'docker':
-        print(f"  Docker image: {terminal.get('docker_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
+        logger.info(f"  Docker image: {terminal.get('docker_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
     elif terminal.get('backend') == 'singularity':
-        print(f"  Image:        {terminal.get('singularity_image', 'docker://nikolaik/python-nodejs:python3.11-nodejs20')}")
+        logger.info(f"  Image:        {terminal.get('singularity_image', 'docker://nikolaik/python-nodejs:python3.11-nodejs20')}")
     elif terminal.get('backend') == 'modal':
-        print(f"  Modal image:  {terminal.get('modal_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
+        logger.info(f"  Modal image:  {terminal.get('modal_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
         modal_token = get_env_value('MODAL_TOKEN_ID')
-        print(f"  Modal token:  {'configured' if modal_token else '(not set)'}")
+        logger.info(f"  Modal token:  {'configured' if modal_token else '(not set)'}")
     elif terminal.get('backend') == 'daytona':
-        print(f"  Daytona image: {terminal.get('daytona_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
+        logger.info(f"  Daytona image: {terminal.get('daytona_image', 'nikolaik/python-nodejs:python3.11-nodejs20')}")
         daytona_key = get_env_value('DAYTONA_API_KEY')
-        print(f"  API key:      {'configured' if daytona_key else '(not set)'}")
+        logger.info(f"  API key:      {'configured' if daytona_key else '(not set)'}")
     elif terminal.get('backend') == 'vercel_sandbox':
-        print(f"  Vercel runtime: {terminal.get('vercel_runtime', 'node24')}")
-        print(f"  Vercel auth:    {'configured' if get_env_value('VERCEL_OIDC_TOKEN') or (get_env_value('VERCEL_TOKEN') and get_env_value('VERCEL_PROJECT_ID') and get_env_value('VERCEL_TEAM_ID')) else '(not set)'}")
+        logger.info(f"  Vercel runtime: {terminal.get('vercel_runtime', 'node24')}")
+        logger.info(f"  Vercel auth:    {'configured' if get_env_value('VERCEL_OIDC_TOKEN') or (get_env_value('VERCEL_TOKEN') and get_env_value('VERCEL_PROJECT_ID') and get_env_value('VERCEL_TEAM_ID')) else '(not set)'}")
     elif terminal.get('backend') == 'ssh':
         ssh_host = get_env_value('TERMINAL_SSH_HOST')
         ssh_user = get_env_value('TERMINAL_SSH_USER')
-        print(f"  SSH host:     {ssh_host or '(not set)'}")
-        print(f"  SSH user:     {ssh_user or '(not set)'}")
+        logger.info(f"  SSH host:     {ssh_host or '(not set)'}")
+        logger.info(f"  SSH user:     {ssh_user or '(not set)'}")
     
     # Timezone
-    print()
-    print(color("◆ Timezone", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color("◆ Timezone", Colors.CYAN, Colors.BOLD))
     tz = config.get('timezone', '')
     if tz:
-        print(f"  Timezone:     {tz}")
+        logger.info(f"  Timezone:     {tz}")
     else:
-        print(f"  Timezone:     {color('(server-local)', Colors.DIM)}")
+        logger.info(f"  Timezone:     {color('(server-local)', Colors.DIM)}")
 
     # Compression
-    print()
-    print(color("◆ Context Compression", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color("◆ Context Compression", Colors.CYAN, Colors.BOLD))
     compression = config.get('compression', {})
     enabled = compression.get('enabled', True)
-    print(f"  Enabled:      {'yes' if enabled else 'no'}")
+    logger.info(f"  Enabled:      {'yes' if enabled else 'no'}")
     if enabled:
-        print(f"  Threshold:    {compression.get('threshold', 0.50) * 100:.0f}%")
-        print(f"  Target ratio: {compression.get('target_ratio', 0.20) * 100:.0f}% of threshold preserved")
-        print(f"  Protect last: {compression.get('protect_last_n', 20)} messages")
-        print(f"  Protect first: {compression.get('protect_first_n', 3)} non-system head messages")
+        logger.info(f"  Threshold:    {compression.get('threshold', 0.50) * 100:.0f}%")
+        logger.info(f"  Target ratio: {compression.get('target_ratio', 0.20) * 100:.0f}% of threshold preserved")
+        logger.info(f"  Protect last: {compression.get('protect_last_n', 20)} messages")
+        logger.info(f"  Protect first: {compression.get('protect_first_n', 3)} non-system head messages")
         _aux_comp = config.get('auxiliary', {}).get('compression', {})
         _sm = _aux_comp.get('model', '') or '(auto)'
-        print(f"  Model:        {_sm}")
+        logger.info(f"  Model:        {_sm}")
         comp_provider = _aux_comp.get('provider', 'auto')
         if comp_provider and comp_provider != 'auto':
-            print(f"  Provider:     {comp_provider}")
+            logger.info(f"  Provider:     {comp_provider}")
     
     # Auxiliary models
     auxiliary = config.get('auxiliary', {})
@@ -5104,8 +5104,8 @@ def show_config():
         for t in aux_tasks.values()
     )
     if has_overrides:
-        print()
-        print(color("◆ Auxiliary Models (overrides)", Colors.CYAN, Colors.BOLD))
+        logger.info()
+        logger.info(color("◆ Auxiliary Models (overrides)", Colors.CYAN, Colors.BOLD))
         for label, task_cfg in aux_tasks.items():
             prov = task_cfg.get('provider', 'auto')
             mdl = task_cfg.get('model', '')
@@ -5113,17 +5113,17 @@ def show_config():
                 parts = [f"provider={prov}"]
                 if mdl:
                     parts.append(f"model={mdl}")
-                print(f"  {label:12s}  {', '.join(parts)}")
+                logger.info(f"  {label:12s}  {', '.join(parts)}")
     
     # Messaging
-    print()
-    print(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color("◆ Messaging Platforms", Colors.CYAN, Colors.BOLD))
     
     telegram_token = get_env_value('TELEGRAM_BOT_TOKEN')
     discord_token = get_env_value('DISCORD_BOT_TOKEN')
     
-    print(f"  Telegram:     {'configured' if telegram_token else color('not configured', Colors.DIM)}")
-    print(f"  Discord:      {'configured' if discord_token else color('not configured', Colors.DIM)}")
+    logger.info(f"  Telegram:     {'configured' if telegram_token else color('not configured', Colors.DIM)}")
+    logger.info(f"  Discord:      {'configured' if discord_token else color('not configured', Colors.DIM)}")
     
     # Skill config
     try:
@@ -5131,23 +5131,23 @@ def show_config():
         skill_vars = discover_all_skill_config_vars()
         if skill_vars:
             resolved = resolve_skill_config_values(skill_vars)
-            print()
-            print(color("◆ Skill Settings", Colors.CYAN, Colors.BOLD))
+            logger.info()
+            logger.info(color("◆ Skill Settings", Colors.CYAN, Colors.BOLD))
             for var in skill_vars:
                 key = var["key"]
                 value = resolved.get(key, "")
                 skill_name = var.get("skill", "")
                 display_val = str(value) if value else color("(not set)", Colors.DIM)
-                print(f"  {key:<20s} {display_val}  {color(f'[{skill_name}]', Colors.DIM)}")
+                logger.info(f"  {key:<20s} {display_val}  {color(f'[{skill_name}]', Colors.DIM)}")
     except Exception:
         pass
 
-    print()
-    print(color("─" * 60, Colors.DIM))
-    print(color("  hermes config edit     # Edit config file", Colors.DIM))
-    print(color("  hermes config set <key> <value>", Colors.DIM))
-    print(color("  hermes setup           # Run setup wizard", Colors.DIM))
-    print()
+    logger.info()
+    logger.info(color("─" * 60, Colors.DIM))
+    logger.info(color("  hermes config edit     # Edit config file", Colors.DIM))
+    logger.info(color("  hermes config set <key> <value>", Colors.DIM))
+    logger.info(color("  hermes setup           # Run setup wizard", Colors.DIM))
+    logger.info()
 
 
 def edit_config():
@@ -5160,7 +5160,7 @@ def edit_config():
     # Ensure config exists
     if not config_path.exists():
         save_config(DEFAULT_CONFIG)
-        print(f"Created {config_path}")
+        logger.info(f"Created {config_path}")
     
     # Find editor
     editor = os.getenv('EDITOR') or os.getenv('VISUAL')
@@ -5182,11 +5182,11 @@ def edit_config():
                 break
     
     if not editor:
-        print("No editor found. Config file is at:")
-        print(f"  {config_path}")
+        logger.info("No editor found. Config file is at:")
+        logger.info(f"  {config_path}")
         return
     
-    print(f"Opening {config_path} in {editor}...")
+    logger.info(f"Opening {config_path} in {editor}...")
     subprocess.run([editor, str(config_path)])
 
 
@@ -5210,7 +5210,7 @@ def set_config_value(key: str, value: str):
     
     if key.upper() in api_keys or key.upper().endswith(('_API_KEY', '_TOKEN')) or key.upper().startswith('TERMINAL_SSH'):
         save_env_value(key.upper(), value)
-        print(f"✓ Set {key} in {get_env_path()}")
+        logger.info(f"✓ Set {key} in {get_env_path()}")
         return
     
     # Otherwise it goes to config.yaml
@@ -5274,7 +5274,7 @@ def set_config_value(key: str, value: str):
     if key in _config_to_env_sync:
         save_env_value(_config_to_env_sync[key], str(value))
 
-    print(f"✓ Set {key} = {value} in {config_path}")
+    logger.info(f"✓ Set {key} = {value} in {config_path}")
 
 
 # =============================================================================
@@ -5295,25 +5295,25 @@ def config_command(args):
         key = getattr(args, 'key', None)
         value = getattr(args, 'value', None)
         if not key or value is None:
-            print("Usage: hermes config set <key> <value>")
-            print()
-            print("Examples:")
-            print("  hermes config set model anthropic/claude-sonnet-4")
-            print("  hermes config set terminal.backend docker")
-            print("  hermes config set OPENROUTER_API_KEY sk-or-...")
+            logger.info("Usage: hermes config set <key> <value>")
+            logger.info()
+            logger.info("Examples:")
+            logger.info("  hermes config set model anthropic/claude-sonnet-4")
+            logger.info("  hermes config set terminal.backend docker")
+            logger.info("  hermes config set OPENROUTER_API_KEY sk-or-...")
             sys.exit(1)
         set_config_value(key, value)
     
     elif subcmd == "path":
-        print(get_config_path())
+        logger.info(get_config_path())
     
     elif subcmd == "env-path":
-        print(get_env_path())
+        logger.info(get_env_path())
     
     elif subcmd == "migrate":
-        print()
-        print(color("🔄 Checking configuration for updates...", Colors.CYAN, Colors.BOLD))
-        print()
+        logger.info()
+        logger.info(color("🔄 Checking configuration for updates...", Colors.CYAN, Colors.BOLD))
+        logger.info()
         
         # Check what's missing
         missing_env = get_missing_env_vars(required_only=False)
@@ -5321,16 +5321,16 @@ def config_command(args):
         current_ver, latest_ver = check_config_version()
         
         if not missing_env and not missing_config and current_ver >= latest_ver:
-            print(color("✓ Configuration is up to date!", Colors.GREEN))
-            print()
+            logger.info(color("✓ Configuration is up to date!", Colors.GREEN))
+            logger.info()
             return
         
         # Show what needs to be updated
         if current_ver < latest_ver:
-            print(f"  Config version: {current_ver} → {latest_ver}")
+            logger.info(f"  Config version: {current_ver} → {latest_ver}")
         
         if missing_config:
-            print(f"\n  {len(missing_config)} new config option(s) will be added with defaults")
+            logger.info(f"\n  {len(missing_config)} new config option(s) will be added with defaults")
         
         required_missing = [v for v in missing_env if v.get("is_required")]
         optional_missing = [
@@ -5339,82 +5339,82 @@ def config_command(args):
         ]
         
         if required_missing:
-            print(f"\n  ⚠️  {len(required_missing)} required API key(s) missing:")
+            logger.info(f"\n  ⚠️  {len(required_missing)} required API key(s) missing:")
             for var in required_missing:
-                print(f"     • {var['name']}")
+                logger.info(f"     • {var['name']}")
         
         if optional_missing:
-            print(f"\n  ℹ️  {len(optional_missing)} optional API key(s) not configured:")
+            logger.info(f"\n  ℹ️  {len(optional_missing)} optional API key(s) not configured:")
             for var in optional_missing:
                 tools = var.get("tools", [])
                 tools_str = f" (enables: {', '.join(tools[:2])})" if tools else ""
-                print(f"     • {var['name']}{tools_str}")
+                logger.info(f"     • {var['name']}{tools_str}")
         
-        print()
+        logger.info()
         
         # Run migration
         results = migrate_config(interactive=True, quiet=False)
         
-        print()
+        logger.info()
         if results["env_added"] or results["config_added"]:
-            print(color("✓ Configuration updated!", Colors.GREEN))
+            logger.info(color("✓ Configuration updated!", Colors.GREEN))
         
         if results["warnings"]:
-            print()
+            logger.info()
             for warning in results["warnings"]:
-                print(color(f"  ⚠️  {warning}", Colors.YELLOW))
+                logger.info(color(f"  ⚠️  {warning}", Colors.YELLOW))
         
-        print()
+        logger.info()
     
     elif subcmd == "check":
         # Non-interactive check for what's missing
-        print()
-        print(color("📋 Configuration Status", Colors.CYAN, Colors.BOLD))
-        print()
+        logger.info()
+        logger.info(color("📋 Configuration Status", Colors.CYAN, Colors.BOLD))
+        logger.info()
         
         current_ver, latest_ver = check_config_version()
         if current_ver >= latest_ver:
-            print(f"  Config version: {current_ver} ✓")
+            logger.info(f"  Config version: {current_ver} ✓")
         else:
-            print(color(f"  Config version: {current_ver} → {latest_ver} (update available)", Colors.YELLOW))
+            logger.info(color(f"  Config version: {current_ver} → {latest_ver} (update available)", Colors.YELLOW))
         
-        print()
-        print(color("  Required:", Colors.BOLD))
+        logger.info()
+        logger.info(color("  Required:", Colors.BOLD))
         for var_name in REQUIRED_ENV_VARS:
             if get_env_value(var_name):
-                print(f"    ✓ {var_name}")
+                logger.info(f"    ✓ {var_name}")
             else:
-                print(color(f"    ✗ {var_name} (missing)", Colors.RED))
+                logger.info(color(f"    ✗ {var_name} (missing)", Colors.RED))
         
-        print()
-        print(color("  Optional:", Colors.BOLD))
+        logger.info()
+        logger.info(color("  Optional:", Colors.BOLD))
         for var_name, info in OPTIONAL_ENV_VARS.items():
             if get_env_value(var_name):
-                print(f"    ✓ {var_name}")
+                logger.info(f"    ✓ {var_name}")
             else:
                 tools = info.get("tools", [])
                 tools_str = f" → {', '.join(tools[:2])}" if tools else ""
-                print(color(f"    ○ {var_name}{tools_str}", Colors.DIM))
+                logger.info(color(f"    ○ {var_name}{tools_str}", Colors.DIM))
         
         missing_config = get_missing_config_fields()
         if missing_config:
-            print()
-            print(color(f"  {len(missing_config)} new config option(s) available", Colors.YELLOW))
-            print("    Run 'hermes config migrate' to add them")
+            logger.info()
+            logger.info(color(f"  {len(missing_config)} new config option(s) available", Colors.YELLOW))
+            logger.info("    Run 'hermes config migrate' to add them")
         
-        print()
+        logger.info()
     
     else:
-        print(f"Unknown config command: {subcmd}")
-        print()
-        print("Available commands:")
-        print("  hermes config           Show current configuration")
-        print("  hermes config edit      Open config in editor")
-        print("  hermes config set <key> <value>   Set a config value")
-        print("  hermes config check     Check for missing/outdated config")
-        print("  hermes config migrate   Update config with new options")
-        print("  hermes config path      Show config file path")
-        print("  hermes config env-path  Show .env file path")
+        logger.info(f"Unknown config command: {subcmd}")
+        logger.info()
+        logger.info("Available commands:")
+        logger.info("  hermes config           Show current configuration")
+        logger.info("  hermes config edit      Open config in editor")
+        logger.info("  hermes config set <key> <value>   Set a config value")
+        logger.info("  hermes config check     Check for missing/outdated config")
+        logger.info("  hermes config migrate   Update config with new options")
+        logger.info("  hermes config path      Show config file path")
+        logger.info("  hermes config env-path  Show .env file path")
         sys.exit(1)
 
 

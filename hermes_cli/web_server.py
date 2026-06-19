@@ -14,6 +14,8 @@ import hmac
 import importlib.util
 import json
 import logging
+
+logger = logging.getLogger(__name__)
 import os
 import secrets
 import sys
@@ -141,17 +143,17 @@ async def request_logging_middleware(request: Request, call_next):
     """Log all incoming requests for debugging / API discovery."""
     import datetime
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    print(f"\n{'='*80}", flush=True)
-    print(f"[{ts}] REQUEST: {request.method} {request.url.path}", flush=True)
-    print(f"  Query: {dict(request.query_params)}", flush=True)
-    print(f"  Client: {request.client.host if request.client else 'unknown'}", flush=True)
+    logger.info(f"\n{'='*80}", flush=True)
+    logger.info(f"[{ts}] REQUEST: {request.method} {request.url.path}", flush=True)
+    logger.info(f"  Query: {dict(request.query_params)}", flush=True)
+    logger.info(f"  Client: {request.client.host if request.client else 'unknown'}", flush=True)
     # Log headers (redact sensitive ones)
     headers = dict(request.headers)
     if "authorization" in headers:
         headers["authorization"] = "***"
     if "x-hermes-session-token" in headers:
         headers["x-hermes-session-token"] = "***"
-    print(f"  Headers: {headers}", flush=True)
+    logger.info(f"  Headers: {headers}", flush=True)
     # Read and log body for POST/PUT/PATCH
     body = None
     if request.method in ("POST", "PUT", "PATCH"):
@@ -175,12 +177,12 @@ async def request_logging_middleware(request: Request, call_next):
                             att_summary.append(att_copy)
                     body_log["attachments"] = att_summary
                 body_json = json.dumps(body_log, ensure_ascii=False)
-                print(f"  Body: {body_json[:500]}{'... (truncated)' if len(body_json) > 500 else ''}", flush=True)
+                logger.info(f"  Body: {body_json[:500]}{'... (truncated)' if len(body_json) > 500 else ''}", flush=True)
         except Exception:
-            print(f"  Body: <could not parse JSON>", flush=True)
+            logger.info(f"  Body: <could not parse JSON>", flush=True)
     response = await call_next(request)
-    print(f"  Response status: {response.status_code}", flush=True)
-    print(f"{'='*80}\n", flush=True)
+    logger.info(f"  Response status: {response.status_code}", flush=True)
+    logger.info(f"{'='*80}\n", flush=True)
     return response
 
 
@@ -616,10 +618,6 @@ class ModelAssignment(BaseModel):
     task: str = ""
     max_tokens: Optional[int] = None  # 可选：设置 model.max_tokens（输出上限）
 
-
-
-
-
 def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize config for the web UI.
 
@@ -917,9 +915,6 @@ async def set_model_assignment(body: ModelAssignment):
         _log.exception("POST /api/model/set failed")
         raise HTTPException(status_code=500, detail="Failed to save model assignment")
 
-
-
-
 def _denormalize_config_from_web(config: Dict[str, Any]) -> Dict[str, Any]:
     """Reverse _normalize_config_for_web before saving.
 
@@ -1061,17 +1056,6 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
     _log.info("env/reveal: %s", body.key)
     return {"key": body.key, "value": value}
 
-
-
-
-
-
-
-
-
-
-
-
 from hermes_cli.blueprints.helpers import _session_latest_descendant
 
 
@@ -1166,8 +1150,6 @@ async def update_config_raw(body: RawConfigUpdate):
         return {"ok": True}
     except yaml.YAMLError as e:
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
-
-
 
 # /api/pty — PTY-over-WebSocket bridge for the dashboard "Chat" tab.
 #
@@ -2454,8 +2436,6 @@ def _mount_plugin_api_routes():
 # Mount plugin API routes before the SPA catch-all.
 _mount_plugin_api_routes()
 
-
-
 def _find_available_port(host: str, start_port: int, max_tries: int = 100) -> int:
     """Find an available port starting from start_port."""
     import socket
@@ -2488,7 +2468,7 @@ def start_server(
     actual_port = _find_available_port(host, port)
     if actual_port != port:
         _log.info("Port %d is in use, using port %d instead.", port, actual_port)
-        print(f"  Port {port} is in use, using port {actual_port} instead.")
+        logger.info(f"  Port {port} is in use, using port {actual_port} instead.")
         port = actual_port
 
     _LOCALHOST = ("127.0.0.1", "localhost", "::1")
@@ -2542,7 +2522,7 @@ def start_server(
                 "(headless Linux). Pass --no-open to suppress this detection."
             )
 
-    print(f"  Hermes Web UI → http://{host}:{port}")
+    logger.info(f"  Hermes Web UI → http://{host}:{port}")
     # proxy_headers=False so _ws_client_is_allowed sees the real connection peer
     # rather than X-Forwarded-For's rewritten value (which would defeat the
     # loopback gate when behind a reverse proxy).
@@ -2600,6 +2580,7 @@ blueprints.oauth.register_to(app)
 async def health_check():
     """Simple health endpoint for Electron splash screen backend detection."""
     from hermes_cli import __version__
+
     return {"status": "ok", "version": __version__}
 
 

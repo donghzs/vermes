@@ -18,6 +18,11 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 API_KEY = os.environ.get("USDA_API_KEY", "DEMO_KEY")
 BASE = "https://api.nal.usda.gov/fdc/v1"
 
@@ -34,7 +39,7 @@ def search(query, max_results=3):
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read())
     except Exception as e:
-        print(f"  API error: {e}", file=sys.stderr)
+        logger.warning(f"  API error: {e}")
         return None
 
 
@@ -47,17 +52,17 @@ def display(food):
     fib = nutrients.get("Fiber, total dietary", "?")
     sug = nutrients.get("Sugars, total including NLEA", "?")
 
-    print(f"  {food.get('description', 'N/A')}")
-    print(f"    Calories : {cal} kcal")
-    print(f"    Protein  : {prot}g")
-    print(f"    Fat      : {fat}g")
-    print(f"    Carbs    : {carb}g (fiber: {fib}g, sugar: {sug}g)")
-    print(f"    FDC ID   : {food.get('fdcId', 'N/A')}")
+    logger.info(f"  {food.get('description', 'N/A')}")
+    logger.info(f"    Calories : {cal} kcal")
+    logger.info(f"    Protein  : {prot}g")
+    logger.info(f"    Fat      : {fat}g")
+    logger.info(f"    Carbs    : {carb}g (fiber: {fib}g, sugar: {sug}g)")
+    logger.info(f"    FDC ID   : {food.get('fdcId', 'N/A')}")
 
 
 def main():
     if len(sys.argv) < 2:
-        print(__doc__)
+        logger.info(__doc__)
         sys.exit(1)
 
     if sys.argv[1] == "-":
@@ -66,20 +71,20 @@ def main():
         queries = sys.argv[1:]
 
     for query in queries:
-        print(f"\n--- {query.upper()} (per 100g) ---")
+        logger.info(f"\n--- {query.upper()} (per 100g) ---")
         data = search(query, max_results=2)
         if not data or not data.get("foods"):
-            print("  No results found.")
+            logger.info("  No results found.")
         else:
             for food in data["foods"]:
                 display(food)
-                print()
+                logger.info()
         if len(queries) > 1:
             time.sleep(1)  # respect rate limits
 
     if API_KEY == "DEMO_KEY":
-        print("\nTip: using DEMO_KEY (30 req/hr). Set USDA_API_KEY for 1000 req/hr.")
-        print("Free signup: https://fdc.nal.usda.gov/api-key-signup/")
+        logger.info("\nTip: using DEMO_KEY (30 req/hr). Set USDA_API_KEY for 1000 req/hr.")
+        logger.info("Free signup: https://fdc.nal.usda.gov/api-key-signup/")
 
 
 if __name__ == "__main__":

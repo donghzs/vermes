@@ -547,7 +547,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             # Auto-install npm dependencies if node_modules doesn't exist
             bridge_dir = bridge_path.parent
             if not (bridge_dir / "node_modules").exists():
-                print(f"[{self.name}] Installing WhatsApp bridge dependencies...")
+                logger.info(f"[{self.name}] Installing WhatsApp bridge dependencies...")
                 # Resolve npm path so Windows can execute the .cmd shim.
                 # shutil.which honours PATHEXT; on POSIX it returns the
                 # plain executable path.
@@ -564,11 +564,11 @@ class WhatsAppAdapter(BasePlatformAdapter):
                         timeout=npm_install_timeout,
                     )
                     if install_result.returncode != 0:
-                        print(f"[{self.name}] npm install failed: {install_result.stderr}")
+                        logger.warning(f"[{self.name}] npm install failed: {install_result.stderr}")
                         return False
-                    print(f"[{self.name}] Dependencies installed")
+                    logger.info(f"[{self.name}] Dependencies installed")
                 except Exception as e:
-                    print(f"[{self.name}] Failed to install dependencies: {e}")
+                    logger.info(f"[{self.name}] Failed to install dependencies: {e}")
                     return False
 
             # Ensure session directory exists
@@ -586,14 +586,14 @@ class WhatsAppAdapter(BasePlatformAdapter):
                             data = await resp.json()
                             bridge_status = data.get("status", "unknown")
                             if bridge_status == "connected":
-                                print(f"[{self.name}] Using existing bridge (status: {bridge_status})")
+                                logger.info(f"[{self.name}] Using existing bridge (status: {bridge_status})")
                                 self._mark_connected()
                                 self._bridge_process = None  # Not managed by us
                                 self._http_session = aiohttp.ClientSession()
                                 self._poll_task = asyncio.create_task(self._poll_messages())
                                 return True
                             else:
-                                print(f"[{self.name}] Bridge found but not connected (status: {bridge_status}), restarting")
+                                logger.info(f"[{self.name}] Bridge found but not connected (status: {bridge_status}), restarting")
             except Exception:
                 pass  # Bridge not running, start a new one
             
@@ -641,8 +641,8 @@ class WhatsAppAdapter(BasePlatformAdapter):
             for attempt in range(15):
                 await asyncio.sleep(1)
                 if self._bridge_process.poll() is not None:
-                    print(f"[{self.name}] Bridge process died (exit code {self._bridge_process.returncode})")
-                    print(f"[{self.name}] Check log: {self._bridge_log}")
+                    logger.info(f"[{self.name}] Bridge process died (exit code {self._bridge_process.returncode})")
+                    logger.info(f"[{self.name}] Check log: {self._bridge_log}")
                     self._close_bridge_log()
                     return False
                 try:
@@ -655,26 +655,26 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 http_ready = True
                                 data = await resp.json()
                                 if data.get("status") == "connected":
-                                    print(f"[{self.name}] Bridge ready (status: connected)")
+                                    logger.info(f"[{self.name}] Bridge ready (status: connected)")
                                     break
                 except Exception:
                     continue
 
             if not http_ready:
-                print(f"[{self.name}] Bridge HTTP server did not start in 15s")
-                print(f"[{self.name}] Check log: {self._bridge_log}")
+                logger.info(f"[{self.name}] Bridge HTTP server did not start in 15s")
+                logger.info(f"[{self.name}] Check log: {self._bridge_log}")
                 self._close_bridge_log()
                 return False
             
             # Phase 2: HTTP is up but WhatsApp may still be connecting.
             # Give it more time to authenticate with saved credentials.
             if data.get("status") != "connected":
-                print(f"[{self.name}] Bridge HTTP ready, waiting for WhatsApp connection...")
+                logger.info(f"[{self.name}] Bridge HTTP ready, waiting for WhatsApp connection...")
                 for attempt in range(15):
                     await asyncio.sleep(1)
                     if self._bridge_process.poll() is not None:
-                        print(f"[{self.name}] Bridge process died during connection")
-                        print(f"[{self.name}] Check log: {self._bridge_log}")
+                        logger.info(f"[{self.name}] Bridge process died during connection")
+                        logger.info(f"[{self.name}] Check log: {self._bridge_log}")
                         self._close_bridge_log()
                         return False
                     try:
@@ -686,16 +686,16 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 if resp.status == 200:
                                     data = await resp.json()
                                     if data.get("status") == "connected":
-                                        print(f"[{self.name}] Bridge ready (status: connected)")
+                                        logger.info(f"[{self.name}] Bridge ready (status: connected)")
                                         break
                     except Exception:
                         continue
                 else:
                     # Still not connected — warn but proceed (bridge may
                     # auto-reconnect later, e.g. after a code 515 restart).
-                    print(f"[{self.name}] ⚠ WhatsApp not connected after 30s")
-                    print(f"[{self.name}]   Bridge log: {self._bridge_log}")
-                    print(f"[{self.name}]   If session expired, re-pair: hermes whatsapp")
+                    logger.info(f"[{self.name}] ⚠ WhatsApp not connected after 30s")
+                    logger.info(f"[{self.name}]   Bridge log: {self._bridge_log}")
+                    logger.info(f"[{self.name}]   If session expired, re-pair: hermes whatsapp")
             
             # Create a persistent HTTP session for all bridge communication
             self._http_session = aiohttp.ClientSession()
@@ -704,7 +704,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
             self._poll_task = asyncio.create_task(self._poll_messages())
             
             self._mark_connected()
-            print(f"[{self.name}] Bridge started on port {self._bridge_port}")
+            logger.info(f"[{self.name}] Bridge started on port {self._bridge_port}")
             return True
             
         except Exception as e:
@@ -776,10 +776,10 @@ class WhatsAppAdapter(BasePlatformAdapter):
                     except (ProcessLookupError, PermissionError):
                         self._bridge_process.kill()
             except Exception as e:
-                print(f"[{self.name}] Error stopping bridge: {e}")
+                logger.info(f"[{self.name}] Error stopping bridge: {e}")
         else:
             # Bridge was not started by us, don't kill it
-            print(f"[{self.name}] Disconnecting (external bridge left running)")
+            logger.info(f"[{self.name}] Disconnecting (external bridge left running)")
 
         # Clean up PID file
         try:
@@ -806,7 +806,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
         self._mark_disconnected()
         self._bridge_process = None
         self._close_bridge_log()
-        print(f"[{self.name}] Disconnected")
+        logger.info(f"[{self.name}] Disconnected")
     
     def format_message(self, content: str) -> str:
         """Convert standard markdown to WhatsApp-compatible formatting.
@@ -1127,7 +1127,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
                 break
             bridge_exit = await self._check_managed_bridge_exit()
             if bridge_exit:
-                print(f"[{self.name}] {bridge_exit}")
+                logger.info(f"[{self.name}] {bridge_exit}")
                 break
             try:
                 async with self._http_session.get(
@@ -1145,9 +1145,9 @@ class WhatsAppAdapter(BasePlatformAdapter):
             except Exception as e:
                 bridge_exit = await self._check_managed_bridge_exit()
                 if bridge_exit:
-                    print(f"[{self.name}] {bridge_exit}")
+                    logger.info(f"[{self.name}] {bridge_exit}")
                     break
-                print(f"[{self.name}] Poll error: {e}")
+                logger.info(f"[{self.name}] Poll error: {e}")
                 await asyncio.sleep(5)
             
             await asyncio.sleep(1)  # Poll interval
@@ -1195,42 +1195,42 @@ class WhatsAppAdapter(BasePlatformAdapter):
                         cached_path = await cache_image_from_url(url, ext=".jpg")
                         cached_urls.append(cached_path)
                         media_types.append("image/jpeg")
-                        print(f"[{self.name}] Cached user image: {cached_path}", flush=True)
+                        logger.info(f"[{self.name}] Cached user image: {cached_path}", flush=True)
                     except Exception as e:
-                        print(f"[{self.name}] Failed to cache image: {e}", flush=True)
+                        logger.info(f"[{self.name}] Failed to cache image: {e}", flush=True)
                         cached_urls.append(url)
                         media_types.append("image/jpeg")
                 elif msg_type == MessageType.PHOTO and os.path.isabs(url):
                     # Local file path — bridge already downloaded the image
                     cached_urls.append(url)
                     media_types.append("image/jpeg")
-                    print(f"[{self.name}] Using bridge-cached image: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached image: {url}", flush=True)
                 elif msg_type == MessageType.VOICE and url.startswith(("http://", "https://")):
                     try:
                         cached_path = await cache_audio_from_url(url, ext=".ogg")
                         cached_urls.append(cached_path)
                         media_types.append("audio/ogg")
-                        print(f"[{self.name}] Cached user voice: {cached_path}", flush=True)
+                        logger.info(f"[{self.name}] Cached user voice: {cached_path}", flush=True)
                     except Exception as e:
-                        print(f"[{self.name}] Failed to cache voice: {e}", flush=True)
+                        logger.info(f"[{self.name}] Failed to cache voice: {e}", flush=True)
                         cached_urls.append(url)
                         media_types.append("audio/ogg")
                 elif msg_type == MessageType.VOICE and os.path.isabs(url):
                     # Local file path — bridge already downloaded the audio
                     cached_urls.append(url)
                     media_types.append("audio/ogg")
-                    print(f"[{self.name}] Using bridge-cached audio: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached audio: {url}", flush=True)
                 elif msg_type == MessageType.DOCUMENT and os.path.isabs(url):
                     # Local file path — bridge already downloaded the document
                     cached_urls.append(url)
                     ext = Path(url).suffix.lower()
                     mime = SUPPORTED_DOCUMENT_TYPES.get(ext, "application/octet-stream")
                     media_types.append(mime)
-                    print(f"[{self.name}] Using bridge-cached document: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached document: {url}", flush=True)
                 elif msg_type == MessageType.VIDEO and os.path.isabs(url):
                     cached_urls.append(url)
                     media_types.append("video/mp4")
-                    print(f"[{self.name}] Using bridge-cached video: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached video: {url}", flush=True)
                 else:
                     cached_urls.append(url)
                     media_types.append("unknown")
@@ -1249,7 +1249,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
                         try:
                             file_size = Path(doc_path).stat().st_size
                             if file_size > MAX_TEXT_INJECT_BYTES:
-                                print(f"[{self.name}] Skipping text injection for {doc_path} ({file_size} bytes > {MAX_TEXT_INJECT_BYTES})", flush=True)
+                                logger.info(f"[{self.name}] Skipping text injection for {doc_path} ({file_size} bytes > {MAX_TEXT_INJECT_BYTES})", flush=True)
                                 continue
                             content = Path(doc_path).read_text(encoding="utf-8", errors="replace")
                             fname = Path(doc_path).name
@@ -1264,9 +1264,9 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 body = f"{injection}\n\n{body}"
                             else:
                                 body = injection
-                            print(f"[{self.name}] Injected text content from: {doc_path}", flush=True)
+                            logger.info(f"[{self.name}] Injected text content from: {doc_path}", flush=True)
                         except Exception as e:
-                            print(f"[{self.name}] Failed to read document text: {e}", flush=True)
+                            logger.info(f"[{self.name}] Failed to read document text: {e}", flush=True)
 
             return MessageEvent(
                 text=body,
@@ -1278,5 +1278,5 @@ class WhatsAppAdapter(BasePlatformAdapter):
                 media_types=media_types,
             )
         except Exception as e:
-            print(f"[{self.name}] Error building event: {e}")
+            logger.info(f"[{self.name}] Error building event: {e}")
             return None

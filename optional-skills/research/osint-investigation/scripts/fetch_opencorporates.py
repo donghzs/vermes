@@ -22,6 +22,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get, get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 API_URL = "https://api.opencorporates.com/v0.4/companies/search"
 HTML_URL = "https://opencorporates.com/companies"
 
@@ -99,14 +104,14 @@ def fetch(
             companies = _via_api(query, jurisdiction, token, limit)
             source_tag = "api"
         except Exception as e:  # noqa: BLE001
-            print(
+            logger.info(
                 f"OpenCorporates API call failed ({e}); falling back to HTML.",
                 file=sys.stderr,
             )
             companies = _via_html(query, limit)
             source_tag = "html-fallback"
     else:
-        print(
+        logger.info(
             "OPENCORPORATES_API_TOKEN not set — using HTML fallback (limited fields). "
             "Get a free token at https://opencorporates.com/api_accounts/new",
             file=sys.stderr,
@@ -158,7 +163,7 @@ def fetch(
         w.writeheader()
         w.writerows(rows)
     if not rows:
-        print(
+        logger.info(
             f"OpenCorporates: 0 matches for query={query!r}"
             f"{f' jurisdiction={jurisdiction!r}' if jurisdiction else ''}.",
             file=sys.stderr,
@@ -184,7 +189,7 @@ def main() -> int:
         limit=a.limit,
         out_path=a.out,
     )
-    print(f"Wrote {n} OpenCorporates rows to {a.out}")
+    logger.info(f"Wrote {n} OpenCorporates rows to {a.out}")
     return 0
 
 

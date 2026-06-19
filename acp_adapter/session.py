@@ -117,7 +117,7 @@ def _acp_stderr_print(*args, **kwargs) -> None:
     """
     kwargs = dict(kwargs)
     kwargs.setdefault("file", sys.stderr)
-    print(*args, **kwargs)
+    logger.info(*args, **kwargs)
 
 
 def _register_task_cwd(task_id: str, cwd: str) -> None:

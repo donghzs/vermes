@@ -28,6 +28,11 @@ import yaml
 
 from hermes_cli.config import get_hermes_home
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 HOOKS_DIR = get_hermes_home() / "hooks"
 
@@ -89,13 +94,13 @@ class HookRegistry:
             try:
                 manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                 if not manifest or not isinstance(manifest, dict):
-                    print(f"[hooks] Skipping {hook_dir.name}: invalid HOOK.yaml", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_dir.name}: invalid HOOK.yaml", flush=True)
                     continue
 
                 hook_name = manifest.get("name", hook_dir.name)
                 events = manifest.get("events", [])
                 if not events:
-                    print(f"[hooks] Skipping {hook_name}: no events declared", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_name}: no events declared", flush=True)
                     continue
 
                 # Dynamically load the handler module.
@@ -110,7 +115,7 @@ class HookRegistry:
                     module_name, handler_path
                 )
                 if spec is None or spec.loader is None:
-                    print(f"[hooks] Skipping {hook_name}: could not load handler.py", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_name}: could not load handler.py", flush=True)
                     continue
 
                 module = importlib.util.module_from_spec(spec)
@@ -123,7 +128,7 @@ class HookRegistry:
 
                 handle_fn = getattr(module, "handle", None)
                 if handle_fn is None:
-                    print(f"[hooks] Skipping {hook_name}: no 'handle' function found", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_name}: no 'handle' function found", flush=True)
                     continue
 
                 # Register the handler for each declared event
@@ -137,10 +142,10 @@ class HookRegistry:
                     "path": str(hook_dir),
                 })
 
-                print(f"[hooks] Loaded hook '{hook_name}' for events: {events}", flush=True)
+                logger.info(f"[hooks] Loaded hook '{hook_name}' for events: {events}", flush=True)
 
             except Exception as e:
-                print(f"[hooks] Error loading hook {hook_dir.name}: {e}", flush=True)
+                logger.info(f"[hooks] Error loading hook {hook_dir.name}: {e}", flush=True)
 
     def _resolve_handlers(self, event_type: str) -> List[Callable]:
         """Return all handlers that should fire for ``event_type``.
@@ -178,7 +183,7 @@ class HookRegistry:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as e:
-                print(f"[hooks] Error in handler for '{event_type}': {e}", flush=True)
+                logger.info(f"[hooks] Error in handler for '{event_type}': {e}", flush=True)
 
     async def emit_collect(
         self,
@@ -206,5 +211,5 @@ class HookRegistry:
                 if result is not None:
                     results.append(result)
             except Exception as e:
-                print(f"[hooks] Error in handler for '{event_type}': {e}", flush=True)
+                logger.info(f"[hooks] Error in handler for '{event_type}': {e}", flush=True)
         return results

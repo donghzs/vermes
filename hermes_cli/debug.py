@@ -591,9 +591,9 @@ def run_debug_share(args):
     redact = not getattr(args, "no_redact", False)
 
     if not local_only:
-        print(_PRIVACY_NOTICE)
+        logger.info(_PRIVACY_NOTICE)
 
-    print("Collecting debug report...")
+    logger.info("Collecting debug report...")
 
     # Capture dump once — prepended to every paste for context.
     # The dump is already redacted at extract time via dump.py:_redact;
@@ -631,20 +631,20 @@ def run_debug_share(args):
             gateway_log = _REDACTION_BANNER + gateway_log
 
     if local_only:
-        print(report)
+        logger.info(report)
         if agent_log:
-            print(f"\n\n{'=' * 60}")
-            print("FULL agent.log")
-            print(f"{'=' * 60}\n")
-            print(agent_log)
+            logger.info(f"\n\n{'=' * 60}")
+            logger.info("FULL agent.log")
+            logger.info(f"{'=' * 60}\n")
+            logger.info(agent_log)
         if gateway_log:
-            print(f"\n\n{'=' * 60}")
-            print("FULL gateway.log")
-            print(f"{'=' * 60}\n")
-            print(gateway_log)
+            logger.info(f"\n\n{'=' * 60}")
+            logger.info("FULL gateway.log")
+            logger.info(f"{'=' * 60}\n")
+            logger.info(gateway_log)
         return
 
-    print("Uploading...")
+    logger.info("Uploading...")
     urls: dict[str, str] = {}
     failures: list[str] = []
 
@@ -652,9 +652,9 @@ def run_debug_share(args):
     try:
         urls["Report"] = upload_to_pastebin(report, expiry_days=expiry)
     except RuntimeError as exc:
-        print(f"\nUpload failed: {exc}", file=sys.stderr)
-        print("\nFull report printed below — copy-paste it manually:\n")
-        print(report)
+        logger.warning(f"\nUpload failed: {exc}")
+        logger.info("\nFull report printed below — copy-paste it manually:\n")
+        logger.info(report)
         sys.exit(1)
 
     # 2. Full agent.log (optional)
@@ -673,42 +673,42 @@ def run_debug_share(args):
 
     # Print results
     label_width = max(len(k) for k in urls)
-    print(f"\nDebug report uploaded:")
+    logger.info(f"\nDebug report uploaded:")
     for label, url in urls.items():
-        print(f"  {label:<{label_width}}  {url}")
+        logger.info(f"  {label:<{label_width}}  {url}")
 
     if failures:
-        print(f"\n  (failed to upload: {', '.join(failures)})")
+        logger.info(f"\n  (failed to upload: {', '.join(failures)})")
 
     # Schedule auto-deletion after 6 hours
     _schedule_auto_delete(list(urls.values()))
-    print(f"\n⏱  Pastes will auto-delete in 6 hours.")
+    logger.info(f"\n⏱  Pastes will auto-delete in 6 hours.")
 
     # Manual delete fallback
-    print(f"To delete now:  hermes debug delete <url>")
+    logger.info(f"To delete now:  hermes debug delete <url>")
 
-    print(f"\nShare these links with the Hermes team for support.")
+    logger.info(f"\nShare these links with the Hermes team for support.")
 
 
 def run_debug_delete(args):
     """Delete one or more paste URLs uploaded by /debug."""
     urls = getattr(args, "urls", [])
     if not urls:
-        print("Usage: hermes debug delete <url> [<url> ...]")
-        print("  Deletes paste.rs pastes uploaded by 'hermes debug share'.")
+        logger.info("Usage: hermes debug delete <url> [<url> ...]")
+        logger.info("  Deletes paste.rs pastes uploaded by 'hermes debug share'.")
         return
 
     for url in urls:
         try:
             ok = delete_paste(url)
             if ok:
-                print(f"  ✓ Deleted: {url}")
+                logger.info(f"  ✓ Deleted: {url}")
             else:
-                print(f"  ✗ Failed to delete: {url} (unexpected response)")
+                logger.info(f"  ✗ Failed to delete: {url} (unexpected response)")
         except ValueError as exc:
-            print(f"  ✗ {exc}")
+            logger.info(f"  ✗ {exc}")
         except Exception as exc:
-            print(f"  ✗ Could not delete {url}: {exc}")
+            logger.info(f"  ✗ Could not delete {url}: {exc}")
 
 
 def run_debug(args):
@@ -730,17 +730,17 @@ def run_debug(args):
         run_debug_delete(args)
     else:
         # Default: show help
-        print("Usage: hermes debug <command>")
-        print()
-        print("Commands:")
-        print("  share    Upload debug report to a paste service and print URL")
-        print("  delete   Delete a previously uploaded paste")
-        print()
-        print("Options (share):")
-        print("  --lines N    Number of log lines to include (default: 200)")
-        print("  --expire N   Paste expiry in days (default: 7)")
-        print("  --local      Print report locally instead of uploading")
-        print("  --no-redact  Disable upload-time secret redaction (default: redact)")
-        print()
-        print("Options (delete):")
-        print("  <url> ...    One or more paste URLs to delete")
+        logger.info("Usage: hermes debug <command>")
+        logger.info()
+        logger.info("Commands:")
+        logger.info("  share    Upload debug report to a paste service and print URL")
+        logger.info("  delete   Delete a previously uploaded paste")
+        logger.info()
+        logger.info("Options (share):")
+        logger.info("  --lines N    Number of log lines to include (default: 200)")
+        logger.info("  --expire N   Paste expiry in days (default: 7)")
+        logger.info("  --local      Print report locally instead of uploading")
+        logger.info("  --no-redact  Disable upload-time secret redaction (default: redact)")
+        logger.info()
+        logger.info("Options (delete):")
+        logger.info("  <url> ...    One or more paste URLs to delete")

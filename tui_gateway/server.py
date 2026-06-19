@@ -67,7 +67,7 @@ def _panic_hook(exc_type, exc_value, exc_tb):
         if str(exc_value).strip()
         else exc_type.__name__
     )
-    print(f"[gateway-crash] {exc_type.__name__}: {first}", file=sys.stderr, flush=True)
+    logger.warning(f"[gateway-crash] {exc_type.__name__}: {first}", flush=True)
     # Chain to the default hook so the process still terminates normally.
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
@@ -97,7 +97,7 @@ def _thread_panic_hook(args):
         if str(args.exc_value).strip()
         else args.exc_type.__name__
     )
-    print(
+    logger.info(
         f"[gateway-crash] thread {args.thread.name} raised {args.exc_type.__name__}: {first_line}",
         file=sys.stderr,
         flush=True,
@@ -933,7 +933,7 @@ def _load_enabled_toolsets() -> list[str] | None:
         if any(name in {"all", "*"} for name in built_in):
             ignored = [name for name in explicit if name not in {"all", "*"}]
             if ignored:
-                print(
+                logger.info(
                     "[tui] HERMES_TUI_TOOLSETS=all enables every toolset; "
                     f"ignoring additional entries: {', '.join(ignored)}",
                     file=sys.stderr,
@@ -977,13 +977,13 @@ def _load_enabled_toolsets() -> list[str] | None:
         valid = built_in + mcp_valid
 
         if unknown:
-            print(
+            logger.info(
                 f"[tui] ignoring unknown HERMES_TUI_TOOLSETS entries: {', '.join(unknown)}",
                 file=sys.stderr,
                 flush=True,
             )
         if disabled:
-            print(
+            logger.info(
                 "[tui] ignoring disabled MCP servers in HERMES_TUI_TOOLSETS "
                 "(set enabled: true in config.yaml to use): "
                 f"{', '.join(disabled)}",
@@ -1014,11 +1014,11 @@ def _load_enabled_toolsets() -> list[str] | None:
             _get_platform_tools(cfg, "cli", include_default_mcp_servers=True)
         )
         if fallback_notice is not None:
-            print(fallback_notice, file=sys.stderr, flush=True)
+            logger.warning(fallback_notice, flush=True)
         return enabled or None
     except Exception:
         if fallback_notice is not None:
-            print(
+            logger.info(
                 "[tui] no valid HERMES_TUI_TOOLSETS entries and configured CLI toolsets could not be loaded; enabling all toolsets",
                 file=sys.stderr,
                 flush=True,
@@ -3108,7 +3108,7 @@ def _notification_poller_loop(
             _emit("message.start", sid)
             _run_prompt_submit(rid, sid, session, text)
         except Exception as exc:
-            print(
+            logger.info(
                 f"[tui_gateway] notification poller dispatch failed: "
                 f"{type(exc).__name__}: {exc}",
                 file=sys.stderr,
@@ -3143,7 +3143,7 @@ def _notification_poller_loop(
             _emit("message.start", sid)
             _run_prompt_submit(rid, sid, session, text)
         except Exception as exc:
-            print(
+            logger.info(
                 f"[tui_gateway] notification poller dispatch failed: "
                 f"{type(exc).__name__}: {exc}",
                 file=sys.stderr,
@@ -3245,7 +3245,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                         _cfg,
                     )
                 except Exception as _img_exc:
-                    print(
+                    logger.info(
                         f"[tui_gateway] image_routing decision failed, defaulting to text: {_img_exc}",
                         file=sys.stderr,
                     )
@@ -3258,7 +3258,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                             images,
                         )
                         if _skipped:
-                            print(
+                            logger.info(
                                 f"[tui_gateway] native image attachment skipped {len(_skipped)} unreadable path(s)",
                                 file=sys.stderr,
                             )
@@ -3267,7 +3267,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                         else:
                             run_message = _enrich_with_attached_images(prompt, images)
                     except Exception as _img_exc:
-                        print(
+                        logger.info(
                             f"[tui_gateway] native attach failed, falling back to text: {_img_exc}",
                             file=sys.stderr,
                         )
@@ -3305,7 +3305,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                             # dropping the agent's output — the UI can
                             # show the response and warn that it was
                             # not persisted.
-                            print(
+                            logger.info(
                                 f"[tui_gateway] prompt.submit: history_version mismatch "
                                 f"(expected={history_version} current={current_version}) — "
                                 f"agent output NOT written to session history",
@@ -3401,7 +3401,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                                 if cont_prompt:
                                     goal_followup = cont_prompt
                 except Exception as _goal_exc:
-                    print(
+                    logger.info(
                         f"[tui_gateway] goal continuation hook failed: "
                         f"{type(_goal_exc).__name__}: {_goal_exc}",
                         file=sys.stderr,
@@ -3483,7 +3483,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     f.write(trace)
             except Exception:
                 pass
-            print(
+            logger.info(
                 f"[gateway-turn] {type(e).__name__}: {e}", file=sys.stderr, flush=True
             )
             _emit("error", sid, {"message": str(e)})
@@ -3514,7 +3514,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                 _emit("message.start", sid)
                 _run_prompt_submit(rid, sid, session, goal_followup)
             except Exception as _cont_exc:
-                print(
+                logger.info(
                     f"[tui_gateway] goal continuation dispatch failed: "
                     f"{type(_cont_exc).__name__}: {_cont_exc}",
                     file=sys.stderr,
@@ -3538,7 +3538,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     _emit("message.start", sid)
                     _run_prompt_submit(rid, sid, session, synth)
                 except Exception as _n_exc:
-                    print(
+                    logger.info(
                         f"[tui_gateway] completion notification dispatch failed: "
                         f"{type(_n_exc).__name__}: {_n_exc}",
                         file=sys.stderr,
@@ -3546,7 +3546,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
                     with session["history_lock"]:
                         session["running"] = False
         except Exception as _drain_exc:
-            print(
+            logger.info(
                 f"[tui_gateway] completion queue drain failed: "
                 f"{type(_drain_exc).__name__}: {_drain_exc}",
                 file=sys.stderr,

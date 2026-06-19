@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Set
-
 from hermes_cli.auth import get_nous_auth_status
 from hermes_cli.config import get_env_value, load_config
 from tools.managed_tool_gateway import is_managed_tool_gateway_ready
 from utils import is_truthy_value
 from tools.tool_backend_helpers import (
+
     fal_key_is_configured,
     has_direct_modal_credentials,
     managed_nous_tools_enabled,
@@ -485,10 +490,6 @@ def get_nous_subscription_features(
         features=features,
     )
 
-
-
-
-
 def apply_nous_managed_defaults(
     config: Dict[str, object],
     *,
@@ -788,12 +789,14 @@ def prompt_enable_tool_gateway(config: Dict[str, object]) -> set[str]:
     changed = apply_gateway_defaults(config, to_apply)
     if changed:
         from hermes_cli.config import save_config
+
+
         save_config(config)
         # Only report the tools that actually switched (not already-managed ones)
         newly_switched = changed - set(already_managed)
         for key in sorted(newly_switched):
             label = _GATEWAY_TOOL_LABELS.get(key, key)
-            print(f"  ✓ {label}: enabled via Nous subscription")
+            logger.info(f"  ✓ {label}: enabled via Nous subscription")
         if already_managed and not newly_switched:
-            print("  (all tools already using Tool Gateway)")
+            logger.info("  (all tools already using Tool Gateway)")
     return changed

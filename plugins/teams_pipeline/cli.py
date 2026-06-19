@@ -28,6 +28,11 @@ from plugins.teams_pipeline.subscriptions import (
 )
 from tools.microsoft_graph_auth import MicrosoftGraphConfigError, MicrosoftGraphTokenProvider
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def register_cli(subparser: argparse.ArgumentParser) -> None:
     subs = subparser.add_subparsers(dest="teams_pipeline_action")
@@ -92,7 +97,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
 def teams_pipeline_command(args: argparse.Namespace) -> int:
     action = getattr(args, "teams_pipeline_action", None)
     if not action:
-        print(
+        logger.info(
             "Usage: hermes teams-pipeline "
             "{list|show|run|fetch|subscriptions|subscribe|renew-subscription|delete-subscription|maintain-subscriptions|token-health|validate}"
         )
@@ -122,11 +127,11 @@ def teams_pipeline_command(args: argparse.Namespace) -> int:
         elif action == "validate":
             _cmd_validate(args)
         else:
-            print(f"Unknown teams-pipeline action: {action}")
+            logger.info(f"Unknown teams-pipeline action: {action}")
             return 2
         return 0
     except MicrosoftGraphConfigError:
-        print(_graph_setup_hint())
+        logger.info(_graph_setup_hint())
         return 1
 
 
@@ -262,46 +267,46 @@ def _cmd_list(args) -> None:
     jobs = jobs[:limit]
 
     if not jobs:
-        print("No Teams meeting pipeline jobs found.")
+        logger.info("No Teams meeting pipeline jobs found.")
         return
 
-    print(f"\n{len(jobs)} Teams pipeline job(s):\n")
+    logger.info(f"\n{len(jobs)} Teams pipeline job(s):\n")
     for job in jobs:
         meeting_id = ((job.get("meeting_ref") or {}).get("meeting_id") or "unknown")
-        print(f"  ◆ {job.get('job_id')}")
-        print(f"    status: {job.get('status')}")
-        print(f"    meeting: {meeting_id}")
+        logger.info(f"  ◆ {job.get('job_id')}")
+        logger.info(f"    status: {job.get('status')}")
+        logger.info(f"    meeting: {meeting_id}")
         if job.get("selected_artifact_strategy"):
-            print(f"    strategy: {job.get('selected_artifact_strategy')}")
+            logger.info(f"    strategy: {job.get('selected_artifact_strategy')}")
         if job.get("updated_at"):
-            print(f"    updated: {job.get('updated_at')}")
+            logger.info(f"    updated: {job.get('updated_at')}")
         if job.get("error_info"):
-            print(f"    error: {job.get('error_info')}")
-        print()
+            logger.info(f"    error: {job.get('error_info')}")
+        logger.info()
 
 
 def _cmd_show(args) -> None:
     job_id = str(getattr(args, "job_id", "") or "").strip()
     if not job_id:
-        print("job_id is required")
+        logger.info("job_id is required")
         return
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     job = store.get_job(job_id)
     if not job:
-        print(f"Unknown job: {job_id}")
+        logger.info(f"Unknown job: {job_id}")
         return
-    print(json.dumps(_compact_job(job), indent=2, sort_keys=True))
+    logger.info(json.dumps(_compact_job(job), indent=2, sort_keys=True))
 
 
 def _cmd_run(args) -> None:
     job_id = str(getattr(args, "job_id", "") or "").strip()
     if not job_id:
-        print("job_id is required")
+        logger.info("job_id is required")
         return
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     pipeline = TeamsMeetingPipeline(graph_client=build_graph_client(), store=store, config={})
     result = _run_async(pipeline.run_job(job_id))
-    print(json.dumps(_compact_job(result.to_dict()), indent=2, sort_keys=True))
+    logger.info(json.dumps(_compact_job(result.to_dict()), indent=2, sort_keys=True))
 
 
 def _cmd_fetch(args) -> None:
@@ -310,7 +315,7 @@ def _cmd_fetch(args) -> None:
     tenant_id = str(getattr(args, "tenant_id", "") or "").strip() or None
     call_record_id = str(getattr(args, "call_record_id", "") or "").strip() or None
     if not meeting_id and not join_web_url:
-        print("meeting_id or join_web_url is required")
+        logger.info("meeting_id or join_web_url is required")
         return
 
     client = build_graph_client()
@@ -327,7 +332,7 @@ def _cmd_fetch(args) -> None:
     call_record = _run_async(
         enrich_meeting_with_call_record(client, meeting_ref, call_record_id=call_record_id)
     )
-    print(
+    logger.info(
         json.dumps(
             {
                 "meeting_ref": meeting_ref.to_dict(),
@@ -354,19 +359,19 @@ def _cmd_subscriptions(args) -> None:
         except Exception:
             continue
     if not subscriptions:
-        print("No Microsoft Graph subscriptions found.")
+        logger.info("No Microsoft Graph subscriptions found.")
         return
 
-    print(f"\n{len(subscriptions)} Microsoft Graph subscription(s):\n")
+    logger.info(f"\n{len(subscriptions)} Microsoft Graph subscription(s):\n")
     for sub in subscriptions:
-        print(f"  ◆ {sub.get('id') or 'unknown'}")
-        print(f"    resource: {sub.get('resource') or 'unknown'}")
-        print(f"    changeType: {sub.get('changeType') or 'unknown'}")
+        logger.info(f"  ◆ {sub.get('id') or 'unknown'}")
+        logger.info(f"    resource: {sub.get('resource') or 'unknown'}")
+        logger.info(f"    changeType: {sub.get('changeType') or 'unknown'}")
         if sub.get("expirationDateTime"):
-            print(f"    expires: {sub.get('expirationDateTime')}")
+            logger.info(f"    expires: {sub.get('expirationDateTime')}")
         if sub.get("notificationUrl"):
-            print(f"    notify: {sub.get('notificationUrl')}")
-        print()
+            logger.info(f"    notify: {sub.get('notificationUrl')}")
+        logger.info()
 
 
 def _cmd_subscribe(args) -> None:
@@ -393,14 +398,14 @@ def _cmd_subscribe(args) -> None:
 
     result = _run_async(build_graph_client().post_json("/subscriptions", json_body=payload))
     _sync_subscription_record(store, result, status="active")
-    print(json.dumps(result, indent=2, sort_keys=True))
+    logger.info(json.dumps(result, indent=2, sort_keys=True))
 
 
 def _cmd_renew_subscription(args) -> None:
     subscription_id = str(getattr(args, "subscription_id", "") or "").strip()
     expiration = str(getattr(args, "expiration", "") or "").strip()
     if not subscription_id or not expiration:
-        print("subscription_id and --expiration are required")
+        logger.info("subscription_id and --expiration are required")
         return
 
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
@@ -412,18 +417,18 @@ def _cmd_renew_subscription(args) -> None:
     )
     merged = {"id": subscription_id, **(result or {}), "expirationDateTime": expiration}
     _sync_subscription_record(store, merged, status="active", renewed=True)
-    print(json.dumps(merged, indent=2, sort_keys=True))
+    logger.info(json.dumps(merged, indent=2, sort_keys=True))
 
 
 def _cmd_delete_subscription(args) -> None:
     subscription_id = str(getattr(args, "subscription_id", "") or "").strip()
     if not subscription_id:
-        print("subscription_id is required")
+        logger.info("subscription_id is required")
         return
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     result = _run_async(build_graph_client().delete(f"/subscriptions/{subscription_id}"))
     store.delete_subscription(subscription_id)
-    print(json.dumps({"subscription_id": subscription_id, "result": result}, indent=2, sort_keys=True))
+    logger.info(json.dumps({"subscription_id": subscription_id, "result": result}, indent=2, sort_keys=True))
 
 
 def _cmd_maintain_subscriptions(args) -> None:
@@ -438,7 +443,7 @@ def _cmd_maintain_subscriptions(args) -> None:
             client_state=str(getattr(args, "client_state", "") or "").strip() or None,
         )
     )
-    print(json.dumps(result, indent=2, sort_keys=True))
+    logger.info(json.dumps(result, indent=2, sort_keys=True))
 
 
 def _cmd_token_health(args) -> None:
@@ -453,10 +458,10 @@ def _cmd_token_health(args) -> None:
         except Exception as exc:
             payload["last_refresh_succeeded"] = False
             payload["refresh_error"] = str(exc)
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    logger.info(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def _cmd_validate(args) -> None:
     store = TeamsPipelineStore(_store_path(getattr(args, "store_path", None)))
     snapshot = _validate_configuration_snapshot(store)
-    print(json.dumps(snapshot, indent=2, sort_keys=True))
+    logger.info(json.dumps(snapshot, indent=2, sort_keys=True))

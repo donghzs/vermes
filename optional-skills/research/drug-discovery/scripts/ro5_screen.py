@@ -7,6 +7,11 @@ No external dependencies beyond stdlib.
 import sys, json, time, argparse
 import urllib.request, urllib.parse, urllib.error
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name"
 PROPS = "MolecularWeight,XLogP,HBondDonorCount,HBondAcceptorCount,RotatableBondCount,TPSA"
 
@@ -24,14 +29,14 @@ def check(p):
     return dict(mw=mw,logp=logp,hbd=hbd,hba=hba,rot=rot,tpsa=tpsa,violations=v,ro5=v<=1,veber=tpsa<=140 and rot<=10,ok=v<=1 and tpsa<=140 and rot<=10)
 
 def report(name, r):
-    if not r: print(f"✗ {name:30s} — not found"); return
+    if not r: logger.info(f"✗ {name:30s} — not found"); return
     s = "✓ PASS" if r["ok"] else "✗ FAIL"
     flags = (f" [Ro5 violations:{r['violations']}]" if not r["ro5"] else "") + (" [Veber fail]" if not r["veber"] else "")
-    print(f"{s}  {name:28s} MW={r['mw']:.0f} LogP={r['logp']:.2f} HBD={r['hbd']} HBA={r['hba']} TPSA={r['tpsa']:.0f} RotB={r['rot']}{flags}")
+    logger.info(f"{s}  {name:28s} MW={r['mw']:.0f} LogP={r['logp']:.2f} HBD={r['hbd']} HBA={r['hba']} TPSA={r['tpsa']:.0f} RotB={r['rot']}{flags}")
 
 def main():
     compounds = sys.stdin.read().splitlines() if len(sys.argv)<2 or sys.argv[1]=="-" else sys.argv[1:]
-    print(f"\n{'Status':<8} {'Compound':<30} Properties\n" + "-"*85)
+    logger.info(f"\n{'Status':<8} {'Compound':<30} Properties\n" + "-"*85)
     passed = 0
     for name in compounds:
         props = fetch(name.strip())
@@ -39,6 +44,6 @@ def main():
         report(name.strip(), result)
         if result and result["ok"]: passed += 1
         time.sleep(0.3)
-    print(f"\nSummary: {passed}/{len(compounds)} passed Ro5 + Veber.\n")
+    logger.info(f"\nSummary: {passed}/{len(compounds)} passed Ro5 + Veber.\n")
 
 if __name__ == "__main__": main()

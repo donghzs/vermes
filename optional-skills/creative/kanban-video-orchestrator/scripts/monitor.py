@@ -25,6 +25,11 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def hermes_available() -> bool:
     return shutil.which("hermes") is not None
@@ -142,7 +147,7 @@ def print_snapshot(tasks: list[dict], issues: list[str]):
     for t in tasks:
         counts[str(t.get("status", "?")).lower()] += 1
 
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] "
+    logger.info(f"\n[{datetime.now().strftime('%H:%M:%S')}] "
           f"Total: {len(tasks)} | "
           + " | ".join(f"{k}: {v}" for k, v in sorted(counts.items())))
 
@@ -151,13 +156,13 @@ def print_snapshot(tasks: list[dict], issues: list[str]):
               "▶" if str(t.get("status", "")).lower() == "running" else \
               "·" if str(t.get("status", "")).lower() == "ready" else \
               "✗" if str(t.get("status", "")).lower() == "failed" else "?"
-        print(f"  {bar} {t.get('id', '?'):14} {t.get('assignee', '?'):20}  "
+        logger.info(f"  {bar} {t.get('id', '?'):14} {t.get('assignee', '?'):20}  "
               f"{t.get('title', '')[:60]}")
 
     if issues:
-        print("\n  ⚠  ISSUES:", file=sys.stderr)
+        logger.warning("\n  ⚠  ISSUES:")
         for i in issues:
-            print(f"     {i}", file=sys.stderr)
+            logger.warning(f"     {i}")
 
 
 def main():
@@ -172,7 +177,7 @@ def main():
     args = ap.parse_args()
 
     if not hermes_available():
-        print("ERROR: 'hermes' CLI not found in PATH", file=sys.stderr)
+        logger.warning("ERROR: 'hermes' CLI not found in PATH")
         sys.exit(1)
 
     if args.once:
@@ -180,7 +185,7 @@ def main():
         print_snapshot(tasks, issues)
         sys.exit(0 if not issues else 2)
 
-    print(f"Monitoring tenant '{args.tenant}' every {args.interval}s. "
+    logger.info(f"Monitoring tenant '{args.tenant}' every {args.interval}s. "
           "Ctrl-C to exit.")
     try:
         while True:
@@ -188,7 +193,7 @@ def main():
             print_snapshot(tasks, issues)
             time.sleep(args.interval)
     except KeyboardInterrupt:
-        print("\nStopped.")
+        logger.info("\nStopped.")
 
 
 if __name__ == "__main__":

@@ -6,8 +6,11 @@ Not a pytest — a script you run manually for the PR description.
 Usage:
     .venv/bin/python scripts/benchmark_browser_eval.py [--iterations N]
 """
-from __future__ import annotations
 
+from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 import shutil
 import statistics
@@ -18,15 +21,13 @@ import time
 import urllib.request
 import json
 
-
 def _find_chrome() -> str:
     for c in ("google-chrome", "chromium", "chromium-browser"):
         p = shutil.which(c)
         if p:
             return p
-    print("No Chrome binary found.", file=sys.stderr)
+    logger.warning("No Chrome binary found.")
     sys.exit(1)
-
 
 def _start_chrome(port: int):
     profile = tempfile.mkdtemp(prefix="hermes-bench-eval-")
@@ -54,7 +55,6 @@ def _start_chrome(port: int):
     proc.terminate()
     raise RuntimeError("Chrome didn't expose CDP")
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--iterations", type=int, default=50)
@@ -75,7 +75,7 @@ def main():
         # Sanity check: one eval over WS should succeed.
         sanity = supervisor.evaluate_runtime("1 + 1")
         if not sanity.get("ok") or sanity.get("result") != 2:
-            print(f"sanity check failed: {sanity}", file=sys.stderr)
+            logger.warning(f"sanity check failed: {sanity}")
             sys.exit(2)
 
         # ── Bench 1: supervisor WS path ──────────────────────────────────
@@ -91,10 +91,11 @@ def main():
         # Skip if agent-browser isn't installed — the WS bench still tells
         # us what we need.
         if shutil.which("agent-browser") is None and shutil.which("npx") is None:
-            print("agent-browser CLI not found — skipping subprocess bench.")
+            logger.info("agent-browser CLI not found — skipping subprocess bench.")
             sub_times = []
         else:
             from tools.browser_tool import _run_browser_command, _last_session_key
+
             task_id = _last_session_key("bench-eval")
             sub_times = []
             for _ in range(args.iterations):
@@ -114,15 +115,15 @@ def main():
                 f"min={mn:>7.2f}ms  max={mx:>7.2f}ms"
             )
 
-        print()
-        print(f"browser_eval benchmark — {args.iterations} iterations of `1 + 1`")
-        print("-" * 90)
-        print(fmt("supervisor WS (Runtime.evaluate)", ws_times))
-        print(fmt("agent-browser subprocess (eval)", sub_times))
+        logger.info()
+        logger.info(f"browser_eval benchmark — {args.iterations} iterations of `1 + 1`")
+        logger.info("-" * 90)
+        logger.info(fmt("supervisor WS (Runtime.evaluate)", ws_times))
+        logger.info(fmt("agent-browser subprocess (eval)", sub_times))
         if ws_times and sub_times:
             speedup = statistics.mean(sub_times) / statistics.mean(ws_times)
-            print()
-            print(f"Speedup: {speedup:.1f}x (mean)")
+            logger.info()
+            logger.info(f"Speedup: {speedup:.1f}x (mean)")
 
     finally:
         SUPERVISOR_REGISTRY.stop_all()
@@ -132,7 +133,6 @@ def main():
         except Exception:
             proc.kill()
         shutil.rmtree(profile, ignore_errors=True)
-
 
 if __name__ == "__main__":
     main()

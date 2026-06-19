@@ -14,6 +14,11 @@ No external dependencies — stdlib only.
 import sys
 import math
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def bmi(weight_kg, height_cm):
     h = height_cm / 100
@@ -26,13 +31,13 @@ def bmi(weight_kg, height_cm):
         cat = "Overweight"
     else:
         cat = "Obese"
-    print(f"BMI: {val:.1f} — {cat}")
-    print()
-    print("Ranges:")
-    print(f"  Underweight : < 18.5")
-    print(f"  Normal      : 18.5 – 24.9")
-    print(f"  Overweight  : 25.0 – 29.9")
-    print(f"  Obese       : 30.0+")
+    logger.info(f"BMI: {val:.1f} — {cat}")
+    logger.info()
+    logger.info("Ranges:")
+    logger.info(f"  Underweight : < 18.5")
+    logger.info(f"  Normal      : 18.5 – 24.9")
+    logger.info(f"  Overweight  : 25.0 – 29.9")
+    logger.info(f"  Obese       : 30.0+")
 
 
 def tdee(weight_kg, height_cm, age, sex, activity):
@@ -52,25 +57,25 @@ def tdee(weight_kg, height_cm, age, sex, activity):
     label, mult = multipliers.get(activity, ("Moderate", 1.55))
     total = bmr * mult
 
-    print(f"BMR (Mifflin-St Jeor): {bmr:.0f} kcal/day")
-    print(f"Activity: {label} (x{mult})")
-    print(f"TDEE: {total:.0f} kcal/day")
-    print()
-    print("Calorie targets:")
-    print(f"  Aggressive cut (-750): {total - 750:.0f} kcal/day")
-    print(f"  Fat loss       (-500): {total - 500:.0f} kcal/day")
-    print(f"  Mild cut       (-250): {total - 250:.0f} kcal/day")
-    print(f"  Maintenance          : {total:.0f} kcal/day")
-    print(f"  Lean bulk      (+250): {total + 250:.0f} kcal/day")
-    print(f"  Bulk           (+500): {total + 500:.0f} kcal/day")
+    logger.info(f"BMR (Mifflin-St Jeor): {bmr:.0f} kcal/day")
+    logger.info(f"Activity: {label} (x{mult})")
+    logger.info(f"TDEE: {total:.0f} kcal/day")
+    logger.info()
+    logger.info("Calorie targets:")
+    logger.info(f"  Aggressive cut (-750): {total - 750:.0f} kcal/day")
+    logger.info(f"  Fat loss       (-500): {total - 500:.0f} kcal/day")
+    logger.info(f"  Mild cut       (-250): {total - 250:.0f} kcal/day")
+    logger.info(f"  Maintenance          : {total:.0f} kcal/day")
+    logger.info(f"  Lean bulk      (+250): {total + 250:.0f} kcal/day")
+    logger.info(f"  Bulk           (+500): {total + 500:.0f} kcal/day")
 
 
 def one_rep_max(weight, reps):
     if reps < 1:
-        print("Error: reps must be at least 1.")
+        logger.info("Error: reps must be at least 1.")
         sys.exit(1)
     if reps == 1:
-        print(f"1RM = {weight:.1f} (actual single)")
+        logger.info(f"1RM = {weight:.1f} (actual single)")
         return
 
     epley = weight * (1 + reps / 30)
@@ -78,19 +83,19 @@ def one_rep_max(weight, reps):
     lombardi = weight * (reps ** 0.1)
     avg = (epley + brzycki + lombardi) / 3
 
-    print(f"Estimated 1RM ({weight} x {reps} reps):")
-    print(f"  Epley    : {epley:.1f}")
-    print(f"  Brzycki  : {brzycki:.1f}")
-    print(f"  Lombardi : {lombardi:.1f}")
-    print(f"  Average  : {avg:.1f}")
-    print()
-    print("Training percentages off average 1RM:")
+    logger.info(f"Estimated 1RM ({weight} x {reps} reps):")
+    logger.info(f"  Epley    : {epley:.1f}")
+    logger.info(f"  Brzycki  : {brzycki:.1f}")
+    logger.info(f"  Lombardi : {lombardi:.1f}")
+    logger.info(f"  Average  : {avg:.1f}")
+    logger.info()
+    logger.info("Training percentages off average 1RM:")
     for pct, rep_range in [
         (100, "1"), (95, "1-2"), (90, "3-4"), (85, "4-6"),
         (80, "6-8"), (75, "8-10"), (70, "10-12"),
         (65, "12-15"), (60, "15-20"),
     ]:
-        print(f"  {pct:>3}% = {avg * pct / 100:>7.1f}  (~{rep_range} reps)")
+        logger.info(f"  {pct:>3}% = {avg * pct / 100:>7.1f}  (~{rep_range} reps)")
 
 
 def macros(tdee_kcal, goal):
@@ -112,29 +117,29 @@ def macros(tdee_kcal, goal):
     fat_g = cals * f / 9
     carb_g = cals * c / 4
 
-    print(f"Goal: {label}")
-    print(f"Daily calories: {cals:.0f} kcal")
-    print()
-    print(f"  Protein : {prot_g:>6.0f}g ({p * 100:.0f}%)  = {prot_g * 4:.0f} kcal")
-    print(f"  Fat     : {fat_g:>6.0f}g ({f * 100:.0f}%)  = {fat_g * 9:.0f} kcal")
-    print(f"  Carbs   : {carb_g:>6.0f}g ({c * 100:.0f}%)  = {carb_g * 4:.0f} kcal")
-    print()
-    print(f"Per meal (3 meals): P {prot_g / 3:.0f}g | F {fat_g / 3:.0f}g | C {carb_g / 3:.0f}g")
-    print(f"Per meal (4 meals): P {prot_g / 4:.0f}g | F {fat_g / 4:.0f}g | C {carb_g / 4:.0f}g")
+    logger.info(f"Goal: {label}")
+    logger.info(f"Daily calories: {cals:.0f} kcal")
+    logger.info()
+    logger.info(f"  Protein : {prot_g:>6.0f}g ({p * 100:.0f}%)  = {prot_g * 4:.0f} kcal")
+    logger.info(f"  Fat     : {fat_g:>6.0f}g ({f * 100:.0f}%)  = {fat_g * 9:.0f} kcal")
+    logger.info(f"  Carbs   : {carb_g:>6.0f}g ({c * 100:.0f}%)  = {carb_g * 4:.0f} kcal")
+    logger.info()
+    logger.info(f"Per meal (3 meals): P {prot_g / 3:.0f}g | F {fat_g / 3:.0f}g | C {carb_g / 3:.0f}g")
+    logger.info(f"Per meal (4 meals): P {prot_g / 4:.0f}g | F {fat_g / 4:.0f}g | C {carb_g / 4:.0f}g")
 
 
 def bodyfat(sex, neck_cm, waist_cm, hip_cm, height_cm):
     sex = sex.upper()
     if sex == "M":
         if waist_cm <= neck_cm:
-            print("Error: waist must be larger than neck."); sys.exit(1)
+            logger.info("Error: waist must be larger than neck."); sys.exit(1)
         bf = 86.010 * math.log10(waist_cm - neck_cm) - 70.041 * math.log10(height_cm) + 36.76
     else:
         if (waist_cm + hip_cm) <= neck_cm:
-            print("Error: waist + hip must be larger than neck."); sys.exit(1)
+            logger.info("Error: waist + hip must be larger than neck."); sys.exit(1)
         bf = 163.205 * math.log10(waist_cm + hip_cm - neck_cm) - 97.684 * math.log10(height_cm) - 78.387
 
-    print(f"Estimated body fat: {bf:.1f}%")
+    logger.info(f"Estimated body fat: {bf:.1f}%")
 
     if sex == "M":
         ranges = [
@@ -159,12 +164,12 @@ def bodyfat(sex, neck_cm, waist_cm, hip_cm, height_cm):
             cat = label
             break
 
-    print(f"Category: {cat}")
-    print(f"Method: US Navy circumference formula")
+    logger.info(f"Category: {cat}")
+    logger.info(f"Method: US Navy circumference formula")
 
 
 def usage():
-    print(__doc__)
+    logger.info(__doc__)
     sys.exit(1)
 
 
@@ -198,11 +203,11 @@ def main():
                 bodyfat(sex, float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5]), float(sys.argv[6]))
 
         else:
-            print(f"Unknown command: {cmd}")
+            logger.info(f"Unknown command: {cmd}")
             usage()
 
     except (IndexError, ValueError) as e:
-        print(f"Error: {e}")
+        logger.info(f"Error: {e}")
         usage()
 
 

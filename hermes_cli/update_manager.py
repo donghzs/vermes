@@ -11,6 +11,9 @@ Vermes 自更新管理器
 - 跨平台支持（macOS / Windows）
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import asyncio
 import hashlib
 import json
@@ -739,7 +742,7 @@ def apply_pending_update() -> Optional[str]:
         return None
 
     action = "回滚" if is_rollback else "更新"
-    print(f"[Vermes] 发现待应用{action} v{version}，正在应用...")
+    logger.info(f"[Vermes] 发现待应用{action} v{version}，正在应用...")
 
     try:
         app_path = get_app_path()
@@ -760,11 +763,11 @@ def apply_pending_update() -> Optional[str]:
             atomic_replace_macos(staging_app, app_path)
 
             # 重启前等待旧进程释放端口
-            print(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
+            logger.info(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
             _cleanup_after_apply()
             time.sleep(1)  # uvicorn 优雅关闭
             if not _wait_port_release(9119, timeout=10):
-                print("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
+                logger.info("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
             subprocess.Popen(["open", str(app_path)])
             sys.exit(0)
 
@@ -773,16 +776,16 @@ def apply_pending_update() -> Optional[str]:
             atomic_replace_windows(staging_path, app_path)
 
             # 重启前等待旧进程释放端口
-            print(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
+            logger.info(f"[Vermes] ✅ {action}到 v{version}，正在重启...")
             _cleanup_after_apply()
             time.sleep(1)  # uvicorn 优雅关闭
             if not _wait_port_release(9119, timeout=10):
-                print("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
+                logger.info("[Vermes] ⚠️ 端口 9119 未释放，继续启动可能存在冲突")
             subprocess.Popen([str(app_path / "Vermes.exe")])
             sys.exit(0)
 
     except Exception as e:
-        print(f"[Vermes] ❌ {action}失败: {e}")
+        logger.info(f"[Vermes] ❌ {action}失败: {e}")
         _log.error(f"[Update] {action}失败: {e}")
         PENDING_FILE.unlink(missing_ok=True)
         return None
@@ -1132,6 +1135,5 @@ try:
     from hermes_cli.log_utils import get_logger
     _log = get_logger("update")
 except Exception:
-    import logging
     _log = logging.getLogger("update")
     _log.setLevel(logging.INFO)

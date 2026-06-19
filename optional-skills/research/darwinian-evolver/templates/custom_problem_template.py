@@ -13,11 +13,16 @@ To run:
 
 The pattern mirrors `scripts/parrot_openrouter.py` (the working reference).
 """
+
 from __future__ import annotations
 
 import argparse
 import os
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
+
 from pathlib import Path
 
 from openai import OpenAI
@@ -32,6 +37,7 @@ from darwinian_evolver.cli_common import (
 from darwinian_evolver.evolve_problem_loop import EvolveProblemLoop
 from darwinian_evolver.learning_log import LearningLogEntry
 from darwinian_evolver.problem import (
+
     EvaluationFailureCase,
     EvaluationResult,
     Evaluator,
@@ -42,13 +48,11 @@ from darwinian_evolver.problem import (
 
 DEFAULT_MODEL = os.environ.get("EVOLVER_MODEL", "openai/gpt-4o-mini")
 
-
 def _client() -> OpenAI:
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         sys.exit("OPENROUTER_API_KEY is not set")
     return OpenAI(api_key=key, base_url="https://openrouter.ai/api/v1")
-
 
 def _prompt_llm(prompt: str, max_tokens: int = 1024) -> str:
     try:
@@ -61,7 +65,6 @@ def _prompt_llm(prompt: str, max_tokens: int = 1024) -> str:
     except Exception as e:
         # Never let one bad LLM response kill the run.
         return f"<LLM_ERROR: {type(e).__name__}: {e}>"
-
 
 # ---------------------------------------------------------------------------
 # 1. ORGANISM — what you are evolving.
@@ -82,7 +85,6 @@ class MyOrganism(Organism):
         # call `re.findall(self.artifact, input)` / execute SQL / etc.
         raise NotImplementedError
 
-
 # ---------------------------------------------------------------------------
 # 2. EVALUATOR — score organisms and surface failures the mutator can learn from.
 # ---------------------------------------------------------------------------
@@ -91,7 +93,6 @@ class MyFailureCase(EvaluationFailureCase):
     input: str
     expected: str
     actual: str
-
 
 class MyEvaluator(Evaluator[MyOrganism, EvaluationResult, MyFailureCase]):
     # Split your dataset. Mutator only sees trainable; holdout detects overfitting.
@@ -130,7 +131,6 @@ class MyEvaluator(Evaluator[MyOrganism, EvaluationResult, MyFailureCase]):
             # a 0-score organism is fine and will simply be sampled less often.
             is_viable=True,
         )
-
 
 # ---------------------------------------------------------------------------
 # 3. MUTATOR — LLM proposes an improved organism from a failure case.
@@ -184,7 +184,6 @@ Put the new version in the LAST triple-backtick block of your response.
                 new_artifact = rest
         return [MyOrganism(artifact=new_artifact)]
 
-
 # ---------------------------------------------------------------------------
 # Driver — fills in the EvolveProblemLoop boilerplate. You shouldn't need to
 # touch anything below this line for a typical run.
@@ -196,7 +195,6 @@ def make_problem() -> Problem:
         mutators=[MyMutator()],
         initial_organism=initial,
     )
-
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -226,15 +224,14 @@ def main() -> int:
         should_verify_mutations=hp.verify_mutations,
     )
 
-    print("Evaluating initial organism...")
+    logger.info("Evaluating initial organism...")
     for snap in loop.run(num_iterations=args.num_iterations):
         (out / "snapshots" / f"iteration_{snap.iteration}.pkl").write_bytes(snap.snapshot)
         _, best = snap.best_organism_result
-        print(f"iter={snap.iteration} pop={snap.population_size} best_score={best.score:.3f}")
+        logger.info(f"iter={snap.iteration} pop={snap.population_size} best_score={best.score:.3f}")
 
-    print(f"\nDone. Results in: {out}")
+    logger.info(f"\nDone. Results in: {out}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

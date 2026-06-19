@@ -127,7 +127,7 @@ def _warn_if_openclaw_running(auto_yes: bool) -> None:
     if not running:
         return
 
-    print()
+    logger.info()
     print_error("OpenClaw appears to be running:")
     for detail in running:
         print_info(f"  * {detail}")
@@ -137,7 +137,7 @@ def _warn_if_openclaw_running(auto_yes: bool) -> None:
         "Hermes may try to use the same token, causing disconnects."
     )
     print_info("Recommendation: stop OpenClaw before migrating.")
-    print()
+    logger.info()
     if auto_yes:
         return
     if not sys.stdin.isatty():
@@ -167,7 +167,7 @@ def _warn_if_gateway_running(auto_yes: bool) -> None:
     if not connected:
         return
 
-    print()
+    logger.info()
     print_error(
         "Hermes gateway is running with active connections: "
         + ", ".join(connected)
@@ -178,7 +178,7 @@ def _warn_if_gateway_running(auto_yes: bool) -> None:
         "session per token)."
     )
     print_info("Recommendation: stop the gateway first with 'hermes stop'.")
-    print()
+    logger.info()
     if not auto_yes and not prompt_yes_no("Continue anyway?", default=False):
         print_info("Migration cancelled. Stop the gateway and try again.")
         sys.exit(0)
@@ -301,13 +301,13 @@ def claw_command(args):
     elif action in {"cleanup", "clean"}:
         _cmd_cleanup(args)
     else:
-        print("Usage: hermes claw <command> [options]")
-        print()
-        print("Commands:")
-        print("  migrate          Migrate settings from OpenClaw to Hermes")
-        print("  cleanup          Archive leftover OpenClaw directories after migration")
-        print()
-        print("Run 'hermes claw <command> --help' for options.")
+        logger.info("Usage: hermes claw <command> [options]")
+        logger.info()
+        logger.info("Commands:")
+        logger.info("  migrate          Migrate settings from OpenClaw to Hermes")
+        logger.info("  cleanup          Archive leftover OpenClaw directories after migration")
+        logger.info()
+        logger.info("Run 'hermes claw <command> --help' for options.")
 
 
 def _cmd_migrate(args):
@@ -339,20 +339,20 @@ def _cmd_migrate(args):
     # --include-secrets) and prevents a --preset full invocation from silently
     # importing API keys that the user may not have intended to copy.
 
-    print()
-    print(
+    logger.info()
+    logger.info(
         color(
             "┌─────────────────────────────────────────────────────────┐",
             Colors.MAGENTA,
         )
     )
-    print(
+    logger.info(
         color(
             "│          ⚕ Hermes — OpenClaw Migration                 │",
             Colors.MAGENTA,
         )
     )
-    print(
+    logger.info(
         color(
             "└─────────────────────────────────────────────────────────┘",
             Colors.MAGENTA,
@@ -361,7 +361,7 @@ def _cmd_migrate(args):
 
     # Check source directory
     if not source_dir.is_dir():
-        print()
+        logger.info()
         print_error(f"OpenClaw directory not found: {source_dir}")
         print_info("Make sure your OpenClaw installation is at the expected path.")
         print_info("You can specify a custom path: hermes claw migrate --source /path/to/.openclaw")
@@ -370,7 +370,7 @@ def _cmd_migrate(args):
     # Find the migration script
     script_path = _find_migration_script()
     if not script_path:
-        print()
+        logger.info()
         print_error("Migration script not found.")
         print_info("Expected at one of:")
         print_info(f"  {_OPENCLAW_SCRIPT}")
@@ -381,7 +381,7 @@ def _cmd_migrate(args):
     # Show what we're doing
     hermes_home = get_hermes_home()
     auto_yes = getattr(args, "yes", False)
-    print()
+    logger.info()
     print_header("Migration Settings")
     print_info(f"Source:      {source_dir}")
     print_info(f"Target:      {hermes_home}")
@@ -392,7 +392,7 @@ def _cmd_migrate(args):
         print_info(f"Skill conflicts: {skill_conflict}")
     if workspace_target:
         print_info(f"Workspace:   {workspace_target}")
-    print()
+    logger.info()
 
     # Check if OpenClaw is still running — migrating tokens while both are
     # active will cause conflicts (e.g. Telegram 409).
@@ -413,7 +413,7 @@ def _cmd_migrate(args):
             print_error("Could not load migration script.")
             return
     except Exception as e:
-        print()
+        logger.info()
         print_error(f"Could not load migration script: {e}")
         logger.debug("OpenClaw migration error", exc_info=True)
         return
@@ -437,7 +437,7 @@ def _cmd_migrate(args):
         )
         preview_report = preview.migrate()
     except Exception as e:
-        print()
+        logger.info()
         print_error(f"Migration preview failed: {e}")
         logger.debug("OpenClaw migration preview error", exc_info=True)
         return
@@ -450,12 +450,12 @@ def _cmd_migrate(args):
     # conflicts.  If there are conflicts, we still want to show the plan and
     # surface the refusal/--overwrite guidance instead of silently bailing.
     if preview_count == 0 and preview_conflicts == 0:
-        print()
+        logger.info()
         print_info("Nothing to migrate from OpenClaw.")
         _print_migration_report(preview_report, dry_run=True)
         return
 
-    print()
+    logger.info()
     if preview_count > 0:
         print_header(f"Migration Preview — {preview_count} item(s) would be imported")
     else:
@@ -475,7 +475,7 @@ def _cmd_migrate(args):
     # this guard, the user would answer "yes, proceed" and silently end up
     # with a migration that skipped every conflicting item.
     if preview_conflicts > 0 and not overwrite:
-        print()
+        logger.info()
         print_error(
             f"Plan has {preview_conflicts} conflict(s). Refusing to apply."
         )
@@ -488,7 +488,7 @@ def _cmd_migrate(args):
         return
 
     # ── Phase 2: Confirm and execute ───────────────────────────
-    print()
+    logger.info()
     if not auto_yes:
         if not sys.stdin.isatty():
             print_info("Non-interactive session — preview only.")
@@ -512,11 +512,11 @@ def _cmd_migrate(args):
             backup_archive = create_pre_migration_backup(hermes_home=hermes_home)
             if backup_archive:
                 size_str = _format_size(backup_archive.stat().st_size)
-                print()
+                logger.info()
                 print_success(f"Pre-migration backup: {backup_archive} ({size_str})")
                 print_info(f"Restore with: hermes import {backup_archive.name}")
         except Exception as e:
-            print()
+            logger.info()
             print_error(f"Could not create pre-migration backup: {e}")
             print_info(
                 "Re-run with --no-backup to skip, or free up disk space under the Hermes home."
@@ -539,7 +539,7 @@ def _cmd_migrate(args):
         )
         report = migrator.migrate()
     except Exception as e:
-        print()
+        logger.info()
         print_error(f"Migration failed: {e}")
         logger.debug("OpenClaw migration error", exc_info=True)
         if backup_archive:
@@ -565,20 +565,20 @@ def _cmd_cleanup(args):
     auto_yes = getattr(args, "yes", False)
     explicit_source = getattr(args, "source", None)
 
-    print()
-    print(
+    logger.info()
+    logger.info(
         color(
             "┌─────────────────────────────────────────────────────────┐",
             Colors.MAGENTA,
         )
     )
-    print(
+    logger.info(
         color(
             "│          ⚕ Hermes — OpenClaw Cleanup                   │",
             Colors.MAGENTA,
         )
     )
-    print(
+    logger.info(
         color(
             "└─────────────────────────────────────────────────────────┘",
             Colors.MAGENTA,
@@ -592,7 +592,7 @@ def _cmd_cleanup(args):
         dirs_to_check = _find_openclaw_dirs()
 
     if not dirs_to_check:
-        print()
+        logger.info()
         print_success("No OpenClaw directories found. Nothing to clean up.")
         return
 
@@ -600,7 +600,7 @@ def _cmd_cleanup(args):
     # active causes it to recreate an empty skeleton directory (#8502).
     running = _detect_openclaw_processes()
     if running:
-        print()
+        logger.info()
         print_error("OpenClaw appears to be still running:")
         for detail in running:
             print_info(f"  * {detail}")
@@ -609,7 +609,7 @@ def _cmd_cleanup(args):
             "immediately recreate an empty skeleton directory, destroying your config."
         )
         print_info("Stop OpenClaw first: systemctl --user stop openclaw-gateway.service")
-        print()
+        logger.info()
         if not auto_yes:
             if not sys.stdin.isatty():
                 print_info("Non-interactive session — aborting. Stop OpenClaw and re-run.")
@@ -621,7 +621,7 @@ def _cmd_cleanup(args):
     total_archived = 0
 
     for source_dir in dirs_to_check:
-        print()
+        logger.info()
         print_header(f"Found: {source_dir}")
 
         # Scan for state files
@@ -650,19 +650,19 @@ def _cmd_cleanup(args):
                 if (ws / "MEMORY.md").exists():
                     items.append("MEMORY.md")
                 detail = ", ".join(items) if items else "empty"
-                print(f"      {ws.name}/  ({detail})")
+                logger.info(f"      {ws.name}/  ({detail})")
             if len(workspace_dirs) > 5:
-                print(f"      ... and {len(workspace_dirs) - 5} more")
+                logger.info(f"      ... and {len(workspace_dirs) - 5} more")
 
         if state_files:
-            print()
-            print(color(f"  {len(state_files)} state file(s) found:", Colors.YELLOW))
+            logger.info()
+            logger.info(color(f"  {len(state_files)} state file(s) found:", Colors.YELLOW))
             for path, desc in state_files[:8]:
-                print(f"      {desc}")
+                logger.info(f"      {desc}")
             if len(state_files) > 8:
-                print(f"      ... and {len(state_files) - 8} more")
+                logger.info(f"      ... and {len(state_files) - 8} more")
 
-        print()
+        logger.info()
 
         if dry_run:
             archive_path = _archive_directory(source_dir, dry_run=True)
@@ -682,7 +682,7 @@ def _cmd_cleanup(args):
             print_info("Skipped.")
 
     # Summary
-    print()
+    logger.info()
     if dry_run:
         _n_dirs = len(dirs_to_check)
         print_info(
@@ -708,14 +708,14 @@ def _print_migration_report(report: dict, dry_run: bool):
     conflicts = summary.get("conflict", 0)
     errors = summary.get("error", 0)
 
-    print()
+    logger.info()
     if dry_run:
         print_header("Dry Run Results")
         print_info("No files were modified. This is a preview of what would happen.")
     else:
         print_header("Migration Results")
 
-    print()
+    logger.info()
 
     # Detailed items
     items = report.get("items", [])
@@ -728,40 +728,40 @@ def _print_migration_report(report: dict, dry_run: bool):
 
         if migrated_items:
             label = "Would migrate" if dry_run else "Migrated"
-            print(color(f"  ✓ {label}:", Colors.GREEN))
+            logger.info(color(f"  ✓ {label}:", Colors.GREEN))
             for item in migrated_items:
                 kind = item.get("kind", "unknown")
                 dest = item.get("destination", "")
                 if dest:
                     dest_short = str(dest).replace(str(Path.home()), "~")
-                    print(f"      {kind:<22s} → {dest_short}")
+                    logger.info(f"      {kind:<22s} → {dest_short}")
                 else:
-                    print(f"      {kind}")
-            print()
+                    logger.info(f"      {kind}")
+            logger.info()
 
         if conflict_items:
-            print(color("  ⚠ Conflicts (skipped — use --overwrite to force):", Colors.YELLOW))
+            logger.info(color("  ⚠ Conflicts (skipped — use --overwrite to force):", Colors.YELLOW))
             for item in conflict_items:
                 kind = item.get("kind", "unknown")
                 reason = item.get("reason", "already exists")
-                print(f"      {kind:<22s}  {reason}")
-            print()
+                logger.info(f"      {kind:<22s}  {reason}")
+            logger.info()
 
         if skipped_items:
-            print(color("  ─ Skipped:", Colors.DIM))
+            logger.info(color("  ─ Skipped:", Colors.DIM))
             for item in skipped_items:
                 kind = item.get("kind", "unknown")
                 reason = item.get("reason", "")
-                print(f"      {kind:<22s}  {reason}")
-            print()
+                logger.info(f"      {kind:<22s}  {reason}")
+            logger.info()
 
         if error_items:
-            print(color("  ✗ Errors:", Colors.RED))
+            logger.info(color("  ✗ Errors:", Colors.RED))
             for item in error_items:
                 kind = item.get("kind", "unknown")
                 reason = item.get("reason", "unknown error")
-                print(f"      {kind:<22s}  {reason}")
-            print()
+                logger.info(f"      {kind:<22s}  {reason}")
+            logger.info()
 
     # Summary line
     parts = []
@@ -786,11 +786,11 @@ def _print_migration_report(report: dict, dry_run: bool):
         print_info(f"Full report saved to: {output_dir}")
 
     if dry_run:
-        print()
+        logger.info()
         print_info("To execute the migration, run without --dry-run:")
         print_info(f"  hermes claw migrate --preset {report.get('preset', 'full')}")
     elif migrated:
-        print()
+        logger.info()
         print_success("Migration complete!")
         # Warn if API keys were skipped (migrate_secrets not enabled)
         skipped_keys = [
@@ -798,12 +798,12 @@ def _print_migration_report(report: dict, dry_run: bool):
             if i.get("kind") == "provider-keys" and i.get("status") == "skipped"
         ]
         if skipped_keys:
-            print()
-            print(color("  ⚠ API keys were NOT migrated (secrets migration is disabled by default).", Colors.YELLOW))
-            print(color("  Your OPENROUTER_API_KEY and other provider keys must be added manually.", Colors.YELLOW))
-            print()
+            logger.info()
+            logger.info(color("  ⚠ API keys were NOT migrated (secrets migration is disabled by default).", Colors.YELLOW))
+            logger.info(color("  Your OPENROUTER_API_KEY and other provider keys must be added manually.", Colors.YELLOW))
+            logger.info()
             print_info("To migrate API keys, re-run with:")
             print_info("  hermes claw migrate --migrate-secrets")
-            print()
+            logger.info()
             print_info("Or add your key manually:")
             print_info("  hermes config set OPENROUTER_API_KEY sk-or-v1-...")

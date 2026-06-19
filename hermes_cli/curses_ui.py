@@ -4,6 +4,9 @@ Used by `hermes tools` and `hermes skills` for interactive checklists.
 Provides a curses multi-select with keyboard navigation, plus a
 text-based numbered fallback for terminals without curses support.
 """
+import logging
+
+logger = logging.getLogger(__name__)
 import sys
 from typing import Callable, List, Optional, Set
 
@@ -293,13 +296,13 @@ def _radio_numbered_fallback(
     cancel_returns: int,
 ) -> int:
     """Text-based numbered fallback for radio selection."""
-    print(color(f"\n  {title}", Colors.YELLOW))
-    print(color("  Select by number, Enter to confirm.\n", Colors.DIM))
+    logger.info(color(f"\n  {title}", Colors.YELLOW))
+    logger.info(color("  Select by number, Enter to confirm.\n", Colors.DIM))
 
     for i, label in enumerate(items):
         marker = color("(\u25cf)", Colors.GREEN) if i == selected else "(\u25cb)"
-        print(f"  {marker} {i + 1:>2}. {label}")
-    print()
+        logger.info(f"  {marker} {i + 1:>2}. {label}")
+    logger.info()
     try:
         val = input(color(f"  Choice [default {selected + 1}]: ", Colors.DIM)).strip()
         if not val:
@@ -329,6 +332,8 @@ def curses_single_select(
 
     try:
         import curses
+
+
         result_holder: list = [None]
 
         all_items = list(items) + [cancel_label]
@@ -419,10 +424,10 @@ def _numbered_single_fallback(
     cancel_idx: int,
 ) -> int | None:
     """Text-based numbered fallback for single-select."""
-    print(f"\n  {title}\n")
+    logger.info(f"\n  {title}\n")
     for i, label in enumerate(items, 1):
-        print(f"  {i}. {label}")
-    print()
+        logger.info(f"  {i}. {label}")
+    logger.info()
     try:
         val = input(f"  Choice [1-{len(items)}]: ").strip()
         if not val:
@@ -446,18 +451,18 @@ def _numbered_fallback(
 ) -> Set[int]:
     """Text-based toggle fallback for terminals without curses."""
     chosen = set(selected)
-    print(color(f"\n  {title}", Colors.YELLOW))
-    print(color("  Toggle by number, Enter to confirm.\n", Colors.DIM))
+    logger.info(color(f"\n  {title}", Colors.YELLOW))
+    logger.info(color("  Toggle by number, Enter to confirm.\n", Colors.DIM))
 
     while True:
         for i, label in enumerate(items):
             marker = color("[✓]", Colors.GREEN) if i in chosen else "[ ]"
-            print(f"  {marker} {i + 1:>2}. {label}")
+            logger.info(f"  {marker} {i + 1:>2}. {label}")
         if status_fn:
             status_text = status_fn(chosen)
             if status_text:
-                print(color(f"\n  {status_text}", Colors.DIM))
-        print()
+                logger.info(color(f"\n  {status_text}", Colors.DIM))
+        logger.info()
         try:
             val = input(color("  Toggle # (or Enter to confirm): ", Colors.DIM)).strip()
             if not val:
@@ -467,6 +472,6 @@ def _numbered_fallback(
                 chosen.symmetric_difference_update({idx})
         except (ValueError, KeyboardInterrupt, EOFError):
             return cancel_returns
-        print()
+        logger.info()
 
     return chosen

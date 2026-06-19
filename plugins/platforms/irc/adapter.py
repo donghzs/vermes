@@ -559,7 +559,7 @@ def interactive_setup() -> None:
 
     print_info("Connect Hermes to an IRC network. Uses Python stdlib — no extra packages needed.")
     print_info("   Works with Libera.Chat, OFTC, your own ZNC/InspIRCd, etc.")
-    print()
+    logger.info()
 
     server = prompt("IRC server hostname (e.g. irc.libera.chat)", default=existing_server or "")
     if not server:
@@ -599,7 +599,7 @@ def interactive_setup() -> None:
         return
     save_env_value("IRC_CHANNEL", channel.strip())
 
-    print()
+    logger.info()
     print_info("🔑 Optional authentication")
     print_info("   Leave blank to skip.")
     if prompt_yes_no("Configure a server password (PASS command)?", False):
@@ -612,7 +612,7 @@ def interactive_setup() -> None:
         if nickserv:
             save_env_value("IRC_NICKSERV_PASSWORD", nickserv)
 
-    print()
+    logger.info()
     print_info("🔒 Access control: restrict who can message the bot")
     print_info("   IRC nicks are not authenticated — anyone can claim any nick.")
     print_info("   For public channels, pair with NickServ-only mode on your network")
@@ -635,7 +635,7 @@ def interactive_setup() -> None:
             save_env_value("IRC_ALLOWED_USERS", "")
             print_info("No nicks allowed — the bot will ignore all messages until you add nicks.")
 
-    print()
+    logger.info()
     print_success("IRC configuration saved to ~/.hermes/.env")
     print_info("Restart the gateway for changes to take effect: hermes gateway restart")
 

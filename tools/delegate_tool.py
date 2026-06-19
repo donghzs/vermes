@@ -2210,9 +2210,9 @@ def delegate_task(
                         try:
                             spinner_ref.print_above(completion_line)
                         except Exception:
-                            print(f"  {completion_line}")
+                            logger.info(f"  {completion_line}")
                     else:
-                        print(f"  {completion_line}")
+                        logger.info(f"  {completion_line}")
 
                     # Update spinner text to show remaining count
                     if spinner_ref and remaining > 0:

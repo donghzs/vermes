@@ -2742,28 +2742,28 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     """
     from hermes_cli.config import save_env_value
 
-    print()
-    print("=" * 70)
-    print("Spotify first-time setup")
-    print("=" * 70)
-    print()
-    print("Spotify requires every user to register their own lightweight")
-    print("developer app. This takes about two minutes and only has to be")
-    print("done once per machine.")
-    print()
-    print(f"Full guide: {SPOTIFY_DOCS_URL}")
-    print()
-    print("Steps:")
-    print(f"  1. Opening {SPOTIFY_DASHBOARD_URL} in your browser...")
-    print("  2. Click 'Create app' and fill in:")
-    print("       App name:     anything (e.g. hermes-agent)")
-    print("       Description:  anything")
-    print(f"       Redirect URI: {redirect_uri_hint}")
-    print("       API/SDK:      Web API")
-    print("  3. Agree to the terms, click Save.")
-    print("  4. Open the app's Settings page and copy the Client ID.")
-    print("  5. Paste it below.")
-    print()
+    logger.info()
+    logger.info("=" * 70)
+    logger.info("Spotify first-time setup")
+    logger.info("=" * 70)
+    logger.info()
+    logger.info("Spotify requires every user to register their own lightweight")
+    logger.info("developer app. This takes about two minutes and only has to be")
+    logger.info("done once per machine.")
+    logger.info()
+    logger.info(f"Full guide: {SPOTIFY_DOCS_URL}")
+    logger.info()
+    logger.info("Steps:")
+    logger.info(f"  1. Opening {SPOTIFY_DASHBOARD_URL} in your browser...")
+    logger.info("  2. Click 'Create app' and fill in:")
+    logger.info("       App name:     anything (e.g. hermes-agent)")
+    logger.info("       Description:  anything")
+    logger.info(f"       Redirect URI: {redirect_uri_hint}")
+    logger.info("       API/SDK:      Web API")
+    logger.info("  3. Agree to the terms, click Save.")
+    logger.info("  4. Open the app's Settings page and copy the Client ID.")
+    logger.info("  5. Paste it below.")
+    logger.info()
 
     if not _is_remote_session():
         try:
@@ -2774,12 +2774,12 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     try:
         raw = input("Spotify Client ID: ").strip()
     except (EOFError, KeyboardInterrupt):
-        print()
+        logger.info()
         raise SystemExit("Spotify setup cancelled.")
 
     if not raw:
-        print()
-        print(f"No Client ID entered. See {SPOTIFY_DOCS_URL} for the full guide.")
+        logger.info()
+        logger.info(f"No Client ID entered. See {SPOTIFY_DOCS_URL} for the full guide.")
         raise SystemExit("Spotify setup cancelled: empty Client ID.")
 
     # Persist so subsequent `hermes auth spotify` runs skip the wizard.
@@ -2789,9 +2789,9 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     if redirect_uri_hint and redirect_uri_hint != DEFAULT_SPOTIFY_REDIRECT_URI:
         save_env_value("HERMES_SPOTIFY_REDIRECT_URI", redirect_uri_hint)
 
-    print()
-    print("Saved HERMES_SPOTIFY_CLIENT_ID to ~/.hermes/.env")
-    print()
+    logger.info()
+    logger.info("Saved HERMES_SPOTIFY_CLIENT_ID to ~/.hermes/.env")
+    logger.info()
     return raw
 
 
@@ -2829,16 +2829,16 @@ def login_spotify_command(args) -> None:
         accounts_base_url=accounts_base_url,
     )
 
-    print("Starting Spotify PKCE login...")
-    print(f"Client ID: {client_id}")
-    print(f"Redirect URI: {redirect_uri}")
-    print("Make sure this redirect URI is allow-listed in your Spotify app settings.")
-    print()
-    print("Open this URL to authorize Hermes:")
-    print(authorize_url)
-    print()
-    print(f"Full setup guide: {SPOTIFY_DOCS_URL}")
-    print()
+    logger.info("Starting Spotify PKCE login...")
+    logger.info(f"Client ID: {client_id}")
+    logger.info(f"Redirect URI: {redirect_uri}")
+    logger.info("Make sure this redirect URI is allow-listed in your Spotify app settings.")
+    logger.info()
+    logger.info("Open this URL to authorize Hermes:")
+    logger.info(authorize_url)
+    logger.info()
+    logger.info(f"Full setup guide: {SPOTIFY_DOCS_URL}")
+    logger.info()
 
     _print_loopback_ssh_hint(redirect_uri, docs_url=SPOTIFY_DOCS_URL)
 
@@ -2848,9 +2848,9 @@ def login_spotify_command(args) -> None:
         except Exception:
             opened = False
         if opened:
-            print("Browser opened for Spotify authorization.")
+            logger.info("Browser opened for Spotify authorization.")
         else:
-            print("Could not open the browser automatically; use the URL above.")
+            logger.info("Could not open the browser automatically; use the URL above.")
 
     callback = _spotify_wait_for_callback(
         redirect_uri,
@@ -2884,10 +2884,10 @@ def login_spotify_command(args) -> None:
         _store_provider_state(auth_store, "spotify", spotify_state, set_active=False)
         saved_to = _save_auth_store(auth_store)
 
-    print("Spotify login successful!")
-    print(f"  Auth state: {saved_to}")
-    print("  Provider state saved under providers.spotify")
-    print(f"  Docs: {SPOTIFY_DOCS_URL}")
+    logger.info("Spotify login successful!")
+    logger.info(f"  Auth state: {saved_to}")
+    logger.info("  Provider state saved under providers.spotify")
+    logger.info(f"  Docs: {SPOTIFY_DOCS_URL}")
 
 # =============================================================================
 # SSH / remote session detection
@@ -2981,15 +2981,15 @@ def _prompt_manual_callback_paste(redirect_uri: str) -> dict:
     HTTP handler output) so the existing state / error validation in
     the caller works unchanged.  See #26923.
     """
-    print()
-    print("─── Manual callback paste ─────────────────────────────────────")
-    print("After approving in your browser, your browser will try to load")
-    print(f"  {redirect_uri}")
-    print("which fails (the loopback listener is on this remote machine,")
-    print("not on your laptop) — that is expected.  Copy the FULL URL")
-    print("from your browser's address bar of that failed page and paste")
-    print("it below.  A bare '?code=...&state=...' fragment also works.")
-    print("───────────────────────────────────────────────────────────────")
+    logger.info()
+    logger.info("─── Manual callback paste ─────────────────────────────────────")
+    logger.info("After approving in your browser, your browser will try to load")
+    logger.info(f"  {redirect_uri}")
+    logger.info("which fails (the loopback listener is on this remote machine,")
+    logger.info("not on your laptop) — that is expected.  Copy the FULL URL")
+    logger.info("from your browser's address bar of that failed page and paste")
+    logger.info("it below.  A bare '?code=...&state=...' fragment also works.")
+    logger.info("───────────────────────────────────────────────────────────────")
     try:
         raw = input("Callback URL: ")
     except (EOFError, KeyboardInterrupt):
@@ -3036,26 +3036,26 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
     if host not in {"127.0.0.1", "::1", "localhost"} or not port:
         return
     divider = "-" * 60
-    print()
-    print(divider)
-    print("Remote session detected — SSH tunnel required")
-    print(divider)
-    print(f"Hermes is waiting for the OAuth callback on {redirect_uri}")
-    print("but your browser is on a different machine. Run this command")
-    print("in a NEW terminal on your local machine BEFORE opening the URL:")
-    print()
-    print(f"  ssh -N -L {port}:127.0.0.1:{port} {_ssh_user_at_host()}")
-    print()
-    print("Then open the authorize URL above in your local browser.")
-    print()
-    print("No SSH client (Cloud Shell / Codespaces / web IDE)?  Re-run with")
-    print("`--manual-paste` to skip the loopback listener and paste the failed")
-    print("callback URL directly.")
+    logger.info()
+    logger.info(divider)
+    logger.info("Remote session detected — SSH tunnel required")
+    logger.info(divider)
+    logger.info(f"Hermes is waiting for the OAuth callback on {redirect_uri}")
+    logger.info("but your browser is on a different machine. Run this command")
+    logger.info("in a NEW terminal on your local machine BEFORE opening the URL:")
+    logger.info()
+    logger.info(f"  ssh -N -L {port}:127.0.0.1:{port} {_ssh_user_at_host()}")
+    logger.info()
+    logger.info("Then open the authorize URL above in your local browser.")
+    logger.info()
+    logger.info("No SSH client (Cloud Shell / Codespaces / web IDE)?  Re-run with")
+    logger.info("`--manual-paste` to skip the loopback listener and paste the failed")
+    logger.info("callback URL directly.")
     if docs_url:
-        print(f"Provider docs:      {docs_url}")
-    print(f"SSH/jump-box guide: {OAUTH_OVER_SSH_DOCS_URL}")
-    print(divider)
-    print()
+        logger.info(f"Provider docs:      {docs_url}")
+    logger.info(f"SSH/jump-box guide: {OAUTH_OVER_SSH_DOCS_URL}")
+    logger.info(divider)
+    logger.info()
 
 
 # =============================================================================
@@ -6020,13 +6020,13 @@ def _prompt_model_selection(
         # clear_screen=False means our printed output stays visible above.
         _upgrade_url = (portal_url or DEFAULT_NOUS_PORTAL_URL).rstrip("/")
         if _unavailable:
-            print(menu_title)
-            print()
+            logger.info(menu_title)
+            logger.info()
             for mid in _unavailable:
-                print(f"{_DIM}     {_label(mid)}{_RESET}")
-            print()
-            print(f"{_DIM}  ── Upgrade at {_upgrade_url} for paid models ──{_RESET}")
-            print()
+                logger.info(f"{_DIM}     {_label(mid)}{_RESET}")
+            logger.info()
+            logger.info(f"{_DIM}  ── Upgrade at {_upgrade_url} for paid models ──{_RESET}")
+            logger.info()
             effective_title = "Available free models:"
         else:
             effective_title = menu_title
@@ -6046,7 +6046,7 @@ def _prompt_model_selection(
         flush_stdin()
         if idx is None:
             return None
-        print()
+        logger.info()
         if idx < len(ordered):
             return ordered[idx]
         elif idx == len(ordered):
@@ -6057,21 +6057,21 @@ def _prompt_model_selection(
         pass
 
     # Fallback: numbered list
-    print(menu_title)
+    logger.info(menu_title)
     num_width = len(str(len(ordered) + 2))
     for i, mid in enumerate(ordered, 1):
-        print(f"  {i:>{num_width}}. {_label(mid)}")
+        logger.info(f"  {i:>{num_width}}. {_label(mid)}")
     n = len(ordered)
-    print(f"  {n + 1:>{num_width}}. Enter custom model name")
-    print(f"  {n + 2:>{num_width}}. Skip (keep current)")
+    logger.info(f"  {n + 1:>{num_width}}. Enter custom model name")
+    logger.info(f"  {n + 2:>{num_width}}. Skip (keep current)")
 
     if _unavailable:
         _upgrade_url = (portal_url or DEFAULT_NOUS_PORTAL_URL).rstrip("/")
-        print()
-        print(f"  {_DIM}── Unavailable models (requires paid tier — upgrade at {_upgrade_url}) ──{_RESET}")
+        logger.info()
+        logger.info(f"  {_DIM}── Unavailable models (requires paid tier — upgrade at {_upgrade_url}) ──{_RESET}")
         for mid in _unavailable:
-            print(f"  {'':>{num_width}}  {_DIM}{_label(mid)}{_RESET}")
-    print()
+            logger.info(f"  {'':>{num_width}}  {_DIM}{_label(mid)}{_RESET}")
+    logger.info()
 
     while True:
         try:
@@ -6086,9 +6086,9 @@ def _prompt_model_selection(
                 return custom if custom else None
             elif idx == n + 2:
                 return None
-            print(f"Please enter 1-{n + 2}")
+            logger.info(f"Please enter 1-{n + 2}")
         except ValueError:
-            print("Please enter a number")
+            logger.info("Please enter a number")
         except (KeyboardInterrupt, EOFError):
             return None
 
@@ -6112,9 +6112,9 @@ def _save_model_choice(model_id: str) -> None:
 
 def login_command(args) -> None:
     """Deprecated: use 'hermes model' or 'hermes setup' instead."""
-    print("The 'hermes login' command has been removed.")
-    print("Use 'hermes auth' to manage credentials,")
-    print("'hermes model' to select a provider, or 'hermes setup' for full setup.")
+    logger.info("The 'hermes login' command has been removed.")
+    logger.info("Use 'hermes auth' to manage credentials,")
+    logger.info("'hermes model' to select a provider, or 'hermes setup' for full setup.")
     raise SystemExit(0)
 
 
@@ -6138,19 +6138,19 @@ def _login_openai_codex(
             # the user "Login successful!".
             _resolved_key = existing.get("api_key", "")
             if isinstance(_resolved_key, str) and _resolved_key and not _codex_access_token_is_expiring(_resolved_key, 60):
-                print("Existing Codex credentials found in Hermes auth store.")
+                logger.info("Existing Codex credentials found in Hermes auth store.")
                 try:
                     reuse = input("Use existing credentials? [Y/n]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
                     reuse = "y"
                 if reuse in {"", "y", "yes"}:
                     config_path = _update_config_for_provider("openai-codex", existing.get("base_url", DEFAULT_CODEX_BASE_URL))
-                    print()
-                    print("Login successful!")
-                    print(f"  Config updated: {config_path} (model.provider=openai-codex)")
+                    logger.info()
+                    logger.info("Login successful!")
+                    logger.info(f"  Config updated: {config_path} (model.provider=openai-codex)")
                     return
             else:
-                print("Existing Codex credentials are expired. Starting fresh login...")
+                logger.info("Existing Codex credentials are expired. Starting fresh login...")
         except AuthError:
             pass
 
@@ -6158,8 +6158,8 @@ def _login_openai_codex(
     if not force_new_login:
         cli_tokens = _import_codex_cli_tokens()
         if cli_tokens:
-            print("Found existing Codex CLI credentials at ~/.codex/auth.json")
-            print("Hermes will create its own session to avoid conflicts with Codex CLI / VS Code.")
+            logger.info("Found existing Codex CLI credentials at ~/.codex/auth.json")
+            logger.info("Hermes will create its own session to avoid conflicts with Codex CLI / VS Code.")
             try:
                 do_import = input("Import these credentials? (a separate login is recommended) [y/N]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
@@ -6168,28 +6168,28 @@ def _login_openai_codex(
                 _save_codex_tokens(cli_tokens)
                 base_url = os.getenv("HERMES_CODEX_BASE_URL", "").strip().rstrip("/") or DEFAULT_CODEX_BASE_URL
                 config_path = _update_config_for_provider("openai-codex", base_url)
-                print()
-                print("Credentials imported. Note: if Codex CLI refreshes its token,")
-                print("Hermes will keep working independently with its own session.")
-                print(f"  Config updated: {config_path} (model.provider=openai-codex)")
+                logger.info()
+                logger.info("Credentials imported. Note: if Codex CLI refreshes its token,")
+                logger.info("Hermes will keep working independently with its own session.")
+                logger.info(f"  Config updated: {config_path} (model.provider=openai-codex)")
                 return
 
     # Run a fresh device code flow — Hermes gets its own OAuth session
-    print()
-    print("Signing in to OpenAI Codex...")
-    print("(Hermes creates its own session — won't affect Codex CLI or VS Code)")
-    print()
+    logger.info()
+    logger.info("Signing in to OpenAI Codex...")
+    logger.info("(Hermes creates its own session — won't affect Codex CLI or VS Code)")
+    logger.info()
 
     creds = _codex_device_code_login()
 
     # Save tokens to Hermes auth store
     _save_codex_tokens(creds["tokens"], creds.get("last_refresh"))
     config_path = _update_config_for_provider("openai-codex", creds.get("base_url", DEFAULT_CODEX_BASE_URL))
-    print()
-    print("Login successful!")
+    logger.info()
+    logger.info("Login successful!")
     from hermes_constants import display_hermes_home as _dhh
-    print(f"  Auth state: {_dhh()}/auth.json")
-    print(f"  Config updated: {config_path} (model.provider=openai-codex)")
+    logger.info(f"  Auth state: {_dhh()}/auth.json")
+    logger.info(f"  Config updated: {config_path} (model.provider=openai-codex)")
 
 
 def _login_xai_oauth(
@@ -6205,7 +6205,7 @@ def _login_xai_oauth(
             existing = resolve_xai_oauth_runtime_credentials()
             api_key = existing.get("api_key", "")
             if isinstance(api_key, str) and api_key and not _xai_access_token_is_expiring(api_key, 60):
-                print("Existing xAI OAuth credentials found in Hermes auth store.")
+                logger.info("Existing xAI OAuth credentials found in Hermes auth store.")
                 try:
                     reuse = input("Use existing credentials? [Y/n]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
@@ -6215,17 +6215,17 @@ def _login_xai_oauth(
                         "xai-oauth",
                         existing.get("base_url", DEFAULT_XAI_OAUTH_BASE_URL),
                     )
-                    print()
-                    print("Login successful!")
-                    print(f"  Config updated: {config_path} (model.provider=xai-oauth)")
+                    logger.info()
+                    logger.info("Login successful!")
+                    logger.info(f"  Config updated: {config_path} (model.provider=xai-oauth)")
                     return
         except AuthError:
             pass
 
-    print()
-    print("Signing in to xAI Grok OAuth (SuperGrok Subscription)...")
-    print("(Hermes creates its own local OAuth session)")
-    print()
+    logger.info()
+    logger.info("Signing in to xAI Grok OAuth (SuperGrok Subscription)...")
+    logger.info("(Hermes creates its own local OAuth session)")
+    logger.info()
 
     timeout_seconds = float(getattr(args, "timeout", None) or 20.0)
     open_browser = not getattr(args, "no_browser", False)
@@ -6245,11 +6245,11 @@ def _login_xai_oauth(
         last_refresh=creds.get("last_refresh"),
     )
     config_path = _update_config_for_provider("xai-oauth", creds.get("base_url", DEFAULT_XAI_OAUTH_BASE_URL))
-    print()
-    print("Login successful!")
+    logger.info()
+    logger.info("Login successful!")
     from hermes_constants import display_hermes_home as _dhh
-    print(f"  Auth state: {_dhh()}/auth.json")
-    print(f"  Config updated: {config_path} (model.provider=xai-oauth)")
+    logger.info(f"  Auth state: {_dhh()}/auth.json")
+    logger.info(f"  Config updated: {config_path} (model.provider=xai-oauth)")
 
 
 def _xai_oauth_build_authorize_url(
@@ -6444,8 +6444,8 @@ def _xai_oauth_loopback_login(
             nonce=nonce,
         )
 
-        print("Open this URL to authorize Hermes with xAI:")
-        print(authorize_url)
+        logger.info("Open this URL to authorize Hermes with xAI:")
+        logger.info(authorize_url)
         callback = _prompt_manual_callback_paste(redirect_uri)
     else:
         server, thread, callback_result, redirect_uri = _xai_start_callback_server()
@@ -6463,10 +6463,10 @@ def _xai_oauth_loopback_login(
                 nonce=nonce,
             )
 
-            print("Open this URL to authorize Hermes with xAI:")
-            print(authorize_url)
-            print()
-            print(f"Waiting for callback on {redirect_uri}")
+            logger.info("Open this URL to authorize Hermes with xAI:")
+            logger.info(authorize_url)
+            logger.info()
+            logger.info(f"Waiting for callback on {redirect_uri}")
 
             _print_loopback_ssh_hint(redirect_uri, docs_url=XAI_OAUTH_DOCS_URL)
 
@@ -6476,9 +6476,9 @@ def _xai_oauth_loopback_login(
                 except Exception:
                     opened = False
                 if opened:
-                    print("Browser opened for xAI authorization.")
+                    logger.info("Browser opened for xAI authorization.")
                 else:
-                    print("Could not open the browser automatically; use the URL above.")
+                    logger.info("Could not open the browser automatically; use the URL above.")
 
             callback = _xai_wait_for_callback(
                 server,
@@ -6602,12 +6602,12 @@ def _codex_device_code_login() -> Dict[str, Any]:
         )
 
     # Step 2: Show user the code
-    print("To continue, follow these steps:\n")
-    print("  1. Open this URL in your browser:")
-    print(f"     \033[94m{issuer}/codex/device\033[0m\n")
-    print("  2. Enter this code:")
-    print(f"     \033[94m{user_code}\033[0m\n")
-    print("Waiting for sign-in... (press Ctrl+C to cancel)")
+    logger.info("To continue, follow these steps:\n")
+    logger.info("  1. Open this URL in your browser:")
+    logger.info(f"     \033[94m{issuer}/codex/device\033[0m\n")
+    logger.info("  2. Enter this code:")
+    logger.info(f"     \033[94m{user_code}\033[0m\n")
+    logger.info("Waiting for sign-in... (press Ctrl+C to cancel)")
 
     # Step 3: Poll for authorization code
     max_wait = 15 * 60  # 15 minutes
@@ -6635,7 +6635,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
                         provider="openai-codex", code="device_code_poll_error",
                     )
     except KeyboardInterrupt:
-        print("\nLogin cancelled.")
+        logger.info("\nLogin cancelled.")
         raise SystemExit(130)
 
     if code_resp is None:
@@ -6864,8 +6864,8 @@ def _minimax_oauth_login(
     if _is_remote_session():
         open_browser = False
 
-    print(f"Starting Hermes login via MiniMax ({region}) OAuth...")
-    print(f"Portal: {portal_base_url}")
+    logger.info(f"Starting Hermes login via MiniMax ({region}) OAuth...")
+    logger.info(f"Portal: {portal_base_url}")
 
     with httpx.Client(timeout=httpx.Timeout(timeout_seconds),
                       headers={"Accept": "application/json"},
@@ -6878,19 +6878,19 @@ def _minimax_oauth_login(
         verification_url = str(code_data["verification_uri"])
         user_code = str(code_data["user_code"])
 
-        print()
-        print("To continue:")
-        print(f"  1. Open: {verification_url}")
-        print(f"  2. If prompted, enter code: {user_code}")
+        logger.info()
+        logger.info("To continue:")
+        logger.info(f"  1. Open: {verification_url}")
+        logger.info(f"  2. If prompted, enter code: {user_code}")
         if open_browser:
             if webbrowser.open(verification_url):
-                print("  (Opened browser for verification)")
+                logger.info("  (Opened browser for verification)")
             else:
-                print("  Could not open browser automatically -- use the URL above.")
+                logger.info("  Could not open browser automatically -- use the URL above.")
 
         interval_raw = code_data.get("interval")
         interval_ms = int(interval_raw) if interval_raw is not None else None
-        print("Waiting for approval...")
+        logger.info("Waiting for approval...")
 
         token_data = _minimax_poll_token(
             client, portal_base_url=portal_base_url,
@@ -6923,9 +6923,9 @@ def _minimax_oauth_login(
     }
 
     _minimax_save_auth_state(auth_state)
-    print("\u2713 MiniMax OAuth login successful.")
+    logger.info("\u2713 MiniMax OAuth login successful.")
     if msg := token_data.get("notification_message"):
-        print(f"Note from MiniMax: {msg}")
+        logger.info(f"Note from MiniMax: {msg}")
     return auth_state
 
 
@@ -7064,7 +7064,7 @@ def _login_minimax_oauth(args, pconfig: ProviderConfig) -> None:
             region=region, open_browser=open_browser, timeout_seconds=timeout,
         )
     except AuthError as exc:
-        print(format_auth_error(exc))
+        logger.info(format_auth_error(exc))
         raise SystemExit(1)
 
 
@@ -7104,12 +7104,12 @@ def _nous_device_code_login(
     if _is_remote_session():
         open_browser = False
 
-    print(f"Starting Hermes login via {pconfig.name}...")
-    print(f"Portal: {portal_base_url}")
+    logger.info(f"Starting Hermes login via {pconfig.name}...")
+    logger.info(f"Portal: {portal_base_url}")
     if insecure:
-        print("TLS verification: disabled (--insecure)")
+        logger.info("TLS verification: disabled (--insecure)")
     elif ca_bundle:
-        print(f"TLS verification: custom CA bundle ({ca_bundle})")
+        logger.info(f"TLS verification: custom CA bundle ({ca_bundle})")
 
     with httpx.Client(timeout=timeout, headers={"Accept": "application/json"}, verify=verify) as client:
         device_data, scope = _request_nous_device_code_with_scope_fallback(
@@ -7125,20 +7125,20 @@ def _nous_device_code_login(
         expires_in = int(device_data["expires_in"])
         interval = int(device_data["interval"])
 
-        print()
-        print("To continue:")
-        print(f"  1. Open: {verification_url}")
-        print(f"  2. If prompted, enter code: {user_code}")
+        logger.info()
+        logger.info("To continue:")
+        logger.info(f"  1. Open: {verification_url}")
+        logger.info(f"  2. If prompted, enter code: {user_code}")
 
         if open_browser:
             opened = webbrowser.open(verification_url)
             if opened:
-                print("  (Opened browser for verification)")
+                logger.info("  (Opened browser for verification)")
             else:
-                print("  Could not open browser automatically — use the URL above.")
+                logger.info("  Could not open browser automatically — use the URL above.")
 
         effective_interval = max(1, min(interval, DEVICE_AUTH_POLL_INTERVAL_CAP_SECONDS))
-        print(f"Waiting for approval (polling every {effective_interval}s)...")
+        logger.info(f"Waiting for approval (polling every {effective_interval}s)...")
 
         token_data = _poll_for_token(
             client=client,
@@ -7157,7 +7157,7 @@ def _nous_device_code_login(
         or requested_inference_url
     )
     if resolved_inference_url != requested_inference_url:
-        print(f"Using portal-provided inference URL: {resolved_inference_url}")
+        logger.info(f"Using portal-provided inference URL: {resolved_inference_url}")
 
     auth_state = {
         "portal_base_url": portal_base_url,
@@ -7194,11 +7194,11 @@ def _nous_device_code_login(
             portal_url = auth_state.get(
                 "portal_base_url", DEFAULT_NOUS_PORTAL_URL
             ).rstrip("/")
-            print()
-            print("Your Nous Portal account does not have an active subscription.")
-            print(f"  Subscribe here: {portal_url}/billing")
-            print()
-            print("After subscribing, run `hermes model` again to finish setup.")
+            logger.info()
+            logger.info("Your Nous Portal account does not have an active subscription.")
+            logger.info(f"  Subscribe here: {portal_url}/billing")
+            logger.info()
+            logger.info("After subscribing, run `hermes model` again to finish setup.")
             raise SystemExit(1)
         raise
 
@@ -7225,23 +7225,23 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 shared_path = _nous_shared_store_path()
             except RuntimeError:
                 shared_path = None
-            print()
+            logger.info()
             if shared_path:
-                print(f"Found existing Nous OAuth credentials at {shared_path}")
+                logger.info(f"Found existing Nous OAuth credentials at {shared_path}")
             else:
-                print("Found existing shared Nous OAuth credentials")
+                logger.info("Found existing shared Nous OAuth credentials")
             try:
                 do_import = input("Import these credentials? [Y/n]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 do_import = "y"
             if do_import in {"", "y", "yes"}:
-                print("Rehydrating Nous session from shared credentials...")
+                logger.info("Rehydrating Nous session from shared credentials...")
                 auth_state = _try_import_shared_nous_state(
                     timeout_seconds=timeout_seconds,
                     min_key_ttl_seconds=5 * 60,
                 )
                 if auth_state is None:
-                    print("Could not refresh shared credentials — falling back to device-code login.")
+                    logger.info("Could not refresh shared credentials — falling back to device-code login.")
 
         if auth_state is None:
             auth_state = _nous_device_code_login(
@@ -7277,9 +7277,9 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
         _write_shared_nous_state(auth_state)
         _sync_nous_pool_from_auth_store()
 
-        print()
-        print("Login successful!")
-        print(f"  Auth state: {saved_to}")
+        logger.info()
+        logger.info("Login successful!")
+        logger.info(f"  Auth state: {saved_to}")
 
         # Resolve model BEFORE writing provider to config.yaml so we never
         # leave the config in a half-updated state (provider=nous but model
@@ -7303,7 +7303,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
             )
             model_ids = get_curated_nous_model_ids()
 
-            print()
+            logger.info()
             unavailable_models: list = []
             if model_ids:
                 pricing = get_pricing_for_provider("nous")
@@ -7331,7 +7331,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                     )
             _portal = auth_state.get("portal_base_url", "")
             if model_ids:
-                print(f"Showing {len(model_ids)} curated models — use \"Enter custom model name\" for others.")
+                logger.info(f"Showing {len(model_ids)} curated models — use \"Enter custom model name\" for others.")
                 selected_model = _prompt_model_selection(
                     model_ids, pricing=pricing,
                     unavailable_models=unavailable_models,
@@ -7339,14 +7339,14 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 )
             elif unavailable_models:
                 _url = (_portal or DEFAULT_NOUS_PORTAL_URL).rstrip("/")
-                print("No free models currently available.")
-                print(f"Upgrade at {_url} to access paid models.")
+                logger.info("No free models currently available.")
+                logger.info(f"Upgrade at {_url} to access paid models.")
             else:
-                print("No curated models available for Nous Portal.")
+                logger.info("No curated models available for Nous Portal.")
         except Exception as exc:
             message = format_auth_error(exc) if isinstance(exc, AuthError) else str(exc)
-            print()
-            print(f"Login succeeded, but could not fetch available models. Reason: {message}")
+            logger.info()
+            logger.info(f"Login succeeded, but could not fetch available models. Reason: {message}")
 
         # Write provider + model atomically so config is never mismatched.
         # If no model was selected (user picked "Skip (keep current)",
@@ -7365,9 +7365,9 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 else:
                     auth_store.pop("active_provider", None)
                 _save_auth_store(auth_store)
-            print()
-            print("No provider change. Nous credentials saved for future use.")
-            print("  Run `hermes model` again to switch to Nous Portal.")
+            logger.info()
+            logger.info("No provider change. Nous credentials saved for future use.")
+            logger.info("  Run `hermes model` again to switch to Nous Portal.")
             return
 
         config_path = _update_config_for_provider(
@@ -7375,14 +7375,14 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
         )
         if selected_model:
             _save_model_choice(selected_model)
-            print(f"Default model set to: {selected_model}")
-        print(f"  Config updated: {config_path} (model.provider=nous)")
+            logger.info(f"Default model set to: {selected_model}")
+        logger.info(f"  Config updated: {config_path} (model.provider=nous)")
 
     except KeyboardInterrupt:
-        print("\nLogin cancelled.")
+        logger.info("\nLogin cancelled.")
         raise SystemExit(130)
     except Exception as exc:
-        print(f"Login failed: {exc}")
+        logger.info(f"Login failed: {exc}")
         raise SystemExit(1)
 
 
@@ -7391,14 +7391,14 @@ def logout_command(args) -> None:
     provider_id = getattr(args, "provider", None)
 
     if provider_id and not is_known_auth_provider(provider_id):
-        print(f"Unknown provider: {provider_id}")
+        logger.info(f"Unknown provider: {provider_id}")
         raise SystemExit(1)
 
     active = get_active_provider()
     target = provider_id or active or _logout_default_provider_from_config()
 
     if not target:
-        print("No provider is currently logged in.")
+        logger.info("No provider is currently logged in.")
         return
 
     should_reset_config = _should_reset_config_provider_on_logout(target)
@@ -7407,12 +7407,12 @@ def logout_command(args) -> None:
     if clear_provider_auth(target) or should_reset_config:
         if should_reset_config:
             _reset_config_provider()
-        print(f"Logged out of {provider_name}.")
+        logger.info(f"Logged out of {provider_name}.")
         if should_reset_config and os.getenv("OPENROUTER_API_KEY"):
-            print("Hermes will use OpenRouter for inference.")
+            logger.info("Hermes will use OpenRouter for inference.")
         elif should_reset_config:
-            print("Run `hermes model` or configure an API key to use Hermes.")
+            logger.info("Run `hermes model` or configure an API key to use Hermes.")
         else:
-            print("Model provider configuration was unchanged.")
+            logger.info("Model provider configuration was unchanged.")
     else:
-        print(f"No auth state found for {provider_name}.")
+        logger.info(f"No auth state found for {provider_name}.")

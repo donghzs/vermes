@@ -1525,7 +1525,7 @@ def qr_scan_for_bot_info(
             raw = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         logger.error("WeCom QR: failed to fetch QR code: %s", exc)
-        print(f" failed: {exc}")
+        logger.info(f" failed: {exc}")
         return None
 
     data = raw.get("data") or {}
@@ -1534,13 +1534,13 @@ def qr_scan_for_bot_info(
 
     if not scode or not auth_url:
         logger.error("WeCom QR: unexpected response format: %s", raw)
-        print(" failed: unexpected response format")
+        logger.info(" failed: unexpected response format")
         return None
 
-    print(" done.")
+    logger.info(" done.")
 
     # ── Step 2: Render QR code in terminal ──
-    print()
+    logger.info()
     qr_rendered = False
     try:
         import qrcode as _qrcode
@@ -1556,11 +1556,11 @@ def qr_scan_for_bot_info(
 
     page_url = f"{_QR_CODE_PAGE}{urllib.parse.quote(scode)}"
     if qr_rendered:
-        print(f"\n  Scan the QR code above, or open this URL directly:\n  {page_url}")
+        logger.info(f"\n  Scan the QR code above, or open this URL directly:\n  {page_url}")
     else:
-        print(f"  Open this URL in WeCom on your phone:\n\n  {page_url}\n")
-        print("  Tip: pip install qrcode  to display a scannable QR code here next time")
-    print()
+        logger.info(f"  Open this URL in WeCom on your phone:\n\n  {page_url}\n")
+        logger.info("  Tip: pip install qrcode  to display a scannable QR code here next time")
+    logger.info()
     print("  Fetching configuration results...", end="", flush=True)
 
     # ── Step 3: Poll for result ──
@@ -1586,7 +1586,7 @@ def qr_scan_for_bot_info(
         status = str(result_data.get("status") or "").lower()
 
         if status == "success":
-            print()  # newline after "Fetching configuration results..." dots
+            logger.info()  # newline after "Fetching configuration results..." dots
             bot_info = result_data.get("bot_info") or {}
             bot_id = str(bot_info.get("botid") or bot_info.get("bot_id") or "").strip()
             secret = str(bot_info.get("secret") or "").strip()
@@ -1596,7 +1596,7 @@ def qr_scan_for_bot_info(
                 "WeCom QR: scan reported success but bot_info missing or incomplete: %s",
                 result_data,
             )
-            print(
+            logger.info(
                 "  QR scan reported success but no bot credentials were returned.\n"
                 "  This usually means the bot was not actually created on the WeCom side.\n"
                 "  Falling back to manual credential entry."
@@ -1605,6 +1605,6 @@ def qr_scan_for_bot_info(
 
         time.sleep(_QR_POLL_INTERVAL)
 
-    print()  # newline after dots
-    print(f"  QR scan timed out ({timeout_seconds // 60} minutes). Please try again.")
+    logger.info()  # newline after dots
+    logger.info(f"  QR scan timed out ({timeout_seconds // 60} minutes). Please try again.")
     return None

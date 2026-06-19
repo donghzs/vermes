@@ -7,6 +7,11 @@ No external dependencies.
 import sys, json, time, argparse
 import urllib.request, urllib.parse, urllib.error
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 BASE = "https://www.ebi.ac.uk/chembl/api/data"
 
 def get(endpoint):
@@ -15,7 +20,7 @@ def get(endpoint):
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read())
     except Exception as e:
-        print(f"API error: {e}", file=sys.stderr); return None
+        logger.warning(f"API error: {e}"); return None
 
 def main():
     parser = argparse.ArgumentParser(description="ChEMBL target → active compounds")
@@ -27,27 +32,27 @@ def main():
     enc = urllib.parse.quote(args.target)
     data = get(f"/target/search?q={enc}&limit=5&format=json")
     if not data or not data.get("targets"):
-        print("No targets found."); sys.exit(1)
+        logger.info("No targets found."); sys.exit(1)
 
     t = data["targets"][0]
     tid = t.get("target_chembl_id","")
-    print(f"\nTarget: {t.get('pref_name')} ({tid})")
-    print(f"Type: {t.get('target_type')} | Organism: {t.get('organism','N/A')}")
-    print(f"\nFetching compounds with pChEMBL ≥ {args.min_pchembl}...\n")
+    logger.info(f"\nTarget: {t.get('pref_name')} ({tid})")
+    logger.info(f"Type: {t.get('target_type')} | Organism: {t.get('organism','N/A')}")
+    logger.info(f"\nFetching compounds with pChEMBL ≥ {args.min_pchembl}...\n")
 
     acts = get(f"/activity?target_chembl_id={tid}&pchembl_value__gte={args.min_pchembl}&assay_type=B&limit={args.limit}&order_by=-pchembl_value&format=json")
     if not acts or not acts.get("activities"):
-        print("No activities found."); sys.exit(0)
+        logger.info("No activities found."); sys.exit(0)
 
-    print(f"{'Molecule':<18} {'pChEMBL':>8} {'Type':<12} {'Value':<10} {'Units'}")
-    print("-"*65)
+    logger.info(f"{'Molecule':<18} {'pChEMBL':>8} {'Type':<12} {'Value':<10} {'Units'}")
+    logger.info("-"*65)
     seen = set()
     for a in acts["activities"]:
         mid = a.get("molecule_chembl_id","N/A")
         if mid in seen: continue
         seen.add(mid)
-        print(f"{mid:<18} {str(a.get('pchembl_value','N/A')):>8} {str(a.get('standard_type','N/A')):<12} {str(a.get('standard_value','N/A')):<10} {a.get('standard_units','N/A')}")
+        logger.info(f"{mid:<18} {str(a.get('pchembl_value','N/A')):>8} {str(a.get('standard_type','N/A')):<12} {str(a.get('standard_value','N/A')):<10} {a.get('standard_units','N/A')}")
         time.sleep(0.1)
-    print(f"\nTotal: {len(seen)} unique molecules")
+    logger.info(f"\nTotal: {len(seen)} unique molecules")
 
 if __name__ == "__main__": main()

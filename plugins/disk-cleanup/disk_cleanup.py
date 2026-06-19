@@ -189,7 +189,7 @@ def track(path_str: str, category: str, silent: bool = False) -> bool:
     save_tracked(tracked)
     _log(f"TRACKED: {path} ({category}, {fmt_size(size)})")
     if not silent:
-        print(f"Tracked: {path} ({category}, {fmt_size(size)})")
+        logger.info(f"Tracked: {path} ({category}, {fmt_size(size)})")
     return True
 
 

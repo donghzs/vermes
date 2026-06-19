@@ -17,6 +17,9 @@ Usage examples::
     hermes logs --since 30m -f     # follow, starting 30 min ago
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import re
 import sys
 import time
@@ -166,13 +169,13 @@ def tail_log(
     """
     filename = LOG_FILES.get(log_name)
     if filename is None:
-        print(f"Unknown log: {log_name!r}. Available: {', '.join(sorted(LOG_FILES))}")
+        logger.info(f"Unknown log: {log_name!r}. Available: {', '.join(sorted(LOG_FILES))}")
         sys.exit(1)
 
     log_path = get_hermes_home() / "logs" / filename
     if not log_path.exists():
-        print(f"Log file not found: {log_path}")
-        print(f"(Logs are created when Hermes runs — try 'hermes chat' first)")
+        logger.info(f"Log file not found: {log_path}")
+        logger.info(f"(Logs are created when Hermes runs — try 'hermes chat' first)")
         sys.exit(1)
 
     # Parse --since into a datetime cutoff
@@ -180,22 +183,24 @@ def tail_log(
     if since:
         since_dt = _parse_since(since)
         if since_dt is None:
-            print(f"Invalid --since value: {since!r}. Use format like '1h', '30m', '2d'.")
+            logger.info(f"Invalid --since value: {since!r}. Use format like '1h', '30m', '2d'.")
             sys.exit(1)
 
     min_level = level.upper() if level else None
     if min_level and min_level not in _LEVEL_ORDER:
-        print(f"Invalid --level: {level!r}. Use DEBUG, INFO, WARNING, ERROR, or CRITICAL.")
+        logger.info(f"Invalid --level: {level!r}. Use DEBUG, INFO, WARNING, ERROR, or CRITICAL.")
         sys.exit(1)
 
     # Resolve component to logger name prefixes
     component_prefixes = None
     if component:
         from hermes_logging import COMPONENT_PREFIXES
+
+
         component_lower = component.lower()
         if component_lower not in COMPONENT_PREFIXES:
             available = ", ".join(sorted(COMPONENT_PREFIXES))
-            print(f"Unknown component: {component!r}. Available: {available}")
+            logger.info(f"Unknown component: {component!r}. Available: {available}")
             sys.exit(1)
         component_prefixes = COMPONENT_PREFIXES[component_lower]
 
@@ -212,7 +217,7 @@ def tail_log(
                            min_level=min_level, session_filter=session,
                            since=since_dt, component_prefixes=component_prefixes)
     except PermissionError:
-        print(f"Permission denied: {log_path}")
+        logger.info(f"Permission denied: {log_path}")
         sys.exit(1)
 
     # Print header
@@ -228,9 +233,9 @@ def tail_log(
     filter_desc = f" [{', '.join(filter_parts)}]" if filter_parts else ""
 
     if follow:
-        print(f"--- {display_hermes_home()}/logs/{filename}{filter_desc} (Ctrl+C to stop) ---")
+        logger.info(f"--- {display_hermes_home()}/logs/{filename}{filter_desc} (Ctrl+C to stop) ---")
     else:
-        print(f"--- {display_hermes_home()}/logs/{filename}{filter_desc} (last {num_lines}) ---")
+        logger.info(f"--- {display_hermes_home()}/logs/{filename}{filter_desc} (last {num_lines}) ---")
 
     for line in lines:
         print(line, end="")
@@ -243,7 +248,7 @@ def tail_log(
         _follow_log(log_path, min_level=min_level, session_filter=session,
                      since=since_dt, component_prefixes=component_prefixes)
     except KeyboardInterrupt:
-        print("\n--- stopped ---")
+        logger.info("\n--- stopped ---")
 
 
 def _read_tail(
@@ -359,10 +364,10 @@ def list_logs() -> None:
     """Print available log files with sizes."""
     log_dir = get_hermes_home() / "logs"
     if not log_dir.exists():
-        print(f"No logs directory at {display_hermes_home()}/logs/")
+        logger.info(f"No logs directory at {display_hermes_home()}/logs/")
         return
 
-    print(f"Log files in {display_hermes_home()}/logs/:\n")
+    logger.info(f"Log files in {display_hermes_home()}/logs/:\n")
     found = False
     for entry in sorted(log_dir.iterdir()):
         if entry.is_file() and entry.suffix == ".log":
@@ -383,8 +388,8 @@ def list_logs() -> None:
                 age_str = f"{int(age.total_seconds() / 3600)}h ago"
             else:
                 age_str = mtime.strftime("%Y-%m-%d")
-            print(f"  {entry.name:<25} {size_str:>8}   {age_str}")
+            logger.info(f"  {entry.name:<25} {size_str:>8}   {age_str}")
             found = True
 
     if not found:
-        print("  (no log files yet — run 'hermes chat' to generate logs)")
+        logger.info("  (no log files yet — run 'hermes chat' to generate logs)")

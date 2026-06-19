@@ -15,6 +15,11 @@ import pickle
 import sys
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -39,14 +44,14 @@ def main() -> int:
     inner = pickle.loads(outer["population_snapshot"])
     pairs = inner["organisms"]  # list of (Organism, EvaluationResult)
 
-    print(f"# organisms: {len(pairs)}\n")
+    logger.info(f"# organisms: {len(pairs)}\n")
     ranked = sorted(pairs, key=lambda p: getattr(p[1], "score", 0) or 0, reverse=True)
     if args.top:
         ranked = ranked[: args.top]
 
     for i, (org, res) in enumerate(ranked):
         score = getattr(res, "score", float("nan"))
-        print(f"=== rank {i} score={score:.3f} ===")
+        logger.info(f"=== rank {i} score={score:.3f} ===")
         # pick field
         field = args.field
         if field is None:
@@ -56,12 +61,12 @@ def main() -> int:
                     break
         val = getattr(org, field, None) if field else None
         if val is None:
-            print(f"  (no string field; org fields: {list(vars(org).keys())})")
+            logger.info(f"  (no string field; org fields: {list(vars(org).keys())})")
         else:
-            print(f"  {field} ({len(val)} chars):")
+            logger.info(f"  {field} ({len(val)} chars):")
             for ln in val.splitlines()[:30]:
-                print(f"    {ln}")
-        print()
+                logger.info(f"    {ln}")
+        logger.info()
     return 0
 
 

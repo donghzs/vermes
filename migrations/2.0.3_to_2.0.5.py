@@ -9,6 +9,9 @@ v2.0.5 主要变更：
 5. 更新系统 v2（update_manager）
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import sqlite3
 from pathlib import Path
@@ -25,6 +28,8 @@ def migrate(hermes_home: str):
     if config_file.exists():
         try:
             import ruamel.yaml
+
+
             yaml = ruamel.yaml.YAML()
             with open(config_file) as f:
                 config = yaml.load(f)
@@ -134,8 +139,8 @@ def migrate(hermes_home: str):
     version_file.write_text(json.dumps(version_data, indent=2), encoding="utf-8")
 
     if errors:
-        print(f"[Migration] 2.0.3 → 2.0.5 部分完成，错误: {errors}")
+        logger.info(f"[Migration] 2.0.3 → 2.0.5 部分完成，错误: {errors}")
     else:
-        print(f"[Migration] 2.0.3 → 2.0.5 迁移完成，共 {len(migrated)} 项")
+        logger.info(f"[Migration] 2.0.3 → 2.0.5 迁移完成，共 {len(migrated)} 项")
 
     return len(errors) == 0

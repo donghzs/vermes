@@ -16,6 +16,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 BASE = "https://web.archive.org/cdx/search/cdx"
 
 COLUMNS = [
@@ -63,7 +68,7 @@ def fetch(
     try:
         payload = get_json(url)
     except Exception as e:  # noqa: BLE001
-        print(f"Wayback CDX error: {e}", file=sys.stderr)
+        logger.warning(f"Wayback CDX error: {e}")
         payload = []
 
     rows: list[dict[str, str]] = []
@@ -91,7 +96,7 @@ def fetch(
         w.writeheader()
         w.writerows(rows)
     if not rows:
-        print(
+        logger.info(
             f"Wayback Machine: 0 captures for {url_or_host!r} matchType={match_type}.",
             file=sys.stderr,
         )
@@ -134,7 +139,7 @@ def main() -> int:
         limit=a.limit,
         out_path=a.out,
     )
-    print(f"Wrote {n} Wayback capture rows to {a.out}")
+    logger.info(f"Wrote {n} Wayback capture rows to {a.out}")
     return 0
 
 

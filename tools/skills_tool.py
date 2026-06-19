@@ -1443,45 +1443,45 @@ def skill_view(
 
 if __name__ == "__main__":
     """Test the skills tool"""
-    print("🎯 Skills Tool Test")
-    print("=" * 60)
+    logger.info("🎯 Skills Tool Test")
+    logger.info("=" * 60)
 
     # Test listing skills
-    print("\n📋 Listing all skills:")
+    logger.info("\n📋 Listing all skills:")
     result = json.loads(skills_list())
     if result["success"]:
-        print(
+        logger.info(
             f"Found {result['count']} skills in {len(result.get('categories', []))} categories"
         )
-        print(f"Categories: {result.get('categories', [])}")
-        print("\nFirst 10 skills:")
+        logger.info(f"Categories: {result.get('categories', [])}")
+        logger.info("\nFirst 10 skills:")
         for skill in result["skills"][:10]:
             cat = f"[{skill['category']}] " if skill.get("category") else ""
-            print(f"  • {cat}{skill['name']}: {skill['description'][:60]}...")
+            logger.info(f"  • {cat}{skill['name']}: {skill['description'][:60]}...")
     else:
-        print(f"Error: {result['error']}")
+        logger.info(f"Error: {result['error']}")
 
     # Test viewing a skill
-    print("\n📖 Viewing skill 'axolotl':")
+    logger.info("\n📖 Viewing skill 'axolotl':")
     result = json.loads(skill_view("axolotl"))
     if result["success"]:
-        print(f"Name: {result['name']}")
-        print(f"Description: {result.get('description', 'N/A')[:100]}...")
-        print(f"Content length: {len(result['content'])} chars")
+        logger.info(f"Name: {result['name']}")
+        logger.info(f"Description: {result.get('description', 'N/A')[:100]}...")
+        logger.info(f"Content length: {len(result['content'])} chars")
         if result.get("linked_files"):
-            print(f"Linked files: {result['linked_files']}")
+            logger.info(f"Linked files: {result['linked_files']}")
     else:
-        print(f"Error: {result['error']}")
+        logger.info(f"Error: {result['error']}")
 
     # Test viewing a reference file
-    print("\n📄 Viewing reference file 'axolotl/references/dataset-formats.md':")
+    logger.info("\n📄 Viewing reference file 'axolotl/references/dataset-formats.md':")
     result = json.loads(skill_view("axolotl", "references/dataset-formats.md"))
     if result["success"]:
-        print(f"File: {result['file']}")
-        print(f"Content length: {len(result['content'])} chars")
-        print(f"Preview: {result['content'][:150]}...")
+        logger.info(f"File: {result['file']}")
+        logger.info(f"Content length: {len(result['content'])} chars")
+        logger.info(f"Preview: {result['content'][:150]}...")
     else:
-        print(f"Error: {result['error']}")
+        logger.info(f"Error: {result['error']}")
 
 
 # ---------------------------------------------------------------------------

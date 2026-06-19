@@ -130,7 +130,7 @@ def run_backup(args) -> None:
     hermes_root = get_default_hermes_root()
 
     if not hermes_root.is_dir():
-        print(f"Error: Hermes home directory not found at {hermes_root}")
+        logger.info(f"Error: Hermes home directory not found at {hermes_root}")
         sys.exit(1)
 
     # Determine output path
@@ -152,7 +152,7 @@ def run_backup(args) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Collect files
-    print(f"Scanning {display_hermes_home()} ...")
+    logger.info(f"Scanning {display_hermes_home()} ...")
     files_to_add: list[tuple[Path, Path]] = []  # (absolute, relative)
     skipped_dirs = set()
 
@@ -186,12 +186,12 @@ def run_backup(args) -> None:
             files_to_add.append((fpath, rel))
 
     if not files_to_add:
-        print("No files to back up.")
+        logger.info("No files to back up.")
         return
 
     # Create the zip
     file_count = len(files_to_add)
-    print(f"Backing up {file_count} files ...")
+    logger.info(f"Backing up {file_count} files ...")
 
     total_bytes = 0
     errors = []
@@ -221,32 +221,32 @@ def run_backup(args) -> None:
 
             # Progress every 500 files
             if i % 500 == 0:
-                print(f"  {i}/{file_count} files ...")
+                logger.info(f"  {i}/{file_count} files ...")
 
     elapsed = time.monotonic() - t0
     zip_size = out_path.stat().st_size
 
     # Summary
-    print()
-    print(f"Backup complete: {out_path}")
-    print(f"  Files:       {file_count}")
-    print(f"  Original:    {_format_size(total_bytes)}")
-    print(f"  Compressed:  {_format_size(zip_size)}")
-    print(f"  Time:        {elapsed:.1f}s")
+    logger.info()
+    logger.info(f"Backup complete: {out_path}")
+    logger.info(f"  Files:       {file_count}")
+    logger.info(f"  Original:    {_format_size(total_bytes)}")
+    logger.info(f"  Compressed:  {_format_size(zip_size)}")
+    logger.info(f"  Time:        {elapsed:.1f}s")
 
     if skipped_dirs:
-        print(f"\n  Excluded directories:")
+        logger.info(f"\n  Excluded directories:")
         for d in sorted(skipped_dirs):
-            print(f"    {d}/")
+            logger.info(f"    {d}/")
 
     if errors:
-        print(f"\n  Warnings ({len(errors)} files skipped):")
+        logger.info(f"\n  Warnings ({len(errors)} files skipped):")
         for e in errors[:10]:
-            print(e)
+            logger.info(e)
         if len(errors) > 10:
-            print(f"  ... and {len(errors) - 10} more")
+            logger.info(f"  ... and {len(errors) - 10} more")
 
-    print(f"\nRestore with: hermes import {out_path.name}")
+    logger.info(f"\nRestore with: hermes import {out_path.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -309,11 +309,11 @@ def run_import(args) -> None:
     zip_path = Path(args.zipfile).expanduser().resolve()
 
     if not zip_path.is_file():
-        print(f"Error: File not found: {zip_path}")
+        logger.info(f"Error: File not found: {zip_path}")
         sys.exit(1)
 
     if not zipfile.is_zipfile(zip_path):
-        print(f"Error: Not a valid zip file: {zip_path}")
+        logger.info(f"Error: Not a valid zip file: {zip_path}")
         sys.exit(1)
 
     hermes_root = get_default_hermes_root()
@@ -322,39 +322,39 @@ def run_import(args) -> None:
         # Validate
         ok, reason = _validate_backup_zip(zf)
         if not ok:
-            print(f"Error: {reason}")
+            logger.info(f"Error: {reason}")
             sys.exit(1)
 
         prefix = _detect_prefix(zf)
         members = [n for n in zf.namelist() if not n.endswith("/")]
         file_count = len(members)
 
-        print(f"Backup contains {file_count} files")
-        print(f"Target: {display_hermes_home()}")
+        logger.info(f"Backup contains {file_count} files")
+        logger.info(f"Target: {display_hermes_home()}")
 
         if prefix:
-            print(f"Detected archive prefix: {prefix!r} (will be stripped)")
+            logger.info(f"Detected archive prefix: {prefix!r} (will be stripped)")
 
         # Check for existing installation
         has_config = (hermes_root / "config.yaml").exists()
         has_env = (hermes_root / ".env").exists()
 
         if (has_config or has_env) and not args.force:
-            print()
-            print("Warning: Target directory already has Hermes configuration.")
-            print("Importing will overwrite existing files with backup contents.")
-            print()
+            logger.info()
+            logger.info("Warning: Target directory already has Hermes configuration.")
+            logger.info("Importing will overwrite existing files with backup contents.")
+            logger.info()
             try:
                 answer = input("Continue? [y/N] ").strip().lower()
             except (EOFError, KeyboardInterrupt):
-                print("\nAborted.")
+                logger.info("\nAborted.")
                 sys.exit(1)
             if answer not in {"y", "yes"}:
-                print("Aborted.")
+                logger.info("Aborted.")
                 return
 
         # Extract
-        print(f"\nImporting {file_count} files ...")
+        logger.info(f"\nImporting {file_count} files ...")
         hermes_root.mkdir(parents=True, exist_ok=True)
 
         errors = []
@@ -391,21 +391,21 @@ def run_import(args) -> None:
                 errors.append(f"  {rel}: {exc}")
 
             if restored % 500 == 0:
-                print(f"  {restored}/{file_count} files ...")
+                logger.info(f"  {restored}/{file_count} files ...")
 
         elapsed = time.monotonic() - t0
 
         # Summary
-        print()
-        print(f"Import complete: {restored} files restored in {elapsed:.1f}s")
-        print(f"  Target: {display_hermes_home()}")
+        logger.info()
+        logger.info(f"Import complete: {restored} files restored in {elapsed:.1f}s")
+        logger.info(f"  Target: {display_hermes_home()}")
 
         if errors:
-            print(f"\n  Warnings ({len(errors)} files skipped):")
+            logger.info(f"\n  Warnings ({len(errors)} files skipped):")
             for e in errors[:10]:
-                print(e)
+                logger.info(e)
             if len(errors) > 10:
-                print(f"  ... and {len(errors) - 10} more")
+                logger.info(f"  ... and {len(errors) - 10} more")
 
         # Post-import: restore profile wrapper scripts
         profiles_dir = hermes_root / "profiles"
@@ -425,7 +425,7 @@ def run_import(args) -> None:
                         continue
                     collision = check_alias_collision(profile_name)
                     if collision:
-                        print(f"  Skipped alias '{profile_name}': {collision}")
+                        logger.info(f"  Skipped alias '{profile_name}': {collision}")
                         restored_profiles.append((profile_name, False))
                     else:
                         wrapper = create_wrapper_script(profile_name)
@@ -435,32 +435,32 @@ def run_import(args) -> None:
                     created = [n for n, ok in restored_profiles if ok]
                     skipped = [n for n, ok in restored_profiles if not ok]
                     if created:
-                        print(f"\n  Profile aliases restored: {', '.join(created)}")
+                        logger.info(f"\n  Profile aliases restored: {', '.join(created)}")
                     if skipped:
-                        print(f"  Profile aliases skipped:  {', '.join(skipped)}")
+                        logger.info(f"  Profile aliases skipped:  {', '.join(skipped)}")
                     if not _is_wrapper_dir_in_path():
-                        print(f"\n  Note: {_get_wrapper_dir()} is not in your PATH.")
-                        print('  Add to your shell config (~/.bashrc or ~/.zshrc):')
-                        print('    export PATH="$HOME/.local/bin:$PATH"')
+                        logger.info(f"\n  Note: {_get_wrapper_dir()} is not in your PATH.")
+                        logger.info('  Add to your shell config (~/.bashrc or ~/.zshrc):')
+                        logger.info('    export PATH="$HOME/.local/bin:$PATH"')
             except ImportError:
                 # hermes_cli.profiles might not be available (fresh install)
                 if any(profiles_dir.iterdir()):
-                    print(f"\n  Profiles detected but aliases could not be created.")
-                    print(f"  Run: hermes profile list  (after installing hermes)")
+                    logger.info(f"\n  Profiles detected but aliases could not be created.")
+                    logger.info(f"  Run: hermes profile list  (after installing hermes)")
 
         # Guidance
-        print()
+        logger.info()
         if not (hermes_root / "hermes-agent").is_dir():
-            print("Note: The hermes-agent codebase was not included in the backup.")
-            print("  If this is a fresh install, run: hermes update")
+            logger.info("Note: The hermes-agent codebase was not included in the backup.")
+            logger.info("  If this is a fresh install, run: hermes update")
 
         if restored_profiles:
             gw_profiles = [n for n, _ in restored_profiles]
-            print("\nTo re-enable gateway services for profiles:")
+            logger.info("\nTo re-enable gateway services for profiles:")
             for pname in gw_profiles:
-                print(f"  hermes -p {pname} gateway install")
+                logger.info(f"  hermes -p {pname} gateway install")
 
-        print("Done. Your Hermes configuration has been restored.")
+        logger.info("Done. Your Hermes configuration has been restored.")
 
 
 # ---------------------------------------------------------------------------
@@ -693,12 +693,12 @@ def run_quick_backup(args) -> None:
     label = getattr(args, "label", None)
     snap_id = create_quick_snapshot(label=label)
     if snap_id:
-        print(f"State snapshot created: {snap_id}")
+        logger.info(f"State snapshot created: {snap_id}")
         snaps = list_quick_snapshots()
-        print(f"  {len(snaps)} snapshot(s) stored in {display_hermes_home()}/state-snapshots/")
-        print(f"  Restore with: /snapshot restore {snap_id}")
+        logger.info(f"  {len(snaps)} snapshot(s) stored in {display_hermes_home()}/state-snapshots/")
+        logger.info(f"  Restore with: /snapshot restore {snap_id}")
     else:
-        print("No state files found to snapshot.")
+        logger.info("No state files found to snapshot.")
 
 
 # ---------------------------------------------------------------------------

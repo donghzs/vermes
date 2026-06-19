@@ -221,7 +221,7 @@ def render_qr_to_terminal(url: str) -> bool:
                 line_chars.append(EMPTY)
         lines.append("    " + "".join(line_chars))
 
-    print("\n".join(lines))
+    logger.info("\n".join(lines))
     return True
 
 
@@ -235,7 +235,7 @@ def dingtalk_qr_auth() -> Optional[Tuple[str, str]]:
     """
     from hermes_cli.setup import print_info, print_success, print_warning, print_error
 
-    print()
+    logger.info()
     print_info("  Initializing DingTalk device authorization...")
     print_info("  Note: the scan page is branded 'OpenClaw' — DingTalk's")
     print_info("        ecosystem onboarding bridge. Safe to use.")
@@ -252,16 +252,16 @@ def dingtalk_qr_auth() -> Optional[Tuple[str, str]]:
     if not _ensure_qrcode_installed():
         print_warning("  qrcode library install failed, will show link only.")
 
-    print()
+    logger.info()
     print_info("  Please scan the QR code below with DingTalk to authorize:")
-    print()
+    logger.info()
 
     if not render_qr_to_terminal(url):
         print_warning(f"  QR code render failed, please open the link below to authorize:")
 
-    print()
+    logger.info()
     print_info(f"  Or open this link manually: {url}")
-    print()
+    logger.info()
     print_info("  Waiting for QR scan authorization... (timeout: 2 hours)")
 
     dot_count = 0
@@ -281,11 +281,11 @@ def dingtalk_qr_auth() -> Optional[Tuple[str, str]]:
             on_waiting=_on_waiting,
         )
     except RegistrationError as exc:
-        print()
+        logger.info()
         print_error(f"  Authorization failed: {exc}")
         return None
 
-    print()
+    logger.info()
     print_success("  QR scan authorization successful!")
     print_success(f"  Client ID:     {client_id}")
     print_success(f"  Client Secret: {client_secret[:8]}{'*' * (len(client_secret) - 8)}")

@@ -890,35 +890,35 @@ def check_image_generation_requirements() -> bool:
 # Demo / CLI entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("🎨 Image Generation Tools — FAL.ai multi-model support")
-    print("=" * 60)
+    logger.info("🎨 Image Generation Tools — FAL.ai multi-model support")
+    logger.info("=" * 60)
 
     if not check_fal_api_key():
-        print("❌ FAL_KEY environment variable not set")
-        print("   Set it via: export FAL_KEY='your-key-here'")
-        print("   Get a key: https://fal.ai/")
+        logger.info("❌ FAL_KEY environment variable not set")
+        logger.info("   Set it via: export FAL_KEY='your-key-here'")
+        logger.info("   Get a key: https://fal.ai/")
         raise SystemExit(1)
-    print("✅ FAL.ai API key found")
+    logger.info("✅ FAL.ai API key found")
 
     try:
         import fal_client  # noqa: F401
-        print("✅ fal_client library available")
+        logger.info("✅ fal_client library available")
     except ImportError:
-        print("❌ fal_client library not found — pip install fal-client")
+        logger.info("❌ fal_client library not found — pip install fal-client")
         raise SystemExit(1)
 
     model_id, meta = _resolve_fal_model()
-    print(f"🤖 Active model: {meta.get('display', model_id)} ({model_id})")
-    print(f"   Speed: {meta.get('speed', '?')}  ·  Price: {meta.get('price', '?')}")
-    print(f"   Upscaler: {'on' if meta.get('upscale') else 'off'}")
+    logger.info(f"🤖 Active model: {meta.get('display', model_id)} ({model_id})")
+    logger.info(f"   Speed: {meta.get('speed', '?')}  ·  Price: {meta.get('price', '?')}")
+    logger.info(f"   Upscaler: {'on' if meta.get('upscale') else 'off'}")
 
-    print("\nAvailable models:")
+    logger.info("\nAvailable models:")
     for mid, m in FAL_MODELS.items():
         marker = " ← active" if mid == model_id else ""
-        print(f"  {mid:<32}  {m.get('speed', '?'):<6}  {m.get('price', '?')}{marker}")
+        logger.info(f"  {mid:<32}  {m.get('speed', '?'):<6}  {m.get('price', '?')}{marker}")
 
     if _debug.active:
-        print(f"\n🐛 Debug mode enabled — session {_debug.session_id}")
+        logger.info(f"\n🐛 Debug mode enabled — session {_debug.session_id}")
 
 
 # ---------------------------------------------------------------------------

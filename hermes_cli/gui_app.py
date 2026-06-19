@@ -6,6 +6,9 @@ pywebview 6.x: create_window → start(func=...)
 自动端口分配：避免与本机测试实例冲突。
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import sys
 import os
 import time
@@ -45,7 +48,7 @@ if sys.platform == 'win32' and getattr(sys, 'frozen', False):
         sys.stderr = _Tee(sys.stderr, _log_path)
     except Exception:
         pass
-    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Vermes GUI started (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)})")
+    logger.info(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Vermes GUI started (pid={os.getpid()}, frozen={getattr(sys, 'frozen', False)})")
 
 # ── Windows 适配层初始化（DPI 感知 + UTF-8 编码） ──
 from hermes_cli import win_adapter
@@ -117,11 +120,11 @@ if os.path.isdir(_agent_dir):
     if os.path.exists(_ver_file):
         try:
             _ver = open(_ver_file, encoding="utf-8").read().strip()
-            print(f"[Vermes] Agent 框架 v{_ver} 已加载 ({_agent_dir})")
+            logger.info(f"[Vermes] Agent 框架 v{_ver} 已加载 ({_agent_dir})")
         except Exception:
             pass
     else:
-        print(f"[Vermes] Agent 框架已加载 ({_agent_dir})")
+        logger.info(f"[Vermes] Agent 框架已加载 ({_agent_dir})")
 # ── 热加载结束 ────────────────────────────────────────────────────────
 
 from hermes_cli.shutdown_signal import shutdown_event
@@ -134,12 +137,12 @@ class VermesAPI:
 
     def open_external_browser(self, url):
         """用系统默认浏览器打开 URL。"""
-        print(f"[Vermes API] 打开系统浏览器: {url}")
+        logger.info(f"[Vermes API] 打开系统浏览器: {url}")
         try:
             webbrowser.open(url)
             return {"success": True}
         except Exception as e:
-            print(f"[Vermes API] ❌ 打开浏览器失败: {e}")
+            logger.info(f"[Vermes API] ❌ 打开浏览器失败: {e}")
             return {"success": False, "error": str(e)}
 
     def open_oauth_window(self, url):
@@ -148,7 +151,7 @@ class VermesAPI:
         import threading
         import time
 
-        print(f"[Vermes API] 打开 OAuth 原生窗口")
+        logger.info(f"[Vermes API] 打开 OAuth 原生窗口")
         VermesAPI._oauth_result = None
         result_ready = threading.Event()
 
@@ -161,9 +164,9 @@ class VermesAPI:
             mw, mh = main_win.width, main_win.height
             ox = int(mx + (mw - ow) / 2)
             oy = int(my + (mh - oh) / 2)
-            print(f"[Vermes API] 主窗口=({mx},{my}) {mw}x{mh} → OAuth窗口居中=({ox},{oy})")
+            logger.info(f"[Vermes API] 主窗口=({mx},{my}) {mw}x{mh} → OAuth窗口居中=({ox},{oy})")
         except Exception as e:
-            print(f"[Vermes API] 获取主窗口位置失败({e})，使用屏幕居中")
+            logger.info(f"[Vermes API] 获取主窗口位置失败({e})，使用屏幕居中")
 
         create_kwargs = dict(
             width=ow, height=oh,
@@ -180,7 +183,7 @@ class VermesAPI:
             """页面加载完成后检查 URL"""
             try:
                 current_url = win.evaluate_js('window.location.href')
-                print(f"[Vermes API] 页面加载: {current_url[:80]}...")
+                logger.info(f"[Vermes API] 页面加载: {current_url[:80]}...")
                 if 'code=' in current_url and 'vbit.top' in current_url:
                     import urllib.parse
                     parsed = urllib.parse.urlparse(current_url)
@@ -188,7 +191,7 @@ class VermesAPI:
                     code = params.get('code', [''])[0]
                     state = params.get('state', [''])[0]
                     if code:
-                        print(f"[Vermes API] ✅ 获取到 code: {code[:10]}... state: {state}")
+                        logger.info(f"[Vermes API] ✅ 获取到 code: {code[:10]}... state: {state}")
                         VermesAPI._oauth_result = {"success": True, "code": code, "state": state}
                         result_ready.set()
                         try:
@@ -197,7 +200,7 @@ class VermesAPI:
                             pass
             except Exception as e:
                 if 'destroyed' not in str(e).lower():
-                    print(f"[Vermes API] URL 检查失败: {e}")
+                    logger.info(f"[Vermes API] URL 检查失败: {e}")
 
         def poll_url():
             """备用轮询：每 1.5 秒检查一次 URL"""
@@ -213,7 +216,7 @@ class VermesAPI:
                         params = urllib.parse.parse_qs(parsed.query)
                         code = params.get('code', [''])[0]
                         if code and not VermesAPI._oauth_result:
-                            print(f"[Vermes API] ✅ 轮询获取到 code: {code[:10]}...")
+                            logger.info(f"[Vermes API] ✅ 轮询获取到 code: {code[:10]}...")
                             VermesAPI._oauth_result = {"success": True, "code": code}
                             result_ready.set()
                             try:
@@ -227,7 +230,7 @@ class VermesAPI:
         def on_closed():
             """用户手动关闭窗口"""
             if not result_ready.is_set():
-                print("[Vermes API] OAuth 窗口被用户关闭")
+                logger.info("[Vermes API] OAuth 窗口被用户关闭")
                 VermesAPI._oauth_result = {"success": False, "error": "cancelled"}
                 result_ready.set()
 
@@ -290,13 +293,13 @@ def start_server():
     except Exception as e:
         with open(_startup_log, "a") as _f:
             _f.write(f"[{time.strftime('%H:%M:%S')}] start_server IMPORT ERROR: {type(e).__name__}: {e}\n")
-        print(f"[Vermes] 依赖缺失: {e}")
+        logger.info(f"[Vermes] 依赖缺失: {e}")
         return
 
     # 找可用端口
     port = find_available_port(DEFAULT_PORT)
     if port is None:
-        print(f"[Vermes] ❌ 错误：9119-9138 端口全部被占用，无法启动后端！")
+        logger.info(f"[Vermes] ❌ 错误：9119-9138 端口全部被占用，无法启动后端！")
         return
 
     # 写入端口文件，让 main() 知道正确的 URL
@@ -304,9 +307,9 @@ def start_server():
         with open(PORT_FILE, "w") as f:
             f.write(str(port))
     except Exception as e:
-        print(f"[Vermes] ⚠️ 无法写入端口文件: {e}")
+        logger.info(f"[Vermes] ⚠️ 无法写入端口文件: {e}")
 
-    print(f"[Vermes] 后端启动在端口 {port}")
+    logger.info(f"[Vermes] 后端启动在端口 {port}")
     global server_instance
     try:
         # 强制启用 agent 模式
@@ -317,7 +320,7 @@ def start_server():
         server_instance = uvicorn.Server(config)
         server_instance.run()
     except Exception as e:
-        print(f"[Vermes] ❌ 后端崩溃: {type(e).__name__}: {e}")
+        logger.info(f"[Vermes] ❌ 后端崩溃: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         # Write crash to startup log for post-mortem
@@ -331,13 +334,13 @@ def start_server():
 
 def on_dom_ready():
     """窗口 DOM 就绪后调用（pywebview 6.x）。"""
-    print("[Vermes] DOM 就绪，窗口已打开。")
+    logger.info("[Vermes] DOM 就绪，窗口已打开。")
 
 
 def main(port):
     """原生窗口优先，失败回退浏览器。"""
     url = f"http://127.0.0.1:{port}"
-    print(f"[Vermes] 打开界面：{url}")
+    logger.info(f"[Vermes] 打开界面：{url}")
     try:
         import webview
 
@@ -384,9 +387,9 @@ def main(port):
         def _load_real_url():
             """后台等待服务器就绪后切换到真实页面。"""
             if wait_for_server(port, timeout=20):
-                print(f"[Vermes] 后端就绪，加载 {url}")
+                logger.info(f"[Vermes] 后端就绪，加载 {url}")
             else:
-                print(f"[Vermes] ⚠️ 后端超时，仍尝试加载 {url}")
+                logger.info(f"[Vermes] ⚠️ 后端超时，仍尝试加载 {url}")
             win.load_url(url)
 
         import threading
@@ -401,12 +404,12 @@ def main(port):
         storage_path = os.path.expanduser('~/.vermes/webview_data')
         os.makedirs(storage_path, exist_ok=True)
         webview.start(gui=gui, private_mode=False, storage_path=storage_path, debug=False)
-        print("[Vermes] 原生窗口已关闭")
+        logger.info("[Vermes] 原生窗口已关闭")
         win_adapter.remove_tray_icon()  # 安全兜底（_on_closing 已调过，这里防异常路径漏清理）
         return
     except Exception as e:
-        print(f"[Vermes] ❌ 原生窗口失败: {e}")
-        print("[Vermes] 请检查 pywebview 是否正确安装: pip install pywebview")
+        logger.info(f"[Vermes] ❌ 原生窗口失败: {e}")
+        logger.info("[Vermes] 请检查 pywebview 是否正确安装: pip install pywebview")
 
     # 保持进程运行，等待退出/重启信号
     from hermes_cli.shutdown_signal import restart_event
@@ -420,18 +423,18 @@ def main(port):
                 if shutdown_event.is_set() or restart_event.is_set():
                     break
         except KeyboardInterrupt:
-            print("[Vermes] 退出。")
+            logger.info("[Vermes] 退出。")
             os._exit(0)
 
         if restart_event.is_set():
-            print("[Vermes] 收到重启信号，重启 Gateway...")
+            logger.info("[Vermes] 收到重启信号，重启 Gateway...")
             restart_event.clear()
             # 停止当前 uvicorn
             if server_instance:
                 server_instance.should_exit = True
                 time.sleep(2)  # 等待 uvicorn 优雅关闭
             # 重新启动 uvicorn
-            print("[Vermes] Gateway 重启中...")
+            logger.info("[Vermes] Gateway 重启中...")
             import uvicorn
             from hermes_cli.web_server import app as fastapi_app_restart
             from hermes_cli import web_server as _ws_restart
@@ -440,11 +443,11 @@ def main(port):
             server_instance = uvicorn.Server(config)
             import threading
             threading.Thread(target=server_instance.run, daemon=True).start()
-            print("[Vermes] ✅ Gateway 已重启")
+            logger.info("[Vermes] ✅ Gateway 已重启")
             continue  # 回到等待循环
 
         # shutdown_event
-        print("[Vermes] 收到退出信号，关闭后端...")
+        logger.info("[Vermes] 收到退出信号，关闭后端...")
         break
 
     os._exit(0)
@@ -473,7 +476,7 @@ def _apply_pending_update_if_any():
                 pending = json.load(f)
             version = pending.get('version', 'unknown')
             staging = pending.get('staging_path', '')
-            print(f"[Vermes Update] 发现待应用更新 v{version}，正在应用...")
+            logger.info(f"[Vermes Update] 发现待应用更新 v{version}，正在应用...")
 
             import shutil
             if platform.system() == 'Darwin':
@@ -483,7 +486,7 @@ def _apply_pending_update_if_any():
                     if os.path.exists(target):
                         shutil.rmtree(target)
                     shutil.copytree(app_path, target)
-                    print(f"[Vermes Update] ✅ 已更新到 v{version}")
+                    logger.info(f"[Vermes Update] ✅ 已更新到 v{version}")
                     subprocess.Popen(['open', target])
                     sys.exit(0)
             elif win_adapter.IS_WINDOWS:
@@ -497,14 +500,14 @@ def _apply_pending_update_if_any():
                         shutil.copytree(src, dst)
                     else:
                         shutil.copy2(src, dst)
-                print(f"[Vermes Update] ✅ 已更新到 v{version}")
+                logger.info(f"[Vermes Update] ✅ 已更新到 v{version}")
                 subprocess.Popen([os.path.join(exe_dir, 'Vermes.exe')])
                 sys.exit(0)
 
             os.remove(pending_file)
             shutil.rmtree(staging, ignore_errors=True)
         except Exception as e:
-            print(f"[Vermes Update] ❌ 应用更新失败: {e}")
+            logger.info(f"[Vermes Update] ❌ 应用更新失败: {e}")
             try:
                 os.remove(pending_file)
             except Exception:
@@ -526,9 +529,9 @@ def run_gui():
 
     if no_server:
         # Skip server start, just open native window
-        print(f"[Vermes] --no-server mode, connecting to port {port}")
+        logger.info(f"[Vermes] --no-server mode, connecting to port {port}")
         if not wait_for_server(port, timeout=10):
-            print(f"[Vermes] ERROR: Gateway not running on port {port}")
+            logger.info(f"[Vermes] ERROR: Gateway not running on port {port}")
             sys.exit(1)
         main(port)
         return
@@ -540,7 +543,7 @@ def run_gui():
         # 已有实例在运行，聚焦已有窗口
         existing_port = find_existing_port()
         if existing_port:
-            print(f"[Vermes] 已有实例在运行 (port={existing_port})，聚焦窗口...")
+            logger.info(f"[Vermes] 已有实例在运行 (port={existing_port})，聚焦窗口...")
             # 跨平台聚焦：Windows 用 Win32 API，Mac 用 open -a
             focused = False
             if win_adapter.IS_WINDOWS:
@@ -555,7 +558,7 @@ def run_gui():
             if not focused:
                 webbrowser.open(f"http://127.0.0.1:{existing_port}")
         else:
-            print("[Vermes] 已有实例在运行，但无法找到端口。")
+            logger.info("[Vermes] 已有实例在运行，但无法找到端口。")
         sys.exit(0)
 
     # 启动前检查：WebView2 运行时等
@@ -564,6 +567,8 @@ def run_gui():
 
     # 注册退出清理
     import atexit
+
+
     atexit.register(release_lock)
 
     # 服务器在后台线程启动（不阻塞）
@@ -582,18 +587,18 @@ def run_gui():
             pass
         time.sleep(0.5)
     else:
-        print("[Vermes] 端口文件未就绪，自动扫描后端端口...")
+        logger.info("[Vermes] 端口文件未就绪，自动扫描后端端口...")
         for scan_port in range(DEFAULT_PORT, DEFAULT_PORT + 20):
             if wait_for_server(scan_port, timeout=8):
                 port = scan_port
-                print(f"[Vermes] 发现后端在端口 {port}")
+                logger.info(f"[Vermes] 发现后端在端口 {port}")
                 break
 
-    print(f"[Vermes] 等待后端服务器就绪 (port={port})...")
+    logger.info(f"[Vermes] 等待后端服务器就绪 (port={port})...")
     if wait_for_server(port, timeout=15):
-        print("[Vermes] 后端就绪，打开窗口。")
+        logger.info("[Vermes] 后端就绪，打开窗口。")
     else:
-        print("[Vermes] 警告：后端未就绪，仍尝试打开窗口。")
+        logger.info("[Vermes] 警告：后端未就绪，仍尝试打开窗口。")
 
     main(port)
 

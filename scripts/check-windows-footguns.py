@@ -37,6 +37,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SUPPRESS_MARKER = re.compile(r"#\s*windows-footgun\s*:\s*ok\b", re.IGNORECASE)
@@ -542,12 +547,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def print_rules() -> None:
-    print("Known Windows footguns checked by this script:\n")
+    logger.info("Known Windows footguns checked by this script:\n")
     for i, fg in enumerate(FOOTGUNS, start=1):
-        print(f"{i:2}. {fg.name}")
-        print(f"    {fg.message}")
-        print(f"    Fix: {fg.fix}")
-        print()
+        logger.info(f"{i:2}. {fg.name}")
+        logger.info(f"    {fg.message}")
+        logger.info(f"    Fix: {fg.fix}")
+        logger.info()
 
 
 def main(argv: list[str]) -> int:
@@ -587,7 +592,7 @@ def main(argv: list[str]) -> int:
         # Default: staged changes
         roots = get_staged_files()
         if not roots:
-            print(
+            logger.info(
                 "No staged files to scan. Pass --all for a full-repo scan, "
                 "--diff <ref> for a range diff, or paths explicitly.",
                 file=sys.stderr,
@@ -601,20 +606,20 @@ def main(argv: list[str]) -> int:
         matches = scan_file(path, FOOTGUNS)
         for lineno, line, fg in matches:
             rel = path.relative_to(REPO_ROOT).as_posix()
-            print(f"{rel}:{lineno}: [{fg.name}]")
-            print(f"    {line.strip()}")
-            print(f"    — {fg.message}")
-            print(f"    Fix: {fg.fix.splitlines()[0]}")
-            print()
+            logger.info(f"{rel}:{lineno}: [{fg.name}]")
+            logger.info(f"    {line.strip()}")
+            logger.info(f"    — {fg.message}")
+            logger.info(f"    Fix: {fg.fix.splitlines()[0]}")
+            logger.info()
             total_matches += 1
 
     if total_matches:
-        print(
+        logger.info(
             f"\n✗ {total_matches} Windows footgun(s) found across "
             f"{files_scanned} file(s) scanned.",
             file=sys.stderr,
         )
-        print(
+        logger.info(
             "  If an individual match is a false positive or intentionally "
             "platform-gated, suppress it with `# windows-footgun: ok` on "
             "the same line.\n  Run with --list to see all rules.",
@@ -622,7 +627,7 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    print(
+    logger.info(
         f"✓ No Windows footguns found ({files_scanned} file(s) scanned)."
     )
     return 0

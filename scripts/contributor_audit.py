@@ -32,6 +32,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from release import AUTHOR_MAP, resolve_author  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 REPO_ROOT = SCRIPT_DIR.parent
 
 # ---------------------------------------------------------------------------
@@ -81,7 +86,7 @@ def git(*args, cwd=None):
         cwd=cwd or str(REPO_ROOT),
     )
     if result.returncode != 0:
-        print(f"  [warn] git {' '.join(args)} failed: {result.stderr.strip()}", file=sys.stderr)
+        logger.warning(f"  [warn] git {' '.join(args)} failed: {result.stderr.strip()}")
         return ""
     return result.stdout.strip()
 
@@ -106,17 +111,17 @@ def gh_pr_list():
             timeout=60,
         )
         if result.returncode != 0:
-            print(f"  [warn] gh pr list failed: {result.stderr.strip()}", file=sys.stderr)
+            logger.warning(f"  [warn] gh pr list failed: {result.stderr.strip()}")
             return []
         return json.loads(result.stdout)
     except FileNotFoundError:
-        print("  [warn] 'gh' CLI not found — skipping salvaged PR scan.", file=sys.stderr)
+        logger.warning("  [warn] 'gh' CLI not found — skipping salvaged PR scan.")
         return []
     except subprocess.TimeoutExpired:
-        print("  [warn] gh pr list timed out — skipping salvaged PR scan.", file=sys.stderr)
+        logger.warning("  [warn] gh pr list timed out — skipping salvaged PR scan.")
         return []
     except json.JSONDecodeError:
-        print("  [warn] gh pr list returned invalid JSON — skipping salvaged PR scan.", file=sys.stderr)
+        logger.warning("  [warn] gh pr list returned invalid JSON — skipping salvaged PR scan.")
         return []
 
 
@@ -243,7 +248,7 @@ def collect_salvaged_contributors(since_tag, until="HEAD"):
         until_date = git("log", "-1", "--format=%aI", until)
 
     if not since_date:
-        print(f"  [warn] Could not resolve date for {since_tag}", file=sys.stderr)
+        logger.warning(f"  [warn] Could not resolve date for {since_tag}")
         return contributors, pr_refs
 
     prs = gh_pr_list()
@@ -293,7 +298,7 @@ def check_release_file(release_file, all_contributors):
     try:
         content = Path(release_file).read_text(encoding="utf-8")
     except FileNotFoundError:
-        print(f"  [error] Release file not found: {release_file}", file=sys.stderr)
+        logger.warning(f"  [error] Release file not found: {release_file}")
         return set(), set(all_contributors)
 
     mentioned = set()
@@ -345,23 +350,23 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"=== Contributor Audit: {args.since_tag}..{args.until} ===")
-    print()
+    logger.info(f"=== Contributor Audit: {args.since_tag}..{args.until} ===")
+    logger.info()
 
     # ---- 1. Git commit authors ----
-    print("[1/3] Scanning git commit authors...")
+    logger.info("[1/3] Scanning git commit authors...")
     commit_contribs, commit_unknowns = collect_commit_authors(args.since_tag, args.until)
-    print(f"      Found {len(commit_contribs)} contributor(s) from commits.")
+    logger.info(f"      Found {len(commit_contribs)} contributor(s) from commits.")
 
     # ---- 2. Co-authored-by trailers ----
-    print("[2/3] Scanning Co-authored-by trailers...")
+    logger.info("[2/3] Scanning Co-authored-by trailers...")
     coauthor_contribs, coauthor_unknowns = collect_co_authors(args.since_tag, args.until)
-    print(f"      Found {len(coauthor_contribs)} contributor(s) from co-author trailers.")
+    logger.info(f"      Found {len(coauthor_contribs)} contributor(s) from co-author trailers.")
 
     # ---- 3. Salvaged PRs ----
-    print("[3/3] Scanning salvaged/cherry-picked PR descriptions...")
+    logger.info("[3/3] Scanning salvaged/cherry-picked PR descriptions...")
     salvage_contribs, salvage_pr_refs = collect_salvaged_contributors(args.since_tag, args.until)
-    print(f"      Found {len(salvage_contribs)} contributor(s) from salvaged PRs.")
+    logger.info(f"      Found {len(salvage_contribs)} contributor(s) from salvaged PRs.")
 
     # ---- Merge all contributors ----
     all_contributors = defaultdict(set)
@@ -385,9 +390,9 @@ def main():
     all_unknowns = {e: n for e, n in all_unknowns.items() if not is_ignored(n, e)}
 
     # ---- Output ----
-    print()
-    print(f"=== All Contributors ({len(all_contributors)}) ===")
-    print()
+    logger.info()
+    logger.info(f"=== All Contributors ({len(all_contributors)}) ===")
+    logger.info()
 
     # Sort by handle, case-insensitive
     for handle in sorted(all_contributors.keys(), key=str.lower):
@@ -397,16 +402,16 @@ def main():
         if handle in salvage_pr_refs:
             pr_nums = salvage_pr_refs[handle]
             extra = f"  (PRs: {', '.join(f'#{n}' for n in pr_nums)})"
-        print(f"  @{handle}  [{source_str}]{extra}")
+        logger.info(f"  @{handle}  [{source_str}]{extra}")
 
     # ---- Unknown emails ----
     if all_unknowns:
-        print()
-        print(f"=== Unknown Emails ({len(all_unknowns)}) ===")
-        print("These emails are not in AUTHOR_MAP and should be added:")
-        print()
+        logger.info()
+        logger.info(f"=== Unknown Emails ({len(all_unknowns)}) ===")
+        logger.info("These emails are not in AUTHOR_MAP and should be added:")
+        logger.info()
         for email, name in sorted(all_unknowns.items()):
-            print(f'  "{email}": "{name}",')
+            logger.info(f'  "{email}": "{name}",')
 
     # ---- Strict mode: fail CI if new unmapped emails are introduced ----
     if args.strict and all_unknowns:
@@ -429,15 +434,15 @@ def main():
             new_unknowns = all_unknowns
 
         if new_unknowns:
-            print()
-            print(f"=== STRICT MODE FAILURE: {len(new_unknowns)} new unmapped email(s) ===")
-            print("Add these to AUTHOR_MAP in scripts/release.py before merging:")
-            print()
+            logger.info()
+            logger.info(f"=== STRICT MODE FAILURE: {len(new_unknowns)} new unmapped email(s) ===")
+            logger.info("Add these to AUTHOR_MAP in scripts/release.py before merging:")
+            logger.info()
             for email, name in sorted(new_unknowns.items()):
-                print(f'    "{email}": "<github-username>",')
-            print()
-            print("To find the GitHub username:")
-            print("  gh api 'search/users?q=EMAIL+in:email' --jq '.items[0].login'")
+                logger.info(f'    "{email}": "<github-username>",')
+            logger.info()
+            logger.info("To find the GitHub username:")
+            logger.info("  gh api 'search/users?q=EMAIL+in:email' --jq '.items[0].login'")
             strict_failed = True
         else:
             strict_failed = False
@@ -446,24 +451,24 @@ def main():
 
     # ---- Release file comparison ----
     if args.release_file:
-        print()
-        print(f"=== Release File Check: {args.release_file} ===")
-        print()
+        logger.info()
+        logger.info(f"=== Release File Check: {args.release_file} ===")
+        logger.info()
         mentioned, missing = check_release_file(args.release_file, all_contributors.keys())
-        print(f"  Mentioned in release notes: {len(mentioned)}")
-        print(f"  Missing from release notes: {len(missing)}")
+        logger.info(f"  Mentioned in release notes: {len(mentioned)}")
+        logger.info(f"  Missing from release notes: {len(missing)}")
         if missing:
-            print()
-            print("  Contributors NOT mentioned in the release file:")
+            logger.info()
+            logger.info("  Contributors NOT mentioned in the release file:")
             for handle in sorted(missing, key=str.lower):
                 sources = sorted(all_contributors[handle])
-                print(f"    @{handle}  [{', '.join(sources)}]")
+                logger.info(f"    @{handle}  [{', '.join(sources)}]")
         else:
-            print()
-            print("  All contributors are mentioned in the release file!")
+            logger.info()
+            logger.info("  All contributors are mentioned in the release file!")
 
-    print()
-    print("Done.")
+    logger.info()
+    logger.info("Done.")
 
     if strict_failed:
         sys.exit(1)

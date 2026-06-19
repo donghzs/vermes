@@ -11,6 +11,9 @@ Config stored in ~/.hermes/config.yaml under:
       telegram: [skill-c]
       cli: []
 """
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import List, Optional, Set
 
 from hermes_cli.config import cfg_get, load_config, save_config
@@ -68,11 +71,11 @@ def _get_categories(skills: List[dict]) -> List[str]:
 def _select_platform() -> Optional[str]:
     """Ask user which platform to configure, or global."""
     options = [("global", "All platforms (global default)")] + list(PLATFORMS.items())
-    print()
-    print(color("  Configure skills for:", Colors.BOLD))
+    logger.info()
+    logger.info(color("  Configure skills for:", Colors.BOLD))
     for i, (key, label) in enumerate(options, 1):
-        print(f"  {i}. {label}")
-    print()
+        logger.info(f"  {i}. {label}")
+    logger.info()
     try:
         raw = input(color("  Select [1]: ", Colors.YELLOW)).strip()
     except (KeyboardInterrupt, EOFError):
@@ -126,11 +129,13 @@ def skills_command(args=None):
     """Entry point for `hermes skills`."""
     from hermes_cli.curses_ui import curses_checklist
 
+
+
     config = load_config()
     skills = _list_all_skills()
 
     if not skills:
-        print(color("  No skills installed.", Colors.DIM))
+        logger.info(color("  No skills installed.", Colors.DIM))
         return
 
     # Step 1: Select platform
@@ -138,12 +143,12 @@ def skills_command(args=None):
     platform_label = PLATFORMS.get(platform, "All platforms") if platform else "All platforms"
 
     # Step 2: Select mode — individual or by category
-    print()
-    print(color(f"  Configure for: {platform_label}", Colors.DIM))
-    print()
-    print("  1. Toggle individual skills")
-    print("  2. Toggle by category")
-    print()
+    logger.info()
+    logger.info(color(f"  Configure for: {platform_label}", Colors.DIM))
+    logger.info()
+    logger.info("  1. Toggle individual skills")
+    logger.info("  2. Toggle by category")
+    logger.info()
     try:
         mode = input(color("  Select [1]: ", Colors.YELLOW)).strip() or "1"
     except (KeyboardInterrupt, EOFError):
@@ -169,9 +174,9 @@ def skills_command(args=None):
         new_disabled = {skills[i]["name"] for i in range(len(skills)) if i not in chosen}
 
     if new_disabled == disabled:
-        print(color("  No changes.", Colors.DIM))
+        logger.info(color("  No changes.", Colors.DIM))
         return
 
     save_disabled_skills(config, new_disabled, platform)
     enabled_count = len(skills) - len(new_disabled)
-    print(color(f"✓ Saved: {enabled_count} enabled, {len(new_disabled)} disabled ({platform_label}).", Colors.GREEN))
+    logger.info(color(f"✓ Saved: {enabled_count} enabled, {len(new_disabled)} disabled ({platform_label}).", Colors.GREEN))

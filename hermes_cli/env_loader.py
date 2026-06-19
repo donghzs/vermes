@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+import logging
 import os
 import sys
 from pathlib import Path
-
 from dotenv import load_dotenv
 from utils import atomic_replace
-
 
 # Env var name suffixes that indicate credential values.  These are the
 # only env vars whose values we sanitize on load — we must not silently
@@ -64,13 +67,13 @@ def _sanitize_loaded_credentials() -> None:
         _WARNED_KEYS.add(key)
         stripped = len(value) - len(cleaned)
         detail = _format_offending_chars(value) or "non-printable"
-        print(
+        logger.info(
             f"  Warning: {key} contained {stripped} non-ASCII character"
             f"{'s' if stripped != 1 else ''} ({detail}) — stripped so the "
             f"key can be sent as an HTTP header.",
             file=sys.stderr,
         )
-        print(
+        logger.info(
             "  This usually means the key was copy-pasted from a PDF, "
             "rich-text editor, or web page that substituted lookalike\n"
             "  Unicode glyphs for ASCII letters. If authentication fails "
@@ -120,6 +123,8 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
         sanitized = _sanitize_env_lines(original)
         if sanitized != original:
             import tempfile
+
+
             fd, tmp = tempfile.mkstemp(
                 dir=str(path.parent), suffix=".tmp", prefix=".env_"
             )

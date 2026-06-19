@@ -23,6 +23,9 @@ Usage:
     all_tools = resolve_toolset("full_stack")
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import List, Dict, Any, Set, Optional
 
 
@@ -717,6 +720,8 @@ def _get_registry_toolset_aliases() -> Dict[str, str]:
     """Return explicit toolset aliases registered in the live registry."""
     try:
         from tools.registry import registry
+
+
         return registry.get_registered_toolset_aliases()
     except Exception:
         return {}
@@ -844,32 +849,32 @@ def get_toolset_info(name: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    print("Toolsets System Demo")
-    print("=" * 60)
+    logger.info("Toolsets System Demo")
+    logger.info("=" * 60)
     
-    print("\nAvailable Toolsets:")
-    print("-" * 40)
+    logger.info("\nAvailable Toolsets:")
+    logger.info("-" * 40)
     for name, toolset in get_all_toolsets().items():
         info = get_toolset_info(name)
         composite = "[composite]" if info["is_composite"] else "[leaf]"
-        print(f"  {composite} {name:20} - {toolset['description']}")
-        print(f"     Tools: {len(info['resolved_tools'])} total")
+        logger.info(f"  {composite} {name:20} - {toolset['description']}")
+        logger.info(f"     Tools: {len(info['resolved_tools'])} total")
     
-    print("\nToolset Resolution Examples:")
-    print("-" * 40)
+    logger.info("\nToolset Resolution Examples:")
+    logger.info("-" * 40)
     for name in ["web", "terminal", "safe", "debugging"]:
         tools = resolve_toolset(name)
-        print(f"\n  {name}:")
-        print(f"    Resolved to {len(tools)} tools: {', '.join(sorted(tools))}")
+        logger.info(f"\n  {name}:")
+        logger.info(f"    Resolved to {len(tools)} tools: {', '.join(sorted(tools))}")
     
-    print("\nMultiple Toolset Resolution:")
-    print("-" * 40)
+    logger.info("\nMultiple Toolset Resolution:")
+    logger.info("-" * 40)
     combined = resolve_multiple_toolsets(["web", "vision", "terminal"])
-    print("  Combining ['web', 'vision', 'terminal']:")
-    print(f"    Result: {', '.join(sorted(combined))}")
+    logger.info("  Combining ['web', 'vision', 'terminal']:")
+    logger.info(f"    Result: {', '.join(sorted(combined))}")
     
-    print("\nCustom Toolset Creation:")
-    print("-" * 40)
+    logger.info("\nCustom Toolset Creation:")
+    logger.info("-" * 40)
     create_custom_toolset(
         name="my_custom",
         description="My custom toolset for specific tasks",
@@ -877,6 +882,6 @@ if __name__ == "__main__":
         includes=["terminal", "vision"]
     )
     custom_info = get_toolset_info("my_custom")
-    print("  Created 'my_custom' toolset:")
-    print(f"    Description: {custom_info['description']}")
-    print(f"    Resolved tools: {', '.join(custom_info['resolved_tools'])}")
+    logger.info("  Created 'my_custom' toolset:")
+    logger.info(f"    Description: {custom_info['description']}")
+    logger.info(f"    Resolved tools: {', '.join(custom_info['resolved_tools'])}")

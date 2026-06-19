@@ -22,6 +22,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get, get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 COLUMNS = [
     "cik",
@@ -78,13 +83,13 @@ def fetch(
         except SystemExit as e:
             # Write empty CSV with header so downstream tools still work,
             # and tell the user clearly.
-            print(f"SEC EDGAR: {e}", file=sys.stderr)
+            logger.warning(f"SEC EDGAR: {e}")
             Path(out_path).parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "w", newline="", encoding="utf-8") as fh:
                 csv.DictWriter(fh, fieldnames=COLUMNS).writeheader()
             return 0
         if resolved_name:
-            print(
+            logger.info(
                 f"Resolved company={company!r} → CIK {cik} ({resolved_name})",
                 file=sys.stderr,
             )
@@ -147,7 +152,7 @@ def fetch(
     if not rows and type_hist:
         top = sorted(type_hist.items(), key=lambda kv: -kv[1])[:8]
         hist_str = ", ".join(f"{t}={n}" for t, n in top)
-        print(
+        logger.info(
             f"Warning: SEC EDGAR CIK {cik} ({name}) has {sum(type_hist.values())} "
             f"recent filings but NONE match types={types}. "
             f"Available form types: {hist_str}.",
@@ -156,7 +161,7 @@ def fetch(
         # Insider-filer heuristic: only Form 3/4/5 → individual person, not a company.
         company_types = {"10-K", "10-Q", "8-K", "20-F", "DEF 14A", "S-1"}
         if not (set(type_hist.keys()) & company_types):
-            print(
+            logger.info(
                 f"Note: CIK {cik} appears to be an INDIVIDUAL filer "
                 f"(insider Form 3/4/5 only), not a corporate registrant. "
                 f"The resolver may have matched an officer/director named "
@@ -176,7 +181,7 @@ def main() -> int:
     a = p.parse_args()
     types = [t for t in (a.types or "").split(",") if t.strip()]
     n = fetch(cik=a.cik, company=a.company, types=types, since=a.since, out_path=a.out)
-    print(f"Wrote {n} EDGAR filing rows to {a.out}")
+    logger.info(f"Wrote {n} EDGAR filing rows to {a.out}")
     return 0
 
 

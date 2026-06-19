@@ -16,6 +16,11 @@ import sys
 
 import requests
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 CANVAS_API_TOKEN = os.environ.get("CANVAS_API_TOKEN", "")
 CANVAS_BASE_URL = os.environ.get("CANVAS_BASE_URL", "").rstrip("/")
 
@@ -28,7 +33,7 @@ def _check_config():
     if not CANVAS_BASE_URL:
         missing.append("CANVAS_BASE_URL")
     if missing:
-        print(
+        logger.info(
             f"Missing required environment variables: {', '.join(missing)}\n"
             "Set them in ~/.hermes/.env or export them in your shell.\n"
             "See the canvas skill SKILL.md for setup instructions.",
@@ -72,7 +77,7 @@ def list_courses(args):
     try:
         courses = _paginated_get(url, params)
     except requests.HTTPError as e:
-        print(f"API error: {e.response.status_code} {e.response.text}", file=sys.stderr)
+        logger.warning(f"API error: {e.response.status_code} {e.response.text}")
         sys.exit(1)
     output = [
         {
@@ -86,7 +91,7 @@ def list_courses(args):
         }
         for c in courses
     ]
-    print(json.dumps(output, indent=2))
+    logger.info(json.dumps(output, indent=2))
 
 
 def list_assignments(args):
@@ -99,7 +104,7 @@ def list_assignments(args):
     try:
         assignments = _paginated_get(url, params)
     except requests.HTTPError as e:
-        print(f"API error: {e.response.status_code} {e.response.text}", file=sys.stderr)
+        logger.warning(f"API error: {e.response.status_code} {e.response.text}")
         sys.exit(1)
     output = [
         {
@@ -114,7 +119,7 @@ def list_assignments(args):
         }
         for a in assignments
     ]
-    print(json.dumps(output, indent=2))
+    logger.info(json.dumps(output, indent=2))
 
 
 # =========================================================================

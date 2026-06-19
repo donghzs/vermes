@@ -64,6 +64,11 @@ import re
 import sys
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 
@@ -476,9 +481,9 @@ def main():
     plan = json.loads(Path(args.plan_json).read_text())
     errors = validate_plan(plan)
     if errors:
-        print("Plan validation failed:", file=sys.stderr)
+        logger.warning("Plan validation failed:")
         for e in errors:
-            print(f"  - {e}", file=sys.stderr)
+            logger.warning(f"  - {e}")
         sys.exit(2)
 
     brief = render_brief(plan)
@@ -487,14 +492,14 @@ def main():
 
     Path(args.out).write_text(setup)
     os.chmod(args.out, 0o755)
-    print(f"Wrote {args.out}")
+    logger.info(f"Wrote {args.out}")
 
     if args.brief_out:
         Path(args.brief_out).write_text(brief)
-        print(f"Wrote {args.brief_out}")
+        logger.info(f"Wrote {args.brief_out}")
     if args.team_out:
         Path(args.team_out).write_text(team)
-        print(f"Wrote {args.team_out}")
+        logger.info(f"Wrote {args.team_out}")
 
 
 if __name__ == "__main__":

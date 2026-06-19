@@ -9,33 +9,38 @@ import getpass
 
 from hermes_cli.colors import Colors, color
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 # ─── Print Helpers ────────────────────────────────────────────────────────────
 
 
 def print_info(text: str) -> None:
     """Print a dim informational message."""
-    print(color(f"  {text}", Colors.DIM))
+    logger.info(color(f"  {text}", Colors.DIM))
 
 
 def print_success(text: str) -> None:
     """Print a green success message with ✓ prefix."""
-    print(color(f"✓ {text}", Colors.GREEN))
+    logger.info(color(f"✓ {text}", Colors.GREEN))
 
 
 def print_warning(text: str) -> None:
     """Print a yellow warning message with ⚠ prefix."""
-    print(color(f"⚠ {text}", Colors.YELLOW))
+    logger.info(color(f"⚠ {text}", Colors.YELLOW))
 
 
 def print_error(text: str) -> None:
     """Print a red error message with ✗ prefix."""
-    print(color(f"✗ {text}", Colors.RED))
+    logger.info(color(f"✗ {text}", Colors.RED))
 
 
 def print_header(text: str) -> None:
     """Print a bold yellow header."""
-    print(color(f"\n  {text}", Colors.YELLOW))
+    logger.info(color(f"\n  {text}", Colors.YELLOW))
 
 
 # ─── Input Prompts ────────────────────────────────────────────────────────────
@@ -65,7 +70,7 @@ def prompt(
         value = value.strip()
         return value if value else (default or "")
     except (KeyboardInterrupt, EOFError):
-        print()
+        logger.info()
         return ""
 
 

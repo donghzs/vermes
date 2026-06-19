@@ -23,6 +23,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 PARTIES_URL = "https://data.cityofnewyork.us/resource/636b-3b5g.json"
 MASTER_URL = "https://data.cityofnewyork.us/resource/bnx9-e6tj.json"
 
@@ -116,7 +121,7 @@ def fetch(
             try:
                 rows = get_json(url)
             except Exception as e:  # noqa: BLE001
-                print(f"ACRIS master lookup failed for chunk: {e}", file=sys.stderr)
+                logger.warning(f"ACRIS master lookup failed for chunk: {e}")
                 continue
             if isinstance(rows, list):
                 for r in rows:
@@ -161,7 +166,7 @@ def fetch(
             filters.append(f"name={name!r}")
         if address:
             filters.append(f"address={address!r}")
-        print(
+        logger.info(
             f"NYC ACRIS: 0 records for {', '.join(filters)}. "
             "ACRIS covers ONLY NYC (5 boroughs). For property records elsewhere, "
             "search the relevant county recorder directly.",
@@ -195,7 +200,7 @@ def main() -> int:
         out_path=a.out,
         enrich=not a.no_enrich,
     )
-    print(f"Wrote {n} NYC ACRIS rows to {a.out}")
+    logger.info(f"Wrote {n} NYC ACRIS rows to {a.out}")
     return 0
 
 

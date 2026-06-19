@@ -4852,7 +4852,7 @@ def _poll_registration(
         # Success
         if res.get("client_id") and res.get("client_secret"):
             if poll_count > 0:
-                print()  # newline after "Fetching configuration results..." dots
+                logger.info()  # newline after "Fetching configuration results..." dots
             return {
                 "app_id": res["client_id"],
                 "app_secret": res["client_secret"],
@@ -4864,7 +4864,7 @@ def _poll_registration(
         error = res.get("error", "")
         if error in {"access_denied", "expired_token"}:
             if poll_count > 0:
-                print()
+                logger.info()
             logger.warning("[Feishu onboard] Registration %s", error)
             return None
 
@@ -4872,7 +4872,7 @@ def _poll_registration(
         time.sleep(interval)
 
     if poll_count > 0:
-        print()
+        logger.info()
     logger.warning("[Feishu onboard] Poll timed out after %ds", expire_in)
     return None
 
@@ -5026,16 +5026,16 @@ def _qr_register_inner(
     print("  Connecting to Feishu / Lark...", end="", flush=True)
     _init_registration(initial_domain)
     begin = _begin_registration(initial_domain)
-    print(" done.")
+    logger.info(" done.")
 
-    print()
+    logger.info()
     qr_url = begin["qr_url"]
     if _render_qr(qr_url):
-        print(f"\n  Scan the QR code above, or open this URL directly:\n  {qr_url}")
+        logger.info(f"\n  Scan the QR code above, or open this URL directly:\n  {qr_url}")
     else:
-        print(f"  Open this URL in Feishu / Lark on your phone:\n\n  {qr_url}\n")
-        print("  Tip: pip install qrcode  to display a scannable QR code here next time")
-    print()
+        logger.info(f"  Open this URL in Feishu / Lark on your phone:\n\n  {qr_url}\n")
+        logger.info("  Tip: pip install qrcode  to display a scannable QR code here next time")
+    logger.info()
 
     result = _poll_registration(
         device_code=begin["device_code"],

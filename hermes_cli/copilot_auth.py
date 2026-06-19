@@ -192,7 +192,7 @@ def copilot_device_code_login(
             device_data = json.loads(resp.read().decode())
     except Exception as exc:
         logger.error("Failed to initiate device authorization: %s", exc)
-        print(f"  ✗ Failed to start device authorization: {exc}")
+        logger.info(f"  ✗ Failed to start device authorization: {exc}")
         return None
 
     verification_uri = device_data.get("verification_uri", "https://github.com/login/device")
@@ -201,14 +201,14 @@ def copilot_device_code_login(
     interval = max(device_data.get("interval", _DEVICE_CODE_POLL_INTERVAL), 1)
 
     if not device_code or not user_code:
-        print("  ✗ GitHub did not return a device code.")
+        logger.info("  ✗ GitHub did not return a device code.")
         return None
 
     # Step 2: Show instructions
-    print()
-    print(f"  Open this URL in your browser: {verification_uri}")
-    print(f"  Enter this code: {user_code}")
-    print()
+    logger.info()
+    logger.info(f"  Open this URL in your browser: {verification_uri}")
+    logger.info(f"  Enter this code: {user_code}")
+    logger.info()
     print("  Waiting for authorization...", end="", flush=True)
 
     # Step 3: Poll for completion
@@ -241,7 +241,7 @@ def copilot_device_code_login(
             continue
 
         if result.get("access_token"):
-            print(" ✓")
+            logger.info(" ✓")
             return result["access_token"]
 
         error = result.get("error", "")
@@ -258,20 +258,20 @@ def copilot_device_code_login(
             print(".", end="", flush=True)
             continue
         elif error == "expired_token":
-            print()
-            print("  ✗ Device code expired. Please try again.")
+            logger.info()
+            logger.info("  ✗ Device code expired. Please try again.")
             return None
         elif error == "access_denied":
-            print()
-            print("  ✗ Authorization was denied.")
+            logger.info()
+            logger.info("  ✗ Authorization was denied.")
             return None
         elif error:
-            print()
-            print(f"  ✗ Authorization failed: {error}")
+            logger.info()
+            logger.info(f"  ✗ Authorization failed: {error}")
             return None
 
-    print()
-    print("  ✗ Timed out waiting for authorization.")
+    logger.info()
+    logger.info("  ✗ Timed out waiting for authorization.")
     return None
 
 

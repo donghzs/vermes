@@ -13,7 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import o
+import logging
+
+logger = logging.getLogger(__name__)
+s
 import sys
 from pathlib import Path
 from typing import Optional
@@ -23,10 +27,8 @@ from hermes_constants import get_hermes_home
 from plugins.google_meet import process_manager as pm
 from plugins.google_meet.meet_bot import _is_safe_meet_url
 
-
 def _auth_state_path() -> Path:
     return Path(get_hermes_home()) / "workspace" / "meetings" / "auth.json"
-
 
 # ---------------------------------------------------------------------------
 # argparse wiring
@@ -94,12 +96,11 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
         # missing at import time etc.), leave the subparser present but
         # flag it. The argparse dispatch will surface a clear error.
         def _node_unavailable(args):
-            print(f"hermes meet node: module unavailable ({e})")
+            logger.info(f"hermes meet node: module unavailable ({e})")
             return 1
         node_p.set_defaults(func=_node_unavailable)
 
     subparser.set_defaults(func=meet_command)
-
 
 # ---------------------------------------------------------------------------
 # Dispatch
@@ -108,7 +109,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
 def meet_command(args: argparse.Namespace) -> int:
     sub = getattr(args, "meet_command", None)
     if not sub:
-        print("usage: hermes meet {setup,auth,join,status,transcript,say,stop,node}")
+        logger.info("usage: hermes meet {setup,auth,join,status,transcript,say,stop,node}")
         return 2
     if sub == "setup":
         return _cmd_setup()
@@ -141,12 +142,11 @@ def meet_command(args: argparse.Namespace) -> int:
         # whatever its subparsers wired.
         fn = getattr(args, "func", None)
         if fn is None or fn is meet_command:
-            print("usage: hermes meet node {run,list,approve,remove,status,ping}")
+            logger.info("usage: hermes meet node {run,list,approve,remove,status,ping}")
             return 2
         return fn(args)
-    print(f"unknown subcommand: {sub}")
+    logger.info(f"unknown subcommand: {sub}")
     return 2
-
 
 # ---------------------------------------------------------------------------
 # Subcommand handlers
@@ -155,12 +155,12 @@ def meet_command(args: argparse.Namespace) -> int:
 def _cmd_setup() -> int:
     import platform as _p
 
-    print("google_meet preflight")
-    print("---------------------")
+    logger.info("google_meet preflight")
+    logger.info("---------------------")
 
     system = _p.system()
     system_ok = system in {"Linux", "Darwin"}
-    print(f"  platform       : {system}  [{'ok' if system_ok else 'unsupported'}]")
+    logger.info(f"  platform       : {system}  [{'ok' if system_ok else 'unsupported'}]")
 
     try:
         import playwright  # noqa: F401
@@ -169,7 +169,7 @@ def _cmd_setup() -> int:
     except ImportError:
         pw_ok = False
         pw_msg = "NOT installed — run: pip install playwright"
-    print(f"  playwright     : {pw_msg}")
+    logger.info(f"  playwright     : {pw_msg}")
 
     chromium_ok = False
     chromium_msg = "unknown"
@@ -191,26 +191,25 @@ def _cmd_setup() -> int:
                     chromium_msg = f"probe failed: {e}"
         except Exception as e:
             chromium_msg = f"probe failed: {e}"
-    print(f"  chromium       : {chromium_msg}")
+    logger.info(f"  chromium       : {chromium_msg}")
 
     auth_path = _auth_state_path()
     auth_ok = auth_path.is_file()
-    print(
+    logger.info(
         "  google auth    : "
         + (f"ok ({auth_path})" if auth_ok else "not saved — run: hermes meet auth")
     )
 
-    print()
+    logger.info()
     all_ok = system_ok and pw_ok and chromium_ok
     if all_ok:
-        print(
+        logger.info(
             "ready. Join a meeting:  "
             "hermes meet join https://meet.google.com/abc-defg-hij"
         )
     else:
-        print("not ready yet — fix the items above.")
+        logger.info("not ready yet — fix the items above.")
     return 0 if all_ok else 1
-
 
 def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
     """Install the plugin's prerequisites.
@@ -232,7 +231,7 @@ def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
 
     system = _p.system()
     if system not in {"Linux", "Darwin"}:
-        print(f"google_meet install: {system} is not supported (linux/macos only)")
+        logger.info(f"google_meet install: {system} is not supported (linux/macos only)")
         return 1
 
     def _confirm(prompt: str) -> bool:
@@ -244,54 +243,54 @@ def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
             return False
         return ans in {"y", "yes"}
 
-    print("google_meet install")
-    print("-------------------")
+    logger.info("google_meet install")
+    logger.info("-------------------")
 
     # 1) pip deps — always safe, venv-scoped.
     pip_pkgs = ["playwright", "websockets"]
-    print(f"\n[1/3] pip install: {' '.join(pip_pkgs)}")
+    logger.info(f"\n[1/3] pip install: {' '.join(pip_pkgs)}")
     try:
         res = _sp.run(
             [sys.executable, "-m", "pip", "install", "--upgrade", *pip_pkgs],
             check=False,
         )
         if res.returncode != 0:
-            print("  pip install failed")
+            logger.info("  pip install failed")
             return 1
     except Exception as e:
-        print(f"  pip install failed: {e}")
+        logger.info(f"  pip install failed: {e}")
         return 1
 
     # 2) Playwright browsers — pulls chromium (~300MB first run).
-    print("\n[2/3] python -m playwright install chromium")
+    logger.info("\n[2/3] python -m playwright install chromium")
     try:
         res = _sp.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],
             check=False,
         )
         if res.returncode != 0:
-            print("  playwright install failed (may already be installed)")
+            logger.info("  playwright install failed (may already be installed)")
     except Exception as e:
-        print(f"  playwright install failed: {e}")
+        logger.info(f"  playwright install failed: {e}")
         return 1
 
     # 3) Platform audio deps for realtime mode.
     if realtime:
-        print("\n[3/3] realtime audio deps")
+        logger.info("\n[3/3] realtime audio deps")
         if system == "Linux":
             if _shutil.which("paplay") and _shutil.which("pactl"):
-                print("  pulseaudio-utils already installed.")
+                logger.info("  pulseaudio-utils already installed.")
             else:
                 if not _confirm(
                     "  install pulseaudio-utils? this runs `sudo apt-get install -y pulseaudio-utils`"
                 ):
-                    print("  skipped (you can run it manually later)")
+                    logger.info("  skipped (you can run it manually later)")
                 else:
                     cmd = ["sudo", "apt-get", "install", "-y", "pulseaudio-utils"]
-                    print(f"  $ {' '.join(cmd)}")
+                    logger.info(f"  $ {' '.join(cmd)}")
                     res = _sp.run(cmd, check=False)
                     if res.returncode != 0:
-                        print("  apt install failed — install pulseaudio-utils manually")
+                        logger.info("  apt install failed — install pulseaudio-utils manually")
         elif system == "Darwin":
             have_bh = False
             try:
@@ -306,40 +305,39 @@ def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
             if not have_ffmpeg:
                 needs.append("ffmpeg")
             if not needs:
-                print("  BlackHole and ffmpeg already installed.")
+                logger.info("  BlackHole and ffmpeg already installed.")
             elif not _shutil.which("brew"):
-                print(
+                logger.info(
                     "  missing: " + ", ".join(needs) + "\n"
                     "  install Homebrew first (https://brew.sh) or install the packages manually."
                 )
             else:
                 if not _confirm(f"  install via brew: {' '.join(needs)}?"):
-                    print("  skipped (you can run it manually later)")
+                    logger.info("  skipped (you can run it manually later)")
                 else:
                     cmd = ["brew", "install", *needs]
-                    print(f"  $ {' '.join(cmd)}")
+                    logger.info(f"  $ {' '.join(cmd)}")
                     res = _sp.run(cmd, check=False)
                     if res.returncode != 0:
-                        print("  brew install failed — install them manually")
-            print(
+                        logger.info("  brew install failed — install them manually")
+            logger.info(
                 "\n  NOTE: macOS does not auto-route audio. Open\n"
                 "    System Settings → Sound → Input\n"
                 "  and select 'BlackHole 2ch' before starting a realtime meeting.\n"
                 "  hermes will not switch your default input for you."
             )
     else:
-        print("\n[3/3] skipped (pass --realtime to install audio tooling too)")
+        logger.info("\n[3/3] skipped (pass --realtime to install audio tooling too)")
 
-    print("\ndone. verify with: hermes meet setup")
+    logger.info("\ndone. verify with: hermes meet setup")
     return 0
-
 
 def _cmd_auth() -> int:
     """Open a headed Chromium, let the user sign in, save storage_state."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print(
+        logger.info(
             "playwright is not installed. run:\n"
             "  pip install playwright && python -m playwright install chromium"
         )
@@ -348,8 +346,8 @@ def _cmd_auth() -> int:
     path = _auth_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"opening Chromium — sign in to Google, then return here and press Enter.")
-    print(f"saving storage state to: {path}")
+    logger.info(f"opening Chromium — sign in to Google, then return here and press Enter.")
+    logger.info(f"saving storage state to: {path}")
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=False)
@@ -363,11 +361,10 @@ def _cmd_auth() -> int:
             context.storage_state(path=str(path))
             browser.close()
     except Exception as e:
-        print(f"auth failed: {e}")
+        logger.info(f"auth failed: {e}")
         return 1
-    print("saved. you can now run: hermes meet join <url>")
+    logger.info("saved. you can now run: hermes meet join <url>")
     return 0
-
 
 def _cmd_join(
     url: str,
@@ -379,7 +376,7 @@ def _cmd_join(
     node: Optional[str] = None,
 ) -> int:
     if not _is_safe_meet_url(url):
-        print(f"refusing: not a meet.google.com URL: {url}")
+        logger.info(f"refusing: not a meet.google.com URL: {url}")
         return 2
     if node:
         # Remote: go through NodeClient.
@@ -387,12 +384,12 @@ def _cmd_join(
             from plugins.google_meet.node.registry import NodeRegistry
             from plugins.google_meet.node.client import NodeClient
         except ImportError as e:
-            print(f"node module unavailable: {e}")
+            logger.info(f"node module unavailable: {e}")
             return 1
         reg = NodeRegistry()
         entry = reg.resolve(node if node != "auto" else None)
         if entry is None:
-            print(f"no registered node matches {node!r}")
+            logger.info(f"no registered node matches {node!r}")
             return 1
         client = NodeClient(url=entry["url"], token=entry["token"])
         try:
@@ -401,9 +398,9 @@ def _cmd_join(
                 headed=headed, mode=mode,
             )
         except Exception as e:
-            print(f"remote start_bot failed: {e}")
+            logger.info(f"remote start_bot failed: {e}")
             return 1
-        print(json.dumps({"node": entry.get("name"), **res}, indent=2))
+        logger.info(json.dumps({"node": entry.get("name"), **res}, indent=2))
         return 0 if res.get("ok") else 1
 
     auth = _auth_state_path()
@@ -415,61 +412,57 @@ def _cmd_join(
         auth_state=str(auth) if auth.is_file() else None,
         mode=mode,
     )
-    print(json.dumps(res, indent=2))
+    logger.info(json.dumps(res, indent=2))
     return 0 if res.get("ok") else 1
-
 
 def _cmd_say(text: str, node: Optional[str] = None) -> int:
     if not (text or "").strip():
-        print("refusing: empty text")
+        logger.info("refusing: empty text")
         return 2
     if node:
         try:
             from plugins.google_meet.node.registry import NodeRegistry
             from plugins.google_meet.node.client import NodeClient
+
         except ImportError as e:
-            print(f"node module unavailable: {e}")
+            logger.info(f"node module unavailable: {e}")
             return 1
         reg = NodeRegistry()
         entry = reg.resolve(node if node != "auto" else None)
         if entry is None:
-            print(f"no registered node matches {node!r}")
+            logger.info(f"no registered node matches {node!r}")
             return 1
         client = NodeClient(url=entry["url"], token=entry["token"])
         try:
             res = client.say(text)
         except Exception as e:
-            print(f"remote say failed: {e}")
+            logger.info(f"remote say failed: {e}")
             return 1
-        print(json.dumps({"node": entry.get("name"), **res}, indent=2))
+        logger.info(json.dumps({"node": entry.get("name"), **res}, indent=2))
         return 0 if res.get("ok") else 1
 
     res = pm.enqueue_say(text)
-    print(json.dumps(res, indent=2))
+    logger.info(json.dumps(res, indent=2))
     return 0 if res.get("ok") else 1
-
 
 def _cmd_status() -> int:
     res = pm.status()
-    print(json.dumps(res, indent=2))
+    logger.info(json.dumps(res, indent=2))
     return 0 if res.get("ok") else 1
-
 
 def _cmd_transcript(last: Optional[int]) -> int:
     res = pm.transcript(last=last)
     if not res.get("ok"):
-        print(json.dumps(res, indent=2))
+        logger.info(json.dumps(res, indent=2))
         return 1
     for ln in res.get("lines", []):
-        print(ln)
+        logger.info(ln)
     return 0
-
 
 def _cmd_stop() -> int:
     res = pm.stop(reason="hermes meet stop")
-    print(json.dumps(res, indent=2))
+    logger.info(json.dumps(res, indent=2))
     return 0 if res.get("ok") else 1
-
 
 if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(prog="hermes meet")

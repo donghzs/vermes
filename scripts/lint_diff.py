@@ -25,6 +25,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def _load_json(path: Path | None) -> list[dict]:
     if path is None or not path.exists() or path.stat().st_size == 0:
@@ -32,7 +37,7 @@ def _load_json(path: Path | None) -> list[dict]:
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
-        print(f"warning: could not parse {path}: {exc}", file=sys.stderr)
+        logger.warning(f"warning: could not parse {path}: {exc}")
         return []
     if not isinstance(data, list):
         return []
@@ -199,7 +204,7 @@ def main() -> int:
     if args.output:
         args.output.write_text(summary)
     else:
-        print(summary)
+        logger.info(summary)
     return 0
 
 

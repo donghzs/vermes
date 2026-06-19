@@ -21,6 +21,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 WP_OPENSEARCH = "https://en.wikipedia.org/w/api.php"
 WP_SUMMARY = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 WD_ACTION = "https://www.wikidata.org/w/api.php"
@@ -73,7 +78,7 @@ def _wp_summary(title: str) -> dict:
     try:
         return get_json(url)  # type: ignore[return-value]
     except Exception as e:  # noqa: BLE001
-        print(f"Wikipedia summary lookup for {title!r} failed: {e}", file=sys.stderr)
+        logger.warning(f"Wikipedia summary lookup for {title!r} failed: {e}")
         return {}
 
 
@@ -104,7 +109,7 @@ def _wd_lookup_by_qid(qid: str) -> dict:
     try:
         data = get_json(url)
     except Exception as e:  # noqa: BLE001
-        print(f"Wikidata wbgetentities for {qid} failed: {e}", file=sys.stderr)
+        logger.warning(f"Wikidata wbgetentities for {qid} failed: {e}")
         return {}
     if not isinstance(data, dict):
         return {}
@@ -152,7 +157,7 @@ def _wd_lookup_by_qid(qid: str) -> dict:
         try:
             data = get_json(url)
         except Exception as e:  # noqa: BLE001
-            print(f"Wikidata label batch failed: {e}", file=sys.stderr)
+            logger.warning(f"Wikidata label batch failed: {e}")
             continue
         if not isinstance(data, dict):
             continue
@@ -238,7 +243,7 @@ def fetch(query: str, limit: int, no_wikidata: bool, out_path: str) -> int:
         w.writeheader()
         w.writerows(rows)
     if not rows:
-        print(
+        logger.info(
             f"Wikipedia: 0 articles for query={query!r}. "
             "Private individuals not notable enough for a Wikipedia article "
             "won't appear here (the bar is real).",
@@ -259,7 +264,7 @@ def main() -> int:
     p.add_argument("--out", required=True)
     a = p.parse_args()
     n = fetch(query=a.query, limit=a.limit, no_wikidata=a.no_wikidata, out_path=a.out)
-    print(f"Wrote {n} Wikipedia/Wikidata rows to {a.out}")
+    logger.info(f"Wrote {n} Wikipedia/Wikidata rows to {a.out}")
     return 0
 
 

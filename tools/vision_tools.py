@@ -1097,8 +1097,8 @@ if __name__ == "__main__":
     """
     Simple test/demo when run directly
     """
-    print("👁️ Vision Tools Module (Vermes)")
-    print("=" * 50)
+    logger.info("👁️ Vision Tools Module (Vermes)")
+    logger.info("=" * 50)
     
     # Show current vision routing
     try:
@@ -1110,73 +1110,73 @@ if __name__ == "__main__":
         _resolved = _resolve_real_provider(_provider, _model)
         _vision_model = _PROVIDER_VISION_MODELS.get(_resolved)
         
-        print(f"📋 当前 provider: {_provider}")
-        print(f"📋 当前 model: {_model}")
+        logger.info(f"📋 当前 provider: {_provider}")
+        logger.info(f"📋 当前 model: {_model}")
         if _vision_model and _vision_model != _model:
-            print(f"📋 视觉专用 model: {_vision_model}")
+            logger.info(f"📋 视觉专用 model: {_vision_model}")
         
         # Check native support
         if _supports_media_in_tool_results(_provider, _model):
-            print(f"✅ {_provider}/{_model} 支持原生视觉（native fast path）")
+            logger.info(f"✅ {_provider}/{_model} 支持原生视觉（native fast path）")
         elif _vision_model:
-            print(f"✅ {_provider} 有专用视觉模型: {_vision_model}")
+            logger.info(f"✅ {_provider} 有专用视觉模型: {_vision_model}")
         else:
-            print(f"⚠️ {_provider}/{_model} 不支持视觉，将检查其他路径")
+            logger.info(f"⚠️ {_provider}/{_model} 不支持视觉，将检查其他路径")
 
         # Show cross-provider candidates
-        print("\n📋 已知支持视觉的供应商：")
+        logger.info("\n📋 已知支持视觉的供应商：")
         for p, m in _PROVIDER_VISION_MODELS.items():
             marker = " ← 当前" if p == _resolved else ""
-            print(f"  • {p}: {m}{marker}")
+            logger.info(f"  • {p}: {m}{marker}")
     except Exception as e:
-        print(f"⚠️ 无法读取当前配置: {e}")
+        logger.info(f"⚠️ 无法读取当前配置: {e}")
     
     # Check if vision is available via any path
     api_available = check_vision_requirements()
     
     if not api_available:
-        print("❌ 没有可用的视觉分析路径")
-        print("请配置以下任一方式：")
-        print("  1. 使用支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3）")
-        print("  2. 使用带专用视觉模型的提供商（如 xiaomi → mimo-v2-omni）")
-        print("  3. 配置辅助视觉后端（OpenRouter、Nous、Anthropic）")
+        logger.info("❌ 没有可用的视觉分析路径")
+        logger.info("请配置以下任一方式：")
+        logger.info("  1. 使用支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3）")
+        logger.info("  2. 使用带专用视觉模型的提供商（如 xiaomi → mimo-v2-omni）")
+        logger.info("  3. 配置辅助视觉后端（OpenRouter、Nous、Anthropic）")
         sys.exit(1)
     else:
-        print("✅ 视觉分析可用")
+        logger.info("✅ 视觉分析可用")
     
-    print("\n🛠️ Vision tools ready!")
+    logger.info("\n🛠️ Vision tools ready!")
     
     # Show debug mode status
     if _debug.active:
-        print(f"🐛 Debug mode ENABLED - Session ID: {_debug.session_id}")
-        print(f"   Debug logs will be saved to: ./logs/vision_tools_debug_{_debug.session_id}.json")
+        logger.info(f"🐛 Debug mode ENABLED - Session ID: {_debug.session_id}")
+        logger.info(f"   Debug logs will be saved to: ./logs/vision_tools_debug_{_debug.session_id}.json")
     else:
-        print("🐛 Debug mode disabled (set VISION_TOOLS_DEBUG=true to enable)")
+        logger.info("🐛 Debug mode disabled (set VISION_TOOLS_DEBUG=true to enable)")
     
-    print("\nBasic usage:")
-    print("  from vision_tools import vision_analyze_tool")
-    print("  import asyncio")
-    print("")
-    print("  async def main():")
-    print("      result = await vision_analyze_tool(")
-    print("          image_url='https://example.com/image.jpg',")
-    print("          user_prompt='What do you see in this image?'")
-    print("      )")
-    print("      print(result)")
-    print("  asyncio.run(main())")
+    logger.info("\nBasic usage:")
+    logger.info("  from vision_tools import vision_analyze_tool")
+    logger.info("  import asyncio")
+    logger.info("")
+    logger.info("  async def main():")
+    logger.info("      result = await vision_analyze_tool(")
+    logger.info("          image_url='https://example.com/image.jpg',")
+    logger.info("          user_prompt='What do you see in this image?'")
+    logger.info("      )")
+    logger.info("      logger.info(result)")
+    logger.info("  asyncio.run(main())")
     
-    print("\nExample prompts:")
-    print("  - 'What architectural style is this building?'")
-    print("  - 'Describe the emotions and mood in this image'")
-    print("  - 'What text can you read in this image?'")
-    print("  - 'Identify any safety hazards visible'")
-    print("  - 'What products or brands are shown?'")
+    logger.info("\nExample prompts:")
+    logger.info("  - 'What architectural style is this building?'")
+    logger.info("  - 'Describe the emotions and mood in this image'")
+    logger.info("  - 'What text can you read in this image?'")
+    logger.info("  - 'Identify any safety hazards visible'")
+    logger.info("  - 'What products or brands are shown?'")
     
-    print("\nDebug mode:")
-    print("  # Enable debug logging")
-    print("  export VISION_TOOLS_DEBUG=true")
-    print("  # Debug logs capture all vision analysis calls and results")
-    print("  # Logs saved to: ./logs/vision_tools_debug_UUID.json")
+    logger.info("\nDebug mode:")
+    logger.info("  # Enable debug logging")
+    logger.info("  export VISION_TOOLS_DEBUG=true")
+    logger.info("  # Debug logs capture all vision analysis calls and results")
+    logger.info("  # Logs saved to: ./logs/vision_tools_debug_UUID.json")
 
 
 # ---------------------------------------------------------------------------

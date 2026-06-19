@@ -866,7 +866,7 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
 def run_mcp_server(verbose: bool = False) -> None:
     """Start the Hermes MCP server on stdio."""
     if not _MCP_SERVER_AVAILABLE:
-        print(
+        logger.info(
             "Error: MCP server requires the 'mcp' package.\n"
             f"Install with: {sys.executable} -m pip install 'mcp'",
             file=sys.stderr,

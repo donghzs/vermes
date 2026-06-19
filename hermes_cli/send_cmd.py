@@ -28,15 +28,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
+import s
+import logging
+
+logger = logging.getLogger(__name__)
+ys
 from pathlib import Path
 from typing import Optional
-
 
 _USAGE_EXIT = 2
 _FAILURE_EXIT = 1
 _SUCCESS_EXIT = 0
-
 
 def _read_message_body(
     positional: Optional[str],
@@ -60,7 +62,7 @@ def _read_message_body(
         try:
             return Path(file_path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
-            print(f"hermes send: cannot read {file_path}: {exc}", file=sys.stderr)
+            logger.warning(f"hermes send: cannot read {file_path}: {exc}")
             sys.exit(_USAGE_EXIT)
 
     # Piped input: only consume stdin when it is not a TTY. Reading from a
@@ -73,13 +75,11 @@ def _read_message_body(
 
     return None
 
-
 def _resolve_target(arg_to: Optional[str]) -> Optional[str]:
     """Return a cleaned ``--to`` value, or ``None`` when nothing is set."""
     if arg_to and arg_to.strip():
         return arg_to.strip()
     return None
-
 
 def _emit_result(
     result_json: str,
@@ -100,21 +100,21 @@ def _emit_result(
         payload = {"error": "invalid JSON from send_message_tool", "raw": result_json}
 
     if json_mode:
-        print(json.dumps(payload, indent=2))
+        logger.info(json.dumps(payload, indent=2))
     elif quiet:
         pass
     else:
         if payload.get("error"):
-            print(f"hermes send: {payload['error']}", file=sys.stderr)
+            logger.warning(f"hermes send: {payload['error']}")
         elif payload.get("success"):
             note = payload.get("note")
             if note:
-                print(note)
+                logger.info(note)
             else:
-                print("sent")
+                logger.info("sent")
         else:
             # Unknown shape — dump it so nothing is silently dropped.
-            print(json.dumps(payload, indent=2))
+            logger.info(json.dumps(payload, indent=2))
 
     if payload.get("error"):
         return _FAILURE_EXIT
@@ -124,7 +124,6 @@ def _emit_result(
         return _SUCCESS_EXIT
     # Unknown / unexpected — treat as failure so scripts notice.
     return _FAILURE_EXIT
-
 
 def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
     """Print the channel directory (all configured targets across platforms).
@@ -140,13 +139,13 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
             load_directory,
         )
     except Exception as exc:
-        print(f"hermes send: failed to load channel directory: {exc}", file=sys.stderr)
+        logger.warning(f"hermes send: failed to load channel directory: {exc}")
         return _FAILURE_EXIT
 
     try:
         raw = load_directory()
     except Exception as exc:
-        print(f"hermes send: failed to read channel directory: {exc}", file=sys.stderr)
+        logger.warning(f"hermes send: failed to read channel directory: {exc}")
         return _FAILURE_EXIT
 
     platforms = dict(raw.get("platforms") or {})
@@ -155,7 +154,7 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
         key = platform_filter.strip().lower()
         filtered = {k: v for k, v in platforms.items() if k.lower() == key}
         if not filtered:
-            print(
+            logger.info(
                 f"hermes send: no targets found for platform '{platform_filter}'. "
                 f"Configured: {', '.join(sorted(platforms)) or '(none)'}",
                 file=sys.stderr,
@@ -164,36 +163,35 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
         platforms = filtered
 
     if json_mode:
-        print(json.dumps({"platforms": platforms}, indent=2, default=str))
+        logger.info(json.dumps({"platforms": platforms}, indent=2, default=str))
         return _SUCCESS_EXIT
 
     if not any(platforms.values()):
-        print("No messaging platforms configured or no channels discovered yet.")
-        print("Set one up with `hermes gateway setup`, or run the gateway once so")
-        print("channel discovery can populate ~/.hermes/channel_directory.json.")
+        logger.info("No messaging platforms configured or no channels discovered yet.")
+        logger.info("Set one up with `hermes gateway setup`, or run the gateway once so")
+        logger.info("channel discovery can populate ~/.hermes/channel_directory.json.")
         return _SUCCESS_EXIT
 
     # Human display — when unfiltered, reuse the shared formatter the agent
     # already sees. When filtered, build a minimal view ourselves.
     if platform_filter is None:
-        print(format_directory_for_display())
+        logger.info(format_directory_for_display())
         return _SUCCESS_EXIT
 
     for plat_name in sorted(platforms):
         channels = platforms[plat_name]
-        print(f"{plat_name}:")
+        logger.info(f"{plat_name}:")
         if not channels:
-            print("  (no channels discovered yet)")
+            logger.info("  (no channels discovered yet)")
             continue
         for ch in channels:
             name = ch.get("name", "?")
             chat_id = ch.get("id") or ch.get("chat_id") or ""
             suffix = f"  [{chat_id}]" if chat_id and chat_id != name else ""
-            print(f"  {plat_name}:{name}{suffix}")
-        print()
+            logger.info(f"  {plat_name}:{name}{suffix}")
+        logger.info()
 
     return _SUCCESS_EXIT
-
 
 def _load_hermes_env() -> None:
     """Populate ``os.environ`` from ``~/.hermes/.env`` AND bridge top-level
@@ -273,7 +271,6 @@ def _load_hermes_env() -> None:
             continue
         os.environ[key] = str(val)
 
-
 def cmd_send(args: argparse.Namespace) -> None:
     """Entry point wired into the top-level argparse dispatcher."""
 
@@ -292,7 +289,7 @@ def cmd_send(args: argparse.Namespace) -> None:
 
     target = _resolve_target(getattr(args, "to", None))
     if not target:
-        print(
+        logger.info(
             "hermes send: --to PLATFORM[:channel[:thread]] is required\n"
             "Examples:\n"
             "  hermes send --to telegram \"hello\"\n"
@@ -307,7 +304,7 @@ def cmd_send(args: argparse.Namespace) -> None:
         getattr(args, "file", None),
     )
     if message is None or not message.strip():
-        print(
+        logger.info(
             "hermes send: no message provided. Pass text as a positional "
             "argument, use --file PATH, or pipe data via stdin.",
             file=sys.stderr,
@@ -342,7 +339,6 @@ def cmd_send(args: argparse.Namespace) -> None:
         quiet=getattr(args, "quiet", False),
     )
     sys.exit(exit_code)
-
 
 def register_send_subparser(subparsers) -> argparse.ArgumentParser:
     """Create the ``send`` subparser and return it.
@@ -440,6 +436,5 @@ def register_send_subparser(subparsers) -> argparse.ArgumentParser:
 
     parser.set_defaults(func=cmd_send)
     return parser
-
 
 __all__ = ["cmd_send", "register_send_subparser"]

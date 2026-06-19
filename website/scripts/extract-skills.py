@@ -7,6 +7,11 @@ from collections import Counter
 
 import yaml
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOCAL_SKILL_DIRS = [
     ("skills", "built-in"),
@@ -342,10 +347,10 @@ def main():
     with open(OUTPUT, "w", encoding="utf-8") as f:
         json.dump(all_skills, f, indent=2)
 
-    print(f"Extracted {len(all_skills)} skills to {OUTPUT}")
-    print(f"  {len(local)} local ({sum(1 for s in local if s['source'] == 'built-in')} built-in, "
+    logger.info(f"Extracted {len(all_skills)} skills to {OUTPUT}")
+    logger.info(f"  {len(local)} local ({sum(1 for s in local if s['source'] == 'built-in')} built-in, "
           f"{sum(1 for s in local if s['source'] == 'optional')} optional)")
-    print(f"  {len(external)} from external indexes")
+    logger.info(f"  {len(external)} from external indexes")
 
 
 if __name__ == "__main__":

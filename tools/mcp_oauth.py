@@ -399,14 +399,14 @@ async def _redirect_handler(authorization_url: str) -> None:
         f"  Open this URL in your browser:\n\n"
         f"    {authorization_url}\n"
     )
-    print(msg, file=sys.stderr)
+    logger.warning(msg)
 
     # On a remote SSH session the OAuth provider redirects to
     # http://127.0.0.1:<port>/callback, which reaches the callback server on
     # the *remote* machine — not the user's local machine where the browser
     # opened.  Print a port-forward hint so the user knows to tunnel first.
     if _oauth_port and (os.getenv("SSH_CLIENT") or os.getenv("SSH_TTY")):
-        print(
+        logger.info(
             f"  Remote session detected. The OAuth provider will redirect your browser to\n"
             f"    http://127.0.0.1:{_oauth_port}/callback\n"
             f"  which the callback listener on THIS machine is waiting on. If your browser\n"
@@ -422,13 +422,13 @@ async def _redirect_handler(authorization_url: str) -> None:
         try:
             opened = webbrowser.open(authorization_url)
             if opened:
-                print("  (Browser opened automatically.)\n", file=sys.stderr)
+                logger.warning("  (Browser opened automatically.)\n")
             else:
-                print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
+                logger.warning("  (Could not open browser — please open the URL manually.)\n")
         except Exception:
-            print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
+            logger.warning("  (Could not open browser — please open the URL manually.)\n")
     else:
-        print("  (Headless environment detected — open the URL manually.)\n", file=sys.stderr)
+        logger.warning("  (Headless environment detected — open the URL manually.)\n")
 
 
 async def _wait_for_callback() -> tuple[str, str | None]:

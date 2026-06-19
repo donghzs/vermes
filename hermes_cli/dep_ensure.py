@@ -13,11 +13,16 @@ Deps that degrade gracefully (ripgrep → grep fallback, ffmpeg → skip convers
 don't need ensure_dependency wired in — only hard-fail sites do (TUI needs node,
 browser tool needs agent-browser).
 """
+
 from __future__ import annotations
 
 import os
 import platform
-import shutil
+import shu
+import logging
+
+logger = logging.getLogger(__name__)
+til
 import subprocess
 import sys
 from pathlib import Path
@@ -42,7 +47,6 @@ _DEP_DESCRIPTIONS = {
     "ffmpeg": "ffmpeg (TTS voice messages)",
 }
 
-
 def _has_system_browser() -> bool:
     if _IS_WINDOWS:
         names = ("chrome", "msedge", "chromium")
@@ -52,7 +56,6 @@ def _has_system_browser() -> bool:
         if shutil.which(name):
             return True
     return False
-
 
 def _has_hermes_agent_browser() -> bool:
     from hermes_constants import get_hermes_home
@@ -66,7 +69,6 @@ def _has_hermes_agent_browser() -> bool:
         (home / "node" / "bin" / "agent-browser").is_file()
         or (home / "node_modules" / ".bin" / "agent-browser").is_file()
     )
-
 
 def _find_install_script(
     package_dir: Path | None = None,
@@ -99,7 +101,6 @@ def _find_install_script(
 
     return None, None
 
-
 def ensure_dependency(
     dep: str,
     interactive: bool = True,
@@ -116,8 +117,8 @@ def ensure_dependency(
     if script is None:
         if interactive:
             desc = _DEP_DESCRIPTIONS.get(dep, dep)
-            print(f"  {desc} is not installed and no install script was found.")
-            print(f"  Install {dep} manually and try again.")
+            logger.info(f"  {desc} is not installed and no install script was found.")
+            logger.info(f"  Install {dep} manually and try again.")
         return False
 
     if interactive and sys.stdin.isatty():
@@ -131,10 +132,11 @@ def ensure_dependency(
 
     if shell == "powershell":
         from hermes_constants import get_hermes_home
+
         ps_bin = shutil.which("powershell") or shutil.which("pwsh")
         if not ps_bin:
             if interactive:
-                print("  PowerShell not found. Install PowerShell or run install.ps1 manually.")
+                logger.info("  PowerShell not found. Install PowerShell or run install.ps1 manually.")
             return False
         cmd = [
             ps_bin,

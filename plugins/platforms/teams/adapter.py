@@ -1105,13 +1105,13 @@ def interactive_setup() -> None:
     print_info("You'll need the Teams CLI. If you haven't already:")
     print_info("  npm install -g @microsoft/teams.cli@preview")
     print_info("  teams login")
-    print()
+    logger.info()
     print_info("Then expose port 3978 publicly (devtunnel / ngrok / cloudflared),")
     print_info("and create your bot:")
     print_info("  teams app create --name \"Hermes\" --endpoint \"https://<tunnel>/api/messages\"")
-    print()
+    logger.info()
     print_info("The CLI will print CLIENT_ID, CLIENT_SECRET, and TENANT_ID. Paste them below.")
-    print()
+    logger.info()
 
     client_id = prompt("Client ID", default=existing_id or "")
     if not client_id:
@@ -1131,7 +1131,7 @@ def interactive_setup() -> None:
         return
     save_env_value("TEAMS_TENANT_ID", tenant_id.strip())
 
-    print()
+    logger.info()
     print_info("To find your AAD object ID for the allowlist: teams status --verbose")
     if prompt_yes_no("Restrict access to specific users? (recommended)", True):
         allowed = prompt(
@@ -1147,7 +1147,7 @@ def interactive_setup() -> None:
         save_env_value("TEAMS_ALLOW_ALL_USERS", "true")
         print_warning("⚠️  Open access — anyone who can message the bot can command it.")
 
-    print()
+    logger.info()
     print_success("Teams configuration saved to ~/.hermes/.env")
     print_info("Install the app in Teams:  teams app install --id <teamsAppId>")
     print_info("Restart the gateway:       hermes gateway restart")

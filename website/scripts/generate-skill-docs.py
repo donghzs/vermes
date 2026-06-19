@@ -22,6 +22,11 @@ from typing import Any
 
 import yaml
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 REPO = Path(__file__).resolve().parent.parent.parent
 DOCS = REPO / "website" / "docs"
 SKILLS_PAGES = DOCS / "user-guide" / "skills"
@@ -731,12 +736,12 @@ def write_sidebar(entries):
 
     new_text = text[:i] + skills_subtree + text[end:]
     sidebar_path.write_text(new_text, encoding="utf-8")
-    print(f"Updated sidebar: {sidebar_path}")
+    logger.info(f"Updated sidebar: {sidebar_path}")
 
 
 def main():
     entries = discover_skills()
-    print(f"Discovered {len(entries)} skills")
+    logger.info(f"Discovered {len(entries)} skills")
 
     # Build name -> meta index for related-skill cross-linking
     skill_index: dict[str, dict[str, Any]] = {}
@@ -756,16 +761,16 @@ def main():
         )
         out_path.write_text(content, encoding="utf-8")
         written += 1
-    print(f"Wrote {written} per-skill pages under {SKILLS_PAGES}")
+    logger.info(f"Wrote {written} per-skill pages under {SKILLS_PAGES}")
 
     # Regenerate catalogs
     bundled_catalog = build_catalog_md_bundled(entries)
     (DOCS / "reference" / "skills-catalog.md").write_text(bundled_catalog, encoding="utf-8")
-    print("Updated reference/skills-catalog.md")
+    logger.info("Updated reference/skills-catalog.md")
 
     optional_catalog = build_catalog_md_optional(entries)
     (DOCS / "reference" / "optional-skills-catalog.md").write_text(optional_catalog, encoding="utf-8")
-    print("Updated reference/optional-skills-catalog.md")
+    logger.info("Updated reference/optional-skills-catalog.md")
 
     # Update sidebar
     write_sidebar(entries)

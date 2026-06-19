@@ -1567,17 +1567,17 @@ def interactive_setup() -> None:
     Mirrors the irc/teams style: prompts for the two required vars, plus
     one optional public URL. Writes to ``~/.hermes/.env`` via ``hermes_cli.config``.
     """
-    print()
-    print("LINE Messaging API setup")
-    print("------------------------")
-    print("Create a Messaging API channel at https://developers.line.biz/console/")
-    print("then copy the values below.")
-    print()
+    logger.info()
+    logger.info("LINE Messaging API setup")
+    logger.info("------------------------")
+    logger.info("Create a Messaging API channel at https://developers.line.biz/console/")
+    logger.info("then copy the values below.")
+    logger.info()
 
     try:
         from hermes_cli.config import get_env_var, set_env_var
     except ImportError:
-        print("hermes_cli.config not available; set LINE_* vars manually in ~/.hermes/.env")
+        logger.info("hermes_cli.config not available; set LINE_* vars manually in ~/.hermes/.env")
         return
 
     def _prompt(var: str, prompt: str, *, secret: bool = False) -> None:
@@ -1590,7 +1590,7 @@ def interactive_setup() -> None:
             else:
                 value = input(f"{prompt}{suffix}: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print()
+            logger.info()
             return
         if value:
             set_env_var(var, value)
@@ -1599,7 +1599,7 @@ def interactive_setup() -> None:
     _prompt("LINE_CHANNEL_SECRET", "Channel secret", secret=True)
     _prompt("LINE_PUBLIC_URL", "Public HTTPS base URL (optional, e.g. https://my-tunnel.example.com)")
     _prompt("LINE_ALLOWED_USERS", "Allowed user IDs (comma-separated; blank=skip)")
-    print("Done. Set the webhook URL in the LINE console to "
+    logger.info("Done. Set the webhook URL in the LINE console to "
           "<your-public-url>/line/webhook and enable 'Use webhook'.")
 
 

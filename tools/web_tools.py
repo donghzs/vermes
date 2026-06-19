@@ -1377,8 +1377,8 @@ if __name__ == "__main__":
     """
     Simple test/demo when run directly
     """
-    print("🌐 Standalone Web Tools Module")
-    print("=" * 40)
+    logger.info("🌐 Standalone Web Tools Module")
+    logger.info("=" * 40)
     
     # Check if API keys are available
     web_available = check_web_api_key()
@@ -1390,97 +1390,97 @@ if __name__ == "__main__":
 
     if web_available:
         backend = _get_backend()
-        print(f"✅ Web backend: {backend}")
+        logger.info(f"✅ Web backend: {backend}")
         if backend == "exa":
-            print("   Using Exa API (https://exa.ai)")
+            logger.info("   Using Exa API (https://exa.ai)")
         elif backend == "parallel":
-            print("   Using Parallel API (https://parallel.ai)")
+            logger.info("   Using Parallel API (https://parallel.ai)")
         elif backend == "tavily":
-            print("   Using Tavily API (https://tavily.com)")
+            logger.info("   Using Tavily API (https://tavily.com)")
         elif backend == "searxng":
-            print(f"   Using SearXNG (search only): {os.getenv('SEARXNG_URL', '').strip()}")
+            logger.info(f"   Using SearXNG (search only): {os.getenv('SEARXNG_URL', '').strip()}")
         elif backend == "brave-free":
-            print("   Using Brave Search free tier (search only)")
+            logger.info("   Using Brave Search free tier (search only)")
         elif backend == "ddgs":
-            print("   Using DuckDuckGo via ddgs package (search only)")
+            logger.info("   Using DuckDuckGo via ddgs package (search only)")
         elif firecrawl_url_available:
-            print(f"   Using self-hosted Firecrawl: {os.getenv('FIRECRAWL_API_URL').strip().rstrip('/')}")
+            logger.info(f"   Using self-hosted Firecrawl: {os.getenv('FIRECRAWL_API_URL').strip().rstrip('/')}")
         elif firecrawl_key_available:
-            print("   Using direct Firecrawl cloud API")
+            logger.info("   Using direct Firecrawl cloud API")
         elif tool_gateway_available:
-            print(f"   Using Firecrawl tool-gateway: {_get_firecrawl_gateway_url()}")
+            logger.info(f"   Using Firecrawl tool-gateway: {_get_firecrawl_gateway_url()}")
         else:
-            print("   Firecrawl backend selected but not configured")
+            logger.info("   Firecrawl backend selected but not configured")
     else:
-        print("❌ No web search backend configured")
-        print(
+        logger.info("❌ No web search backend configured")
+        logger.info(
             "Set EXA_API_KEY, PARALLEL_API_KEY, TAVILY_API_KEY, FIRECRAWL_API_KEY, FIRECRAWL_API_URL"
             f"{_firecrawl_backend_help_suffix()}"
         )
 
     if not nous_available:
-        print("❌ No auxiliary model available for LLM content processing")
-        print("Set OPENROUTER_API_KEY, configure Nous Portal, or set OPENAI_BASE_URL + OPENAI_API_KEY")
-        print("⚠️  Without an auxiliary model, LLM content processing will be disabled")
+        logger.info("❌ No auxiliary model available for LLM content processing")
+        logger.info("Set OPENROUTER_API_KEY, configure Nous Portal, or set OPENAI_BASE_URL + OPENAI_API_KEY")
+        logger.info("⚠️  Without an auxiliary model, LLM content processing will be disabled")
     else:
-        print(f"✅ Auxiliary model available: {default_summarizer_model}")
+        logger.info(f"✅ Auxiliary model available: {default_summarizer_model}")
 
     if not web_available:
         sys.exit(1)
 
-    print("🛠️  Web tools ready for use!")
+    logger.info("🛠️  Web tools ready for use!")
     
     if nous_available:
-        print(f"🧠 LLM content processing available with {default_summarizer_model}")
-        print(f"   Default min length for processing: {DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION} chars")
+        logger.info(f"🧠 LLM content processing available with {default_summarizer_model}")
+        logger.info(f"   Default min length for processing: {DEFAULT_MIN_LENGTH_FOR_SUMMARIZATION} chars")
     
     # Show debug mode status
     if _debug.active:
-        print(f"🐛 Debug mode ENABLED - Session ID: {_debug.session_id}")
-        print(f"   Debug logs will be saved to: {_debug.log_dir}/web_tools_debug_{_debug.session_id}.json")
+        logger.info(f"🐛 Debug mode ENABLED - Session ID: {_debug.session_id}")
+        logger.info(f"   Debug logs will be saved to: {_debug.log_dir}/web_tools_debug_{_debug.session_id}.json")
     else:
-        print("🐛 Debug mode disabled (set WEB_TOOLS_DEBUG=true to enable)")
+        logger.info("🐛 Debug mode disabled (set WEB_TOOLS_DEBUG=true to enable)")
     
-    print("\nBasic usage:")
-    print("  from web_tools import web_search_tool, web_extract_tool, web_crawl_tool")
-    print("  import asyncio")
-    print("")
-    print("  # Search (synchronous)")
-    print("  results = web_search_tool('Python tutorials')")
-    print("")
-    print("  # Extract and crawl (asynchronous)")
-    print("  async def main():")
-    print("      content = await web_extract_tool(['https://example.com'])")
-    print("      crawl_data = await web_crawl_tool('example.com', 'Find docs')")
-    print("  asyncio.run(main())")
+    logger.info("\nBasic usage:")
+    logger.info("  from web_tools import web_search_tool, web_extract_tool, web_crawl_tool")
+    logger.info("  import asyncio")
+    logger.info("")
+    logger.info("  # Search (synchronous)")
+    logger.info("  results = web_search_tool('Python tutorials')")
+    logger.info("")
+    logger.info("  # Extract and crawl (asynchronous)")
+    logger.info("  async def main():")
+    logger.info("      content = await web_extract_tool(['https://example.com'])")
+    logger.info("      crawl_data = await web_crawl_tool('example.com', 'Find docs')")
+    logger.info("  asyncio.run(main())")
     
     if nous_available:
-        print("\nLLM-enhanced usage:")
-        print("  # Content automatically processed for pages >5000 chars (default)")
-        print("  content = await web_extract_tool(['https://python.org/about/'])")
-        print("")
-        print("  # Customize processing parameters")
-        print("  crawl_data = await web_crawl_tool(")
-        print("      'docs.python.org',")
-        print("      'Find key concepts',")
-        print("      model='google/gemini-3-flash-preview',")
-        print("      min_length=3000")
-        print("  )")
-        print("")
-        print("  # Disable LLM processing")
-        print("  raw_content = await web_extract_tool(['https://example.com'], use_llm_processing=False)")
+        logger.info("\nLLM-enhanced usage:")
+        logger.info("  # Content automatically processed for pages >5000 chars (default)")
+        logger.info("  content = await web_extract_tool(['https://python.org/about/'])")
+        logger.info("")
+        logger.info("  # Customize processing parameters")
+        logger.info("  crawl_data = await web_crawl_tool(")
+        logger.info("      'docs.python.org',")
+        logger.info("      'Find key concepts',")
+        logger.info("      model='google/gemini-3-flash-preview',")
+        logger.info("      min_length=3000")
+        logger.info("  )")
+        logger.info("")
+        logger.info("  # Disable LLM processing")
+        logger.info("  raw_content = await web_extract_tool(['https://example.com'], use_llm_processing=False)")
     
-    print("\nDebug mode:")
-    print("  # Enable debug logging")
-    print("  export WEB_TOOLS_DEBUG=true")
-    print("  # Debug logs capture:")
-    print("  # - All tool calls with parameters")
-    print("  # - Original API responses")
-    print("  # - LLM compression metrics")
-    print("  # - Final processed results")
-    print("  # Logs saved to: ./logs/web_tools_debug_UUID.json")
+    logger.info("\nDebug mode:")
+    logger.info("  # Enable debug logging")
+    logger.info("  export WEB_TOOLS_DEBUG=true")
+    logger.info("  # Debug logs capture:")
+    logger.info("  # - All tool calls with parameters")
+    logger.info("  # - Original API responses")
+    logger.info("  # - LLM compression metrics")
+    logger.info("  # - Final processed results")
+    logger.info("  # Logs saved to: ./logs/web_tools_debug_UUID.json")
     
-    print("\n📝 Run 'python test_web_tools_llm.py' to test LLM processing capabilities")
+    logger.info("\n📝 Run 'python test_web_tools_llm.py' to test LLM processing capabilities")
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,11 @@ import urllib.request
 from datetime import datetime, timezone
 from http.cookiejar import CookieJar
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -38,7 +43,7 @@ _crumb: str | None = None
 
 
 def print_json(data: dict | list) -> None:
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+    logger.info(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def fmt_price(value) -> str | None:

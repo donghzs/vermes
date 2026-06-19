@@ -1230,16 +1230,16 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
 
     auth_url = f"https://claude.ai/oauth/authorize?{urlencode(params)}"
 
-    print()
-    print("Authorize Hermes with your Claude Pro/Max subscription.")
-    print()
-    print("╭─ Claude Pro/Max Authorization ────────────────────╮")
-    print("│                                                   │")
-    print("│  Open this link in your browser:                  │")
-    print("╰───────────────────────────────────────────────────╯")
-    print()
-    print(f"  {auth_url}")
-    print()
+    logger.info()
+    logger.info("Authorize Hermes with your Claude Pro/Max subscription.")
+    logger.info()
+    logger.info("╭─ Claude Pro/Max Authorization ────────────────────╮")
+    logger.info("│                                                   │")
+    logger.info("│  Open this link in your browser:                  │")
+    logger.info("╰───────────────────────────────────────────────────╯")
+    logger.info()
+    logger.info(f"  {auth_url}")
+    logger.info()
 
     try:
         from hermes_cli.auth import _can_open_graphical_browser as _can_open_gui
@@ -1249,20 +1249,20 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     if _can_open_gui():
         try:
             webbrowser.open(auth_url)
-            print("  (Browser opened automatically)")
+            logger.info("  (Browser opened automatically)")
         except Exception:
             pass
 
-    print()
-    print("After authorizing, you'll see a code. Paste it below.")
-    print()
+    logger.info()
+    logger.info("After authorizing, you'll see a code. Paste it below.")
+    logger.info()
     try:
         auth_code = input("Authorization code: ").strip()
     except (KeyboardInterrupt, EOFError):
         return None
 
     if not auth_code:
-        print("No code entered.")
+        logger.info("No code entered.")
         return None
 
     splits = auth_code.split("#")
@@ -1299,7 +1299,7 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
         with urllib.request.urlopen(req, timeout=15) as resp:
             result = json.loads(resp.read().decode())
     except Exception as e:
-        print(f"Token exchange failed: {e}")
+        logger.info(f"Token exchange failed: {e}")
         return None
 
     access_token = result.get("access_token", "")
@@ -1307,7 +1307,7 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     expires_in = result.get("expires_in", 3600)
 
     if not access_token:
-        print("No access token in response.")
+        logger.info("No access token in response.")
         return None
 
     expires_at_ms = int(time.time() * 1000) + (expires_in * 1000)

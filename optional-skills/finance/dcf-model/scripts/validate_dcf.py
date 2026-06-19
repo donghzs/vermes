@@ -4,6 +4,9 @@ DCF Model Validation Script
 Validates Excel DCF models for formula errors and common DCF mistakes
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import sys
 import json
 from pathlib import Path
@@ -39,6 +42,8 @@ class DCFModelValidator:
             Dict with validation results
         """
         from datetime import datetime
+
+
 
         self.check_sheet_structure()
         self.check_formula_errors()
@@ -250,15 +255,15 @@ def validate_dcf_model(excel_path: str) -> dict:
 def main():
     """Command-line interface"""
     if len(sys.argv) < 2:
-        print("Usage: python validate_dcf.py <excel_file> [output.json]")
-        print("\nValidates DCF model for:")
-        print("  - Formula errors (#REF!, #DIV/0!, etc.)")
-        print("  - Terminal growth < WACC (critical)")
-        print("  - WACC in reasonable range (5-20%)")
-        print("  - Terminal value proportion of EV (40-80%)")
-        print("\nReturns JSON with errors, warnings, and info")
-        print("\nExample: python validate_dcf.py model.xlsx")
-        print("Example: python validate_dcf.py model.xlsx results.json")
+        logger.info("Usage: python validate_dcf.py <excel_file> [output.json]")
+        logger.info("\nValidates DCF model for:")
+        logger.info("  - Formula errors (#REF!, #DIV/0!, etc.)")
+        logger.info("  - Terminal growth < WACC (critical)")
+        logger.info("  - WACC in reasonable range (5-20%)")
+        logger.info("  - Terminal value proportion of EV (40-80%)")
+        logger.info("\nReturns JSON with errors, warnings, and info")
+        logger.info("\nExample: python validate_dcf.py model.xlsx")
+        logger.info("Example: python validate_dcf.py model.xlsx results.json")
         sys.exit(1)
 
     excel_file = sys.argv[1]
@@ -268,7 +273,7 @@ def main():
         results = validate_dcf_model(excel_file)
 
         # Print results
-        print(json.dumps(results, indent=2))
+        logger.info(json.dumps(results, indent=2))
 
         # Save to file if requested
         if output_file:
@@ -284,7 +289,7 @@ def main():
             'status': 'ERROR',
             'error': str(e)
         }
-        print(json.dumps(error_result, indent=2))
+        logger.info(json.dumps(error_result, indent=2))
         sys.exit(1)
 
 

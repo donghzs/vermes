@@ -176,13 +176,13 @@ def qr_register(timeout_seconds: int = 600) -> Optional[dict]:
         url = build_connect_url(task_id)
 
         # ── Display QR code + URL ──
-        print()
+        logger.info()
         if _render_qr(url):
-            print(f"  Scan the QR code above, or open this URL directly:\n  {url}")
+            logger.info(f"  Scan the QR code above, or open this URL directly:\n  {url}")
         else:
-            print(f"  Open this URL in QQ on your phone:\n  {url}")
-            print("  Tip: pip install qrcode  to display a scannable QR code here")
-        print()
+            logger.info(f"  Open this URL in QQ on your phone:\n  {url}")
+            logger.info("  Tip: pip install qrcode  to display a scannable QR code here")
+        logger.info()
 
         # ── Poll loop ──
         while time.monotonic() < deadline:
@@ -194,10 +194,10 @@ def qr_register(timeout_seconds: int = 600) -> Optional[dict]:
 
             if status == BindStatus.COMPLETED:
                 client_secret = decrypt_secret(encrypted_secret, aes_key)
-                print()
-                print(f"  QR scan complete! (App ID: {app_id})")
+                logger.info()
+                logger.info(f"  QR scan complete! (App ID: {app_id})")
                 if user_openid:
-                    print(f"  Scanner's OpenID: {user_openid}")
+                    logger.info(f"  Scanner's OpenID: {user_openid}")
                 return {
                     "app_id": app_id,
                     "client_secret": client_secret,
@@ -208,7 +208,7 @@ def qr_register(timeout_seconds: int = 600) -> Optional[dict]:
                 if refresh_count >= _MAX_REFRESHES:
                     logger.warning("[QQBot onboard] QR code expired %d times — giving up", _MAX_REFRESHES)
                     return None
-                print(f"\n  QR code expired, refreshing... ({refresh_count + 1}/{_MAX_REFRESHES})")
+                logger.info(f"\n  QR code expired, refreshing... ({refresh_count + 1}/{_MAX_REFRESHES})")
                 break  # next for-loop iteration creates a new task
 
             time.sleep(ONBOARD_POLL_INTERVAL)

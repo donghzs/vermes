@@ -24,6 +24,11 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 # ─── Subdomain Discovery (crt.sh) ──────────────────────────────────────────
 
@@ -364,7 +369,7 @@ def bulk_check(domains, checks=None, max_workers=5):
 
 def main():
     if len(sys.argv) < 3:
-        print(__doc__)
+        logger.info(__doc__)
         sys.exit(1)
 
     command = sys.argv[1].lower()
@@ -386,11 +391,11 @@ def main():
     elif command in COMMAND_MAP:
         result = COMMAND_MAP[command](args[0])
     else:
-        print(f"Unknown command: {command}")
-        print(f"Available: {', '.join(COMMAND_MAP.keys())}, bulk")
+        logger.info(f"Unknown command: {command}")
+        logger.info(f"Available: {', '.join(COMMAND_MAP.keys())}, bulk")
         sys.exit(1)
 
-    print(json.dumps(result, indent=2))
+    logger.info(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

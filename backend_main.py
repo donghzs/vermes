@@ -4,6 +4,9 @@ Vermes Backend (Headless) — Electron 后端专用入口。
 无 pywebview / 无 GUI 依赖，仅启动 FastAPI + uvicorn。
 用法: backend_main [--port 9119]
 """
+import logging
+
+logger = logging.getLogger(__name__)
 import sys
 import os
 import time
@@ -30,7 +33,7 @@ server_instance = None
 
 def _handle_sigterm(signum, frame):
     """SIGTERM 处理器：设置 shutdown_event 让主循环退出"""
-    print("[Vermes] 收到 SIGTERM，准备关闭...")
+    logger.info("[Vermes] 收到 SIGTERM，准备关闭...")
     try:
         from hermes_cli.shutdown_signal import shutdown_event
         shutdown_event.set()
@@ -63,15 +66,15 @@ def main():
             try:
                 py_compile.compile(_p, doraise=True)
             except py_compile.PyCompileError as _e:
-                print(f"[Vermes] ❌ 启动失败: {_f} 语法错误")
-                print(f"       {_e}")
+                logger.info(f"[Vermes] ❌ 启动失败: {_f} 语法错误")
+                logger.info(f"       {_e}")
                 sys.exit(1)
-    print("[Vermes] ✅ 启动预检通过")
+    logger.info("[Vermes] ✅ 启动预检通过")
 
     # ── 启动崩溃看门狗 ─────────────────────────────────────────────────
     _CRASH_MARKER = "/tmp/vermes-startup.lock"
     if os.path.exists(_CRASH_MARKER):
-        print("[Vermes] ⚠️ 检测到上次启动异常退出")
+        logger.info("[Vermes] ⚠️ 检测到上次启动异常退出")
         # 尝试回滚到上一个备份版本
         try:
             from hermes_cli.update_manager import list_backups, rollback_to_version
@@ -79,13 +82,13 @@ def main():
             if _backups:
                 _last = _backups[-1]
                 _ver = _last.get("version", "")
-                print(f"[Vermes] 🔄 自动回滚到 v{_ver} ...")
+                logger.info(f"[Vermes] 🔄 自动回滚到 v{_ver} ...")
                 rollback_to_version(_ver)
-                print(f"[Vermes] ✅ 已回滚到 v{_ver}，重启后生效")
+                logger.info(f"[Vermes] ✅ 已回滚到 v{_ver}，重启后生效")
             else:
-                print("[Vermes] ❌ 无可用备份，请手动修复")
+                logger.info("[Vermes] ❌ 无可用备份，请手动修复")
         except Exception as _e:
-            print(f"[Vermes] ❌ 自动回滚失败: {_e}")
+            logger.info(f"[Vermes] ❌ 自动回滚失败: {_e}")
         os.remove(_CRASH_MARKER)  # 防止循环回滚
     # 写入新标记
     with open(_CRASH_MARKER, "w") as _f:
@@ -96,14 +99,14 @@ def main():
         _t.sleep(10)
         if os.path.exists(_CRASH_MARKER):
             os.remove(_CRASH_MARKER)
-            print("[Vermes] ✅ 启动稳定，看门狗已解除")
+            logger.info("[Vermes] ✅ 启动稳定，看门狗已解除")
     threading.Thread(target=_clear_marker, daemon=True).start()
 
     # 强制启用 agent 模式（WebSocket 聊天端点）
     from hermes_cli import web_server
     web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
 
-    print(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
+    logger.info(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
 
     # 注册 SIGTERM 处理器（Electron 关闭后端时发送 SIGTERM）
     _signal.signal(_signal.SIGTERM, _handle_sigterm)
@@ -115,7 +118,7 @@ def main():
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", lifespan="off")
     server_instance = uvicorn.Server(config)
     threading.Thread(target=server_instance.run, daemon=True).start()
-    print(f"[Vermes Backend] 后端已启动，监听 :{port}")
+    logger.info(f"[Vermes Backend] 后端已启动，监听 :{port}")
 
     # ── restart 循环：Agent 框架更新后重启 gateway，不关壳 ──
     while True:
@@ -127,30 +130,32 @@ def main():
                 if shutdown_event.is_set() or restart_event.is_set():
                     break
         except KeyboardInterrupt:
-            print("[Vermes] 退出。")
+            logger.info("[Vermes] 退出。")
             os._exit(0)
 
         if restart_event.is_set():
-            print("[Vermes] 收到重启信号，重启 Gateway...")
+            logger.info("[Vermes] 收到重启信号，重启 Gateway...")
             restart_event.clear()
             # 停止当前 uvicorn
             if server_instance:
                 server_instance.should_exit = True
                 time.sleep(2)  # 等待 uvicorn 优雅关闭
             # 重新启动 uvicorn（重新导入模块以加载更新的 Agent 框架）
-            print("[Vermes] Gateway 重启中...")
+            logger.info("[Vermes] Gateway 重启中...")
             import importlib
             from hermes_cli import web_server as _ws
+
+
             importlib.reload(_ws)
             _ws._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
             config = uvicorn.Config(_ws.app, host="127.0.0.1", port=port, log_level="info", lifespan="off")
             server_instance = uvicorn.Server(config)
             threading.Thread(target=server_instance.run, daemon=True).start()
-            print("[Vermes] ✅ Gateway 已重启")
+            logger.info("[Vermes] ✅ Gateway 已重启")
             continue  # 回到等待循环
 
         # shutdown_event
-        print("[Vermes] 收到退出信号，关闭。")
+        logger.info("[Vermes] 收到退出信号，关闭。")
         break
 
 

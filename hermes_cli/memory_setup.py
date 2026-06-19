@@ -10,11 +10,14 @@ from __future__ import annotations
 import getpass
 import os
 import sys
+
+import logging
+
+logger = logging.getLogger(__name__)
 import shlex
 from pathlib import Path
 
 from hermes_constants import get_hermes_home
-
 
 # ---------------------------------------------------------------------------
 # Curses-based interactive picker (same pattern as hermes tools)
@@ -34,7 +37,6 @@ def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -
     ]
     return curses_radiolist(title, display_items, selected=default, cancel_returns=default)
 
-
 def _prompt(label: str, default: str | None = None, secret: bool = False) -> str:
     """Prompt for a value with optional default and secret masking."""
     suffix = f" [{default}]" if default else ""
@@ -50,7 +52,6 @@ def _prompt(label: str, default: str | None = None, secret: bool = False) -> str
         sys.stdout.flush()
         val = sys.stdin.readline().strip()
     return val or (default or "")
-
 
 # ---------------------------------------------------------------------------
 # Provider discovery
@@ -99,14 +100,14 @@ def _install_dependencies(provider_name: str) -> None:
     if not missing:
         return
 
-    print(f"\n  Installing dependencies: {', '.join(missing)}")
+    logger.info(f"\n  Installing dependencies: {', '.join(missing)}")
 
     import shutil
     uv_path = shutil.which("uv")
     if not uv_path:
-        print(f"  ⚠ uv not found — cannot install dependencies")
-        print(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
-        print(f"  Then re-run: hermes memory setup")
+        logger.info(f"  ⚠ uv not found — cannot install dependencies")
+        logger.info(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
+        logger.info(f"  Then re-run: hermes memory setup")
         return
 
     try:
@@ -115,16 +116,16 @@ def _install_dependencies(provider_name: str) -> None:
             check=True, timeout=120,
             capture_output=True,
         )
-        print(f"  ✓ Installed {', '.join(missing)}")
+        logger.info(f"  ✓ Installed {', '.join(missing)}")
     except subprocess.CalledProcessError as e:
-        print(f"  ⚠ Failed to install {', '.join(missing)}")
+        logger.info(f"  ⚠ Failed to install {', '.join(missing)}")
         stderr = (e.stderr or b"").decode()[:200]
         if stderr:
-            print(f"    {stderr}")
-        print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
+            logger.warning(f"    {stderr}")
+        logger.info(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
     except Exception as e:
-        print(f"  ⚠ Install failed: {e}")
-        print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
+        logger.info(f"  ⚠ Install failed: {e}")
+        logger.info(f"  Run manually: uv pip install --python {sys.executable} {' '.join(missing)}")
 
     # Also show external dependencies (non-pip) if any
     ext_deps = meta.get("external_dependencies", [])
@@ -139,9 +140,8 @@ def _install_dependencies(provider_name: str) -> None:
                 )
             except Exception:
                 if install_cmd:
-                    print(f"\n  ⚠ '{dep_name}' not found. Install with:")
-                    print(f"    {install_cmd}")
-
+                    logger.info(f"\n  ⚠ '{dep_name}' not found. Install with:")
+                    logger.info(f"    {install_cmd}")
 
 def _get_available_providers() -> list:
     """Discover memory providers from plugins/memory/.
@@ -178,7 +178,6 @@ def _get_available_providers() -> list:
         results.append((name, setup_hint, provider))
     return results
 
-
 # ---------------------------------------------------------------------------
 # Setup wizard
 # ---------------------------------------------------------------------------
@@ -195,8 +194,8 @@ def cmd_setup_provider(provider_name: str) -> None:
             break
 
     if not match:
-        print(f"\n  Memory provider '{provider_name}' not found.")
-        print("  Run 'hermes memory setup' to see available providers.\n")
+        logger.info(f"\n  Memory provider '{provider_name}' not found.")
+        logger.info("  Run 'hermes memory setup' to see available providers.\n")
         return
 
     name, _, provider = match
@@ -215,9 +214,8 @@ def cmd_setup_provider(provider_name: str) -> None:
     # Fallback: generic schema-based setup (same as cmd_setup)
     config["memory"]["provider"] = name
     save_config(config)
-    print(f"\n  Memory provider: {name}")
-    print(f"  Activation saved to config.yaml\n")
-
+    logger.info(f"\n  Memory provider: {name}")
+    logger.info(f"  Activation saved to config.yaml\n")
 
 def cmd_setup(args) -> None:
     """Interactive memory provider setup wizard."""
@@ -226,8 +224,8 @@ def cmd_setup(args) -> None:
     providers = _get_available_providers()
 
     if not providers:
-        print("\n  No memory provider plugins detected.")
-        print("  Install a plugin to ~/.hermes/plugins/ and try again.\n")
+        logger.info("\n  No memory provider plugins detected.")
+        logger.info("  Install a plugin to ~/.hermes/plugins/ and try again.\n")
         return
 
     # Build picker items
@@ -247,8 +245,8 @@ def cmd_setup(args) -> None:
     if selected >= len(providers) or selected < 0:
         config["memory"]["provider"] = ""
         save_config(config)
-        print("\n  ✓ Memory provider: built-in only")
-        print("  Saved to config.yaml\n")
+        logger.info("\n  ✓ Memory provider: built-in only")
+        logger.info("  Saved to config.yaml\n")
         return
 
     name, _, provider = providers[selected]
@@ -273,7 +271,7 @@ def cmd_setup(args) -> None:
     env_writes = {}
 
     if schema:
-        print(f"\n  Configuring {name}:\n")
+        logger.info(f"\n  Configuring {name}:\n")
 
         for field in schema:
             key = field["key"]
@@ -316,7 +314,7 @@ def cmd_setup(args) -> None:
                 else:
                     hint = f"  Get yours at {url}" if url else ""
                     if hint:
-                        print(hint)
+                        logger.info(hint)
                     val = _prompt(desc, secret=True)
                 if val and env_var:
                     env_writes[env_var] = val
@@ -341,20 +339,19 @@ def cmd_setup(args) -> None:
         try:
             provider.save_config(provider_config, hermes_home)
         except Exception as e:
-            print(f"  Failed to write provider config: {e}")
+            logger.info(f"  Failed to write provider config: {e}")
 
     # Write secrets to .env
     if env_writes:
         _write_env_vars(env_path, env_writes)
 
-    print(f"\n  Memory provider: {name}")
-    print(f"  Activation saved to config.yaml")
+    logger.info(f"\n  Memory provider: {name}")
+    logger.info(f"  Activation saved to config.yaml")
     if provider_config:
-        print(f"  Provider config saved")
+        logger.info(f"  Provider config saved")
     if env_writes:
-        print(f"  API keys saved to .env")
-    print(f"\n  Start a new session to activate.\n")
-
+        logger.info(f"  API keys saved to .env")
+    logger.info(f"\n  Start a new session to activate.\n")
 
 def _write_env_vars(env_path: Path, env_writes: dict) -> None:
     """Append or update env vars in .env file."""
@@ -386,7 +383,6 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
     except OSError:
         pass  # Windows or read-only FS
 
-
 # ---------------------------------------------------------------------------
 # Status
 # ---------------------------------------------------------------------------
@@ -399,32 +395,32 @@ def cmd_status(args) -> None:
     mem_config = config.get("memory", {})
     provider_name = mem_config.get("provider", "")
 
-    print(f"\nMemory status\n" + "─" * 40)
-    print(f"  Built-in:  always active")
-    print(f"  Provider:  {provider_name or '(none — built-in only)'}")
+    logger.info(f"\nMemory status\n" + "─" * 40)
+    logger.info(f"  Built-in:  always active")
+    logger.info(f"  Provider:  {provider_name or '(none — built-in only)'}")
 
     if provider_name:
         provider_config = mem_config.get(provider_name, {})
         if provider_config:
-            print(f"\n  {provider_name} config:")
+            logger.info(f"\n  {provider_name} config:")
             for key, val in provider_config.items():
-                print(f"    {key}: {val}")
+                logger.info(f"    {key}: {val}")
 
         providers = _get_available_providers()
         found = any(name == provider_name for name, _, _ in providers)
         if found:
-            print(f"\n  Plugin:    installed ✓")
+            logger.info(f"\n  Plugin:    installed ✓")
             for pname, _, p in providers:
                 if pname == provider_name:
                     if p.is_available():
-                        print(f"  Status:    available ✓")
+                        logger.info(f"  Status:    available ✓")
                     else:
-                        print(f"  Status:    not available ✗")
+                        logger.info(f"  Status:    not available ✗")
                         schema = p.get_config_schema() if hasattr(p, "get_config_schema") else []
                         # Check all fields that have env_var (both secret and non-secret)
                         required_fields = [f for f in schema if f.get("env_var")]
                         if required_fields:
-                            print(f"  Missing:")
+                            logger.info(f"  Missing:")
                             for f in required_fields:
                                 env_var = f.get("env_var", "")
                                 url = f.get("url", "")
@@ -433,21 +429,20 @@ def cmd_status(args) -> None:
                                 line = f"    {mark} {env_var}"
                                 if url and not is_set:
                                     line += f"  → {url}"
-                                print(line)
+                                logger.info(line)
                     break
         else:
-            print(f"\n  Plugin:    NOT installed ✗")
-            print(f"  Install the '{provider_name}' memory plugin to ~/.hermes/plugins/")
+            logger.info(f"\n  Plugin:    NOT installed ✗")
+            logger.info(f"  Install the '{provider_name}' memory plugin to ~/.hermes/plugins/")
 
     providers = _get_available_providers()
     if providers:
-        print(f"\n  Installed plugins:")
+        logger.info(f"\n  Installed plugins:")
         for pname, desc, _ in providers:
             active = " ← active" if pname == provider_name else ""
-            print(f"    • {pname}  ({desc}){active}")
+            logger.info(f"    • {pname}  ({desc}){active}")
 
-    print()
-
+    logger.info()
 
 # ---------------------------------------------------------------------------
 # Router

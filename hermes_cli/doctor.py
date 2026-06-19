@@ -4,6 +4,9 @@ Doctor command for hermes CLI.
 Diagnoses issues with Vermes setup.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import sys
 import subprocess
@@ -183,22 +186,22 @@ def _has_healthy_oauth_fallback_for_apikey_provider(provider_label: str) -> bool
 
 
 def check_ok(text: str, detail: str = ""):
-    print(f"  {color('✓', Colors.GREEN)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
+    logger.info(f"  {color('✓', Colors.GREEN)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
 
 def check_warn(text: str, detail: str = ""):
-    print(f"  {color('⚠', Colors.YELLOW)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
+    logger.info(f"  {color('⚠', Colors.YELLOW)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
 
 def check_fail(text: str, detail: str = ""):
-    print(f"  {color('✗', Colors.RED)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
+    logger.info(f"  {color('✗', Colors.RED)} {text}" + (f" {color(detail, Colors.DIM)}" if detail else ""))
 
 def check_info(text: str):
-    print(f"    {color('→', Colors.CYAN)} {text}")
+    logger.info(f"    {color('→', Colors.CYAN)} {text}")
 
 
 def _section(title: str) -> None:
     """Print a doctor section banner: blank line + bold cyan ◆ title."""
-    print()
-    print(color(f"◆ {title}", Colors.CYAN, Colors.BOLD))
+    logger.info()
+    logger.info(color(f"◆ {title}", Colors.CYAN, Colors.BOLD))
 
 
 def _fail_and_issue(text: str, detail: str, fix: str, issues: list[str]) -> None:
@@ -353,20 +356,20 @@ def run_doctor(args):
         )
         valid_ids = {a.id for a in ADVISORIES}
         if ack_target not in valid_ids:
-            print(color(
+            logger.info(color(
                 f"Unknown advisory ID: {ack_target!r}. Known IDs: "
                 f"{', '.join(sorted(valid_ids)) or '(none)'}",
                 Colors.RED,
             ))
             sys.exit(2)
         if ack_advisory(ack_target):
-            print(color(
+            logger.info(color(
                 f"  ✓ Acknowledged advisory {ack_target}. "
                 f"It will no longer trigger startup banners.",
                 Colors.GREEN,
             ))
         else:
-            print(color(
+            logger.info(color(
                 f"  ✗ Failed to persist ack for {ack_target}. "
                 f"Check ~/.hermes/config.yaml is writable.",
                 Colors.RED,
@@ -378,10 +381,10 @@ def run_doctor(args):
     manual_issues = []  # issues that can't be auto-fixed
     fixed_count = 0
 
-    print()
-    print(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│                 🩺 Vermes Doctor                        │", Colors.CYAN))
-    print(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
+    logger.info()
+    logger.info(color("┌─────────────────────────────────────────────────────────┐", Colors.CYAN))
+    logger.info(color("│                 🩺 Vermes Doctor                        │", Colors.CYAN))
+    logger.info(color("└─────────────────────────────────────────────────────────┘", Colors.CYAN))
 
     _section("Security Advisories")
     try:
@@ -403,9 +406,9 @@ def run_doctor(args):
                 # check_fail header so it reads as a single section.
                 for line in full_remediation_text(hit):
                     if line:
-                        print(f"    {color(line, Colors.YELLOW)}")
+                        logger.info(f"    {color(line, Colors.YELLOW)}")
                     else:
-                        print()
+                        logger.info()
                 # Funnel into the action list so the summary block surfaces it
                 # for users who scroll past the section.
                 manual_issues.append(
@@ -1713,7 +1716,7 @@ def run_doctor(args):
 
     # Print a single status line so users see something happening, then
     # fan out. ``\r`` clears it once the first real result line lands.
-    print(f"  {color(f'Running {len(_probes)} connectivity checks in parallel…', Colors.DIM)}",
+    logger.info(f"  {color(f'Running {len(_probes)} connectivity checks in parallel…', Colors.DIM)}",
           end="", flush=True)
 
     # Disable boto3's EC2 instance-metadata-service probe for the duration
@@ -1746,9 +1749,9 @@ def run_doctor(args):
     for _r in _results:
         for _glyph, _label, _detail in _r.lines:
             if _detail:
-                print(f"  {_glyph} {_label} {_detail}")
+                logger.info(f"  {_glyph} {_label} {_detail}")
             else:
-                print(f"  {_glyph} {_label}")
+                logger.info(f"  {_glyph} {_label}")
         _issues_to_add = list(_r.issues)
         if _issues_to_add and _has_healthy_oauth_fallback_for_apikey_provider(_r.label):
             _issues_to_add = []
@@ -1917,6 +1920,8 @@ def run_doctor(args):
         from hermes_cli.profiles import list_profiles, _get_wrapper_dir, profile_exists
         import re as _re
 
+
+
         named_profiles = [p for p in list_profiles() if not p.is_default]
         if named_profiles:
             _section("Profiles")
@@ -1956,31 +1961,31 @@ def run_doctor(args):
     except Exception:
         pass
 
-    print()
+    logger.info()
     remaining_issues = issues + manual_issues
     if should_fix and fixed_count > 0:
-        print(color("─" * 60, Colors.GREEN))
+        logger.info(color("─" * 60, Colors.GREEN))
         print(color(f"  Fixed {fixed_count} issue(s).", Colors.GREEN, Colors.BOLD), end="")
         if remaining_issues:
-            print(color(f" {len(remaining_issues)} issue(s) require manual intervention.", Colors.YELLOW, Colors.BOLD))
+            logger.info(color(f" {len(remaining_issues)} issue(s) require manual intervention.", Colors.YELLOW, Colors.BOLD))
         else:
-            print()
-        print()
+            logger.info()
+        logger.info()
         if remaining_issues:
             for i, issue in enumerate(remaining_issues, 1):
-                print(f"  {i}. {issue}")
-            print()
+                logger.info(f"  {i}. {issue}")
+            logger.info()
     elif remaining_issues:
-        print(color("─" * 60, Colors.YELLOW))
-        print(color(f"  Found {len(remaining_issues)} issue(s) to address:", Colors.YELLOW, Colors.BOLD))
-        print()
+        logger.info(color("─" * 60, Colors.YELLOW))
+        logger.info(color(f"  Found {len(remaining_issues)} issue(s) to address:", Colors.YELLOW, Colors.BOLD))
+        logger.info()
         for i, issue in enumerate(remaining_issues, 1):
-            print(f"  {i}. {issue}")
-        print()
+            logger.info(f"  {i}. {issue}")
+        logger.info()
         if not should_fix:
-            print(color("  Tip: run 'hermes doctor --fix' to auto-fix what's possible.", Colors.DIM))
+            logger.info(color("  Tip: run 'hermes doctor --fix' to auto-fix what's possible.", Colors.DIM))
     else:
-        print(color("─" * 60, Colors.GREEN))
-        print(color("  All checks passed! 🎉", Colors.GREEN, Colors.BOLD))
+        logger.info(color("─" * 60, Colors.GREEN))
+        logger.info(color("  All checks passed! 🎉", Colors.GREEN, Colors.BOLD))
     
-    print()
+    logger.info()

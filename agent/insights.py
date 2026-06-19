@@ -13,9 +13,12 @@ Usage:
     from agent.insights import InsightsEngine
     engine = InsightsEngine(db)
     report = engine.generate(days=30)
-    print(engine.format_terminal(report))
+    logger.info(engine.format_terminal(report))
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import time
 from collections import Counter, defaultdict
@@ -23,6 +26,8 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from agent.usage_pricing import (
+
+
     CanonicalUsage,
     DEFAULT_PRICING,
     estimate_usage_cost,

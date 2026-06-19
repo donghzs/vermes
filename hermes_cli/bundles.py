@@ -13,14 +13,17 @@ Subcommands:
 """
 
 from __future__ import annotations
+import logging
 
+logger = logging.getLogger(__name__)
 import sys
-from typing import List, Optional
+from typing import List,Optional
 
 from rich.console import Console
 from rich.table import Table
 
 from agent.skill_bundles import (
+
     _bundles_dir,
     delete_bundle,
     get_bundle,
@@ -30,13 +33,11 @@ from agent.skill_bundles import (
     scan_bundles,
 )
 
-
 def _console() -> Console:
     # Bind to stderr so piping `hermes bundles list | grep …` doesn't
     # garble rich markup with table styling. Tables and headings still
     # render to a terminal; pure text columns survive piping.
     return Console()
-
 
 def _cmd_list(args) -> None:
     c = _console()
@@ -66,7 +67,6 @@ def _cmd_list(args) -> None:
     c.print(table)
     c.print(f"\n[dim]Bundles directory: {_bundles_dir()}[/]")
 
-
 def _cmd_show(args) -> None:
     c = _console()
     info = get_bundle(args.name)
@@ -82,7 +82,6 @@ def _cmd_show(args) -> None:
         c.print(f"    - {s}")
     if info.get("instruction"):
         c.print(f"  [bold]Instruction:[/]\n    {info['instruction']}")
-
 
 def _cmd_create(args) -> None:
     c = _console()
@@ -135,7 +134,6 @@ def _cmd_create(args) -> None:
             f"(loads {len(info['skills'])} skills)"
         )
 
-
 def _cmd_delete(args) -> None:
     c = _console()
     try:
@@ -144,7 +142,6 @@ def _cmd_delete(args) -> None:
         c.print(f"[bold red]{exc}[/]")
         sys.exit(1)
     c.print(f"[bold green]Deleted bundle:[/] {path}")
-
 
 def _cmd_reload(args) -> None:
     c = _console()
@@ -161,7 +158,6 @@ def _cmd_reload(args) -> None:
         c.print(f"[dim]No changes. {diff['total']} bundle(s) loaded.[/]")
     else:
         c.print(f"[dim]Total bundles now: {diff['total']}[/]")
-
 
 def register_cli(subparser) -> None:
     """Build the ``hermes bundles`` argparse tree.
@@ -217,7 +213,6 @@ def register_cli(subparser) -> None:
 
     # Ensure a fresh scan when any bundles subcommand runs.
     scan_bundles()
-
 
 def bundles_command(args) -> None:
     """Dispatch ``hermes bundles <subcommand>`` to the right handler."""

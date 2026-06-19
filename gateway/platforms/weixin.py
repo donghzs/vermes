@@ -1074,9 +1074,9 @@ async def qr_login(
         # WeChat needs to scan the full URL, not the raw hex string
         qr_scan_data = qrcode_url if qrcode_url else qrcode_value
 
-        print("\n请使用微信扫描以下二维码：")
+        logger.info("\n请使用微信扫描以下二维码：")
         if qrcode_url:
-            print(qrcode_url)
+            logger.info(qrcode_url)
         try:
             import qrcode
 
@@ -1085,7 +1085,7 @@ async def qr_login(
             qr.make(fit=True)
             qr.print_ascii(invert=True)
         except Exception as _qr_exc:
-            print(f"（终端二维码渲染失败: {_qr_exc}，请直接打开上面的二维码链接）")
+            logger.info(f"（终端二维码渲染失败: {_qr_exc}，请直接打开上面的二维码链接）")
 
         deadline = time.monotonic() + timeout_seconds
         current_base_url = ILINK_BASE_URL
@@ -1111,7 +1111,7 @@ async def qr_login(
             if status == "wait":
                 print(".", end="", flush=True)
             elif status == "scaned":
-                print("\n已扫码，请在微信里确认...")
+                logger.info("\n已扫码，请在微信里确认...")
             elif status == "scaned_but_redirect":
                 redirect_host = str(status_resp.get("redirect_host") or "")
                 if redirect_host:
@@ -1119,9 +1119,9 @@ async def qr_login(
             elif status == "expired":
                 refresh_count += 1
                 if refresh_count > 3:
-                    print("\n二维码多次过期，请重新执行登录。")
+                    logger.info("\n二维码多次过期，请重新执行登录。")
                     return None
-                print(f"\n二维码已过期，正在刷新... ({refresh_count}/3)")
+                logger.info(f"\n二维码已过期，正在刷新... ({refresh_count}/3)")
                 try:
                     qr_resp = await _api_get(
                         session,
@@ -1133,7 +1133,7 @@ async def qr_login(
                     qrcode_url = str(qr_resp.get("qrcode_img_content") or "")
                     qr_scan_data = qrcode_url if qrcode_url else qrcode_value
                     if qrcode_url:
-                        print(qrcode_url)
+                        logger.info(qrcode_url)
                     try:
                         import qrcode as _qrcode
                         qr = _qrcode.QRCode()
@@ -1160,7 +1160,7 @@ async def qr_login(
                     base_url=base_url,
                     user_id=user_id,
                 )
-                print(f"\n微信连接成功，account_id={account_id}")
+                logger.info(f"\n微信连接成功，account_id={account_id}")
                 return {
                     "account_id": account_id,
                     "token": token,
@@ -1169,7 +1169,7 @@ async def qr_login(
                 }
             await asyncio.sleep(1)
 
-        print("\n微信登录超时。")
+        logger.info("\n微信登录超时。")
         return None
 
 

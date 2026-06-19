@@ -6,6 +6,9 @@ that can be copy-pasted into Discord/GitHub/Telegram for support context.
 No ANSI colors, no checkmarks — just data.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import platform
@@ -234,6 +237,8 @@ def run_dump(args):
     # OpenAI SDK version
     try:
         import openai
+
+
         openai_ver = openai.__version__
     except ImportError:
         openai_ver = "not installed"
@@ -322,4 +327,4 @@ def run_dump(args):
     lines.append("--- end dump ---")
 
     output = "\n".join(lines)
-    print(output)
+    logger.info(output)

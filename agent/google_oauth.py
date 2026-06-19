@@ -890,10 +890,10 @@ def start_oauth_flow(
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    print()
-    print("Opening your browser to sign in to Google…")
-    print(f"If it does not open automatically, visit:\n  {auth_url}")
-    print()
+    logger.info()
+    logger.info("Opening your browser to sign in to Google…")
+    logger.info(f"If it does not open automatically, visit:\n  {auth_url}")
+    logger.info()
 
     if open_browser:
         try:
@@ -972,13 +972,13 @@ def _paste_mode_login(
     }
     auth_url = AUTH_ENDPOINT + "?" + urllib.parse.urlencode(params) + "#hermes"
 
-    print()
-    print("Open this URL in a browser on any device:")
-    print(f"  {auth_url}")
-    print()
-    print("After signing in, Google will redirect to localhost (which won't load).")
-    print("Copy the full URL from your browser and paste it below.")
-    print()
+    logger.info()
+    logger.info("Open this URL in a browser on any device:")
+    logger.info(f"  {auth_url}")
+    logger.info()
+    logger.info("After signing in, Google will redirect to localhost (which won't load).")
+    logger.info("Copy the full URL from your browser and paste it below.")
+    logger.info()
 
     code = _prompt_paste_fallback()
     if not code:
@@ -992,8 +992,8 @@ def _paste_mode_login(
 
 
 def _prompt_paste_fallback() -> Optional[str]:
-    print()
-    print("Paste the full redirect URL Google showed you, OR just the 'code=' parameter value.")
+    logger.info()
+    logger.info("Paste the full redirect URL Google showed you, OR just the 'code=' parameter value.")
     raw = input("Callback URL or code: ").strip()
     if not raw:
         return None

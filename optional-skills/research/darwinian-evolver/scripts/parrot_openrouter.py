@@ -9,11 +9,16 @@ Run with:
 
 Reads `OPENROUTER_API_KEY` from the environment.
 """
+
 from __future__ import annotations
 
 import argparse
 import os
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
+
 from pathlib import Path
 
 import jinja2
@@ -34,13 +39,11 @@ from darwinian_evolver.problem import Problem
 
 DEFAULT_MODEL = os.environ.get("EVOLVER_MODEL", "openai/gpt-4o-mini")
 
-
 def _client() -> OpenAI:
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         sys.exit("OPENROUTER_API_KEY is not set")
     return OpenAI(api_key=key, base_url="https://openrouter.ai/api/v1")
-
 
 def _prompt_llm(prompt: str) -> str:
     try:
@@ -56,7 +59,6 @@ def _prompt_llm(prompt: str) -> str:
         # on this organism and move on — much friendlier than killing the run.
         return f"<LLM_ERROR: {type(e).__name__}: {e}>"
 
-
 class ParrotOrganism(Organism):
     prompt_template: str
 
@@ -69,11 +71,9 @@ class ParrotOrganism(Organism):
             return ""
         return _prompt_llm(prompt)
 
-
 class ParrotEvaluationFailureCase(EvaluationFailureCase):
     phrase: str
     response: str
-
 
 class ImproveParrotMutator(Mutator[ParrotOrganism, ParrotEvaluationFailureCase]):
     IMPROVEMENT_PROMPT_TEMPLATE = """
@@ -115,9 +115,8 @@ template in the LAST triple-backtick block of your response.
             new_tpl = parts[-2].strip()
             return [ParrotOrganism(prompt_template=new_tpl)]
         except Exception as e:
-            print(f"mutate error: {e}", file=sys.stderr)
+            logger.warning(f"mutate error: {e}")
             return []
-
 
 class ParrotEvaluator(Evaluator[ParrotOrganism, EvaluationResult, ParrotEvaluationFailureCase]):
     TRAINABLE_PHRASES = [
@@ -157,14 +156,12 @@ class ParrotEvaluator(Evaluator[ParrotOrganism, EvaluationResult, ParrotEvaluati
             is_viable=True,
         )
 
-
 def make_problem() -> Problem:
     return Problem[ParrotOrganism, EvaluationResult, ParrotEvaluationFailureCase](
         evaluator=ParrotEvaluator(),
         mutators=[ImproveParrotMutator()],
         initial_organism=ParrotOrganism(prompt_template="Say {{ phrase }}"),
     )
-
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -194,14 +191,15 @@ def main() -> int:
     )
 
     import json
+
     log_path = out / "results.jsonl"
     snap_dir = out / "snapshots"
     snap_dir.mkdir(exist_ok=True)
-    print("Evaluating initial organism...")
+    logger.info("Evaluating initial organism...")
     for snap in loop.run(num_iterations=args.num_iterations):
         (snap_dir / f"iteration_{snap.iteration}.pkl").write_bytes(snap.snapshot)
         _, best_eval = snap.best_organism_result
-        print(f"iter={snap.iteration} pop={snap.population_size} "
+        logger.info(f"iter={snap.iteration} pop={snap.population_size} "
               f"best_score={best_eval.score:.3f}")
         with log_path.open("a") as f:
             f.write(json.dumps({
@@ -210,9 +208,8 @@ def main() -> int:
                 "pop_size": snap.population_size,
                 "score_percentiles": {str(k): v for k, v in snap.score_percentiles.items()},
             }) + "\n")
-    print(f"\nDone. Results in: {out}")
+    logger.info(f"\nDone. Results in: {out}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

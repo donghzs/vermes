@@ -43,16 +43,16 @@ _MCP_PRESETS: Dict[str, Dict[str, Any]] = {
 # ─── UI Helpers ───────────────────────────────────────────────────────────────
 
 def _info(text: str):
-    print(color(f"  {text}", Colors.DIM))
+    logger.info(color(f"  {text}", Colors.DIM))
 
 def _success(text: str):
-    print(color(f"  ✓ {text}", Colors.GREEN))
+    logger.info(color(f"  ✓ {text}", Colors.GREEN))
 
 def _warning(text: str):
-    print(color(f"  ⚠ {text}", Colors.YELLOW))
+    logger.info(color(f"  ⚠ {text}", Colors.YELLOW))
 
 def _error(text: str):
-    print(color(f"  ✗ {text}", Colors.RED))
+    logger.info(color(f"  ✗ {text}", Colors.RED))
 
 
 def _confirm(question: str, default: bool = True) -> bool:
@@ -60,7 +60,7 @@ def _confirm(question: str, default: bool = True) -> bool:
     try:
         val = input(color(f"  {question} [{default_str}]: ", Colors.YELLOW)).strip().lower()
     except (KeyboardInterrupt, EOFError):
-        print()
+        logger.info()
         return default
     if not val:
         return default
@@ -285,7 +285,7 @@ def cmd_mcp_add(args):
     # ── Authentication ────────────────────────────────────────────────
 
     if url and auth_type == "oauth":
-        print()
+        logger.info()
         _info(f"Starting OAuth flow for '{name}'...")
         oauth_ok = False
         try:
@@ -311,7 +311,7 @@ def cmd_mcp_add(args):
 
     elif url:
         # Prompt for API key / Bearer token for HTTP servers
-        print()
+        logger.info()
         _info(f"Connecting to {url}")
         needs_auth = _confirm("Does this server require authentication?", default=True)
         if needs_auth:
@@ -335,8 +335,8 @@ def cmd_mcp_add(args):
 
     # ── Discovery: connect and list tools ─────────────────────────────
 
-    print()
-    print(color(f"  Connecting to '{name}'...", Colors.CYAN))
+    logger.info()
+    logger.info(color(f"  Connecting to '{name}'...", Colors.CYAN))
 
     try:
         tools = _probe_single_server(name, server_config)
@@ -358,13 +358,13 @@ def cmd_mcp_add(args):
 
     # ── Tool selection ────────────────────────────────────────────────
 
-    print()
+    logger.info()
     _success(f"Connected! Found {len(tools)} tool(s) from '{name}':")
-    print()
+    logger.info()
     for tool_name, desc in tools:
         short = desc[:60] + "..." if len(desc) > 60 else desc
-        print(f"    {color(tool_name, Colors.GREEN):40s} {short}")
-    print()
+        logger.info(f"    {color(tool_name, Colors.GREEN):40s} {short}")
+    logger.info()
 
     # Ask: enable all, select, or cancel
     try:
@@ -372,7 +372,7 @@ def cmd_mcp_add(args):
             color(f"  Enable all {len(tools)} tools? [Y/n/select]: ", Colors.YELLOW)
         ).strip().lower()
     except (KeyboardInterrupt, EOFError):
-        print()
+        logger.info()
         _info("Cancelled.")
         return
 
@@ -412,7 +412,7 @@ def cmd_mcp_add(args):
     server_config["enabled"] = True
     _save_mcp_server(name, server_config)
 
-    print()
+    logger.info()
     _success(f"Saved '{name}' to {display_hermes_home()}/config.yaml ({tool_count}/{total} tools enabled)")
     _info("Start a new session to use these tools.")
 
@@ -456,22 +456,22 @@ def cmd_mcp_list(args=None):
     servers = _get_mcp_servers()
 
     if not servers:
-        print()
+        logger.info()
         _info("No MCP servers configured.")
-        print()
+        logger.info()
         _info("Add one with:")
         _info('  hermes mcp add <name> --url <endpoint>')
         _info('  hermes mcp add <name> --command <cmd> --args <args...>')
-        print()
+        logger.info()
         return
 
-    print()
-    print(color("  MCP Servers:", Colors.CYAN + Colors.BOLD))
-    print()
+    logger.info()
+    logger.info(color("  MCP Servers:", Colors.CYAN + Colors.BOLD))
+    logger.info()
 
     # Table header
-    print(f"  {'Name':<16} {'Transport':<30} {'Tools':<12} {'Status':<10}")
-    print(f"  {'─' * 16} {'─' * 30} {'─' * 12} {'─' * 10}")
+    logger.info(f"  {'Name':<16} {'Transport':<30} {'Tools':<12} {'Status':<10}")
+    logger.info(f"  {'─' * 16} {'─' * 30} {'─' * 12} {'─' * 10}")
 
     for name, cfg in servers.items():
         # Transport info
@@ -513,9 +513,9 @@ def cmd_mcp_list(args=None):
             enabled = enabled.lower() in {"true", "1", "yes"}
         status = color("✓ enabled", Colors.GREEN) if enabled else color("✗ disabled", Colors.DIM)
 
-        print(f"  {name:<16} {transport:<30} {tools_str:<12} {status}")
+        logger.info(f"  {name:<16} {transport:<30} {tools_str:<12} {status}")
 
-    print()
+    logger.info()
 
 
 # ─── hermes mcp test ──────────────────────────────────────────────────────────
@@ -533,8 +533,8 @@ def cmd_mcp_test(args):
         return
 
     cfg = servers[name]
-    print()
-    print(color(f"  Testing '{name}'...", Colors.CYAN))
+    logger.info()
+    logger.info(color(f"  Testing '{name}'...", Colors.CYAN))
 
     # Show transport info
     if "url" in cfg:
@@ -557,7 +557,7 @@ def cmd_mcp_test(args):
                     masked = resolved[:4] + "***" + resolved[-4:]
                 else:
                     masked = "***"
-                print(f"    {k}: {masked}")
+                logger.info(f"    {k}: {masked}")
     else:
         _info("Auth: none")
 
@@ -575,11 +575,11 @@ def cmd_mcp_test(args):
     _success(f"Tools discovered: {len(tools)}")
 
     if tools:
-        print()
+        logger.info()
         for tool_name, desc in tools:
             short = desc[:55] + "..." if len(desc) > 55 else desc
-            print(f"    {color(tool_name, Colors.GREEN):36s} {short}")
-    print()
+            logger.info(f"    {color(tool_name, Colors.GREEN):36s} {short}")
+    logger.info()
 
 
 # ─── hermes mcp login ────────────────────────────────────────────────────────
@@ -625,7 +625,7 @@ def cmd_mcp_login(args):
     except Exception as exc:
         _warning(f"Could not clear existing OAuth state: {exc}")
 
-    print()
+    logger.info()
     _info(f"Starting OAuth flow for '{name}'...")
 
     # Probe triggers the OAuth flow (browser redirect + callback capture).
@@ -645,7 +645,7 @@ def cmd_mcp_configure(args):
     """Reconfigure which tools are enabled for an existing MCP server."""
     import sys as _sys
     if not _sys.stdin.isatty():
-        print("Error: 'hermes mcp configure' requires an interactive terminal.", file=_sys.stderr)
+        logger.warning("Error: 'hermes mcp configure' requires an interactive terminal.", file=_sys.stderr)
         _sys.exit(1)
     name = args.name
     servers = _get_mcp_servers()
@@ -660,8 +660,8 @@ def cmd_mcp_configure(args):
     cfg = servers[name]
 
     # Discover all available tools
-    print()
-    print(color(f"  Connecting to '{name}' to discover tools...", Colors.CYAN))
+    logger.info()
+    logger.info(color(f"  Connecting to '{name}' to discover tools...", Colors.CYAN))
 
     try:
         all_tools = _probe_single_server(name, cfg)
@@ -700,7 +700,7 @@ def cmd_mcp_configure(args):
     currently = len(pre_selected)
     total = len(all_tools)
     _info(f"Currently {currently}/{total} tools enabled for '{name}'.")
-    print()
+    logger.info()
 
     # Interactive checklist
     from hermes_cli.curses_ui import curses_checklist
@@ -768,7 +768,7 @@ def mcp_command(args):
     else:
         # No subcommand — show list
         cmd_mcp_list()
-        print(color("  Commands:", Colors.CYAN))
+        logger.info(color("  Commands:", Colors.CYAN))
         _info("hermes mcp serve                              Run as MCP server")
         _info("hermes mcp add <name> --url <endpoint>        Add an MCP server")
         _info("hermes mcp add <name> --command <cmd>         Add a stdio server")
@@ -779,7 +779,7 @@ def mcp_command(args):
         _info("hermes mcp configure <name>                   Toggle tools")
         _info("hermes mcp login <name>                       Re-authenticate OAuth")
         _info('hermes mcp run <name>                          Run a built-in MCP server (short-drama)')
-        print()
+        logger.info()
 
 # ─── hermes mcp run ──────────────────────────────────────────────────────────
 

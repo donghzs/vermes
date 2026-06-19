@@ -14,6 +14,11 @@ import cli as cli_mod
 from cli import HermesCLI
 from rich.console import Console
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def _run(cli: HermesCLI, command: str) -> str:
     cmd = (command or "").strip()
@@ -31,7 +36,7 @@ def _run(cli: HermesCLI, command: str) -> str:
 
     old = getattr(cli_mod, "_cprint", None)
     if old is not None:
-        cli_mod._cprint = lambda text: print(text)
+        cli_mod._cprint = lambda text: logger.info(text)
 
     try:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):

@@ -25,6 +25,11 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d", "%m-%d-%Y", "%Y%m%d")
 
 
@@ -241,7 +246,7 @@ def main() -> int:
         out_path=a.out,
     )
     meta = payload["metadata"]
-    print(
+    logger.info(
         f"Tested {meta['n_pairs_tested']} pairs ({meta['n_pairs_skipped']} skipped). "
         f"Significant (p<{meta['p_threshold']}): {meta['n_significant']}. "
         f"Wrote {a.out}"

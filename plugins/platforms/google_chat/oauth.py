@@ -339,23 +339,23 @@ def install_deps() -> bool:
     try:
         import googleapiclient  # noqa: F401
         import google_auth_oauthlib  # noqa: F401
-        print("Dependencies already installed.")
+        logger.info("Dependencies already installed.")
         return True
     except ImportError:
         pass
 
-    print("Installing Google Chat OAuth dependencies...")
+    logger.info("Installing Google Chat OAuth dependencies...")
     try:
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", "--quiet"] + _REQUIRED_PACKAGES,
             stdout=subprocess.DEVNULL,
         )
-        print("Dependencies installed.")
+        logger.info("Dependencies installed.")
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to install dependencies: {exc}")
-        print("Or install via the optional extra:")
-        print("  pip install 'hermes-agent[google_chat]'")
+        logger.info(f"ERROR: Failed to install dependencies: {exc}")
+        logger.info("Or install via the optional extra:")
+        logger.info("  pip install 'hermes-agent[google_chat]'")
         return False
 
 
@@ -366,15 +366,15 @@ def check_auth(email: Optional[str] = None) -> bool:
     """
     token_path = _token_path(email)
     if not token_path.exists():
-        print(f"NOT_AUTHENTICATED: No token at {token_path}")
+        logger.info(f"NOT_AUTHENTICATED: No token at {token_path}")
         return False
 
     creds = load_user_credentials(email)
     if creds is None:
-        print(f"TOKEN_INVALID: Re-run /setup-files (path: {token_path})")
+        logger.info(f"TOKEN_INVALID: Re-run /setup-files (path: {token_path})")
         return False
 
-    print(f"AUTHENTICATED: Token valid at {token_path}")
+    logger.info(f"AUTHENTICATED: Token valid at {token_path}")
     return True
 
 
@@ -382,21 +382,21 @@ def store_client_secret(path: str) -> None:
     """Validate and copy the user's OAuth client_secret.json into HERMES_HOME."""
     src = Path(path).expanduser().resolve()
     if not src.exists():
-        print(f"ERROR: File not found: {src}")
+        logger.info(f"ERROR: File not found: {src}")
         sys.exit(1)
 
     try:
         data = json.loads(src.read_text())
     except json.JSONDecodeError:
-        print("ERROR: File is not valid JSON.")
+        logger.info("ERROR: File is not valid JSON.")
         sys.exit(1)
 
     if "installed" not in data and "web" not in data:
-        print(
+        logger.info(
             "ERROR: Not a Google OAuth client secret file (missing "
             "'installed' or 'web' key)."
         )
-        print(
+        logger.info(
             "Download from: https://console.cloud.google.com/apis/credentials"
         )
         sys.exit(1)
@@ -404,7 +404,7 @@ def store_client_secret(path: str) -> None:
     target = _client_secret_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(data, indent=2))
-    print(f"OK: Client secret saved to {target}")
+    logger.info(f"OK: Client secret saved to {target}")
 
 
 def _save_pending_auth(*, state: str, code_verifier: str,
@@ -427,17 +427,17 @@ def _save_pending_auth(*, state: str, code_verifier: str,
 def _load_pending_auth(email: Optional[str] = None) -> dict:
     pending = _pending_auth_path(email)
     if not pending.exists():
-        print("ERROR: No pending OAuth session found. Run --auth-url first.")
+        logger.info("ERROR: No pending OAuth session found. Run --auth-url first.")
         sys.exit(1)
     try:
         data = json.loads(pending.read_text())
     except Exception as exc:
-        print(f"ERROR: Could not read pending OAuth session: {exc}")
-        print("Run --auth-url again to start a fresh session.")
+        logger.info(f"ERROR: Could not read pending OAuth session: {exc}")
+        logger.info("Run --auth-url again to start a fresh session.")
         sys.exit(1)
     if not data.get("state") or not data.get("code_verifier"):
-        print("ERROR: Pending OAuth session is missing PKCE data.")
-        print("Run --auth-url again.")
+        logger.info("ERROR: Pending OAuth session is missing PKCE data.")
+        logger.info("Run --auth-url again.")
         sys.exit(1)
     return data
 
@@ -452,7 +452,7 @@ def _extract_code_and_state(code_or_url: str) -> Tuple[str, Optional[str]]:
     parsed = urlparse(code_or_url)
     params = parse_qs(parsed.query)
     if "code" not in params:
-        print("ERROR: No 'code' parameter found in URL.")
+        logger.info("ERROR: No 'code' parameter found in URL.")
         sys.exit(1)
     state = params.get("state", [None])[0]
     return params["code"][0], state
@@ -465,7 +465,7 @@ def get_auth_url(email: Optional[str] = None) -> None:
     in parallel without trampling each other's PKCE verifier.
     """
     if not _client_secret_path().exists():
-        print("ERROR: No client secret stored. Run --client-secret first.")
+        logger.info("ERROR: No client secret stored. Run --client-secret first.")
         sys.exit(1)
 
     _ensure_deps()
@@ -482,7 +482,7 @@ def get_auth_url(email: Optional[str] = None) -> None:
         prompt="consent",
     )
     _save_pending_auth(state=state, code_verifier=flow.code_verifier, email=email)
-    print(auth_url)
+    logger.info(auth_url)
 
 
 def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
@@ -493,14 +493,14 @@ def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
     pre-multi-user installs).
     """
     if not _client_secret_path().exists():
-        print("ERROR: No client secret stored. Run --client-secret first.")
+        logger.info("ERROR: No client secret stored. Run --client-secret first.")
         sys.exit(1)
 
     pending_auth = _load_pending_auth(email)
     raw_callback = code
     code, returned_state = _extract_code_and_state(code)
     if returned_state and returned_state != pending_auth["state"]:
-        print(
+        logger.info(
             "ERROR: OAuth state mismatch. Run --auth-url again to start a "
             "fresh session."
         )
@@ -530,8 +530,8 @@ def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
         os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
         flow.fetch_token(code=code)
     except Exception as exc:
-        print(f"ERROR: Token exchange failed: {exc}")
-        print("The code may have expired. Run --auth-url to get a fresh URL.")
+        logger.info(f"ERROR: Token exchange failed: {exc}")
+        logger.info("The code may have expired. Run --auth-url to get a fresh URL.")
         sys.exit(1)
 
     creds = flow.credentials
@@ -552,13 +552,13 @@ def exchange_auth_code(code: str, email: Optional[str] = None) -> None:
     token_path.write_text(json.dumps(token_payload, indent=2))
     _pending_auth_path(email).unlink(missing_ok=True)
 
-    print(f"OK: Authenticated. Token saved to {token_path}")
+    logger.info(f"OK: Authenticated. Token saved to {token_path}")
     rel_label = (
         f"{display_hermes_home()}/google_chat_user_tokens/{_sanitize_email(email)}.json"
         if email
         else f"{display_hermes_home()}/google_chat_user_token.json"
     )
-    print(f"Profile path: {rel_label}")
+    logger.info(f"Profile path: {rel_label}")
 
 
 def revoke(email: Optional[str] = None) -> None:
@@ -568,7 +568,7 @@ def revoke(email: Optional[str] = None) -> None:
     """
     token_path = _token_path(email)
     if not token_path.exists():
-        print("No token to revoke.")
+        logger.info("No token to revoke.")
         return
 
     _ensure_deps()
@@ -589,13 +589,13 @@ def revoke(email: Optional[str] = None) -> None:
             ),
             timeout=15,
         )
-        print("Token revoked with Google.")
+        logger.info("Token revoked with Google.")
     except Exception as exc:
-        print(f"Remote revocation failed (token may already be invalid): {exc}")
+        logger.info(f"Remote revocation failed (token may already be invalid): {exc}")
 
     token_path.unlink(missing_ok=True)
     _pending_auth_path(email).unlink(missing_ok=True)
-    print(f"Deleted {token_path}")
+    logger.info(f"Deleted {token_path}")
 
 
 def main() -> None:

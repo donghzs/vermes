@@ -367,7 +367,7 @@ class TrajectoryCompressor:
                 self.config.tokenizer_name,
                 trust_remote_code=self.config.trust_remote_code
             )
-            print(f"✅ Loaded tokenizer: {self.config.tokenizer_name}")
+            logger.info(f"✅ Loaded tokenizer: {self.config.tokenizer_name}")
         except Exception as e:
             raise RuntimeError(f"Failed to load tokenizer '{self.config.tokenizer_name}': {e}")
     
@@ -413,8 +413,8 @@ class TrajectoryCompressor:
             self.async_client = None
             self._async_client_api_key = api_key
 
-        print(f"✅ Initialized summarizer client: {self.config.summarization_model}")
-        print(f"   Max concurrent requests: {self.config.max_concurrent_requests}")
+        logger.info(f"✅ Initialized summarizer client: {self.config.summarization_model}")
+        logger.info(f"   Max concurrent requests: {self.config.max_concurrent_requests}")
 
     def _get_async_client(self):
         """Return an AsyncOpenAI client bound to the current event loop.
@@ -1001,7 +1001,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
             return
         
         # Load ALL entries from all files
-        console.print("\n[dim]Loading all entries...[/dim]")
+        console.logger.info("\n[dim]Loading all entries...[/dim]")
         all_entries = []  # List of (file_path, entry_idx, entry)
         
         for file_path in jsonl_files:
@@ -1017,15 +1017,15 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         
         total_entries = len(all_entries)
         
-        console.print(f"\n{'='*60}")
-        console.print(f"📂 Input: {input_dir}")
-        console.print(f"📂 Output: {output_dir}")
-        console.print(f"📄 Files to process: {len(jsonl_files)}")
-        console.print(f"📊 Total trajectories: {total_entries:,}")
-        console.print(f"🎯 Target max tokens: {self.config.target_max_tokens:,}")
-        console.print(f"📝 Summary target tokens: {self.config.summary_target_tokens}")
-        console.print(f"⚡ Max concurrent API calls: {self.config.max_concurrent_requests}")
-        console.print(f"{'='*60}\n")
+        console.logger.info(f"\n{'='*60}")
+        console.logger.info(f"📂 Input: {input_dir}")
+        console.logger.info(f"📂 Output: {output_dir}")
+        console.logger.info(f"📄 Files to process: {len(jsonl_files)}")
+        console.logger.info(f"📊 Total trajectories: {total_entries:,}")
+        console.logger.info(f"🎯 Target max tokens: {self.config.target_max_tokens:,}")
+        console.logger.info(f"📝 Summary target tokens: {self.config.summary_target_tokens}")
+        console.logger.info(f"⚡ Max concurrent API calls: {self.config.max_concurrent_requests}")
+        console.logger.info(f"{'='*60}\n")
         
         # Create semaphore for rate limiting
         semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
@@ -1146,7 +1146,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
             progress.remove_task(status_task)
         
         # Write results to output files (preserving original order)
-        console.print("\n[dim]Writing output files...[/dim]")
+        console.logger.info("\n[dim]Writing output files...[/dim]")
         output_dir.mkdir(parents=True, exist_ok=True)
         
         for file_path in jsonl_files:
@@ -1176,7 +1176,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
             metrics_path = output_dir / self.config.metrics_output_file
             with open(metrics_path, 'w', encoding="utf-8") as f:
                 json.dump(self.aggregate_metrics.to_dict(), f, indent=2)
-            console.print(f"\n💾 Metrics saved to {metrics_path}")
+            console.logger.info(f"\n💾 Metrics saved to {metrics_path}")
     
     def _print_summary(self):
         """Print comprehensive compression summary statistics."""
@@ -1199,65 +1199,65 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         skipped_pct = (skipped / max(total, 1)) * 100
         over_limit_pct = (over_limit / max(total, 1)) * 100
         
-        print(f"\n")
-        print(f"╔{'═'*70}╗")
-        print(f"║{'TRAJECTORY COMPRESSION REPORT':^70}║")
-        print(f"╠{'═'*70}╣")
+        logger.info(f"\n")
+        logger.info(f"╔{'═'*70}╗")
+        logger.info(f"║{'TRAJECTORY COMPRESSION REPORT':^70}║")
+        logger.info(f"╠{'═'*70}╣")
         
         # Trajectories section
-        print(f"║{'':2}📁 TRAJECTORIES{' '*54}║")
-        print(f"║{'─'*70}║")
-        print(f"║{'':4}Total Processed:        {total:>10,}{' '*32}║")
-        print(f"║{'':4}├─ Compressed:          {compressed:>10,}  ({compressed_pct:>5.1f}%){' '*18}║")
-        print(f"║{'':4}├─ Skipped (under limit):{skipped:>9,}  ({skipped_pct:>5.1f}%){' '*18}║")
-        print(f"║{'':4}├─ Still over limit:    {over_limit:>10,}  ({over_limit_pct:>5.1f}%){' '*18}║")
-        print(f"║{'':4}└─ Failed:              {failed:>10,}{' '*32}║")
+        logger.info(f"║{'':2}📁 TRAJECTORIES{' '*54}║")
+        logger.info(f"║{'─'*70}║")
+        logger.info(f"║{'':4}Total Processed:        {total:>10,}{' '*32}║")
+        logger.info(f"║{'':4}├─ Compressed:          {compressed:>10,}  ({compressed_pct:>5.1f}%){' '*18}║")
+        logger.info(f"║{'':4}├─ Skipped (under limit):{skipped:>9,}  ({skipped_pct:>5.1f}%){' '*18}║")
+        logger.info(f"║{'':4}├─ Still over limit:    {over_limit:>10,}  ({over_limit_pct:>5.1f}%){' '*18}║")
+        logger.info(f"║{'':4}└─ Failed:              {failed:>10,}{' '*32}║")
         
-        print(f"╠{'═'*70}╣")
+        logger.info(f"╠{'═'*70}╣")
         
         # Tokens section
-        print(f"║{'':2}🔢 TOKENS{' '*60}║")
-        print(f"║{'─'*70}║")
-        print(f"║{'':4}Before Compression:     {tokens_before:>15,} tokens{' '*21}║")
-        print(f"║{'':4}After Compression:      {tokens_after:>15,} tokens{' '*21}║")
-        print(f"║{'':4}Total Saved:            {tokens_saved:>15,} tokens{' '*21}║")
-        print(f"║{'':4}Overall Compression:    {m['tokens']['overall_compression_ratio']:>14.1%}{' '*28}║")
+        logger.info(f"║{'':2}🔢 TOKENS{' '*60}║")
+        logger.info(f"║{'─'*70}║")
+        logger.info(f"║{'':4}Before Compression:     {tokens_before:>15,} tokens{' '*21}║")
+        logger.info(f"║{'':4}After Compression:      {tokens_after:>15,} tokens{' '*21}║")
+        logger.info(f"║{'':4}Total Saved:            {tokens_saved:>15,} tokens{' '*21}║")
+        logger.info(f"║{'':4}Overall Compression:    {m['tokens']['overall_compression_ratio']:>14.1%}{' '*28}║")
         
         if tokens_before > 0:
             savings_pct = (tokens_saved / tokens_before) * 100
-            print(f"║{'':4}Space Savings:          {savings_pct:>14.1f}%{' '*28}║")
+            logger.info(f"║{'':4}Space Savings:          {savings_pct:>14.1f}%{' '*28}║")
         
-        print(f"╠{'═'*70}╣")
+        logger.info(f"╠{'═'*70}╣")
         
         # Turns section
-        print(f"║{'':2}💬 CONVERSATION TURNS{' '*48}║")
-        print(f"║{'─'*70}║")
-        print(f"║{'':4}Before Compression:     {m['turns']['total_before']:>15,} turns{' '*22}║")
-        print(f"║{'':4}After Compression:      {m['turns']['total_after']:>15,} turns{' '*22}║")
-        print(f"║{'':4}Total Removed:          {m['turns']['total_removed']:>15,} turns{' '*22}║")
+        logger.info(f"║{'':2}💬 CONVERSATION TURNS{' '*48}║")
+        logger.info(f"║{'─'*70}║")
+        logger.info(f"║{'':4}Before Compression:     {m['turns']['total_before']:>15,} turns{' '*22}║")
+        logger.info(f"║{'':4}After Compression:      {m['turns']['total_after']:>15,} turns{' '*22}║")
+        logger.info(f"║{'':4}Total Removed:          {m['turns']['total_removed']:>15,} turns{' '*22}║")
         
-        print(f"╠{'═'*70}╣")
+        logger.info(f"╠{'═'*70}╣")
         
         # Averages section (for compressed trajectories only)
-        print(f"║{'':2}📈 AVERAGES (Compressed Trajectories Only){' '*27}║")
-        print(f"║{'─'*70}║")
+        logger.info(f"║{'':2}📈 AVERAGES (Compressed Trajectories Only){' '*27}║")
+        logger.info(f"║{'─'*70}║")
         if compressed > 0:
-            print(f"║{'':4}Avg Compression Ratio:  {m['averages']['avg_compression_ratio']:>14.1%}{' '*28}║")
-            print(f"║{'':4}Avg Tokens Saved:       {m['averages']['avg_tokens_saved_per_compressed']:>14,.0f}{' '*28}║")
-            print(f"║{'':4}Avg Turns Removed:      {m['averages']['avg_turns_removed_per_compressed']:>14.1f}{' '*28}║")
+            logger.info(f"║{'':4}Avg Compression Ratio:  {m['averages']['avg_compression_ratio']:>14.1%}{' '*28}║")
+            logger.info(f"║{'':4}Avg Tokens Saved:       {m['averages']['avg_tokens_saved_per_compressed']:>14,.0f}{' '*28}║")
+            logger.info(f"║{'':4}Avg Turns Removed:      {m['averages']['avg_turns_removed_per_compressed']:>14.1f}{' '*28}║")
         else:
-            print(f"║{'':4}No trajectories were compressed{' '*38}║")
+            logger.info(f"║{'':4}No trajectories were compressed{' '*38}║")
         
-        print(f"╠{'═'*70}╣")
+        logger.info(f"╠{'═'*70}╣")
         
         # Summarization API section
-        print(f"║{'':2}🤖 SUMMARIZATION API{' '*49}║")
-        print(f"║{'─'*70}║")
-        print(f"║{'':4}API Calls Made:         {m['summarization']['total_api_calls']:>15,}{' '*27}║")
-        print(f"║{'':4}Errors:                 {m['summarization']['total_errors']:>15,}{' '*27}║")
-        print(f"║{'':4}Success Rate:           {m['summarization']['success_rate']:>14.1%}{' '*28}║")
+        logger.info(f"║{'':2}🤖 SUMMARIZATION API{' '*49}║")
+        logger.info(f"║{'─'*70}║")
+        logger.info(f"║{'':4}API Calls Made:         {m['summarization']['total_api_calls']:>15,}{' '*27}║")
+        logger.info(f"║{'':4}Errors:                 {m['summarization']['total_errors']:>15,}{' '*27}║")
+        logger.info(f"║{'':4}Success Rate:           {m['summarization']['success_rate']:>14.1%}{' '*28}║")
         
-        print(f"╠{'═'*70}╣")
+        logger.info(f"╠{'═'*70}╣")
         
         # Processing time section
         duration = m['processing']['duration_seconds']
@@ -1268,23 +1268,23 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         
         throughput = total / max(duration, 0.001)
         
-        print(f"║{'':2}⏱️  PROCESSING TIME{' '*51}║")
-        print(f"║{'─'*70}║")
-        print(f"║{'':4}Duration:               {time_str:>20}{' '*22}║")
-        print(f"║{'':4}Throughput:             {throughput:>15.1f} traj/sec{' '*18}║")
-        print(f"║{'':4}Started:                {m['processing']['start_time'][:19]:>20}{' '*22}║")
-        print(f"║{'':4}Finished:               {m['processing']['end_time'][:19]:>20}{' '*22}║")
+        logger.info(f"║{'':2}⏱️  PROCESSING TIME{' '*51}║")
+        logger.info(f"║{'─'*70}║")
+        logger.info(f"║{'':4}Duration:               {time_str:>20}{' '*22}║")
+        logger.info(f"║{'':4}Throughput:             {throughput:>15.1f} traj/sec{' '*18}║")
+        logger.info(f"║{'':4}Started:                {m['processing']['start_time'][:19]:>20}{' '*22}║")
+        logger.info(f"║{'':4}Finished:               {m['processing']['end_time'][:19]:>20}{' '*22}║")
         
-        print(f"╚{'═'*70}╝")
+        logger.info(f"╚{'═'*70}╝")
         
         # Distribution summary if we have data
         if self.aggregate_metrics.compression_ratios:
             ratios = self.aggregate_metrics.compression_ratios
             tokens_saved_list = self.aggregate_metrics.tokens_saved_list
             
-            print(f"\n📊 Distribution Summary:")
-            print(f"   Compression ratios: min={min(ratios):.2%}, max={max(ratios):.2%}, median={sorted(ratios)[len(ratios)//2]:.2%}")
-            print(f"   Tokens saved:       min={min(tokens_saved_list):,}, max={max(tokens_saved_list):,}, median={sorted(tokens_saved_list)[len(tokens_saved_list)//2]:,}")
+            logger.info(f"\n📊 Distribution Summary:")
+            logger.info(f"   Compression ratios: min={min(ratios):.2%}, max={max(ratios):.2%}, median={sorted(ratios)[len(ratios)//2]:.2%}")
+            logger.info(f"   Tokens saved:       min={min(tokens_saved_list):,}, max={max(tokens_saved_list):,}, median={sorted(tokens_saved_list)[len(tokens_saved_list)//2]:,}")
 
 
 def main(
@@ -1331,16 +1331,16 @@ def main(
     import tempfile
     import shutil
     
-    print("🗜️  Trajectory Compressor")
-    print("=" * 60)
+    logger.info("🗜️  Trajectory Compressor")
+    logger.info("=" * 60)
     
     # Load configuration
     config_path = Path(config)
     if config_path.exists():
-        print(f"📋 Loading config from {config}")
+        logger.info(f"📋 Loading config from {config}")
         compression_config = CompressionConfig.from_yaml(config)
     else:
-        print(f"⚠️  Config not found at {config}, using defaults")
+        logger.info(f"⚠️  Config not found at {config}, using defaults")
         compression_config = CompressionConfig()
     
     # Apply CLI overrides
@@ -1352,20 +1352,20 @@ def main(
     # Validate sample_percent
     if sample_percent is not None:
         if sample_percent <= 0 or sample_percent > 100:
-            print(f"❌ sample_percent must be between 1 and 100, got {sample_percent}")
+            logger.info(f"❌ sample_percent must be between 1 and 100, got {sample_percent}")
             return
-        print(f"🎲 Will sample {sample_percent}% of trajectories (seed={seed})")
+        logger.info(f"🎲 Will sample {sample_percent}% of trajectories (seed={seed})")
     
     # Setup paths and determine input type
     input_path = Path(input)
     if not input_path.exists():
-        print(f"❌ Input not found: {input}")
+        logger.info(f"❌ Input not found: {input}")
         return
     
     is_file_input = input_path.is_file()
     
     if is_file_input:
-        print(f"📄 Input mode: Single JSONL file")
+        logger.info(f"📄 Input mode: Single JSONL file")
         
         # For file input, default output is file with _compressed suffix
         if output:
@@ -1382,22 +1382,22 @@ def main(
                     try:
                         entries.append(json.loads(line))
                     except json.JSONDecodeError as e:
-                        print(f"⚠️  Skipping invalid JSON at line {line_num}: {e}")
+                        logger.info(f"⚠️  Skipping invalid JSON at line {line_num}: {e}")
         
         total_entries = len(entries)
-        print(f"   Loaded {total_entries:,} trajectories from {input_path.name}")
+        logger.info(f"   Loaded {total_entries:,} trajectories from {input_path.name}")
         
         # Sample if requested
         if sample_percent is not None:
             random.seed(seed)
             sample_size = max(1, int(total_entries * sample_percent / 100))
             entries = random.sample(entries, sample_size)
-            print(f"   Sampled {len(entries):,} trajectories ({sample_percent}% of {total_entries:,})")
+            logger.info(f"   Sampled {len(entries):,} trajectories ({sample_percent}% of {total_entries:,})")
         
         if dry_run:
-            print(f"\n🔍 DRY RUN MODE - analyzing without writing")
-            print(f"📄 Would process: {len(entries):,} trajectories")
-            print(f"📄 Would output to: {output_path}")
+            logger.info(f"\n🔍 DRY RUN MODE - analyzing without writing")
+            logger.info(f"📄 Would process: {len(entries):,} trajectories")
+            logger.info(f"📄 Would output to: {output_path}")
             return
         
         # Create a temporary directory for processing
@@ -1429,14 +1429,14 @@ def main(
             if metrics_file.exists():
                 metrics_output = output_path.parent / (output_path.stem + "_metrics.json")
                 shutil.copy(metrics_file, metrics_output)
-                print(f"💾 Metrics saved to {metrics_output}")
+                logger.info(f"💾 Metrics saved to {metrics_output}")
         
-        print(f"\n✅ Compression complete!")
-        print(f"📄 Output: {output_path}")
+        logger.info(f"\n✅ Compression complete!")
+        logger.info(f"📄 Output: {output_path}")
         
     else:
         # Directory input - original behavior
-        print(f"📁 Input mode: Directory of JSONL files")
+        logger.info(f"📁 Input mode: Directory of JSONL files")
         
         if output:
             output_path = Path(output)
@@ -1445,7 +1445,7 @@ def main(
         
         # If sampling is requested for directory mode, we need to handle it differently
         if sample_percent is not None:
-            print(f"\n⚠️  Sampling from directory: will sample {sample_percent}% from each file")
+            logger.info(f"\n⚠️  Sampling from directory: will sample {sample_percent}% from each file")
             
             # Create a temp directory with sampled files
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -1479,12 +1479,12 @@ def main(
                         for entry in sampled_entries:
                             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
                 
-                print(f"   Sampled {total_sampled:,} from {total_original:,} total trajectories")
+                logger.info(f"   Sampled {total_sampled:,} from {total_original:,} total trajectories")
                 
                 if dry_run:
-                    print(f"\n🔍 DRY RUN MODE - analyzing without writing")
-                    print(f"📁 Would process: {temp_input_dir}")
-                    print(f"📁 Would output to: {output_path}")
+                    logger.info(f"\n🔍 DRY RUN MODE - analyzing without writing")
+                    logger.info(f"📁 Would process: {temp_input_dir}")
+                    logger.info(f"📁 Would output to: {output_path}")
                     return
                 
                 # Initialize compressor and process the sampled data
@@ -1492,16 +1492,16 @@ def main(
                 compressor.process_directory(temp_input_dir, output_path)
         else:
             if dry_run:
-                print(f"\n🔍 DRY RUN MODE - analyzing without writing")
-                print(f"📁 Would process: {input_path}")
-                print(f"📁 Would output to: {output_path}")
+                logger.info(f"\n🔍 DRY RUN MODE - analyzing without writing")
+                logger.info(f"📁 Would process: {input_path}")
+                logger.info(f"📁 Would output to: {output_path}")
                 return
             
             # Initialize compressor and process directly
             compressor = TrajectoryCompressor(compression_config)
             compressor.process_directory(input_path, output_path)
         
-        print("\n✅ Compression complete!")
+        logger.info("\n✅ Compression complete!")
 
 
 if __name__ == "__main__":

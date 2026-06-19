@@ -19,12 +19,15 @@ Usage:
     result = file_ops.read_file("/path/to/file.py")
     
     # Write a file
-    result = file_ops.write_file("/path/to/new.py", "print('hello')")
+    result = file_ops.write_file("/path/to/new.py", "logger.info('hello')")
     
     # Search for content
     result = file_ops.search("TODO", path=".", file_glob="*.py")
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import re
 import difflib
@@ -1414,6 +1417,8 @@ class ShellFileOperations(FileOperations):
             return ""
         try:
             from agent.lsp.reporter import report_for_file, truncate
+
+
             block = report_for_file(path, diagnostics)
             if not block:
                 return ""

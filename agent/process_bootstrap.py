@@ -25,25 +25,27 @@ from __future__ import annotations
 
 import os
 import sys
-import urllib.request
+import urllib.r
+import logging
+
+logger = logging.getLogger(__name__)
+equest
 from typing import Optional
 
 from utils import base_url_hostname, normalize_proxy_url
 
-
 # Cached at module level so we only pay the OpenAI SDK import cost once
 # per process (after the first lazy load).
 _OPENAI_CLS_CACHE = None
-
 
 def _load_openai_cls() -> type:
     """Import and cache ``openai.OpenAI``."""
     global _OPENAI_CLS_CACHE
     if _OPENAI_CLS_CACHE is None:
         from openai import OpenAI as _cls
+
         _OPENAI_CLS_CACHE = _cls
     return _OPENAI_CLS_CACHE
-
 
 class _OpenAIProxy:
     """Module-level proxy that looks like ``openai.OpenAI`` but imports lazily."""
@@ -59,13 +61,12 @@ class _OpenAIProxy:
     def __repr__(self):
         return "<lazy openai.OpenAI proxy>"
 
-
 class _SafeWriter:
     """Transparent stdio wrapper that catches OSError/ValueError from broken pipes.
 
     When hermes-agent runs as a systemd service, Docker container, or headless
     daemon, the stdout/stderr pipe can become unavailable (idle timeout, buffer
-    exhaustion, socket reset). Any print() call then raises
+    exhaustion, socket reset). Any logger.info() call then raises
     ``OSError: [Errno 5] Input/output error``, which can crash agent setup or
     run_conversation() — especially via double-fault when an except handler
     also tries to print.
@@ -108,7 +109,6 @@ class _SafeWriter:
     def __getattr__(self, name):
         return getattr(self._inner, name)
 
-
 def _get_proxy_from_env() -> Optional[str]:
     """Read proxy URL from environment variables.
 
@@ -121,7 +121,6 @@ def _get_proxy_from_env() -> Optional[str]:
         if value:
             return normalize_proxy_url(value)
     return None
-
 
 def _get_proxy_for_base_url(base_url: Optional[str]) -> Optional[str]:
     """Return an env-configured proxy unless NO_PROXY excludes this base URL."""
@@ -141,7 +140,6 @@ def _get_proxy_for_base_url(base_url: Optional[str]) -> Optional[str]:
 
     return proxy
 
-
 def _install_safe_stdio() -> None:
     """Wrap stdout/stderr so best-effort console output cannot crash the agent."""
     for stream_name in ("stdout", "stderr"):
@@ -149,12 +147,10 @@ def _install_safe_stdio() -> None:
         if stream is not None and not isinstance(stream, _SafeWriter):
             setattr(sys, stream_name, _SafeWriter(stream))
 
-
 # Module-level proxy instance — drops in for ``openai.OpenAI``.  Imported as
 # ``from agent.process_bootstrap import OpenAI`` (or re-exported via
 # ``run_agent`` for legacy tests).
 OpenAI = _OpenAIProxy()
-
 
 __all__ = [
     "OpenAI",

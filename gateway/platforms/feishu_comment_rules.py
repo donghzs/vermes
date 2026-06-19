@@ -297,18 +297,18 @@ def is_user_allowed(rule: ResolvedCommentRule, user_open_id: str) -> bool:
 
 def _print_status() -> None:
     cfg = load_config()
-    print(f"Rules file: {RULES_FILE}")
-    print(f"  exists: {RULES_FILE.exists()}")
-    print(f"Pairing file: {PAIRING_FILE}")
-    print(f"  exists: {PAIRING_FILE.exists()}")
-    print()
-    print(f"Top-level:")
-    print(f"  enabled:    {cfg.enabled}")
-    print(f"  policy:     {cfg.policy}")
-    print(f"  allow_from: {sorted(cfg.allow_from) if cfg.allow_from else '[]'}")
-    print()
+    logger.info(f"Rules file: {RULES_FILE}")
+    logger.info(f"  exists: {RULES_FILE.exists()}")
+    logger.info(f"Pairing file: {PAIRING_FILE}")
+    logger.info(f"  exists: {PAIRING_FILE.exists()}")
+    logger.info()
+    logger.info(f"Top-level:")
+    logger.info(f"  enabled:    {cfg.enabled}")
+    logger.info(f"  policy:     {cfg.policy}")
+    logger.info(f"  allow_from: {sorted(cfg.allow_from) if cfg.allow_from else '[]'}")
+    logger.info()
     if cfg.documents:
-        print(f"Document rules ({len(cfg.documents)}):")
+        logger.info(f"Document rules ({len(cfg.documents)}):")
         for key, rule in sorted(cfg.documents.items()):
             parts = []
             if rule.enabled is not None:
@@ -317,34 +317,34 @@ def _print_status() -> None:
                 parts.append(f"policy={rule.policy}")
             if rule.allow_from is not None:
                 parts.append(f"allow_from={sorted(rule.allow_from)}")
-            print(f"  [{key}] {', '.join(parts) if parts else '(empty — inherits all)'}")
+            logger.info(f"  [{key}] {', '.join(parts) if parts else '(empty — inherits all)'}")
     else:
-        print("Document rules: (none)")
-    print()
+        logger.info("Document rules: (none)")
+    logger.info()
     approved = pairing_list()
-    print(f"Pairing approved ({len(approved)}):")
+    logger.info(f"Pairing approved ({len(approved)}):")
     for uid, meta in sorted(approved.items()):
         ts = meta.get("approved_at", 0)
-        print(f"  {uid}  (approved_at={ts})")
+        logger.info(f"  {uid}  (approved_at={ts})")
 
 
 def _do_check(doc_key: str, user_open_id: str) -> None:
     cfg = load_config()
     parts = doc_key.split(":", 1)
     if len(parts) != 2:
-        print(f"Error: doc_key must be 'fileType:fileToken', got '{doc_key}'")
+        logger.info(f"Error: doc_key must be 'fileType:fileToken', got '{doc_key}'")
         return
     file_type, file_token = parts
     rule = resolve_rule(cfg, file_type, file_token)
     allowed = is_user_allowed(rule, user_open_id)
-    print(f"Document:     {doc_key}")
-    print(f"User:         {user_open_id}")
-    print(f"Resolved rule:")
-    print(f"  enabled:      {rule.enabled}")
-    print(f"  policy:       {rule.policy}")
-    print(f"  allow_from:   {sorted(rule.allow_from) if rule.allow_from else '[]'}")
-    print(f"  match_source: {rule.match_source}")
-    print(f"Result:       {'ALLOWED' if allowed else 'DENIED'}")
+    logger.info(f"Document:     {doc_key}")
+    logger.info(f"User:         {user_open_id}")
+    logger.info(f"Resolved rule:")
+    logger.info(f"  enabled:      {rule.enabled}")
+    logger.info(f"  policy:       {rule.policy}")
+    logger.info(f"  allow_from:   {sorted(rule.allow_from) if rule.allow_from else '[]'}")
+    logger.info(f"  match_source: {rule.match_source}")
+    logger.info(f"Result:       {'ALLOWED' if allowed else 'DENIED'}")
 
 
 def _main() -> int:
@@ -373,7 +373,7 @@ def _main() -> int:
 
     args = sys.argv[1:]
     if not args:
-        print(usage)
+        logger.info(usage)
         return 1
 
     cmd = args[0]
@@ -383,43 +383,43 @@ def _main() -> int:
 
     elif cmd == "check":
         if len(args) < 3:
-            print("Usage: check <fileType:fileToken> <user_open_id>")
+            logger.info("Usage: check <fileType:fileToken> <user_open_id>")
             return 1
         _do_check(args[1], args[2])
 
     elif cmd == "pairing":
         if len(args) < 2:
-            print("Usage: pairing <add|remove|list> [args]")
+            logger.info("Usage: pairing <add|remove|list> [args]")
             return 1
         sub = args[1]
         if sub == "add":
             if len(args) < 3:
-                print("Usage: pairing add <user_open_id>")
+                logger.info("Usage: pairing add <user_open_id>")
                 return 1
             if pairing_add(args[2]):
-                print(f"Added: {args[2]}")
+                logger.info(f"Added: {args[2]}")
             else:
-                print(f"Already approved: {args[2]}")
+                logger.info(f"Already approved: {args[2]}")
         elif sub == "remove":
             if len(args) < 3:
-                print("Usage: pairing remove <user_open_id>")
+                logger.info("Usage: pairing remove <user_open_id>")
                 return 1
             if pairing_remove(args[2]):
-                print(f"Removed: {args[2]}")
+                logger.info(f"Removed: {args[2]}")
             else:
-                print(f"Not in approved list: {args[2]}")
+                logger.info(f"Not in approved list: {args[2]}")
         elif sub == "list":
             approved = pairing_list()
             if not approved:
-                print("(no approved users)")
+                logger.info("(no approved users)")
             for uid, meta in sorted(approved.items()):
-                print(f"  {uid}  approved_at={meta.get('approved_at', '?')}")
+                logger.info(f"  {uid}  approved_at={meta.get('approved_at', '?')}")
         else:
-            print(f"Unknown pairing subcommand: {sub}")
+            logger.info(f"Unknown pairing subcommand: {sub}")
             return 1
     else:
-        print(f"Unknown command: {cmd}\n")
-        print(usage)
+        logger.info(f"Unknown command: {cmd}\n")
+        logger.info(usage)
         return 1
     return 0
 

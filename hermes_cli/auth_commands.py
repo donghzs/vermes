@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+import logging
 from getpass import getpass
 import math
 import sys
 import time
 from types import SimpleNamespace
 import uuid
-
 from agent.credential_pool import (
+
     AUTH_TYPE_API_KEY,
     AUTH_TYPE_OAUTH,
     CUSTOM_POOL_PREFIX,
@@ -129,8 +134,6 @@ def _classify_exhausted_status(entry) -> tuple[str, bool]:
 
     return "exhausted", True
 
-
-
 def _format_exhausted_status(entry) -> str:
     if entry.last_status != STATUS_EXHAUSTED:
         return ""
@@ -217,7 +220,7 @@ def auth_add_command(args) -> None:
             base_url=_provider_base_url(provider),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} credential #{len(pool.entries())}: "{label}"')
+        logger.info(f'Added {provider} credential #{len(pool.entries())}: "{label}"')
         return
 
     if provider == "anthropic":
@@ -243,7 +246,7 @@ def auth_add_command(args) -> None:
             base_url=_provider_base_url(provider),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
+        logger.info(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
         return
 
     if provider == "nous":
@@ -259,17 +262,17 @@ def auth_add_command(args) -> None:
                 path = auth_mod._nous_shared_store_path()
             except RuntimeError:
                 path = None
-            print()
+            logger.info()
             if path:
-                print(f"Found existing Nous OAuth credentials at {path}")
+                logger.info(f"Found existing Nous OAuth credentials at {path}")
             else:
-                print("Found existing shared Nous OAuth credentials")
+                logger.info("Found existing shared Nous OAuth credentials")
             try:
                 do_import = input("Import these credentials? [Y/n]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 do_import = "y"
             if do_import in {"", "y", "yes"}:
-                print("Rehydrating Nous session from shared credentials...")
+                logger.info("Rehydrating Nous session from shared credentials...")
                 rehydrated = auth_mod._try_import_shared_nous_state(
                     timeout_seconds=getattr(args, "timeout", None) or 15.0,
                     min_key_ttl_seconds=max(
@@ -282,11 +285,11 @@ def auth_add_command(args) -> None:
                     shown_label = entry.label if entry is not None else label_from_token(
                         rehydrated.get("access_token", ""), _oauth_default_label(provider, 1),
                     )
-                    print(f'Imported {provider} OAuth credentials: "{shown_label}"')
+                    logger.info(f'Imported {provider} OAuth credentials: "{shown_label}"')
                     return
                 # Rehydrate failed (expired refresh_token, portal down, etc.)
                 # — fall through to device-code flow.
-                print("Could not refresh shared credentials — falling back to device-code login.")
+                logger.info("Could not refresh shared credentials — falling back to device-code login.")
 
         creds = auth_mod._nous_device_code_login(
             portal_base_url=getattr(args, "portal_url", None),
@@ -307,7 +310,7 @@ def auth_add_command(args) -> None:
         shown_label = entry.label if entry is not None else label_from_token(
             creds.get("access_token", ""), _oauth_default_label(provider, 1),
         )
-        print(f'Saved {provider} OAuth device-code credentials: "{shown_label}"')
+        logger.info(f'Saved {provider} OAuth device-code credentials: "{shown_label}"')
         return
 
     if provider == "openai-codex":
@@ -332,7 +335,7 @@ def auth_add_command(args) -> None:
             last_refresh=creds.get("last_refresh"),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
+        logger.info(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
         return
 
     if provider == "xai-oauth":
@@ -358,7 +361,7 @@ def auth_add_command(args) -> None:
             last_refresh=creds.get("last_refresh"),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
+        logger.info(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
         return
 
     if provider == "google-gemini-cli":
@@ -379,7 +382,7 @@ def auth_add_command(args) -> None:
             refresh_token=creds.get("refresh_token"),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
+        logger.info(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
         return
 
     if provider == "qwen-oauth":
@@ -399,7 +402,7 @@ def auth_add_command(args) -> None:
             base_url=creds.get("base_url"),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
+        logger.info(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
         return
 
     if provider == "minimax-oauth":
@@ -423,7 +426,7 @@ def auth_add_command(args) -> None:
             base_url=creds.get("inference_base_url"),
         )
         pool.add_entry(entry)
-        print(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
+        logger.info(f'Added {provider} OAuth credential #{len(pool.entries())}: "{entry.label}"')
         return
 
     raise SystemExit(f"`hermes auth add {provider}` is not implemented for auth type {requested_type} yet.")
@@ -445,15 +448,15 @@ def auth_list_command(args) -> None:
         if not entries:
             continue
         current = pool.peek()
-        print(f"{provider} ({len(entries)} credentials):")
+        logger.info(f"{provider} ({len(entries)} credentials):")
         for idx, entry in enumerate(entries, start=1):
             marker = "  "
             if current is not None and entry.id == current.id:
                 marker = "← "
             status = _format_exhausted_status(entry)
             source = _display_source(entry.source)
-            print(f"  #{idx}  {entry.label:<20} {entry.auth_type:<7} {source}{status} {marker}".rstrip())
-        print()
+            logger.info(f"  #{idx}  {entry.label:<20} {entry.auth_type:<7} {source}{status} {marker}".rstrip())
+        logger.info()
 
 
 def auth_remove_command(args) -> None:
@@ -468,7 +471,7 @@ def auth_remove_command(args) -> None:
     removed = pool.remove_index(index)
     if removed is None:
         raise SystemExit(f'No credential matching "{target}" for provider {provider}.')
-    print(f"Removed {provider} credential #{index} ({removed.label})")
+    logger.info(f"Removed {provider} credential #{index} ({removed.label})")
 
     # Unified removal dispatch.  Every credential source Hermes reads from
     # (env vars, external OAuth files, auth.json blocks, custom config)
@@ -487,18 +490,18 @@ def auth_remove_command(args) -> None:
 
     result = step.remove_fn(provider, removed)
     for line in result.cleaned:
-        print(line)
+        logger.info(line)
     if result.suppress:
         suppress_credential_source(provider, removed.source)
     for line in result.hints:
-        print(line)
+        logger.info(line)
 
 
 def auth_reset_command(args) -> None:
     provider = _normalize_provider(getattr(args, "provider", ""))
     pool = load_pool(provider)
     count = pool.reset_statuses()
-    print(f"Reset status on {count} {provider} credentials")
+    logger.info(f"Reset status on {count} {provider} credentials")
 
 
 def auth_status_command(args) -> None:
@@ -509,16 +512,16 @@ def auth_status_command(args) -> None:
     if not status.get("logged_in"):
         reason = status.get("error")
         if reason:
-            print(f"{provider}: logged out ({reason})")
+            logger.info(f"{provider}: logged out ({reason})")
         else:
-            print(f"{provider}: logged out")
+            logger.info(f"{provider}: logged out")
         return
 
-    print(f"{provider}: logged in")
+    logger.info(f"{provider}: logged in")
     for key in ("auth_type", "client_id", "redirect_uri", "scope", "expires_at", "api_base_url"):
         value = status.get(key)
         if value:
-            print(f"  {key}: {value}")
+            logger.info(f"  {key}: {value}")
 
 
 def auth_logout_command(args) -> None:
@@ -542,8 +545,8 @@ def auth_spotify_command(args) -> None:
 def _interactive_auth() -> None:
     """Interactive credential pool management when `hermes auth` is called bare."""
     # Show current pool status first
-    print("Credential Pool Status")
-    print("=" * 50)
+    logger.info("Credential Pool Status")
+    logger.info("=" * 50)
 
     auth_list_command(SimpleNamespace(provider=None))
 
@@ -553,18 +556,18 @@ def _interactive_auth() -> None:
         if has_aws_credentials():
             auth_source = resolve_aws_auth_env_var() or "unknown"
             region = resolve_bedrock_region()
-            print(f"bedrock (AWS SDK credential chain):")
-            print(f"  Auth: {auth_source}")
-            print(f"  Region: {region}")
+            logger.info(f"bedrock (AWS SDK credential chain):")
+            logger.info(f"  Auth: {auth_source}")
+            logger.info(f"  Region: {region}")
             try:
                 import boto3
                 sts = boto3.client("sts", region_name=region)
                 identity = sts.get_caller_identity()
                 arn = identity.get("Arn", "unknown")
-                print(f"  Identity: {arn}")
+                logger.info(f"  Identity: {arn}")
             except Exception:
-                print(f"  Identity: (could not resolve — boto3 STS call failed)")
-            print()
+                logger.info(f"  Identity: (could not resolve — boto3 STS call failed)")
+            logger.info()
     except ImportError:
         pass  # boto3 or bedrock_adapter not available
 
@@ -591,11 +594,11 @@ def _interactive_auth() -> None:
                     str(_entra.get("scope") or "").strip()
                     or SCOPE_AI_AZURE_DEFAULT
                 )
-                print(f"azure-foundry (Microsoft Entra ID):")
-                print(f"  Endpoint: {_base_url or '(not configured)'}")
-                print(f"  Scope: {_scope}")
+                logger.info(f"azure-foundry (Microsoft Entra ID):")
+                logger.info(f"  Endpoint: {_base_url or '(not configured)'}")
+                logger.info(f"  Scope: {_scope}")
                 if not has_azure_identity_installed():
-                    print("  Status: ⚠ azure-identity not installed "
+                    logger.info("  Status: ⚠ azure-identity not installed "
                           "(pip install azure-identity)")
                 else:
                     _entra_cfg = EntraIdentityConfig(
@@ -605,17 +608,17 @@ def _interactive_auth() -> None:
                     _env_sources = _info.get("env_sources") or []
                     if _info.get("ok"):
                         _tag = ", ".join(_env_sources) if _env_sources else "default chain"
-                        print(f"  Status: ✓ token acquired ({_tag})")
+                        logger.info(f"  Status: ✓ token acquired ({_tag})")
                     else:
                         _err = _info.get("error") or "credential chain exhausted"
-                        print(f"  Status: ⚠ {_err}")
+                        logger.info(f"  Status: ⚠ {_err}")
                         _hint = _info.get("hint")
                         if _hint:
-                            print(f"  Hint: {_hint}")
-                print()
+                            logger.info(f"  Hint: {_hint}")
+                logger.info()
     except Exception:
         pass
-    print()
+    logger.info()
 
     # Main menu
     choices = [
@@ -625,9 +628,9 @@ def _interactive_auth() -> None:
         "Set rotation strategy for a provider",
         "Exit",
     ]
-    print("What would you like to do?")
+    logger.info("What would you like to do?")
     for i, choice in enumerate(choices, 1):
-        print(f"  {i}. {choice}")
+        logger.info(f"  {i}. {choice}")
 
     try:
         raw = input("\nChoice: ").strip()
@@ -653,10 +656,10 @@ def _pick_provider(prompt: str = "Provider") -> str:
     custom_names = _get_custom_provider_names()
     if custom_names:
         custom_display = [name for name, _key, _provider_key in custom_names]
-        print(f"\nKnown providers: {', '.join(known)}")
-        print(f"Custom endpoints: {', '.join(custom_display)}")
+        logger.info(f"\nKnown providers: {', '.join(known)}")
+        logger.info(f"Custom endpoints: {', '.join(custom_display)}")
     else:
-        print(f"\nKnown providers: {', '.join(known)}")
+        logger.info(f"\nKnown providers: {', '.join(known)}")
     try:
         raw = input(f"{prompt}: ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -671,9 +674,9 @@ def _interactive_add() -> None:
 
     # For OAuth-capable providers, ask which type
     if provider in _OAUTH_CAPABLE_PROVIDERS:
-        print(f"\n{provider} supports both API keys and OAuth login.")
-        print("  1. API key (paste a key from the provider dashboard)")
-        print("  2. OAuth login (authenticate via browser)")
+        logger.info(f"\n{provider} supports both API keys and OAuth login.")
+        logger.info("  1. API key (paste a key from the provider dashboard)")
+        logger.info("  2. OAuth login (authenticate via browser)")
         try:
             type_choice = input("Type [1/2]: ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -704,13 +707,13 @@ def _interactive_remove() -> None:
     provider = _pick_provider("Provider to remove credential from")
     pool = load_pool(provider)
     if not pool.has_credentials():
-        print(f"No credentials for {provider}.")
+        logger.info(f"No credentials for {provider}.")
         return
 
     # Show entries with indices
     for i, e in enumerate(pool.entries(), 1):
         exhausted = _format_exhausted_status(e)
-        print(f"  #{i}  {e.label:25s} {e.auth_type:10s} {e.source}{exhausted} [id:{e.id}]")
+        logger.info(f"  #{i}  {e.label:25s} {e.auth_type:10s} {e.source}{exhausted} [id:{e.id}]")
 
     try:
         raw = input("Remove #, id, or label (blank to cancel): ").strip()
@@ -733,8 +736,8 @@ def _interactive_strategy() -> None:
     current = get_pool_strategy(provider)
     strategies = [STRATEGY_FILL_FIRST, STRATEGY_ROUND_ROBIN, STRATEGY_LEAST_USED, STRATEGY_RANDOM]
 
-    print(f"\nCurrent strategy for {provider}: {current}")
-    print()
+    logger.info(f"\nCurrent strategy for {provider}: {current}")
+    logger.info()
     descriptions = {
         STRATEGY_FILL_FIRST: "Use first key until exhausted, then next",
         STRATEGY_ROUND_ROBIN: "Cycle through keys evenly",
@@ -743,7 +746,7 @@ def _interactive_strategy() -> None:
     }
     for i, s in enumerate(strategies, 1):
         marker = " ←" if s == current else ""
-        print(f"  {i}. {s:15s} — {descriptions.get(s, '')}{marker}")
+        logger.info(f"  {i}. {s:15s} — {descriptions.get(s, '')}{marker}")
 
     try:
         raw = input("\nStrategy [1-4]: ").strip()
@@ -756,10 +759,12 @@ def _interactive_strategy() -> None:
         idx = int(raw) - 1
         strategy = strategies[idx]
     except (ValueError, IndexError):
-        print("Invalid choice.")
+        logger.info("Invalid choice.")
         return
 
     from hermes_cli.config import load_config, save_config
+
+
     cfg = load_config()
     pool_strategies = cfg.get("credential_pool_strategies") or {}
     if not isinstance(pool_strategies, dict):
@@ -767,7 +772,7 @@ def _interactive_strategy() -> None:
     pool_strategies[provider] = strategy
     cfg["credential_pool_strategies"] = pool_strategies
     save_config(cfg)
-    print(f"Set {provider} strategy to: {strategy}")
+    logger.info(f"Set {provider} strategy to: {strategy}")
 
 
 def auth_command(args) -> None:

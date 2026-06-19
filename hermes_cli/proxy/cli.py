@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _print_aiohttp_missing() -> None:
-    print(
+    logger.info(
         "hermes proxy requires aiohttp. Install one of:\n"
         "  pip install 'hermes-agent[messaging]'\n"
         "  pip install aiohttp",
@@ -40,12 +40,12 @@ def cmd_proxy_start(args: Any) -> int:
     try:
         adapter = get_adapter(provider)
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.warning(f"Error: {exc}")
         return 2
 
     if not adapter.is_authenticated():
         auth_hint = getattr(adapter, "auth_hint", f"hermes login {adapter.name}")
-        print(
+        logger.info(
             f"Not logged into {adapter.display_name}. "
             f"Run `{auth_hint}` first.",
             file=sys.stderr,
@@ -55,7 +55,7 @@ def cmd_proxy_start(args: Any) -> int:
     host = getattr(args, "host", None) or DEFAULT_HOST
     port = getattr(args, "port", None) or DEFAULT_PORT
 
-    print(
+    logger.info(
         f"Starting Hermes proxy for {adapter.display_name}\n"
         f"  Listening on:  http://{host}:{port}/v1\n"
         f"  Forwarding to: (resolved per-request from your subscription)\n"
@@ -68,32 +68,32 @@ def cmd_proxy_start(args: Any) -> int:
     try:
         asyncio.run(run_server(adapter, host=host, port=port))
     except KeyboardInterrupt:
-        print("\nproxy: stopped", file=sys.stderr)
+        logger.warning("\nproxy: stopped")
     except OSError as exc:
-        print(f"proxy: failed to bind {host}:{port}: {exc}", file=sys.stderr)
+        logger.warning(f"proxy: failed to bind {host}:{port}: {exc}")
         return 1
     return 0
 
 
 def cmd_proxy_status(args: Any) -> int:
     """Print the status of each configured upstream adapter."""
-    print("Hermes proxy upstream adapters\n")
+    logger.info("Hermes proxy upstream adapters\n")
     for name in sorted(ADAPTERS):
         adapter = get_adapter(name)
         if not adapter.is_authenticated():
-            print(f"  [{name:8s}] {adapter.display_name} — not logged in")
+            logger.info(f"  [{name:8s}] {adapter.display_name} — not logged in")
             continue
         try:
             cred = adapter.get_credential()
         except Exception as exc:
-            print(
+            logger.info(
                 f"  [{name:8s}] {adapter.display_name} — credentials need attention "
                 f"({exc})"
             )
             continue
         expires = f" (bearer expires {cred.expires_at})" if cred.expires_at else ""
-        print(f"  [{name:8s}] {adapter.display_name} — ready{expires}")
-    print(
+        logger.info(f"  [{name:8s}] {adapter.display_name} — ready{expires}")
+    logger.info(
         "\nStart the proxy with: hermes proxy start [--provider <name>]"
     )
     return 0
@@ -101,10 +101,10 @@ def cmd_proxy_status(args: Any) -> int:
 
 def cmd_proxy_list_providers(args: Any) -> int:
     """List available proxy upstream providers."""
-    print("Available proxy upstream providers:")
+    logger.info("Available proxy upstream providers:")
     for name in sorted(ADAPTERS):
         adapter = get_adapter(name)
-        print(f"  {name}  — {adapter.display_name}")
+        logger.info(f"  {name}  — {adapter.display_name}")
     return 0
 
 
@@ -118,7 +118,7 @@ def cmd_proxy(args: Any) -> int:
     if sub in {"providers", "list"}:
         return cmd_proxy_list_providers(args)
     # No subcommand → print short help.
-    print(
+    logger.info(
         "hermes proxy — local OpenAI-compatible proxy that attaches your\n"
         "OAuth-authenticated provider credentials to outbound requests.\n"
         "\n"

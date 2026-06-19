@@ -6,6 +6,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
@@ -36,7 +41,7 @@ def main() -> int:
 
     if args.list:
         for name in list_templates():
-            print(name)
+            logger.info(name)
         return 0
 
     if not args.template or not args.name or not args.output:
@@ -48,7 +53,7 @@ def main() -> int:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(render_template(args.template, args.name), encoding="utf-8")
-    print(f"Wrote {output_path}")
+    logger.info(f"Wrote {output_path}")
     return 0
 
 

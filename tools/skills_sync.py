@@ -218,7 +218,7 @@ def sync_skills(quiet: bool = False) -> dict:
                     if _dir_hash(dest) == bundled_hash:
                         manifest[skill_name] = bundled_hash
                     elif not quiet:
-                        print(
+                        logger.info(
                             f"  ⚠ {skill_name}: bundled version shipped but you "
                             f"already have a local skill by this name — yours "
                             f"was kept. Run `hermes skills reset {skill_name}` "
@@ -230,10 +230,10 @@ def sync_skills(quiet: bool = False) -> dict:
                     copied.append(skill_name)
                     manifest[skill_name] = bundled_hash
                     if not quiet:
-                        print(f"  + {skill_name}")
+                        logger.info(f"  + {skill_name}")
             except (OSError, IOError) as e:
                 if not quiet:
-                    print(f"  ! Failed to copy {skill_name}: {e}")
+                    logger.info(f"  ! Failed to copy {skill_name}: {e}")
                 # Do NOT add to manifest — next sync should retry
 
         elif dest.exists():
@@ -256,7 +256,7 @@ def sync_skills(quiet: bool = False) -> dict:
                 # User modified this skill — don't overwrite their changes
                 user_modified.append(skill_name)
                 if not quiet:
-                    print(f"  ~ {skill_name} (user-modified, skipping)")
+                    logger.info(f"  ~ {skill_name} (user-modified, skipping)")
                 continue
 
             # User copy matches origin — check if bundled has a newer version
@@ -270,7 +270,7 @@ def sync_skills(quiet: bool = False) -> dict:
                         manifest[skill_name] = bundled_hash
                         updated.append(skill_name)
                         if not quiet:
-                            print(f"  ↑ {skill_name} (updated)")
+                            logger.info(f"  ↑ {skill_name} (updated)")
                         # Remove backup after successful copy
                         shutil.rmtree(backup, ignore_errors=True)
                     except (OSError, IOError):
@@ -280,7 +280,7 @@ def sync_skills(quiet: bool = False) -> dict:
                         raise
                 except (OSError, IOError) as e:
                     if not quiet:
-                        print(f"  ! Failed to update {skill_name}: {e}")
+                        logger.info(f"  ! Failed to update {skill_name}: {e}")
             else:
                 skipped += 1  # bundled unchanged, user unchanged
 
@@ -415,7 +415,7 @@ def reset_bundled_skill(name: str, restore: bool = False) -> dict:
 
 
 if __name__ == "__main__":
-    print("Syncing bundled skills into ~/.hermes/skills/ ...")
+    logger.info("Syncing bundled skills into ~/.hermes/skills/ ...")
     result = sync_skills(quiet=False)
     parts = [
         f"{len(result['copied'])} new",
@@ -431,4 +431,4 @@ if __name__ == "__main__":
         parts.append(f"{len(names)} user-modified (kept): {shown}")
     if result["cleaned"]:
         parts.append(f"{len(result['cleaned'])} cleaned from manifest")
-    print(f"\nDone: {', '.join(parts)}. {result['total_bundled']} total bundled.")
+    logger.info(f"\nDone: {', '.join(parts)}. {result['total_bundled']} total bundled.")

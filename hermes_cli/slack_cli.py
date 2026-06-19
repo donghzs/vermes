@@ -15,13 +15,15 @@ Then paste the printed JSON into the Slack app config (Features → App
 Manifest → Edit) and click Save. Slack diffs the manifest and prompts
 for reinstall when scopes/commands change.
 """
-from __future__ import annotations
 
+from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import sys
 from pathlib import Path
-
 
 def _build_full_manifest(bot_name: str, bot_description: str) -> dict:
     """Build a full Slack manifest merging display info + our slash list.
@@ -102,7 +104,6 @@ def _build_full_manifest(bot_name: str, bot_description: str) -> dict:
         },
     }
 
-
 def slack_manifest_command(args) -> int:
     """Print or write a Slack app manifest JSON.
 
@@ -140,8 +141,8 @@ def slack_manifest_command(args) -> int:
             target = Path(write_target).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(payload, encoding="utf-8")
-        print(f"Slack manifest written to: {target}", file=sys.stderr)
-        print(
+        logger.warning(f"Slack manifest written to: {target}")
+        logger.info(
             "\nNext steps:\n"
             "  1. Open https://api.slack.com/apps and pick your Hermes app\n"
             "     (or create a new one: Create New App → From an app manifest).\n"

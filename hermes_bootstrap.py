@@ -3,7 +3,7 @@
 Python on Windows has two long-standing text-encoding footguns:
 
 1. ``sys.stdout`` / ``sys.stderr`` are bound to the console code page
-   (``cp1252`` on US-locale installs), so ``print("café")`` crashes with
+   (``cp1252`` on US-locale installs), so ``logger.info("café")`` crashes with
    ``UnicodeEncodeError: 'charmap' codec can't encode character``.
 
 2. Child processes spawned via ``subprocess`` don't know to use UTF-8
@@ -27,7 +27,7 @@ What this module does on Windows:
     ``PYTHONUTF8``.
   - Reconfigures ``sys.stdout`` / ``sys.stderr`` to UTF-8 in the current
     process, using the ``reconfigure()`` API (Python 3.7+).  This fixes
-    ``print("café")`` in the parent without a re-exec.
+    ``logger.info("café")`` in the parent without a re-exec.
 
 What this module does NOT do:
 
@@ -48,13 +48,14 @@ against double-reconfigure.
 """
 
 from __future__ import annotations
+import logging
 
+logger = logging.getLogger(__name__)
 import os
 import sys
 
-_IS_WINDOWS = sys.platform == "win32"
+_IS_WINDOWS =sys.platform == "win32"
 _bootstrap_applied = False
-
 
 def apply_windows_utf8_bootstrap() -> bool:
     """Apply the Windows UTF-8 bootstrap if we're on Windows.
@@ -125,6 +126,7 @@ def apply_windows_utf8_bootstrap() -> bool:
     # Monkey-patch Popen to inject encoding='utf-8' when text=True but no
     # encoding is specified.
     import subprocess as _sp
+
     _OrigPopen = _sp.Popen
     class _Utf8Popen(_OrigPopen):
         def __init__(self, *args, **kwargs):
@@ -145,7 +147,6 @@ def apply_windows_utf8_bootstrap() -> bool:
 
     _bootstrap_applied = True
     return True
-
 
 # Apply on import — entry points just need ``import hermes_bootstrap``
 # (or ``from hermes_bootstrap import apply_windows_utf8_bootstrap``) at

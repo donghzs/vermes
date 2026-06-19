@@ -39,6 +39,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 USER_AGENT = "HermesAgent/1.0"
 DEFAULT_USER_ENV = "HYPERLIQUID_USER_ADDRESS"
@@ -1650,9 +1655,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     payload = args.func(args)
     if args.json:
-        print(json.dumps(payload, indent=2))
+        logger.info(json.dumps(payload, indent=2))
     else:
-        print(args.renderer(payload))
+        logger.info(args.renderer(payload))
     return 0
 
 

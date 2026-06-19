@@ -32,6 +32,11 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 # Pin a version we know patches cleanly. Update when a newer psutil
 # changes the marker line shape and we need to follow upstream.
 PSUTIL_URL = (
@@ -73,7 +78,7 @@ def main() -> int:
 
     install_cmd_prefix = _resolve_install_cmd(args.pip, args.uv)
 
-    print(
+    logger.info(
         "→ Termux/Android: prebuilding psutil with Linux source path "
         "compatibility shim (see psutil#2762)..."
     )
@@ -104,12 +109,12 @@ def main() -> int:
         common_py.write_text(content.replace(MARKER, REPLACEMENT), encoding="utf-8")
 
         cmd = install_cmd_prefix + ["install", "--no-build-isolation", str(src_root)]
-        print(f"  $ {' '.join(cmd)}")
+        logger.info(f"  $ {' '.join(cmd)}")
         result = subprocess.run(cmd)
         if result.returncode != 0:
             return result.returncode
 
-    print("✓ psutil installed via Android compatibility shim")
+    logger.info("✓ psutil installed via Android compatibility shim")
     return 0
 
 

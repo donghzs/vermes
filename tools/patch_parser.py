@@ -23,11 +23,14 @@ Usage:
     
     operations, error = parse_v4a_patch(patch_content)
     if error:
-        print(f"Parse error: {error}")
+        logger.info(f"Parse error: {error}")
     else:
         result = apply_v4a_operations(operations, file_ops)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import difflib
 import re
 from dataclasses import dataclass, field
@@ -546,6 +549,8 @@ def _apply_update(op: PatchOperation, file_ops: Any) -> Tuple[bool, str]:
                     err_msg = f"Could not apply hunk: {error}"
                     try:
                         from tools.fuzzy_match import format_no_match_hint
+
+
                         err_msg += format_no_match_hint(error, 0, search_pattern, new_content)
                     except Exception:
                         pass

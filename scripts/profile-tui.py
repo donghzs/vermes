@@ -25,7 +25,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import o
+import logging
+
+logger = logging.getLogger(__name__)
+s
 import pty
 import select
 import signal
@@ -61,7 +65,6 @@ KEYS = {
     "shift_down": b"\x1b[1;2B",
 }
 
-
 def pick_longest_session(db: Path) -> str:
     conn = sqlite3.connect(db)
     row = conn.execute(
@@ -71,7 +74,6 @@ def pick_longest_session(db: Path) -> str:
     if not row:
         sys.exit(f"no sessions in {db}")
     return row[0]
-
 
 def drain(fd: int, timeout: float) -> bytes:
     """Read whatever's available from fd within `timeout`, then return."""
@@ -90,7 +92,6 @@ def drain(fd: int, timeout: float) -> bytes:
         chunks.append(data)
     return b"".join(chunks)
 
-
 def hold_key(fd: int, seq: bytes, seconds: float, rate_hz: int) -> int:
     """Write `seq` to fd at ~rate_hz for `seconds`. Returns keystrokes sent."""
     interval = 1.0 / max(1, rate_hz)
@@ -106,7 +107,6 @@ def hold_key(fd: int, seq: bytes, seconds: float, rate_hz: int) -> int:
         drain(fd, 0)
         time.sleep(interval)
     return sent
-
 
 def summarize(log: Path, since_ts_ms: int) -> dict[str, Any]:
     """Parse perf.log, keep only events newer than since_ts_ms, return stats."""
@@ -135,14 +135,12 @@ def summarize(log: Path, since_ts_ms: int) -> dict[str, Any]:
         "frame": frame_events,
     }
 
-
 def pct(values: list[float], p: float) -> float:
     if not values:
         return 0.0
     s = sorted(values)
     idx = min(len(s) - 1, int(len(s) * p))
     return s[idx]
-
 
 def format_report(data: dict[str, Any]) -> str:
     react = data.get("react") or []
@@ -283,7 +281,6 @@ def format_report(data: dict[str, Any]) -> str:
 
     return "\n".join(out)
 
-
 def key_metrics(data: dict[str, Any]) -> dict[str, float]:
     """Flatten the report into a dict of scalar metrics for A/B diffing."""
     metrics: dict[str, float] = {}
@@ -353,7 +350,6 @@ def key_metrics(data: dict[str, Any]) -> dict[str, float]:
 
     return metrics
 
-
 def format_diff(before: dict[str, float], after: dict[str, float]) -> str:
     """Render a side-by-side A/B comparison table."""
     keys = sorted(set(before) | set(after))
@@ -401,7 +397,6 @@ def format_diff(before: dict[str, float], after: dict[str, float]) -> str:
 
     return "\n".join(lines)
 
-
 def run_once(args: argparse.Namespace) -> dict[str, Any]:
     tui_dir = Path(args.tui_dir).resolve()
     entry = tui_dir / "dist" / "entry.js"
@@ -409,9 +404,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         sys.exit(f"{entry} missing — run `npm run build` in {tui_dir} first")
 
     sid = args.session or pick_longest_session(DEFAULT_STATE_DB)
-    print(f"• session: {sid}")
-    print(f"• hold: {args.hold} x {args.rate}Hz for {args.seconds}s after {args.warmup}s warmup")
-    print(f"• terminal: {args.cols}x{args.rows}")
+    logger.info(f"• session: {sid}")
+    logger.info(f"• hold: {args.hold} x {args.rate}Hz for {args.seconds}s after {args.warmup}s warmup")
+    logger.info(f"• terminal: {args.cols}x{args.rows}")
 
     log = Path(args.log)
     if not args.keep_log and log.exists():
@@ -442,13 +437,13 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         winsize = struct.pack("HHHH", args.rows, args.cols, 0, 0)
         fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
-        print(f"• pid: {pid}  fd: {fd}")
-        print(f"• warmup {args.warmup}s (drain startup output)…")
+        logger.info(f"• pid: {pid}  fd: {fd}")
+        logger.info(f"• warmup {args.warmup}s (drain startup output)…")
         drain(fd, args.warmup)
 
-        print(f"• holding {args.hold}…")
+        logger.info(f"• holding {args.hold}…")
         sent = hold_key(fd, KEYS[args.hold], args.seconds, args.rate)
-        print(f"  sent {sent} keystrokes")
+        logger.info(f"  sent {sent} keystrokes")
 
         drain(fd, 0.5)
     finally:
@@ -471,7 +466,6 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
 
     time.sleep(0.2)
     return summarize(log, since_ms)
-
 
 def main() -> int:
     p = argparse.ArgumentParser()
@@ -501,29 +495,28 @@ def main() -> int:
 
     # Single-shot path.
     data = run_once(args)
-    print()
-    print(format_report(data))
+    logger.info()
+    logger.info(format_report(data))
 
     metrics = key_metrics(data)
 
     if args.save:
         path = Path(f"/tmp/perf-{args.save}.json")
         path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-        print(f"\n• saved: {path}")
+        logger.info(f"\n• saved: {path}")
 
     if args.compare:
         path = Path(f"/tmp/perf-{args.compare}.json")
         if not path.exists():
-            print(f"\n⚠ no baseline at {path} — run with --save {args.compare} first")
+            logger.info(f"\n⚠ no baseline at {path} — run with --save {args.compare} first")
         else:
             before = json.loads(path.read_text())
-            print(f"\n═══ A/B diff vs /tmp/perf-{args.compare}.json ═══")
-            print(format_diff(before, metrics))
+            logger.info(f"\n═══ A/B diff vs /tmp/perf-{args.compare}.json ═══")
+            logger.info(format_diff(before, metrics))
 
     if not data["react"] and not data["frame"]:
         return 2
     return 0
-
 
 def loop_mode(args: argparse.Namespace) -> int:
     """Watch source files, rebuild, rerun, print A/B diff against previous run.
@@ -555,19 +548,19 @@ def loop_mode(args: argparse.Namespace) -> int:
     previous_mtimes = collect_mtimes()
     iteration = 0
 
-    print(f"• loop mode — watching {src_root} + {pkg_root} for *.ts(x) changes")
-    print("• edit any TS file, the harness rebuilds + reruns automatically")
-    print("• Ctrl+C to stop\n")
+    logger.info(f"• loop mode — watching {src_root} + {pkg_root} for *.ts(x) changes")
+    logger.info("• edit any TS file, the harness rebuilds + reruns automatically")
+    logger.info("• Ctrl+C to stop\n")
 
     try:
         while True:
             iteration += 1
-            print(f"\n{'═' * 76}")
-            print(f"Iteration {iteration}  @ {time.strftime('%H:%M:%S')}")
-            print("═" * 76)
+            logger.info(f"\n{'═' * 76}")
+            logger.info(f"Iteration {iteration}  @ {time.strftime('%H:%M:%S')}")
+            logger.info("═" * 76)
 
             if iteration > 1:
-                print("• rebuilding…")
+                logger.info("• rebuilding…")
                 result = subprocess.run(
                     ["npm", "run", "build"],
                     cwd=tui_dir,
@@ -575,32 +568,31 @@ def loop_mode(args: argparse.Namespace) -> int:
                     text=True,
                 )
                 if result.returncode != 0:
-                    print("✗ build failed:")
-                    print(result.stdout[-2000:])
-                    print(result.stderr[-2000:])
-                    print("\n• waiting for source changes to retry…")
+                    logger.info("✗ build failed:")
+                    logger.info(result.stdout[-2000:])
+                    logger.warning(result.stderr[-2000:])
+                    logger.info("\n• waiting for source changes to retry…")
                     previous_mtimes = wait_for_change(previous_mtimes, collect_mtimes)
                     continue
-                print("✓ build ok")
+                logger.info("✓ build ok")
 
             data = run_once(args)
             metrics = key_metrics(data)
 
-            print()
-            print(format_report(data))
+            logger.info()
+            logger.info(format_report(data))
 
             if previous_metrics is not None:
-                print(f"\n═══ A/B diff vs iteration {iteration - 1} ═══")
-                print(format_diff(previous_metrics, metrics))
+                logger.info(f"\n═══ A/B diff vs iteration {iteration - 1} ═══")
+                logger.info(format_diff(previous_metrics, metrics))
 
             previous_metrics = metrics
 
-            print("\n• waiting for source changes…")
+            logger.info("\n• waiting for source changes…")
             previous_mtimes = wait_for_change(previous_mtimes, collect_mtimes)
     except KeyboardInterrupt:
-        print("\n• loop stopped")
+        logger.info("\n• loop stopped")
         return 0
-
 
 def wait_for_change(prev: dict[str, float], collect) -> dict[str, float]:
     """Poll every 1s until a watched file's mtime changes. Debounced 500ms."""
@@ -613,13 +605,12 @@ def wait_for_change(prev: dict[str, float], collect) -> dict[str, float]:
         ]
 
         if changed:
-            print(f"  ↻ {len(changed)} file(s) changed:")
+            logger.info(f"  ↻ {len(changed)} file(s) changed:")
             for path in changed[:5]:
-                print(f"    {path}")
+                logger.info(f"    {path}")
             # Debounce — editor save bursts can take ~500ms to settle
             time.sleep(0.5)
             return collect()
-
 
 if __name__ == "__main__":
     sys.exit(main())

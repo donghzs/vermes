@@ -30,6 +30,11 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = REPO_ROOT / "hermes_cli" / "__init__.py"
 PYPROJECT_FILE = REPO_ROOT / "pyproject.toml"
@@ -1266,7 +1271,7 @@ def git(*args, cwd=None):
         cwd=cwd or str(REPO_ROOT),
     )
     if result.returncode != 0:
-        print(f"git {' '.join(args)} failed: {result.stderr}", file=sys.stderr)
+        logger.warning(f"git {' '.join(args)} failed: {result.stderr}")
         return ""
     return result.stdout.strip()
 
@@ -1403,20 +1408,20 @@ def build_release_artifacts(semver: str) -> list[Path]:
         text=True,
     )
     if result.returncode != 0:
-        print("  ⚠ Could not build Python release artifacts.")
+        logger.info("  ⚠ Could not build Python release artifacts.")
         stderr = result.stderr.strip()
         stdout = result.stdout.strip()
         if stderr:
-            print(f"    {stderr.splitlines()[-1]}")
+            logger.warning(f"    {stderr.splitlines()[-1]}")
         elif stdout:
-            print(f"    {stdout.splitlines()[-1]}")
-        print("    Install uv or the 'build' package to attach sdist/wheel assets.")
+            logger.info(f"    {stdout.splitlines()[-1]}")
+        logger.info("    Install uv or the 'build' package to attach sdist/wheel assets.")
         return []
 
     artifacts = sorted(p for p in dist_dir.iterdir() if p.is_file())
     matching = [p for p in artifacts if semver in p.name]
     if not matching:
-        print("  ⚠ Built artifacts did not match the expected release version.")
+        logger.info("  ⚠ Built artifacts did not match the expected release version.")
         return []
     return matching
 
@@ -1698,7 +1703,7 @@ def main():
     base_tag = f"v{calver_date}"
     tag_name, calver_date = next_available_tag(base_tag)
     if tag_name != base_tag:
-        print(f"Note: Tag {base_tag} already exists, using {tag_name}")
+        logger.info(f"Note: Tag {base_tag} already exists, using {tag_name}")
 
     # Determine semver
     current_version = get_current_version()
@@ -1710,29 +1715,29 @@ def main():
     # Get previous tag
     prev_tag = get_last_tag()
     if not prev_tag and not args.first_release:
-        print("No previous tags found. Use --first-release for the initial release.")
-        print(f"Would create tag: {tag_name}")
-        print(f"Would set version: {new_version}")
+        logger.info("No previous tags found. Use --first-release for the initial release.")
+        logger.info(f"Would create tag: {tag_name}")
+        logger.info(f"Would set version: {new_version}")
         return
 
     # Get commits
     commits = get_commits(since_tag=prev_tag)
     if not commits:
-        print("No new commits since last tag.")
+        logger.info("No new commits since last tag.")
         if not args.first_release:
             return
 
-    print(f"{'='*60}")
-    print(f"  Vermes Release Preview")
-    print(f"{'='*60}")
-    print(f"  CalVer tag:      {tag_name}")
-    print(f"  SemVer:          v{current_version} → v{new_version}")
-    print(f"  Previous tag:    {prev_tag or '(none — first release)'}")
-    print(f"  Commits:         {len(commits)}")
-    print(f"  Unique authors:  {len({c['github_author'] for c in commits})}")
-    print(f"  Mode:            {'PUBLISH' if args.publish else 'DRY RUN'}")
-    print(f"{'='*60}")
-    print()
+    logger.info(f"{'='*60}")
+    logger.info(f"  Vermes Release Preview")
+    logger.info(f"{'='*60}")
+    logger.info(f"  CalVer tag:      {tag_name}")
+    logger.info(f"  SemVer:          v{current_version} → v{new_version}")
+    logger.info(f"  Previous tag:    {prev_tag or '(none — first release)'}")
+    logger.info(f"  Commits:         {len(commits)}")
+    logger.info(f"  Unique authors:  {len({c['github_author'] for c in commits})}")
+    logger.info(f"  Mode:            {'PUBLISH' if args.publish else 'DRY RUN'}")
+    logger.info(f"{'='*60}")
+    logger.info()
 
     # Generate changelog
     changelog = generate_changelog(
@@ -1743,19 +1748,19 @@ def main():
 
     if args.output:
         Path(args.output).write_text(changelog, encoding="utf-8")
-        print(f"Changelog written to {args.output}")
+        logger.info(f"Changelog written to {args.output}")
     else:
-        print(changelog)
+        logger.info(changelog)
 
     if args.publish:
-        print(f"\n{'='*60}")
-        print("  Publishing release...")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info("  Publishing release...")
+        logger.info(f"{'='*60}")
 
         # Update version files
         if args.bump:
             update_version_files(new_version, calver_date)
-            print(f"  ✓ Updated version files to v{new_version} ({calver_date})")
+            logger.info(f"  ✓ Updated version files to v{new_version} ({calver_date})")
 
             # Commit version bump
             add_files = [str(VERSION_FILE), str(PYPROJECT_FILE)]
@@ -1763,16 +1768,16 @@ def main():
                 add_files.append(str(ACP_REGISTRY_MANIFEST))
             add_result = git_result("add", *add_files)
             if add_result.returncode != 0:
-                print(f"  ✗ Failed to stage version files: {add_result.stderr.strip()}")
+                logger.warning(f"  ✗ Failed to stage version files: {add_result.stderr.strip()}")
                 return
 
             commit_result = git_result(
                 "commit", "-m", f"chore: bump version to v{new_version} ({calver_date})"
             )
             if commit_result.returncode != 0:
-                print(f"  ✗ Failed to commit version bump: {commit_result.stderr.strip()}")
+                logger.warning(f"  ✗ Failed to commit version bump: {commit_result.stderr.strip()}")
                 return
-            print(f"  ✓ Committed version bump")
+            logger.info(f"  ✓ Committed version bump")
 
         # Create annotated tag
         tag_result = git_result(
@@ -1780,26 +1785,26 @@ def main():
             f"Vermes v{new_version} ({calver_date})\n\nWeekly release"
         )
         if tag_result.returncode != 0:
-            print(f"  ✗ Failed to create tag {tag_name}: {tag_result.stderr.strip()}")
+            logger.warning(f"  ✗ Failed to create tag {tag_name}: {tag_result.stderr.strip()}")
             return
-        print(f"  ✓ Created tag {tag_name}")
+        logger.info(f"  ✓ Created tag {tag_name}")
 
         # Push
         push_result = git_result("push", "origin", "HEAD", "--tags")
         if push_result.returncode == 0:
-            print(f"  ✓ Pushed to origin")
+            logger.info(f"  ✓ Pushed to origin")
         else:
-            print(f"  ✗ Failed to push to origin: {push_result.stderr.strip()}")
-            print("    Continue manually after fixing access:")
-            print("    git push origin HEAD --tags")
+            logger.warning(f"  ✗ Failed to push to origin: {push_result.stderr.strip()}")
+            logger.info("    Continue manually after fixing access:")
+            logger.info("    git push origin HEAD --tags")
 
         # Build semver-named Python artifacts so downstream packagers
         # (e.g. Homebrew) can target them without relying on CalVer tag names.
         artifacts = build_release_artifacts(new_version)
         if artifacts:
-            print("  ✓ Built release artifacts:")
+            logger.info("  ✓ Built release artifacts:")
             for artifact in artifacts:
-                print(f"    - {artifact.relative_to(REPO_ROOT)}")
+                logger.info(f"    - {artifact.relative_to(REPO_ROOT)}")
 
         # Create GitHub release
         changelog_file = REPO_ROOT / ".release_notes.md"
@@ -1824,25 +1829,25 @@ def main():
 
         if result and result.returncode == 0:
             changelog_file.unlink(missing_ok=True)
-            print(f"  ✓ GitHub release created: {result.stdout.strip()}")
-            print(f"\n  🎉 Release v{new_version} ({tag_name}) published!")
+            logger.info(f"  ✓ GitHub release created: {result.stdout.strip()}")
+            logger.info(f"\n  🎉 Release v{new_version} ({tag_name}) published!")
         else:
             if result is None:
-                print("  ✗ GitHub release skipped: `gh` CLI not found.")
+                logger.info("  ✗ GitHub release skipped: `gh` CLI not found.")
             else:
-                print(f"  ✗ GitHub release failed: {result.stderr.strip()}")
-            print(f"    Release notes kept at: {changelog_file}")
-            print(f"    Tag was created locally. Create the release manually:")
-            print(
+                logger.warning(f"  ✗ GitHub release failed: {result.stderr.strip()}")
+            logger.info(f"    Release notes kept at: {changelog_file}")
+            logger.info(f"    Tag was created locally. Create the release manually:")
+            logger.info(
                 f"    gh release create {tag_name} --title 'Vermes v{new_version} ({calver_date})' "
                 f"--notes-file .release_notes.md {' '.join(str(path) for path in artifacts)}"
             )
-            print(f"\n  ✓ Release artifacts prepared for manual publish: v{new_version} ({tag_name})")
+            logger.info(f"\n  ✓ Release artifacts prepared for manual publish: v{new_version} ({tag_name})")
     else:
-        print(f"\n{'='*60}")
-        print(f"  Dry run complete. To publish, add --publish")
-        print(f"  Example: python scripts/release.py --bump minor --publish")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"  Dry run complete. To publish, add --publish")
+        logger.info(f"  Example: python scripts/release.py --bump minor --publish")
+        logger.info(f"{'='*60}")
 
 
 if __name__ == "__main__":

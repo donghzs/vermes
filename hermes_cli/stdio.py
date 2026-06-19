@@ -12,7 +12,7 @@ whole CLI before the REPL even opens.
 The fix is to force UTF-8 on the Python side and also flip the console's
 code page to UTF-8 (65001).  Both matter: Python-level only helps when
 Python's stdout is a real TTY; code-page flipping lets subprocesses and
-child Python ``print()`` calls agree on encoding.
+child Python ``logger.info()`` calls agree on encoding.
 
 This module is a no-op on every non-Windows platform, and idempotent.
 Entry points (``cli.py`` ``main``, ``hermes_cli/main.py`` CLI dispatch,
@@ -28,20 +28,19 @@ sort it out.  Python doesn't get that luxury.
 """
 
 from __future__ import annotations
+import logging
 
+logger = logging.getLogger(__name__)
 import os
 import sys
 
 __all__ = ["configure_windows_stdio", "is_windows"]
 
-
 _CONFIGURED = False
-
 
 def is_windows() -> bool:
     """Return True iff running on native Windows (not WSL)."""
     return sys.platform == "win32"
-
 
 def _flip_console_code_page_to_utf8() -> None:
     """Set the attached console's input and output code pages to UTF-8.
@@ -65,7 +64,6 @@ def _flip_console_code_page_to_utf8() -> None:
         # is non-fatal.  We've still reconfigured Python's own streams below.
         pass
 
-
 def _reconfigure_stream(stream, *, encoding: str = "utf-8", errors: str = "replace") -> None:
     """Reconfigure a text stream to UTF-8 in place.
 
@@ -80,7 +78,6 @@ def _reconfigure_stream(stream, *, encoding: str = "utf-8", errors: str = "repla
         reconfigure(encoding=encoding, errors=errors)
     except Exception:
         pass
-
 
 def configure_windows_stdio() -> bool:
     """Force UTF-8 stdio on Windows.  No-op elsewhere.
@@ -157,7 +154,6 @@ def configure_windows_stdio() -> bool:
     _CONFIGURED = True
     return True
 
-
 def _default_windows_editor() -> str:
     """Return a Windows-appropriate default for ``$EDITOR``.
 
@@ -189,8 +185,6 @@ def _default_windows_editor() -> str:
     # On the extreme off-chance notepad is missing (WinPE, Nano Server), fall
     # back to nothing and let prompt_toolkit's silent no-op do its thing.
     return ""
-
-
 
 def _augment_path_with_known_tools() -> None:
     """Prepend well-known Hermes-managed tool directories to os.environ['PATH'].

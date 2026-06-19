@@ -8,6 +8,9 @@ doesn't silently drop the user's UI mode or other preferences.
 Also works when ``hermes`` is not on PATH (e.g. ``nix run`` or ``python -m``).
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import shutil
 import sys
@@ -184,6 +187,8 @@ def relaunch(
     if sys.platform == "win32":
         # Windows: subprocess + exit, because execvp can't swap to .cmd/.exe shims.
         import subprocess
+
+
         try:
             result = subprocess.run(new_argv)
             sys.exit(result.returncode)
@@ -194,7 +199,7 @@ def relaunch(
             # caller used to see ``[Errno 8] Exec format error`` which is
             # cryptic.  Common causes: ``hermes`` not on PATH yet (install
             # hasn't propagated User PATH into this shell) or a stale shim.
-            print(
+            logger.info(
                 f"\nHermes relaunch failed: {exc}\n"
                 f"Command: {' '.join(new_argv)}\n"
                 f"Fix: open a new terminal so PATH picks up, then re-run hermes.",

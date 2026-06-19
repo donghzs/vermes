@@ -144,14 +144,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _print_version() -> None:
     from hermes_cli import __version__ as hermes_version
 
-    print(hermes_version)
+    logger.info(hermes_version)
 
 
 def _run_check() -> None:
     import acp  # noqa: F401
     from acp_adapter.server import HermesACPAgent  # noqa: F401
 
-    print("Hermes ACP check OK")
+    logger.info("Hermes ACP check OK")
 
 
 def _run_setup() -> None:
@@ -194,18 +194,18 @@ def _run_setup_browser(assume_yes: bool = False) -> int:
     try:
         node_ok = ensure_dependency("node", interactive=not assume_yes)
         if not node_ok:
-            print("Node.js installation failed — cannot proceed with browser tools.",
+            logger.info("Node.js installation failed — cannot proceed with browser tools.",
                   file=sys.stderr)
             return 1
 
         browser_ok = ensure_dependency("browser", interactive=not assume_yes)
         if not browser_ok:
-            print("Browser tools installation failed.", file=sys.stderr)
+            logger.warning("Browser tools installation failed.")
             return 1
 
         return 0
     except OSError as exc:
-        print(f"Browser bootstrap failed: {exc}", file=sys.stderr)
+        logger.warning(f"Browser bootstrap failed: {exc}")
         return 1
 
 

@@ -9,6 +9,9 @@ Usage:
     .venv/bin/python scripts/discord-voice-doctor.py
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import sys
 import shutil
@@ -42,7 +45,7 @@ def check(label, ok, detail=""):
     msg = f"  {symbol} {label}"
     if detail:
         msg += f"  ({detail})"
-    print(msg)
+    logger.info(msg)
     return ok
 
 
@@ -50,11 +53,11 @@ def warn(label, detail=""):
     msg = f"  {WARN} {label}"
     if detail:
         msg += f"  ({detail})"
-    print(msg)
+    logger.info(msg)
 
 
 def section(title):
-    print(f"\n\033[1m{title}\033[0m")
+    logger.info(f"\n\033[1m{title}\033[0m")
 
 
 def check_packages():
@@ -288,6 +291,8 @@ def check_bot_permissions(token):
 
     try:
         import requests
+
+
     except ImportError:
         warn("Bot permissions", "requests not installed — skipping")
         return True
@@ -340,7 +345,7 @@ def check_bot_permissions(token):
             is_admin = bool(perms & (1 << 3))
 
             if is_admin:
-                print(f"    {OK} {g['name']}: Administrator (all permissions)")
+                logger.info(f"    {OK} {g['name']}: Administrator (all permissions)")
                 continue
 
             has = []
@@ -352,10 +357,10 @@ def check_bot_permissions(token):
                     missing.append(name)
 
             if missing:
-                print(f"    {FAIL} {g['name']}: missing {', '.join(missing)}")
+                logger.info(f"    {FAIL} {g['name']}: missing {', '.join(missing)}")
                 ok = False
             else:
-                print(f"    {OK} {g['name']}: {', '.join(has)}")
+                logger.info(f"    {OK} {g['name']}: {', '.join(has)}")
 
     except requests.exceptions.Timeout:
         warn("Bot permissions", "Discord API timeout")
@@ -368,10 +373,10 @@ def check_bot_permissions(token):
 
 
 def main():
-    print()
-    print("\033[1m" + "=" * 50 + "\033[0m")
-    print("\033[1m  Discord Voice Doctor\033[0m")
-    print("\033[1m" + "=" * 50 + "\033[0m")
+    logger.info()
+    logger.info("\033[1m" + "=" * 50 + "\033[0m")
+    logger.info("\033[1m  Discord Voice Doctor\033[0m")
+    logger.info("\033[1m" + "=" * 50 + "\033[0m")
 
     all_ok = True
 
@@ -383,13 +388,13 @@ def main():
     all_ok &= check_bot_permissions(token)
 
     # Summary
-    print()
-    print("\033[1m" + "-" * 50 + "\033[0m")
+    logger.info()
+    logger.info("\033[1m" + "-" * 50 + "\033[0m")
     if all_ok:
-        print(f"  {OK} \033[92mAll checks passed — voice mode ready!\033[0m")
+        logger.info(f"  {OK} \033[92mAll checks passed — voice mode ready!\033[0m")
     else:
-        print(f"  {FAIL} \033[91mSome checks failed — fix issues above.\033[0m")
-    print()
+        logger.info(f"  {FAIL} \033[91mSome checks failed — fix issues above.\033[0m")
+    logger.info()
 
 
 if __name__ == "__main__":

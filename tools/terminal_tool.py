@@ -460,15 +460,15 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
         os.environ["HERMES_SPINNER_PAUSE"] = "1"
         time.sleep(0.2)
         
-        print()
-        print("┌" + "─" * 58 + "┐")
-        print("│  🔐 SUDO PASSWORD REQUIRED" + " " * 30 + "│")
-        print("├" + "─" * 58 + "┤")
-        print("│  Enter password below (input is hidden), or:            │")
-        print("│    • Press Enter to skip (command fails gracefully)     │")
-        print(f"│    • Wait {timeout_seconds}s to auto-skip" + " " * 27 + "│")
-        print("└" + "─" * 58 + "┘")
-        print()
+        logger.info()
+        logger.info("┌" + "─" * 58 + "┐")
+        logger.info("│  🔐 SUDO PASSWORD REQUIRED" + " " * 30 + "│")
+        logger.info("├" + "─" * 58 + "┤")
+        logger.info("│  Enter password below (input is hidden), or:            │")
+        logger.info("│    • Press Enter to skip (command fails gracefully)     │")
+        logger.info(f"│    • Wait {timeout_seconds}s to auto-skip" + " " * 27 + "│")
+        logger.info("└" + "─" * 58 + "┘")
+        logger.info()
         print("  Password (hidden): ", end="", flush=True)
         
         password_thread = threading.Thread(target=read_password_thread, daemon=True)
@@ -477,29 +477,29 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
         
         if result["done"]:
             password = result["password"] or ""
-            print()  # newline after hidden input
+            logger.info()  # newline after hidden input
             if password:
-                print("  ✓ Password received (cached for this session)")
+                logger.info("  ✓ Password received (cached for this session)")
             else:
-                print("  ⏭ Skipped - continuing without sudo")
-            print()
+                logger.info("  ⏭ Skipped - continuing without sudo")
+            logger.info()
             sys.stdout.flush()
             return password
         else:
-            print("\n  ⏱ Timeout - continuing without sudo")
-            print("    (Press Enter to dismiss)")
-            print()
+            logger.info("\n  ⏱ Timeout - continuing without sudo")
+            logger.info("    (Press Enter to dismiss)")
+            logger.info()
             sys.stdout.flush()
             return ""
             
     except (EOFError, KeyboardInterrupt):
-        print()
-        print("  ⏭ Cancelled - continuing without sudo")
-        print()
+        logger.info()
+        logger.info("  ⏭ Cancelled - continuing without sudo")
+        logger.info()
         sys.stdout.flush()
         return ""
     except Exception as e:
-        print(f"\n  [sudo prompt error: {e}] - continuing without sudo\n")
+        logger.info(f"\n  [sudo prompt error: {e}] - continuing without sudo\n")
         sys.stdout.flush()
         return ""
     finally:
@@ -2260,49 +2260,49 @@ def check_terminal_requirements() -> bool:
 
 if __name__ == "__main__":
     # Simple test when run directly
-    print("Terminal Tool Module")
-    print("=" * 50)
+    logger.info("Terminal Tool Module")
+    logger.info("=" * 50)
     
     config = _get_env_config()
-    print("\nCurrent Configuration:")
-    print(f"  Environment type: {config['env_type']}")
-    print(f"  Docker image: {config['docker_image']}")
-    print(f"  Modal image: {config['modal_image']}")
-    print(f"  Working directory: {config['cwd']}")
-    print(f"  Default timeout: {config['timeout']}s")
-    print(f"  Lifetime: {config['lifetime_seconds']}s")
+    logger.info("\nCurrent Configuration:")
+    logger.info(f"  Environment type: {config['env_type']}")
+    logger.info(f"  Docker image: {config['docker_image']}")
+    logger.info(f"  Modal image: {config['modal_image']}")
+    logger.info(f"  Working directory: {config['cwd']}")
+    logger.info(f"  Default timeout: {config['timeout']}s")
+    logger.info(f"  Lifetime: {config['lifetime_seconds']}s")
 
     if not check_terminal_requirements():
-        print("\n❌ Requirements not met. Please check the messages above.")
+        logger.info("\n❌ Requirements not met. Please check the messages above.")
         sys.exit(1)
 
-    print("\n✅ All requirements met!")
-    print("\nAvailable Tool:")
-    print("  - terminal_tool: Execute commands in sandboxed environments")
+    logger.info("\n✅ All requirements met!")
+    logger.info("\nAvailable Tool:")
+    logger.info("  - terminal_tool: Execute commands in sandboxed environments")
 
-    print("\nUsage Examples:")
-    print("  # Execute a command")
-    print("  result = terminal_tool(command='ls -la')")
-    print("  ")
-    print("  # Run a background task")
-    print("  result = terminal_tool(command='python server.py', background=True)")
+    logger.info("\nUsage Examples:")
+    logger.info("  # Execute a command")
+    logger.info("  result = terminal_tool(command='ls -la')")
+    logger.info("  ")
+    logger.info("  # Run a background task")
+    logger.info("  result = terminal_tool(command='python server.py', background=True)")
 
-    print("\nEnvironment Variables:")
+    logger.info("\nEnvironment Variables:")
     default_img = "nikolaik/python-nodejs:python3.11-nodejs20"
-    print(
+    logger.info(
         "  TERMINAL_ENV: "
         f"{os.getenv('TERMINAL_ENV', 'local')} "
         "(local/docker/singularity/modal/daytona/vercel_sandbox/ssh)"
     )
-    print(f"  TERMINAL_DOCKER_IMAGE: {os.getenv('TERMINAL_DOCKER_IMAGE', default_img)}")
-    print(f"  TERMINAL_SINGULARITY_IMAGE: {os.getenv('TERMINAL_SINGULARITY_IMAGE', f'docker://{default_img}')}")
-    print(f"  TERMINAL_MODAL_IMAGE: {os.getenv('TERMINAL_MODAL_IMAGE', default_img)}")
-    print(f"  TERMINAL_DAYTONA_IMAGE: {os.getenv('TERMINAL_DAYTONA_IMAGE', default_img)}")
-    print(f"  TERMINAL_CWD: {os.getenv('TERMINAL_CWD', os.getcwd())}")
+    logger.info(f"  TERMINAL_DOCKER_IMAGE: {os.getenv('TERMINAL_DOCKER_IMAGE', default_img)}")
+    logger.info(f"  TERMINAL_SINGULARITY_IMAGE: {os.getenv('TERMINAL_SINGULARITY_IMAGE', f'docker://{default_img}')}")
+    logger.info(f"  TERMINAL_MODAL_IMAGE: {os.getenv('TERMINAL_MODAL_IMAGE', default_img)}")
+    logger.info(f"  TERMINAL_DAYTONA_IMAGE: {os.getenv('TERMINAL_DAYTONA_IMAGE', default_img)}")
+    logger.info(f"  TERMINAL_CWD: {os.getenv('TERMINAL_CWD', os.getcwd())}")
     from hermes_constants import display_hermes_home as _dhh
-    print(f"  TERMINAL_SANDBOX_DIR: {os.getenv('TERMINAL_SANDBOX_DIR', f'{_dhh()}/sandboxes')}")
-    print(f"  TERMINAL_TIMEOUT: {os.getenv('TERMINAL_TIMEOUT', '60')}")
-    print(f"  TERMINAL_LIFETIME_SECONDS: {os.getenv('TERMINAL_LIFETIME_SECONDS', '300')}")
+    logger.info(f"  TERMINAL_SANDBOX_DIR: {os.getenv('TERMINAL_SANDBOX_DIR', f'{_dhh()}/sandboxes')}")
+    logger.info(f"  TERMINAL_TIMEOUT: {os.getenv('TERMINAL_TIMEOUT', '60')}")
+    logger.info(f"  TERMINAL_LIFETIME_SECONDS: {os.getenv('TERMINAL_LIFETIME_SECONDS', '300')}")
 
 
 # ---------------------------------------------------------------------------

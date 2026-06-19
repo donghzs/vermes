@@ -657,7 +657,7 @@ class AIAgent:
         """Print that silently handles broken pipes / closed stdout.
 
         In headless environments (systemd, Docker, nohup) stdout may become
-        unavailable mid-session.  A raw ``print()`` raises ``OSError`` which
+        unavailable mid-session.  A raw ``logger.info()`` raises ``OSError`` which
         can crash cron jobs and lose completed work.
 
         Internally routes through ``self._print_fn`` (default: builtin
@@ -1953,7 +1953,7 @@ class AIAgent:
             except Exception as e:
                 logger.debug("Failed to propagate interrupt to child agent: %s", e)
         if not self.quiet_mode:
-            print("\n⚡ Interrupt requested" + (f": '{message[:40]}...'" if message and len(message) > 40 else f": '{message}'" if message else ""))
+            logger.info("\n⚡ Interrupt requested" + (f": '{message[:40]}...'" if message and len(message) > 40 else f": '{message}'" if message else ""))
 
     def clear_interrupt(self) -> None:
         """Clear any pending interrupt request and the per-thread tool interrupt signal."""
@@ -4738,20 +4738,20 @@ def main(
     Toolset Examples:
         - "research": Web search, extract, crawl + vision tools
     """
-    print("🤖 AI Agent with Tool Calling")
-    print("=" * 50)
+    logger.info("🤖 AI Agent with Tool Calling")
+    logger.info("=" * 50)
     
     # Handle tool listing
     if list_tools:
         from model_tools import get_all_tool_names, get_available_toolsets
         from toolsets import get_all_toolsets, get_toolset_info
         
-        print("📋 Available Tools & Toolsets:")
-        print("-" * 50)
+        logger.info("📋 Available Tools & Toolsets:")
+        logger.info("-" * 50)
         
         # Show new toolsets system
-        print("\n🎯 Predefined Toolsets (New System):")
-        print("-" * 40)
+        logger.info("\n🎯 Predefined Toolsets (New System):")
+        logger.info("-" * 40)
         all_toolsets = get_all_toolsets()
         
         # Group by category
@@ -4771,57 +4771,57 @@ def main(
                     scenario_toolsets.append(entry)
         
         # Print basic toolsets
-        print("\n📌 Basic Toolsets:")
+        logger.info("\n📌 Basic Toolsets:")
         for name, info in basic_toolsets:
             tools_str = ', '.join(info['resolved_tools']) if info['resolved_tools'] else 'none'
-            print(f"  • {name:15} - {info['description']}")
-            print(f"    Tools: {tools_str}")
+            logger.info(f"  • {name:15} - {info['description']}")
+            logger.info(f"    Tools: {tools_str}")
         
         # Print composite toolsets
-        print("\n📂 Composite Toolsets (built from other toolsets):")
+        logger.info("\n📂 Composite Toolsets (built from other toolsets):")
         for name, info in composite_toolsets:
             includes_str = ', '.join(info['includes']) if info['includes'] else 'none'
-            print(f"  • {name:15} - {info['description']}")
-            print(f"    Includes: {includes_str}")
-            print(f"    Total tools: {info['tool_count']}")
+            logger.info(f"  • {name:15} - {info['description']}")
+            logger.info(f"    Includes: {includes_str}")
+            logger.info(f"    Total tools: {info['tool_count']}")
         
         # Print scenario-specific toolsets
-        print("\n🎭 Scenario-Specific Toolsets:")
+        logger.info("\n🎭 Scenario-Specific Toolsets:")
         for name, info in scenario_toolsets:
-            print(f"  • {name:20} - {info['description']}")
-            print(f"    Total tools: {info['tool_count']}")
+            logger.info(f"  • {name:20} - {info['description']}")
+            logger.info(f"    Total tools: {info['tool_count']}")
         
         
         # Show legacy toolset compatibility
-        print("\n📦 Legacy Toolsets (for backward compatibility):")
+        logger.info("\n📦 Legacy Toolsets (for backward compatibility):")
         legacy_toolsets = get_available_toolsets()
         for name, info in legacy_toolsets.items():
             status = "✅" if info["available"] else "❌"
-            print(f"  {status} {name}: {info['description']}")
+            logger.info(f"  {status} {name}: {info['description']}")
             if not info["available"]:
-                print(f"    Requirements: {', '.join(info['requirements'])}")
+                logger.info(f"    Requirements: {', '.join(info['requirements'])}")
         
         # Show individual tools
         all_tools = get_all_tool_names()
-        print(f"\n🔧 Individual Tools ({len(all_tools)} available):")
+        logger.info(f"\n🔧 Individual Tools ({len(all_tools)} available):")
         for tool_name in sorted(all_tools):
             toolset = get_toolset_for_tool(tool_name)
-            print(f"  📌 {tool_name} (from {toolset})")
+            logger.info(f"  📌 {tool_name} (from {toolset})")
         
-        print("\n💡 Usage Examples:")
-        print("  # Use predefined toolsets")
-        print("  python run_agent.py --enabled_toolsets=research --query='search for Python news'")
-        print("  python run_agent.py --enabled_toolsets=development --query='debug this code'")
-        print("  python run_agent.py --enabled_toolsets=safe --query='analyze without terminal'")
-        print("  ")
-        print("  # Combine multiple toolsets")
-        print("  python run_agent.py --enabled_toolsets=web,vision --query='analyze website'")
-        print("  ")
-        print("  # Disable toolsets")
-        print("  python run_agent.py --disabled_toolsets=terminal --query='no command execution'")
-        print("  ")
-        print("  # Run with trajectory saving enabled")
-        print("  python run_agent.py --save_trajectories --query='your question here'")
+        logger.info("\n💡 Usage Examples:")
+        logger.info("  # Use predefined toolsets")
+        logger.info("  python run_agent.py --enabled_toolsets=research --query='search for Python news'")
+        logger.info("  python run_agent.py --enabled_toolsets=development --query='debug this code'")
+        logger.info("  python run_agent.py --enabled_toolsets=safe --query='analyze without terminal'")
+        logger.info("  ")
+        logger.info("  # Combine multiple toolsets")
+        logger.info("  python run_agent.py --enabled_toolsets=web,vision --query='analyze website'")
+        logger.info("  ")
+        logger.info("  # Disable toolsets")
+        logger.info("  python run_agent.py --disabled_toolsets=terminal --query='no command execution'")
+        logger.info("  ")
+        logger.info("  # Run with trajectory saving enabled")
+        logger.info("  python run_agent.py --save_trajectories --query='your question here'")
         return
     
     # Parse toolset selection arguments
@@ -4830,16 +4830,16 @@ def main(
     
     if enabled_toolsets:
         enabled_toolsets_list = [t.strip() for t in enabled_toolsets.split(",")]
-        print(f"🎯 Enabled toolsets: {enabled_toolsets_list}")
+        logger.info(f"🎯 Enabled toolsets: {enabled_toolsets_list}")
     
     if disabled_toolsets:
         disabled_toolsets_list = [t.strip() for t in disabled_toolsets.split(",")]
-        print(f"🚫 Disabled toolsets: {disabled_toolsets_list}")
+        logger.info(f"🚫 Disabled toolsets: {disabled_toolsets_list}")
     
     if save_trajectories:
-        print("💾 Trajectory saving: ENABLED")
-        print("   - Successful conversations → trajectory_samples.jsonl")
-        print("   - Failed conversations → failed_trajectories.jsonl")
+        logger.info("💾 Trajectory saving: ENABLED")
+        logger.info("   - Successful conversations → trajectory_samples.jsonl")
+        logger.info("   - Failed conversations → failed_trajectories.jsonl")
     
     # Initialize agent with provided parameters
     try:
@@ -4855,7 +4855,7 @@ def main(
             log_prefix_chars=log_prefix_chars
         )
     except RuntimeError as e:
-        print(f"❌ Failed to initialize agent: {e}")
+        logger.info(f"❌ Failed to initialize agent: {e}")
         return
     
     # Use provided query or default to Python 3.13 example
@@ -4867,23 +4867,23 @@ def main(
     else:
         user_query = query
     
-    print(f"\n📝 User Query: {user_query}")
-    print("\n" + "=" * 50)
+    logger.info(f"\n📝 User Query: {user_query}")
+    logger.info("\n" + "=" * 50)
     
     # Run conversation
     result = agent.run_conversation(user_query)
     
-    print("\n" + "=" * 50)
-    print("📋 CONVERSATION SUMMARY")
-    print("=" * 50)
-    print(f"✅ Completed: {result['completed']}")
-    print(f"📞 API Calls: {result['api_calls']}")
-    print(f"💬 Messages: {len(result['messages'])}")
+    logger.info("\n" + "=" * 50)
+    logger.info("📋 CONVERSATION SUMMARY")
+    logger.info("=" * 50)
+    logger.info(f"✅ Completed: {result['completed']}")
+    logger.info(f"📞 API Calls: {result['api_calls']}")
+    logger.info(f"💬 Messages: {len(result['messages'])}")
     
     if result['final_response']:
-        print("\n🎯 FINAL RESPONSE:")
-        print("-" * 30)
-        print(result['final_response'])
+        logger.info("\n🎯 FINAL RESPONSE:")
+        logger.info("-" * 30)
+        logger.info(result['final_response'])
     
     # Save sample trajectory to UUID-named file if requested
     if save_sample:
@@ -4909,11 +4909,11 @@ def main(
             with open(sample_filename, "w", encoding="utf-8") as f:
                 # Pretty-print JSON with indent for readability
                 f.write(json.dumps(entry, ensure_ascii=False, indent=2))
-            print(f"\n💾 Sample trajectory saved to: {sample_filename}")
+            logger.info(f"\n💾 Sample trajectory saved to: {sample_filename}")
         except Exception as e:
-            print(f"\n⚠️ Failed to save sample: {e}")
+            logger.info(f"\n⚠️ Failed to save sample: {e}")
     
-    print("\n👋 Agent execution completed!")
+    logger.info("\n👋 Agent execution completed!")
 
 
 if __name__ == "__main__":

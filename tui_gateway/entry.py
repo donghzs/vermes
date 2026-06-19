@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import sys
 
@@ -106,7 +109,7 @@ def _log_signal(signum: int, frame) -> None:
                 f.write("".join(traceback.format_stack(sys._current_frames().get(tid))))
     except Exception:
         pass
-    print(f"[gateway-signal] {name}", file=sys.stderr, flush=True)
+    logger.warning(f"[gateway-signal] {name}", flush=True)
 
     import threading as _threading
 
@@ -181,7 +184,7 @@ def _log_exit(reason: str) -> None:
             )
     except Exception:
         pass
-    print(f"[gateway-exit] {reason}", file=sys.stderr, flush=True)
+    logger.warning(f"[gateway-exit] {reason}", flush=True)
 
 
 def main():
@@ -212,6 +215,8 @@ def main():
     if _has_mcp_servers:
         try:
             from tools.mcp_tool import discover_mcp_tools
+
+
             discover_mcp_tools()
         except Exception:
             pass

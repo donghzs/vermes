@@ -28,6 +28,11 @@ import urllib.request
 import urllib.error
 from typing import Any, Dict, List, Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 RPC_URL = os.environ.get(
     "SOLANA_RPC_URL",
     "https://api.mainnet-beta.solana.com",
@@ -158,7 +163,7 @@ def lamports_to_sol(lamports: int) -> float:
 
 
 def print_json(obj: Any) -> None:
-    print(json.dumps(obj, indent=2))
+    logger.info(json.dumps(obj, indent=2))
 
 
 def _short_mint(mint: str) -> str:

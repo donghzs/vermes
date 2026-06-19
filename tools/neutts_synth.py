@@ -12,6 +12,9 @@ Requires: python -m pip install -U neutts[all]
 System:   apt install espeak-ng  (or brew install espeak-ng)
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 import struct
 import sys
@@ -63,10 +66,10 @@ def main():
     ref_audio = Path(args.ref_audio).expanduser()
     ref_text_path = Path(args.ref_text).expanduser()
     if not ref_audio.exists():
-        print(f"Error: reference audio not found: {ref_audio}", file=sys.stderr)
+        logger.warning(f"Error: reference audio not found: {ref_audio}")
         sys.exit(1)
     if not ref_text_path.exists():
-        print(f"Error: reference text not found: {ref_text_path}", file=sys.stderr)
+        logger.warning(f"Error: reference text not found: {ref_text_path}")
         sys.exit(1)
 
     ref_text = ref_text_path.read_text(encoding="utf-8").strip()
@@ -75,7 +78,7 @@ def main():
     try:
         from neutts import NeuTTS
     except ImportError:
-        print("Error: neutts not installed. Run: python -m pip install -U neutts[all]", file=sys.stderr)
+        logger.warning("Error: neutts not installed. Run: python -m pip install -U neutts[all]")
         sys.exit(1)
 
     tts = NeuTTS(
@@ -93,11 +96,13 @@ def main():
 
     try:
         import soundfile as sf
+
+
         sf.write(str(out_path), wav, 24000)
     except ImportError:
         _write_wav(str(out_path), wav, 24000)
 
-    print(f"OK: {out_path}", file=sys.stderr)
+    logger.warning(f"OK: {out_path}")
 
 
 if __name__ == "__main__":

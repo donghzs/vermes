@@ -655,7 +655,7 @@ def _prompt_and_record(
     if not sys.stdin.isatty():
         return False
 
-    print(
+    logger.info(
         f"\n⚠ Hermes is about to register a shell hook that will run a\n"
         f"  command on your behalf.\n\n"
         f"    Event:   {event}\n"
@@ -666,7 +666,7 @@ def _prompt_and_record(
     try:
         answer = input("Allow this hook to run? [y/N]: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
-        print()  # keep the terminal tidy after ^C
+        logger.info()  # keep the terminal tidy after ^C
         return False
 
     if answer in {"y", "yes"}:

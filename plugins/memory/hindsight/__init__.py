@@ -639,7 +639,7 @@ class HindsightMemoryProvider(MemoryProvider):
 
         from hermes_cli.memory_setup import _curses_select
 
-        print("\n  Configuring Hindsight memory:\n")
+        logger.info("\n  Configuring Hindsight memory:\n")
 
         existing_config = self._config if isinstance(self._config, dict) else _load_config()
         if not isinstance(existing_config, dict):
@@ -672,25 +672,25 @@ class HindsightMemoryProvider(MemoryProvider):
         else:
             deps_to_install = [cloud_dep]
 
-        print("\n  Checking dependencies...")
+        logger.info("\n  Checking dependencies...")
         uv_path = shutil.which("uv")
         if not uv_path:
-            print("  ⚠ uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh")
-            print(f"  Then run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+            logger.info("  ⚠ uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh")
+            logger.info(f"  Then run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
         else:
             try:
                 subprocess.run(
                     [uv_path, "pip", "install", "--python", sys.executable, "--quiet", "--upgrade"] + deps_to_install,
                     check=True, timeout=120, capture_output=True,
                 )
-                print("  ✓ Dependencies up to date")
+                logger.info("  ✓ Dependencies up to date")
             except Exception as e:
-                print(f"  ⚠ Install failed: {e}")
-                print(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
+                logger.info(f"  ⚠ Install failed: {e}")
+                logger.info(f"  Run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
 
         # Step 3: Mode-specific config
         if mode == "cloud":
-            print("\n  Get your API key at https://ui.hindsight.vectorize.io\n")
+            logger.info("\n  Get your API key at https://ui.hindsight.vectorize.io\n")
             existing_key = os.environ.get("HINDSIGHT_API_KEY", "")
             if existing_key:
                 masked = f"...{existing_key[-4:]}" if len(existing_key) > 4 else "set"
@@ -824,10 +824,10 @@ class HindsightMemoryProvider(MemoryProvider):
                 llm_api_key=llm_api_key or None,
             )
 
-        print(f"\n  ✓ Hindsight memory configured ({mode} mode)")
+        logger.info(f"\n  ✓ Hindsight memory configured ({mode} mode)")
         if env_writes:
-            print("  API keys saved to .env")
-        print("\n  Start a new session to activate.\n")
+            logger.info("  API keys saved to .env")
+        logger.info("\n  Start a new session to activate.\n")
 
     def get_config_schema(self):
         return [

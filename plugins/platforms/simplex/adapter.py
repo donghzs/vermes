@@ -666,18 +666,18 @@ def interactive_setup() -> None:
     Prompts for the WebSocket URL and the optional allowlist / home channel.
     Writes to ``~/.hermes/.env`` via ``hermes_cli.config``.
     """
-    print()
-    print("SimpleX Chat setup")
-    print("------------------")
-    print("Requirements:")
-    print("  1. simplex-chat daemon running (e.g. `simplex-chat -p 5225`).")
-    print("  2. Python package `websockets` installed (`pip install websockets`).")
-    print()
+    logger.info()
+    logger.info("SimpleX Chat setup")
+    logger.info("------------------")
+    logger.info("Requirements:")
+    logger.info("  1. simplex-chat daemon running (e.g. `simplex-chat -p 5225`).")
+    logger.info("  2. Python package `websockets` installed (`pip install websockets`).")
+    logger.info()
 
     try:
         from hermes_cli.config import get_env_value, save_env_value
     except ImportError:
-        print("hermes_cli.config not available; set SIMPLEX_* vars manually in ~/.hermes/.env")
+        logger.info("hermes_cli.config not available; set SIMPLEX_* vars manually in ~/.hermes/.env")
         return
 
     def _prompt(var: str, prompt: str, *, secret: bool = False) -> None:
@@ -690,7 +690,7 @@ def interactive_setup() -> None:
             else:
                 value = input(f"{prompt}{suffix}: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print()
+            logger.info()
             return
         if value:
             save_env_value(var, value)
@@ -698,7 +698,7 @@ def interactive_setup() -> None:
     _prompt("SIMPLEX_WS_URL", "Daemon WebSocket URL (default ws://127.0.0.1:5225)")
     _prompt("SIMPLEX_ALLOWED_USERS", "Allowed contact IDs (comma-separated; blank=skip)")
     _prompt("SIMPLEX_HOME_CHANNEL", "Home channel contact/group ID (or empty)")
-    print("Done. Make sure the simplex-chat daemon is running before starting the gateway.")
+    logger.info("Done. Make sure the simplex-chat daemon is running before starting the gateway.")
 
 
 def register(ctx) -> None:

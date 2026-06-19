@@ -182,11 +182,11 @@ def _copy_example_files(plugin_dir: Path, console) -> None:
         if not real_path.exists():
             try:
                 shutil.copy2(example_file, real_path)
-                console.print(
+                console.logger.info(
                     f"[dim]  Created {real_name} from {example_file.name}[/dim]"
                 )
             except OSError as e:
-                console.print(
+                console.logger.info(
                     f"[yellow]Warning:[/yellow] Failed to copy {example_file.name}: {e}"
                 )
 
@@ -250,7 +250,7 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
         return
 
     plugin_name = manifest.get("name", "this plugin")
-    console.print(f"\n[bold]{plugin_name}[/bold] requires the following environment variables:\n")
+    console.logger.info(f"\n[bold]{plugin_name}[/bold] requires the following environment variables:\n")
 
     for spec in missing:
         name = spec["name"]
@@ -261,9 +261,9 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
         label = f"  {name}"
         if desc:
             label += f" — {desc}"
-        console.print(label)
+        console.logger.info(label)
         if url:
-            console.print(f"  [dim]Get yours at: {url}[/dim]")
+            console.logger.info(f"  [dim]Get yours at: {url}[/dim]")
 
         try:
             if secret:
@@ -272,17 +272,17 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
             else:
                 value = input(f"  {name}: ").strip()
         except (EOFError, KeyboardInterrupt):
-            console.print(f"\n[dim]  Skipped (you can set these later in {display_hermes_home()}/.env)[/dim]")
+            console.logger.info(f"\n[dim]  Skipped (you can set these later in {display_hermes_home()}/.env)[/dim]")
             return
 
         if value:
             save_env_value(name, value)
             os.environ[name] = value
-            console.print(f"  [green]✓[/green] Saved to {display_hermes_home()}/.env")
+            console.logger.info(f"  [green]✓[/green] Saved to {display_hermes_home()}/.env")
         else:
-            console.print(f"  [dim]  Skipped (set {name} in {display_hermes_home()}/.env later)[/dim]")
+            console.logger.info(f"  [dim]  Skipped (set {name} in {display_hermes_home()}/.env later)[/dim]")
 
-    console.print()
+    console.logger.info()
 
 
 def _display_after_install(plugin_dir: Path, identifier: str) -> None:
@@ -297,12 +297,12 @@ def _display_after_install(plugin_dir: Path, identifier: str) -> None:
     if after_install.exists():
         content = after_install.read_text(encoding="utf-8")
         md = Markdown(content)
-        console.print()
-        console.print(Panel(md, border_style="green", expand=False))
-        console.print()
+        console.logger.info()
+        console.logger.info(Panel(md, border_style="green", expand=False))
+        console.logger.info()
     else:
-        console.print()
-        console.print(
+        console.logger.info()
+        console.logger.info(
             Panel(
                 f"[green bold]Plugin installed:[/] {identifier}\n"
                 f"[dim]Location:[/] {plugin_dir}",
@@ -311,7 +311,7 @@ def _display_after_install(plugin_dir: Path, identifier: str) -> None:
                 expand=False,
             )
         )
-        console.print()
+        console.logger.info()
 
 
 def _display_removed(name: str, plugins_dir: Path) -> None:
@@ -319,9 +319,9 @@ def _display_removed(name: str, plugins_dir: Path) -> None:
     from rich.console import Console
 
     console = Console()
-    console.print()
-    console.print(f"[red]✗[/red] Plugin [bold]{name}[/bold] removed from {plugins_dir}")
-    console.print()
+    console.logger.info()
+    console.logger.info(f"[red]✗[/red] Plugin [bold]{name}[/bold] removed from {plugins_dir}")
+    console.logger.info()
 
 
 def _require_installed_plugin(name: str, plugins_dir: Path, console) -> Path:
@@ -329,7 +329,7 @@ def _require_installed_plugin(name: str, plugins_dir: Path, console) -> Path:
     target = _sanitize_plugin_name(name, plugins_dir)
     if not target.exists():
         installed = ", ".join(d.name for d in plugins_dir.iterdir() if d.is_dir()) or "(none)"
-        console.print(
+        console.logger.info(
             f"[red]Error:[/red] Plugin '{name}' not found in {plugins_dir}.\n"
             f"Installed plugins: {installed}"
         )
@@ -452,16 +452,16 @@ def cmd_install(
     try:
         git_url = _resolve_git_url(identifier)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.logger.info(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
     if git_url.startswith(("http://", "file://")):
-        console.print(
+        console.logger.info(
             "[yellow]Warning:[/yellow] Using insecure/local URL scheme. "
             "Consider using https:// or git@ for production installs.",
         )
 
-    console.print(f"[dim]Cloning {git_url}...[/dim]")
+    console.logger.info(f"[dim]Cloning {git_url}...[/dim]")
 
     try:
         target, installed_manifest, installed_name = _install_plugin_core(
@@ -469,13 +469,13 @@ def cmd_install(
             force=force,
         )
     except PluginOperationError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.logger.info(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
     if not (target / "plugin.yaml").exists() and not (target / "plugin.yml").exists() and not (
         target / "__init__.py"
     ).exists():
-        console.print(
+        console.logger.info(
             f"[yellow]Warning:[/yellow] {installed_name} doesn't contain plugin.yaml "
             f"or __init__.py. It may not be a valid Hermes plugin.",
         )
@@ -504,18 +504,18 @@ def cmd_install(
         disabled.discard(installed_name)
         _save_enabled_set(enabled)
         _save_disabled_set(disabled)
-        console.print(
+        console.logger.info(
             f"[green]✓[/green] Plugin [bold]{installed_name}[/bold] enabled.",
         )
     else:
-        console.print(
+        console.logger.info(
             f"[dim]Plugin installed but not enabled. "
             f"Run `hermes plugins enable {installed_name}` to activate.[/dim]",
         )
 
-    console.print("[dim]Restart the gateway for the plugin to take effect:[/dim]")
-    console.print("[dim]  hermes gateway restart[/dim]")
-    console.print()
+    console.logger.info("[dim]Restart the gateway for the plugin to take effect:[/dim]")
+    console.logger.info("[dim]  hermes gateway restart[/dim]")
+    console.logger.info()
 
 
 def cmd_update(name: str) -> None:
@@ -528,21 +528,21 @@ def cmd_update(name: str) -> None:
     try:
         target = _require_installed_plugin(name, plugins_dir, console)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.logger.info(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
     if not (target / ".git").exists():
-        console.print(
+        console.logger.info(
             f"[red]Error:[/red] Plugin '{name}' was not installed from git "
             f"(no .git directory). Cannot update."
         )
         sys.exit(1)
 
-    console.print(f"[dim]Updating {name}...[/dim]")
+    console.logger.info(f"[dim]Updating {name}...[/dim]")
 
     ok, output = _git_pull_plugin_dir(target)
     if not ok:
-        console.print(f"[red]Error:[/red] {output}")
+        console.logger.info(f"[red]Error:[/red] {output}")
         sys.exit(1)
 
     # Copy any new .example files
@@ -550,12 +550,12 @@ def cmd_update(name: str) -> None:
 
     out = output.strip()
     if "Already up to date" in out:
-        console.print(
+        console.logger.info(
             f"[green]✓[/green] Plugin [bold]{name}[/bold] is already up to date."
         )
     else:
-        console.print(f"[green]✓[/green] Plugin [bold]{name}[/bold] updated.")
-        console.print(f"[dim]{out}[/dim]")
+        console.logger.info(f"[green]✓[/green] Plugin [bold]{name}[/bold] updated.")
+        console.logger.info(f"[dim]{out}[/dim]")
 
 
 def cmd_remove(name: str) -> None:
@@ -568,7 +568,7 @@ def cmd_remove(name: str) -> None:
     try:
         target = _require_installed_plugin(name, plugins_dir, console)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        console.logger.info(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
     shutil.rmtree(target)
@@ -635,21 +635,21 @@ def cmd_enable(name: str) -> None:
     console = Console()
     # Discover the plugin — check installed (user) AND bundled.
     if not _plugin_exists(name):
-        console.print(f"[red]Plugin '{name}' is not installed or bundled.[/red]")
+        console.logger.info(f"[red]Plugin '{name}' is not installed or bundled.[/red]")
         sys.exit(1)
 
     enabled = _get_enabled_set()
     disabled = _get_disabled_set()
 
     if name in enabled and name not in disabled:
-        console.print(f"[dim]Plugin '{name}' is already enabled.[/dim]")
+        console.logger.info(f"[dim]Plugin '{name}' is already enabled.[/dim]")
         return
 
     enabled.add(name)
     disabled.discard(name)
     _save_enabled_set(enabled)
     _save_disabled_set(disabled)
-    console.print(
+    console.logger.info(
         f"[green]✓[/green] Plugin [bold]{name}[/bold] enabled. "
         "Takes effect on next session."
     )
@@ -661,21 +661,21 @@ def cmd_disable(name: str) -> None:
 
     console = Console()
     if not _plugin_exists(name):
-        console.print(f"[red]Plugin '{name}' is not installed or bundled.[/red]")
+        console.logger.info(f"[red]Plugin '{name}' is not installed or bundled.[/red]")
         sys.exit(1)
 
     enabled = _get_enabled_set()
     disabled = _get_disabled_set()
 
     if name not in enabled and name in disabled:
-        console.print(f"[dim]Plugin '{name}' is already disabled.[/dim]")
+        console.logger.info(f"[dim]Plugin '{name}' is already disabled.[/dim]")
         return
 
     enabled.discard(name)
     disabled.add(name)
     _save_enabled_set(enabled)
     _save_disabled_set(disabled)
-    console.print(
+    console.logger.info(
         f"[yellow]\u2298[/yellow] Plugin [bold]{name}[/bold] disabled. "
         "Takes effect on next session."
     )
@@ -798,8 +798,8 @@ def cmd_list() -> None:
     console = Console()
     entries = _discover_all_plugins()
     if not entries:
-        console.print("[dim]No plugins installed.[/dim]")
-        console.print("[dim]Install with:[/dim] hermes plugins install owner/repo")
+        console.logger.info("[dim]No plugins installed.[/dim]")
+        console.logger.info("[dim]Install with:[/dim] hermes plugins install owner/repo")
         return
 
     enabled = _get_enabled_set()
@@ -821,12 +821,12 @@ def cmd_list() -> None:
             status = "[yellow]not enabled[/yellow]"
         table.add_row(name, status, str(version), description, source)
 
-    console.print()
-    console.print(table)
-    console.print()
-    console.print("[dim]Interactive toggle:[/dim] hermes plugins")
-    console.print("[dim]Enable/disable:[/dim] hermes plugins enable/disable <name>")
-    console.print("[dim]Plugins are opt-in by default — only 'enabled' plugins load.[/dim]")
+    console.logger.info()
+    console.logger.info(table)
+    console.logger.info()
+    console.logger.info("[dim]Interactive toggle:[/dim] hermes plugins")
+    console.logger.info("[dim]Enable/disable:[/dim] hermes plugins enable/disable <name>")
+    console.logger.info("[dim]Plugins are opt-in by default — only 'enabled' plugins load.[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -1010,13 +1010,13 @@ def cmd_toggle() -> None:
     has_categories = bool(categories)
 
     if not has_plugins and not has_categories:
-        console.print("[dim]No plugins installed and no provider categories available.[/dim]")
-        console.print("[dim]Install with:[/dim] hermes plugins install owner/repo")
+        console.logger.info("[dim]No plugins installed and no provider categories available.[/dim]")
+        console.logger.info("[dim]Install with:[/dim] hermes plugins install owner/repo")
         return
 
     # Non-TTY fallback
     if not sys.stdin.isatty():
-        console.print("[dim]Interactive mode requires a terminal.[/dim]")
+        console.logger.info("[dim]Interactive mode requires a terminal.[/dim]")
         return
 
     # Launch the composite curses UI
@@ -1258,24 +1258,24 @@ def _run_composite_ui(curses, plugin_names, plugin_labels, plugin_selected,
     if enabled_changed or disabled_changed:
         _save_enabled_set(new_enabled)
         _save_disabled_set(new_disabled)
-        console.print(
+        console.logger.info(
             f"\n[green]\u2713[/green] General plugins: {len(new_enabled)} enabled, "
             f"{len(plugin_names) - len(new_enabled)} disabled."
         )
     elif n_plugins > 0:
-        console.print("\n[dim]General plugins unchanged.[/dim]")
+        console.logger.info("\n[dim]General plugins unchanged.[/dim]")
 
     if result_holder["providers_changed"]:
         new_memory = _get_current_memory_provider() or "built-in"
         new_context = _get_current_context_engine()
-        console.print(
+        console.logger.info(
             f"[green]\u2713[/green] Memory provider: [bold]{new_memory}[/bold]  "
             f"Context engine: [bold]{new_context}[/bold]"
         )
 
     if n_plugins > 0 or result_holder["providers_changed"]:
-        console.print("[dim]Changes take effect on next session.[/dim]")
-    console.print()
+        console.logger.info("[dim]Changes take effect on next session.[/dim]")
+    console.logger.info()
 
 
 def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
@@ -1283,19 +1283,19 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
     """Text-based fallback for the composite plugins UI."""
     from hermes_cli.colors import Colors, color
 
-    print(color("\n  Plugins", Colors.YELLOW))
+    logger.info(color("\n  Plugins", Colors.YELLOW))
 
     # General plugins
     if plugin_names:
         chosen = set(plugin_selected)
-        print(color("\n  General Plugins", Colors.YELLOW))
-        print(color("  Toggle by number, Enter to confirm.\n", Colors.DIM))
+        logger.info(color("\n  General Plugins", Colors.YELLOW))
+        logger.info(color("  Toggle by number, Enter to confirm.\n", Colors.DIM))
 
         while True:
             for i, label in enumerate(plugin_labels):
                 marker = color("[\u2713]", Colors.GREEN) if i in chosen else "[ ]"
-                print(f"  {marker} {i + 1:>2}. {label}")
-            print()
+                logger.info(f"  {marker} {i + 1:>2}. {label}")
+            logger.info()
             try:
                 val = input(color("  Toggle # (or Enter to confirm): ", Colors.DIM)).strip()
                 if not val:
@@ -1305,7 +1305,7 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
                     chosen.symmetric_difference_update({idx})
             except (ValueError, KeyboardInterrupt, EOFError):
                 return
-            print()
+            logger.info()
 
         new_enabled: set = set()
         new_disabled: set = set(disabled)
@@ -1322,10 +1322,10 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
 
     # Provider categories
     if categories:
-        print(color("\n  Provider Plugins", Colors.YELLOW))
+        logger.info(color("\n  Provider Plugins", Colors.YELLOW))
         for ci, (cat_name, cat_current, cat_fn) in enumerate(categories):
-            print(f"  {ci + 1}. {cat_name} [{cat_current}]")
-        print()
+            logger.info(f"  {ci + 1}. {cat_name} [{cat_current}]")
+        logger.info()
         try:
             val = input(color("  Configure # (or Enter to skip): ", Colors.DIM)).strip()
             if val:
@@ -1335,7 +1335,7 @@ def _run_composite_fallback(plugin_names, plugin_labels, plugin_selected,
         except (ValueError, KeyboardInterrupt, EOFError):
             pass
 
-    print()
+    logger.info()
 
 
 def dashboard_install_plugin(
@@ -1612,5 +1612,5 @@ def plugins_command(args) -> None:
     else:
         from rich.console import Console
 
-        Console().print(f"[red]Unknown plugins action: {action}[/red]")
+        Console().logger.info(f"[red]Unknown plugins action: {action}[/red]")
         sys.exit(1)

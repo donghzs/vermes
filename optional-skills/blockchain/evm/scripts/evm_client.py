@@ -4,6 +4,9 @@ evm_client.py — EVM blockchain CLI tool for the Vermes project.
 Zero external dependencies. Uses stdlib only: urllib, json, argparse, time, os, sys, typing.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import argparse
 import json
 import os
@@ -314,7 +317,7 @@ def _short_addr(addr: str) -> str:
     return addr or ""
 
 def print_json(data: Any) -> None:
-    print(json.dumps(data, indent=2, default=str))
+    logger.info(json.dumps(data, indent=2, default=str))
 
 # ---------------------------------------------------------------------------
 # HTTP / JSON-RPC layer
@@ -1086,6 +1089,8 @@ def cmd_whale(args: argparse.Namespace) -> None:
 def cmd_multichain(args: argparse.Namespace) -> None:
     """Scan same wallet across all 8 chains simultaneously."""
     import threading
+
+
 
     address = require_address(args.address)
     results: Dict[str, Any] = {}

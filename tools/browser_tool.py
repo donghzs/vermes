@@ -3663,52 +3663,52 @@ if __name__ == "__main__":
     """
     Simple test/demo when run directly
     """
-    print("🌐 Browser Tool Module")
-    print("=" * 40)
+    logger.info("🌐 Browser Tool Module")
+    logger.info("=" * 40)
 
     _cp = _get_cloud_provider()
     mode = "local" if _cp is None else f"cloud ({_cp.provider_name()})"
-    print(f"   Mode: {mode}")
+    logger.info(f"   Mode: {mode}")
 
     # Check requirements
     if check_browser_requirements():
-        print("✅ All requirements met")
+        logger.info("✅ All requirements met")
     else:
-        print("❌ Missing requirements:")
+        logger.info("❌ Missing requirements:")
         try:
             browser_cmd = _find_agent_browser()
             if _requires_real_termux_browser_install(browser_cmd):
-                print("   - bare npx fallback found (insufficient on Termux local mode)")
-                print(f"     Install: {_browser_install_hint()}")
+                logger.info("   - bare npx fallback found (insufficient on Termux local mode)")
+                logger.info(f"     Install: {_browser_install_hint()}")
             elif _cp is None and not _chromium_installed():
-                print("   - Chromium browser binary not found")
+                logger.info("   - Chromium browser binary not found")
                 searched = ", ".join(_chromium_search_roots()) or "(no candidate paths)"
-                print(f"     Searched: {searched}")
+                logger.info(f"     Searched: {searched}")
                 if _running_in_docker():
-                    print(
+                    logger.info(
                         "     Docker: pull the latest image — the current one "
                         "predates the bundled Chromium install"
                     )
-                    print("       docker pull ghcr.io/nousresearch/hermes-agent:latest")
+                    logger.info("       docker pull ghcr.io/nousresearch/hermes-agent:latest")
                 else:
-                    print("     Install it with:")
-                    print("       npx agent-browser install --with-deps")
-                    print("     Or:  npx playwright install --with-deps chromium")
+                    logger.info("     Install it with:")
+                    logger.info("       npx agent-browser install --with-deps")
+                    logger.info("     Or:  npx playwright install --with-deps chromium")
         except FileNotFoundError:
-            print("   - agent-browser CLI not found")
-            print(f"     Install: {_browser_install_hint()}")
+            logger.info("   - agent-browser CLI not found")
+            logger.info(f"     Install: {_browser_install_hint()}")
         if _cp is not None and not _cp.is_configured():
-            print(f"   - {_cp.provider_name()} credentials not configured")
-            print("   Tip: set browser.cloud_provider to 'local' to use free local mode instead")
+            logger.info(f"   - {_cp.provider_name()} credentials not configured")
+            logger.info("   Tip: set browser.cloud_provider to 'local' to use free local mode instead")
 
-    print("\n📋 Available Browser Tools:")
+    logger.info("\n📋 Available Browser Tools:")
     for schema in BROWSER_TOOL_SCHEMAS:
-        print(f"  🔹 {schema['name']}: {schema['description'][:60]}...")
+        logger.info(f"  🔹 {schema['name']}: {schema['description'][:60]}...")
 
-    print("\n💡 Usage:")
-    print("  from tools.browser_tool import browser_navigate, browser_snapshot")
-    print("  result = browser_navigate('https://example.com', task_id='my_task')")
-    print("  snapshot = browser_snapshot(task_id='my_task')")
+    logger.info("\n💡 Usage:")
+    logger.info("  from tools.browser_tool import browser_navigate, browser_snapshot")
+    logger.info("  result = browser_navigate('https://example.com', task_id='my_task')")
+    logger.info("  snapshot = browser_snapshot(task_id='my_task')")
 
 
 # ---------------------------------------------------------------------------

@@ -755,15 +755,15 @@ def prompt_dangerous_approval(command: str, description: str,
         # config/YAML inside the retry loop below.
         from agent.i18n import t
         while True:
-            print()
-            print(f"  {t('approval.dangerous_header', description=description)}")
-            print(f"      {command}")
-            print()
+            logger.info()
+            logger.info(f"  {t('approval.dangerous_header', description=description)}")
+            logger.info(f"      {command}")
+            logger.info()
             if allow_permanent:
-                print(t("approval.choose_long"))
+                logger.info(t("approval.choose_long"))
             else:
-                print(t("approval.choose_short"))
-            print()
+                logger.info(t("approval.choose_short"))
+            logger.info()
             sys.stdout.flush()
 
             result = {"choice": ""}
@@ -780,33 +780,33 @@ def prompt_dangerous_approval(command: str, description: str,
             thread.join(timeout=timeout_seconds)
 
             if thread.is_alive():
-                print("\n" + t("approval.timeout"))
+                logger.info("\n" + t("approval.timeout"))
                 return "deny"
 
             choice = result["choice"]
             if choice in {'o', 'once'}:
-                print(t("approval.allowed_once"))
+                logger.info(t("approval.allowed_once"))
                 return "once"
             elif choice in {'s', 'session'}:
-                print(t("approval.allowed_session"))
+                logger.info(t("approval.allowed_session"))
                 return "session"
             elif choice in {'a', 'always'}:
                 if not allow_permanent:
-                    print(t("approval.allowed_session"))
+                    logger.info(t("approval.allowed_session"))
                     return "session"
-                print(t("approval.allowed_always"))
+                logger.info(t("approval.allowed_always"))
                 return "always"
             else:
-                print(t("approval.denied"))
+                logger.info(t("approval.denied"))
                 return "deny"
 
     except (EOFError, KeyboardInterrupt):
-        print("\n" + t("approval.cancelled"))
+        logger.info("\n" + t("approval.cancelled"))
         return "deny"
     finally:
         if "HERMES_SPINNER_PAUSE" in os.environ:
             del os.environ["HERMES_SPINNER_PAUSE"]
-        print()
+        logger.info()
         sys.stdout.flush()
 
 
@@ -880,7 +880,7 @@ def _smart_approve(command: str, description: str) -> str:
 Command: {command}
 Flagged reason: {description}
 
-Assess the ACTUAL risk of this command. Many flagged commands are false positives — for example, `python -c "print('hello')"` is flagged as "script execution via -c flag" but is completely harmless.
+Assess the ACTUAL risk of this command. Many flagged commands are false positives — for example, `python -c "logger.info('hello')"` is flagged as "script execution via -c flag" but is completely harmless.
 
 Rules:
 - APPROVE if the command is clearly safe (benign script execution, safe file operations, development tools, package installs, git operations, etc.)

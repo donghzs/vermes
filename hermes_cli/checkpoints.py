@@ -20,13 +20,14 @@ None of these require the agent to be running.  Safe to call any time.
 """
 
 from __future__ import annotations
+import logging
 
+logger = logging.getLogger(__name__)
 import argparse
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
-
 
 def _fmt_bytes(n: int) -> str:
     units = ("B", "KB", "MB", "GB", "TB")
@@ -39,13 +40,11 @@ def _fmt_bytes(n: int) -> str:
         size /= 1024
     return f"{size:.1f} TB"
 
-
 def _fmt_ts(ts: Any) -> str:
     try:
         return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M")
     except (TypeError, ValueError):
         return "—"
-
 
 def _fmt_age(ts: Any) -> str:
     try:
@@ -62,17 +61,16 @@ def _fmt_age(ts: Any) -> str:
         return f"{int(age / 3600)}h ago"
     return f"{int(age / 86400)}d ago"
 
-
 def cmd_status(args: argparse.Namespace) -> int:
     from tools.checkpoint_manager import store_status
 
     info = store_status()
     base = info["base"]
-    print(f"Checkpoint base: {base}")
-    print(f"Total size:      {_fmt_bytes(info['total_size_bytes'])}")
-    print(f"  store/         {_fmt_bytes(info['store_size_bytes'])}")
-    print(f"  legacy-*       {_fmt_bytes(info['legacy_size_bytes'])}")
-    print(f"Projects:        {info['project_count']}")
+    logger.info(f"Checkpoint base: {base}")
+    logger.info(f"Total size:      {_fmt_bytes(info['total_size_bytes'])}")
+    logger.info(f"  store/         {_fmt_bytes(info['store_size_bytes'])}")
+    logger.info(f"  legacy-*       {_fmt_bytes(info['legacy_size_bytes'])}")
+    logger.info(f"Projects:        {info['project_count']}")
 
     projects = sorted(
         info["projects"],
@@ -80,8 +78,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         reverse=True,
     )
     if projects:
-        print()
-        print(f"  {'WORKDIR':<60}  {'COMMITS':>7}  {'LAST TOUCH':>12}  STATE")
+        logger.info()
+        logger.info(f"  {'WORKDIR':<60}  {'COMMITS':>7}  {'LAST TOUCH':>12}  STATE")
         for p in projects[: args.limit if hasattr(args, "limit") and args.limit else 20]:
             wd = p.get("workdir") or "(unknown)"
             if len(wd) > 60:
@@ -90,23 +88,21 @@ def cmd_status(args: argparse.Namespace) -> int:
             state = "live" if exists else "orphan"
             commits = p.get("commits", 0)
             last = _fmt_age(p.get("last_touch"))
-            print(f"  {wd:<60}  {commits:>7}  {last:>12}  {state}")
+            logger.info(f"  {wd:<60}  {commits:>7}  {last:>12}  {state}")
 
     legacy = info.get("legacy_archives", [])
     if legacy:
-        print()
-        print(f"Legacy archives ({len(legacy)}):")
+        logger.info()
+        logger.info(f"Legacy archives ({len(legacy)}):")
         for arch in sorted(legacy, key=lambda a: a.get("mtime", 0), reverse=True):
-            print(f"  {arch['name']:<40}  {_fmt_bytes(arch['size_bytes']):>10}")
-        print()
-        print("Clear with: hermes checkpoints clear-legacy")
+            logger.info(f"  {arch['name']:<40}  {_fmt_bytes(arch['size_bytes']):>10}")
+        logger.info()
+        logger.info("Clear with: hermes checkpoints clear-legacy")
     return 0
-
 
 def cmd_list(args: argparse.Namespace) -> int:
     # `list` is just a terser status — already covered.
     return cmd_status(args)
-
 
 def cmd_prune(args: argparse.Namespace) -> int:
     from tools.checkpoint_manager import prune_checkpoints
@@ -114,59 +110,56 @@ def cmd_prune(args: argparse.Namespace) -> int:
     retention_days = args.retention_days
     max_size_mb = args.max_size_mb
 
-    print("Pruning checkpoint store…")
-    print(f"  retention_days:    {retention_days}")
-    print(f"  delete_orphans:    {not args.keep_orphans}")
-    print(f"  max_total_size_mb: {max_size_mb}")
-    print()
+    logger.info("Pruning checkpoint store…")
+    logger.info(f"  retention_days:    {retention_days}")
+    logger.info(f"  delete_orphans:    {not args.keep_orphans}")
+    logger.info(f"  max_total_size_mb: {max_size_mb}")
+    logger.info()
 
     result = prune_checkpoints(
         retention_days=retention_days,
         delete_orphans=not args.keep_orphans,
         max_total_size_mb=max_size_mb,
     )
-    print(f"Scanned:         {result['scanned']}")
-    print(f"Deleted orphan:  {result['deleted_orphan']}")
-    print(f"Deleted stale:   {result['deleted_stale']}")
-    print(f"Errors:          {result['errors']}")
-    print(f"Bytes reclaimed: {_fmt_bytes(result['bytes_freed'])}")
+    logger.info(f"Scanned:         {result['scanned']}")
+    logger.info(f"Deleted orphan:  {result['deleted_orphan']}")
+    logger.info(f"Deleted stale:   {result['deleted_stale']}")
+    logger.info(f"Errors:          {result['errors']}")
+    logger.info(f"Bytes reclaimed: {_fmt_bytes(result['bytes_freed'])}")
     return 0
-
 
 def _confirm(prompt: str) -> bool:
     try:
         resp = input(f"{prompt} [y/N]: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
-        print()
+        logger.info()
         return False
     return resp in {"y", "yes"}
-
 
 def cmd_clear(args: argparse.Namespace) -> int:
     from tools.checkpoint_manager import CHECKPOINT_BASE, clear_all, store_status
 
     info = store_status()
     if info["total_size_bytes"] == 0 and not Path(CHECKPOINT_BASE).exists():
-        print("Nothing to clear — checkpoint base does not exist.")
+        logger.info("Nothing to clear — checkpoint base does not exist.")
         return 0
 
-    print(f"This will delete the ENTIRE checkpoint base at {info['base']}")
-    print(f"  size:        {_fmt_bytes(info['total_size_bytes'])}")
-    print(f"  projects:    {info['project_count']}")
-    print(f"  legacy dirs: {len(info.get('legacy_archives', []))}")
-    print()
-    print("All /rollback history for every working directory will be lost.")
+    logger.info(f"This will delete the ENTIRE checkpoint base at {info['base']}")
+    logger.info(f"  size:        {_fmt_bytes(info['total_size_bytes'])}")
+    logger.info(f"  projects:    {info['project_count']}")
+    logger.info(f"  legacy dirs: {len(info.get('legacy_archives', []))}")
+    logger.info()
+    logger.info("All /rollback history for every working directory will be lost.")
     if not args.force and not _confirm("Proceed?"):
-        print("Aborted.")
+        logger.info("Aborted.")
         return 1
 
     result = clear_all()
     if result["deleted"]:
-        print(f"Cleared. Reclaimed {_fmt_bytes(result['bytes_freed'])}.")
+        logger.info(f"Cleared. Reclaimed {_fmt_bytes(result['bytes_freed'])}.")
         return 0
-    print("Could not clear checkpoint base (see logs).")
+    logger.info("Could not clear checkpoint base (see logs).")
     return 2
-
 
 def cmd_clear_legacy(args: argparse.Namespace) -> int:
     from tools.checkpoint_manager import clear_legacy, store_status
@@ -174,25 +167,24 @@ def cmd_clear_legacy(args: argparse.Namespace) -> int:
     info = store_status()
     legacy = info.get("legacy_archives", [])
     if not legacy:
-        print("No legacy archives to clear.")
+        logger.info("No legacy archives to clear.")
         return 0
 
     total = sum(a.get("size_bytes", 0) for a in legacy)
-    print(f"Found {len(legacy)} legacy archive(s), total {_fmt_bytes(total)}:")
+    logger.info(f"Found {len(legacy)} legacy archive(s), total {_fmt_bytes(total)}:")
     for arch in legacy:
-        print(f"  {arch['name']:<40}  {_fmt_bytes(arch['size_bytes']):>10}")
-    print()
-    print("Legacy archives hold pre-v2 per-project shadow repos, moved aside")
-    print("during the single-store migration. Delete when you're confident")
-    print("you don't need the old /rollback history.")
+        logger.info(f"  {arch['name']:<40}  {_fmt_bytes(arch['size_bytes']):>10}")
+    logger.info()
+    logger.info("Legacy archives hold pre-v2 per-project shadow repos, moved aside")
+    logger.info("during the single-store migration. Delete when you're confident")
+    logger.info("you don't need the old /rollback history.")
     if not args.force and not _confirm("Delete all legacy archives?"):
-        print("Aborted.")
+        logger.info("Aborted.")
         return 1
 
     result = clear_legacy()
-    print(f"Deleted {result['deleted']} archive(s), reclaimed {_fmt_bytes(result['bytes_freed'])}.")
+    logger.info(f"Deleted {result['deleted']} archive(s), reclaimed {_fmt_bytes(result['bytes_freed'])}.")
     return 0
-
 
 def register_cli(parser: argparse.ArgumentParser) -> None:
     """Wire subcommands onto the ``hermes checkpoints`` parser."""

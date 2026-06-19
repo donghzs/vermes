@@ -5,6 +5,9 @@ Handles standalone cron management commands like list, create, edit,
 pause/resume/run/remove, status, and tick.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import sys
 from pathlib import Path
@@ -45,15 +48,15 @@ def cron_list(show_all: bool = False):
     jobs = list_jobs(include_disabled=show_all)
 
     if not jobs:
-        print(color("No scheduled jobs.", Colors.DIM))
-        print(color("Create one with 'hermes cron create ...' or the /cron command in chat.", Colors.DIM))
+        logger.info(color("No scheduled jobs.", Colors.DIM))
+        logger.info(color("Create one with 'hermes cron create ...' or the /cron command in chat.", Colors.DIM))
         return
 
-    print()
-    print(color("┌─────────────────────────────────────────────────────────────────────────┐", Colors.CYAN))
-    print(color("│                         Scheduled Jobs                                  │", Colors.CYAN))
-    print(color("└─────────────────────────────────────────────────────────────────────────┘", Colors.CYAN))
-    print()
+    logger.info()
+    logger.info(color("┌─────────────────────────────────────────────────────────────────────────┐", Colors.CYAN))
+    logger.info(color("│                         Scheduled Jobs                                  │", Colors.CYAN))
+    logger.info(color("└─────────────────────────────────────────────────────────────────────────┘", Colors.CYAN))
+    logger.info()
 
     for job in jobs:
         job_id = job.get("id", "?")
@@ -82,25 +85,25 @@ def cron_list(show_all: bool = False):
         else:
             status = color("[disabled]", Colors.RED)
 
-        print(f"  {color(job_id, Colors.YELLOW)} {status}")
-        print(f"    Name:      {name}")
-        print(f"    Schedule:  {schedule}")
-        print(f"    Repeat:    {repeat_str}")
-        print(f"    Next run:  {next_run}")
-        print(f"    Deliver:   {deliver_str}")
+        logger.info(f"  {color(job_id, Colors.YELLOW)} {status}")
+        logger.info(f"    Name:      {name}")
+        logger.info(f"    Schedule:  {schedule}")
+        logger.info(f"    Repeat:    {repeat_str}")
+        logger.info(f"    Next run:  {next_run}")
+        logger.info(f"    Deliver:   {deliver_str}")
         if skills:
-            print(f"    Skills:    {', '.join(skills)}")
+            logger.info(f"    Skills:    {', '.join(skills)}")
         script = job.get("script")
         if script:
-            print(f"    Script:    {script}")
+            logger.info(f"    Script:    {script}")
         if job.get("no_agent"):
-            print(f"    Mode:      {color('no-agent', Colors.DIM)} (script stdout delivered directly)")
+            logger.info(f"    Mode:      {color('no-agent', Colors.DIM)} (script stdout delivered directly)")
         workdir = job.get("workdir")
         if workdir:
-            print(f"    Workdir:   {workdir}")
+            logger.info(f"    Workdir:   {workdir}")
         profile = job.get("profile")
         if profile:
-            print(f"    Profile:   {profile}")
+            logger.info(f"    Profile:   {profile}")
 
         # Execution history
         last_status = job.get("last_status")
@@ -110,20 +113,20 @@ def cron_list(show_all: bool = False):
                 status_display = color("ok", Colors.GREEN)
             else:
                 status_display = color(f"{last_status}: {job.get('last_error', '?')}", Colors.RED)
-            print(f"    Last run:  {last_run}  {status_display}")
+            logger.info(f"    Last run:  {last_run}  {status_display}")
 
         delivery_err = job.get("last_delivery_error")
         if delivery_err:
-            print(f"    {color('⚠ Delivery failed:', Colors.YELLOW)} {delivery_err}")
+            logger.info(f"    {color('⚠ Delivery failed:', Colors.YELLOW)} {delivery_err}")
 
-        print()
+        logger.info()
 
     from hermes_cli.gateway import find_gateway_pids
     if not find_gateway_pids():
-        print(color("  ⚠  Gateway is not running — jobs won't fire automatically.", Colors.YELLOW))
-        print(color("     Start it with: hermes gateway install", Colors.DIM))
-        print(color("                    sudo hermes gateway install --system  # Linux servers", Colors.DIM))
-        print()
+        logger.info(color("  ⚠  Gateway is not running — jobs won't fire automatically.", Colors.YELLOW))
+        logger.info(color("     Start it with: hermes gateway install", Colors.DIM))
+        logger.info(color("                    sudo hermes gateway install --system  # Linux servers", Colors.DIM))
+        logger.info()
 
 
 def cron_tick():
@@ -137,32 +140,32 @@ def cron_status():
     from cron.jobs import list_jobs
     from hermes_cli.gateway import find_gateway_pids
 
-    print()
+    logger.info()
 
     pids = find_gateway_pids()
     if pids:
-        print(color("✓ Gateway is running — cron jobs will fire automatically", Colors.GREEN))
-        print(f"  PID: {', '.join(map(str, pids))}")
+        logger.info(color("✓ Gateway is running — cron jobs will fire automatically", Colors.GREEN))
+        logger.info(f"  PID: {', '.join(map(str, pids))}")
     else:
-        print(color("✗ Gateway is not running — cron jobs will NOT fire", Colors.RED))
-        print()
-        print("  To enable automatic execution:")
-        print("    hermes gateway install    # Install as a user service")
-        print("    sudo hermes gateway install --system  # Linux servers: boot-time system service")
-        print("    hermes gateway            # Or run in foreground")
+        logger.info(color("✗ Gateway is not running — cron jobs will NOT fire", Colors.RED))
+        logger.info()
+        logger.info("  To enable automatic execution:")
+        logger.info("    hermes gateway install    # Install as a user service")
+        logger.info("    sudo hermes gateway install --system  # Linux servers: boot-time system service")
+        logger.info("    hermes gateway            # Or run in foreground")
 
-    print()
+    logger.info()
 
     jobs = list_jobs(include_disabled=False)
     if jobs:
         next_runs = [j.get("next_run_at") for j in jobs if j.get("next_run_at")]
-        print(f"  {len(jobs)} active job(s)")
+        logger.info(f"  {len(jobs)} active job(s)")
         if next_runs:
-            print(f"  Next run: {min(next_runs)}")
+            logger.info(f"  Next run: {min(next_runs)}")
     else:
-        print("  No active jobs")
+        logger.info("  No active jobs")
 
-    print()
+    logger.info()
 
 
 def cron_create(args):
@@ -181,38 +184,40 @@ def cron_create(args):
         no_agent=getattr(args, "no_agent", False) or None,
     )
     if not result.get("success"):
-        print(color(f"Failed to create job: {result.get('error', 'unknown error')}", Colors.RED))
+        logger.info(color(f"Failed to create job: {result.get('error', 'unknown error')}", Colors.RED))
         return 1
-    print(color(f"Created job: {result['job_id']}", Colors.GREEN))
-    print(f"  Name: {result['name']}")
-    print(f"  Schedule: {result['schedule']}")
+    logger.info(color(f"Created job: {result['job_id']}", Colors.GREEN))
+    logger.info(f"  Name: {result['name']}")
+    logger.info(f"  Schedule: {result['schedule']}")
     if result.get("skills"):
-        print(f"  Skills: {', '.join(result['skills'])}")
+        logger.info(f"  Skills: {', '.join(result['skills'])}")
     job_data = result.get("job", {})
     if job_data.get("script"):
-        print(f"  Script: {job_data['script']}")
+        logger.info(f"  Script: {job_data['script']}")
     if job_data.get("no_agent"):
-        print("  Mode: no-agent (script stdout delivered directly)")
+        logger.info("  Mode: no-agent (script stdout delivered directly)")
     if job_data.get("workdir"):
-        print(f"  Workdir: {job_data['workdir']}")
+        logger.info(f"  Workdir: {job_data['workdir']}")
     if job_data.get("profile"):
-        print(f"  Profile: {job_data['profile']}")
-    print(f"  Next run: {result['next_run_at']}")
+        logger.info(f"  Profile: {job_data['profile']}")
+    logger.info(f"  Next run: {result['next_run_at']}")
     return 0
 
 
 def cron_edit(args):
     from cron.jobs import AmbiguousJobReference, resolve_job_ref
 
+
+
     try:
         job = resolve_job_ref(args.job_id)
     except AmbiguousJobReference as exc:
-        print(color(str(exc), Colors.RED))
+        logger.info(color(str(exc), Colors.RED))
         for m in exc.matches:
-            print(f"  {m['id']}  (name: {m.get('name')!r})")
+            logger.info(f"  {m['id']}  (name: {m.get('name')!r})")
         return 1
     if not job:
-        print(color(f"Job not found: {args.job_id}", Colors.RED))
+        logger.info(color(f"Job not found: {args.job_id}", Colors.RED))
         return 1
 
     existing_skills = list(job.get("skills") or ([] if not job.get("skill") else [job.get("skill")]))
@@ -246,39 +251,39 @@ def cron_edit(args):
         no_agent=getattr(args, "no_agent", None),
     )
     if not result.get("success"):
-        print(color(f"Failed to update job: {result.get('error', 'unknown error')}", Colors.RED))
+        logger.info(color(f"Failed to update job: {result.get('error', 'unknown error')}", Colors.RED))
         return 1
 
     updated = result["job"]
-    print(color(f"Updated job: {updated['job_id']}", Colors.GREEN))
-    print(f"  Name: {updated['name']}")
-    print(f"  Schedule: {updated['schedule']}")
+    logger.info(color(f"Updated job: {updated['job_id']}", Colors.GREEN))
+    logger.info(f"  Name: {updated['name']}")
+    logger.info(f"  Schedule: {updated['schedule']}")
     if updated.get("skills"):
-        print(f"  Skills: {', '.join(updated['skills'])}")
+        logger.info(f"  Skills: {', '.join(updated['skills'])}")
     else:
-        print("  Skills: none")
+        logger.info("  Skills: none")
     if updated.get("script"):
-        print(f"  Script: {updated['script']}")
+        logger.info(f"  Script: {updated['script']}")
     if updated.get("no_agent"):
-        print("  Mode: no-agent (script stdout delivered directly)")
+        logger.info("  Mode: no-agent (script stdout delivered directly)")
     if updated.get("workdir"):
-        print(f"  Workdir: {updated['workdir']}")
+        logger.info(f"  Workdir: {updated['workdir']}")
     if updated.get("profile"):
-        print(f"  Profile: {updated['profile']}")
+        logger.info(f"  Profile: {updated['profile']}")
     return 0
 
 
 def _job_action(action: str, job_id: str, success_verb: str) -> int:
     result = _cron_api(action=action, job_id=job_id)
     if not result.get("success"):
-        print(color(f"Failed to {action} job: {result.get('error', 'unknown error')}", Colors.RED))
+        logger.info(color(f"Failed to {action} job: {result.get('error', 'unknown error')}", Colors.RED))
         return 1
     job = result.get("job") or result.get("removed_job") or {}
-    print(color(f"{success_verb} job: {job.get('name', job_id)} ({job_id})", Colors.GREEN))
+    logger.info(color(f"{success_verb} job: {job.get('name', job_id)} ({job_id})", Colors.GREEN))
     if action in {"resume", "run"} and result.get("job", {}).get("next_run_at"):
-        print(f"  Next run: {result['job']['next_run_at']}")
+        logger.info(f"  Next run: {result['job']['next_run_at']}")
     if action == "run":
-        print("  It will run on the next scheduler tick.")
+        logger.info("  It will run on the next scheduler tick.")
     return 0
 
 
@@ -317,6 +322,6 @@ def cron_command(args):
     if subcmd in {"remove", "rm", "delete"}:
         return _job_action("remove", args.job_id, "Removed")
 
-    print(f"Unknown cron command: {subcmd}")
-    print("Usage: hermes cron [list|create|edit|pause|resume|run|remove|status|tick]")
+    logger.info(f"Unknown cron command: {subcmd}")
+    logger.info("Usage: hermes cron [list|create|edit|pause|resume|run|remove|status|tick]")
     sys.exit(1)

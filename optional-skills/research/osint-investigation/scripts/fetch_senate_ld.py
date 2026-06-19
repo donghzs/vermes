@@ -15,6 +15,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _http import get_json  # noqa: E402
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 ENDPOINT = "https://lda.senate.gov/api/v1/filings/"
 COLUMNS = [
     "filing_uuid",
@@ -58,7 +63,7 @@ def fetch(
         try:
             payload = get_json(url, params=params if page == 0 else None, headers=headers)
         except Exception as e:  # noqa: BLE001
-            print(f"Senate LDA error on page {page + 1}: {e}", file=sys.stderr)
+            logger.warning(f"Senate LDA error on page {page + 1}: {e}")
             break
         if not isinstance(payload, dict):
             break
@@ -138,7 +143,7 @@ def main() -> int:
         out_path=a.out,
         max_pages=a.max_pages,
     )
-    print(f"Wrote {n} Senate LDA rows to {a.out}")
+    logger.info(f"Wrote {n} Senate LDA rows to {a.out}")
     return 0
 
 

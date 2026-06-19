@@ -24,6 +24,11 @@ from xml.etree import ElementTree as ET
 sys.path.insert(0, str(Path(__file__).parent))
 from _watermark import Watermark, format_items_as_markdown  # type: ignore
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 
 def _strip_ns(tag: str) -> str:
     return tag.split("}", 1)[1] if "}" in tag else tag
@@ -37,7 +42,7 @@ def _parse_feed(xml_bytes: bytes):
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError as e:
-        print(f"watch_rss: invalid XML: {e}", file=sys.stderr)
+        logger.warning(f"watch_rss: invalid XML: {e}")
         sys.exit(2)
 
     entries = []
@@ -92,10 +97,10 @@ def main() -> int:
         with urllib.request.urlopen(req, timeout=args.timeout) as resp:
             xml_bytes = resp.read()
     except urllib.error.HTTPError as e:
-        print(f"watch_rss: HTTP {e.code} from {args.url}", file=sys.stderr)
+        logger.warning(f"watch_rss: HTTP {e.code} from {args.url}")
         return 2
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        print(f"watch_rss: network error: {e}", file=sys.stderr)
+        logger.warning(f"watch_rss: network error: {e}")
         return 2
 
     entries = _parse_feed(xml_bytes)
