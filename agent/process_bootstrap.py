@@ -25,11 +25,10 @@ from __future__ import annotations
 
 import os
 import sys
-import urllib.r
+import urllib.request
 import logging
 
 logger = logging.getLogger(__name__)
-equest
 from typing import Optional
 
 from utils import base_url_hostname, normalize_proxy_url
