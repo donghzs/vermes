@@ -2307,17 +2307,26 @@ class AIAgent:
         r"(?:已|成功|刚刚)修改(?:了)?(?!设置|参数|方案)",  # 排除"修改设置/方案"
         r"修改完成(?:了)?",
         # 训练/运行类 — "已训练""训练完成""运行成功"
-        r"(?:已|正在|开始)(?:训练|运行|执行|测试|验证)(?:了|中|完成|成功|完毕)?",
-        r"(?:训练|运行|执行|测试)(?:完成|成功|完毕)(?:了)?",
+        # 注意：不含"正在/开始"（进行时/未来时不是完成声称）
+        # 注意：不含"验证"（"已验证"是确认状态不是操作声称）
+        # 注意：不含"测试"（"测试完成"常是正常状态描述非操作声称）
+        r"(?:已|刚刚)(?:训练|运行|执行)(?:了|完成|成功|完毕)?",
+        r"(?:训练|运行|执行)(?:完成|成功|完毕)(?:了)?",
         r"(?:训练|运行|执行).{0,6}(?:进度)",
-        # 下载/获取类
+        # 下载/获取类 — 包含"克隆成功"等无前缀匹配
         r"(?:已|成功)(?:下载|克隆|拉取|导入|导出)(?:了|完成|成功)?",
+        r"(?:下载|克隆|拉取|导入|导出)(?:成功|完成)(?:了)?",
         # pip/npm 命令类 — 精确匹配"pip install 已完成"等
         r"(?:pip|npm|apt).{1,10}(?:完成|成功)",
         r"(?:完成)(?:pip|npm|apt).{0,8}(?:安装)",
-        # 创建/更新类
-        r"(?:已|成功|刚刚)(?:创建|保存|更新)(?:了|完成|成功)?",
-        r"(?:创建|保存|更新)(?:完成|成功)(?:了)?",
+        # 创建/更新类 — "保存成功"需排除UI提示语
+        r"(?:已|成功|刚刚)(?:创建|更新)(?:了|完成|成功)?",
+        r"(?:创建|更新)(?:完成|成功)(?:了)?",
+        r"(?:已|成功|刚刚)保存(?:了|完成|成功)?(?!设置|偏好|配置)",  # 排除"保存设置/偏好/配置"
+        # 口语化完成表达 — 高频口语声称
+        r"(?:已|已经|刚刚)(?:搞定|处理好?了|做好?了|跑完|配好?了|修复|上传|启动|停掉|关掉|重启)(?:了)?",
+        r"(?:已|已经)(?:帮你|把|已).{0,6}(?:做好?了|搞定|发过去|发给你|发送完毕)",
+        r"(?:已经|已)(?:发过去|发给你|发给你了|发送完毕)",
     ]
 
     @staticmethod
@@ -2345,18 +2354,6 @@ class AIAgent:
         return claims
 
     @staticmethod
-    def _has_recent_tool_calls(messages: list, lookback: int = 3) -> bool:
-        """检查最近 N 条消息中是否有工具调用。"""
-        for msg in reversed(messages[-lookback:]):
-            if isinstance(msg, dict):
-                role = msg.get("role")
-                if role == "tool":
-                    return True
-                if role == "assistant" and msg.get("tool_calls"):
-                    return True
-        return False
-
-    @staticmethod
     def _get_tool_call_count_in_window(messages: list, window: int = 20) -> int:
         """统计最近 N 条消息中的工具调用次数。"""
         count = 0
@@ -2377,57 +2374,6 @@ class AIAgent:
         result_hash = hashlib.md5(result_str.encode("utf-8")).hexdigest()[:8]
         key_count = len(args) if args else 0
         return f"[⚙️ tool:{tool_name} args={{{key_count}}} result={type(result).__name__}:{result_hash}]"
-
-    def _extract_tool_signatures(self, messages: list) -> list[str]:
-        """从最近的 tool 结果消息中提取所有工具签名。
-        
-        供上下文压缩时保护签名用（避免被摘要替代）。
-        每条工具结果消息可能包含 0~N 个签名。
-        """
-        sigs = []
-        for msg in messages:
-            if isinstance(msg, dict) and msg.get("role") == "tool":
-                content = msg.get("content", "")
-                if isinstance(content, str):
-                    sigs.extend(re.findall(r"\[⚙️ tool:\w+ args=\{.*?result=\w+:[a-f0-9]+\]", content))
-        return sigs
-
-    def _verify_tool_claim_chain(
-        self,
-        assistant_response: str,
-        messages: list,
-        turn_has_tool_calls: bool,
-    ) -> str | None:
-        """验证 AI 的回复是否有工具执行支撑。
-        
-        检查条件：
-        1. 回复中包含了操作声称（如"已安装""已修改"）
-        2. 但本回合没有工具调用
-        3. 且之前有工具调用历史（不是第一轮）
-        
-        满足全部三个条件 → 判定为"未经验证的操作声称"
-        返回追加的警告文本，或 None。
-        """
-        if turn_has_tool_calls:
-            return None  # 有工具调用，验证通过
-        
-        # 检测操作声称
-        claims = self._detect_operation_claims(assistant_response)
-        if not claims:
-            return None  # 没有操作声称，不需要验证
-        
-        # 检查是否有工具调用历史
-        tool_count = self._get_tool_call_count_in_window(messages, window=30)
-        if tool_count == 0:
-            return None  # 之前也没有工具调用，可能是正常问答
-        
-        # 条件满足：有操作声称、但本回合没调工具、之前有工具历史
-        # 这很可能是编造 —— 追加验证 footer
-        return (
-            f"\n\n⚠️ **操作链验证器**: 上述回答中有 {len(claims)} 处操作声称"
-            f"（如「{claims[0]['claim']}」），但本回合没有执行任何工具调用。"
-            f"请确认这些操作是否真的已完成。如需实际执行，请让我调工具再做一次。"
-        )
 
     def _operator_claim_verifier_enabled(self) -> bool:
         """检查操作链验证器是否开启。
