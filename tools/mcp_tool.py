@@ -367,6 +367,7 @@ def _is_method_not_found_error(exc: BaseException) -> bool:
     fall back to a substring match so detection survives SDK version drift and
     servers that surface the condition as a plain message.
 
+
     The substring fallback matters when a server reports method-not-found
     without a structural ``-32601`` code (e.g. surfaced as a plain exception
     string). Besides the canonical "method not found", many JSON-RPC
