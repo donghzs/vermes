@@ -21,11 +21,11 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sy
+import sys
 import logging
 
 logger = logging.getLogger(__name__)
-s
+
 from pathlib import Path
 
 # Allow running directly or as a module.

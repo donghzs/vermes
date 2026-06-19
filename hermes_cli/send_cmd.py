@@ -28,11 +28,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import s
+import sys
 import logging
 
 logger = logging.getLogger(__name__)
-ys
+
 from pathlib import Path
 from typing import Optional
 

@@ -301,8 +301,8 @@ if sys.platform == 'darwin':
         icon='packaging/vermes.icns',
         bundle_identifier='cn.vermes.agent',
         info_plist={
-            'CFBundleShortVersionString': '2.0.8',
-            'CFBundleVersion': '2.0.8',
+            'CFBundleShortVersionString': '2.2.0',
+            'CFBundleVersion': '2.2.0',
             'CFBundleDisplayName': 'Vermes',
             'CFBundleName': 'Vermes',
             'CFBundleIdentifier': 'cn.vermes.agent',
