@@ -291,6 +291,21 @@ TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS: tuple = ()
 # Short on purpose.  This block is shipped to every user, every session,
 # in the cached system prompt — token cost is paid once at install and
 # then amortised across all sessions via prefix caching.  Keep it tight.
+IMAGE_GENERATE_GUIDANCE = (
+    "# Image generation & editing\n"
+    "When the user asks to generate, edit, transform, or modify images, ALWAYS use the "
+    "image_generate tool first. This tool handles text-to-image, image-to-image (edit), "
+    "and style-reference workflows natively — including API key resolution, provider "
+    "routing, and error handling.\n"
+    "Do NOT write custom Python scripts with execute_code to call image APIs directly. "
+    "The image_generate tool already knows how to reach each provider (Agnes, OpenAI, "
+    "xAI) and will use the correct credentials automatically. Writing your own API "
+    "calls bypasses credential management and will fail because .env files and API "
+    "keys are protected by security policies.\n"
+    "For image-to-image (edit/transform), pass the source image via the image_url "
+    "parameter. For style reference, use reference_image_urls."
+)
+
 TASK_COMPLETION_GUIDANCE = (
     "# Finishing the job\n"
     "When the user asks you to build, run, or verify something, the deliverable is "
