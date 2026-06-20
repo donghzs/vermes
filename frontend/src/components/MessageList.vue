@@ -236,6 +236,15 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+// ── 图片预览：点击放大 ──
+const previewImage = ref(null)
+function openImagePreview(url) {
+  previewImage.value = url
+}
+function closeImagePreview() {
+  previewImage.value = null
+}
+
 // ── 用户消息图片提取 ──
 function extractImages(content) {
   if (!content) return []
@@ -490,8 +499,8 @@ function streamElapsed(startTime) {
               <!-- attachments 中的图片 -->
               <template v-if="msg.attachments && msg.attachments.length">
                 <div v-for="(att, idx) in msg.attachments" :key="'att-' + idx" class="mb-2">
-                  <img v-if="att.type === 'image' && att.data" :src="'data:' + (att.mime || 'image/png') + ';base64,' + att.data" class="max-w-full rounded-lg" />
-                  <video v-else-if="att.type === 'video' && att.data" :src="'data:' + (att.mime || 'video/mp4') + ';base64,' + att.data" controls class="max-w-full rounded-lg"></video>
+                  <img v-if="att.type === 'image' && att.data" :src="'data:' + (att.mime || 'image/png') + ';base64,' + att.data" class="rounded-lg cursor-pointer hover:opacity-90 transition" style="max-width: 100%; max-height: 300px; object-fit: contain;" @click="openImagePreview('data:' + (att.mime || 'image/png') + ';base64,' + att.data)" />
+                  <video v-else-if="att.type === 'video' && att.data" :src="'data:' + (att.mime || 'video/mp4') + ';base64,' + att.data" controls class="rounded-lg" style="max-width: 100%; max-height: 300px;"></video>
                   <div v-else class="flex items-center gap-2 text-xs opacity-80 bg-black/10 rounded-lg px-3 py-2">
                     <span>{{ att.name?.match(/\.(mp4|mov|avi|webm)$/i) ? '🎬' : '📄' }}</span>
                     <span class="truncate max-w-[150px]">{{ att.name }}</span>
@@ -500,7 +509,7 @@ function streamElapsed(startTime) {
                 </div>
               </template>
               <!-- 兼容旧消息：从 markdown ![](data:image/...) 中提取显示 -->
-              <img v-for="(imgUrl, idx) in extractImages(msg.content)" :key="'uimg-' + idx" :src="imgUrl" class="max-w-full rounded-lg mb-2" />
+              <img v-for="(imgUrl, idx) in extractImages(msg.content)" :key="'uimg-' + idx" :src="imgUrl" class="rounded-lg mb-2 cursor-pointer hover:opacity-90 transition" style="max-width: 100%; max-height: 300px; object-fit: contain;" @click="openImagePreview(imgUrl)" />
               <!-- 文本内容：去掉 base64 避免显示乱码 -->
               <div v-if="cleanUserContent(msg.content)" style="white-space:pre-wrap;word-break:break-word;">{{ cleanUserContent(msg.content) }}</div>
             </template>
@@ -683,6 +692,13 @@ function streamElapsed(startTime) {
     title="回到底部">
     ↓
   </button>
+
+  <!-- 图片预览遮罩 -->
+  <Teleport to="body">
+    <div v-if="previewImage" @click="closeImagePreview" class="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center cursor-zoom-out">
+      <img :src="previewImage" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
