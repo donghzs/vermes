@@ -2631,18 +2631,20 @@ def run_conversation(
                 # + provider-specific troubleshooting guidance unchanged.
                 if (
                     classified.is_auth
-                    and not auth_failover_attempted
+                    and not _retry.auth_failover_attempted
                     and agent._fallback_index < len(agent._fallback_chain)
                 ):
-                    auth_failover_attempted = True
+                    _retry.auth_failover_attempted = True
                     agent._buffer_status(
                         "🔐 Authentication failed and could not be refreshed — "
                         "switching to fallback provider..."
                     )
                     if agent._try_activate_fallback(reason=classified.reason):
+                        active_system_prompt = _sync_failover_system_message(
+                            agent, api_messages, active_system_prompt)
                         retry_count = 0
                         compression_attempts = 0
-                        primary_recovery_attempted = False
+                        _retry.primary_recovery_attempted = False
                         continue
 
                 # ── Nous Portal: record rate limit & skip retries ─────
