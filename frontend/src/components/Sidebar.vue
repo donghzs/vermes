@@ -10,6 +10,7 @@ const chat = useChatStore()
 const router = useRouter()
 
 function goSettings() { router.push('/settings') }
+function goStudio() { router.push('/studio') }
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -443,6 +444,9 @@ async function handleImportFile(e) {
 
       <!-- 底部工具栏 -->
       <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 shrink-0">
+        <button @click="goStudio()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
+          🎨
+        </button>
         <button @click="goSettings()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
           ⚙
         </button>

@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ChatView from '../components/ChatView.vue'
 import Settings from '../components/Settings.vue'
+import Studio from '../components/Studio.vue'
 
 const routes = [
   { path: '/', component: ChatView },
   { path: '/settings', component: Settings },
+  { path: '/studio', component: Studio },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/
