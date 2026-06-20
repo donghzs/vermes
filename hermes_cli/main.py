@@ -7154,7 +7154,6 @@ def _run_install_with_heartbeat(
             logger.info(
                 f"  … still installing dependencies ({elapsed}s elapsed)"
                 " — compiling Rust/C extensions can take several minutes",
-                flush=True,
             )
 
     t = threading.Thread(target=_heartbeat, daemon=True)

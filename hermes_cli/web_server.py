@@ -143,17 +143,17 @@ async def request_logging_middleware(request: Request, call_next):
     """Log all incoming requests for debugging / API discovery."""
     import datetime
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    logger.info(f"\n{'='*80}", flush=True)
-    logger.info(f"[{ts}] REQUEST: {request.method} {request.url.path}", flush=True)
-    logger.info(f"  Query: {dict(request.query_params)}", flush=True)
-    logger.info(f"  Client: {request.client.host if request.client else 'unknown'}", flush=True)
+    logger.info(f"\n{'='*80}")
+    logger.info(f"[{ts}] REQUEST: {request.method} {request.url.path}")
+    logger.info(f"  Query: {dict(request.query_params)}")
+    logger.info(f"  Client: {request.client.host if request.client else 'unknown'}")
     # Log headers (redact sensitive ones)
     headers = dict(request.headers)
     if "authorization" in headers:
         headers["authorization"] = "***"
     if "x-hermes-session-token" in headers:
         headers["x-hermes-session-token"] = "***"
-    logger.info(f"  Headers: {headers}", flush=True)
+    logger.info(f"  Headers: {headers}")
     # Read and log body for POST/PUT/PATCH
     body = None
     if request.method in ("POST", "PUT", "PATCH"):
@@ -177,12 +177,12 @@ async def request_logging_middleware(request: Request, call_next):
                             att_summary.append(att_copy)
                     body_log["attachments"] = att_summary
                 body_json = json.dumps(body_log, ensure_ascii=False)
-                logger.info(f"  Body: {body_json[:500]}{'... (truncated)' if len(body_json) > 500 else ''}", flush=True)
+                logger.info(f"  Body: {body_json[:500]}{'... (truncated)' if len(body_json) > 500 else ''}")
         except Exception:
-            logger.info(f"  Body: <could not parse JSON>", flush=True)
+            logger.info(f"  Body: <could not parse JSON>")
     response = await call_next(request)
-    logger.info(f"  Response status: {response.status_code}", flush=True)
-    logger.info(f"{'='*80}\n", flush=True)
+    logger.info(f"  Response status: {response.status_code}")
+    logger.info(f"{'='*80}\n")
     return response
 
 

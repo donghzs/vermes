@@ -239,7 +239,7 @@ def _debug(msg: str) -> None:
     if os.environ.get("HERMES_VOICE_DEBUG", "").strip() != "1":
         return
     try:
-        logger.warning(f"[voice] {msg}", flush=True)
+        logger.warning(f"[voice] {msg}")
     except (BrokenPipeError, OSError):
         pass
 

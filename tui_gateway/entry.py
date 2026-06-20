@@ -109,7 +109,7 @@ def _log_signal(signum: int, frame) -> None:
                 f.write("".join(traceback.format_stack(sys._current_frames().get(tid))))
     except Exception:
         pass
-    logger.warning(f"[gateway-signal] {name}", flush=True)
+    logger.warning(f"[gateway-signal] {name}")
 
     import threading as _threading
 
@@ -184,7 +184,7 @@ def _log_exit(reason: str) -> None:
             )
     except Exception:
         pass
-    logger.warning(f"[gateway-exit] {reason}", flush=True)
+    logger.warning(f"[gateway-exit] {reason}")
 
 
 def main():

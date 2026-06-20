@@ -526,7 +526,7 @@ async def chat_completions(req: ChatRequest):
     # Validate attachments
     validated_attachments, att_error = _validate_attachments(req.attachments)
     if att_error:
-        logger.info(f"[Attachment validation] {att_error}", flush=True)
+        logger.info(f"[Attachment validation] {att_error}")
     req.attachments = validated_attachments
 
     # Auto-claim trial token when no API key configured

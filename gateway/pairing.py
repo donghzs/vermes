@@ -296,7 +296,7 @@ class PairingStore:
             limits[lockout_key] = time.time() + LOCKOUT_SECONDS
             limits[fail_key] = 0  # Reset counter
             logger.info(f"[pairing] Platform {platform} locked out for {LOCKOUT_SECONDS}s "
-                  f"after {MAX_FAILED_ATTEMPTS} failed attempts", flush=True)
+                  f"after {MAX_FAILED_ATTEMPTS} failed attempts")
         self._save_json(self._rate_limit_path(), limits)
 
     # ----- Cleanup -----

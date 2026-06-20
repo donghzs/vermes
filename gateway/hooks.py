@@ -94,13 +94,13 @@ class HookRegistry:
             try:
                 manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
                 if not manifest or not isinstance(manifest, dict):
-                    logger.info(f"[hooks] Skipping {hook_dir.name}: invalid HOOK.yaml", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_dir.name}: invalid HOOK.yaml")
                     continue
 
                 hook_name = manifest.get("name", hook_dir.name)
                 events = manifest.get("events", [])
                 if not events:
-                    logger.info(f"[hooks] Skipping {hook_name}: no events declared", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_name}: no events declared")
                     continue
 
                 # Dynamically load the handler module.
@@ -115,7 +115,7 @@ class HookRegistry:
                     module_name, handler_path
                 )
                 if spec is None or spec.loader is None:
-                    logger.info(f"[hooks] Skipping {hook_name}: could not load handler.py", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_name}: could not load handler.py")
                     continue
 
                 module = importlib.util.module_from_spec(spec)
@@ -128,7 +128,7 @@ class HookRegistry:
 
                 handle_fn = getattr(module, "handle", None)
                 if handle_fn is None:
-                    logger.info(f"[hooks] Skipping {hook_name}: no 'handle' function found", flush=True)
+                    logger.info(f"[hooks] Skipping {hook_name}: no 'handle' function found")
                     continue
 
                 # Register the handler for each declared event
@@ -142,10 +142,10 @@ class HookRegistry:
                     "path": str(hook_dir),
                 })
 
-                logger.info(f"[hooks] Loaded hook '{hook_name}' for events: {events}", flush=True)
+                logger.info(f"[hooks] Loaded hook '{hook_name}' for events: {events}")
 
             except Exception as e:
-                logger.info(f"[hooks] Error loading hook {hook_dir.name}: {e}", flush=True)
+                logger.info(f"[hooks] Error loading hook {hook_dir.name}: {e}")
 
     def _resolve_handlers(self, event_type: str) -> List[Callable]:
         """Return all handlers that should fire for ``event_type``.
@@ -183,7 +183,7 @@ class HookRegistry:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as e:
-                logger.info(f"[hooks] Error in handler for '{event_type}': {e}", flush=True)
+                logger.info(f"[hooks] Error in handler for '{event_type}': {e}")
 
     async def emit_collect(
         self,
@@ -211,5 +211,5 @@ class HookRegistry:
                 if result is not None:
                     results.append(result)
             except Exception as e:
-                logger.info(f"[hooks] Error in handler for '{event_type}': {e}", flush=True)
+                logger.info(f"[hooks] Error in handler for '{event_type}': {e}")
         return results

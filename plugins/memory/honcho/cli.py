@@ -326,7 +326,7 @@ def _ensure_sdk_installed() -> bool:
         return False
 
     import subprocess
-    logger.info("  Installing honcho-ai...", flush=True)
+    logger.info("  Installing honcho-ai...")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "honcho-ai>=2.0.1"],
         capture_output=True,

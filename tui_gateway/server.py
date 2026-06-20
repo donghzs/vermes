@@ -67,7 +67,7 @@ def _panic_hook(exc_type, exc_value, exc_tb):
         if str(exc_value).strip()
         else exc_type.__name__
     )
-    logger.warning(f"[gateway-crash] {exc_type.__name__}: {first}", flush=True)
+    logger.warning(f"[gateway-crash] {exc_type.__name__}: {first}")
     # Chain to the default hook so the process still terminates normally.
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
@@ -100,7 +100,6 @@ def _thread_panic_hook(args):
     logger.info(
         f"[gateway-crash] thread {args.thread.name} raised {args.exc_type.__name__}: {first_line}",
         file=sys.stderr,
-        flush=True,
     )
 
 
@@ -937,7 +936,6 @@ def _load_enabled_toolsets() -> list[str] | None:
                     "[tui] HERMES_TUI_TOOLSETS=all enables every toolset; "
                     f"ignoring additional entries: {', '.join(ignored)}",
                     file=sys.stderr,
-                    flush=True,
                 )
             return None
 
@@ -980,7 +978,6 @@ def _load_enabled_toolsets() -> list[str] | None:
             logger.info(
                 f"[tui] ignoring unknown HERMES_TUI_TOOLSETS entries: {', '.join(unknown)}",
                 file=sys.stderr,
-                flush=True,
             )
         if disabled:
             logger.info(
@@ -988,7 +985,6 @@ def _load_enabled_toolsets() -> list[str] | None:
                 "(set enabled: true in config.yaml to use): "
                 f"{', '.join(disabled)}",
                 file=sys.stderr,
-                flush=True,
             )
 
         if valid:
@@ -1014,14 +1010,13 @@ def _load_enabled_toolsets() -> list[str] | None:
             _get_platform_tools(cfg, "cli", include_default_mcp_servers=True)
         )
         if fallback_notice is not None:
-            logger.warning(fallback_notice, flush=True)
+            logger.warning(fallback_notice)
         return enabled or None
     except Exception:
         if fallback_notice is not None:
             logger.info(
                 "[tui] no valid HERMES_TUI_TOOLSETS entries and configured CLI toolsets could not be loaded; enabling all toolsets",
                 file=sys.stderr,
-                flush=True,
             )
         return None
 
@@ -3484,7 +3479,7 @@ def _run_prompt_submit(rid, sid: str, session: dict, text: Any) -> None:
             except Exception:
                 pass
             logger.info(
-                f"[gateway-turn] {type(e).__name__}: {e}", file=sys.stderr, flush=True
+                f"[gateway-turn] {type(e).__name__}: {e}", file=sys.stderr
             )
             _emit("error", sid, {"message": str(e)})
         finally:

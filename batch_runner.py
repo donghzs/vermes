@@ -279,7 +279,7 @@ def _process_single_prompt(
                 )
                 if probe.returncode != 0:
                     if config.get("verbose"):
-                        logger.info(f"   Prompt {prompt_index}: Pulling docker image {container_image}...", flush=True)
+                        logger.info(f"   Prompt {prompt_index}: Pulling docker image {container_image}...")
                     pull = _sp.run(
                         ["docker", "pull", container_image],
                         capture_output=True, text=True, timeout=600,
@@ -298,7 +298,7 @@ def _process_single_prompt(
                 pass  # Docker CLI not installed — skip check (e.g., Modal backend)
             except Exception as img_err:
                 if config.get("verbose"):
-                    logger.info(f"   Prompt {prompt_index}: Docker image check failed: {img_err}", flush=True)
+                    logger.info(f"   Prompt {prompt_index}: Docker image check failed: {img_err}")
 
         from tools.terminal_tool import register_task_env_overrides
         overrides = {
@@ -877,7 +877,6 @@ class BatchRunner:
             logger.info(
                 "ℹ️  Detected Entra ID bearer provider — workers will rebuild "
                 "credentials from config.yaml in each process.",
-                flush=True,
             )
         else:
             worker_api_key = self.api_key

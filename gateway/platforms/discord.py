@@ -4611,9 +4611,9 @@ class DiscordAdapter(BasePlatformAdapter):
                     cached_path = await self._cache_discord_image(att, ext)
                     media_urls.append(cached_path)
                     media_types.append(content_type)
-                    logger.info(f"[Discord] Cached user image: {cached_path}", flush=True)
+                    logger.info(f"[Discord] Cached user image: {cached_path}")
                 except Exception as e:
-                    logger.info(f"[Discord] Failed to cache image attachment: {e}", flush=True)
+                    logger.info(f"[Discord] Failed to cache image attachment: {e}")
                     # Fall back to the CDN URL if caching fails
                     media_urls.append(att.url)
                     media_types.append(content_type)
@@ -4625,9 +4625,9 @@ class DiscordAdapter(BasePlatformAdapter):
                     cached_path = await self._cache_discord_audio(att, ext)
                     media_urls.append(cached_path)
                     media_types.append(content_type)
-                    logger.info(f"[Discord] Cached user audio: {cached_path}", flush=True)
+                    logger.info(f"[Discord] Cached user audio: {cached_path}")
                 except Exception as e:
-                    logger.info(f"[Discord] Failed to cache audio attachment: {e}", flush=True)
+                    logger.info(f"[Discord] Failed to cache audio attachment: {e}")
                     media_urls.append(att.url)
                     media_types.append(content_type)
             else:

@@ -4674,7 +4674,7 @@ class HermesCLI:
             if banner:
                 # Print to stderr — keeps stdout clean for piped automation,
                 # and Rich's banner rendering already wrote to stdout above.
-                logger.warning(banner, flush=True)
+                logger.warning(banner)
         except Exception:
             # Never let the security banner block startup. Failures are
             # logged at DEBUG by the advisory module.
@@ -11135,7 +11135,7 @@ class HermesCLI:
         self.conversation_history.append({"role": "user", "content": message})
 
         ChatConsole().logger.info(f"[{_accent_hex()}]{'─' * 40}[/]")
-        logger.info(flush=True)
+        logger.info()
         
         try:
             # Run the conversation with interrupt monitoring

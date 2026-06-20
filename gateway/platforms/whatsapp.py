@@ -1195,42 +1195,42 @@ class WhatsAppAdapter(BasePlatformAdapter):
                         cached_path = await cache_image_from_url(url, ext=".jpg")
                         cached_urls.append(cached_path)
                         media_types.append("image/jpeg")
-                        logger.info(f"[{self.name}] Cached user image: {cached_path}", flush=True)
+                        logger.info(f"[{self.name}] Cached user image: {cached_path}")
                     except Exception as e:
-                        logger.info(f"[{self.name}] Failed to cache image: {e}", flush=True)
+                        logger.info(f"[{self.name}] Failed to cache image: {e}")
                         cached_urls.append(url)
                         media_types.append("image/jpeg")
                 elif msg_type == MessageType.PHOTO and os.path.isabs(url):
                     # Local file path — bridge already downloaded the image
                     cached_urls.append(url)
                     media_types.append("image/jpeg")
-                    logger.info(f"[{self.name}] Using bridge-cached image: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached image: {url}")
                 elif msg_type == MessageType.VOICE and url.startswith(("http://", "https://")):
                     try:
                         cached_path = await cache_audio_from_url(url, ext=".ogg")
                         cached_urls.append(cached_path)
                         media_types.append("audio/ogg")
-                        logger.info(f"[{self.name}] Cached user voice: {cached_path}", flush=True)
+                        logger.info(f"[{self.name}] Cached user voice: {cached_path}")
                     except Exception as e:
-                        logger.info(f"[{self.name}] Failed to cache voice: {e}", flush=True)
+                        logger.info(f"[{self.name}] Failed to cache voice: {e}")
                         cached_urls.append(url)
                         media_types.append("audio/ogg")
                 elif msg_type == MessageType.VOICE and os.path.isabs(url):
                     # Local file path — bridge already downloaded the audio
                     cached_urls.append(url)
                     media_types.append("audio/ogg")
-                    logger.info(f"[{self.name}] Using bridge-cached audio: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached audio: {url}")
                 elif msg_type == MessageType.DOCUMENT and os.path.isabs(url):
                     # Local file path — bridge already downloaded the document
                     cached_urls.append(url)
                     ext = Path(url).suffix.lower()
                     mime = SUPPORTED_DOCUMENT_TYPES.get(ext, "application/octet-stream")
                     media_types.append(mime)
-                    logger.info(f"[{self.name}] Using bridge-cached document: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached document: {url}")
                 elif msg_type == MessageType.VIDEO and os.path.isabs(url):
                     cached_urls.append(url)
                     media_types.append("video/mp4")
-                    logger.info(f"[{self.name}] Using bridge-cached video: {url}", flush=True)
+                    logger.info(f"[{self.name}] Using bridge-cached video: {url}")
                 else:
                     cached_urls.append(url)
                     media_types.append("unknown")
@@ -1249,7 +1249,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
                         try:
                             file_size = Path(doc_path).stat().st_size
                             if file_size > MAX_TEXT_INJECT_BYTES:
-                                logger.info(f"[{self.name}] Skipping text injection for {doc_path} ({file_size} bytes > {MAX_TEXT_INJECT_BYTES})", flush=True)
+                                logger.info(f"[{self.name}] Skipping text injection for {doc_path} ({file_size} bytes > {MAX_TEXT_INJECT_BYTES})")
                                 continue
                             content = Path(doc_path).read_text(encoding="utf-8", errors="replace")
                             fname = Path(doc_path).name
@@ -1264,9 +1264,9 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 body = f"{injection}\n\n{body}"
                             else:
                                 body = injection
-                            logger.info(f"[{self.name}] Injected text content from: {doc_path}", flush=True)
+                            logger.info(f"[{self.name}] Injected text content from: {doc_path}")
                         except Exception as e:
-                            logger.info(f"[{self.name}] Failed to read document text: {e}", flush=True)
+                            logger.info(f"[{self.name}] Failed to read document text: {e}")
 
             return MessageEvent(
                 text=body,

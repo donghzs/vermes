@@ -1717,7 +1717,7 @@ def run_doctor(args):
     # Print a single status line so users see something happening, then
     # fan out. ``\r`` clears it once the first real result line lands.
     logger.info(f"  {color(f'Running {len(_probes)} connectivity checks in parallel…', Colors.DIM)}",
-          end="", flush=True)
+          end="")
 
     # Disable boto3's EC2 instance-metadata-service probe for the duration
     # of the parallel block. boto's default credential chain tries
