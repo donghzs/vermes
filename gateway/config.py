@@ -1878,16 +1878,34 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         from gateway.platform_registry import platform_registry
         for entry in platform_registry.plugin_entries():
             try:
-                if not entry.check_fn():
-                    continue
+                platform = Platform(entry.name)
             except Exception as e:
-                logger.debug("check_fn for %s raised: %s", entry.name, e)
+                logger.debug("unknown platform name %r: %s", entry.name, e)
                 continue
-            platform = Platform(entry.name)
-            if platform not in config.platforms:
-                config.platforms[platform] = PlatformConfig()
-            config.platforms[platform].enabled = True
-            # Seed extras from env if the plugin opted in.
+            existing_cfg = config.platforms.get(platform)
+            # Respect an explicit ``enabled: false`` (YAML / gateway.json /
+            # dashboard PUT).  ``_enabled_explicit`` is set in
+            # load_gateway_config() (via _merge_platform_map / the shared-key
+            # loop) when the user wrote ``enabled`` for this platform; if they
+            # explicitly disabled it, never re-enable here just because
+            # check_fn() / is_connected() pass (e.g. a token is present but the
+            # user set telegram.enabled: false). #41112.
+            if (
+                existing_cfg is not None
+                and not existing_cfg.enabled
+                and bool((existing_cfg.extra or {}).get("_enabled_explicit", False))
+            ):
+                continue
+            # Seed candidate extras from ``env_enablement_fn`` so plugins
+            # whose ``is_connected`` reads ``config.extra`` (e.g. Google
+            # Chat's ``_is_connected`` checks ``config.extra["project_id"]``)
+            # see the same state they will after enablement. Without this,
+            # Google-Chat-on-env-vars-only setups silently fail the gate
+            # below even though the user is configured.  Plugins whose
+            # ``is_connected`` reads env vars directly (Discord, IRC,
+            # Teams, LINE, ntfy, Simplex) are unaffected; this only
+            # restores Google Chat.
+            seed_for_probe = None
             if entry.env_enablement_fn is not None:
                 try:
                     seed = entry.env_enablement_fn()
@@ -1913,5 +1931,53 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                                 else None
                             ),
                         )
+                        configured = False
+                    if not configured:
+                        logger.debug(
+                            "Plugin platform '%s' available but not configured "
+                            "(is_connected returned False) — skipping enable",
+                            entry.name,
+                        )
+                        continue
+            # Verify dependencies LAST — only for platforms that are already
+            # enabled or passed the credential gate above.  For adapter plugins
+            # ``check_fn`` lazy-INSTALLS the platform SDK (pip) as a side
+            # effect, so running it as an unconditional sweep over every
+            # registered platform made ``load_gateway_config()`` pip-install
+            # Discord/Telegram/Slack/Feishu/Dingtalk on every call — including
+            # the desktop/dashboard readiness probe (``GET /api/status``, which
+            # awaits this synchronously) — even when the user configured none
+            # of them.  That blocked startup until every install finished and
+            # caused the desktop app to time out and boot-loop (stuck at 94%).
+            try:
+                if not entry.check_fn():
+                    continue
+            except Exception as e:
+                logger.debug("check_fn for %s raised: %s", entry.name, e)
+                continue
+            if platform not in config.platforms:
+                config.platforms[platform] = PlatformConfig()
+            config.platforms[platform].enabled = True
+            # Commit env-seeded extras onto the now-enabled platform.
+            # We've already called ``env_enablement_fn`` above (for the
+            # probe); reuse that result instead of calling it twice.
+            if isinstance(seed_for_probe, dict) and seed_for_probe:
+                seed = dict(seed_for_probe)
+                # Extract the home_channel dict (if provided) so we wire it
+                # up as a proper HomeChannel dataclass.  Everything else is
+                # merged into ``extra``.
+                home = seed.pop("home_channel", None)
+                config.platforms[platform].extra.update(seed)
+                if isinstance(home, dict) and home.get("chat_id"):
+                    config.platforms[platform].home_channel = HomeChannel(
+                        platform=platform,
+                        chat_id=str(home["chat_id"]),
+                        name=str(home.get("name") or "Home"),
+                        thread_id=(
+                            str(home["thread_id"])
+                            if home.get("thread_id")
+                            else None
+                        ),
+                    )
     except Exception as e:
         logger.debug("Plugin platform enable pass failed: %s", e)
