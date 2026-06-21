@@ -1145,6 +1145,68 @@ async def delegate_status(task_id: str):
         return {"error": str(e), "status": "error"}
 
 
+async def evolution_dag(limit: int = 50):
+    """Return DAG graph data: nodes and edges for visualization."""
+    try:
+        from agent.evolution_manager import get_self_model_db, _get_conn as _get_evo_conn
+        evo_db = get_self_model_db()
+        conn = _get_evo_conn(str(evo_db))
+        c = conn.cursor()
+        # Get relation edges grouped by type
+        c.execute("""
+            SELECT source_type, target_type, rel_type, COUNT(*) as cnt
+            FROM relations
+            GROUP BY source_type, target_type, rel_type
+            ORDER BY cnt DESC
+            LIMIT ?
+        """, (limit,))
+        edges = [
+            {"source_type": r[0], "target_type": r[1], "rel_type": r[2], "count": r[3]}
+            for r in c.fetchall()
+        ]
+        # Get top queried documents (RAG cross-DB)
+        c.execute("""
+            SELECT target_id, COUNT(*) as cnt
+            FROM relations
+            WHERE target_type='document' AND rel_type='queried'
+            GROUP BY target_id
+            ORDER BY cnt DESC
+            LIMIT 10
+        """)
+        top_docs = [{"doc_id": r[0], "query_count": r[1]} for r in c.fetchall()]
+        # Get top anti-patterns
+        c.execute("""
+            SELECT ap.id, ap.pattern, ap.frequency, ap.domain
+            FROM anti_patterns ap
+            ORDER BY ap.frequency DESC
+            LIMIT 10
+        """)
+        anti_patterns = [
+            {"id": r[0], "pattern": r[1], "frequency": r[2], "domain": r[3]}
+            for r in c.fetchall()
+        ]
+        # Total counts
+        c.execute("SELECT COUNT(*) FROM outcomes")
+        total_outcomes = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM relations")
+        total_edges = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM anti_patterns")
+        total_ap = c.fetchone()[0]
+        conn.close()
+        return {
+            "edges": edges,
+            "top_documents": top_docs,
+            "anti_patterns": anti_patterns,
+            "totals": {
+                "outcomes": total_outcomes,
+                "edges": total_edges,
+                "anti_patterns": total_ap,
+            },
+        }
+    except Exception as e:
+        return {"error": str(e), "edges": [], "top_documents": [], "anti_patterns": []}
+
+
 async def rag_list_documents():
     """List all indexed RAG documents."""
     try:
@@ -1296,6 +1358,12 @@ def register_to(app):
         evolution_achievements,
         methods=["GET"],
         name="evolution_achievements",
+    )
+    app.add_api_route(
+        "/api/evolution/dag",
+        evolution_dag,
+        methods=["GET"],
+        name="evolution_dag",
     )
     app.add_api_route(
         "/api/delegate/status/{task_id}",

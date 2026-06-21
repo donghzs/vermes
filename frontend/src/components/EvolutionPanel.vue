@@ -5,6 +5,7 @@ const status = ref(null)
 const loading = ref(true)
 const expanded = ref(false)
 const achievements = ref([])
+const dagData = ref(null)
 
 async function fetchStatus() {
   try {
@@ -30,9 +31,21 @@ async function fetchAchievements() {
   }
 }
 
+async function fetchDag() {
+  try {
+    const r = await fetch('/api/evolution/dag?limit=50')
+    if (r.ok) {
+      dagData.value = await r.json()
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   fetchStatus()
   fetchAchievements()
+  fetchDag()
   // 每 30 秒刷新
   const timer = setInterval(fetchStatus, 30000)
   onUnmounted(() => clearInterval(timer))
@@ -51,6 +64,16 @@ const progressBarColor = computed(() => {
   if (rate >= 60) return 'bg-yellow-500'
   return 'bg-red-500'
 })
+
+const edgeTypeLabel = (relType) => {
+  const map = { caused_emotion: '引发情绪', triggered: '触发反模式', queried: '检索文档', retrieved: '检索分块' }
+  return map[relType] || relType
+}
+
+const nodeTypeLabel = (nodeType) => {
+  const map = { outcome: '工具调用', emotional_state: '情绪状态', anti_pattern: '反模式', document: '文档', chunk: '分块' }
+  return map[nodeType] || nodeType
+}
 </script>
 
 <template>
@@ -100,6 +123,33 @@ const progressBarColor = computed(() => {
         <div v-for="a in achievements" :key="a.id" class="evo-achievement">
           <span class="evo-badge">🏆</span>
           <span class="evo-achievement-text">{{ a.description || a.name }}</span>
+        </div>
+      </div>
+      <!-- DAG 关系图 -->
+      <div v-if="dagData?.edges?.length" class="evo-dag">
+        <div class="evo-key mb-1">关联图谱 ({{ dagData.totals?.edges || 0 }} 条边)</div>
+        <div v-for="e in dagData.edges" :key="`${e.source_type}-${e.target_type}-${e.rel_type}`" class="evo-edge">
+          <span class="evo-edge-src">{{ nodeTypeLabel(e.source_type) }}</span>
+          <span class="evo-edge-arrow">→</span>
+          <span class="evo-edge-tgt">{{ nodeTypeLabel(e.target_type) }}</span>
+          <span class="evo-edge-type">{{ edgeTypeLabel(e.rel_type) }}</span>
+          <span class="evo-edge-count">{{ e.count }}</span>
+        </div>
+      </div>
+      <!-- 热门检索文档 -->
+      <div v-if="dagData?.top_documents?.length" class="evo-dag">
+        <div class="evo-key mb-1">热门检索文档</div>
+        <div v-for="d in dagData.top_documents" :key="d.doc_id" class="evo-edge">
+          <span class="evo-edge-src">📄 #{{ d.doc_id }}</span>
+          <span class="evo-edge-count">{{ d.query_count }} 次检索</span>
+        </div>
+      </div>
+      <!-- 反模式 TOP -->
+      <div v-if="dagData?.anti_patterns?.length" class="evo-dag">
+        <div class="evo-key mb-1">高频反模式</div>
+        <div v-for="ap in dagData.anti_patterns" :key="ap.id" class="evo-edge">
+          <span class="evo-edge-src">⚠️ {{ ap.pattern }}</span>
+          <span class="evo-edge-count">{{ ap.frequency }}次</span>
         </div>
       </div>
     </div>
@@ -210,4 +260,38 @@ const progressBarColor = computed(() => {
 .dark .evo-achievement { color: #fbbf24; }
 .evo-badge { font-size: 0.75rem; }
 .evo-achievement-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evo-dag {
+  margin-top: 0.5rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid rgba(229, 231, 235, 0.3);
+}
+.dark .evo-dag { border-top-color: rgba(55, 65, 81, 0.3); }
+.evo-edge {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+  color: #6b7280;
+  padding: 0.125rem 0;
+}
+.dark .evo-edge { color: #9ca3af; }
+.evo-edge-src { color: #4b5563; }
+.dark .evo-edge-src { color: #d1d5db; }
+.evo-edge-arrow { color: #22c55e; font-weight: 600; }
+.evo-edge-tgt { color: #4b5563; }
+.dark .evo-edge-tgt { color: #d1d5db; }
+.evo-edge-type {
+  margin-left: auto;
+  font-size: 0.5625rem;
+  color: #9ca3af;
+  background: rgba(34, 197, 94, 0.08);
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+}
+.evo-edge-count {
+  font-weight: 600;
+  color: #22c55e;
+  min-width: 2rem;
+  text-align: right;
+}
 </style>
