@@ -1150,6 +1150,24 @@ def init_agent(
             _ra().logger.warning("Memory provider plugin init failed: %s", _mpe)
             agent._memory_manager = None
 
+    # RAG provider — always on (no config needed, uses SQLite+FTS5)
+    if not skip_memory:
+        try:
+            from agent.rag_provider import RAGProvider
+            if agent._memory_manager is None:
+                from agent.memory_manager import MemoryManager as _MM
+                agent._memory_manager = _MM()
+            _rag = RAGProvider()
+            if _rag.is_available():
+                agent._memory_manager.add_provider(_rag)
+                _rag.initialize(session_id=agent.session_id,
+                                platform=platform or "cli",
+                                hermes_home=str(get_hermes_home()),
+                                agent_context="primary")
+                _ra().logger.info("RAG provider activated (SQLite+FTS5)")
+        except Exception as _rage:
+            _ra().logger.debug("RAG provider init failed: %s", _rage)
+
     # Inject memory provider tool schemas into the tool surface.
     # Skip tools whose names already exist (plugins may register the
     # same tools via ctx.register_tool(), which lands in agent.tools

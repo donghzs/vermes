@@ -17,7 +17,7 @@ import time
 from typing import Optional
 
 import yaml
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -1144,6 +1144,46 @@ async def delegate_status(task_id: str):
         return {"error": str(e), "status": "error"}
 
 
+async def rag_list_documents():
+    """List all indexed RAG documents."""
+    try:
+        from agent.rag_provider import RAGProvider
+        provider = RAGProvider()
+        provider.initialize(session_id="api")
+        docs = provider.list_documents()
+        return {"documents": docs, "count": len(docs)}
+    except Exception as e:
+        return {"error": str(e), "documents": []}
+
+
+async def rag_ingest(req: Request):
+    """Ingest a file into the RAG knowledge base."""
+    try:
+        body = await req.json()
+        file_path = body.get("file_path", "")
+        if not file_path:
+            return {"error": "file_path is required"}
+        from agent.rag_provider import RAGProvider
+        provider = RAGProvider()
+        provider.initialize(session_id="api")
+        result = provider.ingest_file(file_path)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def rag_delete(doc_id: int):
+    """Delete a document from the RAG knowledge base."""
+    try:
+        from agent.rag_provider import RAGProvider
+        provider = RAGProvider()
+        provider.initialize(session_id="api")
+        deleted = provider.delete_document(doc_id)
+        return {"deleted": deleted, "doc_id": doc_id}
+    except Exception as e:
+        return {"error": str(e), "deleted": False}
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -1181,6 +1221,24 @@ def register_to(app):
         delegate_status,
         methods=["GET"],
         name="delegate_status",
+    )
+    app.add_api_route(
+        "/api/rag/documents",
+        rag_list_documents,
+        methods=["GET"],
+        name="rag_list_documents",
+    )
+    app.add_api_route(
+        "/api/rag/ingest",
+        rag_ingest,
+        methods=["POST"],
+        name="rag_ingest",
+    )
+    app.add_api_route(
+        "/api/rag/delete/{doc_id}",
+        rag_delete,
+        methods=["DELETE"],
+        name="rag_delete",
     )
     app.add_api_route(
         "/api/cache/metrics",

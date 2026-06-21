@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""
+RAG Provider — Agent 记忆型 RAG (Retrieval-Augmented Generation)
+
+Uses SQLite + FTS5 for lightweight document indexing and retrieval.
+No vector database required — FTS5 trigram tokenizer handles Chinese + English.
+
+Documents are chunked (500 chars, 100 char overlap) and indexed into FTS5.
+Prefetch queries the top-K chunks matching the user's message and injects
+them into the system prompt as [知识库上下文].
+"""
+
+import json
+import logging
+import os
+import re
+import sqlite3
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from agent.memory_provider import MemoryProvider
+from hermes_constants import get_hermes_home
+
+logger = logging.getLogger(__name__)
+
+_db_lock = threading.Lock()
+_conn_cache: Dict[str, sqlite3.Connection] = {}
+
+
+def _get_rag_db() -> Path:
+    """Get the RAG database path."""
+    return get_hermes_home() / "rag" / "documents.db"
+
+
+def _get_conn(db_path: str) -> sqlite3.Connection:
+    """Return a thread-safe cached connection with WAL + busy_timeout."""
+    key = str(db_path)
+    with _db_lock:
+        if key in _conn_cache:
+            try:
+                _conn_cache[key].execute("SELECT 1")
+                return _conn_cache[key]
+            except sqlite3.ProgrammingError:
+                pass
+        conn = sqlite3.connect(key, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        _conn_cache[key] = conn
+        return conn
+
+
+def _init_db(db_path: Path) -> None:
+    """Initialize RAG database with FTS5."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = _get_conn(str(db_path))
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            file_type TEXT,
+            file_size INTEGER,
+            ingested_at TEXT NOT NULL,
+            chunk_count INTEGER DEFAULT 0
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            doc_id INTEGER NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            char_count INTEGER DEFAULT 0,
+            FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
+        )
+    """)
+    # FTS5 with trigram tokenizer for CJK + English support
+    try:
+        c.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts
+            USING fts5(content, tokenize='trigram')
+        """)
+    except sqlite3.OperationalError:
+        # FTS5 trigram not available — fall back to unicode61
+        logger.warning("FTS5 trigram unavailable, falling back to unicode61")
+        c.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts
+            USING fts5(content)
+        """)
+    conn.commit()
+
+
+def _chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
+    """Split text into overlapping chunks."""
+    if len(text) <= chunk_size:
+        return [text] if text.strip() else []
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        if chunk.strip():
+            chunks.append(chunk)
+        start = end - overlap
+    return chunks
+
+
+def _extract_text(file_path: str) -> str:
+    """Extract text from a file. Supports txt/md/py/js/json + basic binary."""
+    ext = Path(file_path).suffix.lower()
+    text_encodings = {'.txt', '.md', '.py', '.js', '.ts', '.json', '.yaml', '.yml',
+                      '.html', '.css', '.xml', '.csv', '.tsv', '.sh', '.sql', '.log'}
+    if ext in text_encodings or ext == '':
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                return f.read()
+        except Exception as e:
+            logger.error("Failed to read %s: %s", file_path, e)
+            return ""
+    # For binary formats, return empty (future: integrate file_parser)
+    logger.warning("Unsupported file type: %s, skipping", ext)
+    return ""
+
+
+class RAGProvider(MemoryProvider):
+    """Agent 记忆型 RAG — FTS5 document indexing + retrieval."""
+
+    def __init__(self):
+        self._db_path: Optional[Path] = None
+        self._session_id: str = ""
+        self._initialized = False
+
+    @property
+    def name(self) -> str:
+        return "rag"
+
+    def is_available(self) -> bool:
+        return True  # Always available — just needs SQLite
+
+    def initialize(self, session_id: str, **kwargs) -> None:
+        self._session_id = session_id
+        self._db_path = _get_rag_db()
+        _init_db(self._db_path)
+        self._initialized = True
+        logger.info("RAGProvider initialized (db=%s)", self._db_path)
+
+    def system_prompt_block(self) -> str:
+        if not self._initialized:
+            return ""
+        # Count documents
+        try:
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM documents")
+            doc_count = c.fetchone()[0]
+            if doc_count == 0:
+                return ""
+            return f"[知识库] 已索引 {doc_count} 个文档，可用 memory_search 工具检索。"
+        except Exception:
+            return ""
+
+    def prefetch(self, query: str, *, session_id: str = "") -> str:
+        """Retrieve top-K chunks matching the query via FTS5."""
+        if not self._initialized or not query.strip():
+            return ""
+        try:
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            # Build FTS5 query — escape special chars
+            safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
+            if not safe_query:
+                return ""
+            # Use OR for multi-term queries
+            terms = safe_query.split()
+            if not terms:
+                return ""
+            fts_query = " OR ".join(f'"{t}"' for t in terms[:5])
+            c.execute("""
+                SELECT chunks.content, documents.filename, chunks.chunk_index
+                FROM chunks_fts
+                JOIN chunks ON chunks.id = chunks_fts.rowid
+                JOIN documents ON documents.id = chunks.doc_id
+                WHERE chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT 3
+            """, (fts_query,))
+            results = c.fetchall()
+            if not results:
+                return ""
+            parts = ["[知识库上下文]"]
+            for content, filename, chunk_idx in results:
+                preview = content[:300].replace('\n', ' ')
+                parts.append(f"📄 {filename}#{chunk_idx}: {preview}")
+            return "\n".join(parts)
+        except Exception as e:
+            logger.debug("RAG prefetch failed: %s", e)
+            return ""
+
+    def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
+        pass  # Synchronous prefetch is fast enough
+
+    def sync_turn(self, user_content: str, assistant_content: str, *,
+                  session_id: str = "", messages=None) -> None:
+        pass  # RAG doesn't store turns — that's the session DB's job
+
+    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "name": "memory_search",
+                "description": (
+                    "Search the knowledge base (documents indexed via FTS5). "
+                    "Returns matching text chunks from indexed files. "
+                    "Use this to find information from uploaded documents."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query — keywords or phrases to find in the knowledge base.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "default": 5,
+                            "description": "Max number of chunks to return (1-10).",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "memory_ingest",
+                "description": (
+                    "Index a file into the knowledge base for future retrieval. "
+                    "Supported: txt, md, py, js, json, yaml, html, csv, sh, sql. "
+                    "The file will be chunked and indexed with FTS5."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Absolute path to the file to index.",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        ]
+
+    def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
+        if tool_name == "memory_search":
+            return self._handle_search(args)
+        elif tool_name == "memory_ingest":
+            return self._handle_ingest(args)
+        return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+    def _handle_search(self, args: Dict[str, Any]) -> str:
+        query = args.get("query", "").strip()
+        limit = min(max(args.get("limit", 5), 1), 10)
+        if not query:
+            return json.dumps({"error": "query is required"})
+        if not self._initialized:
+            return json.dumps({"error": "RAG not initialized"})
+        try:
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
+            terms = safe_query.split()
+            if not terms:
+                return json.dumps({"results": [], "message": "No valid search terms"})
+            fts_query = " OR ".join(f'"{t}"' for t in terms[:5])
+            c.execute("""
+                SELECT chunks.content, documents.filename, chunks.chunk_index,
+                       documents.id, documents.file_type
+                FROM chunks_fts
+                JOIN chunks ON chunks.id = chunks_fts.rowid
+                JOIN documents ON documents.id = chunks.doc_id
+                WHERE chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_query, limit))
+            results = []
+            for content, filename, chunk_idx, doc_id, file_type in c.fetchall():
+                results.append({
+                    "filename": filename,
+                    "chunk_index": chunk_idx,
+                    "content": content,
+                    "preview": content[:200].replace('\n', ' '),
+                })
+            return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    def _handle_ingest(self, args: Dict[str, Any]) -> str:
+        file_path = args.get("file_path", "").strip()
+        if not file_path or not os.path.exists(file_path):
+            return json.dumps({"error": f"File not found: {file_path}"})
+        return self.ingest_file(file_path)
+
+    def ingest_file(self, file_path: str) -> str:
+        """Index a file into the RAG database."""
+        if not self._initialized:
+            _init_db(_get_rag_db())
+            self._db_path = _get_rag_db()
+            self._initialized = True
+        text = _extract_text(file_path)
+        if not text.strip():
+            return json.dumps({"error": f"No text extracted from {file_path}"})
+        chunks = _chunk_text(text)
+        if not chunks:
+            return json.dumps({"error": "No chunks generated"})
+        p = Path(file_path)
+        conn = _get_conn(str(self._db_path))
+        c = conn.cursor()
+        # Check if document already exists
+        c.execute("SELECT id FROM documents WHERE path = ?", (str(p.resolve()),))
+        existing = c.fetchone()
+        if existing:
+            doc_id = existing[0]
+            # Delete old chunks
+            c.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+            c.execute("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE doc_id = ?)", (doc_id,))
+        else:
+            c.execute(
+                "INSERT INTO documents (path, filename, file_type, file_size, ingested_at, chunk_count) VALUES (?, ?, ?, ?, ?, ?)",
+                (str(p.resolve()), p.name, p.suffix, p.stat().st_size, datetime.now().isoformat(), len(chunks))
+            )
+            doc_id = c.lastrowid
+        # Insert chunks
+        for idx, chunk in enumerate(chunks):
+            c.execute(
+                "INSERT INTO chunks (doc_id, chunk_index, content, char_count) VALUES (?, ?, ?, ?)",
+                (doc_id, idx, chunk, len(chunk))
+            )
+            chunk_id = c.lastrowid
+            c.execute("INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)", (chunk_id, chunk))
+        # Update chunk count
+        c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
+        conn.commit()
+        logger.info("Ingested %s: %d chunks", p.name, len(chunks))
+        return json.dumps({
+            "status": "ok",
+            "filename": p.name,
+            "chunks": len(chunks),
+            "doc_id": doc_id,
+        }, ensure_ascii=False)
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """List all indexed documents."""
+        if not self._initialized:
+            return []
+        conn = _get_conn(str(self._db_path))
+        c = conn.cursor()
+        c.execute("SELECT id, filename, file_type, file_size, ingested_at, chunk_count FROM documents ORDER BY ingested_at DESC")
+        return [
+            {"id": row[0], "filename": row[1], "file_type": row[2],
+             "file_size": row[3], "ingested_at": row[4], "chunk_count": row[5]}
+            for row in c.fetchall()
+        ]
+
+    def delete_document(self, doc_id: int) -> bool:
+        """Delete a document and its chunks."""
+        if not self._initialized:
+            return False
+        conn = _get_conn(str(self._db_path))
+        c = conn.cursor()
+        c.execute("SELECT id FROM chunks WHERE doc_id = ?", (doc_id,))
+        chunk_ids = [row[0] for row in c.fetchall()]
+        for cid in chunk_ids:
+            c.execute("DELETE FROM chunks_fts WHERE rowid = ?", (cid,))
+        c.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+        c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        conn.commit()
+        return c.rowcount > 0
+
+    def shutdown(self) -> None:
+        pass
