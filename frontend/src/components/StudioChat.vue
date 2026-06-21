@@ -67,6 +67,10 @@
           <!-- 生成结果图片 -->
           <div v-if="msg.image_url" class="msg-image">
             <img :src="msg.image_url" @click="openImage(msg.image_url)" />
+            <div class="msg-actions">
+              <button class="msg-action-btn" @click="downloadResult(msg.image_url)">⬇️ 下载</button>
+              <button class="msg-action-btn" @click="regenerate(msg)">🔄 重新生成</button>
+            </div>
           </div>
           <!-- 视频 -->
           <div v-if="msg.video_url" class="msg-video">
@@ -80,6 +84,73 @@
         <div class="msg-avatar">V</div>
         <div class="msg-body"><span class="typing">⏳ 生成中...</span></div>
       </div>
+    </div>
+
+    <!-- 创作模板栏 -->
+    <div class="template-bar">
+      <button v-for="t in templates" :key="t.name" 
+        @click="applyTemplate(t)" 
+        class="template-chip" 
+        :class="{ active: activeTemplate === t.name }"
+        :title="t.prompt"
+      >{{ t.icon }} {{ t.name }}</button>
+      <button @click="showParams = !showParams" class="template-chip" :class="{ active: showParams }">⚙️ 参数</button>
+      <button @click="showGallery = !showGallery" class="template-chip" :class="{ active: showGallery }">🖼️ 画廊</button>
+    </div>
+
+    <!-- 参数控制面板 -->
+    <div v-if="showParams" class="params-panel">
+      <div class="param-row">
+        <label>尺寸</label>
+        <select v-model="params.size" class="param-select">
+          <option value="1024x1024">1024×1024 (方)</option>
+          <option value="1280x720">1280×720 (横)</option>
+          <option value="720x1280">720×1280 (竖)</option>
+          <option value="768x768">768×768</option>
+        </select>
+      </div>
+      <div class="param-row">
+        <label>数量</label>
+        <select v-model="params.n" class="param-select">
+          <option :value="1">1 张</option>
+          <option :value="2">2 张</option>
+          <option :value="4">4 张</option>
+        </select>
+      </div>
+      <div class="param-row">
+        <label>温度 {{ params.temperature.toFixed(2) }}</label>
+        <input type="range" v-model.number="params.temperature" min="0" max="2" step="0.05" class="param-slider" />
+      </div>
+      <div class="param-row" v-if="params.mode === 'video'">
+        <label>帧数</label>
+        <select v-model.number="params.numFrames" class="param-select">
+          <option :value="25">25 帧</option>
+          <option :value="49">49 帧</option>
+          <option :value="81">81 帧</option>
+        </select>
+      </div>
+      <div class="param-row" v-if="params.mode === 'video'">
+        <label>帧率</label>
+        <select v-model.number="params.fps" class="param-select">
+          <option :value="12">12 fps</option>
+          <option :value="24">24 fps</option>
+          <option :value="30">30 fps</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 历史画廊 -->
+    <div v-if="showGallery" class="gallery-panel">
+      <div v-if="gallery.length === 0" class="gallery-empty">暂无生成历史</div>
+      <div v-else class="gallery-grid">
+        <div v-for="item in gallery" :key="item.id" class="gallery-item" @click="reopenGalleryItem(item)">
+          <img v-if="item.type === 'image'" :src="item.url" :alt="item.prompt" />
+          <div v-else-if="item.type === 'video'" class="gallery-video-thumb">🎬 {{ item.prompt.slice(0, 12) }}</div>
+          <div v-else class="gallery-text-thumb">📝 {{ item.prompt.slice(0, 12) }}</div>
+          <div class="gallery-meta">{{ item.prompt.slice(0, 20) }}</div>
+        </div>
+      </div>
+      <button v-if="gallery.length > 0" @click="clearGallery" class="btn-clear-gallery">清空</button>
     </div>
 
     <!-- 输入区 -->
@@ -153,6 +224,67 @@ const saveName = ref('')
 const statusMsg = ref('')
 const uploadedImage = ref(null) // { dataUrl, file }
 const fileInput = ref(null)
+
+// ── 参数控制 ──
+const showParams = ref(false)
+const showGallery = ref(false)
+const params = ref({
+  size: '1024x1024',
+  n: 1,
+  temperature: 0.85,
+  numFrames: 49,
+  fps: 24,
+  mode: 'auto',
+})
+
+// ── 创作模板 ──
+const activeTemplate = ref('')
+const templates = [
+  { name: '海报', icon: '🎯', prompt: '设计一张精美的海报，主题：', mode: 'image' },
+  { name: '头像', icon: '😀', prompt: '生成一个个性化的头像，风格：', mode: 'image' },
+  { name: 'Logo', icon: '🏷️', prompt: '设计一个简洁现代的Logo，品牌名：', mode: 'image' },
+  { name: '插画', icon: '🎨', prompt: '创作一幅插画，场景描述：', mode: 'image' },
+  { name: '短剧', icon: '🎬', prompt: '生成一段5秒的短剧视频，内容：', mode: 'video' },
+  { name: '动画', icon: '🌀', prompt: '制作一段动画效果，描述：', mode: 'video' },
+  { name: '写作', icon: '✍️', prompt: '请帮我写：', mode: 'text' },
+]
+function applyTemplate(t) {
+  activeTemplate.value = t.name
+  prompt.value = t.prompt
+  params.value.mode = t.mode
+  if (t.mode === 'video') {
+    params.value.size = '1280x720'
+  } else if (t.mode === 'image') {
+    params.value.size = '1024x1024'
+  }
+}
+
+// ── 历史画廊 ──
+const GALLERY_KEY = 'vermes-studio-gallery'
+const gallery = ref(loadGallery())
+function loadGallery() {
+  try { return JSON.parse(localStorage.getItem(GALLERY_KEY)) || [] } catch { return [] }
+}
+function saveGallery() {
+  try { localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery.value.slice(0, 50))) } catch {}
+}
+function addToGallery(item) {
+  gallery.value.unshift({ ...item, id: Date.now() + Math.random() })
+  if (gallery.value.length > 50) gallery.value = gallery.value.slice(0, 50)
+  saveGallery()
+}
+function clearGallery() {
+  if (!confirm('清空所有生成历史？')) return
+  gallery.value = []
+  saveGallery()
+}
+function reopenGalleryItem(item) {
+  if (item.type === 'image') {
+    window.open(item.url, '_blank')
+  } else if (item.type === 'text') {
+    prompt.value = item.prompt
+  }
+}
 
 const providerPresets = [
   { name: 'agnes', label: 'Agnes AI', icon: '🧠', baseUrl: 'https://apihub.agnes-ai.com/v1', text: 'agnes-2.0-flash', image: 'agnes-image-2.1-flash', video: 'agnes-video-v2.0', keyEnv: 'AGNES_API_KEY' },
@@ -358,12 +490,14 @@ async function send() {
           model: activeModel,
           messages: [{ role: 'user', content: text }],
           max_tokens: 4096,
-          temperature: 0.85,
+          temperature: params.value.temperature,
         }),
       })
       const data = await resp.json()
       if (resp.ok) {
-        messages.value.push({ role: 'assistant', text: data.choices[0].message.content })
+        const replyText = data.choices[0].message.content
+        messages.value.push({ role: 'assistant', text: replyText })
+        addToGallery({ type: 'text', url: '', prompt: promptText, model: activeModel, content: replyText })
       } else {
         messages.value.push({ role: 'assistant', error: `API 返回 ${resp.status}: ${data.error?.message || resp.statusText}` })
       }
@@ -377,8 +511,8 @@ async function send() {
       const body = {
         model: activeModel,
         prompt: finalPrompt,
-        size: '1024x1024',
-        n: 1,
+        size: params.value.size,
+        n: params.value.n,
       }
       if (hasImage) {
         body.image = uploadedImage.value.dataUrl
@@ -390,7 +524,10 @@ async function send() {
       })
       const data = await resp.json()
       if (resp.ok) {
-        messages.value.push({ role: 'assistant', image_url: data.data[0].url })
+        for (const d of (data.data || [data.data?.[0]]).filter(Boolean)) {
+          messages.value.push({ role: 'assistant', image_url: d.url })
+          addToGallery({ type: 'image', url: d.url, prompt: promptText, model: activeModel })
+        }
       } else {
         messages.value.push({ role: 'assistant', error: `图片生成失败: ${data.error?.message || resp.statusText}` })
       }
@@ -401,10 +538,10 @@ async function send() {
       const body = {
         model: activeModel,
         prompt: promptText,
-        num_frames: 49,
-        frame_rate: 24,
-        width: 1152,
-        height: 768,
+        num_frames: params.value.numFrames,
+        frame_rate: params.value.fps,
+        width: parseInt(params.value.size.split('x')[0]),
+        height: parseInt(params.value.size.split('x')[1]),
       }
       if (hasImage) {
         body.image = uploadedImage.value.dataUrl
@@ -418,7 +555,7 @@ async function send() {
       if (respV.ok && (data.task_id || data.id)) {
         const taskId = data.task_id || data.id
         const queryUrl = `${root}/v1/video/generations/${taskId}`
-        const msg = { role: 'assistant', video_id: taskId, text: `🎬 视频已提交，ID: ${taskId}，正在处理...` }
+        const msg = { role: 'assistant', video_id: taskId, text: `🎬 视频已提交，ID: ${taskId}，正在处理...`, _origPrompt: promptText }
         messages.value.push(msg)
         // 自动轮询查状态
         startVideoPoll(msg)
@@ -466,6 +603,7 @@ function startVideoPoll(msg) {
         msg.text = undefined
         msg.note = undefined
         clearInterval(msg._pollTimer)
+        addToGallery({ type: 'video', url: data.video_url, prompt: msg._origPrompt || '', model: '' })
         scrollBottom()
       } else if (data.error) {
         msg.error = data.error
@@ -487,6 +625,27 @@ function startVideoPoll(msg) {
 
 function goBack() {
   router.push('/')
+}
+
+function downloadResult(url) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `vermes-studio-${Date.now()}.png`
+  a.target = '_blank'
+  a.click()
+}
+
+function regenerate(msg) {
+  // 找到对应的用户消息
+  const idx = messages.value.indexOf(msg)
+  if (idx > 0) {
+    const userMsg = messages.value[idx - 1]
+    prompt.value = userMsg.text || ''
+    if (userMsg.image_data) {
+      // 恢复图片
+      uploadedImage.value = { dataUrl: userMsg.image_data, file: null }
+    }
+  }
 }
 
 // ── 配置管理 ──
@@ -813,4 +972,143 @@ function deleteCurrentConfig() {
 .btn-confirm { padding: 6px 16px; border: none; border-radius: 8px; background: #409EFF; color: #fff; font-size: 13px; cursor: pointer; }
 .btn-sm { padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; font-size: 11px; cursor: pointer; white-space: nowrap; }
 .btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── 创作模板栏 ── */
+.template-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #fafbfc;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+.template-chip {
+  padding: 3px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  color: #666;
+}
+.template-chip:hover { border-color: #409EFF; color: #409EFF; }
+.template-chip.active { border-color: #409EFF; background: #e6f0ff; color: #409EFF; font-weight: 500; }
+
+/* ── 参数面板 ── */
+.params-panel {
+  display: flex;
+  gap: 16px;
+  padding: 10px 12px;
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 100px;
+}
+.param-row label {
+  font-size: 11px;
+  color: #888;
+}
+.param-select {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+}
+.param-slider {
+  width: 120px;
+  accent-color: #409EFF;
+}
+
+/* ── 画廊 ── */
+.gallery-panel {
+  padding: 10px 12px;
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  position: relative;
+}
+.gallery-empty {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+  padding: 20px;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+}
+.gallery-item {
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  background: #f5f7fa;
+  transition: transform 0.15s;
+}
+.gallery-item:hover { transform: scale(1.05); border-color: #409EFF; }
+.gallery-item img {
+  width: 100%;
+  height: 60px;
+  object-fit: cover;
+  display: block;
+}
+.gallery-video-thumb, .gallery-text-thumb {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #666;
+}
+.gallery-meta {
+  padding: 3px 4px;
+  font-size: 10px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn-clear-gallery {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 2px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  color: #e53935;
+}
+
+/* ── 生成结果操作 ── */
+.msg-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.msg-action-btn {
+  padding: 2px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fafafa;
+  font-size: 10px;
+  cursor: pointer;
+  color: #666;
+}
+.msg-action-btn:hover { border-color: #409EFF; color: #409EFF; }
 </style>
