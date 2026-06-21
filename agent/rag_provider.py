@@ -174,11 +174,23 @@ class RAGProvider(MemoryProvider):
             safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
             if not safe_query:
                 return ""
-            # Use OR for multi-term queries
-            terms = safe_query.split()
+            # FTS5 trigram tokenizer requires ≥3 char substrings.
+            # For CJK text, generate 3-char trigrams; for ASCII, use whole words.
+            terms = []
+            for word in safe_query.split():
+                cjk_chars = [ch for ch in word if '\u4e00' <= ch <= '\u9fff']
+                ascii_part = ''.join(ch for ch in word if ch not in cjk_chars)
+                if ascii_part and len(ascii_part) >= 3:
+                    terms.append(ascii_part)
+                if len(cjk_chars) >= 3:
+                    # Generate 3-char trigrams (sliding window)
+                    for i in range(len(cjk_chars) - 2):
+                        terms.append(cjk_chars[i] + cjk_chars[i+1] + cjk_chars[i+2])
+                # CJK <3 chars: skip (trigram can't match),
+                # but if combined with ASCII it might still match
             if not terms:
                 return ""
-            fts_query = " OR ".join(f'"{t}"' for t in terms[:5])
+            fts_query = " OR ".join(f'"{t}"' for t in terms[:8])
             c.execute("""
                 SELECT chunks.content, documents.filename, chunks.chunk_index
                 FROM chunks_fts
