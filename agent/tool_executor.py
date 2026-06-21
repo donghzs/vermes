@@ -267,10 +267,17 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         duration = time.time() - start
         is_error, _ = _detect_tool_failure(function_name, result)
         # 桥：记录工具执行结果到自我进化系统，跨会话积累经验
+        _evo_event = None
         try:
-            record_tool_outcome(agent, function_name, function_args, result, is_error, duration)
+            _evo_event = record_tool_outcome(agent, function_name, function_args, result, is_error, duration)
         except Exception:
             pass  # 进化记录不应阻塞工具执行
+        # 传递进化事件（成就/建议）给 SSE 流
+        if _evo_event and hasattr(agent, "evolution_event_callback"):
+            try:
+                agent.evolution_event_callback(_evo_event, function_name, is_error, duration)
+            except Exception:
+                pass
         if is_error:
             logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
         else:

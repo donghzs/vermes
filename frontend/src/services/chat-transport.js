@@ -25,8 +25,8 @@ class ChatTransport {
     throw new Error('implement in subclass')
   }
 
-  on(sessionId, { onMessage, onDone, onError, onStatus }) {
-    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus })
+  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution }) {
+    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution })
   }
 
   off(sessionId) {
@@ -111,6 +111,8 @@ export class SSETransport extends ChatTransport {
               this._emit(sessionId, 'onMessage', { type: 'delta', content: data.content || deltaContent || '' })
             } else if (data.type === 'tool' || data.type === 'tool_start' || data.type === 'tool_end') {
               this._emit(sessionId, 'onToolCall', data)
+            } else if (data.type === 'evolution') {
+              this._emit(sessionId, 'onEvolution', data)
             } else if (data.type === 'status') {
               this._emit(sessionId, 'onStatus', data)
             } else if (data.type === 'error') {

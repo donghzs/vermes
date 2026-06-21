@@ -1061,6 +1061,46 @@ def get_evolution_status() -> Dict[str, Any]:
         return {"active": True, "error": str(e)}
 
 
+def build_daily_briefing() -> str:
+    """生成每日签到简报，注入到首次对话的 system prompt。
+
+    返回空字符串表示数据不足或首次运行。
+    """
+    try:
+        status = get_evolution_status()
+        if not status or not status.get("active") or status.get("total_outcomes", 0) < 10:
+            return ""
+
+        parts = [
+            f"📋 今日简报：已积累 {status['total_outcomes']} 次工具调用经验",
+            f"📊 整体成功率 {status['success_rate']}%",
+        ]
+
+        # 最近 24h 新增
+        conn = _get_conn(str(get_self_model_db()))
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM outcomes WHERE timestamp > datetime('now', '-1 day')"
+        )
+        recent = c.fetchone()[0]
+        if recent > 0:
+            parts.append(f"📈 最近24小时新增 {recent} 条记录")
+
+        # 最常出错的工具
+        if status.get("recent_failures"):
+            top_fail = status["recent_failures"][0]
+            parts.append(f"⚠️ 注意：{top_fail[0]} 常出现 {top_fail[1]} 错误")
+
+        # 情绪状态
+        emotion = get_current_emotional_state()
+        if emotion:
+            parts.append(f"😌 当前状态：{emotion}")
+
+        return "\n".join(parts)
+    except Exception:
+        return ""
+
+
 def build_evolution_prompt() -> str:
     """构建[进化上下文] + [行为准则]文本块，替代 3 处重复代码。
 
@@ -1090,6 +1130,11 @@ def build_evolution_prompt() -> str:
             parts.append(f"当前状态: {emotion}")
         if status.get("anti_patterns_count", 0) > 0:
             parts.append(f"反模式: {status['anti_patterns_count']} 条")
+
+        # 注入每日签到简报
+        briefing = build_daily_briefing()
+        if briefing:
+            parts.append("\n" + briefing)
 
         return "\n".join(parts) + (
             "\n\n[行为准则]\n"

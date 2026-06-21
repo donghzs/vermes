@@ -804,6 +804,24 @@ async def chat_completions(req: ChatRequest):
             else:
                 _delta_queue.put_nowait(event)
 
+        def evolution_event_handler(message: str, tool_name: str, is_error: bool, duration: float):
+            """Route evolution events (achievements, advice) to SSE stream."""
+            event = {
+                "type": "evolution",
+                "message": message,
+                "tool_name": tool_name,
+                "is_error": is_error,
+                "duration": round(duration, 2),
+            }
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
+            else:
+                _delta_queue.put_nowait(event)
+
         def run_sync():
             try:
                 _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
@@ -811,6 +829,7 @@ async def chat_completions(req: ChatRequest):
                 agent.tool_progress_callback = tool_progress_handler
                 agent.step_callback = thinking_handler
                 agent.status_callback = status_callback
+                agent.evolution_event_callback = evolution_event_handler
                 _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                 agent.max_tokens = _max_tokens
                 result = agent.run_conversation(
@@ -1089,6 +1108,28 @@ async def evolution_status():
         return {"active": False, "error": str(e)}
 
 
+async def evolution_achievements(limit: int = 10):
+    """Return unlocked achievements for the frontend."""
+    try:
+        from agent.evolution_manager import get_evolution_status
+        status = get_evolution_status()
+        achievement_keys = status.get("achievements", []) if isinstance(status, dict) else []
+        # Map achievement keys to display names
+        achievement_map = {
+            "10_records": {"id": "10_records", "name": "第一步", "description": "10 次工具调用记录"},
+            "50_records": {"id": "50_records", "name": "初露锋芒", "description": "50 次工具调用记录"},
+            "100_records": {"id": "100_records", "name": "百次积累", "description": "100 次工具调用记录"},
+            "high_accuracy": {"id": "high_accuracy", "name": "精准执行", "description": f"成功率 {status.get('success_rate', 0):.0f}%"},
+            "anti_pattern_learner": {"id": "anti_pattern_learner", "name": "善于学习", "description": "识别 3 个反模式"},
+            "anti_pattern_master": {"id": "anti_pattern_master", "name": "经验丰富", "description": "识别 10 个反模式"},
+            "first_error": {"id": "first_error", "name": "失败是成功之母", "description": "首次遇到错误"},
+        }
+        result = [achievement_map.get(k, {"id": k, "name": k, "description": k}) for k in achievement_keys]
+        return result[:limit]
+    except Exception as e:
+        return []
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -1114,6 +1155,12 @@ def register_to(app):
         evolution_status,
         methods=["GET"],
         name="evolution_status",
+    )
+    app.add_api_route(
+        "/api/evolution/achievements",
+        evolution_achievements,
+        methods=["GET"],
+        name="evolution_achievements",
     )
     app.add_api_route(
         "/api/cache/metrics",

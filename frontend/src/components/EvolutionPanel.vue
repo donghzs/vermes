@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 const status = ref(null)
 const loading = ref(true)
 const expanded = ref(false)
+const achievements = ref([])
 
 async function fetchStatus() {
   try {
@@ -18,8 +19,20 @@ async function fetchStatus() {
   }
 }
 
+async function fetchAchievements() {
+  try {
+    const r = await fetch('/api/evolution/achievements?limit=5')
+    if (r.ok) {
+      achievements.value = await r.json()
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   fetchStatus()
+  fetchAchievements()
   // 每 30 秒刷新
   const timer = setInterval(fetchStatus, 30000)
   onUnmounted(() => clearInterval(timer))
@@ -80,6 +93,14 @@ const progressBarColor = computed(() => {
       <div v-if="status.role_stats?.length" class="evo-row">
         <span class="evo-key">角色</span>
         <span class="evo-val">{{ status.role_stats.map(r => `${r[0]}(${r[1]})`).join(', ') }}</span>
+      </div>
+      <!-- 最近成就 -->
+      <div v-if="achievements?.length" class="evo-achievements">
+        <div class="evo-key mb-1">最近成就</div>
+        <div v-for="a in achievements" :key="a.id" class="evo-achievement">
+          <span class="evo-badge">🏆</span>
+          <span class="evo-achievement-text">{{ a.description || a.name }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -172,4 +193,21 @@ const progressBarColor = computed(() => {
 .evo-key { color: #9ca3af; }
 .evo-val { color: #4b5563; }
 .dark .evo-val { color: #d1d5db; }
+.evo-achievements {
+  margin-top: 0.5rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid rgba(229, 231, 235, 0.3);
+}
+.dark .evo-achievements { border-top-color: rgba(55, 65, 81, 0.3); }
+.evo-achievement {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  color: #92400e;
+  padding: 0.125rem 0;
+}
+.dark .evo-achievement { color: #fbbf24; }
+.evo-badge { font-size: 0.75rem; }
+.evo-achievement-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

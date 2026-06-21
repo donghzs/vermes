@@ -68,6 +68,9 @@ export const useChatStore = defineStore('chat', () => {
   const statusMessages = ref([])     // deprecated, use sessionStatusMessages
   const sessionStatusMessages = ref({})
   const sessionActiveStreamIds = ref({})
+  const evolutionEvents = ref([])    // 进化事件（成就/建议）
+  const showAchievement = ref(false) // 成就弹窗
+  const achievementData = ref(null)  // 当前展示的成就
   const currentStatusMessages = computed(() => 
     sessionStatusMessages.value[currentSessionId.value] || []
   )
@@ -363,6 +366,24 @@ export const useChatStore = defineStore('chat', () => {
           sessionStatusMessages.value[sendSessionId] = arr
           scheduleScroll()
         },
+        onEvolution: (event) => {
+          // 进化事件：成就解锁或策略建议
+          const evoEvent = {
+            id: uid(),
+            message: event.message || '',
+            tool_name: event.tool_name || '',
+            is_error: event.is_error || false,
+            timestamp: Date.now(),
+          }
+          evolutionEvents.value.push(evoEvent)
+          // 如果是成就解锁（消息含🏆），弹出通知
+          if (evoEvent.message.includes('🏆')) {
+            achievementData.value = evoEvent
+            showAchievement.value = true
+            setTimeout(() => { showAchievement.value = false }, 4000)
+          }
+          scheduleScroll()
+        },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
@@ -444,6 +465,7 @@ export const useChatStore = defineStore('chat', () => {
       sessionActiveStreamIds.value[sid] = null
       sessionStatusMessages.value[sid] = []
     }
+    evolutionEvents.value = []  // 清空进化事件
   }
   // ── 工具函数 ──
   function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
@@ -517,6 +539,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionActiveStreamIds, currentActiveStreamId,
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
+    evolutionEvents, showAchievement, achievementData,
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,

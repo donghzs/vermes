@@ -679,6 +679,18 @@ function streamElapsed(startTime) {
     </div>
   </div>
 
+  <!-- 进化事件（工具调用后的成长反馈） -->
+  <div v-if="chat.evolutionEvents?.length > 0" class="px-4 py-1">
+    <div v-for="e in chat.evolutionEvents.slice(-3)" :key="e.id"
+         class="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg animate-fade-in"
+         :class="e.is_error
+           ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+           : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'">
+      <span>{{ e.is_error ? '💡' : '✨' }}</span>
+      <span>{{ e.message }}</span>
+    </div>
+  </div>
+
   <!-- token 用量 -->
   <div v-if="chat.lastTokenUsage && !chat.loading" class="px-4 py-2 flex justify-end">
     <span class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
@@ -695,6 +707,19 @@ function streamElapsed(startTime) {
 
   <!-- 图片预览遮罩 -->
   <Teleport to="body">
+    <!-- 成就解锁通知 -->
+    <Transition name="achievement-pop">
+      <div v-if="chat.showAchievement" class="fixed top-6 left-1/2 -translate-x-1/2 z-[90]">
+        <div class="bg-gradient-to-r from-amber-400 to-yellow-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+          <span class="text-2xl">🏆</span>
+          <div>
+            <div class="font-bold text-sm">成就解锁</div>
+            <div class="text-xs opacity-90">{{ chat.achievementData?.message }}</div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <div v-if="previewImage" @click="closeImagePreview" class="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center cursor-zoom-out">
       <img :src="previewImage" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" />
     </div>
@@ -878,5 +903,21 @@ function streamElapsed(startTime) {
 }
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
+}
+
+/* 成就解锁动画 */
+.achievement-pop-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.achievement-pop-leave-active {
+  transition: all 0.3s ease-in;
+}
+.achievement-pop-enter-from {
+  opacity: 0;
+  transform: translate(-50%, -20px) scale(0.8);
+}
+.achievement-pop-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px) scale(0.95);
 }
 </style>
