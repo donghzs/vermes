@@ -159,6 +159,7 @@ async function request(path, options = {}) {
 
   const maxRetries = options.method && options.method !== 'GET' ? 0 : 3
   const retryableStatuses = [429, 500, 502, 503, 504]
+  let _tokenRetryDone = false  // 401 token 刷新只重试一次
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // 超时处理：CLI 等效，不加人工超时限制
@@ -191,6 +192,29 @@ async function request(path, options = {}) {
         signal: combinedSignal,
       })
       clearTimeout(timeoutId)
+
+      // 401: session token 失效（后端重启），尝试刷新
+      if (resp.status === 401 && !isOnline && !_tokenRetryDone) {
+        _tokenRetryDone = true
+        try {
+          // 主动从后端拉取新 token
+          const refreshResp = await fetch(`${apiPrefix}/session-token`)
+          if (refreshResp.ok) {
+            const data = await refreshResp.json()
+            if (data.token && data.token !== token.value) {
+              token.value = data.token
+              // 同步到 window 全局变量
+              if (typeof window !== 'undefined') {
+                window.__HERMES_SESSION_TOKEN__ = data.token
+              }
+              continue  // 用新 token 重试
+            }
+          }
+        } catch (refreshErr) {
+          // 拉取失败，继续抛出错误
+        }
+        throw new Error('会话已过期，请刷新页面')
+      }
 
       // 429: 尊重 Retry-After 头
       if (resp.status === 429) {

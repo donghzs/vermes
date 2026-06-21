@@ -113,10 +113,34 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ---------------------------------------------------------------------------
 # Session token for protecting sensitive endpoints (reveal).
-# Generated fresh on every server start — dies when the process exits.
+# Persisted to ~/.vermes/.session_token so it survives server restarts.
 # Injected into the SPA HTML so only the legitimate web UI can use it.
 # ---------------------------------------------------------------------------
-_SESSION_TOKEN = secrets.token_urlsafe(32)
+import os as _os
+_SESSION_TOKEN_FILE = _os.path.expanduser("~/.vermes/.session_token")
+
+def _load_or_create_session_token() -> str:
+    """Load persisted session token, or create a new one if none exists."""
+    try:
+        _os.makedirs(_os.path.dirname(_SESSION_TOKEN_FILE), exist_ok=True)
+        if _os.path.exists(_SESSION_TOKEN_FILE):
+            with open(_SESSION_TOKEN_FILE, "r") as f:
+                tok = f.read().strip()
+                if tok and len(tok) >= 16:
+                    return tok
+    except Exception:
+        pass
+    # Generate new token
+    tok = secrets.token_urlsafe(32)
+    try:
+        with open(_SESSION_TOKEN_FILE, "w") as f:
+            f.write(tok)
+        _os.chmod(_SESSION_TOKEN_FILE, 0o600)
+    except Exception:
+        pass
+    return tok
+
+_SESSION_TOKEN = _load_or_create_session_token()
 _SESSION_HEADER_NAME = "X-Hermes-Session-Token"
 
 # In-browser Chat tab (/chat, /api/pty, …).  Off unless ``hermes dashboard --tui``
@@ -2582,6 +2606,13 @@ async def health_check():
     from hermes_cli import __version__
 
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/api/session-token")
+async def session_token_refresh():
+    """Return current session token. No auth required — used by frontend
+    to refresh token after server restart. Only accessible from localhost."""
+    return {"token": _SESSION_TOKEN}
 
 
 mount_spa(app)
