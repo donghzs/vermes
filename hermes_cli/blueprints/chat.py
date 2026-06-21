@@ -1169,6 +1169,18 @@ async def rag_get_chunks(doc_id: int):
         return {"error": str(e), "chunks": []}
 
 
+async def rag_stats():
+    """Return per-document usage statistics from Evolution DAG."""
+    try:
+        from agent.rag_provider import RAGProvider
+        provider = RAGProvider()
+        provider.initialize(session_id="api")
+        stats = provider.get_document_stats()
+        return {"documents": stats, "total": len(stats)}
+    except Exception as e:
+        return {"error": str(e), "documents": []}
+
+
 async def rag_search(req: Request):
     """Search the knowledge base."""
     try:
@@ -1322,6 +1334,12 @@ def register_to(app):
         name="rag_search",
     )
     app.add_api_route(
+        "/api/rag/stats",
+        rag_stats,
+        methods=["GET"],
+        name="rag_stats",
+    )
+    app.add_api_route(
         "/api/cache/metrics",
         cache_metrics,
         methods=["GET"],
@@ -1331,7 +1349,7 @@ def register_to(app):
     # Pre-create default agent at startup for persistence
     @app.on_event("startup")
     def _pre_create_agent():
-        """Start default agent at Gateway launch — stays alive for all sessions."""
+        """Start default agent at Gateway launch - stays alive for all sessions."""
         try:
             cfg = load_config()
             default_model = cfg.get("model", {}).get("default", "")

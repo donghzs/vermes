@@ -426,13 +426,26 @@ class RAGProvider(MemoryProvider):
                 LIMIT ?
             """, (fts_query, limit))
             results = []
-            for content, filename, chunk_idx, doc_id, file_type in c.fetchall():
+            for row in c.fetchall():
+                content, filename, chunk_idx, doc_id, file_type = row
                 results.append({
+                    "doc_id": doc_id,
+                    "chunk_id": None,  # filled below
                     "filename": filename,
                     "chunk_index": chunk_idx,
                     "content": content,
                     "preview": content[:200].replace('\n', ' '),
                 })
+            # Resolve chunk_id for each result
+            if results:
+                chunk_ids = []
+                for r in results:
+                    c.execute(
+                        "SELECT id FROM chunks WHERE doc_id=? AND chunk_index=?",
+                        (r["doc_id"], r["chunk_index"])
+                    )
+                    row = c.fetchone()
+                    r["chunk_id"] = row[0] if row else None
             return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"error": str(e)})
@@ -623,6 +636,38 @@ class RAGProvider(MemoryProvider):
         c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         conn.commit()
         return c.rowcount > 0
+
+    def get_document_stats(self) -> List[Dict[str, Any]]:
+        """Return per-document usage stats by querying Evolution DB relations."""
+        if not self._initialized:
+            return []
+        try:
+            # Query RAG DB for document list
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            c.execute("SELECT id, filename, file_type, chunk_count FROM documents ORDER BY id")
+            docs = [
+                {"doc_id": row[0], "filename": row[1], "file_type": row[2],
+                 "chunk_count": row[3], "query_count": 0}
+                for row in c.fetchall()
+            ]
+            if not docs:
+                return []
+            # Query Evolution DB for relation counts
+            from agent.evolution_manager import get_self_model_db
+            evo_conn = sqlite3.connect(str(get_self_model_db()))
+            ec = evo_conn.cursor()
+            for doc in docs:
+                ec.execute(
+                    "SELECT COUNT(*) FROM relations WHERE target_type='document' AND target_id=? AND rel_type='queried'",
+                    (doc["doc_id"],)
+                )
+                doc["query_count"] = ec.fetchone()[0]
+            evo_conn.close()
+            return docs
+        except Exception as e:
+            logger.debug("get_document_stats failed: %s", e)
+            return []
 
     def shutdown(self) -> None:
         pass

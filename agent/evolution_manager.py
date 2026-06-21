@@ -848,6 +848,31 @@ def record_tool_outcome(
         # Skill 关联暂不实现，等 skill 系统提供技能 ID 后在此写入：
         # rel_type='mitigated_by', target_type='skill'
 
+        # ── DAG: outcome → document/chunk（RAG 知识库关联）─────────
+        if not is_error and tool_name == 'memory_search':
+            try:
+                _result_data = json.loads(result) if isinstance(result, str) else result
+                _items = _result_data.get("results", []) if isinstance(_result_data, dict) else []
+                _seen_docs = set()
+                for _item in _items[:5]:
+                    _doc_id = _item.get("doc_id")
+                    _chunk_id = _item.get("chunk_id")
+                    if _doc_id and _doc_id not in _seen_docs:
+                        _seen_docs.add(_doc_id)
+                        cursor.execute(
+                            "INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            ('outcome', outcome_id, 'document', _doc_id, 'queried', 1.0, timestamp),
+                        )
+                    if _chunk_id:
+                        cursor.execute(
+                            "INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            ('outcome', outcome_id, 'chunk', _chunk_id, 'retrieved', 0.8, timestamp),
+                        )
+            except Exception:
+                pass
+
         # ── 指标记录 ──────────────────────────────────────────────
         try:
             _record_evolution_metric(
