@@ -1130,6 +1130,20 @@ async def evolution_achievements(limit: int = 10):
         return []
 
 
+async def delegate_status(task_id: str):
+    """Return status of a background delegate task."""
+    try:
+        from tools.delegate_tool import get_background_task_status, list_background_tasks
+        if task_id == "all":
+            return {"tasks": list_background_tasks()}
+        result = get_background_task_status(task_id)
+        if result is None:
+            return {"error": f"Task {task_id} not found", "status": "not_found"}
+        return result
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -1161,6 +1175,12 @@ def register_to(app):
         evolution_achievements,
         methods=["GET"],
         name="evolution_achievements",
+    )
+    app.add_api_route(
+        "/api/delegate/status/{task_id}",
+        delegate_status,
+        methods=["GET"],
+        name="delegate_status",
     )
     app.add_api_route(
         "/api/cache/metrics",

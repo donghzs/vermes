@@ -154,6 +154,27 @@ _active_subagents_lock = threading.Lock()
 # for the lifetime of the run; _run_single_child is the owner.
 _active_subagents: Dict[str, Dict[str, Any]] = {}
 
+# ---------------------------------------------------------------------------
+# Background delegate task storage
+# ---------------------------------------------------------------------------
+_background_tasks: Dict[str, Dict[str, Any]] = {}
+_background_tasks_lock = threading.Lock()
+
+
+def get_background_task_status(task_id: str) -> Optional[Dict[str, Any]]:
+    """Return the current status of a background delegate task."""
+    with _background_tasks_lock:
+        entry = _background_tasks.get(task_id)
+        if entry is None:
+            return None
+        return dict(entry)
+
+
+def list_background_tasks() -> List[Dict[str, Any]]:
+    """List all background delegate tasks."""
+    with _background_tasks_lock:
+        return [dict(v) for v in _background_tasks.values()]
+
 
 def set_spawn_paused(paused: bool) -> bool:
     """Globally block/unblock new delegate_task spawns.
@@ -1938,6 +1959,7 @@ def delegate_task(
     acp_command: Optional[str] = None,
     acp_args: Optional[List[str]] = None,
     role: Optional[str] = None,
+    background: bool = False,
     parent_agent=None,
 ) -> str:
     """
@@ -2101,6 +2123,56 @@ def delegate_task(
     finally:
         # Authoritative restore: reset global to parent's tool names after all children built
         _model_tools._last_resolved_tool_names = _parent_tool_names
+
+    # ------------------------------------------------------------------
+    # Background mode: dispatch children to threads, return immediately
+    # ------------------------------------------------------------------
+    if background:
+        task_id = f"bg-{int(time.time() * 1000)}"
+        bg_info = {
+            "task_id": task_id,
+            "status": "running",
+            "dispatched_at": time.time(),
+            "n_tasks": n_tasks,
+            "task_labels": [t["goal"][:60] for t in task_list],
+            "results": [],
+            "error": None,
+        }
+        with _background_tasks_lock:
+            _background_tasks[task_id] = bg_info
+
+        def _bg_run():
+            """Run all children in background, update storage on completion."""
+            bg_results = []
+            for idx, t_item, child_agent in children:
+                try:
+                    entry = _run_single_child(idx, t_item["goal"], child_agent, parent_agent)
+                except Exception as exc:
+                    entry = {
+                        "task_index": idx,
+                        "status": "error",
+                        "summary": None,
+                        "error": str(exc),
+                        "api_calls": 0,
+                        "duration_seconds": 0,
+                    }
+                bg_results.append(entry)
+            # Sort by task_index
+            bg_results.sort(key=lambda r: r["task_index"])
+            with _background_tasks_lock:
+                _background_tasks[task_id]["results"] = bg_results
+                _background_tasks[task_id]["status"] = "completed"
+                _background_tasks[task_id]["completed_at"] = time.time()
+
+        bg_thread = threading.Thread(target=_bg_run, daemon=True, name=f"delegate-bg-{task_id}")
+        bg_thread.start()
+
+        return json.dumps({
+            "status": "dispatched",
+            "task_id": task_id,
+            "message": f"已派遣 {n_tasks} 个子agent在后台执行，完成后可通过 /api/delegate/status/{task_id} 查询结果",
+            "n_tasks": n_tasks,
+        }, ensure_ascii=False)
 
     if n_tasks == 1:
         # Single task -- run directly (no thread pool overhead)
@@ -2789,6 +2861,15 @@ DELEGATE_TASK_SCHEMA = {
                     "Leave empty unless acp_command is explicitly provided."
                 ),
             },
+            "background": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "If true, dispatch subagent(s) to background threads and return immediately "
+                    "with a task_id. Poll /api/delegate/status/{task_id} for results. "
+                    "Useful for long-running tasks that don't need to block the conversation."
+                ),
+            },
         },
         "required": [],
     },
@@ -2811,6 +2892,7 @@ registry.register(
         acp_command=args.get("acp_command"),
         acp_args=args.get("acp_args"),
         role=args.get("role"),
+        background=args.get("background", False),
         parent_agent=kw.get("parent_agent"),
     ),
     check_fn=check_delegate_requirements,
