@@ -548,6 +548,21 @@ class RAGProvider(MemoryProvider):
             for row in c.fetchall()
         ]
 
+    def get_document_chunks(self, doc_id: int) -> List[Dict[str, Any]]:
+        """Get all chunks of a document for preview."""
+        if not self._initialized:
+            return []
+        conn = _get_conn(str(self._db_path))
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, chunk_index, content, char_count FROM chunks WHERE doc_id = ? ORDER BY chunk_index",
+            (doc_id,)
+        )
+        return [
+            {"id": row[0], "chunk_index": row[1], "content": row[2], "char_count": row[3]}
+            for row in c.fetchall()
+        ]
+
     def delete_document(self, doc_id: int) -> bool:
         """Delete a document and its chunks."""
         if not self._initialized:

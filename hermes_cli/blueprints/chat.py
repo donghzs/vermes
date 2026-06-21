@@ -1157,6 +1157,18 @@ async def rag_list_documents():
         return {"error": str(e), "documents": []}
 
 
+async def rag_get_chunks(doc_id: int):
+    """Get document chunks for preview."""
+    try:
+        from agent.rag_provider import RAGProvider
+        provider = RAGProvider()
+        provider.initialize(session_id="api")
+        chunks = provider.get_document_chunks(doc_id)
+        return {"chunks": chunks, "count": len(chunks)}
+    except Exception as e:
+        return {"error": str(e), "chunks": []}
+
+
 async def rag_ingest(req: Request):
     """Ingest a file into the RAG knowledge base.
     
@@ -1279,6 +1291,12 @@ def register_to(app):
         rag_delete,
         methods=["DELETE"],
         name="rag_delete",
+    )
+    app.add_api_route(
+        "/api/rag/chunks/{doc_id}",
+        rag_get_chunks,
+        methods=["GET"],
+        name="rag_get_chunks",
     )
     app.add_api_route(
         "/api/cache/metrics",

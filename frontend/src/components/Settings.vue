@@ -89,6 +89,7 @@ const ragLoading = ref(false)
 const ragUploading = ref(false)
 const ragDragging = ref(false)
 const ragFileInput = ref(null)
+const ragPreview = ref(null)  // { doc, chunks, loading }
 
 async function fetchRagDocs() {
   ragLoading.value = true
@@ -188,6 +189,22 @@ function formatTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+async function previewRagDoc(doc) {
+  ragPreview.value = { doc, chunks: [], loading: true }
+  try {
+    const resp = await fetch(`/api/rag/chunks/${doc.id}`)
+    const data = await resp.json()
+    ragPreview.value = { doc, chunks: data.chunks || [], loading: false }
+  } catch (e) {
+    console.error('[RAG] preview error:', e)
+    ragPreview.value = { doc, chunks: [], loading: false }
+  }
+}
+
+function closeRagPreview() {
+  ragPreview.value = null
 }
 
 async function fetchCacheMetrics() {
@@ -681,7 +698,8 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
           <!-- 文档列表 -->
           <div v-if="ragDocs.length > 0" class="space-y-2">
             <div v-for="doc in ragDocs" :key="doc.id" 
-              class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+              class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 hover:border-green-400 dark:hover:border-green-600 cursor-pointer transition"
+              @click="previewRagDoc(doc)">
               <div class="text-lg flex-shrink-0">{{ getFileIcon(doc.file_type) }}</div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm text-gray-700 dark:text-gray-300 truncate font-medium">{{ doc.filename }}</p>
@@ -690,7 +708,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 </p>
               </div>
               <button 
-                @click="deleteRagDoc(doc.id)" 
+                @click.stop="deleteRagDoc(doc.id)" 
                 class="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
               >🗑️</button>
             </div>
@@ -699,6 +717,48 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             暂无文档，上传一个试试吧
           </div>
           <div v-if="ragLoading" class="text-center text-sm text-gray-400 py-2">加载中...</div>
+        </div>
+
+        <!-- 文档预览弹窗 -->
+        <div v-if="ragPreview" 
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" 
+          @click.self="closeRagPreview">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4">
+            <!-- 弹窗头 -->
+            <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-xl flex-shrink-0">{{ getFileIcon(ragPreview.doc.file_type) }}</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ ragPreview.doc.filename }}</p>
+                  <p class="text-xs text-gray-400">
+                    {{ ragPreview.doc.chunk_count }} 块 · {{ formatSize(ragPreview.doc.file_size) }} · {{ ragPreview.chunks.length }} 个分块
+                  </p>
+                </div>
+              </div>
+              <button @click="closeRagPreview" 
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                ✕
+              </button>
+            </div>
+            <!-- 弹窗内容 -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+              <div v-if="ragPreview.loading" class="text-center text-gray-400 py-8">
+                <div class="animate-spin inline-block w-6 h-6 border-2 border-gray-300 border-t-green-500 rounded-full mb-2"></div>
+                <p class="text-sm">加载中...</p>
+              </div>
+              <div v-else-if="ragPreview.chunks.length === 0" class="text-center text-gray-400 py-8">
+                <p class="text-sm">该文档无分块内容</p>
+              </div>
+              <div v-else v-for="chunk in ragPreview.chunks" :key="chunk.id" 
+                class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-medium text-green-600 dark:text-green-400">📄 分块 {{ chunk.chunk_index + 1 }}</span>
+                  <span class="text-xs text-gray-400">{{ chunk.char_count }} 字符</span>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed">{{ chunk.content }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
