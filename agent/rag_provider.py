@@ -110,10 +110,11 @@ def _chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[st
 
 
 def _extract_text(file_path: str) -> str:
-    """Extract text from a file. Supports txt/md/py/js/json + basic binary."""
+    """Extract text from a file. Supports txt/md/py/js/json + PDF/DOCX/XLSX."""
     ext = Path(file_path).suffix.lower()
     text_encodings = {'.txt', '.md', '.py', '.js', '.ts', '.json', '.yaml', '.yml',
-                      '.html', '.css', '.xml', '.csv', '.tsv', '.sh', '.sql', '.log'}
+                      '.html', '.css', '.xml', '.csv', '.tsv', '.sh', '.sql', '.log',
+                      '.rtf', '.org', '.rst'}
     if ext in text_encodings or ext == '':
         try:
             with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -121,9 +122,137 @@ def _extract_text(file_path: str) -> str:
         except Exception as e:
             logger.error("Failed to read %s: %s", file_path, e)
             return ""
-    # For binary formats, return empty (future: integrate file_parser)
-    logger.warning("Unsupported file type: %s, skipping", ext)
-    return ""
+    # Binary formats — use bytes extractor
+    try:
+        with open(file_path, 'rb') as f:
+            raw = f.read()
+        return _extract_text_from_bytes(raw, ext)
+    except Exception as e:
+        logger.error("Failed to read binary %s: %s", file_path, e)
+        return ""
+
+
+def _extract_text_from_bytes(raw: bytes, ext: str) -> str:
+    """Extract text from binary file content (PDF/DOCX/XLSX/PPTX).
+
+    Args:
+        raw: Raw file bytes.
+        ext: File extension including dot, e.g. '.pdf'.
+
+    Returns:
+        Extracted plain text.
+    """
+    if ext == '.pdf':
+        return _extract_pdf(raw)
+    elif ext == '.docx':
+        return _extract_docx(raw)
+    elif ext == '.xlsx':
+        return _extract_xlsx(raw)
+    elif ext == '.pptx':
+        return _extract_pptx(raw)
+    else:
+        # Try as text with fallback encoding
+        for enc in ('utf-8', 'gbk', 'latin-1'):
+            try:
+                return raw.decode(enc)
+            except Exception:
+                continue
+        return raw.decode('utf-8', errors='replace')
+
+
+def _extract_pdf(raw: bytes) -> str:
+    """Extract text from PDF bytes using PyMuPDF (fitz)."""
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=raw, filetype='pdf')
+        parts = []
+        for page in doc:
+            parts.append(page.get_text())
+        doc.close()
+        text = '\n\n'.join(parts)
+        if text.strip():
+            return text
+        # Fallback: if no text extracted, PDF might be scanned images
+        logger.warning("PDF text extraction returned empty (possibly scanned PDF): %d bytes", len(raw))
+        return ""
+    except ImportError:
+        logger.error("PyMuPDF (fitz) not installed — cannot parse PDF")
+        return ""
+    except Exception as e:
+        logger.error("PDF extraction error: %s", e)
+        return ""
+
+
+def _extract_docx(raw: bytes) -> str:
+    """Extract text from DOCX bytes using python-docx."""
+    try:
+        import io
+        from docx import Document
+        doc = Document(io.BytesIO(raw))
+        parts = []
+        # Extract paragraphs
+        for para in doc.paragraphs:
+            if para.text.strip():
+                parts.append(para.text)
+        # Extract table text
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if cells:
+                    parts.append(' | '.join(cells))
+        return '\n\n'.join(parts)
+    except ImportError:
+        logger.error("python-docx not installed — cannot parse DOCX")
+        return ""
+    except Exception as e:
+        logger.error("DOCX extraction error: %s", e)
+        return ""
+
+
+def _extract_xlsx(raw: bytes) -> str:
+    """Extract text from XLSX bytes using openpyxl."""
+    try:
+        import io
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        parts = []
+        for ws in wb.worksheets:
+            parts.append(f'## {ws.title}')
+            for row in ws.iter_rows(max_row=500, values_only=True):
+                cells = [str(c) for c in row if c is not None]
+                if cells:
+                    parts.append(' | '.join(cells))
+        wb.close()
+        return '\n\n'.join(parts)
+    except ImportError:
+        logger.error("openpyxl not installed — cannot parse XLSX")
+        return ""
+    except Exception as e:
+        logger.error("XLSX extraction error: %s", e)
+        return ""
+
+
+def _extract_pptx(raw: bytes) -> str:
+    """Extract text from PPTX bytes using python-pptx."""
+    try:
+        import io
+        from pptx import Presentation
+        prs = Presentation(io.BytesIO(raw))
+        parts = []
+        for i, slide in enumerate(prs.slides, 1):
+            parts.append(f'## Slide {i}')
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    text = shape.text_frame.text.strip()
+                    if text:
+                        parts.append(text)
+        return '\n\n'.join(parts)
+    except ImportError:
+        logger.error("python-pptx not installed — cannot parse PPTX")
+        return ""
+    except Exception as e:
+        logger.error("PPTX extraction error: %s", e)
+        return ""
 
 
 class RAGProvider(MemoryProvider):

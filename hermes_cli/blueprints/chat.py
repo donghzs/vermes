@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 import os
 import secrets
 import time
+from pathlib import Path
 from typing import Optional
 
 import yaml
@@ -1184,17 +1185,26 @@ async def rag_ingest(req: Request):
                 raw = b64mod.b64decode(content_b64)
             except Exception:
                 return {"error": "Invalid base64 content"}
-            # Try to decode as text
-            text = None
-            for enc in ("utf-8", "gbk", "latin-1"):
-                try:
-                    text = raw.decode(enc)
-                    break
-                except Exception:
-                    continue
-            if text is None:
-                text = raw.decode("utf-8", errors="replace")
-            result = provider.ingest_content(filename, text, body.get("file_type", ""))
+            ext = Path(filename).suffix.lower()
+            binary_exts = {'.pdf', '.docx', '.xlsx', '.pptx'}
+            if ext in binary_exts:
+                # Binary document — extract text first
+                from agent.rag_provider import _extract_text_from_bytes
+                text = _extract_text_from_bytes(raw, ext)
+                if not text.strip():
+                    return {"error": f"无法从 {ext} 文件中提取文本，可能为扫描件或空文档"}
+            else:
+                # Plain text — try common encodings
+                text = None
+                for enc in ("utf-8", "gbk", "latin-1"):
+                    try:
+                        text = raw.decode(enc)
+                        break
+                    except Exception:
+                        continue
+                if text is None:
+                    text = raw.decode("utf-8", errors="replace")
+            result = provider.ingest_content(filename, text, body.get("file_type", ext))
             return result
         
         return {"error": "file_path or filename+content is required"}

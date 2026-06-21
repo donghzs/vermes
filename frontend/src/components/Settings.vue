@@ -171,6 +171,10 @@ function getFileIcon(type) {
   if (['.csv', '.tsv'].includes(t)) return '📊'
   if (['.html', '.css'].includes(t)) return '🌐'
   if (['.sql'].includes(t)) return '🗄️'
+  if (['.pdf'].includes(t)) return '📕'
+  if (['.docx', '.doc'].includes(t)) return '📘'
+  if (['.xlsx', '.xls'].includes(t)) return '📗'
+  if (['.pptx', '.ppt'].includes(t)) return '📙'
   return '📄'
 }
 
@@ -665,13 +669,13 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             @click="ragFileInput?.click()"
           >
             <input type="file" ref="ragFileInput" class="hidden" multiple 
-              accept=".txt,.md,.py,.js,.ts,.json,.yaml,.yml,.html,.css,.xml,.csv,.tsv,.sh,.sql,.log" 
+              accept=".txt,.md,.py,.js,.ts,.json,.yaml,.yml,.html,.css,.xml,.csv,.tsv,.sh,.sql,.log,.pdf,.docx,.xlsx,.pptx" 
               @change="onRagFileSelect" />
             <div class="text-3xl mb-2">📎</div>
             <p class="text-sm text-gray-500 dark:text-gray-400">
               {{ ragUploading ? '⏳ 正在上传...' : '点击或拖拽文件到此处' }}
             </p>
-            <p class="text-xs text-gray-400 mt-1">支持 txt/md/py/js/json/yaml/html/csv/sql 等文本文件</p>
+            <p class="text-xs text-gray-400 mt-1">支持 PDF / DOCX / XLSX / PPTX 及 txt/md/py/json 等文本文件</p>
           </div>
 
           <!-- 文档列表 -->
