@@ -497,6 +497,7 @@ class RAGProvider(MemoryProvider):
         c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
         conn.commit()
         logger.info("Ingested %s: %d chunks", p.name, len(chunks))
+        self._link_related_documents(doc_id, chunks[0] if chunks else "")
         return json.dumps({
             "status": "ok",
             "filename": p.name,
@@ -541,12 +542,69 @@ class RAGProvider(MemoryProvider):
         c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
         conn.commit()
         logger.info("Ingested content %s: %d chunks", filename, len(chunks))
+        self._link_related_documents(doc_id, chunks[0] if chunks else "")
         return json.dumps({
             "status": "ok",
             "filename": filename,
             "chunks": len(chunks),
             "doc_id": doc_id,
         }, ensure_ascii=False)
+
+    def _link_related_documents(self, doc_id: int, sample_text: str) -> None:
+        """Detect document-to-document relationships via FTS5 overlap and write DAG edges."""
+        if not sample_text or len(sample_text) < 20:
+            return
+        try:
+            import sqlite3 as _sqlite3
+            from agent.evolution_manager import get_self_model_db, _get_conn as _get_evo_conn
+            # Build FTS5 query using CJK trigram sliding window (same as prefetch)
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            safe = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', sample_text[:200]).strip()
+            terms = []
+            for part in safe.split():
+                cjk_chars = re.findall(r'[\u4e00-\u9fff]+', part)
+                ascii_part = re.sub(r'[\u4e00-\u9fff]', '', part)
+                if len(ascii_part) >= 3:
+                    terms.append(ascii_part)
+                for seg in cjk_chars:
+                    if len(seg) >= 3:
+                        for i in range(len(seg) - 2):
+                            terms.append(seg[i:i+3])
+            terms = terms[:8]
+            if not terms:
+                return
+            fts_query = " OR ".join(f'"{t}"' for t in terms)
+            if not fts_query:
+                return
+            c.execute("""
+                SELECT DISTINCT documents.id, documents.filename
+                FROM chunks_fts
+                JOIN chunks ON chunks.id = chunks_fts.rowid
+                JOIN documents ON documents.id = chunks.doc_id
+                WHERE chunks_fts MATCH ? AND documents.id != ?
+                LIMIT 5
+            """, (fts_query, doc_id))
+            related = c.fetchall()
+            conn.close()
+            if not related:
+                return
+            # Write document->document edges to Evolution DAG
+            evo_conn = _get_evo_conn(str(get_self_model_db()))
+            ec = evo_conn.cursor()
+            from datetime import datetime as _dt
+            ts = _dt.now().isoformat()
+            for r_id, r_name in related:
+                ec.execute(
+                    "INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ('document', doc_id, 'document', r_id, 'related', 0.5, ts),
+                )
+            evo_conn.commit()
+            evo_conn.close()
+            logger.info("Linked doc %d to %d related documents", doc_id, len(related))
+        except Exception as e:
+            logger.debug("_link_related_documents failed: %s", e)
 
     def list_documents(self) -> List[Dict[str, Any]]:
         """List all indexed documents."""
