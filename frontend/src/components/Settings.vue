@@ -90,6 +90,9 @@ const ragUploading = ref(false)
 const ragDragging = ref(false)
 const ragFileInput = ref(null)
 const ragPreview = ref(null)  // { doc, chunks, loading }
+const ragSearchQuery = ref('')
+const ragSearchResults = ref([])
+const ragSearching = ref(false)
 
 async function fetchRagDocs() {
   ragLoading.value = true
@@ -205,6 +208,31 @@ async function previewRagDoc(doc) {
 
 function closeRagPreview() {
   ragPreview.value = null
+}
+
+async function runRagSearch() {
+  const q = ragSearchQuery.value.trim()
+  if (!q) return
+  ragSearching.value = true
+  ragSearchResults.value = []
+  try {
+    const resp = await fetch('/api/rag/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, limit: 5 })
+    })
+    const data = await resp.json()
+    ragSearchResults.value = data.results || []
+  } catch (e) {
+    console.error('[RAG] search error:', e)
+  } finally {
+    ragSearching.value = false
+  }
+}
+
+function clearRagSearch() {
+  ragSearchQuery.value = ''
+  ragSearchResults.value = []
 }
 
 async function fetchCacheMetrics() {
@@ -717,6 +745,56 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             暂无文档，上传一个试试吧
           </div>
           <div v-if="ragLoading" class="text-center text-sm text-gray-400 py-2">加载中...</div>
+
+          <!-- 搜索测试面板 -->
+          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
+              🔍 检索测试
+            </h4>
+            <div class="flex gap-2">
+              <input 
+                v-model="ragSearchQuery" 
+                @keydown.enter="runRagSearch"
+                type="text" 
+                placeholder="输入关键词测试知识库检索..."
+                class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none"
+              />
+              <button 
+                @click="runRagSearch" 
+                :disabled="ragSearching || !ragSearchQuery.trim()"
+                class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {{ ragSearching ? '⌛' : '搜索' }}
+              </button>
+              <button 
+                v-if="ragSearchResults.length > 0" 
+                @click="clearRagSearch"
+                class="px-2 py-2 text-sm rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >✕</button>
+            </div>
+
+            <!-- 搜索结果 -->
+            <div v-if="ragSearching" class="mt-3 text-center text-sm text-gray-400">
+              <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div>
+              检索中...
+            </div>
+            <div v-else-if="ragSearchResults.length > 0" class="mt-3 space-y-2">
+              <p class="text-xs text-gray-400">找到 {{ ragSearchResults.length }} 条匹配结果：</p>
+              <div v-for="(result, i) in ragSearchResults" :key="i" 
+                class="p-3 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs font-medium text-green-600 dark:text-green-400">
+                    {{ getFileIcon(result.file_type) }} {{ result.filename }} #{{ result.chunk_index }}
+                  </span>
+                  <span class="text-xs text-gray-400">{{ result.char_count }} 字符</span>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{{ result.preview }}</p>
+              </div>
+            </div>
+            <div v-else-if="ragSearchQuery && !ragSearching" class="mt-3 text-center text-xs text-gray-400 py-2">
+              无匹配结果
+            </div>
+          </div>
         </div>
 
         <!-- 文档预览弹窗 -->

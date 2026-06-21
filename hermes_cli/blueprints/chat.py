@@ -1169,6 +1169,23 @@ async def rag_get_chunks(doc_id: int):
         return {"error": str(e), "chunks": []}
 
 
+async def rag_search(req: Request):
+    """Search the knowledge base."""
+    try:
+        body = await req.json()
+        query = body.get("query", "").strip()
+        limit = min(max(body.get("limit", 5), 1), 20)
+        if not query:
+            return {"error": "query is required", "results": []}
+        from agent.rag_provider import RAGProvider
+        provider = RAGProvider()
+        provider.initialize(session_id="api")
+        results = provider.search(query, limit=limit)
+        return {"results": results, "count": len(results), "query": query}
+    except Exception as e:
+        return {"error": str(e), "results": []}
+
+
 async def rag_ingest(req: Request):
     """Ingest a file into the RAG knowledge base.
     
@@ -1297,6 +1314,12 @@ def register_to(app):
         rag_get_chunks,
         methods=["GET"],
         name="rag_get_chunks",
+    )
+    app.add_api_route(
+        "/api/rag/search",
+        rag_search,
+        methods=["POST"],
+        name="rag_search",
     )
     app.add_api_route(
         "/api/cache/metrics",

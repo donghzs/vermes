@@ -548,6 +548,52 @@ class RAGProvider(MemoryProvider):
             for row in c.fetchall()
         ]
 
+    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Search the knowledge base and return matching chunks with metadata."""
+        if not self._initialized or not query.strip():
+            return []
+        try:
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
+            if not safe_query:
+                return []
+            # Reuse CJK trigram logic from prefetch
+            terms = []
+            for word in safe_query.split():
+                cjk_chars = [ch for ch in word if '\u4e00' <= ch <= '\u9fff']
+                ascii_part = ''.join(ch for ch in word if ch not in cjk_chars)
+                if ascii_part and len(ascii_part) >= 3:
+                    terms.append(ascii_part)
+                if len(cjk_chars) >= 3:
+                    for i in range(len(cjk_chars) - 2):
+                        terms.append(cjk_chars[i] + cjk_chars[i+1] + cjk_chars[i+2])
+                elif len(cjk_chars) > 0:
+                    # <3 CJK chars: try combining with adjacent terms
+                    terms.append(''.join(cjk_chars))
+            if not terms:
+                return []
+            fts_query = " OR ".join(f'"{t}"' for t in terms[:8])
+            c.execute("""
+                SELECT chunks.content, documents.filename, chunks.chunk_index,
+                       documents.id, documents.file_type, chunks.char_count
+                FROM chunks_fts
+                JOIN chunks ON chunks.id = chunks_fts.rowid
+                JOIN documents ON documents.id = chunks.doc_id
+                WHERE chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_query, limit))
+            return [
+                {"content": row[0], "filename": row[1], "chunk_index": row[2],
+                 "doc_id": row[3], "file_type": row[4], "char_count": row[5],
+                 "preview": row[0][:300].replace('\n', ' ')}
+                for row in c.fetchall()
+            ]
+        except Exception as e:
+            logger.debug("RAG search failed: %s", e)
+            return []
+
     def get_document_chunks(self, doc_id: int) -> List[Dict[str, Any]]:
         """Get all chunks of a document for preview."""
         if not self._initialized:
