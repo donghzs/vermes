@@ -2782,6 +2782,33 @@ class AIAgent:
         except Exception:
             pass
 
+        # 6. Free conversation history.  Mirrors _release_evicted_agent_soft's
+        # soft-eviction clear — close() is the hard teardown for true session
+        # boundaries (/new, /reset, session expiry), so the message list won't
+        # be reused.  Drops the reference proactively rather than waiting for
+        # the agent object itself to be collected, which matters when a caller
+        # still holds the closed agent (e.g. a draining background task).
+        try:
+            self._session_messages = []
+        except Exception:
+            pass
+
+        # 7. Finalize the owned SQLite session row unless this agent is only a
+        # temporary helper that deliberately handed session ownership forward
+        # (manual compression helpers that rotate to a continuation session_id,
+        # or background-review forks that share the live parent's session_id and
+        # must leave it open). end_session() is first-reason-wins and no-ops on
+        # an already-ended row, so this never clobbers a 'compression' /
+        # 'cron_complete' / 'cli_close' reason set by an earlier terminal path.
+        try:
+            if getattr(self, "_end_session_on_close", True):
+                session_db = getattr(self, "_session_db", None)
+                session_id = getattr(self, "session_id", None)
+                if session_db and session_id:
+                    session_db.end_session(session_id, "agent_close")
+        except Exception:
+            pass
+
     def _hydrate_todo_store(self, history: List[Dict[str, Any]]) -> None:
         """
         Recover todo state from conversation history.
