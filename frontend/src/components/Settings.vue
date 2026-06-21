@@ -83,6 +83,109 @@ const activeTab = ref('providers')
 const cacheMetrics = ref(null)
 const cacheRefreshing = ref(false)
 
+// ── 知识库 (RAG) ──
+const ragDocs = ref([])
+const ragLoading = ref(false)
+const ragUploading = ref(false)
+const ragDragging = ref(false)
+const ragFileInput = ref(null)
+
+async function fetchRagDocs() {
+  ragLoading.value = true
+  try {
+    const resp = await fetch('/api/rag/documents')
+    const data = await resp.json()
+    ragDocs.value = data.documents || []
+  } catch (e) {
+    console.error('[RAG] fetch docs error:', e)
+  } finally {
+    ragLoading.value = false
+  }
+}
+
+async function uploadRagFile(file) {
+  ragUploading.value = true
+  try {
+    const reader = new FileReader()
+    const b64 = await new Promise((resolve, reject) => {
+      reader.onload = () => {
+        const result = reader.result.split(',')[1]
+        resolve(result)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const resp = await fetch('/api/rag/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, content: b64, file_type: '' }),
+    })
+    const data = await resp.json()
+    if (data.error) {
+      toast.error(`上传失败: ${data.error}`)
+    } else {
+      toast.success(`${file.name} 已索引 (${data.chunks} 块)`)
+      await fetchRagDocs()
+    }
+  } catch (e) {
+    toast.error(`上传失败: ${e.message}`)
+  } finally {
+    ragUploading.value = false
+  }
+}
+
+function onRagFileSelect(e) {
+  const files = Array.from(e.target.files || [])
+  files.forEach(uploadRagFile)
+  if (ragFileInput.value) ragFileInput.value.value = ''
+}
+
+function onRagDrop(e) {
+  ragDragging.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  files.forEach(uploadRagFile)
+}
+
+async function deleteRagDoc(id) {
+  if (!confirm('删除这个文档？')) return
+  try {
+    const resp = await fetch(`/api/rag/delete/${id}`, { method: 'DELETE' })
+    const data = await resp.json()
+    if (data.deleted) {
+      toast.success('已删除')
+      await fetchRagDocs()
+    } else {
+      toast.error('删除失败')
+    }
+  } catch (e) {
+    toast.error(`删除失败: ${e.message}`)
+  }
+}
+
+function getFileIcon(type) {
+  const t = (type || '').toLowerCase()
+  if (['.md', '.markdown'].includes(t)) return '📝'
+  if (['.py'].includes(t)) return '🐍'
+  if (['.js', '.ts'].includes(t)) return '📜'
+  if (['.json'].includes(t)) return '🗂️'
+  if (['.csv', '.tsv'].includes(t)) return '📊'
+  if (['.html', '.css'].includes(t)) return '🌐'
+  if (['.sql'].includes(t)) return '🗄️'
+  return '📄'
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function formatTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 async function fetchCacheMetrics() {
   cacheRefreshing.value = true
   try {
@@ -386,6 +489,8 @@ onMounted(() => {
   fetch('/api/storage/usage').then(r => r.ok && r.json().then(d => storageUsage.value = d)).catch(() => {})
   // 加载缓存性能指标
   fetchCacheMetrics()
+  // 加载知识库文档列表
+  fetchRagDocs()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -404,6 +509,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
     <!-- Tab 栏 -->
     <div class="px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-0">
       <button @click="activeTab = 'providers'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'providers' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">提供商</button>
+      <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
       <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
     </div>
 
@@ -535,6 +641,60 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             🔄 清除所有本地配置（保留聊天记录）
           </button>
           <p class="text-xs text-gray-400 mt-2 text-center">清除 API Key、模型列表、微信登录状态、试用 Token 等配置历史</p>
+        </div>
+      </div>
+
+      <!-- 知识库 -->
+      <div v-if="activeTab === 'knowledge'" class="max-w-2xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">📚 知识库管理</h3>
+              <p class="text-xs text-gray-400 mt-1">上传文档到知识库，Agent 将自动检索相关内容辅助回答</p>
+            </div>
+            <span class="text-xs text-gray-400">{{ ragDocs.length }} 个文档</span>
+          </div>
+
+          <!-- 上传区 -->
+          <div 
+            class="border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer"
+            :class="ragDragging ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-green-400'"
+            @dragover.prevent="ragDragging = true"
+            @dragleave.prevent="ragDragging = false"
+            @drop.prevent="onRagDrop"
+            @click="ragFileInput?.click()"
+          >
+            <input type="file" ref="ragFileInput" class="hidden" multiple 
+              accept=".txt,.md,.py,.js,.ts,.json,.yaml,.yml,.html,.css,.xml,.csv,.tsv,.sh,.sql,.log" 
+              @change="onRagFileSelect" />
+            <div class="text-3xl mb-2">📎</div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              {{ ragUploading ? '⏳ 正在上传...' : '点击或拖拽文件到此处' }}
+            </p>
+            <p class="text-xs text-gray-400 mt-1">支持 txt/md/py/js/json/yaml/html/csv/sql 等文本文件</p>
+          </div>
+
+          <!-- 文档列表 -->
+          <div v-if="ragDocs.length > 0" class="space-y-2">
+            <div v-for="doc in ragDocs" :key="doc.id" 
+              class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+              <div class="text-lg flex-shrink-0">{{ getFileIcon(doc.file_type) }}</div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-gray-700 dark:text-gray-300 truncate font-medium">{{ doc.filename }}</p>
+                <p class="text-xs text-gray-400">
+                  {{ doc.chunk_count }} 块 · {{ formatSize(doc.file_size) }} · {{ formatTime(doc.ingested_at) }}
+                </p>
+              </div>
+              <button 
+                @click="deleteRagDoc(doc.id)" 
+                class="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+              >🗑️</button>
+            </div>
+          </div>
+          <div v-else-if="!ragLoading" class="text-center text-sm text-gray-400 py-4">
+            暂无文档，上传一个试试吧
+          </div>
+          <div v-if="ragLoading" class="text-center text-sm text-gray-400 py-2">加载中...</div>
         </div>
       </div>
 

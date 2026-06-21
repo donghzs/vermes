@@ -350,6 +350,50 @@ class RAGProvider(MemoryProvider):
             "doc_id": doc_id,
         }, ensure_ascii=False)
 
+    def ingest_content(self, filename: str, content: str, file_type: str = "") -> str:
+        """Index text content directly (for file uploads)."""
+        if not self._initialized:
+            _init_db(_get_rag_db())
+            self._db_path = _get_rag_db()
+            self._initialized = True
+        if not content.strip():
+            return json.dumps({"error": f"No text content to index"})
+        chunks = _chunk_text(content)
+        if not chunks:
+            return json.dumps({"error": "No chunks generated"})
+        conn = _get_conn(str(self._db_path))
+        c = conn.cursor()
+        # Use filename as path identifier
+        virtual_path = f"upload://{filename}"
+        c.execute("SELECT id FROM documents WHERE path = ?", (virtual_path,))
+        existing = c.fetchone()
+        if existing:
+            doc_id = existing[0]
+            c.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+            c.execute("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE doc_id = ?)", (doc_id,))
+        else:
+            c.execute(
+                "INSERT INTO documents (path, filename, file_type, file_size, ingested_at, chunk_count) VALUES (?, ?, ?, ?, ?, ?)",
+                (virtual_path, filename, file_type or Path(filename).suffix, len(content), datetime.now().isoformat(), len(chunks))
+            )
+            doc_id = c.lastrowid
+        for idx, chunk in enumerate(chunks):
+            c.execute(
+                "INSERT INTO chunks (doc_id, chunk_index, content, char_count) VALUES (?, ?, ?, ?)",
+                (doc_id, idx, chunk, len(chunk))
+            )
+            chunk_id = c.lastrowid
+            c.execute("INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)", (chunk_id, chunk))
+        c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
+        conn.commit()
+        logger.info("Ingested content %s: %d chunks", filename, len(chunks))
+        return json.dumps({
+            "status": "ok",
+            "filename": filename,
+            "chunks": len(chunks),
+            "doc_id": doc_id,
+        }, ensure_ascii=False)
+
     def list_documents(self) -> List[Dict[str, Any]]:
         """List all indexed documents."""
         if not self._initialized:

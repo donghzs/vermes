@@ -1157,17 +1157,47 @@ async def rag_list_documents():
 
 
 async def rag_ingest(req: Request):
-    """Ingest a file into the RAG knowledge base."""
+    """Ingest a file into the RAG knowledge base.
+    
+    Supports two modes:
+    1. file_path: server-side file path
+    2. filename + content: base64-encoded file content (for uploads)
+    """
     try:
         body = await req.json()
-        file_path = body.get("file_path", "")
-        if not file_path:
-            return {"error": "file_path is required"}
         from agent.rag_provider import RAGProvider
         provider = RAGProvider()
         provider.initialize(session_id="api")
-        result = provider.ingest_file(file_path)
-        return result
+        
+        # Mode 1: direct file path
+        file_path = body.get("file_path", "")
+        if file_path:
+            result = provider.ingest_file(file_path)
+            return result
+        
+        # Mode 2: filename + base64 content (upload)
+        filename = body.get("filename", "")
+        content_b64 = body.get("content", "")
+        if filename and content_b64:
+            import base64 as b64mod
+            try:
+                raw = b64mod.b64decode(content_b64)
+            except Exception:
+                return {"error": "Invalid base64 content"}
+            # Try to decode as text
+            text = None
+            for enc in ("utf-8", "gbk", "latin-1"):
+                try:
+                    text = raw.decode(enc)
+                    break
+                except Exception:
+                    continue
+            if text is None:
+                text = raw.decode("utf-8", errors="replace")
+            result = provider.ingest_content(filename, text, body.get("file_type", ""))
+            return result
+        
+        return {"error": "file_path or filename+content is required"}
     except Exception as e:
         return {"error": str(e)}
 
