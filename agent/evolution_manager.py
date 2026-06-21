@@ -927,6 +927,47 @@ def record_tool_outcome(
         except Exception:
             pass  # 指标记录非阻塞
 
+        # ── self_model 指标快照 ─────────────────────────────────────
+        try:
+            # 记录单次工具指标
+            cursor.execute(
+                "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+                (timestamp, "tool.success", 0.0 if is_error else 1.0, f"{tool_name}:{task}")
+            )
+            cursor.execute(
+                "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+                (timestamp, "tool.duration", round(duration, 2), f"{tool_name}:{task}")
+            )
+
+            # 每50次工具调用写入一次汇总快照
+            cursor.execute("SELECT COUNT(*) FROM outcomes")
+            _total = cursor.fetchone()[0]
+            if _total % 50 == 0:
+                cursor.execute(
+                    "SELECT COUNT(*), SUM(success) FROM outcomes WHERE timestamp > datetime('now', '-1 day')"
+                )
+                _recent = cursor.fetchone()
+                _recent_count, _recent_success = _recent[0], _recent[0] and _recent[1] or 0
+                _recent_rate = (_recent_success / _recent_count) if _recent_count > 0 else 0.0
+
+                cursor.execute(
+                    "SELECT tool, COUNT(*) as cnt FROM outcomes GROUP BY tool ORDER BY cnt DESC LIMIT 1"
+                )
+                _top_tool = cursor.fetchone()
+
+                cursor.execute(
+                    "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+                    (timestamp, "summary.success_rate_24h", round(_recent_rate, 4),
+                     f"recent={_recent_count}, top_tool={_top_tool[0] if _top_tool else 'none'}")
+                )
+                cursor.execute(
+                    "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+                    (timestamp, "summary.total_outcomes", float(_total), "cumulative")
+                )
+            conn.commit()
+        except Exception:
+            pass  # self_model 记录非阻塞
+
         # ── P1: 反馈闭环 — 错误率高时发出警告 ─────────────────────
         advice = None
         if is_error:
@@ -1113,6 +1154,27 @@ def get_evolution_status() -> Dict[str, Any]:
         ''')
         recent_failures = cursor.fetchall()
         
+        # self_model: 最近指标快照
+        cursor.execute('''
+            SELECT metric, value, details, timestamp
+            FROM self_model
+            WHERE metric LIKE 'summary.%'
+            ORDER BY id DESC LIMIT 10
+        ''')
+        self_model_snapshots = cursor.fetchall()
+        
+        # self_model: 汇总统计
+        cursor.execute("SELECT COUNT(*) FROM self_model")
+        self_model_count = cursor.fetchone()[0]
+        
+        # strategies 统计
+        cursor.execute("SELECT COUNT(*) FROM strategies")
+        strategies_count = cursor.fetchone()[0]
+        cursor.execute('''
+            SELECT task_type, strategy, success_rate_when_used, times_used
+            FROM strategies ORDER BY times_used DESC LIMIT 5
+        ''')
+        top_strategies = cursor.fetchall()
         
         return {
             "active": True,
@@ -1123,6 +1185,10 @@ def get_evolution_status() -> Dict[str, Any]:
             "role_stats": role_stats,
             "recent_failures": recent_failures,
             "achievements": list(_unlocked_achievements),
+            "self_model_entries": self_model_count,
+            "self_model_snapshots": self_model_snapshots,
+            "strategies_count": strategies_count,
+            "top_strategies": top_strategies,
         }
         
     except Exception as e:
