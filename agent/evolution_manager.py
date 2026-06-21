@@ -100,6 +100,19 @@ def is_evolution_active() -> bool:
                 frequency INTEGER DEFAULT 0,
                 first_seen TEXT,
                 last_seen TEXT)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS strategies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_type TEXT,
+                strategy TEXT,
+                success_rate_when_used REAL,
+                times_used INTEGER DEFAULT 0,
+                created TEXT)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS self_model (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                metric TEXT,
+                value REAL,
+                details TEXT)""")
             conn.commit()
         except Exception:
             pass
@@ -872,6 +885,37 @@ def record_tool_outcome(
                         )
             except Exception:
                 pass
+
+        # ── 策略记录：outcome → strategy（激活 strategies 表）──
+        try:
+            _strategy = f"{tool_name}:{task}"
+            cursor.execute(
+                "SELECT id, times_used, success_rate_when_used FROM strategies WHERE task_type=? AND strategy=?",
+                (task, _strategy)
+            )
+            _existing_strat = cursor.fetchone()
+            if _existing_strat:
+                _sid, _used, _rate = _existing_strat
+                _new_used = _used + 1
+                _successes = int(_rate * _used) + (0 if is_error else 1)
+                _new_rate = _successes / _new_used
+                cursor.execute(
+                    "UPDATE strategies SET times_used=?, success_rate_when_used=? WHERE id=?",
+                    (_new_used, round(_new_rate, 4), _sid)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO strategies (task_type, strategy, success_rate_when_used, times_used, created) VALUES (?, ?, ?, 1, ?)",
+                    (task, _strategy, 0.0 if is_error else 1.0, timestamp)
+                )
+                _sid = cursor.lastrowid
+            cursor.execute(
+                "INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ('outcome', outcome_id, 'strategy', _sid, 'used_strategy', 1.0, timestamp)
+            )
+        except Exception:
+            pass
 
         # ── 指标记录 ──────────────────────────────────────────────
         try:
