@@ -326,6 +326,26 @@ _LOOPBACK_HOST_VALUES: frozenset = frozenset({
 })
 
 
+def should_require_auth(host: str, allow_public: bool = False) -> bool:
+    """Return True iff the dashboard auth gate must be active.
+
+    Truth table:
+      host == loopback        → False (no auth — local-only, trusted operator)
+      host != loopback        → True  (gate engages — OAuth or password required)
+
+    "Loopback" is 127.0.0.1, localhost, ::1. RFC1918 / CGNAT / link-local are
+    deliberately treated as PUBLIC — a hostile device on the same LAN is exactly
+    the threat model the gate is designed for.
+
+    ``allow_public`` (the legacy ``--insecure`` escape hatch) NO LONGER disables
+    the gate. It is accepted for backward-compat with old launch scripts and
+    desktop shells but is ignored: a non-loopback bind ALWAYS requires an auth
+    provider (OAuth or the bundled password provider). This closes the
+    unauthenticated-public-dashboard hole behind the June 2026 ``hermes-0day``
+    MCP-persistence campaign, where ``--insecure --host 0.0.0.0`` left the
+    config/MCP/agent surface open to internet scanners.
+    """
+    return host not in _LOOPBACK_HOST_VALUES
 def _is_accepted_host(host_header: str, bound_host: str) -> bool:
     """True if the Host header targets the interface we bound to.
 
@@ -2485,27 +2505,79 @@ def start_server(
     """Start the web UI server."""
     import uvicorn
 
-    global _DASHBOARD_EMBEDDED_CHAT_ENABLED
-    _DASHBOARD_EMBEDDED_CHAT_ENABLED = embedded_chat
+    # Phase 0: stash the auth-gate flag on app.state so middleware / SPA-token
+    # injection / WS-auth paths can branch on it consistently.  Phase 3.5
+    # uses this to decide whether to refuse the bind, log the gate-on
+    # banner, and enable uvicorn proxy_headers.
+    app.state.auth_required = should_require_auth(host)
 
-    # Auto-find available port if the requested one is taken
-    actual_port = _find_available_port(host, port)
-    if actual_port != port:
-        _log.info("Port %d is in use, using port %d instead.", port, actual_port)
-        logger.info(f"  Port {port} is in use, using port {actual_port} instead.")
-        port = actual_port
-
-    _LOCALHOST = ("127.0.0.1", "localhost", "::1")
-    if host not in _LOCALHOST and not allow_public:
-        raise SystemExit(
-            f"Refusing to bind to {host} — the dashboard exposes API keys "
-            f"and config without robust authentication.\n"
-            f"Use --insecure to override (NOT recommended on untrusted networks)."
-        )
-    if host not in _LOCALHOST:
+    # ``--insecure`` no longer disables the auth gate (June 2026 hardening:
+    # the hermes-0day MCP-persistence campaign abused unauthenticated public
+    # dashboards). If a caller still passes it, warn that it is now a no-op
+    # rather than silently changing their expectation of an open bind.
+    if allow_public and host not in _LOOPBACK_HOST_VALUES:
         _log.warning(
-            "Binding to %s with --insecure — the dashboard has no robust "
-            "authentication. Only use on trusted networks.", host,
+            "--insecure no longer bypasses dashboard authentication. A "
+            "non-loopback bind (%s) now ALWAYS requires an auth provider "
+            "(OAuth or the bundled password provider). Configure one — see "
+            "below — or bind to 127.0.0.1 and reach it over an SSH tunnel / "
+            "Tailscale.", host,
+        )
+
+    if app.state.auth_required:
+        # The gate engages on every non-loopback bind. Require at least one
+        # provider to be registered, else fail closed — there is no longer an
+        # escape hatch that serves the dashboard without authentication.
+        from hermes_cli.dashboard_auth import list_providers
+        if not list_providers():
+            # Surface the *specific* reason any bundled provider declined
+            # to register (e.g. missing HERMES_DASHBOARD_OAUTH_CLIENT_ID).
+            # Each provider plugin that ships with Hermes Agent exposes a
+            # module-level ``LAST_SKIP_REASON`` string for this purpose;
+            # without it the operator would only see "no providers" which
+            # is misleading when the provider IS installed but unconfigured.
+            skip_reasons: list[str] = []
+            try:
+                from plugins.dashboard_auth import nous as _nous_plugin
+
+                if _nous_plugin.LAST_SKIP_REASON:
+                    skip_reasons.append(
+                        f"  • nous: {_nous_plugin.LAST_SKIP_REASON}"
+                    )
+            except Exception:
+                pass
+
+            _fix_hint = (
+                "Configure an auth provider before exposing the dashboard:\n"
+                "  • Password: set dashboard_auth.basic.username + "
+                "password_hash in config.yaml\n"
+                "    (hash with: python -c \"from "
+                "plugins.dashboard_auth.basic import hash_password; "
+                "print(hash_password('your-password'))\")\n"
+                "  • OAuth: run `hermes dashboard register` (Nous Portal) or "
+                "install a DashboardAuthProvider plugin.\n"
+                "There is no unauthenticated public-bind option — to keep it "
+                "local, bind 127.0.0.1 and tunnel in (SSH / Tailscale)."
+            )
+            if skip_reasons:
+                raise SystemExit(
+                    f"Refusing to bind dashboard to {host} — the auth gate "
+                    f"engages on non-loopback binds, but no auth providers "
+                    f"are registered.\n\n"
+                    f"Bundled providers reported these issues:\n"
+                    + "\n".join(skip_reasons)
+                    + "\n\n"
+                    + _fix_hint
+                )
+            raise SystemExit(
+                f"Refusing to bind dashboard to {host} — the auth gate "
+                f"engages on non-loopback binds, but no auth providers are "
+                f"registered.\n\n" + _fix_hint
+            )
+        _log.info(
+            "Dashboard binding to %s with auth gate enabled. Providers: %s",
+            host,
+            ", ".join(p.name for p in list_providers()),
         )
 
     # Record the bound host so host_header_middleware can validate incoming
