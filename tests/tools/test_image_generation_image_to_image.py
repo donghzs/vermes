@@ -149,13 +149,11 @@ class TestMandatoryKeysSurviveWhitelist:
         assert payload["prompt"] == "a cat"
 
 
-class TestFalRouting:
-    def _patch_submit(self, monkeypatch, image_tool, capture: dict):
-        class _Handler:
-            def get(self_inner):
-                return {"images": [{"url": "https://out/img.png", "width": 1, "height": 1}]}
+def test_agnes_routes_img2img_with_extra_body():
+    """Agnes should route image_url edits with extra_body tags."""
+    from plugins.image_gen.agnes import AgnesImageGenProvider
+    provider = AgnesImageGenProvider()
 
-    # Mock httpx to capture the request
     captured = {}
 
     class FakeResponse:

@@ -769,15 +769,15 @@ def prompt_dangerous_approval(command: str, description: str,
         # config/YAML inside the retry loop below.
         from agent.i18n import t
         while True:
-            logger.info()
+            logger.info("")
             logger.info(f"  {t('approval.dangerous_header', description=description)}")
             logger.info(f"      {command}")
-            logger.info()
+            logger.info("")
             if allow_permanent:
                 logger.info(t("approval.choose_long"))
             else:
                 logger.info(t("approval.choose_short"))
-            logger.info()
+            logger.info("")
             sys.stdout.flush()
 
             result = {"choice": ""}
@@ -820,7 +820,7 @@ def prompt_dangerous_approval(command: str, description: str,
     finally:
         if "HERMES_SPINNER_PAUSE" in os.environ:
             del os.environ["HERMES_SPINNER_PAUSE"]
-        logger.info()
+        logger.info("")
         sys.stdout.flush()
 
 
