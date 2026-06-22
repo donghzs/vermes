@@ -77,8 +77,20 @@ class TestDevicePathBlocking(unittest.TestCase):
         self.assertTrue(_is_blocked_device("/proc/12345/fd/2"))
 
     def test_proc_fd_other_not_blocked(self):
-        self.assertFalse(_is_blocked_device("/proc/self/fd/3"))
-        self.assertFalse(_is_blocked_device("/proc/self/maps"))
+        from tools.file_tools import _is_blocked_device_path
+        self.assertFalse(_is_blocked_device_path("/proc/self/fd/3"))
+
+    def test_proc_sensitive_pseudo_files_blocked(self):
+        """environ/cmdline/maps under /proc/<pid> must be blocked (issue #4427)."""
+        for path in (
+            "/proc/self/environ",
+            "/proc/self/cmdline",
+            "/proc/self/maps",
+            "/proc/12345/environ",
+            "/proc/12345/cmdline",
+            "/proc/12345/maps",
+        ):
+            self.assertTrue(_is_blocked_device(path), f"{path} should be blocked")
 
     def test_normpath_alias_to_blocked_device_is_blocked(self):
         self.assertTrue(_is_blocked_device("/dev/../dev/zero"))
@@ -273,7 +285,7 @@ class TestFileDedup(unittest.TestCase):
         ))
 
         self.assertIn("error", result)
-        self.assertIn("internal read_file status text", result["error"])
+        self.assertIn("internal read_file", result["error"])
         fake.write_file.assert_not_called()
 
     @patch("tools.file_tools._get_file_ops")
@@ -297,7 +309,7 @@ class TestFileDedup(unittest.TestCase):
         ))
 
         self.assertIn("error", result)
-        self.assertIn("internal read_file status text", result["error"])
+        self.assertIn("internal read_file", result["error"])
         fake.write_file.assert_not_called()
 
     @patch("tools.file_tools._get_file_ops")

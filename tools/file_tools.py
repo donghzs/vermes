@@ -85,6 +85,58 @@ def _resolve_path(filepath: str, task_id: str = "default") -> Path:
     return _resolve_path_for_task(filepath, task_id)
 
 
+# Sentinel values that mean "use process cwd" and are NOT real anchors.
+_TERMINAL_CWD_SENTINELS = frozenset({"", ".", "-"})
+
+
+def _sentinel_free_abs_cwd(raw: str | None) -> str | None:
+    """Return *raw* only if it's an absolute, non-sentinel path."""
+    if not raw or raw in _TERMINAL_CWD_SENTINELS:
+        return None
+    expanded = os.path.expanduser(raw)
+    if not os.path.isabs(expanded):
+        return None
+    return expanded
+
+
+def _configured_terminal_cwd() -> str | None:
+    """Return $TERMINAL_CWD only when it names a real directory anchor."""
+    return _sentinel_free_abs_cwd(os.environ.get("TERMINAL_CWD"))
+
+
+def _registered_task_cwd_override(task_id: str = "default") -> str | None:
+    """Return a registered cwd override for the raw task id, when available."""
+    try:
+        from tools.terminal_tool import resolve_task_overrides
+        overrides = resolve_task_overrides(task_id)
+    except Exception:
+        return None
+    return _sentinel_free_abs_cwd(overrides.get("cwd"))
+
+
+def _authoritative_workspace_root(task_id: str = "default") -> str | None:
+    """Best-effort absolute workspace root for divergence checks."""
+    live = _get_live_tracking_cwd(task_id)
+    if live:
+        return live
+    registered = _registered_task_cwd_override(task_id)
+    if registered:
+        return registered
+    return _configured_terminal_cwd()
+
+
+def _resolve_base_dir(task_id: str = "default") -> Path:
+    """Return the ABSOLUTE base directory for resolving relative paths."""
+    root = _authoritative_workspace_root(task_id)
+    if root:
+        base = Path(root).expanduser()
+    else:
+        base = Path(os.getcwd())
+    if not base.is_absolute():
+        base = Path(os.getcwd()) / base
+    return base.resolve()
+
+
 def _get_live_tracking_cwd(task_id: str = "default") -> str | None:
     """Return the task's live terminal cwd for bookkeeping when available."""
     try:
@@ -125,37 +177,6 @@ def _resolve_path_for_task(filepath: str, task_id: str = "default") -> Path:
         )
         p = Path(base) / p
     return p.resolve()
-
-
-def _is_blocked_device(filepath: str) -> bool:
-    """Return True if the path would hang the process (infinite output or blocking input).
-
-    Uses the *literal* path — no symlink resolution — because the model
-    specifies paths directly and realpath follows symlinks all the way
-    through (e.g. /dev/stdin → /proc/self/fd/0 → /dev/pts/0), defeating
-    the check.
-    """
-    try:
-        if Path(filepath).expanduser().is_absolute():
-            return None
-        workspace_root = _authoritative_workspace_root(task_id)
-        if not workspace_root:
-            return None  # No authoritative workspace root to compare against.
-        root = Path(workspace_root).expanduser().resolve()
-        # Is `resolved` inside `root`?
-        try:
-            resolved.relative_to(root)
-            return None  # Inside the workspace — expected.
-        except ValueError:
-            return (
-                f"Relative path {filepath!r} resolved to {str(resolved)!r}, which is "
-                f"OUTSIDE the active workspace ({str(root)!r}). The edit will land in "
-                f"a different directory than the terminal's cwd. If this is not "
-                f"intended (e.g. a git-worktree session writing into the main "
-                f"checkout), pass an absolute path under the workspace instead."
-            )
-    except Exception:
-        return None
 
 
 def _is_blocked_device_path(path: str) -> bool:
@@ -219,9 +240,43 @@ def _is_blocked_device(filepath: str, base_dir: str | Path | None = None) -> boo
 
 # Paths that file tools should refuse to write to without going through the
 # terminal tool's approval system.  These match prefixes after os.path.realpath.
+
+
+def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | None:
+    """Soft-guard warning when filepath lands in another Hermes profile's area."""
+    try:
+        from agent.file_safety import (
+            get_container_mirror_warning,
+            get_cross_profile_warning,
+            get_sandbox_mirror_warning,
+        )
+    except Exception:
+        return None
+    try:
+        resolved = str(_resolve_path_for_task(filepath, task_id))
+    except (OSError, ValueError):
+        resolved = filepath
+    warning = get_cross_profile_warning(resolved)
+    if warning is not None:
+        return warning
+    warning = get_sandbox_mirror_warning(resolved)
+    if warning is not None:
+        return warning
+    warning = get_container_mirror_warning(resolved)
+    if warning is not None:
+        return warning
+    return None
+
+
 _SENSITIVE_PATH_PREFIXES = (
     "/etc/", "/boot/", "/usr/lib/systemd/",
-    "/private/etc/", "/private/var/",
+    "/private/etc/",
+)
+# macOS temp dirs live under /private/var/folders/ — allow them for file ops
+# while still blocking /private/var/db/, /private/var/log/ etc.
+_SENSITIVE_PATH_EXCEPTIONS = (
+    "/private/var/folders/",
+    "/var/folders/",  # Before realpath expansion
 )
 _SENSITIVE_EXACT_PATHS = {"/var/run/docker.sock", "/run/docker.sock"}
 
@@ -239,6 +294,10 @@ def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None
     )
     for prefix in _SENSITIVE_PATH_PREFIXES:
         if resolved.startswith(prefix) or normalized.startswith(prefix):
+            # Allow macOS temp directories that live under /private/var/folders/
+            for exc_prefix in _SENSITIVE_PATH_EXCEPTIONS:
+                if resolved.startswith(exc_prefix) or normalized.startswith(exc_prefix):
+                    return None
             return _err
     if resolved in _SENSITIVE_EXACT_PATHS or normalized in _SENSITIVE_EXACT_PATHS:
         return _err
@@ -905,7 +964,7 @@ def _check_file_staleness(filepath: str, task_id: str) -> str | None:
     return None
 
 
-def write_file_tool(path: str, content: str, task_id: str = "default") -> str:
+def write_file_tool(path: str, content: str, task_id: str = "default", cross_profile: bool = False) -> str:
     """Write content to a file."""
     sensitive_err = _check_sensitive_path(path, task_id)
     if sensitive_err:
