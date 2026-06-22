@@ -625,6 +625,7 @@ function streamElapsed(startTime) {
                       <img v-if="formatToolPreview(tool).imageUrl"
                            :src="formatToolPreview(tool).imageUrl"
                            class="max-w-full rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"
+                           style="max-height: 300px; object-fit: contain;"
                            @click="window.open(formatToolPreview(tool).imageUrl, '_blank')" />
                       <span v-else class="text-[11px] text-gray-500">截图生成中...</span>
                     </div>
@@ -756,6 +757,7 @@ function streamElapsed(startTime) {
 .dark .vermes-md :deep(code) { background: rgba(255,255,255,0.1); }
 .vermes-md :deep(pre) { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
 .vermes-md :deep(pre code) { background: none; padding: 0; color: inherit; font-size: 1em; }
+.vermes-md :deep(img) { max-width: 100%; max-height: 300px; object-fit: contain; border-radius: 8px; cursor: pointer; margin: 0.3em 0; }
 
 /* P3-4: highlight.js 完整 token 样式（Catppuccin Mocha 配色） */
 .vermes-md :deep(pre.hljs) { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
