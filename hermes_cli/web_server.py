@@ -278,8 +278,16 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # Agent 更新检查
     "/api/agent/check",
     "/api/agent/update",
-    # 进化系统状态（Sidebar 指示器 + 每日简报）
+    # 进化系统状态（Sidebar 指示器 + 每日简报 + 成就 + DAG）
     "/api/evolution/status",
+    "/api/evolution/achievements",
+    "/api/evolution/dag",
+    # RAG 知识库（前端 Settings 页文件管理 + 搜索）
+    "/api/rag/documents",
+    "/api/rag/delete/{doc_id}",
+    "/api/rag/search",
+    # 后台子 Agent 状态查询
+    "/api/delegate/status/{task_id}",
     # 停止生成（前端 SSE 中断）
     "/api/stop-generation",
     # 会话管理（前端切换/删除会话）
