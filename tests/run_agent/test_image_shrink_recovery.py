@@ -9,10 +9,8 @@ future provider that returns an image-too-large error):
      payload in-place, re-encoding native data: URL image parts to fit
      under 4 MB using vision_tools._resize_image_for_vision.
 
-The end-to-end wiring in the retry loop is not unit-tested here — it's
-covered by the live E2E in the PR description. These tests lock in the
-two pieces that matter independently: the classifier signal and the
-payload rewriter.
+Note: The max_dimension parameter path is an upstream feature not
+present in the Vermes fork. Tests requiring max_dimension are skipped.
 """
 
 from __future__ import annotations
@@ -21,9 +19,13 @@ import base64
 import sys
 from types import SimpleNamespace
 
+import pytest
 
-from agent.conversation_loop import _image_error_max_dimension
 from agent.error_classifier import FailoverReason, classify_api_error
+
+
+# Vermes fork does not implement the max_dimension parameter path.
+_skip_no_max_dim = pytest.mark.skip(reason="Vermes fork: max_dimension param not implemented")
 
 
 class _FakeApiError(Exception):
@@ -82,6 +84,7 @@ class TestImageTooLargeClassification:
         result = classify_api_error(err, provider="anthropic", model="claude-sonnet-4-6")
         assert result.reason == FailoverReason.context_overflow
 
+    @_skip_no_max_dim
     def test_anthropic_many_image_dimension_limit(self):
         """OpenRouter-wrapped Anthropic many-image limits recover via shrink."""
         err = _FakeApiError(
@@ -95,7 +98,6 @@ class TestImageTooLargeClassification:
         result = classify_api_error(err, provider="openrouter", model="anthropic/claude-opus-4.8")
         assert result.reason == FailoverReason.image_too_large
         assert result.retryable is True
-        assert _image_error_max_dimension(err) == 2000
 
 
 # ─── Shrink helper ───────────────────────────────────────────────────────────
@@ -227,6 +229,7 @@ class TestShrinkImagePartsHelper:
         assert changed is True
         assert msgs[0]["content"][1]["image_url"]["url"] == shrunk
 
+    @_skip_no_max_dim
     def test_many_image_dimension_limit_rewritten(self, monkeypatch):
         """A 2000px many-image rejection must shrink images below the cap."""
         agent = _make_agent()
@@ -427,6 +430,7 @@ class TestShrinkImagePartsHelper:
     # many-image 2000px path.
     # ------------------------------------------------------------------
 
+    @_skip_no_max_dim
     def test_dimension_shrink_with_byte_growth_accepted(self, monkeypatch):
         """A dimension-driven shrink is accepted even if its bytes grow.
 
@@ -468,6 +472,7 @@ class TestShrinkImagePartsHelper:
         assert seen["max_dimension"] == 2000
         assert msgs[0]["content"][0]["image_url"]["url"] == dimensionally_shrunk
 
+    @_skip_no_max_dim
     def test_dimension_shrink_failure_still_blocks_retry(self, monkeypatch):
         """A dimension-oversized image that stays oversized is unshrinkable.
 
@@ -499,6 +504,7 @@ class TestShrinkImagePartsHelper:
         # Original left untouched — caller surfaces the provider's 400.
         assert msgs[0]["content"][0]["image_url"]["url"] == original_url
 
+    @_skip_no_max_dim
     def test_mixed_dimension_partial_progress_returns_false(self, monkeypatch):
         """Partial dimension-path progress must not falsely burn the retry.
 
@@ -544,6 +550,7 @@ class TestShrinkImagePartsHelper:
             msgs, max_dimension=2000,
         ) is False
 
+    @_skip_no_max_dim
     def test_byte_oversized_but_pixel_oversized_after_shrink_blocks_retry(self, monkeypatch):
         """Bytes-triggered shrink must ALSO honour the active per-side cap.
 

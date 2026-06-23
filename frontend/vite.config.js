@@ -2,11 +2,15 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 import { execSync } from 'node:child_process'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
-// 读取项目根版本号（统一由 version.txt 管理）
+// 读取项目根版本号（优先 package.json，回退 git tag / version.txt）
 function readVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(join(fileURLToPath(new URL('.', import.meta.url)), 'package.json'), 'utf-8'))
+    if (pkg.version) return pkg.version
+  } catch {}
   try {
     return execSync('git describe --tags --abbrev=0 2>/dev/null || cat ../version.txt', {
       encoding: 'utf-8', cwd: fileURLToPath(new URL('.', import.meta.url))
