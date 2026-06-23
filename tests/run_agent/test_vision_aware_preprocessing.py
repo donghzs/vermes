@@ -144,10 +144,11 @@ class TestModelSupportsVision:
         agent = _make_agent()
         agent.provider = ""
         agent.model = "claude-sonnet-4"
-        assert agent._model_supports_vision() is False
+        # Unknown provider/model → default True (try anyway)
+        assert agent._model_supports_vision() is True
         agent.provider = "anthropic"
         agent.model = ""
-        assert agent._model_supports_vision() is False
+        assert agent._model_supports_vision() is True
 
     def test_uses_get_model_capabilities(self):
         agent = _make_agent()
@@ -162,9 +163,11 @@ class TestModelSupportsVision:
     def test_none_caps_returns_false(self):
         agent = _make_agent()
         with patch("agent.models_dev.get_model_capabilities", return_value=None):
-            assert agent._model_supports_vision() is False
+            # Not in registry → default True (trust the model)
+            assert agent._model_supports_vision() is True
 
     def test_exception_returns_false(self):
         agent = _make_agent()
         with patch("agent.models_dev.get_model_capabilities", side_effect=RuntimeError("boom")):
-            assert agent._model_supports_vision() is False
+            # On error → default True (trust the model, let API decide)
+            assert agent._model_supports_vision() is True

@@ -1327,8 +1327,7 @@ def init_agent(
                 logger.info(
                     f"\n⚠ Invalid model.max_tokens in config.yaml: {_config_max_tokens!r}\n"
                     f"  Must be a positive integer (e.g. 4096).\n"
-                    f"  Falling back to provider default.\n",
-                    file=sys.stderr,
+                    f"  Falling back to provider default.\n"
                 )
     agent._session_init_model_config["max_tokens"] = agent.max_tokens
 
@@ -1350,8 +1349,7 @@ def init_agent(
             logger.info(
                 f"\n⚠ Invalid model.context_length in config.yaml: {_config_context_length!r}\n"
                 f"  Must be a plain integer (e.g. 256000, not '256K').\n"
-                f"  Falling back to auto-detected context window.\n",
-                file=sys.stderr,
+                f"  Falling back to auto-detected context window.\n"
             )
             _config_context_length = None
 
@@ -1414,8 +1412,7 @@ def init_agent(
                                     logger.info(
                                         f"\n⚠ Invalid context_length for model {agent.model!r} in custom_providers: {_cp_ctx!r}\n"
                                         f"  Must be a positive integer (e.g. 256000, not '256K').\n"
-                                        f"  Falling back to auto-detected context window.\n",
-                                        file=sys.stderr,
+                                        f"  Falling back to auto-detected context window.\n"
                                     )
                     break
 

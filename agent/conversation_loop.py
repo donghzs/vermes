@@ -1535,8 +1535,8 @@ def run_conversation(
 
                     agent._invoke_api_request_error_hook(
                         task_id=effective_task_id,
-                        turn_id=turn_id,
-                        api_request_id=api_request_id,
+                        turn_id=None,
+                        api_request_id=None,
                         api_call_count=api_call_count,
                         api_start_time=api_start_time,
                         api_kwargs=api_kwargs,
@@ -1567,7 +1567,7 @@ def run_conversation(
                             agent, api_messages, active_system_prompt)
                         retry_count = 0
                         compression_attempts = 0
-                        _retry.primary_recovery_attempted = False
+                        primary_recovery_attempted = False
                         continue
 
                     agent._flush_status_buffer()
@@ -2631,10 +2631,10 @@ def run_conversation(
                 # + provider-specific troubleshooting guidance unchanged.
                 if (
                     classified.is_auth
-                    and not _retry.auth_failover_attempted
+                    and not auth_failover_attempted
                     and agent._fallback_index < len(agent._fallback_chain)
                 ):
-                    _retry.auth_failover_attempted = True
+                    auth_failover_attempted = True
                     agent._buffer_status(
                         "🔐 Authentication failed and could not be refreshed — "
                         "switching to fallback provider..."
@@ -2644,7 +2644,7 @@ def run_conversation(
                             agent, api_messages, active_system_prompt)
                         retry_count = 0
                         compression_attempts = 0
-                        _retry.primary_recovery_attempted = False
+                        primary_recovery_attempted = False
                         continue
 
                 # ── Nous Portal: record rate limit & skip retries ─────

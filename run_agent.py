@@ -1315,6 +1315,14 @@ class AIAgent:
         from agent.chat_completion_helpers import cleanup_task_resources
         return cleanup_task_resources(self, task_id)
 
+    def _invoke_api_request_error_hook(self, **kwargs) -> None:
+        """Hook for API request error diagnostics.
+
+        Called when an API request fails (e.g. content policy blocked).
+        Vermes fork: no-op stub — the dashboard/gateway hook is not wired.
+        """
+        pass
+
     # ------------------------------------------------------------------
     # Background memory/skill review — prompts live in agent.background_review
     # ------------------------------------------------------------------

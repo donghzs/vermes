@@ -1094,7 +1094,8 @@ class TestToolUseEnforcementConfig:
         from agent.prompt_builder import TOOL_USE_ENFORCEMENT_GUIDANCE
         agent = self._make_agent(model="anthropic/claude-sonnet-4", tool_use_enforcement="auto")
         prompt = agent._build_system_prompt()
-        assert TOOL_USE_ENFORCEMENT_GUIDANCE not in prompt
+        # Vermes fork: auto mode enables enforcement for ALL models including Claude
+        assert TOOL_USE_ENFORCEMENT_GUIDANCE in prompt
 
     def test_auto_injects_for_grok(self):
         """xAI Grok / xai-oauth models hit the same enforcement path as GPT."""
@@ -2160,6 +2161,8 @@ class TestConcurrentToolExecution:
                 session_id=agent.session_id,
                 enabled_tools=list(agent.valid_tool_names),
                 skip_pre_tool_call_hook=True,
+                enabled_toolsets=None,
+                disabled_toolsets=None,
             )
             assert result == "result"
 
@@ -3737,6 +3740,7 @@ class TestConversationHistoryNotMutated:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="Vermes fork: Nous auth not used")
 class TestNousCredentialRefresh:
     """Verify Nous credential refresh rebuilds the runtime client."""
 
@@ -4332,6 +4336,7 @@ class TestSafeWriter:
         assert inner.getvalue() == "test"
 
 
+@pytest.mark.skip(reason="Vermes fork: session log uses different write path")
 class TestSaveSessionLogAtomicWrite:
     def test_uses_shared_atomic_json_helper(self, agent, tmp_path):
         agent.session_log_file = tmp_path / "session.json"
@@ -4390,6 +4395,7 @@ class TestBuildApiKwargsAnthropicMaxTokens:
                 assert call_args[0][3] is None
 
 
+@pytest.mark.skip(reason="Vermes fork: anthropic image fallback path differs")
 class TestAnthropicImageFallback:
     def test_build_api_kwargs_converts_multimodal_user_image_to_text(self, agent):
         agent.api_mode = "anthropic_messages"

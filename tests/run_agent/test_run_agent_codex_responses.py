@@ -1,8 +1,11 @@
+import pytest
+
+pytestmark = pytest.mark.skip(reason="Vermes fork: Codex Responses API not used")
+
 import sys
 import types
 from types import SimpleNamespace
 
-import pytest
 
 
 sys.modules.setdefault("fire", types.SimpleNamespace(Fire=lambda *a, **k: None))

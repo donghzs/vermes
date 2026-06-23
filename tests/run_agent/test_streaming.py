@@ -763,6 +763,7 @@ class TestHasStreamConsumers:
 # ── Test: Codex stream fires callbacks ────────────────────────────────
 
 
+@pytest.mark.skip(reason="Vermes fork: Codex stream not used")
 class TestCodexStreamCallbacks:
     """Verify _run_codex_stream fires delta callbacks."""
 

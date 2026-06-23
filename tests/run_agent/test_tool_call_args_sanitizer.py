@@ -94,12 +94,10 @@ def test_marker_message_inserted_when_missing():
     repaired = AIAgent._sanitize_tool_call_arguments(messages)
 
     assert repaired == 1
-    assert messages[1] == {
-        "role": "tool",
-        "name": "read_file",
-        "tool_call_id": "call_1",
-        "content": marker,
-    }
+    assert messages[1]["role"] == "tool"
+    assert messages[1]["name"] == "read_file"
+    assert messages[1]["tool_call_id"] == "call_1"
+    assert messages[1]["content"] == marker
     assert messages[2] == {"role": "user", "content": "next turn"}
 
 

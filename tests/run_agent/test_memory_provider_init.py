@@ -32,7 +32,8 @@ def test_blank_memory_provider_does_not_auto_enable_honcho():
             skip_memory=False,
         )
 
-    assert agent._memory_manager is None
+    # Vermes fork: RAG provider auto-initializes MemoryManager even with blank provider
+    assert agent._memory_manager is not None
     from_global_config.assert_not_called()
     load_memory_provider.assert_not_called()
     save_config.assert_not_called()

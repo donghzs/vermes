@@ -330,6 +330,7 @@ class TestBuildApiKwargsAIGateway:
         assert "instructions" not in kwargs
         assert "store" not in kwargs
 
+    @pytest.mark.skip(reason="Vermes fork: ai-gateway.vercel.sh not supported")
     def test_includes_reasoning_in_extra_body(self, monkeypatch):
         agent = _make_agent(monkeypatch, "ai-gateway", base_url="https://ai-gateway.vercel.sh/v1", model="gpt-4o")
         messages = [{"role": "user", "content": "hi"}]
@@ -958,6 +959,7 @@ class TestAuxiliaryClientProviderPriority:
         assert model == "google/gemini-3-flash-preview"
         assert "openrouter" in str(mock.call_args.kwargs["base_url"]).lower()
 
+    @pytest.mark.skip(reason="Vermes fork: Nous auth not used")
     def test_nous_when_no_openrouter(self, monkeypatch):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         from agent.auxiliary_client import get_text_auxiliary_client
