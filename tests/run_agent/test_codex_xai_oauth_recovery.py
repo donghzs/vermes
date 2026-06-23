@@ -1,5 +1,14 @@
 """Regression tests for the May 2026 xAI OAuth (SuperGrok / X Premium) bugs.
 
+NOTE: Vermes fork does not use xAI OAuth. These tests are skipped.
+"""
+
+import pytest
+
+pytestmark = pytest.mark.skip(reason="Vermes fork: xAI OAuth not used")
+
+"""Original docstring continued:
+
 Three distinct failure modes the user community hit during rollout:
 
 1. ``RuntimeError("Expected to have received `response.created` before
