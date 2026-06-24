@@ -709,10 +709,43 @@ async def chat_completions(req: ChatRequest):
         _log.info(f"[Agent] Reusing cached agent for session {_session_id}")
 
     if agent:
-        from tools.approval import enable_session_yolo, set_current_session_key
+        from tools.approval import enable_session_yolo, set_current_session_key, register_gateway_notify, unregister_gateway_notify
         _gui_sk = "gui-" + (getattr(agent, "session_id", "") or "default")
         set_current_session_key(_gui_sk)
-        enable_session_yolo(_gui_sk)
+
+        # ── 审批模式：默认 YOLO（保持现有体验），可在 Settings 关闭 ──
+        _yolo_enabled = True
+        try:
+            _cfg = load_config()
+            _yolo_enabled = _cfg.get("approvals", {}).get("yolo_default", True)
+        except Exception:
+            pass
+
+        if _yolo_enabled:
+            enable_session_yolo(_gui_sk)
+        else:
+            # 注册 gateway 审批回调 → 通过 SSE 推送审批请求到前端
+            async def _notify_approval(approval_data: dict):
+                try:
+                    await _delta_queue.put({
+                        "type": "approval_request",
+                        "data": approval_data,
+                    })
+                except Exception:
+                    pass
+            def _sync_notify(approval_data: dict):
+                import asyncio as _aio
+                try:
+                    _loop = asyncio.get_event_loop()
+                    if _loop.is_running():
+                        _loop.call_soon_threadsafe(
+                            _loop.create_task, _notify_approval(approval_data)
+                        )
+                    else:
+                        _loop.run_until_complete(_notify_approval(approval_data))
+                except Exception:
+                    pass
+            register_gateway_notify(_gui_sk, _sync_notify)
 
 
     if req.stream:
@@ -1329,6 +1362,24 @@ async def rag_delete(doc_id: int):
         return {"error": str(e), "deleted": False}
 
 
+async def approve_command(request: Request):
+    """Handle tool approval/deny from frontend.
+
+    Body: { session_key, choice: "once"|"session"|"always"|"deny" }
+    """
+    try:
+        body = await request.json()
+        session_key = body.get("session_key", "")
+        choice = body.get("choice", "deny")
+        if not session_key:
+            return {"ok": False, "error": "session_key required"}
+        from tools.approval import resolve_gateway_approval
+        resolved = resolve_gateway_approval(session_key, choice, resolve_all=False)
+        return {"ok": True, "resolved": resolved}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -1414,6 +1465,12 @@ def register_to(app):
         cache_metrics,
         methods=["GET"],
         name="cache_metrics",
+    )
+    app.add_api_route(
+        "/api/approve",
+        approve_command,
+        methods=["POST"],
+        name="approve_command",
     )
 
     # Pre-create default agent at startup for persistence

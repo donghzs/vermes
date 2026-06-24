@@ -72,6 +72,7 @@ export const useChatStore = defineStore('chat', () => {
   const evolutionEvents = ref([])    // 进化事件（成就/建议）
   const showAchievement = ref(false) // 成就弹窗
   const achievementData = ref(null)  // 当前展示的成就
+  const pendingApproval = ref(null)  // 工具审批请求
   const currentStatusMessages = computed(() => 
     sessionStatusMessages.value[currentSessionId.value] || []
   )
@@ -385,6 +386,14 @@ export const useChatStore = defineStore('chat', () => {
           }
           scheduleScroll()
         },
+        onApprovalRequest: (approvalData) => {
+          // 工具审批请求：弹出审批对话框
+          pendingApproval.value = {
+            ...approvalData,
+            session_key: approvalData.session_key || ('gui-' + (sendSessionId || 'default')),
+            timestamp: Date.now(),
+          }
+        },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
@@ -533,6 +542,20 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // ── 工具审批 ──
+  async function resolveApproval(choice) {
+    if (!pendingApproval.value) return
+    const { session_key } = pendingApproval.value
+    try {
+      await fetch('/api/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_key, choice }),
+      })
+    } catch (e) { console.error('[Approval] Failed:', e) }
+    pendingApproval.value = null
+  }
+
   return {
     sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
@@ -543,6 +566,7 @@ export const useChatStore = defineStore('chat', () => {
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
     evolutionEvents, showAchievement, achievementData,
+    pendingApproval, resolveApproval,
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,

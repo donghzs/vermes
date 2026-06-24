@@ -114,6 +114,8 @@ export class SSETransport extends ChatTransport {
               this._emit(sessionId, 'onToolCall', data)
             } else if (data.type === 'evolution') {
               this._emit(sessionId, 'onEvolution', data)
+            } else if (data.type === 'approval_request') {
+              this._emit(sessionId, 'onApprovalRequest', data.data || data)
             } else if (data.type === 'status') {
               this._emit(sessionId, 'onStatus', data)
             } else if (data.type === 'error') {

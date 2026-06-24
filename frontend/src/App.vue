@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import Sidebar from './components/Sidebar.vue'
 import ToastContainer from './components/ToastContainer.vue'
+import ApprovalDialog from './components/ApprovalDialog.vue'
 import { useChatStore } from './stores/chat'
 
 const chat = useChatStore()
@@ -36,6 +37,7 @@ onMounted(async () => {
         </div>
       </div>
       <ToastContainer />
+      <ApprovalDialog />
     </ErrorBoundary>
   </div>
 </template>
