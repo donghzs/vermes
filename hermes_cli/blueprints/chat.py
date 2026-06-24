@@ -900,6 +900,25 @@ async def chat_completions(req: ChatRequest):
                     "is_error": kwargs.get("is_error", False),
                     "result_preview": preview or "",
                 }
+                if tool_name == "todo" and preview:
+                    try:
+                        import json as _json
+                        todo_data = _json.loads(preview)
+                        todo_event = {
+                            "type": "todo_update",
+                            "todos": todo_data.get("todos", []),
+                            "summary": todo_data.get("summary", {}),
+                        }
+                        try:
+                            _loop = asyncio.get_running_loop()
+                        except RuntimeError:
+                            _loop = None
+                        if _loop and _loop.is_running():
+                            _loop.call_soon_threadsafe(_delta_queue.put_nowait, todo_event)
+                        else:
+                            _delta_queue.put_nowait(todo_event)
+                    except Exception:
+                        pass
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:

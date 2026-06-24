@@ -73,6 +73,8 @@ export const useChatStore = defineStore('chat', () => {
   const showAchievement = ref(false) // 成就弹窗
   const achievementData = ref(null)  // 当前展示的成就
   const pendingApproval = ref(null)  // 工具审批请求
+  const todoItems = ref([])          // Agent todo 列表
+  const showTodoPanel = ref(false)   // Todo 面板显隐
   const currentStatusMessages = computed(() => 
     sessionStatusMessages.value[currentSessionId.value] || []
   )
@@ -394,6 +396,16 @@ export const useChatStore = defineStore('chat', () => {
             timestamp: Date.now(),
           }
         },
+        onTodoUpdate: (data) => {
+          // Agent todo 列表更新
+          if (data.todos && Array.isArray(data.todos)) {
+            todoItems.value = data.todos
+            if (data.todos.length > 0) {
+              showTodoPanel.value = true
+            }
+            scheduleScroll()
+          }
+        },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
@@ -477,6 +489,8 @@ export const useChatStore = defineStore('chat', () => {
       sessionStatusMessages.value[sid] = []
     }
     evolutionEvents.value = []  // 清空进化事件
+    todoItems.value = []  // 清空 todo
+    showTodoPanel.value = false
   }
   // ── 工具函数 ──
   function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
@@ -566,6 +580,7 @@ export const useChatStore = defineStore('chat', () => {
     lastTokenUsage, streamConnected, isOnline, isWindows,
     cacheMetrics,
     evolutionEvents, showAchievement, achievementData,
+    todoItems, showTodoPanel,
     pendingApproval, resolveApproval,
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
