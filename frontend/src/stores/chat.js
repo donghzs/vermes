@@ -60,6 +60,7 @@ export const useChatStore = defineStore('chat', () => {
   let _beforeunloadRegistered = false
   const currentModel = ref(localStorage.getItem('vermes-current-model') || DEFAULT_MODEL_ID)
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || DEFAULT_PROVIDER_ID)
+  const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
   const uploading = ref(false)
   const showQuotaModal = ref(false)
   const quotaModalType = ref('need_login')
@@ -430,6 +431,7 @@ export const useChatStore = defineStore('chat', () => {
           name: a.name, type: a.type, data: a.data || a.base64 || '',
           mime: a.mime || a.mimeType || 'application/octet-stream', size: a.size,
         })),
+        reasoning_effort: reasoningEffort.value || undefined,
       })
     } catch(e) {
       const am = messages.value.find(m => m.id === aid)
@@ -534,6 +536,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
+    reasoningEffort,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionActiveStreamIds, currentActiveStreamId,

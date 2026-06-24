@@ -239,6 +239,7 @@ class ChatRequest(BaseModel):
     attachments: list[AttachmentData] | None = None
     wechat_openid: str | None = None
     session_id: str | None = None  # For agent caching
+    reasoning_effort: str | None = None  # none / low / medium / high
 
 
 # ── Attachment validation ────────────────────────────────────────────
@@ -661,16 +662,17 @@ async def chat_completions(req: ChatRequest):
                 _evo_prompt = build_evolution_prompt() or ""
             except Exception:
                 pass
-            # ── 推理配置：读取 config 中 agent.reasoning_effort ────
+            # ── 推理配置：请求参数优先，其次 config ──────────
             _reasoning_config = None
-            _cfg = None
-            try:
-                _cfg = load_config()
-                _effort = _cfg.get("agent", {}).get("reasoning_effort", "")
-                if _effort:
-                    _reasoning_config = {"effort": _effort}
-            except Exception:
-                pass
+            _effort = req.reasoning_effort
+            if not _effort:
+                try:
+                    _cfg = load_config()
+                    _effort = _cfg.get("agent", {}).get("reasoning_effort", "")
+                except Exception:
+                    pass
+            if _effort:
+                _reasoning_config = {"effort": _effort}
 
             # ── 读取 config 中的 max_iterations/disabled_toolsets ──
             _max_iterations = 1000

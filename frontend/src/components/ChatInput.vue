@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { toast } from '../utils/toast'
 
@@ -13,6 +13,24 @@ const inputRef = ref(null)
 const isDragging = ref(false)
 
 const emit = defineEmits(['send'])
+
+// ── 推理强度 ──
+const reasoningLevels = [
+  { value: '', label: '自动', icon: '⚡' },
+  { value: 'low', label: '快速', icon: '🚀' },
+  { value: 'medium', label: '标准', icon: '🧠' },
+  { value: 'high', label: '深度', icon: '🔬' },
+]
+const showReasoningPicker = ref(false)
+function selectReasoning(level) {
+  chat.reasoningEffort = level
+  localStorage.setItem('vermes-reasoning-effort', level)
+  showReasoningPicker.value = false
+}
+const currentReasoningLabel = computed(() => {
+  const found = reasoningLevels.find(r => r.value === chat.reasoningEffort)
+  return found || reasoningLevels[0]
+})
 
 // ── 常量 ──
 const MAX_SINGLE_FILE = 20 * 1024 * 1024   // 20MB
@@ -136,6 +154,13 @@ onUnmounted(() => {
   uploadedFiles.value.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview) })
 })
 
+// 点击外部关闭推理强度选择器
+function onDocClick(e) {
+  if (showReasoningPicker.value && !e.target.closest('.relative')) showReasoningPicker.value = false
+}
+document.addEventListener('click', onDocClick)
+onUnmounted(() => document.removeEventListener('click', onDocClick))
+
 defineExpose({ inputText, uploadedFiles, inputRef })
 </script>
 
@@ -169,6 +194,18 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         accept="image/*,video/*,.pdf,.txt,.md,.csv,.json,.py,.js,.ts,.html,.css,.yaml,.yml,.toml,.sh,.bash,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.swift,.kt,.docx,.xlsx,.pptx,.zip,.tar,.gz"
         class="hidden" @change="handleFileSelect" />
       <button @click="triggerFileUpload()" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base" title="上传文件/图片/视频">📎</button>
+      <!-- 推理强度选择器 -->
+      <div class="relative">
+        <button @click="showReasoningPicker = !showReasoningPicker" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base" :title="'推理强度: ' + currentReasoningLabel.label">{{ currentReasoningLabel.icon }}</button>
+        <div v-if="showReasoningPicker" class="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg py-1 min-w-[120px] z-50">
+          <button v-for="r in reasoningLevels" :key="r.value" @click="selectReasoning(r.value)" 
+            class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+            :class="chat.reasoningEffort === r.value ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-600 dark:text-gray-300'">
+            <span>{{ r.icon }}</span><span>{{ r.label }}</span>
+            <span v-if="chat.reasoningEffort === r.value" class="ml-auto">✓</span>
+          </button>
+        </div>
+      </div>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
         @input="autoResize" @paste="onPaste"

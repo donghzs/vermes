@@ -48,7 +48,7 @@ export class SSETransport extends ChatTransport {
     this._controllers = new Map()  // sessionId → AbortController
   }
 
-  async send(sessionId, { messages, model, provider, attachments }) {
+  async send(sessionId, { messages, model, provider, attachments, reasoning_effort }) {
     const oldAc = this._controllers.get(sessionId)
     if (oldAc) oldAc.abort()
     this._controllers.delete(sessionId)
@@ -67,6 +67,7 @@ export class SSETransport extends ChatTransport {
         attachments: attachments || [],
         stream: true,
       }
+      if (reasoning_effort) body.reasoning_effort = reasoning_effort
 
       const resp = await fetch(`${this._baseUrl}/api/chat/completions`, {
         method: 'POST',
