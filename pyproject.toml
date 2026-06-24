@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vermes"
-version = "2.1.0"
+version = "2.3.0"
 description = "Vermes — 开箱即用的 AI Agent，融合官方 Hermes 引擎 + QClaw 技能生态"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -230,6 +230,11 @@ markers = [
     "real_concurrent_gate: opt out of the autouse stub that disables _detect_concurrent_hermes_instances",
 ]
 addopts = "-m 'not integration' -n auto"
+collect_ignore = [
+    "tests/acp",
+    "tests/acp_adapter",
+    "tests/skills/test_fetch_transcript.py",
+]
 
 [tool.ty.environment]
 python-version = "3.11"
