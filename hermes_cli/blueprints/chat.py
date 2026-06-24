@@ -216,6 +216,92 @@ def _strip_markdown_images(text: str) -> str:
     return re.sub(r'!\[.*?\]\(data:image[^)]+\)', '[图片]', text)
 
 
+# ── @file reference expansion ───────────────────────────────────────
+
+import re as _re_module
+
+# Match @path/to/file.ext (not email @addresses)
+# Must be preceded by start-of-string, whitespace, or newline
+# Path chars: alphanumeric, /, -, _, ., +
+_FILE_REF_PATTERN = _re_module.compile(r'(?:^|(?<=\s))@([\w./\-+]+(?:\.[\w]+)+)')
+
+# Max file size to inline (50KB text)
+_MAX_FILE_INLINE = 50 * 1024
+# Max total expansion across all references in one message
+_MAX_TOTAL_EXPANSION = 200 * 1024
+
+
+def _expand_file_references(text: str) -> str:
+    """Expand @file references in user message text.
+
+    Scans for @path/to/file.ext patterns and inlines file contents
+    as fenced code blocks. Skips files that don't exist or are too large.
+
+    Examples:
+      @src/main.py → ```python\n<file contents>\n```
+      @README.md → ```markdown\n<file contents>\n```
+    """
+    if '@' not in text:
+        return text
+
+    cwd = os.getcwd()
+    total_expanded = 0
+   
+    def _replace_match(match):
+        nonlocal total_expanded
+        rel_path = match.group(1)
+       
+        # Skip if looks like an email or version (e.g. @user, @2.0.0)
+        if '/' not in rel_path and '.' not in rel_path:
+            return match.group(0)
+       
+        file_path = os.path.join(cwd, rel_path)
+       
+        # Security: prevent path traversal outside cwd
+        try:
+            real_path = os.path.realpath(file_path)
+            if not real_path.startswith(os.path.realpath(cwd)):
+                return match.group(0)
+        except Exception:
+            return match.group(0)
+       
+        if not os.path.isfile(real_path):
+            return match.group(0)
+       
+        try:
+            file_size = os.path.getsize(real_path)
+            if file_size > _MAX_FILE_INLINE:
+                return f'@{rel_path} [文件过大: {file_size // 1024}KB, 超过50KB限制]'
+            if total_expanded + file_size > _MAX_TOTAL_EXPANSION:
+                return f'@{rel_path} [总引用超过200KB限制]'
+           
+            with open(real_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+           
+            total_expanded += file_size
+           
+            # Detect language from extension
+            ext = os.path.splitext(rel_path)[1].lstrip('.')
+            lang_map = {
+                'py': 'python', 'js': 'javascript', 'ts': 'typescript',
+                'jsx': 'jsx', 'tsx': 'tsx', 'vue': 'vue', 'go': 'go',
+                'rs': 'rust', 'java': 'java', 'kt': 'kotlin',
+                'c': 'c', 'cpp': 'cpp', 'h': 'c', 'hpp': 'cpp',
+                'cs': 'csharp', 'rb': 'ruby', 'php': 'php',
+                'swift': 'swift', 'sh': 'bash', 'bash': 'bash',
+                'yml': 'yaml', 'yaml': 'yaml', 'json': 'json',
+                'html': 'html', 'css': 'css', 'scss': 'scss',
+                'sql': 'sql', 'md': 'markdown', 'xml': 'xml',
+            }
+            lang = lang_map.get(ext, '')
+           
+            return f'`{rel_path}`:\n```{lang}\n{content}\n```'
+        except Exception:
+            return match.group(0)
+   
+    return _FILE_REF_PATTERN.sub(_replace_match, text)
+
+
 # ── Pydantic models ─────────────────────────────────────────────────
 
 class ChatMessage(BaseModel):
@@ -304,11 +390,11 @@ def _load_toolsets_for_web() -> list[str] | None:
             if toolsets:
                 ts_list = toolsets if isinstance(toolsets, list) else [toolsets]
                 if len(ts_list) == 1 and ts_list[0] == "hermes-cli":
-                    return ["file", "code_execution", "browser", "hermes-cli"]
+                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
                 return ts_list
     except Exception:
         pass
-    return ["file", "code_execution", "browser", "hermes-cli"]
+    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
 
 
 def _get_chat_credentials() -> tuple[str, str, str]:
@@ -589,11 +675,14 @@ async def chat_completions(req: ChatRequest):
 
     # Build conversation messages — strip inline base64 images from all messages
     # (actual image data is in attachments, markdown embeds waste tokens)
+    # Also expand @file references in user messages (e.g. @src/main.py)
     conversation_history = []
     for m in req.messages:
         content = m.content
         if isinstance(content, str):
             content = _strip_markdown_images(content)
+            if m.role == "user":
+                content = _expand_file_references(content)
         conversation_history.append({"role": m.role, "content": content})
 
     # ── Vision capability check ──

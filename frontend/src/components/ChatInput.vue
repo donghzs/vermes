@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onUnmounted, computed } from 'vue'
+import { ref, onUnmounted, computed, nextTick } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { toast } from '../utils/toast'
 
@@ -138,6 +138,50 @@ async function onPaste(e) {
   }
 }
 
+// ── @file 引用检测 ──
+const showFileHint = ref(false)
+const fileHintItems = ref([])
+
+function onInputCheckFileRef(e) {
+  const el = e.target
+  const pos = el.selectionStart
+  const before = el.value.substring(0, pos)
+  // 检查光标前是否有 @ 符号（且前面是空格或行首）
+  const atMatch = before.match(/(?:^|\s)@([\w./\-+]*)$/)
+  if (atMatch) {
+    const partial = atMatch[1]
+    // 简单提示：显示当前目录下的文件
+    showFileHint.value = true
+    fileHintItems.value = [
+      { label: '输入文件路径，如 @src/main.py', hint: '支持代码文件、配置文件、文档等' },
+      { label: '@AGENTS.md', hint: '工作区配置' },
+      { label: '@package.json', hint: '项目配置' },
+    ]
+  } else {
+    showFileHint.value = false
+  }
+  autoResize(e)
+}
+
+function insertFileRef(path) {
+  const el = inputRef.value
+  const pos = el.selectionStart
+  const before = el.value.substring(0, pos)
+  const after = el.value.substring(pos)
+  // 替换 @ 后的部分
+  const atIdx = before.lastIndexOf('@')
+  if (atIdx >= 0) {
+    const prefix = before.substring(0, atIdx + 1)
+    inputText.value = prefix + path + ' ' + after
+    nextTick(() => {
+      el.focus()
+      const newPos = (prefix + path + ' ').length
+      el.setSelectionRange(newPos, newPos)
+    })
+  }
+  showFileHint.value = false
+}
+
 // ── 发送 ──
 async function send() {
   const input = inputText.value.trim()
@@ -208,9 +252,22 @@ defineExpose({ inputText, uploadedFiles, inputRef })
       </div>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
-        @input="autoResize" @paste="onPaste"
+        @input="onInputCheckFileRef" @paste="onPaste"
         class="flex-1 rounded-xl px-4 py-3 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-400 dark:focus:border-green-500 resize-none overflow-y-auto placeholder-gray-400 dark:placeholder-gray-500"
-        :class="isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500'"></textarea>
+        :class="isEmptySession() ? 'border-2 border-green-300 dark:border-green-600' : 'border border-gray-300 dark:border-gray-500'">
+      </textarea>
+      <!-- @file 引用提示 -->
+      <div v-if="showFileHint" class="absolute bottom-full mb-2 left-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg py-1 min-w-[240px] z-50">
+        <div class="px-3 py-1.5 text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700">📁 输入文件路径引用文件内容</div>
+        <button v-for="item in fileHintItems" :key="item.label" @click="insertFileRef(item.label.replace('@', ''))"
+          class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left">
+          <span class="text-green-500">📄</span>
+          <div>
+            <div class="text-gray-700 dark:text-gray-300">{{ item.label }}</div>
+            <div class="text-[10px] text-gray-400">{{ item.hint }}</div>
+          </div>
+        </button>
+      </div>
       <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition" title="停止生成">⏹</button>
       <button @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
     </div>
