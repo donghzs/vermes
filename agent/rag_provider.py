@@ -94,8 +94,19 @@ def _init_db(db_path: Path) -> None:
     conn.commit()
 
 
-def _chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
-    """Split text into overlapping chunks."""
+def _chunk_text(text: str, chunk_size: int = 0, overlap: int = 0, file_ext: str = '') -> List[str]:
+    """Split text into overlapping chunks.
+
+    Auto-selects chunk size based on document type:
+    - Academic papers (.pdf, .docx, .tex): 1200 chars, 200 overlap
+    - Other documents: 500 chars, 100 overlap
+    """
+    if chunk_size == 0:
+        academic_exts = {'.pdf', '.docx', '.tex', '.rtf'}
+        if file_ext.lower() in academic_exts:
+            chunk_size, overlap = 1200, 200
+        else:
+            chunk_size, overlap = 500, 100
     if len(text) <= chunk_size:
         return [text] if text.strip() else []
     chunks = []
@@ -465,10 +476,8 @@ class RAGProvider(MemoryProvider):
         text = _extract_text(file_path)
         if not text.strip():
             return json.dumps({"error": f"No text extracted from {file_path}"})
-        chunks = _chunk_text(text)
-        if not chunks:
-            return json.dumps({"error": "No chunks generated"})
         p = Path(file_path)
+        chunks = _chunk_text(text, file_ext=p.suffix)
         conn = _get_conn(str(self._db_path))
         c = conn.cursor()
         # Check if document already exists
@@ -513,7 +522,8 @@ class RAGProvider(MemoryProvider):
             self._initialized = True
         if not content.strip():
             return json.dumps({"error": f"No text content to index"})
-        chunks = _chunk_text(content)
+        ext = '.' + file_type.lstrip('.') if file_type else ''
+        chunks = _chunk_text(content, file_ext=ext)
         if not chunks:
             return json.dumps({"error": "No chunks generated"})
         conn = _get_conn(str(self._db_path))
