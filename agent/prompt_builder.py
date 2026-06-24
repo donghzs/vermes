@@ -306,6 +306,17 @@ IMAGE_GENERATE_GUIDANCE = (
     "parameter. For style reference, use reference_image_urls."
 )
 
+ACADEMIC_SEARCH_GUIDANCE = (
+    "# Academic & research search\n"
+    "When the user asks for literature review, academic sources, or research papers, \n"
+    "use web_search with queries augmented with academic keywords: 'paper', 'arXiv', \n"
+    "'research', 'survey', 'journal', 'conference'. For best results: \n"
+    "1. Search with author + keyword + venue (e.g. 'attention mechanism Vaswani NeurIPS')\n"
+    "2. For recent work, add year or '2024'/'2025' to the query\n"
+    "3. Cross-reference by searching the title on Google Scholar or arXiv directly\n"
+    "4. When RAG knowledge base has relevant documents, search those first before web\n"
+)
+
 TASK_COMPLETION_GUIDANCE = (
     "# Finishing the job\n"
     "When the user asks you to build, run, or verify something, the deliverable is "

@@ -32,6 +32,7 @@ from agent.prompt_builder import (
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     HERMES_AGENT_HELP_GUIDANCE,
     IMAGE_GENERATE_GUIDANCE,
+    ACADEMIC_SEARCH_GUIDANCE,
     KANBAN_GUIDANCE,
     MEMORY_GUIDANCE,
     OPENAI_MODEL_EXECUTION_GUIDANCE,
@@ -165,6 +166,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         tool_guidance.append(SKILLS_GUIDANCE)
     if "image_generate" in agent.valid_tool_names:
         tool_guidance.append(IMAGE_GENERATE_GUIDANCE)
+    if "web_search" in agent.valid_tool_names:
+        tool_guidance.append(ACADEMIC_SEARCH_GUIDANCE)
     # Kanban worker/orchestrator lifecycle — only present when the
     # dispatcher spawned this process (kanban_show check_fn gates on
     # HERMES_KANBAN_TASK env var). Normal chat sessions never see

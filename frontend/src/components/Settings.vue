@@ -79,6 +79,21 @@ const providers = ref([
 const customModelInputs = ref({})
 const activeTab = ref('providers')
 
+// ── 安全设置 ──
+const yoloEnabled = ref(localStorage.getItem('vermes-yolo-default') !== 'false')
+async function toggleYolo() {
+  yoloEnabled.value = !yoloEnabled.value
+  localStorage.setItem('vermes-yolo-default', yoloEnabled.value ? 'true' : 'false')
+  // 同步到后端 config
+  try {
+    await fetch('/api/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvals: { yolo_default: yoloEnabled.value } }),
+    })
+  } catch (e) { console.error('[Config] Failed to sync yolo:', e) }
+}
+
 // ── 缓存监控 ──
 const cacheMetrics = ref(null)
 const cacheRefreshing = ref(false)
@@ -558,6 +573,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
     <!-- Tab 栏 -->
     <div class="px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-0">
       <button @click="activeTab = 'providers'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'providers' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">提供商</button>
+      <button @click="activeTab = 'security'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'security' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔒 安全</button>
       <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
       <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
     </div>
@@ -690,6 +706,22 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             🔄 清除所有本地配置（保留聊天记录）
           </button>
           <p class="text-xs text-gray-400 mt-2 text-center">清除 API Key、模型列表、微信登录状态、试用 Token 等配置历史</p>
+        </div>
+      </div>
+
+      <!-- 安全 -->
+      <div v-if="activeTab === 'security'" class="max-w-2xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">🔒 工具审批</h3>
+          <div class="flex items-center justify-between py-2">
+            <div>
+              <div class="text-sm text-gray-800 dark:text-gray-200">自动批准所有命令 (YOLO 模式)</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">关闭后，Agent 执行危险命令前会弹出审批对话框</div>
+            </div>
+            <button @click="toggleYolo" class="relative inline-flex h-6 w-11 items-center rounded-full transition" :class="yoloEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'">
+              <span class="inline-block h-4 w-4 transform rounded-full bg-white transition" :class="yoloEnabled ? 'translate-x-6' : 'translate-x-1'" />
+            </button>
+          </div>
         </div>
       </div>
 
