@@ -687,8 +687,10 @@ function streamElapsed(startTime) {
          :class="e.is_error
            ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
            : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'">
-      <span>{{ e.is_error ? '💡' : '✨' }}</span>
-      <span>{{ e.message }}</span>
+          <span>{{ e.is_error ? '💡' : '✨' }}</span>
+          <span>{{ e.message }}</span>
+          <span v-if="e.tool_name" class="opacity-60 text-[10px] font-mono">{{ e.tool_name }}</span>
+          <span v-if="e.duration" class="opacity-50 text-[10px]">{{ e.duration }}s</span>
     </div>
   </div>
 
@@ -710,13 +712,14 @@ function streamElapsed(startTime) {
   <Teleport to="body">
     <!-- 成就解锁通知 -->
     <Transition name="achievement-pop">
-      <div v-if="chat.showAchievement" class="fixed top-6 left-1/2 -translate-x-1/2 z-[90]">
+      <div v-if="chat.showAchievement" class="fixed top-6 left-1/2 -translate-x-1/2 z-[90] cursor-pointer" @click="chat.showAchievement = false">
         <div class="bg-gradient-to-r from-amber-400 to-yellow-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
           <span class="text-2xl">🏆</span>
           <div>
             <div class="font-bold text-sm">成就解锁</div>
             <div class="text-xs opacity-90">{{ chat.achievementData?.message }}</div>
           </div>
+          <span class="text-xs opacity-70 ml-2">点击关闭</span>
         </div>
       </div>
     </Transition>

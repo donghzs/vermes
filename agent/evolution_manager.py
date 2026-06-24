@@ -1056,45 +1056,95 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         return None
 
 
-_unlocked_achievements = set()  # track already-unlocked to avoid spam
+_unlocked_achievements = set()  # in-memory cache, backed by DB
+
+
+def _is_achievement_unlocked(key: str) -> bool:
+    """Check if achievement was already unlocked (DB-backed, survives restart)."""
+    if key in _unlocked_achievements:
+        return True
+    try:
+        db_path = get_self_model_db()
+        conn = _get_conn(str(db_path))
+        c = conn.cursor()
+        c.execute(
+            "SELECT COUNT(*) FROM self_model WHERE metric='achievement' AND details=?",
+            (key,)
+        )
+        if c.fetchone()[0] > 0:
+            _unlocked_achievements.add(key)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _persist_achievement(key: str, msg: str) -> None:
+    """Persist achievement unlock to self_model table."""
+    try:
+        db_path = get_self_model_db()
+        conn = _get_conn(str(db_path))
+        conn.execute(
+            "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+            (datetime.now().isoformat(), "achievement", 1.0, key)
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
+def _load_db_achievements() -> list:
+    """Load all unlocked achievements from DB (for fresh process start)."""
+    try:
+        db_path = get_self_model_db()
+        conn = _get_conn(str(db_path))
+        c = conn.cursor()
+        c.execute("SELECT details FROM self_model WHERE metric='achievement'")
+        return [r[0] for r in c.fetchall()]
+    except Exception:
+        return []
 
 
 def _check_evolution_achievements(total: int, success_rate: float, anti_count: int, tool_name: str, is_error: bool) -> Optional[str]:
-    """Check if evolution milestones trigger achievements. Returns achievement msg or None."""
+    """Check if evolution milestones trigger achievements. Returns achievement msg or None.
+    
+    Uses DB-backed check — survives process restarts.
+    """
     key = None
     msg = None
     
     # Milestone achievements
-    if total >= 100 and "100_records" not in _unlocked_achievements:
+    if total >= 100 and not _is_achievement_unlocked("100_records"):
         key = "100_records"
         msg = f"🏆 成就解锁：百次积累 — 已记录 {total} 次工具调用"
-    elif total >= 50 and "50_records" not in _unlocked_achievements:
+    elif total >= 50 and not _is_achievement_unlocked("50_records"):
         key = "50_records"
         msg = f"🏆 成就解锁：初露锋芒 — 已记录 {total} 次工具调用"
-    elif total >= 10 and "10_records" not in _unlocked_achievements:
+    elif total >= 10 and not _is_achievement_unlocked("10_records"):
         key = "10_records"
         msg = f"🏆 成就解锁：第一步 — 已记录 {total} 次工具调用"
     
     # Success rate achievements
-    if success_rate >= 90 and "high_accuracy" not in _unlocked_achievements:
+    if success_rate >= 90 and not _is_achievement_unlocked("high_accuracy"):
         key = "high_accuracy"
         msg = f"🏆 成就解锁：精准执行 — 成功率 {success_rate:.0f}%"
     
     # Anti-pattern achievements
-    if anti_count >= 10 and "anti_pattern_master" not in _unlocked_achievements:
+    if anti_count >= 10 and not _is_achievement_unlocked("anti_pattern_master"):
         key = "anti_pattern_master"
         msg = f"🏆 成就解锁：经验丰富 — 已识别 {anti_count} 个反模式"
-    elif anti_count >= 3 and "anti_pattern_learner" not in _unlocked_achievements:
+    elif anti_count >= 3 and not _is_achievement_unlocked("anti_pattern_learner"):
         key = "anti_pattern_learner"
         msg = f"🏆 成就解锁：善于学习 — 已识别 {anti_count} 个反模式"
     
     # First error achievement
-    if is_error and "first_error" not in _unlocked_achievements:
+    if is_error and not _is_achievement_unlocked("first_error"):
         key = "first_error"
         msg = f"🏆 成就解锁：失败是成功之母 — 首次遇到错误 ({tool_name})"
     
     if key and msg:
         _unlocked_achievements.add(key)
+        _persist_achievement(key, msg)
         logger.info("Achievement: %s", msg)
         return msg
     return None
@@ -1184,7 +1234,7 @@ def get_evolution_status() -> Dict[str, Any]:
             "top_domains": top_domains,
             "role_stats": role_stats,
             "recent_failures": recent_failures,
-            "achievements": list(_unlocked_achievements),
+            "achievements": list(_unlocked_achievements) or _load_db_achievements(),
             "self_model_entries": self_model_count,
             "self_model_snapshots": self_model_snapshots,
             "strategies_count": strategies_count,

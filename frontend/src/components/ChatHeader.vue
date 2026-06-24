@@ -3,6 +3,16 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import HelpGuide from './HelpGuide.vue'
 
+// ── 进化指示器 ──
+const evoStatus = ref(null)
+async function fetchEvoStatus() {
+  try {
+    const r = await fetch('/api/evolution/status')
+    if (r.ok) evoStatus.value = await r.json()
+  } catch { /* 静默 */ }
+}
+onMounted(() => { fetchEvoStatus(); setInterval(fetchEvoStatus, 60000) })
+
 // 默认模型（未同步 provider 时的回退列表）
 const defaultModels = [
   { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
@@ -156,6 +166,13 @@ function closeDropdowns() {
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新 Agent' }}</h2>
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
       <button @click="emit('toggleHistory')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋</button>
+      <!-- 进化指示器 -->
+      <div v-if="evoStatus?.active" @click="chat.toggleSidebar()" 
+           class="flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+           :title="`进化系统: ${evoStatus.total_outcomes} 次调用, 成功率 ${evoStatus.success_rate}%`">
+        <span class="text-xs">🧠</span>
+        <span class="text-[10px] font-mono" :class="evoStatus.success_rate >= 80 ? 'text-green-500' : 'text-yellow-500'">{{ evoStatus.success_rate }}%</span>
+      </div>
       <button @click="showHelp = true" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓</button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">

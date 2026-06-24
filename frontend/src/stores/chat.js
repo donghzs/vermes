@@ -382,7 +382,7 @@ export const useChatStore = defineStore('chat', () => {
           if (evoEvent.message.includes('🏆')) {
             achievementData.value = evoEvent
             showAchievement.value = true
-            setTimeout(() => { showAchievement.value = false }, 4000)
+            // 不再自动消失，用户手动关闭
           }
           scheduleScroll()
         },
