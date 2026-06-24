@@ -128,12 +128,15 @@ const nodeTypeLabel = (nodeType) => {
       <!-- DAG 关系图 -->
       <div v-if="dagData?.edges?.length" class="evo-dag">
         <div class="evo-key mb-1">关联图谱 ({{ dagData.totals?.edges || 0 }} 条边)</div>
-        <div v-for="e in dagData.edges" :key="`${e.source_type}-${e.target_type}-${e.rel_type}`" class="evo-edge">
-          <span class="evo-edge-src">{{ nodeTypeLabel(e.source_type) }}</span>
-          <span class="evo-edge-arrow">→</span>
-          <span class="evo-edge-tgt">{{ nodeTypeLabel(e.target_type) }}</span>
-          <span class="evo-edge-type">{{ edgeTypeLabel(e.rel_type) }}</span>
-          <span class="evo-edge-count">{{ e.count }}</span>
+        <div class="evo-dag-graph">
+          <div v-for="e in dagData.edges" :key="`${e.source_type}-${e.target_type}-${e.rel_type}`" class="evo-dag-row">
+            <span class="evo-node evo-node-src">{{ nodeTypeLabel(e.source_type) }}</span>
+            <span class="evo-link-line"></span>
+            <span class="evo-link-label">{{ edgeTypeLabel(e.rel_type) }}</span>
+            <span class="evo-link-line"></span>
+            <span class="evo-node evo-node-tgt">{{ nodeTypeLabel(e.target_type) }}</span>
+            <span class="evo-edge-count">{{ e.count }}</span>
+          </div>
         </div>
       </div>
       <!-- 热门检索文档 -->
@@ -150,6 +153,24 @@ const nodeTypeLabel = (nodeType) => {
         <div v-for="ap in dagData.anti_patterns" :key="ap.id" class="evo-edge">
           <span class="evo-edge-src">⚠️ {{ ap.pattern }}</span>
           <span class="evo-edge-count">{{ ap.frequency }}次</span>
+        </div>
+      </div>
+      <!-- 策略表现 -->
+      <div v-if="status?.top_strategies?.length" class="evo-dag">
+        <div class="evo-key mb-1">策略表现 ({{ status.strategies_count || 0 }} 个策略)</div>
+        <div v-for="s in status.top_strategies" :key="s[1]" class="evo-edge">
+          <span class="evo-edge-src">📋 {{ s[0] }}</span>
+          <span class="evo-edge-type">{{ (s[2] * 100).toFixed(0) }}%</span>
+          <span class="evo-edge-count">{{ s[3] }}次</span>
+        </div>
+      </div>
+      <!-- 最近失败 -->
+      <div v-if="status?.recent_failures?.length" class="evo-dag">
+        <div class="evo-key mb-1">最近失败</div>
+        <div v-for="f in status.recent_failures" :key="`${f[0]}-${f[1]}`" class="evo-edge">
+          <span class="evo-edge-src">❌ {{ f[0] }}</span>
+          <span class="evo-edge-type">{{ f[1] }}</span>
+          <span class="evo-edge-count">{{ f[2] }}次</span>
         </div>
       </div>
     </div>
@@ -293,5 +314,56 @@ const nodeTypeLabel = (nodeType) => {
   color: #22c55e;
   min-width: 2rem;
   text-align: right;
+}
+/* DAG 图形化 */
+.evo-dag-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.evo-dag-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+}
+.evo-node {
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.evo-node-src {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+.dark .evo-node-src {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+.evo-node-tgt {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+.dark .evo-node-tgt {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+.evo-link-line {
+  flex: 1;
+  min-width: 0.5rem;
+  height: 1px;
+  background: rgba(156, 163, 175, 0.4);
+}
+.dark .evo-link-line {
+  background: rgba(75, 85, 99, 0.6);
+}
+.evo-link-label {
+  font-size: 0.5625rem;
+  color: #9ca3af;
+  background: rgba(34, 197, 94, 0.06);
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
 }
 </style>

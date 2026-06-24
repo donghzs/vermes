@@ -977,11 +977,20 @@ def record_tool_outcome(
                 pass
         
         # ── 成就检查 ──────────────────────────────────────────────
+        # 直接从已写入的数据库查最新计数，避免重复全量查询 get_evolution_status()
+        try:
+            cursor.execute("SELECT COUNT(*), SUM(success) FROM outcomes")
+            _cnt_row = cursor.fetchone()
+            _total_out = _cnt_row[0]
+            _succ_out = _cnt_row[1] or 0
+            _sr = (_succ_out / _total_out * 100) if _total_out > 0 else 0
+            cursor.execute("SELECT COUNT(*) FROM anti_patterns")
+            _ap_cnt = cursor.fetchone()[0]
+        except Exception:
+            _total_out, _sr, _ap_cnt = 0, 0, 0
+
         achievement = _check_evolution_achievements(
-            status.get("total_outcomes", 0) if isinstance(status := get_evolution_status(), dict) else 0,
-            status.get("success_rate", 0) if isinstance(status, dict) else 0,
-            status.get("anti_patterns_count", 0) if isinstance(status, dict) else 0,
-            tool_name, is_error
+            _total_out, round(_sr, 1), _ap_cnt, tool_name, is_error
         )
         
         if achievement:
