@@ -61,6 +61,8 @@ export const useChatStore = defineStore('chat', () => {
   const currentModel = ref(localStorage.getItem('vermes-current-model') || DEFAULT_MODEL_ID)
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || DEFAULT_PROVIDER_ID)
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
+  const searchMode = ref(false)
+  const searchQuery = ref('')
   const uploading = ref(false)
   const showQuotaModal = ref(false)
   const quotaModalType = ref('need_login')
@@ -95,7 +97,12 @@ export const useChatStore = defineStore('chat', () => {
 
   const filteredMessages = computed(() => {
     if (!currentSessionId.value) return []
-    return messages.value.filter(m => m.sessionId === currentSessionId.value)
+    let msgs = messages.value.filter(m => m.sessionId === currentSessionId.value)
+    if (searchMode.value && searchQuery.value.trim()) {
+      const q = searchQuery.value.toLowerCase()
+      msgs = msgs.filter(m => m.content?.toLowerCase().includes(q))
+    }
+    return msgs
   })
 
   // ── 进化签到简报（每日首次启动时注入） ──
@@ -302,9 +309,15 @@ export const useChatStore = defineStore('chat', () => {
         attachments: processedAttachments
       })
       await persistMessages(currentSessionId.value, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+      // 自动生成会话标题（首次消息时）
+      const _session = sessions.value.find(s => s.id === currentSessionId.value)
+      if (_session && (!_session.name || _session.name === '新会话' || _session.name === 'New Session')) {
+        const autoTitle = userContent.trim().slice(0, 30) + (userContent.trim().length > 30 ? '...' : '')
+        _session.name = autoTitle
+        persistSessions(sessions.value, SESSIONS_KEY)
+      }
       // 更新 Agent 最后活跃时间
-      const _s = sessions.value.find(s => s.id === currentSessionId.value)
-      if (_s) _s.lastActive = new Date().toISOString()
+      if (_session) _session.lastActive = new Date().toISOString()
       scheduleScroll()
     }
 
@@ -573,7 +586,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
-    reasoningEffort,
+    reasoningEffort, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionActiveStreamIds, currentActiveStreamId,

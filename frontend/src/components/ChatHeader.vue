@@ -166,6 +166,15 @@ function closeDropdowns() {
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新 Agent' }}</h2>
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
       <button @click="emit('toggleHistory')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋</button>
+      <!-- 消息搜索 -->
+      <div v-if="chat.searchMode" class="flex items-center gap-1">
+        <input v-model="chat.searchQuery" 
+               placeholder="搜索消息…" 
+               class="px-2 py-1 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500 text-gray-800 dark:text-gray-200 placeholder-gray-400 w-40"
+               @keydown.escape="chat.searchMode = false; chat.searchQuery = ''" />
+        <button @click="chat.searchMode = false; chat.searchQuery = ''" class="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+      </div>
+      <button v-else @click="chat.searchMode = true" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="搜索消息 (⌘⇧S)">🔍</button>
       <!-- 进化指示器 -->
       <div v-if="evoStatus?.active" @click="chat.toggleSidebar()" 
            class="flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"

@@ -159,6 +159,23 @@ const _globalKeyHandler = (e) => {
   if (e.key === 'Escape' && chat.loading) {
     chat.stopGeneration()
   }
+  // Cmd/Ctrl + Shift + S → 消息搜索
+  if (mod && e.shiftKey && e.key === 'S') {
+    e.preventDefault()
+    chat.searchMode = !chat.searchMode
+  }
+  // Cmd/Ctrl + Shift + E → 导出当前会话
+  if (mod && e.shiftKey && e.key === 'E') {
+    e.preventDefault()
+    if (chat.currentSessionId) {
+      chat.exportSession(chat.currentSessionId, 'md')
+    }
+  }
+  // Cmd/Ctrl + / → 快速切换模型
+  if (mod && e.key === '/') {
+    e.preventDefault()
+    document.querySelector('[data-model-selector]')?.click()
+  }
 }
 
 onMounted(() => {
