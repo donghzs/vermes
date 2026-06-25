@@ -174,18 +174,27 @@ const md = new MarkdownIt({
   breaks: true,
   linkify: true,
   highlight: function (str, lang) {
+    const lineCount = str.split('\n').length
+    const isLong = lineCount > 20
+    const codeCls = isLong ? ' hljs-long' : ''
+    let codeHtml = ''
     if (lang && hljs.getLanguage(lang)) {
       try {
         const highlighted = hljs.highlight(str, { language: lang }).value
-        return `<pre class="hljs"><code>${highlighted}</code></pre>`
-      } catch (__) {}
+        codeHtml = highlighted
+      } catch (__) {
+        codeHtml = md.utils.escapeHtml(str)
+      }
+    } else {
+      try {
+        const result = hljs.highlightAuto(str, ['javascript', 'python', 'bash', 'json', 'html', 'css'])
+        codeHtml = result.value
+      } catch (__) {
+        codeHtml = md.utils.escapeHtml(str)
+      }
     }
-    // 无语言标记时尝试自动检测
-    try {
-      const result = hljs.highlightAuto(str, ['javascript', 'python', 'bash', 'json', 'html', 'css'])
-      return `<pre class="hljs"><code>${result.value}</code></pre>`
-    } catch (__) {}
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`
+    const toggle = isLong ? `<div class="code-toggle" onclick="this.parentElement.classList.toggle('collapsed')"><span class="code-lang">${lang || 'code'}</span><span class="code-toggle-btn">${lineCount} 行 · 点击折叠/展开</span></div>` : (lang ? `<div class="code-lang-bar"><span class="code-lang">${lang}</span></div>` : '')
+    return `<pre class="hljs${codeCls}">${toggle}<code>${codeHtml}</code></pre>`
   }
 })
 
@@ -763,9 +772,18 @@ function streamElapsed(startTime) {
 .vermes-md :deep(img) { max-width: 100%; max-height: 300px; object-fit: contain; border-radius: 8px; cursor: pointer; margin: 0.3em 0; }
 
 /* P3-4: highlight.js 完整 token 样式（Catppuccin Mocha 配色） */
-.vermes-md :deep(pre.hljs) { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
+.vermes-md :deep(pre.hljs) { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; position: relative; }
 .vermes-md :deep(pre.hljs code) { background: none; padding: 0; color: inherit; font-size: 1em; }
 .dark .vermes-md :deep(pre.hljs) { background: #1e1e2e; }
+/* 代码块语言标签 */
+.vermes-md :deep(.code-lang-bar) { padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.vermes-md :deep(.code-lang) { font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+/* 长代码块折叠 */
+.vermes-md :deep(pre.hljs-long) { padding-top: 0; }
+.vermes-md :deep(.code-toggle) { display: flex; justify-content: space-between; align-items: center; padding: 8px 0 6px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; user-select: none; }
+.vermes-md :deep(.code-toggle-btn) { font-size: 0.75em; color: #6cb6ff; }
+.vermes-md :deep(pre.hljs-long.collapsed code) { display: none; }
+.vermes-md :deep(pre.hljs-long.collapsed) { padding-bottom: 8px; }
 /* 关键字/控制流 */
 .vermes-md :deep(.hljs-keyword) { color: #c678dd; }
 .vermes-md :deep(.hljs-selector-tag) { color: #c678dd; }
