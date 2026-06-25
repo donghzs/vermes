@@ -1470,6 +1470,67 @@ async def rag_delete(doc_id: int):
         return {"error": str(e), "deleted": False}
 
 
+async def mcp_list_servers():
+    """List all configured MCP servers."""
+    try:
+        from hermes_cli.mcp_config import _get_mcp_servers
+        servers = _get_mcp_servers()
+        # Strip sensitive env values for listing
+        safe = {}
+        for name, cfg in servers.items():
+            safe_cfg = dict(cfg)
+            if "env" in safe_cfg and isinstance(safe_cfg["env"], dict):
+                safe_cfg["env"] = {k: "***" if v else "" for k, v in safe_cfg["env"].items()}
+            safe[name] = safe_cfg
+        return {"servers": safe, "count": len(safe)}
+    except Exception as e:
+        return {"error": str(e), "servers": []}
+
+
+async def mcp_add_server(request: Request):
+    """Add or update an MCP server configuration."""
+    try:
+        body = await request.json()
+        name = body.get("name", "").strip()
+        if not name:
+            return {"error": "name is required"}
+        from hermes_cli.mcp_config import _save_mcp_server
+        server_config = {"command": body.get("command", ""), "args": body.get("args", [])}
+        if body.get("env"):
+            server_config["env"] = body.get("env")
+        _save_mcp_server(name, server_config)
+        return {"saved": True, "name": name}
+    except Exception as e:
+        return {"error": str(e), "saved": False}
+
+
+async def mcp_remove_server(name: str):
+    """Remove an MCP server from configuration."""
+    try:
+        from hermes_cli.mcp_config import _remove_mcp_server
+        removed = _remove_mcp_server(name)
+        return {"removed": removed, "name": name}
+    except Exception as e:
+        return {"error": str(e), "removed": False}
+
+
+async def mcp_test_server(request: Request):
+    """Test connection to an MCP server."""
+    try:
+        body = await request.json()
+        name = body.get("name", "").strip()
+        if not name:
+            return {"error": "name is required"}
+        from hermes_cli.mcp_config import _get_mcp_servers, _probe_single_server
+        servers = _get_mcp_servers()
+        if name not in servers:
+            return {"error": f"Server '{name}' not found"}
+        ok, msg, tools = _probe_single_server(name, servers[name])
+        return {"ok": ok, "message": msg, "tools": tools or []}
+    except Exception as e:
+        return {"error": str(e), "ok": False}
+
+
 async def approve_command(request: Request):
     """Handle tool approval/deny from frontend.
 
@@ -1573,6 +1634,30 @@ def register_to(app):
         cache_metrics,
         methods=["GET"],
         name="cache_metrics",
+    )
+    app.add_api_route(
+        "/api/mcp/servers",
+        mcp_list_servers,
+        methods=["GET"],
+        name="mcp_list_servers",
+    )
+    app.add_api_route(
+        "/api/mcp/servers",
+        mcp_add_server,
+        methods=["POST"],
+        name="mcp_add_server",
+    )
+    app.add_api_route(
+        "/api/mcp/servers/{name}",
+        mcp_remove_server,
+        methods=["DELETE"],
+        name="mcp_remove_server",
+    )
+    app.add_api_route(
+        "/api/mcp/test",
+        mcp_test_server,
+        methods=["POST"],
+        name="mcp_test_server",
     )
     app.add_api_route(
         "/api/approve",

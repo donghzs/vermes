@@ -467,6 +467,18 @@ const api = {
     return this.del(`/rag/delete/${docId}`)
   },
 
+  // ── MCP Server 管理 ──
+  mcpListServers() { return this.get('/mcp/servers') },
+  mcpAddServer(name, command, args = [], env = {}) {
+    return this.post('/mcp/servers', { name, command, args, env })
+  },
+  mcpRemoveServer(name) {
+    return this.del(`/mcp/servers/${name}`)
+  },
+  mcpTestServer(name) {
+    return this.post('/mcp/test', { name })
+  },
+
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
 }

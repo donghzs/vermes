@@ -6,6 +6,7 @@ import { toast } from '../utils/toast'
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
+import MCPManager from './MCPManager.vue'
 
 const chat = useChatStore()
 const router = useRouter()
@@ -189,6 +190,7 @@ function handleDelete(id) {
 const showTemplateMenu = ref(false)
 const showCustomPrompt = ref(false)
 const showKnowledgeBase = ref(false)
+const showMCPManager = ref(false)
 const customPromptInput = ref('')
 const customPromptRef = ref(null)
 
@@ -455,6 +457,9 @@ async function handleImportFile(e) {
         <button @click="showKnowledgeBase = !showKnowledgeBase" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="知识库">
           📚
         </button>
+        <button @click="showMCPManager = !showMCPManager" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="MCP 服务">
+          🔌
+        </button>
         <button @click="chat.toggleTheme()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
           {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
         </button>
@@ -462,6 +467,10 @@ async function handleImportFile(e) {
       <!-- 知识库面板 -->
       <div v-if="showKnowledgeBase" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
         <KnowledgeBase />
+      </div>
+      <!-- MCP 管理面板 -->
+      <div v-if="showMCPManager" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
+        <MCPManager />
       </div>
       <!-- 进化系统面板 -->
       <div class="shrink-0">

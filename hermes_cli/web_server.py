@@ -286,6 +286,10 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/rag/documents",
     "/api/rag/delete/{doc_id}",
     "/api/rag/search",
+    # MCP Server 管理（前端 Settings 页配置）
+    "/api/mcp/servers",
+    "/api/mcp/servers/{name}",
+    "/api/mcp/test",
     # 后台子 Agent 状态查询
     "/api/delegate/status/{task_id}",
     # 停止生成（前端 SSE 中断）
