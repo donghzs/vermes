@@ -280,6 +280,11 @@ const api = {
     return resp.json()
   },
 
+  async del(path) {
+    const resp = await request(path, { method: 'DELETE' })
+    return resp.json()
+  },
+
   // 会话
   getSessions() { return this.get('/sessions') },
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
@@ -444,6 +449,23 @@ const api = {
   // 配置
   getConfig() { return this.get('/config') },
   getModels() { return this.get('/models') },
+
+  // ── RAG 知识库 ──
+  ragListDocuments() { return this.get('/rag/documents') },
+  ragGetChunks(docId) { return this.get(`/rag/chunks/${docId}`) },
+  ragStats() { return this.get('/rag/stats') },
+  ragSearch(query, limit = 5) {
+    return this.post('/rag/search', { query, limit })
+  },
+  ragIngestFile(filePath) {
+    return this.post('/rag/ingest', { file_path: filePath })
+  },
+  ragIngestUpload(filename, contentB64, fileType = '') {
+    return this.post('/rag/ingest', { filename, content: contentB64, file_type: fileType })
+  },
+  ragDelete(docId) {
+    return this.del(`/rag/delete/${docId}`)
+  },
 
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
