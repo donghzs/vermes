@@ -479,6 +479,13 @@ const api = {
     return this.post('/mcp/test', { name })
   },
 
+  // ── Skills 管理 ──
+  getSkills() { return this.get('/skills') },
+  toggleSkill(name, enabled) {
+    return request('/skills/toggle', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, enabled }) }).then(r => r.json())
+  },
+  getToolsets() { return this.get('/tools/toolsets') },
+
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
 }

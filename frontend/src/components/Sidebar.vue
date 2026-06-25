@@ -7,6 +7,7 @@ import { loadMessagesFromIDB } from '../stores/chat-storage'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 import MCPManager from './MCPManager.vue'
+import SkillManager from './SkillManager.vue'
 
 const chat = useChatStore()
 const router = useRouter()
@@ -191,6 +192,7 @@ const showTemplateMenu = ref(false)
 const showCustomPrompt = ref(false)
 const showKnowledgeBase = ref(false)
 const showMCPManager = ref(false)
+const showSkillManager = ref(false)
 const customPromptInput = ref('')
 const customPromptRef = ref(null)
 
@@ -447,21 +449,24 @@ async function handleImportFile(e) {
       </div>
 
       <!-- 底部工具栏 -->
-      <div class="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 shrink-0">
-        <button @click="goStudio()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
+      <div class="p-3 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 shrink-0">
+        <button @click="goStudio()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
           🎨
         </button>
-        <button @click="goSettings()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
+        <button @click="goSettings()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
           ⚙
         </button>
-        <button @click="showKnowledgeBase = !showKnowledgeBase" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="知识库">
+        <button @click="chat.toggleTheme()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
+          {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
+        </button>
+        <button @click="showKnowledgeBase = !showKnowledgeBase" class="px-3 py-2 rounded-lg text-sm transition" :class="showKnowledgeBase ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="知识库">
           📚
         </button>
-        <button @click="showMCPManager = !showMCPManager" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="MCP 服务">
+        <button @click="showMCPManager = !showMCPManager" class="px-3 py-2 rounded-lg text-sm transition" :class="showMCPManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="MCP 服务">
           🔌
         </button>
-        <button @click="chat.toggleTheme()" class="flex-1 px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
-          {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
+        <button @click="showSkillManager = !showSkillManager" class="px-3 py-2 rounded-lg text-sm transition" :class="showSkillManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="技能管理">
+          🧩
         </button>
       </div>
       <!-- 知识库面板 -->
@@ -471,6 +476,10 @@ async function handleImportFile(e) {
       <!-- MCP 管理面板 -->
       <div v-if="showMCPManager" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
         <MCPManager />
+      </div>
+      <!-- 技能管理面板 -->
+      <div v-if="showSkillManager" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
+        <SkillManager />
       </div>
       <!-- 进化系统面板 -->
       <div class="shrink-0">
