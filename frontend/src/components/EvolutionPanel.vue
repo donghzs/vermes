@@ -6,6 +6,7 @@ const loading = ref(true)
 const expanded = ref(false)
 const achievements = ref([])
 const dagData = ref(null)
+const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详情
 
 async function fetchStatus() {
   try {
@@ -77,11 +78,19 @@ const nodeTypeLabel = (nodeType) => {
 </script>
 
 <template>
-  <div v-if="!loading && status?.active" class="evolution-panel">
+  <!-- 微型指示器模式（默认）：仅一行小字 -->
+  <div v-if="!loading && status?.active && collapsed" class="evolution-mini" @click="collapsed = false">
+    <span class="evo-mini-icon">🧠</span>
+    <span class="evo-mini-text">{{ status.total_outcomes || 0 }} 次 · {{ status.success_rate || 0 }}%</span>
+    <span class="evo-mini-expand">▶</span>
+  </div>
+  <!-- 完整面板模式（点击展开） -->
+  <div v-if="!loading && status?.active && !collapsed" class="evolution-panel">
     <div class="evo-header" @click="expanded = !expanded">
       <span class="evo-icon">🧠</span>
       <span class="evo-title">进化系统</span>
       <span class="evo-expand">{{ expanded ? '▼' : '▶' }}</span>
+      <span class="evo-collapse" @click.stop="collapsed = true">收起</span>
     </div>
     <div class="evo-grid">
       <div class="evo-card">
@@ -178,6 +187,38 @@ const nodeTypeLabel = (nodeType) => {
 </template>
 
 <style scoped>
+/* 微型指示器 */
+.evolution-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0.75rem 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  transition: background 0.15s;
+}
+.evolution-mini:hover {
+  background: rgba(34, 197, 94, 0.06);
+}
+.dark .evolution-mini:hover {
+  background: rgba(34, 197, 94, 0.1);
+}
+.evo-mini-icon { font-size: 0.75rem; }
+.evo-mini-text {
+  color: #6b7280;
+  font-weight: 500;
+}
+.dark .evo-mini-text { color: #9ca3af; }
+.evo-mini-expand {
+  margin-left: auto;
+  font-size: 0.5625rem;
+  opacity: 0.6;
+}
+/* 完整面板 */
 .evolution-panel {
   margin: 0 0.75rem 0.75rem;
   padding: 0.625rem;
@@ -208,6 +249,17 @@ const nodeTypeLabel = (nodeType) => {
   margin-left: auto;
   font-size: 0.625rem;
   color: #9ca3af;
+}
+.evo-collapse {
+  font-size: 0.5625rem;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+  transition: background 0.15s;
+}
+.evo-collapse:hover {
+  background: rgba(156, 163, 175, 0.15);
 }
 .evo-grid {
   display: grid;

@@ -393,11 +393,23 @@ export const useChatStore = defineStore('chat', () => {
             timestamp: Date.now(),
           }
           evolutionEvents.value.push(evoEvent)
-          // 如果是成就解锁（消息含🏆），弹出通知
+          // 限制进化事件列表最多 5 条，避免堆积
+          if (evolutionEvents.value.length > 5) {
+            evolutionEvents.value = evolutionEvents.value.slice(-5)
+          }
+          // 如果是成就解锁（消息含🏆），弹出通知（5秒自动消失）
           if (evoEvent.message.includes('🏆')) {
             achievementData.value = evoEvent
             showAchievement.value = true
-            // 不再自动消失，用户手动关闭
+            // 5 秒后自动消失，避免长期遮挡
+            setTimeout(() => { showAchievement.value = false }, 5000)
+          }
+          // 非成就的进化事件 8 秒后从列表移除（保持界面干净）
+          if (!evoEvent.message.includes('🏆')) {
+            setTimeout(() => {
+              const idx = evolutionEvents.value.findIndex(e => e.id === evoEvent.id)
+              if (idx !== -1) evolutionEvents.value.splice(idx, 1)
+            }, 8000)
           }
           scheduleScroll()
         },

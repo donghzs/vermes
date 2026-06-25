@@ -689,17 +689,16 @@ function streamElapsed(startTime) {
     </div>
   </div>
 
-  <!-- 进化事件（工具调用后的成长反馈） -->
-  <div v-if="chat.evolutionEvents?.length > 0" class="px-4 py-1">
-    <div v-for="e in chat.evolutionEvents.slice(-3)" :key="e.id"
-         class="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg animate-fade-in"
+  <!-- 进化事件（工具调用后的成长反馈，仅显示最新1条） -->
+  <div v-if="chat.evolutionEvents?.length > 0" class="px-4 py-0.5">
+    <div v-for="e in chat.evolutionEvents.slice(-1)" :key="e.id"
+         class="text-[11px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg animate-fade-in opacity-70 hover:opacity-100 transition-opacity"
          :class="e.is_error
            ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
            : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'">
           <span>{{ e.is_error ? '💡' : '✨' }}</span>
-          <span>{{ e.message }}</span>
-          <span v-if="e.tool_name" class="opacity-60 text-[10px] font-mono">{{ e.tool_name }}</span>
-          <span v-if="e.duration" class="opacity-50 text-[10px]">{{ e.duration }}s</span>
+          <span class="truncate max-w-[280px]">{{ e.message }}</span>
+          <span v-if="e.tool_name" class="opacity-50 text-[10px] font-mono">{{ e.tool_name }}</span>
     </div>
   </div>
 
