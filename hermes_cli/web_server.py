@@ -2708,6 +2708,15 @@ blueprints.status.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 
+# ── ScholarForge 论文写作模块（独立隔离，不影响原有链路） ──
+try:
+    from hermes_cli.scholarforge import blueprint as scholarforge_bp
+
+    scholarforge_bp.register_to(app)
+    logger.info("[ScholarForge] Blueprint registered successfully")
+except Exception as e:
+    logger.warning(f"[ScholarForge] Blueprint registration skipped: {e}")
+
 # ── /health 端点：Electron 后端就绪检测 ──
 @app.get("/health")
 async def health_check():
