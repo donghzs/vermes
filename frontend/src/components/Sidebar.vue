@@ -454,8 +454,9 @@ async function handleImportFile(e) {
         <button @click="goStudio()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
           🎨
         </button>
-        <button @click="goScholarForge()" class="px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/scholarforge' ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作 ScholarForge">
-          ✍️
+        <button @click="goScholarForge()" class="px-3 py-2 rounded-lg text-sm transition flex flex-col items-center leading-tight" :class="$route.path === '/scholarforge' ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作 ScholarForge">
+          <span class="text-xs">✍️</span>
+          <span class="text-[10px]">论文</span>
         </button>
         <button @click="goSettings()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
           ⚙
