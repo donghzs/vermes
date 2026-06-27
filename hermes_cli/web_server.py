@@ -298,6 +298,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/sessions",
     # 缓存性能指标
     "/api/cache/metrics",
+    # ScholarForge 论文写作（独立模块）
+    "/api/scholar",
 })
 
 

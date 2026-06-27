@@ -212,6 +212,64 @@ def register_to(app):
     @app.get("/api/scholar/sources")
     async def list_sources():
         """列出可用文献搜索源"""
-        from hermes_cli.scholarforge.search import get_available_sources
+        from hermes_cli.scholarforge.search import get_available_sources, get_paid_source_configs
 
-        return {"sources": get_available_sources()}
+        free_sources = get_available_sources()
+        paid_sources = await get_paid_source_configs()
+        return {
+            "free_sources": free_sources,
+            "paid_sources": paid_sources,
+        }
+
+    @app.post("/api/scholar/sources/activate")
+    async def activate_paid_source(req: dict):
+        """激活付费文献源（用户提供 API Key）"""
+        source_name = req.get("source")
+        api_key = req.get("api_key")
+        if not source_name or not api_key:
+            raise HTTPException(400, "source 和 api_key 必填")
+
+        from hermes_cli.scholarforge.search import activate_paid_source
+
+        ok = await activate_paid_source(source_name, api_key)
+        if not ok:
+            return {"status": "error", "message": f"来源 '{source_name}' 激活失败（不支持或验证不通过）"}
+        return {"status": "ok", "source": source_name}
+
+    @app.get("/api/scholar/export")
+    async def export_paper(
+        project_id: str = "default",
+        format: str = "markdown",
+        title: str = "未命名论文"
+    ):
+        """导出论文为 Markdown 或 BibTeX"""
+        ctx = _get_ctx(project_id)
+        content = ctx.draft or ""
+        papers = ctx.papers or []
+
+        if format == "bibtex":
+            from hermes_cli.scholarforge.export import format_export_bibtex
+            return {
+                "format": "bibtex",
+                "content": format_export_bibtex(papers),
+                "count": len(papers),
+            }
+        if format == "references" or format == "bib":
+            from hermes_cli.scholarforge.export import extract_references, format_export_bibtex
+            refs = extract_references(content)
+            all_papers = list(papers) + [
+                type('Paper', (), {'title': r.title, 'authors': r.authors, 'year': r.year, 'venue': r.venue, 'doi': getattr(r, 'doi', ''), 'url': ''})()
+                for r in refs
+            ]
+            return {
+                "format": format,
+                "references_yaml": [{'title': r.title, 'authors': r.authors, 'year': r.year, 'venue': r.venue} for r in refs],
+                "bibtex": format_export_bibtex(all_papers),
+                "count": len(all_papers),
+            }
+        else:
+            from hermes_cli.scholarforge.export import format_export_markdown
+            return {
+                "format": "markdown",
+                "content": format_export_markdown(title, content, papers),
+            }

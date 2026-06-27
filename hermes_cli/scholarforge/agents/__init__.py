@@ -21,7 +21,50 @@ from enum import Enum
 
 from ..search import PaperResult, search_papers
 
+try:
+    from rapidfuzz import fuzz as _fuzz
+except ImportError:
+    _fuzz = None
+
 logger = logging.getLogger("scholarforge.agent")
+
+
+def _validate_citation_refs(text: str, papers: list) -> list[str]:
+    """扫描正文中的 [n] 引用，验证是否对应真实文献。
+    返回警告列表供前端展示。"""
+    refs = re.findall(r'\[(\d+)\]', text)
+    max_idx = len(papers)
+    warnings = []
+    seen = set()
+    for ref in refs:
+        idx = int(ref)
+        if idx < 1 or idx > max_idx:
+            warnings.append(f"[引用 {ref}] 无对应文献（文献池仅 {max_idx} 篇）")
+        elif ref not in seen and idx <= max_idx:
+            p = papers[idx - 1]
+            seen.add(ref)
+    return warnings
+
+
+def _fuzzy_match_title(candidate: str, papers: list) -> int | None:
+    """用模糊匹配找到最接近的文献 index（1-based），未找到返回 None"""
+    if not papers or not candidate:
+        return None
+    best_score = 0
+    best_idx = None
+    for i, p in enumerate(papers):
+        title = getattr(p, 'title', '')
+        if not title:
+            continue
+        if _fuzz is not None:
+            score = _fuzz.token_sort_ratio(candidate.lower()[:80], title.lower()[:80])
+        else:
+            # fallback: simple substring
+            score = 100 if candidate.lower()[:30] in title.lower() else 0
+        if score > best_score and score >= 60:
+            best_score = score
+            best_idx = i + 1
+    return best_idx
 
 
 class EventType(str, Enum):
@@ -220,13 +263,19 @@ class LiteratureAgent(BaseAgent):
 1. 按主题分类组织（至少 2-3 个主题类别）
 2. 分析各研究的方法论特点
 3. 指出现有研究的不足和研究空白
-4. 使用学术引用格式 [1] [2] 引用文献
-5. 在末尾列出所有参考文献
+4. 使用学术引用格式 [1] [2] 引用文献，**只引用上方给出的文献**，不要编造
+5. 每个引用必须对应真实文献，如文献[1]对应上方第1篇
+6. 在末尾列出所有参考文献
 
 请用学术规范语言，2000-3000 字。"""
 
         response = await self.llm(review_prompt)
-        yield {"type": "content", "text": response}
+        validate_warnings = _validate_citation_refs(response, list(all_papers.values()))
+        if validate_warnings:
+            warn_text = "\n\n---\n⚠️ **引用验证警告**：\n" + "\n".join(f"- {w}" for w in validate_warnings)
+            response += warn_text
+            yield {"type": "content", "text": warn_text}
+        yield {"type": "content", "text": "\n\n" + response}
         yield {"type": "done", "message": f"文献综述完成 ({len(all_papers)}篇)"}
 
 
@@ -304,6 +353,9 @@ class WritingAgent(BaseAgent):
 请完成以上写作任务。"""
 
         response = await self.llm(prompt)
+        ref_warnings = _validate_citation_refs(response, self.ctx.papers)
+        if ref_warnings:
+            yield {"type": "warning", "message": "\n".join(ref_warnings)}
         yield {"type": "content", "text": response}
         yield {"type": "done", "message": "写作完成"}
 

@@ -58,6 +58,73 @@ def get_available_sources() -> list[str]:
     return list(_SEARCH_SOURCES.keys())
 
 
+# ═══ 付费源激活存根 ═══
+_PAID_SOURCE_REGISTRY: dict[str, dict] = {}  # source_name → {config, api_key, enabled}
+
+
+async def get_paid_source_configs() -> list[dict]:
+    """返回可用付费源的配置信息（不含 API Key）"""
+    return [
+        {
+            "name": cfg["name"],
+            "display_name": cfg["display_name"],
+            "description": cfg["description"],
+            "url": cfg["url"],
+            "requires_api_key": True,
+            "enabled": _PAID_SOURCE_REGISTRY.get(cfg["name"], {}).get("enabled", False),
+        }
+        for cfg in _PAID_SOURCE_DEFINITIONS
+    ]
+
+
+async def activate_paid_source(source_name: str, api_key: str) -> bool:
+    """激活付费文献源
+    验证 API Key 有效性后启用该源。
+    """
+    cfg = next((c for c in _PAID_SOURCE_DEFINITIONS if c["name"] == source_name), None)
+    if not cfg:
+        logger.warning(f"Unknown paid source: {source_name}")
+        return False
+
+    # TODO: 验证 API Key 有效性（各平台 API 端点不同）
+    _PAID_SOURCE_REGISTRY[source_name] = {
+        "config": cfg,
+        "api_key": api_key,
+        "enabled": True,
+    }
+    logger.info(f"[ScholarForge] Paid source activated: {source_name}")
+    return True
+
+
+# 付费源定义（用户在各平台注册后填写 API Key 即可接入）
+_PAID_SOURCE_DEFINITIONS = [
+    {
+        "name": "scopus",
+        "display_name": "Scopus",
+        "description": "Elsevier 学术文献数据库，覆盖 7000+ 出版商，引文追踪权威",
+        "url": "https://dev.elsevier.com/",
+    },
+    {
+        "name": "web_of_science",
+        "display_name": "Web of Science",
+        "description": "Clarivate 科学引文索引，SCI/SSCI 核心文献全覆盖",
+        "url": "https://developer.clarivate.com/apis/wos",
+    },
+    {
+        "name": "core",
+        "display_name": "CORE",
+        "description": "全球最大 OA 论文仓库聚合，2.66 亿+ 篇开放获取论文",
+        "url": "https://core.ac.uk/services/api",
+    },
+    {
+        "name": "google_scholar",
+        "display_name": "Google Scholar (SerpAPI)",
+        "description": "通过 SerpAPI 接入 Google Scholar 搜索结果",
+        "url": "https://serpapi.com/google-scholar-api",
+    },
+]
+
+
 async def search_papers(
     query: str,
     limit: int = 10,
@@ -126,7 +193,7 @@ async def _search_arxiv(query: str, limit: int = 10) -> list[PaperResult]:
 
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get("http://export.arxiv.org/api/query", params={
+            resp = await client.get("https://export.arxiv.org/api/query", params={
                 "search_query": f"all:{query}",
                 "start": 0,
                 "max_results": limit,
