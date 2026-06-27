@@ -14,6 +14,7 @@ const router = useRouter()
 
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
+function goScholarForge() { router.push('/scholarforge') }
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -452,6 +453,9 @@ async function handleImportFile(e) {
       <div class="p-3 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 shrink-0">
         <button @click="goStudio()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
           🎨
+        </button>
+        <button @click="goScholarForge()" class="px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/scholarforge' ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作 ScholarForge">
+          ✍️
         </button>
         <button @click="goSettings()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
           ⚙

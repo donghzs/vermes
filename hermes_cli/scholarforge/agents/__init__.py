@@ -1,6 +1,14 @@
 """
 ScholarForge Agent 引擎 — 论文写作 5 Agent + STORM Pipeline
 完全独立于 Vermes 核心，通过 Blueprint 注册
+
+SSE 事件格式（与前端 Writer.vue handleSSE 一致）：
+  {"type":"thinking", "message":"..."}    事件日志（右侧面板）
+  {"type":"searching", "message":"..."}   搜索状态
+  {"type":"writing", "message":"..."}     写作状态
+  {"type":"citation", "paper":{...}}      文献引用
+  {"type":"content", "text":"..."}        正文内容（追加到 streamingText）
+  {"type":"done", "message":"..."}        当前 Agent 完成
 """
 import asyncio
 import json
@@ -128,7 +136,7 @@ class TopicAgent(BaseAgent):
     prompt_hint = "描述你的研究方向，AI 分析可行性和创新性..."
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
-        yield {"type": "thinking", "data": {"message": "分析研究选题..."}}
+        yield {"type": "thinking", "message": "分析研究选题..."}
         self.ctx.topic = user_input
 
         prompt = f"""你是一个学术研究方法论专家。用户的论文选题是：
@@ -147,7 +155,7 @@ class TopicAgent(BaseAgent):
 
         response = await self.llm(prompt)
         yield {"type": "content", "text": response}
-        yield {"type": "done"}
+        yield {"type": "done", "message": "选题分析完成"}
 
 
 class LiteratureAgent(BaseAgent):
@@ -160,7 +168,7 @@ class LiteratureAgent(BaseAgent):
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
         # Step 1: 提取关键词
-        yield {"type": "thinking", "data": {"message": "分析检索关键词..."}}
+        yield {"type": "thinking", "message": "分析检索关键词..."}
 
         kw_prompt = f"""从以下研究主题提取 3-5 个核心检索关键词（英文），用逗号分隔：
 
@@ -171,12 +179,11 @@ class LiteratureAgent(BaseAgent):
             keywords = [user_input]
 
         keywords = keywords[:3]  # 限制最多 3 个关键词
-        yield {"type": "thinking", "data": {"message": f"检索关键词：{', '.join(keywords)}"}}
+        yield {"type": "searching", "message": f"检索关键词：{', '.join(keywords)}"}
 
         # Step 2: 多源搜索
         all_papers: dict[str, PaperResult] = {}
         for kw in keywords:
-            yield {"type": "searching", "data": {"keyword": kw}}
             async for paper in search_papers(kw, limit=5):
                 if paper.paper_id not in all_papers:
                     all_papers[paper.paper_id] = paper
@@ -188,10 +195,14 @@ class LiteratureAgent(BaseAgent):
                     ))
                     yield {"type": "citation", "paper": paper.to_dict()}
 
-        yield {"type": "thinking", "data": {"message": f"已收集 {len(all_papers)} 篇文献"}}
+        yield {"type": "searching", "message": f"已收集 {len(all_papers)} 篇文献"}
+
+        if not all_papers:
+            yield {"type": "done", "message": "未检索到相关文献"}
+            return
 
         # Step 3: 生成文献综述
-        yield {"type": "writing", "data": {"message": "生成文献综述..."}}
+        yield {"type": "writing", "message": "生成文献综述..."}
 
         papers_text = "\n\n".join([
             f"[{i+1}] {p.title}\n作者：{', '.join(p.authors[:3])}\n{p.year} · {p.venue}\n摘要：{p.abstract}"
@@ -216,7 +227,7 @@ class LiteratureAgent(BaseAgent):
 
         response = await self.llm(review_prompt)
         yield {"type": "content", "text": response}
-        yield {"type": "done"}
+        yield {"type": "done", "message": f"文献综述完成 ({len(all_papers)}篇)"}
 
 
 class OutlineAgent(BaseAgent):
@@ -228,7 +239,7 @@ class OutlineAgent(BaseAgent):
     prompt_hint = "生成论文大纲..."
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
-        yield {"type": "thinking", "data": {"message": "生成论文大纲..."}}
+        yield {"type": "thinking", "message": "生成论文大纲..."}
 
         context = self.ctx.to_context_text()
 
@@ -261,7 +272,7 @@ class OutlineAgent(BaseAgent):
 
         self.ctx.outline = {"raw": response, "sections": sections}
         yield {"type": "content", "text": response}
-        yield {"type": "done"}
+        yield {"type": "done", "message": f"大纲生成完成 ({len(sections)}章)"}
 
 
 class WritingAgent(BaseAgent):
@@ -273,7 +284,7 @@ class WritingAgent(BaseAgent):
     prompt_hint = "撰写论文章节..."
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
-        yield {"type": "writing", "data": {"message": "开始撰写..."}}
+        yield {"type": "writing", "message": "开始撰写..."}
 
         context = self.ctx.to_context_text()
 
@@ -294,7 +305,7 @@ class WritingAgent(BaseAgent):
 
         response = await self.llm(prompt)
         yield {"type": "content", "text": response}
-        yield {"type": "done"}
+        yield {"type": "done", "message": "写作完成"}
 
 
 class RefinementAgent(BaseAgent):
@@ -306,7 +317,7 @@ class RefinementAgent(BaseAgent):
     prompt_hint = "粘贴需要润色的内容..."
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
-        yield {"type": "thinking", "data": {"message": "审校润色中..."}}
+        yield {"type": "thinking", "message": "审校润色中..."}
 
         prompt = f"""你是中文学术审校专家。请逐段审校以下论文内容，重点关注：
 
@@ -323,7 +334,7 @@ class RefinementAgent(BaseAgent):
 
         response = await self.llm(prompt)
         yield {"type": "content", "text": response}
-        yield {"type": "done"}
+        yield {"type": "done", "message": "润色完成"}
 
 
 # 多视角 Personas（用于 LiteratureAgent 的 STORM 风格检索）
