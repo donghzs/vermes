@@ -1017,9 +1017,43 @@ const exportFormats = [
   { id: 'bibtex', name: 'BibTeX', icon: '📚', desc: '仅导出参考文献' }
 ]
 
-const doExport = () => {
-  console.log('Export as:', exportFormat.value)
+const doExport = async () => {
+  const fmt = exportFormat.value
   showExportPanel.value = false
+
+  // PDF/LaTeX/Word 尚未实现，提示用户
+  if (fmt === 'pdf' || fmt === 'latex' || fmt === 'word') {
+    alert(`📦 ${fmt.toUpperCase()} 导出功能开发中，即将支持。当前请使用 Markdown 或 BibTeX 格式。`)
+    return
+  }
+
+  try {
+    const pid = project.value?.id || 0
+    const params = new URLSearchParams({
+      format: fmt,
+      title: project.value?.title || '未命名论文',
+    })
+    // project_id 可选：持久化项目传 id，内存项目用默认 ctx
+    const r = await fetch(`/api/scholar/export?${params}`)
+    if (!r.ok) {
+      const err = await r.text()
+      alert('导出失败: ' + err)
+      return
+    }
+    const data = await r.json()
+    const ext = fmt === 'bibtex' ? 'bib' : 'md'
+    const filename = `${project.value?.title || '论文'}.${ext}`
+    const blob = new Blob([data.content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('Export error', e)
+    alert('导出失败: ' + e.message)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
