@@ -154,108 +154,7 @@
     <!-- ═══════════════════════════════════════════════════════════════
          项目列表页（无选中项目时显示）
          ═══════════════════════════════════════════════════════════════ -->
-    <div v-if="!hasProject" class="flex-1 overflow-y-auto bg-gradient-to-br from-gray-50 to-green-50 dark:from-gray-900 dark:to-gray-800">
-      <div class="max-w-5xl mx-auto px-8 py-8">
-        <!-- 顶部欢迎 -->
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">📚 ScholarForge 论文写作</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400">每个项目都是独立的工作空间 · 独立上下文与进度</p>
-          </div>
-          <button @click="backToProjectList()"
-            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            新建项目
-          </button>
-        </div>
-
-        <!-- 创建表单（折叠） -->
-        <div v-if="showCreateForm" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-6">
-          <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">创建新论文项目</h2>
-          
-          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">论文题目</label>
-          <input v-model="project.title" placeholder="例：基于深度学习的图像识别算法研究" 
-            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm mb-4 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 dark:text-gray-100"/>
-
-          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">论文类型</label>
-          <div class="grid grid-cols-4 gap-2 mb-5">
-            <button v-for="t in paperTypes" :key="t.id" @click="project.type = t.name; project.targetWords = t.defaultWords"
-              :class="['p-3 border rounded-lg text-left transition-all', project.type === t.name ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300']">
-              <div class="text-xl mb-1">{{ t.icon }}</div>
-              <div class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ t.name }}</div>
-              <div class="text-[10px] text-gray-500 mt-0.5">{{ t.desc }}</div>
-            </button>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <button @click="createProject" :disabled="!project.title?.trim()"
-              class="px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold">
-              🚀 创建并开始
-            </button>
-            <button @click="showCreateForm = false" class="px-4 py-2.5 text-gray-600 hover:text-gray-800 text-sm">取消</button>
-          </div>
-
-          <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-            <span class="text-xs text-gray-400">没思路？试试：</span>
-            <button v-for="(ex, i) in exampleTitles" :key="i" @click="project.title = ex"
-              class="text-xs text-blue-600 hover:text-blue-700 mx-1 hover:underline">{{ ex }}</button>
-          </div>
-        </div>
-
-        <!-- 项目列表 -->
-        <div>
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">所有论文项目 · {{ projects.length }} 个</h2>
-            <span v-if="!showCreateForm && projects.length > 0" @click="showCreateForm = true" 
-              class="text-xs text-green-600 hover:text-green-700 cursor-pointer">+ 新建项目</span>
-          </div>
-          
-          <div v-if="!projects.length" class="bg-white dark:bg-gray-800 rounded-xl p-12 text-center">
-            <div class="text-5xl mb-3">📝</div>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">还没有任何论文项目</p>
-            <button @click="showCreateForm = true" 
-              class="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium">
-              创建第一个项目
-            </button>
-          </div>
-
-          <div v-else class="grid grid-cols-2 gap-3">
-            <div v-for="p in projects" :key="p.id" 
-              @click="switchProject(p)"
-              class="bg-white dark:bg-gray-800 rounded-xl p-4 hover:shadow-lg transition-all cursor-pointer border border-transparent hover:border-green-500 group">
-              <div class="flex items-start justify-between mb-2">
-                <span class="text-2xl">{{ typeIcon(p.paper_type) }}</span>
-                <button @click.stop="deleteProject(p)" 
-                  class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="删除项目">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
-                </button>
-              </div>
-              <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1 line-clamp-2 leading-snug">{{ p.title }}</h3>
-              <div class="flex items-center gap-2 text-[10px] text-gray-500 mb-3">
-                <span class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">{{ p.paper_type }}</span>
-                <span>{{ formatRelativeTime(p.updated_at) }}</span>
-              </div>
-              <!-- 进度条 -->
-              <div class="mb-2">
-                <div class="flex justify-between text-[10px] text-gray-500 mb-1">
-                  <span>{{ p.total_words || 0 }} / {{ p.target_words }} 字</span>
-                  <span>{{ Math.round(((p.total_words || 0) / p.target_words) * 100) }}%</span>
-                </div>
-                <div class="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div class="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full" 
-                    :style="{ width: Math.min(((p.total_words || 0) / p.target_words) * 100, 100) + '%' }"></div>
-                </div>
-              </div>
-              <div class="flex items-center gap-3 text-[10px] text-gray-400">
-                <span>📚 {{ p.literature_count || 0 }} 文献</span>
-                <span>💬 {{ p.message_count || 0 }} 对话</span>
-                <span>📑 {{ p.section_count || 0 }} 章节</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ProjectList v-if="!hasProject" @select-project="onProjectSelected" />
 
     <!-- ═══════════════════════════════════════════════════════════════
          主体三栏布局
@@ -532,6 +431,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import ProjectList from './ProjectList.vue'
 
 const router = useRouter()
 
@@ -546,7 +446,6 @@ const currentProvider = ref('')
 // ═════════════════════════════════════════════════════════════════
 const projects = ref([])
 const project = ref({})
-const showCreateForm = ref(false)
 const showProjectSwitcher = ref(false)
 const projectSwitcherRef = ref(null)
 const isLoadingProject = ref(false)
@@ -1148,42 +1047,12 @@ const switchProject = async (p) => {
   finally { isLoadingProject.value = false }
 }
 
-// 返回项目列表
-const backToProjectList = () => {
-  showProjectSwitcher.value = false
-  showCreateForm.value = !projects.value.length  // 无项目时强制展开
-  project.value = {}
-  outline.value = []
-  sectionContents.value = {}
-  activeSection.value = null
-  currentContent.value = ''
-  literature.value = []
-  aiMessages.value = []
+// 项目选择回调（ProjectList emit）
+const onProjectSelected = (proj) => {
+  switchProject(proj)
 }
 
-// 创建项目
-const createProject = async () => {
-  if (!project.value?.title?.trim()) return
-  try {
-    const r = await fetch('/api/scholar/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: (project.value.title || '').trim(),
-        paper_type: project.value.type || '本科论文',
-        target_words: project.value.targetWords || 8000,
-      }),
-    })
-    if (r.ok) {
-      const proj = await r.json()
-      await loadProjects()
-      await switchProject(proj)
-      showCreateForm.value = false
-    }
-  } catch (e) { console.error('create project', e) }
-}
-
-// 删除项目
+// 删除项目（项目切换器中调用）
 const deleteProject = async (p) => {
   if (!confirm(`确定删除「${p.title}」？该操作不可恢复。`)) return
   try {
@@ -1191,6 +1060,18 @@ const deleteProject = async (p) => {
     if (project.value?.id === p.id) backToProjectList()
     await loadProjects()
   } catch (e) { console.error('delete', e) }
+}
+
+// 返回项目列表
+const backToProjectList = () => {
+  showProjectSwitcher.value = false
+  project.value = {}
+  outline.value = []
+  sectionContents.value = {}
+  activeSection.value = null
+  currentContent.value = ''
+  literature.value = []
+  aiMessages.value = []
 }
 
 // 防抖自动保存
