@@ -176,21 +176,8 @@ async def _make_llm(provider_override: str = None, model_override: str = None):
     if not provider:
         # 自动检测：扫描用户已配置的 provider，用第一个有 Key 的
         from hermes_cli.blueprints.chat import PROVIDERS
-        import yaml, os
-        home = os.path.expanduser("~/.vermes")
-        cfg = {}
-        cfg_path = os.path.join(home, "config.yaml")
-        if os.path.exists(cfg_path):
-            with open(cfg_path, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
-        env_vars = {}
-        env_path = os.path.join(home, ".env")
-        if os.path.exists(env_path):
-            for line in open(env_path).read().splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    env_vars[k.strip()] = v.strip().strip('"').strip("'")
+        from hermes_cli.scholarforge import _load_vermes_config
+        cfg, env_vars = _load_vermes_config()
         cfg_providers = cfg.get("providers", {})
         # 优先用 config.yaml 中 model.provider 指定的
         cfg_model_provider = cfg.get("model", {}).get("provider", "")
@@ -336,9 +323,8 @@ def register_to(app):
             cfg_model = None
             cfg_provider = None
             try:
-                import yaml
-                with open(os.path.expanduser("~/.vermes/config.yaml")) as f:
-                    cfg = yaml.safe_load(f) or {}
+                from hermes_cli.scholarforge import _load_vermes_config
+                cfg, _ = _load_vermes_config()
                 md = cfg.get("model", {}) or {}
                 cfg_model = md.get("default")
                 cfg_provider = md.get("provider")
@@ -738,24 +724,10 @@ def register_to(app):
     async def list_available_providers():
         """列出 Vermes 已配置的所有厂商（供 Agent 模型分配使用）"""
         from hermes_cli.blueprints.chat import PROVIDERS
-        import yaml, os
+        from hermes_cli.scholarforge import _load_vermes_config
         available = []
-        home = os.path.expanduser("~/.vermes")
-        cfg_path = os.path.join(home, "config.yaml")
-        env_path = os.path.join(home, ".env")
-        cfg = {}
-        if os.path.exists(cfg_path):
-            with open(cfg_path, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
+        cfg, env_vars = _load_vermes_config()
         cfg_providers = cfg.get("providers", {})
-        # 读取 .env 中的 Key
-        env_vars = {}
-        if os.path.exists(env_path):
-            for line in open(env_path).read().splitlines():
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    k, v = line.split('=', 1)
-                    env_vars[k.strip()] = v.strip().strip('"').strip("'")
         for key, info in PROVIDERS.items():
             cfg_has = cfg_providers.get(key, {})
             env_key_name = info.get("env_key", "")

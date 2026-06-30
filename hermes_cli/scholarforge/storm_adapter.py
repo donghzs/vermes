@@ -386,9 +386,8 @@ if __name__ == "__main__":
     import asyncio
 
     async def test():
-        import yaml
-        home = os.path.expanduser("~/.vermes")
-        cfg = yaml.safe_load(open(os.path.join(home, "config.yaml")))
+        from hermes_cli.scholarforge import _load_vermes_config
+        cfg, _ = _load_vermes_config()
         agnes_key = cfg.get("providers", {}).get("agnes", {}).get("api_key", "")
 
         adapter = StormAdapter(

@@ -871,6 +871,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import DOMPurify from 'dompurify'
 import ProjectList from './ProjectList.vue'
 
 const router = useRouter()
@@ -1166,7 +1167,7 @@ const renderedContent = computed(() => {
     // 段落
     .replace(/\n\n/g, '</p><p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed my-2">')
   
-  return '<p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed my-2">' + html + '</p>'
+  return DOMPurify.sanitize('<p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed my-2">' + html + '</p>')
 })
 
 const editor = {
