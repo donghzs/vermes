@@ -8,20 +8,20 @@
     <!-- ═══════════════════════════════════════════════════════════════
          顶部导航栏 — 项目级操作
          ═══════════════════════════════════════════════════════════════ -->
-    <header class="h-12 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 bg-white dark:bg-gray-800 shrink-0">
+    <header class="h-12 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 bg-white dark:bg-gray-800 shrink-0 gap-2">
       <!-- 左侧：项目信息 -->
-      <div class="flex items-center gap-3 flex-1">
+      <div class="flex items-center gap-2 min-w-0 flex-shrink">
         <button @click="$router.push('/')" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
         </button>
         <div class="h-5 w-px bg-gray-200 dark:bg-gray-600"></div>
-        <div class="flex items-center gap-2">
-          <span class="text-lg">📚</span>
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-lg shrink-0">📚</span>
           <div class="relative" ref="projectSwitcherRef">
             <button @click="showProjectSwitcher = !showProjectSwitcher"
-              class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-100">
-              <span class="max-w-[180px] truncate">{{ project.title || '未命名项目' }}</span>
-              <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-100 min-w-0">
+              <span class="max-w-[160px] truncate">{{ project.title || '未命名项目' }}</span>
+              <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <!-- 项目下拉 -->
             <div v-if="showProjectSwitcher" class="absolute left-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 py-1 max-h-96 overflow-y-auto">
@@ -56,11 +56,11 @@
         <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">{{ project.type }}</span>
       </div>
 
-      <!-- 中间：写作阶段 + 模型选择器 (精简版) -->
-      <div class="flex items-center gap-1">
+      <!-- 中间：写作阶段 + 模型选择器 (响应式 — 宽屏显示标签，窄屏仅图标) -->
+      <div class="hidden md:flex items-center gap-1 flex-shrink min-w-0">
         <!-- 阶段指示器 (只显示当前激活) -->
-        <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg px-2 py-1">
-          <span class="text-[10px] text-gray-400 mr-1.5">阶段</span>
+        <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg px-1.5 py-1">
+          <span class="hidden lg:inline text-[10px] text-gray-400 mr-1.5">阶段</span>
           <div class="flex items-center gap-1">
             <button v-for="(stage, idx) in stages" :key="stage.id"
               @click="activeStage = stage.id"
@@ -72,15 +72,15 @@
           </div>
         </div>
         
-        <!-- 当前阶段模型选择器 (只显示当前激活阶段的模型) -->
+        <!-- 当前阶段模型选择器 -->
         <div class="relative agent-dropdown-anchor">
           <button @click.stop="toggleAgentDropdown(activeStage, $event)"
-            class="flex items-center gap-1 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-[11px] hover:border-green-500 transition-colors"
+            class="flex items-center gap-1 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-[11px] hover:border-green-500 transition-colors max-w-[180px]"
             :title="getAgentProviderTitle(activeStage)"
           >
-            <span class="text-gray-400">{{ stages.find(s=>s.id===activeStage)?.name }}</span>
-            <span class="text-gray-600 dark:text-gray-200">{{ agentProviders[activeStage] ? agentProviderLabel(activeStage) : '选模型' }}</span>
-            <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            <span class="hidden lg:inline text-gray-400">{{ stages.find(s=>s.id===activeStage)?.name }}</span>
+            <span class="text-gray-600 dark:text-gray-200 truncate">{{ agentProviders[activeStage] ? agentProviderLabel(activeStage) : '选模型' }}</span>
+            <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
           </button>
           
           <!-- 模型下拉 -->
@@ -105,7 +105,7 @@
       </div>
 
       <!-- 右侧：精简工具栏 -->
-      <div class="flex items-center gap-1.5 flex-1 justify-end">
+      <div class="flex items-center gap-1 flex-shrink-0">
         <!-- 文献 (图标+数字) -->
         <button @click="showLiteraturePanel = !showLiteraturePanel; showAIPanel = false" 
           :class="['p-2 rounded-lg transition-colors relative', showLiteraturePanel ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100']"
@@ -157,15 +157,15 @@
         <div class="h-4 w-px bg-gray-200 mx-1"></div>
         
         <!-- 一键复制富文本 (Phase 1.4 — 粘贴到 Word/飞书/Notion 零格式损失) -->
-        <button @click="copyRichText" class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors" title="复制为富文本，粘贴到 Word/飞书/Notion 保留格式">
+        <button @click="copyRichText" class="p-2 lg:px-2.5 lg:py-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg transition-colors flex items-center justify-center" title="复制为富文本 (Word/飞书/Notion 保留格式)">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-          复制富文本
+          <span class="hidden lg:inline ml-1 text-xs">复制</span>
         </button>
 
         <!-- 导出 -->
-        <button @click="showExportPanel = true" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5">
+        <button @click="showExportPanel = true" class="p-2 lg:px-2.5 lg:py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center shrink-0" title="导出论文">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          导出
+          <span class="hidden lg:inline ml-1 text-xs font-medium">导出</span>
         </button>
       </div>
     </header>
@@ -178,7 +178,7 @@
     <!-- ═══════════════════════════════════════════════════════════════
          主体三栏布局
          ═══════════════════════════════════════════════════════════════ -->
-    <div v-else class="flex-1 flex overflow-hidden">
+    <div v-else class="flex-1 flex overflow-hidden relative">
       
       <!-- ┌─────────────────────────────────────────────────────────────┐
            │ 左栏：大纲导航 (可折叠)
@@ -303,9 +303,9 @@
         </div>
 
         <!-- 编辑器主体 -->
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex overflow-hidden min-w-0">
           <!-- 编辑区 -->
-          <div :class="['flex flex-col', viewMode === 'split' ? 'w-1/2' : viewMode === 'edit' ? 'w-full' : 'hidden']">
+          <div :class="['flex flex-col min-w-[360px] min-w-0', viewMode === 'split' ? 'flex-1' : viewMode === 'edit' ? 'w-full' : 'hidden']">
             <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs">
               <button @click="pasteAndParse" class="flex items-center gap-1 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded hover:bg-green-200 transition-colors">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
@@ -337,7 +337,7 @@
           </div>
           
           <!-- 预览区 -->
-          <div v-if="viewMode !== 'edit'" :class="['border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-900', viewMode === 'split' ? 'w-1/2' : 'w-full']">
+          <div v-if="viewMode !== 'edit'" :class="['border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-900 min-w-[360px]', viewMode === 'split' ? 'flex-1' : 'w-full']">
             <div class="flex-1 overflow-y-auto p-6">
               <div class="max-w-3xl mx-auto prose prose-sm dark:prose-invert" v-html="renderedContent"></div>
             </div>
@@ -383,13 +383,22 @@
       <!-- ┌─────────────────────────────────────────────────────────────┐
            │ 右栏：文献库 / AI 助手 (可折叠)
            └─────────────────────────────────────────────────────────────┘ -->
-      <div :class="['border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col shrink-0 transition-all duration-200', rightCollapsed ? 'w-10' : 'w-80']">
-        <!-- 折叠按钮 -->
-        <button @click="toggleRightBar" class="h-8 border-b border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="面板">
-          <svg :class="['w-4 h-4 transition-transform', rightCollapsed ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" width="18" height="18" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <div v-if="!rightCollapsed && (showLiteraturePanel || showAIPanel || showCitationPanel || showConsensusPanel)"
+        class="absolute right-0 top-12 bottom-0 w-80 max-w-[85vw] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col shadow-2xl z-30">
+        <div class="h-8 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-3 shrink-0">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            {{ showAIPanel ? 'AI 助手' : showLiteraturePanel ? '文献库' : showCitationPanel ? '引用核查' : showConsensusPanel ? '共识度' : '面板' }}
+          </span>
+          <button @click="closeAllRightPanels" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600" title="关闭">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <button @click="toggleRightBar" class="absolute -left-3 top-3 z-10 w-6 h-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 shadow-md transition-colors" title="收起面板">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </button>
         <template v-if="!rightCollapsed">
         
+
         <!-- 事件日志条（可折叠） -->
         <div v-if="events.length" class="border-b border-gray-200 dark:border-gray-700">
           <button @click="showEventLog = !showEventLog" class="w-full px-3 py-1.5 flex items-center justify-between text-[10px] text-gray-400 hover:text-gray-600">
@@ -1726,10 +1735,19 @@ const insertTable = () => {
 const showAIPanel = ref(false)
 const leftCollapsed = ref(false)   // 左栏大纲折叠
 const rightCollapsed = ref(false)  // 右栏文献/AI默认展开
+const closeAllRightPanels = () => {
+  showLiteraturePanel.value = false
+  showAIPanel.value = false
+  showCitationPanel.value = false
+  showConsensusPanel.value = false
+}
+
 const toggleLeftBar = () => { leftCollapsed.value = !leftCollapsed.value }
 const toggleRightBar = () => { 
   rightCollapsed.value = !rightCollapsed.value
-  if (!rightCollapsed.value && !showLiteraturePanel.value && !showAIPanel.value) {
+  if (rightCollapsed.value) {
+    closeAllRightPanels()
+  } else if (!showLiteraturePanel.value && !showAIPanel.value && !showCitationPanel.value && !showConsensusPanel.value) {
     showLiteraturePanel.value = true
   }
 }
