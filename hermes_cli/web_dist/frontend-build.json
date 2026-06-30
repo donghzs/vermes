@@ -1,7 +1,9 @@
 {
-  "version": "2.3.0",
-  "gitHash": "7795b1541",
-  "gitBranch": "feature/scholarforge",
-  "buildTime": "2026-06-30T02:48:19.004Z",
-  "nodeVersion": "v22.22.3"
+  "built_at": "2026-06-30T11:57:17",
+  "files": [
+    "Writer-DTwR7R-c.css",
+    "index-CjBRJOSY.css",
+    "Writer-Ck8t96YV.js",
+    "index-GbKmtO9o.js"
+  ]
 }

@@ -989,3 +989,148 @@ def register_to(app):
         llm_factory = await _make_llm()
         claims = await extract_key_claims(content, llm=llm_factory)
         return {"claims": claims}
+
+    # ═══════════════════════════════════════════════════════════════
+    # P0-2: 查重 + AIGC 检测
+    # ═══════════════════════════════════════════════════════════════
+
+    @app.post("/api/scholar/projects/{pid}/plagcheck")
+    async def api_plagiarism_check(pid: int, req: dict = None):
+        """全量查重 + AIGC 检测，对标 Paperpal(Turnitin) + 千笔AI
+        
+        POST body:
+            content: str — 直接传入的文本（优先）
+            若未传 content，则从项目章节内容拼接
+        
+        返回:
+            overall_similarity: 综合重复率 0~1
+            aigc_overall_ratio: AI痕迹占比 0~1
+            plag_results: 重复段落列表
+            aigc_results: AI痕迹段落列表
+            suggestions: 改进建议
+        """
+        from hermes_cli.scholarforge.plagcheck import full_plagiarism_check
+        from . import database as db
+
+        content = (req or {}).get("content", "").strip()
+        if not content:
+            proj = db.get_project(pid)
+            if not proj:
+                raise HTTPException(404, "项目不存在")
+            content = "\n\n".join(proj.get("contents", {}).values()) or ""
+        if not content.strip():
+            raise HTTPException(400, "论文内容为空")
+
+        try:
+            report = full_plagiarism_check(content, title=(req or {}).get("title", ""))
+            # 序列化 dataclass → dict
+            return {
+                "total_chars": report.total_chars,
+                "total_paragraphs": report.total_paragraphs,
+                "overall_similarity": report.overall_similarity,
+                "aigc_overall_ratio": report.aigc_overall_ratio,
+                "plag_results": [
+                    {"text": r.text, "length": r.length, "score": r.score, "source": r.source}
+                    for r in report.plag_results[:10]
+                ],
+                "aigc_results": [
+                    {"text": r.text, "aigc_probability": r.aigc_probability, "features": r.features}
+                    for r in report.aigc_results[:10]
+                ],
+                "suggestions": report.suggestions,
+            }
+        except Exception as e:
+            logger.error(f"Plagcheck failed: {e}", exc_info=True)
+            raise HTTPException(500, f"查重检测失败: {e}")
+
+    # ═══════════════════════════════════════════════════════════════
+    # P0-3: 逐段/逐节迭代修改
+    # ═══════════════════════════════════════════════════════════════
+
+    @app.post("/api/scholar/projects/{pid}/rewrite-section")
+    async def api_rewrite_section(pid: int, req: dict):
+        """逐段修改 — 对标 Jenni AI / 千笔无限改稿
+        
+        支持多种修改模式：
+            section_key: 目标章节key（必填）
+            instruction: 用户修改指令（选填，如"增加数据支撑""更口语化"）
+            mode: polish / expand / shorten / restructure / add_data / academic / plain
+                  默认 polish（润色）
+            返回 SSE 流式响应
+        """
+        from . import database as db
+        proj = db.get_project(pid)
+        if not proj:
+            raise HTTPException(404, "项目不存在")
+
+        section_key = req.get("section_key", "")
+        instruction = req.get("instruction", "")
+        mode = req.get("mode", "polish")
+        
+        # 从项目章节内容中取当前章节
+        contents = proj.get("contents", {})
+        original_text = contents.get(section_key, "")
+        if not original_text.strip():
+            # fallback: 从 draft 字符串中按 ## 匹配
+            draft = proj.get("draft", "")
+            # 尝试匹配 ## 标题
+            sections = re.split(r'\n(?=## )', draft)
+            for s in sections:
+                if s.strip().startswith(f"## "):
+                    body = s.split("\n", 1)[1] if "\n" in s else ""
+                    if body.strip():
+                        original_text = body.strip()
+                        break
+        if not original_text.strip():
+            raise HTTPException(400, f"章节 {section_key} 内容为空")
+
+        # 修改模式 → prompt 映射
+        mode_prompts = {
+            "polish": "进行学术润色，提升表达严谨性和流畅度，保持原意和长度不变",
+            "expand": "进行扩展论述，增加论据、数据或案例支撑，使内容更充实。可适当增加篇幅",
+            "shorten": "进行精简，删除冗余表述和陈词，保留核心论点和关键证据。压缩至原长度的 60-70%",
+            "restructure": "重组段落结构和逻辑顺序，使论证更清晰有力。可以调整论点顺序、合并或拆分段落",
+            "add_data": "为论述补充具体数据、统计数字或实验结果。如果无法提供真实数据，标注 [需补充数据]",
+            "academic": "将文本改写为更正式、更学术化的表达，增加专业术语使用，提升学术档次",
+            "plain": "将文本改写为更通俗易懂的表达，降低阅读门槛，适合本科课程论文",
+        }
+
+        mode_instruction = mode_prompts.get(mode, mode_prompts["polish"])
+        extra = f"\n\n额外要求：{instruction}" if instruction else ""
+
+        override_prompt = f"""你是中文学术编辑。对以下论文段落{mode_instruction}。{extra}
+
+【重要规则】
+- 直接输出修改后的段落，不要加任何解释和前缀
+- 保持 Markdown 格式
+- 保留原有的引用标记 [n]
+- 不要编造新的文献引用
+
+【原文】
+{original_text}
+
+【修改后】"""
+
+        async def generate():
+            yield _sse({"type": "thinking", "message": f"正在修改章节 ({mode})..."})
+            try:
+                llm = await _make_llm()
+                result = await llm(override_prompt)
+                result = result.strip()
+                # 清理模型可能的自我介绍
+                for noise in ["修改后的段落如下", "以下是修改后的", "改写如下", "输出如下"]:
+                    if result.startswith(noise):
+                        result = result[len(noise):].strip(":： \n")
+                        break
+                yield _sse({"type": "rewrite_done", "section_key": section_key,
+                            "text": result, "mode": mode,
+                            "original_length": len(original_text),
+                            "new_length": len(result)})
+            except Exception as e:
+                yield _sse({"type": "error", "message": str(e)})
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )

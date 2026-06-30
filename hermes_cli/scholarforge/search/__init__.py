@@ -902,65 +902,36 @@ async def _search_serpapi_scholar(query: str, limit: int = 10) -> list[PaperResu
 
 
 async def _search_cnki_gateway(query: str, limit: int = 10) -> list[PaperResult]:
-    """CNKI 知网搜索 — 通过用户自建的 API 网关接入
+    """CNKI 知网搜索 — 多策略自动降级 (P0-1)
     
-    知网无公开 API，需用户自行搭建反向代理/网关。
-    用户填入 gateway_url + api_key 后可用。
-    
-    常见网关方案：
-    - 自建 cnki-spider 微服务（Python Scrapy + FastAPI）
-    - 第三方 API 代理（如 xue.glgoo.net 等）
+    策略优先级：
+    1. 用户自建网关 (CNKI_GATEWAY_URL + CNKI_API_KEY)
+    2. 万方数据 API (WANFANG_API_KEY)
+    3. OpenAlex 中文学术映射 — 免费兜底
     """
-    import httpx
-    entry = _PAID_SOURCE_REGISTRY.get("cnki", {})
-    gateway_url = entry.get("gateway_url", "") or os.environ.get("CNKI_GATEWAY_URL", "")
-    api_key = entry.get("api_key", "") or os.environ.get("CNKI_API_KEY", "")
-    if not gateway_url:
-        return []
-    try:
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{gateway_url.rstrip('/')}/search",
-                json={"keyword": query, "limit": min(limit, 20)},
-                headers=headers, timeout=15,
-            )
-            if resp.status_code != 200:
-                logger.warning(f"[ScholarForge] CNKI gateway returned {resp.status_code}")
-                return []
+    from hermes_cli.scholarforge.cnki_fetcher import search_cnki
 
-        data = resp.json()
+    try:
+        cnki_papers = await search_cnki(query, limit)
         results = []
-        # 兼容两种网关响应格式：
-        # 格式A: {"results": [{"title":..., "authors":..., ...}]}
-        # 格式B: {"data": {"list": [...]}}
-        items = data.get("results") or (data.get("data", {}) or {}).get("list", [])
-        for item in items:
-            title = item.get("title") or item.get("name", "")
-            if not title:
-                continue
-            authors = item.get("authors") or item.get("author", [])
-            if isinstance(authors, str):
-                authors = [a.strip() for a in authors.split(";") if a.strip()]
-            year = str(item.get("year") or item.get("publish_year", ""))
-            abstract = (item.get("abstract") or item.get("summary", "") or "")[:500]
+        for cp in cnki_papers:
             results.append(PaperResult(
-                paper_id=f"cnki:{item.get('id') or item.get('url', '')}",
-                title=title,
-                authors=authors,
-                year=year,
-                venue=item.get("journal") or item.get("source", ""),
-                abstract=abstract,
-                citation_count=item.get("cited_count", 0) or 0,
-                url=item.get("url", "") or item.get("link", ""),
-                source="cnki",
-                doi=item.get("doi", ""),
+                paper_id=f"{cp.source}:{(cp.doi or cp.url or cp.title)[:80]}",
+                title=cp.title,
+                authors=cp.authors,
+                year=cp.year,
+                venue=cp.journal,
+                abstract=cp.abstract,
+                citation_count=cp.cited_count,
+                url=cp.url or f"https://scholar.google.com/scholar?q={cp.title}",
+                source=cp.source,
+                doi=cp.doi,
             ))
+        if results:
+            logger.info(f"[ScholarForge] CNKI multi-strategy: {len(results)} results via {cnki_papers[0].source if cnki_papers else 'unknown'}")
         return results
     except Exception as e:
-        logger.error(f"[ScholarForge] CNKI gateway search failed: {e}")
+        logger.error(f"[ScholarForge] CNKI multi-strategy failed: {e}")
         return []
 
 

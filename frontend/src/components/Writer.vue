@@ -142,6 +142,17 @@
             {{ consensusResults.length }}
           </span>
         </button>
+
+        <!-- 查重 + AIGC 检测 (P0-2) -->
+        <button @click="runPlagcheck" :disabled="plagLoading"
+          :class="['p-2 rounded-lg transition-colors relative', showPlagPanel ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-100']"
+          title="查重 + AIGC 检测">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          <span v-if="plagResult" 
+            :class="['absolute -top-0.5 -right-0.5 px-1 text-white text-[9px] rounded-full flex items-center justify-center', plagResult.overall_similarity > 0.3 ? 'bg-red-500' : plagResult.aigc_overall_ratio > 0.4 ? 'bg-amber-500' : 'bg-green-500']">
+            {{ Math.round(Math.max(plagResult.overall_similarity, plagResult.aigc_overall_ratio) * 100) }}%
+          </span>
+        </button>
         
         <div class="h-4 w-px bg-gray-200 mx-1"></div>
         
@@ -203,6 +214,9 @@
                   <!-- 悬浮操作按钮 -->
                   <button @click.stop="startEditSection(section)" class="hidden group-hover:inline-block p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400" title="重命名">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                  </button>
+                  <button @click.stop="rewriteSection(section.id)" class="hidden group-hover:inline-block p-0.5 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded text-gray-400 hover:text-blue-500" title="AI 修改本章">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                   </button>
                   <button @click.stop="deleteSection(section.id)" class="hidden group-hover:inline-block p-0.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-gray-400 hover:text-red-500" title="删除">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22"/></svg>
@@ -653,6 +667,106 @@
             </div>
           </div>
         </template>
+
+        <!-- P0-2: 查重 + AIGC 检测面板 -->
+        <template v-if="showPlagPanel">
+          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">查重 + AIGC</span>
+            <button @click="runPlagcheck" :disabled="plagLoading"
+              class="px-2 py-0.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
+              <span v-if="plagLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span v-else>🔄</span>
+              检测
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto py-2">
+            <div v-if="!plagResult" class="px-3 py-8 text-center">
+              <div class="text-3xl mb-2">🔍</div>
+              <p class="text-xs text-gray-400">尚未检测</p>
+              <p class="text-[10px] text-gray-400 mt-1">点击上方「检测」按钮进行查重和 AIGC 分析</p>
+            </div>
+            <template v-if="plagResult">
+              <!-- 综合评分卡片 -->
+              <div class="mx-2 mb-3 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div class="flex items-center gap-3 mb-2">
+                  <!-- 重复率环 -->
+                  <div class="relative w-14 h-14 flex-shrink-0">
+                    <svg class="w-14 h-14 -rotate-90">
+                      <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" stroke-width="4" class="text-gray-200 dark:text-gray-600" />
+                      <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"
+                        :stroke="plagResult.overall_similarity > 0.3 ? '#ef4444' : '#22c55e'"
+                        :stroke-dasharray="Math.round(plagResult.overall_similarity * 151) + ' 151'" />
+                    </svg>
+                    <span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700 dark:text-gray-200">{{ Math.round(plagResult.overall_similarity * 100) }}%</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">查重率</span>
+                      <span :class="['text-xs px-1.5 py-0.5 rounded', plagResult.overall_similarity > 0.3 ? 'bg-red-100 text-red-700' : plagResult.overall_similarity > 0.15 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700']">
+                        {{ plagResult.overall_similarity > 0.3 ? '偏高' : plagResult.overall_similarity > 0.15 ? '中等' : '良好' }}
+                      </span>
+                    </div>
+                    <div class="text-[10px] text-gray-500">{{ plagResult.total_chars.toLocaleString() }} 字 · {{ plagResult.total_paragraphs }} 段</div>
+                  </div>
+                </div>
+                <!-- AIGC 痕迹 -->
+                <div class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-600">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] text-gray-600 dark:text-gray-300">🤖 AIGC 痕迹</span>
+                    <span :class="['text-xs font-bold', plagResult.aigc_overall_ratio > 0.4 ? 'text-red-600' : plagResult.aigc_overall_ratio > 0.2 ? 'text-amber-600' : 'text-green-600']">
+                      {{ Math.round(plagResult.aigc_overall_ratio * 100) }}%
+                    </span>
+                  </div>
+                  <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                    <div :class="['h-full rounded-full transition-all', plagResult.aigc_overall_ratio > 0.4 ? 'bg-red-500' : plagResult.aigc_overall_ratio > 0.2 ? 'bg-amber-500' : 'bg-green-500']"
+                      :style="{ width: Math.round(plagResult.aigc_overall_ratio * 100) + '%' }"></div>
+                  </div>
+                  <div class="flex justify-between text-[9px] text-gray-400 mt-0.5">
+                    <span>人类写作</span><span>AI 辅助</span><span>AI 生成</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 重复片段 -->
+              <div v-if="plagResult.plag_results?.length" class="mx-2 mb-2">
+                <div class="flex items-center gap-1.5 mb-1.5">
+                  <span class="text-[10px] font-medium text-red-600">🔴 重复段落 ({{ plagResult.plag_results.length }})</span>
+                </div>
+                <div v-for="(p, i) in plagResult.plag_results" :key="'plag'+i"
+                  class="mb-1.5 p-2 bg-red-50 dark:bg-red-900/15 rounded border border-red-200 dark:border-red-800">
+                  <p class="text-xs text-red-800 dark:text-red-300 line-clamp-3">{{ p.text }}</p>
+                  <div class="mt-1 text-[9px] text-red-500">相似度 {{ Math.round(p.score * 100) }}% · {{ p.length }}字</div>
+                </div>
+              </div>
+
+              <!-- AIGC 段落 -->
+              <div v-if="plagResult.aigc_results?.length" class="mx-2 mb-2">
+                <div class="flex items-center gap-1.5 mb-1.5">
+                  <span class="text-[10px] font-medium text-amber-600">🟡 AI 痕迹段落 ({{ plagResult.aigc_results.length }})</span>
+                </div>
+                <div v-for="(a, i) in plagResult.aigc_results" :key="'aigc'+i"
+                  class="mb-1.5 p-2 bg-amber-50 dark:bg-amber-900/15 rounded border border-amber-200 dark:border-amber-800">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-1">
+                      <span v-for="f in a.features" :key="f" class="text-[8px] px-1 py-0.5 bg-amber-200 dark:bg-amber-800 text-amber-700 dark:text-amber-300 rounded">{{ f }}</span>
+                    </div>
+                    <span class="text-[9px] font-bold text-amber-600">{{ Math.round(a.aigc_probability * 100) }}%</span>
+                  </div>
+                  <p class="text-xs text-amber-800 dark:text-amber-300 line-clamp-3">{{ a.text }}</p>
+                </div>
+              </div>
+
+              <!-- 建议 -->
+              <div v-if="plagResult.suggestions?.length" class="mx-2 mb-2">
+                <div class="text-[10px] font-medium text-gray-500 mb-1.5">💡 改进建议</div>
+                <div v-for="(s, i) in plagResult.suggestions" :key="'sug'+i"
+                  class="mb-1 p-2 bg-blue-50 dark:bg-blue-900/15 rounded text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                  {{ s }}
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
         </template>
       </div>
     </div>
@@ -702,6 +816,51 @@
           <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
             <button @click="showExportPanel = false" class="px-4 py-2 text-xs text-gray-600 hover:text-gray-800">取消</button>
             <button @click="doExport" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium">导出</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- P0-3: 逐段修改弹窗 -->
+    <Teleport to="body">
+      <div v-if="showRewriteModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" @click.self="showRewriteModal=false">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">修改：{{ rewriteTarget.title }}</h3>
+            <button @click="showRewriteModal=false" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="p-6 space-y-4">
+            <!-- 模式选择 -->
+            <div>
+              <label class="block text-xs text-gray-500 mb-2">修改模式</label>
+              <div class="grid grid-cols-4 gap-2">
+                <button v-for="m in REWRITE_MODES" :key="m.key" @click="rewriteMode = m.key"
+                  :class="['px-3 py-2 rounded-xl text-sm font-medium text-center transition-all',
+                    rewriteMode === m.key 
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-2 ring-green-500/30' 
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600']">
+                  <span class="block text-lg">{{ m.icon }}</span>
+                  <span class="text-xs">{{ m.label }}</span>
+                </button>
+              </div>
+            </div>
+            <!-- 额外指令 -->
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">额外要求（可选）</label>
+              <input v-model="rewriteInstruction" placeholder="如：增加数据支撑 / 更口语化 / 加入案例..."
+                class="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-green-500 dark:text-gray-100"
+                @keydown.enter="doRewriteSection" />
+            </div>
+          </div>
+          <div class="px-6 py-4 bg-gray-50 dark:bg-gray-750 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+            <button @click="showRewriteModal=false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl">取消</button>
+            <button @click="doRewriteSection" :disabled="rewriteLoading"
+              class="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl text-sm font-medium flex items-center gap-2">
+              <span v-if="rewriteLoading" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              {{ rewriteLoading ? '修改中...' : '开始修改' }}
+            </button>
           </div>
         </div>
       </div>
@@ -1340,6 +1499,32 @@ const citationWarnings = computed(() => citationResults.value.filter(r => r.scor
 const showConsensusPanel = ref(false)
 const consensusLoading = ref(false)
 const consensusResults = ref([])     // [{claim, support, oppose, neutral, total, consensus_pct, confidence, per_paper, _expanded}]
+
+// ── P0-2: 查重 + AIGC 检测 ──
+const showPlagPanel = ref(false)
+const plagLoading = ref(false)
+const plagResult = ref(null)
+
+const runPlagcheck = async () => {
+  showPlagPanel.value = true
+  if (!project.value?.id) return
+  plagLoading.value = true
+  try {
+    // 收集全部章节内容
+    const content = Object.values(sectionContents.value).join('\n\n') || currentContent.value
+    const r = await fetch(`/api/scholar/projects/${project.value.id}/plagcheck`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, title: project.value.title || '' }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+    plagResult.value = await r.json()
+  } catch (e) {
+    alert('查重检测失败: ' + e.message)
+  } finally {
+    plagLoading.value = false
+  }
+}
 
 const runConsensusAnalysis = async () => {
   if (consensusLoading.value || !project.value?.id) return
@@ -2011,9 +2196,89 @@ const deleteSection = (sectionId) => {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════
-// 生命周期 + 项目列表加载
-// ═════════════════════════════════════════════════════════════════
+// ── P0-3: 逐段修改 ──
+const showRewriteModal = ref(false)
+const rewriteTarget = ref({ key: '', title: '' })
+const rewriteMode = ref('polish')
+const rewriteInstruction = ref('')
+const rewriteLoading = ref(false)
+
+const REWRITE_MODES = [
+  { key: 'polish', icon: '✨', label: '润色' },
+  { key: 'expand', icon: '📖', label: '扩写' },
+  { key: 'shorten', icon: '✂️', label: '精简' },
+  { key: 'restructure', icon: '🔀', label: '重组' },
+  { key: 'add_data', icon: '📊', label: '加数据' },
+  { key: 'academic', icon: '🎓', label: '学术化' },
+  { key: 'plain', icon: '💬', label: '通俗化' },
+]
+
+const rewriteSection = (sectionId) => {
+  const section = outline.value.find(s => s.id === sectionId)
+  if (!section) return
+  const content = sectionContents.value[sectionId]
+  if (!content || content.trim().length < 50) {
+    alert('该章节内容太短，无法修改')
+    return
+  }
+  rewriteTarget.value = { key: sectionId, title: section.title || '未命名章节' }
+  rewriteMode.value = 'polish'
+  rewriteInstruction.value = ''
+  showRewriteModal.value = true
+}
+
+const doRewriteSection = async () => {
+  if (!rewriteTarget.value.key || !project.value?.id || rewriteLoading.value) return
+  rewriteLoading.value = true
+  const sectionKey = rewriteTarget.value.key
+  try {
+    const r = await fetch(`/api/scholar/projects/${project.value.id}/rewrite-section`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        section_key: sectionKey,
+        mode: rewriteMode.value,
+        instruction: rewriteInstruction.value,
+      }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+    // 解析 SSE
+    const reader = r.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const evt = JSON.parse(line.slice(6))
+            if (evt.type === 'rewrite_done') {
+              sectionContents.value[sectionKey] = evt.text
+              if (activeSection.value === sectionKey) {
+                currentContent.value = evt.text
+              }
+              const section = outline.value.find(s => s.id === sectionKey)
+              if (section) section.wordCount = evt.text.length
+              showRewriteModal.value = false
+            } else if (evt.type === 'thinking') {
+              // 忽略中间状态
+            } else if (evt.type === 'error') {
+              throw new Error(evt.message)
+            }
+          } catch (e) { if (e.message && !e.message.includes('JSON')) throw e }
+        }
+      }
+    }
+  } catch (e) {
+    alert('修改失败: ' + e.message)
+  } finally {
+    rewriteLoading.value = false
+  }
+}
 onMounted(async () => {
   // 动态加载 Agent 列表（不再硬编码）
   await loadStages()
