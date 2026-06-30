@@ -383,18 +383,9 @@
       <!-- ┌─────────────────────────────────────────────────────────────┐
            │ 右栏：文献库 / AI 助手 (可折叠)
            └─────────────────────────────────────────────────────────────┘ -->
-      <div v-if="!rightCollapsed && (showLiteraturePanel || showAIPanel || showCitationPanel || showConsensusPanel)"
-        class="absolute right-0 top-12 bottom-0 w-80 max-w-[85vw] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col shadow-2xl z-30">
-        <div class="h-8 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-3 shrink-0">
-          <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            {{ showAIPanel ? 'AI 助手' : showLiteraturePanel ? '文献库' : showCitationPanel ? '引用核查' : showConsensusPanel ? '共识度' : '面板' }}
-          </span>
-          <button @click="closeAllRightPanels" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600" title="关闭">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <button @click="toggleRightBar" class="absolute -left-3 top-3 z-10 w-6 h-6 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 shadow-md transition-colors" title="收起面板">
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <div :class="['border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col shrink-0 transition-all duration-200', rightCollapsed ? 'w-10' : 'w-80']">
+        <button @click="toggleRightBar" class="h-8 border-b border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shrink-0" title="面板">
+          <svg :class="['w-4 h-4 transition-transform', rightCollapsed ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" width="18" height="18" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </button>
         <template v-if="!rightCollapsed">
         
@@ -1735,22 +1726,8 @@ const insertTable = () => {
 const showAIPanel = ref(false)
 const leftCollapsed = ref(false)   // 左栏大纲折叠
 const rightCollapsed = ref(false)  // 右栏文献/AI默认展开
-const closeAllRightPanels = () => {
-  showLiteraturePanel.value = false
-  showAIPanel.value = false
-  showCitationPanel.value = false
-  showConsensusPanel.value = false
-}
-
 const toggleLeftBar = () => { leftCollapsed.value = !leftCollapsed.value }
-const toggleRightBar = () => { 
-  rightCollapsed.value = !rightCollapsed.value
-  if (rightCollapsed.value) {
-    closeAllRightPanels()
-  } else if (!showLiteraturePanel.value && !showAIPanel.value && !showCitationPanel.value && !showConsensusPanel.value) {
-    showLiteraturePanel.value = true
-  }
-}
+const toggleRightBar = () => { rightCollapsed.value = !rightCollapsed.value }
 const aiInput = ref('')
 const aiStreaming = ref(false)
 const showAICommands = ref(false)
