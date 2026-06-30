@@ -141,32 +141,10 @@ def _resolve_credentials():
     """Auto-detect user's first available provider with an API key.
     Returns dict with api_key, base_url, model, provider.
     """
-    import yaml
     from hermes_cli.blueprints.chat import PROVIDERS
+    from hermes_cli.scholarforge import _load_vermes_config
 
-    home = os.path.expanduser("~/.vermes")
-    cfg_path = os.path.join(home, "config.yaml")
-    env_path = os.path.join(home, ".env")
-
-    cfg = {}
-    if os.path.exists(cfg_path):
-        try:
-            with open(cfg_path, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
-        except Exception:
-            pass
-    env_vars = {}
-    if os.path.exists(env_path):
-        try:
-            with open(env_path) as f:
-                for line in f.read().splitlines():
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        env_vars[k.strip()] = v.strip().strip('"').strip("'")
-        except Exception:
-            pass
-
+    cfg, env_vars = _load_vermes_config()
     cfg_providers = cfg.get("providers", {})
     cfg_model_provider = cfg.get("model", {}).get("provider", "")
 

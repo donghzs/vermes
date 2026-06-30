@@ -42,30 +42,12 @@ def _resolve_credentials(provider: str, model: str = ""):
     优先级：config.yaml providers.<provider>.api_key > .env <ENV_KEY>
     零侵入 Vermes 核心链路 — 不调用 _get_chat_credentials。
     """
-    import yaml, os
     from hermes_cli.blueprints.chat import PROVIDERS
+    from hermes_cli.scholarforge import _load_vermes_config
 
-    home = os.path.expanduser("~/.vermes")
-    cfg_path = os.path.join(home, "config.yaml")
-    env_path = os.path.join(home, ".env")
-
-    # 1) 读 config.yaml
-    cfg = {}
-    if os.path.exists(cfg_path):
-        with open(cfg_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
+    cfg, env_vars = _load_vermes_config()
     cfg_providers = cfg.get("providers", {})
 
-    # 2) 读 .env
-    env_vars = {}
-    if os.path.exists(env_path):
-        for line in open(env_path).read().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                env_vars[k.strip()] = v.strip().strip('"').strip("'")
-
-    # 3) 目标 provider 配置
     prov_def = PROVIDERS.get(provider) or {}
     cfg_entry = cfg_providers.get(provider, {})
 
@@ -99,23 +81,10 @@ def _list_configured_providers() -> list[dict]:
     """扫描用户已配置的所有 providers，返回按优先级排序的列表。
     排序：config.yaml model.provider 指定 > 有Key的 > 深思考模型优先(reasoning) > 文本模型 > flash/快速
     """
-    import yaml, os
     from hermes_cli.blueprints.chat import PROVIDERS
+    from hermes_cli.scholarforge import _load_vermes_config
 
-    home = os.path.expanduser("~/.vermes")
-    cfg = {}
-    cfg_path = os.path.join(home, "config.yaml")
-    if os.path.exists(cfg_path):
-        with open(cfg_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-    env_vars = {}
-    env_path = os.path.join(home, ".env")
-    if os.path.exists(env_path):
-        for line in open(env_path).read().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                env_vars[k.strip()] = v.strip().strip('"').strip("'")
+    cfg, env_vars = _load_vermes_config()
     cfg_providers = cfg.get("providers", {})
     cfg_model_provider = cfg.get("model", {}).get("provider", "")
 

@@ -272,6 +272,9 @@ async def _search_arxiv(query: str, limit: int = 10) -> list[PaperResult]:
     import httpx
     from xml.etree import ElementTree as ET
 
+    if _is_cooled_down("arxiv"):
+        logger.info("[ScholarForge] arXiv 冷却中，跳过")
+        return []
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get("https://export.arxiv.org/api/query", params={
@@ -281,6 +284,9 @@ async def _search_arxiv(query: str, limit: int = 10) -> list[PaperResult]:
                 "sortBy": "relevance",
                 "sortOrder": "descending",
             }, timeout=10)
+            if resp.status_code == 429:
+                _set_cooldown("arxiv")
+                return []
             resp.raise_for_status()
 
         root = ET.fromstring(resp.text)
@@ -331,6 +337,9 @@ async def _search_crossref(query: str, limit: int = 10) -> list[PaperResult]:
     """Crossref 搜索 - 开放获取，DOI 权威"""
     import httpx
 
+    if _is_cooled_down("crossref"):
+        logger.info("[ScholarForge] Crossref 冷却中，跳过")
+        return []
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get("https://api.crossref.org/works", params={
@@ -340,6 +349,9 @@ async def _search_crossref(query: str, limit: int = 10) -> list[PaperResult]:
             }, timeout=10, headers={
                 "User-Agent": "ScholarForge/0.1.0 (mailto:contact@scholarforge.ai)"
             })
+            if resp.status_code == 429:
+                _set_cooldown("crossref")
+                return []
             resp.raise_for_status()
 
         data = resp.json()
@@ -387,6 +399,9 @@ async def _search_doaj(query: str, limit: int = 10) -> list[PaperResult]:
     """DOAJ (Directory of Open Access Journals) — 免费开放获取期刊"""
     import httpx
 
+    if _is_cooled_down("doaj"):
+        logger.info("[ScholarForge] DOAJ 冷却中，跳过")
+        return []
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
@@ -394,6 +409,9 @@ async def _search_doaj(query: str, limit: int = 10) -> list[PaperResult]:
                 params={"pageSize": limit, "page": 1},
                 timeout=10,
             )
+            if resp.status_code == 429:
+                _set_cooldown("doaj")
+                return []
             resp.raise_for_status()
 
         data = resp.json()
@@ -452,6 +470,9 @@ async def _search_pubmed(query: str, limit: int = 10) -> list[PaperResult]:
     import httpx
     from xml.etree import ElementTree as ET
 
+    if _is_cooled_down("pubmed"):
+        logger.info("[ScholarForge] PubMed 冷却中，跳过")
+        return []
     try:
         async with httpx.AsyncClient() as client:
             # Step 1: ESearch 检索 ID
@@ -466,6 +487,9 @@ async def _search_pubmed(query: str, limit: int = 10) -> list[PaperResult]:
                 },
                 timeout=10,
             )
+            if search_resp.status_code == 429:
+                _set_cooldown("pubmed")
+                return []
             search_resp.raise_for_status()
 
         search_data = search_resp.json()
@@ -621,6 +645,9 @@ async def _search_openalex(query: str, limit: int = 10) -> list[PaperResult]:
     https://openalex.org
     """
     import httpx
+    if _is_cooled_down("openalex"):
+        logger.info("[ScholarForge] OpenAlex 冷却中，跳过")
+        return []
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get("https://api.openalex.org/works", params={
@@ -628,6 +655,9 @@ async def _search_openalex(query: str, limit: int = 10) -> list[PaperResult]:
                 "per_page": min(limit, 25),
                 "sort": "cited_by_count:desc",
             }, timeout=10, headers={"User-Agent": "ScholarForge/1.0"})
+            if resp.status_code == 429:
+                _set_cooldown("openalex")
+                return []
             resp.raise_for_status()
 
         data = resp.json()
@@ -685,6 +715,9 @@ async def _search_core_free(query: str, limit: int = 10) -> list[PaperResult]:
     https://core.ac.uk/services/api
     """
     import httpx
+    if _is_cooled_down("core"):
+        logger.info("[ScholarForge] CORE 冷却中，跳过")
+        return []
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get("https://api.core.ac.uk/v3/search/works", params={
@@ -694,6 +727,9 @@ async def _search_core_free(query: str, limit: int = 10) -> list[PaperResult]:
                 "Authorization": "Bearer " + (os.environ.get("CORE_API_KEY", "")),
                 "User-Agent": "ScholarForge/1.0",
             })
+            if resp.status_code == 429:
+                _set_cooldown("core")
+                return []
             if resp.status_code != 200:
                 logger.warning(f"[ScholarForge] CORE returned {resp.status_code}")
                 return []
