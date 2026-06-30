@@ -1,0 +1,291 @@
+"""
+真引用提供器 — DBLP + CrossRef API 获取真实 BibTeX
+论文类型为期刊/会议/博士时自动替换伪引用 [n] 为真实文献
+"""
+import asyncio
+import json
+import logging
+import re
+import time
+from typing import Optional
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+
+logger = logging.getLogger("scholarforge.citation")
+
+# ── DBLP API ──
+DBLP_SEARCH = "https://dblp.org/search/publ/api?format=json&h=10&q="
+
+# ── CrossRef API ──
+CROSSREF_SEARCH = "https://api.crossref.org/works?rows=10&query="
+
+# ── Semantic Scholar API (free, no key needed) ──
+SEMANTIC_SCHOLAR_SEARCH = "https://api.semanticscholar.org/graph/v1/paper/search?limit=10&query="
+SEMANTIC_SCHOLAR_BIBTEX = "https://api.semanticscholar.org/graph/v1/paper/"
+
+
+class RealCitation:
+    """真实引用条目"""
+    def __init__(self, title="", authors=None, year="", venue="", doi="", bibtex="", paper_id=""):
+        self.title = title
+        self.authors = authors or []
+        self.year = year
+        self.venue = venue
+        self.doi = doi
+        self.bibtex = bibtex
+        self.paper_id = paper_id
+        self.source = ""  # dblp | crossref | semantic_scholar
+
+    def to_dict(self):
+        return {
+            "title": self.title, "authors": self.authors, "year": self.year,
+            "venue": self.venue, "doi": self.doi, "bibtex": self.bibtex,
+            "paper_id": self.paper_id, "source": self.source,
+        }
+
+    def format_bibtex(self, index: int = 1) -> str:
+        """生成标准 BibTeX 条目"""
+        first_author = self.authors[0].split()[-1] if self.authors else "unknown"
+        cite_key = f"{first_author.lower()}{self.year}{chr(96+index)}"
+        author_str = " and ".join(self.authors)
+        return (
+            f"@article{{{cite_key},\n"
+            f"  title = {{{self.title}}},\n"
+            f"  author = {{{author_str}}},\n"
+            f"  year = {{{self.year}}},\n"
+            f"  journal = {{{self.venue}}},\n"
+            f"  doi = {{{self.doi}}}\n"
+            f"}}"
+        )
+
+
+async def search_dblp(query: str, limit: int = 5) -> list[RealCitation]:
+    """DBLP 搜索计算机科学文献"""
+    results = []
+    try:
+        url = DBLP_SEARCH + quote(query)
+        req = Request(url, headers={"User-Agent": "ScholarForge/1.0", "Accept": "application/json"})
+        resp = await asyncio.to_thread(urlopen, req, timeout=10)
+        data = json.loads(resp.read().decode("utf-8"))
+        
+        hits = data.get("result", {}).get("hits", {}).get("hit", [])
+        for hit in hits[:limit]:
+            info = hit.get("info", {})
+            title = info.get("title", "")
+            year = info.get("year", "")
+            venue = info.get("venue", "")
+            doi = info.get("doi", "")
+            authors_list = info.get("authors", {}).get("author", [])
+            if isinstance(authors_list, dict):
+                authors_list = [authors_list]
+            authors = [a.get("text", "") for a in authors_list if a.get("text")]
+            
+            paper_id = f"dblp:{info.get('key', '')}"
+            if title:
+                c = RealCitation(title=title, authors=authors, year=str(year) if year else "",
+                                 venue=venue, doi=doi, paper_id=paper_id)
+                c.source = "dblp"
+                # 生成 BibTeX
+                c.bibtex = c.format_bibtex(len(results) + 1)
+                results.append(c)
+    except (HTTPError, URLError, json.JSONDecodeError) as e:
+        logger.warning(f"DBLP search failed for '{query}': {e}")
+    except Exception as e:
+        logger.error(f"DBLP unexpected error: {e}")
+    return results
+
+
+async def search_crossref(query: str, limit: int = 5) -> list[RealCitation]:
+    """CrossRef 搜索跨学科文献（含完整 DOI/BibTeX）"""
+    results = []
+    try:
+        url = CROSSREF_SEARCH + quote(query)
+        req = Request(url, headers={"User-Agent": "ScholarForge/1.0", "Accept": "application/json"})
+        resp = await asyncio.to_thread(urlopen, req, timeout=10)
+        data = json.loads(resp.read().decode("utf-8"))
+        
+        items = data.get("message", {}).get("items", [])
+        for item in items[:limit]:
+            title_list = item.get("title", [])
+            title = title_list[0] if title_list else ""
+            year = item.get("published-print", {}).get("date-parts", [[None]])[0][0] or \
+                   item.get("created", {}).get("date-parts", [[None]])[0][0] or ""
+            doi = item.get("DOI", "")
+            
+            # Authors
+            authors_list = item.get("author", [])
+            authors = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in authors_list]
+            
+            # Venue
+            container = item.get("container-title", [])
+            venue = container[0] if container else item.get("publisher", "")
+            
+            # ISSN
+            issn_list = item.get("ISSN", [])
+            issn = issn_list[0] if issn_list else ""
+            
+            if title:
+                c = RealCitation(title=title, authors=authors, year=str(year) if year else "",
+                                 venue=venue, doi=doi, paper_id=f"doi:{doi}")
+                c.source = "crossref"
+                # BibTeX
+                first_author = authors[0].split()[-1] if authors else "unknown"
+                cite_key = f"{first_author.lower()}{year}{chr(96+len(results)+1)}"
+                author_str = " and ".join(authors)
+                c.bibtex = (
+                    f"@article{{{cite_key},\n"
+                    f"  title = {{{title}}},\n"
+                    f"  author = {{{author_str}}},\n"
+                    f"  year = {{{year}}},\n"
+                    f"  journal = {{{venue}}},\n"
+                    f"  doi = {{{doi}}}\n"
+                    f"}}"
+                )
+                results.append(c)
+    except (HTTPError, URLError, json.JSONDecodeError) as e:
+        logger.warning(f"CrossRef search failed for '{query}': {e}")
+    except Exception as e:
+        logger.error(f"CrossRef unexpected error: {e}")
+    return results
+
+
+async def search_semantic_scholar(query: str, limit: int = 5) -> list[RealCitation]:
+    """Semantic Scholar (免费，无需 Key)"""
+    results = []
+    try:
+        url = SEMANTIC_SCHOLAR_SEARCH + quote(query)
+        req = Request(url, headers={"User-Agent": "ScholarForge/1.0"})
+        resp = await asyncio.to_thread(urlopen, req, timeout=10)
+        data = json.loads(resp.read().decode("utf-8"))
+        
+        papers = data.get("data", [])
+        for p in papers[:limit]:
+            paper_id = p.get("paperId", "")
+            title = p.get("title", "")
+            year = p.get("year", "")
+            venue = p.get("venue", "") or p.get("publicationVenue", {}).get("name", "")
+            doi = p.get("externalIds", {}).get("DOI", "")
+            authors = [a.get("name", "") for a in p.get("authors", [])]
+            
+            if title:
+                c = RealCitation(title=title, authors=authors, year=str(year) if year else "",
+                                 venue=venue, doi=doi, paper_id=paper_id)
+                c.source = "semantic_scholar"
+                c.bibtex = c.format_bibtex(len(results) + 1)
+                results.append(c)
+    except (HTTPError, URLError, json.JSONDecodeError) as e:
+        logger.warning(f"Semantic Scholar search failed for '{query}': {e}")
+    except Exception as e:
+        logger.error(f"Semantic Scholar unexpected error: {e}")
+    return results
+
+
+async def fetch_real_citations(
+    title: str,
+    keywords: list[str],
+    paper_type: str = "本科论文",
+    limit: int = 10,
+) -> list[RealCitation]:
+    """主入口：根据论文标题/关键词拉取真实引用
+    
+    Args:
+        title: 论文标题/主题
+        keywords: 关键词列表
+        paper_type: 论文学（期刊/会议优先用交叉 API）
+        limit: 最多获取几篇
+        
+    Returns:
+        RealCitation 列表（去重后）
+    """
+    all_citations: dict[str, RealCitation] = {}  # paper_id → citation (去重)
+    
+    # 根据论文类型确定搜索策略
+    is_advanced = paper_type in ("博士论文", "硕士论文", "期刊论文", "会议论文")
+    
+    # 构建所有搜索查询
+    queries = [title[:100]] + keywords[:4]
+    
+    for q in queries[:3]:  # 最多 3 个查询串
+        if not q.strip():
+            continue
+        
+        # 并行搜索多个源
+        tasks = [search_semantic_scholar(q, limit=5)]
+        if is_advanced:
+            tasks.append(search_crossref(q, limit=5))
+            # DBLP 仅对 CS 相关有用
+            if any(k in q.lower() for k in ("learning", "network", "algorithm", "model", "system")):
+                tasks.append(search_dblp(q, limit=5))
+        
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in batch_results:
+            if isinstance(result, Exception):
+                logger.warning(f"Citation search sub-task failed: {result}")
+                continue
+            for c in result:
+                key = c.paper_id or c.title[:80]
+                if key not in all_citations:
+                    all_citations[key] = c
+        
+        if len(all_citations) >= limit:
+            break
+        
+        # 避免限流
+        await asyncio.sleep(0.3)
+    
+    citations = list(all_citations.values())[:limit]
+    logger.info(f"Fetched {len(citations)} real citations for '{title[:40]}...' (type={paper_type})")
+    return citations
+
+
+async def replace_pseudo_citations(
+    draft: str,
+    topic: str,
+    keywords: list[str],
+    paper_type: str = "本科论文",
+) -> tuple[str, list[RealCitation]]:
+    """替换正文中的伪引用 [n] 为真实文献
+    
+    Returns:
+        (替换后的正文, 新获取的真实引用列表)
+    """
+    # 1. 提取正文中引用编号
+    cited_nums = set(int(m) for m in re.findall(r'\[(\d+)\]', draft))
+    if not cited_nums:
+        return draft, []
+    
+    # 2. 拉取真实文献
+    citations = await fetch_real_citations(topic, keywords, paper_type, limit=max(20, max(cited_nums)))
+    if not citations:
+        logger.info("No real citations found, keeping pseudo citations")
+        return draft, []
+    
+    # 3. 替换引用编号 + 在文末添加参考文献列表
+    # 先替换编号: [1] → 保持不变（编号对齐新文献列表）
+    # 在文末追加真实参考文献
+    refs_text = "\n\n---\n## 参考文献\n\n"
+    for i, c in enumerate(citations, 1):
+        authors_short = f"{c.authors[0].split()[-1] if c.authors else '?'} et al." if len(c.authors) > 1 else (c.authors[0] if c.authors else "?")
+        refs_text += f"[{i}] {authors_short}. {c.title}. {c.venue}, {c.year}. DOI: {c.doi}\n"
+    
+    new_draft = draft + refs_text
+    
+    return new_draft, citations
+
+
+# 简易测试
+async def _test():
+    results = await fetch_real_citations(
+        title="Large Language Models for Code Review",
+        keywords=["code review", "LLM", "automated"],
+        paper_type="会议论文",
+    )
+    for r in results:
+        print(f"[{r.source}] {r.title[:60]}... ({r.year}) - {r.venue}")
+        print(f"  BibTeX: {r.bibtex[:80]}...")
+        print()
+
+
+if __name__ == "__main__":
+    asyncio.run(_test())

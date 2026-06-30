@@ -2,12 +2,12 @@
 ScholarForge Agent 引擎 — 论文写作 5 Agent + STORM Pipeline
 完全独立于 Vermes 核心，通过 Blueprint 注册
 
-SSE 事件格式（与前端 Writer.vue handleSSE 一致）：
-  {"type":"thinking", "message":"..."}    事件日志（右侧面板）
+SSE 事件格式(与前端 Writer.vue handleSSE 一致)：
+  {"type":"thinking", "message":"..."}    事件日志(右侧面板)
   {"type":"searching", "message":"..."}   搜索状态
   {"type":"writing", "message":"..."}     写作状态
   {"type":"citation", "paper":{...}}      文献引用
-  {"type":"content", "text":"..."}        正文内容（追加到 streamingText）
+  {"type":"content", "text":"..."}        正文内容(追加到 streamingText)
   {"type":"done", "message":"..."}        当前 Agent 完成
 """
 import asyncio
@@ -39,7 +39,7 @@ def _validate_citation_refs(text: str, papers: list) -> list[str]:
     for ref in refs:
         idx = int(ref)
         if idx < 1 or idx > max_idx:
-            warnings.append(f"[引用 {ref}] 无对应文献（文献池仅 {max_idx} 篇）")
+            warnings.append(f"[引用 {ref}] 无对应文献(文献池仅 {max_idx} 篇)")
         elif ref not in seen and idx <= max_idx:
             p = papers[idx - 1]
             seen.add(ref)
@@ -47,7 +47,7 @@ def _validate_citation_refs(text: str, papers: list) -> list[str]:
 
 
 def _fuzzy_match_title(candidate: str, papers: list) -> int | None:
-    """用模糊匹配找到最接近的文献 index（1-based），未找到返回 None"""
+    """用模糊匹配找到最接近的文献 index(1-based)，未找到返回 None"""
     if not papers or not candidate:
         return None
     best_score = 0
@@ -118,13 +118,17 @@ class ProjectContext:
     def __init__(self, project_id: int | None = None):
         self.project_id = project_id
         self.topic: str = ""
+        self.paper_type: str = "本科论文"  # 论文类型，影响所有 Agent 的写作风格
         self.papers: list[PaperCard] = []
         self.citations: list[Citation] = []
         self.outline: dict | None = None
+        self.section_contents: dict[str, str] = {}
         self.draft: str = ""
         self.stage: str = "idle"
         self.personas: list[str] = []
         self.research_conversation: list[dict] = []
+        self._rag_retriever = None  # PaperRetriever 缓存
+        self._rag_paper_count = 0    # 缓存时的文献数，用于失效判断
 
     def add_paper(self, card: PaperCard):
         if not any(p.paper_id == card.paper_id for p in self.papers):
@@ -195,6 +199,7 @@ class TopicAgent(BaseAgent):
 6. **推荐关键词**：5-8 个核心关键词用于文献检索
 
 请用中文回答，结构清晰。"""
+        + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(prompt)
         yield {"type": "content", "text": response}
@@ -202,18 +207,35 @@ class TopicAgent(BaseAgent):
 
 
 class LiteratureAgent(BaseAgent):
-    """文献 Agent — STORM 多视角检索 + 综述生成"""
+    """文献 Agent — STORM 多视角检索 + 综述生成 + 递进式深度研究"""
     name = "literature"
     icon = "📚"
     label = "文献"
     description = "多视角搜索学术文献、生成论文卡片、撰写文献综述"
     prompt_hint = "输入关键词检索文献，AI 生成综述..."
 
-    async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
+    async def run(self, user_input: str, depth: int = 1) -> AsyncGenerator[dict, None]:
+        """文献检索主入口
+
+        Args:
+            user_input: 用户输入的研究主题/关键词
+            depth: 研究深度 (1=单轮, 2=双轮多视角, 3=三轮含空白分析)
+        """
+        depth = max(1, min(3, depth))  # 限制 1-3
+
+        if depth >= 2:
+            async for evt in self._deep_search(user_input, depth):
+                yield evt
+        else:
+            async for evt in self._shallow_search(user_input):
+                yield evt
+
+    async def _shallow_search(self, user_input: str) -> AsyncGenerator[dict, None]:
+        """单轮搜索(加相关性过滤)"""
         # Step 1: 提取关键词
         yield {"type": "thinking", "message": "分析检索关键词..."}
 
-        kw_prompt = f"""从以下研究主题提取 3-5 个核心检索关键词（英文），用逗号分隔：
+        kw_prompt = f"""从以下研究主题提取 3-5 个核心检索关键词(英文)，用逗号分隔：
 
 {user_input}"""
         kw_resp = await self.llm(kw_prompt)
@@ -221,15 +243,144 @@ class LiteratureAgent(BaseAgent):
         if not keywords:
             keywords = [user_input]
 
-        keywords = keywords[:3]  # 限制最多 3 个关键词
+        keywords = keywords[:3]
         yield {"type": "searching", "message": f"检索关键词：{', '.join(keywords)}"}
 
-        # Step 2: 多源搜索
+        # Step 2: 多源搜索 + 相关性过滤
         all_papers: dict[str, PaperResult] = {}
         for kw in keywords:
+            async for paper in search_papers(kw, limit=8):  # 多搜一点，后面过滤
+                if paper.paper_id not in all_papers:
+                    # 相关性打分
+                    relevance = await self._score_relevance(user_input, paper)
+                    if relevance >= 7:  # 只保留 ≥7 分的
+                        all_papers[paper.paper_id] = paper
+                        self.ctx.add_paper(PaperCard(
+                            paper_id=paper.paper_id, title=paper.title,
+                            authors=paper.authors, year=paper.year, venue=paper.venue,
+                            abstract=paper.abstract, citation_count=paper.citation_count,
+                            url=paper.url, source=paper.source,
+                        ))
+                        yield {"type": "citation", "paper": paper.to_dict()}
+
+        yield {"type": "searching", "message": f"已收集 {len(all_papers)} 篇高相关文献"}
+
+        if not all_papers:
+            yield {"type": "done", "message": "未检索到相关文献"}
+            return
+
+        # Step 3: 生成文献综述
+        yield {"type": "writing", "message": "生成文献综述..."}
+        response = await self._generate_review(user_input, list(all_papers.values()))
+        yield {"type": "content", "text": "\n\n" + response}
+        yield {"type": "done", "message": f"文献综述完成 ({len(all_papers)}篇)"}
+
+    async def _score_relevance(self, topic: str, paper: PaperResult) -> int:
+        """让 LLM 给文献相关性打分 1-10"""
+        prompt = f"""研究主题：{topic}
+
+文献标题：{paper.title}
+文献摘要：{paper.abstract[:500] if paper.abstract else '无'}
+
+请判断这篇文献与研究主题的相关性，只回复 1-10 的数字(10=高度相关，1=完全不相关)："""
+        try:
+            resp = await self.llm(prompt)
+            score = int(re.search(r'\d+', resp).group())
+            return max(1, min(10, score))
+        except:
+            return 5  # 默认中等
+
+    async def _generate_personas(self, topic: str, papers: list[PaperResult]) -> list[str]:
+        """动态生成研究视角（替代静态 STORM_PERSONAS）
+
+        基于 Round 1 宽泛搜索发现的文献 + 用户 topic，让 LLM 分析出
+        该主题下的真实研究视角。例如：
+        - "自动驾驶" → ["感知系统", "规控算法", "安全验证", "人因工程"]
+        - "气候变化" → ["大气模型", "碳排放政策", "生态影响", "能源转型"]
+
+        Args:
+            topic: 用户研究主题
+            papers: Round 1 已收集文献（用于推断领域结构）
+        Returns:
+            list[str]: 3-5 个动态研究视角
+        """
+        # 构建 little context from round 1 findings
+        papers_ctx = ""
+        if papers:
+            titles = [f"- {p.title}" for p in papers[:8]]
+            papers_ctx = "\n".join(titles)
+            papers_ctx = f"\n基于以下已发现的文献标题：\n{papers_ctx}\n"
+
+        prompt = f"""你是一个研究领域分析专家。请分析以下研究主题涉及的主要研究方向/视角。
+
+研究主题：{topic}
+{papers_ctx}
+
+请从该研究领域提炼 3-5 个**具体的研究视角**（不是泛泛的方法论角色）。
+要求：
+- 每个视角应该反映该领域实际的研究子方向或学派分歧
+- 视角应该具体、有区分度（不要"实证研究者"这种万能角色）
+- 结合文献标题推断真实存在的子方向
+
+直接输出，每行一个视角，格式：「视角名：简要说明」
+例如：
+感知系统架构：关注传感器融合和3D目标检测
+端到端规控：关注从感知直接到控制的学习方法
+安全验证与仿真：关注事故场景生成和形式化验证"""
+
+        try:
+            resp = await self.llm(prompt)
+            personas = []
+            for line in resp.strip().split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # 去掉编号前缀
+                line = re.sub(r'^\d+[\.\)、]\s*', '', line)
+                if line and len(line) > 4:
+                    personas.append(line)
+            if personas:
+                return personas[:5]
+        except Exception as e:
+            logger.warning(f"[ScholarForge] Failed to generate dynamic personas: {e}")
+
+        return []  # caller will use STORM_PERSONAS fallback
+
+    async def _deep_search(self, user_input: str, depth: int) -> AsyncGenerator[dict, None]:
+        """递进式深度研究 (depth >= 2)
+
+        流程：
+        Round 1: 宽泛主题搜索 → 获取概览
+        Round 2: 多视角 Personas 分别聚焦检索 → 丰富视角
+        Round 3 (depth=3): 空白分析 → 定向搜索研究空白
+        Aggregation: 综合所有轮次发现 → 生成结构化文献综述
+        """
+        all_papers: dict[str, PaperResult] = {}
+        round_findings: list[dict] = []  # 每轮的分析摘要
+
+        # ═══ Round 1: Broad Topic Search ═══
+        yield {"type": "stage", "stage": "literature_r1", "pipeline": "start",
+               "message": f"🔍 第1轮：宽泛主题搜索 — {user_input}"}
+        yield {"type": "thinking", "message": "第1轮：宽泛主题搜索，获取领域概览..."}
+
+        # 提取宽泛关键词
+        kw_prompt = f"""从以下研究主题提取 3-5 个**宽泛**的核心检索关键词(英文)，用逗号分隔。
+使用领域级术语而非具体方法名：
+
+{user_input}"""
+        kw_resp = await self.llm(kw_prompt)
+        broad_keywords = [k.strip() for k in kw_resp.split(",") if k.strip()][:3]
+        if not broad_keywords:
+            broad_keywords = [user_input]
+
+        yield {"type": "searching", "message": f"第1轮关键词：{', '.join(broad_keywords)}"}
+
+        r1_papers: dict[str, PaperResult] = {}
+        for kw in broad_keywords:
             async for paper in search_papers(kw, limit=5):
                 if paper.paper_id not in all_papers:
                     all_papers[paper.paper_id] = paper
+                    r1_papers[paper.paper_id] = paper
                     self.ctx.add_paper(PaperCard(
                         paper_id=paper.paper_id, title=paper.title,
                         authors=paper.authors, year=paper.year, venue=paper.venue,
@@ -238,29 +389,169 @@ class LiteratureAgent(BaseAgent):
                     ))
                     yield {"type": "citation", "paper": paper.to_dict()}
 
-        yield {"type": "searching", "message": f"已收集 {len(all_papers)} 篇文献"}
+        yield {"type": "searching", "message": f"第1轮完成，收集 {len(r1_papers)} 篇"}
 
-        if not all_papers:
-            yield {"type": "done", "message": "未检索到相关文献"}
-            return
+        # Round 1 分析
+        if r1_papers:
+            r1_analysis = await self._analyze_round(
+                f"第1轮(宽泛搜索)分析",
+                user_input,
+                list(r1_papers.values()),
+                focus="识别该领域的主要研究方向、代表性工作和方法论趋势",
+            )
+            round_findings.append({"round": 1, "label": "宽泛搜索", "analysis": r1_analysis})
+            yield {"type": "content", "text": f"\n\n### 📊 第1轮：领域概览\n\n{r1_analysis}"}
 
-        # Step 3: 生成文献综述
-        yield {"type": "writing", "message": "生成文献综述..."}
+        # ═══ Round 2: Multi-Perspective Search ═══
+        yield {"type": "stage", "stage": "literature_r2", "pipeline": "start",
+               "message": "🔍 第2轮：多视角深度检索"}
 
+        # 动态生成研究视角（基于 Round 1 发现 + topic）
+        yield {"type": "thinking", "message": "正在分析领域结构，生成动态研究视角..."}
+        dynamic_personas = await self._generate_personas(user_input, list(r1_papers.values()))
+        if not dynamic_personas:
+            dynamic_personas = STORM_PERSONAS  # fallback
+        # 存到 context 供前端展示
+        self.ctx.personas = dynamic_personas
+        yield {"type": "personas", "personas": dynamic_personas}
+
+        # 为每个 Persona 分配检索，但限制同时并发数
+        r2_papers: dict[str, PaperResult] = {}
+        persona_count = min(3, len(dynamic_personas))
+
+        for pi, persona in enumerate(dynamic_personas[:persona_count]):
+            yield {"type": "thinking", "message": f"视角 {pi+1}/{persona_count}：{persona[:20]}..."}
+
+            # 基于该视角生成定向检索关键词
+            persona_kw_prompt = f"""你是一个学术研究者，视角为「{persona}」。
+研究主题：{user_input}
+
+从你的专业视角，生成 2-3 个最相关的英文检索关键词(不同于宽泛主题词，要聚焦于你的专业视角)，
+用逗号分隔。只需输出关键词，不要解释。"""
+            persona_kw_resp = await self.llm(persona_kw_prompt)
+            persona_keywords = [k.strip() for k in persona_kw_resp.split(",") if k.strip()][:2]
+
+            if not persona_keywords:
+                continue
+
+            yield {"type": "searching", "message": f"  '{persona[:25]}...' 搜索：{', '.join(persona_keywords)}"}
+            persona_papers: dict[str, PaperResult] = {}
+            for kw in persona_keywords:
+                async for paper in search_papers(kw, limit=3):
+                    if paper.paper_id not in all_papers:
+                        all_papers[paper.paper_id] = paper
+                        r2_papers[paper.paper_id] = paper
+                        persona_papers[paper.paper_id] = paper
+                        self.ctx.add_paper(PaperCard(
+                            paper_id=paper.paper_id, title=paper.title,
+                            authors=paper.authors, year=paper.year, venue=paper.venue,
+                            abstract=paper.abstract, citation_count=paper.citation_count,
+                            url=paper.url, source=paper.source,
+                        ))
+                        yield {"type": "citation", "paper": paper.to_dict()}
+
+            # 每个视角的微型分析
+            if persona_papers:
+                pa = await self._analyze_round(
+                    f"{persona} 视角分析",
+                    user_input,
+                    list(persona_papers.values()),
+                    focus=f"从'{persona}'角度，这些文献有何独特洞察？",
+                )
+                round_findings.append({
+                    "round": 2,
+                    "label": persona,
+                    "analysis": pa,
+                    "paper_count": len(persona_papers),
+                })
+
+        yield {"type": "searching", "message": f"第2轮完成，新增 {len(r2_papers)} 篇文献"}
+
+        # ═══ Round 3: Gap Analysis (depth=3 only) ═══
+        if depth >= 3:
+            yield {"type": "stage", "stage": "literature_r3", "pipeline": "start",
+                   "message": "🔍 第3轮：研究空白定向搜索"}
+            yield {"type": "thinking", "message": "第3轮：分析研究空白，定向检索..."}
+
+            # 基于前两轮发现，让 LLM 识别研究空白
+            gap_prompt = f"""研究主题：{user_input}
+
+前两轮已检索到的文献领域和发现：
+{chr(10).join(f"- {r['label']}: {r['analysis'][:300]}" for r in round_findings)}
+
+请识别 2-3 个该领域明显的**研究空白 (Research Gaps)**，并为每个空白输出 1-2 个具体的英文检索关键词。
+格式：
+空白1：xxx | 关键词：kw1, kw2
+空白2：xxx | 关键词：kw1, kw2"""
+
+            gap_resp = await self.llm(gap_prompt)
+            yield {"type": "content", "text": f"\n\n### 🔎 第3轮：研究空白识别\n\n{gap_resp}"}
+
+            # 解析空白关键词
+            gap_keywords = []
+            for line in gap_resp.split("\n"):
+                if "关键词" in line or "keywords" in line.lower():
+                    kw_part = line.split("关键词", 1)[-1].split(":", 1)[-1]
+                    keywords = [k.strip() for k in kw_part.replace("，", ",").split(",") if k.strip()]
+                    gap_keywords.extend(keywords)
+
+            if not gap_keywords:
+                gap_keywords = [f"{user_input} research gap", f"{user_input} future work"]
+
+            yield {"type": "searching", "message": f"空白检索：{', '.join(gap_keywords[:5])}"}
+
+            r3_papers: dict[str, PaperResult] = {}
+            for kw in gap_keywords[:5]:
+                async for paper in search_papers(kw, limit=3):
+                    if paper.paper_id not in all_papers:
+                        all_papers[paper.paper_id] = paper
+                        r3_papers[paper.paper_id] = paper
+                        self.ctx.add_paper(PaperCard(
+                            paper_id=paper.paper_id, title=paper.title,
+                            authors=paper.authors, year=paper.year, venue=paper.venue,
+                            abstract=paper.abstract, citation_count=paper.citation_count,
+                            url=paper.url, source=paper.source,
+                        ))
+                        yield {"type": "citation", "paper": paper.to_dict()}
+
+            yield {"type": "searching", "message": f"第3轮完成，新增 {len(r3_papers)} 篇"}
+
+            if r3_papers:
+                gpa = await self._analyze_round(
+                    "第3轮(研究空白)分析",
+                    user_input,
+                    list(r3_papers.values()),
+                    focus="分析这些文献揭示的研究空白和未来方向",
+                )
+                round_findings.append({"round": 3, "label": "研究空白", "analysis": gpa})
+
+        # ═══ Aggregation: Synthesize All Round Findings ═══
+        yield {"type": "stage", "stage": "literature_agg", "pipeline": "start",
+               "message": "📝 综合所有轮次，生成结构化文献综述..."}
+        yield {"type": "writing", "message": f"综合 {len(round_findings)} 轮发现，共 {len(all_papers)} 篇文献..."}
+
+        response = await self._synthesize_review(user_input, round_findings, list(all_papers.values()))
+        yield {"type": "content", "text": "\n\n" + response}
+        yield {"type": "done", "message": f"深度研究完成 ({depth}轮, {len(all_papers)}篇文献)"}
+
+    # ═══ 辅助方法 ═══
+
+    async def _generate_review(self, topic: str, papers: list[PaperResult]) -> str:
+        """生成单轮文献综述"""
         papers_text = "\n\n".join([
             f"[{i+1}] {p.title}\n作者：{', '.join(p.authors[:3])}\n{p.year} · {p.venue}\n摘要：{p.abstract}"
-            for i, p in enumerate(list(all_papers.values())[:10])
+            for i, p in enumerate(papers[:10])
         ])
 
         review_prompt = f"""基于以下文献，用中文撰写一篇学术文献综述。
 
-研究主题：{user_input}
+研究主题：{topic}
 
 文献：
 {papers_text}
 
 要求：
-1. 按主题分类组织（至少 2-3 个主题类别）
+1. 按主题分类组织(至少 2-3 个主题类别)
 2. 分析各研究的方法论特点
 3. 指出现有研究的不足和研究空白
 4. 使用学术引用格式 [1] [2] 引用文献，**只引用上方给出的文献**，不要编造
@@ -268,15 +559,95 @@ class LiteratureAgent(BaseAgent):
 6. 在末尾列出所有参考文献
 
 请用学术规范语言，2000-3000 字。"""
+        + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(review_prompt)
-        validate_warnings = _validate_citation_refs(response, list(all_papers.values()))
+        validate_warnings = _validate_citation_refs(response, papers)
         if validate_warnings:
-            warn_text = "\n\n---\n⚠️ **引用验证警告**：\n" + "\n".join(f"- {w}" for w in validate_warnings)
-            response += warn_text
-            yield {"type": "content", "text": warn_text}
-        yield {"type": "content", "text": "\n\n" + response}
-        yield {"type": "done", "message": f"文献综述完成 ({len(all_papers)}篇)"}
+            response += "\n\n---\n⚠️ **引用验证警告**：\n" + "\n".join(f"- {w}" for w in validate_warnings)
+        return response
+
+    async def _analyze_round(
+        self, label: str, topic: str, papers: list[PaperResult], focus: str
+    ) -> str:
+        """对单轮搜索结果进行分析摘要"""
+        if not papers:
+            return f"({label}：未检索到相关文献)"
+
+        papers_text = "\n".join([
+            f"  [{i+1}] {p.title} ({p.year}) — {p.abstract[:120]}..."
+            for i, p in enumerate(papers[:5])
+        ])
+
+        prompt = f"""你是一个学术文献分析助手。
+
+研究主题：{topic}
+分析任务：{focus}
+
+本轮检索文献({len(papers)}篇)：
+{papers_text}
+
+请用 200-400 字中文总结本轮的主要发现、代表工作和方法论特征。
+用编号 [1][2] 引用文献。"""
+
+        try:
+            return await self.llm(prompt)
+        except Exception as e:
+            logger.error(f"Round analysis failed: {e}")
+            return f"(分析失败: {e})"
+
+    async def _synthesize_review(
+        self, topic: str, round_findings: list[dict], all_papers: list[PaperResult]
+    ) -> str:
+        """综合所有轮次发现，生成结构化文献综述"""
+        # 构建轮次分析上下文
+        findings_text = "\n\n".join([
+            f"### {r.get('label', '第' + str(r.get('round', '?')) + '轮')}\n\n{r.get('analysis', '')}"
+            for r in round_findings
+            if r.get("analysis")
+        ])
+
+        # 构建文献列表
+        papers_text = "\n".join([
+            f"[{i+1}] {p.title}\n    作者：{', '.join(p.authors[:3])}\n    {p.year} · {p.venue}\n    摘要：{p.abstract[:150]}..."
+            for i, p in enumerate(all_papers[:20])
+        ])
+
+        prompt = f"""你是一个资深学术文献综述专家。以下是递进式深度研究的多轮发现，请综合写成一篇结构化文献综述。
+
+研究主题：{topic}
+
+## 多轮研究发现
+
+{findings_text}
+
+## 全部检索文献(共{len(all_papers)}篇)
+
+{papers_text}
+
+## 要求
+
+请撰写一篇完整的结构化文献综述(2000-3500字中文)，包含：
+
+1. **研究背景与范围**(简述领域背景和本文献综述范围)
+2. **主题分类**(至少 3 个主题类别，每个类别综合多轮发现)
+   - 对于每个类别，选择代表性文献深入分析
+3. **方法论比较**(不同方法的优劣和适用范围)
+4. **研究空白与未来方向**(基于第3轮空白分析及综合判断，明确指出 2-4 个关键空白)
+5. **结论**
+6. **参考文献列表**(编号 [1]-[{len(all_papers)}]，仅用上方已有文献)
+
+**关键规则：**
+- 引用文献时使用 [1] [2] 格式
+- **只能引用上方文献列表中已有的文献**，严禁编造
+- 尾部列出完整参考文献列表
+- 学术语言规范"""
+
+        response = await self.llm(prompt)
+        validate_warnings = _validate_citation_refs(response, all_papers)
+        if validate_warnings:
+            response += "\n\n---\n⚠️ **引用验证警告**：\n" + "\n".join(f"- {w}" for w in validate_warnings)
+        return response
 
 
 class OutlineAgent(BaseAgent):
@@ -292,111 +663,575 @@ class OutlineAgent(BaseAgent):
 
         context = self.ctx.to_context_text()
 
+        # 元数据关键词(用于过滤非正文章节)
+        _META_KEYWORDS = ['标题', 'title', '摘要', 'abstract', '关键词', 'keywords',
+                         '章节结构', 'chapter structure', '参考文献', 'references',
+                         '目录', 'table of contents', '致谢', 'acknowledgements']
+
         prompt = f"""你是一个经验丰富的学术论文作者。基于以下信息，生成一篇学术论文的结构化大纲。
 
 {context}
 用户需求：{user_input}
 
-生成标准学术论文大纲，包含：
-1. **标题**（中英文）
-2. **摘要**（200-300 字中文）
-3. **关键词**（5-8 个）
-4. **章节结构**：
-   - 每个一级章节标注预计字数（如"引言（1000-1500字）"）
-   - 每个一级章节包含 2-4 个二级子节
-5. **参考文献**（列出已有文献的引用）
+生成标准学术论文大纲。只输出正文章节，不要包含标题、摘要、关键词、参考文献等元数据。
+
+要求：
+1. 输出 4-6 个正文章节(一级标题，用 ## 标记)
+2. 每个章节标注预计字数(如"引言(1000-1500字)")，并包含 2-4 个二级子节(###)
+3. 章节按学术论文逻辑排列：引言→文献综述→方法→实验/分析→讨论→结论
+4. 每个章节标题应具体，反映论文的研究内容
+
+⚠️ 注意：
+- 不要包含"标题"、"摘要"、"关键词"、"参考文献"章节；这些由系统自动生成
+- 不要包含"章节结构"这样的元章节
 
 使用 Markdown 格式，## 标记一级章节，### 标记二级子节。"""
+        + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(prompt)
 
-        # 提取章节
+        # 提取章节(过滤元数据章节)
         sections = []
         for line in response.split("\n"):
             if line.startswith("## "):
                 title = line[3:].strip()
                 title = re.sub(r'\(\d+-?\d*字\)', '', title).strip()
-                if title and len(title) > 2:
+                # 跳过元数据章节
+                title_lower = title.lower()
+                if title and len(title) > 2 and not any(
+                    title_lower.startswith(kw) or kw in title_lower
+                    for kw in _META_KEYWORDS
+                ):
                     sections.append(title)
 
         self.ctx.outline = {"raw": response, "sections": sections}
+
+        # 发送前端兼容的 outline 结构化数据，用于更新大纲导航面板
+        outline_for_frontend = [
+            {"id": f"sec_{i}", "number": i + 1, "title": s,
+             "wordCount": 0, "status": "pending"}
+            for i, s in enumerate(sections)
+        ]
+        yield {"type": "outline", "sections": outline_for_frontend}
         yield {"type": "content", "text": response}
         yield {"type": "done", "message": f"大纲生成完成 ({len(sections)}章)"}
 
 
 class WritingAgent(BaseAgent):
-    """写作 Agent — 逐节撰写，引用文献"""
+    """写作 Agent — 批量逐章撰写，引用文献"""
     name = "writing"
     icon = "✍️"
     label = "写作"
-    description = "按章节撰写论文正文，引用文献"
+    description = "按大纲逐章撰写完整论文正文"
     prompt_hint = "撰写论文章节..."
 
-    async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
-        yield {"type": "writing", "message": "开始撰写..."}
+    async def run(self, user_input: str, section: str = "") -> AsyncGenerator[dict, None]:
+        """批量撰写：按 outline 逐章生成。
+        
+        Args:
+            user_input: 用户输入（可选额外指令）
+            section: 指定只写某一节（section_key），空则全部章节
+        """
+        outline = self.ctx.outline
+        if not outline:
+            yield {"type": "writing", "message": "没有大纲，先生成大纲"}
+            yield {"type": "done", "message": "需先生成大纲"}
+            return
 
         context = self.ctx.to_context_text()
+        
+        # RAG: 构建全文索引用于 per-section 语义检索（缓存到 ctx）
+        try:
+            from hermes_cli.scholarforge.rag import PaperRetriever
+            paper_count = len(self.ctx.papers) if self.ctx.papers else 0
+            if self.ctx._rag_retriever is not None and self.ctx._rag_paper_count == paper_count:
+                _rag = self.ctx._rag_retriever  # 复用缓存
+            else:
+                _rag = PaperRetriever()
+                if self.ctx.papers:
+                    _rag.load_papers(self.ctx.papers)
+                self.ctx._rag_retriever = _rag
+                self.ctx._rag_paper_count = paper_count
+        except Exception:
+            _rag = None
 
-        prompt = f"""你是一个中文学术论文作家。基于已有的研究背景撰写论文章节。
+        sections = outline.get("sections", []) if isinstance(outline, dict) else []
+        if not sections:
+            yield {"type": "error", "message": "大纲中没有章节，请重新生成大纲"}
+            return
 
+        # 过滤元数据章节（防御性检查：即使 OutlineAgent 漏了也拦截）
+        _META_WORDS = ['标题', 'title', '摘要', 'abstract', '关键词', 'keywords',
+                       '章节结构', 'chapter structure', '参考文献', 'references',
+                       '目录', '致谢', 'acknowledgements']
+        real_sections = []
+        for s in sections:
+            title = s.get("title", s) if isinstance(s, dict) else str(s)
+            title_lower = title.lower()
+            if not any(kw in title_lower for kw in _META_WORDS):
+                real_sections.append(s)
+
+        if not real_sections:
+            yield {"type": "error", "message": "未提取到有效章节，请重新生成大纲"}
+            return
+
+        # 如果指定了 section_key，只写那一节
+        if section:
+            target = None
+            for idx, s in enumerate(real_sections):
+                if isinstance(s, dict):
+                    sk = s.get("id", f"sec_{idx}")
+                else:
+                    sk = f"sec_{idx}"
+                if sk == section:
+                    target = (idx, s, sk)
+                    break
+            if target:
+                real_sections = [target[1]]
+                # 重设 idx/key 为实际位置，但保留原 key
+                self._single_section_keys = {0: target[2]}
+            else:
+                yield {"type": "error", "message": f"未找到章节: {section}"}
+                return
+
+        for idx, section_item in enumerate(real_sections):
+            if isinstance(section_item, dict):
+                section_title = section_item.get("title", f"第{idx+1}章")
+                section_key = section_item.get("id", f"sec_{idx}")
+            else:
+                section_title = str(section_item)
+                section_key = f"sec_{idx}"
+
+            # 如果指定了 section_key，用原 key 映射
+            if hasattr(self, '_single_section_keys') and idx in self._single_section_keys:
+                section_key = self._single_section_keys[idx]
+
+            yield {"type": "writing", "message": f"撰写：{section_title}...", "section_key": section_key}
+            yield {"type": "stage", "stage": "writing", "section": section_title, "section_key": section_key}
+
+            # RAG: 为本章节检索最相关的 5-8 篇文献
+            if _rag and self.ctx.papers:
+                rag_results = _rag.retrieve_for_writing(section_title, self.ctx.section_contents.get(section_key, ""), top_k=8)
+                relevant_papers = [(p, s) for p, s in rag_results]
+            else:
+                # fallback: 使用全部文献
+                relevant_papers = [(p, 1.0) for p in self.ctx.papers[:8]]
+            
+            # 构建 per-section 文献列表（保留原始全局编号）
+            papers_text = "\n".join([
+                f"[{self.ctx.papers.index(p) + 1 if p in self.ctx.papers else i+1}] {p.title} ({', '.join(p.authors[:3] if hasattr(p, 'authors') and p.authors else [])}, {getattr(p, 'year', '')})"
+                for i, (p, _) in enumerate(relevant_papers)
+            ])
+            
+            # 引用映射：RAG 结果在全局文献池中的索引
+            rag_ref_map = "\n".join([
+                f"  文献[{self.ctx.papers.index(p)+1 if p in self.ctx.papers else '?'}]: {p.title[:60]}"
+                for p, _ in relevant_papers
+            ])
+
+            prompt = f"""你是一个中文学术论文作家。撰写以下章节：
+
+【章节信息】
+标题：{section_title}
+位置：第{idx+1}章(共{len(real_sections)}章)
+
+【研究背景】
 {context}
 
-用户需求：{user_input}
+【本章专属文献】(RAG语义检索，按相关性排序)
+{rag_ref_map}
 
-要求：
-1. 使用学术规范语言，逻辑严谨
-2. 每条观点尽可能引用文献 [1] [2]
-3. 段落之间过渡自然
-4. 避免口语化和主观表述
-5. 中文片段长度合理（100-300 字为一段）
+【写作要求】
+1. 使用学术规范语言，逻辑严谨，段落清晰
+2. 必须引用文献时使用 [n] 格式，n对应上方文献编号
+3. 只引用上面【本章专属文献】中列出的文献，不要编造不存在的引用
+4. 字数：本科论文章节约 1500-2500 字，硕博论文章节约 3000-5000 字
+5. 输出格式：Markdown，章节标题用 ## 开头
 
-请完成以上写作任务。"""
+请直接输出该章节的完整内容："""
+            + get_paper_type_prompt(self.ctx.paper_type)
 
-        response = await self.llm(prompt)
-        ref_warnings = _validate_citation_refs(response, self.ctx.papers)
-        if ref_warnings:
-            yield {"type": "warning", "message": "\n".join(ref_warnings)}
-        yield {"type": "content", "text": response}
-        yield {"type": "done", "message": "写作完成"}
+            try:
+                content = await self.llm(prompt)
+                # 清理可能的重复标题
+                content = content.strip()
+                if content.startswith(f"## {section_title}") or content.startswith(f"##{section_title}"):
+                    content = content.split("\n", 1)[1].strip()
+
+                full_section = f"## {section_title}\n\n{content}\n\n"
+                self.ctx.draft += full_section
+                self.ctx.section_contents[section_key] = content
+
+                yield {"type": "content", "text": full_section, "section_key": section_key}
+                yield {"type": "writing", "message": f"✓ {section_title} 完成", "section_key": section_key}
+
+            except Exception as e:
+                yield {"type": "error", "message": f"{section_title} 撰写失败: {str(e)}"}
+                continue
+
+        yield {"type": "done", "message": f"论文撰写完成(共{len(real_sections)}章)",
+               "papers": len(self.ctx.papers)}
 
 
 class RefinementAgent(BaseAgent):
-    """润色 Agent — 学术语言规范化，去 AI 味"""
+    """润色 Agent — 去重、事实核查、语言润色(禁止编造引用)"""
     name = "refinement"
     icon = "✨"
     label = "润色"
-    description = "审校修改，提升学术语言质量，去除 AI 写作痕迹"
-    prompt_hint = "粘贴需要润色的内容..."
+    description = "去重检查、事实核查、语言润色"
+    prompt_hint = "润色论文..."
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
-        yield {"type": "thinking", "message": "审校润色中..."}
+        """润色入口 — 分章节逐节润色，避免全文压缩"""
+        yield {"type": "thinking", "message": "开始润色检查..."}
 
-        prompt = f"""你是中文学术审校专家。请逐段审校以下论文内容，重点关注：
+        draft = self.ctx.draft
+        if not draft:
+            yield {"type": "done", "message": "没有可润色的内容"}
+            return
 
-1. **学术规范**：术语准确、引用恰当
-2. **语言质量**：去除口语化、提升学术性
-3. **逻辑结构**：段落逻辑清晰、过渡自然
-4. **去 AI 味**：避免"首先其次最后"等机械表述，避免"值得注意的是"等 AI 常用句式
-5. **原创性**：检查是否存在泛泛而谈的空话
+        # Step 1: 去重检查
+        yield {"type": "thinking", "message": "检查重复内容..."}
+        lines = draft.split("\n")
+        seen = set()
+        deduped = []
+        duplicates = 0
+        for line in lines:
+            key = line.strip().lower()[:50]
+            if key and key in seen and len(key) > 20:
+                duplicates += 1
+                continue
+            seen.add(key)
+            deduped.append(line)
 
-对每一段给出"审校建议"和"修改后版本"。在末尾给出总体评价（1-5 分）。
+        if duplicates > 0:
+            yield {"type": "thinking", "message": f"发现并删除 {duplicates} 处重复内容"}
 
----
-{user_input}"""
+        draft = "\n".join(deduped)
 
-        response = await self.llm(prompt)
-        yield {"type": "content", "text": response}
-        yield {"type": "done", "message": "润色完成"}
+        # Step 2: 深度引用验证（LLM 检查每处引用是否真正支撑断论）
+        yield {"type": "thinking", "message": "深度核实引用真实性..."}
+        
+        # 2a: 范围检查（快速，无需 LLM）
+        cited_nums = set(re.findall(r'\[(\d+)\]', draft))
+        valid_nums = set(str(i+1) for i in range(len(self.ctx.papers)))
+        invalid_citations = cited_nums - valid_nums
+        if invalid_citations:
+            for num in invalid_citations:
+                draft = draft.replace(f"[{num}]", f"[?{num}?]")
+        
+        # 2b: LLM 深度验证（检查引用是否真正支撑断论）
+        verify_results = []
+        valid_cited = cited_nums & valid_nums
+        if self.ctx.papers and valid_cited:
+            try:
+                from hermes_cli.scholarforge.citation_verifier import verify_citations
+                yield {"type": "thinking", "message": f"正在深度验证 {len(valid_cited)} 处引用..."}
+                verify_results = await verify_citations(draft, self.ctx.papers, self.llm)
+            except Exception as e:
+                logger.warning(f"LLM citation verify failed, falling back to range check: {e}")
+
+        # 始终发出 citation_verify 事件（即使全部通过），前端据此更新面板
+        all_results = (
+            # LLM 验证结果
+            [{"ref": r.ref_num if hasattr(r, 'ref_num') else r.get('ref', '?'),
+              "score": r.score if hasattr(r, 'score') else r.get('score', 5),
+              "reason": (r.reason if hasattr(r, 'reason') else r.get('reason', ''))[:100]}
+             for r in verify_results] +
+            # 范围检查发现的无效引用（不在文献池中）
+            [{"ref": int(num), "score": 0, "reason": f"引用编号 {num} 不在文献池中（共{len(self.ctx.papers)}篇）"}
+             for num in invalid_citations]
+        )
+
+        if all_results:
+            yield {
+                "type": "citation_verify",
+                "results": all_results,
+                "errors": len([r for r in all_results if r["score"] < 3]),
+                "warnings": len([r for r in all_results if 3 <= r["score"] < 7]),
+            }
+
+        # Step 3: 分章节逐节润色（核心改进）
+        yield {"type": "thinking", "message": "逐节语言润色..."}
+        sections = re.split(r'\n(?=## )', draft)
+        polished_sections = []
+        total_sections = len(sections)
+
+        for i, section_text in enumerate(sections):
+            if not section_text.strip():
+                continue
+            # 提取章节标题用于进度显示
+            header_match = re.match(r'## (.+)', section_text)
+            sec_title = header_match.group(1).strip()[:40] if header_match else f"第{i+1}节"
+
+            yield {"type": "writing", "message": f"润色 {i+1}/{total_sections}: {sec_title}"}
+
+            prompt = f"""你是一个学术编辑。对以下论文章节进行语言润色，要求：
+
+1. 修正语法错误、不通顺的表达
+2. 统一学术术语使用
+3. 优化段落衔接和逻辑连贯性
+4. **禁止添加新的文献引用**
+5. **禁止编造数据或案例**
+6. 保持章节标题不变
+7. **保持原文长度和内容**：只做语言层面的修正，不要删除段落、不要缩写内容
+
+原文：
+{section_text}
+
+请输出润色后的章节文本："""
+            + get_paper_type_prompt(self.ctx.paper_type)
+
+            try:
+                polished_sec = await self.llm(prompt)
+                polished_sections.append(polished_sec.strip())
+            except Exception as e:
+                logger.warning(f"润色 {sec_title} 失败: {e}，保留原章节")
+                polished_sections.append(section_text.strip())
+
+        self.ctx.draft = "\n\n".join(polished_sections)
+        yield {"type": "content", "text": "\n\n---\n**润色完成**\n\n"}
+        yield {"type": "done", "message": f"润色完成(去重{duplicates}处，标记{len(invalid_citations)}处无效引用)"}
+
+    async def _check_duplicate(self, prev: str, curr: str) -> dict:
+        """检查与上一章节的重复内容"""
+        prompt = f"""比较以下两章内容，判断当前章节是否与上一章有重复论述的主题。
+
+上一章：
+{prev[:800]}...
+
+当前章：
+{curr[:800]}...
+
+只回复 JSON：{{"has_duplicate": true/false, "duplicate_topics": "重复的主题描述"}}"""
+        try:
+            resp = await self.llm(prompt)
+            return json.loads(resp)
+        except:
+            return {"has_duplicate": False, "duplicate_topics": ""}
+
+    async def _check_facts(self, text: str) -> dict:
+        """检查是否缺少具体数据/案例"""
+        prompt = f"""审校以下论文内容，找出所有"泛泛而谈"但没有具体数据、案例或文献支撑的论点。
+
+内容：
+{text[:1500]}
+
+只回复 JSON：{{"missing": ["论点1", "论点2"]}}，如果没有则返回空数组。"""
+        try:
+            resp = await self.llm(prompt)
+            return json.loads(resp)
+        except:
+            return {"missing": []}
 
 
-# 多视角 Personas（用于 LiteratureAgent 的 STORM 风格检索）
+# 多视角 Personas(用于 LiteratureAgent 的 STORM 风格检索)
 STORM_PERSONAS = [
-    "实证研究者（关注实验设计、数据分析方法）",
-    "理论建构者（关注概念框架、理论模型）",
-    "应用导向研究者（关注实践应用、政策建议）",
-    "批评者（关注研究局限、方法论缺陷）",
-    "跨学科研究者（关注跨领域连接和创新方法）",
+    "实证研究者(关注实验设计、数据分析方法)",
+    "理论建构者(关注概念框架、理论模型)",
+    "应用导向研究者(关注实践应用、政策建议)",
+    "批评者(关注研究局限、方法论缺陷)",
+    "跨学科研究者(关注跨领域连接和创新方法)",
 ]
+
+# 不同论文类型的写作风格指南 — Agent 在 prompt 中动态注入
+PAPER_TYPE_STYLES: dict[str, dict] = {
+    "本科论文": {
+        "style": "教学导向、概念清晰、实证为主",
+        "depth": "基础到中等，注重方法论的完整介绍，引用 20-40 篇",
+        "tone": "正式但易懂，句式中等长度",
+        "structure_hint": "摘要-引言-理论基础-系统设计-测试-总结",
+    },
+    "课程论文": {
+        "style": "简洁紧凑、课程作业深度",
+        "depth": "基础，引用 8-15 篇，重在展示理解",
+        "tone": "学习者口吻，学术但不过于正式",
+        "structure_hint": "摘要-引言-相关理论-讨论-结论",
+    },
+    "硕士论文": {
+        "style": "研究导向、逻辑严谨、有创新贡献",
+        "depth": "中等偏深，引用 50-80 篇，方法论要详尽",
+        "tone": "正式学术，句式复杂，强调研究的独特性",
+        "structure_hint": "绪论-文献综述-方法-实验-讨论-结论",
+    },
+    "博士论文": {
+        "style": "原创研究、理论创新、学术贡献突出",
+        "depth": "非常深，引用 100+ 篇，强调原始贡献和理论深度",
+        "tone": "高度学术化，论证严密，承认研究局限",
+        "structure_hint": "绪论-文献综述-理论基础-方法-多组实验-综合讨论-创新点",
+    },
+    "期刊论文": {
+        "style": "精炼原创、IMRaD 结构、面向同行评审",
+        "depth": "深，引用 30-50 篇，强调方法可复现",
+        "tone": "高度精炼，段落短，重点突出",
+        "structure_hint": "Abstract-Introduction-Related Work-Method-Experiment-Discussion-Conclusion",
+    },
+    "会议论文": {
+        "style": "极致精炼（8-10 页）、新颖性突出、demo 友好",
+        "depth": "中，引用 15-25 篇，方法部分占大头",
+        "tone": "紧凑有力，每句话都要有信息量",
+        "structure_hint": "Abstract-Intro-Related-Method-Experiment-Conclusion",
+    },
+    "综述论文": {
+        "style": "全景视野、分类体系、批判性分析",
+        "depth": "广而深，引用 80+ 篇，强调覆盖面和分析深度",
+        "tone": "客观中立，多观点并陈，指出研究空白",
+        "structure_hint": "引言-背景-分类体系-方法对比-挑战-未来方向",
+    },
+    "开题报告": {
+        "style": "计划导向、可行性论证、研究意义",
+        "depth": "中等，引用 30-50 篇，重在论证方案可行性",
+        "tone": "前瞻性、说服力强，逻辑清晰",
+        "structure_hint": "背景与意义-现状-目标-方法-进度-可行性",
+    },
+    "调研报告": {
+        "style": "实务导向、数据驱动、决策建议",
+        "depth": "中，引用 20-40 篇，混合使用数据、访谈、案例",
+        "tone": "客观、务实、可操作",
+        "structure_hint": "背景-方法-现状发现-问题分析-建议对策",
+    },
+    "实验报告": {
+        "style": "精确记录、客观分析、误差讨论",
+        "depth": "中，重在数据真实性和分析严谨性",
+        "tone": "客观、精确、科学",
+        "structure_hint": "目的原理-设备步骤-数据记录-处理分析-结论误差",
+    },
+    "案例分析": {
+        "style": "理论结合实际、深度剖析、提炼启示",
+        "depth": "中，引用 15-30 篇，理论框架是关键",
+        "tone": "分析性、批判性、启发性",
+        "structure_hint": "背景-描述-理论框架-分析-讨论-结论",
+    },
+    "毕业设计": {
+        "style": "工程导向、完整系统、文档规范",
+        "depth": "中，强调系统设计、实现、测试的完整性",
+        "tone": "技术性强、结构清晰、文档化",
+        "structure_hint": "引言-技术基础-需求-设计-实现-测试-总结",
+    },
+}
+
+
+def get_paper_type_prompt(paper_type: str) -> str:
+    """生成 paper_type 专属的写作指引，注入到所有 Agent 的 prompt 中"""
+    info = PAPER_TYPE_STYLES.get(paper_type, PAPER_TYPE_STYLES["本科论文"])
+    return (
+        f"\n\n【论文类型专属要求】\n"
+        f"- 类型：{paper_type}\n"
+        f"- 风格：{info['style']}\n"
+        f"- 深度：{info['depth']}\n"
+        f"- 语气：{info['tone']}\n"
+        f"- 结构建议：{info['structure_hint']}\n"
+        f"请严格按上述要求生成内容。"
+    )
+
+
+# Agent 注册表
+
+
+class ReviewerAgent(BaseAgent):
+    """审稿 Agent — 独立 LLM（防自评偏差），四维审查论文质量
+    
+    使用独立 provider/model 审查 draft，与 writing Agent 隔离防自评偏差。
+    四维：结构与逻辑 / 引用质量 / 数据案例 / 学术表达
+    """
+    name = "reviewer"
+    icon = "🔍"
+    label = "审稿"
+    description = "独立审稿——结构/逻辑/引用/数据四维审查"
+    prompt_hint = "审查全文质量..."
+
+    def __init__(self, ctx: ProjectContext, llm_call, review_scope: str = "full"):
+        super().__init__(ctx, llm_call)
+        self.review_scope = review_scope
+
+    async def run(self, user_input: str = "") -> AsyncGenerator[dict, None]:
+        yield {"type": "thinking", "message": "🔍 独立审稿中（使用独立模型审查，防自评偏差）..."}
+
+        draft = self.ctx.draft or user_input
+        if not draft or len(draft.strip()) < 100:
+            yield {"type": "done", "message": "正文过短，无法审查"}
+            return
+
+        outline = self.ctx.outline or {}
+        sections = outline.get("sections", []) if isinstance(outline, dict) else []
+        papers_count = len(self.ctx.papers) if self.ctx.papers else 0
+
+        reviews = []
+        if self.review_scope in ("full", "structure"):
+            yield {"type": "thinking", "message": "📐 审查结构与逻辑..."}
+            reviews.append(("结构与逻辑", "📐", await self._review_structure(draft, sections)))
+        if self.review_scope in ("full", "citations"):
+            yield {"type": "thinking", "message": "📚 审查引用质量..."}
+            reviews.append(("引用质量", "📚", await self._review_citations(draft, papers_count)))
+        if self.review_scope in ("full", "expression"):
+            yield {"type": "thinking", "message": "✍️ 审查学术表达..."}
+            reviews.append(("学术表达", "✍️", await self._review_expression(draft)))
+
+        yield {"type": "thinking", "message": "📊 汇总审稿报告..."}
+        total_issues = 0
+
+        report_lines = ["# 📋 审稿报告\n"]
+        for dim_name, dim_icon, dim_result in reviews:
+            score = dim_result.get("score", 5)
+            issues = dim_result.get("issues", [])
+            suggestions = dim_result.get("suggestions", [])
+            total_issues += len(issues)
+            report_lines.append(f"## {dim_icon} {dim_name} 评分: {score}/10\n")
+            if issues:
+                report_lines.append(f"### 问题（{len(issues)} 处）\n")
+                for issue in issues:
+                    report_lines.append(f"- {issue}")
+                report_lines.append("")
+            if suggestions:
+                report_lines.append(f"### 改进建议\n")
+                for s in suggestions:
+                    report_lines.append(f"- {s}")
+                report_lines.append("")
+
+        avg_score = sum(d.get("score", 5) for _, _, d in reviews) / max(len(reviews), 1)
+        report_lines.insert(1, f"**综合评分**: {avg_score:.1f}/10 | **总问题**: {total_issues}\n")
+
+        review_report = "\n".join(report_lines)
+        yield {
+            "type": "review",
+            "report": review_report,
+            "score": round(avg_score, 1),
+            "total_issues": total_issues,
+            "dimensions": [{"name": n, "score": d.get("score", 5)} for n, _, d in reviews],
+        }
+        yield {"type": "done", "message": f"审稿完成（{avg_score:.1f}/10）"}
+
+    async def _review_structure(self, draft: str, sections: list) -> dict:
+        sec_text = "\n".join([f"- {s.get('title','?')}" for s in sections[:10]]) if sections else "（无大纲）"
+        prompt = f"""你是学术审稿人，审查以下论文的结构与逻辑。\n预期大纲:\n{sec_text}\n正文（前 3000 字）:\n{draft[:3000]}\n审查: 章节结构清晰度、逻辑衔接、论证链完整性、是否有重复/跳跃。\n只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
+        try:
+            resp = await self.llm(prompt)
+            return json.loads(resp)
+        except Exception:
+            return {"score": 5, "issues": [], "suggestions": ["LLM 审查失败"]}
+
+    async def _review_citations(self, draft: str, papers_count: int) -> dict:
+        refs = re.findall(r'\[(\d+)\]', draft)
+        unique_refs = sorted(set(int(r) for r in refs))
+        prompt = f"""你是学术审稿人，审查引用质量。\n引用统计: {len(refs)}处, 唯一编号:{unique_refs[:15]}, 文献池:{papers_count}。\n正文（前 3000 字）:\n{draft[:3000]}\n审查: 无效引用、引用堆砌、关键论断是否支撑、常识滥用引用。\n只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
+        try:
+            resp = await self.llm(prompt)
+            result = json.loads(resp)
+            invalid = [r for r in unique_refs if r > papers_count or r < 1]
+            if invalid:
+                result.setdefault("issues", []).insert(0, f"P0: 无效引用{invalid}(超出[1-{papers_count}])")
+            return result
+        except Exception:
+            return {"score": 5, "issues": [], "suggestions": ["LLM 审查失败"]}
+
+    async def _review_expression(self, draft: str) -> dict:
+        prompt = f"""你是学术语言审稿人，审查以下论文的学术表达。\n正文（前 3000 字）:\n{draft[:3000]}\n审查: 口语化表达、术语不规范、句式复杂/重复、主语不当。\n只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
+        try:
+            resp = await self.llm(prompt)
+            return json.loads(resp)
+        except Exception:
+            return {"score": 5, "issues": [], "suggestions": ["LLM 审查失败"]}
+
 
 # Agent 注册表
 AGENTS: dict[str, type[BaseAgent]] = {
@@ -405,4 +1240,5 @@ AGENTS: dict[str, type[BaseAgent]] = {
     "outline": OutlineAgent,
     "writing": WritingAgent,
     "refinement": RefinementAgent,
+    "reviewer": ReviewerAgent,
 }

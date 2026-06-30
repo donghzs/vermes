@@ -16,6 +16,13 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# ScholarForge 默认 system prompt — 防止模型自我介绍的闲聊式回复
+_SCHOLAR_SYSTEM = (
+    "你是一个专业的中文学术写作助手（ScholarForge）。"
+    "请直接输出学术内容，不要自我介绍，不要说'你好'或'我是某某AI'。"
+    "输出结构清晰、语言严谨的中文学术文本。"
+)
+
 
 # === 论文 Agent LLM 调用（完全独立 provider/model 解析，不依赖 Vermes 默认值） ===
 
@@ -88,8 +95,10 @@ def _resolve_credentials(provider: str, model: str = ""):
     }
 
 
-def _scan_configured_providers() -> list[dict]:
-    """扫描用户已配置的 providers，返回有 Key 的列表"""
+def _list_configured_providers() -> list[dict]:
+    """扫描用户已配置的所有 providers，返回按优先级排序的列表。
+    排序：config.yaml model.provider 指定 > 有Key的 > 深思考模型优先(reasoning) > 文本模型 > flash/快速
+    """
     import yaml, os
     from hermes_cli.blueprints.chat import PROVIDERS
 
@@ -111,8 +120,17 @@ def _scan_configured_providers() -> list[dict]:
     cfg_model_provider = cfg.get("model", {}).get("provider", "")
 
     result = []
-    # 优先用 config.yaml 中 model.provider 指定的
-    for prov_key in [cfg_model_provider] + [k for k in PROVIDERS if k != cfg_model_provider]:
+    seen = set()
+    # 1) 用户默认 provider 排最前
+    ordered_providers = []
+    if cfg_model_provider and cfg_model_provider not in seen:
+        ordered_providers.append(cfg_model_provider)
+        seen.add(cfg_model_provider)
+    for pk in PROVIDERS:
+        if pk not in seen:
+            ordered_providers.append(pk)
+
+    for prov_key in ordered_providers:
         if not prov_key:
             continue
         prov_def = PROVIDERS.get(prov_key, {})
@@ -124,8 +142,11 @@ def _scan_configured_providers() -> list[dict]:
             ""
         )
         base_url = cfg_entry.get("base_url", "") or prov_def.get("base_url", "")
-        model = cfg_entry.get("model", "") or _PROVIDER_FALLBACK_MODELS.get(prov_key, "")
+        # 无独立 API Key 的 provider 走 One-API 透传，统一用 ONEAPI_KEY
+        if not api_key and base_url:
+            api_key = env_vars.get("ONEAPI_KEY", "")
         if api_key and base_url:
+            model = cfg_entry.get("model", "") or _PROVIDER_FALLBACK_MODELS.get(prov_key, "")
             result.append({
                 "provider": prov_key,
                 "api_key": api_key,
@@ -133,6 +154,46 @@ def _scan_configured_providers() -> list[dict]:
                 "model": model,
             })
     return result
+
+
+def _pick_default_provider(providers: list[dict]) -> dict | None:
+    """用户未显式选择时，取第一个可用 provider 作为默认值"""
+    return providers[0] if providers else None
+
+
+def _resolve_agent_providers(pid: int) -> dict[str, dict]:
+    """解析所有 Agent 的 provider/model：
+    1. 如果用户显式绑定了（agent_providers 表），用用户的选择
+    2. 否则根据 Agent 类型自动选择最佳模型
+    3. 所有 Agent 共享同一组已配置 provider 池
+    """
+    from . import database as db
+    stored = db.get_agent_providers(pid) if pid > 0 else dict(db.DEFAULT_AGENT_PROVIDERS)
+    all_providers = _list_configured_providers()
+
+    result = {}
+    for agent_name in ["topic", "literature", "outline", "writing", "refinement"]:
+        cfg = stored.get(agent_name, {})
+        provider = cfg.get("provider", "")
+        model = cfg.get("model", "")
+        if provider:
+            # 用户显式绑定了，照用
+            result[agent_name] = {"provider": provider, "model": model}
+        else:
+            # 自动选择
+            best = _pick_default_provider(all_providers)
+            if best:
+                result[agent_name] = {"provider": best["provider"], "model": best["model"]}
+            else:
+                result[agent_name] = {"provider": "", "model": ""}
+        if agent_name == "writing":
+            pass
+    return result
+
+
+def _scan_configured_providers() -> list[dict]:
+    """兼容旧接口 — 返回所有已配置 providers"""
+    return _list_configured_providers()
 
 
 async def _make_llm(provider_override: str = None, model_override: str = None):
@@ -184,7 +245,7 @@ async def _make_llm(provider_override: str = None, model_override: str = None):
     # 预解析凭证
     creds = _resolve_credentials(provider, model)
 
-    async def _llm(prompt: str) -> str:
+    async def _llm(prompt: str, system_prompt: str = _SCHOLAR_SYSTEM) -> str:
         import httpx
 
         url = creds["base_url"]
@@ -204,8 +265,13 @@ async def _make_llm(provider_override: str = None, model_override: str = None):
             "Content-Type": "application/json",
         }
 
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         body = {
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "temperature": 0.7,
             "max_tokens": 8192,
             "stream": False,
@@ -245,6 +311,9 @@ class ScholarChatRequest(BaseModel):
     agent: str = "topic"
     pipeline: bool = False
     project_id: Optional[int] = None
+    section: str = ""       # 指定只写某一节（对应前端 activeSection）
+    depth: int = 2          # 1=快速, 2=标准, 3=深度
+    checkpoint: bool = True  # 每阶段后等待用户确认（默认开启）
 
 
 class LiteratureSearchRequest(BaseModel):
@@ -258,9 +327,21 @@ _session_contexts: dict[str, "ProjectContext"] = {}
 
 def _get_ctx(project_id: str = "default"):
     from hermes_cli.scholarforge.agents import ProjectContext
+    from . import database as db
 
     if project_id not in _session_contexts:
-        _session_contexts[project_id] = ProjectContext()
+        ctx = ProjectContext()
+        # 从数据库加载项目的 paper_type，供 Agent 感知
+        try:
+            pid_int = int(project_id) if project_id and project_id != "default" else 0
+            if pid_int > 0:
+                proj = db.get_project(pid_int)
+                if proj and proj.get("paper_type"):
+                    ctx.paper_type = proj["paper_type"]
+                    ctx.topic = proj.get("title", "")
+        except Exception:
+            pass
+        _session_contexts[project_id] = ctx
     return _session_contexts[project_id]
 
 
@@ -417,19 +498,24 @@ def register_to(app):
         }
 
     @app.get("/api/scholar/search")
-    async def search_literature_get(query: str, limit: int = 10):
+    async def search_literature_get(query: str, limit: int = 10, sources: str = ""):
         """多源文献搜索（GET）"""
         from hermes_cli.scholarforge.search import search_papers
 
+        source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+
         results = []
+        sources_used = []
         try:
-            async for paper in search_papers(query, limit=limit):
+            async for paper in search_papers(query, limit=limit, sources=source_list):
                 results.append(paper.to_dict())
+                if paper.source not in sources_used:
+                    sources_used.append(paper.source)
         except Exception as e:
             logger.error(f"Search error: {e}")
             return {"results": [], "error": str(e)}
 
-        return {"query": query, "results": results, "count": len(results)}
+        return {"query": query, "results": results, "count": len(results), "sources": sources_used}
 
     @app.post("/api/scholar/search")
     async def search_literature_post(req: LiteratureSearchRequest):
@@ -464,14 +550,13 @@ def register_to(app):
         ctx = _get_ctx(str(req.project_id or "default"))
         pid = int(req.project_id or 0)
 
-        # 加载项目 Agent-Provider 绑定
-        from . import database as db
-        agent_cfg = db.get_agent_providers(pid) if pid > 0 else db.DEFAULT_AGENT_PROVIDERS
+        # 加载项目 Agent-Provider 绑定（自动智能分配模型）
+        agent_cfg = _resolve_agent_providers(pid)
 
         async def generate():
             try:
-                # STORM 引擎模式 — 走 Stanford STORM 全链路
-                if req.pipeline and req.agent == "storm":
+                # STORM 引擎模式 — 显式指定 agent=storm 时走 Stanford STORM 全链路
+                if req.agent == "storm":
                     from hermes_cli.scholarforge.storm_adapter import StormAdapter
 
                     # 解析凭证
@@ -506,9 +591,12 @@ def register_to(app):
                     return
 
                 if req.pipeline:
-                    pipeline_stages = ["literature", "outline", "writing"]
+                    use_checkpoint = req.checkpoint and req.pipeline
+                    pipeline_stages = ["literature", "outline", "writing", "refinement"]
+                    if req.agent == "reviewer":
+                        pipeline_stages.append("reviewer")
 
-                    for stage in pipeline_stages:
+                    for stage_idx, stage in enumerate(pipeline_stages):
                         yield _sse({"type": "stage", "stage": stage, "pipeline": "start"})
 
                         from hermes_cli.scholarforge.agents import AGENTS
@@ -519,14 +607,52 @@ def register_to(app):
                         cfg = agent_cfg.get(stage, {})
                         agent_llm = await _make_llm(cfg.get("provider"), cfg.get("model"))
                         agent = agent_cls(ctx, agent_llm)
-                        async for evt in agent.run(req.message):
+                        # 透传参数
+                        kwargs = {"user_input": req.message}
+                        if stage == "writing" and req.section:
+                            kwargs["section"] = req.section
+                        if stage == "literature" and req.depth:
+                            kwargs["depth"] = req.depth
+                        async for evt in agent.run(**kwargs):
                             yield _sse(evt)
 
                         yield _sse({"type": "stage", "stage": stage, "pipeline": "done",
                                      "papers": len(ctx.papers)})
 
+                        # Checkpoint: 非最后阶段时，发出 wait 信号暂停等待用户确认
+                        if use_checkpoint and stage_idx < len(pipeline_stages) - 1:
+                            stage_labels = {"literature": "文献综述", "outline": "论文大纲",
+                                            "writing": "章节撰写", "refinement": "润色检查",
+                                            "reviewer": "审稿"}
+                            yield _sse({"type": "checkpoint",
+                                         "stage": stage,
+                                         "next": pipeline_stages[stage_idx + 1],
+                                         "message": f"{stage_labels.get(stage, stage)}完成，是否继续{pipeline_stages[stage_idx+1]}？",
+                                         "completed": stage,
+                                         "remaining": pipeline_stages[stage_idx + 1:]})
+
+                    # Pipeline 完成后自动尝试替换伪引用为真实文献
+                    citations_replaced = False
+                    if ctx.draft and ctx.topic:
+                        yield _sse({"type": "thinking", "message": "🔍 检索真实文献替换伪引用..."})
+                        try:
+                            from hermes_cli.scholarforge.citation_provider import replace_pseudo_citations
+                            new_draft, real_citations = await replace_pseudo_citations(
+                                ctx.draft, ctx.topic,
+                                keywords=ctx.papers[:5] if ctx.papers else [],
+                                paper_type=ctx.paper_type)
+                            if real_citations:
+                                ctx.draft = new_draft
+                                citations_replaced = True
+                                yield _sse({"type": "citation",
+                                             "message": f"已替换为 {len(real_citations)} 篇真实文献",
+                                             "count": len(real_citations)})
+                        except Exception as e:
+                            logger.warning(f"Real citation replacement failed: {e}")
+
                     yield _sse({"type": "done", "pipeline": "complete",
-                                 "papers": len(ctx.papers)})
+                                 "papers": len(ctx.papers),
+                                 "citations_replaced": citations_replaced})
                 else:
                     from hermes_cli.scholarforge.agents import AGENTS
                     agent_cls = AGENTS.get(req.agent)
@@ -537,7 +663,13 @@ def register_to(app):
                     cfg = agent_cfg.get(agent_name, {})
                     agent_llm = await _make_llm(cfg.get("provider"), cfg.get("model"))
                     agent = agent_cls(ctx, agent_llm)
-                    async for evt in agent.run(req.message):
+                    # 透传 section/depth 到 Agent — 仅传给接口支持的 Agent
+                    kwargs = {"user_input": req.message}
+                    if req.section and agent_name in ("writing",):
+                        kwargs["section"] = req.section
+                    if req.depth and agent_name == "literature":
+                        kwargs["depth"] = req.depth
+                    async for evt in agent.run(**kwargs):
                         yield _sse(evt)
 
             except HTTPException as e:
@@ -556,6 +688,36 @@ def register_to(app):
             }
         )
 
+    # ── 段落级内联编辑 (Phase 1.1 — 学 Jenni AI) ──
+    @app.post("/api/scholar/inline-edit")
+    async def inline_edit(req: dict):
+        """选中段落 → 改写/扩写/缩写/润色/翻译，不走 SSE，直接返回编辑后文本"""
+        text = req.get("text", "").strip()
+        action = req.get("action", "polish")  # polish/rewrite/expand/shorten/translate-en
+        if not text:
+            raise HTTPException(400, "text 不能为空")
+        if len(text) > 8000:
+            raise HTTPException(400, "文本过长（最多8000字符）")
+
+        prompts = {
+            "polish": f"你是中文学术写作助手。请润色以下段落，提升学术表达和流畅度，保持原意不变。直接输出润色后的段落，不要加任何解释：\n\n{text}",
+            "rewrite": f"你是中文学术写作助手。请改写以下段落，用不同的表达方式重述相同内容，保持原意不变。直接输出改写后的段落，不要加任何解释：\n\n{text}",
+            "expand": f"你是中文学术写作助手。请对以下段落进行扩展论述，增加论据、例证或数据支撑，使其更充实。直接输出扩展后的段落，不要加任何解释：\n\n{text}",
+            "shorten": f"你是中文学术写作助手。请精简以下段落，保留核心论点和关键证据，去除冗余表述。直接输出精简后的段落，不要加任何解释：\n\n{text}",
+            "translate-en": f"你是学术翻译助手。请将以下中文学术段落翻译成英文，保持学术严谨性。直接输出英文翻译，不要加任何解释：\n\n{text}",
+        }
+
+        prompt = prompts.get(action)
+        if not prompt:
+            raise HTTPException(400, f"未知操作: {action}，支持 polish/rewrite/expand/shorten/translate-en")
+
+        llm = await _make_llm()
+        try:
+            result = await llm(prompt)
+            return {"text": result.strip()}
+        except Exception as e:
+            raise HTTPException(502, f"内联编辑失败: {e}")
+
     @app.get("/api/scholar/sources")
     async def list_sources():
         """列出可用文献搜索源"""
@@ -568,19 +730,35 @@ def register_to(app):
             "paid_sources": paid_sources,
         }
 
+    @app.get("/api/scholar/sources/connectivity")
+    async def sources_connectivity():
+        """检查各免费搜索源的可达性"""
+        from hermes_cli.scholarforge.search import get_configured_sources
+        return await get_configured_sources()
+
+    @app.get("/api/scholar/sources/paid")
+    async def paid_sources_list():
+        """返回付费源配置列表"""
+        from hermes_cli.scholarforge.search import get_paid_source_configs
+        configs = await get_paid_source_configs()
+        return {"sources": configs}
+
     @app.post("/api/scholar/sources/activate")
-    async def activate_paid_source(req: dict):
-        """激活付费文献源（用户提供 API Key）"""
+    async def activate_source_endpoint(req: dict):
+        """激活付费文献源（用户提供 API Key）
+        CNKI 需要额外提供 gateway_url
+        """
         source_name = req.get("source")
-        api_key = req.get("api_key")
+        api_key = req.get("api_key", "")
+        gateway_url = req.get("gateway_url", "")
         if not source_name or not api_key:
             raise HTTPException(400, "source 和 api_key 必填")
 
         from hermes_cli.scholarforge.search import activate_paid_source
 
-        ok = await activate_paid_source(source_name, api_key)
+        ok = await activate_paid_source(source_name, api_key, gateway_url)
         if not ok:
-            return {"status": "error", "message": f"来源 '{source_name}' 激活失败（不支持或验证不通过）"}
+            return {"status": "error", "message": f"来源 '{source_name}' 激活失败"}
         return {"status": "ok", "source": source_name}
 
     # ═══════════════════════════════════════════════════════════════
@@ -655,12 +833,63 @@ def register_to(app):
         project_id: str = "default",
         format: str = "markdown",
         title: str = "未命名论文",
+        template: str = "ieee",
     ):
-        """导出论文为 Markdown 或 BibTeX"""
+        """导出论文为 Markdown/BibTeX/LaTeX/Word/PDF"""
         ctx = _get_ctx(project_id)
         content = ctx.draft or ""
         papers = ctx.papers or []
+        abstract = ctx.abstract if hasattr(ctx, "abstract") else ""
 
+        # ── PDF 二进制 ──
+        if format == "pdf":
+            from fastapi.responses import Response
+            from hermes_cli.scholarforge.export.full import export_pdf
+            try:
+                from urllib.parse import quote
+                pdf_bytes = export_pdf(title, content, papers, abstract=abstract)
+                filename_ascii = "paper.pdf"
+                filename_star = quote(f"{title}.pdf", safe="")
+                return Response(
+                    content=pdf_bytes,
+                    media_type="application/pdf",
+                    headers={
+                        "Content-Disposition": (
+                            f"attachment; "
+                            f'filename="{filename_ascii}"; '
+                            f"filename*=UTF-8''{filename_star}"
+                        ),
+                    },
+                )
+            except Exception as e:
+                logger.error(f"PDF export failed: {e}", exc_info=True)
+                raise HTTPException(500, f"PDF 生成失败: {e}")
+
+        # ── Word 二进制 ──
+        if format == "word" or format == "docx":
+            from fastapi.responses import Response
+            from hermes_cli.scholarforge.export.full import export_docx
+            try:
+                from urllib.parse import quote
+                docx_bytes = export_docx(title, content, papers, abstract=abstract)
+                filename_ascii = "paper.docx"
+                filename_star = quote(f"{title}.docx", safe="")
+                return Response(
+                    content=docx_bytes,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={
+                        "Content-Disposition": (
+                            f"attachment; "
+                            f'filename="{filename_ascii}"; '
+                            f"filename*=UTF-8''{filename_star}"
+                        ),
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Word export failed: {e}", exc_info=True)
+                raise HTTPException(500, f"Word 生成失败: {e}")
+
+        # ── 纯文本格式 ──
         if format == "bibtex":
             from hermes_cli.scholarforge.export import format_export_bibtex
             return {
@@ -681,9 +910,82 @@ def register_to(app):
                 "bibtex": format_export_bibtex(all_papers),
                 "count": len(all_papers),
             }
+        if format == "latex":
+            from hermes_cli.scholarforge.export.latex import format_export_latex
+            try:
+                latex = format_export_latex(title, content, papers, template=template)
+                return {"format": "latex", "template": template, "content": latex}
+            except ValueError as e:
+                raise HTTPException(400, str(e))
         else:
             from hermes_cli.scholarforge.export import format_export_markdown
             return {
                 "format": "markdown",
                 "content": format_export_markdown(title, content, papers),
             }
+
+    @app.get("/api/scholar/projects/{pid}/score")
+    async def score_project(pid: int):
+        """论文评分 — 原创性/逻辑性/引用完整性 三维度 AI 评估"""
+        from hermes_cli.scholarforge.scoring import score_paper
+        from . import database as db
+        proj = db.get_project(pid)
+        if not proj:
+            raise HTTPException(404, "项目不存在")
+        content = "\n\n".join(proj.get("contents", {}).values()) or ""
+        if not content.strip():
+            raise HTTPException(400, "论文内容为空，请先写作再评分")
+        papers = [
+            type('P', (), {'title': l.get('title',''), 'authors': l.get('authors',[]), 'year': l.get('year','')})()
+            for l in (proj.get("literatures", []) or [])
+        ]
+        llm_factory = await _make_llm()
+        result = await score_paper(content, papers, _make_llm=lambda: llm_factory, topic=proj.get("title", ""))
+        return result
+
+    @app.post("/api/scholar/projects/{pid}/consensus")
+    async def consensus_score(pid: int, req: dict):
+        """共识度评分 — 给定论断，评估多篇文献的支持/反对/中立比例"""
+        from hermes_cli.scholarforge.scoring import score_consensus, extract_key_claims
+        from . import database as db
+        proj = db.get_project(pid)
+        if not proj:
+            raise HTTPException(404, "项目不存在")
+        claim = req.get("claim", "").strip()
+        # 如果没有指定 claim，自动提取关键论断
+        claims = []
+        if not claim:
+            content = "\n\n".join(proj.get("contents", {}).values()) or ""
+            if content.strip():
+                llm_factory = await _make_llm()
+                claims = await extract_key_claims(content, llm=lambda: llm_factory)
+        else:
+            claims = [claim]
+        if not claims:
+            raise HTTPException(400, "未提供论断且无法从论文中提取")
+        papers = [
+            type('P', (), {'title': l.get('title',''), 'authors': l.get('authors',[]),
+                           'year': l.get('year',''), 'abstract': l.get('abstract','')})()
+            for l in (proj.get("literatures", []) or [])
+        ]
+        llm_factory = await _make_llm()
+        results = []
+        for c in claims[:5]:
+            r = await score_consensus(c, papers, llm=llm_factory)
+            results.append(r)
+        return {"results": results}
+
+    @app.get("/api/scholar/projects/{pid}/claims")
+    async def extract_claims(pid: int):
+        """提取论文关键论断"""
+        from hermes_cli.scholarforge.scoring import extract_key_claims
+        from . import database as db
+        proj = db.get_project(pid)
+        if not proj:
+            raise HTTPException(404, "项目不存在")
+        content = "\n\n".join(proj.get("contents", {}).values()) or ""
+        if not content.strip():
+            raise HTTPException(400, "论文内容为空")
+        llm_factory = await _make_llm()
+        claims = await extract_key_claims(content, llm=llm_factory)
+        return {"claims": claims}

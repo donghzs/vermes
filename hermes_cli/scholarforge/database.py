@@ -129,7 +129,7 @@ def list_projects() -> List[Dict[str, Any]]:
 
 def create_project(title: str, paper_type: str = "本科论文",
                    target_words: int = 8000) -> Dict[str, Any]:
-    """创建项目，自动初始化默认大纲"""
+    """创建项目，根据论文类型自动初始化对应的大纲结构"""
     init_db()
     now = int(time.time())
     with get_conn() as conn:
@@ -140,16 +140,137 @@ def create_project(title: str, paper_type: str = "本科论文",
         )
         pid = cur.lastrowid
 
-        # 默认大纲
-        default_outline = [
-            ("abstract", "", "摘要", 0),
-            ("intro", "1", "引言", 0),
-            ("related", "2", "相关工作", 0),
-            ("method", "3", "研究方法", 0),
-            ("result", "4", "结果分析", 0),
-            ("conclusion", "5", "结论", 0),
-            ("refs", "", "参考文献", 0),
-        ]
+        # 按论文类型选择大纲模板
+        outline_templates = {
+            "本科论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "引言", 0),
+                ("related", "2", "相关理论与技术基础", 0),
+                ("method", "3", "系统设计与实现", 0),
+                ("result", "4", "测试与分析", 0),
+                ("conclusion", "5", "总结与展望", 0),
+                ("refs", "", "参考文献", 0),
+                ("ack", "", "致谢", 0),
+            ],
+            "硕士论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "绪论", 0),
+                ("related", "2", "文献综述与理论基础", 0),
+                ("method", "3", "研究方法与实验设计", 0),
+                ("result", "4", "实验结果与分析", 0),
+                ("discussion", "5", "讨论", 0),
+                ("conclusion", "6", "结论与展望", 0),
+                ("refs", "", "参考文献", 0),
+                ("appendix", "", "附录", 0),
+                ("ack", "", "致谢", 0),
+            ],
+            "博士论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "绪论", 0),
+                ("related", "2", "文献综述", 0),
+                ("theory", "3", "理论基础", 0),
+                ("method", "4", "研究方法", 0),
+                ("experiment1", "5", "实验一", 0),
+                ("experiment2", "6", "实验二", 0),
+                ("discussion", "7", "综合讨论", 0),
+                ("conclusion", "8", "结论与创新点", 0),
+                ("refs", "", "参考文献", 0),
+                ("appendix", "", "附录", 0),
+                ("ack", "", "致谢", 0),
+            ],
+            "期刊论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "引言", 0),
+                ("related", "2", "相关工作", 0),
+                ("method", "3", "方法", 0),
+                ("experiment", "4", "实验", 0),
+                ("discussion", "5", "讨论", 0),
+                ("conclusion", "6", "结论", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "会议论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "引言", 0),
+                ("related", "2", "相关工作", 0),
+                ("method", "3", "方法", 0),
+                ("experiment", "4", "实验", 0),
+                ("conclusion", "5", "结论", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "综述论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "引言", 0),
+                ("background", "2", "背景与概念", 0),
+                ("taxonomy", "3", "分类与体系", 0),
+                ("comparison", "4", "方法对比分析", 0),
+                ("challenges", "5", "挑战与未来方向", 0),
+                ("conclusion", "6", "结论", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "开题报告": [
+                ("abstract", "", "摘要", 0),
+                ("background", "1", "研究背景与意义", 0),
+                ("related", "2", "国内外研究现状", 0),
+                ("objectives", "3", "研究目标与内容", 0),
+                ("method", "4", "研究方法与技术路线", 0),
+                ("plan", "5", "进度安排", 0),
+                ("feasibility", "6", "可行性分析", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "课程论文": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "引言", 0),
+                ("related", "2", "相关理论概述", 0),
+                ("discussion", "3", "分析与讨论", 0),
+                ("conclusion", "4", "结论", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "调研报告": [
+                ("abstract", "", "摘要", 0),
+                ("background", "1", "调研背景与目的", 0),
+                ("method", "2", "调研方法与对象", 0),
+                ("findings", "3", "现状与发现", 0),
+                ("analysis", "4", "问题与分析", 0),
+                ("suggestions", "5", "建议与对策", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "实验报告": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "实验目的与原理", 0),
+                ("method", "2", "实验设备与步骤", 0),
+                ("result", "3", "实验数据与记录", 0),
+                ("analysis", "4", "数据处理与分析", 0),
+                ("conclusion", "5", "实验结论与误差分析", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "案例分析": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "案例背景", 0),
+                ("description", "2", "案例描述", 0),
+                ("theory", "3", "理论框架", 0),
+                ("analysis", "4", "案例分析", 0),
+                ("discussion", "5", "讨论与启示", 0),
+                ("conclusion", "6", "结论", 0),
+                ("refs", "", "参考文献", 0),
+            ],
+            "毕业设计": [
+                ("abstract", "", "摘要", 0),
+                ("intro", "1", "引言", 0),
+                ("related", "2", "相关技术基础", 0),
+                ("requirements", "3", "需求分析", 0),
+                ("design", "4", "系统设计", 0),
+                ("implementation", "5", "系统实现", 0),
+                ("test", "6", "系统测试", 0),
+                ("conclusion", "7", "总结与展望", 0),
+                ("refs", "", "参考文献", 0),
+                ("ack", "", "致谢", 0),
+            ],
+        }
+        default_outline = outline_templates.get(
+            paper_type,
+            outline_templates["本科论文"]  # fallback
+        )
+
         for i, (k, n, t, wc) in enumerate(default_outline):
             conn.execute(
                 "INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order) "

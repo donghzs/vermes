@@ -147,7 +147,7 @@ def create_academic_rm(k: int = 3):
                 # arXiv
                 try:
                     resp = requests.get(
-                        "http://export.arxiv.org/api/query",
+                        "https://export.arxiv.org/api/query",
                         params={"search_query": f"all:{query}", "max_results": str(k)},
                         timeout=15,
                     )

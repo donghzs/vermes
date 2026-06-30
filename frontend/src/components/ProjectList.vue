@@ -121,7 +121,10 @@ const paperTypes = [
   { id: 'undergrad', name: '本科论文', icon: '🎓', desc: '8000-15000字', defaultWords: 10000 },
   { id: 'master', name: '硕士论文', icon: '📚', desc: '3-5万字', defaultWords: 30000 },
   { id: 'phd', name: '博士论文', icon: '🔬', desc: '8-15万字', defaultWords: 80000 },
-  { id: 'journal', name: '期刊论文', icon: '📰', desc: '5000-10000字', defaultWords: 8000 }
+  { id: 'journal', name: '期刊论文', icon: '📰', desc: '5000-10000字', defaultWords: 8000 },
+  { id: 'conference', name: '会议论文', icon: '🎤', desc: '4-8页', defaultWords: 5000 },
+  { id: 'review', name: '综述论文', icon: '📖', desc: '1-2万字', defaultWords: 15000 },
+  { id: 'proposal', name: '开题报告', icon: '📝', desc: '5000-8000字', defaultWords: 6000 },
 ]
 
 const exampleTitles = [
@@ -176,7 +179,7 @@ const doDelete = async (p) => {
 }
 
 const typeIcon = (type) => {
-  const m = { '本科论文': '🎓', '硕士论文': '📚', '博士论文': '🔬', '期刊论文': '📰' }
+  const m = { '本科论文': '🎓', '硕士论文': '📚', '博士论文': '🔬', '期刊论文': '📰', '会议论文': '🎤', '综述论文': '📖', '开题报告': '📝' }
   return m[type] || '📄'
 }
 
