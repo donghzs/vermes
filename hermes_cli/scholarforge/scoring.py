@@ -8,6 +8,7 @@ ScholarForge Paper Scoring System — LLM 驱动的论文多维评分
 
 综合评分 = originality×0.3 + logic×0.35 + citation×0.35
 """
+import asyncio
 import json
 import logging
 import re
@@ -103,7 +104,8 @@ async def score_paper(
 请开始评估。"""
 
     try:
-        response = await _make_llm(prompt)
+        llm = _make_llm()
+        response = await llm(prompt) if callable(llm) else llm
 
         # 提取 JSON
         json_match = re.search(r"\{[\s\S]*\}", response)
@@ -124,6 +126,11 @@ async def score_paper(
 
 def _validate_score_result(result: dict) -> dict:
     """验证并修正 LLM 输出的评分结果"""
+    # 防御：如果 result 不是 dict，返回 fallback
+    if not isinstance(result, dict):
+        logger.warning(f"[ScholarForge Score] Expected dict, got {type(result).__name__}: {str(result)[:200]}")
+        return _fallback_score("", [])
+
     expected_keys = {
         "originality": {"score": 5.0, "reasoning": ""},
         "logic": {"score": 5.0, "reasoning": ""},
@@ -156,39 +163,38 @@ def _validate_score_result(result: dict) -> dict:
 
 
 def _fallback_score(content: str, papers: list) -> dict:
-    """无 LLM 时的启发式评分"""
-    # 内容长度作为参考
+    """无 LLM 时的启发式评分 — 仅供预览，需 LLM 获取真实评分"""
     content_len = len(content)
-
-    # 原创性：基于内容长度和复杂度估算
-    originality = min(8.0, max(3.0, content_len / 1000))
-
-    # 逻辑性：基本检查
     has_sections = content.count("##") + content.count("###")
-    logic = min(9.0, max(4.0, has_sections * 1.2))
-
-    # 引用完整性
     ref_count = len(re.findall(r"\[\d+\]", content))
     paper_count = len(papers)
-    citation = min(10.0, max(2.0, (ref_count + paper_count) * 0.5)) if paper_count > 0 else min(4.0, ref_count * 0.8)
+
+    # 基于结构完整度估算（非 LLM 评判，精度有限）
+    # 章节数量丰富度 → 逻辑性近似
+    logic = min(7.0, max(3.0, has_sections * 0.8))
+    # 引用密度 → 引用完整性近似
+    citation = min(7.0, max(2.0, (ref_count * 0.8 + paper_count * 0.4))) if paper_count > 0 else min(3.0, ref_count * 0.5)
+    # 原创性保守估计（无法从字数推断）
+    originality = 5.0
 
     overall = round(originality * 0.3 + logic * 0.35 + citation * 0.35, 1)
 
     return {
         "originality": {
             "score": round(originality, 1),
-            "reasoning": f"基于内容长度和复杂度估算（{content_len}字符）"
+            "reasoning": "⚠️ 启发式估算（非 LLM 评估），建议配置 Agent API Key 以获取准确评分"
         },
         "logic": {
             "score": round(logic, 1),
-            "reasoning": f"基于章节结构估算（{has_sections}个章节标记）"
+            "reasoning": f"基于章节结构估算（{has_sections}个章节标记），非 LLM 逻辑判断"
         },
         "citation_completeness": {
             "score": round(citation, 1),
-            "reasoning": f"检测到 {ref_count} 处引用标记，{paper_count} 篇文献"
+            "reasoning": f"检测到 {ref_count} 处引用标记，{paper_count} 篇文献。需 LLM 验证引用质量"
         },
         "overall": overall,
-        "overall_reasoning": "（无 LLM 的启发式评估，建议为 Agent 配置 API Key 以获得准确评分）",
+        "overall_reasoning": "⚠️ 启发式估算结果（非 LLM 评估），建议为论文写作 Agent 配置 API Key 以获得基于 LLM 的准确学术评分",
+        "_is_fallback": True,
     }
 
 
@@ -290,7 +296,28 @@ def _fallback_consensus(claim: str, papers: list) -> dict:
 
 async def extract_key_claims(content: str, llm=None, max_claims: int = 5) -> list[str]:
     """从论文正文中提取关键论断（供共识度评分使用）"""
-    if not llm:
+    # 防御：llm 可能是 factory(lambda) 或 direct callable
+    # factory 模式：llm=lambda: llm_factory → 调用 llm() 得到实际函数
+    # direct 模式：llm=llm_factory → 直接用
+    actual_llm = None
+    if llm is not None:
+        if callable(llm):
+            try:
+                # 尝试调用 factory 获取实际 LLM
+                candidate = llm()
+                # 如果 factory 返回的是 coroutine（async def），说明不是 factory 而是直接函数
+                if asyncio.iscoroutine(candidate):
+                    actual_llm = llm  # 直接用原 llm
+                elif callable(candidate):
+                    actual_llm = candidate
+                else:
+                    actual_llm = llm  # fallback 直接用
+            except Exception:
+                actual_llm = llm  # 调用失败，直接用原 llm
+        else:
+            actual_llm = None
+
+    if not actual_llm:
         sentences = re.findall(r'[^。\n]+[。]', content[:3000])
         claims = []
         for s in sentences:
@@ -307,7 +334,7 @@ async def extract_key_claims(content: str, llm=None, max_claims: int = 5) -> lis
 {content[:4000]}"""
 
     try:
-        resp = await llm(prompt)
+        resp = await actual_llm(prompt)
         claims = []
         for line in resp.strip().split("\n"):
             line = line.strip()

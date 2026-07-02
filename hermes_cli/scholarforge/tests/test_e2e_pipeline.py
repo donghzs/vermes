@@ -144,7 +144,7 @@ Swin Transformer [3] 在医学影像中具有巨大潜力。"""
         })
         async def _run():
             result = await scoring.score_paper(self.content, self.papers,
-                                               _make_llm=mock_llm_fn(json_str=mock_json))
+                                               _make_llm=lambda: mock_llm_fn(json_str=mock_json))
             self.assertAlmostEqual(result["originality"]["score"], 8.5, places=1)
         asyncio.run(_run())
 

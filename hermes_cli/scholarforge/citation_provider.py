@@ -45,9 +45,12 @@ class RealCitation:
         }
 
     def format_bibtex(self, index: int = 1) -> str:
-        """生成标准 BibTeX 条目"""
+        """生成标准 BibTeX 条目 — cite_key 含标题首词防碰撞"""
         first_author = self.authors[0].split()[-1] if self.authors else "unknown"
-        cite_key = f"{first_author.lower()}{self.year}{chr(96+index)}"
+        # 标题首词（忽略 a/an/the 及标点）
+        title_words = [w.lower() for w in re.findall(r'[a-zA-Z]{3,}', self.title)] if self.title else []
+        title_prefix = title_words[0][:8] if title_words else "paper"
+        cite_key = f"{first_author.lower()}{self.year}{title_prefix}{chr(96+index)}"
         author_str = " and ".join(self.authors)
         return (
             f"@article{{{cite_key},\n"
@@ -131,7 +134,9 @@ async def search_crossref(query: str, limit: int = 5) -> list[RealCitation]:
                 c.source = "crossref"
                 # BibTeX
                 first_author = authors[0].split()[-1] if authors else "unknown"
-                cite_key = f"{first_author.lower()}{year}{chr(96+len(results)+1)}"
+                title_words = [w.lower() for w in re.findall(r'[a-zA-Z]{3,}', title)] if title else []
+                title_prefix = title_words[0][:8] if title_words else "paper"
+                cite_key = f"{first_author.lower()}{year}{title_prefix}{chr(96+len(results)+1)}"
                 author_str = " and ".join(authors)
                 c.bibtex = (
                     f"@article{{{cite_key},\n"
@@ -261,15 +266,19 @@ async def replace_pseudo_citations(
         logger.info("No real citations found, keeping pseudo citations")
         return draft, []
     
-    # 3. 替换引用编号 + 在文末添加参考文献列表
-    # 先替换编号: [1] → 保持不变（编号对齐新文献列表）
-    # 在文末追加真实参考文献
-    refs_text = "\n\n---\n## 参考文献\n\n"
+    # 3. 替换引用编号 + 追加/替换文末参考文献列表
+    # 如果 draft 已有参考文献节，替换之；否则追加
+    refs_text = ""
     for i, c in enumerate(citations, 1):
         authors_short = f"{c.authors[0].split()[-1] if c.authors else '?'} et al." if len(c.authors) > 1 else (c.authors[0] if c.authors else "?")
         refs_text += f"[{i}] {authors_short}. {c.title}. {c.venue}, {c.year}. DOI: {c.doi}\n"
     
-    new_draft = draft + refs_text
+    # 检测并替换已有参考文献节（避免重复追加）
+    ref_section_pattern = r'(\n\n---\n)?## 参考文献\n\n[\s\S]*$'
+    if re.search(r'(?i)##\s*参考文献', draft):
+        new_draft = re.sub(ref_section_pattern, f'\n\n---\n## 参考文献\n\n{refs_text}', draft)
+    else:
+        new_draft = draft + f"\n\n---\n## 参考文献\n\n{refs_text}"
     
     return new_draft, citations
 

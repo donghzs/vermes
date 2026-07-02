@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Optional
 
 from fastapi import HTTPException, Path
@@ -332,6 +333,13 @@ def register_to(app):
             raise HTTPException(404, "项目不存在")
         return {"deleted": True}
 
+    @app.get("/api/scholar/projects/{pid}/section/{section_key}")
+    async def api_get_section(pid: int, section_key: str):
+        """获取章节内容"""
+        from . import database as db
+        content = db.get_section_content(pid, section_key)
+        return {"content": content, "section_key": section_key}
+
     @app.post("/api/scholar/projects/{pid}/section/{section_key}")
     async def api_save_section(pid: int, section_key: str, req: dict):
         """保存章节内容"""
@@ -539,23 +547,23 @@ def register_to(app):
         }
 
 # ── P1-1: SSE 速率限制 ──
-import asyncio, time
-_stream_rate_limiter: dict[str, float] = {}  # client_id → last_yield_ts
 
-async def _sse_rate_limit(ctx_id: str, interval_ms: int = 30):
-    """确保同一 ctx 的两次 yield 之间至少间隔 interval_ms"""
-    now = time.monotonic()
-    last = _stream_rate_limiter.get(ctx_id, 0)
-    gap = now - last
-    if gap < interval_ms / 1000:
-        await asyncio.sleep((interval_ms / 1000) - gap)
+    _stream_rate_limiter: dict[str, float] = {}  # client_id → last_yield_ts
+
+    async def _sse_rate_limit(ctx_id: str, interval_ms: int = 30):
+        """确保同一 ctx 的两次 yield 之间至少间隔 interval_ms"""
         now = time.monotonic()
-    _stream_rate_limiter[ctx_id] = now
+        last = _stream_rate_limiter.get(ctx_id, 0)
+        gap = now - last
+        if gap < interval_ms / 1000:
+            await asyncio.sleep((interval_ms / 1000) - gap)
+            now = time.monotonic()
+        _stream_rate_limiter[ctx_id] = now
 
-async def _sse_rl(data: dict, ctx_id: str) -> str:
-    """带速率限制的 SSE 格式化"""
-    await _sse_rate_limit(ctx_id)
-    return _sse(data)
+    async def _sse_rl(data: dict, ctx_id: str) -> str:
+        """带速率限制的 SSE 格式化"""
+        await _sse_rate_limit(ctx_id)
+        return _sse(data)
 
     @app.post("/api/scholar/stream")
     async def scholar_stream(req: ScholarChatRequest):

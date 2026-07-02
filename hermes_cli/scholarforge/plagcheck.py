@@ -292,13 +292,16 @@ def check_aigc(text: str) -> dict:
     }
 
 
-def full_plagiarism_check(text: str, title: str = "", check_online: bool = False) -> PlagReport:
+def full_plagiarism_check(text: str, title: str = "") -> PlagReport:
     """全量查重 + AIGC 检测，返回标准化报告
     
-    Args:
-        text: 待检测论文全文
-        title: 论文标题（用于在线查重）
-        check_online: 是否调用在线查重 API（耗时长，默认不开）
+    检测维度：
+    1. SimHash 内部查重 — 检测段落间相似度
+    2. N-gram 重复率 — 基于 5-gram 滑动窗口
+    3. AIGC 启发式检测 — 基于句式模式、过渡词密度
+    
+    注：在线查重（PaperYY/知网）需用户自行前往官网提交，
+    本模块提供的是本地离线检测，用于写作过程中自查自纠。
     """
     paras = _split_paragraphs(text)
     
@@ -335,22 +338,18 @@ def full_plagiarism_check(text: str, title: str = "", check_online: bool = False
         aigc_results=aigc["results"],
         aigc_overall_ratio=aigc["overall_ratio"],
         suggestions=suggestions,
-        checked_sources=["internal_simhash", "ngram_coverage", "aigc_heuristic"],
+        checked_sources=["simhash", "ngram_coverage", "aigc_heuristic"],
     )
 
 
-# ─── 在线查重 API 对接（骨架） ───
+# ─── 在线查重（提示用户自行前往官网） ───
 
-async def check_online_paperyy(text: str, title: str = "") -> Optional[PlagResult]:
-    """PaperYY 免费查重 API — 骨架
-    
-    PaperYY 免费版: 每天 1-2 次，通过网页端提交
-    API 目前无公开文档，此处保留接口骨架供未来扩展
-    """
-    # TODO: 对接 PaperYY 开放 API
-    return None
+ONLINE_PLAG_SERVICES = {
+    "paperyy": {"name": "PaperYY", "url": "https://www.paperyy.com/", "free_times": "每天1次免费"},
+    "dachagao": {"name": "大雅查重", "url": "https://www.dayainfo.com/", "free_times": "首次免费"},
+    "cnki_check": {"name": "知网查重", "url": "https://check.cnki.net/", "free_times": "收费服务"},
+}
 
-
-async def check_online_dachagao(text: str, title: str = "") -> Optional[PlagResult]:
-    """大雅查重 API — 骨架"""
-    return None
+def get_online_plag_services() -> list[dict]:
+    """返回可用的在线查重服务列表（用户需自行前往官网提交）"""
+    return [{"id": k, **v} for k, v in ONLINE_PLAG_SERVICES.items()]

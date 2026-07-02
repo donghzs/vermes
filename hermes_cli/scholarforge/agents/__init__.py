@@ -46,6 +46,32 @@ def _validate_citation_refs(text: str, papers: list) -> list[str]:
     return warnings
 
 
+def _clean_citation_format(text: str) -> str:
+    """清理 LLM 生成的非法引用格式，统一为 [n] 纯数字格式。
+    
+    处理以下非法格式：
+    - [@金旭杨2025] → 删除（无法映射到编号）
+    - [金旭杨2025] → 删除
+    - [@Author2020] → 删除
+    - (作者, 2025) → 删除  
+    - [Author, 2020] → 删除
+    """
+    # 1. [@中文名年份] 或 [@英文名年份] — 删除整个标记
+    text = re.sub(r'\[@[^\]]+\]', '', text)
+    # 2. [中文名年份] 但不包含数字编号（如 [金旭杨2025]）
+    text = re.sub(r'\[[^\]\d]+\d{4}\]', '', text)
+    # 3. (作者, 年份) 或 (作者, 年份: 页码) 格式
+    text = re.sub(r'\([^)]{2,20},\s*\d{4}[^)]*\)', '', text)
+    # 4. [Author, 2020] 英文名逗号年份格式
+    text = re.sub(r'\[[A-Z][a-z]+.*?,\s*\d{4}\]', '', text)
+    # 5. 清理可能产生的多余空格和标点（连续空白→单空格，. .→.）
+    text = re.sub(r'\s{2,}', ' ', text)
+    # 6. 清理 AI 生成的 @image#n、@figure#n、@table#n 占位符（含范围格式 @image#1-5）
+    text = re.sub(r'@(?:image|figure|table|chart)#\d+(?:-\d+)?', '', text)
+    text = re.sub(r'\.\s*\.', '.', text)
+    return text.strip()
+
+
 def _fuzzy_match_title(candidate: str, papers: list) -> int | None:
     """用模糊匹配找到最接近的文献 index(1-based)，未找到返回 None"""
     if not papers or not candidate:
@@ -136,6 +162,9 @@ class ProjectContext:
 
     def to_context_text(self) -> str:
         parts = []
+        parts.append(f"论文类型：{self.paper_type}")
+        info = PAPER_TYPE_STYLES.get(self.paper_type, PAPER_TYPE_STYLES["本科论文"])
+        parts.append(f"写作风格：{info['style']} | 深度：{info['depth']} | 语气：{info['tone']}")
         if self.topic:
             parts.append(f"研究主题：{self.topic}")
         if self.papers:
@@ -198,10 +227,11 @@ class TopicAgent(BaseAgent):
 5. **建议的研究问题**：提出 3 个具体的研究问题
 6. **推荐关键词**：5-8 个核心关键词用于文献检索
 
-请用中文回答，结构清晰。"""
-        + get_paper_type_prompt(self.ctx.paper_type)
+请用中文回答，结构清晰。
+""" + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(prompt)
+        response = _clean_citation_format(response)
         yield {"type": "content", "text": response}
         yield {"type": "done", "message": "选题分析完成"}
 
@@ -272,6 +302,7 @@ class LiteratureAgent(BaseAgent):
         # Step 3: 生成文献综述
         yield {"type": "writing", "message": "生成文献综述..."}
         response = await self._generate_review(user_input, list(all_papers.values()))
+        response = _clean_citation_format(response)
         yield {"type": "content", "text": "\n\n" + response}
         yield {"type": "done", "message": f"文献综述完成 ({len(all_papers)}篇)"}
 
@@ -287,7 +318,8 @@ class LiteratureAgent(BaseAgent):
             resp = await self.llm(prompt)
             score = int(re.search(r'\d+', resp).group())
             return max(1, min(10, score))
-        except:
+        except Exception:
+            logger.warning(f"_score_contribution failed for paper, defaulting to 5")
             return 5  # 默认中等
 
     async def _generate_personas(self, topic: str, papers: list[PaperResult]) -> list[str]:
@@ -400,7 +432,7 @@ class LiteratureAgent(BaseAgent):
                 focus="识别该领域的主要研究方向、代表性工作和方法论趋势",
             )
             round_findings.append({"round": 1, "label": "宽泛搜索", "analysis": r1_analysis})
-            yield {"type": "content", "text": f"\n\n### 📊 第1轮：领域概览\n\n{r1_analysis}"}
+            yield {"type": "content", "text": _clean_citation_format(f"\n\n### 📊 第1轮：领域概览\n\n{r1_analysis}")}
 
         # ═══ Round 2: Multi-Perspective Search ═══
         yield {"type": "stage", "stage": "literature_r2", "pipeline": "start",
@@ -485,7 +517,7 @@ class LiteratureAgent(BaseAgent):
 空白2：xxx | 关键词：kw1, kw2"""
 
             gap_resp = await self.llm(gap_prompt)
-            yield {"type": "content", "text": f"\n\n### 🔎 第3轮：研究空白识别\n\n{gap_resp}"}
+            yield {"type": "content", "text": _clean_citation_format(f"\n\n### 🔎 第3轮：研究空白识别\n\n{gap_resp}")}
 
             # 解析空白关键词
             gap_keywords = []
@@ -531,6 +563,7 @@ class LiteratureAgent(BaseAgent):
         yield {"type": "writing", "message": f"综合 {len(round_findings)} 轮发现，共 {len(all_papers)} 篇文献..."}
 
         response = await self._synthesize_review(user_input, round_findings, list(all_papers.values()))
+        response = _clean_citation_format(response)
         yield {"type": "content", "text": "\n\n" + response}
         yield {"type": "done", "message": f"深度研究完成 ({depth}轮, {len(all_papers)}篇文献)"}
 
@@ -554,12 +587,14 @@ class LiteratureAgent(BaseAgent):
 1. 按主题分类组织(至少 2-3 个主题类别)
 2. 分析各研究的方法论特点
 3. 指出现有研究的不足和研究空白
-4. 使用学术引用格式 [1] [2] 引用文献，**只引用上方给出的文献**，不要编造
-5. 每个引用必须对应真实文献，如文献[1]对应上方第1篇
-6. 在末尾列出所有参考文献
+4. **引用格式铁律**：只使用 [1] [2] [3] 纯数字方括号引用
+   - ✅ 正确："张三等人提出了基于CNN的方法[1]"
+   - ❌ 禁止：[@张三2025]、[Author2020]、(作者, 年份) 等非纯数字格式
+5. 每个引用编号对应上方文献列表中同编号的文献
+6. 在末尾列出完整参考文献
 
-请用学术规范语言，2000-3000 字。"""
-        + get_paper_type_prompt(self.ctx.paper_type)
+请用学术规范语言，2000-3000 字。
+""" + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(review_prompt)
         validate_warnings = _validate_citation_refs(response, papers)
@@ -663,30 +698,35 @@ class OutlineAgent(BaseAgent):
 
         context = self.ctx.to_context_text()
 
-        # 元数据关键词(用于过滤非正文章节)
-        _META_KEYWORDS = ['标题', 'title', '摘要', 'abstract', '关键词', 'keywords',
-                         '章节结构', 'chapter structure', '参考文献', 'references',
-                         '目录', 'table of contents', '致谢', 'acknowledgements']
+        # 元数据关键词(只过滤参考文献/致谢/目录等自动生成项，保留摘要/关键词/结论)
+        _META_KEYWORDS = ['参考文献', 'references',
+                         '目录', 'table of contents', '致谢', 'acknowledgements',
+                         '附录', 'appendix', '注释', 'notes']
 
         prompt = f"""你是一个经验丰富的学术论文作者。基于以下信息，生成一篇学术论文的结构化大纲。
 
 {context}
 用户需求：{user_input}
 
-生成标准学术论文大纲。只输出正文章节，不要包含标题、摘要、关键词、参考文献等元数据。
+生成标准学术论文大纲，必须包含从摘要到结论的完整章节结构。
 
 要求：
-1. 输出 4-6 个正文章节(一级标题，用 ## 标记)
-2. 每个章节标注预计字数(如"引言(1000-1500字)")，并包含 2-4 个二级子节(###)
-3. 章节按学术论文逻辑排列：引言→文献综述→方法→实验/分析→讨论→结论
+1. 输出 4-6 个章节(一级标题，用 ## 标记)，必须覆盖：
+   - 摘要与关键词（概括核心内容与关键词）
+   - 引言（研究背景与问题）
+   - 核心章节2-3个（方法/实验/讨论等）
+   - 结论（总结发现与展望）
+2. 每个章节标注预计字数(如"引言(1000-1500字)")，包含 2-4 个二级子节(###)
+3. 章节顺序参考上方【论文类型专属要求】中的结构建议
 4. 每个章节标题应具体，反映论文的研究内容
 
 ⚠️ 注意：
-- 不要包含"标题"、"摘要"、"关键词"、"参考文献"章节；这些由系统自动生成
-- 不要包含"章节结构"这样的元章节
+- 必须包含"摘要与关键词"章节和"结论"章节
+- 不要包含"参考文献"（由系统自动生成）
+- 不要包含"目录"、"致谢"等元章节
 
-使用 Markdown 格式，## 标记一级章节，### 标记二级子节。"""
-        + get_paper_type_prompt(self.ctx.paper_type)
+使用 Markdown 格式，## 标记一级章节，### 标记二级子节。
+""" + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(prompt)
 
@@ -713,7 +753,7 @@ class OutlineAgent(BaseAgent):
             for i, s in enumerate(sections)
         ]
         yield {"type": "outline", "sections": outline_for_frontend}
-        yield {"type": "content", "text": response}
+        yield {"type": "content", "text": _clean_citation_format(response)}
         yield {"type": "done", "message": f"大纲生成完成 ({len(sections)}章)"}
 
 
@@ -760,9 +800,9 @@ class WritingAgent(BaseAgent):
             yield {"type": "error", "message": "大纲中没有章节，请重新生成大纲"}
             return
 
-        # 过滤元数据章节（防御性检查：即使 OutlineAgent 漏了也拦截）
-        _META_WORDS = ['标题', 'title', '摘要', 'abstract', '关键词', 'keywords',
-                       '章节结构', 'chapter structure', '参考文献', 'references',
+        # 过滤元数据章节（只过滤参考文献/致谢等，保留摘要/关键词/结论）
+        _META_WORDS = ['参考文献', 'references',
+                       '章节结构', 'chapter structure',
                        '目录', '致谢', 'acknowledgements']
         real_sections = []
         for s in sections:
@@ -813,9 +853,19 @@ class WritingAgent(BaseAgent):
             if _rag and self.ctx.papers:
                 rag_results = _rag.retrieve_for_writing(section_title, self.ctx.section_contents.get(section_key, ""), top_k=8)
                 relevant_papers = [(p, s) for p, s in rag_results]
+                # RAG 透明度：SSE 日志告知前端检索了多少篇
+                if rag_results:
+                    top_scores = [f"{s:.2f}" for _, s in rag_results[:3]]
+                    yield {"type": "searching",
+                           "message": f"RAG: 从{len(self.ctx.papers)}篇文献中匹配 {len(rag_results)} 篇 (前3相关度: {', '.join(top_scores)})"}
+                else:
+                    yield {"type": "thinking",
+                           "message": f"RAG: 未找到与'{section_title}'语义匹配的文献，使用全部 {min(8, len(self.ctx.papers))} 篇"}
             else:
                 # fallback: 使用全部文献
                 relevant_papers = [(p, 1.0) for p in self.ctx.papers[:8]]
+                yield {"type": "thinking",
+                       "message": f"RAG: 无检索器可用，使用文献池前 {min(8, len(self.ctx.papers))} 篇"}
             
             # 构建 per-section 文献列表（保留原始全局编号）
             papers_text = "\n".join([
@@ -823,10 +873,10 @@ class WritingAgent(BaseAgent):
                 for i, (p, _) in enumerate(relevant_papers)
             ])
             
-            # 引用映射：RAG 结果在全局文献池中的索引
+            # 引用映射：使用全局编号（与 papers_text 一致），避免重排后错位
             rag_ref_map = "\n".join([
-                f"  文献[{self.ctx.papers.index(p)+1 if p in self.ctx.papers else '?'}]: {p.title[:60]}"
-                for p, _ in relevant_papers
+                f"  [{self.ctx.papers.index(p) + 1 if p in self.ctx.papers else '?'}] {p.title[:80]} — {', '.join(p.authors[:2] if hasattr(p, 'authors') else [])} ({getattr(p, 'year', '')})"
+                for i, (p, _) in enumerate(relevant_papers)
             ])
 
             prompt = f"""你是一个中文学术论文作家。撰写以下章节：
@@ -838,38 +888,96 @@ class WritingAgent(BaseAgent):
 【研究背景】
 {context}
 
-【本章专属文献】(RAG语义检索，按相关性排序)
+【本章专属文献】以下文献按与本章主题的相关性排序，编号固定，必须严格使用：
 {rag_ref_map}
 
 【写作要求】
-1. 使用学术规范语言，逻辑严谨，段落清晰
-2. 必须引用文献时使用 [n] 格式，n对应上方文献编号
-3. 只引用上面【本章专属文献】中列出的文献，不要编造不存在的引用
-4. 字数：本科论文章节约 1500-2500 字，硕博论文章节约 3000-5000 字
+1. 学术规范语言，逻辑严谨，段落清晰
+2. **引用格式铁律**：只能使用 [1] [2] [3] 这样的纯数字方括号格式
+   - ✅ 正确示例："深度学习在图像识别中取得了显著成果[1][3]"
+   - ❌ 禁止：[@张三2025]、[张三2025]、(作者, 年份)、[Author2020] 等任何非纯数字格式
+   - 每个引用编号必须对应上方【本章专属文献】的同编号文献
+3. 只引用上方列出的文献，严禁编造不存在的引用
+4. 字数按{self.ctx.paper_type}标准：本科/课程每节1500-2500字，硕士/综述3000-5000字，博士5000-8000字，期刊/会议1000-2000字
 5. 输出格式：Markdown，章节标题用 ## 开头
 
-请直接输出该章节的完整内容："""
-            + get_paper_type_prompt(self.ctx.paper_type)
+请直接输出该章节的完整内容（不要重复本章标题）：
+""" + get_paper_type_prompt(self.ctx.paper_type)
 
             try:
                 content = await self.llm(prompt)
                 # 清理可能的重复标题
                 content = content.strip()
+                if not content:
+                    yield {"type": "error", "message": f"{section_title} LLM 返回空内容"}
+                    continue
+                # 清理非法引用格式 ([@AuthorYear] → 删除)
+                content = _clean_citation_format(content)
                 if content.startswith(f"## {section_title}") or content.startswith(f"##{section_title}"):
-                    content = content.split("\n", 1)[1].strip()
+                    lines = content.split("\n", 1)
+                    content = lines[1].strip() if len(lines) > 1 else "（此章节待补充内容）"
 
                 full_section = f"## {section_title}\n\n{content}\n\n"
                 self.ctx.draft += full_section
                 self.ctx.section_contents[section_key] = content
 
-                yield {"type": "content", "text": full_section, "section_key": section_key}
+                yield {"type": "content", "text": _clean_citation_format(full_section), "section_key": section_key}
                 yield {"type": "writing", "message": f"✓ {section_title} 完成", "section_key": section_key}
 
             except Exception as e:
                 yield {"type": "error", "message": f"{section_title} 撰写失败: {str(e)}"}
                 continue
 
-        yield {"type": "done", "message": f"论文撰写完成(共{len(real_sections)}章)",
+        # 所有章节写入完成
+        total_chars = len(self.ctx.draft)
+
+        # ═══════════════════════════════════════════════════════
+        # 后处理：组装完整论文结构（标题+摘要+关键词+正文+结论+参考文献）
+        # ═══════════════════════════════════════════════════════
+        yield {"type": "thinking", "message": "📄 组装完整论文结构..."}
+        
+        paper_title = self.ctx.topic or (real_sections[0].get("title", "未命名论文") if isinstance(real_sections[0], dict) else str(real_sections[0]))
+        
+        # 从 draft 中分离摘要/关键词、结论、正文
+        parts = re.split(r'\n(?=## )', self.ctx.draft)
+        abstract_kw_part = ""
+        conclusion_part = ""
+        body_parts = []
+        
+        for part in parts:
+            part_lower = part.strip().lower()
+            if any(kw in part_lower for kw in ['摘要', 'abstract', '关键词', 'keywords']):
+                abstract_kw_part = part.strip()
+            elif any(kw in part_lower for kw in ['结论', 'conclusion', '总结', 'summary']):
+                conclusion_part = part.strip()
+            else:
+                body_parts.append(part.strip())
+        
+        # 组装标准学术论文
+        sections = [f"# {paper_title}\n"]
+        if abstract_kw_part:
+            sections.append(abstract_kw_part + "\n")
+        sections.extend(body_parts)
+        if conclusion_part:
+            sections.append(conclusion_part + "\n")
+        
+        # 添加参考文献列表（仅当 draft 尚未包含参考文献节时）
+        if self.ctx.papers and re.search(r'(?i)#{1,3}\s*(参考文献|references)', self.ctx.draft) is None:
+            refs = ["## 参考文献\n"]
+            for i, p in enumerate(self.ctx.papers):
+                authors = ", ".join(p.authors[:3]) if hasattr(p, 'authors') and p.authors else ""
+                if hasattr(p, 'authors') and len(p.authors) > 3:
+                    authors += " 等"
+                year = getattr(p, 'year', '')
+                venue = getattr(p, 'venue', '') or getattr(p, 'source', '')
+                refs.append(f"[{i+1}] {authors}. {p.title}. {venue}, {year}.")
+            sections.append("\n".join(refs))
+        
+        self.ctx.draft = "\n\n".join(sections)
+        # 发送完整论文到前端（用于导出面板）
+        yield {"type": "content", "text": _clean_citation_format(self.ctx.draft), "section_key": "full_paper"}
+        
+        yield {"type": "done", "message": f"论文撰写完成(共{len(real_sections)}章，{total_chars}字)",
                "papers": len(self.ctx.papers)}
 
 
@@ -944,12 +1052,52 @@ class RefinementAgent(BaseAgent):
         )
 
         if all_results:
+            # 持久化验证结果到 DB（刷新页面后仍可见）
+            try:
+                if self.ctx.project_id:
+                    from hermes_cli.scholarforge import database as db
+                    db.save_citation_verifications(self.ctx.project_id, all_results)
+            except Exception:
+                pass  # 不影响主流程
             yield {
                 "type": "citation_verify",
                 "results": all_results,
                 "errors": len([r for r in all_results if r["score"] < 3]),
                 "warnings": len([r for r in all_results if 3 <= r["score"] < 7]),
             }
+
+        # Step 2.5: 真引用替换 — 搜索外部数据库，替换 [n] 占位符为真实文献
+        yield {"type": "thinking", "message": "搜索真实文献替换引用占位符..."}
+        try:
+            from hermes_cli.scholarforge.citation_provider import replace_pseudo_citations
+            _keywords = [w.strip() for w in (self.ctx.topic or "").replace("，", " ").split()[:8] if len(w.strip()) > 1]
+            new_draft, real_citations = await replace_pseudo_citations(
+                draft, self.ctx.topic or "", _keywords or [self.ctx.topic or ""],
+                paper_type=self.ctx.paper_type or "本科论文"
+            )
+            if real_citations:
+                draft = new_draft
+                # 将真实文献追加到 ctx.papers（供后续验证/导出使用）
+                for c in real_citations:
+                    self.ctx.papers.append(PaperResult(
+                        title=c.title,
+                        authors=c.authors,
+                        year=c.year,
+                        venue=c.venue,
+                        abstract="",
+                        doi=c.doi,
+                        source=c.source,
+                        citations=0,
+                    ))
+                yield {"type": "citation_replace",
+                       "count": len(real_citations),
+                       "message": f"已匹配并替换 {len(real_citations)} 篇真实文献",
+                       "citations": [{"title": c.title[:80], "source": c.source, "year": c.year}
+                                     for c in real_citations]}
+        except ImportError:
+            logger.info("citation_provider not imported, skipping real citation replacement")
+        except Exception as e:
+            logger.warning(f"Real citation replacement failed (continuing with placeholder refs): {e}")
 
         # Step 3: 分章节逐节润色（核心改进）
         yield {"type": "thinking", "message": "逐节语言润色..."}
@@ -979,8 +1127,8 @@ class RefinementAgent(BaseAgent):
 原文：
 {section_text}
 
-请输出润色后的章节文本："""
-            + get_paper_type_prompt(self.ctx.paper_type)
+请输出润色后的章节文本：
+""" + get_paper_type_prompt(self.ctx.paper_type)
 
             try:
                 polished_sec = await self.llm(prompt)
@@ -990,7 +1138,7 @@ class RefinementAgent(BaseAgent):
                 polished_sections.append(section_text.strip())
 
         self.ctx.draft = "\n\n".join(polished_sections)
-        yield {"type": "content", "text": "\n\n---\n**润色完成**\n\n"}
+        yield {"type": "content", "text": _clean_citation_format("\n\n---\n**润色完成**\n\n")}
         yield {"type": "done", "message": f"润色完成(去重{duplicates}处，标记{len(invalid_citations)}处无效引用)"}
 
     async def _check_duplicate(self, prev: str, curr: str) -> dict:
@@ -1006,8 +1154,12 @@ class RefinementAgent(BaseAgent):
 只回复 JSON：{{"has_duplicate": true/false, "duplicate_topics": "重复的主题描述"}}"""
         try:
             resp = await self.llm(prompt)
-            return json.loads(resp)
-        except:
+            result = json.loads(resp)
+            if not isinstance(result, dict):
+                return {"has_duplicate": False, "duplicate_topics": str(result)[:100]}
+            return result
+        except Exception:
+            logger.warning("_check_duplicate JSON parse failed, assuming no duplicates")
             return {"has_duplicate": False, "duplicate_topics": ""}
 
     async def _check_facts(self, text: str) -> dict:
@@ -1020,8 +1172,12 @@ class RefinementAgent(BaseAgent):
 只回复 JSON：{{"missing": ["论点1", "论点2"]}}，如果没有则返回空数组。"""
         try:
             resp = await self.llm(prompt)
-            return json.loads(resp)
-        except:
+            result = json.loads(resp)
+            if not isinstance(result, dict):
+                return {"missing": []}
+            return result
+        except Exception:
+            logger.warning("_check_facts JSON parse failed, assuming no missing facts")
             return {"missing": []}
 
 
@@ -1171,7 +1327,11 @@ class ReviewerAgent(BaseAgent):
         total_issues = 0
 
         report_lines = ["# 📋 审稿报告\n"]
+        fixed_reviews = []
         for dim_name, dim_icon, dim_result in reviews:
+            if not isinstance(dim_result, dict):
+                dim_result = {"score": 5, "issues": [], "suggestions": [str(dim_result)[:100]]}
+            fixed_reviews.append((dim_name, dim_icon, dim_result))
             score = dim_result.get("score", 5)
             issues = dim_result.get("issues", [])
             suggestions = dim_result.get("suggestions", [])
@@ -1188,7 +1348,7 @@ class ReviewerAgent(BaseAgent):
                     report_lines.append(f"- {s}")
                 report_lines.append("")
 
-        avg_score = sum(d.get("score", 5) for _, _, d in reviews) / max(len(reviews), 1)
+        avg_score = sum(d.get("score", 5) for _, _, d in fixed_reviews) / max(len(fixed_reviews), 1)
         report_lines.insert(1, f"**综合评分**: {avg_score:.1f}/10 | **总问题**: {total_issues}\n")
 
         review_report = "\n".join(report_lines)
@@ -1197,7 +1357,7 @@ class ReviewerAgent(BaseAgent):
             "report": review_report,
             "score": round(avg_score, 1),
             "total_issues": total_issues,
-            "dimensions": [{"name": n, "score": d.get("score", 5)} for n, _, d in reviews],
+            "dimensions": [{"name": n, "score": d.get("score", 5)} for n, _, d in fixed_reviews],
         }
         yield {"type": "done", "message": f"审稿完成（{avg_score:.1f}/10）"}
 
@@ -1206,7 +1366,10 @@ class ReviewerAgent(BaseAgent):
         prompt = f"""你是学术审稿人，审查以下论文的结构与逻辑。\n预期大纲:\n{sec_text}\n正文（前 3000 字）:\n{draft[:3000]}\n审查: 章节结构清晰度、逻辑衔接、论证链完整性、是否有重复/跳跃。\n只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
         try:
             resp = await self.llm(prompt)
-            return json.loads(resp)
+            result = json.loads(resp)
+            if not isinstance(result, dict):
+                result = {"score": 5, "issues": [], "suggestions": [str(result)[:100]]}
+            return result
         except Exception:
             return {"score": 5, "issues": [], "suggestions": ["LLM 审查失败"]}
 
@@ -1217,6 +1380,8 @@ class ReviewerAgent(BaseAgent):
         try:
             resp = await self.llm(prompt)
             result = json.loads(resp)
+            if not isinstance(result, dict):
+                result = {"score": 5, "issues": [], "suggestions": [str(result)[:100]]}
             invalid = [r for r in unique_refs if r > papers_count or r < 1]
             if invalid:
                 result.setdefault("issues", []).insert(0, f"P0: 无效引用{invalid}(超出[1-{papers_count}])")
@@ -1228,7 +1393,10 @@ class ReviewerAgent(BaseAgent):
         prompt = f"""你是学术语言审稿人，审查以下论文的学术表达。\n正文（前 3000 字）:\n{draft[:3000]}\n审查: 口语化表达、术语不规范、句式复杂/重复、主语不当。\n只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
         try:
             resp = await self.llm(prompt)
-            return json.loads(resp)
+            result = json.loads(resp)
+            if not isinstance(result, dict):
+                result = {"score": 5, "issues": [], "suggestions": [str(result)[:100]]}
+            return result
         except Exception:
             return {"score": 5, "issues": [], "suggestions": ["LLM 审查失败"]}
 

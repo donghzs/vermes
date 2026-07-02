@@ -51,25 +51,34 @@ def _latex_to_md_text(content: str) -> str:
 # 标题/作者/参考文献预处理
 # ============================================================================
 def _build_paper_text(title: str, content: str, papers: list, abstract: str = "") -> str:
-    """组装完整论文 Markdown 文本"""
+    """组装完整论文 Markdown 文本
+    
+    智能检测：如果 content 已包含标题/摘要/参考文献，不再重复添加。
+    WritingAgent._assemble_full_paper 已将完整结构写入 ctx.draft，
+    本函数只做兜底补充。
+    """
+    text = _latex_to_md_text(content or "")
     parts = []
-    parts.append(f"# {title}")
-    parts.append("")
-
-    if abstract:
+    
+    # 标题：仅当 content 不以 Markdown 标题开头时才添加
+    if not text.strip().startswith("# "):
+        parts.append(f"# {title}")
+        parts.append("")
+    
+    # 摘要：仅当 content 不含摘要时才添加
+    if abstract and re.search(r'(?i)#{1,3}\s*(摘要|abstract)', text) is None:
         parts.append("## 摘要")
         parts.append("")
         parts.append(abstract.strip())
         parts.append("")
-
+    
     # 主体内容
-    text = _latex_to_md_text(content or "")
     if text.strip():
         parts.append(text.strip())
         parts.append("")
-
-    # 参考文献
-    if papers:
+    
+    # 参考文献：仅当 content 不含参考文献节时才添加
+    if papers and re.search(r'(?i)#{1,3}\s*(参考文献|references)', text) is None:
         parts.append("## 参考文献")
         parts.append("")
         for i, p in enumerate(papers, 1):
@@ -86,10 +95,10 @@ def _build_paper_text(title: str, content: str, papers: list, abstract: str = ""
                 authors_str = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "")
             else:
                 authors_str = str(authors)
-            title = p_dict.get("title", "").strip()
+            title_text = p_dict.get("title", "").strip()
             year = p_dict.get("year", "")
             venue = p_dict.get("venue", "")
-            parts.append(f"[{i}] {authors_str}. **{title}**. {venue} ({year}).")
+            parts.append(f"[{i}] {authors_str}. **{title_text}**. {venue} ({year}).")
         parts.append("")
 
     return "\n".join(parts)
@@ -104,19 +113,19 @@ _PDF_CSS = """
     margin: 2.5cm 2cm 2.5cm 2cm;
     @bottom-center {
         content: counter(page) " / " counter(pages);
-        font-family: "DejaVu Sans", "Noto Sans CJK SC", sans-serif;
+        font-family: "PingFang SC", "Heiti SC", "DejaVu Sans", sans-serif;
         font-size: 9pt;
         color: #666;
     }
     @top-right {
         content: "ScholarForge";
-        font-family: "DejaVu Sans", "Noto Sans CJK SC", sans-serif;
+        font-family: "PingFang SC", "Heiti SC", "DejaVu Sans", sans-serif;
         font-size: 8pt;
         color: #999;
     }
 }
 body {
-    font-family: "Noto Serif CJK SC", "Source Han Serif SC", "DejaVu Serif", serif;
+    font-family: "PingFang SC", "Heiti SC", "STSong", "STKaiti", serif;
     font-size: 11pt;
     line-height: 1.6;
     color: #222;

@@ -138,37 +138,37 @@ _PROVIDER_FALLBACK_MODELS = {
 
 
 def _resolve_credentials():
-    """Auto-detect user's first available provider with an API key.
-    Returns dict with api_key, base_url, model, provider.
+    """复用 Vermes 核心凭证链路，与聊天 Agent 完全同步。
+    返回 dict(api_key, base_url, model, provider) 或 None。
     """
-    from hermes_cli.blueprints.chat import PROVIDERS
-    from hermes_cli.scholarforge import _load_vermes_config
+    from hermes_cli.blueprints.chat import PROVIDERS, _get_chat_credentials
+    from hermes_constants import get_hermes_home
 
-    cfg, env_vars = _load_vermes_config()
-    cfg_providers = cfg.get("providers", {})
-    cfg_model_provider = cfg.get("model", {}).get("provider", "")
-
-    for prov_key in [cfg_model_provider] + [k for k in PROVIDERS if k != cfg_model_provider]:
-        if not prov_key:
-            continue
-        prov_def = PROVIDERS.get(prov_key, {})
-        cfg_entry = cfg_providers.get(prov_key, {})
-        env_key_name = prov_def.get("env_key", "")
-        api_key = (
-            cfg_entry.get("api_key", "")
-            or (env_vars.get(env_key_name) if env_key_name else "")
-            or ""
-        )
-        base_url = cfg_entry.get("base_url", "") or prov_def.get("base_url", "")
-        if api_key and base_url:
-            model = cfg_entry.get("model") or _PROVIDER_FALLBACK_MODELS.get(prov_key, "")
-            return {
-                "api_key": api_key,
-                "base_url": base_url.rstrip("/"),
-                "model": model,
-                "provider": prov_key,
-            }
-    return None
+    base_url, api_key, default_model = _get_chat_credentials()
+    if not api_key or not base_url:
+        return None
+    # 反查 provider：匹配 .env 中哪个 ENV_KEY 的值等于 default_key
+    env_path = get_hermes_home() / ".env"
+    env_lines = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+    provider = None
+    for prov_key, prov_def in PROVIDERS.items():
+        env_key = prov_def.get("env_key", "")
+        if env_key:
+            for line in env_lines.splitlines():
+                line = line.strip()
+                if line.startswith(f"{env_key}="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val and val == api_key:
+                        provider = prov_key
+                        break
+        if provider:
+            break
+    return {
+        "api_key": api_key,
+        "base_url": base_url.rstrip("/"),
+        "model": default_model,
+        "provider": provider or "",
+    }
 
 
 async def _call_llm(prompt: str, system: str = "") -> str:
@@ -239,7 +239,7 @@ async def _handle_scholarforge_search(args: dict, **kw: Any) -> str:
             if len(p.authors) > 3:
                 authors += " et al."
             lines.append(f"**[{i}] {p.title}**")
-            lines.append(f"  {authors} · {p.year} · 📎 {p.citations} 引用 · {p.source}")
+            lines.append(f"  {authors} · {p.year} · 📎 {p.citation_count} 引用 · {p.source}")
             if p.abstract:
                 lines.append(f"  > {p.abstract[:200]}{'...' if len(p.abstract) > 200 else ''}")
             lines.append("")

@@ -96,15 +96,17 @@ class TestScorePaperNoLLM(unittest.TestCase):
         async def _run():
             result = await self.fn("论文内容测试", [])
             self.assertIn("overall", result)
-            self.assertIn("（无 LLM", result["overall_reasoning"])
+            self.assertTrue(result.get("_is_fallback"))  # 标注为启发式
         asyncio.run(_run())
 
     def test_mock_llm_is_called(self):
-        # _make_llm is an async factory that returns a callable LLM function
+        # _make_llm 是工厂函数：无参调用返回 LLM callable，再 llm(prompt) 调用
         async def mock_llm_fn(prompt):
             return '{"originality":{"score":8,"reasoning":"创新"},"logic":{"score":7,"reasoning":"逻辑清晰"},"citation_completeness":{"score":6,"reasoning":"尚可"}}'
+        def _make_llm_factory():
+            return mock_llm_fn
         async def _run():
-            result = await self.fn("test", [], _make_llm=mock_llm_fn)
+            result = await self.fn("test", [], _make_llm=_make_llm_factory)
             self.assertIn("originality", result)
             self.assertAlmostEqual(result["originality"]["score"], 8.0, places=0)
         asyncio.run(_run())
