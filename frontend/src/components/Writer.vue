@@ -474,495 +474,94 @@
         </div>
         
         <!-- 文献库面板 -->
-        <template v-if="showLiteraturePanel">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">文献库</span>
-            <div class="flex items-center gap-1">
-              <button @click="triggerBibtexImport" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600 text-[10px]" title="导入 BibTeX">📥</button>
-              <button @click="showSourceSelector = !showSourceSelector" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600 text-[10px]" title="搜索源">
-                {{ activeSources.length }}/{{ allSearchSources.length }} 源
-              </button>
-              <button @click="searchLiterature" :disabled="searchLoading" class="p-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs flex items-center gap-1">
-                <span v-if="searchLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                检索
-              </button>
-            </div>
-          </div>
-          <!-- 搜索源选择器 -->
-          <div v-if="showSourceSelector" class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 space-y-1">
-            <div class="text-[10px] text-gray-400 mb-1">搜索源（{{ activeSources.length }}/{{ allSearchSources.length }}）</div>
-            <label v-for="src in allSearchSources" :key="src.id"
-              :class="['flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] cursor-pointer', src.paid && !src.configured ? 'opacity-50' : '']">
-              <input type="checkbox" :value="src.id" v-model="activeSources"
-                :disabled="src.paid && !src.configured"
-                class="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-              <span :class="src.paid ? 'text-amber-600' : 'text-gray-600 dark:text-gray-300'">
-                {{ src.icon }} {{ src.label }}
-                <span v-if="!src.accessible && !src.paid" class="text-[8px] text-red-400 ml-0.5">离线</span>
-              </span>
-              <button v-if="src.paid && !src.configured" @click.stop.prevent="openPaidSourceConfig(src)"
-                class="ml-auto text-[9px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded hover:bg-amber-200">
-                配置
-              </button>
-              <span v-else-if="src.paid" class="ml-auto text-[9px] text-green-600">✓已配置</span>
-            </label>
-          </div>
-          <!-- 付费源配置弹窗 -->
-          <div v-if="showPaidSourceConfig" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showPaidSourceConfig = false">
-            <div class="bg-white dark:bg-gray-800 rounded-xl p-6 w-96 max-w-[90vw] shadow-2xl">
-              <div class="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">
-                {{ paidSourceConfigTarget?.icon }} 配置 {{ paidSourceConfigTarget?.label }}
-              </div>
-              <div class="text-xs text-gray-500 mb-3">{{ paidSourceConfigTarget?.paid ? '付费文献源，需填入 API Key' : '' }}</div>
-              
-              <!-- API Key -->
-              <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">API Key</label>
-              <input v-model="paidSourceApiKey" type="password" placeholder="输入 API Key..."
-                class="w-full px-3 py-2 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100 mb-3" />
-              
-              <!-- CNKI 网关 URL（仅 CNKI） -->
-              <template v-if="paidSourceConfigTarget?.needsGatewayUrl">
-                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">网关 URL</label>
-                <input v-model="paidSourceGatewayUrl" type="text" placeholder="https://your-cnki-gateway.com/api"
-                  class="w-full px-3 py-2 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100 mb-3" />
-                <div class="text-[10px] text-gray-400 mb-3">知网无公开API，需自建网关服务。可参考开源网关方案。</div>
-              </template>
-              
-              <!-- 注册链接 -->
-              <div v-if="paidSourceConfigTarget?.registerUrl" class="text-[10px] text-blue-500 mb-3">
-                <a :href="paidSourceConfigTarget.registerUrl" target="_blank" class="hover:underline">📎 前往注册获取 API Key →</a>
-              </div>
-              
-              <div class="flex gap-2 justify-end">
-                <button @click="showPaidSourceConfig = false" class="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 rounded-lg">取消</button>
-                <button @click="savePaidSourceKey" :disabled="!paidSourceApiKey.trim()"
-                  class="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium disabled:opacity-40">激活</button>
-              </div>
-            </div>
-          </div>
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-            <input v-model="literatureSearch" placeholder="搜索文献..." class="w-full px-3 py-1.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-blue-500 dark:text-gray-100"/>
-          </div>
-          <div class="flex-1 overflow-y-auto py-2">
-            <div v-if="!literature.length" class="px-3 py-8 text-center">
-              <div class="text-3xl mb-2">📭</div>
-              <p class="text-xs text-gray-400 mb-2">文献库为空</p>
-              <p class="text-[10px] text-gray-400 mb-3">运行「文献综述」Agent 或点击上方检索按钮</p>
-              <button @click="searchLiterature" :disabled="searchLoading" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs flex items-center gap-1">
-                <span v-if="searchLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                <span v-else>🔍</span> {{ searchLoading ? '搜索中...' : '开始检索' }}</button>
-            </div>
-            <div v-for="paper in filteredLiterature" :key="paper.id" 
-              @click="togglePaperExpand(paper)"
-              :class="['px-3 py-2.5 cursor-pointer transition-all', expandedPaper?.id === paper.id ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-white dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700/50', citedPaperIds.has(paper.id) ? 'border-l-2 border-l-green-400' : '']">
-              <div class="flex items-start gap-2">
-                <span class="text-[10px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5 font-mono">{{ paper.year || '?' }}</span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-xs font-medium text-gray-800 dark:text-gray-200 line-clamp-2 leading-snug">{{ paper.title }}</div>
-                  <div class="text-[10px] text-gray-500 mt-1">{{ paper.authors?.slice(0, 3).join(', ') || '未知作者' }}{{ paper.authors?.length > 3 ? ' 等' : '' }}</div>
-                  <div class="flex items-center gap-2 mt-1.5">
-                    <span v-if="paper.venue" class="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 truncate max-w-[120px]">{{ paper.venue }}</span>
-                    <span class="text-[10px] px-1.5 py-0.5 rounded text-gray-400" :class="sourceBadgeClass(paper.source)">{{ paper.source || '未知源' }}</span>
-                    <span v-if="citedPaperIds.has(paper.id)" class="text-[9px] px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded" title="已在正文中引用">✅ 已引用</span>
-                    <button @click.stop="copyBibtex(paper)" class="text-[10px] text-gray-400 hover:text-blue-600" title="复制 BibTeX">📋</button>
-                    <button @click.stop="insertCitation(paper)" class="text-[10px] text-blue-600 hover:text-blue-700">引用</button>
-                  </div>
-                </div>
-                <svg :class="['w-3 h-3 text-gray-400 mt-1 shrink-0 transition-transform', expandedPaper?.id === paper.id ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-              </div>
-              <!-- 展开摘要 + BibTeX -->
-              <div v-if="expandedPaper?.id === paper.id" class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/50">
-                <p v-if="paper.abstract" class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed mb-2 max-h-24 overflow-y-auto">{{ paper.abstract }}</p>
-                <div class="bg-gray-950 text-green-400 text-[10px] p-2 rounded font-mono relative group">
-                  <button @click.stop="copyBibtex(paper)" class="absolute top-1 right-1 px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">复制</button>
-                  <pre class="whitespace-pre-wrap" v-text="'@article{' + (paper.citeKey || 'ref') + ',\n  title={' + (paper.title || '') + '},\n  author={' + (paper.authors?.join(' and ') || '') + '},\n  year={' + (paper.year || '') + '},\n  journal={' + (paper.venue || '') + '}\n}'"></pre>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
+        <LiteraturePanel
+          v-if="showLiteraturePanel"
+          :literature="literature"
+          :search-loading="searchLoading"
+          :active-sources="activeSources"
+          :all-search-sources="allSearchSources"
+          v-model:literature-search="literatureSearch"
+          :filtered-literature="filteredLiterature"
+          :expanded-paper="expandedPaper"
+          :cited-paper-ids="citedPaperIds"
+          :show-source-selector="showSourceSelector"
+          v-model:show-paid-source-config="showPaidSourceConfig"
+          :paid-source-config-target="paidSourceConfigTarget"
+          v-model:paid-source-api-key="paidSourceApiKey"
+          v-model:paid-source-gateway-url="paidSourceGatewayUrl"
+          @search="searchLiterature"
+          @import-bibtex="triggerBibtexImport"
+          @toggle-source-selector="showSourceSelector = !showSourceSelector"
+          @open-paid-config="openPaidSourceConfig"
+          @save-paid-key="savePaidSourceKey"
+          @toggle-paper-expand="togglePaperExpand"
+          @copy-bibtex="copyBibtex"
+          @insert-citation="insertCitation"
+          @update:active-sources="activeSources = $event"
+        />
 
         <!-- 引用核查结果面板 (抽屉式) -->
-        <template v-if="activeRightPanel === 'citation'">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">引用核查</span>
-            <div class="flex items-center gap-1.5">
-              <span v-if="citationReplaced > 0" class="text-[9px] text-green-600 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded font-medium">📄 {{ citationReplaced }}篇真实文献</span>
-              <span v-if="citationErrors > 0" class="w-2 h-2 rounded-full bg-red-500"></span>
-              <span v-if="citationWarnings > 0" class="w-2 h-2 rounded-full bg-amber-500"></span>
-              <span class="text-[10px] text-gray-400">
-                <span v-if="citationErrors > 0" class="text-red-500">{{ citationErrors }}错误</span>
-                <span v-if="citationErrors > 0 && citationWarnings > 0"> / </span>
-                <span v-if="citationWarnings > 0" class="text-amber-500">{{ citationWarnings }}警告</span>
-                <span v-if="citationErrors === 0 && citationWarnings === 0">全部通过</span>
-              </span>
-              <button @click="activeRightPanel = null" class="ml-1 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭引用核查面板" title="关闭">✕</button>
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto py-2">
-            <!-- 真引用替换状态 -->
-            <div v-if="citationReplacedList.length > 0" class="mx-2 mb-2 px-2.5 py-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-              <div class="flex items-center gap-1.5 mb-1.5">
-                <span class="text-[10px] font-medium text-green-700 dark:text-green-300">📄 已匹配 {{ citationReplaced }} 篇真实文献</span>
-                <span class="text-[9px] text-green-500">(CrossRef / Semantic Scholar / DBLP)</span>
-              </div>
-              <div class="space-y-0.5 max-h-32 overflow-y-auto">
-                <div v-for="(c, i) in citationReplacedList.slice(0, 5)" :key="i" class="text-[9px] text-gray-500 dark:text-gray-400">
-                  <span class="font-mono text-green-600">[{{ i+1 }}]</span> {{ c.title }}
-                  <span class="text-gray-400"> — {{ c.source }} {{ c.year }}</span>
-                </div>
-              </div>
-            </div>
-            <div v-if="!citationResults.length && !citationReplacedList.length" class="px-3 py-8 text-center">
-              <p class="text-xs text-gray-400">尚未运行引用核查</p>
-              <p class="text-[10px] text-gray-400 mt-1">运行「润色」Agent 将自动核查</p>
-            </div>
-            <div v-for="r in citationResults" :key="r.ref"
-              :class="['mx-2 mb-1 px-2.5 py-2 rounded-lg text-xs', r.score >= 7 ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' : r.score >= 3 ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800']">
-              <div class="flex items-start gap-1.5">
-                <span :class="['shrink-0 font-mono text-[10px] px-1 py-0.5 rounded', r.score >= 7 ? 'bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200' : r.score >= 3 ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200' : 'bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200']">[{{ r.ref }}]</span>
-                <div class="flex-1 min-w-0">
-                  <div :class="r.score >= 7 ? 'text-green-700 dark:text-green-300' : r.score >= 3 ? 'text-amber-700 dark:text-amber-300' : 'text-red-700 dark:text-red-300'">{{ r.reason }}</div>
-                  <div class="flex items-center gap-2 mt-1">
-                    <div class="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full">
-                      <div :class="['h-1 rounded-full', r.score >= 7 ? 'bg-green-500' : r.score >= 3 ? 'bg-amber-500' : 'bg-red-500']" :style="{ width: (r.score * 10) + '%' }"></div>
-                    </div>
-                    <span class="text-[9px] text-gray-400">{{ r.score }}/10</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
+        <CitationPanel
+          v-if="activeRightPanel === 'citation'"
+          :results="citationResults"
+          :replaced-list="citationReplacedList"
+          :replaced-count="citationReplaced"
+          :errors="citationErrors"
+          :warnings="citationWarnings"
+          @close="activeRightPanel = null"
+        />
 
         <!-- 共识度分析面板 (抽屉式) -->
-        <template v-if="activeRightPanel === 'consensus'">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">共识度分析</span>
-            <div class="flex items-center gap-2">
-            <button @click="runConsensusAnalysis" :disabled="consensusLoading"
-              class="px-2 py-0.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
-              <span v-if="consensusLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              <span v-else>🔄</span>
-              分析
-            </button>
-            <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭共识度面板" title="关闭">✕</button>
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto py-2">
-            <div v-if="!consensusResults.length && !consensusLoading" class="px-3 py-8 text-center">
-              <div class="text-3xl mb-2">📊</div>
-              <p class="text-xs text-gray-400">尚未分析共识度</p>
-              <p class="text-[10px] text-gray-400 mt-1">点击上方「分析」按钮，评估文献对论文论断的支持度</p>
-            </div>
-            <div v-for="(r, idx) in consensusResults" :key="idx" class="mx-2 mb-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
-              <!-- 论断 -->
-              <div class="px-2.5 py-2 border-b border-gray-100 dark:border-gray-600">
-                <p class="text-xs text-gray-800 dark:text-gray-200 leading-relaxed">{{ r.claim }}</p>
-              </div>
-              <!-- 共识度柱 -->
-              <div class="px-2.5 py-2">
-                <div class="flex items-center gap-2 mb-2">
-                  <div class="flex-1 h-2.5 bg-gray-100 dark:bg-gray-600 rounded-full overflow-hidden flex">
-                    <div v-if="r.support > 0" :style="{ width: (r.support / r.total * 100) + '%' }"
-                      class="h-full bg-green-500 transition-all" :title="'支持 ' + r.support"></div>
-                    <div v-if="r.neutral > 0" :style="{ width: (r.neutral / r.total * 100) + '%' }"
-                      class="h-full bg-gray-400 transition-all" :title="'中立 ' + r.neutral"></div>
-                    <div v-if="r.oppose > 0" :style="{ width: (r.oppose / r.total * 100) + '%' }"
-                      class="h-full bg-red-500 transition-all" :title="'反对 ' + r.oppose"></div>
-                  </div>
-                  <span :class="['text-xs font-bold', r.confidence === 'high' ? 'text-green-600' : r.confidence === 'medium' ? 'text-amber-600' : 'text-red-600']">
-                    {{ r.consensus_pct }}%
-                  </span>
-                </div>
-                <!-- 数字徽章 -->
-                <div class="flex items-center gap-3 text-[10px]">
-                  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> 👍 {{ r.support }}</span>
-                  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-gray-400 inline-block"></span> 😐 {{ r.neutral }}</span>
-                  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> 👎 {{ r.oppose }}</span>
-                </div>
-                <!-- 置信度 -->
-                <div class="mt-1.5 flex items-center gap-1">
-                  <span class="text-[9px] text-gray-400">置信度:</span>
-                  <span :class="['text-[10px] font-medium px-1.5 py-0.5 rounded', r.confidence === 'high' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : r.confidence === 'medium' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400']">
-                    {{ r.confidence === 'high' ? '高共识' : r.confidence === 'medium' ? '中共识' : '低共识' }}
-                  </span>
-                </div>
-                <!-- 逐文献立场（可展开） -->
-                <button v-if="r.per_paper?.length" @click="r._expanded = !r._expanded"
-                  class="mt-1.5 text-[9px] text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                  <svg :class="['w-3 h-3 transition-transform', r._expanded ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                  逐文献详情 ({{ r.per_paper.length }}篇)
-                </button>
-                <div v-if="r._expanded && r.per_paper?.length" class="mt-1.5 space-y-1 max-h-48 overflow-y-auto">
-                  <div v-for="pp in r.per_paper" :key="pp.ref"
-                    :class="['px-2 py-1 rounded text-[10px] flex items-start gap-1.5', pp.stance === 'support' ? 'bg-green-50 dark:bg-green-900/20' : pp.stance === 'oppose' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-gray-800']">
-                    <span :class="['shrink-0 font-mono text-[9px]', pp.stance === 'support' ? 'text-green-600' : pp.stance === 'oppose' ? 'text-red-600' : 'text-gray-500']">[{{ pp.ref }}]</span>
-                    <span :class="pp.stance === 'support' ? 'text-green-700 dark:text-green-400' : pp.stance === 'oppose' ? 'text-red-700 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'">{{ pp.reason }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
+        <ConsensusPanel
+          v-if="activeRightPanel === 'consensus'"
+          :results="consensusResults"
+          :loading="consensusLoading"
+          @run="runConsensusAnalysis"
+          @close="activeRightPanel = null"
+        />
 
         <!-- P1-5: 版本历史面板 -->
-        <template v-if="activeRightPanel === 'snapshots'">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">版本历史</span>
-            <div class="flex items-center gap-2">
-              <button @click="createSnapshot" class="px-2 py-0.5 bg-violet-600 hover:bg-violet-700 text-white rounded text-[10px] flex items-center gap-1">
-                💾 存快照
-              </button>
-              <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭版本历史面板" title="关闭">✕</button>
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto py-2">
-            <div v-if="!snapshots.length && !snapshotsLoading" class="px-3 py-8 text-center">
-              <div class="text-3xl mb-2">⏱️</div>
-              <p class="text-xs text-gray-400">暂无版本快照</p>
-              <p class="text-[10px] text-gray-400 mt-1">点击上方「💾 存快照」保存当前全文状态</p>
-            </div>
-            <div v-for="snap in snapshots" :key="snap.id"
-              class="mx-2 mb-2 p-2.5 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-violet-400 transition-colors">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-gray-800 dark:text-gray-200 truncate max-w-[160px]">{{ snap.label || '未命名快照' }}</span>
-                <span class="text-[9px] text-gray-400">{{ formatTime(snap.created_at) }}</span>
-              </div>
-              <div v-if="snap.note" class="text-[10px] text-gray-500 mb-1.5">{{ snap.note }}</div>
-              <div class="flex items-center gap-2">
-                <span class="text-[9px] text-gray-400">{{ (snap.size / 1024).toFixed(1) }} KB</span>
-                <div class="flex-1"></div>
-                <button @click="restoreSnapshot(snap)" class="text-[10px] text-violet-600 hover:text-violet-700">恢复</button>
-                <button @click="deleteSnapshot(snap.id)" class="text-[10px] text-red-400 hover:text-red-600">删除</button>
-              </div>
-            </div>
-          </div>
-        </template>
+        <SnapshotsPanel
+          v-if="activeRightPanel === 'snapshots'"
+          :snapshots="snapshots"
+          :loading="snapshotsLoading"
+          @create="createSnapshot"
+          @restore="restoreSnapshot"
+          @delete="deleteSnapshot"
+          @close="activeRightPanel = null"
+        />
 
         <!-- AI 助手面板 -->
-        <template v-if="showAIPanel">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI 写作助手</span>
-            <div class="flex items-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span class="text-[10px] text-green-600">在线</span>
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto p-3 space-y-3">
-            <!-- AI 对话历史 -->
-            <div v-for="(msg, idx) in aiMessages" :key="idx" 
-              :class="['text-xs', msg.role === 'user' ? 'ml-4' : 'mr-4']">
-              <div :class="['p-2.5 rounded-lg', msg.role === 'user' ? 'bg-green-100 dark:bg-green-900/30 text-gray-800 dark:text-gray-200' : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300']">
-                <div class="flex items-center gap-1 mb-1 text-[10px] text-gray-400">
-                  <span>{{ msg.role === 'user' ? '👤 你' : '🤖 AI' }}</span>
-                  <span>{{ formatTime(msg.time) }}</span>
-                </div>
-                <div class="whitespace-pre-wrap">{{ msg.content }}</div>
-              </div>
-            </div>
-          </div>
-          <!-- AI 快捷操作 -->
-          <div class="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-700/50">
-            <!-- 研究深度选择器 -->
-            <div class="mb-2 flex items-center gap-1.5">
-              <span class="text-[10px] text-gray-500">研究深度:</span>
-              <button v-for="d in researchDepths" :key="d.value" @click="researchDepth = d.value"
-                :class="['px-2 py-1 rounded text-[10px] transition-colors', researchDepth === d.value ? 'bg-purple-600 text-white' : 'bg-white dark:bg-gray-600 text-gray-500 hover:text-gray-700']">
-                {{ d.label }}
-              </button>
-            </div>
-            <!-- 全链路写作按钮 -->
-            <button @click="runStormPipeline" :disabled="aiStreaming"
-              class="w-full mb-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-500 hover:from-purple-500 hover:to-indigo-400 text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
-              title="6阶段全链路：选题→文献综述→大纲→逐章写作→润色→审稿">
-              <span>⚡</span> 全链路写作
-            </button>
-            <div class="grid grid-cols-2 gap-2">
-              <button v-for="action in aiQuickActions" :key="action.id" @click="runAIAction(action)"
-                class="px-2 py-1.5 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded text-[10px] text-gray-600 dark:text-gray-300 hover:border-purple-500 hover:text-purple-600 transition-colors text-left">
-                {{ action.icon }} {{ action.name }}
-              </button>
-            </div>
-          </div>
-        </template>
+        <AIPanel
+          v-if="showAIPanel"
+          :messages="aiMessages"
+          :streaming="aiStreaming"
+          :research-depth="researchDepth"
+          :research-depths="depthOptions"
+          :quick-actions="aiQuickActions"
+          @run-pipeline="runStormPipeline"
+          @run-action="runAIAction"
+          @update:research-depth="researchDepth = $event"
+        />
 
         <!-- 查重 + AIGC 检测面板 (抽屉式) -->
-        <template v-if="activeRightPanel === 'plag'">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">查重 + AIGC</span>
-            <div class="flex items-center gap-2">
-            <button @click="runPlagcheck" :disabled="plagLoading"
-              class="px-2 py-0.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
-              <span v-if="plagLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              <span v-else>🔄</span>
-              检测
-            </button>
-            <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭查重面板" title="关闭">✕</button>
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto py-2">
-            <div v-if="!plagResult" class="px-3 py-8 text-center">
-              <div class="text-3xl mb-2">🔍</div>
-              <p class="text-xs text-gray-400">尚未检测</p>
-              <p class="text-[10px] text-gray-400 mt-1">点击上方「检测」按钮进行查重和 AIGC 分析</p>
-            </div>
-            <template v-if="plagResult">
-              <!-- 综合评分卡片 -->
-              <div class="mx-2 mb-3 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                <div class="flex items-center gap-3 mb-2">
-                  <!-- 重复率环 -->
-                  <div class="relative w-14 h-14 flex-shrink-0">
-                    <svg class="w-14 h-14 -rotate-90">
-                      <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" stroke-width="4" class="text-gray-200 dark:text-gray-600" />
-                      <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"
-                        :stroke="plagResult.overall_similarity > 0.3 ? '#ef4444' : '#22c55e'"
-                        :stroke-dasharray="Math.round(plagResult.overall_similarity * 151) + ' 151'" />
-                    </svg>
-                    <span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700 dark:text-gray-200">{{ Math.round(plagResult.overall_similarity * 100) }}%</span>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">查重率</span>
-                      <span :class="['text-xs px-1.5 py-0.5 rounded', plagResult.overall_similarity > 0.3 ? 'bg-red-100 text-red-700' : plagResult.overall_similarity > 0.15 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700']">
-                        {{ plagResult.overall_similarity > 0.3 ? '偏高' : plagResult.overall_similarity > 0.15 ? '中等' : '良好' }}
-                      </span>
-                    </div>
-                    <div class="text-[10px] text-gray-500">{{ plagResult.total_chars.toLocaleString() }} 字 · {{ plagResult.total_paragraphs }} 段</div>
-                  </div>
-                </div>
-                <!-- AIGC 痕迹 -->
-                <div class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-600">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-[11px] text-gray-600 dark:text-gray-300">🤖 AIGC 痕迹</span>
-                    <span :class="['text-xs font-bold', plagResult.aigc_overall_ratio > 0.4 ? 'text-red-600' : plagResult.aigc_overall_ratio > 0.2 ? 'text-amber-600' : 'text-green-600']">
-                      {{ Math.round(plagResult.aigc_overall_ratio * 100) }}%
-                    </span>
-                  </div>
-                  <div class="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                    <div :class="['h-full rounded-full transition-all', plagResult.aigc_overall_ratio > 0.4 ? 'bg-red-500' : plagResult.aigc_overall_ratio > 0.2 ? 'bg-amber-500' : 'bg-green-500']"
-                      :style="{ width: Math.round(plagResult.aigc_overall_ratio * 100) + '%' }"></div>
-                  </div>
-                  <div class="flex justify-between text-[9px] text-gray-400 mt-0.5">
-                    <span>人类写作</span><span>AI 辅助</span><span>AI 生成</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 重复片段 -->
-              <div v-if="plagResult.plag_results?.length" class="mx-2 mb-2">
-                <div class="flex items-center gap-1.5 mb-1.5">
-                  <span class="text-[10px] font-medium text-red-600">🔴 重复段落 ({{ plagResult.plag_results.length }})</span>
-                </div>
-                <div v-for="(p, i) in plagResult.plag_results" :key="'plag'+i"
-                  class="mb-1.5 p-2 bg-red-50 dark:bg-red-900/15 rounded border border-red-200 dark:border-red-800">
-                  <p class="text-xs text-red-800 dark:text-red-300 line-clamp-3">{{ p.text }}</p>
-                  <div class="mt-1 text-[9px] text-red-500">相似度 {{ Math.round(p.score * 100) }}% · {{ p.length }}字</div>
-                </div>
-              </div>
-
-              <!-- AIGC 段落 -->
-              <div v-if="plagResult.aigc_results?.length" class="mx-2 mb-2">
-                <div class="flex items-center gap-1.5 mb-1.5">
-                  <span class="text-[10px] font-medium text-amber-600">🟡 AI 痕迹段落 ({{ plagResult.aigc_results.length }})</span>
-                </div>
-                <div v-for="(a, i) in plagResult.aigc_results" :key="'aigc'+i"
-                  class="mb-1.5 p-2 bg-amber-50 dark:bg-amber-900/15 rounded border border-amber-200 dark:border-amber-800">
-                  <div class="flex items-center justify-between mb-1">
-                    <div class="flex items-center gap-1">
-                      <span v-for="f in a.features" :key="f" class="text-[8px] px-1 py-0.5 bg-amber-200 dark:bg-amber-800 text-amber-700 dark:text-amber-300 rounded">{{ f }}</span>
-                    </div>
-                    <span class="text-[9px] font-bold text-amber-600">{{ Math.round(a.aigc_probability * 100) }}%</span>
-                  </div>
-                  <p class="text-xs text-amber-800 dark:text-amber-300 line-clamp-3">{{ a.text }}</p>
-                </div>
-              </div>
-
-              <!-- 建议 -->
-              <div v-if="plagResult.suggestions?.length" class="mx-2 mb-2">
-                <div class="text-[10px] font-medium text-gray-500 mb-1.5">💡 改进建议</div>
-                <div v-for="(s, i) in plagResult.suggestions" :key="'sug'+i"
-                  class="mb-1 p-2 bg-blue-50 dark:bg-blue-900/15 rounded text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
-                  {{ s }}
-                </div>
-              </div>
-            </template>
-          </div>
-        </template>
+        <PlagPanel
+          v-if="activeRightPanel === 'plag'"
+          :result="plagResult"
+          :loading="plagLoading"
+          @run="runPlagcheck"
+          @close="activeRightPanel = null"
+        />
         
         <!-- 论文评分面板 (抽屉式) -->
-        <template v-if="activeRightPanel === 'score'">
-          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <span class="text-xs font-semibold text-yellow-500 uppercase tracking-wider">★ 论文评分</span>
-            <div class="flex items-center gap-2">
-            <button @click="runScore" :disabled="scoreLoading"
-              class="px-2 py-0.5 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
-              <span v-if="scoreLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              <span v-else>🔄</span>
-              评分
-            </button>
-            <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭评分面板" title="关闭">✕</button>
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto py-2">
-            <div v-if="!scoreResult" class="px-3 py-8 text-center">
-              <div class="text-3xl mb-2">⭐</div>
-              <p class="text-xs text-gray-400">尚未评分</p>
-              <p class="text-[10px] text-gray-400 mt-1">点击上方「评分」按钮进行三维度评估</p>
-            </div>
-            <template v-if="scoreResult">
-              <div v-if="scoreResult._is_fallback" class="mx-2 mb-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                <p class="text-[10px] text-amber-700 dark:text-amber-400">⚠️ 以下为启发式估算（非 LLM 评估）。请为论文 Agent 配置 API Key 以获得基于 LLM 的准确评分。</p>
-              </div>
-              <div class="mx-2 mb-3 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                <div class="flex items-center gap-3">
-                  <div class="relative w-16 h-16 flex-shrink-0">
-                    <svg class="w-16 h-16 -rotate-90">
-                      <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" stroke-width="5" class="text-gray-200 dark:text-gray-600" />
-                      <circle cx="32" cy="32" r="28" fill="none"
-                        :stroke="scoreResult.overall >= 7 ? '#22c55e' : scoreResult.overall >= 5 ? '#f59e0b' : '#ef4444'"
-                        stroke-width="5" stroke-linecap="round"
-                        :stroke-dasharray="Math.round(scoreResult.overall / 10 * 176) + ' 176'" />
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center">
-                      <span class="text-lg font-bold" :class="scoreResult.overall >= 7 ? 'text-green-600' : scoreResult.overall >= 5 ? 'text-amber-600' : 'text-red-600'">{{ scoreResult.overall }}</span>
-                      <span class="text-[9px] text-gray-400">/ 10</span>
-                    </div>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-0.5">综合评分</div>
-                    <div class="text-[10px] text-gray-500 leading-relaxed line-clamp-3">{{ scoreResult.overall_reasoning }}</div>
-                  </div>
-                </div>
-              </div>
-              <div v-for="dim in scoreDimensions" :key="dim.key" class="mx-2 mb-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
-                <div class="px-2.5 py-2 flex items-center gap-2">
-                  <span class="text-base">{{ dim.icon }}</span>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between mb-1">
-                      <span class="text-[11px] font-medium text-gray-700 dark:text-gray-200">{{ dim.label }}</span>
-                      <span :class="['text-xs font-bold', (scoreResult[dim.key]?.score || 0) >= 7 ? 'text-green-600' : (scoreResult[dim.key]?.score || 0) >= 5 ? 'text-amber-600' : 'text-red-600']">
-                        {{ scoreResult[dim.key]?.score || '—' }}
-                        <span class="text-[9px] text-gray-400">/10</span>
-                      </span>
-                    </div>
-                    <div class="w-full h-1.5 bg-gray-100 dark:bg-gray-600 rounded-full overflow-hidden">
-                      <div :class="['h-full rounded-full transition-all', (scoreResult[dim.key]?.score || 0) >= 7 ? 'bg-green-500' : (scoreResult[dim.key]?.score || 0) >= 5 ? 'bg-amber-500' : 'bg-red-500']"
-                        :style="{ width: ((scoreResult[dim.key]?.score || 0) / 10 * 100) + '%' }"></div>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="scoreResult[dim.key]?.reasoning" class="px-2.5 pb-2">
-                  <p class="text-[10px] text-gray-500 leading-relaxed">{{ scoreResult[dim.key]?.reasoning }}</p>
-                </div>
-              </div>
-              <div class="mx-2 mb-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded text-[9px] text-gray-400 text-center">
-                综合评分 = 原创性×30% + 逻辑性×35% + 引用完整性×35%
-              </div>
-            </template>
-          </div>
-        </template>
+        <ScorePanel
+          v-if="activeRightPanel === 'score'"
+          :result="scoreResult"
+          :loading="scoreLoading"
+          :dimensions="scoreDimensions"
+          @run="runScore"
+          @close="activeRightPanel = null"
+        />
         </template>
       </div>
     </div>
@@ -1030,6 +629,14 @@ import DOMPurify from 'dompurify'
 import ProjectList from './ProjectList.vue'
 const WriterExportModal = defineAsyncComponent(() => import('./WriterExportModal.vue'))
 const WriterRewriteModal = defineAsyncComponent(() => import('./WriterRewriteModal.vue'))
+const LiteraturePanel = defineAsyncComponent(() => import('./panels/LiteraturePanel.vue'))
+const CitationPanel = defineAsyncComponent(() => import('./panels/CitationPanel.vue'))
+const ConsensusPanel = defineAsyncComponent(() => import('./panels/ConsensusPanel.vue'))
+const SnapshotsPanel = defineAsyncComponent(() => import('./panels/SnapshotsPanel.vue'))
+const AIPanel = defineAsyncComponent(() => import('./panels/AIPanel.vue'))
+const PlagPanel = defineAsyncComponent(() => import('./panels/PlagPanel.vue'))
+const ScorePanel = defineAsyncComponent(() => import('./panels/ScorePanel.vue'))
+import { useScholarPanelStore } from '../stores/scholar-panel.js'
 import MarkdownIt from 'markdown-it'
 import texmath from 'markdown-it-texmath'
 import katex from 'katex'
@@ -1042,13 +649,38 @@ md.enable(['table', 'strikethrough'])
 
 const router = useRouter()
 
+// ── Pinia store: right panel shared state
+const panelStore = useScholarPanelStore()
+
+// Destructure store state for template usage (reactive)
+const activeRightPanel = computed({
+  get: () => panelStore.activeRightPanel,
+  set: (v) => { panelStore.activeRightPanel = v }
+})
+const showLiteraturePanel = computed({
+  get: () => panelStore.showLiteraturePanel,
+  set: (v) => { panelStore.showLiteraturePanel = v }
+})
+const showAIPanel = computed({
+  get: () => panelStore.showAIPanel,
+  set: (v) => { panelStore.showAIPanel = v }
+})
+const showEventLog = computed({
+  get: () => panelStore.showEventLog,
+  set: (v) => { panelStore.showEventLog = v }
+})
+const rightCollapsed = computed({
+  get: () => panelStore.rightCollapsed,
+  set: (v) => { panelStore.rightCollapsed = v }
+})
+
 // ═══════════════════════════════════════════════════════════════════
 // 项目状态
 // ═══════════════════════════════════════════════════════════════════
 const currentModel = ref('')
 const currentProvider = ref('')
 const events = ref([])  // 事件日志
-const showEventLog = ref(false)
+// showEventLog now from store: panelStore.showEventLog
 
 // ═════════════════════════════════════════════════════════════════
 // 多项目独立工作空间
@@ -1591,7 +1223,8 @@ const parsePaperStructure = (text) => {
 // ═══════════════════════════════════════════════════════════════════
 // 文献库
 // ═══════════════════════════════════════════════════════════════════
-const showLiteraturePanel = ref(true)
+const literature = ref([])
+
 const literatureSearch = ref('')
 const searchLoading = ref(false)
 const selectedLiterature = ref(null)
@@ -1604,8 +1237,6 @@ const depthOptions = [
   { value: 2, label: '标准', icon: '🔍', desc: '多视角检索+聚合' },
   { value: 3, label: '深度', icon: '🕸️', desc: '3轮递归+缺口分析+全链路' },
 ]
-
-const literature = ref([])
 
 const filteredLiterature = computed(() => {
   if (!literatureSearch.value) return literature.value
@@ -1696,16 +1327,12 @@ const sourceBadgeClass = (source) => {
 // ═══════════════════════════════════════════════════════════════════
 // 右侧浮动功能面板系统（P0-3: 顶部功能向左弹出，避免挤压）
 // ═══════════════════════════════════════════════════════════════════
-const activeRightPanel = ref(null) // null | 'citation' | 'consensus' | 'plag' | 'score' | 'snapshots'
+// activeRightPanel now managed by panelStore
 const rightPanelWidth = ref(380)   // 面板宽度（可拖拽调整）
 
-// 切换右侧面板（互斥，点同一按钮关闭）
+// 切换右侧面板（互斥，点同一按钮关闭）— now delegates to store
 const toggleRightPanel = (name) => {
-  if (activeRightPanel.value === name) {
-    activeRightPanel.value = null
-  } else {
-    activeRightPanel.value = name
-  }
+  panelStore.togglePanel(name)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2094,11 +1721,11 @@ const insertTable = () => {
 // ═══════════════════════════════════════════════════════════════════
 // AI 助手
 // ═══════════════════════════════════════════════════════════════════
-const showAIPanel = ref(false)
+// showAIPanel, rightCollapsed now from panelStore
 const leftCollapsed = ref(false)   // 左栏大纲折叠
-const rightCollapsed = ref(false)  // 右栏文献/AI默认展开
 const toggleLeftBar = () => { leftCollapsed.value = !leftCollapsed.value }
-const toggleRightBar = () => { rightCollapsed.value = !rightCollapsed.value }
+// toggleRightBar now delegates to store
+const toggleRightBar = () => { panelStore.toggleRightBar() }
 const aiInput = ref('')
 const aiStreaming = ref(false)
 const aiAbortController = ref(null)  // SSE 流式取消
