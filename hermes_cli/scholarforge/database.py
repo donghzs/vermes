@@ -39,6 +39,7 @@ def init_db():
             paper_type TEXT DEFAULT '本科论文',
             target_words INTEGER DEFAULT 8000,
             current_model TEXT,
+            last_section_key TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -54,6 +55,9 @@ def init_db():
             sort_order INTEGER DEFAULT 0,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        -- P1-7 migration: add last_section_key column if missing
+        
 
         CREATE TABLE IF NOT EXISTS section_contents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,12 +103,58 @@ def init_db():
             UNIQUE(project_id, agent_name)
         );
 
+        CREATE TABLE IF NOT EXISTS citation_verifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            ref_num INTEGER NOT NULL,
+            score REAL DEFAULT 5,
+            reason TEXT DEFAULT '',
+            verified_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_outline_project ON outlines(project_id);
         CREATE INDEX IF NOT EXISTS idx_content_project ON section_contents(project_id);
         CREATE INDEX IF NOT EXISTS idx_lit_project ON literatures(project_id);
         CREATE INDEX IF NOT EXISTS idx_msg_project ON messages(project_id);
         CREATE INDEX IF NOT EXISTS idx_agent_prov ON agent_providers(project_id);
+        CREATE INDEX IF NOT EXISTS idx_cv_project ON citation_verifications(project_id);
+
+        -- P1-5: 版本历史表
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            label TEXT DEFAULT '',
+            note TEXT DEFAULT '',
+            payload TEXT NOT NULL DEFAULT '{}',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id);
         """)
+        
+        # P1-7: add last_section_key to existing databases
+        try:
+            conn.execute("ALTER TABLE projects ADD COLUMN last_section_key TEXT")
+        except:
+            pass  # column already exists
+        
+        # P1-5: add snapshots table to existing databases
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    label TEXT DEFAULT '',
+                    note TEXT DEFAULT '',
+                    payload TEXT NOT NULL DEFAULT '{}',
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id)")
+        except:
+            pass
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -313,12 +363,18 @@ def get_project(pid: int) -> Optional[Dict[str, Any]]:
             "SELECT COUNT(*) c FROM literatures WHERE project_id=?", (pid,)
         ).fetchone()["c"]
 
+        # 文献列表（供评分/共识度/引用核查使用）
+        lit_rows = conn.execute(
+            "SELECT * FROM literatures WHERE project_id=? ORDER BY added_at", (pid,)
+        ).fetchall()
+        proj["literatures"] = [dict(r) for r in lit_rows]
+
         return proj
 
 
 def update_project(pid: int, **kwargs) -> bool:
     init_db()
-    allowed = {"title", "paper_type", "target_words", "current_model"}
+    allowed = {"title", "paper_type", "target_words", "current_model", "last_section_key"}
     fields = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
     if not fields:
         return False
@@ -346,6 +402,26 @@ def delete_project(pid: int) -> bool:
 # Section content
 # ═══════════════════════════════════════════════════════════════════
 
+def save_outline(pid: int, outline_sections: list[dict]) -> None:
+    """批量保存大纲到 outlines 表（先删后插）"""
+    init_db()
+    now = int(time.time())
+    with get_conn() as conn:
+        conn.execute("DELETE FROM outlines WHERE project_id=?", (pid,))
+        for i, sec in enumerate(outline_sections):
+            conn.execute(
+                """INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (pid, sec.get("id", f"sec_{i}"),
+                 sec.get("number", i + 1),
+                 sec.get("title", ""),
+                 sec.get("wordCount", 0),
+                 sec.get("status", "pending"),
+                 i, now),
+            )
+    touch_project(pid)
+
+
 def save_section_content(pid: int, section_key: str, content: str):
     init_db()
     now = int(time.time())
@@ -371,6 +447,15 @@ def get_section_content(pid: int, section_key: str) -> str:
             (pid, section_key),
         ).fetchone()
         return row["content"] if row else ""
+
+
+def delete_section_content(pid: int, section_key: str):
+    init_db()
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM section_contents WHERE project_id=? AND section_key=?",
+            (pid, section_key),
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -517,3 +602,82 @@ def reset_agent_provider(pid: int, agent_name: str) -> bool:
             (pid, agent_name),
         )
     return True
+
+
+def save_citation_verifications(pid: int, results: list[dict]) -> None:
+    """保存引用验证结果 — 先清旧数据，再批量写入"""
+    init_db()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM citation_verifications WHERE project_id=?", (pid,))
+        now = int(time.time())
+        conn.executemany(
+            "INSERT INTO citation_verifications (project_id, ref_num, score, reason, verified_at) VALUES (?, ?, ?, ?, ?)",
+            [(pid, r.get("ref", 0), r.get("score", 5), r.get("reason", "")[:500], now) for r in results]
+        )
+
+
+def get_citation_verifications(pid: int) -> list[dict]:
+    """获取项目的引用验证结果"""
+    init_db()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT ref_num, score, reason, verified_at FROM citation_verifications WHERE project_id=? ORDER BY ref_num",
+            (pid,)
+        ).fetchall()
+        return [{"ref": r[0], "score": r[1], "reason": r[2], "verified_at": r[3]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# P1-5: 版本快照 (Snapshot)
+# ═══════════════════════════════════════════════════════════════════
+
+MAX_SNAPSHOTS_PER_PROJECT = 30
+
+def create_snapshot(pid: int, label: str = "", note: str = "", data: dict = None) -> int:
+    """创建快照，payload 为 JSON 序列化的全文+章节内容。超出 MAX_SNAPSHOTS 时淘汰最旧。"""
+    init_db()
+    import json, time
+    payload = json.dumps(data or {}, ensure_ascii=False)
+    now = int(time.time())
+    with get_conn() as conn:
+        sid = conn.execute(
+            "INSERT INTO snapshots (project_id, label, note, payload, created_at) VALUES (?,?,?,?,?)",
+            (pid, label, note, payload, now)
+        ).lastrowid
+        # 淘汰最旧的
+        count = conn.execute("SELECT COUNT(*) FROM snapshots WHERE project_id=?", (pid,)).fetchone()[0]
+        if count > MAX_SNAPSHOTS_PER_PROJECT:
+            oldest = conn.execute(
+                "SELECT id FROM snapshots WHERE project_id=? ORDER BY created_at ASC LIMIT ?",
+                (pid, count - MAX_SNAPSHOTS_PER_PROJECT)
+            ).fetchall()
+            for (oid,) in oldest:
+                conn.execute("DELETE FROM snapshots WHERE id=?", (oid,))
+        return sid
+
+def list_snapshots(pid: int) -> list[dict]:
+    """列出项目所有快照（倒序，附元信息不含 payload）"""
+    init_db()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, label, note, LENGTH(payload), created_at FROM snapshots WHERE project_id=? ORDER BY created_at DESC",
+            (pid,)
+        ).fetchall()
+        return [{"id": r[0], "label": r[1], "note": r[2], "size": r[3], "created_at": r[4]} for r in rows]
+
+def get_snapshot(sid: int) -> dict:
+    """获取单个快照完整内容"""
+    init_db()
+    import json
+    with get_conn() as conn:
+        row = conn.execute("SELECT id, label, note, payload, created_at FROM snapshots WHERE id=?", (sid,)).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "label": row[1], "note": row[2], "payload": json.loads(row[3]), "created_at": row[4]}
+
+def delete_snapshot(sid: int) -> bool:
+    """删除单个快照"""
+    init_db()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM snapshots WHERE id=?", (sid,))
+        return True

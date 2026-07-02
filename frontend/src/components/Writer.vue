@@ -4,27 +4,30 @@
   目标用户：本科/研究生/博士/研究人员
 -->
 <template>
-  <div class="h-full flex flex-col overflow-hidden bg-white dark:bg-gray-900">
+  <div class="h-full flex flex-col overflow-hidden bg-white dark:bg-gray-900"
+    @keydown="handleKeyboard"
+    role="application" aria-label="ScholarForge 论文写作编辑器">
     <!-- ═══════════════════════════════════════════════════════════════
          顶部导航栏 — 项目级操作
          ═══════════════════════════════════════════════════════════════ -->
     <header class="h-12 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 bg-white dark:bg-gray-800 shrink-0 gap-2">
       <!-- 左侧：项目信息 -->
       <div class="flex items-center gap-2 min-w-0 flex-shrink">
-        <button @click="$router.push('/')" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        <button @click="$router.push('/')" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500" aria-label="返回首页" title="返回首页">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
         </button>
         <div class="h-5 w-px bg-gray-200 dark:bg-gray-600"></div>
         <div class="flex items-center gap-2 min-w-0">
           <span class="text-lg shrink-0">📚</span>
           <div class="relative" ref="projectSwitcherRef">
             <button @click="showProjectSwitcher = !showProjectSwitcher"
-              class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-100 min-w-0">
+              class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-100 min-w-0"
+              aria-label="切换项目" aria-haspopup="listbox" :aria-expanded="showProjectSwitcher">
               <span class="max-w-[160px] truncate">{{ project.title || '未命名项目' }}</span>
-              <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <!-- 项目下拉 -->
-            <div v-if="showProjectSwitcher" class="absolute left-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 py-1 max-h-96 overflow-y-auto">
+            <div v-if="showProjectSwitcher" class="absolute left-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 py-1 max-h-96 overflow-y-auto" role="listbox" aria-label="项目列表">
               <div class="px-3 py-2 text-xs text-gray-500 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
                 <span>论文项目 ({{ projects.length }})</span>
                 <button @click="showProjectSwitcher=false; backToProjectList()" class="text-blue-600 hover:text-blue-700">全部项目</button>
@@ -56,49 +59,58 @@
         <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">{{ project.type }}</span>
       </div>
 
-      <!-- 中间：写作阶段 + 模型选择器 (响应式 — 宽屏显示标签，窄屏仅图标) -->
-      <div class="hidden md:flex items-center gap-1 flex-shrink min-w-0">
-        <!-- 阶段指示器 (只显示当前激活) -->
-        <div class="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg px-1.5 py-1">
-          <span class="hidden lg:inline text-[10px] text-gray-400 mr-1.5">阶段</span>
-          <div class="flex items-center gap-1">
-            <button v-for="(stage, idx) in stages" :key="stage.id"
-              @click="activeStage = stage.id"
-              :class="['w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium transition-colors', activeStage === stage.id ? 'bg-green-600 text-white' : stage.completed ? 'text-green-600 hover:bg-gray-200' : 'text-gray-400 hover:text-gray-600']"
-              :title="stage.name"
-            >
-              {{ stage.completed ? '✓' : idx + 1 }}
-            </button>
-          </div>
-        </div>
+      <!-- 中间：写作阶段 + 模型选择器 → 折叠下拉 -->
+      <div class="hidden md:block relative stage-dropdown-anchor flex-shrink-0">
+        <button @click.stop="showStageDropdown = !showStageDropdown"
+          class="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-[11px] transition-colors" title="写作阶段与模型设置">
+          <span class="w-5 h-5 rounded bg-green-600 text-white flex items-center justify-center text-[10px] font-medium">
+            {{ stages.findIndex(s=>s.id===activeStage) + 1 || 1 }}
+          </span>
+          <span class="hidden lg:inline text-gray-600 dark:text-gray-300 font-medium">{{ stages.find(s=>s.id===activeStage)?.label || '写作' }}</span>
+          <span class="text-[10px] text-gray-400">{{ agentProviders[activeStage] ? agentProviderLabel(activeStage) : '未选模型' }}</span>
+          <svg :class="['w-3 h-3 text-gray-400 transition-transform', showStageDropdown ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
         
-        <!-- 当前阶段模型选择器 -->
-        <div class="relative agent-dropdown-anchor">
-          <button @click.stop="toggleAgentDropdown(activeStage, $event)"
-            class="flex items-center gap-1 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-[11px] hover:border-green-500 transition-colors max-w-[180px]"
-            :title="getAgentProviderTitle(activeStage)"
-          >
-            <span class="hidden lg:inline text-gray-400">{{ stages.find(s=>s.id===activeStage)?.name }}</span>
-            <span class="text-gray-600 dark:text-gray-200 truncate">{{ agentProviders[activeStage] ? agentProviderLabel(activeStage) : '选模型' }}</span>
-            <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-          </button>
-          
-          <!-- 模型下拉 -->
-          <div v-if="openAgentDropdown === activeStage"
-            class="absolute top-full left-0 mt-1 w-[200px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-[280px] flex flex-col overflow-hidden">
-            <div class="flex-1 overflow-y-auto py-0.5">
-              <div v-if="!configuredProviders.length" class="text-[11px] text-gray-400 py-4 px-3 text-center">
-                暂未配置模型 Key<br/><span class="text-[10px]">请在设置中添加</span>
+        <!-- 阶段 + 模型下拉面板 -->
+        <div v-if="showStageDropdown"
+          class="absolute top-full left-0 mt-1 w-[260px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-[420px] flex flex-col overflow-hidden">
+          <div class="px-3 py-2 text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <span>写作阶段 · 模型设置</span>
+            <button @click="showStageDropdown = false" class="text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+          <div class="flex-1 overflow-y-auto py-1">
+            <div v-for="(stage, idx) in stages" :key="stage.id"
+              :class="['px-3 py-2 flex items-center gap-2 transition-colors', activeStage === stage.id ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50']">
+              <!-- 阶段选择按钮 -->
+              <button @click="activeStage = stage.id"
+                :class="['w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium shrink-0 transition-colors', activeStage === stage.id ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-gray-200']">
+                {{ idx + 1 }}
+              </button>
+              <div class="flex-1 min-w-0">
+                <div class="text-[11px] font-medium text-gray-700 dark:text-gray-200">{{ stage.icon }} {{ stage.label }}</div>
+                <div class="text-[9px] text-gray-400 truncate">{{ stage.description }}</div>
               </div>
-              <template v-for="p in configuredProviders" :key="p.key">
-                <div class="px-2 pt-1.5 pb-0.5 text-[9px] uppercase text-gray-400 font-semibold">{{ p.key }}</div>
-                <button v-for="m in getModelsForProvider(p.key)" :key="p.key + '-' + m"
-                  @click="setAgentProvider(activeStage, p.key, m); closeAgentDropdown()"
-                  :class="['w-full text-left px-2.5 py-1 text-[11px] transition-colors', agentProviders[activeStage]?.provider === p.key && agentProviders[activeStage]?.model === m ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100']"
-                >
-                  {{ m }}
+              <!-- 该阶段模型选择 (必须有 agent-dropdown-anchor 类，让 handleClickOutside 不误关) -->
+              <div class="relative shrink-0 agent-dropdown-anchor">
+                <button @click.stop="toggleAgentDropdown(stage.id, $event)"
+                  class="text-[10px] px-2 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded hover:border-green-400 transition-colors max-w-[90px] truncate">
+                  {{ agentProviders[stage.id] ? agentProviderLabel(stage.id) : '选' }}
                 </button>
-              </template>
+                <div v-if="openAgentDropdown === stage.id"
+                  class="absolute right-0 top-full mt-1 w-[180px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[60] max-h-[240px] flex flex-col overflow-hidden">
+                  <div class="flex-1 overflow-y-auto py-0.5">
+                    <div v-if="!configuredProviders.length" class="text-[10px] text-gray-400 py-4 px-3 text-center">暂无模型</div>
+                    <template v-for="p in configuredProviders" :key="p.key">
+                      <div class="px-2 pt-1.5 pb-0.5 text-[8px] uppercase text-gray-400 font-semibold">{{ p.key }}</div>
+                      <button v-for="m in getModelsForProvider(p.key)" :key="p.key + '-' + m"
+                        @click="setAgentProvider(stage.id, p.key, m); closeAgentDropdown()"
+                        :class="['w-full text-left px-2.5 py-1 text-[10px] transition-colors', agentProviders[stage.id]?.provider === p.key && agentProviders[stage.id]?.model === m ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-600 hover:bg-gray-100']">
+                        {{ m }}
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -109,7 +121,7 @@
         <!-- 文献 (图标+数字) -->
         <button @click="showLiteraturePanel = !showLiteraturePanel; showAIPanel = false" 
           :class="['p-2 rounded-lg transition-colors relative', showLiteraturePanel ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="文献库">
+          title="文献库" aria-label="文献库" :aria-expanded="showLiteraturePanel">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
           <span v-if="literatureCount > 0" class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-blue-600 text-white text-[9px] rounded-full flex items-center justify-center">{{ literatureCount }}</span>
         </button>
@@ -117,15 +129,16 @@
         <!-- AI 助手 (图标) -->
         <button @click="showAIPanel = !showAIPanel; showLiteraturePanel = false"
           :class="['p-2 rounded-lg transition-colors relative', showAIPanel ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="AI 助手">
+          title="AI 助手" aria-label="AI 助手" :aria-expanded="showAIPanel">
           <span class="text-base">🤖</span>
         </button>
         
         <!-- 引用核查 (图标+警告数字) -->
-        <button @click="showCitationPanel = !showCitationPanel; showConsensusPanel = false"
-          :class="['p-2 rounded-lg transition-colors relative', showCitationPanel ? 'bg-amber-50 text-amber-600' : 'text-gray-500 hover:bg-gray-100']"
+        <button @click="toggleRightPanel('citation')"
+          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'citation' ? 'bg-amber-50 text-amber-600' : 'text-gray-500 hover:bg-gray-100']"
           title="引用核查结果">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span class="hidden lg:inline ml-1 text-xs">核查</span>
           <span v-if="citationErrors + citationWarnings > 0" 
             :class="['absolute -top-0.5 -right-0.5 w-4 h-4 text-white text-[9px] rounded-full flex items-center justify-center', citationErrors > 0 ? 'bg-red-500' : 'bg-amber-500']">
             {{ citationErrors + citationWarnings }}
@@ -133,37 +146,59 @@
         </button>
 
         <!-- 共识度 (图标+徽章) -->
-        <button @click="showConsensusPanel = !showConsensusPanel; showCitationPanel = false"
-          :class="['p-2 rounded-lg transition-colors relative', showConsensusPanel ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:bg-gray-100']"
+        <button @click="toggleRightPanel('consensus')"
+          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'consensus' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:bg-gray-100']"
           title="共识度分析">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span class="hidden lg:inline ml-1 text-xs">共识</span>
           <span v-if="consensusResults.length > 0" 
             class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white text-[9px] rounded-full flex items-center justify-center">
             {{ consensusResults.length }}
           </span>
         </button>
 
-        <!-- 查重 + AIGC 检测 (P0-2) -->
-        <button @click="runPlagcheck" :disabled="plagLoading"
-          :class="['p-2 rounded-lg transition-colors relative', showPlagPanel ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-100']"
+        <!-- 查重 + AIGC 检测 -->
+        <button @click="toggleRightPanel('plag')" :disabled="plagLoading"
+          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'plag' ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-100']"
           title="查重 + AIGC 检测">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          <span class="hidden lg:inline ml-1 text-xs">查重</span>
           <span v-if="plagResult" 
             :class="['absolute -top-0.5 -right-0.5 px-1 text-white text-[9px] rounded-full flex items-center justify-center', plagResult.overall_similarity > 0.3 ? 'bg-red-500' : plagResult.aigc_overall_ratio > 0.4 ? 'bg-amber-500' : 'bg-green-500']">
             {{ Math.round(Math.max(plagResult.overall_similarity, plagResult.aigc_overall_ratio) * 100) }}%
           </span>
         </button>
         
+        <!-- 论文评分 -->
+        <button @click="toggleRightPanel('score')" :disabled="scoreLoading"
+          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'score' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-500 hover:bg-gray-100']"
+          title="论文评分 — 原创性/逻辑性/引用完整性">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+          <span class="hidden lg:inline ml-1 text-xs">评分</span>
+          <span v-if="scoreResult?.overall" 
+            :class="['absolute -top-0.5 -right-0.5 w-4 h-4 text-white text-[8px] rounded-full flex items-center justify-center', scoreResult.overall >= 7 ? 'bg-green-500' : scoreResult.overall >= 5 ? 'bg-amber-500' : 'bg-red-500']">
+            {{ scoreResult.overall }}
+          </span>
+        </button>
+        
         <div class="h-4 w-px bg-gray-200 mx-1"></div>
         
-        <!-- 一键复制富文本 (Phase 1.4 — 粘贴到 Word/飞书/Notion 零格式损失) -->
-        <button @click="copyRichText" class="p-2 lg:px-2.5 lg:py-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg transition-colors flex items-center justify-center" title="复制为富文本 (Word/飞书/Notion 保留格式)">
+        <!-- 一键复制富文本 (Phase 1.4) -->
+        <button @click="copyRichText" class="p-2 lg:px-2.5 lg:py-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg transition-colors flex items-center justify-center" title="复制为富文本 (Word/飞书/Notion 保留格式) (Ctrl+Shift+C)" aria-label="复制为富文本">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           <span class="hidden lg:inline ml-1 text-xs">复制</span>
         </button>
 
+        <!-- P1-5: 版本历史 (快照) -->
+        <button @click="toggleRightPanel('snapshots'); loadSnapshots()"
+          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors flex items-center', activeRightPanel === 'snapshots' ? 'bg-violet-50 text-violet-600' : 'text-gray-500 hover:bg-gray-100']"
+          title="版本历史" aria-label="版本历史">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span class="hidden lg:inline ml-1 text-xs">版本</span>
+        </button>
+
         <!-- 导出 -->
-        <button @click="showExportPanel = true" class="p-2 lg:px-2.5 lg:py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center shrink-0" title="导出论文">
+        <button @click="showExportPanel = true" class="p-2 lg:px-2.5 lg:py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center shrink-0" title="导出论文 (Ctrl+E)" aria-label="导出论文">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           <span class="hidden lg:inline ml-1 text-xs font-medium">导出</span>
         </button>
@@ -271,34 +306,34 @@
         <!-- 编辑器工具栏 -->
         <div class="h-10 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1 bg-gray-50 dark:bg-gray-800 shrink-0">
           <div class="flex items-center gap-0.5">
-            <button @click="editor.format('bold')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="粗体">
+            <button @click="editor.format('bold')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="粗体 (Ctrl+B)" aria-label="粗体">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 12h8a4 4 0 100-8H6v8zm0 0h10a4 4 0 110 8H6v-8z"/></svg>
             </button>
-            <button @click="editor.format('italic')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="斜体">
+            <button @click="editor.format('italic')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="斜体 (Ctrl+I)" aria-label="斜体">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
             </button>
-            <button @click="editor.format('heading')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="标题">
+            <button @click="editor.format('heading')" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="标题 (Ctrl+H)" aria-label="标题">
               <span class="text-xs font-bold">H</span>
             </button>
           </div>
           <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
           <div class="flex items-center gap-0.5">
-            <button @click="insertCitation" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1" title="插入引用">
+            <button @click="insertCitation" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1" title="插入引用 (Ctrl+K)" aria-label="插入引用">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
               <span class="text-xs">引用</span>
             </button>
-            <button @click="insertFormula" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="插入公式">
+            <button @click="insertFormula" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="插入公式 (Ctrl+Shift+F)" aria-label="插入公式">
               <span class="text-xs font-serif italic">∑</span>
             </button>
-            <button @click="insertTable" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="插入表格">
+            <button @click="insertTable" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300" title="插入表格 (Ctrl+T)" aria-label="插入表格">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
           <div class="flex-1"></div>
           <div class="flex items-center gap-2">
-            <button @click="viewMode = 'edit'" :class="['px-2 py-1 rounded text-xs', viewMode === 'edit' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']">编辑</button>
-            <button @click="viewMode = 'split'" :class="['px-2 py-1 rounded text-xs', viewMode === 'split' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']">分栏</button>
-            <button @click="viewMode = 'preview'" :class="['px-2 py-1 rounded text-xs', viewMode === 'preview' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']">预览</button>
+            <button @click="viewMode = 'edit'" :class="['px-2 py-1 rounded text-xs', viewMode === 'edit' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']" aria-label="编辑视图" aria-pressed="viewMode === 'edit'">编辑</button>
+            <button @click="viewMode = 'split'" :class="['px-2 py-1 rounded text-xs', viewMode === 'split' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']" aria-label="分栏视图" aria-pressed="viewMode === 'split'">分栏</button>
+            <button @click="viewMode = 'preview'" :class="['px-2 py-1 rounded text-xs', viewMode === 'preview' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']" aria-label="预览视图" aria-pressed="viewMode === 'preview'">预览</button>
           </div>
         </div>
 
@@ -312,6 +347,13 @@
                 粘贴并识别结构
               </button>
               <span class="text-gray-400">支持自动识别：标题/章节/参考文献</span>
+              <div class="flex-1"></div>
+              <span class="text-[10px] flex items-center gap-1" :class="saveStatus === 'saved' ? 'text-green-600' : saveStatus === 'saving' ? 'text-amber-500' : 'text-gray-400'">
+                <span v-if="saveStatus === 'saved'" class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                <span v-else-if="saveStatus === 'saving'" class="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+                <span v-else class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+                {{ saveStatus === 'saved' ? '已保存' : saveStatus === 'saving' ? '保存中...' : '未保存' }}
+              </span>
             </div>
             <div class="flex-1 relative">
             <textarea
@@ -323,7 +365,20 @@
               class="w-full h-full p-4 resize-none outline-none font-mono text-sm leading-relaxed text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900"
               placeholder="开始写作...选中文字可 AI 改写"
               spellcheck="false"
+              aria-label="论文正文编辑器"
+              role="textbox"
+              aria-multiline="true"
             ></textarea>
+            <!-- 写作字数进度条 -->
+            <div v-if="project.targetWords" class="absolute bottom-2 left-4 right-4 flex items-center gap-2 bg-gray-900/80 backdrop-blur rounded-lg px-3 py-1.5 text-[10px]">
+              <span class="text-gray-400 shrink-0">字数:</span>
+              <span class="font-mono font-medium" :class="totalWordCount >= project.targetWords ? 'text-green-400' : totalWordCount >= project.targetWords * 0.6 ? 'text-amber-400' : 'text-gray-200'">{{ totalWordCount.toLocaleString() }}</span>
+              <span class="text-gray-500">/ {{ project.targetWords.toLocaleString() }}</span>
+              <div class="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-300" :class="totalWordCount >= project.targetWords ? 'bg-green-400' : totalWordCount >= project.targetWords * 0.6 ? 'bg-amber-400' : 'bg-blue-400'" :style="{ width: Math.min((totalWordCount / project.targetWords) * 100, 100) + '%' }"></div>
+              </div>
+              <span class="text-gray-400 font-mono">{{ Math.round(Math.min((totalWordCount / project.targetWords) * 100, 100)) }}%</span>
+            </div>
             <!-- 浮动选择菜单 (学 Jenni AI) -->
             <div v-if="showSelectionMenu" :style="selectionMenuStyle"
               class="absolute z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 flex items-stretch">
@@ -359,6 +414,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
               </button>
             </div>
+            <div class="flex flex-col items-end gap-2">
             <button 
               @click="sendToAI" 
               :disabled="!aiInput.trim() || aiStreaming"
@@ -368,6 +424,12 @@
               <span v-else>🚀</span>
               {{ aiStreaming ? '生成中...' : 'AI 写作' }}
             </button>
+            <button v-if="aiStreaming" @click="abortStreaming"
+              class="px-4 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg text-xs font-medium transition-colors"
+              aria-label="停止生成">
+              ⏹ 停止
+            </button>
+          </div>
           </div>
           
           <!-- AI 快捷指令 -->
@@ -400,6 +462,7 @@
             <div v-for="(e, i) in events.slice(-20)" :key="i" class="flex items-center gap-1.5 text-[10px]">
               <span :class="{
                 'text-amber-500': e.type === 'thinking',
+                'text-orange-500': e.type === 'warning',
                 'text-blue-500': e.type === 'searching',
                 'text-purple-500': e.type === 'writing',
                 'text-green-500': e.type === 'done',
@@ -415,11 +478,13 @@
           <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">文献库</span>
             <div class="flex items-center gap-1">
+              <button @click="triggerBibtexImport" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600 text-[10px]" title="导入 BibTeX">📥</button>
               <button @click="showSourceSelector = !showSourceSelector" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600 text-[10px]" title="搜索源">
                 {{ activeSources.length }}/{{ allSearchSources.length }} 源
               </button>
-              <button @click="searchLiterature" class="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs flex items-center gap-1">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <button @click="searchLiterature" :disabled="searchLoading" class="p-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs flex items-center gap-1">
+                <span v-if="searchLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 检索
               </button>
             </div>
@@ -484,11 +549,13 @@
               <div class="text-3xl mb-2">📭</div>
               <p class="text-xs text-gray-400 mb-2">文献库为空</p>
               <p class="text-[10px] text-gray-400 mb-3">运行「文献综述」Agent 或点击上方检索按钮</p>
-              <button @click="searchLiterature" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs">🔍 开始检索</button>
+              <button @click="searchLiterature" :disabled="searchLoading" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs flex items-center gap-1">
+                <span v-if="searchLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                <span v-else>🔍</span> {{ searchLoading ? '搜索中...' : '开始检索' }}</button>
             </div>
             <div v-for="paper in filteredLiterature" :key="paper.id" 
               @click="togglePaperExpand(paper)"
-              :class="['px-3 py-2.5 cursor-pointer transition-all', expandedPaper?.id === paper.id ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-white dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700/50']">
+              :class="['px-3 py-2.5 cursor-pointer transition-all', expandedPaper?.id === paper.id ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-white dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700/50', citedPaperIds.has(paper.id) ? 'border-l-2 border-l-green-400' : '']">
               <div class="flex items-start gap-2">
                 <span class="text-[10px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5 font-mono">{{ paper.year || '?' }}</span>
                 <div class="flex-1 min-w-0">
@@ -497,6 +564,7 @@
                   <div class="flex items-center gap-2 mt-1.5">
                     <span v-if="paper.venue" class="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 truncate max-w-[120px]">{{ paper.venue }}</span>
                     <span class="text-[10px] px-1.5 py-0.5 rounded text-gray-400" :class="sourceBadgeClass(paper.source)">{{ paper.source || '未知源' }}</span>
+                    <span v-if="citedPaperIds.has(paper.id)" class="text-[9px] px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded" title="已在正文中引用">✅ 已引用</span>
                     <button @click.stop="copyBibtex(paper)" class="text-[10px] text-gray-400 hover:text-blue-600" title="复制 BibTeX">📋</button>
                     <button @click.stop="insertCitation(paper)" class="text-[10px] text-blue-600 hover:text-blue-700">引用</button>
                   </div>
@@ -515,11 +583,12 @@
           </div>
         </template>
 
-        <!-- 引用核查结果面板 -->
-        <template v-if="showCitationPanel">
+        <!-- 引用核查结果面板 (抽屉式) -->
+        <template v-if="activeRightPanel === 'citation'">
           <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">引用核查</span>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1.5">
+              <span v-if="citationReplaced > 0" class="text-[9px] text-green-600 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded font-medium">📄 {{ citationReplaced }}篇真实文献</span>
               <span v-if="citationErrors > 0" class="w-2 h-2 rounded-full bg-red-500"></span>
               <span v-if="citationWarnings > 0" class="w-2 h-2 rounded-full bg-amber-500"></span>
               <span class="text-[10px] text-gray-400">
@@ -528,11 +597,24 @@
                 <span v-if="citationWarnings > 0" class="text-amber-500">{{ citationWarnings }}警告</span>
                 <span v-if="citationErrors === 0 && citationWarnings === 0">全部通过</span>
               </span>
+              <button @click="activeRightPanel = null" class="ml-1 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭引用核查面板" title="关闭">✕</button>
             </div>
           </div>
           <div class="flex-1 overflow-y-auto py-2">
-            <div v-if="!citationResults.length" class="px-3 py-8 text-center">
-              <div class="text-3xl mb-2">🔍</div>
+            <!-- 真引用替换状态 -->
+            <div v-if="citationReplacedList.length > 0" class="mx-2 mb-2 px-2.5 py-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+              <div class="flex items-center gap-1.5 mb-1.5">
+                <span class="text-[10px] font-medium text-green-700 dark:text-green-300">📄 已匹配 {{ citationReplaced }} 篇真实文献</span>
+                <span class="text-[9px] text-green-500">(CrossRef / Semantic Scholar / DBLP)</span>
+              </div>
+              <div class="space-y-0.5 max-h-32 overflow-y-auto">
+                <div v-for="(c, i) in citationReplacedList.slice(0, 5)" :key="i" class="text-[9px] text-gray-500 dark:text-gray-400">
+                  <span class="font-mono text-green-600">[{{ i+1 }}]</span> {{ c.title }}
+                  <span class="text-gray-400"> — {{ c.source }} {{ c.year }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="!citationResults.length && !citationReplacedList.length" class="px-3 py-8 text-center">
               <p class="text-xs text-gray-400">尚未运行引用核查</p>
               <p class="text-[10px] text-gray-400 mt-1">运行「润色」Agent 将自动核查</p>
             </div>
@@ -554,16 +636,19 @@
           </div>
         </template>
 
-        <!-- 共识度分析面板 -->
-        <template v-if="showConsensusPanel">
+        <!-- 共识度分析面板 (抽屉式) -->
+        <template v-if="activeRightPanel === 'consensus'">
           <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">共识度分析</span>
+            <div class="flex items-center gap-2">
             <button @click="runConsensusAnalysis" :disabled="consensusLoading"
               class="px-2 py-0.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
               <span v-if="consensusLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
               <span v-else>🔄</span>
               分析
             </button>
+            <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭共识度面板" title="关闭">✕</button>
+            </div>
           </div>
           <div class="flex-1 overflow-y-auto py-2">
             <div v-if="!consensusResults.length && !consensusLoading" class="px-3 py-8 text-center">
@@ -622,6 +707,40 @@
           </div>
         </template>
 
+        <!-- P1-5: 版本历史面板 -->
+        <template v-if="activeRightPanel === 'snapshots'">
+          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">版本历史</span>
+            <div class="flex items-center gap-2">
+              <button @click="createSnapshot" class="px-2 py-0.5 bg-violet-600 hover:bg-violet-700 text-white rounded text-[10px] flex items-center gap-1">
+                💾 存快照
+              </button>
+              <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭版本历史面板" title="关闭">✕</button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto py-2">
+            <div v-if="!snapshots.length && !snapshotsLoading" class="px-3 py-8 text-center">
+              <div class="text-3xl mb-2">⏱️</div>
+              <p class="text-xs text-gray-400">暂无版本快照</p>
+              <p class="text-[10px] text-gray-400 mt-1">点击上方「💾 存快照」保存当前全文状态</p>
+            </div>
+            <div v-for="snap in snapshots" :key="snap.id"
+              class="mx-2 mb-2 p-2.5 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-violet-400 transition-colors">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-medium text-gray-800 dark:text-gray-200 truncate max-w-[160px]">{{ snap.label || '未命名快照' }}</span>
+                <span class="text-[9px] text-gray-400">{{ formatTime(snap.created_at) }}</span>
+              </div>
+              <div v-if="snap.note" class="text-[10px] text-gray-500 mb-1.5">{{ snap.note }}</div>
+              <div class="flex items-center gap-2">
+                <span class="text-[9px] text-gray-400">{{ (snap.size / 1024).toFixed(1) }} KB</span>
+                <div class="flex-1"></div>
+                <button @click="restoreSnapshot(snap)" class="text-[10px] text-violet-600 hover:text-violet-700">恢复</button>
+                <button @click="deleteSnapshot(snap.id)" class="text-[10px] text-red-400 hover:text-red-600">删除</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- AI 助手面板 -->
         <template v-if="showAIPanel">
           <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -654,10 +773,11 @@
                 {{ d.label }}
               </button>
             </div>
-            <!-- STORM 全链路按钮 -->
+            <!-- 全链路写作按钮 -->
             <button @click="runStormPipeline" :disabled="aiStreaming"
-              class="w-full mb-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-500 hover:from-purple-500 hover:to-indigo-400 text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
-              <span>⚡</span> STORM 全链路写作
+              class="w-full mb-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-500 hover:from-purple-500 hover:to-indigo-400 text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+              title="6阶段全链路：选题→文献综述→大纲→逐章写作→润色→审稿">
+              <span>⚡</span> 全链路写作
             </button>
             <div class="grid grid-cols-2 gap-2">
               <button v-for="action in aiQuickActions" :key="action.id" @click="runAIAction(action)"
@@ -668,16 +788,19 @@
           </div>
         </template>
 
-        <!-- P0-2: 查重 + AIGC 检测面板 -->
-        <template v-if="showPlagPanel">
+        <!-- 查重 + AIGC 检测面板 (抽屉式) -->
+        <template v-if="activeRightPanel === 'plag'">
           <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">查重 + AIGC</span>
+            <div class="flex items-center gap-2">
             <button @click="runPlagcheck" :disabled="plagLoading"
               class="px-2 py-0.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
               <span v-if="plagLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
               <span v-else>🔄</span>
               检测
             </button>
+            <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭查重面板" title="关闭">✕</button>
+            </div>
           </div>
           <div class="flex-1 overflow-y-auto py-2">
             <div v-if="!plagResult" class="px-3 py-8 text-center">
@@ -767,105 +890,137 @@
             </template>
           </div>
         </template>
+        
+        <!-- 论文评分面板 (抽屉式) -->
+        <template v-if="activeRightPanel === 'score'">
+          <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <span class="text-xs font-semibold text-yellow-500 uppercase tracking-wider">★ 论文评分</span>
+            <div class="flex items-center gap-2">
+            <button @click="runScore" :disabled="scoreLoading"
+              class="px-2 py-0.5 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 text-white rounded text-[10px] flex items-center gap-1">
+              <span v-if="scoreLoading" class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span v-else>🔄</span>
+              评分
+            </button>
+            <button @click="activeRightPanel = null" class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-400 hover:text-gray-600" aria-label="关闭评分面板" title="关闭">✕</button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto py-2">
+            <div v-if="!scoreResult" class="px-3 py-8 text-center">
+              <div class="text-3xl mb-2">⭐</div>
+              <p class="text-xs text-gray-400">尚未评分</p>
+              <p class="text-[10px] text-gray-400 mt-1">点击上方「评分」按钮进行三维度评估</p>
+            </div>
+            <template v-if="scoreResult">
+              <div v-if="scoreResult._is_fallback" class="mx-2 mb-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p class="text-[10px] text-amber-700 dark:text-amber-400">⚠️ 以下为启发式估算（非 LLM 评估）。请为论文 Agent 配置 API Key 以获得基于 LLM 的准确评分。</p>
+              </div>
+              <div class="mx-2 mb-3 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div class="flex items-center gap-3">
+                  <div class="relative w-16 h-16 flex-shrink-0">
+                    <svg class="w-16 h-16 -rotate-90">
+                      <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" stroke-width="5" class="text-gray-200 dark:text-gray-600" />
+                      <circle cx="32" cy="32" r="28" fill="none"
+                        :stroke="scoreResult.overall >= 7 ? '#22c55e' : scoreResult.overall >= 5 ? '#f59e0b' : '#ef4444'"
+                        stroke-width="5" stroke-linecap="round"
+                        :stroke-dasharray="Math.round(scoreResult.overall / 10 * 176) + ' 176'" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                      <span class="text-lg font-bold" :class="scoreResult.overall >= 7 ? 'text-green-600' : scoreResult.overall >= 5 ? 'text-amber-600' : 'text-red-600'">{{ scoreResult.overall }}</span>
+                      <span class="text-[9px] text-gray-400">/ 10</span>
+                    </div>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-0.5">综合评分</div>
+                    <div class="text-[10px] text-gray-500 leading-relaxed line-clamp-3">{{ scoreResult.overall_reasoning }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-for="dim in scoreDimensions" :key="dim.key" class="mx-2 mb-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+                <div class="px-2.5 py-2 flex items-center gap-2">
+                  <span class="text-base">{{ dim.icon }}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[11px] font-medium text-gray-700 dark:text-gray-200">{{ dim.label }}</span>
+                      <span :class="['text-xs font-bold', (scoreResult[dim.key]?.score || 0) >= 7 ? 'text-green-600' : (scoreResult[dim.key]?.score || 0) >= 5 ? 'text-amber-600' : 'text-red-600']">
+                        {{ scoreResult[dim.key]?.score || '—' }}
+                        <span class="text-[9px] text-gray-400">/10</span>
+                      </span>
+                    </div>
+                    <div class="w-full h-1.5 bg-gray-100 dark:bg-gray-600 rounded-full overflow-hidden">
+                      <div :class="['h-full rounded-full transition-all', (scoreResult[dim.key]?.score || 0) >= 7 ? 'bg-green-500' : (scoreResult[dim.key]?.score || 0) >= 5 ? 'bg-amber-500' : 'bg-red-500']"
+                        :style="{ width: ((scoreResult[dim.key]?.score || 0) / 10 * 100) + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="scoreResult[dim.key]?.reasoning" class="px-2.5 pb-2">
+                  <p class="text-[10px] text-gray-500 leading-relaxed">{{ scoreResult[dim.key]?.reasoning }}</p>
+                </div>
+              </div>
+              <div class="mx-2 mb-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded text-[9px] text-gray-400 text-center">
+                综合评分 = 原创性×30% + 逻辑性×35% + 引用完整性×35%
+              </div>
+            </template>
+          </div>
+        </template>
         </template>
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         导出面板 (Modal)
-         ═══════════════════════════════════════════════════════════════ -->
-    <Teleport to="body">
-      <div v-if="showExportPanel" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showExportPanel = false">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[600px] max-h-[80vh] flex flex-col">
-          <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">导出论文</h3>
-            <button @click="showExportPanel = false" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-          </div>
-          <div class="p-4 flex-1 overflow-y-auto">
-            <div class="grid grid-cols-3 gap-3 mb-4">
-              <button v-for="fmt in exportFormats" :key="fmt.id" @click="exportFormat = fmt.id"
-                :class="['p-3 border rounded-lg text-left transition-all', exportFormat === fmt.id ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300']">
-                <div class="text-2xl mb-1">{{ fmt.icon }}</div>
-                <div class="text-xs font-medium text-gray-800 dark:text-gray-200">{{ fmt.name }}</div>
-                <div class="text-[10px] text-gray-500 mt-0.5">{{ fmt.desc }}</div>
+    <!-- 导出面板 (Modal) — 已拆分为 WriterExportModal -->
+    <WriterExportModal
+      :visible="showExportPanel"
+      :project-title="project.title || ''"
+      :project-id="project.id"
+      :build-full-paper="buildFullPaper"
+      :save-current-section="saveCurrentSection"
+      :active-section="activeSection"
+      :current-content="currentContent"
+      :section-contents="sectionContents"
+      @close="showExportPanel = false"/>
+
+    <!-- P0-3: 逐段修改弹窗 — 已拆分为 WriterRewriteModal -->
+    <WriterRewriteModal
+      :visible="showRewriteModal"
+      :target-title="rewriteTarget.title"
+      :target-key="rewriteTarget.key"
+      :project-id="project.id"
+      :section-contents="sectionContents"
+      :active-section="activeSection"
+      :outline="outline"
+      @close="showRewriteModal = false"
+      @rewrite-done="onRewriteDone"/>
+  </div>
+
+      
+      <!-- Checkpoint 阶段确认弹窗 -->
+      <Teleport to='body'>
+        <div v-if='showCheckpointConfirm' class='fixed inset-0 z-[200] flex items-center justify-center bg-black/50'>
+          <div class='bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-md mx-4'>
+            <div class='text-center mb-4'>
+              <div class='text-5xl mb-3'>📋</div>
+              <h3 class='text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1'>阶段完成</h3>
+              <p class='text-sm text-gray-500 dark:text-gray-400'>
+                {{ pendingCheckpoint?.message || '继续下一阶段？' }}
+              </p>
+              <p v-if='pendingCheckpoint?.remaining?.length' class='text-xs text-gray-400 mt-1'>
+                剩余：{{ pendingCheckpoint?.remaining?.join(' → ') }}
+              </p>
+            </div>
+            <div class='flex justify-center gap-3 mt-5'>
+              <button @click='() => { showCheckpointConfirm = false; pendingCheckpoint = null; if (aiAbortController?.value) aiAbortController.value.abort() }'
+                class='px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600'>
+                暂停
+              </button>
+              <button @click='resumePipeline'
+                class='px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-medium shadow'>
+                继续 🚀
               </button>
             </div>
-            <div class="space-y-3">
-              <div>
-                <label class="text-xs text-gray-500 mb-1 block">文件名</label>
-                <input v-model="exportFilename" class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-gray-100"/>
-              </div>
-              <div v-if="exportFormat === 'latex'">
-                <label class="text-xs text-gray-500 mb-1 block">LaTeX 模板（{{ latexTemplates.length }} 个期刊/会议）</label>
-                <select v-model="latexTemplate" class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:text-gray-100">
-                  <optgroup label="📰 国际期刊">
-                    <option v-for="t in latexTemplates.filter(t=>t.category==='journal')" :key="t.id" :value="t.id">{{ t.name }} — {{ t.desc }}</option>
-                  </optgroup>
-                  <optgroup label="🎤 国际会议">
-                    <option v-for="t in latexTemplates.filter(t=>t.category==='conference')" :key="t.id" :value="t.id">{{ t.name }} — {{ t.desc }}</option>
-                  </optgroup>
-                  <optgroup label="🇨🇳 国内期刊（国标）">
-                    <option v-for="t in latexTemplates.filter(t=>t.category==='chinese')" :key="t.id" :value="t.id">{{ t.name }} — {{ t.desc }}</option>
-                  </optgroup>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-            <button @click="showExportPanel = false" class="px-4 py-2 text-xs text-gray-600 hover:text-gray-800">取消</button>
-            <button @click="doExport" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium">导出</button>
           </div>
         </div>
-      </div>
-    </Teleport>
+      </Teleport>
 
-    <!-- P0-3: 逐段修改弹窗 -->
-    <Teleport to="body">
-      <div v-if="showRewriteModal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" @click.self="showRewriteModal=false">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-          <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">修改：{{ rewriteTarget.title }}</h3>
-            <button @click="showRewriteModal=false" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-          </div>
-          <div class="p-6 space-y-4">
-            <!-- 模式选择 -->
-            <div>
-              <label class="block text-xs text-gray-500 mb-2">修改模式</label>
-              <div class="grid grid-cols-4 gap-2">
-                <button v-for="m in REWRITE_MODES" :key="m.key" @click="rewriteMode = m.key"
-                  :class="['px-3 py-2 rounded-xl text-sm font-medium text-center transition-all',
-                    rewriteMode === m.key 
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 ring-2 ring-green-500/30' 
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600']">
-                  <span class="block text-lg">{{ m.icon }}</span>
-                  <span class="text-xs">{{ m.label }}</span>
-                </button>
-              </div>
-            </div>
-            <!-- 额外指令 -->
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">额外要求（可选）</label>
-              <input v-model="rewriteInstruction" placeholder="如：增加数据支撑 / 更口语化 / 加入案例..."
-                class="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-green-500 dark:text-gray-100"
-                @keydown.enter="doRewriteSection" />
-            </div>
-          </div>
-          <div class="px-6 py-4 bg-gray-50 dark:bg-gray-750 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-            <button @click="showRewriteModal=false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl">取消</button>
-            <button @click="doRewriteSection" :disabled="rewriteLoading"
-              class="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl text-sm font-medium flex items-center gap-2">
-              <span v-if="rewriteLoading" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-              {{ rewriteLoading ? '修改中...' : '开始修改' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-  </div>
 </template>
 
 <script setup>
@@ -873,6 +1028,17 @@ import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import ProjectList from './ProjectList.vue'
+import WriterExportModal from './WriterExportModal.vue'
+import WriterRewriteModal from './WriterRewriteModal.vue'
+import MarkdownIt from 'markdown-it'
+import texmath from 'markdown-it-texmath'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+
+// ── markdown-it 实例（学术论文渲染：公式 + 表格 + 代码高亮）
+const md = new MarkdownIt({ html: false, breaks: false, linkify: true })
+  .use(texmath, { engine: katex, delimiters: ['dollars', 'brackets', 'doxygen', 'gitlab'] })
+md.enable(['table', 'strikethrough'])
 
 const router = useRouter()
 
@@ -896,8 +1062,16 @@ const sectionContents = ref({})
 
 const hasProject = computed(() => !!project.value?.id)
 
+// 多用户隔离: 从 localStorage 生成持久 client UUID
+const clientId = ref(localStorage.getItem('sf_client_id') || '')
+if (!clientId.value) {
+  clientId.value = 'sf_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9)
+  localStorage.setItem('sf_client_id', clientId.value)
+}
+
 const stages = ref([])  // 动态从 /api/scholar/agents 加载
 const activeStage = ref('')
+const showStageDropdown = ref(false)  // 阶段/模型折叠下拉
 
 const loadStages = async () => {
   try {
@@ -1099,6 +1273,11 @@ const onTextSelect = () => {
     top: `${Math.max(cursorTop - 42, 0)}px`
   }
   showSelectionMenu.value = true
+  
+  // P1-1: 选中文字桥接到 AI 输入框 (若输入框为空则自动填入上下文)
+  if (!aiInput.value.trim()) {
+    aiInput.value = `关于以下内容：\n> ${text.slice(0, 200)}${text.length > 200 ? '...' : ''}\n\n`
+  }
 }
 
 const inlineEdit = async (action) => {
@@ -1131,43 +1310,23 @@ const inlineEdit = async (action) => {
   }
 }
 
-// 简单的 Markdown 渲染
+// Markdown 渲染（markdown-it + KaTeX 公式 + 引用核查着色）
 const renderedContent = computed(() => {
-  let html = currentContent.value
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 mt-4 mb-2">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-gray-800 dark:text-gray-100 mt-5 mb-3">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-gray-800 dark:text-gray-100 mt-6 mb-4">$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-900 dark:text-gray-100">$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em class="text-gray-700 dark:text-gray-300">$1</em>')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-gray-950 p-3 rounded-lg overflow-x-auto text-xs my-3"><code class="text-gray-300">$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code class="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs">$1</code>')
-    // 表格
-    .replace(/\|(.+)\|/g, (match) => {
-      if (match.includes('---')) return ''
-      const cells = match.split('|').filter(c => c.trim())
-      return '<tr>' + cells.map(c => `<td class="border px-2 py-1 text-xs">${c.trim()}</td>`).join('') + '</tr>'
-    })
-    // 列表
-    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-gray-700 dark:text-gray-300 text-sm">$1</li>')
-    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal text-gray-700 dark:text-gray-300 text-sm">$1</li>')
-    // 引用标记 — 根据核查结果着色
-    .replace(/\[(\d+)\]/g, (match, num) => {
-      const result = citationResults.value.find(r => r.ref === parseInt(num))
-      let cls = 'text-blue-600 cursor-pointer hover:underline'
-      let tooltip = ''
-      if (result) {
-        if (result.score >= 7) cls = 'text-green-600 bg-green-50 dark:bg-green-900/30 px-0.5 rounded cursor-pointer hover:bg-green-100'
-        else if (result.score >= 3) cls = 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-0.5 rounded cursor-pointer hover:bg-amber-100'
-        else cls = 'text-red-600 bg-red-50 dark:bg-red-900/30 px-0.5 rounded cursor-pointer hover:bg-red-100'
-        tooltip = ` title="${result.reason?.replace(/"/g, '&quot;') || ''}"`
-      }
-      return `<sup class="${cls}"${tooltip}>[${num}]</sup>`
-    })
-    // 段落
-    .replace(/\n\n/g, '</p><p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed my-2">')
-  
-  return DOMPurify.sanitize('<p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed my-2">' + html + '</p>')
+  let html = md.render(currentContent.value || '')
+  // 引用标记着色 — markdown-it 渲染后的 [1] 是纯文本，用正则替换为 sup + tooltip
+  html = html.replace(/\[(\d+)\]/g, (match, num) => {
+    const result = citationResults.value.find(r => r.ref === parseInt(num))
+    let cls = 'text-blue-600 cursor-pointer hover:underline'
+    let tooltip = ''
+    if (result) {
+      if (result.score >= 7) cls = 'text-green-600 bg-green-50 dark:bg-green-900/30 px-0.5 rounded cursor-pointer hover:bg-green-100'
+      else if (result.score >= 3) cls = 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-0.5 rounded cursor-pointer hover:bg-amber-100'
+      else cls = 'text-red-600 bg-red-50 dark:bg-red-900/30 px-0.5 rounded cursor-pointer hover:bg-red-100'
+      tooltip = ` title="${result.reason?.replace(/"/g, '&quot;') || ''}"`
+    }
+    return `<sup class="${cls}"${tooltip}>[${num}]</sup>`
+  })
+  return DOMPurify.sanitize(html)
 })
 
 const editor = {
@@ -1218,6 +1377,24 @@ const onEditorInput = () => {
   if (section) section.wordCount = currentContent.value.length
   // 防抖保存
   scheduleAutosave()
+}
+
+// ── 全局键盘快捷键
+const handleKeyboard = (e) => {
+  const isMeta = e.metaKey || e.ctrlKey
+  if (!isMeta) return
+
+  // 编辑器格式快捷键
+  if (e.key === 'b' || e.key === 'B') { e.preventDefault(); editor.format('bold'); return }
+  if (e.key === 'i' || e.key === 'I') { e.preventDefault(); editor.format('italic'); return }
+  if (e.key === 'h' || e.key === 'H') { e.preventDefault(); editor.format('heading'); return }
+  if (e.key === 't' || e.key === 'T') { e.preventDefault(); insertTable(); return }
+  if (e.key === 'k' || e.key === 'K') { e.preventDefault(); insertCitation(); return }
+  if (e.key === 'Escape') { e.preventDefault(); showExportPanel.value = false; showSelectionMenu.value = false; showLiteraturePanel.value = false; showAIPanel.value = false; activeRightPanel.value = null; return }
+  if (e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); insertFormula(); return }
+  if (e.shiftKey && (e.key === 'C' || e.key === 'C'.toLowerCase())) { e.preventDefault(); copyRichText(); return }
+  // 保存
+  if (e.key === 's' || e.key === 'S') { e.preventDefault(); saveNow(); return }
 }
 
 // 智能粘贴：识别论文结构并自动拆分
@@ -1310,8 +1487,8 @@ const parsePaperStructure = (text) => {
       continue
     }
     
-    // 识别参考文献节
-    if (/^#{1,3}\s*参[考考]文[献献]|^#{1,3}\s*References/i.test(line)) {
+    // 识别参考文献节 (修复：统一字符类，避免重复)
+    if (/^#{1,3}\s*参考文献|^#{1,3}\s*References/i.test(line)) {
       if (currentSection) {
         currentSection.content = currentContent.join('\n').trim()
         result.sections.push(currentSection)
@@ -1323,17 +1500,28 @@ const parsePaperStructure = (text) => {
     
     // 在参考文献节内
     if (inReferences) {
-      // 匹配 [n] 作者. 标题. 期刊, 年份 格式
-      const refMatch = line.match(/^\[(\d+)\]\s*(.+?)(?:\.|$)/)
+      // 匹配 [n] 作者. 标题. 期刊, 年份 格式 (允许前导空格，更宽松)
+      const refMatch = line.match(/^\s*\[(\d+)\]\s*(.+)/)
       if (refMatch) {
-        const refText = refMatch[2]
-        // 尝试提取作者、标题、年份
-        const parts = refText.split(/\.\s*/)
+        const refText = refMatch[2].trim()
+        // 尝试提取作者、标题、年份、期刊（更鲁棒的解析）
+        const yearMatch = refText.match(/(\d{4})/)
+        const year = yearMatch ? yearMatch[1] : ''
+        // 按点号分割，但保留可能的复杂标题
+        const parts = refText.split(/\.\s+/)
+        const authors = parts[0] ? parts[0].split(',').map(s => s.trim()).filter(s => s) : []
+        // 标题：取第二部分，如果没有则取剩余部分（除去可能的年份和期刊）
+        let title = parts[1] || refText
+        // 清理标题中的多余点号
+        title = title.replace(/\.$/, '').trim()
+        // 期刊：最后一部分（如果包含字母且不是纯年份）
+        let venue = parts[parts.length - 1] || ''
+        if (venue && /\d{4}/.test(venue)) venue = parts[parts.length - 2] || ''
         result.references.push({
-          authors: parts[0] ? parts[0].split(',').map(s => s.trim()) : [],
-          title: parts[1] || refText,
-          year: refText.match(/(\d{4})/)?.[1] || '',
-          venue: parts[2] || ''
+          authors,
+          title,
+          year,
+          venue: venue || ''
         })
       }
       continue
@@ -1405,6 +1593,7 @@ const parsePaperStructure = (text) => {
 // ═══════════════════════════════════════════════════════════════════
 const showLiteraturePanel = ref(true)
 const literatureSearch = ref('')
+const searchLoading = ref(false)
 const selectedLiterature = ref(null)
 const expandedPaper = ref(null)
 
@@ -1413,7 +1602,7 @@ const researchDepth = ref(2)  // 1=快速, 2=标准(默认), 3=深度
 const depthOptions = [
   { value: 1, label: '快速', icon: '⚡', desc: '单轮检索，适合快速了解' },
   { value: 2, label: '标准', icon: '🔍', desc: '多视角检索+聚合' },
-  { value: 3, label: '深度', icon: '🕸️', desc: '3轮递归+缺口分析+STORM' },
+  { value: 3, label: '深度', icon: '🕸️', desc: '3轮递归+缺口分析+全链路' },
 ]
 
 const literature = ref([])
@@ -1429,6 +1618,18 @@ const filteredLiterature = computed(() => {
 
 const literatureCount = computed(() => literature.value.length)
 
+// 检测文献是否被正文引用
+const citedPaperIds = computed(() => {
+  const ids = new Set()
+  if (!currentContent.value) return ids
+  const cited = currentContent.value.match(/\\[(\\d+)\\]/g) || []
+  for (const m of cited) {
+    const num = parseInt(m.replace(/[\\[\\]]/g, ''))
+    if (literature.value[num - 1]) ids.add(literature.value[num - 1].id)
+  }
+  return ids
+})
+
 const selectLiterature = (paper) => {
   selectedLiterature.value = paper
 }
@@ -1438,12 +1639,18 @@ const insertCitation = (paper) => {
   const ta = editorRef.value
   const start = ta.selectionStart
   if (paper) {
+    // P1-6: 统一 [n] 纯数字格式，与 _clean_citation_format 后端一致
     const citeKey = paper.citeKey || `ref${paper.id || Date.now()}`
-    const cite = `[@${citeKey}]`
+    const num = citationIndex.value[citeKey] || (citationMaxNum.value + 1)
+    if (!citationIndex.value[citeKey]) {
+      citationIndex.value[citeKey] = num
+      citationMaxNum.value = num
+    }
+    const cite = `[${num}]`
     currentContent.value = currentContent.value.slice(0, start) + cite + currentContent.value.slice(start)
     ta.setSelectionRange(start + cite.length, start + cite.length)
   } else {
-    const cite = '[@?]'
+    const cite = '[?]'
     currentContent.value = currentContent.value.slice(0, start) + cite + currentContent.value.slice(start)
   }
   ta.focus()
@@ -1487,28 +1694,141 @@ const sourceBadgeClass = (source) => {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 右侧浮动功能面板系统（P0-3: 顶部功能向左弹出，避免挤压）
+// ═══════════════════════════════════════════════════════════════════
+const activeRightPanel = ref(null) // null | 'citation' | 'consensus' | 'plag' | 'score' | 'snapshots'
+const rightPanelWidth = ref(380)   // 面板宽度（可拖拽调整）
+
+// 切换右侧面板（互斥，点同一按钮关闭）
+const toggleRightPanel = (name) => {
+  if (activeRightPanel.value === name) {
+    activeRightPanel.value = null
+  } else {
+    activeRightPanel.value = name
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 引用核查状态
 // ═══════════════════════════════════════════════════════════════════
-const showCitationPanel = ref(false)
 const citationResults = ref([])      // [{ref, score, reason}]
+const citationReplaced = ref(0)      // 真实文献替换计数
+const citationReplacedList = ref([]) // [{title, source, year}]
 const citationErrors = computed(() => citationResults.value.filter(r => r.score < 3).length)
 const citationWarnings = computed(() => citationResults.value.filter(r => r.score >= 3 && r.score < 7).length)
 
 // ═══════════════════════════════════════════════════════════════════
+// P1-5: 版本历史
+// ═══════════════════════════════════════════════════════════════════
+const snapshots = ref([])
+const snapshotsLoading = ref(false)
+
+const loadSnapshots = async () => {
+  if (!project.value?.id) return
+  snapshotsLoading.value = true
+  try {
+    const r = await fetch(`/api/scholar/projects/${project.value.id}/snapshots`)
+    snapshots.value = (await r.json()).snapshots || []
+  } catch (e) { /* silently fail */ }
+  snapshotsLoading.value = false
+}
+
+const createSnapshot = async () => {
+  if (!project.value?.id) return
+  // 构建 payload: 当前全文 + 元信息
+  const data = {
+    content: currentContent.value,
+    section_contents: { ...sectionContents.value },
+    overview: project.value.title || ''
+  }
+  const note = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  try {
+    const r = await fetch(`/api/scholar/projects/${project.value.id}/snapshots`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: note, note: `${totalWordCount.value} 字`, data })
+    })
+    if (r.ok) {
+      await loadSnapshots()
+    }
+  } catch (e) {
+    alert('快照保存失败: ' + e.message)
+  }
+}
+
+const restoreSnapshot = async (snap) => {
+  if (!confirm(`恢复「${snap.label}」的版本？当前未保存内容将丢失。`)) return
+  try {
+    const r = await fetch(`/api/scholar/snapshots/${snap.id}`)
+    const full = await r.json()
+    const p = full.payload || {}
+    if (p.content) currentContent.value = p.content
+    if (p.section_contents) sectionContents.value = { ...p.section_contents }
+    // 保存到后端
+    await saveCurrentSection()
+    activeRightPanel.value = null
+    alert('✅ 已恢复到: ' + (snap.label || '快照'))
+  } catch (e) {
+    alert('恢复失败: ' + e.message)
+  }
+}
+
+const deleteSnapshot = async (sid) => {
+  if (!confirm('删除此快照？')) return
+  try {
+    await fetch(`/api/scholar/snapshots/${sid}`, { method: 'DELETE' })
+    snapshots.value = snapshots.value.filter(s => s.id !== sid)
+  } catch (e) {
+    alert('删除失败: ' + e.message)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 共识度分析
 // ═══════════════════════════════════════════════════════════════════
-const showConsensusPanel = ref(false)
 const consensusLoading = ref(false)
 const consensusResults = ref([])     // [{claim, support, oppose, neutral, total, consensus_pct, confidence, per_paper, _expanded}]
 
 // ── P0-2: 查重 + AIGC 检测 ──
-const showPlagPanel = ref(false)
 const plagLoading = ref(false)
 const plagResult = ref(null)
 
-const runPlagcheck = async () => {
-  showPlagPanel.value = true
+// ── P2: 论文评分 ──
+const scoreLoading = ref(false)
+const scoreResult = ref(null)  // {originality:{score,reasoning}, logic:{...}, citation_completeness:{...}, overall, overall_reasoning}
+const scoreDimensions = [
+  { key: 'originality', label: '原创性', icon: '💡', weight: '30%' },
+  { key: 'logic', label: '逻辑性', icon: '🔗', weight: '35%' },
+  { key: 'citation_completeness', label: '引用完整性', icon: '📖', weight: '35%' },
+]
+
+const runScore = async () => {
+  activeRightPanel.value = 'score'
   if (!project.value?.id) return
+  // 防御：保存当前编辑内容 + 刷新 SSE 防抖
+  await flushSseSaves()
+  await saveCurrentSection()
+  if (!hasSectionContent()) {
+    alert('论文内容为空，请先完成写作再评分')
+    return
+  }
+  scoreLoading.value = true
+  try {
+    const r = await fetch(`/api/scholar/projects/${project.value.id}/score`)
+    if (!r.ok) throw new Error(await r.text())
+    scoreResult.value = await r.json()
+  } catch (e) {
+    alert('评分失败: ' + e.message)
+  } finally {
+    scoreLoading.value = false
+  }
+}
+
+const runPlagcheck = async () => {
+  activeRightPanel.value = 'plag'
+  if (!project.value?.id) return
+  // 防御：保存当前内容 + 刷新 SSE 防抖
+  await flushSseSaves()
+  await saveCurrentSection()
   plagLoading.value = true
   try {
     // 收集全部章节内容
@@ -1529,6 +1849,13 @@ const runPlagcheck = async () => {
 
 const runConsensusAnalysis = async () => {
   if (consensusLoading.value || !project.value?.id) return
+  // 防御：保存当前内容 + 刷新 SSE 防抖
+  await flushSseSaves()
+  await saveCurrentSection()
+  if (!hasSectionContent()) {
+    alert('论文内容为空，请先完成写作再分析共识度')
+    return
+  }
   consensusLoading.value = true
   try {
     // 1. 先提取关键论断
@@ -1676,12 +2003,50 @@ const savePaidSourceKey = async () => {
   }
 }
 
+// P1-8: BibTeX 批量导入
+const triggerBibtexImport = () => {
+  const input = document.createElement('textarea')
+  input.style.cssText = 'position:fixed;top:10%;left:10%;width:80%;height:70%;z-index:9999;background:#1e1e2e;color:#cdd6f4;border:2px solid #89b4fa;border-radius:8px;padding:16px;font:14px monospace'
+  input.placeholder = '粘贴 BibTeX 内容...\n\n例如:\n@article{he2016deep,\n  title={Deep Residual Learning for Image Recognition},\n  author={He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},\n  year={2016},\n  journal={CVPR}\n}'
+  document.body.appendChild(input)
+  input.focus()
+  const finish = async () => {
+    const text = input.value.trim()
+    document.body.removeChild(input)
+    if (!text || !project.value?.id) return
+    try {
+      const r = await fetch(`/api/scholar/projects/${project.value.id}/literature/import`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bibtex: text })
+      })
+      const data = await r.json()
+      alert(`✅ 导入完成：${data.added} 篇新增，${data.skipped} 篇跳过`)
+      // 刷新文献列表
+      if (project.value?.id) {
+        const litRes = await fetch(`/api/scholar/projects/${project.value.id}/literature`)
+        if (litRes.ok) {
+          const litData = await litRes.json()
+          literature.value = (litData.literatures || []).map(l => ({
+            id: l.id, title: l.title, authors: l.authors, year: l.year,
+            venue: l.venue, abstract: l.abstract, url: l.url, doi: l.doi,
+          }))
+        }
+      }
+    } catch (e) {
+      alert('导入失败: ' + e.message)
+    }
+  }
+  input.addEventListener('blur', finish)
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { input.blur() } })
+}
+
 const searchLiterature = async () => {
   const q = literatureSearch.value.trim() || project.value.title || ''
   if (!q) {
     alert('请输入检索关键词')
     return
   }
+  searchLoading.value = true
   events.value.push({ type: 'searching', message: `检索: ${q} (${activeSources.value.join(', ')})`, time: Date.now() })
   try {
     const srcParam = activeSources.value.join(',')
@@ -1705,10 +2070,16 @@ const searchLiterature = async () => {
       for (const np of newPapers) {
         if (!existingIds.has(np.id)) literature.value.push(np)
       }
-      events.value.push({ type: 'done', message: `找到 ${newPapers.length} 篇新文献`, time: Date.now() })
+      if (newPapers.length === 0) {
+        events.value.push({ type: 'warning', message: `未找到"${q}"相关文献。建议：改用英文关键词 / 尝试其他搜索源`, time: Date.now() })
+      } else {
+        events.value.push({ type: 'done', message: `找到 ${newPapers.length} 篇新文献`, time: Date.now() })
+      }
     }
   } catch (e) {
     events.value.push({ type: 'error', message: `检索失败: ${e.message}`, time: Date.now() })
+  } finally {
+    searchLoading.value = false
   }
 }
 
@@ -1730,6 +2101,9 @@ const toggleLeftBar = () => { leftCollapsed.value = !leftCollapsed.value }
 const toggleRightBar = () => { rightCollapsed.value = !rightCollapsed.value }
 const aiInput = ref('')
 const aiStreaming = ref(false)
+const aiAbortController = ref(null)  // SSE 流式取消
+const showCheckpointConfirm = ref(false)  // 分步确认弹窗
+const pendingCheckpoint = ref(null)      // 当前待确认的 checkpoint 事件
 const showAICommands = ref(false)
 const aiMessages = ref([
   { role: 'assistant', content: '你好！我是你的论文写作助手。我可以帮你：\n\n• 选题分析与可行性评估\n• 检索相关文献\n• 生成论文大纲\n• 续写/润色内容\n\n准备好开始了吗？', time: Date.now() - 60000 }
@@ -1765,6 +2139,7 @@ const sendToAI = async (overrides = {}) => {
   aiMessages.value.push({ role: 'user', content: userMsg, time: Date.now() })
   aiInput.value = ''
   aiStreaming.value = true
+  aiAbortController.value = new AbortController()
   
   // 占位 assistant 消息（流式增量）
   const assistantMsg = { role: 'assistant', content: '', time: Date.now(), streaming: true }
@@ -1782,7 +2157,9 @@ const sendToAI = async (overrides = {}) => {
         section: overrides.section || activeSection.value || 'intro',
         pipeline: false,
         depth: researchDepth.value,
+        client_id: clientId.value,
       }),
+      signal: aiAbortController.value.signal,
     })
     
     if (!resp.ok) {
@@ -1816,7 +2193,7 @@ const sendToAI = async (overrides = {}) => {
             }
           } else if (evt.type === 'content' && evt.text) {
             assistantMsg.content += evt.text
-            // 如果带 section_key，写入对应章节编辑器
+            // 如果带 section_key，写入对应章节编辑器并异步持久化到后端
             if (evt.section_key) {
               const existing = sectionContents.value[evt.section_key] || ''
               sectionContents.value[evt.section_key] = existing + evt.text
@@ -1826,15 +2203,37 @@ const sendToAI = async (overrides = {}) => {
                 sec.wordCount = (sectionContents.value[evt.section_key] || '').length
                 sec.status = 'completed'
               }
+              // 异步持久化到后端 SQLite（防抖：每 5 秒最多一次）
+              if (!_sseSaveTimers[evt.section_key]) {
+                _sseSaveTimers[evt.section_key] = setTimeout(() => {
+                  if (project.value?.id) {
+                    fetch(`/api/scholar/projects/${project.value.id}/section/${evt.section_key}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ content: sectionContents.value[evt.section_key] || '' }),
+                    }).catch(() => {})
+                  }
+                  delete _sseSaveTimers[evt.section_key]
+                }, 5000)
+              }
             }
           } else if (evt.type === 'thinking' && evt.message) {
             // thinking 事件不进正文, 只在事件日志显示
             events.value.push({ type: 'thinking', message: evt.message, time: Date.now() })
+          } else if (evt.type === 'review') {
+            // ReviewerAgent 审稿报告（单 Agent 模式）
+            assistantMsg.content += `\n\n${evt.report || ''}`
+            events.value.push({ type: 'done', message: `审稿完成：综合评分 ${evt.score || '?'}/10，${evt.total_issues || 0} 个问题`, time: Date.now() })
+          } else if (evt.type === 'citation_replace') {
+            // 真引用替换结果
+            citationReplaced.value = evt.count || 0
+            citationReplacedList.value = evt.citations || []
+            events.value.push({ type: 'done', message: `真引用替换: ${evt.count || 0}篇真实文献`, time: Date.now() })
           } else if (evt.type === 'citation_verify' && evt.results) {
             // 引用核查结果 → 更新面板
             citationResults.value = evt.results || []
             if ((evt.errors || 0) + (evt.warnings || 0) > 0) {
-              showCitationPanel.value = true
+              activeRightPanel.value = 'citation'
             }
             events.value.push({ type: 'done', message: `引用核查: ${evt.errors || 0}错误 ${evt.warnings || 0}警告`, time: Date.now() })
           } else if (evt.type === 'done') {
@@ -1842,9 +2241,13 @@ const sendToAI = async (overrides = {}) => {
             if (evt.papers != null) {
               refreshLiterature().catch(()=>{})
             }
-            // 全链路写作完成后，自动拉共识度（异步，不阻塞）
+            // 刷新所有 SSE 防抖定时器，确保内容已落库后再调共识度
             if (project.value?.id) {
-              runConsensusAnalysis().catch(()=>{})
+              flushSseSaves().then(() => {
+                if (hasSectionContent()) {
+                  runConsensusAnalysis().catch(()=>{})
+                }
+              })
             }
           } else if (evt.type === 'error') {
             assistantMsg.content += `\n\n⚠️ ${evt.message}`
@@ -1853,10 +2256,21 @@ const sendToAI = async (overrides = {}) => {
       }
     }
   } catch (e) {
-    assistantMsg.content = `❌ 请求失败: ${e.message}\n\n请检查后端服务 (端口 9119) 是否运行, 以及 API Key 是否配置。`
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      assistantMsg.content += '\n\n⏸️ 已停止生成'
+    } else {
+      assistantMsg.content = `❌ 请求失败: ${e.message}\n\n请检查后端服务 (端口 9119) 是否运行, 以及 API Key 是否配置。`
+    }
   } finally {
     assistantMsg.streaming = false
     aiStreaming.value = false
+    aiAbortController.value = null
+  }
+}
+
+const abortStreaming = () => {
+  if (aiAbortController.value) {
+    aiAbortController.value.abort()
   }
 }
 
@@ -1869,14 +2283,14 @@ const runAICommand = (cmd) => {
 const runStormPipeline = async () => {
   if (aiStreaming.value) return
 
-  // 用当前编辑器内容或论文主题作为 STORM 输入
+  // 用当前编辑器内容或论文主题作为全链路输入
   const topic = sectionContents.value[activeSection.value] || project.value.title || '深度学习在医学影像中的应用'
   if (!topic.trim()) {
     alert('请先输入论文主题或写一些内容')
     return
   }
 
-  aiMessages.value.push({ role: 'user', content: `⚡ STORM 全链路：${topic.slice(0, 80)}...`, time: Date.now() })
+  aiMessages.value.push({ role: 'user', content: `⚡ 全链路写作：${topic.slice(0, 80)}...`, time: Date.now() })
   aiStreaming.value = true
 
   const assistantMsg = { role: 'assistant', content: '', time: Date.now(), streaming: true }
@@ -1890,6 +2304,7 @@ const runStormPipeline = async () => {
         message: topic,
         project_id: project.value.id || 0,
         pipeline: true,
+        client_id: clientId.value,
       }),
     })
 
@@ -1931,7 +2346,7 @@ const runStormPipeline = async () => {
             events.value.push({ type: 'stage', message: `${stageId} ${isDone ? '✅' : '▶'}`, time: Date.now() })
           } else if (evt.type === 'content' && evt.text) {
             assistantMsg.content += evt.text
-            // 如果带 section_key，写入对应章节编辑器
+            // 如果带 section_key，写入对应章节编辑器并异步持久化到后端
             if (evt.section_key) {
               const existing = sectionContents.value[evt.section_key] || ''
               sectionContents.value[evt.section_key] = existing + evt.text
@@ -1940,42 +2355,149 @@ const runStormPipeline = async () => {
                 sec.wordCount = (sectionContents.value[evt.section_key] || '').length
                 sec.status = 'completed'
               }
+              // 异步持久化到后端 SQLite（防抖：每 5 秒最多一次）
+              if (!_sseSaveTimers[evt.section_key]) {
+                _sseSaveTimers[evt.section_key] = setTimeout(() => {
+                  if (project.value?.id) {
+                    fetch(`/api/scholar/projects/${project.value.id}/section/${evt.section_key}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ content: sectionContents.value[evt.section_key] || '' }),
+                    }).catch(() => {})
+                  }
+                  delete _sseSaveTimers[evt.section_key]
+                }, 5000)
+              }
             }
+          } else if (evt.type === 'review') {
+            // ReviewerAgent 审稿报告
+            assistantMsg.content += `\n\n${evt.report || ''}`
+            events.value.push({ type: 'done', message: `审稿完成：综合评分 ${evt.score || '?'}/10，${evt.total_issues || 0} 个问题`, time: Date.now() })
           } else if (evt.type === 'thinking' && evt.message) {
             events.value.push({ type: 'thinking', message: evt.message, time: Date.now() })
           } else if (evt.type === 'searching' && evt.message) {
             events.value.push({ type: 'searching', message: evt.message, time: Date.now() })
           } else if (evt.type === 'writing' && evt.message) {
             events.value.push({ type: 'writing', message: evt.message, time: Date.now() })
+          } else if (evt.type === 'citation_replace') {
+            citationReplaced.value = evt.count || 0
+            citationReplacedList.value = evt.citations || []
+            events.value.push({ type: 'done', message: `真引用替换: ${evt.count || 0}篇真实文献`, time: Date.now() })
           } else if (evt.type === 'citation_verify' && evt.results) {
             citationResults.value = evt.results || []
             if ((evt.errors || 0) + (evt.warnings || 0) > 0) {
-              showCitationPanel.value = true
+              activeRightPanel.value = 'citation'
             }
             events.value.push({ type: 'done', message: `引用核查: ${evt.errors || 0}错误 ${evt.warnings || 0}警告`, time: Date.now() })
+          } else if (evt.type === 'checkpoint') {
+            // 分步确认：暂停 pipeline，等待用户确认继续下一阶段
+            aiStreaming.value = false
+            assistantMsg.streaming = false
+            events.value.push({
+              type: 'checkpoint',
+              message: evt.message || `${evt.completed}完成，继续${evt.next}？`,
+              stage: evt.stage,
+              next: evt.next,
+              remaining: evt.remaining || [],
+              time: Date.now(),
+            })
+            showCheckpointConfirm.value = true
+            pendingCheckpoint.value = evt
+            return
           } else if (evt.type === 'error') {
             assistantMsg.content += `\n\n⚠️ ${evt.message}`
           } else if (evt.type === 'done') {
-            assistantMsg.content += `\n\n---\n✅ ${evt.message || 'STORM 全链路完成'}`
+            assistantMsg.content += `\n\n---\n✅ ${evt.message || '全链路写作完成'}`
             // done 事件可能携带 paper_count → 触发文献刷新
             if (evt.papers != null) {
               refreshLiterature().catch(()=>{})
             }
-            // STORM 全链路完成后，自动拉共识度
+            // 刷新所有 SSE 防抖定时器，确保内容已落库后再调共识度
             if (project.value?.id) {
-              runConsensusAnalysis().catch(()=>{})
+              flushSseSaves().then(() => {
+                // 全链路写作完成后，自动拉共识度（确保有内容）
+                if (hasSectionContent()) {
+                  runConsensusAnalysis().catch(()=>{})
+                }
+              })
             }
           }
         } catch {}
       }
     }
   } catch (e) {
-    assistantMsg.content = `❌ STORM 请求失败: ${e.message}\n\n请检查后端服务是否运行, 以及 API Key 是否配置。`
+    assistantMsg.content = `❌ 全链路请求失败: ${e.message}\n\n请检查后端服务是否运行, 以及 API Key 是否配置。`
   } finally {
     assistantMsg.streaming = false
     aiStreaming.value = false
   }
 }
+
+// Checkpoint resume: 从断点继续后续阶段
+const resumePipeline = async () => {
+  const cp = pendingCheckpoint.value
+  if (!cp || !project.value?.id) { showCheckpointConfirm.value = false; return }
+  showCheckpointConfirm.value = false
+  aiStreaming.value = true
+  const assistantMsg = aiMessages.value[aiMessages.value.length - 1]
+  if (assistantMsg) { assistantMsg.streaming = true }
+  try {
+    const resp = await fetch('/api/scholar/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: project.value.title || '继续写作',
+        project_id: project.value.id,
+        pipeline: true,
+        continue_from: cp.stage,
+        client_id: clientId.value,
+      }),
+    })
+    if (!resp.ok) throw new Error(await resp.text())
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) { buffer += line; continue }
+        try {
+          const e = JSON.parse(line.slice(6))
+          if (e.type === 'content' && e.text) {
+            assistantMsg.content += e.text
+            if (e.section_key) {
+              sectionContents.value[e.section_key] = (sectionContents.value[e.section_key] || '') + e.text
+            }
+          } else if (e.type === 'stage') {
+            const s = stages.value.find(x => x.id === e.stage)
+            if (s) s.completed = e.pipeline === 'done'
+            events.value.push({ type: 'stage', message: e.stage + (e.pipeline === 'done' ? ' ✅' : ' ▶'), time: Date.now() })
+          } else if (e.type === 'checkpoint') {
+            pendingCheckpoint.value = e
+            showCheckpointConfirm.value = true
+            return
+          } else if (e.type === 'done') {
+            assistantMsg.content += '\n\n---\n✅ ' + (e.message || '全链路写作完成')
+            if (e.papers != null) refreshLiterature().catch(()=>{})
+          } else if (e.type === 'error') {
+            assistantMsg.content += '\n\n⚠️ ' + e.message
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    if (assistantMsg) assistantMsg.content += '\n\n❌ 继续失败: ' + e.message
+  } finally {
+    aiStreaming.value = false
+    if (assistantMsg) assistantMsg.streaming = false
+    pendingCheckpoint.value = null
+  }
+}
+
 
 const runAIAction = (action) => {
   // 预设动作 → 填入输入框 + 自动发送（按 action 属性路由到对应 Agent）
@@ -1987,42 +2509,19 @@ const runAIAction = (action) => {
 // 导出
 // ═══════════════════════════════════════════════════════════════════
 const showExportPanel = ref(false)
-const exportFormat = ref('pdf')
-const exportFilename = computed(() => `${project.value.title || '未命名论文'}.${exportFormat.value}`)
-const latexTemplate = ref('ieee')  // Phase 1.3 — 15 模板默认 IEEE
-
-const latexTemplates = [
-  // 国际期刊
-  { id: 'ieee', name: 'IEEEtran', desc: 'IEEE 期刊/会议', category: 'journal' },
-  { id: 'springer-svjour', name: 'Springer SVJour', desc: 'Springer 期刊模板', category: 'journal' },
-  { id: 'elsevier-elsarticle', name: 'Elsevier Elsarticle', desc: 'Elsevier 期刊', category: 'journal' },
-  { id: 'nature', name: 'Nature', desc: 'Nature 期刊', category: 'journal' },
-  { id: 'science', name: 'Science', desc: 'Science 期刊', category: 'journal' },
-  { id: 'apa', name: 'APA 6th', desc: '心理学/社会科学', category: 'journal' },
-  // 国际会议
-  { id: 'acm-sigconf', name: 'ACM SigConf', desc: 'ACM 会议标准', category: 'conference' },
-  { id: 'mlr', name: 'MLR/JMLR', desc: '机器学习会议/期刊', category: 'conference' },
-  { id: 'neurips', name: 'NeurIPS', desc: 'NeurIPS 会议', category: 'conference' },
-  { id: 'icml', name: 'ICML', desc: 'ICML 会议', category: 'conference' },
-  { id: 'cvpr', name: 'CVPR/ICCV', desc: '计算机视觉会议', category: 'conference' },
-  // 国内期刊（国标）
-  { id: 'gbt7714', name: 'GB/T 7714', desc: '中国学术期刊通用', category: 'chinese' },
-  { id: 'acta-physica', name: '物理学报', desc: '中国物理学会', category: 'chinese' },
-  { id: 'jcs', name: '计算机学报', desc: '中国计算机学会', category: 'chinese' },
-  { id: 'jsi', name: '软件学报', desc: '中国计算机学会', category: 'chinese' },
-]
-
-const exportFormats = [
-  { id: 'pdf', name: 'PDF 文档', icon: '📄', desc: '适合提交和打印' },
-  { id: 'latex', name: 'LaTeX', icon: '📐', desc: '学术标准格式' },
-  { id: 'word', name: 'Word', icon: '📝', desc: '便于后续编辑' },
-  { id: 'markdown', name: 'Markdown', icon: '⬇️', desc: '保留源格式' },
-  { id: 'bibtex', name: 'BibTeX', icon: '📚', desc: '仅导出参考文献' }
-]
 
 const copyRichText = async () => {
   // 渲染 Markdown → HTML，写入 clipboard (Phase 1.4)
+  // 先强制保存当前章节到 DB，确保内容不丢失
+  if (activeSection.value && currentContent.value.trim()) {
+    sectionContents.value[activeSection.value] = currentContent.value
+    await saveCurrentSection()
+  }
   const md = buildFullPaper()
+  if (!md || md.trim() === `# ${project.value.title || '未命名论文'}`) {
+    alert('论文内容为空，请先写作再复制')
+    return
+  }
   // 简单 MD→HTML 渲染（同 renderedContent 逻辑，但不需要 Vue reactivity）
   let html = md
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -2056,6 +2555,11 @@ const buildFullPaper = () => {
   parts.push(`# ${project.value.title || '未命名论文'}`)
   parts.push('')
   
+  // 先保存当前编辑框内容到 sectionContents（确保当前章节不丢失）
+  if (activeSection.value && currentContent.value.trim()) {
+    sectionContents.value[activeSection.value] = currentContent.value
+  }
+  
   // 按大纲顺序拼接各章节
   for (const sec of outline.value) {
     const content = sectionContents.value[sec.id] || ''
@@ -2080,58 +2584,7 @@ const buildFullPaper = () => {
   return parts.join('\n')
 }
 
-const doExport = async () => {
-  const fmt = exportFormat.value
-  showExportPanel.value = false
-
-  try {
-    const pid = project.value?.id || 0
-    const params = new URLSearchParams({
-      format: fmt,
-      title: project.value?.title || '未命名论文',
-    })
-    if (fmt === 'latex') params.set('template', latexTemplate.value)
-    const r = await fetch(`/api/scholar/export?${params}`)
-    if (!r.ok) {
-      const err = await r.text()
-      alert('导出失败: ' + err)
-      return
-    }
-
-    // 二进制格式 (PDF/Word) — 从 Content-Disposition 拿文件名
-    if (fmt === 'pdf' || fmt === 'word' || fmt === 'docx') {
-      const blob = await r.blob()
-      // 尝试从 header 读 filename
-      let filename = `${project.value?.title || '论文'}.${fmt === 'word' ? 'docx' : fmt}`
-      const dispo = r.headers.get('Content-Disposition') || ''
-      const m = dispo.match(/filename\*?=["']?([^";]+)/i)
-      if (m) filename = decodeURIComponent(m[1])
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
-      return
-    }
-
-    // 文本格式 (Markdown/LaTeX/BibTeX)
-    const data = await r.json()
-    const extMap = { bibtex: 'bib', latex: 'tex', markdown: 'md' }
-    const ext = extMap[fmt] || 'md'
-    const filename = `${project.value?.title || '论文'}.${ext}`
-    const blob = new Blob([data.content], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch (e) {
-    console.error('Export error', e)
-    alert('导出失败: ' + e.message)
-  }
-}
+const doExport = async () => {}  // Moved to WriterExportModal
 
 // ═══════════════════════════════════════════════════════════════════
 // 工具函数
@@ -2192,22 +2645,9 @@ const deleteSection = (sectionId) => {
   }
 }
 
-// ── P0-3: 逐段修改 ──
+// ── 逐段修改弹窗（已拆分为 WriterRewriteModal）──
 const showRewriteModal = ref(false)
 const rewriteTarget = ref({ key: '', title: '' })
-const rewriteMode = ref('polish')
-const rewriteInstruction = ref('')
-const rewriteLoading = ref(false)
-
-const REWRITE_MODES = [
-  { key: 'polish', icon: '✨', label: '润色' },
-  { key: 'expand', icon: '📖', label: '扩写' },
-  { key: 'shorten', icon: '✂️', label: '精简' },
-  { key: 'restructure', icon: '🔀', label: '重组' },
-  { key: 'add_data', icon: '📊', label: '加数据' },
-  { key: 'academic', icon: '🎓', label: '学术化' },
-  { key: 'plain', icon: '💬', label: '通俗化' },
-]
 
 const rewriteSection = (sectionId) => {
   const section = outline.value.find(s => s.id === sectionId)
@@ -2218,63 +2658,16 @@ const rewriteSection = (sectionId) => {
     return
   }
   rewriteTarget.value = { key: sectionId, title: section.title || '未命名章节' }
-  rewriteMode.value = 'polish'
-  rewriteInstruction.value = ''
   showRewriteModal.value = true
 }
 
-const doRewriteSection = async () => {
-  if (!rewriteTarget.value.key || !project.value?.id || rewriteLoading.value) return
-  rewriteLoading.value = true
-  const sectionKey = rewriteTarget.value.key
-  try {
-    const r = await fetch(`/api/scholar/projects/${project.value.id}/rewrite-section`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        section_key: sectionKey,
-        mode: rewriteMode.value,
-        instruction: rewriteInstruction.value,
-      }),
-    })
-    if (!r.ok) throw new Error(await r.text())
-    // 解析 SSE
-    const reader = r.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() || ''
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const evt = JSON.parse(line.slice(6))
-            if (evt.type === 'rewrite_done') {
-              sectionContents.value[sectionKey] = evt.text
-              if (activeSection.value === sectionKey) {
-                currentContent.value = evt.text
-              }
-              const section = outline.value.find(s => s.id === sectionKey)
-              if (section) section.wordCount = evt.text.length
-              showRewriteModal.value = false
-            } else if (evt.type === 'thinking') {
-              // 忽略中间状态
-            } else if (evt.type === 'error') {
-              throw new Error(evt.message)
-            }
-          } catch (e) { if (e.message && !e.message.includes('JSON')) throw e }
-        }
-      }
-    }
-  } catch (e) {
-    alert('修改失败: ' + e.message)
-  } finally {
-    rewriteLoading.value = false
-  }
+const onRewriteDone = ({ sectionKey, text }) => {
+  sectionContents.value[sectionKey] = text
+  if (activeSection.value === sectionKey) currentContent.value = text
+  const section = outline.value.find(s => s.id === sectionKey)
+  if (section) section.wordCount = text.length
 }
+
 onMounted(async () => {
   // 动态加载 Agent 列表（不再硬编码）
   await loadStages()
@@ -2318,6 +2711,13 @@ const switchProject = async (p) => {
         status: o.status,
       }))
       sectionContents.value = proj.contents || {}
+      // P1-7: 恢复上次编辑章节，否则选第一个
+      const lastSection = proj.last_section_key || (outline.value.length > 0 ? outline.value[0].id : null)
+      if (lastSection && sectionContents.value[lastSection] !== undefined) {
+        activeSection.value = lastSection
+      } else if (outline.value.length > 0) {
+        activeSection.value = outline.value[0].id
+      }
       currentContent.value = sectionContents.value[activeSection.value] || ''
       // 文献也同步加载
       const litRes = await fetch(`/api/scholar/projects/${p.id}/literature`)
@@ -2341,6 +2741,14 @@ const switchProject = async (p) => {
       }
       // Load agent-provider bindings
       loadAgentProviders()
+      // Load persisted citation verifications
+      try {
+        const cvRes = await fetch(`/api/scholar/projects/${p.id}/citation-verifications`)
+        if (cvRes.ok) {
+          const cvData = await cvRes.json()
+          if (cvData.verifications?.length) citationResults.value = cvData.verifications
+        }
+      } catch (_) {}
     }
   } catch (e) { console.error('switch project', e) }
   finally { isLoadingProject.value = false }
@@ -2395,9 +2803,42 @@ const backToProjectList = () => {
 
 // 防抖自动保存
 let saveTimer = null
+const _sseSaveTimers = {}  // SSE 写作防抖持久化定时器, key=section_key
+const saveStatus = ref('saved')  // 'saved' | 'saving' | 'unsaved'
+// P1-6: 引用编号计数器 (citeKey → number)
+const citationIndex = ref({})
+const citationMaxNum = ref(0)
+
+// 立即刷新所有 SSE 防抖定时器，并保存当前编辑框内容
+const flushSseSaves = async () => {
+  if (!project.value?.id) return
+  const promises = []
+  for (const [key, timer] of Object.entries(_sseSaveTimers)) {
+    clearTimeout(timer)
+    promises.push(
+      fetch(`/api/scholar/projects/${project.value.id}/section/${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: sectionContents.value[key] || '' }),
+      }).catch(() => {})
+    )
+    delete _sseSaveTimers[key]
+  }
+  await Promise.all(promises)
+  await saveCurrentSection()
+}
 const scheduleAutosave = () => {
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveCurrentSection, 800)
+  saveStatus.value = 'unsaved'
+  saveTimer = setTimeout(() => {
+    saveStatus.value = 'saving'
+    saveCurrentSection().finally(() => { saveStatus.value = 'saved' })
+  }, 800)
+}
+const saveNow = () => {
+  clearTimeout(saveTimer)
+  saveStatus.value = 'saving'
+  saveCurrentSection().finally(() => { saveStatus.value = 'saved' })
 }
 const saveCurrentSection = async () => {
   if (!project.value?.id || !activeSection.value) return
@@ -2417,7 +2858,7 @@ watch(activeSection, (newKey) => {
   }
 })
 
-// 点击外部关闭项目切换器
+// 点击外部关闭项目切换器和阶段下拉
 const handleClickOutside = (e) => {
   if (projectSwitcherRef.value && !projectSwitcherRef.value.contains(e.target)) {
     showProjectSwitcher.value = false
@@ -2425,6 +2866,10 @@ const handleClickOutside = (e) => {
   // 点击外部关闭 Agent 模型下拉
   if (openAgentDropdown.value && !e.target.closest('.agent-dropdown-anchor')) {
     openAgentDropdown.value = null
+  }
+  // 点击外部关闭阶段下拉
+  if (showStageDropdown.value && !e.target.closest('.stage-dropdown-anchor')) {
+    showStageDropdown.value = false
   }
 }
 onMounted(() => {
@@ -2436,7 +2881,7 @@ onUnmounted(() => {
 
 // 辅助函数
 const typeIcon = (type) => {
-  const m = { '本科论文': '🎓', '硕士论文': '📚', '博士论文': '🔬', '期刊论文': '📰' }
+  const m = { '本科论文': '🎓', '硕士论文': '📚', '博士论文': '🔬', '期刊论文': '📰', '会议论文': '🎤', '综述论文': '📖', '开题报告': '📝', '课程论文': '📋', '调研报告': '🔍', '实验报告': '🧪', '案例分析': '💼', '毕业设计': '🎯' }
   return m[type] || '📄'
 }
 const formatRelativeTime = (ts) => {
@@ -2449,12 +2894,29 @@ const formatRelativeTime = (ts) => {
   return new Date(ts * 1000).toLocaleDateString()
 }
 
+// 检查是否有章节内容（用于防御性调用评分/查重/共识度等需要论文内容的 API）
+const hasSectionContent = () => {
+  if (currentContent.value?.trim()) return true
+  for (const v of Object.values(sectionContents.value)) {
+    if (v?.trim()) return true
+  }
+  return false
+}
+
 // 论文类型
 const paperTypes = [
   { id: 'undergrad', name: '本科论文', icon: '🎓', desc: '8000-15000字', defaultWords: 10000 },
+  { id: 'course', name: '课程论文', icon: '📋', desc: '3000-6000字', defaultWords: 4000 },
   { id: 'master', name: '硕士论文', icon: '📚', desc: '3-5万字', defaultWords: 30000 },
   { id: 'phd', name: '博士论文', icon: '🔬', desc: '8-15万字', defaultWords: 80000 },
-  { id: 'journal', name: '期刊论文', icon: '📰', desc: '5000-10000字', defaultWords: 8000 }
+  { id: 'journal', name: '期刊论文', icon: '📰', desc: '5000-10000字', defaultWords: 8000 },
+  { id: 'conference', name: '会议论文', icon: '🎤', desc: '4-8页', defaultWords: 5000 },
+  { id: 'review', name: '综述论文', icon: '📖', desc: '1-2万字', defaultWords: 15000 },
+  { id: 'proposal', name: '开题报告', icon: '📝', desc: '5000-8000字', defaultWords: 6000 },
+  { id: 'survey', name: '调研报告', icon: '🔍', desc: '5000-10000字', defaultWords: 8000 },
+  { id: 'experiment', name: '实验报告', icon: '🧪', desc: '3000-6000字', defaultWords: 5000 },
+  { id: 'case_study', name: '案例分析', icon: '💼', desc: '5000-10000字', defaultWords: 8000 },
+  { id: 'graduation_project', name: '毕业设计', icon: '🎯', desc: '10000-20000字', defaultWords: 15000 },
 ]
 
 // 示例论文
