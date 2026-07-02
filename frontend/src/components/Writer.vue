@@ -1024,12 +1024,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, reactive , defineAsyncComponent} from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import ProjectList from './ProjectList.vue'
-import WriterExportModal from './WriterExportModal.vue'
-import WriterRewriteModal from './WriterRewriteModal.vue'
+const WriterExportModal = defineAsyncComponent(() => import('./WriterExportModal.vue'))
+const WriterRewriteModal = defineAsyncComponent(() => import('./WriterRewriteModal.vue'))
 import MarkdownIt from 'markdown-it'
 import texmath from 'markdown-it-texmath'
 import katex from 'katex'

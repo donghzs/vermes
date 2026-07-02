@@ -79,5 +79,15 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'katex': ['katex', 'markdown-it-texmath'],
+          'vendor': ['vue', 'vue-router'],
+        }
+      }
+    }
   }
 })
