@@ -72,6 +72,35 @@ def _clean_citation_format(text: str) -> str:
     return text.strip()
 
 
+def _sanitize_user_input(text: str, max_len: int = 2000) -> str:
+    """清洗用户输入，防止 LLM prompt 注入。
+    
+    策略：
+    1. 截断超长输入
+    2. 移除可能的指令覆盖模式（"忽略以上"/"ignore above"/"system:"/"<|im_start|>" 等）
+    3. 用分隔符包裹，让 LLM 明确这是用户数据而非指令
+    """
+    if not text:
+        return ""
+    text = text.strip()[:max_len]
+    # 移除常见 prompt injection 模式
+    injection_patterns = [
+        r'(?i)ignore\s+(?:the\s+)?(?:above|previous|prior)\s+(?:instructions?|prompt|rules?)',
+        r'(?i)disregard\s+(?:the\s+)?(?:above|previous|all)',
+        r'(?i)you\s+are\s+(?:now|actually)\s+',
+        r'(?i)system\s*:\s*',
+        r'(?i)<\|im_start\|>',
+        r'(?i)<\|im_end\|>',
+        r'(?i)\[SYSTEM\]',
+        r'(?i)\[/SYSTEM\]',
+        r'(?i)forget\s+(?:everything|all\s+(?:previous|prior))',
+        r'(?i)new\s+instructions?\s*:',
+    ]
+    for pattern in injection_patterns:
+        text = re.sub(pattern, '[已过滤]', text)
+    return text
+
+
 def _fuzzy_match_title(candidate: str, papers: list) -> int | None:
     """用模糊匹配找到最接近的文献 index(1-based)，未找到返回 None"""
     if not papers or not candidate:
@@ -192,6 +221,11 @@ class BaseAgent:
         self.ctx = ctx
         self.llm = llm_call
 
+    @staticmethod
+    def _safe_input(user_input: str, max_len: int = 2000) -> str:
+        """转义用户输入，防止 LLM prompt 注入"""
+        return _sanitize_user_input(user_input, max_len)
+
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
         raise NotImplementedError
 
@@ -213,6 +247,7 @@ class TopicAgent(BaseAgent):
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
         yield {"type": "thinking", "message": "分析研究选题..."}
+        user_input = self._safe_input(user_input)
         self.ctx.topic = user_input
 
         prompt = f"""你是一个学术研究方法论专家。用户的论文选题是：
@@ -252,6 +287,7 @@ class LiteratureAgent(BaseAgent):
             depth: 研究深度 (1=单轮, 2=双轮多视角, 3=三轮含空白分析)
         """
         depth = max(1, min(3, depth))  # 限制 1-3
+        user_input = self._safe_input(user_input)
 
         if depth >= 2:
             async for evt in self._deep_search(user_input, depth):
@@ -316,10 +352,14 @@ class LiteratureAgent(BaseAgent):
 请判断这篇文献与研究主题的相关性，只回复 1-10 的数字(10=高度相关，1=完全不相关)："""
         try:
             resp = await self.llm(prompt)
-            score = int(re.search(r'\d+', resp).group())
+            m = re.search(r'\d+', resp)
+            if m is None:
+                logger.warning(f"_score_relevance: LLM returned no digit in response: {resp[:100]}")
+                return 5
+            score = int(m.group())
             return max(1, min(10, score))
         except Exception:
-            logger.warning(f"_score_contribution failed for paper, defaulting to 5")
+            logger.warning(f"_score_relevance failed for paper, defaulting to 5", exc_info=True)
             return 5  # 默认中等
 
     async def _generate_personas(self, topic: str, papers: list[PaperResult]) -> list[str]:
@@ -695,7 +735,7 @@ class OutlineAgent(BaseAgent):
 
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
         yield {"type": "thinking", "message": "生成论文大纲..."}
-
+        user_input = self._safe_input(user_input)
         context = self.ctx.to_context_text()
 
         # 元数据关键词(只过滤参考文献/致谢/目录等自动生成项，保留摘要/关键词/结论)
@@ -772,6 +812,7 @@ class WritingAgent(BaseAgent):
             user_input: 用户输入（可选额外指令）
             section: 指定只写某一节（section_key），空则全部章节
         """
+        user_input = self._safe_input(user_input)
         outline = self.ctx.outline
         if not outline:
             yield {"type": "writing", "message": "没有大纲，先生成大纲"}
@@ -992,7 +1033,7 @@ class RefinementAgent(BaseAgent):
     async def run(self, user_input: str) -> AsyncGenerator[dict, None]:
         """润色入口 — 分章节逐节润色，避免全文压缩"""
         yield {"type": "thinking", "message": "开始润色检查..."}
-
+        user_input = self._safe_input(user_input)
         draft = self.ctx.draft
         if not draft:
             yield {"type": "done", "message": "没有可润色的内容"}
@@ -1302,7 +1343,7 @@ class ReviewerAgent(BaseAgent):
 
     async def run(self, user_input: str = "") -> AsyncGenerator[dict, None]:
         yield {"type": "thinking", "message": "🔍 独立审稿中（使用独立模型审查，防自评偏差）..."}
-
+        user_input = self._safe_input(user_input)
         draft = self.ctx.draft or user_input
         if not draft or len(draft.strip()) < 100:
             yield {"type": "done", "message": "正文过短，无法审查"}

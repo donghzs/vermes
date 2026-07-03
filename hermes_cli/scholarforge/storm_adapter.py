@@ -57,7 +57,9 @@ def create_scholarforge_lm(provider: str, model: str, api_key: str, base_url: st
             }
 
             try:
-                with httpx.Client(timeout=120) as client:
+                # NOTE: dspy.LM 接口是同步的，STORM 在子线程中调用此方法。
+                # 使用连接池复用 + 合理超时，避免在子线程中创建过多连接。
+                with httpx.Client(timeout=120, limits=httpx.Limits(max_connections=5, max_keepalive_connections=2)) as client:
                     resp = client.post(
                         f"{self._base_url}/chat/completions",
                         json=body,

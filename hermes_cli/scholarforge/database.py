@@ -7,12 +7,14 @@ import os
 import sqlite3
 import time
 import json
+import logging
 import threading
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any
 
 DB_PATH = os.path.expanduser("~/.vermes/scholarforge.db")
 _lock = threading.Lock()
+logger = logging.getLogger("scholarforge.db")
 
 
 @contextmanager
@@ -136,7 +138,7 @@ def init_db():
         # P1-7: add last_section_key to existing databases
         try:
             conn.execute("ALTER TABLE projects ADD COLUMN last_section_key TEXT")
-        except:
+        except sqlite3.OperationalError:
             pass  # column already exists
         
         # P1-5: add snapshots table to existing databases
@@ -153,8 +155,8 @@ def init_db():
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id)")
-        except:
-            pass
+        except sqlite3.OperationalError as e:
+            logger.warning(f"snapshots table migration: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

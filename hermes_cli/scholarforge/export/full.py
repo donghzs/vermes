@@ -255,8 +255,92 @@ def export_pdf(title: str, content: str, papers: list, abstract: str = "") -> by
         HTML(string=full_html, base_url=".").write_pdf(target=buf)
         return buf.getvalue()
     except Exception as e:
-        logger.error(f"PDF export failed: {e}", exc_info=True)
-        raise
+        logger.warning(f"WeasyPrint PDF export failed: {e}, trying reportlab fallback...")
+        # Fallback: reportlab (纯 Python，无系统库依赖)
+        try:
+            return _export_pdf_reportlab(title, md_text)
+        except Exception as e2:
+            logger.error(f"reportlab PDF fallback also failed: {e2}", exc_info=True)
+            # Final fallback: 返回 HTML 让浏览器打印
+            logger.info("Returning HTML for browser print-to-PDF")
+            return full_html.encode("utf-8")
+
+
+def _export_pdf_reportlab(title: str, md_text: str) -> bytes:
+    """reportlab fallback PDF 导出 — 纯 Python，无系统库依赖
+    
+    简单排版：标题 + 正文段落，不渲染复杂 HTML 样式。
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import io as _io
+
+    # 尝试注册中文字体
+    font_name = "Helvetica"
+    for font_path in [
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ]:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(TTFont("CJKFont", font_path, subfontIndex=0))
+                font_name = "CJKFont"
+                break
+            except Exception:
+                continue
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            topMargin=2.5*cm, bottomMargin=2.5*cm,
+                            leftMargin=2.5*cm, rightMargin=2.5*cm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("CustomTitle", parent=styles["Title"],
+                                 fontName=font_name, fontSize=18, leading=24,
+                                 alignment=TA_CENTER, spaceAfter=20)
+    body_style = ParagraphStyle("CustomBody", parent=styles["Normal"],
+                                fontName=font_name, fontSize=11, leading=18,
+                                alignment=TA_LEFT, spaceAfter=6, firstLineIndent=24)
+    h2_style = ParagraphStyle("CustomH2", parent=styles["Heading2"],
+                              fontName=font_name, fontSize=14, leading=20,
+                              spaceBefore=12, spaceAfter=6)
+
+    story = []
+    story.append(Paragraph(_escape_xml(title), title_style))
+    story.append(Spacer(1, 0.5*cm))
+
+    for line in md_text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # 简单 Markdown 转换
+        if stripped.startswith("### "):
+            story.append(Paragraph(f'<b>{_escape_xml(stripped[4:])}</b>', h2_style))
+        elif stripped.startswith("## "):
+            story.append(Paragraph(f'<b>{_escape_xml(stripped[3:])}</b>', h2_style))
+        elif stripped.startswith("# "):
+            story.append(Paragraph(f'<b>{_escape_xml(stripped[2:])}</b>', title_style))
+        else:
+            # 转义 XML 特殊字符
+            safe = _escape_xml(stripped)
+            story.append(Paragraph(safe, body_style))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def _escape_xml(text: str) -> str:
+    """转义 XML/HTML 特殊字符"""
+    return (text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;"))
 
 
 # ============================================================================
