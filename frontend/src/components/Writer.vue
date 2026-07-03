@@ -205,6 +205,11 @@
 
         <div class="h-4 w-px bg-gray-200 dark:bg-gray-600 mx-0.5"></div>
 
+        <!-- 安全信息 -->
+        <button @click="showSecurityInfo = true" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg transition-colors shrink-0" title="安全与隐私" aria-label="安全与隐私">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </button>
+
         <!-- 导出 -->
         <button @click="showExportPanel = true" class="p-2 lg:px-2.5 lg:py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center shrink-0" title="导出论文 (Ctrl+E)" aria-label="导出论文">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -604,6 +609,116 @@
       :outline="outline"
       @close="showRewriteModal = false"
       @rewrite-done="onRewriteDone"/>
+
+    <!-- ═══ 新用户引导弹窗 (P0-5) ═══ -->
+    <Teleport to='body'>
+      <div v-if='showOnboarding' class='fixed inset-0 z-[200] flex items-center justify-center bg-black/50'>
+        <div class='bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-lg mx-4'>
+          <div class='text-center mb-6'>
+            <div class='text-5xl mb-3'>🎓</div>
+            <h3 class='text-xl font-bold text-gray-800 dark:text-gray-100 mb-2'>欢迎使用 ScholarForge</h3>
+            <p class='text-sm text-gray-500 dark:text-gray-400'>4 步开始你的论文写作之旅</p>
+          </div>
+          <div class='flex items-center justify-center gap-2 mb-6'>
+            <div v-for='i in 4' :key='i' :class='["w-8 h-1.5 rounded-full transition-all", onboardingStep >= i ? "bg-green-500" : "bg-gray-200 dark:bg-gray-600"]'></div>
+          </div>
+          <div v-if='onboardingStep === 1'>
+            <label class='block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2'>你的论文主题是什么？</label>
+            <input v-model='onboardingData.title' type='text' placeholder='例：深度学习在医学影像诊断中的应用'
+              class='w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-100'
+              @keydown.enter='onboardingStep = 2' />
+            <div class='flex justify-end mt-4'>
+              <button @click='onboardingStep = 2' :disabled='!onboardingData.title.trim()'
+                class='px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-xl text-sm font-medium'>下一步 →</button>
+            </div>
+          </div>
+          <div v-if='onboardingStep === 2'>
+            <label class='block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2'>选择论文类型</label>
+            <div class='grid grid-cols-3 gap-2'>
+              <button v-for='t in ["本科论文","硕士论文","博士论文","期刊论文","会议论文","综述论文"]' :key='t'
+                @click='onboardingData.paperType = t; onboardingStep = 3'
+                :class='["px-3 py-2.5 rounded-xl text-sm border transition-all", onboardingData.paperType === t ? "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-600" : "border-gray-200 dark:border-gray-600 hover:border-gray-300 text-gray-600 dark:text-gray-300"]'>
+                {{ t }}
+              </button>
+            </div>
+            <div class='flex justify-between mt-4'>
+              <button @click='onboardingStep = 1' class='px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl'>← 上一步</button>
+            </div>
+          </div>
+          <div v-if='onboardingStep === 3'>
+            <label class='block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2'>目标字数</label>
+            <div class='grid grid-cols-4 gap-2'>
+              <button v-for='w in [{l:"3千",v:3000},{l:"5千",v:5000},{l:"8千",v:8000},{l:"1.5万",v:15000}]' :key='w.v'
+                @click='onboardingData.targetWords = w.v; onboardingStep = 4'
+                :class='["px-3 py-2.5 rounded-xl text-sm border transition-all", onboardingData.targetWords === w.v ? "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-600" : "border-gray-200 dark:border-gray-600 hover:border-gray-300 text-gray-600 dark:text-gray-300"]'>
+                {{ w.l }}字
+              </button>
+            </div>
+            <div class='flex justify-between mt-4'>
+              <button @click='onboardingStep = 2' class='px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl'>← 上一步</button>
+            </div>
+          </div>
+          <div v-if='onboardingStep === 4'>
+            <div class='bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 space-y-2 text-sm'>
+              <div class='flex justify-between'><span class='text-gray-500'>主题</span><span class='font-medium text-gray-800 dark:text-gray-200'>{{ onboardingData.title }}</span></div>
+              <div class='flex justify-between'><span class='text-gray-500'>类型</span><span class='font-medium text-gray-800 dark:text-gray-200'>{{ onboardingData.paperType }}</span></div>
+              <div class='flex justify-between'><span class='text-gray-500'>目标</span><span class='font-medium text-gray-800 dark:text-gray-200'>{{ onboardingData.targetWords.toLocaleString() }} 字</span></div>
+            </div>
+            <p class='text-xs text-gray-400 mt-3 text-center'>创建后将自动进入写作界面，AI 会帮你搜索文献和生成大纲</p>
+            <div class='flex justify-between mt-4'>
+              <button @click='onboardingStep = 3' class='px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl'>← 上一步</button>
+              <button @click='finishOnboarding'
+                class='px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-medium shadow'>开始写作 🚀</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ═══ Cmd+/ 快速引用搜索 (P0-2) ═══ -->
+    <Teleport to='body'>
+      <div v-if='showQuickCite' class='fixed inset-0 z-[200] flex items-start justify-center pt-32 bg-black/30' @click.self='showQuickCite = false'>
+        <div class='bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-96 max-h-80 overflow-hidden flex flex-col'>
+          <div class='px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2'>
+            <span class='text-gray-400 text-sm'>📚</span>
+            <input ref='quickCiteInput' v-model='quickCiteQuery' type='text' placeholder='搜索文献标题或作者...'
+              class='flex-1 bg-transparent text-sm outline-none text-gray-700 dark:text-gray-200'
+              @keydown.enter='insertQuickCite' @keydown.esc='showQuickCite = false' />
+            <kbd class='text-[10px] text-gray-400 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded'>↵</kbd>
+          </div>
+          <div class='flex-1 overflow-y-auto'>
+            <button v-for='(p, i) in quickCiteResults' :key='i' @click='insertQuickCiteSelected(p)'
+              class='w-full px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-50 dark:border-gray-700/50'>
+              <div class='text-sm font-medium text-gray-700 dark:text-gray-200 truncate'>{{ p.title }}</div>
+              <div class='text-[10px] text-gray-400'>{{ (p.authors||[]).join(', ') }} · {{ p.year }}</div>
+            </button>
+            <div v-if='!quickCiteResults.length' class='px-4 py-6 text-center text-sm text-gray-400'>
+              {{ literature.length === 0 ? '文献库为空，请先搜索文献' : '未找到匹配文献' }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ═══ 安全合规说明 (P0-4) ═══ -->
+    <Teleport to='body'>
+      <div v-if='showSecurityInfo' class='fixed inset-0 z-[200] flex items-center justify-center bg-black/50' @click.self='showSecurityInfo = false'>
+        <div class='bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-md mx-4'>
+          <div class='flex items-center justify-between mb-4'>
+            <h3 class='text-lg font-semibold text-gray-800 dark:text-gray-100'>🔒 安全与隐私</h3>
+            <button @click='showSecurityInfo = false' class='text-gray-400 hover:text-gray-600'>✕</button>
+          </div>
+          <div class='space-y-3 text-sm text-gray-600 dark:text-gray-300'>
+            <div class='flex gap-2.5'><span>🔐</span><div><div class='font-medium text-gray-700 dark:text-gray-200'>数据加密传输</div><div class='text-xs text-gray-400'>所有数据通过 HTTPS 加密传输，文献 API Key 使用本地加密存储</div></div></div>
+            <div class='flex gap-2.5'><span>🚫</span><div><div class='font-medium text-gray-700 dark:text-gray-200'>不用于 AI 训练</div><div class='text-xs text-gray-400'>你的论文内容、文献库和写作数据绝不会用于模型训练</div></div></div>
+            <div class='flex gap-2.5'><span>📦</span><div><div class='font-medium text-gray-700 dark:text-gray-200'>本地优先</div><div class='text-xs text-gray-400'>论文数据存储在本地 SQLite，你可完全控制数据留存</div></div></div>
+            <div class='flex gap-2.5'><span>🔑</span><div><div class='font-medium text-gray-700 dark:text-gray-200'>API Key 自主管理</div><div class='text-xs text-gray-400'>付费文献源的 API Key 由你自行配置，不经过第三方</div></div></div>
+            <div class='flex gap-2.5'><span>📋</span><div><div class='font-medium text-gray-700 dark:text-gray-200'>开源可审计</div><div class='text-xs text-gray-400'>核心引擎代码开源，安全可独立审计</div></div></div>
+          </div>
+          <button @click='showSecurityInfo = false' class='w-full mt-5 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300'>了解了</button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 
       
@@ -1019,6 +1134,11 @@ const editor = {
 const onEditorInput = () => {
   // 更新字数统计 + 自动保存
   if (!activeSection.value || !project.value?.id) return
+  // P2-9: 撤销栈（仅在内容变化超过 5 字符时 push，避免每次按键都 push）
+  const prev = undoStack.value[undoStack.value.length - 1]
+  if (!prev || Math.abs(currentContent.value.length - prev.length) > 5) {
+    pushUndo()
+  }
   sectionContents.value[activeSection.value] = currentContent.value
   const section = outline.value.find(s => s.id === activeSection.value)
   if (section) section.wordCount = currentContent.value.length
@@ -1030,6 +1150,27 @@ const onEditorInput = () => {
 const handleKeyboard = (e) => {
   const isMeta = e.metaKey || e.ctrlKey
   if (!isMeta) return
+
+  // P0-2: Cmd+/ 快速引用
+  if (e.key === '/') {
+    e.preventDefault()
+    showQuickCite.value = true
+    nextTick(() => quickCiteInput.value?.focus())
+    return
+  }
+  // P2-9: Cmd+Z 撤销
+  if (e.key === 'z' || e.key === 'Z') {
+    e.preventDefault()
+    undo()
+    return
+  }
+  // P0-4: Cmd+Shift+S 安全信息
+  if (e.shiftKey && (e.key === 'S' || e.key === 's')) {
+    // 已被 saveNow 占用，改为 Cmd+Shift+I
+  }
+  if (e.shiftKey && (e.key === 'I' || e.key === 'i') && !e.altKey) {
+    // 暂不拦截，避免与斜体冲突
+  }
 
   // 编辑器格式快捷键
   if (e.key === 'b' || e.key === 'B') { e.preventDefault(); editor.format('bold'); return }
@@ -2309,6 +2450,76 @@ const deleteSection = (sectionId) => {
 const showRewriteModal = ref(false)
 const rewriteTarget = ref({ key: '', title: '' })
 
+// ═══ P0-5: 新用户引导 ═══
+const showOnboarding = ref(false)
+const onboardingStep = ref(1)
+const onboardingData = reactive({ title: '', paperType: '本科论文', targetWords: 8000 })
+
+const finishOnboarding = async () => {
+  showOnboarding.value = false
+  // 创建项目
+  try {
+    const r = await fetch('/api/scholar/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: onboardingData.title,
+        paper_type: onboardingData.paperType,
+        target_words: onboardingData.targetWords,
+      }),
+    })
+    if (r.ok) {
+      const proj = await r.json()
+      projects.value.unshift(proj)
+      await switchProject(proj)
+      localStorage.setItem('sf_onboarded', '1')
+    }
+  } catch (e) { console.error('onboarding create', e) }
+}
+
+// ═══ P0-2: Cmd+/ 快速引用 ═══
+const showQuickCite = ref(false)
+const quickCiteQuery = ref('')
+const quickCiteInput = ref(null)
+const quickCiteResults = computed(() => {
+  if (!quickCiteQuery.value.trim()) return literature.value.slice(0, 8)
+  const q = quickCiteQuery.value.toLowerCase()
+  return literature.value.filter(p =>
+    p.title?.toLowerCase().includes(q) ||
+    (p.authors || []).some(a => a.toLowerCase().includes(q))
+  ).slice(0, 8)
+})
+
+const insertQuickCite = () => {
+  if (quickCiteResults.value.length > 0) {
+    insertQuickCiteSelected(quickCiteResults.value[0])
+  }
+}
+
+const insertQuickCiteSelected = (paper) => {
+  insertCitation(paper)
+  showQuickCite.value = false
+  quickCiteQuery.value = ''
+}
+
+// ═══ P0-4: 安全合规弹窗 ═══
+const showSecurityInfo = ref(false)
+
+// ═══ P2-9: Cmd+Z 撤销 ═══
+const undoStack = ref([])
+const undoMaxSize = 50
+
+const pushUndo = () => {
+  undoStack.value.push(currentContent.value)
+  if (undoStack.value.length > undoMaxSize) undoStack.value.shift()
+}
+
+const undo = () => {
+  if (undoStack.value.length === 0) return
+  currentContent.value = undoStack.value.pop()
+  onEditorInput()
+}
+
 const rewriteSection = (sectionId) => {
   const section = outline.value.find(s => s.id === sectionId)
   if (!section) return
@@ -2335,6 +2546,10 @@ onMounted(async () => {
   await loadSearchSources()
   // 加载项目列表
   await loadProjects()
+  // P0-5: 新用户引导 — 没有项目且未引导过时弹出
+  if (projects.value.length === 0 && !localStorage.getItem('sf_onboarded')) {
+    showOnboarding.value = true
+  }
 })
 
 // 加载项目列表

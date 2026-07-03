@@ -817,6 +817,42 @@ class WritingAgent(BaseAgent):
         """
         user_input = self._safe_input(user_input)
         outline = self.ctx.outline
+        topic = self.ctx.topic or ""
+
+        # ═══════════════════════════════════════════════════════
+        # P0: 文献不足时自动搜索（头部应用的标准行为）
+        # 聚合了 11 个免费源，不能让 Agent 干等，必须主动去搜
+        # ═══════════════════════════════════════════════════════
+        paper_count = len(self.ctx.papers) if self.ctx.papers else 0
+        if paper_count < 3:
+            yield {"type": "thinking", "message": f"文献不足（{paper_count} 篇），正在自动搜索相关文献..."}
+            try:
+                async for paper_result in search_papers(topic, limit=12):
+                    # 转换 PaperResult → PaperCard 入库
+                    self.ctx.add_paper(PaperCard(
+                        paper_id=paper_result.paper_id,
+                        title=paper_result.title,
+                        authors=paper_result.authors,
+                        year=paper_result.year,
+                        venue=paper_result.venue,
+                        abstract=paper_result.abstract,
+                        citation_count=paper_result.citation_count,
+                        url=paper_result.url,
+                        source=paper_result.source,
+                    ))
+                    yield {"type": "citation", "paper": paper_result.to_dict()}
+
+                fetched = len(self.ctx.papers) - paper_count
+                yield {"type": "thinking", "message": f"自动搜索完成，新增 {fetched} 篇文献（共 {len(self.ctx.papers)} 篇）"}
+            except Exception as e:
+                logger.warning(f"Auto-search papers failed: {e}")
+                yield {"type": "warning", "message": f"自动搜索失败（{e}），请手动搜索文献"}
+
+        paper_count = len(self.ctx.papers) if self.ctx.papers else 0
+        if paper_count < 3:
+            yield {"type": "error", "message": f"文献仍不足（仅 {paper_count} 篇），请先运行「文献搜索」补充"}
+            yield {"type": "done", "message": f"需先搜索文献（当前 {paper_count} 篇）"}
+            return
         if not outline:
             yield {"type": "writing", "message": "没有大纲，先生成大纲"}
             yield {"type": "done", "message": "需先生成大纲"}
@@ -1141,7 +1177,62 @@ class RefinementAgent(BaseAgent):
                 "warnings": len([r for r in all_results if 3 <= r["score"] < 7]),
             }
 
-        # Step 2.5: 真引用替换 — 搜索外部数据库，替换 [n] 占位符为真实文献
+        # ═══════════════════════════════════════════════════════
+        # Step 2.5: 系统名幻觉核查 — 检测虚构系统（新增 P0）
+        # ═══════════════════════════════════════════════════════
+        if self.ctx.papers and draft:
+            yield {"type": "thinking", "message": "核查系统名称真实性..."}
+            try:
+                # 提取文献池中的真实系统名
+                real_systems = []
+                for p in self.ctx.papers:
+                    real_systems.append(p.title)
+                    if hasattr(p, 'abstract') and p.abstract:
+                        real_systems.append(p.abstract[:300])
+                real_systems_text = "\n---\n".join(real_systems[:10])
+
+                # 提取论文中含系统名的句子（匹配带引号的专有名词或 CamelCase 系统名）
+                system_sentences = re.findall(
+                    r"[\"\u201c]([^\"\u201d]{5,40})[\"\u201d]|\b([A-Z][a-zA-Z]{2,20"
+                    r"(?:Harness|Agent|OS|Shell|Bench|System|Auto|Evo|SE|SEAH|SEVA|CoEvo|Evolving)"
+                    r"[a-zA-Z]*)\b",
+                    draft)
+                named_entities = [s[0] or s[1] for s in system_sentences if s[0] or s[1]]
+
+                # JSON Schema（不用 f-string 避免嵌套花括号转义问题）
+                json_schema = (
+                    '{"hallucinated_systems": ["系统名列表（有幻觉则填，无则空列表）"], '
+                    '"warnings": ["每个虚构系统的警告信息"]}'
+                )
+                hallucination_prompt = (
+                    f'你是学术核查员。请严格检查以下论文草稿是否存在"系统名幻觉"——论文正文中'
+                    f'提到但不存在于【真实文献】中的系统名称。\n\n'
+                    f'【真实文献】（共 {len(self.ctx.papers)} 篇，文献标题和摘要片段）：\n'
+                    f'{real_systems_text}\n\n'
+                    f'【论文草稿中检测到的系统名候选】：{named_entities}\n\n'
+                    f'请严格核查：哪些系统名是真实存在的（来自真实文献）？哪些是虚构的？\n'
+                    f'请输出 JSON：{json_schema}'
+                )
+
+                resp = await self.llm(hallucination_prompt)
+                try:
+                    result = json.loads(resp)
+                    hallucinated = result.get("hallucinated_systems", [])
+                    warnings = result.get("warnings", [])
+                    if hallucinated:
+                        logger.warning(f"Hallucinated systems detected: {hallucinated}")
+                        yield {
+                            "type": "hallucination_warning",
+                            "hallucinated_systems": hallucinated,
+                            "warnings": warnings,
+                            "message": f"⚠️ 检测到 {len(hallucinated)} 个疑似虚构系统：{', '.join(hallucinated[:3])}"
+                        }
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"Hallucination check JSON parse failed: {resp[:100]}")
+            except Exception as e:
+                logger.warning(f"System hallucination check failed: {e}")
+
+        # Step 2.6: 真引用替换 — 语义关联替换 [n]→真实文献（升级版）
         yield {"type": "thinking", "message": "搜索真实文献替换引用占位符..."}
         try:
             from hermes_cli.scholarforge.citation_provider import replace_pseudo_citations

@@ -1,13 +1,15 @@
 <template>
   <div class="h-full flex flex-col">
-    <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+    <!-- 固定头部 -->
+    <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0">
       <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">AI 写作助手</span>
       <div class="flex items-center gap-1">
         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
         <span class="text-[10px] text-green-600">在线</span>
       </div>
     </div>
-    <div class="flex-1 overflow-y-auto p-3 space-y-3">
+    <!-- 消息区：受限高度，可滚动 -->
+    <div class="flex-1 overflow-y-auto p-3 space-y-3 max-h-[calc(100vh-20rem)]">
       <!-- AI 对话历史 -->
       <div v-for="(msg, idx) in messages" :key="idx" 
         :class="['text-xs', msg.role === 'user' ? 'ml-4' : 'mr-4']">
@@ -20,7 +22,7 @@
         </div>
       </div>
     </div>
-    <!-- AI 快捷操作 -->
+    <!-- AI 快捷操作（始终可见，固定在底部） -->
     <div class="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-700/50">
       <!-- 研究深度选择器 -->
       <div class="mb-2 flex items-center gap-1.5">
