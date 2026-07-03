@@ -375,6 +375,7 @@
               @input="onEditorInput"
               @mouseup="onTextSelect"
               @keyup="onTextSelect"
+              @keydown="onEditorKeydown"
               class="w-full h-full p-4 resize-none outline-none font-mono text-sm leading-relaxed text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900"
               placeholder="开始写作...选中文字可 AI 改写"
               spellcheck="false"
@@ -382,6 +383,18 @@
               role="textbox"
               aria-multiline="true"
             ></textarea>
+            <!-- P0-1: 逐句补全建议 overlay -->
+            <div v-if="aiSuggestion" class="absolute top-0 left-0 right-0 p-4 pointer-events-none font-mono text-sm leading-relaxed whitespace-pre-wrap" style="color: rgba(156,163,175,0.5)" aria-hidden="true">
+              <span class="invisible">{{ currentContent.slice(0, cursorPos) }}</span><span>{{ aiSuggestion }}</span>
+            </div>
+            <!-- 补全提示条 -->
+            <div v-if="aiSuggestion" class="absolute bottom-14 right-4 flex items-center gap-1.5 bg-gray-900/90 text-white text-[10px] px-2.5 py-1 rounded-lg backdrop-blur">
+              <span class="text-gray-300">按</span>
+              <kbd class="px-1 py-0.5 bg-gray-700 rounded text-[9px] font-mono">Tab</kbd>
+              <span class="text-gray-300">接受补全</span>
+              <kbd class="px-1 py-0.5 bg-gray-700 rounded text-[9px] font-mono ml-1">Esc</kbd>
+              <span class="text-gray-300">忽略</span>
+            </div>
             <!-- 写作字数进度条 -->
             <div v-if="project.targetWords" class="absolute bottom-2 left-4 right-4 flex items-center gap-2 bg-gray-900/80 backdrop-blur rounded-lg px-3 py-1.5 text-[10px]">
               <span class="text-gray-400 shrink-0">字数:</span>
@@ -753,7 +766,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, reactive , defineAsyncComponent} from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, reactive , defineAsyncComponent, nextTick} from 'vue'
 import { useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import ProjectList from './ProjectList.vue'
@@ -1144,6 +1157,8 @@ const onEditorInput = () => {
   if (section) section.wordCount = currentContent.value.length
   // 防抖保存
   scheduleAutosave()
+  // P0-1: 调度逐句补全
+  scheduleAutocomplete()
 }
 
 // ── 全局键盘快捷键
@@ -2504,6 +2519,82 @@ const insertQuickCiteSelected = (paper) => {
 
 // ═══ P0-4: 安全合规弹窗 ═══
 const showSecurityInfo = ref(false)
+
+// ═══ P0-1: 逐句自动补全 ═══
+const aiSuggestion = ref('')
+const cursorPos = ref(0)
+const autocompleteTimer = ref(null)
+const autocompleteLoading = ref(false)
+
+const fetchAutocomplete = async () => {
+  if (!project.value?.id || !activeSection.value) return
+  const ta = editorRef.value
+  if (!ta) return
+  const pos = ta.selectionStart
+  cursorPos.value = pos
+  const textBefore = currentContent.value.slice(0, pos)
+  // 至少 20 字符上下文才触发
+  if (textBefore.trim().length < 20) { aiSuggestion.value = ''; return }
+  // 光标必须在文本末尾或行末才触发（避免段中补全）
+  const after = currentContent.value.slice(pos)
+  if (after.trim() && !after.startsWith('\n')) { aiSuggestion.value = ''; return }
+
+  autocompleteLoading.value = true
+  try {
+    const section = outline.value.find(s => s.id === activeSection.value)
+    const r = await fetch('/api/scholar/autocomplete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: project.value.id,
+        section_key: activeSection.value,
+        text_before: textBefore,
+        section_title: section?.title || '',
+      }),
+    })
+    if (r.ok) {
+      const d = await r.json()
+      aiSuggestion.value = d.suggestion || ''
+    }
+  } catch (e) { /* 静默失败 */ }
+  finally { autocompleteLoading.value = false }
+}
+
+const onEditorKeydown = (e) => {
+  // Tab 接受补全
+  if (e.key === 'Tab' && aiSuggestion.value) {
+    e.preventDefault()
+    const ta = editorRef.value
+    const pos = ta.selectionStart
+    const suggestion = aiSuggestion.value
+    currentContent.value = currentContent.value.slice(0, pos) + suggestion + currentContent.value.slice(pos)
+    aiSuggestion.value = ''
+    nextTick(() => {
+      const newPos = pos + suggestion.length
+      ta.setSelectionRange(newPos, newPos)
+      ta.focus()
+      onEditorInput()
+    })
+    return
+  }
+  // Esc 取消补全
+  if (e.key === 'Escape' && aiSuggestion.value) {
+    e.preventDefault()
+    aiSuggestion.value = ''
+    return
+  }
+  // 任何其他键取消当前建议
+  if (aiSuggestion.value && e.key.length === 1) {
+    aiSuggestion.value = ''
+  }
+}
+
+const scheduleAutocomplete = () => {
+  if (autocompleteTimer.value) clearTimeout(autocompleteTimer.value)
+  autocompleteTimer.value = setTimeout(() => {
+    fetchAutocomplete()
+  }, 1200)  // 1.2s debounce
+}
 
 // ═══ P2-9: Cmd+Z 撤销 ═══
 const undoStack = ref([])

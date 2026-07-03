@@ -347,6 +347,113 @@ def register_to(app):
         content = req.get("content", "")
         db.save_section_content(pid, section_key, content)
         db.update_project(pid, last_section_key=section_key)
+
+    # ═══════════════════════════════════════════════════════════════
+    # P0-1: 逐句自动补全 — Jenni AI 核心体验
+    # ═══════════════════════════════════════════════════════════════
+
+    @app.post("/api/scholar/autocomplete")
+    async def api_autocomplete(req: dict):
+        """逐句自动补全 — 根据当前章节上下文+RAG文献生成下一句建议
+
+        请求体:
+          project_id: int
+          section_key: str
+          text_before: str  — 光标前的文本
+          section_title: str — 当前章节标题
+        响应:
+          { "suggestion": "...", "citation": [1,3] }
+        """
+        pid = req.get("project_id")
+        section_key = req.get("section_key", "")
+        text_before = req.get("text_before", "")
+        section_title = req.get("section_title", "")
+
+        if not pid or not text_before.strip():
+            return {"suggestion": "", "citation": []}
+
+        # 取最后 600 字符作为上下文（控制 token）
+        context_text = text_before[-600:]
+
+        # 获取项目文献
+        from . import database as db
+        proj = db.get_project(pid)
+        if not proj:
+            return {"suggestion": "", "citation": []}
+
+        papers = db.list_literature(pid)
+        if not papers:
+            papers = []
+
+        # RAG: 检索最相关的 3 篇文献（轻量级，只取标题+摘要）
+        rag_context = ""
+        citation_hints = []
+        if papers:
+            try:
+                from hermes_cli.scholarforge.rag import PaperRetriever
+                rag = PaperRetriever()
+                # 转换为 PaperCard 格式
+                from hermes_cli.scholarforge.agents import PaperCard
+                paper_cards = []
+                for p in papers[:20]:  # 最多加载20篇
+                    paper_cards.append(PaperCard(
+                        paper_id=p.get("paper_id", p.get("id", "")),
+                        title=p.get("title", ""),
+                        authors=p.get("authors", []),
+                        year=p.get("year", ""),
+                        venue=p.get("venue", ""),
+                        abstract=p.get("abstract", ""),
+                        citation_count=p.get("citation_count", 0),
+                        url=p.get("url", ""),
+                        source=p.get("source", ""),
+                    ))
+                rag.load_papers(paper_cards)
+                results = rag.retrieve_for_writing(section_title, context_text, top_k=3)
+                if results:
+                    rag_context = "\n".join([
+                        f"[{i+1}] {p.title} — {', '.join(p.authors[:2] if hasattr(p,'authors') and p.authors else [])} ({getattr(p,'year','')})"
+                        for i, (p, _) in enumerate(results)
+                    ])
+                    citation_hints = [i+1 for i, _ in enumerate(results)]
+            except Exception as e:
+                logger.debug(f"Autocomplete RAG skipped: {e}")
+
+        # 构建补全 prompt — 要求简洁、学术、只生成一句
+        system = (
+            "你是学术论文写作助手。根据当前上下文，生成1-2句续写内容。"
+            "要求：学术风格、简洁、不重复已有内容、自然衔接。"
+            "只输出续写的句子，不要输出已有内容。"
+            "如果上下文是段落末尾，续写下一句；如果是段中，续写接续句。"
+        )
+
+        prompt = (
+            f"当前章节：{section_title}\n\n"
+            f"已有内容（末尾）：\n...{context_text}\n\n"
+        )
+        if rag_context:
+            prompt += f"相关文献：\n{rag_context}\n\n"
+        prompt += (
+            "请生成1-2句续写。要求：\n"
+            "1. 学术风格，与上下文自然衔接\n"
+            "2. 如果引用文献，用 [n] 格式\n"
+            "3. 只输出续写内容，不输出已有内容\n"
+            "4. 不超过100字"
+        )
+
+        try:
+            _llm = await _make_llm()
+            suggestion = await _llm(prompt, system)
+            # 清理：去掉可能的引号包裹
+            suggestion = suggestion.strip().strip('"').strip("'").strip()
+            # 限制长度
+            if len(suggestion) > 200:
+                # 截到最后一个句号
+                cut = suggestion[:200].rsplit('。', 1)
+                suggestion = cut[0] + '。' if len(cut) > 1 else cut[0]
+            return {"suggestion": suggestion, "citation": citation_hints}
+        except Exception as e:
+            logger.debug(f"Autocomplete LLM failed: {e}")
+            return {"suggestion": "", "citation": []}
         return {"ok": True, "word_count": len(content)}
 
     @app.delete("/api/scholar/projects/{pid}/section/{section_key}")
