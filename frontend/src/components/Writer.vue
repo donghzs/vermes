@@ -23,7 +23,7 @@
             <button @click="showProjectSwitcher = !showProjectSwitcher"
               class="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-100 min-w-0"
               aria-label="切换项目" aria-haspopup="listbox" :aria-expanded="showProjectSwitcher">
-              <span class="max-w-[160px] truncate">{{ project.title || '未命名项目' }}</span>
+              <span class="max-w-[240px] truncate">{{ project.title || '未命名项目' }}</span>
               <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
             <!-- 项目下拉 -->
@@ -56,7 +56,7 @@
             </div>
           </div>
         </div>
-        <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">{{ project.type }}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 ml-2">{{ project.type }}</span>
       </div>
 
       <!-- 中间：写作阶段 + 模型选择器 → 折叠下拉 -->
@@ -2088,10 +2088,10 @@ const resumePipeline = async () => {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = ''
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || ''
       for (const line of lines) {
-        if (!line.startsWith('data: ')) { buffer += line; continue }
+        if (!line.startsWith('data: ')) continue
         try {
           const e = JSON.parse(line.slice(6))
           if (e.type === 'content' && e.text) {
