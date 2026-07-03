@@ -424,6 +424,29 @@ def save_outline(pid: int, outline_sections: list[dict]) -> None:
     touch_project(pid)
 
 
+def get_outline(pid: int) -> list[dict]:
+    """获取大纲列表"""
+    init_db()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT section_key, section_number, section_title, word_count, status FROM outlines WHERE project_id=? ORDER BY sort_order",
+            (pid,),
+        ).fetchall()
+        return [{"id": r["section_key"], "number": r["section_number"], "title": r["section_title"],
+                 "wordCount": r["word_count"], "status": r["status"]} for r in rows]
+
+
+def get_all_sections(pid: int) -> dict[str, str]:
+    """获取项目所有章节内容，返回 {section_key: content}"""
+    init_db()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT section_key, content FROM section_contents WHERE project_id=?",
+            (pid,),
+        ).fetchall()
+        return {r["section_key"]: r["content"] for r in rows}
+
+
 def save_section_content(pid: int, section_key: str, content: str):
     init_db()
     now = int(time.time())

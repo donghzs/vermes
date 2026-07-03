@@ -207,6 +207,7 @@ class ScholarChatRequest(BaseModel):
     depth: int = 2          # 1=快速, 2=标准, 3=深度
     checkpoint: bool = True  # 每阶段后等待用户确认（默认开启）
     client_id: str = ""     # 前端 localStorage client UUID，用于多用户隔离
+    continue_from: str = ""  # P1: 从指定阶段继续 pipeline（跳过已完成的阶段）
 
 
 class LiteratureSearchRequest(BaseModel):
@@ -585,7 +586,52 @@ def register_to(app):
                     use_checkpoint = req.checkpoint and req.pipeline
                     pipeline_stages = ["topic", "literature", "outline", "writing", "refinement", "reviewer"]
 
+                    # P1: 支持 continue_from — 从指定阶段继续，跳过已完成的阶段
+                    start_idx = 0
+                    if req.continue_from and req.continue_from in pipeline_stages:
+                        start_idx = pipeline_stages.index(req.continue_from)
+                        # 加载已有项目上下文（大纲、文献等）
+                        if pid > 0:
+                            try:
+                                # 恢复 topic
+                                p = db.get_project(pid)
+                                if p:
+                                    ctx.topic = p.get("title", "")
+                                    ctx.paper_type = p.get("paper_type", "")
+                                # 恢复大纲
+                                outline_data = db.get_outline(pid)
+                                if outline_data:
+                                    ctx.outline = {"sections": outline_data}
+                                # 恢复文献（转换为 PaperCard 对象）
+                                from hermes_cli.scholarforge.agents import PaperCard
+                                lit_rows = db.list_literature(pid)
+                                for lr in lit_rows:
+                                    ctx.add_paper(PaperCard(
+                                        paper_id=str(lr.get("paper_id", lr.get("id", ""))),
+                                        title=lr.get("title", ""),
+                                        authors=lr.get("authors", []) if isinstance(lr.get("authors"), list) else [],
+                                        year=str(lr.get("year", "")),
+                                        venue=lr.get("venue", ""),
+                                        abstract=lr.get("abstract", ""),
+                                        url=lr.get("url", ""),
+                                        source=lr.get("source", ""),
+                                    ))
+                                # 恢复已写内容
+                                sections = db.get_all_sections(pid)
+                                if sections:
+                                    draft_parts = []
+                                    for sk, content in sections.items():
+                                        ctx.section_contents[sk] = content
+                                        draft_parts.append(content)
+                                    if draft_parts:
+                                        ctx.draft = "\n\n".join(draft_parts)
+                            except Exception as e:
+                                logging.warning(f"Failed to restore context for continue_from: {e}")
+                        yield await _sse_rl({"type": "thinking", "message": f"📍 从 {pipeline_stages[start_idx]} 阶段继续..."}, client_id)
+
                     for stage_idx, stage in enumerate(pipeline_stages):
+                        if stage_idx < start_idx:
+                            continue  # 跳过已完成阶段
                         yield await _sse_rl({"type": "stage", "stage": stage, "pipeline": "start"}, client_id)
 
                         from hermes_cli.scholarforge.agents import AGENTS

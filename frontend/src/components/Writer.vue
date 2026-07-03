@@ -56,7 +56,7 @@
             </div>
           </div>
         </div>
-        <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 ml-2">{{ project.type }}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 ml-2 shrink-0 hidden sm:inline">{{ project.paper_type || project.type || '论文' }}</span>
       </div>
 
       <!-- 中间：写作阶段 + 模型选择器 → 折叠下拉 -->
@@ -116,86 +116,94 @@
         </div>
       </div>
 
-      <!-- 右侧：精简工具栏 -->
-      <div class="flex items-center gap-1 flex-shrink-0">
-        <!-- 文献 (图标+数字) -->
-        <button @click="showLiteraturePanel = !showLiteraturePanel; showAIPanel = false" 
+      <!-- 右侧：精简工具栏（P1: 9按钮→4按钮） -->
+      <div class="flex items-center gap-1 flex-shrink-0 relative" ref="moreToolsRef">
+        <!-- 文献库 -->
+        <button @click="panelStore.openLiterature()" 
           :class="['p-2 rounded-lg transition-colors relative', showLiteraturePanel ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-100']"
           title="文献库" aria-label="文献库" :aria-expanded="showLiteraturePanel">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
           <span v-if="literatureCount > 0" class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-blue-600 text-white text-[9px] rounded-full flex items-center justify-center">{{ literatureCount }}</span>
         </button>
         
-        <!-- AI 助手 (图标) -->
-        <button @click="showAIPanel = !showAIPanel; showLiteraturePanel = false"
+        <!-- AI 助手 -->
+        <button @click="panelStore.openAI()"
           :class="['p-2 rounded-lg transition-colors relative', showAIPanel ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-100']"
           title="AI 助手" aria-label="AI 助手" :aria-expanded="showAIPanel">
           <span class="text-base">🤖</span>
         </button>
-        
-        <!-- 引用核查 (图标+警告数字) -->
-        <button @click="toggleRightPanel('citation')"
-          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'citation' ? 'bg-amber-50 text-amber-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="引用核查结果">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <span class="hidden lg:inline ml-1 text-xs">核查</span>
-          <span v-if="citationErrors + citationWarnings > 0" 
-            :class="['absolute -top-0.5 -right-0.5 w-4 h-4 text-white text-[9px] rounded-full flex items-center justify-center', citationErrors > 0 ? 'bg-red-500' : 'bg-amber-500']">
-            {{ citationErrors + citationWarnings }}
-          </span>
+
+        <!-- 更多工具（下拉菜单） -->
+        <button @click.stop="showMoreToolsDropdown = !showMoreToolsDropdown"
+          :class="['p-2 rounded-lg transition-colors flex items-center', showMoreToolsDropdown ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200' : 'text-gray-500 hover:bg-gray-100']"
+          title="更多工具" aria-label="更多工具" :aria-expanded="showMoreToolsDropdown">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 6h14M5 18h14"/></svg>
+          <!-- 徽章：有分析结果时显示红点 -->
+          <span v-if="citationErrors > 0 || (plagResult && plagResult.overall_similarity > 0.3)" class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>
 
-        <!-- 共识度 (图标+徽章) -->
-        <button @click="toggleRightPanel('consensus')"
-          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'consensus' ? 'bg-green-50 text-green-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="共识度分析">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-          <span class="hidden lg:inline ml-1 text-xs">共识</span>
-          <span v-if="consensusResults.length > 0" 
-            class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white text-[9px] rounded-full flex items-center justify-center">
-            {{ consensusResults.length }}
-          </span>
-        </button>
+        <!-- 更多工具下拉菜单 -->
+        <div v-if="showMoreToolsDropdown" class="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[80] py-1">
+          <!-- 引用核查 -->
+          <button @click="showMoreToolsDropdown = false; toggleRightPanel('citation')"
+            :class="['w-full px-3 py-2 flex items-center gap-2.5 text-sm transition-colors', activeRightPanel === 'citation' ? 'bg-amber-50 text-amber-600' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50']">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="flex-1 text-left">引用核查</span>
+            <span v-if="citationErrors + citationWarnings > 0" 
+              :class="['px-1.5 text-white text-[9px] rounded-full', citationErrors > 0 ? 'bg-red-500' : 'bg-amber-500']">
+              {{ citationErrors + citationWarnings }}
+            </span>
+          </button>
 
-        <!-- 查重 + AIGC 检测 -->
-        <button @click="toggleRightPanel('plag')" :disabled="plagLoading"
-          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'plag' ? 'bg-purple-50 text-purple-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="查重 + AIGC 检测">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-          <span class="hidden lg:inline ml-1 text-xs">查重</span>
-          <span v-if="plagResult" 
-            :class="['absolute -top-0.5 -right-0.5 px-1 text-white text-[9px] rounded-full flex items-center justify-center', plagResult.overall_similarity > 0.3 ? 'bg-red-500' : plagResult.aigc_overall_ratio > 0.4 ? 'bg-amber-500' : 'bg-green-500']">
-            {{ Math.round(Math.max(plagResult.overall_similarity, plagResult.aigc_overall_ratio) * 100) }}%
-          </span>
-        </button>
-        
-        <!-- 论文评分 -->
-        <button @click="toggleRightPanel('score')" :disabled="scoreLoading"
-          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors relative flex items-center', activeRightPanel === 'score' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="论文评分 — 原创性/逻辑性/引用完整性">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
-          <span class="hidden lg:inline ml-1 text-xs">评分</span>
-          <span v-if="scoreResult?.overall" 
-            :class="['absolute -top-0.5 -right-0.5 w-4 h-4 text-white text-[8px] rounded-full flex items-center justify-center', scoreResult.overall >= 7 ? 'bg-green-500' : scoreResult.overall >= 5 ? 'bg-amber-500' : 'bg-red-500']">
-            {{ scoreResult.overall }}
-          </span>
-        </button>
-        
-        <div class="h-4 w-px bg-gray-200 mx-1"></div>
-        
-        <!-- 一键复制富文本 (Phase 1.4) -->
-        <button @click="copyRichText" class="p-2 lg:px-2.5 lg:py-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg transition-colors flex items-center justify-center" title="复制为富文本 (Word/飞书/Notion 保留格式) (Ctrl+Shift+C)" aria-label="复制为富文本">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-          <span class="hidden lg:inline ml-1 text-xs">复制</span>
-        </button>
+          <!-- 共识度分析 -->
+          <button @click="showMoreToolsDropdown = false; toggleRightPanel('consensus')"
+            :class="['w-full px-3 py-2 flex items-center gap-2.5 text-sm transition-colors', activeRightPanel === 'consensus' ? 'bg-green-50 text-green-600' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50']">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            <span class="flex-1 text-left">共识度分析</span>
+            <span v-if="consensusResults.length > 0" class="px-1.5 bg-green-500 text-white text-[9px] rounded-full">{{ consensusResults.length }}</span>
+          </button>
 
-        <!-- P1-5: 版本历史 (快照) -->
-        <button @click="toggleRightPanel('snapshots'); loadSnapshots()"
-          :class="['p-2 lg:px-2.5 lg:py-1.5 rounded-lg transition-colors flex items-center', activeRightPanel === 'snapshots' ? 'bg-violet-50 text-violet-600' : 'text-gray-500 hover:bg-gray-100']"
-          title="版本历史" aria-label="版本历史">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <span class="hidden lg:inline ml-1 text-xs">版本</span>
-        </button>
+          <!-- 查重 + AIGC -->
+          <button @click="showMoreToolsDropdown = false; toggleRightPanel('plag')" :disabled="plagLoading"
+            :class="['w-full px-3 py-2 flex items-center gap-2.5 text-sm transition-colors disabled:opacity-50', activeRightPanel === 'plag' ? 'bg-purple-50 text-purple-600' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50']">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            <span class="flex-1 text-left">查重 + AIGC</span>
+            <span v-if="plagResult" 
+              :class="['px-1.5 text-white text-[9px] rounded-full', plagResult.overall_similarity > 0.3 ? 'bg-red-500' : plagResult.aigc_overall_ratio > 0.4 ? 'bg-amber-500' : 'bg-green-500']">
+              {{ Math.round(Math.max(plagResult.overall_similarity, plagResult.aigc_overall_ratio) * 100) }}%
+            </span>
+          </button>
+
+          <!-- 论文评分 -->
+          <button @click="showMoreToolsDropdown = false; toggleRightPanel('score')" :disabled="scoreLoading"
+            :class="['w-full px-3 py-2 flex items-center gap-2.5 text-sm transition-colors disabled:opacity-50', activeRightPanel === 'score' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50']">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+            <span class="flex-1 text-left">论文评分</span>
+            <span v-if="scoreResult?.overall" 
+              :class="['px-1.5 text-white text-[9px] rounded-full', scoreResult.overall >= 7 ? 'bg-green-500' : scoreResult.overall >= 5 ? 'bg-amber-500' : 'bg-red-500']">
+              {{ scoreResult.overall }}
+            </span>
+          </button>
+
+          <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+          <!-- 复制富文本 -->
+          <button @click="showMoreToolsDropdown = false; copyRichText()"
+            class="w-full px-3 py-2 flex items-center gap-2.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <span class="flex-1 text-left">复制富文本</span>
+            <span class="text-[10px] text-gray-400">Ctrl+Shift+C</span>
+          </button>
+
+          <!-- 版本历史 -->
+          <button @click="showMoreToolsDropdown = false; toggleRightPanel('snapshots'); loadSnapshots()"
+            :class="['w-full px-3 py-2 flex items-center gap-2.5 text-sm transition-colors', activeRightPanel === 'snapshots' ? 'bg-violet-50 text-violet-600' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50']">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="flex-1 text-left">版本历史</span>
+          </button>
+        </div>
+
+        <div class="h-4 w-px bg-gray-200 dark:bg-gray-600 mx-0.5"></div>
 
         <!-- 导出 -->
         <button @click="showExportPanel = true" class="p-2 lg:px-2.5 lg:py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center shrink-0" title="导出论文 (Ctrl+E)" aria-label="导出论文">
@@ -443,13 +451,21 @@
       </main>
 
       <!-- ┌─────────────────────────────────────────────────────────────┐
-           │ 右栏：文献库 / AI 助手 (可折叠)
+           │ 右栏：浮出式面板（P1: 从固定 320px 改为浮出 480px）
            └─────────────────────────────────────────────────────────────┘ -->
-      <div :class="['border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col shrink-0 transition-all duration-200', rightCollapsed ? 'w-10' : 'w-80']">
-        <button @click="toggleRightBar" class="h-8 border-b border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shrink-0" title="面板">
-          <svg :class="['w-4 h-4 transition-transform', rightCollapsed ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" width="18" height="18" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-        </button>
-        <template v-if="!rightCollapsed">
+      <!-- 遮罩层 -->
+      <div v-if="!rightCollapsed" @click="panelStore.closeFloatingPanel()"
+        class="absolute inset-0 bg-black/20 z-30 transition-opacity"></div>
+      <!-- 浮出面板 -->
+      <div v-if="!rightCollapsed"
+        class="absolute right-0 top-0 bottom-0 w-full max-w-[480px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col shrink-0 z-40 shadow-2xl">
+        <!-- 面板顶部栏 -->
+        <div class="h-10 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-3 bg-white dark:bg-gray-800 shrink-0">
+          <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">{{ floatingPanelTitle }}</span>
+          <button @click="panelStore.closeFloatingPanel()" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 hover:text-gray-600" title="关闭面板">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
         
 
         <!-- 事件日志条（可折叠） -->
@@ -562,7 +578,6 @@
           @run="runScore"
           @close="activeRightPanel = null"
         />
-        </template>
       </div>
     </div>
 
@@ -1328,7 +1343,25 @@ const sourceBadgeClass = (source) => {
 // 右侧浮动功能面板系统（P0-3: 顶部功能向左弹出，避免挤压）
 // ═══════════════════════════════════════════════════════════════════
 // activeRightPanel now managed by panelStore
-const rightPanelWidth = ref(380)   // 面板宽度（可拖拽调整）
+const rightPanelWidth = ref(480)   // P1: 面板宽度增大到 480px
+
+// P1: 更多工具下拉菜单
+const showMoreToolsDropdown = ref(false)
+const moreToolsRef = ref(null)
+
+// P1: 浮出面板标题
+const floatingPanelTitle = computed(() => {
+  if (showLiteraturePanel.value) return '📚 文献库'
+  if (showAIPanel.value) return '🤖 AI 助手'
+  const titles = {
+    citation: '✅ 引用核查',
+    consensus: '📊 共识度分析',
+    plag: '🔍 查重 + AIGC 检测',
+    score: '⭐ 论文评分',
+    snapshots: '📜 版本历史',
+  }
+  return titles[activeRightPanel.value] || '工具面板'
+})
 
 // 切换右侧面板（互斥，点同一按钮关闭）— now delegates to store
 const toggleRightPanel = (name) => {
@@ -2497,6 +2530,10 @@ const handleClickOutside = (e) => {
   // 点击外部关闭阶段下拉
   if (showStageDropdown.value && !e.target.closest('.stage-dropdown-anchor')) {
     showStageDropdown.value = false
+  }
+  // P1: 点击外部关闭"更多工具"下拉
+  if (showMoreToolsDropdown.value && moreToolsRef.value && !moreToolsRef.value.contains(e.target)) {
+    showMoreToolsDropdown.value = false
   }
 }
 onMounted(() => {
