@@ -207,7 +207,6 @@ class ScholarChatRequest(BaseModel):
     depth: int = 2          # 1=快速, 2=标准, 3=深度
     checkpoint: bool = True  # 每阶段后等待用户确认（默认开启）
     client_id: str = ""     # 前端 localStorage client UUID，用于多用户隔离
-    client_id: str = ""     # 前端 localStorage 的 clientId，用于多用户隔离
 
 
 class LiteratureSearchRequest(BaseModel):
@@ -674,8 +673,32 @@ def register_to(app):
                         kwargs["section"] = req.section
                     if req.depth and agent_name == "literature":
                         kwargs["depth"] = req.depth
+                    # 保存用户消息到DB
+                    if pid > 0:
+                        try:
+                            db.add_message(pid, "user", req.message, agent_name)
+                        except Exception:
+                            pass
+                    _agent_content_parts = []
                     async for evt in agent.run(**kwargs):
                         yield await _sse_rl(evt, client_id)
+                        # 收集Agent回复内容
+                        if evt.get("type") == "content" and evt.get("text"):
+                            _agent_content_parts.append(evt["text"])
+                        # 非pipeline模式：大纲Agent完成后保存到DB
+                        if evt.get("type") == "outline" and agent_name == "outline" and pid > 0:
+                            try:
+                                outline_sections = evt.get("sections", [])
+                                if outline_sections:
+                                    db.save_outline(pid, outline_sections)
+                            except Exception as e:
+                                logger.warning(f"Failed to save outline to DB: {e}")
+                    # 保存Agent回复消息到DB
+                    if pid > 0 and _agent_content_parts:
+                        try:
+                            db.add_message(pid, "assistant", "".join(_agent_content_parts), agent_name)
+                        except Exception:
+                            pass
 
             except HTTPException as e:
                 yield _sse({"type": "error", "message": str(e.detail)})
@@ -842,12 +865,15 @@ def register_to(app):
         content = ctx.draft or ""
         papers = ctx.papers or []
         abstract = ctx.abstract if hasattr(ctx, "abstract") else ""
-        
+
         # 从数据库补全/覆盖内容（手动编辑的内容在 section_contents 表）
         try:
             if pid > 0:
                 proj = db.get_project(pid)
                 if proj:
+                    # 用项目标题作为默认导出标题
+                    if not title or title == "未命名论文":
+                        title = proj.get("title") or title
                     db_contents = proj.get("contents", {})
                     if db_contents:
                         # 数据库有编辑内容，按章节顺序拼接
@@ -855,9 +881,9 @@ def register_to(app):
                         if outline:
                             sections = []
                             for sec in outline:
-                                sec_id = sec.get("id") or sec.get("number", "")
-                                sec_title = sec.get("title", "")
-                                sec_num = sec.get("number", "")
+                                sec_id = sec.get("section_key") or sec.get("id", "")
+                                sec_title = sec.get("section_title") or sec.get("title", "")
+                                sec_num = sec.get("section_number") or sec.get("number", "")
                                 body = db_contents.get(sec_id, "")
                                 if body.strip():
                                     heading = f"## {sec_num} {sec_title}" if sec_num else f"## {sec_title}"

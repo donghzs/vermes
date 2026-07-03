@@ -719,7 +719,7 @@ async def _search_core_free(query: str, limit: int = 10) -> list[PaperResult]:
         logger.info("[ScholarForge] CORE 冷却中，跳过")
         return []
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get("https://api.core.ac.uk/v3/search/works", params={
                 "q": query,
                 "limit": min(limit, 10),
@@ -1019,7 +1019,7 @@ async def check_source_connectivity(source_name: str, timeout: float = 5.0) -> d
 
     url, params = source_test_endpoints[source_name]
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(url, params=params, timeout=timeout)
             resp.raise_for_status()
             info["accessible"] = True
