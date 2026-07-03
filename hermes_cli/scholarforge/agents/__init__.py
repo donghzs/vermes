@@ -631,7 +631,10 @@ class LiteratureAgent(BaseAgent):
    - ✅ 正确："张三等人提出了基于CNN的方法[1]"
    - ❌ 禁止：[@张三2025]、[Author2020]、(作者, 年份) 等非纯数字格式
 5. 每个引用编号对应上方文献列表中同编号的文献
-6. 在末尾列出完整参考文献
+6. **引用真实化**：只能引用上方列出的文献，严禁编造。如文献不足，用"[此处需补充文献]"标注
+7. 在末尾列出完整参考文献（含 DOI/URL）
+8. **去 AI 痕迹**：段落长短交替，关键论点短句强调；禁止使用"有趣的是""值得注意的是""进一步地"等 AI 典型过渡词；每篇被引文献都要指出其局限
+9. **数学公式**：涉及方法论概念时给出数学公式（LaTeX $$...$$ 语法），如相似度计算、优化目标等
 
 请用学术规范语言，2000-3000 字。
 """ + get_paper_type_prompt(self.ctx.paper_type)
@@ -915,8 +918,10 @@ class WritingAgent(BaseAgent):
             ])
             
             # 引用映射：使用全局编号（与 papers_text 一致），避免重排后错位
-            rag_ref_map = "\n".join([
-                f"  [{self.ctx.papers.index(p) + 1 if p in self.ctx.papers else '?'}] {p.title[:80]} — {', '.join(p.authors[:2] if hasattr(p, 'authors') else [])} ({getattr(p, 'year', '')})"
+            # 构建真实引用信息（含 DOI/URL）
+            real_ref_map = "\n".join([
+                f"  [{self.ctx.papers.index(p) + 1 if p in self.ctx.papers else i+1}] {p.title} — {', '.join(p.authors[:2] if hasattr(p, 'authors') and p.authors else [])} ({getattr(p, 'year', '')})\n"
+                f"    来源: {getattr(p, 'source', '')} | DOI: {getattr(p, 'doi', '') or '无'} | URL: {getattr(p, 'url', '')}"
                 for i, (p, _) in enumerate(relevant_papers)
             ])
 
@@ -930,7 +935,7 @@ class WritingAgent(BaseAgent):
 {context}
 
 【本章专属文献】以下文献按与本章主题的相关性排序，编号固定，必须严格使用：
-{rag_ref_map}
+{real_ref_map}
 
 【写作要求】
 1. 学术规范语言，逻辑严谨，段落清晰
@@ -938,12 +943,30 @@ class WritingAgent(BaseAgent):
    - ✅ 正确示例："深度学习在图像识别中取得了显著成果[1][3]"
    - ❌ 禁止：[@张三2025]、[张三2025]、(作者, 年份)、[Author2020] 等任何非纯数字格式
    - 每个引用编号必须对应上方【本章专属文献】的同编号文献
-3. 只引用上方列出的文献，严禁编造不存在的引用
-4. 字数按{self.ctx.paper_type}标准：本科/课程每节1500-2500字，硕士/综述3000-5000字，博士5000-8000字，期刊/会议1000-2000字
-5. 输出格式：Markdown，章节标题用 ## 开头
+3. **引用真实化铁律**：只能引用上方列出的文献，严禁编造不存在的引用编号或文献
+   - 如果某个论点没有对应文献支撑，宁可不引用，也不要编造
+   - 如果上方文献不足以支撑某个论点，用"[此处需补充文献]"标注
+4. **数学公式要求**（关键！）：
+   - 框架设计/方法/算法章节必须包含数学公式，使用 LaTeX 语法 $$...$$ 或 $...$
+   - 至少包含：损失函数、优化目标、选择概率、更新规则等核心公式
+   - 公式后必须有变量说明（如"其中 α 为学习率，θ 为策略参数"）
+   - 其他章节在涉及数学概念时也应给出公式
+5. **去 AI 痕迹要求**：
+   - 段落长短交替，不要每段都是 4-6 句的均衡长度
+   - 关键论点用短句强调（1-2句话独立成段）
+   - 禁止使用以下 AI 典型过渡词："有趣的是"、"值得注意的是"、"进一步地"、"值得一提的是"、"需要指出的是"
+   - 技术细节要具体（给出参数值、配置、实现细节），不要泛泛而谈
+   - 文献综述要有批判性分析（每篇被引文献都要指出其局限），不要只罗列
+6. **实验设计要求**（仅实验/结果章节）：
+   - 基线方法必须是同一类别或可直接对比的方法
+   - 所有对比方法的评估指标必须单位统一（如全部用百分比或全部用小数）
+   - 说明实验设置：训练轮数、学习率、批量大小、随机种子、硬件环境
+   - 表格中的数据要标注来源（复现还是引用其他论文）
+7. 字数按{self.ctx.paper_type}标准：本科/课程每节1500-2500字，硕士/综述3000-5000字，博士5000-8000字，期刊/会议1000-2000字
+8. 输出格式：Markdown，章节标题用 ## 开头
 
 请直接输出该章节的完整内容（不要重复本章标题）：
-""" + get_paper_type_prompt(self.ctx.paper_type)
+            """ + get_paper_type_prompt(self.ctx.paper_type)
 
             try:
                 content = await self.llm(prompt)
@@ -1002,7 +1025,7 @@ class WritingAgent(BaseAgent):
         if conclusion_part:
             sections.append(conclusion_part + "\n")
         
-        # 添加参考文献列表（仅当 draft 尚未包含参考文献节时）
+        # 添加参考文献列表（含 DOI/URL，确保引用真实可查）
         if self.ctx.papers and re.search(r'(?i)#{1,3}\s*(参考文献|references)', self.ctx.draft) is None:
             refs = ["## 参考文献\n"]
             for i, p in enumerate(self.ctx.papers):
@@ -1011,7 +1034,18 @@ class WritingAgent(BaseAgent):
                     authors += " 等"
                 year = getattr(p, 'year', '')
                 venue = getattr(p, 'venue', '') or getattr(p, 'source', '')
-                refs.append(f"[{i+1}] {authors}. {p.title}. {venue}, {year}.")
+                doi = getattr(p, 'doi', '') or ''
+                url = getattr(p, 'url', '') or ''
+                paper_id = getattr(p, 'paper_id', '') or ''
+                # 构建完整引用：作者. 标题. 期刊, 年份. DOI/URL
+                ref_line = f"[{i+1}] {authors}. {p.title}. {venue}, {year}."
+                if doi:
+                    ref_line += f" DOI: {doi}."
+                elif url:
+                    ref_line += f" URL: {url}."
+                elif paper_id:
+                    ref_line += f" [{paper_id}]."
+                refs.append(ref_line)
             sections.append("\n".join(refs))
         
         self.ctx.draft = "\n\n".join(sections)
@@ -1164,6 +1198,15 @@ class RefinementAgent(BaseAgent):
 5. **禁止编造数据或案例**
 6. 保持章节标题不变
 7. **保持原文长度和内容**：只做语言层面的修正，不要删除段落、不要缩写内容
+8. **去 AI 痕迹**：
+   - 段落长短交替，打破“每段4-6句”的均衡节奏
+   - 关键论点用短句强调（1-2句话独立成段）
+   - 删除以下 AI 典型过渡词：“有趣的是”“值得注意的是”“进一步地”“值得一提的是”“需要指出的是”
+   - 将模糊表述替换为具体技术细节（参数值、配置、实现细节）
+9. **公式检查**：
+   - 如果原文包含 $$...$$ 或 $...$ 公式，确保公式格式正确、变量有说明
+   - 如果章节涉及方法论但缺少公式，在适当位置补充（用 LaTeX 语法）
+10. **引用格式检查**：确保所有引用为 [1] [2] 纯数字格式，发现非数字格式则修正
 
 原文：
 {section_text}
