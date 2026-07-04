@@ -17,6 +17,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# RAG retriever 缓存 (project_id → (paper_count, PaperRetriever))
+_rag_cache: dict = {}
+
 # ScholarForge 默认 system prompt — 防止模型自我介绍的闲聊式回复
 _SCHOLAR_SYSTEM = (
     "你是一个专业的中文学术写作助手（ScholarForge）。"
@@ -391,23 +394,29 @@ def register_to(app):
         if papers:
             try:
                 from hermes_cli.scholarforge.rag import PaperRetriever
-                rag = PaperRetriever()
-                # 转换为 PaperCard 格式
                 from hermes_cli.scholarforge.agents import PaperCard
-                paper_cards = []
-                for p in papers[:20]:  # 最多加载20篇
-                    paper_cards.append(PaperCard(
-                        paper_id=p.get("paper_id", p.get("id", "")),
-                        title=p.get("title", ""),
-                        authors=p.get("authors", []),
-                        year=p.get("year", ""),
-                        venue=p.get("venue", ""),
+                # 缓存 retriever（文献数不变时复用）
+                cache_key = pid
+                cached = _rag_cache.get(cache_key)
+                if cached and cached[0] == len(papers):
+                    rag = cached[1]
+                else:
+                    rag = PaperRetriever()
+                    paper_cards = []
+                    for p in papers[:20]:
+                        paper_cards.append(PaperCard(
+                            paper_id=p.get("paper_id", p.get("id", "")),
+                            title=p.get("title", ""),
+                            authors=p.get("authors", []),
+                            year=p.get("year", ""),
+                            venue=p.get("venue", ""),
                         abstract=p.get("abstract", ""),
                         citation_count=p.get("citation_count", 0),
                         url=p.get("url", ""),
                         source=p.get("source", ""),
                     ))
-                rag.load_papers(paper_cards)
+                    rag.load_papers(paper_cards)
+                    _rag_cache[cache_key] = (len(papers), rag)
                 results = rag.retrieve_for_writing(section_title, context_text, top_k=3)
                 if results:
                     rag_context = "\n".join([
@@ -816,6 +825,16 @@ def register_to(app):
         ctx = _get_ctx(str(req.project_id or "default"), client_id=req.client_id or "")
         pid = int(req.project_id or 0)
 
+        # 加载项目信息（target_words 等）
+        if pid > 0:
+            try:
+                _proj = db.get_project(pid)
+                if _proj:
+                    ctx.target_words = int(_proj.get("target_words", 8000))
+                    ctx.paper_type = _proj.get("paper_type", ctx.paper_type)
+            except Exception:
+                pass
+
         # 加载项目 Agent-Provider 绑定（自动智能分配模型）
         agent_cfg = _resolve_agent_providers(pid)
 
@@ -839,6 +858,7 @@ def register_to(app):
                                 if p:
                                     ctx.topic = p.get("title", "")
                                     ctx.paper_type = p.get("paper_type", "")
+                                    ctx.target_words = int(p.get("target_words", 8000))
                                 # 恢复大纲
                                 outline_data = db.get_outline(pid)
                                 if outline_data:

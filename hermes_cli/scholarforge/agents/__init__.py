@@ -174,6 +174,7 @@ class ProjectContext:
         self.project_id = project_id
         self.topic: str = ""
         self.paper_type: str = "本科论文"  # 论文类型，影响所有 Agent 的写作风格
+        self.target_words: int = 8000  # 用户设定的目标字数
         self.papers: list[PaperCard] = []
         self.citations: list[Citation] = []
         self.outline: dict | None = None
@@ -998,7 +999,7 @@ class WritingAgent(BaseAgent):
    - 所有对比方法的评估指标必须单位统一（如全部用百分比或全部用小数）
    - 说明实验设置：训练轮数、学习率、批量大小、随机种子、硬件环境
    - 表格中的数据要标注来源（复现还是引用其他论文）
-7. 字数按{self.ctx.paper_type}标准：本科/课程每节1500-2500字，硕士/综述3000-5000字，博士5000-8000字，期刊/会议1000-2000字
+7. 字数要求：全文目标约{self.ctx.target_words}字，本章约{max(800, self.ctx.target_words // max(len(real_sections), 1))}字
 8. 输出格式：Markdown，章节标题用 ## 开头
 
 请直接输出该章节的完整内容（不要重复本章标题）：
