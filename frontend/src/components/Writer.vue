@@ -391,20 +391,17 @@
               </span>
             </div>
             <div class="flex-1 relative">
-            <textarea
+            <CodeMirrorEditor
               ref="editorRef"
               v-model="currentContent"
+              :dark="isDarkMode"
+              :placeholder="'开始写作...选中文字可 AI 改写'"
+              :on-tab-complete="onTabComplete"
               @input="onEditorInput"
               @mouseup="onTextSelect"
               @keyup="onTextSelect"
               @keydown="onEditorKeydown"
-              class="w-full h-full p-4 resize-none outline-none font-mono text-sm leading-relaxed text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900"
-              placeholder="开始写作...选中文字可 AI 改写"
-              spellcheck="false"
-              aria-label="论文正文编辑器"
-              role="textbox"
-              aria-multiline="true"
-            ></textarea>
+            />
             <!-- P0-1: 逐句补全建议 overlay -->
             <div v-if="aiSuggestion" class="absolute top-0 left-0 right-0 p-4 pointer-events-none font-mono text-sm leading-relaxed whitespace-pre-wrap" style="color: rgba(156,163,175,0.5)" aria-hidden="true">
               <span class="invisible">{{ currentContent.slice(0, cursorPos) }}</span><span>{{ aiSuggestion }}</span>
@@ -835,6 +832,7 @@ const SnapshotsPanel = defineAsyncComponent(() => import('./panels/SnapshotsPane
 const AIPanel = defineAsyncComponent(() => import('./panels/AIPanel.vue'))
 const PlagPanel = defineAsyncComponent(() => import('./panels/PlagPanel.vue'))
 const ScorePanel = defineAsyncComponent(() => import('./panels/ScorePanel.vue'))
+const CodeMirrorEditor = defineAsyncComponent(() => import('./CodeMirrorEditor.vue'))
 import { useScholarPanelStore } from '../stores/scholar-panel.js'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
@@ -1084,25 +1082,21 @@ const selectedText = ref('')
 const inlineEditLoading = ref(false)
 
 const onTextSelect = () => {
-  const ta = editorRef.value
-  if (!ta) return
-  const start = ta.selectionStart
-  const end = ta.selectionEnd
+  const ed = editorRef.value
+  if (!ed) return
+  const start = ed.getSelectionStart ? ed.getSelectionStart() : 0
+  const end = ed.getSelectionEnd ? ed.getSelectionEnd() : 0
   const text = currentContent.value.slice(start, end).trim()
   if (text.length < 10) {
     showSelectionMenu.value = false
     return
   }
   selectedText.value = text
-  // 计算菜单位置（在选中文字上方居中）
-  const rect = ta.getBoundingClientRect()
-  const lineHeight = 20
-  const charWidth = 8.4 // monospace 近似
-  const cursorTop = (start > 0 ? currentContent.value.slice(0, start).split('\n').length - 1 : 0) * lineHeight
-  const cursorLeft = ((start > 0 ? currentContent.value.slice(currentContent.value.lastIndexOf('\n', start - 1) + 1, start).length : 0) * charWidth)
+  // 计算菜单位置（简化：用 CM 视口坐标）
+  const rect = { width: 800, height: 600 }
   selectionMenuStyle.value = {
-    left: `${Math.min(cursorLeft + 10, rect.width - 420)}px`,
-    top: `${Math.max(cursorTop - 42, 0)}px`
+    left: `20px`,
+    top: `20px`
   }
   showSelectionMenu.value = true
   
@@ -1116,7 +1110,7 @@ const inlineEdit = async (action) => {
   showSelectionMenu.value = false
   if (!selectedText.value || inlineEditLoading.value) return
   inlineEditLoading.value = true
-  const ta = editorRef.value
+  const ed = editorRef.value
   try {
     const r = await fetch('/api/scholar/inline-edit', {
       method: 'POST',
@@ -1126,14 +1120,14 @@ const inlineEdit = async (action) => {
     if (!r.ok) throw new Error(await r.text())
     const { text: newText } = await r.json()
     // 替换选中文本
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
+    const start = ed?.getSelectionStart?.() ?? 0
+    const end = ed?.getSelectionEnd?.() ?? 0
     currentContent.value = currentContent.value.slice(0, start) + newText + currentContent.value.slice(end)
     onEditorInput()
     // 选中替换后的文本
     setTimeout(() => {
-      ta.focus()
-      ta.setSelectionRange(start, start + newText.length)
+      ed?.focus?.()
+      ed?.setSelection?.(start, start + newText.length)
     }, 50)
   } catch (e) {
     toast.error('AI 编辑失败: ' + e.message)
@@ -1164,9 +1158,9 @@ const renderedContent = computed(() => {
 const editor = {
   format: (type) => {
     if (!editorRef.value) return
-    const ta = editorRef.value
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
+    const ed = editorRef.value
+    const start = ed.getSelectionStart ? ed.getSelectionStart() : 0
+    const end = ed.getSelectionEnd ? ed.getSelectionEnd() : 0
     const selected = currentContent.value.slice(start, end)
     let formatted = ''
     if (type === 'bold') {
@@ -1191,12 +1185,12 @@ const editor = {
     }
     if (selected) {
       currentContent.value = currentContent.value.slice(0, start) + formatted + currentContent.value.slice(end)
-      ta.setSelectionRange(start + 2, start + 2 + selected.length)
+      ed.setSelection ? ed.setSelection(start + 2, start + 2 + selected.length) : null
     } else {
       currentContent.value = currentContent.value.slice(0, start) + formatted + currentContent.value.slice(end)
-      ta.setSelectionRange(start + 2, start + 2 + formatted.length - 4)
+      ed.setSelection ? ed.setSelection(start + 2, start + 2 + formatted.length - 4) : null
     }
-    ta.focus()
+    ed.focus ? ed.focus() : null
     onEditorInput()
   }
 }
@@ -1463,6 +1457,14 @@ const semanticSearchResults = ref(null)  // null=未搜索, array=搜索结果
 const semanticSearchLoading = ref(false)
 let _semanticSearchTimer = null
 
+// 暗色模式检测
+const isDarkMode = ref(false)
+const updateDarkMode = () => {
+  isDarkMode.value = document.documentElement.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+onMounted(() => { updateDarkMode(); window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateDarkMode) })
+onUnmounted(() => { window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', updateDarkMode) })
+
 // 标签系统
 const literatureTags = ref({})  // { lit_id: ['tag1', 'tag2'] }
 const allTags = ref([])  // [{ tag, count }]
@@ -1598,8 +1600,8 @@ const selectLiterature = (paper) => {
 
 const insertCitation = (paper) => {
   if (!editorRef.value) return
-  const ta = editorRef.value
-  const start = ta.selectionStart
+  const ed = editorRef.value
+  const start = ed.getSelectionStart ? ed.getSelectionStart() : 0
   if (paper) {
     // P1-6: 统一 [n] 纯数字格式，与 _clean_citation_format 后端一致
     const citeKey = paper.citeKey || `ref${paper.id || Date.now()}`
@@ -1610,12 +1612,12 @@ const insertCitation = (paper) => {
     }
     const cite = `[${num}]`
     currentContent.value = currentContent.value.slice(0, start) + cite + currentContent.value.slice(start)
-    ta.setSelectionRange(start + cite.length, start + cite.length)
+    ed.setSelection ? ed.setSelection(start + cite.length, start + cite.length) : null
   } else {
     const cite = '[?]'
     currentContent.value = currentContent.value.slice(0, start) + cite + currentContent.value.slice(start)
   }
-  ta.focus()
+  ed.focus ? ed.focus() : null
   onEditorInput()
 }
 
@@ -2737,9 +2739,9 @@ const autocompleteLoading = ref(false)
 
 const fetchAutocomplete = async () => {
   if (!project.value?.id || !activeSection.value) return
-  const ta = editorRef.value
-  if (!ta) return
-  const pos = ta.selectionStart
+  const ed = editorRef.value
+  if (!ed) return
+  const pos = ed.getSelectionStart ? ed.getSelectionStart() : 0
   cursorPos.value = pos
   const textBefore = currentContent.value.slice(0, pos)
   // 至少 20 字符上下文才触发
@@ -2769,19 +2771,33 @@ const fetchAutocomplete = async () => {
   finally { autocompleteLoading.value = false }
 }
 
+// CodeMirror Tab 补全回调
+const onTabComplete = (cmView) => {
+  if (!aiSuggestion.value) return false
+  const pos = cmView.state.selection.main.head
+  const suggestion = aiSuggestion.value
+  cmView.dispatch({
+    changes: { from: pos, to: pos, insert: suggestion },
+    selection: { anchor: pos + suggestion.length },
+  })
+  aiSuggestion.value = ''
+  onEditorInput()
+  return true
+}
+
 const onEditorKeydown = (e) => {
   // Tab 接受补全
   if (e.key === 'Tab' && aiSuggestion.value) {
     e.preventDefault()
-    const ta = editorRef.value
-    const pos = ta.selectionStart
+    const ed = editorRef.value
+    const pos = ed.getSelectionStart ? ed.getSelectionStart() : 0
     const suggestion = aiSuggestion.value
     currentContent.value = currentContent.value.slice(0, pos) + suggestion + currentContent.value.slice(pos)
     aiSuggestion.value = ''
     nextTick(() => {
       const newPos = pos + suggestion.length
-      ta.setSelectionRange(newPos, newPos)
-      ta.focus()
+      ed.setSelection ? ed.setSelection(newPos, newPos) : null
+      ed.focus ? ed.focus() : null
       onEditorInput()
     })
     return

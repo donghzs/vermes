@@ -86,6 +86,11 @@ export default defineConfig({
         manualChunks: {
           'katex': ['katex', 'markdown-it-texmath'],
           'vendor': ['vue', 'vue-router'],
+          'codemirror': [
+            '@codemirror/state', '@codemirror/view', '@codemirror/commands',
+            '@codemirror/language', '@codemirror/autocomplete', '@codemirror/search',
+            '@codemirror/lang-markdown',
+          ],
         }
       }
     }
