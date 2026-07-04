@@ -2267,6 +2267,10 @@ const sendToAI = async (overrides = {}) => {
               })
             }
             events.value.push({ type: 'searching', message: `📄 找到文献: ${(evt.paper.title || '').slice(0, 60)}`, time: Date.now() })
+          } else if (evt.type === 'warning') {
+            // 通用警告事件 — 展示给用户
+            events.value.push({ type: 'warning', message: evt.message || '警告', time: Date.now() })
+            toast.warning(evt.message || '警告')
           } else if (evt.type === 'hallucination_warning') {
             // 幻觉警告事件 — 展示给用户
             events.value.push({ type: 'warning', message: evt.message || '检测到疑似虚构系统名', time: Date.now() })
@@ -2446,6 +2450,10 @@ const runStormPipeline = async () => {
               })
             }
             events.value.push({ type: 'searching', message: `📄 找到文献: ${(evt.paper.title || '').slice(0, 60)}`, time: Date.now() })
+          } else if (evt.type === 'warning') {
+            // 通用警告事件 — 展示给用户
+            events.value.push({ type: 'warning', message: evt.message || '警告', time: Date.now() })
+            toast.warning(evt.message || '警告')
           } else if (evt.type === 'hallucination_warning') {
             // 幻觉警告事件 — 展示给用户
             events.value.push({ type: 'warning', message: evt.message || '检测到疑似虚构系统名', time: Date.now() })

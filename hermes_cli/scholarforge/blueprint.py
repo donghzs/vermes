@@ -76,7 +76,8 @@ def _list_configured_providers() -> list[dict]:
                     "base_url": base_url.rstrip("/"),
                     "model": resolved_model or _PROVIDER_FALLBACK_MODELS.get(prov_key, ""),
                 })
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Provider discovery failed: {e}", exc_info=True)
             continue
     return result
 
@@ -253,8 +254,8 @@ def _get_ctx(project_id: str = "default", client_id: str = ""):
                     outline_rows = proj.get("outline", [])
                     if outline_rows:
                         ctx.outline = {"sections": outline_rows}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Session context restore failed: {e}", exc_info=True)
         _session_contexts[ctx_key] = ctx
     return _session_contexts[ctx_key]
 
@@ -538,7 +539,8 @@ def register_to(app):
                     doi=fields.get('doi', ''),
                     url=fields.get('url', ''))
                 added += 1
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Literature import skipped: {e}")
                 skipped += 1
         
         return {"added": added, "skipped": skipped, "total": added + skipped}
@@ -880,8 +882,8 @@ def register_to(app):
                 if _proj:
                     ctx.target_words = int(_proj.get("target_words", 8000))
                     ctx.paper_type = _proj.get("paper_type", ctx.paper_type)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Context restore from DB failed: {e}", exc_info=True)
 
         # 加载项目 Agent-Provider 绑定（自动智能分配模型）
         agent_cfg = _resolve_agent_providers(pid)
@@ -969,15 +971,15 @@ def register_to(app):
                                 outline_data = ctx.outline.get("sections", []) if isinstance(ctx.outline, dict) else []
                                 if outline_data:
                                     db.save_outline(pid, outline_data)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug(f"Failed to save outline after pipeline: {e}")
 
                         # 写作完成后，保存组装后的完整论文到 section_contents
                         if stage == "writing" and pid > 0:
                             try:
                                 db.save_section_content(pid, "full_paper", ctx.draft or "")
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug(f"Failed to save full paper after pipeline: {e}")
 
                         # Checkpoint: 非最后阶段时，发出 wait 信号暂停等待用户确认
                         if use_checkpoint and stage_idx < len(pipeline_stages) - 1:
@@ -1032,8 +1034,8 @@ def register_to(app):
                     if pid > 0:
                         try:
                             db.add_message(pid, "user", req.message, agent_name)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Failed to save user message to DB: {e}")
                     _agent_content_parts = []
                     async for evt in agent.run(**kwargs):
                         yield await _sse_rl(evt, client_id)
@@ -1052,8 +1054,8 @@ def register_to(app):
                     if pid > 0 and _agent_content_parts:
                         try:
                             db.add_message(pid, "assistant", "".join(_agent_content_parts), agent_name)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Failed to save agent reply to DB: {e}")
 
             except HTTPException as e:
                 yield _sse({"type": "error", "message": str(e.detail)})
