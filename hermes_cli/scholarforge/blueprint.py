@@ -1272,6 +1272,13 @@ def register_to(app):
             try:
                 from urllib.parse import quote
                 pdf_bytes = export_pdf(title, content, papers, abstract=abstract)
+                # 检测是否为 HTML fallback（非 PDF 二进制）
+                is_html_fallback = pdf_bytes[:5] in (b'<!DOC', b'<html', b'<!doc')
+                if is_html_fallback:
+                    return Response(
+                        content=pdf_bytes,
+                        media_type="text/html; charset=utf-8",
+                    )
                 filename_ascii = "paper.pdf"
                 filename_star = quote(f"{title}.pdf", safe="")
                 return Response(

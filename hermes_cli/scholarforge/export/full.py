@@ -107,117 +107,8 @@ def _build_paper_text(title: str, content: str, papers: list, abstract: str = ""
 # ============================================================================
 # PDF 导出（Markdown → HTML → WeasyPrint）
 # ============================================================================
-_PDF_CSS = """
-@page {
-    size: A4;
-    margin: 2.5cm 2cm 2.5cm 2cm;
-    @bottom-center {
-        content: counter(page) " / " counter(pages);
-        font-family: "PingFang SC", "Heiti SC", "DejaVu Sans", sans-serif;
-        font-size: 9pt;
-        color: #666;
-    }
-    @top-right {
-        content: "ScholarForge";
-        font-family: "PingFang SC", "Heiti SC", "DejaVu Sans", sans-serif;
-        font-size: 8pt;
-        color: #999;
-    }
-}
-body {
-    font-family: "PingFang SC", "Heiti SC", "STSong", "STKaiti", serif;
-    font-size: 11pt;
-    line-height: 1.6;
-    color: #222;
-    text-align: justify;
-}
-h1 {
-    font-size: 22pt;
-    text-align: center;
-    margin: 1.5em 0 1em 0;
-    font-weight: bold;
-    color: #1a1a1a;
-    border-bottom: 2px solid #333;
-    padding-bottom: 0.3em;
-}
-h2 {
-    font-size: 15pt;
-    margin: 1.5em 0 0.8em 0;
-    font-weight: bold;
-    color: #2a2a2a;
-    border-bottom: 1px solid #ddd;
-    padding-bottom: 0.2em;
-}
-h3 {
-    font-size: 12.5pt;
-    margin: 1.2em 0 0.6em 0;
-    font-weight: bold;
-    color: #333;
-}
-h4 {
-    font-size: 11.5pt;
-    margin: 1em 0 0.5em 0;
-    font-weight: bold;
-}
-p {
-    margin: 0.5em 0;
-    text-indent: 0;
-}
-ul, ol {
-    margin: 0.5em 0;
-    padding-left: 2em;
-}
-li {
-    margin: 0.3em 0;
-}
-strong { font-weight: bold; }
-em { font-style: italic; }
-code {
-    font-family: "DejaVu Sans Mono", "Courier New", monospace;
-    font-size: 10pt;
-    background: #f5f5f5;
-    padding: 0.1em 0.3em;
-    border-radius: 3px;
-}
-pre {
-    background: #f5f5f5;
-    padding: 0.8em;
-    border-radius: 4px;
-    overflow-x: auto;
-    font-size: 9.5pt;
-    line-height: 1.4;
-}
-pre code { background: transparent; padding: 0; }
-blockquote {
-    border-left: 3px solid #ccc;
-    margin: 0.8em 0;
-    padding: 0.3em 1em;
-    color: #555;
-    background: #fafafa;
-}
-table {
-    border-collapse: collapse;
-    margin: 1em 0;
-    width: 100%;
-    font-size: 10pt;
-}
-th, td {
-    border: 1px solid #999;
-    padding: 0.4em 0.7em;
-    text-align: left;
-}
-th {
-    background: #eee;
-    font-weight: bold;
-}
-hr {
-    border: none;
-    border-top: 1px solid #ddd;
-    margin: 1.5em 0;
-}
-a { color: #1a5490; text-decoration: none; }
-a:hover { text-decoration: underline; }
-"""
+from .pdf_css import _PDF_CSS
+
 
 
 def export_pdf(title: str, content: str, papers: list, abstract: str = "") -> bytes:
@@ -261,9 +152,21 @@ def export_pdf(title: str, content: str, papers: list, abstract: str = "") -> by
             return _export_pdf_reportlab(title, md_text)
         except Exception as e2:
             logger.error(f"reportlab PDF fallback also failed: {e2}", exc_info=True)
-            # Final fallback: 返回 HTML 让浏览器打印
+            # Final fallback: 返回带打印脚本的 HTML 页面
             logger.info("Returning HTML for browser print-to-PDF")
-            return full_html.encode("utf-8")
+            print_html = (
+                "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n"
+                '<meta charset=\"UTF-8\">\n'
+                f"<title>{html.escape(title)}</title>\n"
+                '<style>body{font-family:sans-serif;padding:2em;max-width:800px;margin:0 auto}</style>\n'
+                '</head>\n<body>\n'
+                '<h1 style="color:#999">⚠️ PDF 导出失败，请使用浏览器打印功能（Ctrl/Cmd+P）保存为 PDF</h1>\n'
+                '<hr/>\n'
+                f'{html_body}\n'
+                '<script>window.onload=()=>{window.print()}</script>\n'
+                '</body>\n</html>\n'
+            )
+            return print_html.encode("utf-8")
 
 
 def _export_pdf_reportlab(title: str, md_text: str) -> bytes:

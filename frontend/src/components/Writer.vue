@@ -2238,7 +2238,7 @@ const sendToAI = async (overrides = {}) => {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ content: sectionContents.value[evt.section_key] || '' }),
-                    }).catch(() => {})
+                    }).catch(e=>console.debug("[ScholarForge] silent fail:", e))
                   }
                   delete _sseSaveTimers[evt.section_key]
                 }, 5000)
@@ -2247,6 +2247,26 @@ const sendToAI = async (overrides = {}) => {
           } else if (evt.type === 'thinking' && evt.message) {
             // thinking 事件不进正文, 只在事件日志显示
             events.value.push({ type: 'thinking', message: evt.message, time: Date.now() })
+          } else if (evt.type === 'citation' && evt.paper) {
+            // 实时文献事件 — 局部 push 去重
+            const pid = evt.paper.id || evt.paper.url || evt.paper.title
+            if (pid && !literature.value.some(l => (l.id || l.url || l.title) === pid)) {
+              literature.value.push({
+                id: evt.paper.id, title: evt.paper.title, authors: evt.paper.authors,
+                year: evt.paper.year, venue: evt.paper.venue, abstract: evt.paper.abstract,
+                url: evt.paper.url, doi: evt.paper.doi,
+              })
+            }
+            events.value.push({ type: 'searching', message: `📄 找到文献: ${(evt.paper.title || '').slice(0, 60)}`, time: Date.now() })
+          } else if (evt.type === 'hallucination_warning') {
+            // 幻觉警告事件 — 展示给用户
+            events.value.push({ type: 'warning', message: evt.message || '检测到疑似虚构系统名', time: Date.now() })
+            if (evt.hallucinated_systems?.length) {
+              toast.warning(`⚠️ 疑似虚构系统: ${evt.hallucinated_systems.slice(0, 3).join(', ')}`)
+            }
+          } else if (evt.type === 'personas' && evt.personas) {
+            // STORM 研究视角事件
+            events.value.push({ type: 'thinking', message: `🎯 研究视角: ${evt.personas.join('、')}`, time: Date.now() })
           } else if (evt.type === 'review') {
             // ReviewerAgent 审稿报告（单 Agent 模式）
             assistantMsg.content += `\n\n${evt.report || ''}`
@@ -2266,13 +2286,13 @@ const sendToAI = async (overrides = {}) => {
           } else if (evt.type === 'done') {
             // done 事件可能携带 paper_count → 触发文献刷新
             if (evt.papers != null) {
-              refreshLiterature().catch(()=>{})
+              refreshLiterature().catch(e=>console.debug("[ScholarForge] silent fail:", e))
             }
             // 刷新所有 SSE 防抖定时器，确保内容已落库后再调共识度
             if (project.value?.id) {
               flushSseSaves().then(() => {
                 if (hasSectionContent()) {
-                  runConsensusAnalysis().catch(()=>{})
+                  runConsensusAnalysis().catch(e=>console.debug("[ScholarForge] silent fail:", e))
                 }
               })
             }
@@ -2390,7 +2410,7 @@ const runStormPipeline = async () => {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ content: sectionContents.value[evt.section_key] || '' }),
-                    }).catch(() => {})
+                    }).catch(e=>console.debug("[ScholarForge] silent fail:", e))
                   }
                   delete _sseSaveTimers[evt.section_key]
                 }, 5000)
@@ -2406,6 +2426,26 @@ const runStormPipeline = async () => {
             events.value.push({ type: 'searching', message: evt.message, time: Date.now() })
           } else if (evt.type === 'writing' && evt.message) {
             events.value.push({ type: 'writing', message: evt.message, time: Date.now() })
+          } else if (evt.type === 'citation' && evt.paper) {
+            // 实时文献事件 — 局部 push 去重
+            const pid = evt.paper.id || evt.paper.url || evt.paper.title
+            if (pid && !literature.value.some(l => (l.id || l.url || l.title) === pid)) {
+              literature.value.push({
+                id: evt.paper.id, title: evt.paper.title, authors: evt.paper.authors,
+                year: evt.paper.year, venue: evt.paper.venue, abstract: evt.paper.abstract,
+                url: evt.paper.url, doi: evt.paper.doi,
+              })
+            }
+            events.value.push({ type: 'searching', message: `📄 找到文献: ${(evt.paper.title || '').slice(0, 60)}`, time: Date.now() })
+          } else if (evt.type === 'hallucination_warning') {
+            // 幻觉警告事件 — 展示给用户
+            events.value.push({ type: 'warning', message: evt.message || '检测到疑似虚构系统名', time: Date.now() })
+            if (evt.hallucinated_systems?.length) {
+              toast.warning(`⚠️ 疑似虚构系统: ${evt.hallucinated_systems.slice(0, 3).join(', ')}`)
+            }
+          } else if (evt.type === 'personas' && evt.personas) {
+            // STORM 研究视角事件
+            events.value.push({ type: 'thinking', message: `🎯 研究视角: ${evt.personas.join('、')}`, time: Date.now() })
           } else if (evt.type === 'citation_replace') {
             citationReplaced.value = evt.count || 0
             citationReplacedList.value = evt.citations || []
@@ -2437,14 +2477,14 @@ const runStormPipeline = async () => {
             assistantMsg.content += `\n\n---\n✅ ${evt.message || '全链路写作完成'}`
             // done 事件可能携带 paper_count → 触发文献刷新
             if (evt.papers != null) {
-              refreshLiterature().catch(()=>{})
+              refreshLiterature().catch(e=>console.debug("[ScholarForge] silent fail:", e))
             }
             // 刷新所有 SSE 防抖定时器，确保内容已落库后再调共识度
             if (project.value?.id) {
               flushSseSaves().then(() => {
                 // 全链路写作完成后，自动拉共识度（确保有内容）
                 if (hasSectionContent()) {
-                  runConsensusAnalysis().catch(()=>{})
+                  runConsensusAnalysis().catch(e=>console.debug("[ScholarForge] silent fail:", e))
                 }
               })
             }
@@ -2509,7 +2549,7 @@ const resumePipeline = async () => {
             return
           } else if (e.type === 'done') {
             assistantMsg.content += '\n\n---\n✅ ' + (e.message || '全链路写作完成')
-            if (e.papers != null) refreshLiterature().catch(()=>{})
+            if (e.papers != null) refreshLiterature().catch(e=>console.debug("[ScholarForge] silent fail:", e))
           } else if (e.type === 'error') {
             assistantMsg.content += '\n\n⚠️ ' + e.message
           }
@@ -2668,7 +2708,7 @@ const deleteSection = (sectionId) => {
   }
   // 同步删除后端
   if (project.value.id) {
-    fetch(`/api/scholar/projects/${project.value.id}/section/${sectionId}`, { method: 'DELETE' }).catch(()=>{})
+    fetch(`/api/scholar/projects/${project.value.id}/section/${sectionId}`, { method: 'DELETE' }).catch(e=>console.debug("[ScholarForge] silent fail:", e))
   }
 }
 
@@ -3015,7 +3055,7 @@ const flushSseSaves = async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: sectionContents.value[key] || '' }),
-      }).catch(() => {})
+      }).catch(e=>console.debug("[ScholarForge] silent fail:", e))
     )
     delete _sseSaveTimers[key]
   }
