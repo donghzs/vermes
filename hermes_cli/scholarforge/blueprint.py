@@ -625,6 +625,55 @@ def register_to(app):
             logger.error(f"PDF upload/parse failed: {e}", exc_info=True)
             raise HTTPException(500, f"PDF 解析失败: {e}")
 
+    # ═══ 语义搜索 ═══
+    @app.get("/api/scholar/projects/{pid}/literature/search")
+    async def api_semantic_search_literature(pid: int, q: str = "", top_k: int = 20):
+        """语义搜索项目文献 — TF-IDF 余弦相似度排序"""
+        from . import database as db
+        papers = db.list_literature(pid)
+        if not papers:
+            return {"results": []}
+        if not q.strip():
+            return {"results": [{"paper": p, "score": 0.0} for p in papers[:top_k]]}
+        from hermes_cli.scholarforge.rag import semantic_search_literature
+        results = semantic_search_literature(papers, q, top_k=top_k)
+        return {"results": [{"paper": p, "score": round(s, 4)} for p, s in results]}
+
+    # ═══ Collection/标签系统 ═══
+    @app.get("/api/scholar/projects/{pid}/tags")
+    async def api_list_tags(pid: int):
+        """列出项目所有标签"""
+        from . import database as db
+        return {"tags": db.get_all_tags(pid)}
+
+    @app.post("/api/scholar/literature/{lit_id}/tag")
+    async def api_add_tag(lit_id: int, req: dict):
+        """给文献添加标签"""
+        from . import database as db
+        tag = req.get("tag", "").strip()
+        if not tag:
+            raise HTTPException(400, "标签不能为空")
+        ok = db.add_tag(lit_id, tag)
+        return {"ok": ok, "tag": tag}
+
+    @app.delete("/api/scholar/literature/{lit_id}/tag")
+    async def api_remove_tag(lit_id: int, tag: str = ""):
+        """移除文献标签"""
+        from . import database as db
+        if not tag:
+            raise HTTPException(400, "标签不能为空")
+        ok = db.remove_tag(lit_id, tag)
+        return {"ok": ok}
+
+    @app.get("/api/scholar/projects/{pid}/literature/tagged")
+    async def api_list_literature_with_tags(pid: int, tag: str = ""):
+        """获取文献列表（含标签），可按标签筛选"""
+        from . import database as db
+        lits = db.get_literature_with_tags(pid)
+        if tag:
+            lits = [l for l in lits if tag in l.get("tags", [])]
+        return {"literatures": lits}
+
     @app.get("/api/scholar/projects/{pid}/messages")
     async def api_list_messages(pid: int, agent: str = None):
         """项目内 AI 对话历史"""

@@ -311,3 +311,50 @@ class PaperRetriever:
         temp_index = PaperIndex()
         temp_index.index(papers)
         return temp_index.search(query, top_k=top_k)
+
+
+def semantic_search_literature(
+    papers: list,
+    query: str,
+    top_k: int = 20,
+) -> list[tuple[Any, float]]:
+    """项目级语义搜索 — 对已入库的文献做 TF-IDF 语义检索
+
+    Args:
+        papers: list of dicts (database rows) with title/abstract/authors
+        query: 搜索查询
+        top_k: 返回前 N 条
+    Returns:
+        list of (paper_dict, score) tuples
+    """
+    if not papers or not query.strip():
+        return [(p, 0.0) for p in papers[:top_k]]
+
+    # 构建文档列表
+    docs = []
+    for p in papers:
+        title = p.get("title", "") if isinstance(p, dict) else getattr(p, "title", "")
+        abstract = p.get("abstract", "") if isinstance(p, dict) else getattr(p, "abstract", "")
+        authors = p.get("authors", []) if isinstance(p, dict) else getattr(p, "authors", [])
+        if isinstance(authors, list):
+            authors_str = " ".join(str(a) for a in authors)
+        else:
+            authors_str = str(authors)
+        docs.append(f"{title} {authors_str} {abstract}")
+
+    vec = TfidfVectorizer(max_features=2000)
+    vec.fit(docs)
+    doc_vectors = vec.transform(docs)
+    query_vec = vec.transform_one(query)
+
+    scores = []
+    for i, dv in enumerate(doc_vectors):
+        score = _cosine_similarity(query_vec, dv)
+        scores.append((i, score))
+
+    # 按分数排序，取 top_k
+    scores.sort(key=lambda x: -x[1])
+    result = []
+    for i, score in scores[:top_k]:
+        result.append((papers[i], score))
+    return result

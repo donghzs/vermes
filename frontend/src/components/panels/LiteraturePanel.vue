@@ -67,7 +67,20 @@
       </div>
     </div>
     <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-      <input v-model="localLiteratureSearch" placeholder="搜索文献..." class="w-full px-3 py-1.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-blue-500 dark:text-gray-100"/>
+      <div class="relative">
+        <input v-model="localLiteratureSearch" placeholder="语义搜索文献..." class="w-full pl-7 pr-7 py-1.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-blue-500 dark:text-gray-100"/>
+        <svg class="w-3 h-3 absolute left-2 top-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <span v-if="semanticSearchLoading" class="absolute right-2 top-2 w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin"></span>
+        <button v-else-if="localLiteratureSearch" @click="localLiteratureSearch = ''" class="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+      </div>
+    </div>
+    <!-- 标签筛选栏 -->
+    <div v-if="allTags.length > 0" class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 flex items-center gap-1 flex-wrap bg-gray-50 dark:bg-gray-900/50">
+      <button @click="localFilterTag = ''" :class="['text-[10px] px-2 py-0.5 rounded-full transition-colors', !localFilterTag ? 'bg-gray-700 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 hover:bg-gray-300']">全部</button>
+      <button v-for="t in allTags" :key="t.tag" @click="localFilterTag = localFilterTag === t.tag ? '' : t.tag"
+        :class="['text-[10px] px-2 py-0.5 rounded-full transition-colors', localFilterTag === t.tag ? 'bg-blue-600 text-white' : tagColor(t.tag) + ' hover:opacity-80']">
+        {{ t.tag }} <span class="opacity-60">{{ t.count }}</span>
+      </button>
     </div>
     <div class="flex-1 overflow-y-auto py-2">
       <div v-if="!literature.length" class="px-3 py-8 text-center">
@@ -90,6 +103,9 @@
               <span v-if="paper.venue" class="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-500 truncate max-w-[120px]">{{ paper.venue }}</span>
               <span class="text-[10px] px-1.5 py-0.5 rounded text-gray-400" :class="sourceBadgeClass(paper.source)">{{ paper.source || '未知源' }}</span>
               <span v-if="citedPaperIds.has(paper.id)" class="text-[9px] px-1 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded" title="已在正文中引用">✅ 已引用</span>
+              <span v-for="tag in (literatureTags[paper.id] || []).slice(0, 2)" :key="tag"
+                :class="['text-[8px] px-1 py-0.5 rounded-full', tagColor(tag)]">{{ tag }}</span>
+              <span v-if="(literatureTags[paper.id] || []).length > 2" class="text-[8px] text-gray-400">+{{ (literatureTags[paper.id] || []).length - 2 }}</span>
               <button @click.stop="$emit('copy-bibtex', paper)" class="text-[10px] text-gray-400 hover:text-blue-600" title="复制 BibTeX">📋</button>
               <button @click.stop="$emit('insert-citation', paper)" class="text-[10px] text-blue-600 hover:text-blue-700">引用</button>
             </div>
@@ -98,6 +114,20 @@
         </div>
         <!-- 展开摘要 + BibTeX -->
         <div v-if="expandedPaper?.id === paper.id" class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/50">
+          <!-- 标签管理 -->
+          <div class="flex items-center gap-1 flex-wrap mb-2">
+            <span v-for="tag in (literatureTags[paper.id] || [])" :key="tag"
+              :class="['text-[9px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 group', tagColor(tag)]">
+              {{ tag }}
+              <button @click.stop="$emit('remove-tag', paper, tag)" class="opacity-0 group-hover:opacity-100 text-[8px] leading-none">✕</button>
+            </span>
+            <button v-if="!tagInputVisible[paper.id]" @click.stop="$emit('toggle-tag-input', paper.id, true)"
+              class="text-[9px] px-1.5 py-0.5 rounded-full border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:text-gray-600">+ 标签</button>
+            <div v-else class="flex items-center gap-1">
+              <input v-model="localTagInput" @keyup.enter="onAddTag(paper)" @blur="onAddTag(paper)"
+                placeholder="标签名" class="text-[10px] px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 w-16" />
+            </div>
+          </div>
           <p v-if="paper.abstract" class="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed mb-2 max-h-24 overflow-y-auto">{{ paper.abstract }}</p>
           <div class="bg-gray-950 text-green-400 text-[10px] p-2 rounded font-mono relative group">
             <button @click.stop="$emit('copy-bibtex', paper)" class="absolute top-1 right-1 px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">复制</button>
@@ -126,6 +156,14 @@ const props = defineProps({
   paidSourceConfigTarget: { type: Object, default: null },
   paidSourceApiKey: { type: String, default: '' },
   paidSourceGatewayUrl: { type: String, default: '' },
+  // 语义搜索
+  semanticSearchLoading: { type: Boolean, default: false },
+  // 标签系统
+  literatureTags: { type: Object, default: () => ({}) },
+  allTags: { type: Array, default: () => [] },
+  filterTag: { type: String, default: '' },
+  tagInputVisible: { type: Object, default: () => ({}) },
+  tagInputValue: { type: Object, default: () => ({}) },
 })
 
 const emit = defineEmits([
@@ -134,6 +172,8 @@ const emit = defineEmits([
   'source-badge-class',
   'update:literatureSearch', 'update:activeSources', 'update:showPaidSourceConfig',
   'update:paidSourceApiKey', 'update:paidSourceGatewayUrl',
+  'update:filterTag',
+  'add-tag', 'remove-tag', 'toggle-tag-input',
 ])
 
 // Local mutable mirrors for v-model in template
@@ -142,12 +182,14 @@ const localActiveSources = ref([...props.activeSources])
 const localShowPaidSourceConfig = ref(props.showPaidSourceConfig)
 const localPaidSourceApiKey = ref(props.paidSourceApiKey)
 const localPaidSourceGatewayUrl = ref(props.paidSourceGatewayUrl)
+const localFilterTag = ref(props.filterTag)
 
 watch(localLiteratureSearch, v => emit('update:literatureSearch', v))
 watch(localActiveSources, v => emit('update:activeSources', v), { deep: true })
 watch(localShowPaidSourceConfig, v => emit('update:showPaidSourceConfig', v))
 watch(localPaidSourceApiKey, v => emit('update:paidSourceApiKey', v))
 watch(localPaidSourceGatewayUrl, v => emit('update:paidSourceGatewayUrl', v))
+watch(localFilterTag, v => emit('update:filterTag', v))
 
 // Keep local mirrors in sync when parent changes the prop
 watch(() => props.literatureSearch, v => { if (v !== localLiteratureSearch.value) localLiteratureSearch.value = v })
@@ -155,6 +197,25 @@ watch(() => props.activeSources, v => { localActiveSources.value = [...v] })
 watch(() => props.showPaidSourceConfig, v => { localShowPaidSourceConfig.value = v })
 watch(() => props.paidSourceApiKey, v => { localPaidSourceApiKey.value = v })
 watch(() => props.paidSourceGatewayUrl, v => { localPaidSourceGatewayUrl.value = v })
+watch(() => props.filterTag, v => { localFilterTag.value = v })
+
+const localTagInput = ref('')
+
+const onAddTag = (paper) => {
+  const tag = localTagInput.value.trim()
+  if (tag) {
+    emit('add-tag', paper, tag)
+    localTagInput.value = ''
+  }
+  emit('toggle-tag-input', paper.id, false)
+}
+
+const tagColors = ['bg-blue-100 dark:bg-blue-900/30 text-blue-600', 'bg-green-100 dark:bg-green-900/30 text-green-600', 'bg-purple-100 dark:bg-purple-900/30 text-purple-600', 'bg-amber-100 dark:bg-amber-900/30 text-amber-600', 'bg-pink-100 dark:bg-pink-900/30 text-pink-600']
+const tagColor = (tag) => {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) hash = ((hash << 5) - hash + tag.charCodeAt(i)) | 0
+  return tagColors[Math.abs(hash) % tagColors.length]
+}
 
 const sourceBadgeClass = (source) => {
   const m = {

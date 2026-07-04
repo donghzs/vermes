@@ -545,6 +545,12 @@
           :paid-source-config-target="paidSourceConfigTarget"
           v-model:paid-source-api-key="paidSourceApiKey"
           v-model:paid-source-gateway-url="paidSourceGatewayUrl"
+          :semantic-search-loading="semanticSearchLoading"
+          :literature-tags="literatureTags"
+          :all-tags="allTags"
+          v-model:filter-tag="filterTag"
+          :tag-input-visible="tagInputVisible"
+          :tag-input-value="tagInputValue"
           @search="searchLiterature"
           @import-bibtex="triggerBibtexImport"
           @toggle-source-selector="showSourceSelector = !showSourceSelector"
@@ -554,6 +560,9 @@
           @copy-bibtex="copyBibtex"
           @insert-citation="insertCitation"
           @update:active-sources="activeSources = $event"
+          @add-tag="addTagToPaper"
+          @remove-tag="removeTagFromPaper"
+          @toggle-tag-input="(id, val) => { tagInputVisible[id] = val }"
         />
 
         <!-- 引用核查结果面板 (抽屉式) -->
@@ -1449,6 +1458,18 @@ const searchLoading = ref(false)
 const selectedLiterature = ref(null)
 const expandedPaper = ref(null)
 
+// 语义搜索
+const semanticSearchResults = ref(null)  // null=未搜索, array=搜索结果
+const semanticSearchLoading = ref(false)
+let _semanticSearchTimer = null
+
+// 标签系统
+const literatureTags = ref({})  // { lit_id: ['tag1', 'tag2'] }
+const allTags = ref([])  // [{ tag, count }]
+const filterTag = ref('')  // 当前筛选标签
+const tagInputVisible = ref({})  // { lit_id: true/false }
+const tagInputValue = ref({})  // { lit_id: 'input text' }
+
 // 研究深度选择器
 const researchDepth = ref(2)  // 1=快速, 2=标准(默认), 3=深度
 const depthOptions = [
@@ -1458,13 +1479,104 @@ const depthOptions = [
 ]
 
 const filteredLiterature = computed(() => {
-  if (!literatureSearch.value) return literature.value
-  const q = literatureSearch.value.toLowerCase()
-  return literature.value.filter(p => 
-    p.title.toLowerCase().includes(q) || 
-    p.authors.some(a => a.toLowerCase().includes(q))
-  )
+  // 如果有标签筛选，先按标签过滤
+  let base = literature.value
+  if (filterTag.value) {
+    base = base.filter(p => (literatureTags.value[p.id] || []).includes(filterTag.value))
+  }
+  // 如果有语义搜索结果，用搜索结果
+  if (semanticSearchResults.value !== null) {
+    return semanticSearchResults.value
+  }
+  // 无搜索时返回全部（或按标签筛选后的）
+  return base
 })
+
+// 语义搜索 debounce 触发
+const onLiteratureSearchInput = () => {
+  if (_semanticSearchTimer) clearTimeout(_semanticSearchTimer)
+  const q = literatureSearch.value.trim()
+  if (!q) {
+    semanticSearchResults.value = null
+    semanticSearchLoading.value = false
+    return
+  }
+  semanticSearchLoading.value = true
+  _semanticSearchTimer = setTimeout(async () => {
+    try {
+      if (!currentProject.value?.id) return
+      const r = await fetch(`/api/scholar/projects/${currentProject.value.id}/literature/search?q=${encodeURIComponent(q)}&top_k=30`)
+      if (r.ok) {
+        const data = await r.json()
+        semanticSearchResults.value = (data.results || []).map(r => ({ ...r.paper, _score: r.score }))
+      }
+    } catch (e) {
+      console.error('semantic search', e)
+    } finally {
+      semanticSearchLoading.value = false
+    }
+  }, 350)
+}
+
+watch(literatureSearch, onLiteratureSearchInput)
+
+// 加载标签
+const loadTags = async () => {
+  if (!currentProject.value?.id) return
+  try {
+    const r = await fetch(`/api/scholar/projects/${currentProject.value.id}/tags`)
+    if (r.ok) {
+      const data = await r.json()
+      allTags.value = data.tags || []
+    }
+    // 加载每篇文献的标签
+    const litR = await fetch(`/api/scholar/projects/${currentProject.value.id}/literature/tagged`)
+    if (litR.ok) {
+      const litData = await litR.json()
+      const tagMap = {}
+      for (const l of (litData.literatures || [])) {
+        tagMap[l.id] = l.tags || []
+      }
+      literatureTags.value = tagMap
+    }
+  } catch (e) {
+    console.error('load tags', e)
+  }
+}
+
+const addTagToPaper = async (paper, tag) => {
+  tag = (tag || '').trim()
+  if (!tag) return
+  try {
+    const r = await fetch(`/api/scholar/literature/${paper.id}/tag`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag })
+    })
+    if (r.ok) {
+      if (!literatureTags.value[paper.id]) literatureTags.value[paper.id] = []
+      if (!literatureTags.value[paper.id].includes(tag)) {
+        literatureTags.value[paper.id].push(tag)
+      }
+      // 刷新标签列表
+      await loadTags()
+    }
+  } catch (e) {
+    toast.error('添加标签失败: ' + e.message)
+  }
+}
+
+const removeTagFromPaper = async (paper, tag) => {
+  try {
+    const r = await fetch(`/api/scholar/literature/${paper.id}/tag?tag=${encodeURIComponent(tag)}`, { method: 'DELETE' })
+    if (r.ok) {
+      literatureTags.value[paper.id] = (literatureTags.value[paper.id] || []).filter(t => t !== tag)
+      await loadTags()
+    }
+  } catch (e) {
+    toast.error('移除标签失败: ' + e.message)
+  }
+}
 
 const literatureCount = computed(() => literature.value.length)
 
@@ -2806,6 +2918,8 @@ const switchProject = async (p) => {
       loadAgentProviders()
       // Load citation style
       loadCitationStyle()
+      // Load tags
+      loadTags()
       // Load persisted citation verifications
       try {
         const cvRes = await fetch(`/api/scholar/projects/${p.id}/citation-verifications`)

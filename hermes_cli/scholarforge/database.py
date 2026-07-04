@@ -164,6 +164,20 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        # Collection/标签系统
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS literature_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                literature_id INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE(literature_id, tag),
+                FOREIGN KEY (literature_id) REFERENCES literatures(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lit_tag ON literature_tags(literature_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tag ON literature_tags(tag)")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Project CRUD
@@ -531,7 +545,86 @@ def list_literature(pid: int) -> List[Dict[str, Any]]:
 def delete_literature(lit_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM literatures WHERE id=?", (lit_id,))
+        # literature_tags 通过 ON DELETE CASCADE 自动清理
         return cur.rowcount > 0
+
+
+# ═══════════════════════════════════════════════════════════════
+# Literature Tags (Collection/标签系统)
+# ═══════════════════════════════════════════════════════════════
+
+def add_tag(literature_id: int, tag: str) -> bool:
+    """给文献添加标签"""
+    tag = tag.strip()
+    if not tag:
+        return False
+    init_db()
+    now = int(time.time())
+    with _lock, get_conn() as conn:
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO literature_tags (literature_id, tag, created_at) VALUES (?, ?, ?)",
+                (literature_id, tag, now)
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def remove_tag(literature_id: int, tag: str) -> bool:
+    """移除文献标签"""
+    with _lock, get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM literature_tags WHERE literature_id=? AND tag=?",
+            (literature_id, tag)
+        )
+        return cur.rowcount > 0
+
+
+def get_tags(literature_id: int) -> List[str]:
+    """获取文献的所有标签"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT tag FROM literature_tags WHERE literature_id=? ORDER BY tag",
+            (literature_id,)
+        ).fetchall()
+        return [r["tag"] for r in rows]
+
+
+def get_all_tags(pid: int) -> List[Dict[str, Any]]:
+    """获取项目下所有标签及其文献数"""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT t.tag, COUNT(*) as count
+            FROM literature_tags t
+            JOIN literatures l ON t.literature_id = l.id
+            WHERE l.project_id = ?
+            GROUP BY t.tag
+            ORDER BY t.tag
+        """, (pid,)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_literature_with_tags(pid: int) -> List[Dict[str, Any]]:
+    """获取项目文献列表（含标签）"""
+    lits = list_literature(pid)
+    if not lits:
+        return []
+    with get_conn() as conn:
+        # 批量查询所有文献的标签
+        lit_ids = [l["id"] for l in lits]
+        placeholders = ",".join("?" * len(lit_ids))
+        tag_rows = conn.execute(
+            f"SELECT literature_id, tag FROM literature_tags WHERE literature_id IN ({placeholders})",
+            lit_ids
+        ).fetchall()
+    # 按文献 ID 分组
+    tag_map: dict[int, list[str]] = {}
+    for r in tag_rows:
+        tag_map.setdefault(r["literature_id"], []).append(r["tag"])
+    for lit in lits:
+        lit["tags"] = tag_map.get(lit["id"], [])
+    return lits
 
 
 # ═══════════════════════════════════════════════════════════════════
