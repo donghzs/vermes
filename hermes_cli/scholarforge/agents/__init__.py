@@ -185,10 +185,60 @@ class ProjectContext:
         self.research_conversation: list[dict] = []
         self._rag_retriever = None  # PaperRetriever 缓存
         self._rag_paper_count = 0    # 缓存时的文献数，用于失效判断
+        # 全局引用编号映射：paper_id → 全局编号(1-based)
+        # 所有 Agent 必须使用此映射，禁止局部编号
+        self.global_citation_map: dict[str, int] = {}
 
     def add_paper(self, card: PaperCard):
         if not any(p.paper_id == card.paper_id for p in self.papers):
             self.papers.append(card)
+            # 注册全局编号（按入池顺序递增）
+            if card.paper_id not in self.global_citation_map:
+                self.global_citation_map[card.paper_id] = len(self.global_citation_map) + 1
+
+    def get_global_citation_num(self, paper: PaperCard) -> int:
+        """获取文献的全局引用编号。未注册的文献自动注册。"""
+        if paper.paper_id not in self.global_citation_map:
+            self.global_citation_map[paper.paper_id] = len(self.global_citation_map) + 1
+        return self.global_citation_map[paper.paper_id]
+
+    def build_global_ref_list(self) -> str:
+        """构建全局参考文献列表文本，编号与 global_citation_map 一致。"""
+        lines = []
+        for paper in self.papers:
+            num = self.global_citation_map.get(paper.paper_id, 0)
+            if num == 0:
+                continue
+            authors = ", ".join(paper.authors[:3]) if paper.authors else ""
+            if len(paper.authors) > 3:
+                authors += " 等"
+            year = paper.year or ""
+            venue = paper.venue or paper.source or ""
+            doi = getattr(paper, 'doi', '') or ''
+            url = getattr(paper, 'url', '') or ''
+            ref_line = f"[{num}] {authors}. {paper.title}. {venue}, {year}."
+            if doi:
+                ref_line += f" DOI: {doi}."
+            elif url:
+                ref_line += f" URL: {url}."
+            lines.append(ref_line)
+        return "\n".join(lines)
+
+    @staticmethod
+    def remap_local_citations(text: str, local_to_global: dict[int, int]) -> str:
+        """将局部引用编号 [n] 替换为全局编号。
+        
+        Args:
+            text: 包含 [n] 引用的文本
+            local_to_global: {局部编号: 全局编号}
+        """
+        def _replace(m):
+            local_n = int(m.group(1))
+            global_n = local_to_global.get(local_n)
+            if global_n is None:
+                return m.group(0)  # 未映射的保持不变
+            return f"[{global_n}]"
+        return re.sub(r'\[(\d+)\]', _replace, text)
 
     def to_context_text(self) -> str:
         parts = []
@@ -612,9 +662,10 @@ class LiteratureAgent(BaseAgent):
 
     async def _generate_review(self, topic: str, papers: list[PaperResult]) -> str:
         """生成单轮文献综述"""
+        # 使用全局引用编号
         papers_text = "\n\n".join([
-            f"[{i+1}] {p.title}\n作者：{', '.join(p.authors[:3])}\n{p.year} · {p.venue}\n摘要：{p.abstract}"
-            for i, p in enumerate(papers[:10])
+            f"[{self.ctx.get_global_citation_num(p)}] {p.title}\n作者：{', '.join(p.authors[:3])}\n{p.year} · {p.venue}\n摘要：{p.abstract}"
+            for p in papers[:10]
         ])
 
         review_prompt = f"""基于以下文献，用中文撰写一篇学术文献综述。
@@ -654,8 +705,8 @@ class LiteratureAgent(BaseAgent):
             return f"({label}：未检索到相关文献)"
 
         papers_text = "\n".join([
-            f"  [{i+1}] {p.title} ({p.year}) — {p.abstract[:120]}..."
-            for i, p in enumerate(papers[:5])
+            f"  [{self.ctx.get_global_citation_num(p)}] {p.title} ({p.year}) — {p.abstract[:120]}..."
+            for p in papers[:5]
         ])
 
         prompt = f"""你是一个学术文献分析助手。
@@ -667,7 +718,7 @@ class LiteratureAgent(BaseAgent):
 {papers_text}
 
 请用 200-400 字中文总结本轮的主要发现、代表工作和方法论特征。
-用编号 [1][2] 引用文献。"""
+用上方文献列表中的全局编号引用文献。"""
 
         try:
             return await self.llm(prompt)
@@ -686,10 +737,10 @@ class LiteratureAgent(BaseAgent):
             if r.get("analysis")
         ])
 
-        # 构建文献列表
+        # 构建文献列表（全局编号）
         papers_text = "\n".join([
-            f"[{i+1}] {p.title}\n    作者：{', '.join(p.authors[:3])}\n    {p.year} · {p.venue}\n    摘要：{p.abstract[:150]}..."
-            for i, p in enumerate(all_papers[:20])
+            f"[{self.ctx.get_global_citation_num(p)}] {p.title}\n    作者：{', '.join(p.authors[:3])}\n    {p.year} · {p.venue}\n    摘要：{p.abstract[:150]}..."
+            for p in all_papers[:20]
         ])
 
         prompt = f"""你是一个资深学术文献综述专家。以下是递进式深度研究的多轮发现，请综合写成一篇结构化文献综述。
@@ -714,7 +765,7 @@ class LiteratureAgent(BaseAgent):
 3. **方法论比较**(不同方法的优劣和适用范围)
 4. **研究空白与未来方向**(基于第3轮空白分析及综合判断，明确指出 2-4 个关键空白)
 5. **结论**
-6. **参考文献列表**(编号 [1]-[{len(all_papers)}]，仅用上方已有文献)
+6. **参考文献列表**(使用上方的全局编号，不要重新编号)
 
 **关键规则：**
 - 引用文献时使用 [1] [2] 格式
@@ -763,6 +814,10 @@ class OutlineAgent(BaseAgent):
 2. 每个章节标注预计字数(如"引言(1000-1500字)")，包含 2-4 个二级子节(###)
 3. 章节顺序参考上方【论文类型专属要求】中的结构建议
 4. 每个章节标题应具体，反映论文的研究内容
+5. **章节编号铁律**：章节必须从1开始连续编号，格式为"第1章 引言"、"第2章 ..."、"第3章 ..."
+   - 编号必须连续递增（1,2,3,4,5...），严禁跳过编号
+   - 摘要/关键词章节不编号（用"摘要"而非"第1章 摘要"）
+   - 正文章节从"第1章"开始编号
 
 ⚠️ 注意：
 - 必须包含"摘要与关键词"章节和"结论"章节
@@ -948,30 +1003,41 @@ class WritingAgent(BaseAgent):
                 yield {"type": "thinking",
                        "message": f"RAG: 无检索器可用，使用文献池前 {min(8, len(self.ctx.papers))} 篇"}
             
-            # 构建 per-section 文献列表（保留原始全局编号）
-            papers_text = "\n".join([
-                f"[{self.ctx.papers.index(p) + 1 if p in self.ctx.papers else i+1}] {p.title} ({', '.join(p.authors[:3] if hasattr(p, 'authors') and p.authors else [])}, {getattr(p, 'year', '')})"
-                for i, (p, _) in enumerate(relevant_papers)
-            ])
+            # 构建 per-section 文献列表（使用全局编号）+ local→global 映射
+            local_to_global: dict[int, int] = {}
+            papers_text_lines = []
+            for i, (p, _) in enumerate(relevant_papers):
+                global_num = self.ctx.get_global_citation_num(p)
+                local_num = i + 1  # LLM 看到的局部编号
+                local_to_global[local_num] = global_num
+                authors_str = ', '.join(p.authors[:3] if hasattr(p, 'authors') and p.authors else [])
+                papers_text_lines.append(
+                    f"[{local_num}] {p.title} ({authors_str}, {getattr(p, 'year', '')})"
+                )
+            papers_text = "\n".join(papers_text_lines)
             
-            # 引用映射：使用全局编号（与 papers_text 一致），避免重排后错位
-            # 构建真实引用信息（含 DOI/URL）
-            real_ref_map = "\n".join([
-                f"  [{self.ctx.papers.index(p) + 1 if p in self.ctx.papers else i+1}] {p.title} — {', '.join(p.authors[:2] if hasattr(p, 'authors') and p.authors else [])} ({getattr(p, 'year', '')})\n"
-                f"    来源: {getattr(p, 'source', '')} | DOI: {getattr(p, 'doi', '') or '无'} | URL: {getattr(p, 'url', '')}"
-                for i, (p, _) in enumerate(relevant_papers)
-            ])
+            # 引用映射：构建真实引用信息（含 DOI/URL），使用全局编号
+            real_ref_lines = []
+            for i, (p, _) in enumerate(relevant_papers):
+                global_num = self.ctx.get_global_citation_num(p)
+                local_num = i + 1
+                authors_str = ', '.join(p.authors[:2] if hasattr(p, 'authors') and p.authors else [])
+                real_ref_lines.append(
+                    f"  [{local_num}] {p.title} — {authors_str} ({getattr(p, 'year', '')})\n"
+                    f"    来源: {getattr(p, 'source', '')} | DOI: {getattr(p, 'doi', '') or '无'} | URL: {getattr(p, 'url', '')}"
+                )
+            real_ref_map = "\n".join(real_ref_lines)
 
             prompt = f"""你是一个中文学术论文作家。撰写以下章节：
 
 【章节信息】
 标题：{section_title}
-位置：第{idx+1}章(共{len(real_sections)}章)
+位置：第{idx+1}章(共{len(real_sections)}章，编号从1开始连续)
 
 【研究背景】
 {context}
 
-【本章专属文献】以下文献按与本章主题的相关性排序，编号固定，必须严格使用：
+【本章专属文献】以下文献按与本章主题的相关性排序，编号已固定，必须严格使用：
 {real_ref_map}
 
 【写作要求】
@@ -1000,7 +1066,7 @@ class WritingAgent(BaseAgent):
    - 说明实验设置：训练轮数、学习率、批量大小、随机种子、硬件环境
    - 表格中的数据要标注来源（复现还是引用其他论文）
 7. 字数要求：全文目标约{self.ctx.target_words}字，本章约{max(800, self.ctx.target_words // max(len(real_sections), 1))}字
-8. 输出格式：Markdown，章节标题用 ## 开头
+8. 输出格式：Markdown，章节标题用 ## 开头，必须包含章节编号（如"## 第3章 方法论"）
 
 请直接输出该章节的完整内容（不要重复本章标题）：
             """ + get_paper_type_prompt(self.ctx.paper_type)
@@ -1014,6 +1080,9 @@ class WritingAgent(BaseAgent):
                     continue
                 # 清理非法引用格式 ([@AuthorYear] → 删除)
                 content = _clean_citation_format(content)
+                # 重映射局部引用编号 → 全局编号
+                if local_to_global:
+                    content = ProjectContext.remap_local_citations(content, local_to_global)
                 if content.startswith(f"## {section_title}") or content.startswith(f"##{section_title}"):
                     lines = content.split("\n", 1)
                     content = lines[1].strip() if len(lines) > 1 else "（此章节待补充内容）"
@@ -1062,35 +1131,65 @@ class WritingAgent(BaseAgent):
         if conclusion_part:
             sections.append(conclusion_part + "\n")
         
-        # 添加参考文献列表（含 DOI/URL，确保引用真实可查）
+        # 添加参考文献列表（使用全局编号，含 DOI/URL）
         if self.ctx.papers and re.search(r'(?i)#{1,3}\s*(参考文献|references)', self.ctx.draft) is None:
             refs = ["## 参考文献\n"]
-            for i, p in enumerate(self.ctx.papers):
-                authors = ", ".join(p.authors[:3]) if hasattr(p, 'authors') and p.authors else ""
-                if hasattr(p, 'authors') and len(p.authors) > 3:
-                    authors += " 等"
-                year = getattr(p, 'year', '')
-                venue = getattr(p, 'venue', '') or getattr(p, 'source', '')
-                doi = getattr(p, 'doi', '') or ''
-                url = getattr(p, 'url', '') or ''
-                paper_id = getattr(p, 'paper_id', '') or ''
-                # 构建完整引用：作者. 标题. 期刊, 年份. DOI/URL
-                ref_line = f"[{i+1}] {authors}. {p.title}. {venue}, {year}."
-                if doi:
-                    ref_line += f" DOI: {doi}."
-                elif url:
-                    ref_line += f" URL: {url}."
-                elif paper_id:
-                    ref_line += f" [{paper_id}]."
-                refs.append(ref_line)
+            ref_text = self.ctx.build_global_ref_list()
+            if ref_text:
+                refs.append(ref_text)
             sections.append("\n".join(refs))
         
         self.ctx.draft = "\n\n".join(sections)
         # 发送完整论文到前端（用于导出面板）
+        # ═══════════════════════════════════════════════════════
+        # 后处理2：重新生成摘要（基于完整正文，避免与正文不一致）
+        # ═══════════════════════════════════════════════════════
+        if abstract_kw_part:
+            yield {"type": "thinking", "message": "📝 基于完整正文重新生成摘要..."}
+            try:
+                new_abstract = await self._regenerate_abstract(self.ctx.draft)
+                if new_abstract and len(new_abstract) > 50:
+                    # 替换旧摘要
+                    self.ctx.draft = self.ctx.draft.replace(abstract_kw_part, new_abstract, 1)
+                    yield {"type": "content", "text": _clean_citation_format(new_abstract), "section_key": "abstract_refreshed"}
+            except Exception as e:
+                logger.warning(f"Abstract regeneration failed: {e}")
+        
         yield {"type": "content", "text": _clean_citation_format(self.ctx.draft), "section_key": "full_paper"}
         
         yield {"type": "done", "message": f"论文撰写完成(共{len(real_sections)}章，{total_chars}字)",
                "papers": len(self.ctx.papers)}
+
+    async def _regenerate_abstract(self, full_draft: str) -> str:
+        """全文完成后重新生成摘要，确保与正文一致"""
+        # 取正文前 4000 字供 LLM 参考
+        body_preview = full_draft[:4000]
+        prompt = f"""基于以下完整论文正文，生成一段 250-300 字的中文摘要。
+
+摘要必须准确反映正文中的实际内容，包括：
+1. 研究问题和目的
+2. 主要方法
+3. 关键发现（必须与正文实验结果一致）
+4. 主要结论
+
+同时生成 3-5 个关键词。
+
+输出格式：
+## 摘要
+
+摘要正文...
+
+## 关键词
+
+关键词1；关键词2；关键词3
+
+正文（前 4000 字）：
+{body_preview}"""
+        try:
+            return await self.llm(prompt)
+        except Exception as e:
+            logger.warning(f"_regenerate_abstract failed: {e}")
+            return ""
 
 
 class RefinementAgent(BaseAgent):
@@ -1539,7 +1638,14 @@ class ReviewerAgent(BaseAgent):
 
     async def _review_structure(self, draft: str, sections: list) -> dict:
         sec_text = "\n".join([f"- {s.get('title','?')}" for s in sections[:10]]) if sections else "（无大纲）"
-        prompt = f"""你是学术审稿人，审查以下论文的结构与逻辑。\n预期大纲:\n{sec_text}\n正文（前 3000 字）:\n{draft[:3000]}\n审查: 章节结构清晰度、逻辑衔接、论证链完整性、是否有重复/跳跃。\n只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
+        prompt = f"""你是学术审稿人，审查以下论文的结构与逻辑。
+预期大纲:
+{sec_text}
+正文（前 3000 字）:
+{draft[:3000]}
+审查: 章节结构清晰度、逻辑衔接、论证链完整性、是否有重复/跳跃。
+**额外检查**：章节编号是否连续（如“第1章”“第2章”“第3章”...），如有跳号或缺失请报告为 P0 问题。
+只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
         try:
             resp = await self.llm(prompt)
             result = json.loads(resp)
