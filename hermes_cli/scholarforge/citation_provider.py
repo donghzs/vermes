@@ -283,6 +283,202 @@ async def replace_pseudo_citations(
     return new_draft, citations
 
 
+# ═══════════════════════════════════════════════════════════════════
+# 引用格式化 — 6种标准格式
+# ═══════════════════════════════════════════════════════════════════
+
+CITATION_STYLES = ["gbt7714", "apa", "mla", "ieee", "chicago", "vancouver"]
+
+
+def format_authors_gbt(authors: list[str]) -> str:
+    """GB/T 7714: 作者1, 作者2, 作者3, 等"""
+    if not authors:
+        return "[Anon]"
+    names = []
+    for a in authors[:3]:
+        parts = a.strip().split()
+        if len(parts) >= 2:
+            names.append(f"{parts[-1]} {parts[0][0] if parts[0] else ''}{''.join(p[0] for p in parts[1:-1])}")
+        else:
+            names.append(a)
+    if len(authors) > 3:
+        names.append("等")
+    return ", ".join(names)
+
+
+def format_authors_apa(authors: list[str]) -> str:
+    """APA 7th: Last, F. M., & Last, F. M."""
+    if not authors:
+        return "Anonymous"
+    formatted = []
+    for a in authors[:20]:
+        parts = a.strip().split()
+        if len(parts) >= 2:
+            last = parts[-1]
+            initials = ". ".join(p[0] for p in parts[:-1] if p)
+            formatted.append(f"{last}, {initials}." if initials else f"{last}.")
+        else:
+            formatted.append(a)
+    if len(formatted) == 1:
+        return formatted[0]
+    if len(formatted) == 2:
+        return f"{formatted[0]}, & {formatted[1]}"
+    return ", ".join(formatted[:-1]) + f", & {formatted[-1]}"
+
+
+def format_authors_mla(authors: list[str]) -> str:
+    """MLA 9th: Last, First M., et al."""
+    if not authors:
+        return "Anonymous"
+    parts = authors[0].strip().split()
+    if len(parts) >= 2:
+        first = " ".join(parts[:-1])
+        last = parts[-1]
+        first_author = f"{last}, {first}"
+    else:
+        first_author = authors[0]
+    if len(authors) > 3:
+        return f"{first_author}, et al."
+    others = []
+    for a in authors[1:3]:
+        p = a.strip().split()
+        others.append(f"{p[0]} {p[-1]}" if len(p) >= 2 else a)
+    if others:
+        return f"{first_author}, " + ", ".join(others) + "."
+    return f"{first_author}."
+
+
+def format_authors_ieee(authors: list[str]) -> str:
+    """IEEE: F. M. Last, F. M. Last, and F. M. Last"""
+    if not authors:
+        return "Anonymous"
+    formatted = []
+    for a in authors[:6]:
+        parts = a.strip().split()
+        if len(parts) >= 2:
+            last = parts[-1]
+            initials = " ".join(f"{p[0]}." for p in parts[:-1] if p)
+            formatted.append(f"{initials} {last}" if initials else last)
+        else:
+            formatted.append(a)
+    if len(authors) > 6:
+        formatted.append("et al.")
+    if len(formatted) <= 2:
+        return " and ".join(formatted)
+    return ", ".join(formatted[:-1]) + f", and {formatted[-1]}"
+
+
+def format_authors_chicago(authors: list[str]) -> str:
+    """Chicago 17th: Last, First M., First M. Last, and First M. Last"""
+    if not authors:
+        return "Anonymous"
+    formatted = []
+    for a in authors[:10]:
+        parts = a.strip().split()
+        if len(parts) >= 2:
+            first = " ".join(parts[:-1])
+            last = parts[-1]
+            formatted.append(f"{last}, {first}")
+        else:
+            formatted.append(a)
+    if len(authors) > 10:
+        formatted.append("et al.")
+    if len(formatted) <= 3:
+        return ", ".join(formatted)
+    return ", ".join(formatted[:-1]) + f", and {formatted[-1]}"
+
+
+def format_authors_vancouver(authors: list[str]) -> str:
+    """Vancouver: Last FM, Last FM, Last FM, et al."""
+    if not authors:
+        return "Anonymous"
+    formatted = []
+    for a in authors[:6]:
+        parts = a.strip().split()
+        if len(parts) >= 2:
+            last = parts[-1]
+            initials = "".join(p[0] for p in parts[:-1] if p)
+            formatted.append(f"{last} {initials}")
+        else:
+            formatted.append(a)
+    if len(authors) > 6:
+        formatted.append("et al")
+    return ", ".join(formatted)
+
+
+def format_citation(paper, style: str = "gbt7714", index: int = 0) -> str:
+    """按指定格式格式化单条参考文献
+    
+    Args:
+        paper: PaperCard/RealCitation/dict — 需有 title/authors/year/venue/doi
+        style: gbt7714 | apa | mla | ieee | chicago | vancouver
+        index: IEEE/Vancouver 用编号 [1]
+    Returns:
+        格式化的参考文献字符串
+    """
+    # 统一取值
+    if isinstance(paper, dict):
+        title = paper.get("title", "")
+        authors = paper.get("authors", []) or []
+        year = paper.get("year", "")
+        venue = paper.get("venue", "")
+        doi = paper.get("doi", "")
+    else:
+        title = getattr(paper, "title", "")
+        authors = getattr(paper, "authors", []) or []
+        year = getattr(paper, "year", "")
+        venue = getattr(paper, "venue", "")
+        doi = getattr(paper, "doi", "")
+
+    year_str = str(year) if year else "n.d."
+    doi_url = f" https://doi.org/{doi}" if doi else ""
+
+    if style == "gbt7714":
+        # GB/T 7714-2015: 作者. 标题[J]. 期刊, 年.
+        author_str = format_authors_gbt(authors)
+        return f"{author_str}. {title}[J]. {venue}, {year_str}.{doi_url}"
+
+    elif style == "apa":
+        # APA 7th: Author, A. A., & Author, B. B. (Year). Title. Journal.
+        author_str = format_authors_apa(authors)
+        return f"{author_str} ({year_str}). {title}. {venue}.{doi_url}"
+
+    elif style == "mla":
+        # MLA 9th: Last, First M. "Title." Journal, Year.
+        author_str = format_authors_mla(authors)
+        return f"{author_str} \"{title}.\" {venue}, {year_str}."
+
+    elif style == "ieee":
+        # IEEE: [1] F. M. Last, \"Title,\" Journal, Year.
+        prefix = f"[{index}] " if index else ""
+        author_str = format_authors_ieee(authors)
+        return f"{prefix}{author_str}, \"{title},\" {venue}, {year_str}.{doi_url}"
+
+    elif style == "chicago":
+        # Chicago 17th: Last, First M. \"Title.\" Journal (Year).
+        author_str = format_authors_chicago(authors)
+        return f"{author_str}. \"{title}.\" {venue} ({year_str}).{doi_url}"
+
+    elif style == "vancouver":
+        # Vancouver: Last FM. Title. Journal. Year.
+        prefix = f"{index}. " if index else ""
+        author_str = format_authors_vancouver(authors)
+        return f"{prefix}{author_str}. {title}. {venue}. {year_str}.{doi_url}"
+
+    else:
+        # 未知格式回退到 GB/T 7714
+        author_str = format_authors_gbt(authors)
+        return f"{author_str}. {title}[J]. {venue}, {year_str}.{doi_url}"
+
+
+def format_references_list(papers: list, style: str = "gbt7714") -> str:
+    """格式化完整参考文献列表"""
+    lines = []
+    for i, p in enumerate(papers, 1):
+        lines.append(format_citation(p, style, index=i))
+    return "\n".join(lines)
+
+
 # 简易测试
 async def _test():
     results = await fetch_real_citations(

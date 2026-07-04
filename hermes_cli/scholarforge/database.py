@@ -158,6 +158,12 @@ def init_db():
         except sqlite3.OperationalError as e:
             logger.warning(f"snapshots table migration: {e}")
 
+        # citation_style column for reference formatting (GB/T 7714 default)
+        try:
+            conn.execute("ALTER TABLE projects ADD COLUMN citation_style TEXT DEFAULT 'gbt7714'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Project CRUD
@@ -376,7 +382,7 @@ def get_project(pid: int) -> Optional[Dict[str, Any]]:
 
 def update_project(pid: int, **kwargs) -> bool:
     init_db()
-    allowed = {"title", "paper_type", "target_words", "current_model", "last_section_key"}
+    allowed = {"title", "paper_type", "target_words", "current_model", "last_section_key", "citation_style"}
     fields = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
     if not fields:
         return False

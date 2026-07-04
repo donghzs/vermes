@@ -201,6 +201,28 @@
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             <span class="flex-1 text-left">版本历史</span>
           </button>
+
+          <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+          <!-- 引用格式 -->
+          <div class="px-3 py-2">
+            <label class="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">引用格式</label>
+            <select v-model="citationStyle" @change="onCitationStyleChange" class="w-full text-xs border border-gray-200 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-green-500">
+              <option value="gbt7714">GB/T 7714-2015</option>
+              <option value="apa">APA 7th</option>
+              <option value="mla">MLA 9th</option>
+              <option value="ieee">IEEE</option>
+              <option value="chicago">Chicago 17th</option>
+              <option value="vancouver">Vancouver</option>
+            </select>
+          </div>
+
+          <!-- 参考文献预览 -->
+          <button @click="showMoreToolsDropdown = false; showReferencesPanel = true"
+            class="w-full px-3 py-2 flex items-center gap-2.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <span class="flex-1 text-left">参考文献预览</span>
+          </button>
         </div>
 
         <div class="h-4 w-px bg-gray-200 dark:bg-gray-600 mx-0.5"></div>
@@ -708,6 +730,31 @@
             <div v-if='!quickCiteResults.length' class='px-4 py-6 text-center text-sm text-gray-400'>
               {{ literature.length === 0 ? '文献库为空，请先搜索文献' : '未找到匹配文献' }}
             </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ═══ 参考文献预览弹窗 ═══ -->
+    <Teleport to='body'>
+      <div v-if='showReferencesPanel' class='fixed inset-0 z-[200] flex items-center justify-center bg-black/50' @click.self='showReferencesPanel = false' @v-if='showReferencesPanel' @vue:mounted='loadReferences'>
+        <div class='bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col'>
+          <div class='flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700'>
+            <h3 class='text-sm font-semibold text-gray-700 dark:text-gray-200'>参考文献预览 <span class='text-xs text-gray-400 ml-1'>{{ citationStyle.toUpperCase() }}</span></h3>
+            <button @click='showReferencesPanel = false' class='text-gray-400 hover:text-gray-600'>✕</button>
+          </div>
+          <div class='flex-1 overflow-y-auto px-5 py-4'>
+            <div v-if='referencesLoading' class='text-center text-gray-400 text-sm py-8'>加载中...</div>
+            <div v-else-if='referencesList.length === 0' class='text-center text-gray-400 text-sm py-8'>暂无文献，请先添加文献或运行 STORM Pipeline</div>
+            <div v-else class='space-y-2'>
+              <div v-for='(ref, i) in referencesList' :key='i' class='text-xs text-gray-600 dark:text-gray-300 leading-relaxed pb-2 border-b border-gray-100 dark:border-gray-700 last:border-0'>
+                {{ ref }}
+              </div>
+            </div>
+          </div>
+          <div class='px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center'>
+            <span class='text-xs text-gray-400'>共 {{ referencesList.length }} 篇</span>
+            <button @click='loadReferences()' class='text-xs text-green-600 hover:text-green-700'>刷新</button>
           </div>
         </div>
       </div>
@@ -1505,6 +1552,55 @@ const rightPanelWidth = ref(480)   // P1: 面板宽度增大到 480px
 // P1: 更多工具下拉菜单
 const showMoreToolsDropdown = ref(false)
 const moreToolsRef = ref(null)
+
+// 引用格式
+const citationStyle = ref('gbt7714')
+const showReferencesPanel = ref(false)
+const referencesList = ref([])
+const referencesLoading = ref(false)
+
+const onCitationStyleChange = async () => {
+  if (!currentProject.value?.id) return
+  try {
+    await fetch(`/api/scholar/projects/${currentProject.value.id}/citation-style`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ style: citationStyle.value })
+    })
+    toast.success(`引用格式已切换为 ${citationStyle.value.toUpperCase()}`)
+  } catch (e) {
+    toast.error('引用格式切换失败: ' + e.message)
+  }
+}
+
+const loadReferences = async () => {
+  if (!currentProject.value?.id) return
+  referencesLoading.value = true
+  try {
+    const r = await fetch(`/api/scholar/projects/${currentProject.value.id}/references?style=${citationStyle.value}`)
+    if (r.ok) {
+      const data = await r.json()
+      referencesList.value = data.references || []
+    }
+  } catch (e) {
+    toast.error('加载参考文献失败: ' + e.message)
+  } finally {
+    referencesLoading.value = false
+  }
+}
+
+const loadCitationStyle = async () => {
+  if (!currentProject.value?.id) return
+  try {
+    const r = await fetch(`/api/scholar/projects/${currentProject.value.id}/citation-style`)
+    if (r.ok) {
+      const data = await r.json()
+      citationStyle.value = data.style || 'gbt7714'
+    }
+  } catch (e) {
+    // 静默失败，默认 gbt7714
+  }
+}
 
 // P1: 浮出面板标题
 const floatingPanelTitle = computed(() => {
@@ -2708,6 +2804,8 @@ const switchProject = async (p) => {
       }
       // Load agent-provider bindings
       loadAgentProviders()
+      // Load citation style
+      loadCitationStyle()
       // Load persisted citation verifications
       try {
         const cvRes = await fetch(`/api/scholar/projects/${p.id}/citation-verifications`)

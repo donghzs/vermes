@@ -11,7 +11,7 @@ import os
 import time
 from typing import Optional
 
-from fastapi import HTTPException, Path
+from fastapi import HTTPException, Path, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -535,6 +535,87 @@ def register_to(app):
         
         return {"added": added, "skipped": skipped, "total": added + skipped}
 
+    @app.post("/api/scholar/projects/{pid}/literature/upload-pdf")
+    async def api_upload_pdf(pid: int, file: UploadFile = File(...)):
+        """上传 PDF 文件，提取文本并创建文献记录"""
+        import os, tempfile, fitz
+        from . import database as db
+
+        # 验证文件类型
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(400, "仅支持 PDF 文件")
+
+        # 读取文件内容（50MB 限制）
+        content = await file.read()
+        if len(content) > 50 * 1024 * 1024:
+            raise HTTPException(400, "文件大小超过 50MB 限制")
+
+        # 保存到临时目录
+        upload_dir = os.path.join(tempfile.gettempdir(), "scholarforge_uploads", str(pid))
+        os.makedirs(upload_dir, exist_ok=True)
+        filepath = os.path.join(upload_dir, file.filename)
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        try:
+            doc = fitz.open(filepath)
+            # 提取元数据
+            meta = doc.metadata or {}
+            title = meta.get("title", "") or ""
+            authors_str = meta.get("author", "") or ""
+            authors = [a.strip() for a in authors_str.split(",") if a.strip()] if authors_str else []
+
+            # 提取文本
+            full_text = ""
+            for page in doc:
+                full_text += page.get_text()
+            doc.close()
+
+            # 如果元数据无标题，从正文启发式提取
+            if not title:
+                lines = [l.strip() for l in full_text.split("\n") if l.strip()]
+                if lines:
+                    # 取前几行中最长的作为标题
+                    title = max(lines[:20], key=len) if lines[:20] else file.filename.replace(".pdf", "")
+
+            # 启发式提取摘要
+            abstract = ""
+            import re
+            abs_match = re.search(r'(?i)\babstract\b[:\s\n]*(.{50,500}?)(?:\n\n|\bkeywords?\b|\b1\.\s|introduction)', full_text, re.DOTALL)
+            if abs_match:
+                abstract = abs_match.group(1).strip()[:500]
+
+            # 提取年份
+            year = None
+            year_match = re.search(r'\b(20\d{2})\b', full_text[:2000])
+            if year_match:
+                year = int(year_match.group(1))
+
+            # 创建文献记录
+            lit_id = db.add_literature(pid,
+                title=title,
+                authors=authors,
+                year=year,
+                venue="",
+                doi="",
+                url="",
+                abstract=abstract)
+
+            logger.info(f"[ScholarForge] PDF uploaded: {file.filename} → literature #{lit_id} ({len(full_text)} chars)")
+
+            return {
+                "id": lit_id,
+                "title": title,
+                "authors": authors,
+                "year": year,
+                "abstract": abstract,
+                "text_length": len(full_text),
+                "filename": file.filename,
+            }
+        except Exception as e:
+            logger.error(f"PDF upload/parse failed: {e}", exc_info=True)
+            raise HTTPException(500, f"PDF 解析失败: {e}")
+
     @app.get("/api/scholar/projects/{pid}/messages")
     async def api_list_messages(pid: int, agent: str = None):
         """项目内 AI 对话历史"""
@@ -600,6 +681,59 @@ def register_to(app):
         from . import database as db
         verifications = db.get_citation_verifications(pid)
         return {"verifications": verifications}
+
+    @app.get("/api/scholar/projects/{pid}/citation-style")
+    async def get_citation_style(pid: int):
+        """获取项目的引用格式"""
+        from . import database as db
+        proj = db.get_project(pid)
+        if not proj:
+            raise HTTPException(404, "项目不存在")
+        style = proj.get("citation_style", "gbt7714") or "gbt7714"
+        return {"style": style, "available_styles": [
+            {"value": "gbt7714", "label": "GB/T 7714-2015"},
+            {"value": "apa", "label": "APA 7th"},
+            {"value": "mla", "label": "MLA 9th"},
+            {"value": "ieee", "label": "IEEE"},
+            {"value": "chicago", "label": "Chicago 17th"},
+            {"value": "vancouver", "label": "Vancouver"},
+        ]}
+
+    @app.put("/api/scholar/projects/{pid}/citation-style")
+    async def set_citation_style(pid: int, body: dict = None):
+        """设置项目的引用格式"""
+        from . import database as db
+        if not body or "style" not in body:
+            raise HTTPException(400, "缺少 style 字段")
+        style = body["style"]
+        from hermes_cli.scholarforge.citation_provider import CITATION_STYLES
+        if style not in CITATION_STYLES:
+            raise HTTPException(400, f"不支持的引用格式: {style}")
+        db.update_project(pid, citation_style=style)
+        return {"style": style}
+
+    @app.get("/api/scholar/projects/{pid}/references")
+    async def get_references(pid: int, style: str = None):
+        """按指定格式获取项目的参考文献列表"""
+        from . import database as db
+        from hermes_cli.scholarforge.citation_provider import format_references_list, CITATION_STYLES
+        proj = db.get_project(pid)
+        if not proj:
+            raise HTTPException(404, "项目不存在")
+        # 优先用查询参数，回退到项目设置
+        if not style:
+            style = proj.get("citation_style", "gbt7714") or "gbt7714"
+        if style not in CITATION_STYLES:
+            style = "gbt7714"
+        papers = proj.get("literatures", []) or []
+        formatted = format_references_list(papers, style)
+        from hermes_cli.scholarforge.citation_provider import format_citation as _fmt_cit
+        return {
+            "style": style,
+            "count": len(papers),
+            "formatted": formatted,
+            "references": [_fmt_cit(p, style, i+1) for i, p in enumerate(papers)],
+        }
 
     @app.get("/api/scholar/agents")
     async def list_agents():
