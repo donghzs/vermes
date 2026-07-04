@@ -364,6 +364,13 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
+          <div class="h-4 w-px bg-gray-300 dark:bg-gray-600 mx-1"></div>
+          <div class="flex items-center gap-0.5">
+            <button @click="fetchAutocomplete" :disabled="autocompleteLoading" class="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 flex items-center gap-1 disabled:opacity-40" :title="autocompleteLoading ? 'AI思考中...' : 'AI续写 (Ctrl+J)'" aria-label="AI续写">
+              <svg class="w-4 h-4" :class="{'animate-spin': autocompleteLoading}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span class="text-xs">AI续写</span>
+            </button>
+          </div>
           <div class="flex-1"></div>
           <div class="flex items-center gap-2">
             <button @click="viewMode = 'edit'" :class="['px-2 py-1 rounded text-xs', viewMode === 'edit' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700']" aria-label="编辑视图" aria-pressed="viewMode === 'edit'">编辑</button>
@@ -413,6 +420,7 @@
               <span class="text-gray-300">接受补全</span>
               <kbd class="px-1 py-0.5 bg-gray-700 rounded text-[9px] font-mono ml-1">Esc</kbd>
               <span class="text-gray-300">忽略</span>
+              <span v-if="aiSuggestionCitations.length" class="ml-2 text-blue-300">📚 引用 {{ aiSuggestionCitations.join(', ') }}</span>
             </div>
             <!-- 写作字数进度条 -->
             <div v-if="project.targetWords" class="absolute bottom-2 left-4 right-4 flex items-center gap-2 bg-gray-900/80 backdrop-blur rounded-lg px-3 py-1.5 text-[10px]">
@@ -1244,6 +1252,7 @@ const handleKeyboard = (e) => {
   if (e.key === 'h' || e.key === 'H') { e.preventDefault(); editor.format('heading'); return }
   if (e.key === 't' || e.key === 'T') { e.preventDefault(); insertTable(); return }
   if (e.key === 'k' || e.key === 'K') { e.preventDefault(); insertCitation(); return }
+  if (e.key === 'j' || e.key === 'J') { e.preventDefault(); fetchAutocomplete(); return }
   if (e.key === 'Escape') { e.preventDefault(); showExportPanel.value = false; showSelectionMenu.value = false; showLiteraturePanel.value = false; showAIPanel.value = false; activeRightPanel.value = null; return }
   if (e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); insertFormula(); return }
   if (e.shiftKey && (e.key === 'C' || e.key === 'C'.toLowerCase())) { e.preventDefault(); copyRichText(); return }
@@ -2776,6 +2785,7 @@ const aiSuggestion = ref('')
 const cursorPos = ref(0)
 const autocompleteTimer = ref(null)
 const autocompleteLoading = ref(false)
+const aiSuggestionCitations = ref([])  // 补全建议关联的引用编号
 
 const fetchAutocomplete = async () => {
   if (!project.value?.id || !activeSection.value) return
@@ -2806,8 +2816,14 @@ const fetchAutocomplete = async () => {
     if (r.ok) {
       const d = await r.json()
       aiSuggestion.value = d.suggestion || ''
+      // 展示引用编号提示
+      if (d.citation && d.citation.length > 0) {
+        aiSuggestionCitations.value = d.citation
+      } else {
+        aiSuggestionCitations.value = []
+      }
     }
-  } catch (e) { /* 静默失败 */ }
+  } catch (e) { console.debug('[ScholarForge] autocomplete fail:', e) }
   finally { autocompleteLoading.value = false }
 }
 

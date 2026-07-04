@@ -375,8 +375,8 @@ def register_to(app):
         if not pid or not text_before.strip():
             return {"suggestion": "", "citation": []}
 
-        # 取最后 600 字符作为上下文（控制 token）
-        context_text = text_before[-600:]
+        # 取最后 1200 字符作为上下文（控制 token）
+        context_text = text_before[-1200:]
 
         # 获取项目文献
         from . import database as db
@@ -463,7 +463,6 @@ def register_to(app):
         except Exception as e:
             logger.debug(f"Autocomplete LLM failed: {e}")
             return {"suggestion": "", "citation": []}
-        return {"ok": True, "word_count": len(content)}
 
     @app.delete("/api/scholar/projects/{pid}/section/{section_key}")
     async def api_delete_section(pid: int, section_key: str):
