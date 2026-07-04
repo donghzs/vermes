@@ -44,6 +44,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { toast } from '../utils/toast'
 
 const props = defineProps({
   visible: Boolean,
@@ -111,7 +112,7 @@ const submit = async () => {
       }
     }
   } catch (e) {
-    alert('修改失败: ' + e.message)
+    toast.error('修改失败: ' + e.message)
   } finally {
     loading.value = false
   }

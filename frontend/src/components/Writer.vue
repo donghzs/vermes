@@ -780,6 +780,7 @@ const AIPanel = defineAsyncComponent(() => import('./panels/AIPanel.vue'))
 const PlagPanel = defineAsyncComponent(() => import('./panels/PlagPanel.vue'))
 const ScorePanel = defineAsyncComponent(() => import('./panels/ScorePanel.vue'))
 import { useScholarPanelStore } from '../stores/scholar-panel.js'
+import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
 import texmath from 'markdown-it-texmath'
 import katex from 'katex'
@@ -1079,7 +1080,7 @@ const inlineEdit = async (action) => {
       ta.setSelectionRange(start, start + newText.length)
     }, 50)
   } catch (e) {
-    alert('AI 编辑失败: ' + e.message)
+    toast.error('AI 编辑失败: ' + e.message)
   } finally {
     inlineEditLoading.value = false
   }
@@ -1205,7 +1206,7 @@ const pasteAndParse = async () => {
   try {
     const text = await navigator.clipboard.readText()
     if (!text.trim()) {
-      alert('剪贴板为空')
+      toast.warning('剪贴板为空')
       return
     }
     
@@ -1215,7 +1216,7 @@ const pasteAndParse = async () => {
       // 没识别到结构，直接粘贴到当前章节
       currentContent.value = text
       onEditorInput()
-      alert('未识别到章节结构，已粘贴到当前章节')
+      toast.info('未识别到章节结构，已粘贴到当前章节')
       return
     }
     
@@ -1261,10 +1262,10 @@ const pasteAndParse = async () => {
       currentContent.value = sectionContents.value[outline.value[0].id] || ''
     }
     
-    alert(`✅ 识别完成：${parsed.title || '未命名论文'}\n共 ${parsed.sections.length} 章，${parsed.references.length} 篇参考文献`)
+    toast.success(`识别完成：${parsed.title || '未命名论文'}，共 ${parsed.sections.length} 章，${parsed.references.length} 篇参考文献`)
     
   } catch (e) {
-    alert('粘贴失败: ' + e.message)
+    toast.error('粘贴失败: ' + e.message)
   }
 }
 
@@ -1567,7 +1568,7 @@ const createSnapshot = async () => {
       await loadSnapshots()
     }
   } catch (e) {
-    alert('快照保存失败: ' + e.message)
+    toast.error('快照保存失败: ' + e.message)
   }
 }
 
@@ -1582,9 +1583,9 @@ const restoreSnapshot = async (snap) => {
     // 保存到后端
     await saveCurrentSection()
     activeRightPanel.value = null
-    alert('✅ 已恢复到: ' + (snap.label || '快照'))
+    toast.success('已恢复到: ' + (snap.label || '快照'))
   } catch (e) {
-    alert('恢复失败: ' + e.message)
+    toast.error('恢复失败: ' + e.message)
   }
 }
 
@@ -1594,7 +1595,7 @@ const deleteSnapshot = async (sid) => {
     await fetch(`/api/scholar/snapshots/${sid}`, { method: 'DELETE' })
     snapshots.value = snapshots.value.filter(s => s.id !== sid)
   } catch (e) {
-    alert('删除失败: ' + e.message)
+    toast.error('删除失败: ' + e.message)
   }
 }
 
@@ -1624,7 +1625,7 @@ const runScore = async () => {
   await flushSseSaves()
   await saveCurrentSection()
   if (!hasSectionContent()) {
-    alert('论文内容为空，请先完成写作再评分')
+    toast.warning('论文内容为空，请先完成写作再评分')
     return
   }
   scoreLoading.value = true
@@ -1633,7 +1634,7 @@ const runScore = async () => {
     if (!r.ok) throw new Error(await r.text())
     scoreResult.value = await r.json()
   } catch (e) {
-    alert('评分失败: ' + e.message)
+    toast.error('评分失败: ' + e.message)
   } finally {
     scoreLoading.value = false
   }
@@ -1657,7 +1658,7 @@ const runPlagcheck = async () => {
     if (!r.ok) throw new Error(await r.text())
     plagResult.value = await r.json()
   } catch (e) {
-    alert('查重检测失败: ' + e.message)
+    toast.error('查重检测失败: ' + e.message)
   } finally {
     plagLoading.value = false
   }
@@ -1669,7 +1670,7 @@ const runConsensusAnalysis = async () => {
   await flushSseSaves()
   await saveCurrentSection()
   if (!hasSectionContent()) {
-    alert('论文内容为空，请先完成写作再分析共识度')
+    toast.warning('论文内容为空，请先完成写作再分析共识度')
     return
   }
   consensusLoading.value = true
@@ -1678,12 +1679,12 @@ const runConsensusAnalysis = async () => {
     const claimsResp = await fetch(`/api/scholar/projects/${project.value.id}/claims`)
     if (!claimsResp.ok) {
       const err = await claimsResp.json().catch(() => ({ detail: `HTTP ${claimsResp.status}` }))
-      alert(err.detail || '提取论断失败')
+      toast.error(err.detail || '提取论断失败')
       return
     }
     const claimsData = await claimsResp.json()
     if (!claimsData.claims?.length) {
-      alert('未能从论文中提取到关键论断，请先完成论文写作')
+      toast.warning('未能从论文中提取到关键论断，请先完成论文写作')
       return
     }
     
@@ -1695,7 +1696,7 @@ const runConsensusAnalysis = async () => {
     })
     if (!consensusResp.ok) {
       const err = await consensusResp.json().catch(() => ({ detail: `HTTP ${consensusResp.status}` }))
-      alert(err.detail || '共识度分析失败')
+      toast.error(err.detail || '共识度分析失败')
       return
     }
     const consensusData = await consensusResp.json()
@@ -1703,7 +1704,7 @@ const runConsensusAnalysis = async () => {
     
     events.value.push({ type: 'done', message: `共识分析: ${consensusData.results?.length || 0}条论断`, time: Date.now() })
   } catch (e) {
-    alert(`共识度分析失败: ${e.message}`)
+    toast.error(`共识度分析失败: ${e.message}`)
   } finally {
     consensusLoading.value = false
   }
@@ -1836,7 +1837,7 @@ const triggerBibtexImport = () => {
         body: JSON.stringify({ bibtex: text })
       })
       const data = await r.json()
-      alert(`✅ 导入完成：${data.added} 篇新增，${data.skipped} 篇跳过`)
+      toast.success(`导入完成：${data.added} 篇新增，${data.skipped} 篇跳过`)
       // 刷新文献列表
       if (project.value?.id) {
         const litRes = await fetch(`/api/scholar/projects/${project.value.id}/literature`)
@@ -1849,7 +1850,7 @@ const triggerBibtexImport = () => {
         }
       }
     } catch (e) {
-      alert('导入失败: ' + e.message)
+      toast.error('导入失败: ' + e.message)
     }
   }
   input.addEventListener('blur', finish)
@@ -1859,7 +1860,7 @@ const triggerBibtexImport = () => {
 const searchLiterature = async () => {
   const q = literatureSearch.value.trim() || project.value.title || ''
   if (!q) {
-    alert('请输入检索关键词')
+    toast.warning('请输入检索关键词')
     return
   }
   searchLoading.value = true
@@ -2102,7 +2103,7 @@ const runStormPipeline = async () => {
   // 用当前编辑器内容或论文主题作为全链路输入
   const topic = sectionContents.value[activeSection.value] || project.value.title || '深度学习在医学影像中的应用'
   if (!topic.trim()) {
-    alert('请先输入论文主题或写一些内容')
+    toast.warning('请先输入论文主题或写一些内容')
     return
   }
 
@@ -2335,7 +2336,7 @@ const copyRichText = async () => {
   }
   const md = buildFullPaper()
   if (!md || md.trim() === `# ${project.value.title || '未命名论文'}`) {
-    alert('论文内容为空，请先写作再复制')
+    toast.warning('论文内容为空，请先写作再复制')
     return
   }
   // 简单 MD→HTML 渲染（同 renderedContent 逻辑，但不需要 Vue reactivity）
@@ -2353,14 +2354,14 @@ const copyRichText = async () => {
     const blob = new Blob([html], { type: 'text/html' })
     const item = new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([md], { type: 'text/plain' }) })
     await navigator.clipboard.write([item])
-    alert('✅ 全文已复制（富文本），可直接粘贴到 Word/飞书/Notion 保留格式')
+    toast.success('全文已复制（富文本），可直接粘贴到 Word/飞书/Notion 保留格式')
   } catch (e) {
     // 回退：仅纯文本
     try {
       await navigator.clipboard.writeText(md)
-      alert('✅ 全文已复制（纯文本）')
+      toast.success('全文已复制（纯文本）')
     } catch (e2) {
-      alert('❌ 复制失败，请手动复制')
+      toast.error('复制失败，请手动复制')
     }
   }
 }
@@ -2616,7 +2617,7 @@ const rewriteSection = (sectionId) => {
   if (!section) return
   const content = sectionContents.value[sectionId]
   if (!content || content.trim().length < 50) {
-    alert('该章节内容太短，无法修改')
+    toast.warning('该章节内容太短，无法修改')
     return
   }
   rewriteTarget.value = { key: sectionId, title: section.title || '未命名章节' }

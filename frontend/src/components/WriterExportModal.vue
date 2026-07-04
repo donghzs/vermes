@@ -49,6 +49,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { toast } from '../utils/toast'
 
 const props = defineProps({
   visible: Boolean,
@@ -112,7 +113,7 @@ const doExport = async () => {
     })
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: '导出失败' }))
-      alert(err.detail || '导出失败')
+      toast.error(err.detail || '导出失败')
       return
     }
     const ct = resp.headers.get('Content-Type') || ''
@@ -127,7 +128,7 @@ const doExport = async () => {
       downloadBlob(blob, filename.value)
     }
   } catch (e) {
-    alert('导出失败: ' + e.message)
+    toast.error('导出失败: ' + e.message)
   }
 }
 
