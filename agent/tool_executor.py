@@ -31,6 +31,7 @@ from agent.display import (
 )
 from agent.evolution_manager import record_tool_outcome
 from agent.tool_guardrails import ToolGuardrailDecision
+from agent.self_validator import get_validator as _get_self_validator
 from agent.tool_dispatch_helpers import (
     _is_destructive_command,
     _is_multimodal_tool_result,
@@ -303,6 +304,16 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
         else:
             logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
+        # 桥：自验证层 — warn 模式下仅 log，不修改 result
+        try:
+            _vr = _get_self_validator().verify_tool_result(
+                function_name, function_args, result, agent, is_error=is_error,
+            )
+            _suffix = _get_self_validator().format_for_result(_vr)
+            if _suffix:
+                result = result + _suffix
+        except Exception:
+            pass  # 验证层永不阻塞工具执行
         results[index] = (function_name, function_args, result, duration, is_error, False)
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
@@ -878,6 +889,17 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)
         else:
             logger.info("tool %s completed (%.2fs, %d chars)", function_name, tool_duration, _result_len)
+
+        # 桥：自验证层 — warn 模式下仅 log，不修改 function_result
+        try:
+            _vr = _get_self_validator().verify_tool_result(
+                function_name, function_args, function_result, agent, is_error=_is_error_result,
+            )
+            _suffix = _get_self_validator().format_for_result(_vr)
+            if _suffix:
+                function_result = function_result + _suffix
+        except Exception:
+            pass  # 验证层永不阻塞工具执行
 
         # Track file-mutation outcome for the turn-end verifier.  See
         # the concurrent path for the rationale; both paths must feed
