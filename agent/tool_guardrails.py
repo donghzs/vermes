@@ -433,12 +433,68 @@ def _tool_failure_recovery_hint(tool_name: str, count: int) -> str:
         "Do not switch to text-only replies; keep using tools, but diagnose before retrying. "
         "First inspect the latest error/output and verify your assumptions. "
     )
-    if tool_name == "terminal":
-        return common + (
+
+    hints = {
+        "terminal": (
             "For terminal failures, run a small diagnostic such as `pwd && ls -la` "
             "in the same tool, then try an absolute path, a simpler command, a different "
             "working directory, or a different tool such as read_file/write_file/patch."
-        )
+        ),
+        "write_file": (
+            "For write failures: verify the directory exists (`ls -la <dir>`), "
+            "check write permissions, ensure the path is absolute, and confirm "
+            "the content is not empty. If the file is locked, try closing it first."
+        ),
+        "read_file": (
+            "For read failures: verify the file exists (`ls -la <path>`), "
+            "check the path is absolute and correctly spelled, and ensure "
+            "the file is readable (not a directory, not a broken symlink)."
+        ),
+        "patch": (
+            "For patch failures: ensure the patch format is correct "
+            "(oldText must match exactly), verify the file exists, "
+            "and check that the target text hasn't already been changed "
+            "by a previous patch in this turn."
+        ),
+        "search_files": (
+            "For search failures: verify the directory exists, "
+            "try a broader glob pattern (*.py instead of specific name), "
+            "or use `ls -R <dir>` to inspect the directory structure first."
+        ),
+        "web_search": (
+            "For search failures: try a simpler query with fewer terms, "
+            "check network connectivity, or use web_extract on a known URL instead."
+        ),
+        "web_extract": (
+            "For extract failures: verify the URL is accessible in a browser, "
+            "try a different URL, or use web_search to find an alternative source. "
+            "Some sites block automated extraction — try terminal with curl as fallback."
+        ),
+        "execute_code": (
+            "For code execution failures: check the Python syntax, "
+            "verify all imports are available, try running a simpler snippet first, "
+            "and inspect the traceback for the exact error line."
+        ),
+        "browser_navigate": (
+            "For navigation failures: verify the URL is valid and accessible, "
+            "check if the browser is still running, try a simpler URL like https://example.com, "
+            "or use terminal with curl to test connectivity."
+        ),
+        "browser_click": (
+            "For click failures: the selector may be wrong or the element may not exist. "
+            "Take a browser_snapshot first to inspect the page structure, "
+            "try a different CSS selector, or use browser_type with a more specific selector."
+        ),
+        "send_message": (
+            "For messaging failures: verify the target/recipient is valid, "
+            "check the message is not empty, and confirm the messaging channel "
+            "is configured and connected."
+        ),
+    }
+
+    tool_hint = hints.get(tool_name)
+    if tool_hint:
+        return common + tool_hint
     return common + (
         "Try different arguments, a narrower query/path, an absolute path when relevant, "
         "or a different tool that can make progress. If the blocker is external, report "
