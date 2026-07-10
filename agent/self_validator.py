@@ -164,6 +164,20 @@ class WriteFileStrategy:
                 severity="error",
             )
 
+        # Quality gate: warn if new print() calls introduced
+        if content and file_path.endswith(".py"):
+            import re
+            new_prints = len(re.findall(r"^\s*print\s*\(", content, re.MULTILINE))
+            if new_prints > 0:
+                return VerifyResult(
+                    ok=True,
+                    tool_name=tool_name,
+                    strategy_name=self.name,
+                    message=f"file written ({file_size} bytes), {new_prints} print() call(s) — consider logging",
+                    severity="warn",
+                    extra={"file_size": file_size, "new_prints": new_prints},
+                )
+
         return VerifyResult(
             ok=True,
             tool_name=tool_name,
@@ -313,6 +327,21 @@ class PatchStrategy:
                 message=f"patch reported failure: {data.get('error', 'unknown')}",
                 severity="error",
             )
+
+        # Quality gate: warn if patch introduces new print() calls
+        patch_content = args.get("content") or args.get("patch") or ""
+        if patch_content and file_path.endswith(".py"):
+            import re
+            new_prints = len(re.findall(r"^\s*print\s*\(", patch_content, re.MULTILINE))
+            if new_prints > 0:
+                return VerifyResult(
+                    ok=True,
+                    tool_name=tool_name,
+                    strategy_name=self.name,
+                    message=f"patch applied to {file_path}, {new_prints} print() call(s) — consider logging",
+                    severity="warn",
+                    extra={"new_prints": new_prints},
+                )
 
         return VerifyResult(
             ok=True,

@@ -107,6 +107,39 @@ class TestWriteFileStrategy:
         assert r.ok is True
         assert "bytes" in r.message
 
+    def test_print_warning(self, tmp_file, validator):
+        # Write content with print() to a .py file
+        with open(tmp_file, "w") as f:
+            f.write("print('debug')\n")
+        result = json.dumps({"success": True, "path": tmp_file})
+        r = validator.verify_tool_result(
+            "write_file",
+            {"path": tmp_file, "content": "print('debug')\n"},
+            result,
+            FakeAgent(),
+        )
+        assert r.ok is True
+        assert r.is_warning is True
+        assert "print()" in r.message
+
+    def test_no_warning_for_non_python(self, tmp_file, validator):
+        # Non-Python file should not trigger print warning
+        path = tmp_file.replace(".py", ".js")
+        with open(path, "w") as f:
+            f.write("console.log('hi')\n")
+        try:
+            result = json.dumps({"success": True, "path": path})
+            r = validator.verify_tool_result(
+                "write_file",
+                {"path": path, "content": "console.log('hi')\n"},
+                result,
+                FakeAgent(),
+            )
+            assert r.ok is True
+            assert not r.is_warning
+        finally:
+            os.remove(path)
+
     def test_file_not_found(self, validator):
         result = json.dumps({"success": True})
         r = validator.verify_tool_result(
@@ -241,6 +274,21 @@ class TestPatchStrategy:
             assert r.ok is True
         finally:
             os.remove(path)
+
+    def test_print_warning_in_patch(self, tmp_file, validator):
+        # Patch that introduces print() should warn
+        with open(tmp_file, "w") as f:
+            f.write("x = 1\n")
+        result = json.dumps({"success": True})
+        r = validator.verify_tool_result(
+            "patch",
+            {"path": tmp_file, "content": "print('debug')\n"},
+            result,
+            FakeAgent(),
+        )
+        assert r.ok is True
+        assert r.is_warning is True
+        assert "print()" in r.message
 
 
 # ---------------------------------------------------------------------------
