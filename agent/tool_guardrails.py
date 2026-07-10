@@ -15,6 +15,7 @@ from typing import Any, Mapping
 
 from utils import safe_json_loads
 from agent.tool_result_classification import file_mutation_result_landed
+from agent.veto_ledger import get_veto_ledger
 
 
 IDEMPOTENT_TOOL_NAMES = frozenset(
@@ -342,10 +343,32 @@ class ToolCallGuardrailController:
                     signature=signature,
                 )
 
+            # Veto ledger: track consecutive failures for mutating tools
+            if not self._is_idempotent(tool_name):
+                veto = get_veto_ledger().record_veto(
+                    tool_name, signature.args_hash,
+                    message=result[:200] if result else "",
+                )
+                if veto.should_pause and self.config.hard_stop_enabled:
+                    decision = ToolGuardrailDecision(
+                        action="halt",
+                        code="veto_threshold_reached",
+                        message=veto.message,
+                        tool_name=tool_name,
+                        count=exact_count,
+                        signature=signature,
+                    )
+                    self._halt_decision = decision
+                    return decision
+
             return ToolGuardrailDecision(tool_name=tool_name, count=exact_count, signature=signature)
 
         self._exact_failure_counts.pop(signature, None)
         self._same_tool_failure_counts.pop(tool_name, None)
+
+        # Record success in veto ledger (resets consecutive failure counter)
+        if not self._is_idempotent(tool_name):
+            get_veto_ledger().record_success(tool_name, signature.args_hash)
 
         if not self._is_idempotent(tool_name):
             self._no_progress.pop(signature, None)
