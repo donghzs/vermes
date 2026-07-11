@@ -449,12 +449,38 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     if not draft.strip():
         return "❌ 请提供包含 [n] 占位符的论文草稿。"
 
-    # 提取所有 [n] 占位符
-    placeholders = re.findall(r'\[(\d+)\]', draft)
-    if not placeholders:
+    # ── P0修复: 支持三种占位符格式 [n] / [n-m] / [n,m,...] ──
+    # 1. 先展开所有占位符为独立编号
+    cite_pattern = re.compile(r'\[(\d+(?:\s*[-–,]\s*\d+)*)\]')
+    raw_matches = list(cite_pattern.finditer(draft))
+    if not raw_matches:
         return "ℹ️ 草稿中未发现 [n] 占位符引用，无需替换。"
 
-    unique_nums = sorted(set(int(n) for n in placeholders))
+    def expand_citation(raw: str) -> list[int]:
+        """展开 [n] / [n-m] / [n,m,...] 为编号列表"""
+        raw = raw.strip('[]')
+        nums = []
+        for part in re.split(r'[,，]', raw):
+            part = part.strip()
+            range_m = re.match(r'(\d+)\s*[-–]\s*(\d+)', part)
+            if range_m:
+                a, b = int(range_m.group(1)), int(range_m.group(2))
+                nums.extend(range(min(a, b), max(a, b) + 1))
+            elif part.isdigit():
+                nums.append(int(part))
+        return nums
+
+    # 收集所有编号（含展开的范围引用）
+    all_nums: set[int] = set()
+    # 记录每个 raw match 对应的编号列表，用于后续替换
+    match_to_nums: list[tuple[re.Match, list[int]]] = []
+    for m in raw_matches:
+        nums = expand_citation(m.group(0))
+        if nums:
+            match_to_nums.append((m, nums))
+            all_nums.update(nums)
+
+    unique_nums = sorted(all_nums)
     if len(unique_nums) > max_refs:
         unique_nums = unique_nums[:max_refs]
 
@@ -462,7 +488,20 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     # 从每个 [n] 前后上下文提取中英文关键词
     def extract_keywords(text: str) -> str:
         """从上下文文本提取搜索关键词"""
-        # 英文术语：3-50 字母的词（排除常见停用词）
+        # 优先提取专有名词：连续大写字母开头（如 RAGAS, GPT, BERT, TransE）
+        proper_nouns = re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', text)
+        # 排除常见非术语
+        stop_proper = {'The', 'This', 'That', 'These', 'Those', 'Such', 'However',
+                       'Moreover', 'Furthermore', 'Therefore', 'Also', 'While',
+                       'When', 'Where', 'What', 'Which', 'Based', 'Using',
+                       'Given', 'Since', 'From', 'With', 'Both', 'Each',
+                       'First', 'Second', 'Third', 'Finally', 'In', 'For',
+                       'And', 'But', 'Not', 'Are', 'Was', 'Were', 'Has',
+                       'Have', 'Can', 'May', 'Will', 'Been', 'Some', 'More',
+                       'Most', 'Other', 'All', 'One', 'Two', 'Three'}
+        proper_nouns = [w for w in proper_nouns if w not in stop_proper]
+
+        # 英文术语：3-30 字母的词（排除常见停用词）
         stop_en = {'the', 'and', 'for', 'are', 'but', 'not', 'this', 'that', 'with',
                    'from', 'have', 'has', 'was', 'were', 'will', 'can', 'may',
                    'also', 'such', 'than', 'then', 'these', 'those', 'which',
@@ -482,28 +521,36 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
                    '此外', '同时', '另外', '首先', '其次', '最后'}
         cn_words = [w for w in cn_words if w not in stop_cn]
 
-        # 合并去重，优先英文术语（搜索效果更好）
-        all_words = en_words[:5] + cn_words[:3]
+        # 合并去重，优先专有名词 > 英文术语 > 中文关键词
+        seen = set()
+        all_words = []
+        for w in proper_nouns + en_words[:5] + cn_words[:3]:
+            wl = w.lower()
+            if wl not in seen:
+                seen.add(wl)
+                all_words.append(w)
         if not all_words:
             # 兜底：用整个上下文的前 60 字
             return text[:60].strip()
         return ' '.join(all_words[:6])
 
     # 为每个编号提取上下文和关键词
+    # 使用扩展后的 cite_pattern 来定位所有引用位置（含范围引用）
     num_context: dict[int, str] = {}
     num_keywords: dict[int, str] = {}
     paragraphs = draft.split("\n")
     for para in paragraphs:
-        for m in re.finditer(r'\[(\d+)\]', para):
-            n = int(m.group(1))
-            if n in unique_nums and n not in num_context:
-                start = max(0, m.start() - 120)
-                end = min(len(para), m.end() + 120)
-                ctx = para[start:end].strip()
-                num_context[n] = ctx
-                num_keywords[n] = extract_keywords(ctx)
+        for m in cite_pattern.finditer(para):
+            nums = expand_citation(m.group(0))
+            for n in nums:
+                if n in unique_nums and n not in num_context:
+                    start = max(0, m.start() - 120)
+                    end = min(len(para), m.end() + 120)
+                    ctx = para[start:end].strip()
+                    num_context[n] = ctx
+                    num_keywords[n] = extract_keywords(ctx)
 
-    logger.info(f"[ScholarForge] replace_citations: {len(num_keywords)} keywords extracted")
+    logger.info(f"[ScholarForge] replace_citations: {len(num_keywords)} keywords extracted (from {len(raw_matches)} citation marks)")
     for n, kw in num_keywords.items():
         logger.debug(f"  [{n}] kw='{kw[:50]}' ctx='{num_context[n][:40]}'")
 
@@ -530,7 +577,25 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
 
     # 对每个编号，从候选中选最佳匹配
     def score_relevance(paper: PaperResult, context: str, keyword: str) -> float:
-        """计算论文与上下文的相关性分数（0-1）"""
+        """计算论文与上下文的相关性分数（0-1）
+
+        四因子评分：
+        - 专有名词精确匹配 40%（如 RAGAS vs FActScore 可区分）
+        - 标题 token 重叠 20%
+        - 模糊相似度 20%
+        - 摘要关键词匹配 20%
+        """
+        # 提取专有名词（大写开头）
+        proper_kw = set(re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', keyword))
+        proper_title = set(re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', paper.title))
+        proper_abs = set(re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', paper.abstract or ''))
+
+        # 专有名词精确匹配（最高权重）
+        proper_match = 0.0
+        if proper_kw:
+            matched = proper_kw & (proper_title | proper_abs)
+            proper_match = len(matched) / len(proper_kw)
+
         # 标题与关键词的 token 重叠
         kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
         title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', paper.title.lower()))
@@ -548,7 +613,7 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             abs_lower = paper.abstract.lower()
             abstract_match = sum(1 for t in kw_tokens if t.lower() in abs_lower) / max(len(kw_tokens), 1)
 
-        return min(overlap * 0.4 + fuzzy * 0.3 + abstract_match * 0.3, 1.0)
+        return min(proper_match * 0.4 + overlap * 0.2 + fuzzy * 0.2 + abstract_match * 0.2, 1.0)
 
     # 选择最佳匹配
     seen_titles: set[str] = set()
@@ -600,13 +665,20 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
         match_log.append(f"  [{n}] → [{next_ref_num}] ✅ ({best_score:.0%}) {best_paper.title[:50]}")
         next_ref_num += 1
 
-    # 替换草稿中的 [n]
+    # 替换草稿中的占位符（支持 [n] / [n-m] / [n,m,...]）
     result_draft = draft
-    for original_n in unique_nums:
-        if original_n in num_to_ref:
-            result_draft = result_draft.replace(
-                f"[{original_n}]", f"[{num_to_ref[original_n]}]"
-            )
+    for m, nums in match_to_nums:
+        original = m.group(0)  # 如 [1-3] 或 [24,25] 或 [26]
+        # 检查所有编号是否都有映射
+        mapped = [num_to_ref.get(n) for n in nums]
+        if all(r is not None for r in mapped):
+            # 全部映射成功，生成替换文本
+            if len(mapped) == 1:
+                replacement = f"[{mapped[0]}]"
+            else:
+                # 多编号：用逗号分隔 [1,2,3]
+                replacement = f"[{','.join(str(r) for r in mapped)}]"
+            result_draft = result_draft.replace(original, replacement)
 
     # ── 修复3: 替换后交叉验证 ──
     verify_report = ""
