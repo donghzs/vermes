@@ -390,11 +390,11 @@ def _load_toolsets_for_web() -> list[str] | None:
             if toolsets:
                 ts_list = toolsets if isinstance(toolsets, list) else [toolsets]
                 if len(ts_list) == 1 and ts_list[0] == "hermes-cli":
-                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "scholarforge", "hermes-cli"]
                 return ts_list
     except Exception:
         pass
-    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "scholarforge", "hermes-cli"]
 
 
 def _get_chat_credentials() -> tuple[str, str, str]:

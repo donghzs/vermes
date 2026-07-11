@@ -179,9 +179,13 @@
             :class="['w-full px-3 py-2 flex items-center gap-2.5 text-sm transition-colors disabled:opacity-50', activeRightPanel === 'score' ? 'bg-yellow-50 text-yellow-600' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50']">
             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
             <span class="flex-1 text-left">论文评分</span>
-            <span v-if="scoreResult?.overall" 
-              :class="['px-1.5 text-white text-[9px] rounded-full', scoreResult.overall >= 7 ? 'bg-green-500' : scoreResult.overall >= 5 ? 'bg-amber-500' : 'bg-red-500']">
+            <span v-if="scoreResult?.overall != null" 
+              :class="['px-1.5 text-white text-[9px] rounded-full', scoreResult.overall >= 70 ? 'bg-green-500' : scoreResult.overall >= 40 ? 'bg-amber-500' : 'bg-red-500']">
               {{ scoreResult.overall }}
+            </span>
+            <span v-else-if="scoreResult?.score" 
+              :class="['px-1.5 text-white text-[9px] rounded-full', scoreResult.score >= 7 ? 'bg-green-500' : scoreResult.score >= 5 ? 'bg-amber-500' : 'bg-red-500']">
+              {{ scoreResult.score }}
             </span>
           </button>
 
@@ -619,16 +623,19 @@
           v-if="activeRightPanel === 'plag'"
           :result="plagResult"
           :loading="plagLoading"
+          :deaigc-result="deaigcResult"
           @run="runPlagcheck"
+          @deaigc="runDeAigcRewrite"
+          @apply-deaigc="applyDeAigcRewrite"
+          @dismiss-deaigc="deaigcResult = null"
           @close="activeRightPanel = null"
         />
-        
+
         <!-- 论文评分面板 (抽屉式) -->
         <ScorePanel
           v-if="activeRightPanel === 'score'"
           :result="scoreResult"
           :loading="scoreLoading"
-          :dimensions="scoreDimensions"
           @run="runScore"
           @close="activeRightPanel = null"
         />
@@ -1827,20 +1834,15 @@ const consensusResults = ref([])     // [{claim, support, oppose, neutral, total
 // ── P0-2: 查重 + AIGC 检测 ──
 const plagLoading = ref(false)
 const plagResult = ref(null)
+const deaigcResult = ref(null)
 
 // ── P2: 论文评分 ──
 const scoreLoading = ref(false)
-const scoreResult = ref(null)  // {originality:{score,reasoning}, logic:{...}, citation_completeness:{...}, overall, overall_reasoning}
-const scoreDimensions = [
-  { key: 'originality', label: '原创性', icon: '💡', weight: '30%' },
-  { key: 'logic', label: '逻辑性', icon: '🔗', weight: '35%' },
-  { key: 'citation_completeness', label: '引用完整性', icon: '📖', weight: '35%' },
-]
+const scoreResult = ref(null)
 
 const runScore = async () => {
   activeRightPanel.value = 'score'
   if (!project.value?.id) return
-  // 防御：保存当前编辑内容 + 刷新 SSE 防抖
   await flushSseSaves()
   await saveCurrentSection()
   if (!hasSectionContent()) {
@@ -1862,12 +1864,10 @@ const runScore = async () => {
 const runPlagcheck = async () => {
   activeRightPanel.value = 'plag'
   if (!project.value?.id) return
-  // 防御：保存当前内容 + 刷新 SSE 防抖
   await flushSseSaves()
   await saveCurrentSection()
   plagLoading.value = true
   try {
-    // 收集全部章节内容
     const content = Object.values(sectionContents.value).join('\n\n') || currentContent.value
     const r = await fetch(`/api/scholar/projects/${project.value.id}/plagcheck`, {
       method: 'POST',
@@ -1881,6 +1881,41 @@ const runPlagcheck = async () => {
   } finally {
     plagLoading.value = false
   }
+}
+
+// De-AIGC 一键降重
+const runDeAigcRewrite = async () => {
+  if (!project.value?.id) return
+  plagLoading.value = true
+  try {
+    const content = Object.values(sectionContents.value).join('\n\n') || currentContent.value
+    const r = await fetch(`/api/scholar/projects/${project.value.id}/deaigc-rewrite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+    deaigcResult.value = await r.json()
+    toast.success(`AI率 ${Math.round(deaigcResult.value.stats.aigc_before * 100)}% → ${Math.round(deaigcResult.value.stats.aigc_after * 100)}% (降${deaigcResult.value.stats.aigc_reduction_pct}%)`)
+  } catch (e) {
+    toast.error('降重改写失败: ' + e.message)
+  } finally {
+    plagLoading.value = false
+  }
+}
+
+// 应用 De-AIGC 改写结果到编辑器
+const applyDeAigcRewrite = (rewritten) => {
+  if (currentSectionKey.value && sectionContents.value[currentSectionKey.value]) {
+    sectionContents.value[currentSectionKey.value] = rewritten
+    currentContent.value = rewritten
+    toast.success('已应用 De-AIGC 改写')
+  } else {
+    sectionContents.value['full_paper'] = rewritten
+    toast.success('已应用 De-AIGC 改写到全文')
+  }
+  deaigcResult.value = null
+  runPlagcheck()
 }
 
 const runConsensusAnalysis = async () => {

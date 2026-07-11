@@ -221,16 +221,31 @@ class LiteratureSearchRequest(BaseModel):
 
 # === 内存中的项目上下文 ===
 _session_contexts: dict[str, "ProjectContext"] = {}
+_ctx_lock = asyncio.Lock()
+_CTX_MAX = 50  # 最大缓存数，防止内存泄漏
 
 
-def _get_ctx(project_id: str = "default", client_id: str = ""):
+async def _get_ctx(project_id: str = "default", client_id: str = ""):
     from hermes_cli.scholarforge.agents import ProjectContext
     from . import database as db
 
     # Key by client_id:project_id for multi-user isolation
     ctx_key = f"{client_id}:{project_id}" if client_id else project_id
 
-    if ctx_key not in _session_contexts:
+    # 快速路径：已存在直接返回
+    if ctx_key in _session_contexts:
+        return _session_contexts[ctx_key]
+
+    async with _ctx_lock:
+        # double-check
+        if ctx_key in _session_contexts:
+            return _session_contexts[ctx_key]
+
+        # LRU 淘汰：超过上限时删除最早的条目
+        while len(_session_contexts) >= _CTX_MAX:
+            oldest_key = next(iter(_session_contexts))
+            del _session_contexts[oldest_key]
+
         ctx = ProjectContext()
         # 从数据库恢复项目状态（paper_type / title / draft / papers / outline）
         try:
@@ -560,10 +575,12 @@ def register_to(app):
         if len(content) > 50 * 1024 * 1024:
             raise HTTPException(400, "文件大小超过 50MB 限制")
 
-        # 保存到临时目录
+        # 保存到临时目录（消毒文件名防路径穿越）
+        import uuid
+        safe_name = f"{uuid.uuid4().hex[:8]}_{os.path.basename(file.filename)}"
         upload_dir = os.path.join(tempfile.gettempdir(), "scholarforge_uploads", str(pid))
         os.makedirs(upload_dir, exist_ok=True)
-        filepath = os.path.join(upload_dir, file.filename)
+        filepath = os.path.join(upload_dir, safe_name)
         with open(filepath, "wb") as f:
             f.write(content)
 
@@ -868,11 +885,12 @@ def register_to(app):
     @app.post("/api/scholar/stream")
     async def scholar_stream(req: ScholarChatRequest):
         """论文写作 SSE 流式接口 — 每个 Agent 独立模型，支持 STORM 全链路"""
+        from . import database as db
 
         if not req.message.strip():
             raise HTTPException(400, "消息不能为空")
 
-        ctx = _get_ctx(str(req.project_id or "default"), client_id=req.client_id or "")
+        ctx = await _get_ctx(str(req.project_id or "default"), client_id=req.client_id or "")
         pid = int(req.project_id or 0)
 
         # 加载项目信息（target_words 等）
@@ -1218,7 +1236,7 @@ def register_to(app):
         这样手动编辑和 STORM 生成的内容都能正确导出。
         """
         from . import database as db
-        ctx = _get_ctx(str(pid), client_id=client_id)
+        ctx = await _get_ctx(str(pid), client_id=client_id)
         content = ctx.draft or ""
         papers = ctx.papers or []
         abstract = ctx.abstract if hasattr(ctx, "abstract") else ""
@@ -1476,6 +1494,47 @@ def register_to(app):
             raise HTTPException(500, f"查重检测失败: {e}")
 
     # ═══════════════════════════════════════════════════════════════
+    # De-AIGC 一键降重
+    # ═══════════════════════════════════════════════════════════════
+
+    @app.post("/api/scholar/projects/{pid}/deaigc-rewrite")
+    async def api_deaigc_rewrite(pid: int, req: dict = None):
+        """一键 De-AIGC 自动改写（规则化，零 LLM 调用）
+
+        四字套话 → 自然表达，绝对化 → 软化，连接词精简
+        返回改写后文本 + AI率变化统计
+        """
+        from hermes_cli.scholarforge.plagcheck import check_aigc, apply_deaigc_suggestions
+
+        content = (req or {}).get("content", "").strip()
+        if not content:
+            from . import database as db
+            proj = db.get_project(pid)
+            if not proj:
+                raise HTTPException(404, "项目不存在")
+            content = "\n\n".join(proj.get("contents", {}).values()) or ""
+        if not content.strip():
+            raise HTTPException(400, "论文内容为空")
+
+        before = check_aigc(content)
+        rewritten = apply_deaigc_suggestions(content)
+        after = check_aigc(rewritten)
+
+        return {
+            "original": content,
+            "rewritten": rewritten,
+            "stats": {
+                "aigc_before": round(before["overall_ratio"], 4),
+                "aigc_after": round(after["overall_ratio"], 4),
+                "aigc_reduction": round(before["overall_ratio"] - after["overall_ratio"], 4),
+                "aigc_reduction_pct": round(
+                    (before["overall_ratio"] - after["overall_ratio"]) /
+                    max(before["overall_ratio"], 0.001) * 100, 1
+                ),
+            },
+        }
+
+    # ═══════════════════════════════════════════════════════════════
     # P0-3: 逐段/逐节迭代修改
     # ═══════════════════════════════════════════════════════════════
 
@@ -1490,6 +1549,7 @@ def register_to(app):
                   默认 polish（润色）
             返回 SSE 流式响应
         """
+        import re
         from . import database as db
         proj = db.get_project(pid)
         if not proj:

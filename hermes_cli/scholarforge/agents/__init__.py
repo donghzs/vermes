@@ -272,6 +272,100 @@ class ProjectContext:
         return "\n".join(parts) if parts else ""
 
 
+# ═══════════════════════════════════════════════════════════════
+# 统一质量门控 — 所有 Stage Agent LLM 返回后必须经过
+# ═══════════════════════════════════════════════════════════════
+
+def _quality_gate(content: str, ctx: "ProjectContext", agent_name: str = "") -> list[dict]:
+    """统一质量门控：AIGC检测 + 引用验证 + De-AIGC建议。
+
+    返回 warnings 列表，每项 {"level": "error"|"warning"|"info", "message": str}。
+    """
+    warnings = []
+
+    # 1. AIGC 痕迹检测（5 维）
+    try:
+        from hermes_cli.scholarforge.plagcheck import check_aigc
+        aigc = check_aigc(content)
+        ai_ratio = aigc["overall_ratio"]
+        metrics = aigc.get("metrics", {})
+
+        if ai_ratio > 0.6:
+            warnings.append({"level": "warning", "message":
+                f"AI率 {ai_ratio:.0%}偏高，多处AI痕迹需人工润色"})
+        elif ai_ratio > 0.4:
+            warnings.append({"level": "info", "message":
+                f"AI率 {ai_ratio:.0%}，部分段落有AI腔调"})
+
+        # 连接词密度
+        connector = metrics.get("connector_density", 0)
+        if connector > 3:
+            warnings.append({"level": "info", "message":
+                f"连接词密度偏高({connector}处)，建议减少'首先''其次''此外'"})
+
+        # De-AIGC 校准建议（AI率 > 50% 时追加）
+        if ai_ratio > 0.5:
+            try:
+                from hermes_cli.scholarforge.plagcheck import suggest_deaigc_fixes
+                fixes = suggest_deaigc_fixes(content)
+                for f in fixes[:3]:
+                    warnings.append({"level": "info", "message":
+                        f"De-AIGC建议: {f.get('fix', str(f))[:100]}"})
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"[{agent_name}] AIGC detection error: {e}")
+
+    # 2. 引用占位符/有效性检测
+    cited_nums = set(re.findall(r'\[(\d+)\]', content))
+    if cited_nums and ctx.papers:
+        registered = set(str(v) for v in ctx.global_citation_map.values())
+        invalid = [int(n) for n in cited_nums if n not in registered]
+        if invalid:
+            warnings.append({"level": "error", "message":
+                f"引用编号 {sorted(invalid)[:5]} 超出已注册文献范围"})
+
+    # 3. 幻觉引用检测（非法格式）
+    fake_refs = re.findall(r'\[@[^\]]+\]', content)
+    if fake_refs:
+        warnings.append({"level": "warning", "message":
+            f"发现 {len(fake_refs)} 处非法引用格式(@作者年份)，已自动清理"})
+
+    # 4. 未补充文献标记
+    need_supp = content.count("[此处需补充文献]")
+    if need_supp > 0:
+        warnings.append({"level": "info", "message":
+            f"{need_supp} 处标记'需补充文献'，建议后续用引用替换工具补充"})
+
+    return warnings
+
+
+def _format_quality_warnings(warnings: list[dict]) -> str:
+    """将质量门控警告格式化为 markdown 后缀。"""
+    if not warnings:
+        return ""
+    lines = ["\n\n---\n**质量提示（自动检测）**\n"]
+    for w in warnings:
+        icon = {"error": "🔴", "warning": "🟡", "info": "💡"}.get(w["level"], "ℹ️")
+        lines.append(f"{icon} {w['message']}\n")
+    return "".join(lines)
+
+
+def _post_gate(content: str, ctx: "ProjectContext", agent_name: str = "") -> str:
+    """一站式后处理：清理引用格式 + 质量门控 + 追加警告。
+
+    所有 Stage Agent 的 LLM 返回都应通过此函数后再 yield 给前端。
+    """
+    # 1. 清理非法引用格式
+    content = _clean_citation_format(content)
+    # 2. 质量门控
+    warnings = _quality_gate(content, ctx, agent_name)
+    # 3. 追加警告
+    if warnings:
+        content += _format_quality_warnings(warnings)
+    return content
+
+
 # ====================
 # 5 个 Agent
 # ====================
@@ -332,7 +426,7 @@ class TopicAgent(BaseAgent):
 """ + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(prompt)
-        response = _clean_citation_format(response)
+        response = _post_gate(response, self.ctx, "topic")
         yield {"type": "content", "text": response}
         yield {"type": "done", "message": "选题分析完成"}
 
@@ -623,6 +717,7 @@ class LiteratureAgent(BaseAgent):
 空白2:xxx | 关键词:kw1, kw2"""
 
             gap_resp = await self.llm(gap_prompt)
+            gap_resp = _post_gate(gap_resp, self.ctx, "literature_gap")
             yield {"type": "content", "text": _clean_citation_format(f"\n\n### 🔎 第3轮:研究空白识别\n\n{gap_resp}")}
 
             # 解析空白关键词
@@ -707,6 +802,7 @@ class LiteratureAgent(BaseAgent):
 """ + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(review_prompt)
+        response = _post_gate(response, self.ctx, "literature_review")
         validate_warnings = _validate_citation_refs(response, papers)
         if validate_warnings:
             response += "\n\n---\n⚠️ **引用验证警告**:\n" + "\n".join(f"- {w}" for w in validate_warnings)
@@ -736,7 +832,8 @@ class LiteratureAgent(BaseAgent):
 用上方文献列表中的全局编号引用文献。"""
 
         try:
-            return await self.llm(prompt)
+            resp = await self.llm(prompt)
+            return _post_gate(resp, self.ctx, "literature_round")
         except Exception as e:
             logger.error(f"Round analysis failed: {e}")
             return f"(分析失败: {e})"
@@ -789,6 +886,7 @@ class LiteratureAgent(BaseAgent):
 - 学术语言规范"""
 
         response = await self.llm(prompt)
+        response = _post_gate(response, self.ctx, "literature_synthesize")
         validate_warnings = _validate_citation_refs(response, all_papers)
         if validate_warnings:
             response += "\n\n---\n⚠️ **引用验证警告**:\n" + "\n".join(f"- {w}" for w in validate_warnings)
@@ -843,6 +941,7 @@ class OutlineAgent(BaseAgent):
 """ + get_paper_type_prompt(self.ctx.paper_type)
 
         response = await self.llm(prompt)
+        response = _post_gate(response, self.ctx, "outline")
 
         # 提取章节(过滤元数据章节)
         sections = []
@@ -1102,6 +1201,7 @@ class WritingAgent(BaseAgent):
 
             try:
                 content = await self.llm(prompt)
+                content = _post_gate(content, self.ctx, "writing")
                 # 清理可能的重复标题
                 content = content.strip()
                 if not content:
@@ -1229,7 +1329,8 @@ class WritingAgent(BaseAgent):
 正文(前 4000 字):
 {body_preview}"""
         try:
-            return await self.llm(prompt)
+            resp = await self.llm(prompt)
+            return _post_gate(resp, self.ctx, "writing_abstract")
         except Exception as e:
             logger.warning(f"_regenerate_abstract failed: {e}")
             return ""
@@ -1260,6 +1361,11 @@ class RefinementAgent(BaseAgent):
         duplicates = 0
         for line in lines:
             key = line.strip().lower()[:50]
+            # 跳过参考文献行（以 [数字] 开头），避免误删
+            if re.match(r'^\[\d+\]', line.strip()):
+                deduped.append(line)
+                seen.add(key)
+                continue
             if key and key in seen and len(key) > 20:
                 duplicates += 1
                 continue
@@ -1276,7 +1382,7 @@ class RefinementAgent(BaseAgent):
 
         # 2a: 范围检查(快速,无需 LLM)
         cited_nums = set(re.findall(r'\[(\d+)\]', draft))
-        valid_nums = set(str(i+1) for i in range(len(self.ctx.papers)))
+        valid_nums = set(str(v) for v in self.ctx.global_citation_map.values())
         invalid_citations = cited_nums - valid_nums
         if invalid_citations:
             for num in invalid_citations:
@@ -1388,15 +1494,15 @@ class RefinementAgent(BaseAgent):
                 draft = new_draft
                 # 将真实文献追加到 ctx.papers(供后续验证/导出使用)
                 for c in real_citations:
-                    self.ctx.papers.append(PaperResult(
+                    self.ctx.add_paper(PaperCard(
+                        paper_id=c.doi or c.title[:20],
                         title=c.title,
-                        authors=c.authors,
-                        year=c.year,
-                        venue=c.venue,
+                        authors=c.authors if isinstance(c.authors, list) else [c.authors],
+                        year=str(c.year) if c.year else "",
+                        venue=c.venue or "",
                         abstract="",
-                        doi=c.doi,
-                        source=c.source,
-                        citations=0,
+                        url=c.doi and f"https://doi.org/{c.doi}" or "",
+                        source=c.source or "",
                     ))
                 yield {"type": "citation_replace",
                        "count": len(real_citations),
@@ -1450,6 +1556,7 @@ class RefinementAgent(BaseAgent):
 
             try:
                 polished_sec = await self.llm(prompt)
+                polished_sec = _post_gate(polished_sec, self.ctx, "refinement")
                 polished_sections.append(polished_sec.strip())
             except Exception as e:
                 logger.warning(f"润色 {sec_title} 失败: {e},保留原章节")
@@ -1603,15 +1710,14 @@ def get_paper_type_prompt(paper_type: str) -> str:
 
 
 class ReviewerAgent(BaseAgent):
-    """审稿 Agent - 独立 LLM(防自评偏差),四维审查论文质量
+    """审稿 Agent - 六维结构化评审（1 次 LLM 调用，节省 2 次）
 
-    使用独立 provider/model 审查 draft,与 writing Agent 隔离防自评偏差。
-    四维:结构与逻辑 / 引用质量 / 数据案例 / 学术表达
+    六维: 创新性 / 方法论 / 论证逻辑 / 语言表达 / 引用完整性 / 数据真实性
     """
     name = "reviewer"
     icon = "🔍"
     label = "审稿"
-    description = "独立审稿--结构/逻辑/引用/数据四维审查"
+    description = "六维结构化评审--创新/方法/逻辑/语言/引用/数据"
     prompt_hint = "审查全文质量..."
 
     def __init__(self, ctx: ProjectContext, llm_call, review_scope: str = "full"):
@@ -1619,9 +1725,9 @@ class ReviewerAgent(BaseAgent):
         self.review_scope = review_scope
 
     async def run(self, user_input: str = "") -> AsyncGenerator[dict, None]:
-        yield {"type": "thinking", "message": "🔍 独立审稿中(使用独立模型审查,防自评偏差)..."}
-        user_input = self._safe_input(user_input)
-        draft = self.ctx.draft or user_input
+        yield {"type": "thinking", "message": "🔍 六维审稿中（1 次 LLM 调用）..."}
+
+        draft = self.ctx.draft or self._safe_input(user_input)
         if not draft or len(draft.strip()) < 100:
             yield {"type": "done", "message": "正文过短,无法审查"}
             return
@@ -1629,75 +1735,89 @@ class ReviewerAgent(BaseAgent):
         outline = self.ctx.outline or {}
         sections = outline.get("sections", []) if isinstance(outline, dict) else []
         papers_count = len(self.ctx.papers) if self.ctx.papers else 0
+        sec_text = "\n".join([f"- {s.get('title','?')}" for s in sections[:10]]) if sections else "(无大纲)"
 
-        reviews = []
-        if self.review_scope in ("full", "structure"):
-            yield {"type": "thinking", "message": "📐 审查结构与逻辑..."}
-            reviews.append(("结构与逻辑", "📐", await self._review_structure(draft, sections)))
-        if self.review_scope in ("full", "citations"):
-            yield {"type": "thinking", "message": "📚 审查引用质量..."}
-            reviews.append(("引用质量", "📚", await self._review_citations(draft, papers_count)))
-        if self.review_scope in ("full", "expression"):
-            yield {"type": "thinking", "message": "✍️ 审查学术表达..."}
-            reviews.append(("学术表达", "✍️", await self._review_expression(draft)))
+        # 1 次 LLM 调用，返回 6 维 JSON
+        prompt = (
+            "你是学术审稿人（领域主席级别），请直接输出评审意见，不要自我介绍。\n\n"
+            f"审阅论文大纲:\n{sec_text}\n文献池: {papers_count} 篇\n正文（前 3000 字）:\n{draft[:3000]}\n\n"
+            "评审要求 — 只回复以下 JSON（不要其他文字）:\n"
+            '{"创新性":1-10整数,"方法论":1-10整数,"论证逻辑":1-10整数,'
+            '"语言表达":1-10整数,"引用完整性":1-10整数,"数据真实性":1-10整数,'
+            '"总体印象":"一句话概括","致命问题":"P0缺陷或无",'
+            '"修改建议":["建议1","建议2"],"综合评分":0-100整数}'
+        )
 
-        yield {"type": "thinking", "message": "📊 汇总审稿报告..."}
-        total_issues = 0
+        try:
+            resp = await self.llm(prompt)
+            scores = json.loads(resp)
+        except Exception as e:
+            logger.warning(f"ReviewerAgent LLM failed: {e}")
+            scores = {
+                "创新性": 5, "方法论": 5, "论证逻辑": 5,
+                "语言表达": 5, "引用完整性": 5, "数据真实性": 5,
+                "总体印象": "审稿失败（LLM 无响应）",
+                "致命问题": "无", "修改建议": ["LLM 审查失败，请检查 API 配置"],
+                "综合评分": 50,
+            }
 
-        report_lines = ["# 📋 审稿报告\n"]
-        fixed_reviews = []
-        for dim_name, dim_icon, dim_result in reviews:
-            if not isinstance(dim_result, dict):
-                dim_result = {"score": 5, "issues": [], "suggestions": [str(dim_result)[:100]]}
-            fixed_reviews.append((dim_name, dim_icon, dim_result))
-            score = dim_result.get("score", 5)
-            issues = dim_result.get("issues", [])
-            suggestions = dim_result.get("suggestions", [])
-            total_issues += len(issues)
-            report_lines.append(f"## {dim_icon} {dim_name} 评分: {score}/10\n")
-            if issues:
-                report_lines.append(f"### 问题({len(issues)} 处)\n")
-                for issue in issues:
-                    report_lines.append(f"- {issue}")
-                report_lines.append("")
-            if suggestions:
-                report_lines.append(f"### 改进建议\n")
-                for s in suggestions:
-                    report_lines.append(f"- {s}")
-                report_lines.append("")
+        # 映射为旧格式（向后兼容）
+        dim_map = [
+            ("结构与逻辑", "📐", scores.get("论证逻辑", 5)),
+            ("引用质量", "📚", scores.get("引用完整性", 5)),
+            ("学术表达", "✍️", scores.get("语言表达", 5)),
+            ("数据真实性", "🔬", scores.get("数据真实性", 5)),
+        ]
+        suggestions = scores.get("修改建议", [])
+        fatal = scores.get("致命问题", "")
+        overall = int(scores.get("综合评分", 50))
+        halt = overall < 40
+        total_issues = len(suggestions)
 
-        avg_score = sum(d.get("score", 5) for _, _, d in fixed_reviews) / max(len(fixed_reviews), 1)
-        report_lines.insert(1, f"**综合评分**: {avg_score:.1f}/10 | **总问题**: {total_issues}\n")
+        # 构建 markdown 报告
+        report_lines = ["# 📋 审稿报告（六维增强）\n"]
+        if fatal and fatal not in ("", "无"):
+            report_lines.append(f"🔴 **致命问题**: {fatal}\n\n")
+        report_lines.append(f"## 📊 综合评分: {overall}/100\n\n")
+        report_lines.append("## 📐 六维评分\n")
+        for dim_name, dim_icon, dim_score in dim_map:
+            bar = "█" * dim_score + "░" * (10 - dim_score)
+            report_lines.append(f"{dim_icon} {dim_name}: {dim_score}/10 {bar}\n")
+        report_lines.append(f"💡 创新性: {scores.get('创新性','?')}/10  |  🔬 方法论: {scores.get('方法论','?')}/10\n\n")
+        if suggestions:
+            report_lines.append("## ✏️ 修改建议\n")
+            for s in suggestions[:8]:
+                report_lines.append(f"- {s}\n")
 
-        review_report = "\n".join(report_lines)
+        review_report = "".join(report_lines)
         yield {
             "type": "review",
             "report": review_report,
-            "score": round(avg_score, 1),
+            "score": round(overall / 10, 1),
             "total_issues": total_issues,
-            "dimensions": [{"name": n, "score": d.get("score", 5)} for n, _, d in fixed_reviews],
+            "dimensions": [{"name": n, "score": s} for n, _, s in dim_map],
+            "halt": halt,
+            "fatal": fatal,
+            "six_dim": {
+                "创新性": scores.get("创新性"),
+                "方法论": scores.get("方法论"),
+                "论证逻辑": scores.get("论证逻辑"),
+                "语言表达": scores.get("语言表达"),
+                "引用完整性": scores.get("引用完整性"),
+                "数据真实性": scores.get("数据真实性"),
+            },
         }
-        yield {"type": "done", "message": f"审稿完成({avg_score:.1f}/10)"}
+        yield {"type": "done", "message": f"审稿完成({overall}/100){' ⚠️ 质量不足' if halt else ''}"}
 
+    # 向后兼容桩方法
     async def _review_structure(self, draft: str, sections: list) -> dict:
-        sec_text = "\n".join([f"- {s.get('title','?')}" for s in sections[:10]]) if sections else "(无大纲)"
-        prompt = f"""你是学术审稿人,审查以下论文的结构与逻辑。
-预期大纲:
-{sec_text}
-正文(前 3000 字):
-{draft[:3000]}
-审查: 章节结构清晰度、逻辑衔接、论证链完整性、是否有重复/跳跃。
-**额外检查1**：章节编号是否连续（如"第1章""第2章""第3章"...），如有跳号或缺失请报告为 P0 问题。
-**额外检查2**：跨章节一致性——方法章定义的数据集/基线方法是否与实验章使用的一致？摘要声称的指标是否在实验中都有报告？如不一致请报告为 P0 问题。
-只回复 JSON: {{"score": 1-10, "issues": [...], "suggestions": [...]}}"""
-        try:
-            resp = await self.llm(prompt)
-            result = json.loads(resp)
-            if not isinstance(result, dict):
-                result = {"score": 5, "issues": [], "suggestions": [str(result)[:100]]}
-            return result
-        except Exception:
-            return {"score": 5, "issues": [], "suggestions": ["LLM 审查失败"]}
+        return {"score": 5, "issues": ["请使用完整审稿获取六维评审"], "suggestions": []}
+
+    async def _review_citations(self, draft: str, papers_count: int) -> dict:
+        return {"score": 5, "issues": [], "suggestions": []}
+
+    async def _review_expression(self, draft: str) -> dict:
+        return {"score": 5, "issues": [], "suggestions": []}
 
     async def _review_citations(self, draft: str, papers_count: int) -> dict:
         refs = re.findall(r'\[(\d+)\]', draft)

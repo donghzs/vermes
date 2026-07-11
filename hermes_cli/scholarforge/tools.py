@@ -187,27 +187,34 @@ async def _call_llm(prompt: str, system: str = "") -> str:
     body = {
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "stream": False,
     }
     if creds["model"]:
         body["model"] = creds["model"]
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            f"{creds['base_url']}/chat/completions",
-            json=body,
-            headers={
-                "Authorization": f"Bearer {creds['api_key']}",
-                "Content-Type": "application/json",
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{creds['base_url']}/chat/completions",
+                json=body,
+                headers={
+                    "Authorization": f"Bearer {creds['api_key']}",
+                    "Content-Type": "application/json",
+                },
+            )
         if resp.status_code == 200:
             data = resp.json()
             return data["choices"][0]["message"]["content"]
         err = resp.text[:200]
         logger.error(f"LLM call failed ({creds['provider']}/{creds['model']}): {resp.status_code} {err}")
         return f"❌ LLM 调用失败 ({resp.status_code}): {err[:150]}"
+    except httpx.HTTPError as e:
+        logger.error(f"LLM network error ({creds['provider']}/{creds['model']}): {e}")
+        return f"❌ LLM 网络错误: {type(e).__name__}: {str(e)[:120]}"
+    except Exception as e:
+        logger.error(f"LLM unexpected error ({creds['provider']}/{creds['model']}): {e}", exc_info=True)
+        return f"❌ LLM 调用异常: {type(e).__name__}: {str(e)[:120]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -370,7 +377,259 @@ async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
-# Registration — 模块导入时自动注册
+# Schema: Replace Citations
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA = {
+    "name": "scholarforge_replace_citations",
+    "description": (
+        "替换论文草稿中的 [n] 占位符引用为真实文献。"
+        "自动搜索相关学术文献，根据上下文匹配最合适的引用，并生成参考文献列表。"
+        "适用于：AI 生成的论文草稿中引用标记需要替换为真实文献时。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "draft": {
+                "type": "string",
+                "description": "包含 [n] 占位符的论文草稿全文",
+            },
+            "max_refs": {
+                "type": "integer",
+                "description": "最大引用文献数量，默认 15，最大 30",
+                "minimum": 1,
+                "maximum": 30,
+                "default": 15,
+            },
+        },
+        "required": ["draft"],
+    },
+}
+
+
+# ──────────────────────────────────────────────────────────────
+# Schema: Learn Style
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_LEARN_STYLE_SCHEMA = {
+    "name": "scholarforge_learn_style",
+    "description": (
+        "学习用户已有论文的写作风格（句长、术语密度、过渡短语等 8 维特征），"
+        "生成风格提示词，后续 scholarforge_write 会自动仿写该风格。"
+        "适用于：用户希望 AI 写出的论文跟自己之前的写作风格一致。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "sample_text": {
+                "type": "string",
+                "description": "用户已有的论文片段（至少 500 字），作为风格学习样本",
+            },
+        },
+        "required": ["sample_text"],
+    },
+}
+
+
+async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
+    """替换占位符引用为真实文献"""
+    import re
+    import asyncio
+
+    draft = args.get("draft", "")
+    max_refs = min(args.get("max_refs", 15), 30)
+
+    if not draft.strip():
+        return "❌ 请提供包含 [n] 占位符的论文草稿。"
+
+    # 提取所有 [n] 占位符
+    placeholders = re.findall(r'\[(\d+)\]', draft)
+    if not placeholders:
+        return "ℹ️ 草稿中未发现 [n] 占位符引用，无需替换。"
+
+    unique_nums = sorted(set(int(n) for n in placeholders), reverse=True)
+    if len(unique_nums) > max_refs:
+        unique_nums = unique_nums[:max_refs]
+
+    # 按段落提取上下文，为每个占位符推断搜索词
+    paragraphs = draft.split("\n")
+    num_context: dict[int, str] = {}
+    for para in paragraphs:
+        nums_in_para = re.findall(r'\[(\d+)\]', para)
+        if nums_in_para:
+            # 取该段落中 [n] 前后各 80 字作为上下文
+            for m in re.finditer(r'\[(\d+)\]', para):
+                n = int(m.group(1))
+                if n in unique_nums and n not in num_context:
+                    start = max(0, m.start() - 80)
+                    end = min(len(para), m.end() + 80)
+                    num_context[n] = para[start:end].strip()
+
+    # 用 LLM 为每个占位符生成搜索关键词
+    sys_prompt = (
+        "你是一个学术文献检索助手。根据论文上下文，推断该位置应该引用什么主题的文献。"
+        "只输出搜索关键词（中英文均可），不要解释。每行一个关键词。"
+    )
+    context_block = "\n".join(
+        f"[{n}] 上下文: {num_context.get(n, '(无上下文)')[:150]}"
+        for n in unique_nums
+    )
+    prompt = f"以下论文中各 [n] 标记处需要引用文献，请为每个推断搜索关键词：\n\n{context_block}"
+    kw_response = await _call_llm(prompt, sys_prompt)
+
+    # 解析关键词
+    search_terms: dict[int, str] = {}
+    lines = kw_response.strip().split("\n")
+    for i, n in enumerate(unique_nums):
+        if i < len(lines):
+            # 提取行中的关键词（去掉 [n] 前缀和序号）
+            term = re.sub(r'^\[?\d+\]?\.?\s*', '', lines[i]).strip()
+            if term and len(term) > 2:
+                search_terms[n] = term
+
+    # 并行搜索文献
+    from hermes_cli.scholarforge.search import search_papers
+
+    found_papers: dict[int, dict] = {}
+    all_results: list = []
+
+    async def search_one(n: int, term: str):
+        async for paper in search_papers(term, limit=3):
+            all_results.append((n, term, paper))
+            break  # 每个编号只取第一个结果
+
+    tasks = [search_one(n, t) for n, t in search_terms.items()]
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 去重：同一篇论文不重复引用
+    seen_titles: set[str] = set()
+    ref_list: list[tuple[int, dict]] = []
+    next_ref_num = 1
+    num_to_ref: dict[int, int] = {}
+
+    for n, term, paper in all_results:
+        title_key = paper.title.lower().strip()
+        if title_key in seen_titles:
+            # 复用已分配的编号
+            for prev_n, prev_ref in ref_list:
+                if prev_ref["title"].lower().strip() == title_key:
+                    num_to_ref[n] = num_to_ref[prev_n]
+                    break
+            continue
+        seen_titles.add(title_key)
+        num_to_ref[n] = next_ref_num
+        ref_list.append((n, {
+            "ref_num": next_ref_num,
+            "title": paper.title,
+            "authors": ", ".join(paper.authors[:3]) if paper.authors else "Unknown",
+            "year": paper.year or "n.d.",
+            "venue": paper.venue or "",
+            "doi": paper.doi or "",
+        }))
+        next_ref_num += 1
+
+    # 替换草稿中的 [n]
+    result_draft = draft
+    for original_n in unique_nums:
+        if original_n in num_to_ref:
+            result_draft = result_draft.replace(
+                f"[{original_n}]", f"[{num_to_ref[original_n]}]"
+            )
+
+    # 生成参考文献列表
+    ref_lines = ["\n\n## 参考文献\n"]
+    for _, ref in sorted(ref_list, key=lambda x: x[1]["ref_num"]):
+        ref_lines.append(
+            f"[{ref['ref_num']}] {ref['authors']} ({ref['year']}). "
+            f"{ref['title']}. {ref['venue']}."
+        )
+
+    replaced = len(num_to_ref)
+    unreplaced = len(unique_nums) - replaced
+
+    summary = f"✅ 替换完成：{replaced}/{len(unique_nums)} 个占位符已匹配真实文献"
+    if unreplaced:
+        summary += f"，{unreplaced} 个未找到匹配"
+
+    return result_draft + "\n".join(ref_lines) + f"\n\n---\n{summary}"
+
+
+async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
+    """学习用户写作风格"""
+    import re
+    import statistics
+
+    sample = args.get("sample_text", "")
+    if len(sample.strip()) < 100:
+        return "❌ 样本文本过短，至少需要 500 字才能提取风格特征。"
+
+    # ── 8 维风格特征提取 ──
+    # 1. 平均句长
+    sentences = re.split(r'[。！？.!?\n]', sample)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 3]
+    sent_lengths = [len(s) for s in sentences]
+    avg_sent_len = statistics.mean(sent_lengths) if sent_lengths else 0
+
+    # 2. 句长标准差（变异系数）
+    if len(sent_lengths) > 1:
+        sent_cv = statistics.stdev(sent_lengths) / avg_sent_len if avg_sent_len > 0 else 0
+    else:
+        sent_cv = 0
+
+    # 3. 段落长度均匀度
+    paras = [p.strip() for p in sample.split("\n\n") if p.strip() and len(p.strip()) > 20]
+    para_lengths = [len(p) for p in paras]
+    if len(para_lengths) > 1:
+        para_cv = statistics.stdev(para_lengths) / statistics.mean(para_lengths) if statistics.mean(para_lengths) > 0 else 0
+    else:
+        para_cv = 0
+
+    # 4. 术语密度（中英文专业术语比例）
+    cn_chars = len(re.findall(r'[\u4e00-\u9fff]', sample))
+    en_terms = len(re.findall(r'[A-Za-z]{3,}', sample))
+    term_density = en_terms / max(cn_chars / 100, 1) if cn_chars > 0 else 0
+
+    # 5. 过渡短语频率
+    transitions = ['然而', '此外', '因此', '所以', '但是', '同时', '另外',
+                   '首先', '其次', '最后', '总之', '综上', '换言之',
+                   '具体来说', '值得注意的是', '需要强调的是', '由此可见']
+    transition_count = sum(sample.count(t) for t in transitions)
+    transition_density = transition_count / max(len(paras), 1)
+
+    # 6. 引用密度
+    citation_count = len(re.findall(r'\[\d+\]', sample))
+    citation_density = citation_count / max(cn_chars / 100, 1) if cn_chars > 0 else 0
+
+    # 7. 第一人称使用频率
+    first_person = len(re.findall(r'我们|笔者|本研究|本文', sample))
+    first_person_density = first_person / max(len(paras), 1)
+
+    # 8. 被动句比例
+    passive = len(re.findall(r'被|由|受|遭', sample))
+    passive_density = passive / max(len(sentences), 1)
+
+    # 生成风格提示词
+    style_prompt = f"""# 写作风格指令
+请严格模仿以下风格特征写作：
+
+1. **句长**: 平均{avg_sent_len:.0f}字/句，句长变异系数{sent_cv:.2f}（{'整齐' if sent_cv < 0.3 else '长短交错' if sent_cv < 0.5 else '变化较大'}）
+2. **段落**: 平均{statistics.mean(para_lengths):.0f}字/段，段落{'均匀' if para_cv < 0.3 else '长短不一' if para_cv < 0.5 else '差异大'}
+3. **术语密度**: {'高' if term_density > 3 else '中等' if term_density > 1 else '低'}（每百字{term_density:.1f}个英文术语）
+4. **过渡词**: {'频繁' if transition_density > 1.5 else '适中' if transition_density > 0.5 else '少用'}（{transition_density:.1f}个/段）
+5. **引用密度**: 每百字{citation_density:.1f}个引用标记
+6. **第一人称**: {'常用' if first_person_density > 0.3 else '少用'}（{first_person_density:.1f}次/段）
+7. **被动语态**: {'频繁' if passive_density > 0.2 else '少用'}（{passive_density:.2f}）
+8. **常用过渡词**: {', '.join([t for t in transitions if sample.count(t) > 0][:5]) or '不明显'}
+"""
+
+    return (
+        f"✅ 风格学习完成！已提取 8 维风格特征。\n\n"
+        f"**风格摘要**: 句长{avg_sent_len:.0f}字、段落{'均匀' if para_cv < 0.3 else '变化'}、"
+        f"术语密度{'高' if term_density > 3 else '中'}、过渡词{'多' if transition_density > 1.5 else '适中'}\n\n"
+        f"后续使用 scholarforge_write 时将自动应用此风格。\n\n"
+        f"---\n{style_prompt}"
+    )
 # ──────────────────────────────────────────────────────────────
 
 def _register_tools():
@@ -402,7 +661,25 @@ def _register_tools():
         emoji="🔍",
         description="审阅论文草稿，给出结构化评审意见",
     )
-    logger.info("[ScholarForge] 3 Agent tools registered: search/write/review")
+    registry.register(
+        name="scholarforge_replace_citations",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA,
+        handler=_handle_scholarforge_replace_citations,
+        is_async=True,
+        emoji="🔗",
+        description="替换 [n] 占位符为真实文献引用",
+    )
+    registry.register(
+        name="scholarforge_learn_style",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_LEARN_STYLE_SCHEMA,
+        handler=_handle_scholarforge_learn_style,
+        is_async=True,
+        emoji="🎯",
+        description="学习用户写作风格，后续写作自动仿写",
+    )
+    logger.info("[ScholarForge] 5 Agent tools registered: search/write/review/replace_citations/learn_style")
 
 
 # Register on import
