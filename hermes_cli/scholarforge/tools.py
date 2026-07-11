@@ -432,9 +432,16 @@ SCHOLARFORGE_LEARN_STYLE_SCHEMA = {
 
 
 async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
-    """替换占位符引用为真实文献"""
+    """替换占位符引用为真实文献
+
+    修复三个致命问题：
+    1. 废弃 LLM 生成关键词 → 改用本地正则提取上下文关键词（消除格式不可控）
+    2. 搜索结果取 top-3 → 按与上下文的标题相似度排序取最佳匹配（不再盲取第一篇）
+    3. 替换后调用 citation_verifier 做交叉验证（替换前不做验证，替换后检查）
+    """
     import re
     import asyncio
+    import difflib
 
     draft = args.get("draft", "")
     max_refs = min(args.get("max_refs", 15), 30)
@@ -447,86 +454,150 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     if not placeholders:
         return "ℹ️ 草稿中未发现 [n] 占位符引用，无需替换。"
 
-    unique_nums = sorted(set(int(n) for n in placeholders), reverse=True)
+    unique_nums = sorted(set(int(n) for n in placeholders))
     if len(unique_nums) > max_refs:
         unique_nums = unique_nums[:max_refs]
 
-    # 按段落提取上下文，为每个占位符推断搜索词
-    paragraphs = draft.split("\n")
+    # ── 修复1: 本地提取关键词（不依赖 LLM）──
+    # 从每个 [n] 前后上下文提取中英文关键词
+    def extract_keywords(text: str) -> str:
+        """从上下文文本提取搜索关键词"""
+        # 英文术语：3-50 字母的词（排除常见停用词）
+        stop_en = {'the', 'and', 'for', 'are', 'but', 'not', 'this', 'that', 'with',
+                   'from', 'have', 'has', 'was', 'were', 'will', 'can', 'may',
+                   'also', 'such', 'than', 'then', 'these', 'those', 'which',
+                   'their', 'there', 'what', 'when', 'where', 'who', 'whom',
+                   'been', 'being', 'into', 'about', 'after', 'before',
+                   'between', 'through', 'during', 'above', 'below', 'over',
+                   'under', 'again', 'more', 'most', 'other', 'some'}
+        en_words = re.findall(r'[A-Za-z]{3,30}', text)
+        en_words = [w for w in en_words if w.lower() not in stop_en]
+
+        # 中文关键词：2-4 字连续中文字
+        cn_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', text)
+        # 过滤常见停用词
+        stop_cn = {'的研究', '本文', '本研', '研究', '方法', '结果', '结论',
+                   '实验', '分析', '通过', '基于', '采用', '提出', '实现',
+                   '一个', '可以', '这个', '那个', '因此', '所以', '然而',
+                   '此外', '同时', '另外', '首先', '其次', '最后'}
+        cn_words = [w for w in cn_words if w not in stop_cn]
+
+        # 合并去重，优先英文术语（搜索效果更好）
+        all_words = en_words[:5] + cn_words[:3]
+        if not all_words:
+            # 兜底：用整个上下文的前 60 字
+            return text[:60].strip()
+        return ' '.join(all_words[:6])
+
+    # 为每个编号提取上下文和关键词
     num_context: dict[int, str] = {}
+    num_keywords: dict[int, str] = {}
+    paragraphs = draft.split("\n")
     for para in paragraphs:
-        nums_in_para = re.findall(r'\[(\d+)\]', para)
-        if nums_in_para:
-            # 取该段落中 [n] 前后各 80 字作为上下文
-            for m in re.finditer(r'\[(\d+)\]', para):
-                n = int(m.group(1))
-                if n in unique_nums and n not in num_context:
-                    start = max(0, m.start() - 80)
-                    end = min(len(para), m.end() + 80)
-                    num_context[n] = para[start:end].strip()
+        for m in re.finditer(r'\[(\d+)\]', para):
+            n = int(m.group(1))
+            if n in unique_nums and n not in num_context:
+                start = max(0, m.start() - 120)
+                end = min(len(para), m.end() + 120)
+                ctx = para[start:end].strip()
+                num_context[n] = ctx
+                num_keywords[n] = extract_keywords(ctx)
 
-    # 用 LLM 为每个占位符生成搜索关键词
-    sys_prompt = (
-        "你是一个学术文献检索助手。根据论文上下文，推断该位置应该引用什么主题的文献。"
-        "只输出搜索关键词（中英文均可），不要解释。每行一个关键词。"
-    )
-    context_block = "\n".join(
-        f"[{n}] 上下文: {num_context.get(n, '(无上下文)')[:150]}"
-        for n in unique_nums
-    )
-    prompt = f"以下论文中各 [n] 标记处需要引用文献，请为每个推断搜索关键词：\n\n{context_block}"
-    kw_response = await _call_llm(prompt, sys_prompt)
+    logger.info(f"[ScholarForge] replace_citations: {len(num_keywords)} keywords extracted")
+    for n, kw in num_keywords.items():
+        logger.debug(f"  [{n}] kw='{kw[:50]}' ctx='{num_context[n][:40]}'")
 
-    # 解析关键词
-    search_terms: dict[int, str] = {}
-    lines = kw_response.strip().split("\n")
-    for i, n in enumerate(unique_nums):
-        if i < len(lines):
-            # 提取行中的关键词（去掉 [n] 前缀和序号）
-            term = re.sub(r'^\[?\d+\]?\.?\s*', '', lines[i]).strip()
-            if term and len(term) > 2:
-                search_terms[n] = term
+    # ── 修复2: 并行搜索 top-3 → 按相似度排序取最佳 ──
+    from hermes_cli.scholarforge.search import search_papers, PaperResult
 
-    # 并行搜索文献
-    from hermes_cli.scholarforge.search import search_papers
+    # 存储每个编号的候选论文列表
+    candidates: dict[int, list[PaperResult]] = {}
 
-    found_papers: dict[int, dict] = {}
-    all_results: list = []
+    async def search_one(n: int, keyword: str):
+        if not keyword:
+            return
+        papers = []
+        async for paper in search_papers(keyword, limit=5):
+            papers.append(paper)
+            if len(papers) >= 3:
+                break
+        if papers:
+            candidates[n] = papers
 
-    async def search_one(n: int, term: str):
-        async for paper in search_papers(term, limit=3):
-            all_results.append((n, term, paper))
-            break  # 每个编号只取第一个结果
-
-    tasks = [search_one(n, t) for n, t in search_terms.items()]
+    tasks = [search_one(n, kw) for n, kw in num_keywords.items()]
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    # 去重：同一篇论文不重复引用
+    # 对每个编号，从候选中选最佳匹配
+    def score_relevance(paper: PaperResult, context: str, keyword: str) -> float:
+        """计算论文与上下文的相关性分数（0-1）"""
+        # 标题与关键词的 token 重叠
+        kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
+        title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', paper.title.lower()))
+        overlap = len(kw_tokens & title_tokens) / max(len(kw_tokens), 1)
+
+        # 模糊相似度
+        fuzzy = difflib.SequenceMatcher(None,
+            keyword[:80].lower(),
+            (paper.title + ' ' + (paper.abstract or '')[:80]).lower()
+        ).ratio()
+
+        # 摘要关键词匹配
+        abstract_match = 0.0
+        if paper.abstract:
+            abs_lower = paper.abstract.lower()
+            abstract_match = sum(1 for t in kw_tokens if t.lower() in abs_lower) / max(len(kw_tokens), 1)
+
+        return min(overlap * 0.4 + fuzzy * 0.3 + abstract_match * 0.3, 1.0)
+
+    # 选择最佳匹配
     seen_titles: set[str] = set()
-    ref_list: list[tuple[int, dict]] = []
+    ref_list: list[dict] = []
     next_ref_num = 1
     num_to_ref: dict[int, int] = {}
+    match_log: list[str] = []
+    failed: list[int] = []
 
-    for n, term, paper in all_results:
-        title_key = paper.title.lower().strip()
-        if title_key in seen_titles:
-            # 复用已分配的编号
-            for prev_n, prev_ref in ref_list:
-                if prev_ref["title"].lower().strip() == title_key:
-                    num_to_ref[n] = num_to_ref[prev_n]
-                    break
+    for n in unique_nums:
+        if n not in candidates or not candidates[n]:
+            failed.append(n)
             continue
+
+        # 按相似度排序
+        scored = [(p, score_relevance(p, num_context.get(n, ''), num_keywords.get(n, '')))
+                  for p in candidates[n]]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        # 取最佳匹配（分数 > 0.1 阈值）
+        best_paper, best_score = scored[0]
+        if best_score < 0.1:
+            failed.append(n)
+            match_log.append(f"  [{n}] ⚠️ 最佳匹配分数过低 ({best_score:.2f})，跳过")
+            continue
+
+        # 去重：同一篇论文不重复引用
+        title_key = best_paper.title.lower().strip()[:80]
+        if title_key in seen_titles:
+            # 找已分配的编号
+            for ref in ref_list:
+                if ref["title"].lower().strip()[:80] == title_key:
+                    num_to_ref[n] = ref["ref_num"]
+                    break
+            match_log.append(f"  [{n}] → [{num_to_ref.get(n)}] (重复，合并)")
+            continue
+
         seen_titles.add(title_key)
         num_to_ref[n] = next_ref_num
-        ref_list.append((n, {
+        ref_list.append({
             "ref_num": next_ref_num,
-            "title": paper.title,
-            "authors": ", ".join(paper.authors[:3]) if paper.authors else "Unknown",
-            "year": paper.year or "n.d.",
-            "venue": paper.venue or "",
-            "doi": paper.doi or "",
-        }))
+            "title": best_paper.title,
+            "authors": ", ".join(best_paper.authors[:3]) if best_paper.authors else "Unknown",
+            "year": best_paper.year or "n.d.",
+            "venue": best_paper.venue or "",
+            "doi": best_paper.doi or "",
+            "score": round(best_score, 2),
+        })
+        match_log.append(f"  [{n}] → [{next_ref_num}] ✅ ({best_score:.0%}) {best_paper.title[:50]}")
         next_ref_num += 1
 
     # 替换草稿中的 [n]
@@ -537,22 +608,61 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
                 f"[{original_n}]", f"[{num_to_ref[original_n]}]"
             )
 
+    # ── 修复3: 替换后交叉验证 ──
+    verify_report = ""
+    if ref_list:
+        try:
+            from hermes_cli.scholarforge.citation_verifier import _fuzzy_verify
+            verify_results = []
+            for ref in ref_list:
+                # 构造 PaperResult 供验证
+                class _P:
+                    title = ref["title"]
+                    abstract = ""
+                    year = ref["year"]
+                    authors = ref["authors"].split(", ")
+                    paper_id = f"ref_{ref['ref_num']}"
+                result = _fuzzy_verify(ref["ref_num"], result_draft, [_P()])
+                if result:
+                    verify_results.append((ref["ref_num"], result.score, result.accurate))
+
+            inaccurate = [(n, s) for n, s, a in verify_results if not a and s < 5]
+            if inaccurate:
+                verify_report = "\n\n---\n**⚠️ 引用验证报告**\n"
+                for n, s in inaccurate:
+                    verify_report += f"  [{n}] 验证分数 {s}/10，建议人工核查\n"
+        except Exception as e:
+            logger.debug(f"citation verify failed: {e}")
+
     # 生成参考文献列表
     ref_lines = ["\n\n## 参考文献\n"]
-    for _, ref in sorted(ref_list, key=lambda x: x[1]["ref_num"]):
+    for ref in sorted(ref_list, key=lambda x: x["ref_num"]):
         ref_lines.append(
             f"[{ref['ref_num']}] {ref['authors']} ({ref['year']}). "
             f"{ref['title']}. {ref['venue']}."
         )
 
     replaced = len(num_to_ref)
-    unreplaced = len(unique_nums) - replaced
+    unreplaced = len(failed)
 
-    summary = f"✅ 替换完成：{replaced}/{len(unique_nums)} 个占位符已匹配真实文献"
-    if unreplaced:
-        summary += f"，{unreplaced} 个未找到匹配"
+    report_lines = [f"## 🔄 引用替换报告（共 {len(unique_nums)} 个占位符）\n"]
+    if match_log:
+        report_lines.append("### 匹配结果\n")
+        report_lines.extend(match_log)
+    if failed:
+        report_lines.append(f"\n### ⚠️ 未匹配 ({len(failed)} 个)\n")
+        report_lines.append(f"  编号: {failed}\n")
+        report_lines.append("  建议手动搜索文献后替换\n")
+    report_lines.append(f"\n**统计**: 成功 {replaced}/{len(unique_nums)} ({replaced*100//max(len(unique_nums),1)}%)\n")
 
-    return result_draft + "\n".join(ref_lines) + f"\n\n---\n{summary}"
+    if verify_report:
+        report_lines.append(verify_report)
+
+    report_lines.append(f"\n---\n\n## 📄 处理后正文\n\n{result_draft}")
+    report_lines.append("\n".join(ref_lines))
+
+    logger.info(f"[ScholarForge] replace_citations: {replaced}/{len(unique_nums)} replaced")
+    return "\n".join(report_lines)
 
 
 async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
