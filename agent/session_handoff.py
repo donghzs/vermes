@@ -31,9 +31,16 @@ logger = logging.getLogger(__name__)
 
 # Decision keywords (Chinese + English)
 _DECISION_KEYWORDS = [
-    "我决定", "决定", "选择", "策略是", "方案是",
-    "I decided", "decision is", "chose to", "opted for",
-    "结论是", "最终", "采纳",
+    # Chinese
+    "我决定", "我选择", "我倾向", "我建议", "我的建议是",
+    "最佳方案", "最优策略", "最终方案", "最终决定",
+    "决定用", "选择用", "采用", "决定采用", "结论是", "综上",
+    "策略是", "方案是", "思路是", "做法是", "方法用",
+    # English
+    "I decided", "I choose", "I think we should", "let's go with",
+    "decision is", "chose to", "opted for", "going with",
+    "I believe we should", "we will use", "best approach is",
+    "optimal strategy", "final decision", "adopt", "conclusion:",
 ]
 
 # Pending task markers
@@ -73,7 +80,7 @@ def generate_and_store_handoff(
         except Exception:
             keywords = []
 
-        return store_handoff(
+        handoff_id = store_handoff(
             session_id,
             user_request=user_request,
             tools_used=tools_used,
@@ -83,6 +90,17 @@ def generate_and_store_handoff(
             summary_text=summary_text,
             keywords=keywords,
         )
+
+        # ── 写入 embedding DB ────────────────────────────────────────
+        if handoff_id >= 0:
+            try:
+                from agent.hybrid_retriever import store_embedding
+                emb_content = f"Session: {session_id} | Task: {user_request} | Summary: {summary_text}"
+                store_embedding(emb_content, target=f"handoff:{session_id}")
+            except Exception as emb_err:
+                logger.debug("store_embedding for handoff skipped: %s", emb_err)
+
+        return handoff_id
     except Exception as e:
         logger.warning("Handoff generation failed: %s", e)
         return -1

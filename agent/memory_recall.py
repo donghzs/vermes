@@ -269,10 +269,10 @@ def recall_context(user_message: str) -> Optional[Dict[str, Any]]:
         except Exception as e:
             logger.debug("fusion-state DB query failed: %s", e)
 
-    # Source 3: hybrid_retriever (if embedding API configured)
+    # Source 3: hybrid_retriever rich_search (if embedding API configured)
     try:
-        from agent.hybrid_retriever import search as embedding_search
-        embedding_results = embedding_search(user_message, top_k=3)
+        from agent.hybrid_retriever import rich_search as _rich_search
+        embedding_results = _rich_search(user_message, top_k=3)
         if embedding_results:
             result["embedding_matches"] = embedding_results
     except Exception:
