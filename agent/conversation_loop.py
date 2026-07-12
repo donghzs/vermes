@@ -731,6 +731,15 @@ def run_conversation(
                 agent._evolution_context = _evo_block
         except Exception:
             pass
+        try:
+            from agent.memory_recall import load_and_format_recall
+            _recall_block = load_and_format_recall(
+                original_user_message if isinstance(original_user_message, str) else ""
+            )
+            if _recall_block:
+                agent._recall_context = _recall_block
+        except Exception:
+            pass
     if agent._memory_manager:
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
