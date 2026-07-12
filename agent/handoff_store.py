@@ -89,6 +89,11 @@ def _init_db(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_handoffs_created "
         "ON session_handoffs(created_at DESC)"
     )
+    # Migration: is_active column for incognito/forget
+    try:
+        conn.execute("ALTER TABLE session_handoffs ADD COLUMN is_active INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
 
 
@@ -147,14 +152,14 @@ def get_latest_handoff(session_id: str = "") -> Optional[Dict[str, Any]]:
             if session_id:
                 row = conn.execute(
                     "SELECT * FROM session_handoffs "
-                    "WHERE session_id = ? AND superseded_by IS NULL "
+                    "WHERE session_id = ? AND superseded_by IS NULL AND is_active = 1 "
                     "ORDER BY created_at DESC LIMIT 1",
                     (session_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
                     "SELECT * FROM session_handoffs "
-                    "WHERE superseded_by IS NULL "
+                    "WHERE superseded_by IS NULL AND is_active = 1 "
                     "ORDER BY created_at DESC LIMIT 1",
                 ).fetchone()
         if not row:
@@ -204,7 +209,7 @@ def get_relevant_handoff(
             cutoff = time.time() - max_age_days * 86400
             rows = conn.execute(
                 "SELECT * FROM session_handoffs "
-                "WHERE superseded_by IS NULL AND created_at > ? "
+                "WHERE superseded_by IS NULL AND is_active = 1 AND created_at > ? "
                 "ORDER BY created_at DESC LIMIT ?",
                 (cutoff, limit),
             ).fetchall()
@@ -285,3 +290,48 @@ def mark_superseded(row_id: int, by_row_id: int) -> None:
             conn.commit()
     except Exception as e:
         logger.warning("Failed to mark handoff superseded: %s", e)
+
+
+def deactivate_handoff(session_id: str) -> bool:
+    """Deactivate (incognito) a session's handoff so next session won't load it.
+
+    Does NOT delete data — just marks is_active=0.
+    Returns True on success.
+    """
+    try:
+        with _conn() as conn:
+            conn.execute(
+                "UPDATE session_handoffs SET is_active = 0 WHERE session_id = ?",
+                (session_id,),
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.warning("Failed to deactivate handoff: %s", e)
+        return False
+
+
+def forget_session(session_id: str) -> Dict[str, Any]:
+    """Incognito mode: deactivate session memory and decisions.
+
+    Called by the /forget command. Deactivates the session's handoff and
+    marks all decisions as superseded. Does NOT delete data (recoverable).
+
+    Returns a summary of what was cleared.
+    """
+    result = {"handoff": False, "decisions_count": 0, "errors": []}
+
+    # 1. Deactivate handoff
+    try:
+        result["handoff"] = deactivate_handoff(session_id)
+    except Exception as e:
+        result["errors"].append(f"handoff: {e}")
+
+    # 2. Mark decisions as superseded
+    try:
+        from agent.decision_tracker import _clear_session_decisions
+        result["decisions_count"] = _clear_session_decisions(session_id)
+    except Exception as e:
+        result["errors"].append(f"decisions: {e}")
+
+    return result

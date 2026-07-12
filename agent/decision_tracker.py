@@ -394,3 +394,24 @@ def format_decisions_for_prompt(limit: int = 5) -> str:
     parts.append("</active_decisions>")
 
     return "\n".join(parts)
+
+
+def _clear_session_decisions(session_id: str) -> int:
+    """Mark all decisions from a session as superseded (for /forget).
+
+    Does NOT delete rows — marks status='superseded'.
+    Returns count of decisions cleared.
+    """
+    try:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE decisions SET status = 'superseded' "
+            "WHERE session_id = ? AND status = 'active'",
+            (session_id,),
+        )
+        conn.commit()
+        conn.close()
+        return cur.rowcount
+    except Exception as e:
+        logger.warning("Failed to clear session decisions: %s", e)
+        return 0
