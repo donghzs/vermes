@@ -2576,6 +2576,12 @@ class AIAgent:
                 self._memory_manager.shutdown_all()
             except Exception:
                 pass
+        # Close cached evolution DB connections
+        try:
+            from agent.evolution_manager import shutdown_connections
+            shutdown_connections()
+        except Exception:
+            pass
         # Notify context engine of session end (flush DAG, close DBs, etc.)
         if hasattr(self, "context_compressor") and self.context_compressor:
             try:

@@ -16,8 +16,9 @@ import json
 import logging
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,6 @@ def _get_db_path() -> Path:
     global _DB_PATH
     if _DB_PATH is not None:
         return _DB_PATH
-    # Default: ~/.hermes/session_handoffs.db
     import os
     hermes_home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
     _db_dir = Path(hermes_home)
@@ -38,14 +38,25 @@ def _get_db_path() -> Path:
     return _DB_PATH
 
 
-def _get_conn(db_path: Optional[Path] = None) -> sqlite3.Connection:
+@contextmanager
+def _conn(db_path: Optional[Path] = None) -> Iterator[sqlite3.Connection]:
+    """Context-managed DB connection — guarantees close on exit.
+
+    Usage:
+        with _conn() as conn:
+            conn.execute(...)
+            conn.commit()
+    """
     path = db_path or _get_db_path()
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     _init_db(conn)
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _init_db(conn: sqlite3.Connection) -> None:
@@ -85,29 +96,28 @@ def store_handoff(
     open_questions: List[str] = None,
     summary_text: str = "",
 ) -> int:
-    """Store a session handoff record. Returns the row id."""
+    """Store a session handoff record. Returns the row id, or -1 on failure."""
     try:
-        conn = _get_conn()
-        now = time.time()
-        cur = conn.execute(
-            """INSERT INTO session_handoffs
-               (session_id, created_at, user_request, tools_used,
-                decisions, pending_tasks, open_questions, summary_text)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                session_id,
-                now,
-                user_request,
-                json.dumps(tools_used or [], ensure_ascii=False),
-                json.dumps(decisions or [], ensure_ascii=False),
-                json.dumps(pending_tasks or [], ensure_ascii=False),
-                json.dumps(open_questions or [], ensure_ascii=False),
-                summary_text,
-            ),
-        )
-        conn.commit()
-        row_id = cur.lastrowid
-        conn.close()
+        with _conn() as conn:
+            now = time.time()
+            cur = conn.execute(
+                """INSERT INTO session_handoffs
+                   (session_id, created_at, user_request, tools_used,
+                    decisions, pending_tasks, open_questions, summary_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    session_id,
+                    now,
+                    user_request,
+                    json.dumps(tools_used or [], ensure_ascii=False),
+                    json.dumps(decisions or [], ensure_ascii=False),
+                    json.dumps(pending_tasks or [], ensure_ascii=False),
+                    json.dumps(open_questions or [], ensure_ascii=False),
+                    summary_text,
+                ),
+            )
+            conn.commit()
+            row_id = cur.lastrowid
         logger.debug(
             "Stored handoff for session %s (row %s): %s",
             session_id, row_id, summary_text[:80] if summary_text else "(no summary)",
@@ -119,27 +129,26 @@ def store_handoff(
 
 
 def get_latest_handoff(session_id: str = "") -> Optional[Dict[str, Any]]:
-    """Get the most recent handoff record.
+    """Get the most recent non-superseded handoff record.
 
     If session_id is provided, get the latest handoff for that session.
     Otherwise, get the globally latest handoff.
     """
     try:
-        conn = _get_conn()
-        if session_id:
-            row = conn.execute(
-                "SELECT * FROM session_handoffs "
-                "WHERE session_id = ? AND superseded_by IS NULL "
-                "ORDER BY created_at DESC LIMIT 1",
-                (session_id,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT * FROM session_handoffs "
-                "WHERE superseded_by IS NULL "
-                "ORDER BY created_at DESC LIMIT 1",
-            ).fetchone()
-        conn.close()
+        with _conn() as conn:
+            if session_id:
+                row = conn.execute(
+                    "SELECT * FROM session_handoffs "
+                    "WHERE session_id = ? AND superseded_by IS NULL "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (session_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM session_handoffs "
+                    "WHERE superseded_by IS NULL "
+                    "ORDER BY created_at DESC LIMIT 1",
+                ).fetchone()
         if not row:
             return None
         return _row_to_dict(row)
@@ -160,21 +169,20 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
             try:
                 d[key] = json.loads(d[key])
             except (json.JSONDecodeError, TypeError):
-                d[key] = [] if key != "open_questions" else []
+                d[key] = []
         else:
-            d[key] = [] if key != "open_questions" else []
+            d[key] = []
     return d
 
 
 def mark_superseded(row_id: int, by_row_id: int) -> None:
     """Mark a handoff as superseded by a newer one."""
     try:
-        conn = _get_conn()
-        conn.execute(
-            "UPDATE session_handoffs SET superseded_by = ? WHERE id = ?",
-            (by_row_id, row_id),
-        )
-        conn.commit()
-        conn.close()
+        with _conn() as conn:
+            conn.execute(
+                "UPDATE session_handoffs SET superseded_by = ? WHERE id = ?",
+                (by_row_id, row_id),
+            )
+            conn.commit()
     except Exception as e:
         logger.warning("Failed to mark handoff superseded: %s", e)

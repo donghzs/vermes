@@ -31,6 +31,22 @@ _db_lock = threading.Lock()
 _conn_cache: Dict[str, sqlite3.Connection] = {}
 
 
+def shutdown_connections() -> None:
+    """Close all cached evolution DB connections.
+
+    Called at agent shutdown to release SQLite handles cleanly.
+    Safe to call multiple times — once closed, entries are removed
+    from the cache so _get_conn() will recreate them if needed.
+    """
+    with _db_lock:
+        for key, conn in list(_conn_cache.items()):
+            try:
+                conn.close()
+            except Exception:
+                pass
+        _conn_cache.clear()
+
+
 def _get_conn(db_path) -> sqlite3.Connection:
     """Return a thread-safe cached connection with WAL + busy_timeout."""
     key = str(db_path)

@@ -231,14 +231,13 @@ class TestHandoffIntegration(unittest.TestCase):
         """Handoffs older than 7 days should not be loaded."""
         handoff_store.store_handoff("old-session", summary_text="old")
         # Manually update the timestamp to 8 days ago
-        conn = handoff_store._get_conn()
-        old_time = time.time() - 8 * 86400
-        conn.execute(
-            "UPDATE session_handoffs SET created_at = ? WHERE summary_text = ?",
-            (old_time, "old"),
-        )
-        conn.commit()
-        conn.close()
+        with handoff_store._conn() as conn:
+            old_time = time.time() - 8 * 86400
+            conn.execute(
+                "UPDATE session_handoffs SET created_at = ? WHERE summary_text = ?",
+                (old_time, "old"),
+            )
+            conn.commit()
 
         result = load_handoff_for_new_session()
         self.assertIsNone(result)
