@@ -65,6 +65,14 @@ def generate_and_store_handoff(
             user_request, tools_used, decisions, pending_tasks, open_questions
         )
 
+        # Extract keywords for relevance matching
+        try:
+            from agent.memory_recall import _extract_keywords
+            combined = user_request + " " + summary_text
+            keywords = _extract_keywords(combined, max_keywords=8)
+        except Exception:
+            keywords = []
+
         return store_handoff(
             session_id,
             user_request=user_request,
@@ -73,6 +81,7 @@ def generate_and_store_handoff(
             pending_tasks=pending_tasks,
             open_questions=open_questions,
             summary_text=summary_text,
+            keywords=keywords,
         )
     except Exception as e:
         logger.warning("Handoff generation failed: %s", e)
@@ -82,16 +91,21 @@ def generate_and_store_handoff(
 def load_handoff_for_new_session(
     user_message: str = "",
 ) -> Optional[Dict[str, Any]]:
-    """Load the latest handoff for a new session.
+    """Load the most relevant handoff for a new session.
 
     Called at new session start (turn 1, before on_turn_start).
+    Uses keyword matching to find the most relevant handoff when multiple
+    parallel sessions exist.
+
     Returns the handoff dict or None if no handoff exists.
     """
     try:
-        handoff = get_global_latest_handoff()
+        # Use relevance-based lookup instead of just latest
+        from agent.handoff_store import get_relevant_handoff
+        handoff = get_relevant_handoff(user_message, max_age_days=7)
         if not handoff:
             return None
-        # Don't load if the handoff is too old (> 7 days)
+        # Don't load if the handoff is too old
         import time
         age = time.time() - handoff.get("created_at", 0)
         if age > 7 * 86400:

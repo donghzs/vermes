@@ -247,5 +247,113 @@ class TestHandoffIntegration(unittest.TestCase):
         self.assertEqual(row_id, -1)
 
 
+class TestMultiSessionRelevance(unittest.TestCase):
+    """Test that handoff selection respects task relevance.
+
+    Scenario: user has two parallel sessions about different topics.
+    New session should get the handoff matching its query, not just
+    the most recent one.
+    """
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._orig_db_path = handoff_store._DB_PATH
+        handoff_store._DB_PATH = Path(self._tmpdir) / "session_handoffs.db"
+
+    def tearDown(self):
+        handoff_store._DB_PATH = self._orig_db_path
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _store_handoff(self, session_id, user_request, summary_text, keywords):
+        """Helper to store a handoff with keywords."""
+        handoff_store.store_handoff(
+            session_id,
+            user_request=user_request,
+            summary_text=summary_text,
+            keywords=keywords,
+        )
+
+    def test_relevant_handoff_selected_over_latest(self):
+        """When two sessions exist, new session gets the matching one."""
+        # Session A: trading system (older)
+        self._store_handoff(
+            "session-a",
+            "调试量化交易系统bug",
+            "修复了 live_trader.py 的 NOMUSDT 计算问题",
+            ["量化交易", "live_trader", "bug"],
+        )
+
+        # Session B: content writing (newer)
+        self._store_handoff(
+            "session-b",
+            "写公众号文章关于AI Agent",
+            "完成了AI Agent自进化技术文章草稿",
+            ["公众号", "文章", "agent"],
+        )
+
+        # New session about trading should get session-a, not session-b
+        result = handoff_store.get_relevant_handoff("交易系统 bug 修复")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["session_id"], "session-a")
+
+    def test_content_query_gets_content_handoff(self):
+        """Content query should match content session, not trading."""
+        self._store_handoff(
+            "session-a",
+            "调试量化交易系统",
+            "修复交易bug",
+            ["量化交易", "bug"],
+        )
+        self._store_handoff(
+            "session-b",
+            "写公众号文章",
+            "完成文章草稿",
+            ["公众号", "文章"],
+        )
+
+        result = handoff_store.get_relevant_handoff("帮我写文章")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["session_id"], "session-b")
+
+    def test_no_keyword_match_falls_back_to_latest(self):
+        """When query doesn't match any handoff, return latest."""
+        self._store_handoff(
+            "session-a",
+            "quantitative trading",
+            "fixed trading bug",
+            ["trading", "bug"],
+        )
+        self._store_handoff(
+            "session-b",
+            "article writing",
+            "drafted article",
+            ["article", "writing"],
+        )
+
+        # Query about cooking — no match, should get latest (session-b)
+        result = handoff_store.get_relevant_handoff("how to cook pasta")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["session_id"], "session-b")
+
+    def test_empty_query_returns_latest(self):
+        """Empty query should fall back to latest handoff."""
+        self._store_handoff(
+            "session-a", "test", "test summary", ["test"]
+        )
+        result = handoff_store.get_relevant_handoff("")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["session_id"], "session-a")
+
+    def test_single_handoff_returned_directly(self):
+        """Single handoff should be returned without scoring."""
+        self._store_handoff(
+            "session-a", "unique task", "unique summary", ["unique"]
+        )
+        result = handoff_store.get_relevant_handoff("completely different")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["session_id"], "session-a")
+
+
 if __name__ == "__main__":
     unittest.main()

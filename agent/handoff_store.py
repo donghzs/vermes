@@ -72,9 +72,15 @@ def _init_db(conn: sqlite3.Connection) -> None:
             open_questions TEXT,
             summary_text TEXT,
             next_session_id TEXT,
-            superseded_by INTEGER
+            superseded_by INTEGER,
+            keywords TEXT
         )
     """)
+    # Add keywords column to existing tables (migration)
+    try:
+        conn.execute("ALTER TABLE session_handoffs ADD COLUMN keywords TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_handoffs_session "
         "ON session_handoffs(session_id)"
@@ -95,6 +101,7 @@ def store_handoff(
     pending_tasks: List[Dict[str, Any]] = None,
     open_questions: List[str] = None,
     summary_text: str = "",
+    keywords: List[str] = None,
 ) -> int:
     """Store a session handoff record. Returns the row id, or -1 on failure."""
     try:
@@ -103,8 +110,8 @@ def store_handoff(
             cur = conn.execute(
                 """INSERT INTO session_handoffs
                    (session_id, created_at, user_request, tools_used,
-                    decisions, pending_tasks, open_questions, summary_text)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    decisions, pending_tasks, open_questions, summary_text, keywords)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id,
                     now,
@@ -114,6 +121,7 @@ def store_handoff(
                     json.dumps(pending_tasks or [], ensure_ascii=False),
                     json.dumps(open_questions or [], ensure_ascii=False),
                     summary_text,
+                    ",".join(keywords or []),
                 ),
             )
             conn.commit()
@@ -160,6 +168,97 @@ def get_latest_handoff(session_id: str = "") -> Optional[Dict[str, Any]]:
 def get_global_latest_handoff() -> Optional[Dict[str, Any]]:
     """Get the most recent handoff across all sessions."""
     return get_latest_handoff("")
+
+
+def get_relevant_handoff(
+    query: str,
+    *,
+    max_age_days: int = 7,
+    limit: int = 5,
+) -> Optional[Dict[str, Any]]:
+    """Get the most relevant handoff for the given query.
+
+    Unlike get_global_latest_handoff() which just returns the newest,
+    this function scores handoffs by keyword overlap with the query
+    and returns the best match. Falls back to latest if no keyword match.
+
+    Args:
+        query: The new session's first user message.
+        max_age_days: Only consider handoffs within this age.
+        limit: Max candidates to consider.
+
+    Returns:
+        Best-matching handoff dict, or None if no handoffs exist.
+    """
+    if not query or not query.strip():
+        return get_global_latest_handoff()
+
+    try:
+        from agent.memory_recall import _extract_keywords
+        query_keywords = _extract_keywords(query, max_keywords=8)
+    except Exception:
+        query_keywords = []
+
+    try:
+        with _conn() as conn:
+            cutoff = time.time() - max_age_days * 86400
+            rows = conn.execute(
+                "SELECT * FROM session_handoffs "
+                "WHERE superseded_by IS NULL AND created_at > ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (cutoff, limit),
+            ).fetchall()
+
+            if not rows:
+                return None
+            if len(rows) == 1:
+                return _row_to_dict(rows[0])
+
+            # Score each handoff by keyword overlap
+            best_score = -1
+            best_row = rows[0]  # fallback: latest
+
+            for row in rows:
+                d = _row_to_dict(row)
+                # Score from keywords field
+                handoff_keywords = []
+                kw_str = d.get("keywords") or ""
+                if kw_str:
+                    handoff_keywords = [k.strip() for k in kw_str.split(",") if k.strip()]
+                # Also extract from user_request + summary_text
+                combined_text = (
+                    (d.get("user_request") or "") + " " +
+                    (d.get("summary_text") or "")
+                )
+                if not handoff_keywords:
+                    try:
+                        handoff_keywords = _extract_keywords(combined_text, max_keywords=8)
+                    except Exception:
+                        handoff_keywords = []
+
+                # Calculate overlap score
+                if query_keywords and handoff_keywords:
+                    overlap = set(query_keywords) & set(handoff_keywords)
+                    # Normalize: overlap count / max keywords
+                    score = len(overlap) / max(
+                        len(query_keywords), len(handoff_keywords)
+                    )
+                else:
+                    score = 0
+
+                # Recency boost: newer handoffs get slight advantage
+                age_hours = (time.time() - d.get("created_at", 0)) / 3600
+                recency_boost = max(0, 0.1 - age_hours / (max_age_days * 24 * 10))
+                score += recency_boost
+
+                if score > best_score:
+                    best_score = score
+                    best_row = row
+
+            return _row_to_dict(best_row)
+    except Exception as e:
+        logger.warning("Failed to get relevant handoff: %s", e)
+        return get_global_latest_handoff()
 
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
