@@ -382,6 +382,11 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         except Exception:
             pass
 
+    # Session handoff: cross-session continuity (loaded at turn 1)
+    _handoff_block = getattr(agent, "_handoff_context", None)
+    if _handoff_block:
+        volatile_parts.append(_handoff_block)
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable

@@ -2560,6 +2560,13 @@ class AIAgent:
         NOT called per-turn — only at CLI exit, /reset, gateway
         session expiry, etc.
         """
+        # Generate session handoff for cross-session continuity
+        if messages:
+            try:
+                from agent.session_handoff import generate_and_store_handoff
+                generate_and_store_handoff(messages, self.session_id or "")
+            except Exception:
+                pass
         if self._memory_manager:
             try:
                 self._memory_manager.on_session_end(messages or [])
@@ -2584,6 +2591,13 @@ class AIAgent:
         Called when session_id rotates (e.g. /new, context compression);
         providers keep their state and continue running under the old
         session_id — they just flush pending extraction now."""
+        # Generate session handoff for cross-session continuity
+        if messages:
+            try:
+                from agent.session_handoff import generate_and_store_handoff
+                generate_and_store_handoff(messages, self.session_id or "")
+            except Exception:
+                pass
         if self._memory_manager:
             try:
                 self._memory_manager.on_session_end(messages or [])
