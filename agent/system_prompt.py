@@ -397,6 +397,15 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if _recall_block:
         volatile_parts.append(_recall_block)
 
+    # Decision tracking: standing decisions from past sessions
+    try:
+        from agent.decision_tracker import format_decisions_for_prompt
+        _decisions_block = format_decisions_for_prompt(limit=5)
+        if _decisions_block:
+            volatile_parts.append(_decisions_block)
+    except Exception:
+        pass
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable

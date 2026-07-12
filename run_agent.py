@@ -2678,6 +2678,17 @@ class AIAgent:
         except Exception:
             pass
 
+        # Phase 4: Decision tracking — detect and record decisions
+        try:
+            from agent.decision_tracker import record_decision
+            record_decision(
+                str(final_response)[:500],
+                context=str(original_user_message)[:200],
+                session_id=self.session_id or "",
+            )
+        except Exception:
+            pass
+
     def release_clients(self) -> None:
         """Release LLM client resources WITHOUT tearing down session tool state.
 
