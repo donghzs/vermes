@@ -387,6 +387,11 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if _handoff_block:
         volatile_parts.append(_handoff_block)
 
+    # Evolution data: learned experience from past sessions
+    _evolution_block = getattr(agent, "_evolution_context", None)
+    if _evolution_block:
+        volatile_parts.append(_evolution_block)
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable
