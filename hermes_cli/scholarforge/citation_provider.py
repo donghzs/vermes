@@ -252,34 +252,182 @@ async def replace_pseudo_citations(
 ) -> tuple[str, list[RealCitation]]:
     """替换正文中的伪引用 [n] 为真实文献
     
+    支持三种占位符格式: [n] / [n-m] / [n,m,...]
+    
     Returns:
         (替换后的正文, 新获取的真实引用列表)
     """
-    # 1. 提取正文中引用编号
-    cited_nums = set(int(m) for m in re.findall(r'\[(\d+)\]', draft))
-    if not cited_nums:
+    import difflib
+
+    # ── P0修复: 支持范围引用 [n] / [n-m] / [n,m,...] ──
+    cite_pattern = re.compile(r'\[(\d+(?:\s*[-–,]\s*\d+)*)\]')
+    raw_matches = list(cite_pattern.finditer(draft))
+    if not raw_matches:
         return draft, []
-    
+
+    def expand_citation(raw: str) -> list[int]:
+        """展开 [n] / [n-m] / [n,m,...] 为编号列表"""
+        raw = raw.strip('[]')
+        nums = []
+        for part in re.split(r'[,，]', raw):
+            part = part.strip()
+            range_m = re.match(r'(\d+)\s*[-–]\s*(\d+)', part)
+            if range_m:
+                a, b = int(range_m.group(1)), int(range_m.group(2))
+                nums.extend(range(min(a, b), max(a, b) + 1))
+            elif part.isdigit():
+                nums.append(int(part))
+        return nums
+
+    # 收集所有编号（含展开的范围引用）
+    all_nums: set[int] = set()
+    match_to_nums: list[tuple[re.Match, list[int]]] = []
+    for m in raw_matches:
+        nums = expand_citation(m.group(0))
+        if nums:
+            match_to_nums.append((m, nums))
+            all_nums.update(nums)
+
+    unique_nums = sorted(all_nums)
+    max_ref = max(unique_nums) if unique_nums else 0
+
     # 2. 拉取真实文献
-    citations = await fetch_real_citations(topic, keywords, paper_type, limit=max(20, max(cited_nums)))
+    citations = await fetch_real_citations(topic, keywords, paper_type, limit=max(20, max_ref))
     if not citations:
         logger.info("No real citations found, keeping pseudo citations")
         return draft, []
-    
-    # 3. 替换引用编号 + 追加/替换文末参考文献列表
-    # 如果 draft 已有参考文献节，替换之；否则追加
+
+    # ── P0修复: 按编号→关键词上下文匹配真实文献（而非按顺序硬塞）──
+    # 为每个编号提取上下文关键词
+    def extract_keywords(text: str) -> str:
+        """从上下文提取搜索关键词，优先专有名词"""
+        proper_nouns = re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', text)
+        stop_proper = {'The', 'This', 'That', 'These', 'Those', 'Such', 'However',
+                       'Moreover', 'Furthermore', 'Therefore', 'Also', 'While',
+                       'When', 'Where', 'What', 'Which', 'Based', 'Using',
+                       'Given', 'Since', 'From', 'With', 'Both', 'Each',
+                       'First', 'Second', 'Third', 'Finally', 'In', 'For',
+                       'And', 'But', 'Not', 'Are', 'Was', 'Were', 'Has',
+                       'Have', 'Can', 'May', 'Will', 'Been', 'Some', 'More',
+                       'Most', 'Other', 'All', 'One', 'Two', 'Three'}
+        proper_nouns = [w for w in proper_nouns if w not in stop_proper]
+
+        stop_en = {'the', 'and', 'for', 'are', 'but', 'not', 'this', 'that', 'with',
+                   'from', 'have', 'has', 'was', 'were', 'will', 'can', 'may',
+                   'also', 'such', 'than', 'then', 'these', 'those', 'which',
+                   'their', 'there', 'what', 'when', 'where', 'who', 'whom',
+                   'been', 'being', 'into', 'about', 'after', 'before',
+                   'between', 'through', 'during', 'above', 'below', 'over',
+                   'under', 'again', 'more', 'most', 'other', 'some'}
+        en_words = re.findall(r'[A-Za-z]{3,30}', text)
+        en_words = [w for w in en_words if w.lower() not in stop_en]
+
+        cn_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', text)
+        stop_cn = {'的研究', '本文', '本研', '研究', '方法', '结果', '结论',
+                   '实验', '分析', '通过', '基于', '采用', '提出', '实现',
+                   '一个', '可以', '这个', '那个', '因此', '所以', '然而',
+                   '此外', '同时', '另外', '首先', '其次', '最后'}
+        cn_words = [w for w in cn_words if w not in stop_cn]
+
+        seen = set()
+        all_words = []
+        for w in proper_nouns + en_words[:5] + cn_words[:3]:
+            wl = w.lower()
+            if wl not in seen:
+                seen.add(wl)
+                all_words.append(w)
+        if not all_words:
+            return text[:60].strip()
+        return ' '.join(all_words[:6])
+
+    def score_relevance(citation: RealCitation, keyword: str) -> float:
+        """四因子评分: 专有名词40% + token重叠20% + 模糊相似20% + 摘要匹配20%"""
+        proper_kw = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', keyword))
+        proper_title = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', citation.title))
+
+        proper_match = 0.0
+        if proper_kw:
+            matched = proper_kw & proper_title
+            proper_match = len(matched) / len(proper_kw)
+
+        kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
+        title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', citation.title.lower()))
+        overlap = len(kw_tokens & title_tokens) / max(len(kw_tokens), 1)
+
+        fuzzy = difflib.SequenceMatcher(None,
+            keyword[:80].lower(),
+            citation.title[:80].lower()
+        ).ratio()
+
+        # venue 也参与匹配
+        venue_match = 0.0
+        if citation.venue:
+            venue_lower = citation.venue.lower()
+            venue_match = sum(1 for t in kw_tokens if t.lower() in venue_lower) / max(len(kw_tokens), 1)
+
+        return min(proper_match * 0.4 + overlap * 0.2 + fuzzy * 0.2 + venue_match * 0.2, 1.0)
+
+    # 为每个编号提取上下文
+    num_context: dict[int, str] = {}
+    num_keywords: dict[int, str] = {}
+    paragraphs = draft.split("\n")
+    for para in paragraphs:
+        for m in cite_pattern.finditer(para):
+            nums = expand_citation(m.group(0))
+            for n in nums:
+                if n in unique_nums and n not in num_context:
+                    start = max(0, m.start() - 120)
+                    end = min(len(para), m.end() + 120)
+                    ctx = para[start:end].strip()
+                    num_context[n] = ctx
+                    num_keywords[n] = extract_keywords(ctx)
+
+    # 按编号→最佳匹配文献
+    num_to_citation: dict[int, RealCitation] = {}
+    used_citations: set[int] = set()  # 已分配的 citation index
+    for n in unique_nums:
+        kw = num_keywords.get(n, topic)
+        best_idx = -1
+        best_score = -1.0
+        for i, c in enumerate(citations):
+            if i in used_citations:
+                continue
+            score = score_relevance(c, kw)
+            if score > best_score:
+                best_score = score
+                best_idx = i
+        if best_idx >= 0:
+            num_to_citation[n] = citations[best_idx]
+            used_citations.add(best_idx)
+            logger.debug(f"  [{n}] → '{citations[best_idx].title[:40]}' (score={best_score:.2f})")
+
+    # 3. 替换占位符（支持 [n] / [n-m] / [n,m,...]）
+    result_draft = draft
+    for m, nums in match_to_nums:
+        original = m.group(0)
+        mapped = [num_to_citation.get(n) for n in nums]
+        if all(c is not None for c in mapped):
+            # 按引用在参考文献列表中的编号生成替换文本
+            ref_nums = [citations.index(c) + 1 for c in mapped]
+            if len(ref_nums) == 1:
+                replacement = f"[{ref_nums[0]}]"
+            else:
+                replacement = f"[{','.join(str(r) for r in ref_nums)}]"
+            result_draft = result_draft.replace(original, replacement)
+
+    # 4. 生成参考文献列表
     refs_text = ""
     for i, c in enumerate(citations, 1):
         authors_short = f"{c.authors[0].split()[-1] if c.authors else '?'} et al." if len(c.authors) > 1 else (c.authors[0] if c.authors else "?")
         refs_text += f"[{i}] {authors_short}. {c.title}. {c.venue}, {c.year}. DOI: {c.doi}\n"
-    
+
     # 检测并替换已有参考文献节（避免重复追加）
     ref_section_pattern = r'(\n\n---\n)?## 参考文献\n\n[\s\S]*$'
-    if re.search(r'(?i)##\s*参考文献', draft):
-        new_draft = re.sub(ref_section_pattern, f'\n\n---\n## 参考文献\n\n{refs_text}', draft)
+    if re.search(r'(?i)##\s*参考文献', result_draft):
+        new_draft = re.sub(ref_section_pattern, f'\n\n---\n## 参考文献\n\n{refs_text}', result_draft)
     else:
-        new_draft = draft + f"\n\n---\n## 参考文献\n\n{refs_text}"
-    
+        new_draft = result_draft + f"\n\n---\n## 参考文献\n\n{refs_text}"
+
     return new_draft, citations
 
 

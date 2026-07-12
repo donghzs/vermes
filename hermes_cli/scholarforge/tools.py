@@ -489,7 +489,7 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     def extract_keywords(text: str) -> str:
         """从上下文文本提取搜索关键词"""
         # 优先提取专有名词：连续大写字母开头（如 RAGAS, GPT, BERT, TransE）
-        proper_nouns = re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', text)
+        proper_nouns = re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', text)
         # 排除常见非术语
         stop_proper = {'The', 'This', 'That', 'These', 'Those', 'Such', 'However',
                        'Moreover', 'Furthermore', 'Therefore', 'Also', 'While',
@@ -586,9 +586,9 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
         - 摘要关键词匹配 20%
         """
         # 提取专有名词（大写开头）
-        proper_kw = set(re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', keyword))
-        proper_title = set(re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', paper.title))
-        proper_abs = set(re.findall(r'\b[A-Z][A-Za-z0-9]{2,}\b', paper.abstract or ''))
+        proper_kw = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', keyword))
+        proper_title = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', paper.title))
+        proper_abs = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', paper.abstract or ''))
 
         # 专有名词精确匹配（最高权重）
         proper_match = 0.0
