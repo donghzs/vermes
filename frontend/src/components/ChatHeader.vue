@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 import HelpGuide from './HelpGuide.vue'
 
@@ -12,6 +12,48 @@ async function fetchEvoStatus() {
   } catch { /* 静默 */ }
 }
 onMounted(() => { fetchEvoStatus(); setInterval(fetchEvoStatus, 60000) })
+
+// ── P0: Memory 指示器 ──
+const memStatus = ref(null)
+const showMemoryDetail = ref(false)
+
+const memoryBlockNames = {
+  handoff: { label: '上次会话', icon: '📋', color: 'text-blue-500' },
+  evolution: { label: '经验记忆', icon: '🌱', color: 'text-green-500' },
+  recall: { label: '相关召回', icon: '🔍', color: 'text-purple-500' },
+  decisions: { label: '有效决策', icon: '⚡', color: 'text-amber-500' },
+}
+
+const memoryBlocksList = computed(() => {
+  if (!memStatus.value?.blocks) return []
+  return Object.entries(memStatus.value.blocks).map(([key, info]) => ({
+    key,
+    ...info,
+    ...memoryBlockNames[key] || { label: key, icon: '❓', color: 'text-gray-400' },
+  }))
+})
+
+async function fetchMemStatus() {
+  try {
+    const r = await fetch(`/api/memory/status${chat.currentSessionId ? '?session_id=' + chat.currentSessionId : ''}`)
+    if (r.ok) memStatus.value = await r.json()
+  } catch { /* 静默 */ }
+}
+
+// 首条消息后刷新 memory 状态（memory 在 turn 1 加载）
+function refreshMemoryAfterFirstMessage() {
+  if ((chat.filteredMessages?.length ?? 0) === 1) {
+    setTimeout(fetchMemStatus, 500)
+  }
+}
+
+watch(() => chat.filteredMessages?.length, refreshMemoryAfterFirstMessage)
+
+onMounted(() => { 
+  fetchMemStatus()
+  // 每 30s 刷新一次（轻量接口）
+  setInterval(fetchMemStatus, 30000) 
+})
 
 // 默认模型（未同步 provider 时的回退列表）
 const defaultModels = [
@@ -132,6 +174,7 @@ function currentModelName() {
 function closeDropdowns() {
   showModelSelect.value = false
   showStats.value = false
+  showMemoryDetail.value = false
 }
 </script>
 
@@ -181,6 +224,14 @@ function closeDropdowns() {
            :title="`进化系统: ${evoStatus.total_outcomes} 次调用, 成功率 ${evoStatus.success_rate}%`">
         <span class="text-xs">🧠</span>
         <span class="text-[10px] font-mono" :class="evoStatus.success_rate >= 80 ? 'text-green-500' : 'text-yellow-500'">{{ evoStatus.success_rate }}%</span>
+      </div>
+      <!-- Memory 指示器 -->
+      <div v-if="memStatus?.active && memoryBlocksList.length > 0" 
+           @click="showMemoryDetail = !showMemoryDetail"
+           class="flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+           :title="`已加载 ${memoryBlocksList.length} 个记忆块 (~${memStatus.total_tokens_est} tokens)`">
+        <span class="text-xs">📚</span>
+        <span class="text-[10px] font-mono text-green-500">{{ memoryBlocksList.length }}</span>
       </div>
       <button @click="showHelp = true" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓</button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
@@ -257,4 +308,46 @@ function closeDropdowns() {
 
   <!-- 使用帮助弹窗 -->
   <HelpGuide v-if="showHelp" @close="showHelp = false" />
+
+  <!-- Memory 详情弹窗 -->
+  <div v-if="showMemoryDetail && memStatus?.active" 
+       class="absolute left-20 top-14 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-4 min-w-[320px] max-w-[400px]">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">📚 跨会话记忆</div>
+      <button @click="showMemoryDetail = false" class="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+    </div>
+    <!-- 总览 -->
+    <div class="flex items-center gap-3 mb-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+      <div class="flex-1">
+        <div class="text-sm text-gray-800 dark:text-gray-200">{{ memoryBlocksList.length }} 个记忆块已加载</div>
+        <div class="text-[10px] text-gray-400 mt-0.5">约 {{ memStatus.total_tokens_est }} tokens / 预算 {{ Math.round(memStatus.budget_limit / 4) }} tokens</div>
+      </div>
+      <!-- 预算条 -->
+      <div class="w-20">
+        <div class="h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+          <div class="h-full bg-green-500 rounded-full transition-all" 
+               :style="{ width: Math.min(100, (memStatus.total_chars / memStatus.budget_limit) * 100) + '%' }"></div>
+        </div>
+        <div class="text-[9px] text-gray-400 text-center mt-0.5">{{ Math.round((memStatus.total_chars / memStatus.budget_limit) * 100) }}%</div>
+      </div>
+    </div>
+    <!-- 各记忆块 -->
+    <div class="space-y-2 max-h-64 overflow-y-auto">
+      <div v-for="block in memoryBlocksList" :key="block.key" 
+           class="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+        <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm">{{ block.icon }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ block.label }}</span>
+          </div>
+          <span class="text-[10px] text-gray-400 font-mono">{{ block.chars }} chars</span>
+        </div>
+        <div class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-3">{{ block.preview }}</div>
+      </div>
+    </div>
+    <!-- handoff 来源 -->
+    <div v-if="memStatus.handoff_source" class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+      <div class="text-[10px] text-gray-400">来源会话: {{ memStatus.handoff_source.session_id?.slice(0, 12) }} · {{ memStatus.handoff_source.age_hours }}h ago</div>
+    </div>
+  </div>
 </template>
