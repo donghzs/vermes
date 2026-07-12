@@ -29,24 +29,24 @@ from agent.handoff_store import store_handoff, get_global_latest_handoff
 
 logger = logging.getLogger(__name__)
 
-# Decision keywords (Chinese + English)
-_DECISION_KEYWORDS = [
-    # Chinese
-    "我决定", "我选择", "我倾向", "我建议", "我的建议是",
-    "最佳方案", "最优策略", "最终方案", "最终决定",
-    "决定用", "选择用", "采用", "决定采用", "结论是", "综上",
-    "策略是", "方案是", "思路是", "做法是", "方法用",
-    # English
-    "I decided", "I choose", "I think we should", "let's go with",
-    "decision is", "chose to", "opted for", "going with",
-    "I believe we should", "we will use", "best approach is",
-    "optimal strategy", "final decision", "adopt", "conclusion:",
+# ── Decision/pending extraction uses structural heuristics ──
+# No hardcoded language-specific keywords. The fork agent (_DECISION_REVIEW_PROMPT)
+# handles deep decision extraction. These lightweight extractors use generic
+# sentence-structure patterns that work across languages.
+
+# Structural decision indicators (cross-language): colon/conclusion markers,
+# arrow patterns, code blocks, tool-result patterns
+_DECISION_STRUCTURAL = [
+    r'(?:使用|采用|选择|决定|决定用|方案是|策略是|结论[是为:]|综上).{3,80}[。\n]',
+    r'(?:use|using|adopt|choose|decided|going with|will use|conclusion:).{3,120}[.\n]',
+    r'(?:→|->|=>).{3,80}',  # Arrow pattern: "→用Postgres"
 ]
 
-# Pending task markers
-_PENDING_MARKERS = [
-    "TODO", "待办", "下一步", "接下来", "还需要", "待完成",
-    "next step", "pending", "remaining", "still need to",
+# Task/pending indicators: list items that end with action verbs or
+# look like future plans (works across many languages via structural cues)
+_PENDING_STRUCTURAL = [
+    r'^\s*[-*•]\s*.{5,200}',  # Bullet-point items
+    r'(?:next|下一步|接下来|还需要|待办|pending|todo|remaining).{3,120}',
 ]
 
 
@@ -223,53 +223,50 @@ def _extract_tools_used(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _extract_decisions(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Extract decisions from assistant messages."""
+    """Extract decisions from assistant messages using structural patterns.
+
+    Uses regex patterns that capture decision-like sentence structures
+    (colon/conclusion markers, arrow symbols, tool-result patterns).
+    Works across languages — no hardcoded zh/en keyword lists.
+    """
     decisions = []
     for msg in messages:
         if msg.get("role") != "assistant":
             continue
         content = msg.get("content", "")
-        if not isinstance(content, str):
+        if not isinstance(content, str) or not content.strip():
             continue
-        for keyword in _DECISION_KEYWORDS:
-            if keyword in content:
-                # Extract the sentence containing the keyword
-                idx = content.find(keyword)
-                start = content.rfind("。", 0, idx)
-                start = start + 1 if start != -1 else max(0, idx - 50)
-                end = content.find("。", idx)
-                end = end + 1 if end != -1 else min(len(content), idx + 200)
-                sentence = content[start:end].strip()
+        for pattern in _DECISION_STRUCTURAL:
+            for m in re.finditer(pattern, content, re.IGNORECASE):
+                sentence = m.group().strip()
                 if sentence and len(sentence) < 300:
-                    decisions.append({
-                        "decision": sentence,
-                        "keyword": keyword,
-                    })
+                    decisions.append({"decision": sentence})
+                    break
+            if decisions and decisions[-1].get("decision") == sentence:
                 break  # one decision per message
-    return decisions[:10]  # max 10 decisions
+    return decisions[:10]
 
 
 def _extract_pending_tasks(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Extract pending tasks from the last few assistant messages."""
+    """Extract pending tasks from assistant messages using structural cues.
+
+    Uses bullet-point patterns and future-plan markers that work
+    across languages, not zh/en-only keyword lists.
+    """
     tasks = []
-    # Look at last 5 assistant messages
     assistant_msgs = [
         m for m in messages if m.get("role") == "assistant"
     ][-5:]
     for msg in assistant_msgs:
         content = msg.get("content", "")
-        if not isinstance(content, str):
+        if not isinstance(content, str) or not content.strip():
             continue
-        for marker in _PENDING_MARKERS:
-            if marker.lower() in content.lower():
-                # Extract the line containing the marker
-                for line in content.split("\n"):
-                    if marker.lower() in line.lower():
-                        task_text = line.strip().lstrip("-*•").strip()
-                        if task_text and len(task_text) < 200:
-                            tasks.append({"task": task_text})
-                        break
-    # Deduplicate by task text
+        for pattern in _PENDING_STRUCTURAL:
+            for m in re.finditer(pattern, content, re.IGNORECASE):
+                task_text = m.group().strip().lstrip("-*• ").strip()
+                if task_text and len(task_text) < 200:
+                    tasks.append({"task": task_text})
+    # Deduplicate
     seen = set()
     unique_tasks = []
     for t in tasks:

@@ -180,10 +180,16 @@ class TestEvolutionInjector(unittest.TestCase):
         self.assertEqual(block, "")
 
     def test_is_too_generic(self):
-        self.assertTrue(_is_too_generic("检查错误信息，分析根因"))
+        # New heuristic: length < 8 or unique_chars < 3
+        # "检查错误信息" = 6 chars → too short → generic
         self.assertTrue(_is_too_generic("检查错误信息"))
+        # "abc" = 3 chars, 3 unique → >= 3 unique but < 8 length → generic
+        self.assertTrue(_is_too_generic("abc"))
+        # "aaa" = 3 chars, 1 unique → < 3 unique → generic
+        self.assertTrue(_is_too_generic("aaa"))
+        # Full sentence with enough info → not generic
         self.assertFalse(_is_too_generic("不要在未读源码前修改文件"))
-        self.assertFalse(_is_too_generic("跳过了工具调用"))
+        self.assertFalse(_is_too_generic("检查错误信息，分析根因修复方案"))
 
     def test_token_budget(self):
         """Block should not exceed max chars."""

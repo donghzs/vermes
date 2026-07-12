@@ -2683,12 +2683,12 @@ class AIAgent:
         # Phase 4: Decision tracking — detect and record decisions
         try:
             from agent.decision_tracker import record_decision
-            from agent.session_handoff import _DECISION_KEYWORDS
 
             response_str = str(final_response)
             context_str = str(original_user_message)
 
-            # Simple trigger-word extraction (always runs)
+            # Lightweight extraction: runs every turn, keywords extracted
+            # from response text itself (language-agnostic)
             record_decision(
                 response_str[:500],
                 context=context_str[:200],
@@ -2696,10 +2696,10 @@ class AIAgent:
             )
 
             # Background fork-agent decision review (rate-limited: once per session)
-            # Only trigger when the response contains decision keywords — this
-            # means the simple extraction found something worth deep analysis.
+            # Runs unconditionally — the fork agent uses LLM to extract decisions
+            # in the user's language, no hardcoded keyword patterns needed.
             decision_review_done = getattr(self, "_decision_review_done", False)
-            if not decision_review_done and any(kw in response_str for kw in _DECISION_KEYWORDS):
+            if not decision_review_done:
                 try:
                     messages_snapshot = list(messages) if messages else []
                     self._decision_review_done = True

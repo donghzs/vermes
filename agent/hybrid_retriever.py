@@ -440,113 +440,14 @@ def _composite_search(
     return [item for _, item in scored[:top_k]]
 
 
-# ── Intent classification ──────────────────────────────────────────────
-
-_INTENT_PATTERNS = {
-    "strategy": [
-        r"策略", r"策略是", r"方案", r"决定", r"选择", r"结论",
-        r"strategy", r"decision", r"approach", r"plan",
-    ],
-    "code": [
-        r"代码", r"写代码", r"函数", r"调试", r"bug", r"实现",
-        r"code", r"function", r"debug", r"implement",
-    ],
-    "tool": [
-        r"工具", r"调用", r"执行", r"操作",
-        r"tool", r"execute", r"run", r"call",
-    ],
-    "memory": [
-        r"记得", r"之前", r"上次", r"之前说",
-        r"remember", r"before", r"earlier", r"forget",
-    ],
-}
-
-
-def classify_intent(query: str) -> str:
-    """Classify query intent for routing hint.
-
-    Returns: strategy | code | tool | memory | general
-    """
-    if not query:
-        return "general"
-    best, best_count = "general", 0
-    for intent, patterns in _INTENT_PATTERNS.items():
-        count = sum(1 for p in patterns if re.search(p, query, re.IGNORECASE))
-        if count > best_count:
-            best, best_count = intent, count
-    return best
-
-
-def intent_aware_search(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    """Intent-aware search: classify intent then route to best target.
-
-    strategy/code/tool → prefer matching target
-    general/memory → search all with composite scoring
-    """
-    intent = classify_intent(query)
-    intent_target_map = {
-        "strategy": "decision",
-        "code": "code",
-        "tool": "tool",
-        "memory": "memory",
-    }
-    target_filter = intent_target_map.get(intent)
-    results = _composite_search(query, top_k=top_k, target_filter=target_filter)
-    if len(results) < 2:
-        results = _composite_search(query, top_k=top_k)
-    return results[:top_k]
-
-
-# ── Query expansion ────────────────────────────────────────────────────
-
-_SYNONYM_PAIRS = [
-    ("修复", "fix bug"), ("bug", "bug fix"),
-    ("实现", "implement"), ("功能", "feature"),
-    ("优化", "optimize improve"), ("性能", "performance"),
-    ("测试", "test testing"), ("部署", "deploy deployment"),
-    ("代码", "code coding"), ("脚本", "script"),
-    ("API", "接口 endpoint"), ("接口", "API endpoint"),
-    ("数据库", "database DB SQL"), ("缓存", "cache caching"),
-    ("错误", "error exception"), ("异常", "error exception"),
-    ("服务器", "server backend"), ("前端", "frontend UI"),
-    ("会话", "session context"), ("记忆", "memory recall"),
-    ("决策", "decision choice strategy"), ("策略", "strategy plan approach"),
-]
-
-
-def expand_query(query: str) -> str:
-    """Expand query with synonyms for richer retrieval.
-
-    Returns original + expanded terms (space-separated).
-    """
-    if not query.strip():
-        return query
-    expanded = set()
-    q_lower = query.lower()
-    for term, synonyms in _SYNONYM_PAIRS:
-        if term in q_lower:
-            for syn in synonyms.split():
-                if syn not in q_lower:
-                    expanded.add(syn)
-    if expanded:
-        return f"{query} {' '.join(sorted(expanded))}"
-    return query
-
-
 def rich_search(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    """Rich search: expand query + intent routing + composite scoring.
+    """Semantic hybrid search — embedding + Jaccard + recency + frequency.
 
-    Preferred entry point for production. Merges results from
-    original and expanded query to avoid duplicates.
+    No intent routing, no synonym expansion, no language assumptions.
+    The embedding model handles cross-lingual semantic matching natively;
+    hardcoded patterns for zh/en only reduce recall for other languages
+    and inject domain bias.
+
+    Preferred entry point for production.
     """
-    expanded = expand_query(query)
-    if expanded != query:
-        seen: Dict[str, Dict[str, Any]] = {}
-        for q in [query, expanded]:
-            for item in intent_aware_search(q, top_k=top_k):
-                key = item["content"][:80]
-                if key not in seen or item["score"] > seen[key]["score"]:
-                    seen[key] = item
-        merged = sorted(seen.values(), key=lambda x: -x["score"])[:top_k]
-        return list(merged)
-    return intent_aware_search(query, top_k=top_k)
+    return _composite_search(query, top_k=top_k)

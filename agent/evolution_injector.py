@@ -120,13 +120,19 @@ def _load_anti_patterns(conn: sqlite3.Connection) -> List[Dict[str, str]]:
 
 
 def _is_too_generic(pattern: str) -> bool:
-    """Filter out patterns that are too vague to be actionable."""
-    generic_markers = [
-        "检查错误信息，分析根因",
-        "检查错误信息",
-        "分析根因",
-    ]
-    return any(marker in pattern for marker in generic_markers)
+    """Filter out patterns that are too vague to be actionable.
+
+    Uses length and entropy heuristics (not language-specific keywords)
+    so the filter works across all domains and languages.
+    """
+    stripped = pattern.strip()
+    if len(stripped) < 8:
+        return True
+    # If it's all one repeated character (extremely low information content)
+    unique_chars = len(set(stripped))
+    if unique_chars < 3:
+        return True
+    return False
 
 
 def _correct_is_generic(correct: str) -> bool:
