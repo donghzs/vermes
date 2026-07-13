@@ -128,6 +128,11 @@ class Platform(Enum):
     QQBOT = "qqbot"
     YUANBAO = "yuanbao"
     LINE = "line"
+    IRC = "irc"
+    ZALO = "zalo"
+    NOSTR = "nostr"
+    SYNOLOGY_CHAT = "synology_chat"
+    TWITCH = "twitch"
     @classmethod
     def _missing_(cls, value):
         """Accept unknown platform names only for known plugin adapters.
@@ -447,6 +452,11 @@ _PLATFORM_CONNECTED_CHECKERS: dict[Platform, Callable[[PlatformConfig], bool]] =
         (cfg.extra.get("client_id") or os.getenv("DINGTALK_CLIENT_ID"))
         and (cfg.extra.get("client_secret") or os.getenv("DINGTALK_CLIENT_SECRET"))
     ),
+    Platform.IRC: lambda cfg: bool(os.getenv("IRC_NICK")),
+    Platform.TWITCH: lambda cfg: bool(os.getenv("IRC_NICK") and os.getenv("IRC_PASSWORD")),
+    Platform.ZALO: lambda cfg: bool(os.getenv("ZALO_ACCESS_TOKEN") and os.getenv("ZALO_SECRET_KEY")),
+    Platform.NOSTR: lambda cfg: bool(os.getenv("NOSTR_PRIVATE_KEY")),
+    Platform.SYNOLOGY_CHAT: lambda cfg: bool(os.getenv("SYNOLOGY_CHAT_INCOMING_URL")),
 }
 
 

@@ -6141,6 +6141,46 @@ class GatewayRunner:
                 return None
             return LineAdapter(config)
 
+        elif platform == Platform.IRC:
+            from gateway.platforms.irc import IrcAdapter, check_irc_requirements
+            if not check_irc_requirements():
+                logger.warning("IRC: IRC_NICK not configured")
+                return None
+            return IrcAdapter(config)
+
+        elif platform == Platform.TWITCH:
+            # Twitch uses IRC protocol with IRC_SERVER=twitch
+            from gateway.platforms.irc import IrcAdapter, check_irc_requirements
+            if not check_irc_requirements():
+                logger.warning("Twitch: IRC_NICK not configured")
+                return None
+            adapter = IrcAdapter(config)
+            adapter._is_twitch = True
+            adapter._server_host = "chat.twitch.tv"
+            adapter._server_port = 6697
+            return adapter
+
+        elif platform == Platform.ZALO:
+            from gateway.platforms.zalo import ZaloAdapter, check_zalo_requirements
+            if not check_zalo_requirements():
+                logger.warning("Zalo: aiohttp missing or ZALO_ACCESS_TOKEN/ZALO_SECRET_KEY not configured")
+                return None
+            return ZaloAdapter(config)
+
+        elif platform == Platform.NOSTR:
+            from gateway.platforms.nostr import NostrAdapter, check_nostr_requirements
+            if not check_nostr_requirements():
+                logger.warning("Nostr: websockets missing or NOSTR_PRIVATE_KEY not configured")
+                return None
+            return NostrAdapter(config)
+
+        elif platform == Platform.SYNOLOGY_CHAT:
+            from gateway.platforms.synology_chat import SynologyChatAdapter, check_synology_chat_requirements
+            if not check_synology_chat_requirements():
+                logger.warning("Synology Chat: aiohttp missing or SYNOLOGY_CHAT_INCOMING_URL not configured")
+                return None
+            return SynologyChatAdapter(config)
+
         return None
     def _is_user_authorized(self, source: SessionSource) -> bool:
         """
