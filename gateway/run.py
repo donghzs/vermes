@@ -6134,6 +6134,13 @@ class GatewayRunner:
                 return None
             return YuanbaoAdapter(config)
 
+        elif platform == Platform.LINE:
+            from gateway.platforms.line import LineAdapter, check_line_requirements
+            if not check_line_requirements():
+                logger.warning("LINE: aiohttp missing or LINE_CHANNEL_ACCESS_TOKEN/LINE_CHANNEL_SECRET not configured")
+                return None
+            return LineAdapter(config)
+
         return None
     def _is_user_authorized(self, source: SessionSource) -> bool:
         """
