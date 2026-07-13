@@ -6,7 +6,7 @@ description: "Set up Hermes Agent as a LINE Messaging API bot"
 
 # LINE Setup
 
-Run Hermes Agent as a [LINE](https://line.me/) bot via the official LINE Messaging API. The adapter lives as a bundled platform plugin under `plugins/platforms/line/` — no core edits, just enable it like any other platform.
+Run Vermes as a [LINE](https://line.me/) bot via the official LINE Messaging API. The adapter is built into the Vermes gateway under `gateway/platforms/line.py` — just enable it in config, no plugin install needed.
 
 LINE is the dominant messaging app in Japan, Taiwan, and Thailand. If your users live there, this is how they reach you.
 
@@ -80,7 +80,7 @@ gateway:
       enabled: true
 ```
 
-That's enough — the bundled-plugin scan in `gateway/config.py` automatically picks up `plugins/platforms/line/`. No `Platform.LINE` enum edit, no `_create_adapter` registration.
+That's enough — the `gateway/config.py` auto-injection picks up `LINE_*` env vars and registers `Platform.LINE`. The `_create_adapter` in `gateway/run.py` handles the rest.
 
 ---
 
@@ -98,7 +98,7 @@ Back in the LINE console:
 ## Step 5: Run the gateway
 
 ```bash
-hermes gateway
+vermes gateway
 ```
 
 The agent log shows:
