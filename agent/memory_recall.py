@@ -28,6 +28,7 @@ import os
 import re
 import sqlite3
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -115,6 +116,7 @@ def _query_recent_outcomes(
     Uses LIKE matching on task/tool/domain fields.
     Returns most recent matching outcomes.
     """
+    cutoff = (datetime.now() - timedelta(hours=_RECENT_WINDOW_HOURS)).isoformat()
     if not keywords:
         # Just return most recent outcomes
         rows = conn.execute(
@@ -122,7 +124,7 @@ def _query_recent_outcomes(
             "FROM outcomes "
             "WHERE timestamp > ? "
             "ORDER BY timestamp DESC LIMIT ?",
-            (time.time() - _RECENT_WINDOW_HOURS * 3600, limit),
+            (cutoff, limit),
         ).fetchall()
     else:
         # Build OR conditions for each keyword
@@ -133,7 +135,7 @@ def _query_recent_outcomes(
             params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%"])
 
         where_clause = " OR ".join(conditions)
-        params.insert(0, time.time() - _RECENT_WINDOW_HOURS * 3600)
+        params.insert(0, cutoff)
         params.append(limit)
 
         rows = conn.execute(

@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -50,15 +51,16 @@ def _create_test_db(db_path: Path):
     )""")
 
     now = time.time()
+    now_iso = datetime.fromtimestamp(now).isoformat()
 
     # Insert anti_patterns
     conn.execute(
         "INSERT INTO anti_patterns (timestamp, pattern, correct, domain, frequency, last_seen) VALUES (?, ?, ?, ?, ?, ?)",
-        (now, "不要在未读源码前修改文件", "先 read_file 审计源码", "代码管理", 42, now),
+        (now_iso, "不要在未读源码前修改文件", "先 read_file 审计源码", "代码管理", 42, now_iso),
     )
     conn.execute(
         "INSERT INTO anti_patterns (timestamp, pattern, correct, domain, frequency, last_seen) VALUES (?, ?, ?, ?, ?, ?)",
-        (now, "检查错误信息，分析根因", "检查错误信息", "通用", 586, now),  # generic, should be filtered
+        (now_iso, "检查错误信息，分析根因", "检查错误信息", "通用", 586, now_iso),  # generic, should be filtered
     )
 
     # Insert strategies
@@ -74,11 +76,11 @@ def _create_test_db(db_path: Path):
     # Insert self_model metrics
     conn.execute(
         "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-        (now, "tool.success", 0.88, "overall"),
+        (now_iso, "tool.success", 0.88, "overall"),
     )
     conn.execute(
         "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-        (now, "tool.duration", 1.5, "avg_ms"),
+        (now_iso, "tool.duration", 1.5, "avg_ms"),
     )
 
     # Insert recent outcomes
@@ -86,7 +88,7 @@ def _create_test_db(db_path: Path):
         conn.execute(
             "INSERT INTO outcomes (timestamp, task, action, tool, success, details, duration, domain) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (now - i * 100, f"task_{i}", f"action_{i}", "shell", 1 if i % 5 != 0 else 0, "", 0.5 + i * 0.01, "通用"),
+            (datetime.fromtimestamp(now - i * 100).isoformat(), f"task_{i}", f"action_{i}", "shell", 1 if i % 5 != 0 else 0, "", 0.5 + i * 0.01, "通用"),
         )
 
     conn.commit()

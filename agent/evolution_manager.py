@@ -20,7 +20,7 @@ import re
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -642,9 +642,10 @@ def _record_emotional_state(
     try:
         conn = _get_conn(db_path)
         cursor = conn.cursor()
+        _five_min_ago = (datetime.now() - timedelta(minutes=5)).isoformat()
         cursor.execute(
-            "SELECT COUNT(*) FROM emotional_state WHERE trigger LIKE ? AND timestamp > datetime('now', '-5 minutes')",
-            (f"{tool_name}:%",)
+            "SELECT COUNT(*) FROM emotional_state WHERE trigger LIKE ? AND timestamp > ?",
+            (f"{tool_name}:%", _five_min_ago)
         )
         recent_count = cursor.fetchone()[0]
         if recent_count > 3 and is_error:
@@ -800,7 +801,28 @@ def record_tool_outcome(
             role
         ))
         outcome_id = cursor.lastrowid
-        
+        conn.commit()
+        conn.close()
+
+        # ── 写入 embedding DB（语义检索用）───────────────────────────
+        try:
+            from agent.hybrid_retriever import store_embedding
+            # 组合内容：task + tool + outcome → 支持语义相似召回
+            emb_parts = [
+                f"Task: {task}",
+                f"Tool: {tool_name}",
+                f"Args: {str(tool_args)[:200]}",
+            ]
+            if is_error:
+                emb_parts.append(f"Error: {error_msg}")
+                emb_parts.append(f"Correction: {correction}")
+            else:
+                emb_parts.append(f"Success: {str(result)[:200]}")
+            emb_content = " | ".join(emb_parts)
+            store_embedding(emb_content, target=f"outcome:{domain}")
+        except Exception as emb_err:
+            logger.debug("store_embedding skipped: %s", emb_err)
+
         # If failed, check for anti-pattern
         if is_error and error_type:
             cursor.execute('''
@@ -943,16 +965,25 @@ def record_tool_outcome(
         except Exception:
             pass  # 指标记录非阻塞
 
-        # ── self_model 指标快照 ─────────────────────────────────────
+        # ── self_model 指标快照（UPSERT 防止膨胀）─────────────────────
         try:
-            # 记录单次工具指标
+            # DELETE-then-INSERT: 同一 metric+details 只保留最新值
+            _success_details = f"{tool_name}:{task}"
             cursor.execute(
-                "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                (timestamp, "tool.success", 0.0 if is_error else 1.0, f"{tool_name}:{task}")
+                "DELETE FROM self_model WHERE metric = ? AND details = ?",
+                ("tool.success", _success_details)
             )
             cursor.execute(
                 "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                (timestamp, "tool.duration", round(duration, 2), f"{tool_name}:{task}")
+                (timestamp, "tool.success", 0.0 if is_error else 1.0, _success_details)
+            )
+            cursor.execute(
+                "DELETE FROM self_model WHERE metric = ? AND details = ?",
+                ("tool.duration", _success_details)
+            )
+            cursor.execute(
+                "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
+                (timestamp, "tool.duration", round(duration, 2), _success_details)
             )
 
             # 每50次工具调用写入一次汇总快照
@@ -960,7 +991,8 @@ def record_tool_outcome(
             _total = cursor.fetchone()[0]
             if _total % 50 == 0:
                 cursor.execute(
-                    "SELECT COUNT(*), SUM(success) FROM outcomes WHERE timestamp > datetime('now', '-1 day')"
+                    "SELECT COUNT(*), SUM(success) FROM outcomes WHERE timestamp > ?",
+                    ((datetime.now() - timedelta(days=1)).isoformat(),)
                 )
                 _recent = cursor.fetchone()
                 _recent_count, _recent_success = _recent[0], _recent[0] and _recent[1] or 0
@@ -971,10 +1003,18 @@ def record_tool_outcome(
                 )
                 _top_tool = cursor.fetchone()
 
+                _summary_details = f"recent={_recent_count}, top_tool={_top_tool[0] if _top_tool else 'none'}"
+                cursor.execute(
+                    "DELETE FROM self_model WHERE metric = ? AND details = ?",
+                    ("summary.success_rate_24h", _summary_details)
+                )
                 cursor.execute(
                     "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-                    (timestamp, "summary.success_rate_24h", round(_recent_rate, 4),
-                     f"recent={_recent_count}, top_tool={_top_tool[0] if _top_tool else 'none'}")
+                    (timestamp, "summary.success_rate_24h", round(_recent_rate, 4), _summary_details)
+                )
+                cursor.execute(
+                    "DELETE FROM self_model WHERE metric = ? AND details = ?",
+                    ("summary.total_outcomes", "cumulative")
                 )
                 cursor.execute(
                     "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
@@ -983,6 +1023,20 @@ def record_tool_outcome(
             conn.commit()
         except Exception:
             pass  # self_model 记录非阻塞
+
+        # ── 保留策略：清理过期数据 ────────────────────────────
+        try:
+            _cutoff_30d = (datetime.now() - timedelta(days=30)).isoformat()
+            cursor.execute("DELETE FROM outcomes WHERE timestamp < ?", (_cutoff_30d,))
+            conn.commit()
+            # 清理 fusion-state.db 中的过期数据
+            _cutoff_7d = (datetime.now() - timedelta(days=7)).isoformat()
+            _fconn = _get_conn(str(get_evolution_dir() / "fusion-state.db"))
+            _fconn.execute("DELETE FROM emotional_state WHERE timestamp < ?", (_cutoff_7d,))
+            _fconn.execute("DELETE FROM evolution_metrics WHERE timestamp < ?", (_cutoff_7d,))
+            _fconn.commit()
+        except Exception:
+            pass  # 清理非阻塞
 
         # ── P1: 反馈闭环 — 错误率高时发出警告 ─────────────────────
         advice = None
@@ -1290,7 +1344,8 @@ def build_daily_briefing() -> str:
         conn = _get_conn(str(get_self_model_db()))
         c = conn.cursor()
         c.execute(
-            "SELECT COUNT(*) FROM outcomes WHERE timestamp > datetime('now', '-1 day')"
+            "SELECT COUNT(*) FROM outcomes WHERE timestamp > ?",
+            ((datetime.now() - timedelta(days=1)).isoformat(),)
         )
         recent = c.fetchone()[0]
         if recent > 0:

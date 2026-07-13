@@ -21,6 +21,7 @@ import logging
 import os
 import sqlite3
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -191,7 +192,7 @@ def _load_self_model_metrics(conn: sqlite3.Connection) -> Dict[str, float]:
 
 def _load_recent_summary(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     """Load a brief summary of recent outcomes."""
-    cutoff = time.time() - (_RECENT_OUTCOME_DAYS * 86400)
+    cutoff = (datetime.now() - timedelta(days=_RECENT_OUTCOME_DAYS)).isoformat()
     try:
         row = conn.execute(
             "SELECT "

@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,13 +49,14 @@ def _create_test_self_model(db_path: Path):
     )""")
 
     now = time.time()
+    now_iso = datetime.fromtimestamp(now).isoformat()
 
     # Insert outcomes with different domains
     for i in range(20):
         conn.execute(
             "INSERT INTO outcomes (timestamp, task, action, tool, success, details, duration, domain) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (now - i * 3600, f"write code for feature {i}", f"action_{i}",
+            (datetime.fromtimestamp(now - i * 3600).isoformat(), f"write code for feature {i}", f"action_{i}",
              "write_file" if i % 2 == 0 else "read_file",
              1 if i % 3 != 0 else 0, "", 0.5 + i * 0.01, "代码管理"),
         )
@@ -62,7 +64,7 @@ def _create_test_self_model(db_path: Path):
         conn.execute(
             "INSERT INTO outcomes (timestamp, task, action, tool, success, details, duration, domain) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (now - i * 3600, f"search for {i}", f"search_{i}",
+            (datetime.fromtimestamp(now - i * 3600).isoformat(), f"search for {i}", f"search_{i}",
              "grep_search", 1, "", 0.3, "搜索"),
         )
 
