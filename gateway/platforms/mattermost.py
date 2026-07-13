@@ -163,6 +163,24 @@ class MattermostAdapter(BasePlatformAdapter):
             logger.error("MM API PUT %s network error: %s", path, exc)
             return {}
 
+    async def _api_delete(self, path: str) -> Optional[Dict[str, Any]]:
+        """DELETE /api/v4/{path}."""
+        import aiohttp
+        url = f"{self._base_url}/api/v4/{path.lstrip('/')}"
+        try:
+            async with self._session.delete(
+                url, headers=self._headers(),
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    logger.error("MM API DELETE %s → %s: %s", path, resp.status, body[:200])
+                    return None
+                return await resp.json()
+        except aiohttp.ClientError as exc:
+            logger.error("MM API DELETE %s network error: %s", path, exc)
+            return None
+
     async def _upload_file(
         self, channel_id: str, file_data: bytes, filename: str, content_type: str = "application/octet-stream"
     ) -> Optional[str]:
@@ -299,6 +317,15 @@ class MattermostAdapter(BasePlatformAdapter):
             last_id = data["id"]
 
         return SendResult(success=True, message_id=last_id)
+
+    async def delete_message(self, chat_id: str, message_id: str) -> bool:
+        """Delete a post via Mattermost API."""
+        try:
+            resp = await self._api_delete(f"posts/{message_id}")
+            return resp is not None
+        except Exception:
+            logger.warning("Mattermost: failed to delete post %s", message_id)
+            return False
 
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return channel name and type."""

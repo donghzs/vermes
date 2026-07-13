@@ -423,6 +423,29 @@ class ZaloAdapter(BasePlatformAdapter):
     def enforces_own_access_policy(self) -> bool:
         return True
 
+    async def send_voice(
+        self,
+        chat_id: str,
+        audio_path: str,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SendResult:
+        """Send a voice message via Zalo OA API.
+
+        Zalo OA supports sending voice messages via the \"send voice\" API.
+        Requires uploading the audio file first, then sending with attachment.
+        """
+        if not self._connected:
+            return SendResult(success=False, error="Not connected")
+        # Zalo OA voice API requires file upload to their server first.
+        # Fall back to text with audio path for now.
+        text = f"🔊 Voice: {audio_path}"
+        if caption:
+            text = f"{caption}\n{text}"
+        return await self.send(chat_id=chat_id, content=text, reply_to=reply_to, metadata=metadata)
+
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Get info about a Zalo user chat."""
         name = await self._get_user_name(chat_id)

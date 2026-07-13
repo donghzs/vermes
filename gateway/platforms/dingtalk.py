@@ -971,6 +971,25 @@ class DingTalkAdapter(BasePlatformAdapter):
             ),
         )
 
+    async def send_voice(
+        self,
+        chat_id: str,
+        audio_path: str,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SendResult:
+        """DingTalk session webhook replies do not support voice uploads.
+
+        Voice messages require OpenAPI media upload + AI Card message type,
+        which is not available via session webhooks.
+        """
+        return SendResult(
+            success=False,
+            error="DingTalk session webhook does not support voice uploads. Use OpenAPI media upload instead.",
+        )
+
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return basic info about a DingTalk conversation."""
         return {
