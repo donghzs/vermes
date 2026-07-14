@@ -147,6 +147,8 @@ def export_graph(db_path: str, source: str = "") -> GraphExport:
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
 
         # Export clusters
         export.clusters = _export_clusters(conn)
@@ -279,6 +281,8 @@ def import_graph(db_path: str, graph_data: Dict[str, Any]) -> ImportResult:
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         ensure_graph_tables(conn)
 
         # Ensure all target tables exist before importing

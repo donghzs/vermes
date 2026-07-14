@@ -96,6 +96,8 @@ def _gather_emergence_signals(db_path: str) -> List[EmergenceSignal]:
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
 
         # ── Signal 1: Retrieval bottleneck ──
         # Count bottleneck signals vs total self_assessment signals

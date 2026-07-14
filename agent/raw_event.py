@@ -282,14 +282,30 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                 # ── Emergence evaluation: does the system need new capabilities? ──
                 # This is the涌现 trigger — not hardcoded, driven by accumulated
                 # self_assessment signals and cluster statistics.
+                #
+                # NOTE: activate_capability() may run `pip install` (up to 120s
+                # for chromadb). We must NOT block record_raw_event() — the
+                # user's tool result depends on this function returning.
+                # So we evaluate synchronously (fast DB queries) but defer
+                # the actual install/activate to a background thread.
                 try:
                     from agent.capability_evolver import run_emergence_cycle
                     decisions = run_emergence_cycle(db_path)
                     for d in decisions:
                         if d.action == "activate":
-                            from agent.capability_registry import activate_capability
-                            activate_capability(d.capability_name)
-                            logger.info("Capability auto-activated: %s", d.capability_name)
+                            import threading
+                            def _bg_activate(cap_name=d.capability_name):
+                                try:
+                                    from agent.capability_registry import activate_capability
+                                    activate_capability(cap_name)
+                                    logger.info("Capability auto-activated: %s", cap_name)
+                                except Exception:
+                                    logger.warning("Background capability activation failed", exc_info=True)
+                            threading.Thread(
+                                target=_bg_activate,
+                                daemon=True,
+                                name=f"cap-activate-{d.capability_name}",
+                            ).start()
                 except Exception:
                     logger.debug("Emergence cycle skipped", exc_info=True)
 

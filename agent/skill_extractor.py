@@ -109,6 +109,8 @@ class SkillExtractor:
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             ensure_skill_tables(conn)
 
             # Find clusters ripe for skill extraction
@@ -318,6 +320,8 @@ class SkillExtractor:
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             ensure_skill_tables(conn)
 
             if status:
