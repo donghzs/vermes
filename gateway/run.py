@@ -7369,6 +7369,12 @@ class GatewayRunner:
         if canonical == "debug":
             return await self._handle_debug_command(event)
 
+        if canonical == "emergence":
+            return await self._handle_emergence_command(event)
+
+        if canonical == "forget":
+            return await self._handle_forget_command(event)
+
         if canonical == "title":
             return await self._handle_title_command(event)
 
@@ -13674,6 +13680,123 @@ class GatewayRunner:
             return "\n".join(lines)
 
         return await loop.run_in_executor(None, _collect_and_upload)
+
+    async def _handle_emergence_command(self, event: MessageEvent) -> str:
+        """Handle /emergence — show emergence system status."""
+        try:
+            from agent.evolution_manager import get_self_model_db
+            db_path = str(get_self_model_db())
+
+            lines = ["🧠 涌现系统状态", ""]
+
+            # Richness
+            try:
+                from agent.memory_recall import compute_richness
+                r = compute_richness(db_path)
+                tier_map = {"cold_start": "冷启动", "building": "积累中", "learning": "学习中", "fluent": "熟练"}
+                lines.append(f"记忆丰富度: {tier_map.get(r.tier, r.tier)} ({r.score:.3f})")
+                lines.append(f"  事件密度: {r.raw_event_density:.3f} | 簇密度: {r.cluster_density:.3f}")
+                lines.append(f"  会话密度: {r.session_density:.3f} | 交接密度: {r.handoff_density:.3f}")
+            except Exception as e:
+                lines.append(f"记忆丰富度: 不可用 ({e})")
+            lines.append("")
+
+            # Clusters
+            try:
+                import sqlite3 as _sql
+                conn = _sql.connect(db_path)
+                conn.row_factory = _sql.Row
+                c = conn.cursor()
+                c.execute("SELECT status, COUNT(*) as cnt FROM clusters GROUP BY status")
+                rows = c.fetchall()
+                c.execute("SELECT COUNT(*) FROM raw_events")
+                total = c.fetchone()[0]
+                conn.close()
+                if rows:
+                    cluster_str = ", ".join(f"{r['status']}={r['cnt']}" for r in rows)
+                    lines.append(f"簇: {cluster_str} (总事件: {total})")
+                else:
+                    lines.append(f"簇: 无 (总事件: {total})")
+            except Exception as e:
+                lines.append(f"簇: 不可用 ({e})")
+            lines.append("")
+
+            # Capabilities
+            try:
+                from agent.capability_registry import get_capability_report
+                caps = get_capability_report()
+                active = caps.get("active", [])
+                installed = caps.get("installed", [])
+                if active:
+                    lines.append(f"已激活能力: {', '.join(active)}")
+                else:
+                    lines.append("已激活能力: 无")
+                if installed:
+                    lines.append(f"已安装能力: {', '.join(installed)}")
+            except Exception:
+                lines.append("能力注册表: 不可用")
+            lines.append("")
+
+            # Health
+            try:
+                from agent.raw_event import _LAST_EMERGENCE_OK, _EMERGENCE_STALE_THRESHOLD
+                from datetime import datetime as _dt
+                if _LAST_EMERGENCE_OK is not None:
+                    stale_h = (_dt.now() - _LAST_EMERGENCE_OK).total_seconds() / 3600
+                    healthy = (_dt.now() - _LAST_EMERGENCE_OK) < _EMERGENCE_STALE_THRESHOLD
+                    status_text = f"✅ 正常 (上次成功: {stale_h:.1f}h前)" if healthy else f"⚠️ 静默 {stale_h:.1f}h"
+                else:
+                    status_text = "❄️ 冷启动中"
+                lines.append(f"链路状态: {status_text}")
+            except Exception:
+                lines.append("链路状态: 不可用")
+
+            # Pending skills
+            try:
+                from agent.skill_extractor import SkillExtractor
+                extractor = SkillExtractor(db_path)
+                pending = extractor.list_skills(status="pending")
+                if pending:
+                    lines.append("")
+                    lines.append(f"📋 待确认技能 ({len(pending)}):")
+                    for s in pending[:5]:
+                        lines.append(f"  • {s.name}: {s.description[:60]}")
+                    if len(pending) > 5:
+                        lines.append(f"  ...还有 {len(pending) - 5} 个")
+            except Exception:
+                pass
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"涌现系统不可用: {e}"
+
+    async def _handle_forget_command(self, event: MessageEvent) -> str:
+        """Handle /forget — clear session recall context for fresh start."""
+        try:
+            from agent.handoff_store import forget_session, deactivate_handoff
+
+            session_id = getattr(self, '_current_session_id', '') or event.session_id or ''
+            if not session_id:
+                # Try to get from session manager
+                try:
+                    session_id = self._session_mgr.current_session_id or ''
+                except Exception:
+                    pass
+
+            if session_id:
+                result = forget_session(session_id)
+                if result.get("forgotten"):
+                    return f"✅ 已清除会话记忆。下轮对话将从零开始。"
+                else:
+                    # Fallback: just deactivate
+                    ok = deactivate_handoff(session_id)
+                    if ok:
+                        return f"✅ 已停用会话交接。下轮对话将从零开始。"
+                    return f"会话 {session_id} 无可清除的记忆。"
+            else:
+                return "⚠️ 无法确定当前会话 ID。请直接在桌面端使用 /forget。"
+        except Exception as e:
+            return f"清除记忆失败: {e}"
 
     async def _handle_update_command(self, event: MessageEvent) -> str:
         """Handle /update command — update Vermes to the latest version.

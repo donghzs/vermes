@@ -214,6 +214,10 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, args_hint="<path>"),
     CommandDef("update", "Update Vermes to the latest version", "Info"),
     CommandDef("debug", "Upload debug report (system info + logs) and get shareable links", "Info"),
+    CommandDef("emergence", "Show emergence system status: richness, clusters, capabilities, skills", "Info",
+               aliases=("evo",)),
+    CommandDef("forget", "Clear session recall context (Agent starts fresh next turn)", "Session",
+               aliases=("reset-memory",)),
 
     # Exit
     CommandDef("quit", "Exit the CLI (use --delete to also remove session history)", "Exit",
