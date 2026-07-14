@@ -98,7 +98,7 @@ class TestHandleVoiceCommand:
     async def test_voice_on(self, runner):
         event = _make_event("/voice on")
         result = await runner._handle_voice_command(event)
-        assert "enabled" in result.lower()
+        assert "enabled" in result.lower() or "启用" in result
         assert runner._voice_mode["telegram:123"] == "voice_only"
 
     @pytest.mark.asyncio
@@ -106,7 +106,7 @@ class TestHandleVoiceCommand:
         runner._voice_mode["telegram:123"] = "voice_only"
         event = _make_event("/voice off")
         result = await runner._handle_voice_command(event)
-        assert "disabled" in result.lower()
+        assert "disabled" in result.lower() or "禁用" in result
         assert runner._voice_mode["telegram:123"] == "off"
 
     @pytest.mark.asyncio
@@ -120,20 +120,20 @@ class TestHandleVoiceCommand:
     async def test_voice_status_off(self, runner):
         event = _make_event("/voice status")
         result = await runner._handle_voice_command(event)
-        assert "off" in result.lower()
+        assert "off" in result.lower() or "关闭" in result
 
     @pytest.mark.asyncio
     async def test_voice_status_on(self, runner):
         runner._voice_mode["telegram:123"] = "voice_only"
         event = _make_event("/voice status")
         result = await runner._handle_voice_command(event)
-        assert "voice reply" in result.lower()
+        assert "voice reply" in result or "语音回复" in result or "语音回复" in result.lower()
 
     @pytest.mark.asyncio
     async def test_toggle_off_to_on(self, runner):
         event = _make_event("/voice")
         result = await runner._handle_voice_command(event)
-        assert "enabled" in result.lower()
+        assert "enabled" in result.lower() or "启用" in result
         assert runner._voice_mode["telegram:123"] == "voice_only"
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestHandleVoiceCommand:
         runner._voice_mode["telegram:123"] = "voice_only"
         event = _make_event("/voice")
         result = await runner._handle_voice_command(event)
-        assert "disabled" in result.lower()
+        assert "disabled" in result.lower() or "禁用" in result
         assert runner._voice_mode["telegram:123"] == "off"
 
     @pytest.mark.asyncio

@@ -333,7 +333,20 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 请直接输出该章节的完整内容（Markdown 格式，{label} 用 ## 标记），
 引用文献时使用 [n] 标记（n为编号占位，用户后续会替换为真实文献）。"""
 
-    return await _call_llm(prompt, system_prompt)
+    content = await _call_llm(prompt, system_prompt)
+
+    # ── Write 后质量门控: 自动 De-AIGC ─────────────────────
+    try:
+        from hermes_cli.scholarforge.plagcheck import check_aigc, apply_deaigc_suggestions
+        _aigc = check_aigc(content)
+        if _aigc.get("aigc_score", 0) > 0.4:
+            _cleaned = apply_deaigc_suggestions(content)
+            if _cleaned != content:
+                content = _cleaned
+    except Exception:
+        pass
+
+    return content
 
 
 async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
@@ -373,7 +386,31 @@ async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
 论文草稿：
 {draft[:8000]}"""
 
-    return await _call_llm(prompt, system_prompt)
+    llm_result = await _call_llm(prompt, system_prompt)
+
+    # ── De-AIGC 校准建议 ─────────────────────────────────────
+    deaigc_section = ""
+    try:
+        from hermes_cli.scholarforge.plagcheck import check_aigc, suggest_deaigc_fixes
+        aigc = check_aigc(draft)
+        suggestions = suggest_deaigc_fixes(draft)
+        if suggestions or aigc.get("verdict"):
+            deaigc_section = "\n\n---\n## 🤖 AI 痕迹检测\n"
+            deaigc_section += f"**综合评分**: {aigc.get('aigc_score', 0)*100:.0f}/100"
+            if aigc.get("verdict"):
+                deaigc_section += f"\n**判断**: {aigc['verdict']}"
+            if aigc.get("features"):
+                deaigc_section += "\n\n**检测到的问题**:\n"
+                for f in aigc["features"][:8]:
+                    deaigc_section += f"- {f}\n"
+            if suggestions:
+                deaigc_section += "\n**改写建议**:\n"
+                for s in suggestions[:5]:
+                    deaigc_section += f"- **{s['fix']}** (例: {s['example']})\n"
+    except Exception:
+        pass
+
+    return llm_result + deaigc_section
 
 
 # ──────────────────────────────────────────────────────────────

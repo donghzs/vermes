@@ -364,3 +364,12 @@ gateway:
     session_db_unavailable_prefix: "Session database not available"
     session_not_found:           "Session not found in database."
     warn_passthrough:            "⚠️ {error}"
+
+vermes:
+  welcome: "🚀 Vermes — Your AI, set sail"
+  setup_start: "Starting Vermes setup..."
+  setup_done: "✅ Vermes configured! Run vermes to start"
+  skill_store: "🏪 Skill Store"
+  skill_install: "Install skill: {name}"
+  model_ready: "✅ Model ready: {model} ({provider})"
+  no_model: "⚠️ No model configured yet — run vermes setup first"

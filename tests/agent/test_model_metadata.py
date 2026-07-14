@@ -131,10 +131,10 @@ class TestDefaultContextLengths:
         for key, value in DEFAULT_CONTEXT_LENGTHS.items():
             if "claude" not in key:
                 continue
-            # Claude 4.6+ models (4.6 and 4.7) have 1M context at standard
+            # Claude 4.6+, 4.7, and 4.8 models have 1M context at standard
             # API pricing (no long-context premium).  Older Claude 4.x and
             # 3.x models cap at 200k.
-            if any(tag in key for tag in ("4.6", "4-6", "4.7", "4-7")):
+            if any(tag in key for tag in ("4.6", "4-6", "4.7", "4-7", "4.8", "4-8")):
                 assert value == 1000000, f"{key} should be 1000000"
             else:
                 assert value == 200000, f"{key} should be 200000"
@@ -161,10 +161,11 @@ class TestDefaultContextLengths:
         # Values sourced from models.dev (2026-04).
         expected = {
             "grok-4.20": 2000000,
-            "grok-4-1-fast": 2000000,
+            "grok-4.3": 1000000,
             "grok-4-fast": 2000000,
             "grok-4": 256000,
             "grok-code-fast": 256000,
+            "grok-build": 256000,
             "grok-3": 131072,
             "grok-2": 131072,
             "grok-2-vision": 8192,
@@ -189,13 +190,14 @@ class TestDefaultContextLengths:
                 ("grok-4.20-0309-reasoning", 2000000),
                 ("grok-4.20-0309-non-reasoning", 2000000),
                 ("grok-4.20-multi-agent-0309", 2000000),
-                ("grok-4-1-fast-reasoning", 2000000),
-                ("grok-4-1-fast-non-reasoning", 2000000),
+                ("grok-4.3", 1000000),
+                ("grok-4.3-latest", 1000000),
                 ("grok-4-fast-reasoning", 2000000),
                 ("grok-4-fast-non-reasoning", 2000000),
                 ("grok-4", 256000),
                 ("grok-4-0709", 256000),
                 ("grok-code-fast-1", 256000),
+                ("grok-build-0.1", 256000),
                 ("grok-3", 131072),
                 ("grok-3-mini", 131072),
                 ("grok-3-mini-fast", 131072),

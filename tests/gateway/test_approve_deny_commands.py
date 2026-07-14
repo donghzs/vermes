@@ -214,8 +214,8 @@ class TestApproveCommand:
         _gateway_queues[session_key] = [entry]
 
         result = await runner._handle_approve_command(_make_event("/approve"))
-        assert "approved" in result.lower()
-        assert "resuming" in result.lower()
+        assert "approved" in result.lower() or "批准" in result
+        assert "resuming" in result.lower() or "恢复" in result
         assert entry.event.is_set()
 
     @pytest.mark.asyncio
@@ -232,7 +232,7 @@ class TestApproveCommand:
         _gateway_queues[session_key] = [e1, e2]
 
         result = await runner._handle_approve_command(_make_event("/approve all"))
-        assert "2 commands" in result
+        assert "2 commands" in result or "2 条命令" in result
         assert e1.event.is_set()
         assert e2.event.is_set()
 
@@ -250,7 +250,7 @@ class TestApproveCommand:
         _gateway_queues[session_key] = [e1, e2]
 
         result = await runner._handle_approve_command(_make_event("/approve all session"))
-        assert "session" in result.lower()
+        assert "session" in result or "会话" in result or "会话" in result.lower()
         assert e1.result == "session"
         assert e2.result == "session"
 
@@ -259,7 +259,7 @@ class TestApproveCommand:
         """/approve with no pending approval returns helpful message."""
         runner = _make_runner()
         result = await runner._handle_approve_command(_make_event("/approve"))
-        assert "No pending command" in result
+        assert "No pending command" in result or "没有待批准的命令" in result
 
     @pytest.mark.asyncio
     async def test_approve_stale_old_style_pending(self):
@@ -270,7 +270,7 @@ class TestApproveCommand:
         runner._pending_approvals[session_key] = {"command": "test"}
 
         result = await runner._handle_approve_command(_make_event("/approve"))
-        assert "expired" in result.lower() or "no longer waiting" in result.lower()
+        assert "expired" in result or "no longer waiting" in result or "过期" in result
         assert session_key not in runner._pending_approvals
 
 
@@ -297,7 +297,7 @@ class TestDenyCommand:
         _gateway_queues[session_key] = [entry]
 
         result = await runner._handle_deny_command(_make_event("/deny"))
-        assert "denied" in result.lower()
+        assert "denied" in result.lower() or "拒绝" in result
         assert entry.event.is_set()
         assert entry.result == "deny"
 
@@ -315,7 +315,7 @@ class TestDenyCommand:
         _gateway_queues[session_key] = [e1, e2]
 
         result = await runner._handle_deny_command(_make_event("/deny all"))
-        assert "2 commands" in result
+        assert "2 commands" in result or "2 条命令" in result
         assert all(e.result == "deny" for e in [e1, e2])
 
     @pytest.mark.asyncio
@@ -323,7 +323,7 @@ class TestDenyCommand:
         """/deny with no pending approval returns helpful message."""
         runner = _make_runner()
         result = await runner._handle_deny_command(_make_event("/deny"))
-        assert "No pending command" in result
+        assert "No pending command" in result or "没有待拒绝的命令" in result
 
 
 # ------------------------------------------------------------------

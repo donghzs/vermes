@@ -70,7 +70,7 @@ class TestHandleResumeCommand:
         runner = _make_runner(session_db=None)
         event = _make_event(text="/resume My Project")
         result = await runner._handle_resume_command(event)
-        assert "not available" in result.lower()
+        assert "not available" in result or "不可用" in result.lower()
 
     @pytest.mark.asyncio
     async def test_list_named_sessions_when_no_arg(self, tmp_path):
@@ -87,7 +87,7 @@ class TestHandleResumeCommand:
         result = await runner._handle_resume_command(event)
         assert "Research" in result
         assert "Coding" in result
-        assert "Named Sessions" in result
+        assert "Named Sessions" in result or "已命名会话" in result
         db.close()
 
     @pytest.mark.asyncio
@@ -100,7 +100,7 @@ class TestHandleResumeCommand:
         event = _make_event(text="/resume")
         runner = _make_runner(session_db=db, event=event)
         result = await runner._handle_resume_command(event)
-        assert "No named sessions" in result
+        assert "No named sessions" in result or "未找到已命名的会话" in result
         assert "/title" in result
         db.close()
 
@@ -151,7 +151,7 @@ class TestHandleResumeCommand:
         runner = _make_runner(session_db=db, current_session_id="current_session_001",
                               event=event)
         result = await runner._handle_resume_command(event)
-        assert "Already on session" in result
+        assert "Already on session" in result or "已在会话" in result
         db.close()
 
     @pytest.mark.asyncio

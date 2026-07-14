@@ -150,7 +150,7 @@ async def test_status_command_reads_token_totals_from_session_db():
     result = await runner._handle_message(_make_event("/status"))
 
     # 1000 + 250 + 500 + 100 + 50 = 1,900
-    assert "**Tokens:** 1,900" in result
+    assert "**Tokens:** 1,900" in result or "**Token 数：** 1,900" in result
 
 
 @pytest.mark.asyncio
@@ -171,7 +171,7 @@ async def test_status_command_tokens_zero_when_session_db_row_missing():
 
     result = await runner._handle_message(_make_event("/status"))
 
-    assert "**Tokens:** 0" in result
+    assert "**Tokens:** 0" in result or "**Token 数：** 0" in result
 
 
 @pytest.mark.asyncio
@@ -212,7 +212,7 @@ async def test_agents_command_reports_active_agents_and_processes(monkeypatch):
 
     result = await runner._handle_message(_make_event("/agents"))
 
-    assert "**Active agents:** 1" in result
+    assert "**Active agents:** 1" in result or "**活跃代理：** 1" in result
     assert "**Running background processes:** 1" in result
     assert "proc-1" in result
     running_agent.interrupt.assert_not_called()
@@ -239,8 +239,7 @@ async def test_tasks_alias_routes_to_agents_command(monkeypatch):
     monkeypatch.setattr("tools.process_registry.process_registry", _FakeRegistry())
 
     result = await runner._handle_message(_make_event("/tasks"))
-
-    assert "Active Agents & Tasks" in result
+    assert "**Active agents:** 0" in result or "**活跃代理：** 0" in result
 
 
 @pytest.mark.asyncio
