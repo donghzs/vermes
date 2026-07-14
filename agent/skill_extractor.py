@@ -344,6 +344,8 @@ class SkillExtractor:
         """User confirms a pending skill → activate it."""
         try:
             conn = sqlite3.connect(self.db_path)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 """UPDATE extracted_skills SET
                    status = 'active', confirmed_at = ?,
@@ -361,6 +363,8 @@ class SkillExtractor:
         """User rejects a pending skill."""
         try:
             conn = sqlite3.connect(self.db_path)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             conn.execute(
                 "UPDATE extracted_skills SET status = 'rejected', updated_at = datetime('now') WHERE id = ?",
                 (skill_id,)

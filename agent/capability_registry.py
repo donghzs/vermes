@@ -201,6 +201,8 @@ def _activate_skill_extract() -> Tuple[bool, str]:
 
         import sqlite3
         conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         ensure_skill_tables(conn)
         conn.close()
         return True, "skill tables ready"
@@ -222,6 +224,8 @@ def _activate_graph_sync() -> Tuple[bool, str]:
 
         import sqlite3
         conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         ensure_graph_tables(conn)
         conn.close()
         return True, "graph tables ready"
