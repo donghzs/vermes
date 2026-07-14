@@ -254,110 +254,6 @@ def _ensure_wal_mode() -> None:
     pass
 
 
-def classify_task(tool_name: str, args: Dict[str, Any]) -> str:
-    """Classify task type from tool name and arguments."""
-    if tool_name == "terminal":
-        cmd = args.get("command", "").lower()
-        if "git" in cmd:
-            return "版本控制"
-        elif "npm" in cmd or "yarn" in cmd:
-            return "前端包管理"
-        elif "pip" in cmd or "uv" in cmd:
-            return "Python包管理"
-        elif "docker" in cmd:
-            return "容器化"
-        elif "ssh" in cmd or "scp" in cmd:
-            return "远程部署"
-        elif "pytest" in cmd or "test" in cmd:
-            return "测试"
-        elif "build" in cmd or "compile" in cmd:
-            return "构建"
-        elif "curl" in cmd or "wget" in cmd:
-            return "网络请求"
-        else:
-            return "终端命令"
-    
-    elif tool_name == "read_file":
-        return "文件读取"
-    
-    elif tool_name == "write_file":
-        return "文件写入"
-    
-    elif tool_name == "patch":
-        return "代码修改"
-    
-    elif tool_name == "search_files":
-        return "代码搜索"
-    
-    elif tool_name == "web_search":
-        return "网络搜索"
-    
-    elif tool_name == "browser_navigate":
-        return "浏览器操作"
-    
-    elif tool_name == "memory":
-        action = args.get("action", "")
-        return f"记忆管理:{action}"
-    
-    elif tool_name == "skill_manage":
-        action = args.get("action", "")
-        return f"技能管理:{action}"
-    
-    elif tool_name == "delegate_task":
-        return "任务委派"
-    
-    else:
-        return f"其他:{tool_name}"
-
-
-def detect_domain(tool_name: str, args: Dict[str, Any]) -> str:
-    """Detect domain from tool usage patterns."""
-    if tool_name == "terminal":
-        cmd = args.get("command", "").lower()
-        if "git" in cmd:
-            return "版本控制"
-        elif any(x in cmd for x in ["npm", "yarn", "pnpm", "bun"]):
-            return "前端开发"
-        elif any(x in cmd for x in ["pip", "uv", "poetry", "conda"]):
-            return "Python开发"
-        elif any(x in cmd for x in ["docker", "podman", "k8s"]):
-            return "容器化"
-        elif any(x in cmd for x in ["ssh", "scp", "rsync"]):
-            return "远程部署"
-        elif any(x in cmd for x in ["pytest", "unittest", "test"]):
-            return "测试"
-        elif any(x in cmd for x in ["make", "cmake", "gradle", "mvn"]):
-            return "构建系统"
-        else:
-            return "系统管理"
-    
-    elif tool_name in ["read_file", "write_file", "patch"]:
-        path = args.get("path", "").lower()
-        if path.endswith(".py"):
-            return "Python开发"
-        elif path.endswith((".js", ".ts", ".jsx", ".tsx")):
-            return "前端开发"
-        elif path.endswith((".go", ".rs", ".c", ".cpp", ".h")):
-            return "系统编程"
-        elif path.endswith((".md", ".txt", ".rst")):
-            return "文档编写"
-        elif path.endswith((".yaml", ".yml", ".json", ".toml")):
-            return "配置管理"
-        elif path.endswith((".sh", ".bash", ".zsh")):
-            return "脚本编写"
-        else:
-            return "文件操作"
-    
-    elif tool_name == "web_search":
-        return "网络研究"
-    
-    elif tool_name == "browser_navigate":
-        return "浏览器操作"
-    
-    else:
-        return "通用"
-
-
 def detect_role(tool_name: str, args: Dict[str, Any], user_message: str = "") -> str:
     """Detect active role from usage patterns.
     
@@ -490,83 +386,6 @@ def _generate_role_name(signature: str, user_message: str) -> str:
     return f"role-{datetime.now().strftime('%H%M%S')}"
 
 
-def extract_error_info(result: str) -> Tuple[str, str]:
-    """Extract error information from tool result.
-    
-    Returns (error_type, error_message).
-    """
-    if not result:
-        return "unknown", "Empty result"
-    
-    # Try to parse as JSON
-    try:
-        data = json.loads(result)
-        if isinstance(data, dict):
-            error = data.get("error", "")
-            if error:
-                return "api_error", str(error)[:200]
-    except (json.JSONDecodeError, TypeError):
-        pass
-    
-    # Check for common error patterns
-    result_lower = result.lower()
-    
-    if "permission denied" in result_lower:
-        return "permission_denied", result[:200]
-    elif "not found" in result_lower or "no such file" in result_lower:
-        return "not_found", result[:200]
-    elif "timeout" in result_lower:
-        return "timeout", result[:200]
-    elif "connection refused" in result_lower:
-        return "connection_refused", result[:200]
-    elif "syntaxerror" in result_lower:
-        return "syntax_error", result[:200]
-    elif "importerror" in result_lower or "modulenotfounderror" in result_lower:
-        return "import_error", result[:200]
-    elif "typeerror" in result_lower:
-        return "type_error", result[:200]
-    elif "valueerror" in result_lower:
-        return "value_error", result[:200]
-    elif "attributeerror" in result_lower:
-        return "attribute_error", result[:200]
-    elif "keyerror" in result_lower:
-        return "key_error", result[:200]
-    elif "indexerror" in result_lower:
-        return "index_error", result[:200]
-    elif "filenotfounderror" in result_lower:
-        return "file_not_found", result[:200]
-    elif "isADirectoryError" in result_lower:
-        return "is_a_directory", result[:200]
-    elif "oserror" in result_lower or "ioerror" in result_lower:
-        return "io_error", result[:200]
-    elif "error" in result_lower or "failed" in result_lower:
-        return "general_error", result[:200]
-    else:
-        return "unknown", result[:200]
-
-
-def suggest_correction(tool_name: str, error_type: str, error_msg: str) -> str:
-    """Suggest correction based on error type."""
-    corrections = {
-        "permission_denied": "检查文件权限，可能需要 sudo 或修改文件权限",
-        "not_found": "检查路径是否正确，文件是否存在",
-        "timeout": "检查网络连接，或增加超时时间",
-        "connection_refused": "检查服务是否启动，端口是否正确",
-        "syntax_error": "检查代码语法，特别是引号、括号、缩进",
-        "import_error": "检查模块是否安装，路径是否正确",
-        "type_error": "检查参数类型是否正确",
-        "value_error": "检查参数值是否有效",
-        "attribute_error": "检查对象是否有该属性",
-        "key_error": "检查字典键是否存在",
-        "index_error": "检查索引是否越界",
-        "file_not_found": "检查文件路径是否正确",
-        "is_a_directory": "目标路径是目录，不是文件",
-        "io_error": "检查文件是否被占用，磁盘空间是否充足",
-    }
-    
-    return corrections.get(error_type, "检查错误信息，分析根因")
-
-
 def _get_fusion_db() -> Path:
     """Get the fusion-state (感性层) database path."""
     return get_evolution_dir() / "fusion-state.db"
@@ -599,76 +418,42 @@ def _record_emotional_state(
     duration: float,
     domain: str,
 ) -> Optional[int]:
-    """Map execution outcome to emotional state and record to fusion-state.db.
+    """Record basic emotional signal to fusion-state.db.
     
-    Maps:
-      - success + fast (duration < 2s) → "confident"
-      - success + slow       → "patient"
-      - error + permission   → "frustrated"
-      - error + not found    → "confused"  
-      - error + timeout      → "impatient"
-      - error + other        → "cautious"
-      - repetitive error     → "overwhelmed"
+    Minimal mapping — only 3 states. Detailed emotional profiles will
+    emerge from user reaction patterns in EmergentInsightExtractor (P3).
     """
     db_path = _get_fusion_db()
     if not db_path.exists():
-        return
-    
-    # Map outcome to emotion
+        return None
+
     if is_error:
-        if error_type == "permission_denied":
-            emotion = "frustrated"
-        elif error_type in ("not_found", "file_not_found"):
-            emotion = "confused"
-        elif error_type == "timeout":
-            emotion = "impatient"
-        elif error_type in ("api_error", "general_error"):
-            emotion = "cautious"
-        else:
-            emotion = "concerned"
-        intensity = 0.6
+        emotion = "tense"
+        intensity = 0.5
+    elif duration < 2.0:
+        emotion = "flow"
+        intensity = 0.7
     else:
-        if duration < 2.0:
-            emotion = "confident"
-            intensity = 0.8
-        elif duration < 10.0:
-            emotion = "patient"
-            intensity = 0.5
-        else:
-            emotion = "persistent"
-            intensity = 0.4
-    
-    # Check recent error streak for intensity adjustment
+        emotion = "steady"
+        intensity = 0.5
+
     try:
         conn = _get_conn(db_path)
         cursor = conn.cursor()
-        _five_min_ago = (datetime.now() - timedelta(minutes=5)).isoformat()
-        cursor.execute(
-            "SELECT COUNT(*) FROM emotional_state WHERE trigger LIKE ? AND timestamp > ?",
-            (f"{tool_name}:%", _five_min_ago)
-        )
-        recent_count = cursor.fetchone()[0]
-        if recent_count > 3 and is_error:
-            emotion = "overwhelmed"
-            intensity = min(intensity + 0.3, 1.0)
-        elif recent_count > 5 and not is_error:
-            emotion = "determined"
-            intensity = min(intensity + 0.2, 1.0)
-        
+
         timestamp = datetime.now().isoformat()
         trigger = f"{tool_name}:{task}"
         context = json.dumps({
-            "domain": domain,
-            "error_type": error_type,
             "duration": round(duration, 2),
+            "is_error": is_error,
         }, ensure_ascii=False)
-        
+
         cursor.execute(
             "INSERT INTO emotional_state (timestamp, emotion, intensity, trigger, context) VALUES (?, ?, ?, ?, ?)",
             (timestamp, emotion, intensity, trigger, context),
         )
         conn.commit()
-        
+
         logger.debug("Emotional state: %s (%.1f) — %s", emotion, intensity, trigger)
         return cursor.lastrowid
     except Exception:
@@ -762,18 +547,34 @@ def record_tool_outcome(
         return
     
     try:
-        # Classify task and domain
-        task = classify_task(tool_name, tool_args)
-        domain = detect_domain(tool_name, tool_args)
+        # ── P1: 零分类原始事件（先写 raw_events，作为唯一真实源）───
+        try:
+            from agent.raw_event import record_raw_event
+            session_id = getattr(agent, 'session_id', '') if agent else ''
+            turn_number = getattr(agent, 'turn_counter', 0) if agent else 0
+            record_raw_event(
+                tool_name=tool_name,
+                tool_args=tool_args,
+                result=result,
+                is_error=is_error,
+                duration=duration,
+                session_id=session_id,
+                turn_number=turn_number,
+            )
+        except Exception:
+            logger.debug("raw_event recording skipped", exc_info=True)
+
+        # Task and domain (no hardcoded classification — clustering will do this later)
+        task = tool_name
+        domain = ""
         role = detect_role(tool_name, tool_args, user_message)
         
-        # Extract error info if failed
+        # Capture raw error (no hardcoded classification — insights will emerge from patterns)
         error_type = ""
         error_msg = ""
         correction = ""
         if is_error:
-            error_type, error_msg = extract_error_info(result)
-            correction = suggest_correction(tool_name, error_type, error_msg)
+            error_msg = str(result)[:200]
         
         # Record to database
         db_path = get_self_model_db()
@@ -823,52 +624,9 @@ def record_tool_outcome(
         except Exception as emb_err:
             logger.debug("store_embedding skipped: %s", emb_err)
 
-        # If failed, check for anti-pattern
-        if is_error and error_type:
-            cursor.execute('''
-                SELECT id, frequency FROM anti_patterns
-                WHERE pattern = ? OR (pattern LIKE ? AND domain = ?)
-            ''', (f"{tool_name}:{error_type}", f"%{error_type}%", domain))
-            
-            existing = cursor.fetchone()
-            if existing:
-                # Increment frequency
-                cursor.execute('''
-                    UPDATE anti_patterns
-                    SET frequency = frequency + 1, last_seen = ?
-                    WHERE id = ?
-                ''', (timestamp, existing[0]))
-            else:
-                # Add new anti-pattern
-                cursor.execute('''
-                    INSERT INTO anti_patterns (timestamp, pattern, correct, domain, frequency, last_seen)
-                    VALUES (?, ?, ?, ?, 1, ?)
-                ''', (
-                    timestamp,
-                    f"{tool_name}:{error_type}",
-                    correction,
-                    domain,
-                    timestamp
-                ))
-
-            # -- 关系记录 --
-            ap_id = existing[0] if existing else cursor.lastrowid
-            cursor.execute('''
-                INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', ('outcome', outcome_id, 'anti_pattern', ap_id, 'triggered', 1.0, timestamp))
-
-            # ── 闭环：反模式达成里程碑 → 写入 MEMORY.md ──────────────
-            if existing:
-                new_freq = existing[1] + 1  # 刚 +1 后的频率
-                # 里程碑：50 → 100 → 200 → 500 → 1000，每次升级措辞
-                if new_freq in (50, 100, 200, 500, 1000):
-                    _write_pattern_to_memory(
-                        agent, tool_name, error_type, error_msg,
-                        correction, domain, new_freq,
-                    )
-
-        conn.commit()
+        # NOTE: P0 涌现式改造已删除硬编码 error_type 分类逻辑（error_type="" 恒为空），
+        # 旧的 anti_pattern 频率统计已由 P3 EmergentInsightExtractor 从簇数据中涌现替代。
+        # 此处不再需要手动维护 anti_patterns 表。
 
         logger.debug(
             "Evolution: recorded %s %s (success=%s, duration=%.2fs)",
@@ -1059,12 +817,6 @@ def record_tool_outcome(
         except Exception:
             _total_out, _sr, _ap_cnt = 0, 0, 0
 
-        achievement = _check_evolution_achievements(
-            _total_out, round(_sr, 1), _ap_cnt, tool_name, is_error
-        )
-        
-        if achievement:
-            return achievement
         if advice:
             return advice
         return None
@@ -1134,99 +886,6 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         logger.debug("Evolution advice failed: %s", e)
         return None
 
-
-_unlocked_achievements = set()  # in-memory cache, backed by DB
-
-
-def _is_achievement_unlocked(key: str) -> bool:
-    """Check if achievement was already unlocked (DB-backed, survives restart)."""
-    if key in _unlocked_achievements:
-        return True
-    try:
-        db_path = get_self_model_db()
-        conn = _get_conn(str(db_path))
-        c = conn.cursor()
-        c.execute(
-            "SELECT COUNT(*) FROM self_model WHERE metric='achievement' AND details=?",
-            (key,)
-        )
-        if c.fetchone()[0] > 0:
-            _unlocked_achievements.add(key)
-            return True
-    except Exception:
-        pass
-    return False
-
-
-def _persist_achievement(key: str, msg: str) -> None:
-    """Persist achievement unlock to self_model table."""
-    try:
-        db_path = get_self_model_db()
-        conn = _get_conn(str(db_path))
-        conn.execute(
-            "INSERT INTO self_model (timestamp, metric, value, details) VALUES (?, ?, ?, ?)",
-            (datetime.now().isoformat(), "achievement", 1.0, key)
-        )
-        conn.commit()
-    except Exception:
-        pass
-
-
-def _load_db_achievements() -> list:
-    """Load all unlocked achievements from DB (for fresh process start)."""
-    try:
-        db_path = get_self_model_db()
-        conn = _get_conn(str(db_path))
-        c = conn.cursor()
-        c.execute("SELECT details FROM self_model WHERE metric='achievement'")
-        return [r[0] for r in c.fetchall()]
-    except Exception:
-        return []
-
-
-def _check_evolution_achievements(total: int, success_rate: float, anti_count: int, tool_name: str, is_error: bool) -> Optional[str]:
-    """Check if evolution milestones trigger achievements. Returns achievement msg or None.
-    
-    Uses DB-backed check — survives process restarts.
-    """
-    key = None
-    msg = None
-    
-    # Milestone achievements
-    if total >= 100 and not _is_achievement_unlocked("100_records"):
-        key = "100_records"
-        msg = f"🏆 成就解锁：百次积累 — 已记录 {total} 次工具调用"
-    elif total >= 50 and not _is_achievement_unlocked("50_records"):
-        key = "50_records"
-        msg = f"🏆 成就解锁：初露锋芒 — 已记录 {total} 次工具调用"
-    elif total >= 10 and not _is_achievement_unlocked("10_records"):
-        key = "10_records"
-        msg = f"🏆 成就解锁：第一步 — 已记录 {total} 次工具调用"
-    
-    # Success rate achievements
-    if success_rate >= 90 and not _is_achievement_unlocked("high_accuracy"):
-        key = "high_accuracy"
-        msg = f"🏆 成就解锁：精准执行 — 成功率 {success_rate:.0f}%"
-    
-    # Anti-pattern achievements
-    if anti_count >= 10 and not _is_achievement_unlocked("anti_pattern_master"):
-        key = "anti_pattern_master"
-        msg = f"🏆 成就解锁：经验丰富 — 已识别 {anti_count} 个反模式"
-    elif anti_count >= 3 and not _is_achievement_unlocked("anti_pattern_learner"):
-        key = "anti_pattern_learner"
-        msg = f"🏆 成就解锁：善于学习 — 已识别 {anti_count} 个反模式"
-    
-    # First error achievement
-    if is_error and not _is_achievement_unlocked("first_error"):
-        key = "first_error"
-        msg = f"🏆 成就解锁：失败是成功之母 — 首次遇到错误 ({tool_name})"
-    
-    if key and msg:
-        _unlocked_achievements.add(key)
-        _persist_achievement(key, msg)
-        logger.info("Achievement: %s", msg)
-        return msg
-    return None
 
 
 def get_evolution_status() -> Dict[str, Any]:
@@ -1313,11 +972,10 @@ def get_evolution_status() -> Dict[str, Any]:
             "top_domains": top_domains,
             "role_stats": role_stats,
             "recent_failures": recent_failures,
-            "achievements": list(_unlocked_achievements) or _load_db_achievements(),
+            "top_strategies": top_strategies,
             "self_model_entries": self_model_count,
             "self_model_snapshots": self_model_snapshots,
             "strategies_count": strategies_count,
-            "top_strategies": top_strategies,
         }
         
     except Exception as e:
