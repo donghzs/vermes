@@ -280,8 +280,23 @@ def format_evolution_for_prompt(evolution: Dict[str, Any]) -> str:
 def load_and_format_evolution(user_message: str = "") -> str:
     """Convenience: load evolution data and format for prompt injection.
 
+    Tries emergent insight extraction (P3) first. Falls back to legacy
+    anti_patterns/strategies tables if no cluster data exists yet.
+
     Returns empty string if no evolution data available.
     """
+    # P3: Try emergent insights from clusters first
+    db_path = _get_evolution_db()
+    if db_path is not None:
+        try:
+            from agent.emergent_insight import build_insight_prompt_block
+            emergent_block = build_insight_prompt_block(str(db_path), max_lines=12)
+            if emergent_block:
+                return f"<learned_experience>\n{emergent_block}\n</learned_experience>"
+        except Exception:
+            logger.debug("Emergent insight extraction failed, falling back", exc_info=True)
+
+    # Legacy: fall back to old anti_patterns/strategies tables
     evolution = load_evolution_context(user_message)
     if evolution is None:
         return ""
