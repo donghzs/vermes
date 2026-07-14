@@ -215,9 +215,16 @@ class ClusterLifecycleManager:
         inactive_seconds = (datetime.now() - last_time).total_seconds()
         thresholds = self.compute_thresholds(cluster)
 
-        # Promotion: emerging → stable
+        # Promotion: emerging → stable (based on cluster quality, not recency)
+        # When a cluster has enough events, it graduates — regardless of how
+        # long ago they happened. Inactivity is handled by the demotion chain
+        # with absolute time thresholds, not the cluster's own interval.
         if stage == "emerging":
-            if event_count >= 5 and inactive_seconds < thresholds.n_declining:
+            if event_count >= 5:
+                # Long inactivity while still emerging means the cluster
+                # never really 'took off'. Use absolute thresholds.
+                if inactive_seconds >= 7 * 86400:  # 7 days
+                    return "dead"
                 return "stable"
             return stage
 

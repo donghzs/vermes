@@ -19,15 +19,29 @@ Design:
 This is the "no-API" path. When embedding API is configured
 (ONEAPI_KEY set), hybrid_retriever.search() supplements with
 semantic recall.
+
+Context Richness (data-density-driven injection):
+  Rather than a hardcoded "enable prediction after N sessions",
+  the system computes a 0-1 richness score from actual data density:
+    - total raw_events (usage depth)
+    - stable clusters (pattern maturity)
+    - session handoffs (cross-session continuity)
+    - past sessions (usage breadth)
+  The richness score dynamically adjusts how much context gets
+  injected — when the user is new (richness < 0.3), the system
+  stays lightweight; as usage accumulates (richness > 0.6), context
+  injection scales naturally. No user-facing toggle needed.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import sqlite3
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -40,6 +54,73 @@ _MAX_OUTCOMES = 5
 _MAX_RECENT_DOMAINS = 3
 _MAX_EMOTION_SNAPSHOT = 1
 _RECENT_WINDOW_HOURS = 24
+
+# ── Context Richness ─────────────────────────────────────────────────────────
+# Richness thresholds for data-density-driven injection scaling.
+# These are NOT hardcoded "enable after N sessions" rules.
+# They define the sigmoid curve that naturally controls how much
+# context gets injected as the user accumulates data.
+
+_RICHNESS_HIGH = 0.6   # Above this: full context injection ("Vermes knows you well")
+_RICHNESS_LOW = 0.3    # Below this: minimal context (still building knowledge)
+
+# Richness component weights (sum to 1.0)
+_W_RAW_EVENTS = 0.35    # Raw event volume — most direct measure of usage
+_W_STABLE_CLUSTERS = 0.30  # Pattern maturity — emerged from usage, not configured
+_W_SESSIONS = 0.20      # Session count — breadth across different contexts
+_W_HANDOFFS = 0.15      # Cross-session continuity — knowledge that persists
+
+# Component reference points (values that map to richness ~0.85)
+_REF_RAW_EVENTS = 500    # ~500 raw events = substantial usage
+_REF_STABLE_CLUSTERS = 10  # ~10 stable clusters = diverse behavior patterns
+_REF_SESSIONS = 20       # ~20 sessions = multi-context usage
+_REF_HANDOFFS = 10       # ~10 handoffs = strong cross-session memory
+
+
+@dataclass
+class RichnessScore:
+    """Data-density richness result.
+
+    A 0-1 score computed from actual data volume — no hardcoded
+    session-count gates. Every consumer reads this one signal
+    instead of duplicating gating logic.
+    """
+    value: float = 0.0           # 0.0 (cold start) to 1.0 (deep knowledge)
+    tier: str = "cold_start"     # cold_start | building | learning | fluent
+
+    # Per-component breakdown (for debugging/logging)
+    raw_event_count: int = 0
+    raw_event_density: float = 0.0
+    stable_cluster_count: int = 0
+    cluster_density: float = 0.0
+    session_count: int = 0
+    session_density: float = 0.0
+    handoff_count: int = 0
+    handoff_density: float = 0.0
+
+    def __repr__(self) -> str:
+        return (
+            f"Richness({self.value:.3f}, tier={self.tier}, "
+            f"events={self.raw_event_count}, clusters={self.stable_cluster_count}, "
+            f"sessions={self.session_count}, handoffs={self.handoff_count})"
+        )
+
+
+def _sigmoid(x: float, ref: float) -> float:
+    """Smooth saturation curve: 0 when x=0, ~0.55 at x=ref/4, ~0.83 at x=ref.
+
+    Formula: ratio / (ratio + 0.2) where ratio = x / ref.
+    This is intentionally simple — one line, no branches, no logs.
+    Early growth is calibrated to not over-promise (first few events
+    don't spike the score), then saturates beyond reference.
+
+    Reference points (ref=500):
+      125 events → 0.556 | 250 → 0.714 | 500 → 0.833 | 1000 → 0.909
+    """
+    if x <= 0 or ref <= 0:
+        return 0.0
+    ratio = x / ref
+    return round(ratio / (ratio + 0.2), 3)
 
 
 def _get_hermes_home() -> Path:
@@ -197,6 +278,92 @@ def _query_domain_stats(
     ]
 
 
+def compute_richness() -> "RichnessScore":
+    """Compute data-density richness score (0.0-1.0).
+
+    Queries the underlying data stores to assess how much Vermes
+    knows about this user. No hardcoded thresholds on session count
+    — the score emerges from actual data volume.
+
+    Returns a RichnessScore with the overall score (0-1) and
+    per-component breakdown for debugging.
+
+    This is the single source of truth for "is Vermes ready to
+    inject deeper context?". Every consumer (memory_recall,
+    evolution_injector, system_prompt) reads this one signal
+    instead of implementing their own gating logic.
+    """
+    score = RichnessScore()
+
+    # ── Raw events (self-model.db / raw_events table) ──
+    try:
+        self_db = _get_self_model_db()
+        if self_db:
+            conn = sqlite3.connect(str(self_db))
+            # Total events
+            row = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()
+            score.raw_event_count = row[0] if row else 0
+            score.raw_event_density = _sigmoid(score.raw_event_count, _REF_RAW_EVENTS)
+
+            # Stable clusters (pattern maturity — emerged, not configured)
+            row = conn.execute(
+                "SELECT COUNT(*) FROM clusters WHERE lifecycle_stage IN ('stable','declining')"
+            ).fetchone()
+            score.stable_cluster_count = row[0] if row else 0
+            score.cluster_density = _sigmoid(score.stable_cluster_count, _REF_STABLE_CLUSTERS)
+
+            conn.close()
+    except Exception:
+        pass
+
+    # ── Session count (breadth) ──
+    try:
+        self_db = _get_self_model_db()
+        if self_db:
+            conn = sqlite3.connect(str(self_db))
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT session_id) FROM raw_events"
+            ).fetchone()
+            score.session_count = row[0] if row else 0
+            score.session_density = _sigmoid(score.session_count, _REF_SESSIONS)
+            conn.close()
+    except Exception:
+        pass
+
+    # ── Handoffs (cross-session continuity) ──
+    try:
+        handoff_db = _get_handoff_db()
+        if handoff_db:
+            conn = sqlite3.connect(str(handoff_db))
+            row = conn.execute("SELECT COUNT(*) FROM handoffs").fetchone()
+            score.handoff_count = row[0] if row else 0
+            score.handoff_density = _sigmoid(score.handoff_count, _REF_HANDOFFS)
+            conn.close()
+    except Exception:
+        pass
+
+    # ── Weighted composite ──
+    score.value = round(
+        score.raw_event_density * _W_RAW_EVENTS
+        + score.cluster_density * _W_STABLE_CLUSTERS
+        + score.session_density * _W_SESSIONS
+        + score.handoff_density * _W_HANDOFFS,
+        3,
+    )
+
+    if score.value < 0.01 and score.raw_event_count == 0:
+        # Virgin install — no data at all
+        score.tier = "cold_start"
+    elif score.value < _RICHNESS_LOW:
+        score.tier = "building"
+    elif score.value < _RICHNESS_HIGH:
+        score.tier = "learning"
+    else:
+        score.tier = "fluent"
+
+    return score
+
+
 def _query_emotion_snapshot(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     """Get the latest emotional state snapshot."""
     row = conn.execute(
@@ -227,11 +394,12 @@ def _query_emotion_snapshot(conn: sqlite3.Connection) -> Optional[Dict[str, Any]
     }
 
 
-def recall_context(user_message: str) -> Optional[Dict[str, Any]]:
+def recall_context(user_message: str) -> Dict[str, Any]:
     """Recall relevant context for the current user message.
 
     Queries multiple data sources and returns a structured dict.
-    Returns None if no data available.
+    Always returns a dict (even if empty) — the richness score is
+    computed on every call regardless of keyword matches.
     """
     keywords = _extract_keywords(user_message)
 
@@ -281,7 +449,25 @@ def recall_context(user_message: str) -> Optional[Dict[str, Any]]:
         pass  # No embedding API or DB — skip silently
 
     if not result:
-        return None
+        # Even if no keyword match, compute richness for the caller
+        pass
+
+    # ── Attach richness score ──
+    try:
+        richness = compute_richness()
+        result["richness"] = richness
+        # Scale outcome count by richness: fluent users get more context
+        # because the data is accurate; new users get less to avoid noise.
+        if richness.tier == "fluent":
+            result["_recall_depth"] = "deep"
+        elif richness.tier == "learning":
+            result["_recall_depth"] = "moderate"
+        elif richness.tier == "building":
+            result["_recall_depth"] = "shallow"
+        else:
+            result["_recall_depth"] = "minimal"
+    except Exception:
+        pass
 
     result["keywords"] = keywords
     return result
@@ -291,8 +477,27 @@ def format_recall_for_prompt(recall: Dict[str, Any]) -> str:
     """Format recalled context as a system prompt block.
 
     Returns a <recalled_context> block. Empty string if nothing to inject.
+    
+    Recall depth scales with richness:
+      - fluent (richness > 0.6):  deep recall, more context lines
+      - learning (0.3-0.6):      moderate recall
+      - building (< 0.3):        shallow recall, only keyword match
+      - cold_start:              minimal — no meaningful history yet
     """
+    richness: Optional[RichnessScore] = recall.get("richness")
+    depth = recall.get("_recall_depth", "moderate")
+
     parts: List[str] = ["<recalled_context>"]
+
+    # Richness header — only shown when richness >= learning
+    # Lets Vermes self-calibrate: "I know this user well" vs "still learning"
+    if richness and richness.tier in ("fluent", "learning"):
+        parts.append(
+            f"[Richness: {richness.value:.2f} | "
+            f"{richness.raw_event_count} events, "
+            f"{richness.stable_cluster_count} stable patterns, "
+            f"{richness.session_count} sessions]"
+        )
 
     # Domain stats
     domain_stats = recall.get("domain_stats", [])
@@ -357,9 +562,16 @@ def format_recall_for_prompt(recall: Dict[str, Any]) -> str:
 def load_and_format_recall(user_message: str) -> str:
     """Convenience: recall context and format for prompt injection.
 
-    Returns empty string if no recall data available.
+    Returns empty string if no meaningful recall data available
+    (richness score alone is not considered meaningful recall — it's
+    metadata, not context to inject).
     """
     recall = recall_context(user_message)
-    if recall is None:
+    # Only format if there's actual recall data (outcomes, domains, etc.)
+    # The richness score alone doesn't warrant a <recalled_context> block.
+    has_content = any(
+        k in recall for k in ("recent_outcomes", "domain_stats", "emotion", "embedding_matches")
+    )
+    if not has_content:
         return ""
     return format_recall_for_prompt(recall)

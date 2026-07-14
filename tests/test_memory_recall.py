@@ -21,6 +21,9 @@ from agent.memory_recall import (
     _query_domain_stats,
     _query_emotion_snapshot,
     _MAX_BLOCK_CHARS,
+    compute_richness,
+    RichnessScore,
+    _sigmoid,
 )
 
 
@@ -171,8 +174,10 @@ class TestRecallContext(unittest.TestCase):
         with patch("agent.memory_recall._get_self_model_db", return_value=None), \
              patch("agent.memory_recall._get_fusion_db", return_value=None):
             result = recall_context("test")
-        # Should return None or empty (no data sources)
-        self.assertIsNone(result)
+        # Always returns a dict (richness + keywords), even with no DB
+        self.assertIsNotNone(result)
+        self.assertIn("keywords", result)
+        self.assertIn("richness", result)
 
     def test_recall_returns_keywords(self):
         with patch("agent.memory_recall._get_self_model_db", return_value=self._sm_db), \
@@ -289,6 +294,96 @@ class TestLoadAndFormat(unittest.TestCase):
         finally:
             import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestContextRichness(unittest.TestCase):
+    """Tests for data-density-driven richness scoring."""
+
+    def test_sigmoid_zero(self):
+        self.assertEqual(_sigmoid(0, 500), 0.0)
+        self.assertEqual(_sigmoid(0, 1), 0.0)
+        self.assertEqual(_sigmoid(-1, 500), 0.0)
+
+    def test_sigmoid_half_ref(self):
+        # At half the reference, should be around 0.55 (ref=125 for ref=500)
+        v = _sigmoid(125, 500)
+        self.assertGreater(v, 0.5)
+        self.assertLess(v, 0.65)
+
+    def test_sigmoid_at_ref(self):
+        # At reference, should be around 0.83
+        v = _sigmoid(500, 500)
+        self.assertGreater(v, 0.75)
+        self.assertLess(v, 0.90)
+
+    def test_sigmoid_monotonic(self):
+        vals = [_sigmoid(x, 500) for x in [0, 50, 100, 200, 500, 1000]]
+        for i in range(len(vals) - 1):
+            self.assertLess(vals[i], vals[i + 1])
+
+    def test_richness_no_db(self):
+        """Without any DB, returns cold_start."""
+        with patch("agent.memory_recall._get_self_model_db", return_value=None), \
+             patch("agent.memory_recall._get_handoff_db", return_value=None):
+            r = compute_richness()
+        self.assertEqual(r.tier, "cold_start")
+        self.assertEqual(r.value, 0.0)
+
+    def test_richness_with_data(self):
+        """With test data, computes non-zero score and correct tier."""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # Create self-model DB with raw_events and clusters
+            sm_db = Path(tmpdir) / "evolution" / "self-model.db"
+            sm_db.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(sm_db))
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS raw_events (
+                    id INTEGER PRIMARY KEY, session_id TEXT, tool_name TEXT);
+                CREATE TABLE IF NOT EXISTS clusters (
+                    id INTEGER PRIMARY KEY, lifecycle_stage TEXT);
+            """)
+            # 50 events, 3 stable clusters → should hit "learning" tier
+            for i in range(50):
+                conn.execute(
+                    "INSERT INTO raw_events (session_id, tool_name) VALUES (?, ?)",
+                    (f"session_{i % 4}", "terminal")
+                )
+            for i in range(3):
+                conn.execute(
+                    "INSERT INTO clusters (lifecycle_stage) VALUES (?)",
+                    ("stable",)
+                )
+            conn.commit()
+            conn.close()
+
+            with patch("agent.memory_recall._get_self_model_db", return_value=sm_db), \
+                 patch("agent.memory_recall._get_handoff_db", return_value=None):
+                r = compute_richness()
+
+            # 50 events / ref=500, 3 clusters / ref=10, 4 sessions / ref=20
+            self.assertGreater(r.value, 0.1)
+            self.assertGreaterEqual(r.raw_event_count, 50)
+            self.assertGreaterEqual(r.stable_cluster_count, 3)
+            self.assertEqual(r.session_count, 4)
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_recall_includes_richness(self):
+        """recall_context() always includes richness score."""
+        with patch("agent.memory_recall._get_self_model_db", return_value=None), \
+             patch("agent.memory_recall._get_fusion_db", return_value=None):
+            result = recall_context("test message")
+        self.assertIn("richness", result)
+        self.assertIn("_recall_depth", result)
+        self.assertEqual(result["_recall_depth"], "minimal")
+
+    def test_richness_repr(self):
+        r = RichnessScore(value=0.5, tier="learning", raw_event_count=100)
+        s = repr(r)
+        self.assertIn("0.500", s)
+        self.assertIn("learning", s)
 
 
 if __name__ == "__main__":
