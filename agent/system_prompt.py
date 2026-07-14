@@ -426,6 +426,31 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         if _decisions_block:
             volatile_parts.append(_decisions_block)
 
+    # ── Capability status: let Agent know what it can do ──
+    try:
+        from agent.capability_registry import get_capability_report_prompt
+        _cap_prompt = get_capability_report_prompt()
+        if _cap_prompt:
+            volatile_parts.append(_cap_prompt)
+    except Exception:
+        pass
+
+    # ── Extracted skills: active skills + pending for user confirmation ──
+    try:
+        from agent.skill_extractor import get_active_skills_prompt, get_pending_skills_prompt
+        import os
+        from pathlib import Path
+        _db = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))) / "evolution" / "self-model.db"
+        if _db.exists():
+            _active_skills = get_active_skills_prompt(str(_db))
+            if _active_skills:
+                volatile_parts.append(_active_skills)
+            _pending_skills = get_pending_skills_prompt(str(_db))
+            if _pending_skills:
+                volatile_parts.append(_pending_skills)
+    except Exception:
+        pass
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable

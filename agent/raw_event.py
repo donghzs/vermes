@@ -263,7 +263,7 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                 stats.get("time_ms", 0),
             )
 
-            # ── Chain: clustering → lifecycle evaluation ──
+            # ── Chain: clustering → lifecycle → emergence → skill extraction ──
             # After new clusters are created and old ones updated,
             # evaluate whether any cluster should transition stages.
             clusters_found = stats.get("clusters_found", 0)
@@ -278,6 +278,29 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                     )
                 except Exception:
                     logger.debug("Lifecycle evaluation skipped", exc_info=True)
+
+                # ── Emergence evaluation: does the system need new capabilities? ──
+                # This is the涌现 trigger — not hardcoded, driven by accumulated
+                # self_assessment signals and cluster statistics.
+                try:
+                    from agent.capability_evolver import run_emergence_cycle
+                    decisions = run_emergence_cycle(db_path)
+                    for d in decisions:
+                        if d.action == "activate":
+                            from agent.capability_registry import activate_capability
+                            activate_capability(d.capability_name)
+                            logger.info("Capability auto-activated: %s", d.capability_name)
+                except Exception:
+                    logger.debug("Emergence cycle skipped", exc_info=True)
+
+                # ── Skill extraction: are there repetitive patterns to extract? ──
+                try:
+                    from agent.skill_extractor import extract_skills
+                    new_skills = extract_skills(db_path)
+                    if new_skills:
+                        logger.info("Skills extracted: %d", len(new_skills))
+                except Exception:
+                    logger.debug("Skill extraction skipped", exc_info=True)
     except Exception:
         logger.debug("Clustering trigger skipped", exc_info=True)
 
