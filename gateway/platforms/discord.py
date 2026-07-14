@@ -2747,6 +2747,23 @@ class DiscordAdapter(BasePlatformAdapter):
             except (asyncio.CancelledError, Exception):
                 pass
 
+    async def delete_message(self, chat_id: str, message_id: str) -> bool:
+        """Delete a message via Discord API."""
+        if not self._client:
+            return False
+        try:
+            channel = self._client.get_channel(int(chat_id))
+            if not channel:
+                channel = await self._client.fetch_channel(int(chat_id))
+            if not channel:
+                return False
+            msg = await channel.fetch_message(int(message_id))
+            await msg.delete()
+            return True
+        except Exception:
+            logger.warning("Discord: failed to delete message %s in %s", message_id, chat_id)
+            return False
+
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Get information about a Discord channel."""
         if not self._client:

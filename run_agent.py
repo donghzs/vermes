@@ -1346,6 +1346,7 @@ class AIAgent:
         messages_snapshot: List[Dict],
         review_memory: bool = False,
         review_skills: bool = False,
+        review_decisions: bool = False,
     ) -> None:
         """Spawn the background memory/skill review thread.
 
@@ -1361,6 +1362,7 @@ class AIAgent:
             messages_snapshot,
             review_memory=review_memory,
             review_skills=review_skills,
+            review_decisions=review_decisions,
         )
         t = threading.Thread(target=target, daemon=True, name="bg-review")
         t.start()
@@ -2560,6 +2562,13 @@ class AIAgent:
         NOT called per-turn — only at CLI exit, /reset, gateway
         session expiry, etc.
         """
+        # Generate session handoff for cross-session continuity
+        if messages:
+            try:
+                from agent.session_handoff import generate_and_store_handoff
+                generate_and_store_handoff(messages, self.session_id or "")
+            except Exception:
+                pass
         if self._memory_manager:
             try:
                 self._memory_manager.on_session_end(messages or [])
@@ -2569,6 +2578,12 @@ class AIAgent:
                 self._memory_manager.shutdown_all()
             except Exception:
                 pass
+        # Close cached evolution DB connections
+        try:
+            from agent.evolution_manager import shutdown_connections
+            shutdown_connections()
+        except Exception:
+            pass
         # Notify context engine of session end (flush DAG, close DBs, etc.)
         if hasattr(self, "context_compressor") and self.context_compressor:
             try:
@@ -2584,6 +2599,13 @@ class AIAgent:
         Called when session_id rotates (e.g. /new, context compression);
         providers keep their state and continue running under the old
         session_id — they just flush pending extraction now."""
+        # Generate session handoff for cross-session continuity
+        if messages:
+            try:
+                from agent.session_handoff import generate_and_store_handoff
+                generate_and_store_handoff(messages, self.session_id or "")
+            except Exception:
+                pass
         if self._memory_manager:
             try:
                 self._memory_manager.on_session_end(messages or [])
@@ -2655,6 +2677,38 @@ class AIAgent:
                 original_user_message,
                 session_id=self.session_id or "",
             )
+        except Exception:
+            pass
+
+        # Phase 4: Decision tracking — detect and record decisions
+        try:
+            from agent.decision_tracker import record_decision
+
+            response_str = str(final_response)
+            context_str = str(original_user_message)
+
+            # Lightweight extraction: runs every turn, keywords extracted
+            # from response text itself (language-agnostic)
+            record_decision(
+                response_str[:500],
+                context=context_str[:200],
+                session_id=self.session_id or "",
+            )
+
+            # Background fork-agent decision review (rate-limited: once per session)
+            # Runs unconditionally — the fork agent uses LLM to extract decisions
+            # in the user's language, no hardcoded keyword patterns needed.
+            decision_review_done = getattr(self, "_decision_review_done", False)
+            if not decision_review_done:
+                try:
+                    messages_snapshot = list(messages) if messages else []
+                    self._decision_review_done = True
+                    self._spawn_background_review(
+                        messages_snapshot,
+                        review_decisions=True,
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
 

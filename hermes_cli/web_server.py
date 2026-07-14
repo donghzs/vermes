@@ -280,6 +280,7 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/agent/update",
     # 进化系统状态（Sidebar 指示器 + 每日简报 + 成就 + DAG）
     "/api/evolution/status",
+    "/api/memory/status",
     "/api/evolution/achievements",
     "/api/evolution/dag",
     # RAG 知识库（前端 Settings 页文件管理 + 搜索）
@@ -298,6 +299,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/sessions",
     # 缓存性能指标
     "/api/cache/metrics",
+    # ScholarForge 论文写作（独立模块）
+    "/api/scholar",
 })
 
 
@@ -2707,6 +2710,15 @@ blueprints.update.register_to(app)
 blueprints.status.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
+
+# ── ScholarForge 论文写作模块（独立隔离，不影响原有链路） ──
+try:
+    from hermes_cli.scholarforge import blueprint as scholarforge_bp
+
+    scholarforge_bp.register_to(app)
+    logger.info("[ScholarForge] Blueprint registered successfully")
+except Exception as e:
+    logger.warning(f"[ScholarForge] Blueprint registration skipped: {e}")
 
 # ── /health 端点：Electron 后端就绪检测 ──
 @app.get("/health")

@@ -710,6 +710,36 @@ def run_conversation(
     # Notify memory providers of the new turn so cadence tracking works.
     # Must happen BEFORE prefetch_all() so providers know which turn it is
     # and can gate context/dialectic refresh via contextCadence/dialecticCadence.
+    #
+    # First turn: load previous session handoff + evolution data for
+    # cross-session continuity and learned experience injection.
+    if agent._user_turn_count == 1:
+        try:
+            from agent.session_handoff import load_handoff_for_new_session, format_handoff_for_prompt
+            _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
+            _handoff = load_handoff_for_new_session(_turn_msg)
+            if _handoff:
+                agent._handoff_context = format_handoff_for_prompt(_handoff)
+        except Exception:
+            pass
+        try:
+            from agent.evolution_injector import load_and_format_evolution
+            _evo_block = load_and_format_evolution(
+                original_user_message if isinstance(original_user_message, str) else ""
+            )
+            if _evo_block:
+                agent._evolution_context = _evo_block
+        except Exception:
+            pass
+        try:
+            from agent.memory_recall import load_and_format_recall
+            _recall_block = load_and_format_recall(
+                original_user_message if isinstance(original_user_message, str) else ""
+            )
+            if _recall_block:
+                agent._recall_context = _recall_block
+        except Exception:
+            pass
     if agent._memory_manager:
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""

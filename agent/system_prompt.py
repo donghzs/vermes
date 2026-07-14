@@ -382,6 +382,50 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         except Exception:
             pass
 
+    # Session handoff: cross-session continuity (loaded at turn 1)
+    _handoff_block = getattr(agent, "_handoff_context", None)
+
+    # Evolution data: learned experience from past sessions
+    _evolution_block = getattr(agent, "_evolution_context", None)
+
+    # Memory recall: auto-retrieved context for current user message
+    _recall_block = getattr(agent, "_recall_context", None)
+
+    # Decision tracking: standing decisions from past sessions
+    _decisions_block = ""
+    try:
+        from agent.decision_tracker import format_decisions_for_prompt
+        _decisions_block = format_decisions_for_prompt(limit=5)
+    except Exception:
+        pass
+
+    # Phase 5: Apply unified memory budget across all memory injections
+    _memory_blocks = {
+        "_recall_context": _recall_block or "",
+        "_handoff_context": _handoff_block or "",
+        "_evolution_context": _evolution_block or "",
+        "_decisions_context": _decisions_block or "",
+    }
+    try:
+        from agent.memory_budget import apply_budget, format_memory_summary
+        _trimmed_blocks = apply_budget(_memory_blocks)
+        for _block_text in _trimmed_blocks.values():
+            if _block_text:
+                volatile_parts.append(_block_text)
+        # Log memory usage summary
+        _summary = format_memory_summary(_memory_blocks)
+        logger.debug(_summary)
+    except Exception:
+        # Fallback: append blocks individually if budget manager fails
+        if _handoff_block:
+            volatile_parts.append(_handoff_block)
+        if _evolution_block:
+            volatile_parts.append(_evolution_block)
+        if _recall_block:
+            volatile_parts.append(_recall_block)
+        if _decisions_block:
+            volatile_parts.append(_decisions_block)
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable

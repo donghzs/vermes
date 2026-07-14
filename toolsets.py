@@ -170,6 +170,16 @@ TOOLSETS = {
         "includes": []
     },
     
+    "scholarforge": {
+        "description": "Academic paper writing tools: literature search, AI writing, review, citation replacement, and style learning",
+        "tools": [
+            "scholarforge_search", "scholarforge_write",
+            "scholarforge_review", "scholarforge_replace_citations",
+            "scholarforge_learn_style"
+        ],
+        "includes": []
+    },
+    
     "browser": {
         "description": "Browser automation for web interaction (navigate, click, type, scroll, iframes, hold-click) with web search for finding URLs",
         "tools": [

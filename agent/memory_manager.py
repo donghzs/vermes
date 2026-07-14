@@ -413,9 +413,9 @@ class MemoryManager:
     # -- Tools ---------------------------------------------------------------
 
     def get_all_tool_schemas(self) -> List[Dict[str, Any]]:
-        """Collect tool schemas from all providers."""
-        schemas = []
-        seen = set()
+        """Collect tool schemas from all providers + built-in memory tools."""
+        schemas = self._get_builtin_tool_schemas()
+        seen = {s.get("name", "") for s in schemas}
         for provider in self._providers:
             try:
                 for schema in provider.get_tool_schemas():
@@ -430,22 +430,98 @@ class MemoryManager:
                 )
         return schemas
 
+    def _get_builtin_tool_schemas(self) -> List[Dict[str, Any]]:
+        """Built-in memory tools exposed to the agent."""
+        return [
+            {
+                "name": "forget_session",
+                "description": (
+                    "Clear all cross-session memory for the current session. "
+                    "Use this when the user wants privacy or to start fresh. "
+                    "Does NOT delete data — it marks the session's handoff and "
+                    "decisions as inactive (incognito mode). "
+                    "No arguments required."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+            {
+                "name": "view_memory_status",
+                "description": (
+                    "Show what cross-session memory is currently loaded. "
+                    "Displays handoff source, evolution context, recalled memories, "
+                    "and active decisions with their ages. No arguments required."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        ]
+
+    def handle_builtin_tool(self, name: str, args: Dict[str, Any], **kwargs) -> str:
+        """Handle a built-in memory tool call. Returns JSON string."""
+        import json
+
+        if name == "forget_session":
+            session_id = kwargs.get("session_id", "default")
+            try:
+                from agent.handoff_store import forget_session as _forget
+                result = _forget(session_id)
+                parts = []
+                if result.get("handoff"):
+                    parts.append("✅ 会话交接记录已清除")
+                if result.get("decisions_count", 0) > 0:
+                    parts.append(f"✅ {result['decisions_count']} 条决策已清除")
+                if not parts:
+                    parts.append("✅ 本会话无记忆需要清除")
+                if result.get("errors"):
+                    parts.append(f"⚠️ {result['errors']}")
+                return json.dumps({"ok": True, "message": " ".join(parts), "detail": result})
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)})
+
+        elif name == "view_memory_status":
+            try:
+                from hermes_cli.blueprints.chat import memory_status as _ms
+                import asyncio
+                result = asyncio.run(_ms(""))
+                return json.dumps(result)
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)})
+
+        return json.dumps({"error": f"Unknown builtin memory tool: {name}"})
+
     def get_all_tool_names(self) -> set:
-        """Return set of all tool names across all providers."""
-        return set(self._tool_to_provider.keys())
+        """Return set of all tool names (providers + built-in)."""
+        return set(self._tool_to_provider.keys()) | {"forget_session", "view_memory_status"}
 
     def has_tool(self, tool_name: str) -> bool:
-        """Check if any provider handles this tool."""
+        """Check if any provider handles this tool, or if it's a built-in tool."""
+        if tool_name in {"forget_session", "view_memory_status"}:
+            return True
         return tool_name in self._tool_to_provider
 
     def handle_tool_call(
         self, tool_name: str, args: Dict[str, Any], **kwargs
     ) -> str:
-        """Route a tool call to the correct provider.
+        """Route a tool call to built-in handler or the correct provider.
+
+        Built-in tools (forget_session, view_memory_status) are handled here.
+        All other tools are delegated to the matching memory provider.
 
         Returns JSON string result. Raises ValueError if no provider
         handles the tool.
         """
+        # Check built-in tools first
+        _builtin_names = {"forget_session", "view_memory_status"}
+        if tool_name in _builtin_names:
+            return self.handle_builtin_tool(tool_name, args, **kwargs)
+
         provider = self._tool_to_provider.get(tool_name)
         if provider is None:
             return tool_error(f"No memory provider handles tool '{tool_name}'")

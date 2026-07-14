@@ -1611,6 +1611,18 @@ class SlackAdapter(BasePlatformAdapter):
                 text = f"{caption}\n{text}"
             return await self.send(chat_id, text, reply_to=reply_to, metadata=metadata)
 
+    async def delete_message(self, chat_id: str, message_id: str) -> bool:
+        """Delete a message via Slack chat.delete API."""
+        if not self._app:
+            return False
+        try:
+            client = self._app.client
+            result = await client.chat_delete(channel=chat_id, ts=message_id)
+            return result.get("ok", False)
+        except Exception:
+            logger.warning("Slack: failed to delete message %s in %s", message_id, chat_id)
+            return False
+
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Get information about a Slack channel."""
         if not self._app:

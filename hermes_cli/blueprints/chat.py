@@ -390,11 +390,11 @@ def _load_toolsets_for_web() -> list[str] | None:
             if toolsets:
                 ts_list = toolsets if isinstance(toolsets, list) else [toolsets]
                 if len(ts_list) == 1 and ts_list[0] == "hermes-cli":
-                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "scholarforge", "hermes-cli"]
                 return ts_list
     except Exception:
         pass
-    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "scholarforge", "hermes-cli"]
 
 
 def _get_chat_credentials() -> tuple[str, str, str]:
@@ -1274,6 +1274,101 @@ async def evolution_achievements(limit: int = 10):
         return []
 
 
+async def memory_status(session_id: str = ""):
+    """Return current memory injection status for the frontend.
+
+    Shows which memory blocks are loaded in the current session's agent,
+    their sizes, and a preview of content. Used by the UI memory indicator.
+    """
+    try:
+        from hermes_cli.blueprints.agent_cache import _agent_cache
+
+        # Find the agent for this session (or any active agent)
+        agent = None
+        if session_id:
+            for key, a in _agent_cache._cache.items():
+                if session_id in key:
+                    agent = a
+                    break
+        if agent is None:
+            # Fallback: get the most recently used agent
+            if _agent_cache._cache:
+                agent = next(reversed(_agent_cache._cache.values()))
+
+        if agent is None:
+            return {
+                "active": False,
+                "blocks": {},
+                "total_chars": 0,
+                "message": "No active agent session"
+            }
+
+        blocks = {}
+        total_chars = 0
+
+        # Check each memory block on the agent instance
+        for attr_name, display_name in [
+            ("_handoff_context", "handoff"),
+            ("_evolution_context", "evolution"),
+            ("_recall_context", "recall"),
+        ]:
+            block_text = getattr(agent, attr_name, None) or ""
+            if block_text:
+                # Extract content between XML tags for preview
+                import re
+                match = re.search(r"<([^>]+)>(.*)</\1>", block_text, re.DOTALL)
+                tag = match.group(1) if match else attr_name
+                content = match.group(2).strip() if match else block_text
+                blocks[display_name] = {
+                    "tag": tag,
+                    "chars": len(block_text),
+                    "preview": content[:200] + ("..." if len(content) > 200 else ""),
+                }
+                total_chars += len(block_text)
+
+        # Decisions block (loaded from decision_tracker, not on agent)
+        try:
+            from agent.decision_tracker import format_decisions_for_prompt
+            decisions_text = format_decisions_for_prompt(limit=5)
+            if decisions_text:
+                import re
+                match = re.search(r"<([^>]+)>(.*)</\1>", decisions_text, re.DOTALL)
+                blocks["decisions"] = {
+                    "tag": match.group(1) if match else "decisions",
+                    "chars": len(decisions_text),
+                    "preview": (match.group(2).strip() if match else decisions_text)[:200] + "...",
+                }
+                total_chars += len(decisions_text)
+        except Exception:
+            pass
+
+        # Get handoff source info if available
+        handoff_info = None
+        try:
+            from agent.handoff_store import get_global_latest_handoff
+            h = get_global_latest_handoff()
+            if h:
+                handoff_info = {
+                    "session_id": h.get("session_id", ""),
+                    "age_hours": round((time.time() - h.get("created_at", 0)) / 3600, 1),
+                    "summary": (h.get("summary_text") or "")[:150],
+                }
+        except Exception:
+            pass
+
+        return {
+            "active": True,
+            "blocks": blocks,
+            "total_chars": total_chars,
+            "total_tokens_est": round(total_chars / 4),
+            "budget_limit": 4000,
+            "handoff_source": handoff_info,
+            "session_id": session_id or getattr(agent, "session_id", ""),
+        }
+    except Exception as e:
+        return {"active": False, "error": str(e)}
+
+
 async def delegate_status(task_id: str):
     """Return status of a background delegate task."""
     try:
@@ -1592,6 +1687,12 @@ def register_to(app):
         delegate_status,
         methods=["GET"],
         name="delegate_status",
+    )
+    app.add_api_route(
+        "/api/memory/status",
+        memory_status,
+        methods=["GET"],
+        name="memory_status",
     )
     app.add_api_route(
         "/api/rag/documents",

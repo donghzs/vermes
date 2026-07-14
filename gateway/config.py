@@ -127,6 +127,12 @@ class Platform(Enum):
     BLUEBUBBLES = "bluebubbles"
     QQBOT = "qqbot"
     YUANBAO = "yuanbao"
+    LINE = "line"
+    IRC = "irc"
+    ZALO = "zalo"
+    NOSTR = "nostr"
+    SYNOLOGY_CHAT = "synology_chat"
+    TWITCH = "twitch"
     @classmethod
     def _missing_(cls, value):
         """Accept unknown platform names only for known plugin adapters.
@@ -439,10 +445,18 @@ _PLATFORM_CONNECTED_CHECKERS: dict[Platform, Callable[[PlatformConfig], bool]] =
     Platform.YUANBAO: lambda cfg: bool(
         cfg.extra.get("app_id") and cfg.extra.get("app_secret")
     ),
+    Platform.LINE: lambda cfg: bool(
+        cfg.extra.get("channel_access_token") and cfg.extra.get("channel_secret")
+    ),
     Platform.DINGTALK: lambda cfg: bool(
         (cfg.extra.get("client_id") or os.getenv("DINGTALK_CLIENT_ID"))
         and (cfg.extra.get("client_secret") or os.getenv("DINGTALK_CLIENT_SECRET"))
     ),
+    Platform.IRC: lambda cfg: bool(os.getenv("IRC_NICK")),
+    Platform.TWITCH: lambda cfg: bool(os.getenv("IRC_NICK") and os.getenv("IRC_PASSWORD")),
+    Platform.ZALO: lambda cfg: bool(os.getenv("ZALO_ACCESS_TOKEN") and os.getenv("ZALO_SECRET_KEY")),
+    Platform.NOSTR: lambda cfg: bool(os.getenv("NOSTR_PRIVATE_KEY")),
+    Platform.SYNOLOGY_CHAT: lambda cfg: bool(os.getenv("SYNOLOGY_CHAT_INCOMING_URL")),
 }
 
 
@@ -1849,6 +1863,33 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         yuanbao_group_allow_from = os.getenv("YUANBAO_GROUP_ALLOW_FROM")
         if yuanbao_group_allow_from:
             extra["group_allow_from"] = yuanbao_group_allow_from
+
+    # LINE — LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET required
+    line_channel_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+    line_channel_secret = os.getenv("LINE_CHANNEL_SECRET")
+    if line_channel_token and line_channel_secret:
+        if Platform.LINE not in config.platforms:
+            config.platforms[Platform.LINE] = PlatformConfig()
+        config.platforms[Platform.LINE].enabled = True
+        extra = config.platforms[Platform.LINE].extra
+        extra["channel_access_token"] = line_channel_token
+        extra["channel_secret"] = line_channel_secret
+        line_port = os.getenv("LINE_PORT")
+        if line_port:
+            extra["port"] = int(line_port)
+        line_public_url = os.getenv("LINE_PUBLIC_URL")
+        if line_public_url:
+            extra["public_url"] = line_public_url
+        line_home = os.getenv("LINE_HOME_CHANNEL")
+        if line_home:
+            config.platforms[Platform.LINE].home_channel = HomeChannel(
+                platform=Platform.LINE,
+                chat_id=line_home,
+                name=os.getenv("LINE_HOME_CHANNEL_NAME", "Home"),
+            )
+        line_allow_all = os.getenv("LINE_ALLOW_ALL_USERS")
+        if line_allow_all:
+            extra["allow_all_users"] = line_allow_all.strip().lower() in {"1", "true", "yes", "on"}
 
     # Session settings
     idle_minutes = os.getenv("SESSION_IDLE_MINUTES")

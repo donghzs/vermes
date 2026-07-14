@@ -14,6 +14,7 @@ const router = useRouter()
 
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
+function goScholarForge() { router.push('/scholarforge') }
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -450,23 +451,34 @@ async function handleImportFile(e) {
 
       <!-- 底部工具栏 -->
       <div class="p-3 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-2 shrink-0">
-        <button @click="goStudio()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
-          🎨
+        <button @click="goStudio()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="创作工作室">
+          <span class="text-base">🎨</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">创作工作室</span>
         </button>
-        <button @click="goSettings()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
-          ⚙
+        <button @click="goScholarForge()" class="group relative px-3 py-2 rounded-lg text-sm transition flex flex-col items-center leading-tight" :class="$route.path === '/scholarforge' ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作 ScholarForge">
+          <span class="text-base">✍️</span>
+          <span class="text-[10px]">论文</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">论文写作</span>
         </button>
-        <button @click="chat.toggleTheme()" class="px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
-          {{ chat.theme === 'dark' ? '☀️' : '🌙' }}
+        <button @click="goSettings()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
+          <span class="text-base">⚙️</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">设置</span>
         </button>
-        <button @click="showKnowledgeBase = !showKnowledgeBase" class="px-3 py-2 rounded-lg text-sm transition" :class="showKnowledgeBase ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="知识库">
-          📚
+        <button @click="chat.toggleTheme()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" :title="chat.theme === 'dark' ? '浅色模式' : '深色模式'">
+          <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
         </button>
-        <button @click="showMCPManager = !showMCPManager" class="px-3 py-2 rounded-lg text-sm transition" :class="showMCPManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="MCP 服务">
-          🔌
+        <button @click="showKnowledgeBase = !showKnowledgeBase" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showKnowledgeBase ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="知识库">
+          <span class="text-base">📚</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">知识库</span>
         </button>
-        <button @click="showSkillManager = !showSkillManager" class="px-3 py-2 rounded-lg text-sm transition" :class="showSkillManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="技能管理">
-          🧩
+        <button @click="showMCPManager = !showMCPManager" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showMCPManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="MCP 服务">
+          <span class="text-base">🔌</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">MCP 服务</span>
+        </button>
+        <button @click="showSkillManager = !showSkillManager" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showSkillManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="技能管理">
+          <span class="text-base">🧩</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">技能管理</span>
         </button>
       </div>
       <!-- 知识库面板 -->

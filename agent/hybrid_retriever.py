@@ -2,6 +2,11 @@
 
 写时 embedding 存储，加载时静态排序，对话时 query 召回。
 三层降级：embedding API → 词重叠 Jaccard → 空结果（原行为）。
+
+Embedding API 凭证从 Vermes 原生配置读取：
+  1. 当前默认 provider 的 api_key + base_url（config.yaml providers[id]）
+  2. .env 文件中常见 embedding key（OPENAI_API_KEY 等）
+  3. 均无 → 降级到 Jaccard
 """
 
 from __future__ import annotations
@@ -9,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
 import struct
 import threading
@@ -57,35 +63,167 @@ def _get_conn(db_path: Optional[Path] = None) -> sqlite3.Connection:
 # ── 写时 embedding ────────────────────────────────────────────────────
 
 def _resolve_embedding_api() -> tuple[str, str, str]:
-    """Resolve embedding API credentials. 优先 ONEAPI_KEY → OPENAI_API_KEY → 空。"""
-    base_url = os.environ.get("ONEAPI_BASE_URL") or os.environ.get("OPENAI_BASE_URL", "")
-    api_key = os.environ.get("ONEAPI_KEY") or os.environ.get("OPENAI_API_KEY", "")
-    model = "text-embedding-ada-002"
-    if not base_url:
-        base_url = "https://api.openai.com/v1"
-    if not api_key:
-        return "", "", ""
-    return base_url.rstrip("/"), api_key, model
+    """Resolve embedding API credentials from Vermes native config.
+
+    Priority:
+      1. Current default provider (from config.yaml)
+      2. Common embedding API keys in .env (OPENAI_API_KEY, DEEPSEEK_API_KEY, etc.)
+      3. Falls back to empty → triggers Jaccard fallback
+
+    Returns (base_url, api_key, model).
+    """
+    # ── Path 1: current default provider ───────────────────────────
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent / "hermes_cli"))
+        from config import load_config, load_env
+
+        cfg = load_config()
+        env = load_env()
+
+        # Get default provider from config
+        default_provider = cfg.get("model", {}).get("provider", "")
+        if not default_provider:
+            default_provider = cfg.get("provider", "")
+
+        if default_provider:
+            # Try config.yaml providers[id].{base_url, api_key}
+            prov_cfg = cfg.get("providers", {}).get(default_provider, {})
+            base_url = prov_cfg.get("base_url", "").rstrip("/")
+            api_key = prov_cfg.get("api_key", "")
+
+            # Fall back to .env via provider template env_key
+            if not api_key:
+                _tmpl_map = {
+                    "openai":    ("OPENAI_API_KEY",    "https://api.openai.com/v1"),
+                    "deepseek":  ("DEEPSEEK_API_KEY",  "https://api.deepseek.com/v1"),
+                    "qwen":      ("QWEN_API_KEY",      "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                    "zhipu":     ("ZHIPU_API_KEY",     "https://open.bigmodel.cn/api/paas/v4"),
+                    "doubao":    ("DOUBAO_API_KEY",    "https://ark.cn-beijing.volces.com/api/v3"),
+                    "kimi":      ("KIMI_API_KEY",      "https://api.moonshot.cn/v1"),
+                    "openrouter":("OPENROUTER_API_KEY","https://openrouter.ai/api/v1"),
+                    "vbit":      ("VBIT_API_KEY",      "https://api.vbit.top/v1"),
+                    "xiaomi":    ("XIAOMI_API_KEY",    "https://api.xiaomimimo.com/v1"),
+                    "groq":      ("GROQ_API_KEY",      "https://api.groq.com/openai/v1"),
+                    "together":  ("TOGETHER_API_KEY",  "https://api.together.xyz/v1"),
+                    "gemini":    ("GEMINI_API_KEY",     "https://generativelanguage.googleapis.com/v1beta"),
+                    "anthropic": ("ANTHROPIC_API_KEY", "https://api.anthropic.com/v1"),
+                    "custom":    ("CUSTOM_API_KEY",    ""),
+                }
+                _entry = _tmpl_map.get(default_provider)
+                if _entry:
+                    _env_key, _default_base = _entry
+                    api_key = env.get(_env_key, "")
+                    if not base_url:
+                        base_url = _default_base
+
+            # Guess embedding model from provider
+            _emb_model_map = {
+                "openai":     "text-embedding-3-small",
+                "deepseek":   "text-embedding-3-small",
+                "qwen":       "text-embedding-v3",
+                "zhipu":      "embedding-3",
+                "doubao":     "embModel",
+                "kimi":       "text-embedding-v1",
+                "openrouter": "text-embedding-3-small",
+                "vbit":       "text-embedding-3-small",
+                "xiaomi":     "embModel",
+                "groq":       "embed-english-v2",
+                "together":   "togethercomputer/m2-bert-8k-base",
+                "gemini":     "embedding-001",
+                "anthropic":  "",
+                "custom":     "text-embedding-3-small",
+            }
+            model = _emb_model_map.get(default_provider, "text-embedding-3-small")
+
+            if api_key and base_url:
+                return base_url.rstrip("/"), api_key, model
+    except Exception as exc:
+        logger.debug("_resolve_embedding_api Path1 failed: %s", exc)
+
+    # ── Path 2: common env keys ─────────────────────────────────────
+    _common_keys = [
+        "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY",
+        "ZHIPU_API_KEY", "DOUBAO_API_KEY", "KIMI_API_KEY",
+        "OPENROUTER_API_KEY", "VBIT_API_KEY", "XIAOMI_API_KEY",
+        "GROQ_API_KEY", "TOGETHER_API_KEY", "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY", "CUSTOM_API_KEY",
+        "ONEAPI_KEY",
+    ]
+    try:
+        env = load_env()
+        for key in _common_keys:
+            val = env.get(key, "")
+            if val:
+                _base_map = {
+                    "OPENAI_API_KEY":  "https://api.openai.com/v1",
+                    "DEEPSEEK_API_KEY":"https://api.deepseek.com/v1",
+                    "QWEN_API_KEY":   "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    "ZHIPU_API_KEY":  "https://open.bigmodel.cn/api/paas/v4",
+                    "DOUBAO_API_KEY": "https://ark.cn-beijing.volces.com/api/v3",
+                    "KIMI_API_KEY":   "https://api.moonshot.cn/v1",
+                    "OPENROUTER_API_KEY":"https://openrouter.ai/api/v1",
+                    "VBIT_API_KEY":   "https://api.vbit.top/v1",
+                    "XIAOMI_API_KEY": "https://api.xiaomimimo.com/v1",
+                    "GROQ_API_KEY":   "https://api.groq.com/openai/v1",
+                    "TOGETHER_API_KEY":"https://api.together.xyz/v1",
+                    "GEMINI_API_KEY": "https://generativelanguage.googleapis.com/v1beta",
+                    "ANTHROPIC_API_KEY":"https://api.anthropic.com/v1",
+                    "CUSTOM_API_KEY": "",
+                    "ONEAPI_KEY":     "https://api.openai.com/v1",
+                }
+                base = _base_map.get(key, "https://api.openai.com/v1")
+                # OneAPI uses the configured base_url from config.yaml
+                if key == "ONEAPI_KEY":
+                    try:
+                        cfg = load_config()
+                        ob = cfg.get("oneapi", {}).get("base_url", "")
+                        if ob:
+                            base = ob.rstrip("/")
+                        model = cfg.get("oneapi", {}).get("embedding_model", "text-embedding-3-small")
+                    except Exception:
+                        model = "text-embedding-3-small"
+                else:
+                    model = "text-embedding-3-small"
+                return base, val, model
+    except Exception as exc:
+        logger.debug("_resolve_embedding_api Path2 failed: %s", exc)
+
+    return "", "", ""
 
 
 def _get_embedding(text: str) -> Optional[List[float]]:
-    """调用 OpenAI 兼容 embedding API。返回 float 列表或 None。"""
+    """调用 OpenAI 兼容 embedding API。返回 float 列表或 None。
+
+    支持 base_url + api_key + model，自动处理 endpoint 差异。
+    如果 API 返回 400/404（模型不支持 embedding），静默降级。
+    """
     base_url, api_key, model = _resolve_embedding_api()
-    if not api_key:
+    if not api_key or not base_url:
         return None
+
+    # 过滤掉明显不支持 embedding 的 provider
+    _no_embed = {"", "https://api.anthropic.com/v1", "https://generativelanguage.googleapis.com/v1beta"}
+    if base_url in _no_embed:
+        return None
+
     try:
         import httpx
-        resp = httpx.post(
-            f"{base_url}/embeddings",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model, "input": text},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            logger.debug("Embedding API returned %s", resp.status_code)
-            return None
-        data = resp.json()
-        return data["data"][0]["embedding"]
+        # OneAPI/OpenRouter 等兼容端点
+        endpoint = f"{base_url}/embeddings"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"model": model, "input": text[:8192]}
+
+        resp = httpx.post(endpoint, headers=headers, json=payload, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data["data"][0]["embedding"]
+        # 静默降级：不支持的模型/endpoint
+        logger.debug("Embedding API %s/%s returned %s", base_url, model, resp.status_code)
+        return None
     except Exception as exc:
         logger.debug("Embedding API call failed: %s", exc)
         return None
@@ -211,3 +349,105 @@ def search(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
             scored.append((sim, {"content": content, "target": target, "score": round(sim, 4)}))
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:top_k]]
+
+
+# ── Composite scoring ──────────────────────────────────────────────────
+
+# Recency half-life: 7 days → score decays to 0.5 after 7 days
+_RECENCY_HALF_LIFE_SECS = 7 * 86400
+
+
+def _recency_score(created_at: str) -> float:
+    """Recency score: exponential decay, 1.0 at now → 0.5 at half-life."""
+    try:
+        import datetime
+        created = datetime.datetime.fromisoformat(created_at)
+        age = (datetime.datetime.now() - created).total_seconds()
+        return 2.0 ** (-age / _RECENCY_HALF_LIFE_SECS)
+    except Exception:
+        return 0.5
+
+
+def _composite_search(
+    query: str,
+    top_k: int = 5,
+    target_filter: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Enhanced search with 4-factor composite scoring.
+
+    Score = w_embed * embed_sim + w_jaccard * jaccard + w_recency * recency + w_freq * freq
+
+    Weights: embed=0.45, jaccard=0.25, recency=0.15, freq=0.15
+    If no embedding available, redistribute: jaccard=0.60, recency=0.25, freq=0.15
+    """
+    db_path = _get_db_path()
+    if not db_path.exists():
+        return []
+
+    try:
+        conn = _get_conn(db_path)
+        if target_filter:
+            rows = conn.execute(
+                "SELECT content, target, vector, created_at FROM embeddings "
+                "WHERE target = ? AND content IS NOT NULL",
+                (target_filter,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT content, target, vector, created_at FROM embeddings "
+                "WHERE content IS NOT NULL"
+            ).fetchall()
+        conn.close()
+    except Exception:
+        return []
+
+    if not rows:
+        return []
+
+    query_vec = _get_embedding(query)
+    has_embedding = bool(query_vec)
+    q_words = set(query.lower().split())
+
+    scored: List[tuple[float, Dict[str, Any]]] = []
+    for content, target, blob, created_at in rows:
+        embed_sim = 0.0
+        if has_embedding and blob:
+            try:
+                vec = _blob_to_vector(blob)
+                embed_sim = max(0.0, _cosine_similarity(query_vec, vec))
+            except Exception:
+                embed_sim = 0.0
+
+        c_words = set(content.lower().split())
+        jaccard = len(q_words & c_words) / len(q_words | c_words) if (q_words and c_words) else 0.0
+        recency = _recency_score(created_at or "")
+        freq = 0.5  # default (access_count not yet in schema)
+
+        if has_embedding:
+            composite = 0.45 * embed_sim + 0.25 * jaccard + 0.15 * recency + 0.15 * freq
+        else:
+            composite = 0.60 * jaccard + 0.25 * recency + 0.15 * freq
+
+        scored.append((composite, {
+            "content": content,
+            "target": target,
+            "score": round(composite, 4),
+            "embed_sim": round(embed_sim, 4),
+            "jaccard": round(jaccard, 4),
+        }))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:top_k]]
+
+
+def rich_search(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    """Semantic hybrid search — embedding + Jaccard + recency + frequency.
+
+    No intent routing, no synonym expansion, no language assumptions.
+    The embedding model handles cross-lingual semantic matching natively;
+    hardcoded patterns for zh/en only reduce recall for other languages
+    and inject domain bias.
+
+    Preferred entry point for production.
+    """
+    return _composite_search(query, top_k=top_k)

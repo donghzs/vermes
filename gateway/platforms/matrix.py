@@ -1041,6 +1041,18 @@ class MatrixAdapter(BasePlatformAdapter):
 
         return SendResult(success=True, message_id=last_event_id)
 
+    async def delete_message(self, chat_id: str, message_id: str) -> bool:
+        """Redact (effectively delete) a message via Matrix API."""
+        if not self._client:
+            return False
+        try:
+            txn_id = f"redact_{message_id}"
+            await self._client.room_redact(chat_id, message_id, reason="Deleted by bot", txn_id=txn_id)
+            return True
+        except Exception:
+            logger.warning("Matrix: failed to redact message %s in %s", message_id, chat_id)
+            return False
+
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return room name and type (dm/group)."""
         name = chat_id

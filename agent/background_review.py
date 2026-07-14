@@ -232,6 +232,34 @@ _COMBINED_REVIEW_PROMPT = (
     "and stop — but don't reach for that conclusion as a default."
 )
 
+_DECISION_REVIEW_PROMPT = (
+    "Review the conversation above and extract all significant decisions "
+    "made during this session.\n\n"
+    "A decision is any explicit choice, commitment, or conclusion "
+    "made by the assistant — NOT a question answered, NOT a tool used, "
+    "but a judgment call that commits to a direction.\n\n"
+    "Focus on:\n"
+    "  1. Strategic choices: which approach, tool, library, or strategy was chosen "
+    "and why alternatives were rejected.\n"
+    "  2. Architecture decisions: how the system is structured, "
+    "what patterns are followed.\n"
+    "  3. Trade-offs accepted: what was consciously traded away "
+    "(simplicity vs completeness, speed vs quality, etc.).\n"
+    "  4. Commitments made: promises to the user, plans agreed upon, "
+    "future actions deferred.\n\n"
+    "For each decision, return:\n"
+    "  - decision_text: the exact decision statement\n"
+    "  - context: what problem/question this decision resolves\n"
+    "  - confidence: high/medium/low — only extract decisions where "
+    "confidence is 'high' or 'medium'. Skip low-confidence hunches.\n"
+    "  - keywords: 2-4 topic keywords for later retrieval\n\n"
+    "If no significant decisions were made, say 'No decisions.' and stop.\n"
+    "If decisions were made, use the record_decision tool for each one "
+    "(import from agent.decision_tracker: record_decision). "
+    "Call record_decision(decision=..., context=..., session_id=...) "
+    "for each high/medium confidence decision."
+)
+
 
 
 def summarize_background_review_actions(
@@ -582,6 +610,7 @@ def spawn_background_review_thread(
     messages_snapshot: List[Dict],
     review_memory: bool = False,
     review_skills: bool = False,
+    review_decisions: bool = False,
 ):
     """Build the review thread target and prompt for a background review.
 
@@ -592,7 +621,9 @@ def spawn_background_review_thread(
     # Pick the right prompt based on which triggers fired.  Allow per-agent
     # override (the prompts moved to module-level constants but old code paths
     # that set agent._MEMORY_REVIEW_PROMPT etc. directly keep working).
-    if review_memory and review_skills:
+    if review_decisions:
+        prompt = getattr(agent, "_DECISION_REVIEW_PROMPT", _DECISION_REVIEW_PROMPT)
+    elif review_memory and review_skills:
         prompt = getattr(agent, "_COMBINED_REVIEW_PROMPT", _COMBINED_REVIEW_PROMPT)
     elif review_memory:
         prompt = getattr(agent, "_MEMORY_REVIEW_PROMPT", _MEMORY_REVIEW_PROMPT)
@@ -609,6 +640,7 @@ __all__ = [
     "_MEMORY_REVIEW_PROMPT",
     "_SKILL_REVIEW_PROMPT",
     "_COMBINED_REVIEW_PROMPT",
+    "_DECISION_REVIEW_PROMPT",
     "spawn_background_review_thread",
     "summarize_background_review_actions",
     "build_memory_write_metadata",
