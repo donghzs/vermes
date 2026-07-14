@@ -23,6 +23,12 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# ── Health check: detect silent emergence chain failure ─────────────────────
+# If _maybe_trigger_clustering hasn't successfully completed in >24h,
+# log a WARN so the user knows the self-evolution system went silent.
+_LAST_EMERGENCE_OK: Optional[datetime] = None
+_EMERGENCE_STALE_THRESHOLD = timedelta(hours=24)
+
 
 # ── Data Class ───────────────────────────────────────────────────────────────
 
@@ -225,6 +231,20 @@ def record_raw_event(
         except Exception:
             logger.debug("store_embedding skipped for raw_event:%d", rowid, exc_info=True)
 
+    # ── Health check: is the emergence chain alive? ──
+    # If _maybe_trigger_clustering hasn't completed successfully in >24h,
+    # something is silently broken (import error, DB schema drift, etc.).
+    # WARN the user so they can investigate.
+    global _LAST_EMERGENCE_OK
+    if _LAST_EMERGENCE_OK is not None:
+        stale_for = datetime.now() - _LAST_EMERGENCE_OK
+        if stale_for > _EMERGENCE_STALE_THRESHOLD:
+            logger.warning(
+                "Emergence chain has been silent for %.1f hours — "
+                "self-evolution may be broken (check clustering/emergence imports)",
+                stale_for.total_seconds() / 3600,
+            )
+
     # ── Clustering trigger: check if enough events accumulated ──
     # Called inline here (not deferred) because the clustering check is a
     # lightweight COUNT query that returns immediately when threshold not met.
@@ -232,6 +252,7 @@ def record_raw_event(
     # a batch operation that runs once per ~50 events.
     try:
         _maybe_trigger_clustering(session_id)
+        _LAST_EMERGENCE_OK = datetime.now()
     except Exception:
         pass
 
