@@ -1445,6 +1445,131 @@ async def evolution_dag(limit: int = 50):
         return {"error": str(e), "edges": [], "top_documents": [], "anti_patterns": []}
 
 
+async def emergence_status():
+    """Return emergence system status: richness, clusters, capabilities, health."""
+    try:
+        from agent.evolution_manager import get_self_model_db
+        db_path = str(get_self_model_db())
+
+        # Richness
+        try:
+            from agent.memory_recall import compute_richness
+            richness = compute_richness(db_path)
+            richness_data = {
+                "score": round(richness.score, 3),
+                "tier": richness.tier,
+                "raw_event_density": round(richness.raw_event_density, 3),
+                "cluster_density": round(richness.cluster_density, 3),
+                "session_density": round(richness.session_density, 3),
+                "handoff_density": round(richness.handoff_density, 3),
+            }
+        except Exception:
+            richness_data = None
+
+        # Cluster stats
+        try:
+            import sqlite3 as _sql
+            conn = _sql.connect(db_path)
+            conn.row_factory = _sql.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=3000")
+            c = conn.cursor()
+            c.execute("SELECT status, COUNT(*) as cnt FROM clusters GROUP BY status")
+            cluster_stats = {r[0]: r[1] for r in c.fetchall()}
+            c.execute("SELECT COUNT(*) FROM raw_events")
+            total_events = c.fetchone()[0]
+            conn.close()
+        except Exception:
+            cluster_stats = {}
+            total_events = 0
+
+        # Capability registry
+        try:
+            from agent.capability_registry import get_capability_report
+            caps = get_capability_report()
+        except Exception:
+            caps = {"installed": [], "active": []}
+
+        # Health check
+        try:
+            from agent.raw_event import _LAST_EMERGENCE_OK, _EMERGENCE_STALE_THRESHOLD
+            from datetime import datetime as _dt
+            if _LAST_EMERGENCE_OK is not None:
+                stale_hours = (_dt.now() - _LAST_EMERGENCE_OK).total_seconds() / 3600
+                health = {
+                    "last_emergence_ok": _LAST_EMERGENCE_OK.isoformat(),
+                    "stale_hours": round(stale_hours, 1),
+                    "healthy": (_dt.now() - _LAST_EMERGENCE_OK) < _EMERGENCE_STALE_THRESHOLD,
+                }
+            else:
+                health = {"last_emergence_ok": None, "stale_hours": None, "healthy": None, "reason": "cold_start"}
+        except Exception:
+            health = {"error": "unavailable"}
+
+        return {
+            "richness": richness_data,
+            "clusters": cluster_stats,
+            "total_events": total_events,
+            "capabilities": caps,
+            "health": health,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def emergence_skills():
+    """Return pending skills for user confirmation + active skills list."""
+    try:
+        from agent.evolution_manager import get_self_model_db
+        db_path = str(get_self_model_db())
+
+        from agent.skill_extractor import SkillExtractor
+        extractor = SkillExtractor(db_path)
+        pending = extractor.list_skills(status="pending")
+        active = extractor.list_skills(status="active")
+        rejected = extractor.list_skills(status="rejected")
+
+        def _fmt(s):
+            return {
+                "id": s.id,
+                "name": s.name,
+                "description": s.description,
+                "cluster_id": s.cluster_id,
+                "status": s.status,
+                "created_at": s.created_at,
+                "confirmed_at": s.confirmed_at,
+            }
+
+        return {
+            "pending": [_fmt(s) for s in pending],
+            "active": [_fmt(s) for s in active],
+            "rejected": [_fmt(s) for s in rejected],
+        }
+    except Exception as e:
+        return {"error": str(e), "pending": [], "active": [], "rejected": []}
+
+
+async def emergence_confirm_skill(skill_id: int, action: str = "confirm"):
+    """User confirms or rejects a pending skill."""
+    try:
+        from agent.evolution_manager import get_self_model_db
+        db_path = str(get_self_model_db())
+
+        from agent.skill_extractor import SkillExtractor
+        extractor = SkillExtractor(db_path)
+
+        if action == "confirm":
+            ok = extractor.confirm_skill(skill_id)
+            return {"ok": ok, "action": "confirmed", "skill_id": skill_id}
+        elif action == "reject":
+            ok = extractor.reject_skill(skill_id)
+            return {"ok": ok, "action": "rejected", "skill_id": skill_id}
+        else:
+            return {"error": f"Unknown action: {action}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 async def rag_list_documents():
     """List all indexed RAG documents."""
     try:
@@ -1681,6 +1806,24 @@ def register_to(app):
         evolution_dag,
         methods=["GET"],
         name="evolution_dag",
+    )
+    app.add_api_route(
+        "/api/emergence/status",
+        emergence_status,
+        methods=["GET"],
+        name="emergence_status",
+    )
+    app.add_api_route(
+        "/api/emergence/skills",
+        emergence_skills,
+        methods=["GET"],
+        name="emergence_skills",
+    )
+    app.add_api_route(
+        "/api/emergence/skill/{skill_id}/{action}",
+        emergence_confirm_skill,
+        methods=["POST"],
+        name="emergence_confirm_skill",
     )
     app.add_api_route(
         "/api/delegate/status/{task_id}",

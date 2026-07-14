@@ -7,6 +7,8 @@ const expanded = ref(false)
 const achievements = ref([])
 const dagData = ref(null)
 const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详情
+const emergenceData = ref(null)
+const skillsData = ref(null)
 
 async function fetchStatus() {
   try {
@@ -43,12 +45,57 @@ async function fetchDag() {
   }
 }
 
+async function fetchEmergence() {
+  try {
+    const r = await fetch('/api/emergence/status')
+    if (r.ok) {
+      emergenceData.value = await r.json()
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
+async function fetchSkills() {
+  try {
+    const r = await fetch('/api/emergence/skills')
+    if (r.ok) {
+      skillsData.value = await r.json()
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
+async function confirmSkill(id) {
+  try {
+    await fetch(`/api/emergence/skill/${id}/confirm`, { method: 'POST' })
+    await fetchSkills()
+  } catch {
+    // 静默失败
+  }
+}
+
+async function rejectSkill(id) {
+  try {
+    await fetch(`/api/emergence/skill/${id}/reject`, { method: 'POST' })
+    await fetchSkills()
+  } catch {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   fetchStatus()
   fetchAchievements()
   fetchDag()
+  fetchEmergence()
+  fetchSkills()
   // 每 30 秒刷新
-  const timer = setInterval(fetchStatus, 30000)
+  const timer = setInterval(() => {
+    fetchStatus()
+    fetchEmergence()
+  }, 30000)
   onUnmounted(() => clearInterval(timer))
 })
 
@@ -64,6 +111,24 @@ const progressBarColor = computed(() => {
   if (rate >= 80) return 'bg-green-500'
   if (rate >= 60) return 'bg-yellow-500'
   return 'bg-red-500'
+})
+
+const richnessTierLabel = (tier) => {
+  const map = { cold_start: '冷启动', building: '积累中', learning: '学习中', fluent: '熟练' }
+  return map[tier] || tier
+}
+
+const richnessTierColor = (tier) => {
+  const map = { cold_start: 'text-gray-400', building: 'text-blue-400', learning: 'text-green-400', fluent: 'text-emerald-300' }
+  return map[tier] || 'text-gray-400'
+}
+
+const healthStatus = computed(() => {
+  const h = emergenceData.value?.health
+  if (!h) return null
+  if (h.healthy === null) return { text: '冷启动中', color: 'text-gray-400' }
+  if (h.healthy) return { text: '运行正常', color: 'text-green-400' }
+  return { text: `静默 ${h.stale_hours}h`, color: 'text-red-400' }
 })
 
 const edgeTypeLabel = (relType) => {
@@ -180,6 +245,93 @@ const nodeTypeLabel = (nodeType) => {
           <span class="evo-edge-src">❌ {{ f[0] }}</span>
           <span class="evo-edge-type">{{ f[1] }}</span>
           <span class="evo-edge-count">{{ f[2] }}次</span>
+        </div>
+      </div>
+      <!-- ── 涌现系统：Richness + 能力 + 技能确认 ── -->
+      <div v-if="emergenceData" class="evo-dag evo-emergence">
+        <div class="evo-key mb-1">涌现系统</div>
+
+        <!-- 健康状态 -->
+        <div v-if="healthStatus" class="evo-row">
+          <span class="evo-key">链路状态</span>
+          <span class="evo-val" :class="healthStatus.color">{{ healthStatus.text }}</span>
+        </div>
+
+        <!-- Richness 信号 -->
+        <div v-if="emergenceData.richness" class="evo-row">
+          <span class="evo-key">记忆丰富度</span>
+          <span class="evo-val" :class="richnessTierColor(emergenceData.richness.tier)">
+            {{ richnessTierLabel(emergenceData.richness.tier) }}
+            <span class="text-xs opacity-60">({{ emergenceData.richness.score }})</span>
+          </span>
+        </div>
+
+        <!-- Richness 4 维进度条 -->
+        <div v-if="emergenceData.richness" class="evo-richness-bars">
+          <div class="evo-richness-bar">
+            <span class="evo-richness-label">事件密度</span>
+            <div class="evo-mini-bar"><div class="evo-mini-fill bg-blue-400" :style="{ width: Math.min(100, emergenceData.richness.raw_event_density * 100) + '%' }"></div></div>
+          </div>
+          <div class="evo-richness-bar">
+            <span class="evo-richness-label">簇密度</span>
+            <div class="evo-mini-bar"><div class="evo-mini-fill bg-green-400" :style="{ width: Math.min(100, emergenceData.richness.cluster_density * 100) + '%' }"></div></div>
+          </div>
+          <div class="evo-richness-bar">
+            <span class="evo-richness-label">会话密度</span>
+            <div class="evo-mini-bar"><div class="evo-mini-fill bg-purple-400" :style="{ width: Math.min(100, emergenceData.richness.session_density * 100) + '%' }"></div></div>
+          </div>
+          <div class="evo-richness-bar">
+            <span class="evo-richness-label">交接密度</span>
+            <div class="evo-mini-bar"><div class="evo-mini-fill bg-yellow-400" :style="{ width: Math.min(100, emergenceData.richness.handoff_density * 100) + '%' }"></div></div>
+          </div>
+        </div>
+
+        <!-- 簇统计 -->
+        <div v-if="emergenceData.clusters && Object.keys(emergenceData.clusters).length" class="evo-row">
+          <span class="evo-key">簇状态</span>
+          <span class="evo-val text-xs">
+            <span v-for="(cnt, state) in emergenceData.clusters" :key="state" class="evo-cluster-chip">
+              {{ state }}: {{ cnt }}
+            </span>
+          </span>
+        </div>
+
+        <!-- 能力注册表 -->
+        <div v-if="emergenceData.capabilities?.active?.length" class="evo-row">
+          <span class="evo-key">已激活能力</span>
+          <span class="evo-val">
+            <span v-for="cap in emergenceData.capabilities.active" :key="cap" class="evo-cap-chip evo-cap-active">{{ cap }}</span>
+          </span>
+        </div>
+        <div v-if="emergenceData.capabilities?.installed?.length" class="evo-row">
+          <span class="evo-key">已安装能力</span>
+          <span class="evo-val">
+            <span v-for="cap in emergenceData.capabilities.installed" :key="cap" class="evo-cap-chip">{{ cap }}</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- ── 技能确认交互 ── -->
+      <div v-if="skillsData?.pending?.length" class="evo-dag evo-skills-pending">
+        <div class="evo-key mb-1">待确认技能 ({{ skillsData.pending.length }})</div>
+        <div v-for="s in skillsData.pending" :key="s.id" class="evo-skill-card">
+          <div class="evo-skill-info">
+            <div class="evo-skill-name">{{ s.name }}</div>
+            <div class="evo-skill-desc text-xs text-gray-400">{{ s.description }}</div>
+          </div>
+          <div class="evo-skill-actions">
+            <button class="evo-btn-confirm" @click="confirmSkill(s.id)">采纳</button>
+            <button class="evo-btn-reject" @click="rejectSkill(s.id)">忽略</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 已激活技能列表 -->
+      <div v-if="skillsData?.active?.length" class="evo-dag">
+        <div class="evo-key mb-1">已激活技能 ({{ skillsData.active.length }})</div>
+        <div v-for="s in skillsData.active" :key="s.id" class="evo-edge">
+          <span class="evo-edge-src">⚡ {{ s.name }}</span>
+          <span class="evo-edge-count">{{ s.description?.slice(0, 40) }}</span>
         </div>
       </div>
     </div>
@@ -417,5 +569,146 @@ const nodeTypeLabel = (nodeType) => {
   padding: 0.0625rem 0.25rem;
   border-radius: 0.25rem;
   white-space: nowrap;
+}
+
+/* ── 涌现系统样式 ── */
+.evo-emergence {
+  border-left: 2px solid #22c55e;
+  padding-left: 0.5rem;
+}
+.evo-richness-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+}
+.evo-richness-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.5625rem;
+}
+.evo-richness-label {
+  width: 3.5rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.dark .evo-richness-label {
+  color: #9ca3af;
+}
+.evo-mini-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(156, 163, 175, 0.2);
+  overflow: hidden;
+}
+.dark .evo-mini-bar {
+  background: rgba(75, 85, 99, 0.3);
+}
+.evo-mini-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.evo-cluster-chip {
+  display: inline-block;
+  padding: 0.0625rem 0.375rem;
+  margin: 0 0.125rem;
+  border-radius: 0.25rem;
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  font-size: 0.5625rem;
+}
+.dark .evo-cluster-chip {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+.evo-cap-chip {
+  display: inline-block;
+  padding: 0.0625rem 0.375rem;
+  margin: 0 0.125rem;
+  border-radius: 0.25rem;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  font-size: 0.5625rem;
+}
+.dark .evo-cap-chip {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+.evo-cap-active {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+.dark .evo-cap-active {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+/* ── 技能确认交互 ── */
+.evo-skills-pending {
+  border-left: 2px solid #f59e0b;
+  padding-left: 0.5rem;
+}
+.evo-skill-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem;
+  margin: 0.25rem 0;
+  border-radius: 0.375rem;
+  background: rgba(245, 158, 11, 0.06);
+}
+.dark .evo-skill-card {
+  background: rgba(245, 158, 11, 0.08);
+}
+.evo-skill-info {
+  flex: 1;
+  min-width: 0;
+}
+.evo-skill-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #f59e0b;
+}
+.dark .evo-skill-name {
+  color: #fbbf24;
+}
+.evo-skill-desc {
+  margin-top: 0.125rem;
+  line-height: 1.2;
+}
+.evo-skill-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.evo-btn-confirm, .evo-btn-reject {
+  font-size: 0.625rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 0.25rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.evo-btn-confirm {
+  background: #22c55e;
+  color: white;
+}
+.evo-btn-confirm:hover {
+  opacity: 0.85;
+}
+.evo-btn-reject {
+  background: rgba(156, 163, 175, 0.2);
+  color: #6b7280;
+}
+.dark .evo-btn-reject {
+  background: rgba(75, 85, 99, 0.3);
+  color: #9ca3af;
+}
+.evo-btn-reject:hover {
+  opacity: 0.85;
 }
 </style>
