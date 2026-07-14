@@ -470,6 +470,19 @@ def recall_context(user_message: str) -> Dict[str, Any]:
         pass
 
     result["keywords"] = keywords
+
+    # ── Self-assessment: record recall quality as raw_event ──
+    # This is the emergence trigger foundation — the system observes
+    # its own retrieval quality on every turn. When bottleneck signals
+    # accumulate, clustering groups them and emergent_insight surfaces
+    # the pattern. No hardcoded triggers, no thresholds to flip switches.
+    # The system discovers its own limitations from data.
+    try:
+        from agent.self_assessment import assess_and_record
+        assess_and_record(result, keywords, session_id="", turn_number=0)
+    except Exception:
+        pass
+
     return result
 
 
