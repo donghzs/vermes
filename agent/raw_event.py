@@ -136,8 +136,34 @@ CREATE INDEX IF NOT EXISTS idx_raw_events_cluster      ON raw_events(cluster_id)
 
 
 def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
-    """Create raw_events table and indexes if they don't exist."""
+    """Create raw_events table, indexes, and v_outcomes view if they don't exist.
+
+    v_outcomes is a compatibility view that maps raw_events to the old
+    outcomes table schema, so legacy queries (FROM outcomes) can switch
+    to FROM v_outcomes without modification. This eliminates dual-write:
+    raw_events is the single source of truth.
+    """
     conn.executescript(RAW_EVENTS_TABLE_SQL)
+    # Compatibility view: maps raw_events → outcomes schema
+    # domain/error_type are '' (legacy code never populated them meaningfully)
+    # role is 'default' (roles table rarely exists, detect_role always returned 'default')
+    conn.execute(
+        """CREATE VIEW IF NOT EXISTS v_outcomes AS
+           SELECT
+             id,
+             timestamp,
+             tool_name AS task,
+             args_preview AS action,
+             tool_name AS tool,
+             success,
+             result_preview AS details,
+             duration,
+             '' AS domain,
+             '' AS error_type,
+             CASE WHEN success = 0 THEN result_preview ELSE '' END AS error_msg,
+             'default' AS role
+           FROM raw_events"""
+    )
     conn.commit()
 
 

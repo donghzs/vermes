@@ -199,7 +199,7 @@ def _load_recent_summary(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
             "  COUNT(*) as total, "
             "  SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count, "
             "  AVG(CASE WHEN duration > 0 THEN duration ELSE NULL END) as avg_duration "
-            "FROM outcomes WHERE timestamp > ?",
+            "FROM v_outcomes WHERE timestamp > ?",
             (cutoff,),
         ).fetchone()
     except sqlite3.OperationalError:

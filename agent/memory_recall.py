@@ -202,7 +202,7 @@ def _query_recent_outcomes(
         # Just return most recent outcomes
         rows = conn.execute(
             "SELECT task, tool, success, domain, duration, timestamp "
-            "FROM outcomes "
+            "FROM v_outcomes "
             "WHERE timestamp > ? "
             "ORDER BY timestamp DESC LIMIT ?",
             (cutoff, limit),
@@ -221,7 +221,7 @@ def _query_recent_outcomes(
 
         rows = conn.execute(
             f"SELECT task, tool, success, domain, duration, timestamp "
-            f"FROM outcomes "
+            f"FROM v_outcomes "
             f"WHERE timestamp > ? AND ({where_clause}) "
             f"ORDER BY timestamp DESC LIMIT ?",
             params,
@@ -260,7 +260,7 @@ def _query_domain_stats(
         f"  COUNT(*) as total, "
         f"  SUM(CASE WHEN success=1 THEN 1 ELSE 0 END) as success_count, "
         f"  AVG(duration) as avg_duration "
-        f"FROM outcomes "
+        f"FROM v_outcomes "
         f"WHERE {where_clause} "
         f"GROUP BY domain "
         f"ORDER BY total DESC LIMIT ?",

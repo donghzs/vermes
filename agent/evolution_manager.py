@@ -95,7 +95,7 @@ def is_evolution_active() -> bool:
         try:
             conn = _get_conn(str(get_self_model_db()))
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM outcomes")
+            c.execute("SELECT COUNT(*) FROM v_outcomes")
             count = c.fetchone()[0]
             if count == 0:
                 _seed_evolution_db()
@@ -150,6 +150,9 @@ def _seed_evolution_db() -> None:
         duration REAL DEFAULT 0, domain TEXT DEFAULT '通用',
         error_type TEXT DEFAULT '', error_msg TEXT DEFAULT '',
         role TEXT DEFAULT 'default')""")
+    # Ensure raw_events table + v_outcomes view exist (single source of truth)
+    from agent.raw_event import ensure_raw_events_table
+    ensure_raw_events_table(conn)
     c.execute("""CREATE TABLE IF NOT EXISTS anti_patterns (
         id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL,
         pattern TEXT NOT NULL, correct TEXT, domain TEXT,
@@ -178,34 +181,26 @@ def _seed_evolution_db() -> None:
         weight REAL DEFAULT 1.0,
         timestamp TEXT NOT NULL)""")
     
+    # Seed raw_events (v_outcomes view maps these to outcomes schema)
     from datetime import datetime
     ts = datetime.now().isoformat()
-    seeds = [
-        (ts, '终端命令', '{"command": "ls -la"}', 'terminal', 1,
-         '{"output": "total 0", "exit_code": 0}', 0.3, '系统管理', '', '', 'terminal'),
-        (ts, '文件读取', '{"path": "/etc/hosts"}', 'read_file', 1,
-         '127.0.0.1 localhost', 0.2, '系统管理', '', '', 'read_file'),
-        (ts, '代码搜索', '{"pattern": "class"}', 'search_files', 1,
-         '{"matches": ["file1.py", "file2.py"]}', 0.5, '通用', '', '', 'search_files'),
-        (ts, '网络搜索', '{"query": "python"}', 'web_search', 1,
-         '{"results": []}', 1.0, '网络研究', '', '', 'web_search'),
-        (ts, '代码修改', '{"path": "/tmp/test.py"}', 'patch', 1,
-         '{"success": true}', 0.4, 'Python开发', '', '', 'patch'),
-        (ts, '文件写入', '{"path": "/tmp/test.md"}', 'write_file', 1,
-         'ok', 0.3, '文档编写', '', '', 'write_file'),
-        (ts, '终端命令', '{"command": "pip install"}', 'terminal', 1,
-         '{"output": "Successfully installed"}', 2.0, 'Python开发', '', '', 'terminal'),
-        (ts, '终端命令', '{"command": "git status"}', 'terminal', 1,
-         '{"output": "clean"}', 0.5, '版本控制', '', '', 'terminal'),
-        (ts, '终端命令', '{"command": "npm install"}', 'terminal', 1,
-         '{"output": "added 100 packages"}', 3.0, '前端开发', '', '', 'terminal'),
-        (ts, '文件读取', '{"path": "/tmp/data.json"}', 'read_file', 1,
-         '{"name": "test"}', 0.2, '通用', '', '', 'read_file'),
+    raw_seeds = [
+        # (timestamp, tool_name, args_preview, result_preview, success, duration, session_id, turn_number)
+        (ts, 'terminal', '{"command": "ls -la"}', '{"output": "total 0", "exit_code": 0}', 1, 0.3, 'seed', 0),
+        (ts, 'read_file', '{"path": "/etc/hosts"}', '127.0.0.1 localhost', 1, 0.2, 'seed', 0),
+        (ts, 'search_files', '{"pattern": "class"}', '{"matches": ["file1.py", "file2.py"]}', 1, 0.5, 'seed', 0),
+        (ts, 'web_search', '{"query": "python"}', '{"results": []}', 1, 1.0, 'seed', 0),
+        (ts, 'patch', '{"path": "/tmp/test.py"}', '{"success": true}', 1, 0.4, 'seed', 0),
+        (ts, 'write_file', '{"path": "/tmp/test.md"}', 'ok', 1, 0.3, 'seed', 0),
+        (ts, 'terminal', '{"command": "pip install"}', '{"output": "Successfully installed"}', 1, 2.0, 'seed', 0),
+        (ts, 'terminal', '{"command": "git status"}', '{"output": "clean"}', 1, 0.5, 'seed', 0),
+        (ts, 'terminal', '{"command": "npm install"}', '{"output": "added 100 packages"}', 1, 3.0, 'seed', 0),
+        (ts, 'read_file', '{"path": "/tmp/data.json"}', '{"name": "test"}', 1, 0.2, 'seed', 0),
     ]
-    for s in seeds:
-        c.execute('''INSERT INTO outcomes 
-            (timestamp, task, action, tool, success, details, duration, domain, error_type, error_msg, role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', s)
+    for s in raw_seeds:
+        c.execute('''INSERT INTO raw_events
+            (timestamp, tool_name, args_preview, result_preview, success, duration, session_id, turn_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', s)
     
     # Seed anti-patterns
     ap_seeds = [
@@ -576,34 +571,24 @@ def record_tool_outcome(
         if is_error:
             error_msg = str(result)[:200]
         
-        # Record to database
+        # ── Dual-write eliminated: raw_events is the single source of truth ──
+        # record_raw_event() (called above) writes to raw_events table.
+        # v_outcomes view maps raw_events → outcomes schema for legacy queries.
+        # The old INSERT INTO outcomes is removed. outcome_id is taken from
+        # the raw_event rowid so DAG relations still work.
         db_path = get_self_model_db()
         conn = _get_conn(db_path)
         cursor = conn.cursor()
         
         timestamp = datetime.now().isoformat()
         
-        # Record outcome
-        # 适配实际表结构: id, timestamp, task, action, tool, success, details, duration, domain, error_type, error_msg, role
-        cursor.execute('''
-            INSERT INTO outcomes (timestamp, task, action, tool, success, details, duration, domain, error_type, error_msg, role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            timestamp,
-            task,
-            str(tool_args)[:200],
-            tool_name,
-            0 if is_error else 1,
-            str(result)[:500],
-            duration,
-            domain,
-            error_type,
-            error_msg,
-            role
-        ))
-        outcome_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+        # Get outcome_id from the raw_event that was just written
+        cursor.execute(
+            "SELECT id FROM raw_events WHERE session_id = ? AND turn_number = ? AND tool_name = ? ORDER BY id DESC LIMIT 1",
+            (getattr(agent, 'session_id', '') if agent else '', getattr(agent, 'turn_counter', 0) if agent else 0, tool_name)
+        )
+        _row = cursor.fetchone()
+        outcome_id = _row[0] if _row else None
 
         # ── 写入 embedding DB（语义检索用）───────────────────────────
         try:
@@ -745,11 +730,11 @@ def record_tool_outcome(
             )
 
             # 每50次工具调用写入一次汇总快照
-            cursor.execute("SELECT COUNT(*) FROM outcomes")
+            cursor.execute("SELECT COUNT(*) FROM v_outcomes")
             _total = cursor.fetchone()[0]
             if _total % 50 == 0:
                 cursor.execute(
-                    "SELECT COUNT(*), SUM(success) FROM outcomes WHERE timestamp > ?",
+                    "SELECT COUNT(*), SUM(success) FROM v_outcomes WHERE timestamp > ?",
                     ((datetime.now() - timedelta(days=1)).isoformat(),)
                 )
                 _recent = cursor.fetchone()
@@ -757,7 +742,7 @@ def record_tool_outcome(
                 _recent_rate = (_recent_success / _recent_count) if _recent_count > 0 else 0.0
 
                 cursor.execute(
-                    "SELECT tool, COUNT(*) as cnt FROM outcomes GROUP BY tool ORDER BY cnt DESC LIMIT 1"
+                    "SELECT tool, COUNT(*) as cnt FROM v_outcomes GROUP BY tool ORDER BY cnt DESC LIMIT 1"
                 )
                 _top_tool = cursor.fetchone()
 
@@ -783,11 +768,10 @@ def record_tool_outcome(
             pass  # self_model 记录非阻塞
 
         # ── 保留策略：清理过期数据 ────────────────────────────
+        # outcomes 表已由 v_outcomes 视图替代（raw_events 是唯一真实源）
+        # raw_events 的清理由 cluster_lifecycle 的 dormant→dead 链处理
+        # 此处只清理 fusion-state.db 的过期数据
         try:
-            _cutoff_30d = (datetime.now() - timedelta(days=30)).isoformat()
-            cursor.execute("DELETE FROM outcomes WHERE timestamp < ?", (_cutoff_30d,))
-            conn.commit()
-            # 清理 fusion-state.db 中的过期数据
             _cutoff_7d = (datetime.now() - timedelta(days=7)).isoformat()
             _fconn = _get_conn(str(get_evolution_dir() / "fusion-state.db"))
             _fconn.execute("DELETE FROM emotional_state WHERE timestamp < ?", (_cutoff_7d,))
@@ -807,7 +791,7 @@ def record_tool_outcome(
         # ── 成就检查 ──────────────────────────────────────────────
         # 直接从已写入的数据库查最新计数，避免重复全量查询 get_evolution_status()
         try:
-            cursor.execute("SELECT COUNT(*), SUM(success) FROM outcomes")
+            cursor.execute("SELECT COUNT(*), SUM(success) FROM v_outcomes")
             _cnt_row = cursor.fetchone()
             _total_out = _cnt_row[0]
             _succ_out = _cnt_row[1] or 0
@@ -839,7 +823,7 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         # Get success rate for this tool+domain
         cursor.execute('''
             SELECT COUNT(*) as total, SUM(success) as successes
-            FROM outcomes
+            FROM v_outcomes
             WHERE tool = ? AND domain = ?
         ''', (tool_name, domain))
         
@@ -899,11 +883,11 @@ def get_evolution_status() -> Dict[str, Any]:
         cursor = conn.cursor()
         
         # Total outcomes
-        cursor.execute("SELECT COUNT(*) FROM outcomes")
+        cursor.execute("SELECT COUNT(*) FROM v_outcomes")
         total = cursor.fetchone()[0]
         
         # Success rate
-        cursor.execute("SELECT COUNT(*) FROM outcomes WHERE success = 1")
+        cursor.execute("SELECT COUNT(*) FROM v_outcomes WHERE success = 1")
         successes = cursor.fetchone()[0]
         success_rate = (successes / total * 100) if total > 0 else 0
         
@@ -914,7 +898,7 @@ def get_evolution_status() -> Dict[str, Any]:
         # Top domains
         cursor.execute('''
             SELECT domain, COUNT(*) as count
-            FROM outcomes
+            FROM v_outcomes
             GROUP BY domain
             ORDER BY count DESC
             LIMIT 5
@@ -924,7 +908,7 @@ def get_evolution_status() -> Dict[str, Any]:
         # Per-role stats
         cursor.execute('''
             SELECT role, COUNT(*) as total, SUM(success) as successes
-            FROM outcomes
+            FROM v_outcomes
             WHERE role IS NOT NULL
             GROUP BY role
             ORDER BY total DESC
@@ -934,7 +918,7 @@ def get_evolution_status() -> Dict[str, Any]:
         # Recent failures
         cursor.execute('''
             SELECT tool, error_type, COUNT(*) as count
-            FROM outcomes
+            FROM v_outcomes
             WHERE success = 0
             GROUP BY tool, error_type
             ORDER BY count DESC
@@ -1002,7 +986,7 @@ def build_daily_briefing() -> str:
         conn = _get_conn(str(get_self_model_db()))
         c = conn.cursor()
         c.execute(
-            "SELECT COUNT(*) FROM outcomes WHERE timestamp > ?",
+            "SELECT COUNT(*) FROM v_outcomes WHERE timestamp > ?",
             ((datetime.now() - timedelta(days=1)).isoformat(),)
         )
         recent = c.fetchone()[0]
