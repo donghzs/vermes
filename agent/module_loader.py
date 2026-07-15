@@ -43,6 +43,20 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# 模块安装目录 — 延迟初始化，因为 get_hermes_home() 可能在配置加载后才可用
+_MODULES_DIR_CACHE = None
+
+def get_modules_dir() -> Path:
+    """返回模块安装目录 (~/.hermes/modules/)"""
+    global _MODULES_DIR_CACHE
+    if _MODULES_DIR_CACHE is None:
+        from hermes_constants import get_hermes_home
+        _MODULES_DIR_CACHE = get_hermes_home() / "modules"
+    return _MODULES_DIR_CACHE
+
+# 向后兼容别名
+MODULES_DIR = None  # 延迟属性，通过 get_modules_dir() 访问
+
 
 @dataclass
 class ModuleManifest:
@@ -168,9 +182,8 @@ def load_module_pyd(module_dir: Path, manifest: ModuleManifest) -> Optional[Any]
 
 
 def discover_modules() -> List[ModuleManifest]:
-    """扫描 ~/.hermes/modules/ 目录，发现所有已安装模块"""
-    from hermes_constants import get_hermes_home
-    modules_dir = get_hermes_home() / "modules"
+    """扫描模块目录，发现所有已安装模块"""
+    modules_dir = get_modules_dir()
     if not modules_dir.exists():
         return []
 

@@ -8,6 +8,7 @@ import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 import MCPManager from './MCPManager.vue'
 import SkillManager from './SkillManager.vue'
+import ModuleHost from './ModuleHost.vue'
 
 const chat = useChatStore()
 const router = useRouter()
@@ -17,7 +18,7 @@ function goStudio() { router.push('/studio') }
 
 // ── 生态模块动态加载 ──
 const installedModules = ref([])
-const moduleComponents = {}  // name → unmount function
+const moduleHostRef = ref(null)
 
 async function loadModules() {
   try {
@@ -36,29 +37,8 @@ async function loadModules() {
 }
 
 async function openModule(mod) {
-  // 动态加载模块前端 entry.js
-  if (!moduleComponents[mod.name]) {
-    try {
-      const jsUrl = `/api/modules/${mod.name}/frontend/${mod.frontend_entry || 'entry.js'}`
-      // 动态 import — 浏览器原生支持
-      const mod_export = await import(/* @vite-ignore */ jsUrl)
-      // 创建容器 DOM
-      const container = document.createElement('div')
-      container.id = `module-${mod.name}`
-      container.style.height = '100vh'
-      container.style.width = '100%'
-      // 调用 mount 函数挂载
-      const unmount = mod_export.mount(container) || mod_export.default?.mount?.(container)
-      if (unmount) moduleComponents[mod.name] = unmount
-      // 隐藏主界面，显示模块容器
-      const app = document.getElementById('app')
-      app.style.display = 'none'
-      document.body.appendChild(container)
-    } catch (e) {
-      toast.error(`模块加载失败: ${e.message}`)
-      return
-    }
-  }
+  if (!moduleHostRef.value) return
+  await moduleHostRef.value.open(mod)
 }
 
 onMounted(() => {
@@ -574,4 +554,7 @@ async function handleImportFile(e) {
       <button @click="handleExport(contextMenu.session?.id, 'json')" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">📋 导出 JSON</button>
     </div>
   </Teleport>
+
+  <!-- 生态模块容器 -->
+  <ModuleHost ref="moduleHostRef" @error="(e) => toast.error(`模块加载失败: ${e.error}`)" />
 </template>
