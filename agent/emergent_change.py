@@ -52,12 +52,16 @@ class ChangeProposal:
         content:       New file content (full write, not patch)
         description:   Human-readable description of what this change does
         metadata:      Extra context (cluster_id, skill_id, etc.)
+        initiator:     Who initiated (agent/user/system). Default 'agent'.
+                       'user' = user explicitly requested, 'system' = auto-cleanup/restart,
+                       'agent' = agent decided on its own.
     """
     source: str                          # "agent" | "capability_evolver" | "skill_extractor" | "domain_modules"
     target_path: str                     # absolute path
     content: str                         # full file content
     description: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
+    initiator: str = "agent"             # agent | user | system
 
 
 @dataclass
@@ -67,59 +71,27 @@ class ChangeResult:
     target_path: str = ""
     error: str = ""                      # non-empty if failed
     raw_event_id: Optional[int] = None   # raw_event rowid for traceability
+    backup_path: Optional[str] = None    # backup file path (for rollback)
 
 
 # ---------------------------------------------------------------------------
-# Validator — objective format/compatibility checks (NOT risk assessment)
+# Format validation — delegated to self_validator module
 # ---------------------------------------------------------------------------
-
-def _validate_yaml(content: str) -> bool:
-    """Check if content is valid YAML."""
-    try:
-        import yaml
-        yaml.safe_load(content)
-        return True
-    except Exception:
-        return False
-
-
-def _validate_json(content: str) -> bool:
-    """Check if content is valid JSON."""
-    try:
-        json.loads(content)
-        return True
-    except Exception:
-        return False
-
-
-def _validate_python_syntax(content: str) -> bool:
-    """Check if content is valid Python (syntax only, no execution)."""
-    try:
-        import ast
-        ast.parse(content)
-        return True
-    except SyntaxError:
-        return False
-
 
 def _validate_file_format(target_path: str, content: str) -> Tuple[bool, str]:
-    """Validate content format based on file extension.
+    """Delegate format validation to self_validator's FileFormatStrategy.
 
-    This is an OBJECTIVE check — "is this valid YAML/JSON/Python?"
-    It does NOT assess risk or decide whether the change should proceed.
+    This is a thin wrapper that calls the singleton format validator.
+    All format rules (Python/YAML/JSON) are defined in self_validator.py,
+    so future extensions (diff size, compatibility checks) automatically
+    apply here without code changes in emergent_change.
     """
-    ext = Path(target_path).suffix.lower()
-    if ext in (".yaml", ".yml"):
-        if not _validate_yaml(content):
-            return False, f"Invalid YAML syntax"
-    elif ext == ".json":
-        if not _validate_json(content):
-            return False, f"Invalid JSON syntax"
-    elif ext == ".py":
-        if not _validate_python_syntax(content):
-            return False, f"Invalid Python syntax"
-    # Unknown extensions: no format validation (can't be objective)
-    return True, ""
+    from agent.self_validator import get_format_validator
+
+    result = get_format_validator().verify_format(target_path, content)
+    if result.ok:
+        return True, ""
+    return False, result.message
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +109,9 @@ class EmergentChangePipeline:
     No hardcoded risk levels. No preset "needs confirmation" rules.
     Safety emerges from commit/rollback data clustering over time.
     """
+
+    # Maximum backups to keep per target file (oldest auto-deleted)
+    MAX_BACKUPS_PER_FILE = 5
 
     def __init__(self, hermes_home: str = "") -> None:
         self.hermes_home = hermes_home or os.environ.get(
@@ -181,8 +156,10 @@ class EmergentChangePipeline:
             # If target exists, back up
             backup_path: Optional[str] = None
             if target.exists():
-                backup_path = str(target) + ".bak." + datetime.now().strftime("%Y%m%d%H%M%S")
+                backup_path = str(target) + ".bak." + datetime.now().strftime("%Y%m%d%H%M%S%f")
                 shutil.copy2(str(target), backup_path)
+                # Clean up old backups (keep only MAX_BACKUPS_PER_FILE)
+                self._cleanup_old_backups(str(target))
 
             shutil.copy2(staging_path, str(target))
             logger.info("Change committed: %s (source=%s)", proposal.target_path, proposal.source)
@@ -197,6 +174,7 @@ class EmergentChangePipeline:
                 committed=True,
                 target_path=proposal.target_path,
                 raw_event_id=event_id,
+                backup_path=backup_path,
             )
 
         except Exception as e:
@@ -213,11 +191,21 @@ class EmergentChangePipeline:
                 error=str(e),
             )
 
-    def rollback_change(self, target_path: str, backup_path: Optional[str] = None) -> bool:
+    def rollback_change(
+        self,
+        target_path: str,
+        backup_path: Optional[str] = None,
+        initiator: str = "agent",
+    ) -> bool:
         """Rollback a previously applied change.
 
         If backup_path is provided, restore from backup.
         Otherwise, delete the file (if it was a creation, not a modification).
+
+        Args:
+            target_path:  The file to rollback
+            backup_path:  Backup file to restore from (optional)
+            initiator:   Who initiated the rollback (agent/user/system)
         """
         try:
             if backup_path and os.path.exists(backup_path):
@@ -229,11 +217,40 @@ class EmergentChangePipeline:
                 logger.info("Change rolled back (deleted): %s", target_path)
 
             # Record rollback as raw_event
-            self._record_rollback_event(target_path)
+            self._record_rollback_event(target_path, initiator=initiator)
             return True
         except Exception as e:
             logger.error("Rollback failed: %s — %s", target_path, e)
             return False
+
+    def _cleanup_old_backups(self, target_path: str) -> int:
+        """Remove old backup files for a target, keeping only MAX_BACKUPS_PER_FILE.
+
+        Backups are named: <target_path>.bak.<timestamp>
+        Returns number of files deleted.
+        """
+        try:
+            target = Path(target_path)
+            parent = target.parent
+            prefix = target.name + ".bak."
+
+            backups = sorted(
+                [p for p in parent.iterdir() if p.name.startswith(prefix)],
+                key=lambda p: p.name,  # timestamp in name = lexicographic = chronological
+                reverse=True,  # newest first
+            )
+
+            deleted = 0
+            for old_backup in backups[self.MAX_BACKUPS_PER_FILE:]:
+                old_backup.unlink(missing_ok=True)
+                deleted += 1
+
+            if deleted:
+                logger.debug("Cleaned up %d old backup(s) for %s", deleted, target_path)
+            return deleted
+        except Exception:
+            logger.debug("Backup cleanup failed for %s", target_path, exc_info=True)
+            return 0
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
@@ -264,6 +281,12 @@ class EmergentChangePipeline:
         which over time clusters commit/rollback patterns. The system
         learns from its own modification history what patterns are safe
         and what patterns tend to cause problems.
+
+        The initiator field distinguishes who triggered the change:
+        - 'agent':  Agent decided on its own (most common)
+        - 'user':   User explicitly requested (higher confidence)
+        - 'system': System event (restart, cleanup, migration)
+        Future: 'passive' for user-side file deletions detected by watchers
         """
         try:
             from agent.raw_event import record_raw_event
@@ -275,6 +298,7 @@ class EmergentChangePipeline:
                 "description": proposal.description,
                 "file_ext": Path(proposal.target_path).suffix,
                 "backup_path": backup_path or "",
+                "initiator": proposal.initiator,
             }
             result = (
                 f"committed: {proposal.target_path}"
@@ -292,14 +316,28 @@ class EmergentChangePipeline:
             logger.debug("Failed to record change raw_event", exc_info=True)
             return None
 
-    def _record_rollback_event(self, target_path: str) -> None:
-        """Record a user-initiated rollback as a raw_event."""
+    def _record_rollback_event(
+        self,
+        target_path: str,
+        initiator: str = "agent",
+    ) -> None:
+        """Record a rollback as a raw_event.
+
+        The initiator field is critical for the clustering system:
+        - 'agent':  Agent decided to rollback (self-correction signal)
+        - 'user':   User explicitly rolled back (strong negative signal)
+        - 'system': System-triggered rollback (restart/cleanup)
+        Future: 'passive' for detected user-side file deletions
+        """
         try:
             from agent.raw_event import record_raw_event
 
             record_raw_event(
                 tool_name="self_modify_rollback",
-                tool_args={"target_path": target_path},
+                tool_args={
+                    "target_path": target_path,
+                    "initiator": initiator,
+                },
                 result=f"rolled back: {target_path}",
                 is_error=False,
                 duration=0.0,
@@ -329,6 +367,7 @@ def apply_change(
     content: str,
     description: str = "",
     metadata: Optional[Dict[str, Any]] = None,
+    initiator: str = "agent",
 ) -> ChangeResult:
     """Apply a self-modification through the emergent change pipeline.
 
@@ -342,6 +381,7 @@ def apply_change(
         content:      Full file content
         description:  Human-readable description
         metadata:     Extra context
+        initiator:    Who initiated (agent/user/system)
 
     Returns:
         ChangeResult with committed status and traceability info
@@ -352,5 +392,6 @@ def apply_change(
         content=content,
         description=description,
         metadata=metadata or {},
+        initiator=initiator,
     )
     return get_pipeline().apply_change(proposal)

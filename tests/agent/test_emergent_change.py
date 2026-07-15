@@ -21,10 +21,8 @@ from agent.emergent_change import (
     EmergentChangePipeline,
     apply_change,
     _validate_file_format,
-    _validate_yaml,
-    _validate_json,
-    _validate_python_syntax,
 )
+from agent.self_validator import get_format_validator
 
 
 # ---------------------------------------------------------------------------
@@ -51,22 +49,31 @@ def pipeline(tmp_hermes_home):
 
 class TestFormatValidators:
     def test_valid_yaml(self):
-        assert _validate_yaml("key: value\nlist:\n  - a\n  - b\n")
+        r = get_format_validator().verify_format('/tmp/config.yaml', 'key: value\nlist:\n  - a\n  - b\n')
+        assert r.ok
 
     def test_invalid_yaml(self):
-        assert not _validate_yaml("key: value: extra: colon\n  - broken")
+        r = get_format_validator().verify_format('/tmp/bad.yaml', 'key: value: extra: colon\n  - broken')
+        assert not r.ok
+        assert 'YAML' in r.message
 
     def test_valid_json(self):
-        assert _validate_json('{"key": "value", "num": 42}')
+        r = get_format_validator().verify_format('/tmp/data.json', '{"key": "value", "num": 42}')
+        assert r.ok
 
     def test_invalid_json(self):
-        assert not _validate_json('{key: "missing quotes"}')
+        r = get_format_validator().verify_format('/tmp/bad.json', '{key: "missing quotes"}')
+        assert not r.ok
+        assert 'JSON' in r.message
 
     def test_valid_python(self):
-        assert _validate_python_syntax("x = 1\nprint(x)\n")
+        r = get_format_validator().verify_format('/tmp/script.py', 'x = 1\nprint(x)\n')
+        assert r.ok
 
     def test_invalid_python(self):
-        assert not _validate_python_syntax("def broken(\n")
+        r = get_format_validator().verify_format('/tmp/bad.py', 'def broken(\n')
+        assert not r.ok
+        assert 'Python' in r.message
 
     def test_file_format_yaml(self, tmp_path):
         ok, err = _validate_file_format(str(tmp_path / "config.yaml"), "key: value")
@@ -392,3 +399,163 @@ class TestEdgeCases:
         assert target.exists()
         # But raw_event_id is None
         assert result.raw_event_id is None
+
+
+# ---------------------------------------------------------------------------
+# Hermes audit fixes: initiator, backup cleanup, self_validator integration
+# ---------------------------------------------------------------------------
+
+class TestInitiatorField:
+    """Tests for the initiator field (Hermes audit issue #1).
+
+    The initiator field distinguishes who triggered a change/rollback:
+    - 'agent': Agent decided on its own
+    - 'user':  User explicitly requested
+    - 'system': System event
+    """
+
+    @patch("agent.raw_event.record_raw_event")
+    def test_commit_records_initiator(self, mock_record, pipeline, tmp_path):
+        mock_record.return_value = 1
+        target = tmp_path / "test.yaml"
+
+        pipeline.apply_change(ChangeProposal(
+            source="skill_extractor",
+            target_path=str(target),
+            content="key: value\n",
+            initiator="user",
+        ))
+
+        call_args = mock_record.call_args
+        assert call_args[1]["tool_args"]["initiator"] == "user"
+
+    @patch("agent.raw_event.record_raw_event")
+    def test_default_initiator_is_agent(self, mock_record, pipeline, tmp_path):
+        mock_record.return_value = 1
+        target = tmp_path / "test.yaml"
+
+        pipeline.apply_change(ChangeProposal(
+            source="agent",
+            target_path=str(target),
+            content="key: value\n",
+        ))
+
+        call_args = mock_record.call_args
+        assert call_args[1]["tool_args"]["initiator"] == "agent"
+
+    @patch("agent.raw_event.record_raw_event")
+    def test_rollback_records_initiator(self, mock_record, pipeline, tmp_path):
+        mock_record.return_value = 1
+        target = tmp_path / "test.yaml"
+        target.write_text("content\n")
+
+        pipeline.rollback_change(str(target), initiator="user")
+
+        call_args = mock_record.call_args
+        assert call_args[1]["tool_args"]["initiator"] == "user"
+
+
+class TestBackupCleanup:
+    """Tests for backup cleanup (Hermes audit issue #3).
+
+    MAX_BACKUPS_PER_FILE = 5 ensures old backups are pruned.
+    """
+
+    def test_old_backups_cleaned(self, pipeline, tmp_path):
+        target = tmp_path / "config.yaml"
+        target.write_text("v0\n")
+
+        # Apply 7 changes → should keep only MAX_BACKUPS_PER_FILE (5)
+        for i in range(7):
+            pipeline.apply_change(ChangeProposal(
+                source="agent",
+                target_path=str(target),
+                content=f"v{i + 1}\n",
+                description=f"version {i}",
+            ))
+
+        backups = list(tmp_path.glob("config.yaml.bak.*"))
+        assert len(backups) == pipeline.MAX_BACKUPS_PER_FILE
+
+    def test_no_backups_for_new_file(self, pipeline, tmp_path):
+        target = tmp_path / "new.yaml"
+        pipeline.apply_change(ChangeProposal(
+            source="agent",
+            target_path=str(target),
+            content="key: value\n",
+        ))
+
+        backups = list(tmp_path.glob("new.yaml.bak.*"))
+        assert len(backups) == 0
+
+    def test_backup_count_caps_at_limit(self, pipeline, tmp_path):
+        target = tmp_path / "data.json"
+        target.write_text('{"v": 0}')
+
+        # Apply 3 changes → 3 backups (under limit)
+        for i in range(3):
+            pipeline.apply_change(ChangeProposal(
+                source="agent",
+                target_path=str(target),
+                content=('{"v": %d}' % (i + 1)),
+            ))
+
+        backups = list(tmp_path.glob("data.json.bak.*"))
+        assert len(backups) == 3
+
+        # Apply 3 more → total 6, should cap at 5
+        for i in range(3, 6):
+            pipeline.apply_change(ChangeProposal(
+                source="agent",
+                target_path=str(target),
+                content=('{"v": %d}' % (i + 1)),
+            ))
+
+        backups = list(tmp_path.glob("data.json.bak.*"))
+        assert len(backups) == pipeline.MAX_BACKUPS_PER_FILE
+
+
+class TestSelfValidatorIntegration:
+    """Tests that emergent_change delegates to self_validator (Hermes audit issue #2).
+
+    _validate_file_format should call self_validator.get_format_validator(),
+    not be an independent inline implementation.
+    """
+
+    def test_validate_delegates_to_self_validator(self):
+        from agent.self_validator import get_format_validator, FileFormatStrategy
+
+        # _validate_file_format should produce same result as direct validator call
+        ok1, err1 = _validate_file_format("/tmp/test.py", "x = 1\n")
+        result2 = get_format_validator().verify_format("/tmp/test.py", "x = 1\n")
+        assert ok1 == result2.ok
+
+    def test_validate_catches_python_syntax_error(self):
+        ok, err = _validate_file_format("/tmp/broken.py", "def )\n")
+        assert not ok
+        assert "Python" in err or "syntax" in err.lower()
+
+    def test_validate_catches_invalid_json(self):
+        ok, err = _validate_file_format("/tmp/bad.json", "{invalid}")
+        assert not ok
+        assert "JSON" in err
+
+    def test_validate_catches_invalid_yaml(self):
+        ok, err = _validate_file_format("/tmp/bad.yaml", "key: [unterminated")
+        assert not ok
+        assert "YAML" in err
+
+    def test_result_includes_backup_path(self, pipeline, tmp_path):
+        """ChangeResult should include backup_path for traceability."""
+        target = tmp_path / "config.yaml"
+        target.write_text("old: true\n")
+
+        result = pipeline.apply_change(ChangeProposal(
+            source="agent",
+            target_path=str(target),
+            content="new: true\n",
+        ))
+
+        assert result.committed
+        assert result.backup_path is not None
+        assert os.path.exists(result.backup_path)

@@ -528,6 +528,100 @@ class ImageGenStrategy:
         )
 
 
+class FileFormatStrategy:
+    """Pre-commit format validation for self-modification files.
+
+    This is a PRE-commit check (before the file is written), unlike
+    other strategies which are POST-commit (after tool execution).
+    Used by EmergentChangePipeline to validate proposed content.
+    """
+
+    name = "file_format_verify"
+
+    # Extension → validator mapping (no hardcoded risk, just format)
+    _EXT_VALIDATORS: dict[str, str] = {
+        ".py": "python",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".json": "json",
+    }
+
+    def verify_format(self, target_path: str, content: str) -> VerifyResult:
+        """Validate content format based on file extension.
+
+        Objective check: "is this valid YAML/JSON/Python?"
+        NOT a risk assessment.
+        """
+        ext = os.path.splitext(target_path)[1].lower()
+        validator = self._EXT_VALIDATORS.get(ext)
+
+        if validator is None:
+            return VerifyResult(
+                ok=True,
+                tool_name="self_modify",
+                strategy_name=self.name,
+                message=f"no format validator for {ext}, skip",
+                severity="info",
+            )
+
+        if validator == "python":
+            try:
+                import ast
+                ast.parse(content)
+            except SyntaxError as e:
+                return VerifyResult(
+                    ok=False,
+                    tool_name="self_modify",
+                    strategy_name=self.name,
+                    message=f"Python syntax error: {e.msg} (line {e.lineno})",
+                    severity="error",
+                    extra={"line": e.lineno},
+                )
+        elif validator == "yaml":
+            try:
+                import yaml
+                yaml.safe_load(content)
+            except Exception as e:
+                return VerifyResult(
+                    ok=False,
+                    tool_name="self_modify",
+                    strategy_name=self.name,
+                    message=f"YAML parse error: {e}",
+                    severity="error",
+                )
+        elif validator == "json":
+            try:
+                json.loads(content)
+            except Exception as e:
+                return VerifyResult(
+                    ok=False,
+                    tool_name="self_modify",
+                    strategy_name=self.name,
+                    message=f"JSON parse error: {e}",
+                    severity="error",
+                )
+
+        return VerifyResult(
+            ok=True,
+            tool_name="self_modify",
+            strategy_name=self.name,
+            message=f"format OK ({ext})",
+            severity="info",
+        )
+
+
+# Module-level format validator singleton
+_format_validator: FileFormatStrategy | None = None
+
+
+def get_format_validator() -> FileFormatStrategy:
+    """Return the singleton format validator."""
+    global _format_validator
+    if _format_validator is None:
+        _format_validator = FileFormatStrategy()
+    return _format_validator
+
+
 class DefaultStrategy:
     """Fallback strategy for tools without a specific verifier."""
 
