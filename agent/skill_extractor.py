@@ -360,7 +360,11 @@ class SkillExtractor:
             return False
 
     def reject_skill(self, skill_id: int) -> bool:
-        """User rejects a pending skill."""
+        """User rejects a pending skill.
+
+        Records a raw_event so the system learns the user declined
+        this pattern — prevents re-proposing the same skill.
+        """
         try:
             conn = sqlite3.connect(self.db_path)
             conn.execute("PRAGMA journal_mode=WAL")
@@ -371,6 +375,20 @@ class SkillExtractor:
             )
             conn.commit()
             conn.close()
+
+            # Record rejection as raw_event for future reference
+            try:
+                from agent.raw_event import record_raw_event
+                record_raw_event(
+                    tool_name="skill_extractor",
+                    tool_args={"action": "reject", "skill_id": skill_id},
+                    result="user_declined",
+                    is_error=False,
+                    duration=0.0,
+                )
+            except Exception:
+                pass
+
             return True
         except Exception:
             return False
@@ -392,13 +410,29 @@ class SkillExtractor:
 
         This is surfaced to the Agent so it can ask the user:
         'I noticed you keep doing X, want me to save it as a skill?'
+
+        The Agent should:
+        1. Naturally mention the observed pattern in conversation
+        2. Ask if the user wants to save it as a skill
+        3. On user 'yes' → call confirm_skill(db_path, skill_id)
+        4. On user 'no' → call reject_skill(db_path, skill_id)
+        5. Only propose ONCE per skill — don't repeat if user declined
         """
         skills = self.list_skills(status="pending")
         if not skills:
             return ""
 
         lines = ["<pending_skills>"]
-        lines.append("从用户行为中涌现的技能候选，等待用户确认：")
+        lines.append("从用户行为中涌现的技能候选，等待用户确认。")
+        lines.append("")
+        lines.append("行为规则：")
+        lines.append("- 在回复中自然地提及观察到的模式（不要生硬地列出）")
+        lines.append("- 询问用户是否要保存为技能")
+        lines.append("- 用户确认 → 调用 confirm_skill(db_path, skill_id)")
+        lines.append("- 用户拒绝 → 调用 reject_skill(db_path, skill_id)")
+        lines.append("- 每个技能只提议一次，不要重复提议")
+        lines.append("")
+        lines.append("候选技能：")
         for s in skills:
             lines.append(f"  🔍 [{s.id}] {s.name}: {s.description} ({s.usage_count}x)")
         lines.append("</pending_skills>")
