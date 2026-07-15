@@ -30,6 +30,12 @@ from typing import Any, Dict, List, Optional
 from agent.anthropic_adapter import _is_oauth_token
 from agent.auxiliary_client import set_runtime_main
 from agent.codex_responses_adapter import _summarize_user_message_for_log
+from agent.compression_scheduler import (
+    CompressionScheduler,
+    TurnMetrics,
+    resolve_cache_window,
+    strip_stale_tool_results,
+)
 from agent.display import KawaiiSpinner
 from agent.error_classifier import FailoverReason, classify_api_error
 from agent.iteration_budget import IterationBudget
@@ -557,6 +563,14 @@ def run_conversation(
 
     active_system_prompt = agent._cached_system_prompt
 
+    # ── Initialize compression scheduler (one per session) ──
+    if not hasattr(agent, '_compression_scheduler'):
+        _cw = resolve_cache_window(getattr(agent, 'provider', '') or '')
+        agent._compression_scheduler = CompressionScheduler(cache_window_turns=_cw)
+        logger.info("Compression scheduler initialized: provider=%s cache_window=%d",
+                    getattr(agent, 'provider', 'unknown'), _cw)
+    _scheduler = agent._compression_scheduler
+
     # ── Preflight context compression ──
     # Before entering the main loop, check if the loaded conversation
     # history already exceeds the model's context threshold.  This handles
@@ -635,6 +649,63 @@ def run_conversation(
                     )
                     if _preflight_tokens < agent.context_compressor.threshold_tokens:
                         break  # Under threshold
+
+    # ── Scheduler-driven proactive compression ──
+    # The preflight block above handles the "session load exceeds threshold"
+    # case.  The scheduler adds proactive compression based on turn number,
+    # cache window, richness, and decision-point tool cleanup.
+    if agent.compression_enabled:
+        _sched_tokens = estimate_request_tokens_rough(
+            messages,
+            system_prompt=active_system_prompt or "",
+            tools=agent.tools or None,
+        )
+        try:
+            from agent.memory_recall import compute_richness
+            _richness = compute_richness()
+        except Exception:
+            _richness = None
+
+        _tools_changed = (
+            hasattr(agent, '_last_turn_tool_names')
+            and agent._last_turn_tool_names != agent._current_turn_tool_names
+        ) if hasattr(agent, '_last_turn_tool_names') else False
+
+        _sched_decision = _scheduler.evaluate(
+            _richness,
+            approx_tokens=_sched_tokens,
+            context_length=agent.context_compressor.context_length,
+            tools_changed=_tools_changed,
+        )
+
+        if _sched_decision.mode == "incremental":
+            # Zero-LLM-cost cleanup: strip stale tool results
+            _before_len = len(messages)
+            messages, _stripped = strip_stale_tool_results(messages)
+            if _stripped > 0:
+                logger.info("Scheduler incremental cleanup: stripped %d tool results (%d→%d messages)",
+                            _stripped, _before_len, len(messages))
+                conversation_history = None
+
+        elif _sched_decision.should_compress:
+            logger.info("Scheduler proactive compression: mode=%s tokens=~%s reason=%s",
+                        _sched_decision.mode, f"{_sched_tokens:,}", _sched_decision.reason)
+            agent._emit_status(
+                f"📦 Proactive compression ({_sched_decision.mode}): ~{_sched_tokens:,} tokens. "
+                "This may take a moment."
+            )
+            _orig_len = len(messages)
+            messages, active_system_prompt = agent._compress_context(
+                messages, system_message, approx_tokens=_sched_tokens,
+                task_id=effective_task_id,
+            )
+            if len(messages) < _orig_len:
+                conversation_history = None
+                agent._empty_content_retries = 0
+                agent._thinking_prefill_retries = 0
+                _scheduler.record_compression()
+                logger.info("Scheduler compression complete: %d→%d messages",
+                            _orig_len, len(messages))
 
     # Plugin hook: pre_llm_call
     # Fired once per turn before the tool-calling loop.  Plugins can
@@ -4288,6 +4359,27 @@ def run_conversation(
         )
     else:
         logger.info(_diag_msg, *_diag_args)
+
+    # ── Record turn metrics for compression scheduler ──
+    try:
+        _api_latency = (time.time() - api_start_time) * 1000 if api_start_time else 0
+        _tool_names_this_turn = []
+        for m in messages:
+            if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls"):
+                for tc in (m.get("tool_calls") or []):
+                    _name = tc.get("function", {}).get("name")
+                    if _name:
+                        _tool_names_this_turn.append(_name)
+        _scheduler.record_turn(TurnMetrics(
+            turn_number=agent._user_turn_count,
+            api_latency_ms=_api_latency,
+            approx_tokens=approx_tokens if 'approx_tokens' in dir() else 0,
+            tool_calls_this_turn=len(_tool_names_this_turn),
+            tool_names_this_turn=_tool_names_this_turn,
+        ))
+        agent._last_turn_tool_names = _tool_names_this_turn
+    except Exception:
+        pass  # scheduler metrics are best-effort — never block turn completion
 
     # File-mutation verifier footer.
     # If one or more ``write_file`` / ``patch`` calls failed during this
