@@ -265,7 +265,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/dashboard/plugins",
     "/api/dashboard/plugins/rescan",
     "/api/dashboard/plugins/hub",
-    # Analytics (optional)
+    # Module system
+    "/api/modules",    # Analytics (optional)
     "/api/analytics/usage",
     "/api/analytics/models",
     # Vermes GUI 消息持久化
@@ -2711,14 +2712,20 @@ blueprints.status.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 
-# ── ScholarForge 论文写作模块（独立隔离，不影响原有链路） ──
+# ── 生态模块加载器（替代硬编码 ScholarForge 注册） ──
+# 必须在 mount_spa() 之前注册，否则 SPA catch-all 会拦截 /api/modules 路由
 try:
-    from hermes_cli.scholarforge import blueprint as scholarforge_bp
-
-    scholarforge_bp.register_to(app)
-    logger.info("[ScholarForge] Blueprint registered successfully")
+    from agent.module_loader import register_modules, register_module_api, HostAPI
+    _host_api = HostAPI()
+    _registered_modules = register_modules(app, _host_api)
+    register_module_api(app, _host_api)
+    if _registered_modules:
+        logger.info("[Modules] Loaded %d module(s): %s", len(_registered_modules), [m.name for m in _registered_modules])
+    else:
+        logger.info("[Modules] No modules installed")
 except Exception as e:
-    logger.warning(f"[ScholarForge] Blueprint registration skipped: {e}")
+    logger.warning("[Modules] Module loader failed: %s", e)
+    import traceback; traceback.print_exc()
 
 # ── /health 端点：Electron 后端就绪检测 ──
 @app.get("/health")

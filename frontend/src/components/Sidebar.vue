@@ -14,7 +14,56 @@ const router = useRouter()
 
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
-function goScholarForge() { router.push('/scholarforge') }
+
+// ── 生态模块动态加载 ──
+const installedModules = ref([])
+const moduleComponents = {}  // name → unmount function
+
+async function loadModules() {
+  try {
+    const res = await fetch('/api/modules')
+    const data = await res.json()
+    installedModules.value = (data.modules || []).map(m => ({
+      ...m,
+      route: m.frontend_route || `/${m.name}`,
+      icon: m.frontend_icon || '📦',
+      menu_title: m.frontend_menu_title || m.name,
+    }))
+  } catch (e) {
+    // 静默失败 — 模块系统可能未启用
+    installedModules.value = []
+  }
+}
+
+async function openModule(mod) {
+  // 动态加载模块前端 entry.js
+  if (!moduleComponents[mod.name]) {
+    try {
+      const jsUrl = `/api/modules/${mod.name}/frontend/${mod.frontend_entry || 'entry.js'}`
+      // 动态 import — 浏览器原生支持
+      const mod_export = await import(/* @vite-ignore */ jsUrl)
+      // 创建容器 DOM
+      const container = document.createElement('div')
+      container.id = `module-${mod.name}`
+      container.style.height = '100vh'
+      container.style.width = '100%'
+      // 调用 mount 函数挂载
+      const unmount = mod_export.mount(container) || mod_export.default?.mount?.(container)
+      if (unmount) moduleComponents[mod.name] = unmount
+      // 隐藏主界面，显示模块容器
+      const app = document.getElementById('app')
+      app.style.display = 'none'
+      document.body.appendChild(container)
+    } catch (e) {
+      toast.error(`模块加载失败: ${e.message}`)
+      return
+    }
+  }
+}
+
+onMounted(() => {
+  loadModules()
+})
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -455,10 +504,17 @@ async function handleImportFile(e) {
           <span class="text-base">🎨</span>
           <span class="sidebar-tooltip group-hover:opacity-100">创作工作室</span>
         </button>
-        <button @click="goScholarForge()" class="group relative px-3 py-2 rounded-lg text-sm transition flex flex-col items-center leading-tight" :class="$route.path === '/scholarforge' ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作 ScholarForge">
-          <span class="text-base">✍️</span>
-          <span class="text-[10px]">论文</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">论文写作</span>
+        <button
+          v-for="mod in installedModules"
+          :key="mod.name"
+          @click="openModule(mod)"
+          class="group relative px-3 py-2 rounded-lg text-sm transition flex flex-col items-center leading-tight"
+          :class="$route.path === mod.route ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'"
+          :title="mod.display_name"
+        >
+          <span class="text-base">{{ mod.icon }}</span>
+          <span class="text-[10px]">{{ mod.menu_title }}</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">{{ mod.display_name }}</span>
         </button>
         <button @click="goSettings()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
           <span class="text-base">⚙️</span>
