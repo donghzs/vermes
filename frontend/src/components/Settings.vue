@@ -27,6 +27,9 @@ const DEFAULT_BASE_URLS = {
   stepfun: 'https://api.stepfun.com/v1',
   yi: 'https://api.lingyiwanwu.com/v1',
   baichuan: 'https://api.baichuan-ai.com/v1',
+  zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+  hunyuan: 'https://api.hunyuan.cloud.tencent.com/v1',
+  moonshot: 'https://api.moonshot.cn/v1',
   groq: 'https://api.groq.com/openai/v1',
   together: 'https://api.together.xyz/v1',
   agnes: 'https://apihub.agnes-ai.com/v1',
@@ -35,7 +38,7 @@ const DEFAULT_BASE_URLS = {
 }
 
 const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama']
-const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan']
+const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan','zhipu','hunyuan','moonshot']
 const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
 
 // 推荐列表从后端配置派生，fallback 到硬编码（注意：必须是普通数组，不能是 computed ref，否则 .includes() 会报错）
@@ -50,6 +53,9 @@ const PROVIDER_EXTRAS = {
   agnes: { iconClass: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400', iconText: 'A', description: '全球前十 AI Lab，文本/图片/视频全模态免费', linkUrl: 'https://platform.agnes-ai.com/', linkText: '→ 去 Agnes AI 官网获取 Key ↗' },
   deepseek: { iconClass: 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400', iconText: 'D', description: '国产高性价比，注册即送额度', linkUrl: 'https://platform.deepseek.com/', linkText: '→ 去 DeepSeek 官网获取 Key ↗' },
   xiaomi: { iconClass: 'bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400', iconText: 'Mi', description: '国产高性价比，注册即送额度', linkUrl: 'https://platform.xiaomimimo.com?ref=KE64RG', linkText: '→ 去小米 MiMo 官网获取 Key ↗' },
+  zhipu: { iconClass: 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400', iconText: '智', description: 'GLM 系列大模型，注册送免费额度', linkUrl: 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys', linkText: '→ 去智谱开放平台获取 Key ↗' },
+  hunyuan: { iconClass: 'bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-400', iconText: '混', description: '腾讯全链路自研大模型，中文能力强', linkUrl: 'https://hunyuan.cloud.tencent.com/', linkText: '→ 去腾讯混元官网获取 Key ↗' },
+  moonshot: { iconClass: 'bg-violet-100 dark:bg-violet-900 text-violet-600 dark:text-violet-400', iconText: 'K', description: 'Kimi 长文本能力强，支持 20 万汉字', linkUrl: 'https://platform.moonshot.cn/', linkText: '→ 去 Moonshot 开放平台获取 Key ↗' },
   ollama: { iconClass: 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400', iconText: '💻', description: '完全免费，数据不离开你的电脑', hideKeyInput: true },
 }
 
@@ -69,6 +75,9 @@ const providers = ref([
   { id: 'stepfun', name: '阶跃星辰', key: '', baseUrl: DEFAULT_BASE_URLS.stepfun, models: [], syncing: false },
   { id: 'yi', name: '零一万物', key: '', baseUrl: DEFAULT_BASE_URLS.yi, models: [], syncing: false },
   { id: 'baichuan', name: '百川智能', key: '', baseUrl: DEFAULT_BASE_URLS.baichuan, models: [], syncing: false },
+  { id: 'zhipu', name: '智谱 GLM', key: '', baseUrl: DEFAULT_BASE_URLS.zhipu, models: [], syncing: false },
+  { id: 'hunyuan', name: '腾讯混元', key: '', baseUrl: DEFAULT_BASE_URLS.hunyuan, models: [], syncing: false },
+  { id: 'moonshot', name: 'Kimi (月之暗面)', key: '', baseUrl: DEFAULT_BASE_URLS.moonshot, models: [], syncing: false },
   { id: 'groq', name: 'Groq (极速推理)', key: '', baseUrl: DEFAULT_BASE_URLS.groq, models: [], syncing: false },
   { id: 'together', name: 'Together AI', key: '', baseUrl: DEFAULT_BASE_URLS.together, models: [], syncing: false },
   { id: 'anthropic', name: 'Anthropic Claude', key: '', baseUrl: DEFAULT_BASE_URLS.anthropic, models: [], syncing: false },

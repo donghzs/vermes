@@ -608,6 +608,7 @@ PROVIDER_CACHE_WINDOWS: Dict[str, int] = {
     "baichuan": 0,         # no documented prefix cache
     "minimax": 0,          # no documented prefix cache
     "moonshot": 3,         # Kimi API has context caching on some models
+    "hunyuan": 0,          # no documented prefix cache
     "yi": 0,               # no documented prefix cache
     "siliconflow": 0,      # aggregator — depends on underlying provider
 }

@@ -118,6 +118,18 @@ PROVIDER_TEMPLATES = {
         "api_key_env": "BAICHUAN_API_KEY",
         "models": [],
     },
+    "hunyuan": {
+        "name": "腾讯混元",
+        "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+        "api_key_env": "HUNYUAN_API_KEY",
+        "models": [],
+    },
+    "moonshot": {
+        "name": "Kimi (月之暗面)",
+        "base_url": "https://api.moonshot.cn/v1",
+        "api_key_env": "MOONSHOT_API_KEY",
+        "models": [],
+    },
     "groq": {
         "name": "Groq (极速推理)",
         "base_url": "https://api.groq.com/openai/v1",

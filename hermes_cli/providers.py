@@ -185,6 +185,12 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
         transport="openai_chat",
         base_url_env_var="TOKENHUB_BASE_URL",
     ),
+    "hunyuan": HermesOverlay(
+        transport="openai_chat",
+        extra_env_vars=("HUNYUAN_API_KEY",),
+        base_url_override="https://api.hunyuan.cloud.tencent.com/v1",
+        base_url_env_var="HUNYUAN_BASE_URL",
+    ),
     "arcee": HermesOverlay(
         transport="openai_chat",
         base_url_override="https://api.arcee.ai/api/v1",
@@ -377,6 +383,9 @@ _LABEL_OVERRIDES: Dict[str, str] = {
     "xiaomi": "Xiaomi MiMo",
     "gmi": "GMI Cloud",
     "tencent-tokenhub": "Tencent TokenHub",
+    "hunyuan": "腾讯混元",
+    "zai": "智谱 GLM",
+    "kimi-for-coding": "Kimi (月之暗面)",
     "lmstudio": "LM Studio",
     "local": "Local endpoint",
     "bedrock": "AWS Bedrock",
