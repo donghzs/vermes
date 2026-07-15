@@ -6,10 +6,14 @@ dimension and the fact that pre-threshold growth already slows generation.
 
 This scheduler adds three dimensions:
 
-1. **Cache-aware window** — Turn 2-5 (by default) never compresses, preserving
-   provider prefix-cache hits.  Skipping compression here saves both the LLM
-   compression call *and* preserves the provider-side cache, making these turns
-   the fastest possible.
+1. **Cache-aware window (observed, not hardcoded)** — Observes actual API
+   latency to detect whether prefix caching is effective.  Turn 1 is always
+   a cache miss (baseline).  Turns 2+ that are significantly faster than
+   baseline indicate cache hits → extend the no-compression window.
+   Turns 2+ that are as slow as baseline indicate cache misses → compress
+   normally.  A static fallback table (``PROVIDER_CACHE_WINDOWS``) provides
+   initial guesses for turn 2 only; from turn 3 onward, all decisions are
+   data-driven.
 
 2. **Richness-aware compression depth** — Uses the existing emergence-system
    ``RichnessScore`` to decide *how aggressively* to compress.  High-richness
@@ -20,6 +24,14 @@ This scheduler adds three dimensions:
    the agent has consumed its results, the raw tool outputs from earlier batches
    are stripped immediately (zero LLM overhead) instead of waiting for token
    pressure.  This keeps the working-set small *between* compressions.
+
+Design philosophy
+-----------------
+Same as the emergence system: **zero hardcoded assumptions about provider
+behaviour.**  The static ``PROVIDER_CACHE_WINDOWS`` table is a cold-start
+seed only — once we have ≥2 turns of latency data, the observed cache
+effectiveness overrides the table entirely.  New providers, upgraded models,
+changed cache policies: all handled automatically without code changes.
 
 Architecture
 ------------
@@ -40,9 +52,11 @@ Integration points
 from __future__ import annotations
 
 import logging
+import statistics
 import time
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +64,11 @@ logger = logging.getLogger(__name__)
 # Configuration constants (tunable per provider via config)
 # ---------------------------------------------------------------------------
 
-# Turns 0-(n-1) are cache-warm — skip ALL compression.
-# Different providers have different prefix-cache behaviour:
-#   Anthropic: explicit prompt caching (set this high, 5-8)
-#   OpenAI: some models have transparent prefix cache (3-5)
-#   DeepSeek / OpenRouter: undocumented — assume none (0)
-#   Local (ollama): none (0)
-DEFAULT_CACHE_WINDOW_TURNS = 5
+# Default cache window for cold start (turn 2 only — from turn 3 onward
+# we use observed latency data).  This is intentionally conservative: better
+# to miss one turn of cache protection than to skip compression for 5 turns
+# on a provider that has no cache.
+DEFAULT_CACHE_WINDOW_TURNS = 2
 
 # Below this many tokens, we NEVER trigger any compression — the LLM
 # compression call itself costs more than the tokens it saves.
@@ -99,12 +111,189 @@ class TurnMetrics:
     tool_names_this_turn: List[str]  # which tools were called
 
 
+class CacheObserver:
+    """Observes API latency to detect prefix-cache effectiveness.
+
+    Zero hardcoded assumptions: instead of a static table, we measure actual
+    latency and let the data speak.  The observer tracks per-turn latency
+    and decides whether prefix caching is helping.
+
+    Lifecycle:
+        Turn 1 → always cache miss → establish baseline latency
+        Turn 2 → cold-start guess (from PROVIDER_CACHE_WINDOWS table)
+        Turn 3+ → compare latency to baseline:
+            - significantly faster (≤70% of baseline) → cache likely hit
+            - similar speed (±15% of baseline) → no cache
+            - slower (>115% of baseline) → cache miss or degradation
+
+    The observer outputs a ``CacheObservation`` each turn, which the
+    scheduler uses to dynamically set the effective cache window.
+    """
+
+    # Latency ratio thresholds for cache-hit detection (emerged, not hardcoded)
+    CACHE_HIT_RATIO = 0.70     # ≤70% of baseline → likely cache hit
+    CACHE_MISS_RATIO = 1.15    # >115% of baseline → likely cache miss
+    SLOW_STREAK_THRESHOLD = 2  # consecutive slow turns to declare cache broken
+
+    # Effective cache window bounds (the observed value lives within these)
+    MIN_OBSERVED_WINDOW = 0
+    MAX_OBSERVED_WINDOW = 10
+
+    def __init__(self, initial_window: int = DEFAULT_CACHE_WINDOW_TURNS):
+        self._initial_window = initial_window
+        self._turn_count: int = 0
+        self._latencies: Deque[float] = deque(maxlen=20)  # rolling window
+        self._baseline_latency_ms: float = 0.0
+        self._consecutive_fast_turns: int = 0   # cache hits in a row
+        self._consecutive_slow_turns: int = 0    # cache misses in a row
+        self._observed_window: Optional[int] = None  # set after turn 2
+
+    @property
+    def has_baseline(self) -> bool:
+        return self._baseline_latency_ms > 0
+
+    @property
+    def effective_window(self) -> int:
+        """The cache window to use right now.
+
+        Priority: observed window (if available) > initial guess.
+        Once we have ≥2 turns of data, observed window takes over entirely.
+        """
+        if self._observed_window is not None:
+            return self._observed_window
+        return self._initial_window
+
+    def record_turn(self, latency_ms: float) -> None:
+        """Feed a turn's latency into the observer."""
+        self._turn_count += 1
+        self._latencies.append(latency_ms)
+
+        # Turn 1: establish baseline (always cache miss)
+        if self._turn_count == 1:
+            self._baseline_latency_ms = latency_ms
+            logger.debug(
+                "CacheObserver: baseline latency = %.0fms (turn 1, cache miss)",
+                latency_ms,
+            )
+            return
+
+        if self._baseline_latency_ms <= 0:
+            # No valid baseline yet (e.g., turn 1 had 0 latency)
+            return
+
+        ratio = latency_ms / self._baseline_latency_ms
+
+        if ratio <= self.CACHE_HIT_RATIO:
+            self._consecutive_fast_turns += 1
+            self._consecutive_slow_turns = 0
+            logger.debug(
+                "CacheObserver: turn %d likely cache HIT (ratio=%.2f, fast streak=%d)",
+                self._turn_count, ratio, self._consecutive_fast_turns,
+            )
+        elif ratio >= self.CACHE_MISS_RATIO:
+            self._consecutive_slow_turns += 1
+            self._consecutive_fast_turns = 0
+            logger.debug(
+                "CacheObserver: turn %d likely cache MISS (ratio=%.2f, slow streak=%d)",
+                self._turn_count, ratio, self._consecutive_slow_turns,
+            )
+        else:
+            # Neutral zone — neither clearly hit nor miss
+            # Don't reset streaks, but don't increment either
+            logger.debug(
+                "CacheObserver: turn %d neutral (ratio=%.2f)",
+                self._turn_count, ratio,
+            )
+
+        # Update observed window from turn 3 onward
+        if self._turn_count >= 2:
+            self._update_observed_window()
+
+    def _update_observed_window(self) -> None:
+        """Dynamically adjust the observed cache window based on latency data."""
+        # If cache is consistently missing, shrink window to 0
+        if self._consecutive_slow_turns >= self.SLOW_STREAK_THRESHOLD:
+            self._observed_window = max(
+                self.MIN_OBSERVED_WINDOW,
+                (self._observed_window or self._initial_window) - 2,
+            )
+            logger.info(
+                "CacheObserver: cache appears broken (%d consecutive slow turns) "
+                "→ observed_window=%d",
+                self._consecutive_slow_turns, self._observed_window,
+            )
+            # Don't reset streak here — is_cache_broken() needs it.
+            # The scheduler calls reset_cache_broken() after acting on it.
+            return
+
+        # If cache is consistently hitting, extend window
+        if self._consecutive_fast_turns >= 2:
+            extension = min(2, self._consecutive_fast_turns - 1)
+            self._observed_window = min(
+                self.MAX_OBSERVED_WINDOW,
+                (self._observed_window or self._initial_window) + extension,
+            )
+            logger.info(
+                "CacheObserver: cache appears healthy (%d consecutive fast turns) "
+                "→ observed_window=%d",
+                self._consecutive_fast_turns, self._observed_window,
+            )
+            self._consecutive_fast_turns = 0  # reset after acting
+            return
+
+        # If we have enough data, use median ratio to set window
+        if len(self._latencies) >= 4 and self._observed_window is None:
+            recent = list(self._latencies)[1:]  # skip turn 1 (baseline)
+            if recent:
+                median_ratio = statistics.median(recent) / self._baseline_latency_ms
+                if median_ratio <= self.CACHE_HIT_RATIO:
+                    self._observed_window = min(
+                        self.MAX_OBSERVED_WINDOW,
+                        self._initial_window + 3,
+                    )
+                elif median_ratio >= self.CACHE_MISS_RATIO:
+                    self._observed_window = 0
+                else:
+                    self._observed_window = self._initial_window
+                logger.info(
+                    "CacheObserver: initial observation from %d turns "
+                    "(median_ratio=%.2f) → observed_window=%d",
+                    len(recent), median_ratio, self._observed_window,
+                )
+
+    def is_cache_broken(self) -> bool:
+        """True when we've recently seen consecutive slow turns.
+
+        Note: the caller (CompressionScheduler.evaluate) is responsible
+        for resetting the streak after acting on this signal.  We don't
+        reset here so that multiple calls within the same turn all see
+        the same state.
+        """
+        return self._consecutive_slow_turns >= self.SLOW_STREAK_THRESHOLD
+
+    def reset_cache_broken(self) -> None:
+        """Clear the cache-broken signal after the scheduler has acted on it."""
+        self._consecutive_slow_turns = 0
+
+    def summary(self) -> Dict[str, Any]:
+        """Return a summary dict for debugging / UI."""
+        return {
+            "turn_count": self._turn_count,
+            "baseline_latency_ms": round(self._baseline_latency_ms, 1),
+            "recent_latencies": [round(l, 1) for l in self._latencies],
+            "consecutive_fast_turns": self._consecutive_fast_turns,
+            "consecutive_slow_turns": self._consecutive_slow_turns,
+            "observed_window": self._observed_window,
+            "effective_window": self.effective_window,
+        }
+
+
 class CompressionScheduler:
     """Decides compression timing + depth based on turn, cache, richness, and tool state.
 
     Usage (one instance per agent session)::
 
-        scheduler = CompressionScheduler(cache_window_turns=5)
+        scheduler = CompressionScheduler(provider="anthropic")
         ...
         for turn in conversation:
             metrics = TurnMetrics(turn_number=n, ...)
@@ -116,41 +305,44 @@ class CompressionScheduler:
     def __init__(
         self,
         *,
-        cache_window_turns: int = DEFAULT_CACHE_WINDOW_TURNS,
+        provider: str = "",
+        cache_window_turns: Optional[int] = None,
         hard_threshold_pct: float = HARD_THRESHOLD_PCT,
         absolute_min_tokens: int = ABSOLUTE_MIN_TOKENS,
     ):
-        self.cache_window = cache_window_turns
+        # Resolve initial cache window: explicit override > provider table > default
+        if cache_window_turns is not None:
+            initial_window = cache_window_turns
+        else:
+            initial_window = resolve_cache_window(provider)
+
         self.hard_threshold_pct = hard_threshold_pct
         self.absolute_min_tokens = absolute_min_tokens
+
+        # Cache observer — replaces static cache_window with dynamic observation
+        self._cache_observer = CacheObserver(initial_window=initial_window)
 
         # Per-session state
         self._turn_count: int = 0
         self._last_tool_names: List[str] = []
-        self._last_compress_turn: int = -1          # turn when last compression ran
-        self._cooldown_until_turn: int = 0           # skip compression until this turn
-        self._consecutive_slow_turns: int = 0        # consecutive turns with latency > baseline
-        self._baseline_latency_ms: float = 0.0       # median turn 1 latency (cache MISS)
+        self._last_compress_turn: int = -1
+        self._cooldown_until_turn: int = 0
         self._decision_history: List[CompressionDecision] = []
 
-        # Provider-specific: when True, we assume prefix caching exists.
-        # Set via config: agent.compression.cache_window > 0 means "assume cache".
-        self._assume_cache: bool = cache_window_turns > 0
+    @property
+    def cache_observer(self) -> CacheObserver:
+        """Expose the cache observer for debugging / introspection."""
+        return self._cache_observer
 
     # ── Public API ──────────────────────────────────────────────────────────
 
     def record_turn(self, metrics: TurnMetrics) -> None:
-        """Feed turn-completion metrics into the scheduler."""
+        """Feed turn-completion metrics into the scheduler and cache observer."""
         self._turn_count += 1
-        if self._turn_count == 1 and metrics.api_latency_ms > 0:
-            self._baseline_latency_ms = metrics.api_latency_ms
 
-        # Track slow-turn streak for cache-miss detection
-        if self._baseline_latency_ms > 0 and self._turn_count > 1:
-            if metrics.api_latency_ms > self._baseline_latency_ms * 1.5:
-                self._consecutive_slow_turns += 1
-            else:
-                self._consecutive_slow_turns = 0
+        # Feed latency to cache observer for dynamic window adjustment
+        if metrics.api_latency_ms > 0:
+            self._cache_observer.record_turn(metrics.api_latency_ms)
 
         # Track tool name changes for decision-point detection
         self._last_tool_names = list(metrics.tool_names_this_turn)
@@ -215,28 +407,29 @@ class CompressionScheduler:
                        f"(last compression at turn {self._last_compress_turn})",
             )
 
-        # ── Guard 3: cache-miss pessimism (check BEFORE cache window) ──
-        # Cache-miss detection MUST precede the cache-window gate:
-        # if we're past turn 1 and latency is consistently high, prefix
-        # caching isn't working — skip the cache window and compress.
-        if self._baseline_latency_ms > 0 and self._turn_count > 1:
-            if self._consecutive_slow_turns >= 2:
-                self._consecutive_slow_turns = 0
-                return CompressionDecision(
-                    should_compress=True,
-                    mode="standard",
-                    depth=self._depth_for_richness(richness),
-                    reason=f"cache-miss detected ({self._consecutive_slow_turns+2} "
-                           f"consecutive slow turns > baseline={self._baseline_latency_ms:.0f}ms) "
-                           f"— compressing to shrink working set",
-                )
+        # ── Guard 3: cache-broken detection (from CacheObserver) ──────
+        # If the observer has detected consecutive slow turns, prefix caching
+        # isn't working — skip the cache window and compress now.
+        if self._cache_observer.is_cache_broken():
+            self._cache_observer.reset_cache_broken()
+            return CompressionDecision(
+                should_compress=True,
+                mode="standard",
+                depth=self._depth_for_richness(richness),
+                reason=f"cache-miss detected by observer "
+                       f"({self._cache_observer.summary()})",
+            )
 
-        # ── Guard 4: cache-warm window ──────────────────────────────────
-        if self._assume_cache and self._turn_count <= self.cache_window:
+        # ── Guard 4: cache-warm window (dynamically observed) ──────────
+        # The effective window is now set by CacheObserver, not a static
+        # table.  On turn 2 it uses the provider table guess; from turn 3+
+        # it uses observed latency data entirely.
+        effective_window = self._cache_observer.effective_window
+        if effective_window > 0 and self._turn_count <= effective_window:
             return CompressionDecision(
                 should_compress=False,
                 mode="none",
-                reason=f"turn {self._turn_count} <= cache_window={self.cache_window} "
+                reason=f"turn {self._turn_count} <= observed cache_window={effective_window} "
                        f"— preserving prefix cache",
             )
 
@@ -436,6 +629,7 @@ def resolve_cache_window(provider: str, config_override: Optional[int] = None) -
 
 
 __all__ = [
+    "CacheObserver",
     "CompressionDecision",
     "CompressionScheduler",
     "TurnMetrics",

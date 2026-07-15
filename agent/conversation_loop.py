@@ -565,10 +565,10 @@ def run_conversation(
 
     # ── Initialize compression scheduler (one per session) ──
     if not hasattr(agent, '_compression_scheduler'):
-        _cw = resolve_cache_window(getattr(agent, 'provider', '') or '')
-        agent._compression_scheduler = CompressionScheduler(cache_window_turns=_cw)
-        logger.info("Compression scheduler initialized: provider=%s cache_window=%d",
-                    getattr(agent, 'provider', 'unknown'), _cw)
+        _provider = getattr(agent, 'provider', '') or ''
+        agent._compression_scheduler = CompressionScheduler(provider=_provider)
+        logger.info("Compression scheduler initialized: provider=%s (cache window will be observed dynamically)",
+                    _provider or 'unknown')
     _scheduler = agent._compression_scheduler
 
     # ── Preflight context compression ──
