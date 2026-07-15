@@ -316,9 +316,13 @@ def test_strip_stale_tool_results_preserves_non_tool():
 
 def test_resolve_cache_window_known_providers():
     assert resolve_cache_window("anthropic") == 8
-    assert resolve_cache_window("openai") == 4
-    assert resolve_cache_window("deepseek") == 0
+    assert resolve_cache_window("openai") == 5
+    assert resolve_cache_window("deepseek") == 5  # KV cache, 98% hit rate
+    assert resolve_cache_window("mistral") == 0   # no public cache API
+    assert resolve_cache_window("groq") == 0       # no documented cache
     assert resolve_cache_window("ollama") == 0
+    assert resolve_cache_window("moonshot") == 3   # Kimi context caching
+    assert resolve_cache_window("xai") == 3         # Grok Build prompt caching
 
 
 def test_resolve_cache_window_substring_match():

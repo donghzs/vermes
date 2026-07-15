@@ -370,19 +370,53 @@ def strip_stale_tool_results(
 # ---------------------------------------------------------------------------
 
 # Known provider prefix-cache characteristics (empirical, as of 2026-07).
-# Values are recommended ``cache_window_turns`` — set 0 when cache is
-# unreliable or non-existent.
+#
+# What the number means: N = "don't compress for the first N turns",
+# betting that the provider has prefix cache and turns 2..N will get
+# cache hits on the overlapping prefix from turn 1.
+#
+#   0  = no cache or undocumented → evaluate compression from turn 2
+#   3  = modest/implicit cache → protect early turns, but don't over-bet
+#   5+ = strong, well-documented cache → protect more turns
+#
+# Sources:
+#   Anthropic: explicit prompt caching via cache_control, 90% cost reduction
+#       https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+#   OpenAI: automatic prefix caching on most models (no opt-in needed)
+#       50% discount on cached input tokens
+#   Google Gemini: implicit caching on Gemini 2.5 Pro/Flash (auto-detected)
+#       up to 75% cost reduction; also explicit context caching API
+#       https://ai.google.dev/gemini-api/docs/caching
+#   DeepSeek: KV cache with 98% hit rate reported; cached tokens billed at 0.1x
+#       hardcoded_cache_tokens in API response confirms cache hits
+#       https://api-docs.deepseek.com/guides/kv_cache
+#   xAI: Grok Build 0.1 supports prompt caching (cached read $0.20/M)
+#       https://docs.x.ai/docs/models
+#   Mistral: no public prompt caching API documented as of 2026-07
+#   Groq: no documented prefix cache; ultra-low latency anyway
+#   OpenRouter: opaque proxy — cache depends on underlying provider,
+#       but can't be reliably assumed
+#   Ollama / local: no remote cache; vLLM --enable-prefix-caching is
+#       possible but can't be assumed
 PROVIDER_CACHE_WINDOWS: Dict[str, int] = {
-    "anthropic": 8,        # explicit prompt caching, well-documented
-    "openai": 4,           # transparent prefix cache on some models
-    "google": 3,           # context caching, must be explicitly created
-    "openrouter": 0,        # opaque proxy — assume no cache
-    "groq": 0,             # fast but no documented prefix cache
-    "deepseek": 0,         # no documented prefix cache
-    "mistral": 0,          # no documented prefix cache
-    "xai": 0,              # no documented prefix cache
-    "ollama": 0,           # local — no cache
+    "anthropic": 8,        # explicit prompt caching, 90% cost reduction
+    "openai": 5,           # automatic prefix caching, 50% discount on cached tokens
+    "google": 5,           # implicit caching on Gemini 2.5+, 75% cost reduction
+    "deepseek": 5,         # KV cache, 98% hit rate reported, 0.1x cached token price
+    "xai": 3,              # prompt caching supported on Grok Build, cached read $0.20/M
+    "mistral": 0,          # no public prompt caching API
+    "groq": 0,             # no documented prefix cache
+    "openrouter": 0,       # opaque proxy — depends on underlying provider, can't assume
+    "ollama": 0,           # local — no remote cache
     "local": 0,            # generic local provider
+    "nous": 3,             # routes through OpenAI-compatible providers, cache varies
+    "qwen": 3,             # DashScope API has implicit prefix caching on some models
+    "zhipu": 3,            # GLM API has implicit caching on some models
+    "baichuan": 0,         # no documented prefix cache
+    "minimax": 0,          # no documented prefix cache
+    "moonshot": 3,         # Kimi API has context caching on some models
+    "yi": 0,               # no documented prefix cache
+    "siliconflow": 0,      # aggregator — depends on underlying provider
 }
 
 
