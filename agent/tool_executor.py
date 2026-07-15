@@ -37,6 +37,7 @@ from agent.tool_dispatch_helpers import (
     _is_multimodal_tool_result,
     _multimodal_text_summary,
     _append_subdir_hint_to_multimodal,
+    _plan_tool_batch_segments,
     make_tool_result_message,
 )
 from tools.terminal_tool import (
@@ -99,7 +100,7 @@ def _ra():
     return run_agent
 
 
-def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
+def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0, *, finalize: bool = True) -> None:
     """Execute multiple tool calls concurrently using a thread pool.
 
     Results are collected in the original tool-call order and appended to
@@ -531,7 +532,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
 
     # ── Per-turn aggregate budget enforcement ─────────────────────────
     num_tools = len(parsed_calls)
-    if num_tools > 0:
+    if finalize and num_tools > 0:
         turn_tool_msgs = messages[-num_tools:]
         enforce_turn_budget(turn_tool_msgs, env=get_active_env(effective_task_id), config=_tool_budget)
 
@@ -539,12 +540,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
     # Append any pending user steer text to the last tool result so the
     # agent sees it on its next iteration. Runs AFTER budget enforcement
     # so the steer marker is never truncated. See steer() for details.
-    if num_tools > 0:
+    if finalize and num_tools > 0:
         agent._apply_pending_steer_to_tool_results(messages, num_tools)
 
 
 
-def execute_tool_calls_sequential(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
+def execute_tool_calls_sequential(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0, *, finalize: bool = True) -> None:
     """Execute tool calls sequentially (original behavior). Used for single calls or interactive tools."""
     # Resolve the context-scaled tool-output budget once per turn.
     _tool_budget = _budget_for_agent(agent)
@@ -998,19 +999,58 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
     # ── Per-turn aggregate budget enforcement ─────────────────────────
     num_tools_seq = len(assistant_message.tool_calls)
-    if num_tools_seq > 0:
+    if finalize and num_tools_seq > 0:
         enforce_turn_budget(messages[-num_tools_seq:], env=get_active_env(effective_task_id), config=_tool_budget)
 
     # ── /steer injection ──────────────────────────────────────────────
     # See _execute_tool_calls_parallel for the rationale. Same hook,
     # applied to sequential execution as well.
-    if num_tools_seq > 0:
+    if finalize and num_tools_seq > 0:
         agent._apply_pending_steer_to_tool_results(messages, num_tools_seq)
 
 
 
 
+def execute_tool_calls_segmented(agent, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0, segments=None) -> None:
+    """Execute a mixed tool-call batch as ordered parallel/sequential segments.
+
+    ``segments`` is the ``(kind, calls)`` plan from
+    ``_plan_tool_batch_segments``. Turn-end work (aggregate budget
+    enforcement + /steer injection) is done once here for the WHOLE batch;
+    the per-segment executor calls run with ``finalize=False``.
+    """
+    from types import SimpleNamespace
+
+    if segments is None:
+        segments = _plan_tool_batch_segments(assistant_message.tool_calls)
+
+    for kind, calls in segments:
+        segment_message = SimpleNamespace(tool_calls=list(calls))
+        if kind == "parallel":
+            execute_tool_calls_concurrent(
+                agent, segment_message, messages, effective_task_id, api_call_count,
+                finalize=False,
+            )
+        else:
+            execute_tool_calls_sequential(
+                agent, segment_message, messages, effective_task_id, api_call_count,
+                finalize=False,
+            )
+
+    # ── Whole-turn finalize (budget + /steer) ─────────────────────────
+    total_tools = len(assistant_message.tool_calls)
+    if total_tools > 0:
+        _tool_budget = _budget_for_agent(agent)
+        enforce_turn_budget(
+            messages[-total_tools:],
+            env=get_active_env(effective_task_id),
+            config=_tool_budget,
+        )
+        agent._apply_pending_steer_to_tool_results(messages, total_tools)
+
+
 __all__ = [
     "execute_tool_calls_concurrent",
     "execute_tool_calls_sequential",
+    "execute_tool_calls_segmented",
 ]

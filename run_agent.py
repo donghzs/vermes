@@ -4680,22 +4680,38 @@ class AIAgent:
     def _execute_tool_calls(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:
         """Execute tool calls from the assistant message and append results to messages.
 
-        Dispatches to concurrent execution only for batches that look
-        independent: read-only tools may always share the parallel path, while
-        file reads/writes may do so only when their target paths do not overlap.
+        The segment planner splits the batch into maximal contiguous runs of
+        parallel-safe calls separated by sequential barriers. Homogeneous
+        batches keep their original single-path dispatch; mixed batches
+        execute segment by segment in emission order.
         """
         tool_calls = assistant_message.tool_calls
 
         # Allow _vprint during tool execution even with stream consumers
         self._executing_tools = True
         try:
-            if not _should_parallelize_tool_batch(tool_calls):
+            if len(tool_calls) <= 1:
                 return self._execute_tool_calls_sequential(
                     assistant_message, messages, effective_task_id, api_call_count
                 )
 
-            return self._execute_tool_calls_concurrent(
-                assistant_message, messages, effective_task_id, api_call_count
+            from agent.tool_dispatch_helpers import _plan_tool_batch_segments
+            segments = _plan_tool_batch_segments(tool_calls)
+
+            if len(segments) == 1:
+                kind = segments[0][0]
+                if kind == "parallel":
+                    return self._execute_tool_calls_concurrent(
+                        assistant_message, messages, effective_task_id, api_call_count
+                    )
+                return self._execute_tool_calls_sequential(
+                    assistant_message, messages, effective_task_id, api_call_count
+                )
+
+            from agent.tool_executor import execute_tool_calls_segmented
+            return execute_tool_calls_segmented(
+                self, assistant_message, messages, effective_task_id, api_call_count,
+                segments=segments,
             )
         finally:
             self._executing_tools = False
