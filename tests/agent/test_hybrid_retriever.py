@@ -88,7 +88,7 @@ def test_get_embedding_skips_failed_provider():
     from agent import hybrid_retriever
 
     with patch.object(hybrid_retriever, "_resolve_embedding_api",
-                      return_value=("https://failed.example.com/v1", "key", "model")):
+                      return_value=("https://failed.example.com/v1", "key12345678", "model")):
         with patch.object(hybrid_retriever, "_FAILED_EMBED_PROVIDERS",
                           {"https://failed.example.com/v1"}):
             result = hybrid_retriever._get_embedding("test text")
@@ -100,7 +100,7 @@ def test_get_embedding_skips_no_embed_provider():
     from agent import hybrid_retriever
 
     with patch.object(hybrid_retriever, "_resolve_embedding_api",
-                      return_value=("https://api.anthropic.com/v1", "key", "model")):
+                      return_value=("https://api.anthropic.com/v1", "key12345678", "model")):
         result = hybrid_retriever._get_embedding("test text")
         assert result is None
 
@@ -126,12 +126,35 @@ def test_get_embedding_caches_404_failure():
     mock_resp.status_code = 404
 
     with patch.object(hybrid_retriever, "_resolve_embedding_api",
-                      return_value=("https://test-404.example.com/v1", "key", "model")):
+                      return_value=("https://test-404.example.com/v1", "key1234567890", "model")):
         with patch.object(hybrid_retriever, "_FAILED_EMBED_PROVIDERS", set()) as mock_failed:
-            with patch("httpx.post", return_value=mock_resp):
-                result = hybrid_retriever._get_embedding("test")
-                assert result is None
-                assert "https://test-404.example.com/v1" in mock_failed
+            with patch.object(hybrid_retriever, "_LAST_RESOLVED_KEY", ""):
+                with patch("httpx.post", return_value=mock_resp):
+                    result = hybrid_retriever._get_embedding("test")
+                    assert result is None
+                    assert "https://test-404.example.com/v1" in mock_failed
+
+
+def test_get_embedding_clears_failure_cache_on_provider_switch():
+    """Switching provider should clear _FAILED_EMBED_PROVIDERS."""
+    from agent import hybrid_retriever
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"data": [{"embedding": [0.1, 0.2]}]}
+
+    # Simulate: first provider failed, then user switches to a new one
+    with patch.object(hybrid_retriever, "_resolve_embedding_api",
+                      return_value=("https://new-provider.example.com/v1", "newkey1234567890", "model")):
+        with patch.object(hybrid_retriever, "_FAILED_EMBED_PROVIDERS",
+                          {"https://old-provider.example.com/v1"}) as mock_failed:
+            with patch.object(hybrid_retriever, "_LAST_RESOLVED_KEY",
+                              "https://old-provider.example.com/v1::oldkey12"):
+                with patch("httpx.post", return_value=mock_resp):
+                    result = hybrid_retriever._get_embedding("test")
+                    # Should clear old failure cache since provider changed
+                    assert len(mock_failed) == 0
+                    assert result == [0.1, 0.2]
 
 
 def test_get_embedding_does_not_cache_429():
@@ -142,7 +165,7 @@ def test_get_embedding_does_not_cache_429():
     mock_resp.status_code = 429
 
     with patch.object(hybrid_retriever, "_resolve_embedding_api",
-                      return_value=("https://test-429.example.com/v1", "key", "model")):
+                      return_value=("https://test-429.example.com/v1", "key12345678", "model")):
         with patch.object(hybrid_retriever, "_FAILED_EMBED_PROVIDERS", set()) as mock_failed:
             with patch("httpx.post", return_value=mock_resp):
                 result = hybrid_retriever._get_embedding("test")
@@ -159,7 +182,7 @@ def test_get_embedding_success():
     mock_resp.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
 
     with patch.object(hybrid_retriever, "_resolve_embedding_api",
-                      return_value=("https://ok.example.com/v1", "key", "model")):
+                      return_value=("https://ok.example.com/v1", "key12345678", "model")):
         with patch("httpx.post", return_value=mock_resp):
             result = hybrid_retriever._get_embedding("test text")
             assert result == [0.1, 0.2, 0.3]
@@ -269,15 +292,50 @@ def test_discover_returns_first_embed_if_no_small():
 def test_discover_uses_cached_value():
     """Should return cached model from SQLite."""
     from agent import hybrid_retriever
+    import datetime
 
-    with patch.object(hybrid_retriever, "_get_conn") as mock_conn:
-        mock_conn.return_value.execute.return_value.fetchone.return_value = (
-            "cached-embedding-model",
-        )
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.side_effect = [
+        ("cached-embedding-model",),  # model row
+        (datetime.datetime.now().isoformat(),),  # fresh timestamp row
+    ]
+    with patch.object(hybrid_retriever, "_get_conn", return_value=mock_conn):
         result = hybrid_retriever._discover_embedding_model(
             "https://api.example.com/v1", "key"
         )
         assert result == "cached-embedding-model"
+
+
+def test_discover_re_discovers_after_ttl_expiry():
+    """Expired cache should trigger re-discovery."""
+    from agent import hybrid_retriever
+    import datetime
+
+    old_ts = (datetime.datetime.now() - datetime.timedelta(days=10)).isoformat()
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.side_effect = [
+        ("old-embedding-model",),  # stale model row
+        (old_ts,),  # expired timestamp
+    ]
+
+    # Now mock httpx.get to return new models
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "data": [
+            {"id": "gpt-4o"},
+            {"id": "text-embedding-3-small"},
+            {"id": "text-embedding-3-large"},
+        ]
+    }
+
+    with patch.object(hybrid_retriever, "_get_conn", return_value=mock_conn):
+        with patch("httpx.get", return_value=mock_resp):
+            result = hybrid_retriever._discover_embedding_model(
+                "https://api.example.com/v1", "key"
+            )
+            # Should discover fresh model, not return stale cache
+            assert result == "text-embedding-3-small"
 
 
 def test_discover_falls_back_on_api_error():

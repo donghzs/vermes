@@ -86,6 +86,15 @@ _NO_EMBED_PROVIDERS = frozenset({
 # Cleared on process restart — provider may have added support.
 _FAILED_EMBED_PROVIDERS: set[str] = set()
 
+# Track which provider credentials we last resolved.
+# If the user changes provider, we invalidate stale caches.
+_LAST_RESOLVED_KEY: str = ""
+
+# Cache TTL for discovered embedding models (7 days).
+# Providers upgrade their model lineup; stale caches prevent
+# us from picking up newer/better embedding models.
+_EMBED_MODEL_CACHE_TTL_SECS = 7 * 86400
+
 
 def _resolve_embedding_api() -> tuple[str, str, str]:
     """Resolve embedding API credentials from user's configured provider.
@@ -181,16 +190,30 @@ def _discover_embedding_model(base_url: str, api_key: str) -> str:
     """Auto-discover embedding model from /v1/models endpoint.
 
     Queries the provider's model list, finds entries containing 'embed',
-    and caches the result in SQLite. Falls back to _DEFAULT_EMBEDDING_MODEL.
+    and caches the result in SQLite with a TTL. Falls back to
+    _DEFAULT_EMBEDDING_MODEL.
+
+    TTL ensures we pick up new models when providers upgrade.
     """
+    import datetime
     cache_key = f"embed_model::{base_url}"
+    cache_ts_key = f"embed_model_ts::{base_url}"
+
+    # Check cache + TTL
     try:
         conn = _get_conn()
         row = conn.execute(
             "SELECT value FROM embedding_config WHERE key = ?", (cache_key,)
         ).fetchone()
-        if row and row[0]:
-            return row[0]
+        ts_row = conn.execute(
+            "SELECT value FROM embedding_config WHERE key = ?", (cache_ts_key,)
+        ).fetchone()
+        if row and row[0] and ts_row and ts_row[0]:
+            cached_time = datetime.datetime.fromisoformat(ts_row[0])
+            age = (datetime.datetime.now() - cached_time).total_seconds()
+            if age < _EMBED_MODEL_CACHE_TTL_SECS:
+                return row[0]
+            logger.debug("Embedding model cache for %s expired (%.1f days old), re-discovering", base_url, age / 86400)
     except Exception:
         pass
 
@@ -214,12 +237,17 @@ def _discover_embedding_model(base_url: str, api_key: str) -> str:
                     (m for m in embed_models if "small" in m.lower() or "lite" in m.lower()),
                     embed_models[0],
                 )
-                # Cache it
+                # Cache it with timestamp
                 try:
                     conn = _get_conn()
+                    now = datetime.datetime.now().isoformat()
                     conn.execute(
                         "INSERT OR REPLACE INTO embedding_config (key, value) VALUES (?, ?)",
                         (cache_key, chosen),
+                    )
+                    conn.execute(
+                        "INSERT OR REPLACE INTO embedding_config (key, value) VALUES (?, ?)",
+                        (cache_ts_key, now),
                     )
                     conn.commit()
                 except Exception:
@@ -238,10 +266,23 @@ def _get_embedding(text: str) -> Optional[List[float]]:
     If a provider returns 404/400 (no embedding support), it's cached in
     _FAILED_EMBED_PROVIDERS so we don't retry every turn. Restarts clear
     the cache — provider may have added embedding support meanwhile.
+
+    If the user switches provider (detected via credential change),
+    _FAILED_EMBED_PROVIDERS is cleared automatically.
     """
+    global _LAST_RESOLVED_KEY
+
     base_url, api_key, model = _resolve_embedding_api()
     if not api_key or not base_url:
         return None
+
+    # Detect provider switch: if credentials changed, clear stale failure cache
+    current_key = f"{base_url}::{api_key[:8]}"
+    if current_key != _LAST_RESOLVED_KEY:
+        if _FAILED_EMBED_PROVIDERS:
+            logger.debug("Provider changed (%s → %s), clearing failure cache", _LAST_RESOLVED_KEY, current_key)
+        _FAILED_EMBED_PROVIDERS.clear()
+        _LAST_RESOLVED_KEY = current_key
 
     if base_url in _NO_EMBED_PROVIDERS or base_url in _FAILED_EMBED_PROVIDERS:
         return None
