@@ -188,3 +188,13 @@ for _name, _date, _for, _model_dep, _cat in _EMERGENCE_MODULES:
         category=_cat,
         module_path=f"agent.{_name}",
     )
+
+register_module(
+    name="emergent_change",
+    added_date="2026-07-15",
+    added_for="Emergent self-modification pipeline — all changes go through staging→validate→commit→raw_event",
+    model_dependent=False,
+    removal_criteria="Permanent — self-modification safety is fundamental",
+    category=ComponentCategory.ISOLATION,
+    module_path="agent.emergent_change",
+)
