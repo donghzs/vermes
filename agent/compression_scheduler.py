@@ -139,8 +139,10 @@ class CacheObserver:
     MIN_OBSERVED_WINDOW = 0
     MAX_OBSERVED_WINDOW = 10
 
-    def __init__(self, initial_window: int = DEFAULT_CACHE_WINDOW_TURNS):
+    def __init__(self, initial_window: int = DEFAULT_CACHE_WINDOW_TURNS,
+                 max_window: Optional[int] = None):
         self._initial_window = initial_window
+        self._max_window = max_window or self.MAX_OBSERVED_WINDOW
         self._turn_count: int = 0
         self._latencies: Deque[float] = deque(maxlen=20)  # rolling window
         self._baseline_latency_ms: float = 0.0
@@ -230,7 +232,7 @@ class CacheObserver:
         if self._consecutive_fast_turns >= 2:
             extension = min(2, self._consecutive_fast_turns - 1)
             self._observed_window = min(
-                self.MAX_OBSERVED_WINDOW,
+                self._max_window,
                 (self._observed_window or self._initial_window) + extension,
             )
             logger.info(
@@ -248,7 +250,7 @@ class CacheObserver:
                 median_ratio = statistics.median(recent) / self._baseline_latency_ms
                 if median_ratio <= self.CACHE_HIT_RATIO:
                     self._observed_window = min(
-                        self.MAX_OBSERVED_WINDOW,
+                        self._max_window,
                         self._initial_window + 3,
                     )
                 elif median_ratio >= self.CACHE_MISS_RATIO:
