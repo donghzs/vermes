@@ -358,11 +358,26 @@ class ClusterLifecycleManager:
                 (*dead_ids, max_events_to_delete)
             )
             deleted = cursor.rowcount
+
+            # Also clean up lifecycle_events for dead clusters
+            cursor.execute(
+                f"""DELETE FROM cluster_lifecycle_events
+                    WHERE cluster_id IN ({placeholders})
+                      AND id NOT IN (
+                        SELECT MAX(id) FROM cluster_lifecycle_events
+                        WHERE cluster_id IN ({placeholders})
+                        GROUP BY cluster_id
+                      )""",
+                (*dead_ids, *dead_ids),
+            )
+            _events_deleted = cursor.rowcount
             conn.commit()
             conn.close()
 
             if deleted > 0:
                 logger.info("Cleaned up %d events from dead clusters", deleted)
+            if _events_deleted > 0:
+                logger.info("Cleaned up %d lifecycle_events for dead clusters", _events_deleted)
 
         except Exception:
             logger.debug("Dead cluster cleanup failed", exc_info=True)

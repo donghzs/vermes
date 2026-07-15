@@ -119,6 +119,27 @@ class EmergentChangePipeline:
         )
         self.staging_dir = Path(self.hermes_home) / "staging"
         self.staging_dir.mkdir(parents=True, exist_ok=True)
+        # Clean up stale staging files from previous crashes
+        self._cleanup_stale_staging()
+
+    def _cleanup_stale_staging(self) -> int:
+        """Remove leftover staging files from previous runs.
+
+        If the pipeline crashed between _write_to_staging() and commit(),
+        the staging file stays around. Clean it on startup.
+        """
+        try:
+            removed = 0
+            for f in self.staging_dir.iterdir():
+                if f.is_file() and f.name.startswith("change_"):
+                    f.unlink(missing_ok=True)
+                    removed += 1
+            if removed:
+                logger.info("Cleaned up %d stale staging file(s)", removed)
+            return removed
+        except Exception:
+            logger.debug("Staging cleanup failed", exc_info=True)
+            return 0
 
     def apply_change(self, proposal: ChangeProposal) -> ChangeResult:
         """Apply a proposed change through the pipeline.

@@ -142,21 +142,11 @@ def _seed_evolution_db() -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = _get_conn(str(db_path))
     c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS outcomes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL, task TEXT NOT NULL,
-        action TEXT NOT NULL, tool TEXT NOT NULL,
-        success INTEGER NOT NULL, details TEXT,
-        duration REAL DEFAULT 0, domain TEXT DEFAULT '通用',
-        error_type TEXT DEFAULT '', error_msg TEXT DEFAULT '',
-        role TEXT DEFAULT 'default')""")
     # Ensure raw_events table + v_outcomes view exist (single source of truth)
+    # outcomes table is intentionally NOT created — it's a zombie table.
+    # All reads go through v_outcomes (view over raw_events), all writes go to raw_events.
     from agent.raw_event import ensure_raw_events_table
     ensure_raw_events_table(conn)
-    c.execute("""CREATE TABLE IF NOT EXISTS anti_patterns (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL,
-        pattern TEXT NOT NULL, correct TEXT, domain TEXT,
-        frequency INTEGER DEFAULT 1, last_seen TEXT)""")
     c.execute("""CREATE TABLE IF NOT EXISTS strategies (
         id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT,
         strategy TEXT, success_rate_when_used REAL,
@@ -202,19 +192,9 @@ def _seed_evolution_db() -> None:
             (timestamp, tool_name, args_preview, result_preview, success, duration, session_id, turn_number)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', s)
     
-    # Seed anti-patterns
-    ap_seeds = [
-        (ts, 'terminal:permission_denied', '检查文件权限，可能需要 sudo', '系统管理', 3, ts),
-        (ts, 'terminal:not_found', '检查路径是否正确', '系统管理', 2, ts),
-        (ts, 'terminal:connection_refused', '检查服务是否启动', '系统管理', 1, ts),
-        (ts, 'agent:lazy_shortcut',
-         '不要跳过工具调用或多步推理：先 read_file 审计源码再修改，做了就做完整，不要假设结果代替验证',
-         '通用', 100, ts),
-    ]
-    for ap in ap_seeds:
-        c.execute('''INSERT INTO anti_patterns 
-            (timestamp, pattern, correct, domain, frequency, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?)''', ap)
+    # anti_patterns table intentionally NOT seeded — zombie table, superseded by
+    # P3 EmergentInsightExtractor which derives insights from cluster data.
+    # Keeping the table for backward compat reads, but no writes.
     
     # Seed emotional state in fusion-state.db
     _fusion_db = get_evolution_dir() / "fusion-state.db"
@@ -770,13 +750,19 @@ def record_tool_outcome(
         # ── 保留策略：清理过期数据 ────────────────────────────
         # outcomes 表已由 v_outcomes 视图替代（raw_events 是唯一真实源）
         # raw_events 的清理由 cluster_lifecycle 的 dormant→dead 链处理
-        # 此处只清理 fusion-state.db 的过期数据
+        # 此处清理 fusion-state.db + relations 的过期数据
         try:
             _cutoff_7d = (datetime.now() - timedelta(days=7)).isoformat()
+            _cutoff_90d = (datetime.now() - timedelta(days=90)).isoformat()
             _fconn = _get_conn(str(get_evolution_dir() / "fusion-state.db"))
             _fconn.execute("DELETE FROM emotional_state WHERE timestamp < ?", (_cutoff_7d,))
             _fconn.execute("DELETE FROM evolution_metrics WHERE timestamp < ?", (_cutoff_7d,))
+            # fusion_decisions: 90天 TTL
+            _fconn.execute("DELETE FROM fusion_decisions WHERE timestamp < ?", (_cutoff_90d,))
             _fconn.commit()
+            # relations: 90天 TTL (keeps recent DAG edges, prunes stale ones)
+            cursor.execute("DELETE FROM relations WHERE timestamp < ?", (_cutoff_90d,))
+            conn.commit()
         except Exception:
             pass  # 清理非阻塞
 
@@ -796,8 +782,7 @@ def record_tool_outcome(
             _total_out = _cnt_row[0]
             _succ_out = _cnt_row[1] or 0
             _sr = (_succ_out / _total_out * 100) if _total_out > 0 else 0
-            cursor.execute("SELECT COUNT(*) FROM anti_patterns")
-            _ap_cnt = cursor.fetchone()[0]
+            _ap_cnt = 0  # anti_patterns is zombie, always 0
         except Exception:
             _total_out, _sr, _ap_cnt = 0, 0, 0
 
@@ -834,26 +819,30 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         total, successes = row
         success_rate = (successes / total * 100) if total > 0 else 0
         
-        # Get related anti-patterns
-        cursor.execute('''
-            SELECT pattern, correct, frequency
-            FROM anti_patterns
-            WHERE domain = ? OR domain = '通用'
-            ORDER BY frequency DESC
-            LIMIT 3
-        ''', (domain,))
-        
-        anti_patterns = cursor.fetchall()
-        
+        # anti_patterns table is a zombie (superseded by P3 emergent insights).
+        # Try to read for backward compat, but gracefully degrade if table absent.
+        anti_patterns = []
+        try:
+            cursor.execute('''
+                SELECT pattern, correct, frequency
+                FROM anti_patterns
+                WHERE domain = ? OR domain = '通用'
+                ORDER BY frequency DESC
+                LIMIT 3
+            ''', (domain,))
+            anti_patterns = cursor.fetchall()
+        except Exception:
+            pass  # table may not exist
+
         
         # Build advice
         advice_parts = []
-        
+
         if success_rate < 50:
             advice_parts.append(f"⚠️ 历史成功率较低 ({success_rate:.0f}%)，建议谨慎操作")
         elif success_rate < 80:
             advice_parts.append(f"📊 历史成功率中等 ({success_rate:.0f}%)，建议验证结果")
-        
+
         if anti_patterns:
             advice_parts.append("⚠️ 相关反模式:")
             for pattern, correct, freq in anti_patterns[:2]:
@@ -891,9 +880,12 @@ def get_evolution_status() -> Dict[str, Any]:
         successes = cursor.fetchone()[0]
         success_rate = (successes / total * 100) if total > 0 else 0
         
-        # Anti-patterns count
-        cursor.execute("SELECT COUNT(*) FROM anti_patterns")
-        anti_patterns_count = cursor.fetchone()[0]
+        # anti_patterns is a zombie table — may not exist or be empty
+        try:
+            cursor.execute("SELECT COUNT(*) FROM anti_patterns")
+            anti_patterns_count = cursor.fetchone()[0]
+        except Exception:
+            anti_patterns_count = 0
         
         # Top domains
         cursor.execute('''

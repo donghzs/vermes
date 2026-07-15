@@ -124,6 +124,24 @@ def ensure_graph_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def cleanup_graph_sync_log(conn: sqlite3.Connection, max_rows: int = 500) -> int:
+    """Prune graph_sync_log to keep only the most recent max_rows entries.
+
+    graph_sync_log is an audit trail — keep the latest N for debugging,
+    but prevent unbounded growth.
+    """
+    try:
+        conn.execute(
+            "DELETE FROM graph_sync_log WHERE id NOT IN "
+            "(SELECT id FROM graph_sync_log ORDER BY id DESC LIMIT ?)",
+            (max_rows,),
+        )
+        conn.commit()
+        return conn.total_changes
+    except Exception:
+        return 0
+
+
 # ── Exporter ────────────────────────────────────────────────────────────────
 
 def export_graph(db_path: str, source: str = "") -> GraphExport:
@@ -171,6 +189,7 @@ def export_graph(db_path: str, source: str = "") -> GraphExport:
              len(export.skills), len(export.decisions)),
         )
         conn.commit()
+        cleanup_graph_sync_log(conn)
         conn.close()
 
     except Exception:
@@ -347,6 +366,7 @@ def import_graph(db_path: str, graph_data: Dict[str, Any]) -> ImportResult:
              result.conflicts_resolved),
         )
         conn.commit()
+        cleanup_graph_sync_log(conn)
         conn.close()
 
     except Exception as e:
