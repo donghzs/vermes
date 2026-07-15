@@ -2569,6 +2569,14 @@ class AIAgent:
                 generate_and_store_handoff(messages, self.session_id or "")
             except Exception:
                 pass
+            try:
+                from agent.cross_session_continuity import save_session_snapshot
+                from agent.memory_recall import _get_self_model_db
+                _db = _get_self_model_db()
+                if _db and _db.exists():
+                    save_session_snapshot(str(_db), self.session_id or "")
+            except Exception:
+                pass
         if self._memory_manager:
             try:
                 self._memory_manager.on_session_end(messages or [])

@@ -811,6 +811,15 @@ def run_conversation(
                 agent._recall_context = _recall_block
         except Exception:
             pass
+        try:
+            from agent.cross_session_continuity import get_continuity_prompt
+            from agent.memory_recall import _get_self_model_db
+            _db = _get_self_model_db()
+            _continuity_block = get_continuity_prompt(str(_db) if _db else "")
+            if _continuity_block:
+                agent._continuity_context = _continuity_block
+        except Exception:
+            pass
     if agent._memory_manager:
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""

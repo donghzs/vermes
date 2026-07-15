@@ -40,6 +40,7 @@ _BLOCK_PRIORITIES: Dict[str, int] = {
     "_handoff_context": 2,       # essential for session continuity
     "_evolution_context": 3,     # learned experience
     "_decisions_context": 4,     # standing decisions (injected by system_prompt)
+    "_continuity_context": 5,    # cluster evolution briefing (low priority)
 }
 
 # Per-block soft cap (chars) — blocks should not exceed this individually
@@ -48,6 +49,7 @@ _BLOCK_SOFT_CAPS: Dict[str, int] = {
     "_handoff_context": 1200,
     "_evolution_context": 1000,
     "_decisions_context": 800,
+    "_continuity_context": 600,
 }
 
 

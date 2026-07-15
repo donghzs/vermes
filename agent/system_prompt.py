@@ -391,6 +391,9 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # Memory recall: auto-retrieved context for current user message
     _recall_block = getattr(agent, "_recall_context", None)
 
+    # Cross-session continuity: cluster evolution briefing
+    _continuity_block = getattr(agent, "_continuity_context", None)
+
     # Decision tracking: standing decisions from past sessions
     _decisions_block = ""
     try:
@@ -405,6 +408,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         "_handoff_context": _handoff_block or "",
         "_evolution_context": _evolution_block or "",
         "_decisions_context": _decisions_block or "",
+        "_continuity_context": _continuity_block or "",
     }
     try:
         from agent.memory_budget import apply_budget, format_memory_summary
@@ -425,6 +429,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             volatile_parts.append(_recall_block)
         if _decisions_block:
             volatile_parts.append(_decisions_block)
+        if _continuity_block:
+            volatile_parts.append(_continuity_block)
 
     # ── Capability status: let Agent know what it can do ──
     try:
