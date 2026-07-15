@@ -175,8 +175,9 @@ async def _make_llm(provider_override: str = None, model_override: str = None):
         if model:
             body["model"] = model
 
+        _LLM_TIMEOUT = float(os.environ.get('SCHOLAR_LLM_TIMEOUT', '60'))
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=_LLM_TIMEOUT) as client:
                 resp = await client.post(
                     f"{url.rstrip('/')}/chat/completions",
                     json=body, headers=headers,
@@ -909,6 +910,7 @@ def register_to(app):
         client_id = req.client_id or ""
 
         async def generate():
+            _client_connected = True
             try:
                 if req.pipeline:
                     use_checkpoint = req.checkpoint and req.pipeline
@@ -961,6 +963,10 @@ def register_to(app):
                     for stage_idx, stage in enumerate(pipeline_stages):
                         if stage_idx < start_idx:
                             continue  # 跳过已完成阶段
+                        # 客户端断开检查 — 防止僵尸请求堆积
+                        if await request.is_disconnected():
+                            logger.info(f"[ScholarForge] Client disconnected during pipeline stage={stage}")
+                            return
                         yield await _sse_rl({"type": "stage", "stage": stage, "pipeline": "start"}, client_id)
 
                         from hermes_cli.scholarforge.agents import AGENTS
@@ -1075,11 +1081,16 @@ def register_to(app):
                         except Exception as e:
                             logger.debug(f"Failed to save agent reply to DB: {e}")
 
+            except asyncio.CancelledError:
+                logger.info(f"[ScholarForge] Stream cancelled by client (ctx_id={ctx.ctx_id})")
+                return
             except HTTPException as e:
                 yield _sse({"type": "error", "message": str(e.detail)})
             except Exception as e:
                 logger.error(f"Scholar stream error: {e}", exc_info=True)
                 yield _sse({"type": "error", "message": str(e)})
+            finally:
+                _stream_rate_limiter.pop(client_id, None)
 
         return StreamingResponse(
             generate(),
@@ -1618,8 +1629,13 @@ def register_to(app):
                             "text": result, "mode": mode,
                             "original_length": len(original_text),
                             "new_length": len(result)}, client_id)
+            except asyncio.CancelledError:
+                logger.info(f"[ScholarForge] Rewrite stream cancelled by client (section={section_key})")
+                return
             except Exception as e:
                 yield _sse({"type": "error", "message": str(e)})
+            finally:
+                _stream_rate_limiter.pop(client_id, None)
 
         return StreamingResponse(
             generate(),
