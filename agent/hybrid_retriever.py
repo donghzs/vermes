@@ -3,10 +3,17 @@
 写时 embedding 存储，加载时静态排序，对话时 query 召回。
 三层降级：embedding API → 词重叠 Jaccard → 空结果（原行为）。
 
-Embedding API 凭证从 Vermes 原生配置读取：
-  1. 当前默认 provider 的 api_key + base_url（config.yaml providers[id]）
-  2. .env 文件中常见 embedding key（OPENAI_API_KEY 等）
-  3. 均无 → 降级到 Jaccard
+Embedding API 凭证跟随用户配置的 provider：
+  1. 默认 provider 的 base_url + api_key（config.yaml）
+  2. 任意已配置且有凭证的 provider
+  3. .env 中 *_API_KEY 环境变量 + provider template 推导
+  4. 均无 → 降级到 Jaccard
+
+Embedding model 自动发现：
+  - 用户可在 config.yaml embedding.model 显式指定
+  - 未指定时，首次调用 /embeddings 失败则查询 /v1/models 自动发现
+  - 发现结果缓存到 SQLite，避免重复查询
+  - 失败的 provider 缓存到 _FAILED_EMBED_PROVIDERS，本进程不再重试
 """
 
 from __future__ import annotations
@@ -62,17 +69,39 @@ def _get_conn(db_path: Optional[Path] = None) -> sqlite3.Connection:
 
 # ── 写时 embedding ────────────────────────────────────────────────────
 
-def _resolve_embedding_api() -> tuple[str, str, str]:
-    """Resolve embedding API credentials from Vermes native config.
+# Default embedding model — used as first probe for any OpenAI-compatible provider.
+# If the provider doesn't support it, _get_embedding() silently falls back to Jaccard.
+_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
-    Priority:
-      1. Current default provider (from config.yaml)
-      2. Common embedding API keys in .env (OPENAI_API_KEY, DEEPSEEK_API_KEY, etc.)
-      3. Falls back to empty → triggers Jaccard fallback
+# Providers that are known to NOT support /embeddings endpoint.
+# This is NOT a hardcode ban — it's a performance shortcut to avoid
+# a guaranteed-to-fail HTTP call. If a provider starts supporting
+# embeddings, removing its entry here is the only change needed.
+_NO_EMBED_PROVIDERS = frozenset({
+    "https://api.anthropic.com/v1",  # Claude has no embeddings API
+})
+
+# Runtime cache of providers that failed /embeddings calls.
+# Populated by _get_embedding() on 400/404/501 responses.
+# Cleared on process restart — provider may have added support.
+_FAILED_EMBED_PROVIDERS: set[str] = set()
+
+
+def _resolve_embedding_api() -> tuple[str, str, str]:
+    """Resolve embedding API credentials from user's configured provider.
+
+    Philosophy: follow whatever the user configured. No hardcoded provider
+    lists, no assumed embedding model names. Try the user's default provider
+    first; if it fails at call time, Jaccard fallback kicks in.
+
+    Resolution order:
+      1. Default provider from config.yaml (providers[id].{base_url, api_key})
+      2. Any provider in config.yaml that has both base_url and api_key
+      3. .env fallback: scan for *_API_KEY vars, derive base_url from same config
+      4. Empty → Jaccard fallback
 
     Returns (base_url, api_key, model).
     """
-    # ── Path 1: current default provider ───────────────────────────
     try:
         import sys as _sys
         _sys.path.insert(0, str(Path(__file__).parent.parent / "hermes_cli"))
@@ -80,131 +109,141 @@ def _resolve_embedding_api() -> tuple[str, str, str]:
 
         cfg = load_config()
         env = load_env()
+        model = cfg.get("embedding", {}).get("model", _DEFAULT_EMBEDDING_MODEL)
 
-        # Get default provider from config
+        # ── Path 1: default provider from config ─────────────────────
         default_provider = cfg.get("model", {}).get("provider", "")
         if not default_provider:
             default_provider = cfg.get("provider", "")
 
         if default_provider:
-            # Try config.yaml providers[id].{base_url, api_key}
             prov_cfg = cfg.get("providers", {}).get(default_provider, {})
             base_url = prov_cfg.get("base_url", "").rstrip("/")
             api_key = prov_cfg.get("api_key", "")
 
-            # Fall back to .env via provider template env_key
+            # Fall back to .env: try {PROVIDER}_API_KEY pattern
             if not api_key:
-                _tmpl_map = {
-                    "openai":    ("OPENAI_API_KEY",    "https://api.openai.com/v1"),
-                    "deepseek":  ("DEEPSEEK_API_KEY",  "https://api.deepseek.com/v1"),
-                    "qwen":      ("QWEN_API_KEY",      "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-                    "zhipu":     ("ZHIPU_API_KEY",     "https://open.bigmodel.cn/api/paas/v4"),
-                    "doubao":    ("DOUBAO_API_KEY",    "https://ark.cn-beijing.volces.com/api/v3"),
-                    "kimi":      ("KIMI_API_KEY",      "https://api.moonshot.cn/v1"),
-                    "openrouter":("OPENROUTER_API_KEY","https://openrouter.ai/api/v1"),
-                    "vbit":      ("VBIT_API_KEY",      "https://api.vbit.top/v1"),
-                    "xiaomi":    ("XIAOMI_API_KEY",    "https://api.xiaomimimo.com/v1"),
-                    "groq":      ("GROQ_API_KEY",      "https://api.groq.com/openai/v1"),
-                    "together":  ("TOGETHER_API_KEY",  "https://api.together.xyz/v1"),
-                    "gemini":    ("GEMINI_API_KEY",     "https://generativelanguage.googleapis.com/v1beta"),
-                    "anthropic": ("ANTHROPIC_API_KEY", "https://api.anthropic.com/v1"),
-                    "custom":    ("CUSTOM_API_KEY",    ""),
-                }
-                _entry = _tmpl_map.get(default_provider)
-                if _entry:
-                    _env_key, _default_base = _entry
-                    api_key = env.get(_env_key, "")
-                    if not base_url:
-                        base_url = _default_base
+                env_key = f"{default_provider.upper().replace('-', '_')}_API_KEY"
+                api_key = env.get(env_key, "")
 
-            # Guess embedding model from provider
-            _emb_model_map = {
-                "openai":     "text-embedding-3-small",
-                "deepseek":   "text-embedding-3-small",
-                "qwen":       "text-embedding-v3",
-                "zhipu":      "embedding-3",
-                "doubao":     "embModel",
-                "kimi":       "text-embedding-v1",
-                "openrouter": "text-embedding-3-small",
-                "vbit":       "text-embedding-3-small",
-                "xiaomi":     "embModel",
-                "groq":       "embed-english-v2",
-                "together":   "togethercomputer/m2-bert-8k-base",
-                "gemini":     "embedding-001",
-                "anthropic":  "",
-                "custom":     "text-embedding-3-small",
-            }
-            model = _emb_model_map.get(default_provider, "text-embedding-3-small")
+            if not base_url:
+                # Try provider template from blueprints
+                try:
+                    from hermes_cli.blueprints.providers import PROVIDER_TEMPLATES
+                    tmpl = PROVIDER_TEMPLATES.get(default_provider, {})
+                    base_url = tmpl.get("base_url", "").rstrip("/")
+                    if not api_key:
+                        env_key = tmpl.get("api_key_env", "")
+                        if env_key:
+                            api_key = env.get(env_key, "")
+                except Exception:
+                    pass
 
-            if api_key and base_url:
-                return base_url.rstrip("/"), api_key, model
+            if api_key and base_url and base_url not in _NO_EMBED_PROVIDERS:
+                return base_url, api_key, model
+
+        # ── Path 2: any configured provider with credentials ────────
+        providers = cfg.get("providers", {})
+        if isinstance(providers, dict):
+            for pid, pcfg in providers.items():
+                if not isinstance(pcfg, dict):
+                    continue
+                burl = pcfg.get("base_url", "").rstrip("/")
+                akey = pcfg.get("api_key", "")
+                if not akey:
+                    env_key = f"{pid.upper().replace('-', '_')}_API_KEY"
+                    akey = env.get(env_key, "")
+                if akey and burl and burl not in _NO_EMBED_PROVIDERS:
+                    return burl, akey, model
+
+        # ── Path 3: scan .env for any *_API_KEY ──────────────────────
+        for env_key, env_val in env.items():
+            if not env_val or not env_key.endswith("_API_KEY"):
+                continue
+            # Derive base_url from provider templates
+            try:
+                from hermes_cli.blueprints.providers import PROVIDER_TEMPLATES
+                pid = env_key.replace("_API_KEY", "").lower().replace("_", "-")
+                tmpl = PROVIDER_TEMPLATES.get(pid, {})
+                burl = tmpl.get("base_url", "").rstrip("/")
+                if burl and burl not in _NO_EMBED_PROVIDERS:
+                    return burl, env_val, model
+            except Exception:
+                pass
+
     except Exception as exc:
-        logger.debug("_resolve_embedding_api Path1 failed: %s", exc)
-
-    # ── Path 2: common env keys ─────────────────────────────────────
-    _common_keys = [
-        "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "QWEN_API_KEY",
-        "ZHIPU_API_KEY", "DOUBAO_API_KEY", "KIMI_API_KEY",
-        "OPENROUTER_API_KEY", "VBIT_API_KEY", "XIAOMI_API_KEY",
-        "GROQ_API_KEY", "TOGETHER_API_KEY", "GEMINI_API_KEY",
-        "ANTHROPIC_API_KEY", "CUSTOM_API_KEY",
-        "ONEAPI_KEY",
-    ]
-    try:
-        env = load_env()
-        for key in _common_keys:
-            val = env.get(key, "")
-            if val:
-                _base_map = {
-                    "OPENAI_API_KEY":  "https://api.openai.com/v1",
-                    "DEEPSEEK_API_KEY":"https://api.deepseek.com/v1",
-                    "QWEN_API_KEY":   "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                    "ZHIPU_API_KEY":  "https://open.bigmodel.cn/api/paas/v4",
-                    "DOUBAO_API_KEY": "https://ark.cn-beijing.volces.com/api/v3",
-                    "KIMI_API_KEY":   "https://api.moonshot.cn/v1",
-                    "OPENROUTER_API_KEY":"https://openrouter.ai/api/v1",
-                    "VBIT_API_KEY":   "https://api.vbit.top/v1",
-                    "XIAOMI_API_KEY": "https://api.xiaomimimo.com/v1",
-                    "GROQ_API_KEY":   "https://api.groq.com/openai/v1",
-                    "TOGETHER_API_KEY":"https://api.together.xyz/v1",
-                    "GEMINI_API_KEY": "https://generativelanguage.googleapis.com/v1beta",
-                    "ANTHROPIC_API_KEY":"https://api.anthropic.com/v1",
-                    "CUSTOM_API_KEY": "",
-                    "ONEAPI_KEY":     "https://api.openai.com/v1",
-                }
-                base = _base_map.get(key, "https://api.openai.com/v1")
-                # OneAPI uses the configured base_url from config.yaml
-                if key == "ONEAPI_KEY":
-                    try:
-                        cfg = load_config()
-                        ob = cfg.get("oneapi", {}).get("base_url", "")
-                        if ob:
-                            base = ob.rstrip("/")
-                        model = cfg.get("oneapi", {}).get("embedding_model", "text-embedding-3-small")
-                    except Exception:
-                        model = "text-embedding-3-small"
-                else:
-                    model = "text-embedding-3-small"
-                return base, val, model
-    except Exception as exc:
-        logger.debug("_resolve_embedding_api Path2 failed: %s", exc)
+        logger.debug("_resolve_embedding_api failed: %s", exc)
 
     return "", "", ""
 
 
-def _get_embedding(text: str) -> Optional[List[float]]:
-    """调用 OpenAI 兼容 embedding API。返回 float 列表或 None。
+def _discover_embedding_model(base_url: str, api_key: str) -> str:
+    """Auto-discover embedding model from /v1/models endpoint.
 
-    支持 base_url + api_key + model，自动处理 endpoint 差异。
-    如果 API 返回 400/404（模型不支持 embedding），静默降级。
+    Queries the provider's model list, finds entries containing 'embed',
+    and caches the result in SQLite. Falls back to _DEFAULT_EMBEDDING_MODEL.
+    """
+    cache_key = f"embed_model::{base_url}"
+    try:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT value FROM embedding_config WHERE key = ?", (cache_key,)
+        ).fetchone()
+        if row and row[0]:
+            return row[0]
+    except Exception:
+        pass
+
+    try:
+        import httpx
+        resp = httpx.get(
+            f"{base_url}/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            models = resp.json().get("data", [])
+            # Find embedding models — prefer small/fast ones
+            embed_models = [
+                m["id"] for m in models
+                if "embed" in m.get("id", "").lower()
+            ]
+            if embed_models:
+                # Prefer 'small' or 'lite' variants for speed
+                chosen = next(
+                    (m for m in embed_models if "small" in m.lower() or "lite" in m.lower()),
+                    embed_models[0],
+                )
+                # Cache it
+                try:
+                    conn = _get_conn()
+                    conn.execute(
+                        "INSERT OR REPLACE INTO embedding_config (key, value) VALUES (?, ?)",
+                        (cache_key, chosen),
+                    )
+                    conn.commit()
+                except Exception:
+                    pass
+                logger.info("Discovered embedding model for %s: %s", base_url, chosen)
+                return chosen
+    except Exception as exc:
+        logger.debug("_discover_embedding_model failed for %s: %s", base_url, exc)
+
+    return _DEFAULT_EMBEDDING_MODEL
+
+
+def _get_embedding(text: str) -> Optional[List[float]]:
+    """Call OpenAI-compatible /embeddings endpoint. Returns float list or None.
+
+    If a provider returns 404/400 (no embedding support), it's cached in
+    _FAILED_EMBED_PROVIDERS so we don't retry every turn. Restarts clear
+    the cache — provider may have added embedding support meanwhile.
     """
     base_url, api_key, model = _resolve_embedding_api()
     if not api_key or not base_url:
         return None
 
-    # 过滤掉明显不支持 embedding 的 provider
-    _no_embed = {"", "https://api.anthropic.com/v1", "https://generativelanguage.googleapis.com/v1beta"}
-    if base_url in _no_embed:
+    if base_url in _NO_EMBED_PROVIDERS or base_url in _FAILED_EMBED_PROVIDERS:
         return None
 
     try:
@@ -221,8 +260,26 @@ def _get_embedding(text: str) -> Optional[List[float]]:
         if resp.status_code == 200:
             data = resp.json()
             return data["data"][0]["embedding"]
-        # 静默降级：不支持的模型/endpoint
-        logger.debug("Embedding API %s/%s returned %s", base_url, model, resp.status_code)
+
+        # Model not found? Try auto-discovering the right embedding model
+        if resp.status_code == 400 and model == _DEFAULT_EMBEDDING_MODEL:
+            discovered = _discover_embedding_model(base_url, api_key)
+            if discovered != model:
+                payload["model"] = discovered
+                resp = httpx.post(endpoint, headers=headers, json=payload, timeout=15)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data["data"][0]["embedding"]
+
+        # Cache failure for unsupported providers (404/400/501)
+        if resp.status_code in (400, 404, 501):
+            _FAILED_EMBED_PROVIDERS.add(base_url)
+            logger.info(
+                "Provider %s doesn't support /embeddings (HTTP %d) — caching for this session, falling back to Jaccard",
+                base_url, resp.status_code,
+            )
+        else:
+            logger.debug("Embedding API %s/%s returned %s", base_url, model, resp.status_code)
         return None
     except Exception as exc:
         logger.debug("Embedding API call failed: %s", exc)
