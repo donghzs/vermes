@@ -860,32 +860,30 @@ async def chat_completions(req: ChatRequest):
         _tool_ids = {}  # tool_name → tool_call_id 配对
         _active_streams[_stream_id] = _cancel_event
 
+        # ── 在事件循环线程中捕获 loop 引用 ──────────────────────────────
+        # agent callback 会在子线程中执行，asyncio.get_running_loop() 会抛 RuntimeError。
+        # 旧代码的 fallback 路径直接调用 _delta_queue.put_nowait()，但 asyncio.Queue
+        # 不是线程安全的，会导致队列损坏 → SSE 流卡死 → "Failed to fetch"。
+        # 修复：捕获 loop 引用，callback 中用 call_soon_threadsafe 安全写入。
+        _main_loop = asyncio.get_running_loop()
+
+        def _safe_put(item):
+            """从任意线程安全地向 delta_queue 写入数据。"""
+            if not _main_loop.is_closed():
+                _main_loop.call_soon_threadsafe(_delta_queue.put_nowait, item)
+
         def status_callback(event_type: str, message: str):
             """Route lifecycle/warn events from AIAgent to SSE stream."""
             event = {
                 "type": "lifecycle" if event_type == "lifecycle" else "warn",
                 "message": message,
             }
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-            else:
-                _delta_queue.put_nowait(event)
+            _safe_put(event)
 
         def stream_callback(delta: str):
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
             if delta is not None:
                 _log.info(f"[Stream] DELTA: {repr(delta[:60])}")
-                if loop and loop.is_running():
-                    loop.call_soon_threadsafe(_delta_queue.put_nowait, delta)
-                else:
-                    _delta_queue.put_nowait(delta)
+                _safe_put(delta)
             else:
                 _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
 
@@ -918,24 +916,10 @@ async def chat_completions(req: ChatRequest):
                             "todos": todo_data.get("todos", []),
                             "summary": todo_data.get("summary", {}),
                         }
-                        try:
-                            _loop = asyncio.get_running_loop()
-                        except RuntimeError:
-                            _loop = None
-                        if _loop and _loop.is_running():
-                            _loop.call_soon_threadsafe(_delta_queue.put_nowait, todo_event)
-                        else:
-                            _delta_queue.put_nowait(todo_event)
+                        _safe_put(todo_event)
                     except Exception:
                         pass
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-            else:
-                _delta_queue.put_nowait(event)
+            _safe_put(event)
 
         def thinking_handler(iteration: int, prev_tools: list):
             _log.info(f"[ThinkEvent] iteration={iteration}, prev_tools={[t.get('name') for t in (prev_tools or [])]}")
@@ -948,14 +932,7 @@ async def chat_completions(req: ChatRequest):
                 "iteration": iteration,
                 "message": msg
             }
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-            else:
-                _delta_queue.put_nowait(event)
+            _safe_put(event)
 
         def evolution_event_handler(message: str, tool_name: str, is_error: bool, duration: float):
             """Route evolution events (achievements, advice) to SSE stream."""
@@ -966,14 +943,7 @@ async def chat_completions(req: ChatRequest):
                 "is_error": is_error,
                 "duration": round(duration, 2),
             }
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                loop.call_soon_threadsafe(_delta_queue.put_nowait, event)
-            else:
-                _delta_queue.put_nowait(event)
+            _safe_put(event)
 
         def run_sync():
             try:
@@ -1003,19 +973,29 @@ async def chat_completions(req: ChatRequest):
                 yield f'data: {json.dumps({"type": "stream_start", "stream_id": _stream_id})}\n\n'
 
                 loop = asyncio.get_running_loop()
-                # 使用独立的 executor，不依赖系统默认 executor
-                # 系统默认 executor 可能被前一个失败的 agent 调用 shutdown 了
-                import concurrent.futures
-                _agent_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                # 全局共享线程池，避免泄漏
+                from hermes_cli.blueprints.state import get_agent_executor
+                _exec = get_agent_executor()
                 try:
-                    agent_task = loop.run_in_executor(_agent_executor, run_sync)
+                    agent_task = loop.run_in_executor(_exec, run_sync)
                 except RuntimeError:
-                    # 如果 executor 也被 shutdown，重建一个
-                    import concurrent.futures as _cf
-                    _agent_executor = _cf.ThreadPoolExecutor(max_workers=1)
-                    agent_task = loop.run_in_executor(_agent_executor, run_sync)
+                    # executor 可能被 shutdown，重建
+                    from hermes_cli.blueprints.state import get_agent_executor as _rebuild
+                    _exec = _rebuild()
+                    agent_task = loop.run_in_executor(_exec, run_sync)
+
+                # 全局超时保护：防止 agent 线程卡死后 SSE 流无限挂起
+                _stream_start_time = time.time()
+                _STREAM_MAX_DURATION = 1800  # 30 分钟上限
 
                 while not _agent_done.is_set() or not _delta_queue.empty():
+                    # 超时强制退出
+                    if time.time() - _stream_start_time > _STREAM_MAX_DURATION:
+                        _log.error(f"[Stream] Global timeout ({_STREAM_MAX_DURATION}s), force stopping, stream_id={_stream_id}")
+                        agent._interrupt_requested = True
+                        agent_task.cancel()
+                        break
+
                     if _cancel_event.is_set():
                         _log.info(f"[Stream] Frontend requested stop, stream_id={_stream_id}")
                         agent._interrupt_requested = True
@@ -1056,12 +1036,22 @@ async def chat_completions(req: ChatRequest):
                         _log.info(f"[Stream] Client disconnected, cancelling agent, stream_id={_stream_id}")
                         agent._interrupt_requested = True
                         agent_task.cancel()
+                        # 给 agent 线程 5 秒时间清理，超则强制放弃
+                        try:
+                            await asyncio.wait_for(asyncio.shield(agent_task), timeout=5.0)
+                        except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                            _log.warning(f"[Stream] Agent did not finish within 5s after cancel, abandoning, stream_id={_stream_id}")
                 except NameError:
                     pass  # agent_task not yet created
+                except Exception as _cleanup_err:
+                    _log.error(f"[Stream] Cleanup error: {_cleanup_err}")
 
-            # Wait for agent (v2.0.4 style — direct await, no timeout wrapper)
+            # Wait for agent result (with timeout to prevent hanging)
             try:
-                _agent_result = await agent_task
+                _agent_result = await asyncio.wait_for(agent_task, timeout=30.0)
+            except asyncio.TimeoutError:
+                _log.error(f"[Stream] Agent did not complete within 30s post-stream, abandoning")
+                _agent_result = {}
             except Exception:
                 _agent_result = {}
 
@@ -1093,13 +1083,21 @@ async def chat_completions(req: ChatRequest):
             )
 
         loop = asyncio.get_running_loop()
-        import concurrent.futures as _cf
-        _agent_executor = _cf.ThreadPoolExecutor(max_workers=1)
+        from hermes_cli.blueprints.state import get_agent_executor
+        _exec = get_agent_executor()
         try:
-            result = await loop.run_in_executor(_agent_executor, run_sync)
+            result = await asyncio.wait_for(
+                loop.run_in_executor(_exec, run_sync),
+                timeout=1800.0  # 30 分钟超时
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Agent execution timed out (30min)")
         except RuntimeError:
-            _agent_executor = _cf.ThreadPoolExecutor(max_workers=1)
-            result = await loop.run_in_executor(_agent_executor, run_sync)
+            _exec = get_agent_executor()  # 重建
+            result = await asyncio.wait_for(
+                loop.run_in_executor(_exec, run_sync),
+                timeout=1800.0
+            )
 
         final_response = result.get("final_response", "") if result else ""
         if not final_response and result and result.get("error"):
