@@ -1506,12 +1506,39 @@ async def emergence_status():
         except Exception:
             health = {"error": "unavailable"}
 
+        # Domain modules
+        try:
+            from agent.domain_modules import list_all_modules
+            _mods = list_all_modules(db_path)
+            domain_mods = [
+                {"id": m.id, "name": m.name, "description": m.description,
+                 "event_count": m.event_count, "is_active": m.is_active}
+                for m in _mods
+            ]
+        except Exception:
+            domain_mods = []
+
+        # Cross-session continuity
+        try:
+            from agent.cross_session_continuity import CrossSessionContinuity
+            _cs = CrossSessionContinuity(db_path)
+            _last_snap = _cs.load_last_snapshot()
+            continuity = {
+                "last_snapshot": _last_snap.timestamp if _last_snap else None,
+                "last_session_id": _last_snap.session_id if _last_snap else None,
+                "has_snapshot": _last_snap is not None,
+            }
+        except Exception:
+            continuity = {"has_snapshot": False}
+
         return {
             "richness": richness_data,
             "clusters": cluster_stats,
             "total_events": total_events,
             "capabilities": caps,
             "health": health,
+            "domain_modules": domain_mods,
+            "continuity": continuity,
         }
     except Exception as e:
         return {"error": str(e)}

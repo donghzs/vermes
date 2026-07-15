@@ -153,3 +153,38 @@ register_module(
     category=ComponentCategory.OBSERVABILITY,
     module_path="agent.background_review",
 )
+
+# ---------------------------------------------------------------------------
+# Phase 5: Emergent memory & evolution framework (2026-07)
+# ---------------------------------------------------------------------------
+
+_EMERGENCE_MODULES = [
+    ("raw_event", "2026-07-12", "Zero-classification event recording — all tool executions stored as raw facts", False, ComponentCategory.EVOLUTION),
+    ("emergent_clusterer", "2026-07-12", "Pure Python DBSCAN clustering of raw events — no preset categories", False, ComponentCategory.EVOLUTION),
+    ("cluster_lifecycle", "2026-07-12", "Cluster state machine: emerging → stable → declining → dormant → dead", False, ComponentCategory.EVOLUTION),
+    ("emergent_insight", "2026-07-12", "Generate insights from cluster statistics — purely data-driven", True, ComponentCategory.EVOLUTION),
+    ("domain_modules", "2026-07-12", "Vertical domain modules emerged from cluster patterns — hot-pluggable", False, ComponentCategory.EVOLUTION),
+    ("cross_session_continuity", "2026-07-12", "Snapshot cluster state at session end, brief evolution at session start", False, ComponentCategory.EVOLUTION),
+    ("self_assessment", "2026-07-14", "Context richness scoring — data-driven signal for compression and emergence", False, ComponentCategory.OBSERVABILITY),
+    ("capability_evolver", "2026-07-14", "Emergence decision engine — observes signals and activates capabilities", True, ComponentCategory.EVOLUTION),
+    ("skill_extractor", "2026-07-14", "Extract skills from repetitive clusters — user confirms before activation", False, ComponentCategory.EVOLUTION),
+    ("graph_sync", "2026-07-14", "Knowledge graph export/import in GraphJSON format", False, ComponentCategory.INFRA),
+    ("memory_recall", "2026-07-12", "Auto-retrieve relevant memory for current user message", True, ComponentCategory.EVOLUTION),
+    ("memory_budget", "2026-07-12", "Unified token budget across all memory injections", False, ComponentCategory.INFRA),
+    ("hybrid_retriever", "2026-07-12", "Embedding-based retrieval with Jaccard fallback — follows user's provider config", True, ComponentCategory.INFRA),
+    ("session_handoff", "2026-07-12", "Generate session summary at end, inject at next session start", True, ComponentCategory.EVOLUTION),
+    ("evolution_injector", "2026-07-12", "Inject learned experience from past sessions into system prompt", True, ComponentCategory.EVOLUTION),
+    ("decision_tracker", "2026-07-12", "Track standing decisions across sessions, detect contradictions", False, ComponentCategory.EVOLUTION),
+    ("compression_scheduler", "2026-07-15", "Proactive compression: cache-aware, richness-aware depth, decision-point cleanup", True, ComponentCategory.INFRA),
+]
+
+for _name, _date, _for, _model_dep, _cat in _EMERGENCE_MODULES:
+    register_module(
+        name=_name,
+        added_date=_date,
+        added_for=_for,
+        model_dependent=_model_dep,
+        removal_criteria="Permanent" if not _model_dep else "When models handle this natively",
+        category=_cat,
+        module_path=f"agent.{_name}",
+    )

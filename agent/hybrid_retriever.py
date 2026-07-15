@@ -14,6 +14,8 @@ Embedding model 自动发现：
   - 未指定时，首次调用 /embeddings 失败则查询 /v1/models 自动发现
   - 发现结果缓存到 SQLite，避免重复查询
   - 失败的 provider 缓存到 _FAILED_EMBED_PROVIDERS，本进程不再重试
+  - provider 切换时自动清空失败缓存，允许重新尝试新 provider
+  - 发现结果缓存到 SQLite（7天 TTL），跟随 credential fingerprint 失效
 """
 
 from __future__ import annotations

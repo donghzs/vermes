@@ -257,6 +257,14 @@ const nodeTypeLabel = (nodeType) => {
           <span class="evo-val" :class="healthStatus.color">{{ healthStatus.text }}</span>
         </div>
 
+        <!-- 跨会话连续性 -->
+        <div v-if="emergenceData.continuity" class="evo-row">
+          <span class="evo-key">跨会话</span>
+          <span class="evo-val" :class="emergenceData.continuity.has_snapshot ? 'text-green-400' : 'text-gray-400'">
+            {{ emergenceData.continuity.has_snapshot ? '有快照' : '无快照' }}
+          </span>
+        </div>
+
         <!-- Richness 信号 -->
         <div v-if="emergenceData.richness" class="evo-row">
           <span class="evo-key">记忆丰富度</span>
