@@ -4386,6 +4386,7 @@ def run_conversation(
             tool_calls_this_turn=len(_tool_names_this_turn),
             tool_names_this_turn=_tool_names_this_turn,
         ))
+        agent._current_turn_tool_names = _tool_names_this_turn
         agent._last_turn_tool_names = _tool_names_this_turn
     except Exception:
         pass  # scheduler metrics are best-effort — never block turn completion

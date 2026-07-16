@@ -437,6 +437,11 @@ export const useChatStore = defineStore('chat', () => {
             if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
             am.streaming = false; am._currentStep = null; am._streamStartTime = null; am._toolCount = null
+            // 检测空回复：后端流结束但没有任何内容输出
+            if (!am.content || !am.content.trim()) {
+              am.content = '⚠️ 回复为空，可能是后端处理异常。请重试或更换模型。'
+              am._isEmpty = true
+            }
           }
           flushScroll()
           if (sendSessionId) sessionLoading.value[sendSessionId] = false
@@ -455,7 +460,13 @@ export const useChatStore = defineStore('chat', () => {
           if (am) {
             if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
             am.streaming = false
-            am.content += `\n\n\`\`\`error\n${error}\n\`\`\``
+            // 如果已有部分内容，追加错误信息；否则用友好提示替代空白
+            if (am.content && am.content.trim()) {
+              am.content += `\n\n\`\`\`error\n${error}\n\`\`\``
+            } else {
+              am.content = `⚠️ 回复失败：${error}\n\n请重试或更换模型。`
+              am._isEmpty = true
+            }
             am._streamStartTime = null
           }
           flushScroll()
@@ -484,6 +495,11 @@ export const useChatStore = defineStore('chat', () => {
       if (am) {
         if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
         am.streaming = false
+        // 网络异常导致空回复时显示友好提示
+        if (!am.content || !am.content.trim()) {
+          am.content = `⚠️ 发送失败：${e.message || '未知错误'}\n\n请重试或更换模型。`
+          am._isEmpty = true
+        }
       }
       if (sendSessionId) sessionLoading.value[sendSessionId] = false
       if (e.name === 'AbortError') {

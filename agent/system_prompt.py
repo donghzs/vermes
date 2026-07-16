@@ -444,7 +444,6 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # ── Extracted skills: active skills + pending for user confirmation ──
     try:
         from agent.skill_extractor import get_active_skills_prompt, get_pending_skills_prompt
-        import os
         from pathlib import Path
         _db = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))) / "evolution" / "self-model.db"
         if _db.exists():

@@ -530,7 +530,7 @@ async function handleImportFile(e) {
         <SkillManager />
       </div>
       <!-- 进化系统面板 -->
-      <div class="shrink-0">
+      <div class="shrink-0 max-h-80 overflow-y-auto evolution-panel-wrapper">
         <EvolutionPanel />
       </div>
     </template>

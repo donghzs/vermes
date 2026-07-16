@@ -3,6 +3,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 import HelpGuide from './HelpGuide.vue'
 
+// ── 核心 store（必须在所有引用它的函数/computed 之前初始化） ──
+const chat = useChatStore()
+
 // ── 进化指示器 ──
 const evoStatus = ref(null)
 async function fetchEvoStatus() {
@@ -60,7 +63,6 @@ const defaultModels = [
   { id: 'agnes-2.0-flash', name: '✨ Agnes 2.0 Flash（免费）', provider: 'agnes' },
 ]
 
-const chat = useChatStore()
 const showHelp = ref(false)
 
 const props = defineProps({

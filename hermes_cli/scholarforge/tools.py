@@ -629,11 +629,12 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
 
         # 专有名词精确匹配（最高权重）
         proper_match = 0.0
-        if proper_kw:
+        has_proper = bool(proper_kw)
+        if has_proper:
             matched = proper_kw & (proper_title | proper_abs)
             proper_match = len(matched) / len(proper_kw)
 
-        # 标题与关键词的 token 重叠
+        # 标题与关键词的 token 重叠（含中文）
         kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
         title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', paper.title.lower()))
         overlap = len(kw_tokens & title_tokens) / max(len(kw_tokens), 1)
@@ -650,7 +651,12 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             abs_lower = paper.abstract.lower()
             abstract_match = sum(1 for t in kw_tokens if t.lower() in abs_lower) / max(len(kw_tokens), 1)
 
-        return min(proper_match * 0.4 + overlap * 0.2 + fuzzy * 0.2 + abstract_match * 0.2, 1.0)
+        # 权重分配：有英文专有名词时正常四因子；无时重分配给中文因子
+        if has_proper:
+            return min(proper_match * 0.4 + overlap * 0.2 + fuzzy * 0.2 + abstract_match * 0.2, 1.0)
+        else:
+            # 纯中文场景：overlap 35% + fuzzy 30% + abstract 35%
+            return min(overlap * 0.35 + fuzzy * 0.3 + abstract_match * 0.35, 1.0)
 
     # 选择最佳匹配
     seen_titles: set[str] = set()

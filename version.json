@@ -1,37 +1,37 @@
 {
-  "version": "2.1.0",
-  "buildDate": "2026-06-11",
+  "version": "2.3.1",
+  "buildDate": "2026-07-15",
   "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.0.8.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.0.8.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.1-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.1.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.1.exe"
   },
   "sha256": {
-    "macos_arm64": "ffaf830bf17f009b5ded9c665a5ad1a545f670c7646534edb79a04850b9fca39",
-    "macos_x64": "64f4411d16c3db072ae84d24cca2c265d6941bd7d951ebd9cb84f17dbc054b4a"
+    "macos_arm64": "03447a54565d249ab42e721c0a2495214886f3f4c73df04fc6b039e7d32bfbee",
+    "macos_x64": "ff3331f62edb7ad12b9f24d3b5332944a0d44cd9f985412319c41d4f34c091fb"
   },
   "macOS": {
     "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.0.8-arm64.dmg",
-      "size": "160 MB",
-      "sha256": "ffaf830bf17f009b5ded9c665a5ad1a545f670c7646534edb79a04850b9fca39"
+      "dmg": "/vermes/downloads/Vermes-2.3.1-arm64.dmg",
+      "size": "174 MB",
+      "sha256": "03447a54565d249ab42e721c0a2495214886f3f4c73df04fc6b039e7d32bfbee"
     },
     "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.0.8.dmg",
-      "size": "160 MB",
-      "sha256": "64f4411d16c3db072ae84d24cca2c265d6941bd7d951ebd9cb84f17dbc054b4a"
+      "dmg": "/vermes/downloads/Vermes-2.3.1.dmg",
+      "size": "179 MB",
+      "sha256": "ff3331f62edb7ad12b9f24d3b5332944a0d44cd9f985412319c41d4f34c091fb"
     }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.0.8.exe",
+    "exe": "/vermes/downloads/Vermes-Setup-2.3.1.exe",
     "size": ""
   },
   "changelog": [
-    "AgentCache 模块提取 — chat.py 1246→1092行 (-12.4%)",
-    "死代码删除 — web_server.py ~293行 + defaults.js",
-    "Proxy 回退移除 — 全入口强制 agent 模式，不透传 LLM",
-    "前端超时移除 — request + stream read 清零，等效 CLI",
-    "默认模型清空 — 前端不猜用户配什么",
-    "累计 bug 修复 14 个 — C1-C3/H1-H4/H8/P2×5"
+    "ScholarForge SSE 僵尸请求修复 — 离开模块时自动 abort + 后端断开检测",
+    "线程安全修复 — asyncio.Queue 跨线程写入导致 SSE 永久挂起",
+    "Agent 超时保护 — 流式 30s + 全局 30min 硬上限",
+    "LLM 超时 120s→60s — 可通过 SCHOLAR_LLM_TIMEOUT 环境变量配置",
+    "生态模块系统 — ScholarForge 分离为首个热插拔模块",
+    "数据冗余审计 — 停止 anti_patterns 写入 + TTL 清理 + 视图替代双写"
   ]
 }
