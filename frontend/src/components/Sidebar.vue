@@ -8,7 +8,7 @@ import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 import MCPManager from './MCPManager.vue'
 import SkillManager from './SkillManager.vue'
-import ModuleHost from './ModuleHost.vue'
+// 生态模块前端动态加载已弃用，改为 Agent 工具集模式
 
 const chat = useChatStore()
 const router = useRouter()
@@ -16,34 +16,9 @@ const router = useRouter()
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
 
-// ── 生态模块动态加载 ──
-const installedModules = ref([])
-const moduleHostRef = ref(null)
+// 模块前端 UI 已移除，ScholarForge 通过 Agent 工具集在对话中调用
 
-async function loadModules() {
-  try {
-    const res = await fetch('/api/modules')
-    const data = await res.json()
-    installedModules.value = (data.modules || []).map(m => ({
-      ...m,
-      route: m.frontend_route || `/${m.name}`,
-      icon: m.frontend_icon || '📦',
-      menu_title: m.frontend_menu_title || m.name,
-    }))
-  } catch (e) {
-    // 静默失败 — 模块系统可能未启用
-    installedModules.value = []
-  }
-}
-
-async function openModule(mod) {
-  if (!moduleHostRef.value) return
-  await moduleHostRef.value.open(mod)
-}
-
-onMounted(() => {
-  loadModules()
-})
+// 模块加载已移除
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -484,18 +459,6 @@ async function handleImportFile(e) {
           <span class="text-base">🎨</span>
           <span class="sidebar-tooltip group-hover:opacity-100">创作工作室</span>
         </button>
-        <button
-          v-for="mod in installedModules"
-          :key="mod.name"
-          @click="openModule(mod)"
-          class="group relative px-3 py-2 rounded-lg text-sm transition flex flex-col items-center leading-tight"
-          :class="$route.path === mod.route ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'"
-          :title="mod.display_name"
-        >
-          <span class="text-base">{{ mod.icon }}</span>
-          <span class="text-[10px]">{{ mod.menu_title }}</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">{{ mod.display_name }}</span>
-        </button>
         <button @click="goSettings()" class="group relative px-3 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition" title="设置">
           <span class="text-base">⚙️</span>
           <span class="sidebar-tooltip group-hover:opacity-100">设置</span>
@@ -555,6 +518,4 @@ async function handleImportFile(e) {
     </div>
   </Teleport>
 
-  <!-- 生态模块容器 -->
-  <ModuleHost ref="moduleHostRef" @error="(e) => toast.error(`模块加载失败: ${e.error}`)" />
 </template>
