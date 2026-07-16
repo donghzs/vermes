@@ -138,7 +138,7 @@ async def test_restart_command_uses_atomic_json_writes_for_marker_files(tmp_path
     def _fake_atomic_json_write(path, payload, **kwargs):
         calls.append((Path(path).name, payload, kwargs))
 
-    monkeypatch.setattr(gateway_run, "atomic_json_write", _fake_atomic_json_write)
+    monkeypatch.setattr("gateway.slash_commands_mixin.atomic_json_write", _fake_atomic_json_write)
 
     runner, _adapter = make_restart_runner()
     runner.request_restart = MagicMock(return_value=True)
