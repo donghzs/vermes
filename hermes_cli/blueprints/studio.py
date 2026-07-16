@@ -4,6 +4,10 @@
 直接调厂商 API，不经任何 Agent 逻辑。
 
 Endpoints:
+- GET  /api/studio/providers       — 动态返回可用 provider 列表（从 config.yaml + 插件注册表）
+- POST /api/studio/providers       — 新增 provider 配置（写入 config.yaml）
+- DELETE /api/studio/providers/{name} — 删除 provider 配置
+- POST /api/studio/models          — 拉取厂商实时模型列表（调用 /v1/models）
 - POST /api/studio/generate         — 生成文本/图片/视频
 - POST /api/studio/status/{id}      — 视频状态查询（推荐）
 - GET  /api/studio/status/{id}      — 视频状态查询（兼容旧版）
@@ -11,6 +15,7 @@ Endpoints:
 
 import json
 import logging
+import os
 import httpx
 from pathlib import Path
 from datetime import datetime
@@ -19,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any, Dict, List
 
 router = APIRouter(prefix="/api/studio", tags=["studio"])
 
@@ -277,14 +282,16 @@ def _handle_image2image(client: httpx.Client, req: StudioRequest) -> StudioRespo
     b64 = _clean_b64(req.image_data)
     data_uri = f"data:image/png;base64,{b64}"
 
-    # 方式1：/v1/images/generations + image 字段（Agnes 原生）
+    # 方式1：/v1/images/generations + extra_body.image 数组（OpenAI 兼容格式，per Agnes API 文档）
     try:
         import json as _json
 
         _payload = _json.dumps({
             "model": req.model,
             "prompt": req.prompt,
-            "image": data_uri,
+            "extra_body": {
+                "image": [data_uri],
+            },
             "size": req.size,
             "n": 1,
         })
@@ -498,6 +505,370 @@ def _do_video_status(task_id: str, base_url: str, api_key: str) -> StudioRespons
 
 # ═══════════════════════════════════════════════════════
 #  路由端点
+# ═══════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════
+#  动态 Provider / Model 端点
+# ═══════════════════════════════════════════════════════
+
+# 内置预设 — 作为 fallback，当 config.yaml 没有配置时使用
+_BUILTIN_PRESETS = [
+    {
+        "name": "agnes",
+        "label": "Agnes AI",
+        "icon": "🧠",
+        "baseUrl": "https://apihub.agnes-ai.com/v1",
+        "text": "agnes-2.0-flash",
+        "image": "agnes-image-2.1-flash",
+        "video": "agnes-video-v2.0",
+        "keyEnv": "AGNES_API_KEY",
+    },
+    {
+        "name": "deepseek",
+        "label": "DeepSeek",
+        "icon": "🔍",
+        "baseUrl": "https://api.deepseek.com",
+        "text": "deepseek-chat",
+        "image": "",
+        "video": "",
+        "keyEnv": "DEEPSEEK_API_KEY",
+    },
+    {
+        "name": "xiaomi",
+        "label": "小米 MiMo",
+        "icon": "📱",
+        "baseUrl": "https://api.xiaomimimo.com/v1",
+        "text": "mimo-v2.5-pro",
+        "image": "mimo-v2.5-pro",
+        "video": "mimo-v2.5-pro",
+        "keyEnv": "XIAOMI_API_KEY",
+    },
+    {
+        "name": "openai",
+        "label": "OpenAI",
+        "icon": "⚡",
+        "baseUrl": "https://api.openai.com/v1",
+        "text": "gpt-4o",
+        "image": "dall-e-3",
+        "video": "",
+        "keyEnv": "OPENAI_API_KEY",
+    },
+    {
+        "name": "alibaba",
+        "label": "阿里通义",
+        "icon": "☁️",
+        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "text": "qwen-max",
+        "image": "qwen-vl-max",
+        "video": "",
+        "keyEnv": "DASHSCOPE_API_KEY",
+    },
+]
+
+
+def _load_studio_config() -> Dict[str, Any]:
+    """从 config.yaml 读取 studio 段。"""
+    try:
+        from hermes_cli.config import load_config
+        cfg = load_config()
+        section = cfg.get("studio") if isinstance(cfg, dict) else None
+        return section if isinstance(section, dict) else {}
+    except Exception:
+        return {}
+
+
+def _resolve_env_value(raw: str) -> str:
+    """支持 ${ENV_VAR} 语法。"""
+    if isinstance(raw, str) and raw.startswith("${") and raw.endswith("}"):
+        return os.environ.get(raw[2:-1], "")
+    return raw or ""
+
+
+@router.get("/providers")
+def list_providers():
+    """返回可用 provider 列表。
+
+    合并三个来源：
+    1. config.yaml 中 studio.providers（用户自定义）
+    2. config.yaml 中 image_gen / video_gen 配置（Agent 工具配置也可用于 Studio）
+    3. 内置预设（_BUILTIN_PRESETS）作为 fallback
+
+    去重逻辑：同 baseUrl 的以 config.yaml 为优先。
+    """
+    result: List[Dict[str, Any]] = []
+    seen_urls = set()
+
+    # 1. 从 config.yaml studio.providers 读取
+    studio_cfg = _load_studio_config()
+    custom_providers = studio_cfg.get("providers")
+    if isinstance(custom_providers, list):
+        for p in custom_providers:
+            if not isinstance(p, dict):
+                continue
+            url = p.get("baseUrl", p.get("base_url", ""))
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                result.append({
+                    "name": p.get("name", "custom"),
+                    "label": p.get("label", p.get("name", "自定义")),
+                    "icon": p.get("icon", "🔧"),
+                    "baseUrl": url,
+                    "text": p.get("text", p.get("model", "")),
+                    "image": p.get("image", ""),
+                    "video": p.get("video", ""),
+                    "keyEnv": p.get("keyEnv", ""),
+                })
+
+    # 2. 从 image_gen / video_gen 配置读取（Agent 工具配置共享）
+    try:
+        from hermes_cli.config import load_config
+        cfg = load_config()
+        for section_key in ("image_gen", "video_gen"):
+            section = cfg.get(section_key) if isinstance(cfg, dict) else None
+            if not isinstance(section, dict):
+                continue
+            base_url = section.get("base_url", "")
+            if base_url and base_url not in seen_urls:
+                seen_urls.add(base_url)
+                model = section.get("model", "")
+                result.append({
+                    "name": f"{section_key}_config",
+                    "label": f"{section_key} 配置",
+                    "icon": "⚙️",
+                    "baseUrl": base_url,
+                    "text": model,
+                    "image": model if section_key == "image_gen" else "",
+                    "video": model if section_key == "video_gen" else "",
+                    "keyEnv": "",
+                })
+    except Exception:
+        pass
+
+    # 3. 内置预设 fallback
+    for p in _BUILTIN_PRESETS:
+        if p["baseUrl"] not in seen_urls:
+            seen_urls.add(p["baseUrl"])
+            result.append(dict(p))
+
+    # 总是添加「自定义」选项
+    result.append({
+        "name": "custom",
+        "label": "自定义",
+        "icon": "🔧",
+        "baseUrl": "",
+        "text": "",
+        "image": "",
+        "video": "",
+        "keyEnv": "",
+    })
+
+    return {"providers": result}
+
+
+class StudioProviderRequest(BaseModel):
+    """新增/更新 provider 配置。"""
+    name: str
+    label: str = ""
+    icon: str = "🔧"
+    baseUrl: str
+    text: str = ""
+    image: str = ""
+    video: str = ""
+    apiKey: str = ""  # 明文 key，写入 .env 而非 config.yaml
+
+
+@router.post("/providers")
+def save_provider(req: StudioProviderRequest):
+    """新增或更新 provider 配置，写入 config.yaml。
+
+    - provider 配置写入 config.yaml 的 studio.providers 列表
+    - apiKey 写入 .env 文件（不暴露在 config.yaml 中）
+    - 同名 provider 自动覆盖
+    """
+    try:
+        from hermes_cli.config import load_config, save_config
+        from hermes_cli.config import get_env_path, ensure_hermes_home
+
+        cfg = load_config() or {}
+
+        # 初始化 studio 段
+        if "studio" not in cfg or not isinstance(cfg.get("studio"), dict):
+            cfg["studio"] = {}
+        if not isinstance(cfg["studio"].get("providers"), list):
+            cfg["studio"]["providers"] = []
+
+        providers = cfg["studio"]["providers"]
+
+        # 同名覆盖
+        existing_idx = None
+        for i, p in enumerate(providers):
+            if p.get("name") == req.name:
+                existing_idx = i
+                break
+
+        provider_entry = {
+            "name": req.name,
+            "label": req.label or req.name,
+            "icon": req.icon or "🔧",
+            "baseUrl": req.baseUrl,
+            "text": req.text,
+            "image": req.image,
+            "video": req.video,
+        }
+
+        # apiKey 写入 .env，config.yaml 只存引用
+        if req.apiKey:
+            env_key = f"STUDIO_{req.name.upper()}_API_KEY"
+            provider_entry["keyEnv"] = env_key
+            # 写入 .env
+            ensure_hermes_home()
+            env_path = get_env_path()
+            _upsert_env_var(env_path, env_key, req.apiKey)
+
+        if existing_idx is not None:
+            providers[existing_idx] = provider_entry
+        else:
+            providers.append(provider_entry)
+
+        cfg["studio"]["providers"] = providers
+        save_config(cfg)
+
+        logger.info("[Studio] Provider '%s' saved to config.yaml", req.name)
+        return {"success": True, "provider": provider_entry}
+
+    except Exception as exc:
+        logger.error("[Studio] save_provider error: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
+@router.delete("/providers/{provider_name}")
+def delete_provider(provider_name: str):
+    """从 config.yaml 中删除指定 provider。"""
+    try:
+        from hermes_cli.config import load_config, save_config
+
+        cfg = load_config() or {}
+        studio = cfg.get("studio")
+        if not isinstance(studio, dict):
+            return {"success": False, "error": "studio 配置不存在"}
+
+        providers = studio.get("providers")
+        if not isinstance(providers, list):
+            return {"success": False, "error": "providers 列表不存在"}
+
+        original_len = len(providers)
+        cfg["studio"]["providers"] = [
+            p for p in providers if p.get("name") != provider_name
+        ]
+
+        if len(cfg["studio"]["providers"]) == original_len:
+            return {"success": False, "error": f"未找到 provider '{provider_name}'"}
+
+        save_config(cfg)
+        logger.info("[Studio] Provider '%s' deleted", provider_name)
+        return {"success": True, "deleted": provider_name}
+
+    except Exception as exc:
+        logger.error("[Studio] delete_provider error: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
+def _upsert_env_var(env_path: Path, key: str, value: str):
+    """在 .env 文件中新增或更新一个环境变量。"""
+    from pathlib import Path as P
+
+    path = P(env_path)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{key}={value}\n", encoding="utf-8")
+        return
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(f"{key}=") or stripped.startswith(f"export {key}="):
+            new_lines.append(f"{key}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+
+    if not found:
+        new_lines.append(f"{key}={value}")
+
+    path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+class StudioModelsRequest(BaseModel):
+    base_url: str
+    api_key: str
+
+
+@router.post("/models")
+def list_models(req: StudioModelsRequest):
+    """调用厂商 /v1/models 端点拉取实时模型列表。
+
+    让用户看到厂商当前可用的所有模型，不再依赖硬编码模型名。
+    厂商更新模型后自动可见。
+    """
+    if not req.base_url or not req.api_key:
+        return {"success": False, "models": [], "error": "base_url 和 api_key 不能为空"}
+
+    root = req.base_url.rstrip("/")
+    # 确保 /v1 前缀
+    if not root.endswith("/v1"):
+        root = root.rstrip("/") + ("" if root.endswith("/v1") else "/v1")
+
+    try:
+        resp = httpx.get(
+            f"{root}/models",
+            headers={"Authorization": f"Bearer {req.api_key}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # OpenAI 格式: {data: [{id: "model-name", ...}, ...]}
+        raw_models = data.get("data", [])
+        if not isinstance(raw_models, list):
+            raw_models = data.get("models", [])
+        if not isinstance(raw_models, list):
+            raw_models = []
+
+        models = []
+        for m in raw_models:
+            if isinstance(m, dict):
+                mid = m.get("id") or m.get("name", "")
+                if mid:
+                    models.append({
+                        "id": mid,
+                        "display": m.get("display_name", mid),
+                        "owned_by": m.get("owned_by", ""),
+                    })
+            elif isinstance(m, str):
+                models.append({"id": m, "display": m, "owned_by": ""})
+
+        # 按字母排序
+        models.sort(key=lambda x: x["id"])
+
+        return {"success": True, "models": models, "count": len(models)}
+
+    except httpx.HTTPStatusError as exc:
+        err_msg = ""
+        try:
+            err_body = exc.response.json()
+            err_msg = err_body.get("error", {}).get("message", "") or str(err_body)
+        except Exception:
+            err_msg = exc.response.text[:300]
+        return {"success": False, "models": [], "error": f"HTTP {exc.response.status_code}: {err_msg}"}
+    except Exception as exc:
+        return {"success": False, "models": [], "error": str(exc)}
+
+
+# ═══════════════════════════════════════════════════════
+#  生成 / 状态查询
 # ═══════════════════════════════════════════════════════
 
 

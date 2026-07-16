@@ -174,7 +174,7 @@ def test_agnes_routes_img2img_with_extra_body():
 
     assert result["success"] is True
     assert "extra_body" in captured["json"]
-    assert captured["json"]["extra_body"]["tags"] == ["img2img"]
+    assert captured["json"]["extra_body"]["image"] == ["http://example.com/src.png"]
     assert "http://example.com/src.png" in captured["json"]["extra_body"]["image"]
 
 

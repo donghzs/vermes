@@ -1,0 +1,6 @@
+name: openai_compat
+version: 1.0.0
+description: "Universal OpenAI-compatible image generation backend. Works with any provider that supports POST /v1/images/generations (Agnes, OpenAI, xAI, Alibaba, ByteDance, Xiaomi, etc.). Configure via image_gen.base_url, image_gen.api_key, image_gen.model in config.yaml."
+author: Vermes
+kind: backend
+requires_env: []

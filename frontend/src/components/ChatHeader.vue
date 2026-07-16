@@ -154,11 +154,33 @@ function selectModel(m, event) {
     return  // 不关闭下拉、不改变主模型
   }
   // 普通点击 → 单选模式
-  chat.currentModel = m.id
-  chat.currentProvider = m.provider || m.group || ''
-  addToRecent(m.id)
-  try { localStorage.setItem('vermes-current-model', m.id) } catch(e) { /* storage full */ }
-  try { localStorage.setItem('vermes-current-provider', m.provider || m.group || '') } catch(e) { /* storage full */ }
+  const oldModel = chat.currentModel
+  const newModel = m.id
+  const newProvider = m.provider || m.group || ''
+  const sessionId = chat.currentSessionId
+
+  // nextTurnSnapshot: 如果当前会话正在 streaming，先存到 pendingModel
+  if (sessionId && chat.loading) {
+    chat.pendingModel = { model: newModel, provider: newProvider, sessionId }
+    showModelSelect.value = false
+    modelSearch.value = ''
+    return
+  }
+
+  // 立即生效
+  chat.currentModel = newModel
+  chat.currentProvider = newProvider
+  const session = chat.sessions.find(s => s.id === sessionId)
+  if (session) {
+    session.model = newModel
+    session.provider = newProvider
+    chat.persistSessions()
+  }
+  // appendModelChange: 记录模型变更到消息流
+  chat.appendModelChange(sessionId, oldModel, newModel)
+  addToRecent(newModel)
+  try { localStorage.setItem('vermes-current-model', newModel) } catch(e) { /* storage full */ }
+  try { localStorage.setItem('vermes-current-provider', newProvider) } catch(e) { /* storage full */ }
   chat.compareModels = []
   showModelSelect.value = false
   modelSearch.value = ''

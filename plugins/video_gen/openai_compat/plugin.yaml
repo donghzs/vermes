@@ -1,0 +1,6 @@
+name: openai_compat
+version: 1.0.0
+description: "Universal OpenAI-compatible video generation backend. Supports async task pattern (submit + poll). Works with Agnes, xAI, and any provider using POST /v1/videos + GET polling."
+author: Vermes
+kind: backend
+requires_env: []

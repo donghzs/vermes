@@ -17,7 +17,10 @@
             @click="applyPreset(p)"
             class="chip"
             :class="{ active: baseUrl === p.baseUrl }"
-          >{{ p.icon }} {{ p.label }}</button>
+          >
+            {{ p.icon }} {{ p.label }}
+            <span v-if="p.name !== 'custom' && !isBuiltinPreset(p)" class="chip-delete" @click.stop="removeProvider(p.name)">✕</span>
+          </button>
         </div>
       </div>
       <div class="config-row">
@@ -26,14 +29,41 @@
           <option v-for="(cfg, i) in savedConfigs" :key="i" :value="i">{{ cfg.name || cfg.model }}</option>
         </select>
         <button class="btn-sm" @click="showSaveDialog = true">💾 保存</button>
+        <button class="btn-sm" @click="showAddProviderDialog = true">➕ 添加厂商</button>
         <button class="btn-sm" @click="deleteCurrentConfig" :disabled="selectedConfigIndex < 0">🗑️</button>
       </div>
       <div class="config-row">
         <input v-model="baseUrl" placeholder="API 地址" class="cfg-input" />
-        <input v-model="model" placeholder="模型名" class="cfg-input" />
+        <div class="model-input-wrap">
+          <input v-model="model" placeholder="模型名" class="cfg-input" list="studio-model-list" />
+          <button class="btn-refresh" @click="fetchModels" :disabled="loadingModels" title="获取可用模型列表">{{ loadingModels ? '⏳' : '🔄' }}</button>
+        </div>
+        <datalist id="studio-model-list">
+          <option v-for="m in availableModels" :key="m.id" :value="m.id">{{ m.display }}{{ m.owned_by ? ' (' + m.owned_by + ')' : '' }}</option>
+        </datalist>
         <div class="key-wrap">
           <input :type="showKey ? 'text' : 'password'" v-model="apiKey" placeholder="API Key" class="cfg-input" />
           <button class="btn-eye" @click="showKey = !showKey">{{ showKey ? '🙈' : '👁️' }}</button>
+        </div>
+      </div>
+
+      <!-- 模型选择弹窗 -->
+      <div v-if="showModelPicker && availableModels.length > 0" class="model-picker-overlay" @click.self="showModelPicker = false">
+        <div class="model-picker">
+          <div class="model-picker-header">
+            <span>📋 可用模型 ({{ availableModels.length }})</span>
+            <button @click="showModelPicker = false">✕</button>
+          </div>
+          <div class="model-picker-list">
+            <button v-for="m in availableModels" :key="m.id"
+              @click="selectModel(m.id)"
+              class="model-item"
+              :class="{ active: model === m.id }"
+            >
+              <span class="model-id">{{ m.id }}</span>
+              <span v-if="m.owned_by" class="model-owner">{{ m.owned_by }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -46,6 +76,33 @@
             <div class="modal-actions">
               <button @click="showSaveDialog = false" class="btn-cancel">取消</button>
               <button @click="confirmSave" class="btn-confirm">保存</button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
+
+      <!-- 添加厂商弹窗 -->
+      <Teleport to="body">
+        <div v-if="showAddProviderDialog" class="modal-overlay" @click.self="showAddProviderDialog = false">
+          <div class="modal-box modal-box-wide">
+            <h4>➕ 添加厂商</h4>
+            <p class="modal-hint">填入厂商信息，保存后 Studio 和 Agent 都可直接使用</p>
+            <div class="modal-form">
+              <div class="form-row">
+                <input v-model="newProvider.name" placeholder="厂商标识（如 minimax）" class="modal-input" />
+                <input v-model="newProvider.label" placeholder="显示名称（如 MiniMax）" class="modal-input" />
+              </div>
+              <input v-model="newProvider.baseUrl" placeholder="API 地址（如 https://api.minimax.chat/v1）" class="modal-input" />
+              <input v-model="newProvider.apiKey" type="password" placeholder="API Key" class="modal-input" />
+              <div class="form-row">
+                <input v-model="newProvider.text" placeholder="文本模型（可留空）" class="modal-input" />
+                <input v-model="newProvider.image" placeholder="图片模型（可留空）" class="modal-input" />
+                <input v-model="newProvider.video" placeholder="视频模型（可留空）" class="modal-input" />
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button @click="showAddProviderDialog = false" class="btn-cancel">取消</button>
+              <button @click="confirmAddProvider" :disabled="!newProvider.name || !newProvider.baseUrl" class="btn-confirm">保存到配置</button>
             </div>
           </div>
         </div>
@@ -220,7 +277,9 @@ watch([baseUrl, model, apiKey], () => {
 const showKey = ref(false)
 const showConfig = ref(true)
 const showSaveDialog = ref(false)
+const showAddProviderDialog = ref(false)
 const saveName = ref('')
+const newProvider = ref({ name: '', label: '', baseUrl: '', apiKey: '', text: '', image: '', video: '' })
 const statusMsg = ref('')
 const uploadedImage = ref(null) // { dataUrl, file }
 const fileInput = ref(null)
@@ -286,13 +345,80 @@ function reopenGalleryItem(item) {
   }
 }
 
-const providerPresets = [
+const providerPresets = ref([
   { name: 'agnes', label: 'Agnes AI', icon: '🧠', baseUrl: 'https://apihub.agnes-ai.com/v1', text: 'agnes-2.0-flash', image: 'agnes-image-2.1-flash', video: 'agnes-video-v2.0', keyEnv: 'AGNES_API_KEY' },
-  { name: 'deepseek', label: 'DeepSeek', icon: '🔍', baseUrl: 'https://api.deepseek.com', text: 'deepseek-chat', image: '', video: '' },
-  { name: 'xiaomi', label: '小米 MiMo', icon: '📱', baseUrl: 'https://api.xiaomimimo.com/v1', text: 'mimo-v2.5-pro', image: 'mimo-v2.5-pro', video: 'mimo-v2.5-pro' },
-  { name: 'openai', label: 'OpenAI', icon: '⚡', baseUrl: 'https://api.openai.com/v1', text: 'gpt-4o', image: 'dall-e-3', video: '' },
-  { name: 'alibaba', label: '阿里通义', icon: '☁️', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', text: 'qwen-max', image: 'qwen-vl-max', video: '' },
-]
+  { name: 'custom', label: '自定义', icon: '🔧', baseUrl: '', text: '', image: '', video: '' },
+])
+const loadingProviders = ref(false)
+const availableModels = ref([])
+const loadingModels = ref(false)
+const showModelPicker = ref(false)
+
+// 从后端动态加载 provider 列表
+async function loadProviders() {
+  loadingProviders.value = true
+  try {
+    const resp = await fetch('/api/studio/providers')
+    if (resp.ok) {
+      const data = await resp.json()
+      if (data.providers && data.providers.length > 0) {
+        providerPresets.value = data.providers
+      }
+    }
+  } catch (e) {
+    console.warn('[Studio] 加载 provider 列表失败，使用内置预设:', e.message)
+  } finally {
+    loadingProviders.value = false
+  }
+}
+
+// 从厂商 API 拉取实时模型列表
+async function fetchModels() {
+  if (!baseUrl.value || !apiKey.value) {
+    statusMsg.value = '⚠️ 请先填写 API 地址和 Key'
+    setTimeout(() => { statusMsg.value = '' }, 2000)
+    return
+  }
+  loadingModels.value = true
+  showModelPicker.value = true
+  try {
+    const resp = await fetch('/api/studio/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base_url: baseUrl.value, api_key: apiKey.value }),
+    })
+    const data = await resp.json()
+    if (data.success) {
+      availableModels.value = data.models || []
+      statusMsg.value = `✅ 获取到 ${data.count} 个模型`
+      setTimeout(() => { statusMsg.value = '' }, 2000)
+    } else {
+      availableModels.value = []
+      statusMsg.value = `❌ 获取模型失败: ${data.error}`
+      setTimeout(() => { statusMsg.value = '' }, 3000)
+    }
+  } catch (e) {
+    console.error('[Studio] fetchModels error:', e)
+    statusMsg.value = `❌ 请求失败: ${e.message}`
+    setTimeout(() => { statusMsg.value = '' }, 3000)
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+function selectModel(mid) {
+  model.value = mid
+  showModelPicker.value = false
+}
+
+// 初始化时加载 provider 列表
+loadProviders()
+
+// 判断是否为内置预设（不可删除）
+const _BUILTIN_NAMES = new Set(['agnes', 'deepseek', 'xiaomi', 'openai', 'alibaba', 'custom'])
+function isBuiltinPreset(p) {
+  return _BUILTIN_NAMES.has(p.name) && !p.baseUrl?.includes('minimax')
+}
 
 function applyPreset(preset) {
   baseUrl.value = preset.baseUrl
@@ -309,6 +435,8 @@ function applyPreset(preset) {
   if (preset.video) caps.push('视频')
   statusMsg.value = `✅ ${preset.label}：支持 ${caps.join('、')}`
   setTimeout(() => { statusMsg.value = '' }, 3000)
+  // 清空之前的模型列表
+  availableModels.value = []
   // Key 就绪后恢复未完成的视频任务
   restoreVideoPolls()
 }
@@ -374,7 +502,7 @@ function detectMode(text) {
 
 // ── 根据 mode 获取对应的模型名，不支持则返回 null ──
 function getModelForMode(mode) {
-  const activePreset = providerPresets.find(p => p.baseUrl === baseUrl.value)
+  const activePreset = providerPresets.value.find(p => p.baseUrl === baseUrl.value)
   if (!activePreset) return model.value
   if (mode === 'image' || mode === 'image2image') return activePreset.image || null
   if (mode === 'video' || mode === 'image2video' || mode === 'multi2video' || mode === 'keyframes') return activePreset.video || null
@@ -467,7 +595,7 @@ async function send() {
 
   // 检查模式是否支持
   if (!activeModel) {
-    const name = providerPresets.find(p => p.baseUrl === baseUrl.value)?.label || '当前供应商'
+    const name = providerPresets.value.find(p => p.baseUrl === baseUrl.value)?.label || '当前供应商'
     messages.value.push({ role: 'assistant', error: `${name} 不支持 ${mode === 'image' ? '图片' : '视频'}生成` })
     loading.value = false
     scrollBottom()
@@ -507,7 +635,7 @@ async function send() {
       const suppress = ', no text, no watermark, no signature, no logo, no frame, pure image, natural photography style'
       const finalPrompt = promptText.toLowerCase().includes('no text') ? promptText : promptText + suppress
       
-      // 图生图：直发 base64（Agnes 不支持产品精确保持，复杂场景走 Agent）
+      // 图生图：用 extra_body.image 数组（OpenAI 兼容格式，per Agnes API 文档）
       const body = {
         model: activeModel,
         prompt: finalPrompt,
@@ -515,7 +643,7 @@ async function send() {
         n: params.value.n,
       }
       if (hasImage) {
-        body.image = uploadedImage.value.dataUrl
+        body.extra_body = { image: [uploadedImage.value.dataUrl] }
       }
       const resp = await fetch(`${root}/v1/images/generations`, {
         method: 'POST',
@@ -670,6 +798,67 @@ function confirmSave() {
   if (saveName.value && saveName.value.trim()) saveAsNewConfig(saveName.value.trim())
   showSaveDialog.value = false
   saveName.value = ''
+}
+
+// 保存新厂商到后端 config.yaml
+async function confirmAddProvider() {
+  const p = newProvider.value
+  if (!p.name || !p.baseUrl) return
+
+  try {
+    const resp = await fetch('/api/studio/providers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: p.name.trim(),
+        label: p.label || p.name,
+        icon: '🔧',
+        baseUrl: p.baseUrl.trim(),
+        text: p.text || '',
+        image: p.image || '',
+        video: p.video || '',
+        apiKey: p.apiKey || '',
+      }),
+    })
+    const data = await resp.json()
+    if (data.success) {
+      statusMsg.value = `✅ 厂商「${p.label || p.name}」已保存`
+      showAddProviderDialog.value = false
+      newProvider.value = { name: '', label: '', baseUrl: '', apiKey: '', text: '', image: '', video: '' }
+      // 重新加载 provider 列表
+      await loadProviders()
+      // 自动选中刚添加的厂商
+      const added = providerPresets.value.find(pp => pp.name === p.name.trim())
+      if (added) applyPreset(added)
+      setTimeout(() => { statusMsg.value = '' }, 3000)
+    } else {
+      statusMsg.value = `❌ 保存失败: ${data.error}`
+      setTimeout(() => { statusMsg.value = '' }, 3000)
+    }
+  } catch (e) {
+    statusMsg.value = `❌ 请求失败: ${e.message}`
+    setTimeout(() => { statusMsg.value = '' }, 3000)
+  }
+}
+
+// 从后端删除厂商
+async function removeProvider(providerName) {
+  if (!confirm(`删除厂商「${providerName}」？`)) return
+  try {
+    const resp = await fetch(`/api/studio/providers/${encodeURIComponent(providerName)}`, { method: 'DELETE' })
+    const data = await resp.json()
+    if (data.success) {
+      statusMsg.value = `✅ 厂商「${providerName}」已删除`
+      await loadProviders()
+      setTimeout(() => { statusMsg.value = '' }, 3000)
+    } else {
+      statusMsg.value = `❌ 删除失败: ${data.error}`
+      setTimeout(() => { statusMsg.value = '' }, 3000)
+    }
+  } catch (e) {
+    statusMsg.value = `❌ 请求失败: ${e.message}`
+    setTimeout(() => { statusMsg.value = '' }, 3000)
+  }
 }
 
 function deleteCurrentConfig() {
@@ -1111,4 +1300,121 @@ function deleteCurrentConfig() {
   color: #666;
 }
 .msg-action-btn:hover { border-color: #409EFF; color: #409EFF; }
+
+/* ── 模型刷新按钮 ── */
+.model-input-wrap {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex: 1;
+}
+.model-input-wrap .cfg-input { flex: 1; }
+.btn-refresh {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.2s;
+}
+.btn-refresh:hover { border-color: #409EFF; background: #f0f7ff; }
+.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 模型选择弹窗 ── */
+.model-picker-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.model-picker {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.model-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 600;
+  font-size: 14px;
+}
+.model-picker-header button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #999;
+}
+.model-picker-list {
+  overflow-y: auto;
+  padding: 8px;
+}
+.model-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.model-item:hover { background: #f5f7fa; }
+.model-item.active { background: #e6f4ff; color: #409EFF; }
+.model-id { font-family: monospace; }
+.model-owner { font-size: 11px; color: #999; }
+
+/* ── 添加厂商弹窗 ── */
+.modal-box-wide {
+  width: 90%;
+  max-width: 480px;
+}
+.modal-hint {
+  font-size: 12px;
+  color: #999;
+  margin: 4px 0 12px;
+}
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.form-row {
+  display: flex;
+  gap: 8px;
+}
+.form-row .modal-input { flex: 1; }
+
+/* ── Provider chip 删除按钮 ── */
+.chip-delete {
+  margin-left: 6px;
+  font-size: 10px;
+  color: #999;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.chip-delete:hover {
+  color: #e53935;
+  background: rgba(229,57,53,0.1);
+}
 </style>

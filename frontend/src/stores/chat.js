@@ -61,6 +61,47 @@ export const useChatStore = defineStore('chat', () => {
   const currentModel = ref(localStorage.getItem('vermes-current-model') || DEFAULT_MODEL_ID)
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || DEFAULT_PROVIDER_ID)
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
+
+  // ── nextTurnSnapshot: 轮内模型一致性 ──
+  // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
+  // 当前轮 onDone 后，如果有 pendingModel 则自动切换
+  const pendingModel = ref(null)    // { model, provider, sessionId } 或 null
+
+  // ── appendModelChange: 模型变更记录到消息流 ──
+  // 切换模型时插入一条轻量 system 消息，记录"这段对话在这里换了模型"
+  function appendModelChange(sessionId, fromModel, toModel) {
+    if (!sessionId || fromModel === toModel) return
+    messages.value.push({
+      id: uid(),
+      role: 'system',
+      content: `⚙️ 模型已切换：${fromModel || '(默认)'} → ${toModel}`,
+      sessionId,
+      timestamp: Date.now(),
+      _isModelChange: true,
+      _modelFrom: fromModel || '',
+      _modelTo: toModel,
+    })
+    persistMessages(sessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+  }
+
+  // nextTurnSnapshot: 应用 pending 模型切换（onDone/onError/stopGeneration 三处共用）
+  function _applyPendingModel(sid) {
+    if (!pendingModel.value || pendingModel.value.sessionId !== sid) return
+    const pm = pendingModel.value
+    const oldModel = currentModel.value
+    currentModel.value = pm.model
+    currentProvider.value = pm.provider
+    const session = sessions.value.find(s => s.id === sid)
+    if (session) {
+      session.model = pm.model
+      session.provider = pm.provider
+      persistSessions()
+    }
+    appendModelChange(sid, oldModel, pm.model)
+    try { localStorage.setItem('vermes-current-model', pm.model) } catch(e) {}
+    try { localStorage.setItem('vermes-current-provider', pm.provider) } catch(e) {}
+    pendingModel.value = null
+  }
   const searchMode = ref(false)
   const searchQuery = ref('')
   const uploading = ref(false)
@@ -176,7 +217,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── 会话管理 ──
   async function createSession(name, template) {
+    // 新会话继承当前选中的模型（用户可能先选好模型再建会话）
     const s = _createSession(sessions.value, messages.value, name, template, SESSIONS_KEY, MESSAGES_KEY_PREFIX, currentSessionId.value)
+    // 记录当前模型到会话对象
+    s.model = currentModel.value
+    s.provider = currentProvider.value
     persistSessions()
     await switchSession(s.id)
     const tpl = template || SESSION_TEMPLATES[0]
@@ -193,10 +238,14 @@ export const useChatStore = defineStore('chat', () => {
     if (!id || id === 'undefined' || id === 'null') return
     flushStorageWrites()
     const oldSessionId = currentSessionId.value
-    // 清理旧会话的 streaming 状态和定时器，防止内存泄漏
+    // 保存旧会话的模型选择
     if (oldSessionId && oldSessionId !== id) {
-      // 多会话并行: 不中止旧会话的 SSE，让它后台继续运行
-      // 流式消息最终会通过 onDone 持久化到 IDB，切回时可恢复
+      const oldSession = sessions.value.find(s => s.id === oldSessionId)
+      if (oldSession) {
+        oldSession.model = currentModel.value
+        oldSession.provider = currentProvider.value
+      }
+      // 清理旧会话的 streaming 状态和定时器，防止内存泄漏
       messages.value.filter(m => m.streaming).forEach(m => {
         m.streaming = false
         if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
@@ -207,6 +256,15 @@ export const useChatStore = defineStore('chat', () => {
 
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
+
+    // 恢复新会话的模型选择
+    const newSession = sessions.value.find(s => s.id === id)
+    if (newSession && newSession.model) {
+      currentModel.value = newSession.model
+      currentProvider.value = newSession.provider || ''
+      try { localStorage.setItem('vermes-current-model', newSession.model) } catch(e) {}
+      try { localStorage.setItem('vermes-current-provider', newSession.provider || '') } catch(e) {}
+    }
 
     // 加载新会话消息 — 合并到全局消息池（不替换）
     try {
@@ -454,6 +512,8 @@ export const useChatStore = defineStore('chat', () => {
           if (sendSessionId) {
             persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
+          // nextTurnSnapshot: 当前轮结束后，应用 pending 模型切换
+          _applyPendingModel(sendSessionId)
         },
         onError: (error) => {
           const am = messages.value.find(m => m.id === aid)
@@ -478,6 +538,8 @@ export const useChatStore = defineStore('chat', () => {
           if (sendSessionId) {
             persistMessages(sendSessionId, messages.value, sendSessionId, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
           }
+          // nextTurnSnapshot: 出错也应用 pending 模型切换
+          _applyPendingModel(sendSessionId)
         },
       })
       await transport.send(currentSessionId.value, {
@@ -532,6 +594,8 @@ export const useChatStore = defineStore('chat', () => {
     evolutionEvents.value = []  // 清空进化事件
     todoItems.value = []  // 清空 todo
     showTodoPanel.value = false
+    // nextTurnSnapshot: 停止生成也应用 pending 模型切换
+    _applyPendingModel(sid)
   }
   // ── 工具函数 ──
   function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
@@ -623,6 +687,7 @@ export const useChatStore = defineStore('chat', () => {
     evolutionEvents, showAchievement, achievementData,
     todoItems, showTodoPanel,
     pendingApproval, resolveApproval,
+    pendingModel, appendModelChange,
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,

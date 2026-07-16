@@ -130,7 +130,7 @@ class AgnesVideoGenProvider(VideoGenProvider):
                 "speed": meta["speed"],
                 "strengths": meta["strengths"],
                 "price": meta.get("tier", "free"),
-                "modalities": ["text"],
+                "modalities": ["text", "image"],
             }
             for mid, meta in MODELS.items()
         ]
@@ -154,14 +154,14 @@ class AgnesVideoGenProvider(VideoGenProvider):
 
     def capabilities(self) -> Dict[str, Any]:
         return {
-            "modalities": ["text"],
+            "modalities": ["text", "image"],  # Fix: actual generate() supports image input
             "aspect_ratios": ["16:9", "9:16", "1:1"],
             "resolutions": ["768p"],
             "max_duration": 10,
             "min_duration": 3,
             "supports_audio": False,
             "supports_negative_prompt": False,
-            "max_reference_images": 0,
+            "max_reference_images": 5,  # Fix: actual generate() supports multi-image/keyframes
         }
 
     def generate(
@@ -261,6 +261,11 @@ class AgnesVideoGenProvider(VideoGenProvider):
 
         logger.info("[Agnes Video] Task submitted: %s", task_id)
 
+        # Use recommended query endpoint: /agnesapi?video_id=<ID>
+        # (per Agnes API docs — Legacy /v1/videos/{id} still works but is deprecated)
+        video_id = task_data.get("video_id") or task_id
+        poll_url = f"{BASE_URL}/agnesapi?video_id={video_id}"
+
         # Poll for completion
         deadline = time.time() + POLL_TIMEOUT
         while time.time() < deadline:
@@ -270,7 +275,7 @@ class AgnesVideoGenProvider(VideoGenProvider):
             time.sleep(POLL_INTERVAL)
             try:
                 result_resp = httpx.get(
-                    f"{BASE_URL}/videos/{task_id}",
+                    poll_url,
                     headers=headers,
                     timeout=15,
                 )

@@ -494,7 +494,12 @@ function streamElapsed(startTime) {
       <div v-for="msg in chat.filteredMessages" :key="msg.id"
            :data-role="msg.role"
            class="flex gap-3 group px-4 py-2"
-           :class="msg.role === 'user' ? 'flex-row-reverse' : ''">
+           :class="msg.role === 'user' ? 'flex-row-reverse' : msg._isModelChange ? 'flex-row justify-center' : ''">
+        <!-- 模型切换提示：居中轻量样式 -->
+        <div v-if="msg._isModelChange" class="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800/50 rounded-full px-3 py-1 inline-flex items-center gap-1">
+          {{ msg.content }}
+        </div>
+        <template v-else>
         <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" :class="msg.role === 'user' ? 'bg-indigo-500' : 'bg-green-500'">
           {{ msg.role === 'user' ? '我' : 'V' }}
         </div>
@@ -676,6 +681,7 @@ function streamElapsed(startTime) {
             </div>
           </div>
         </div>
+        </template>
       </div>
     </div><!-- end msg -->
   </div><!-- end message loop -->

@@ -50,10 +50,22 @@ MODELS: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_MODEL = "agnes-image-2.1-flash"
 
-SIZES = {
+# Size maps for different model versions
+# 2.0 Flash uses pixel format; 2.1 Flash supports tier format (1K/2K/3K/4K) + ratio
+SIZES_PIXEL = {
     "landscape": "1024x768",
     "square": "1024x1024",
     "portrait": "768x1024",
+}
+SIZES_TIER = {
+    "landscape": "2K",
+    "square": "2K",
+    "portrait": "2K",
+}
+RATIOS = {
+    "landscape": "16:9",
+    "square": "1:1",
+    "portrait": "9:16",
 }
 
 BASE_URL = "https://apihub.agnes-ai.com/v1"
@@ -175,7 +187,12 @@ class AgnesImageGenProvider(ImageGenProvider):
             )
 
         model_id = _resolve_model()
-        size = SIZES.get(aspect, SIZES["square"])
+        meta = MODELS.get(model_id, {})
+        # Use tier format for 2.1 Flash, pixel format for 2.0 Flash
+        if model_id == "agnes-image-2.1-flash":
+            size = SIZES_TIER.get(aspect, "2K")
+        else:
+            size = SIZES_PIXEL.get(aspect, SIZES_PIXEL["square"])
 
         # Build request payload
         import httpx
@@ -191,6 +208,9 @@ class AgnesImageGenProvider(ImageGenProvider):
             "size": size,
             "response_format": "url",
         }
+        # 2.1 Flash supports ratio parameter
+        if model_id == "agnes-image-2.1-flash":
+            payload["ratio"] = RATIOS.get(aspect, "1:1")
 
         # img2img support: use image_url or reference_image_urls
         all_images = []
@@ -200,8 +220,8 @@ class AgnesImageGenProvider(ImageGenProvider):
         all_images.extend(refs)
         
         if all_images and MODELS.get(model_id, {}).get("supports_img2img"):
+            # Per Agnes API docs: use extra_body.image, do NOT pass tags
             payload["extra_body"] = {
-                "tags": ["img2img"],
                 "image": all_images,
             }
         elif all_images and not MODELS.get(model_id, {}).get("supports_img2img"):
