@@ -23,6 +23,16 @@ except ModuleNotFoundError:
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
     pass
 
+# --- One-line logging shim: make logger.info() (no args) safe as empty-string call.
+# Why: upstream Hermes uses logger.info() as a terminal separator line in 967 places.
+# Standard logging.Logger.info(msg, *args) requires msg; this shim defaults it to "".
+# Does not modify any upstream file, preserving cherry-pick compatibility.
+_orig_log_info = logging.Logger.info
+def _safe_log_info(self, msg="", *args, **kwargs):
+    return _orig_log_info(self, msg, *args, **kwargs)
+logging.Logger.info = _safe_log_info
+# --- end shim
+
 import logging
 import os
 import shutil
