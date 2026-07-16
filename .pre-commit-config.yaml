@@ -1,0 +1,45 @@
+# .pre-commit-config.yaml — Vermes 项目级安全检查
+# 全局 git template hook 已覆盖主要模式，此配置补充 Python 语法检查和依赖扫描
+# 安装: pip install pre-commit && pre-commit install
+# 跳过: git commit --no-verify
+
+repos:
+  # Python 语法/导入检查
+  - repo: local
+    hooks:
+      - id: python-syntax-check
+        name: Python 语法检查
+        entry: python3 -c "import ast, sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]"
+        language: system
+        types: [python]
+        pass_filenames: true
+        exclude: '\.venv/|__pycache__/|dist-electron/|build/|node_modules/'
+
+  # 敏感信息扫描（与全局 hook 对齐）
+  - repo: local
+    hooks:
+      - id: secret-scan
+        name: 敏感信息扫描
+        entry: bash -c '
+          STAGED=$(git diff --cached --name-only --diff-filter=ACM);
+          [ -z "$STAGED" ] && exit 0;
+          FOUND=0;
+          for f in $STAGED; do
+            [ -f "$f" ] || continue;
+            grep -nE "82\.156\.45\.139|sk-[a-zA-Z0-9]{20,}|ubuntu@|password\s*[:=]\s*['"'"'\""][^'"'"'\""]{6,}|secret\s*[:=]\s*['"'"'\""][a-zA-Z0-9]{20,}|token\s*[:=]\s*['"'"'\""][a-zA-Z0-9]{20,}|-----BEGIN.*PRIVATE KEY-----|wx[a-z0-9]{16}" "$f" 2>/dev/null && { echo "❌ $f 含敏感信息"; FOUND=1; };
+          done;
+          exit $FOUND'
+        language: system
+        pass_filenames: false
+        stages: [commit]
+
+  # YAML/JSON 格式检查（轻量）
+  - repo: local
+    hooks:
+      - id: yaml-syntax-check
+        name: YAML 语法检查
+        entry: python3 -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]"
+        language: system
+        types: [yaml]
+        exclude: '\.venv/|node_modules/|dist/'
+        pass_filenames: true
