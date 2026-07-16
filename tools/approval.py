@@ -583,6 +583,33 @@ def resolve_gateway_approval(session_key: str, choice: str,
     return len(targets)
 
 
+def request_gateway_approval(session_key: str, approval_data: dict, *, surface: str = "gateway") -> dict:
+    """Request a blocking Gateway approval for an arbitrary agent action
+    (e.g. a self-modification proposed by the agent).
+
+    Enqueues *approval_data*, notifies the user via the registered Gateway
+    notify callback, and blocks the calling agent thread until the user
+    resolves (``/approve`` or ``/deny``) or the Gateway approval timeout
+    elapses. Mirrors the wait loop used by ``check_all_command_guards``.
+
+    Returns the same dict as :func:`_await_gateway_decision`:
+    ``{"resolved": bool, "choice": str|None}``.
+
+    Fail-closed: if there is no active Gateway session (no *session_key* or no
+    registered notify callback), returns ``{"resolved": False, "choice": "deny"}``
+    so the action is denied rather than silently auto-applied. This is the
+    correct default for any self-modifying or privileged action.
+    """
+    if not session_key:
+        return {"resolved": False, "choice": "deny"}
+    notify_cb = None
+    with _lock:
+        notify_cb = _gateway_notify_cbs.get(session_key)
+    if notify_cb is None:
+        return {"resolved": False, "choice": "deny"}
+    return _await_gateway_decision(session_key, notify_cb, approval_data, surface=surface)
+
+
 def has_blocking_approval(session_key: str) -> bool:
     """Check if a session has one or more blocking gateway approvals waiting."""
     with _lock:

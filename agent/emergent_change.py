@@ -142,7 +142,7 @@ class EmergentChangePipeline:
             logger.debug("Staging cleanup failed", exc_info=True)
             return 0
 
-    def apply_change(self, proposal: ChangeProposal) -> ChangeResult:
+    def apply_change(self, proposal: ChangeProposal, force: bool = False) -> ChangeResult:
         """Apply a proposed change through the pipeline.
 
         Steps:
@@ -167,7 +167,10 @@ class EmergentChangePipeline:
         # confirmation. User-initiated changes always auto-commit. Once rollback
         # clustering accumulates enough data, this gate naturally relaxes —
         # fully data-driven, no hardcoded risk rules.
-        if proposal.initiator != "user":
+        # ``force=True`` bypasses the gate — only call it after the user has
+        # explicitly confirmed the change (e.g. via the gateway approval flow
+        # in tools/self_modify_tool.py).
+        if not force and proposal.initiator != "user":
             min_samples = int(proposal.metadata.get("min_rollback_samples", 5))
             if not self._has_sufficient_rollback_history(proposal.target_path, min_samples):
                 logger.info(
@@ -240,6 +243,29 @@ class EmergentChangePipeline:
                 target_path=proposal.target_path,
                 error=str(e),
             )
+
+    def propose_change(self, proposal: ChangeProposal) -> ChangeResult:
+        """Validate a proposed self-modification and record it as pending.
+
+        Does NOT write to the target file or to staging. The agent is expected
+        to present the diff to the user and only call apply_change(force=True)
+        after explicit user confirmation (see tools/self_modify_tool.py).
+        """
+        ok, err = _validate_file_format(proposal.target_path, proposal.content)
+        if not ok:
+            event_id = self._record_change_event(proposal, committed=False, reason=err)
+            return ChangeResult(
+                committed=False, target_path=proposal.target_path,
+                error=err, raw_event_id=event_id,
+            )
+        event_id = self._record_change_event(
+            proposal, committed=False,
+            reason="proposed: awaiting user approval", is_error=False,
+        )
+        return ChangeResult(
+            committed=False, target_path=proposal.target_path,
+            raw_event_id=event_id, pending_confirmation=True,
+        )
 
     def rollback_change(
         self,
@@ -324,6 +350,7 @@ class EmergentChangePipeline:
         committed: bool,
         reason: str = "",
         backup_path: Optional[str] = None,
+        is_error: Optional[bool] = None,
     ) -> Optional[int]:
         """Record a change commit/rollback as a raw_event.
 
@@ -359,7 +386,7 @@ class EmergentChangePipeline:
                 tool_name=tool_name,
                 tool_args=tool_args,
                 result=result,
-                is_error=not committed,
+                is_error=(not committed) if is_error is None else is_error,
                 duration=0.0,
             )
         except Exception:
