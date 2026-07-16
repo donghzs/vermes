@@ -279,7 +279,7 @@ def _get_embedding(text: str) -> Optional[List[float]]:
         return None
 
     # Detect provider switch: if credentials changed, clear stale failure cache
-    current_key = f"{base_url}::{api_key[:8]}"
+    current_key = f"{base_url}::{api_key[:4]}****"
     if current_key != _LAST_RESOLVED_KEY:
         if _FAILED_EMBED_PROVIDERS:
             logger.debug("Provider changed (%s → %s), clearing failure cache", _LAST_RESOLVED_KEY, current_key)

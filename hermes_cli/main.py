@@ -3646,7 +3646,7 @@ def _model_flow_azure_foundry(config, current_model=""):
     if current_auth_mode == "entra_id":
         logger.info(f"  Current auth mode: Microsoft Entra ID (keyless)")
     elif current_api_key:
-        logger.info(f"  Current auth mode: API key ({current_api_key[:8]}...)")
+        logger.info(f"  Current auth mode: API key ({current_api_key[:4]}{'*' * 8})")
     logger.info()
 
     # ── Step 1: endpoint URL ─────────────────────────────────────────
@@ -3771,7 +3771,7 @@ def _model_flow_azure_foundry(config, current_model=""):
         logger.info()
         try:
             api_key = getpass.getpass(
-                f"API key [{current_api_key[:8] + '...' if current_api_key else 'required'}]: "
+                f"API key [{current_api_key[:4] + '********' if current_api_key else 'required'}]: "
             ).strip()
         except (KeyboardInterrupt, EOFError):
             logger.info("\nCancelled.")
@@ -4367,7 +4367,7 @@ def _model_flow_copilot(config, current_model=""):
         source = creds.get("source", "")
     else:
         if source in {"GITHUB_TOKEN", "GH_TOKEN"}:
-            logger.info(f"  GitHub token: {api_key[:8]}... ✓ ({source})")
+            logger.info(f"  GitHub token: {api_key[:4]}{'*' * 8} ✓ ({source})")
         elif source == "gh auth token":
             logger.info("  GitHub token: ✓ (from `gh auth token`)")
         else:

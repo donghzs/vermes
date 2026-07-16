@@ -1842,7 +1842,7 @@ def _configure_tool_category(ts_key: str, cat: dict, config: dict):
     if cat.get("requires_python"):
         req = cat["requires_python"]
         if sys.version_info < req:
-            logger.info()
+            logger.info("")
             _print_error(f"  {name} requires Python {req[0]}.{req[1]}+ (current: {sys.version_info.major}.{sys.version_info.minor})")
             _print_info("  Upgrade Python and reinstall to enable this tool.")
             return
@@ -1850,7 +1850,7 @@ def _configure_tool_category(ts_key: str, cat: dict, config: dict):
     if len(providers) == 1:
         # Single provider - configure directly
         provider = providers[0]
-        logger.info()
+        logger.info("")
         logger.info(color(f"  --- {icon} {name} ({provider['name']}) ---", Colors.CYAN))
         if provider.get("tag"):
             _print_info(f"  {provider['tag']}")
@@ -1860,13 +1860,13 @@ def _configure_tool_category(ts_key: str, cat: dict, config: dict):
         _configure_provider(provider, config)
     else:
         # Multiple providers - let user choose
-        logger.info()
+        logger.info("")
         # Use custom title if provided (e.g. "Select Search Provider")
         title = cat.get("setup_title", "Choose a provider")
         logger.info(color(f"  --- {icon} {name} - {title} ---", Colors.CYAN))
         if cat.get("setup_note"):
             _print_info(f"  {cat['setup_note']}")
-        logger.info()
+        logger.info("")
 
         # Plain text labels only (no ANSI codes in menu items)
         provider_choices = []
@@ -2046,7 +2046,7 @@ def _configure_imagegen_model(backend_name: str, config: dict) -> None:
         "strengths": max((len(catalog[m].get("strengths", "")) for m in model_ids), default=0),
     }
 
-    logger.info()
+    logger.info("")
     header = (
         f"  {'Model':<{widths['model']}}  "
         f"{'Speed':<{widths['speed']}}  "
@@ -2128,7 +2128,7 @@ def _configure_imagegen_model_for_plugin(plugin_name: str, config: dict) -> None
         "strengths": max((len(catalog[m].get("strengths", "")) for m in model_ids), default=0),
     }
 
-    logger.info()
+    logger.info("")
     header = (
         f"  {'Model':<{widths['model']}}  "
         f"{'Speed':<{widths['speed']}}  "
@@ -2222,7 +2222,7 @@ def _configure_videogen_model_for_plugin(plugin_name: str, config: dict) -> None
         "strengths": max((len(catalog[m].get("strengths", "")) for m in model_ids), default=0),
     }
 
-    logger.info()
+    logger.info("")
     header = (
         f"  {'Model':<{widths['model']}}  "
         f"{'Speed':<{widths['speed']}}  "
@@ -2401,7 +2401,7 @@ def _configure_simple_requirements(ts_key: str):
     if ts_key == "vision":
         if _toolset_has_keys("vision"):
             return
-        logger.info()
+        logger.info("")
         logger.info(color("  Vision / Image Analysis requires a multimodal backend:", Colors.YELLOW))
         choices = [
             "OpenRouter — uses Gemini",
@@ -2445,7 +2445,7 @@ def _configure_simple_requirements(ts_key: str):
         return
 
     ts_label = next((l for k, l, _ in _get_effective_configurable_toolsets() if k == ts_key), ts_key)
-    logger.info()
+    logger.info("")
     logger.info(color(f"  {ts_label} requires configuration:", Colors.YELLOW))
 
     for var, url in missing:
@@ -2523,13 +2523,13 @@ def _configure_tool_category_for_reconfig(ts_key: str, cat: dict, config: dict):
 
     if len(providers) == 1:
         provider = providers[0]
-        logger.info()
+        logger.info("")
         logger.info(color(f"  --- {icon} {name} ({provider['name']}) ---", Colors.CYAN))
         _reconfigure_provider(provider, config)
     else:
-        logger.info()
+        logger.info("")
         logger.info(color(f"  --- {icon} {name} - Choose a provider ---", Colors.CYAN))
-        logger.info()
+        logger.info("")
 
         provider_choices = []
         for p in providers:
@@ -2674,7 +2674,7 @@ def _reconfigure_simple_requirements(ts_key: str):
         return
 
     ts_label = next((l for k, l, _ in _get_effective_configurable_toolsets() if k == ts_key), ts_key)
-    logger.info()
+    logger.info("")
     logger.info(color(f"  {ts_label}:", Colors.CYAN))
 
     for var, url in requirements:
@@ -2708,13 +2708,13 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
         config = load_config()
     enabled_platforms = _get_enabled_platforms()
 
-    logger.info()
+    logger.info("")
 
     # Non-interactive summary mode for CLI usage
     if getattr(args, "summary", False):
         total = len(_get_effective_configurable_toolsets())
         logger.info(color("⚕ Tool Summary", Colors.CYAN, Colors.BOLD))
-        logger.info()
+        logger.info("")
         summary = _platform_toolset_summary(config, enabled_platforms)
         for pkey in enabled_platforms:
             pinfo = PLATFORMS[pkey]
@@ -2727,13 +2727,13 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
                     logger.info(color(f"    ✓ {label}", Colors.GREEN))
             else:
                 logger.info(color("    (none enabled)", Colors.DIM))
-        logger.info()
+        logger.info("")
         return
     logger.info(color("⚕ Hermes Tool Configuration", Colors.CYAN, Colors.BOLD))
     logger.info(color("  Enable or disable tools per platform.", Colors.DIM))
     logger.info(color("  Tools that need API keys will be configured when enabled.", Colors.DIM))
     logger.info(color("  Guide: https://hermes-agent.nousresearch.com/docs/user-guide/features/tools", Colors.DIM))
-    logger.info()
+    logger.info("")
 
     # ── First-time install: linear flow, no platform menu ──
     if first_install:
@@ -2778,20 +2778,20 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
             ]
 
             if to_configure:
-                logger.info()
+                logger.info("")
                 logger.info(color(f"  Configuring {len(to_configure)} tool(s):", Colors.YELLOW))
                 for ts_key in to_configure:
                     label = next((l for k, l, _ in _get_effective_configurable_toolsets() if k == ts_key), ts_key)
                     logger.info(color(f"    • {label}", Colors.DIM))
                 logger.info(color("  You can skip any tool you don't need right now.", Colors.DIM))
-                logger.info()
+                logger.info("")
                 for ts_key in to_configure:
                     _configure_toolset(ts_key, config)
 
             _save_platform_tools(config, pkey, new_enabled)
             save_config(config)
             logger.info(color(f"  ✓ Saved {pinfo['label']} tool configuration", Colors.GREEN))
-            logger.info()
+            logger.info("")
 
         return
 
@@ -2834,13 +2834,13 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
         # "Reconfigure" selected
         if idx == _reconfig_idx:
             _reconfigure_tool(config)
-            logger.info()
+            logger.info("")
             continue
 
         # "Configure MCP tools" selected
         if idx == _mcp_idx:
             _configure_mcp_tools_interactive(config)
-            logger.info()
+            logger.info("")
             continue
 
         # "Configure all platforms (global)" selected
@@ -2879,7 +2879,7 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
                     platform_choices[ci] = f"Configure {PLATFORMS[pk]['label']}  ({new_count}/{total} enabled)"
             else:
                 logger.info(color("  No changes", Colors.DIM))
-            logger.info()
+            logger.info("")
             continue
 
         pkey = platform_keys[idx]
@@ -2916,18 +2916,18 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
         else:
             logger.info(color(f"  No changes to {pinfo['label']}", Colors.DIM))
 
-        logger.info()
+        logger.info("")
 
         # Update the choice label with new count
         new_count = len(_get_platform_tools(config, pkey, include_default_mcp_servers=False))
         total = len(_get_effective_configurable_toolsets())
         platform_choices[idx] = f"Configure {pinfo['label']}  ({new_count}/{total} enabled)"
 
-    logger.info()
+    logger.info("")
     from hermes_constants import display_hermes_home
     logger.info(color(f"  Tool configuration saved to {display_hermes_home()}/config.yaml", Colors.DIM))
     logger.info(color("  Changes take effect on next 'hermes' or gateway restart.", Colors.DIM))
-    logger.info()
+    logger.info("")
 
 
 # ─── MCP Tools Interactive Configuration ─────────────────────────────────────
@@ -2956,7 +2956,7 @@ def _configure_mcp_tools_interactive(config: dict):
         _print_info("All MCP servers are disabled.")
         return
 
-    logger.info()
+    logger.info("")
     logger.info(color("  Discovering tools from MCP servers...", Colors.YELLOW))
     logger.info(color(f"  Connecting to {len(enabled_names)} server(s): {', '.join(enabled_names)}", Colors.DIM))
 
@@ -2980,7 +2980,7 @@ def _configure_mcp_tools_interactive(config: dict):
 
     total_tools = sum(len(tools) for tools in server_tools.values())
     logger.info(color(f"  Found {total_tools} tool(s) across {len(server_tools)} server(s)", Colors.GREEN))
-    logger.info()
+    logger.info("")
 
     any_changes = False
 
@@ -3055,7 +3055,7 @@ def _configure_mcp_tools_interactive(config: dict):
 
     if any_changes:
         save_config(config)
-        logger.info()
+        logger.info("")
         logger.info(color("  ✓ MCP tool configuration saved", Colors.GREEN))
     else:
         logger.info(color("  No changes to MCP tools", Colors.DIM))
@@ -3119,7 +3119,7 @@ def _print_tools_list(enabled_toolsets: set, mcp_servers: dict, platform: str = 
     # Plugin toolsets
     plugin_entries = [(k, l) for k, l, _ in effective if k not in builtin_keys]
     if plugin_entries:
-        logger.info()
+        logger.info("")
         logger.info(f"Plugin toolsets ({platform}):")
         for ts_key, label in plugin_entries:
             status = (color("✓ enabled", Colors.GREEN) if ts_key in enabled_toolsets
@@ -3127,7 +3127,7 @@ def _print_tools_list(enabled_toolsets: set, mcp_servers: dict, platform: str = 
             logger.info(f"  {status}  {ts_key}  {color(label, Colors.DIM)}")
 
     if mcp_servers:
-        logger.info()
+        logger.info("")
         logger.info("MCP servers:")
         for srv_name, srv_cfg in mcp_servers.items():
             tools_cfg = srv_cfg.get("tools") or {}
