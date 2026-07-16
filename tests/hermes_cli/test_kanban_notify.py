@@ -55,7 +55,7 @@ async def test_notifier_unsubs_after_completed_event(kanban_home):
     async def _fast_sleep(_):
         await _orig_sleep(0)
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -115,7 +115,7 @@ async def test_notifier_unsubs_after_abnormal_events(kind, kanban_home):
     async def _fast_sleep(_):
         await _orig_sleep(0)
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -186,7 +186,7 @@ async def test_notifier_second_blocked_delivers(kanban_home):
     finally:
         conn.close()
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -203,7 +203,7 @@ async def test_notifier_second_blocked_delivers(kanban_home):
     finally:
         conn.close()
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -269,7 +269,7 @@ async def test_notifier_does_not_call_init_db(kanban_home):
         init_db_calls.append((args, kwargs))
         return real_init_db(*args, **kwargs)
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep), \
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep), \
          patch("hermes_cli.kanban_db.init_db", side_effect=_spy_init_db):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
@@ -362,7 +362,7 @@ async def test_notifier_skips_subscription_owned_by_other_profile(kanban_home):
         if tick_count >= 3:
             runner._running = False
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -417,7 +417,7 @@ async def test_notifier_delivers_subscription_owned_by_current_profile(kanban_ho
     async def _fast_sleep(_):
         await _orig_sleep(0)
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -557,7 +557,7 @@ async def test_notifier_uploads_artifacts_on_completion(kanban_home, tmp_path):
     async def _fast_sleep(_):
         await _orig_sleep(0)
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,
@@ -629,7 +629,7 @@ async def test_notifier_artifact_delivery_skips_missing_files(kanban_home, tmp_p
     async def _fast_sleep(_):
         await _orig_sleep(0)
 
-    with patch("gateway.run.asyncio.sleep", side_effect=_fast_sleep):
+    with patch("gateway.kanban_mixin.asyncio.sleep", side_effect=_fast_sleep):
         await asyncio.wait_for(
             runner._kanban_notifier_watcher(interval=1),
             timeout=10.0,

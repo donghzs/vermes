@@ -3659,7 +3659,7 @@ def test_gateway_dispatcher_disables_corrupt_board_without_traceback(
 
     monkeypatch.setattr(_kb, "connect", _connect)
     monkeypatch.setattr("gateway.run.asyncio.to_thread", _to_thread)
-    monkeypatch.setattr("gateway.run.asyncio.sleep", _sleep)
+    monkeypatch.setattr("gateway.kanban_mixin.asyncio.sleep", _sleep)
 
     with caplog.at_level(logging.ERROR, logger="gateway.run"):
         asyncio.run(
