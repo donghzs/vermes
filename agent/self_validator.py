@@ -16,16 +16,16 @@ Design principles
 4. **零依赖** — No imports from heavy modules.  Uses only stdlib +
    ``utils.safe_json_loads``.
 
-Integration point (NOT YET WIRED — see Phase 1 step 3)
-------------------------------------------------------
-In ``agent/tool_executor.py``, after ``result = agent._invoke_tool(...)``
-and ``is_error, _ = _detect_tool_failure(...)``::
+Integration point
+-----------------
+In ``agent/tool_executor.py``, after ``result = agent._invoke_tool(...)``::
 
     from agent.self_validator import get_validator
     verify_result = get_validator().verify_tool_result(
         function_name, function_args, result, agent, is_error=is_error
     )
     # In warn mode: log only.  In block mode: append to result.
+    # Validation signals are recorded as raw_events for emergent clustering.
 
 This file does NOT import or modify any existing module.
 """
@@ -863,6 +863,44 @@ class SelfValidator:
                 tool_name,
                 verify_result.message,
             )
+
+        # ── Record validation signal as raw_event ────────────────────────────────────
+        # Feeds validation outcomes back into the data lake for emergent_clusterer.
+        # "What kind of write operations tend to fail?" emerges from data, not rules.
+        # Only record non-trivial signals (warnings/errors/cheat alerts) to avoid
+        # flooding the lake with info-level "all good" events.
+        if verify_result.is_error or verify_result.is_warning or cheat_alerts:
+            try:
+                from agent.raw_event import record_raw_event
+
+                session_id = ""
+                turn_number = 0
+                if agent:
+                    session_id = getattr(agent, "session_id", "") or ""
+                    turn_number = getattr(agent, "turn_counter", 0) or 0
+
+                validation_args = {
+                    "validated_tool": tool_name,
+                    "strategy": verify_result.strategy_name,
+                    "severity": verify_result.severity,
+                    "message": verify_result.message,
+                    "is_error": verify_result.is_error,
+                    "is_warning": verify_result.is_warning,
+                }
+                if cheat_alerts:
+                    validation_args["cheat_alerts"] = cheat_alerts
+
+                record_raw_event(
+                    tool_name="__self_validation__",
+                    tool_args=validation_args,
+                    result=verify_result.message,
+                    is_error=verify_result.is_error,
+                    duration=0.0,
+                    session_id=session_id,
+                    turn_number=turn_number,
+                )
+            except Exception:
+                pass  # recording should never break verification
 
         return verify_result
 

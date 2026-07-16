@@ -72,6 +72,7 @@ class ChangeResult:
     error: str = ""                      # non-empty if failed
     raw_event_id: Optional[int] = None   # raw_event rowid for traceability
     backup_path: Optional[str] = None    # backup file path (for rollback)
+    pending_confirmation: bool = False   # True if held for user confirmation (cold-start gate)
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +160,34 @@ class EmergentChangePipeline:
             logger.warning("Change rejected (format): %s — %s", proposal.target_path, err)
             event_id = self._record_change_event(proposal, committed=False, reason=err)
             return ChangeResult(committed=False, target_path=proposal.target_path, error=err, raw_event_id=event_id)
+
+        # Step 1b: cold-start safety gate
+        # During the data vacuum period (before enough rollback samples exist for
+        # the target file), agent/system-initiated changes are held for user
+        # confirmation. User-initiated changes always auto-commit. Once rollback
+        # clustering accumulates enough data, this gate naturally relaxes —
+        # fully data-driven, no hardcoded risk rules.
+        if proposal.initiator != "user":
+            min_samples = int(proposal.metadata.get("min_rollback_samples", 5))
+            if not self._has_sufficient_rollback_history(proposal.target_path, min_samples):
+                logger.info(
+                    "Change held for confirmation (cold-start): %s — initiator=%s, insufficient rollback history",
+                    proposal.target_path, proposal.initiator,
+                )
+                event_id = self._record_change_event(
+                    proposal, committed=False,
+                    reason=f"pending_confirmation: initiator={proposal.initiator}, "
+                           f"rollback_samples < {min_samples}",
+                )
+                return ChangeResult(
+                    committed=False,
+                    target_path=proposal.target_path,
+                    error=f"Held for confirmation: insufficient rollback history "
+                          f"for {proposal.target_path} (initiator={proposal.initiator}). "
+                          f"User approval required until enough data accumulates.",
+                    raw_event_id=event_id,
+                    pending_confirmation=True,
+                )
 
         # Step 2: write to staging
         staging_path = self._write_to_staging(proposal)
@@ -365,6 +394,33 @@ class EmergentChangePipeline:
             )
         except Exception:
             logger.debug("Failed to record rollback raw_event", exc_info=True)
+
+    def _has_sufficient_rollback_history(self, target_path: str, min_samples: int = 5) -> bool:
+        """Check if enough rollback data exists for a target file.
+
+        During cold-start (no data), returns False — agent/system changes need
+        user confirmation. Once enough rollback/commit samples accumulate in
+        raw_events, returns True and the gate relaxes.
+
+        This is the data-driven safety gate: the threshold is soft and will be
+        superseded by emergent clustering once enough data exists.
+        """
+        try:
+            from agent.evolution_manager import get_self_model_db
+            db_path = str(get_self_model_db())
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM raw_events "
+                "WHERE tool_name IN ('self_modify', 'self_modify_rollback') "
+                "AND result_preview LIKE ?",
+                (f"%{target_path}%",),
+            )
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count >= min_samples
+        except Exception:
+            return False
 
 
 # ---------------------------------------------------------------------------

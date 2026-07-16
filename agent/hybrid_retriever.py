@@ -341,21 +341,29 @@ def _blob_to_vector(blob: bytes) -> List[float]:
 
 
 def store_embedding(content: str, target: str = "memory") -> None:
-    """写入或更新 embedding。幂等（content_hash UNIQUE）。"""
+    """写入或更新 embedding。幂等（content_hash UNIQUE）。
+
+    Fire-and-forget: 实际写入在后台线程执行，调用方无需等待网络 I/O。
+    Embedding 是"写时"操作，不需要同步等结果，异步化能显著降低交互延迟。
+    """
     if not content.strip():
         return
-    vec = _get_embedding(content)
-    blob = _vector_to_blob(vec) if vec else None
-    try:
-        conn = _get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO embeddings (content_hash, content, target, vector, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (str(hash(content)), content[:500], target, blob, __import__("datetime").datetime.now().isoformat()),
-        )
-        conn.commit()
-    except Exception as exc:
-        logger.debug("store_embedding failed: %s", exc)
+
+    def _do_store():
+        try:
+            vec = _get_embedding(content)
+            blob = _vector_to_blob(vec) if vec else None
+            conn = _get_conn()
+            conn.execute(
+                """INSERT OR REPLACE INTO embeddings (content_hash, content, target, vector, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (str(hash(content)), content[:500], target, blob, __import__("datetime").datetime.now().isoformat()),
+            )
+            conn.commit()
+        except Exception as exc:
+            logger.debug("store_embedding failed: %s", exc)
+
+    threading.Thread(target=_do_store, daemon=True, name="embed-store").start()
 
 
 def delete_embedding(content: str) -> None:
