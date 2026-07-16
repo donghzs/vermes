@@ -26,7 +26,7 @@ repos:
           FOUND=0;
           for f in $STAGED; do
             [ -f "$f" ] || continue;
-            grep -nE "82\.156\.45\.139|sk-[a-zA-Z0-9]{20,}|ubuntu@|password\s*[:=]\s*['"'"'\""][^'"'"'\""]{6,}|secret\s*[:=]\s*['"'"'\""][a-zA-Z0-9]{20,}|token\s*[:=]\s*['"'"'\""][a-zA-Z0-9]{20,}|-----BEGIN.*PRIVATE KEY-----|wx[a-z0-9]{16}" "$f" 2>/dev/null && { echo "❌ $f 含敏感信息"; FOUND=1; };
+            grep -nE "82\.156\.45\.139|sk-[a-zA-Z0-9]{20,}|ubuntu@|password\s*[:=]\s*['"'"'\""][^'"'"'\""]{6,}|secret\s*[:=]\s*['"'"'\""][a-zA-Z0-9]{20,}|token\s*[:=]\s*['"'"'\""][a-zA-Z0-9]{20,}|-----BEGIN.*PRIVATE KEY-----|wx[a-z0-9]{16}|api_key[:[0-9]+]|token[:[0-9]+]" "$f" 2>/dev/null && { echo "❌ $f 含敏感信息"; FOUND=1; };
           done;
           exit $FOUND'
         language: system
