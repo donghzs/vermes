@@ -68,6 +68,7 @@ from pathlib import Path
 from agent.auxiliary_client import call_llm
 from hermes_constants import get_hermes_home
 from utils import env_int, is_truthy_value
+from harness.recoverable import recoverable_tool
 from hermes_cli.config import cfg_get
 
 try:
@@ -2839,6 +2840,14 @@ def _friendly_browser_back_error(raw_error: str) -> str:
     return raw_error or "Failed to go back"
 
 
+@recoverable_tool(
+    tool_name="browser_back",
+    returns="json",
+    missing_hint=(
+        "确认浏览器会话已启动（可先用 browser_navigate 打开一个网页），"
+        "且 agent-browser / CDP 连接正常；若提示缺少依赖请检查 agent-browser 是否安装。"
+    ),
+)
 def browser_back(task_id: Optional[str] = None) -> str:
     """
     Navigate back in browser history.
