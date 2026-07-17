@@ -1,12 +1,14 @@
 <template>
   <div v-if="chat.pendingApproval" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-200 dark:border-gray-600">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden border border-gray-200 dark:border-gray-600" :class="{ 'border-red-400 dark:border-red-500 ring-1 ring-red-400/40': chat.pendingApproval.category === 'self_modify_rollback' }">
       <!-- Header -->
       <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
         <span class="text-2xl">⚠️</span>
         <div>
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">工具审批请求</h3>
           <p class="text-xs text-gray-500 dark:text-gray-400">Agent 想执行以下命令</p>
+          <span v-if="chat.pendingApproval.category === 'self_modify_rollback'"
+            class="ml-auto px-2 py-0.5 text-xs rounded-full bg-red-500/15 text-red-600 dark:text-red-400 font-medium">撤销确认</span>
         </div>
       </div>
 

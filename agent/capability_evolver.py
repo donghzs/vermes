@@ -461,19 +461,23 @@ def _retracted_capabilities(db_path: str) -> set:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            """SELECT DISTINCT args_preview
+            """SELECT DISTINCT result_preview
                FROM raw_events
-               WHERE tool_name = '__retraction__'""",
+               WHERE tool_name = '__retraction__'
+                 AND result_preview LIKE 'retracted: capability:%'""",
         ).fetchall()
         conn.close()
-        # args_preview contains "target_name': '<name>'" — extract it
-        import re
+        # result_preview holds the structured "retracted: capability:<name>"
+        # (see record_retraction in agent/raw_event.py). Parse it directly -
+        # do NOT rely on the truncated args_preview dict repr, which is fragile
+        # and can silently fail to extract the name, letting a retracted
+        # capability re-emerge.
         result = set()
         for r in rows:
-            args = r["args_preview"] or ""
-            m = re.search(r"target_name[^:]*:\s*['\'']([^'\'']+)", args)
-            if m:
-                result.add(m.group(1))
+            body = (r["result_preview"] or "").replace("retracted: ", "", 1).strip()
+            # body == "capability:<name>"
+            if body.startswith("capability:"):
+                result.add(body.split(":", 1)[1])
         return result
     except Exception:
         logger.debug("retracted-capabilities lookup failed", exc_info=True)
