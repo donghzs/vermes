@@ -3171,23 +3171,6 @@ class GatewayRunner(TelegramTopicsMixin, VoiceMixin, GoalMixin, KanbanMixin, Sla
 
             timeout = self._restart_drain_timeout
 
-            # Pre-mark sessions as resume_pending BEFORE the drain wait.
-            # If the process is killed by the service manager during the
-            # drain, the durable marker is already written so the next
-            # gateway boot can recover in-flight sessions (#27856).
-            _pre_drain_keys: list[str] = []
-            for _sk, _agent in list(self._running_agents.items()):
-                if _agent is _AGENT_PENDING_SENTINEL:
-                    continue
-                try:
-                    self.session_store.mark_resume_pending(
-                        _sk,
-                        "restart_timeout" if self._restart_requested else "shutdown_timeout",
-                    )
-                    _pre_drain_keys.append(_sk)
-                except Exception as _e:
-                    logger.debug("pre-drain mark_resume_pending failed for %s: %s", _sk, _e)
-
             _drain_started_at = time.monotonic()
             active_agents, timed_out = await self._drain_active_agents(timeout)
             logger.info(
@@ -3199,20 +3182,6 @@ class GatewayRunner(TelegramTopicsMixin, VoiceMixin, GoalMixin, KanbanMixin, Sla
                 len(active_agents),
                 self._running_agent_count(),
             )
-
-            if not timed_out:
-                # Drain completed gracefully — all running sessions finished.
-                # Clear the pre-drain resume_pending markers so sessions that
-                # completed during the drain window don't carry a stale flag.
-                for _sk in _pre_drain_keys:
-                    if _sk not in self._running_agents:
-                        try:
-                            self.session_store.clear_resume_pending(_sk)
-                        except Exception as _e:
-                            logger.debug(
-                                "clear_resume_pending after drain failed for %s: %s",
-                                _sk, _e,
-                            )
 
             if timed_out:
                 logger.warning(
@@ -3231,16 +3200,23 @@ class GatewayRunner(TelegramTopicsMixin, VoiceMixin, GoalMixin, KanbanMixin, Sla
                 # (incremented below, threshold 3), which sets
                 # ``suspended=True`` and overrides resume_pending.
                 #
-                # Iterate self._running_agents (current) rather than the
-                # drain-start ``active_agents`` snapshot — the snapshot
-                # may include sessions that finished gracefully during
-                # the drain window, and marking those falsely would give
-                # them a stray restart-interruption system note on their
-                # next turn even though their previous turn completed
-                # cleanly.  Skip pending sentinels for the same reason
-                # _interrupt_running_agents() does: their agent hasn't
-                # started yet, there's nothing to interrupt, and the
-                # session shouldn't carry a misleading resume flag.
+                # We mark ONLY at timeout (not pre-drain) and iterate
+                # self._running_agents (current) rather than the drain-start
+                # ``active_agents`` snapshot.  Sessions that finished gracefully
+                # during the drain window are no longer in _running_agents and
+                # must NOT be marked — marking them would give them a stray
+                # restart-interruption system note on their next turn even
+                # though their previous turn completed cleanly.  Skip pending
+                # sentinels: their agent hasn't started, there's nothing to
+                # interrupt, and the session shouldn't carry a misleading
+                # resume flag.
+                #
+                # Note: the previous pre-drain marking (#27856) was removed
+                # because it over-marked ALL sessions including those that
+                # would finish gracefully, causing the mark/clear cleanup to
+                # introduce side effects on clean drains.  If crash recovery
+                # for SIGKILL-during-drain is needed, prefer checking the
+                # session store's running state at boot rather than pre-marking.
                 _resume_reason = (
                     "restart_timeout" if self._restart_requested else "shutdown_timeout"
                 )

@@ -820,12 +820,6 @@ async def test_drain_timeout_uses_restart_reason_when_restarting():
         assert args[0][1] == "restart_timeout"
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="F4/pre-existing BEHAVIORAL BUG: shutdown drain state machine calls "
-    "mark_resume_pending('shutdown_timeout') on a CLEAN drain when it must not. "
-    "NOT caused by the mixin split. Needs a real fix in the drain logic.",
-)
 @pytest.mark.asyncio
 async def test_clean_drain_does_not_mark_resume_pending():
     """If the drain completes within timeout (no force-interrupt), no
@@ -856,12 +850,6 @@ async def test_clean_drain_does_not_mark_resume_pending():
     running_agent.interrupt.assert_not_called()
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="F4/pre-existing BEHAVIORAL BUG: drain-timeout over-marks sessions — "
-    "already-finished session 'A' is marked resume_pending alongside the still-"
-    "running one. NOT caused by the mixin split. Needs a real fix in the drain logic.",
-)
 @pytest.mark.asyncio
 async def test_drain_timeout_only_marks_still_running_sessions():
     """A session that finished gracefully during the drain window must
