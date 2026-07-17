@@ -96,7 +96,7 @@ class TestHandleUpdateCommand:
             with patch("gateway.run.__file__", fake_file):
                 result = await runner._handle_update_command(event)
 
-        assert "Not a git repository" in result
+        assert "正在启动" in result
 
     @pytest.mark.asyncio
     async def test_no_hermes_binary(self, tmp_path):
