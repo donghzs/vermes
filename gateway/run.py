@@ -3220,6 +3220,19 @@ class GatewayRunner(TelegramTopicsMixin, VoiceMixin, GoalMixin, KanbanMixin, Sla
                     timeout,
                     self._running_agent_count(),
                 )
+                # Clear pre-drain marks for sessions that finished gracefully
+                # during the drain window — they are no longer in _running_agents
+                # and must NOT carry a stale resume_pending flag.  Only sessions
+                # still running at timeout should be marked.
+                for _sk in _pre_drain_keys:
+                    if _sk not in self._running_agents:
+                        try:
+                            self.session_store.clear_resume_pending(_sk)
+                        except Exception as _e:
+                            logger.debug(
+                                "clear_resume_pending (timeout) failed for %s: %s",
+                                _sk, _e,
+                            )
                 # Mark forcibly-interrupted sessions as resume_pending BEFORE
                 # interrupting the agents.  This preserves each session's
                 # session_id + transcript so the next message on the same
