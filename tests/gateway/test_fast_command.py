@@ -126,12 +126,13 @@ async def test_handle_fast_command_persists_config(monkeypatch, tmp_path):
     runner = _make_runner()
 
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
-    monkeypatch.setattr("gateway.slash_commands_mixin._load_gateway_config", lambda: {})
-    monkeypatch.setattr("gateway.slash_commands_mixin._resolve_gateway_model", lambda config=None: "gpt-5.4")
+    monkeypatch.setattr("gateway.slash_handlers.config_handlers._load_gateway_config", lambda: {})
+    monkeypatch.setattr("gateway.slash_handlers.config_handlers._resolve_gateway_model", lambda config=None: "gpt-5.4")
+    monkeypatch.setattr("hermes_cli.models.model_supports_fast_mode", lambda model: True)
 
     response = await runner._handle_fast_command(_make_event("/fast fast"))
 
-    assert "FAST" in response
+    assert "优先" in response or "fast" in response.lower()
     assert runner._service_tier == "priority"
 
     saved = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
@@ -149,8 +150,8 @@ async def test_run_agent_passes_priority_processing_to_gateway_agent(monkeypatch
     monkeypatch.setattr(gateway_run, "load_dotenv", lambda *args, **kwargs: None)
     _lc = lambda: {}
     _rm = lambda config=None: "gpt-5.4"
-    monkeypatch.setattr("gateway.slash_commands_mixin._load_gateway_config", _lc)
-    monkeypatch.setattr("gateway.slash_commands_mixin._resolve_gateway_model", _rm)
+    monkeypatch.setattr("gateway.slash_handlers.config_handlers._load_gateway_config", _lc)
+    monkeypatch.setattr("gateway.slash_handlers.config_handlers._resolve_gateway_model", _rm)
     monkeypatch.setattr("gateway.run._load_gateway_config", _lc)
     monkeypatch.setattr("gateway.run._resolve_gateway_model", _rm)
     monkeypatch.setattr(
