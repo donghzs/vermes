@@ -1,55 +1,90 @@
-import { describe, it, expect } from 'vitest'
-import DOMPurify from 'dompurify'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { DOMPURIFY_BASE_CONFIG, enforceLinkSecurity } from '@/utils/security'
 
-describe('DOMPurify — XSS 防御', () => {
-  it('应移除 <script> 标签', () => {
-    const dirty = '<script>alert("xss")</script><p>hello</p>'
-    const clean = DOMPurify.sanitize(dirty)
-    expect(clean).not.toContain('<script>')
-    expect(clean).toContain('<p>hello</p>')
+describe('security.js', () => {
+  describe('DOMPURIFY_BASE_CONFIG', () => {
+    it('has allowed tags array', () => {
+      expect(Array.isArray(DOMPURIFY_BASE_CONFIG.ALLOWED_TAGS)).toBe(true)
+      expect(DOMPURIFY_BASE_CONFIG.ALLOWED_TAGS.length).toBeGreaterThan(0)
+    })
+
+    it('includes common formatting tags', () => {
+      const tags = DOMPURIFY_BASE_CONFIG.ALLOWED_TAGS
+      expect(tags).toContain('p')
+      expect(tags).toContain('strong')
+      expect(tags).toContain('em')
+      expect(tags).toContain('code')
+      expect(tags).toContain('a')
+    })
+
+    it('has allowed attributes array', () => {
+      expect(Array.isArray(DOMPURIFY_BASE_CONFIG.ALLOWED_ATTR)).toBe(true)
+      expect(DOMPURIFY_BASE_CONFIG.ALLOWED_ATTR).toContain('href')
+      expect(DOMPURIFY_BASE_CONFIG.ALLOWED_ATTR).toContain('src')
+    })
+
+    it('disallows data attributes', () => {
+      expect(DOMPURIFY_BASE_CONFIG.ALLOW_DATA_ATTR).toBe(false)
+    })
+
+    it('sanitizes named props', () => {
+      expect(DOMPURIFY_BASE_CONFIG.SANITIZE_NAMED_PROPS).toBe(true)
+    })
+
+    it('keeps content', () => {
+      expect(DOMPURIFY_BASE_CONFIG.KEEP_CONTENT).toBe(true)
+    })
   })
 
-  it('应移除 on* 事件属性', () => {
-    const dirty = '<img src="x" onerror="alert(1)">'
-    const clean = DOMPurify.sanitize(dirty)
-    expect(clean).not.toContain('onerror')
-  })
+  describe('enforceLinkSecurity', () => {
+    it('sets target=_blank and rel on anchor', () => {
+      const a = document.createElement('a')
+      a.setAttribute('href', 'https://example.com')
+      enforceLinkSecurity(a)
+      expect(a.getAttribute('target')).toBe('_blank')
+      expect(a.getAttribute('rel')).toContain('noopener')
+      expect(a.getAttribute('rel')).toContain('noreferrer')
+    })
 
-  it('应移除 javascript: 协议', () => {
-    const dirty = '<a href="javascript:alert(1)">click</a>'
-    const clean = DOMPurify.sanitize(dirty)
-    expect(clean).not.toContain('javascript:')
-  })
+    it('blocks javascript: protocol', () => {
+      const a = document.createElement('a')
+      a.setAttribute('href', 'javascript:alert(1)')
+      enforceLinkSecurity(a)
+      expect(a.getAttribute('href')).toBeNull()
+      expect(a.getAttribute('data-blocked-href')).toContain('javascript')
+      expect(a.getAttribute('title')).toContain('阻止')
+    })
 
-  it('应保留安全的 HTML 标签', () => {
-    const dirty = '<p>段落</p><strong>加粗</strong><em>斜体</em><code>代码</code>'
-    const clean = DOMPurify.sanitize(dirty)
-    expect(clean).toContain('<p>')
-    expect(clean).toContain('<strong>')
-    expect(clean).toContain('<em>')
-    expect(clean).toContain('<code>')
-  })
+    it('blocks data: protocol', () => {
+      const a = document.createElement('a')
+      a.setAttribute('href', 'data:text/html,<script>alert(1)</script>')
+      enforceLinkSecurity(a)
+      expect(a.getAttribute('href')).toBeNull()
+      expect(a.getAttribute('data-blocked-href')).toContain('data')
+    })
 
-  it('应保留 mark 标签（仅允许 class 属性）', () => {
-    const dirty = '<mark class="highlight">高亮文本</mark>'
-    const clean = DOMPurify.sanitize(dirty, { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: ['class'] })
-    expect(clean).toContain('<mark')
-    expect(clean).toContain('class="highlight"')
-  })
+    it('blocks vbscript: protocol', () => {
+      const a = document.createElement('a')
+      a.setAttribute('href', 'vbscript:msgbox(1)')
+      enforceLinkSecurity(a)
+      expect(a.getAttribute('href')).toBeNull()
+      expect(a.getAttribute('data-blocked-href')).toContain('vbscript')
+    })
 
-  it('应移除 mark 标签上的非 class 属性', () => {
-    const dirty = '<mark onclick="alert(1)" class="hl">text</mark>'
-    const clean = DOMPurify.sanitize(dirty, { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: ['class'] })
-    expect(clean).not.toContain('onclick')
-    expect(clean).toContain('class="hl"')
-  })
+    it('allows safe https links', () => {
+      const a = document.createElement('a')
+      a.setAttribute('href', 'https://example.com/safe')
+      enforceLinkSecurity(a)
+      expect(a.getAttribute('href')).toBe('https://example.com/safe')
+      expect(a.getAttribute('data-blocked-href')).toBeNull()
+    })
 
-  it('应处理嵌套恶意结构', () => {
-    const dirty = '<div><script>evil()</script><p onmouseover="x()">text</p></div>'
-    const clean = DOMPurify.sanitize(dirty)
-    expect(clean).not.toContain('<script>')
-    // DOMPurify 在不同 environment 下对 on* 属性处理可能不同
-    // 确保至少 <script> 被移除，文本内容保留
-    expect(clean).toContain('text')
+    it('does nothing for non-anchor elements', () => {
+      const div = document.createElement('div')
+      div.setAttribute('href', 'javascript:alert(1)')
+      enforceLinkSecurity(div)
+      // Should not modify non-anchor elements
+      expect(div.getAttribute('target')).toBeNull()
+    })
   })
 })
