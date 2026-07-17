@@ -2808,6 +2808,37 @@ def browser_scroll(direction: str, task_id: Optional[str] = None) -> str:
     return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
+# CDP error substrings that mean "this page genuinely can't go back" rather
+# than a transient failure. On non-navigable documents (JSON / raw text / PDF
+# pages, data:/about: URLs) or when history is empty, Chrome's DevTools ``back``
+# returns an opaque protocol string. The agent (and its user) should see a
+# reason, not a raw error (#A0-3).
+_BROWSER_BACK_NON_NAVIGABLE_HINTS = (
+    "inspected target navigated or closed",
+    "no history entry",
+    "cannot navigate",
+    "failed to navigate",
+    "err_aborted",
+    "net::err",
+)
+
+
+def _friendly_browser_back_error(raw_error: str) -> str:
+    """Translate cryptic CDP ``back`` errors into a clear, actionable message.
+
+    Returns the original error unchanged when it doesn't match a known
+    non-navigable pattern, so genuine failures still surface verbatim.
+    """
+    lowered = (raw_error or "").lower()
+    if any(hint in lowered for hint in _BROWSER_BACK_NON_NAVIGABLE_HINTS):
+        return (
+            "当前页面无法后退：该文档可能不支持历史导航"
+            "（例如 JSON / 纯文本 / PDF 页面、data: 或 about: 地址），"
+            "或浏览历史为空。可先用 browser_navigate 打开一个网页再尝试后退。"
+        )
+    return raw_error or "Failed to go back"
+
+
 def browser_back(task_id: Optional[str] = None) -> str:
     """
     Navigate back in browser history.
@@ -2835,7 +2866,7 @@ def browser_back(task_id: Optional[str] = None) -> str:
     else:
         response = {
             "success": False,
-            "error": result.get("error", "Failed to go back")
+            "error": _friendly_browser_back_error(result.get("error", ""))
         }
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
