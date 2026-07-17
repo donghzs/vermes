@@ -302,20 +302,30 @@ class EmergentChangePipeline:
                     approve_privileged_action,
                 )
                 session_key = get_current_session_key(default="")
+                # Look up the original committed event's timestamp for context
+                committed_at = self._lookup_committed_time(target_path)
                 action_desc = (
                     f"恢复备份 → {target_path}" if backup_path
                     else f"删除文件 {target_path}"
                 )
+                if committed_at:
+                    description = (
+                        f"⚠️ 撤销确认: 正在撤销 {committed_at} 的改写 → {target_path}"
+                    )
+                else:
+                    description = f"⚠️ 撤销确认: Agent 请求回滚改写 {target_path}"
                 approved = approve_privileged_action(
                     session_key,
                     {
                         "command": f"rollback {target_path}",
-                        "description": f"Agent 请求回滚改写: {target_path}",
+                        "description": description,
+                        "category": "self_modify_rollback",
                         "pattern_key": "self_modify_rollback",
                         "pattern_keys": ["self_modify_rollback"],
                         "diff": action_desc,
                         "target_path": target_path,
                         "backup_path": backup_path or "",
+                        "committed_at": committed_at or "",
                         "surface": "gui",
                     },
                     surface="gateway",
@@ -486,6 +496,34 @@ class EmergentChangePipeline:
             )
         except Exception:
             logger.debug("Failed to record rollback raw_event", exc_info=True)
+
+    def _lookup_committed_time(self, target_path: str) -> str:
+        """Look up the timestamp of the most recent committed event for target_path.
+
+        Used to provide context in rollback approval dialogs so the user knows
+        *which* change is being rolled back.
+        """
+        try:
+            from agent.evolution_manager import get_self_model_db
+            import sqlite3
+            db_path = str(get_self_model_db())
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """SELECT timestamp FROM raw_events
+                   WHERE tool_name = 'self_modify'
+                     AND result_preview LIKE ?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (f"committed: {target_path}%",),
+            ).fetchone()
+            conn.close()
+            if row:
+                ts = row["timestamp"]
+                # Format: "2026-07-17T06:05:00" → "07-17 06:05"
+                return ts[5:16].replace("T", " ") if ts else ""
+        except Exception:
+            pass
+        return ""
 
     def _has_sufficient_rollback_history(self, target_path: str, min_samples: int = 5) -> bool:
         """Check if enough rollback data exists for a target file.

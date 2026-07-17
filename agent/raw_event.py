@@ -291,6 +291,45 @@ def record_raw_event(
     return rowid
 
 
+def record_retraction(
+    target_type: str,
+    target_name: str,
+    reason: str = "",
+    session_id: str = "",
+    turn_number: int = 0,
+) -> Optional[int]:
+    """Record a logical retraction of a capability or insight.
+
+    This does NOT delete the original event — it records a new event marking
+    the target as retracted. The emergence cycle checks for retraction events
+    and filters out retracted items.
+
+    Args:
+        target_type:  "capability" or "insight"
+        target_name:  Name of the capability/insight being retracted
+        reason:       Optional human-readable reason for the retraction
+        session_id:   Session identifier
+        turn_number:  Turn number within the session
+
+    Returns:
+        Row ID of the retraction event, or None on failure.
+    """
+    return record_raw_event(
+        tool_name="__retraction__",
+        tool_args={
+            "target_type": target_type,
+            "target_name": target_name,
+            "reason": reason,
+        },
+        result=f"retracted: {target_type}:{target_name}",
+        is_error=False,
+        duration=0.0,
+        session_id=session_id,
+        turn_number=turn_number,
+        trigger_clustering=False,  # retraction must NOT re-trigger emergence
+    )
+
+
 def _maybe_trigger_clustering(session_id: str) -> None:
     """Check if enough events have accumulated to trigger clustering.
 

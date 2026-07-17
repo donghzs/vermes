@@ -1478,7 +1478,7 @@ async def self_modify_history(limit: int = 100):
         rows = conn.execute(
             """SELECT timestamp, tool_name, args_preview, result_preview, success
                FROM raw_events
-               WHERE tool_name IN ('self_modify', 'self_modify_rollback', 'capability_activate')
+               WHERE tool_name IN ('self_modify', 'self_modify_rollback', 'capability_activate', '__retraction__')
                ORDER BY rowid DESC
                LIMIT ?""",
             (limit,),
@@ -1511,6 +1511,10 @@ async def self_modify_history(limit: int = 100):
 
 def _classify_self_modify(tool: str, result: str):
     """Map a raw_event result string to (status, target_path, backup_path)."""
+    if tool == "__retraction__":
+        # result = "retracted: capability:cap_name" or "retracted: insight:insight_name"
+        body = result.replace("retracted: ", "", 1).strip()
+        return "retracted", body, ""
     if tool == "self_modify_rollback":
         if result.startswith("denied: "):
             return "denied", result[8:].strip(), ""
@@ -1559,6 +1563,39 @@ async def self_modify_rollback(request: Request):
             target_path, backup_path, initiator="user",
         )
         return {"ok": True, "rolled_back": bool(rolled), "target_path": target_path}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def retract_evolution_item(request: Request):
+    """Logically retract a capability or insight.
+
+    Body: { "target_type": "capability"|"insight", "target_name": str, "reason": str? }
+
+    Logical retraction records a __retraction__ raw_event that the emergence
+    cycle uses to suppress future suggestions. The original event is NOT
+    deleted — this preserves the audit trail and the negative-feedback signal.
+    """
+    try:
+        body = await request.json()
+        target_type = body.get("target_type", "")
+        target_name = body.get("target_name", "")
+        reason = body.get("reason", "")
+        if not target_type or not target_name:
+            return {"ok": False, "error": "target_type and target_name required"}
+        from agent.raw_event import record_retraction
+        rowid = record_retraction(
+            target_type=target_type,
+            target_name=target_name,
+            reason=reason,
+        )
+        return {
+            "ok": True,
+            "retracted": True,
+            "target_type": target_type,
+            "target_name": target_name,
+            "event_id": rowid,
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -1963,6 +2000,12 @@ def register_to(app):
         self_modify_rollback,
         methods=["POST"],
         name="self_modify_rollback",
+    )
+    app.add_api_route(
+        "/api/evolution/retract",
+        retract_evolution_item,
+        methods=["POST"],
+        name="retract_evolution_item",
     )
     app.add_api_route(
         "/api/emergence/status",

@@ -117,6 +117,25 @@ async function rollbackChange(target, backup) {
   }
 }
 
+async function retractCapability(capName) {
+  if (!confirm(`确定撤回能力「${capName}」？\n\n撤回后该能力将不再被自动建议，但原始记录保留。`)) {
+    return
+  }
+  try {
+    const r = await fetch('/api/evolution/retract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_type: 'capability', target_name: capName }),
+    })
+    const data = await r.json()
+    if (data.ok) {
+      await fetchSelfModifyHistory()
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   fetchStatus()
   fetchAchievements()
@@ -178,7 +197,7 @@ const nodeTypeLabel = (nodeType) => {
 const smStatusLabel = (s) => {
   const map = {
     committed: '已应用', proposed: '待审批', held: '冷启动挂起',
-    rejected: '已拒绝', rolled_back: '已回滚',
+    rejected: '已拒绝', rolled_back: '已回滚', retracted: '已撤回',
     activated: '能力已激活', denied: '能力已拒绝', unknown: '未知'
   }
   return map[s] || s
@@ -186,7 +205,7 @@ const smStatusLabel = (s) => {
 const smStatusColor = (s) => {
   const map = {
     committed: 'text-green-500', proposed: 'text-blue-400', held: 'text-yellow-500',
-    rejected: 'text-red-400', rolled_back: 'text-gray-400',
+    rejected: 'text-red-400', rolled_back: 'text-gray-400', retracted: 'text-orange-400',
     activated: 'text-green-500', denied: 'text-red-400', unknown: 'text-gray-400'
   }
   return map[s] || 'text-gray-400'
@@ -194,7 +213,7 @@ const smStatusColor = (s) => {
 const smTypeLabel = (t) => {
   const map = {
     self_modify: '源码改写', self_modify_rollback: '回滚',
-    capability_activate: '能力激活'
+    capability_activate: '能力激活', __retraction__: '撤回'
   }
   return map[t] || t
 }
@@ -404,12 +423,17 @@ const smTypeLabel = (t) => {
       <!-- ── 自我改写审批日志 ── -->
       <div v-if="selfModifyHistory?.length" class="evo-dag evo-selfmod">
         <div class="evo-key mb-1">自我改写审批 ({{ selfModifyHistory.length }})</div>
-        <div v-for="(e, i) in selfModifyHistory" :key="i" class="evo-edge evo-sm-row">
-          <span class="evo-sm-type">{{ smTypeLabel(e.type) }}</span>
+        <div v-for="(e, i) in selfModifyHistory" :key="i"
+          class="evo-edge evo-sm-row" :class="{ 'evo-sm-row--danger': e.type === 'self_modify_rollback' }">
+          <span class="evo-sm-type" :class="{ 'evo-sm-type--danger': e.type === 'self_modify_rollback' }">
+            {{ smTypeLabel(e.type) }}
+          </span>
           <span class="evo-sm-status" :class="smStatusColor(e.status)">{{ smStatusLabel(e.status) }}</span>
           <span class="evo-sm-target" :title="e.target || e.detail">{{ e.target || e.detail }}</span>
           <button v-if="e.status === 'committed' && e.backup" class="evo-btn-rollback"
             @click="rollbackChange(e.target, e.backup)" :title="`回滚: ${e.target}`">回滚</button>
+          <button v-if="e.status === 'activated'" class="evo-btn-retract"
+            @click="retractCapability(e.target)" :title="`撤回: ${e.target}`">撤回</button>
           <span class="evo-sm-time">{{ (e.timestamp || '').slice(5, 16).replace('T', ' ') }}</span>
         </div>
       </div>
@@ -846,6 +870,38 @@ const smTypeLabel = (t) => {
   color: #a78bfa;
 }
 .evo-btn-rollback:hover {
+  opacity: 0.85;
+}
+/* Danger styling for rollback rows */
+.evo-sm-row--danger {
+  background: rgba(239, 68, 68, 0.04);
+  border-left: 2px solid rgba(239, 68, 68, 0.3);
+}
+.dark .evo-sm-row--danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-left-color: rgba(239, 68, 68, 0.5);
+}
+.evo-sm-type--danger {
+  color: #ef4444;
+  font-weight: 500;
+}
+/* Retract button for capabilities */
+.evo-btn-retract {
+  flex-shrink: 0;
+  font-size: 0.5625rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.dark .evo-btn-retract {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+.evo-btn-retract:hover {
   opacity: 0.85;
 }
 </style>

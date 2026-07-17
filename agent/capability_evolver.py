@@ -388,6 +388,24 @@ def run_emergence_cycle(db_path: str) -> List[EvolutionDecision]:
             filtered.append(d)
         decisions = filtered
 
+    # ── Retraction filter ──
+    # Capabilities the user explicitly RETRACTED are permanently suppressed
+    # (until the retraction event is itself aged out or manually cleared).
+    # Unlike denials (which decay after 7 days), retractions are durable —
+    # they represent a deliberate "this was wrong, don't suggest again" signal.
+    retracted = _retracted_capabilities(db_path)
+    if retracted:
+        filtered = []
+        for d in decisions:
+            if d.action in ("activate", "install") and d.capability_name in retracted:
+                logger.info(
+                    "Emergence suppressed (retracted by user): %s",
+                    d.capability_name,
+                )
+                continue
+            filtered.append(d)
+        decisions = filtered
+
     # Update emergence signal counts in the registry
     from agent.capability_registry import get_capability
     for decision in decisions:
@@ -429,4 +447,34 @@ def _recently_denied_capabilities(db_path: str, days: int = 7) -> set:
         return {r["cap"] for r in rows}
     except Exception:
         logger.debug("recently-denied lookup failed", exc_info=True)
+        return set()
+
+
+def _retracted_capabilities(db_path: str) -> set:
+    """Return capability names the user explicitly retracted.
+
+    Reads ``raw_events`` rows with tool_name='__retraction__' and
+    target_type='capability'. Unlike denials, retractions have no time window —
+    they are durable until manually un-retracted.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT DISTINCT args_preview
+               FROM raw_events
+               WHERE tool_name = '__retraction__'""",
+        ).fetchall()
+        conn.close()
+        # args_preview contains "target_name': '<name>'" — extract it
+        import re
+        result = set()
+        for r in rows:
+            args = r["args_preview"] or ""
+            m = re.search(r"target_name[^:]*:\s*['\'']([^'\'']+)", args)
+            if m:
+                result.add(m.group(1))
+        return result
+    except Exception:
+        logger.debug("retracted-capabilities lookup failed", exc_info=True)
         return set()
