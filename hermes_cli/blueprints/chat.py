@@ -1514,6 +1514,9 @@ def _classify_self_modify(tool: str, result: str):
     if tool == "__retraction__":
         # result = "retracted: capability:cap_name" or "retracted: insight:insight_name"
         body = result.replace("retracted: ", "", 1).strip()
+        # 剥掉 type 前缀，仅保留名称用于展示（capability:foo → foo）
+        if ":" in body:
+            body = body.split(":", 1)[1]
         return "retracted", body, ""
     if tool == "self_modify_rollback":
         if result.startswith("denied: "):
