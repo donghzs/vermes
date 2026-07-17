@@ -202,6 +202,7 @@ def record_raw_event(
     duration: float,
     session_id: str = "",
     turn_number: int = 0,
+    trigger_clustering: bool = True,
 ) -> Optional[int]:
     """Record a tool execution as a zero-classification RawEvent.
 
@@ -276,11 +277,16 @@ def record_raw_event(
     # lightweight COUNT query that returns immediately when threshold not met.
     # When threshold is met, clustering runs synchronously — acceptable for
     # a batch operation that runs once per ~50 events.
-    try:
-        _maybe_trigger_clustering(session_id)
-        _LAST_EMERGENCE_OK = datetime.now()
-    except Exception:
-        pass
+    # ``trigger_clustering=False`` is used for meta-events whose recording must
+    # NOT re-enter the emergence chain (e.g. a capability-activation approval
+    # decision), otherwise recording the decision would re-trigger emergence
+    # and re-suggest the same activation → an approval/deny loop.
+    if trigger_clustering:
+        try:
+            _maybe_trigger_clustering(session_id)
+            _LAST_EMERGENCE_OK = datetime.now()
+        except Exception:
+            pass
 
     return rowid
 
@@ -342,12 +348,60 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                         if d.action == "activate":
                             import threading
                             def _bg_activate(cap_name=d.capability_name):
+                                """Activate a capability, but only after the
+                                user confirms via the Gateway/desktop approval
+                                flow. This is a privileged self-evolution action
+                                (may run ``pip install``), so it must NOT be
+                                applied automatically — consistent with the
+                                human-in-the-loop gate used by ``self_modify``.
+                                """
                                 try:
-                                    from agent.capability_registry import activate_capability
-                                    activate_capability(cap_name)
-                                    logger.info("Capability auto-activated: %s", cap_name)
+                                    from tools.approval import (
+                                        request_gateway_approval,
+                                        get_current_session_key,
+                                    )
+                                    session_key = get_current_session_key()
+                                    approval_data = {
+                                        "type": "capability_activate",
+                                        "capability": cap_name,
+                                        "title": f"激活能力：{cap_name}",
+                                        "description": (
+                                            f"系统涌现决策建议激活能力 «{cap_name}»"
+                                            f"（可能执行 pip install 安装依赖）。"
+                                            f"是否允许？"
+                                        ),
+                                        "surface": "gui",
+                                    }
+                                    decision = request_gateway_approval(
+                                        session_key, approval_data, surface="gui"
+                                    )
+                                    approved = decision.get("choice") in (
+                                        "approve", "once", "session", "always"
+                                    )
+                                    if approved:
+                                        from agent.capability_registry import activate_capability
+                                        activate_capability(cap_name)
+                                        logger.info("Capability auto-activated (user-approved): %s", cap_name)
+                                        record_raw_event(
+                                            tool_name="capability_activate",
+                                            tool_args={"capability": cap_name, "initiator": "system"},
+                                            result=f"activated: {cap_name}",
+                                            is_error=False,
+                                            duration=0.0,
+                                            trigger_clustering=False,
+                                        )
+                                    else:
+                                        logger.info("Capability activation denied by user: %s", cap_name)
+                                        record_raw_event(
+                                            tool_name="capability_activate",
+                                            tool_args={"capability": cap_name, "initiator": "system"},
+                                            result=f"denied: {cap_name}",
+                                            is_error=False,
+                                            duration=0.0,
+                                            trigger_clustering=False,
+                                        )
                                 except Exception:
-                                    logger.warning("Background capability activation failed", exc_info=True)
+                                    logger.warning("Background capability activation (gated) failed", exc_info=True)
                             threading.Thread(
                                 target=_bg_activate,
                                 daemon=True,

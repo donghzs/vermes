@@ -369,6 +369,25 @@ def run_emergence_cycle(db_path: str) -> List[EvolutionDecision]:
     """
     decisions = evaluate_capability_emergence(db_path)
 
+    # ── Negative-feedback guard ──
+    # A capability the user recently DENIED via the Gateway approval flow must
+    # not be re-suggested on every clustering cycle (that would spam approval
+    # prompts). The denial is itself data: we respect it for a window, after
+    # which the signal can re-emerge naturally if the need persists. This keeps
+    # the self-evolution loop data-driven and non-annoying.
+    denied = _recently_denied_capabilities(db_path, days=7)
+    if denied:
+        filtered = []
+        for d in decisions:
+            if d.action in ("activate", "install") and d.capability_name in denied:
+                logger.info(
+                    "Emergence suppressed (recently denied by user): %s",
+                    d.capability_name,
+                )
+                continue
+            filtered.append(d)
+        decisions = filtered
+
     # Update emergence signal counts in the registry
     from agent.capability_registry import get_capability
     for decision in decisions:
@@ -385,3 +404,29 @@ def run_emergence_cycle(db_path: str) -> List[EvolutionDecision]:
             )
 
     return decisions
+
+
+def _recently_denied_capabilities(db_path: str, days: int = 7) -> set:
+    """Return capability names the user denied via the approval flow recently.
+
+    Reads ``raw_events`` rows written by the gated activation in
+    ``agent/raw_event.py`` (tool_name='capability_activate',
+    result='denied: <cap>'). A denial within *days* suppresses re-suggestion.
+    """
+    try:
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT DISTINCT substr(result_preview, 9) AS cap
+               FROM raw_events
+               WHERE tool_name = 'capability_activate'
+                 AND result_preview LIKE 'denied: %'
+                 AND timestamp > ?""",
+            (cutoff,),
+        ).fetchall()
+        conn.close()
+        return {r["cap"] for r in rows}
+    except Exception:
+        logger.debug("recently-denied lookup failed", exc_info=True)
+        return set()

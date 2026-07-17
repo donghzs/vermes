@@ -1456,6 +1456,80 @@ async def evolution_dag(limit: int = 50):
         return {"error": str(e), "edges": [], "top_documents": [], "anti_patterns": []}
 
 
+async def self_modify_history(limit: int = 100):
+    """Return the self-modification / self-evolution approval log.
+
+    Surfaces every privileged self-change the agent proposed or the system
+    auto-suggested, and how the user resolved it:
+      - self_modify        : agent-proposed source edits (committed / proposed /
+                             held / rejected)
+      - self_modify_rollback: agent/user/system rollbacks
+      - capability_activate : system-emergent capability activations
+                             (activated / denied by the user)
+
+    This is the "what did the agent try to change about itself, and what did
+    I approve" panel. All rows come from raw_events.
+    """
+    try:
+        from agent.evolution_manager import get_self_model_db
+        db_path = str(get_self_model_db())
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT timestamp, tool_name, args_preview, result_preview, success
+               FROM raw_events
+               WHERE tool_name IN ('self_modify', 'self_modify_rollback', 'capability_activate')
+               ORDER BY rowid DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        conn.close()
+
+        import re
+        events = []
+        for r in rows:
+            tool = r["tool_name"]
+            result = r["result_preview"] or ""
+            args = r["args_preview"] or ""
+            initiator_m = re.search(r"initiator'?\s*:\s*'(\w+)'", args)
+            initiator = initiator_m.group(1) if initiator_m else "system"
+            status, target = _classify_self_modify(tool, result)
+            events.append({
+                "timestamp": r["timestamp"],
+                "type": tool,
+                "status": status,
+                "target": target,
+                "initiator": initiator,
+                "success": bool(r["success"]),
+                "detail": result,
+            })
+        return {"events": events, "count": len(events)}
+    except Exception as e:
+        return {"events": [], "count": 0, "error": str(e)}
+
+
+def _classify_self_modify(tool: str, result: str):
+    """Map a raw_event result string to (status, target_path)."""
+    if tool == "self_modify_rollback":
+        return "rolled_back", result.replace("rolled back: ", "", 1).strip()
+    if tool == "capability_activate":
+        if result.startswith("activated: "):
+            return "activated", result[11:].strip()
+        if result.startswith("denied: "):
+            return "denied", result[8:].strip()
+        return "unknown", result.strip()
+    # self_modify
+    if result.startswith("committed: "):
+        return "committed", result[11:].strip()
+    if "proposed: awaiting user approval" in result:
+        return "proposed", ""
+    if "pending_confirmation" in result:
+        return "held", ""
+    if result.startswith("rejected: "):
+        return "rejected", ""
+    return "unknown", ""
+
+
 async def emergence_status():
     """Return emergence system status: richness, clusters, capabilities, health."""
     try:
@@ -1844,6 +1918,12 @@ def register_to(app):
         evolution_dag,
         methods=["GET"],
         name="evolution_dag",
+    )
+    app.add_api_route(
+        "/api/evolution/self_modify_history",
+        self_modify_history,
+        methods=["GET"],
+        name="self_modify_history",
     )
     app.add_api_route(
         "/api/emergence/status",

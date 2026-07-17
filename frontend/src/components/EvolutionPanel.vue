@@ -9,6 +9,7 @@ const dagData = ref(null)
 const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详情
 const emergenceData = ref(null)
 const skillsData = ref(null)
+const selfModifyHistory = ref([])
 
 async function fetchStatus() {
   try {
@@ -85,16 +86,30 @@ async function rejectSkill(id) {
   }
 }
 
+async function fetchSelfModifyHistory() {
+  try {
+    const r = await fetch('/api/evolution/self_modify_history?limit=50')
+    if (r.ok) {
+      const data = await r.json()
+      selfModifyHistory.value = data.events || []
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   fetchStatus()
   fetchAchievements()
   fetchDag()
   fetchEmergence()
   fetchSkills()
+  fetchSelfModifyHistory()
   // 每 30 秒刷新
   const timer = setInterval(() => {
     fetchStatus()
     fetchEmergence()
+    fetchSelfModifyHistory()
   }, 30000)
   onUnmounted(() => clearInterval(timer))
 })
@@ -139,6 +154,30 @@ const edgeTypeLabel = (relType) => {
 const nodeTypeLabel = (nodeType) => {
   const map = { outcome: '工具调用', emotional_state: '情绪状态', anti_pattern: '反模式', document: '文档', chunk: '分块' }
   return map[nodeType] || nodeType
+}
+
+const smStatusLabel = (s) => {
+  const map = {
+    committed: '已应用', proposed: '待审批', held: '冷启动挂起',
+    rejected: '已拒绝', rolled_back: '已回滚',
+    activated: '能力已激活', denied: '能力已拒绝', unknown: '未知'
+  }
+  return map[s] || s
+}
+const smStatusColor = (s) => {
+  const map = {
+    committed: 'text-green-500', proposed: 'text-blue-400', held: 'text-yellow-500',
+    rejected: 'text-red-400', rolled_back: 'text-gray-400',
+    activated: 'text-green-500', denied: 'text-red-400', unknown: 'text-gray-400'
+  }
+  return map[s] || 'text-gray-400'
+}
+const smTypeLabel = (t) => {
+  const map = {
+    self_modify: '源码改写', self_modify_rollback: '回滚',
+    capability_activate: '能力激活'
+  }
+  return map[t] || t
 }
 </script>
 
@@ -340,6 +379,17 @@ const nodeTypeLabel = (nodeType) => {
         <div v-for="s in skillsData.active" :key="s.id" class="evo-edge">
           <span class="evo-edge-src">⚡ {{ s.name }}</span>
           <span class="evo-edge-count">{{ s.description?.slice(0, 40) }}</span>
+        </div>
+      </div>
+
+      <!-- ── 自我改写审批日志 ── -->
+      <div v-if="selfModifyHistory?.length" class="evo-dag evo-selfmod">
+        <div class="evo-key mb-1">自我改写审批 ({{ selfModifyHistory.length }})</div>
+        <div v-for="(e, i) in selfModifyHistory" :key="i" class="evo-edge evo-sm-row">
+          <span class="evo-sm-type">{{ smTypeLabel(e.type) }}</span>
+          <span class="evo-sm-status" :class="smStatusColor(e.status)">{{ smStatusLabel(e.status) }}</span>
+          <span class="evo-sm-target" :title="e.target || e.detail">{{ e.target || e.detail }}</span>
+          <span class="evo-sm-time">{{ (e.timestamp || '').slice(5, 16).replace('T', ' ') }}</span>
         </div>
       </div>
     </div>
@@ -718,5 +768,45 @@ const nodeTypeLabel = (nodeType) => {
 }
 .evo-btn-reject:hover {
   opacity: 0.85;
+}
+
+/* ── 自我改写审批日志 ── */
+.evo-selfmod {
+  border-left: 2px solid #8b5cf6;
+  padding-left: 0.5rem;
+}
+.evo-sm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.625rem;
+  padding: 0.1875rem 0;
+}
+.evo-sm-type {
+  flex-shrink: 0;
+  width: 3.5rem;
+  color: #8b5cf6;
+  font-weight: 500;
+}
+.dark .evo-sm-type { color: #a78bfa; }
+.evo-sm-status {
+  flex-shrink: 0;
+  width: 4.5rem;
+  font-weight: 500;
+}
+.evo-sm-target {
+  flex: 1;
+  min-width: 0;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dark .evo-sm-target { color: #9ca3af; }
+.evo-sm-time {
+  flex-shrink: 0;
+  color: #9ca3af;
+  font-size: 0.5625rem;
+  font-variant-numeric: tabular-nums;
 }
 </style>
