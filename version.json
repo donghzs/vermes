@@ -1,32 +1,37 @@
 {
-  "version": "2.3.1",
-  "buildDate": "2026-07-15",
+  "version": "2.3.2",
+  "buildDate": "2026-07-18",
   "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.1-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.1.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.1.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.2-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.2.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.2.exe"
   },
   "sha256": {
-    "macos_arm64": "03447a54565d249ab42e721c0a2495214886f3f4c73df04fc6b039e7d32bfbee",
-    "macos_x64": "ff3331f62edb7ad12b9f24d3b5332944a0d44cd9f985412319c41d4f34c091fb"
+    "macos_arm64": "",
+    "macos_x64": ""
   },
   "macOS": {
     "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.1-arm64.dmg",
-      "size": "174 MB",
-      "sha256": "03447a54565d249ab42e721c0a2495214886f3f4c73df04fc6b039e7d32bfbee"
+      "dmg": "/vermes/downloads/Vermes-2.3.2-arm64.dmg",
+      "size": "",
+      "sha256": ""
     },
     "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.1.dmg",
-      "size": "179 MB",
-      "sha256": "ff3331f62edb7ad12b9f24d3b5332944a0d44cd9f985412319c41d4f34c091fb"
+      "dmg": "/vermes/downloads/Vermes-2.3.2.dmg",
+      "size": "",
+      "sha256": ""
     }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.3.1.exe",
+    "exe": "/vermes/downloads/Vermes-Setup-2.3.2.exe",
     "size": ""
   },
   "changelog": [
+    "browser_vision 辅助模型回退修复 — 命名 provider(base_url 无 key)自动回退 auto 而非崩溃 (#A0-2)",
+    "browser_back 非可导航文档返回友好提示而非原始 CDP 错误 (#A0-3)",
+    "Harness 层：工具失败可恢复反馈装饰器 + 稳定性探针(best/worst-of-N) + 通用约束基类",
+    "构建修复：GUI 包补全 ScholarForge 与 gateway 9 个 Mixin / slash_handlers 隐式导入",
+    "ScholarForge write/review / replace_citations 经重建出包交付（源码已修复，属 STALE 项）",
     "ScholarForge SSE 僵尸请求修复 — 离开模块时自动 abort + 后端断开检测",
     "线程安全修复 — asyncio.Queue 跨线程写入导致 SSE 永久挂起",
     "Agent 超时保护 — 流式 30s + 全局 30min 硬上限",
