@@ -25,6 +25,7 @@ sys.modules.setdefault("telegram", _tg)
 sys.modules.setdefault("telegram.constants", _tg.constants)
 sys.modules.setdefault("telegram.ext", types.ModuleType("telegram.ext"))
 
+from gateway.config import Platform
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,

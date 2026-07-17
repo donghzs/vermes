@@ -118,7 +118,7 @@ class TestHandleResumeCommand:
                               event=event)
         result = await runner._handle_resume_command(event)
 
-        assert "Resumed" in result
+        assert "已恢复" in result
         assert "My Project" in result
         # Verify switch_session was called with the old session ID
         runner.session_store.switch_session.assert_called_once()
@@ -136,7 +136,7 @@ class TestHandleResumeCommand:
         event = _make_event(text="/resume Nonexistent Session")
         runner = _make_runner(session_db=db, event=event)
         result = await runner._handle_resume_command(event)
-        assert "No session found" in result
+        assert "未找到" in result
         db.close()
 
     @pytest.mark.asyncio
@@ -170,7 +170,7 @@ class TestHandleResumeCommand:
                               event=event)
         result = await runner._handle_resume_command(event)
 
-        assert "Resumed" in result
+        assert "已恢复" in result
         # Should resolve to #2 (latest in lineage)
         call_args = runner.session_store.switch_session.call_args
         assert call_args[0][1] == "sess_v2"
@@ -203,8 +203,8 @@ class TestHandleResumeCommand:
 
         result = await runner._handle_resume_command(event)
 
-        assert "Resumed session" in result
-        assert "(1 message)" in result
+        assert "已恢复会话" in result
+        assert "（1 条消息）" in result
         call_args = runner.session_store.switch_session.call_args
         assert call_args[0][1] == "compressed_child"
         runner.session_store.load_transcript.assert_called_with("compressed_child")

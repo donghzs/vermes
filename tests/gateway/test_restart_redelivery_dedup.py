@@ -39,7 +39,7 @@ async def test_restart_handler_writes_dedup_marker_with_update_id(tmp_path, monk
     event = _make_restart_event(update_id=12345)
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     marker_path = tmp_path / ".restart_last_processed.json"
     assert marker_path.exists()
     data = json.loads(marker_path.read_text())
@@ -117,7 +117,7 @@ async def test_fresh_restart_with_higher_update_id_is_processed(tmp_path, monkey
     event = _make_restart_event(update_id=12346)  # strictly higher → fresh
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     runner.request_restart.assert_called_once()
 
     # Marker is overwritten with the new update_id
@@ -145,7 +145,7 @@ async def test_stale_marker_older_than_5min_does_not_block(tmp_path, monkeypatch
     event = _make_restart_event(update_id=12345)
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     runner.request_restart.assert_called_once()
 
 
@@ -161,7 +161,7 @@ async def test_no_marker_file_allows_restart(tmp_path, monkeypatch):
     event = _make_restart_event(update_id=100)
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     runner.request_restart.assert_called_once()
 
 
@@ -180,7 +180,7 @@ async def test_corrupt_marker_file_is_treated_as_absent(tmp_path, monkeypatch):
     event = _make_restart_event(update_id=100)
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     runner.request_restart.assert_called_once()
 
 
@@ -204,7 +204,7 @@ async def test_event_without_update_id_bypasses_dedup(tmp_path, monkeypatch):
     event = _make_restart_event(update_id=None)
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     runner.request_restart.assert_called_once()
 
 
@@ -243,5 +243,5 @@ async def test_different_platform_bypasses_dedup(tmp_path, monkeypatch):
     )
     result = await runner._handle_restart_command(event)
 
-    assert "Restarting gateway" in result
+    assert "正在重启网关" in result
     runner.request_restart.assert_called_once()

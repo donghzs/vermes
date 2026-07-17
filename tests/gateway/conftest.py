@@ -38,6 +38,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# --- Logging shim: make logger.info() (no args) safe as empty-string call.
+# Why: Vermes fork replaced upstream print() separators with logger.info(),
+# introducing 967 no-arg calls that throw TypeError (msg is required).
+# This shim in conftest ensures ALL gateway tests get the patch, even when
+# they import modules directly without going through cli.py.
+import logging as _logging
+_orig_log_info = _logging.Logger.info
+def _safe_log_info(self, msg="", *args, **kwargs):
+    return _orig_log_info(self, msg, *args, **kwargs)
+_logging.Logger.info = _safe_log_info
+
 
 def _ensure_telegram_mock() -> None:
     """Install a comprehensive telegram mock in sys.modules.

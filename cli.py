@@ -28,10 +28,11 @@ except ModuleNotFoundError:
 # introducing 967 no-arg calls that throw TypeError (msg is required).
 # This shim defaults msg="" as stopgap — does not modify any upstream file.
 # Root fix: P2-1 will revert these to print() to align with upstream.
-_orig_log_info = logging.Logger.info
+import logging as _logging_for_shim
+_orig_log_info = _logging_for_shim.Logger.info
 def _safe_log_info(self, msg="", *args, **kwargs):
     return _orig_log_info(self, msg, *args, **kwargs)
-logging.Logger.info = _safe_log_info
+_logging_for_shim.Logger.info = _safe_log_info
 # --- end shim
 
 import logging

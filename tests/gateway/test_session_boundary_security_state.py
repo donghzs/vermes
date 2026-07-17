@@ -142,7 +142,7 @@ async def test_resume_clears_session_scoped_approval_and_yolo_state():
 
     result = await runner._handle_resume_command(_make_event("/resume Resumed Work"))
 
-    assert "Resumed session" in result
+    assert "已恢复会话" in result
     assert is_approved(session_key, "recursive delete") is False
     assert is_session_yolo_enabled(session_key) is False
     assert session_key not in runner._pending_approvals
@@ -175,7 +175,7 @@ async def test_branch_clears_session_scoped_approval_and_yolo_state():
 
     result = await runner._handle_branch_command(_make_event("/branch"))
 
-    assert "Branched to" in result
+    assert "已分支到" in result
     assert is_approved(session_key, "recursive delete") is False
     assert is_session_yolo_enabled(session_key) is False
     assert session_key not in runner._pending_approvals
@@ -207,7 +207,7 @@ async def test_branch_preserves_persisted_assistant_metadata():
 
     result = await runner._handle_branch_command(_make_event("/branch"))
 
-    assert "Branched to" in result
+    assert "已分支到" in result
     append_calls = runner._session_db.append_message.call_args_list
     assert len(append_calls) == 2
     assistant_kwargs = append_calls[1].kwargs

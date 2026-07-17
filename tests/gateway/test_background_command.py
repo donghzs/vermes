@@ -63,7 +63,7 @@ class TestHandleBackgroundCommand:
         runner = _make_runner()
         event = _make_event(text="/background")
         result = await runner._handle_background_command(event)
-        assert "Usage:" in result
+        assert "用法：" in result
         assert "/background" in result
 
     @pytest.mark.asyncio
@@ -72,7 +72,7 @@ class TestHandleBackgroundCommand:
         runner = _make_runner()
         event = _make_event(text="/bg")
         result = await runner._handle_background_command(event)
-        assert "Usage:" in result
+        assert "用法：" in result
 
     @pytest.mark.asyncio
     async def test_empty_prompt_shows_usage(self):
@@ -80,7 +80,7 @@ class TestHandleBackgroundCommand:
         runner = _make_runner()
         event = _make_event(text="/background   ")
         result = await runner._handle_background_command(event)
-        assert "Usage:" in result
+        assert "用法：" in result
 
     @pytest.mark.asyncio
     async def test_valid_prompt_starts_task(self):
@@ -103,7 +103,7 @@ class TestHandleBackgroundCommand:
             result = await runner._handle_background_command(event)
 
         assert "🔄" in result
-        assert "Background task started" in result
+        assert "后台任务已启动" in result
         assert "bg_" in result  # task ID starts with bg_
         assert "Summarize the top HN stories" in result
         assert len(created_tasks) == 1  # background task was created
@@ -136,7 +136,7 @@ class TestHandleBackgroundCommand:
         with patch("gateway.run.asyncio.create_task", side_effect=capture_task):
             result = await runner._handle_background_command(event)
 
-        assert "Background task started" in result
+        assert "后台任务已启动" in result
         runner._run_background_task.assert_called_once()
         assert runner._run_background_task.call_args.kwargs["event_message_id"] == "463"
 
@@ -166,8 +166,8 @@ class TestHandleBackgroundCommand:
                 result = await runner._handle_background_command(event)
                 # Extract task ID from result (format: "Task ID: bg_HHMMSS_hex")
                 for line in result.split("\n"):
-                    if "Task ID:" in line:
-                        tid = line.split("Task ID:")[1].strip()
+                    if "任务 ID：" in line:
+                        tid = line.split("任务 ID：")[1].strip()
                         task_ids.add(tid)
 
         assert len(task_ids) == 5  # all unique
@@ -183,7 +183,7 @@ class TestHandleBackgroundCommand:
                     platform=platform,
                 )
                 result = await runner._handle_background_command(event)
-                assert "Background task started" in result
+                assert "后台任务已启动" in result
 
 
 # ---------------------------------------------------------------------------

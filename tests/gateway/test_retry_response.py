@@ -57,4 +57,4 @@ async def test_retry_no_previous_message(gateway):
         source=MagicMock(),
     )
     result = await gateway._handle_retry_command(event)
-    assert result == "No previous message to retry."
+    assert result == "没有可重试的上一条消息。"

@@ -53,7 +53,7 @@ async def test_restart_command_writes_notify_file(tmp_path, monkeypatch):
     )
 
     result = await runner._handle_restart_command(event)
-    assert "Restarting" in result
+    assert "正在重启" in result
 
     notify_path = tmp_path / ".restart_notify.json"
     assert notify_path.exists()
@@ -184,7 +184,7 @@ async def test_sethome_updates_running_config_for_same_process_restart(tmp_path,
     result = await runner._handle_set_home_command(event)
 
     home = runner.config.get_home_channel(Platform.TELEGRAM)
-    assert "Home channel set" in result
+    assert "主频道已设置" in result
     assert saved["TELEGRAM_HOME_CHANNEL"] == "home-42"
     assert home is not None
     assert home.chat_id == "home-42"
@@ -216,7 +216,7 @@ async def test_sethome_preserves_thread_target_for_same_process_restart(tmp_path
     result = await runner._handle_set_home_command(event)
 
     home = runner.config.get_home_channel(Platform.TELEGRAM)
-    assert "Home channel set" in result
+    assert "主频道已设置" in result
     assert saved["TELEGRAM_HOME_CHANNEL"] == "parent-42"
     assert saved["TELEGRAM_HOME_CHANNEL_THREAD_ID"] == "topic-7"
     assert home is not None

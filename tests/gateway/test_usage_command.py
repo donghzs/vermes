@@ -90,7 +90,7 @@ class TestUsageCachedAgent:
         assert "50,000" in result  # total
         assert "$0.1234" in result
         assert "30,000" in result  # context
-        assert "Compressions: 1" in result
+        assert "压缩次数：1" in result
 
     @pytest.mark.asyncio
     async def test_running_agent_preferred_over_cache(self):
@@ -106,7 +106,7 @@ class TestUsageCachedAgent:
             result = await runner._handle_usage_command(event)
 
         assert "80,000" in result   # running agent's total
-        assert "API calls: 10" in result
+        assert "API 调用次数：10" in result
 
     @pytest.mark.asyncio
     async def test_sentinel_skipped_uses_cache(self):
@@ -124,7 +124,7 @@ class TestUsageCachedAgent:
             result = await runner._handle_usage_command(event)
 
         assert "claude-sonnet-4.6" in result
-        assert "Session Token Usage" in result
+        assert "会话令牌使用情况" in result
 
     @pytest.mark.asyncio
     async def test_no_agent_anywhere_falls_to_history(self):
@@ -143,8 +143,8 @@ class TestUsageCachedAgent:
         with patch("agent.model_metadata.estimate_messages_tokens_rough", return_value=500):
             result = await runner._handle_usage_command(event)
 
-        assert "Session Info" in result
-        assert "Messages: 2" in result
+        assert "会话信息" in result
+        assert "消息数：2" in result
         assert "~500" in result
 
     @pytest.mark.asyncio
@@ -174,7 +174,7 @@ class TestUsageCachedAgent:
             mock_cost.return_value = MagicMock(amount_usd=None, status="included")
             result = await runner._handle_usage_command(event)
 
-        assert "Cost: included" in result
+        assert "费用：已包含" in result
 
 
 class TestUsageAccountSection:
@@ -195,7 +195,7 @@ class TestUsageAccountSection:
         monkeypatch.setattr(
             "gateway.run.render_account_usage_lines",
             lambda snapshot, markdown=False: [
-                "📈 **Account limits**",
+                "📈 **账户限额**",
                 "Provider: openai-codex (Pro)",
                 "Session: 85% remaining (15% used)",
             ],
@@ -205,8 +205,8 @@ class TestUsageAccountSection:
             mock_cost.return_value = MagicMock(amount_usd=None, status="included")
             result = await runner._handle_usage_command(event)
 
-        assert "📊 **Session Token Usage**" in result
-        assert "📈 **Account limits**" in result
+        assert "📊 **会话令牌使用情况**" in result
+        assert "📈 **账户限额**" in result
         assert "Provider: openai-codex (Pro)" in result
 
     @pytest.mark.asyncio
@@ -239,7 +239,7 @@ class TestUsageAccountSection:
         monkeypatch.setattr(
             "gateway.run.render_account_usage_lines",
             lambda snapshot, markdown=False: [
-                "📈 **Account limits**",
+                "📈 **账户限额**",
                 "Provider: openai-codex (Pro)",
             ],
         )
@@ -249,5 +249,5 @@ class TestUsageAccountSection:
 
         assert calls["args"] == ("openai-codex",)
         assert calls["kwargs"]["base_url"] == "https://chatgpt.com/backend-api/codex"
-        assert "📊 **Session Info**" in result
-        assert "📈 **Account limits**" in result
+        assert "📊 **会话信息**" in result
+        assert "📈 **账户限额**" in result

@@ -306,7 +306,7 @@ async def test_topic_command_is_private_dm_only_and_does_not_enable_group_topic_
 
     result = await runner._handle_message(_make_group_event("/topic", thread_id="555"))
 
-    assert "only available in Telegram private chats" in result
+    assert "仅在 Telegram 私聊中可用" in result
     assert session_db.is_telegram_topic_mode_enabled(chat_id="-100123", user_id="208214988") is False
     runner._run_agent.assert_not_called()
 
@@ -581,10 +581,10 @@ async def test_topic_command_inside_bound_topic_shows_current_session(tmp_path, 
 
     result = await runner._handle_message(_make_event("/topic", thread_id="17585"))
 
-    assert "This topic is linked to" in result
+    assert "此 topic 已关联到" in result
     assert "Research notes" in result
     assert "sess-topic" in result
-    assert "Use /new to replace" in result
+    assert "使用 /new 将此 topic 替换" in result
     runner._run_agent.assert_not_called()
 
 
@@ -1118,7 +1118,7 @@ async def test_topic_refuses_unauthorized_user(tmp_path, monkeypatch):
 
     result = await runner._handle_topic_command(_make_event("/topic"))
 
-    assert "not authorized" in result.lower()
+    assert "无权" in result.lower()
     # Tables must not be created for an unauthorized caller.
     tables = {
         row[0]

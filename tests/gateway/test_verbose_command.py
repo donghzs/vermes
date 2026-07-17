@@ -58,7 +58,7 @@ class TestVerboseCommand:
         runner = _make_runner()
         result = await runner._handle_verbose_command(_make_event())
 
-        assert "not enabled" in result.lower()
+        assert "未在消息平台启用" in result.lower()
         assert "tool_progress_command" in result
 
     @pytest.mark.asyncio
@@ -101,7 +101,7 @@ class TestVerboseCommand:
         runner = _make_runner()
         result = await runner._handle_verbose_command(_make_event())
 
-        assert "not enabled" in result.lower()
+        assert "未在消息平台启用" in result.lower()
         assert "tool_progress_command" in result
 
     @pytest.mark.asyncio
@@ -194,7 +194,7 @@ class TestVerboseCommand:
 
         runner = _make_runner()
         result = await runner._handle_verbose_command(_make_event())
-        assert "not enabled" in result.lower()
+        assert "未在消息平台启用" in result.lower()
 
     def test_verbose_is_in_gateway_known_commands(self):
         """The /verbose command is recognized by the gateway dispatch."""

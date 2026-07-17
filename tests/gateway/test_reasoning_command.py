@@ -99,8 +99,8 @@ class TestReasoningCommand:
 
         result = await runner._handle_reasoning_command(_make_event("/reasoning"))
 
-        assert "**Effort:** `none (disabled)`" in result
-        assert "**Display:** on ✓" in result
+        assert "**强度：** `none（已禁用）`" in result
+        assert "**显示：** 开 ✓" in result
         assert runner._reasoning_config == {"enabled": False}
         assert runner._show_reasoning is True
 
@@ -121,7 +121,7 @@ class TestReasoningCommand:
         saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         assert saved["agent"]["reasoning_effort"] == "low"
         assert runner._reasoning_config == {"enabled": True, "effort": "low"}
-        assert "takes effect on next message" in result
+        assert "下一条消息生效" in result
 
     @pytest.mark.asyncio
     async def test_handle_reasoning_command_defaults_to_session_only(self, tmp_path, monkeypatch):
@@ -142,7 +142,7 @@ class TestReasoningCommand:
         assert saved["agent"]["reasoning_effort"] == "medium"
         assert runner._session_reasoning_overrides[session_key] == {"enabled": True, "effort": "high"}
         assert runner._reasoning_config == {"enabled": True, "effort": "high"}
-        assert "session only" in result
+        assert "仅本会话" in result
 
     @pytest.mark.asyncio
     async def test_reasoning_global_clears_existing_session_override(self, tmp_path, monkeypatch):
@@ -163,7 +163,7 @@ class TestReasoningCommand:
         saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         assert saved["agent"]["reasoning_effort"] == "low"
         assert session_key not in runner._session_reasoning_overrides
-        assert "saved to config" in result
+        assert "已保存到配置" in result
 
     @pytest.mark.asyncio
     async def test_reasoning_reset_clears_session_override_without_config_write(self, tmp_path, monkeypatch):
@@ -184,7 +184,7 @@ class TestReasoningCommand:
         saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         assert saved["agent"]["reasoning_effort"] == "medium"
         assert session_key not in runner._session_reasoning_overrides
-        assert "cleared" in result
+        assert "已清除" in result
 
     def test_resolve_session_reasoning_prefers_session_override(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / "hermes"

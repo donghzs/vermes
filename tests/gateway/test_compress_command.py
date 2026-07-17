@@ -174,12 +174,12 @@ async def test_compress_command_appends_warning_when_compression_aborts():
 
     # A clearly-marked warning must be appended.
     assert "⚠️" in result
-    assert "Compression aborted" in result
+    assert "压缩已中止" in result
     # Underlying error must surface so users can fix their config.
     assert "404 model not found" in result
     # User must be told nothing was dropped — the whole point of the
     # new behavior is no silent data loss.
-    assert "No messages were dropped" in result
+    assert "未删除任何消息" in result
     agent_instance.shutdown_memory_provider.assert_called_once()
     agent_instance.close.assert_called_once()
 
@@ -244,6 +244,6 @@ async def test_compress_command_surfaces_aux_model_failure_even_when_recovered()
     assert "404" in result
     assert "auxiliary.compression.model" in result
     # The user's context is explicitly called out as intact
-    assert "intact" in result
+    assert "完好" in result
     agent_instance.shutdown_memory_provider.assert_called_once()
     agent_instance.close.assert_called_once()

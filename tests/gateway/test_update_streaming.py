@@ -239,7 +239,7 @@ class TestUpdateCommandGatewayFlag:
         assert "PYTHONUNBUFFERED" in cmd_string
         assert "rc=$?" in cmd_string
         assert "status=$?" not in cmd_string
-        assert "stream progress" in result
+        assert "正在启动 Hermes 更新" in result
 
 
 # ---------------------------------------------------------------------------

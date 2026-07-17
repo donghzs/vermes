@@ -96,9 +96,9 @@ async def test_status_command_reports_running_agent_without_interrupt(monkeypatc
 
     result = await runner._handle_message(_make_event("/status"))
 
-    assert "**Session ID:** `sess-1`" in result
-    assert "**Tokens:** 321" in result
-    assert "**Agent Running:** Yes ⚡" in result
+    assert "**会话 ID：** `sess-1`" in result
+    assert "**Token 数：** 321" in result
+    assert "**代理运行中：** 是 ⚡" in result
     assert "**Title:**" not in result
     running_agent.interrupt.assert_not_called()
     assert runner._pending_messages == {}
@@ -120,8 +120,8 @@ async def test_status_command_includes_session_title_when_present():
 
     result = await runner._handle_message(_make_event("/status"))
 
-    assert "**Session ID:** `sess-1`" in result
-    assert "**Title:** My titled session" in result
+    assert "**会话 ID：** `sess-1`" in result
+    assert "**标题：** My titled session" in result
 
 
 @pytest.mark.asyncio
@@ -213,7 +213,7 @@ async def test_agents_command_reports_active_agents_and_processes(monkeypatch):
     result = await runner._handle_message(_make_event("/agents"))
 
     assert "**Active agents:** 1" in result or "**活跃代理：** 1" in result
-    assert "**Running background processes:** 1" in result
+    assert "**运行中的后台进程：** 1" in result
     assert "proc-1" in result
     running_agent.interrupt.assert_not_called()
 
@@ -565,8 +565,8 @@ async def test_profile_command_reports_custom_root_profile(monkeypatch, tmp_path
 
     result = await runner._handle_profile_command(_make_event("/profile"))
 
-    assert "**Profile:** `coder`" in result
-    assert f"**Home:** `{profile_home}`" in result
+    assert "**配置文件：** `coder`" in result
+    assert f"**主目录：** `{profile_home}`" in result
 
 
 @pytest.mark.asyncio

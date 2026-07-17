@@ -112,13 +112,13 @@ async def test_reload_skills_handler_queues_note_on_diff(monkeypatch):
     out = await runner._handle_reload_skills_command(event)
 
     assert out is not None
-    assert "Skills Reloaded" in out
-    assert "Added Skills:" in out
-    assert "- alpha: Run alpha to do xyz" in out
-    assert "- beta: Run beta to do abc" in out
-    assert "Removed Skills:" in out
-    assert "- gamma: Old removed skill" in out
-    assert "3 skill(s) available" in out
+    assert "技能已重新加载" in out
+    assert "新增技能：" in out
+    assert "- alpha：Run alpha to do xyz" in out
+    assert "- beta：Run beta to do abc" in out
+    assert "移除技能：" in out
+    assert "- gamma：Old removed skill" in out
+    assert "3 个技能可用" in out
 
     # MUST NOT write to the session transcript — that would break alternation.
     runner.session_store.append_to_transcript.assert_not_called()
@@ -131,10 +131,10 @@ async def test_reload_skills_handler_queues_note_on_diff(monkeypatch):
     note = pending[session_key]
     assert note.startswith("[USER INITIATED SKILLS RELOAD:")
     assert note.endswith("Use skills_list to see the updated catalog.]")
-    assert "Added Skills:" in note
+    assert "新增技能：" in note
     assert "    - alpha: Run alpha to do xyz" in note
     assert "    - beta: Run beta to do abc" in note
-    assert "Removed Skills:" in note
+    assert "移除技能：" in note
     assert "    - gamma: Old removed skill" in note
 
 
@@ -158,8 +158,8 @@ async def test_reload_skills_handler_reports_no_changes(monkeypatch):
     runner = _make_runner()
     out = await runner._handle_reload_skills_command(_make_event("/reload-skills"))
 
-    assert "No new skills detected" in out
-    assert "1 skill(s) available" in out
+    assert "未检测到新技能" in out
+    assert "1 个技能可用" in out
     runner.session_store.append_to_transcript.assert_not_called()
     # No queued note when nothing changed.
     pending = getattr(runner, "_pending_skills_reload_notes", None)

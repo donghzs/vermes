@@ -169,5 +169,5 @@ async def test_compress_respects_plugin_has_content_to_compress_false():
     ):
         result = await runner._handle_compress_command(_make_event("/compress"))
 
-    assert "Nothing to compress" in result
+    assert "暂无可压缩内容" in result
     agent_instance._compress_context.assert_not_called()
