@@ -20,6 +20,10 @@
           <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">说明</div>
           <div class="text-sm text-gray-700 dark:text-gray-300">{{ chat.pendingApproval.description }}</div>
         </div>
+        <div v-if="chat.pendingApproval.diff">
+          <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">改动预览（diff）</div>
+          <pre class="text-xs font-mono bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all max-h-64 overflow-y-auto">{{ chat.pendingApproval.diff }}</pre>
+        </div>
       </div>
 
       <!-- Actions -->

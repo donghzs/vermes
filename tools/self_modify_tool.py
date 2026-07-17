@@ -3,8 +3,8 @@
 Lets the agent propose changes to Vermes's own source/config files through
 ``EmergentChangePipeline``. Every proposal is gated behind an explicit,
 human-in-the-loop Gateway approval: the agent stages the change, computes a
-unified diff, and blocks the turn while the user reviews it in the Gateway and
-clicks /approve or /deny. Only after approval does the pipeline commit.
+unified diff, and blocks the turn while the user reviews it in the Gateway or
+desktop UI and clicks /approve or /deny. Only after approval does the pipeline commit.
 
 This is the production wiring of the previously-dormant self-modification
 capability (R1 of the audit): observation-driven emergence is always on, but
@@ -17,8 +17,8 @@ Design notes
   reached only after ``request_gateway_approval`` returns an approve choice,
   and even then it passes ``force=True`` (the user already confirmed, so the
   data-vacuum cold-start gate is bypassed — see emergent_change.py).
-* If there is no active Gateway session, the request fails closed (denied),
-  so a headless/CLI run can never silently self-modify.
+* If there is no active session (Gateway or desktop GUI), the request fails
+  closed (denied), so a headless/CLI run can never silently self-modify.
 """
 
 import difflib
@@ -127,7 +127,7 @@ def self_modify_tool(args) -> str:
         "pattern_keys": ["self_modify"],
         "diff": diff,
         "target_path": target_path,
-        "surface": "gateway",
+        "surface": "gui",
     }
     decision = request_gateway_approval(session_key, approval_data)
     choice = decision.get("choice")

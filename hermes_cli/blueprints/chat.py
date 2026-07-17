@@ -821,29 +821,33 @@ async def chat_completions(req: ChatRequest):
 
         if _yolo_enabled:
             enable_session_yolo(_gui_sk)
-        else:
-            # 注册 gateway 审批回调 → 通过 SSE 推送审批请求到前端
-            async def _notify_approval(approval_data: dict):
-                try:
-                    await _delta_queue.put({
-                        "type": "approval_request",
-                        "data": approval_data,
-                    })
-                except Exception:
-                    pass
-            def _sync_notify(approval_data: dict):
-                import asyncio as _aio
-                try:
-                    _loop = asyncio.get_event_loop()
-                    if _loop.is_running():
-                        _loop.call_soon_threadsafe(
-                            _loop.create_task, _notify_approval(approval_data)
-                        )
-                    else:
-                        _loop.run_until_complete(_notify_approval(approval_data))
-                except Exception:
-                    pass
-            register_gateway_notify(_gui_sk, _sync_notify)
+
+        # 始终注册桌面端审批回调 → 通过 SSE 推送审批请求到前端弹窗。
+        # 终端命令 / 代码执行在 YOLO 模式下由 check_dangerous_command /
+        # check_execute_code_guard 提前短路放行（approval.py:1066 / 1320），
+        # 不会触发本回调；只有显式走 request_gateway_approval 的特权动作
+        # （如 self_modify 自我改写）会弹窗 —— 即使 YOLO 开启也必须真人确认。
+        async def _notify_approval(approval_data: dict):
+            try:
+                await _delta_queue.put({
+                    "type": "approval_request",
+                    "data": approval_data,
+                })
+            except Exception:
+                pass
+        def _sync_notify(approval_data: dict):
+            import asyncio as _aio
+            try:
+                _loop = asyncio.get_event_loop()
+                if _loop.is_running():
+                    _loop.call_soon_threadsafe(
+                        _loop.create_task, _notify_approval(approval_data)
+                    )
+                else:
+                    _loop.run_until_complete(_notify_approval(approval_data))
+            except Exception:
+                pass
+        register_gateway_notify(_gui_sk, _sync_notify)
 
 
     if req.stream:
