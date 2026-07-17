@@ -35,6 +35,7 @@ for src, dst in [
     ('hermes_time.py', '.'),
     ('hermes_cli/__init__.py', 'hermes_cli'),
     ('hermes_cli/scholarforge', 'hermes_cli/scholarforge'),
+    ('harness', 'harness'),
     ('README.md', '.'),
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
@@ -135,6 +136,8 @@ hiddenimports = [
     'hermes_cli.scholarforge.search',
     'hermes_cli.scholarforge.export', 'hermes_cli.scholarforge.export.full',
     'hermes_cli.scholarforge.export.latex', 'hermes_cli.scholarforge.export.pdf_css',
+    # Harness layer (B1/B2/B3 — imported by tools.browser_tool via recoverable_tool)
+    'harness', 'harness.recoverable', 'harness.stability', 'harness.constraints',
     'run_agent', 'hermes_constants', 'model_tools',
     'agent', 'agent.process_bootstrap', 'agent.iteration_budget',
     'agent.error_classifier', 'agent.prompt_builder',

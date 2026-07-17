@@ -138,6 +138,8 @@ hiddenimports = [
     'hermes_cli.scholarforge.search',
     'hermes_cli.scholarforge.export', 'hermes_cli.scholarforge.export.full',
     'hermes_cli.scholarforge.export.latex', 'hermes_cli.scholarforge.export.pdf_css',
+    # Harness layer (B1/B2/B3)
+    'harness', 'harness.recoverable', 'harness.stability', 'harness.constraints',
 
     # Provider backends
     'openai', 'anthropic',
