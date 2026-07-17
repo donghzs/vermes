@@ -6,6 +6,7 @@ Handles: hermes gateway [run|start|stop|restart|status|install|uninstall|setup]
 
 import asyncio
 import logging
+from hermes_cli import _log_shim  # noqa: F401  installs idempotent no-arg logger.info() shim (F1); must load before any logger.info() call
 import os
 import shutil
 import signal
