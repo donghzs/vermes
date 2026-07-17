@@ -96,7 +96,7 @@ def self_modify_tool(args) -> str:
     # Local imports keep this module importable without pulling the whole agent
     # graph at tool-discovery time (mirrors terminal_tool.py's lazy imports).
     from agent.emergent_change import get_pipeline, ChangeProposal
-    from tools.approval import get_current_session_key, request_gateway_approval
+    from tools.approval import get_current_session_key, approve_privileged_action
 
     pipeline = get_pipeline()
     proposal = ChangeProposal(
@@ -119,6 +119,9 @@ def self_modify_tool(args) -> str:
     diff = _build_diff(target_path, content)
 
     # Step 2: real user confirmation via the Gateway (blocks this turn).
+    # YOLO-aware: under HERMES_YOLO_MODE / session /yolo / approvals.mode=off
+    # this auto-approves without prompting, matching the dangerous-command
+    # policy. Otherwise it pops the same desktop / Gateway approval dialog.
     session_key = get_current_session_key(default="")
     approval_data = {
         "command": f"self_modify {target_path}",
@@ -129,15 +132,13 @@ def self_modify_tool(args) -> str:
         "target_path": target_path,
         "surface": "gui",
     }
-    decision = request_gateway_approval(session_key, approval_data)
-    choice = decision.get("choice")
-    approved = bool(decision.get("resolved")) and choice not in (None, "deny", "")
+    approved = approve_privileged_action(session_key, approval_data)
 
     if not approved:
         # User denied / timed out / no active session — discard, never write.
         pipeline._record_change_event(
             proposal, committed=False,
-            reason=f"denied_by_user: choice={choice!r}", is_error=False,
+            reason="denied_by_user", is_error=False,
         )
         return json.dumps({
             "ok": True,

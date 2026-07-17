@@ -1493,12 +1493,13 @@ async def self_modify_history(limit: int = 100):
             args = r["args_preview"] or ""
             initiator_m = re.search(r"initiator'?\s*:\s*'(\w+)'", args)
             initiator = initiator_m.group(1) if initiator_m else "system"
-            status, target = _classify_self_modify(tool, result)
+            status, target, backup = _classify_self_modify(tool, result)
             events.append({
                 "timestamp": r["timestamp"],
                 "type": tool,
                 "status": status,
                 "target": target,
+                "backup": backup,
                 "initiator": initiator,
                 "success": bool(r["success"]),
                 "detail": result,
@@ -1509,25 +1510,57 @@ async def self_modify_history(limit: int = 100):
 
 
 def _classify_self_modify(tool: str, result: str):
-    """Map a raw_event result string to (status, target_path)."""
+    """Map a raw_event result string to (status, target_path, backup_path)."""
     if tool == "self_modify_rollback":
-        return "rolled_back", result.replace("rolled back: ", "", 1).strip()
+        if result.startswith("denied: "):
+            return "denied", result[8:].strip(), ""
+        return "rolled_back", result.replace("rolled back: ", "", 1).strip(), ""
     if tool == "capability_activate":
         if result.startswith("activated: "):
-            return "activated", result[11:].strip()
+            return "activated", result[11:].strip(), ""
         if result.startswith("denied: "):
-            return "denied", result[8:].strip()
-        return "unknown", result.strip()
+            return "denied", result[8:].strip(), ""
+        return "unknown", result.strip(), ""
     # self_modify
     if result.startswith("committed: "):
-        return "committed", result[11:].strip()
+        body = result[11:].strip()
+        backup = ""
+        if " || backup: " in body:
+            body, backup = body.split(" || backup: ", 1)
+        return "committed", body, backup
     if "proposed: awaiting user approval" in result:
-        return "proposed", ""
+        return "proposed", "", ""
     if "pending_confirmation" in result:
-        return "held", ""
+        return "held", "", ""
     if result.startswith("rejected: "):
-        return "rejected", ""
-    return "unknown", ""
+        return "rejected", "", ""
+    return "unknown", "", ""
+
+
+async def self_modify_rollback(request: Request):
+    """User-initiated one-click rollback of an applied self-modification.
+
+    Body: { "target_path": str, "backup_path": str|null }
+
+    The user's click on the Evolution panel IS the confirmation, so no
+    Gateway approval gate is applied (initiator="user"). This mirrors the
+    dangerous-command policy where the user's explicit action is already
+    in-the-loop. Autonomous (agent/system) rollbacks are gated separately
+    inside EmergentChangePipeline.rollback_change.
+    """
+    try:
+        body = await request.json()
+        target_path = body.get("target_path", "")
+        backup_path = body.get("backup_path", "") or None
+        if not target_path:
+            return {"ok": False, "error": "target_path required"}
+        from agent.emergent_change import get_pipeline
+        rolled = get_pipeline().rollback_change(
+            target_path, backup_path, initiator="user",
+        )
+        return {"ok": True, "rolled_back": bool(rolled), "target_path": target_path}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 async def emergence_status():
@@ -1924,6 +1957,12 @@ def register_to(app):
         self_modify_history,
         methods=["GET"],
         name="self_modify_history",
+    )
+    app.add_api_route(
+        "/api/evolution/self_modify_rollback",
+        self_modify_rollback,
+        methods=["POST"],
+        name="self_modify_rollback",
     )
     app.add_api_route(
         "/api/emergence/status",

@@ -610,6 +610,32 @@ def request_gateway_approval(session_key: str, approval_data: dict, *, surface: 
     return _await_gateway_decision(session_key, notify_cb, approval_data, surface=surface)
 
 
+def approve_privileged_action(session_key: str, approval_data: dict, *, surface: str = "gateway") -> bool:
+    """YOLO-aware approval for *non-shell* privileged actions (self_modify, rollback).
+
+    Self-modifications are file operations, not shell commands, so the
+    dangerous-command guard (``check_all_command_guards``) never sees them.
+    This helper applies the SAME 🔒 tool-approval policy to them so the user
+    gets one consistent rule:
+
+      - ``HERMES_YOLO_MODE`` / session ``/yolo`` / ``approvals.mode=off``
+        → auto-approve, no prompt (identical to dangerous commands under YOLO).
+      - otherwise → block on Gateway approval (desktop / Gateway dialog),
+        reusing the exact wait loop as the command guard.
+
+    Returns True only if the action is allowed to proceed.
+
+    Fail-closed: no session key or no registered notify callback → deny.
+    """
+    if (is_truthy_value(os.getenv("HERMES_YOLO_MODE"))
+            or is_session_yolo_enabled(session_key)
+            or _get_approval_mode() == "off"):
+        return True
+    result = request_gateway_approval(session_key, approval_data, surface=surface)
+    choice = result.get("choice")
+    return bool(result.get("resolved")) and choice not in (None, "deny", "")
+
+
 def has_blocking_approval(session_key: str) -> bool:
     """Check if a session has one or more blocking gateway approvals waiting."""
     with _lock:

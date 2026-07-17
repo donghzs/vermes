@@ -237,8 +237,8 @@ class TestRollback:
         backups = list(tmp_path.glob("config.yaml.bak.*"))
         assert len(backups) == 1
 
-        # Rollback
-        assert pipeline.rollback_change(str(target), str(backups[0]))
+        # Rollback (test acts as the user here -> initiator="user" skips the gate)
+        assert pipeline.rollback_change(str(target), str(backups[0]), initiator="user")
         assert target.read_text() == "original: true\n"
         # Backup should be consumed
         assert not backups[0].exists()
@@ -247,12 +247,36 @@ class TestRollback:
         target = tmp_path / "created.yaml"
         target.write_text("new: file\n")
 
-        assert pipeline.rollback_change(str(target))
+        assert pipeline.rollback_change(str(target), initiator="user")
         assert not target.exists()
 
     def test_rollback_nonexistent_file(self, pipeline, tmp_path):
         # Should not raise
-        assert pipeline.rollback_change(str(tmp_path / "nonexistent.yaml"))
+        assert pipeline.rollback_change(str(tmp_path / "nonexistent.yaml"), initiator="user")
+
+    @patch("agent.raw_event.record_raw_event")
+    def test_agent_rollback_denied_without_approval(self, mock_record, pipeline, tmp_path):
+        # Autonomous (agent) rollback must be gated; when approval is denied it
+        # must NOT touch the file and must record a denied event.
+        target = tmp_path / "cfg.yaml"
+        target.write_text("v1\n")
+        with patch("tools.approval.approve_privileged_action", return_value=False):
+            assert pipeline.rollback_change(str(target), initiator="agent") is False
+        assert target.read_text() == "v1\n"  # untouched
+        denied = [c for c in mock_record.call_args_list
+                  if c[1]["tool_name"] == "self_modify_rollback"
+                  and "denied" in c[1]["result"]]
+        assert denied, "expected a denied rollback event"
+
+    @patch("agent.raw_event.record_raw_event")
+    def test_agent_rollback_approved_executes(self, mock_record, pipeline, tmp_path):
+        # When the privileged approval resolves to allow, the autonomous
+        # rollback proceeds (here: no backup -> creation-rollback deletes file).
+        target = tmp_path / "cfg.yaml"
+        target.write_text("v2\n")
+        with patch("tools.approval.approve_privileged_action", return_value=True):
+            assert pipeline.rollback_change(str(target), initiator="agent") is True
+        assert not target.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +330,7 @@ class TestRawEventRecording:
         target = tmp_path / "test.yaml"
         target.write_text("content\n")
 
-        pipeline.rollback_change(str(target))
+        pipeline.rollback_change(str(target), initiator="user")
 
         assert mock_record.called
         call_args = mock_record.call_args

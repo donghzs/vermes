@@ -98,6 +98,25 @@ async function fetchSelfModifyHistory() {
   }
 }
 
+async function rollbackChange(target, backup) {
+  if (!confirm(`确定回滚此自我改写？\n\n${target}\n\n将恢复备份、撤销该次改写。此操作不可自动恢复。`)) {
+    return
+  }
+  try {
+    const r = await fetch('/api/evolution/self_modify_rollback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_path: target, backup_path: backup || null }),
+    })
+    const data = await r.json()
+    if (data.ok) {
+      await fetchSelfModifyHistory()
+    }
+  } catch {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   fetchStatus()
   fetchAchievements()
@@ -389,6 +408,8 @@ const smTypeLabel = (t) => {
           <span class="evo-sm-type">{{ smTypeLabel(e.type) }}</span>
           <span class="evo-sm-status" :class="smStatusColor(e.status)">{{ smStatusLabel(e.status) }}</span>
           <span class="evo-sm-target" :title="e.target || e.detail">{{ e.target || e.detail }}</span>
+          <button v-if="e.status === 'committed' && e.backup" class="evo-btn-rollback"
+            @click="rollbackChange(e.target, e.backup)" :title="`回滚: ${e.target}`">回滚</button>
           <span class="evo-sm-time">{{ (e.timestamp || '').slice(5, 16).replace('T', ' ') }}</span>
         </div>
       </div>
@@ -808,5 +829,23 @@ const smTypeLabel = (t) => {
   color: #9ca3af;
   font-size: 0.5625rem;
   font-variant-numeric: tabular-nums;
+}
+.evo-btn-rollback {
+  flex-shrink: 0;
+  font-size: 0.5625rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.1);
+  color: #8b5cf6;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.dark .evo-btn-rollback {
+  background: rgba(168, 85, 247, 0.18);
+  color: #a78bfa;
+}
+.evo-btn-rollback:hover {
+  opacity: 0.85;
 }
 </style>

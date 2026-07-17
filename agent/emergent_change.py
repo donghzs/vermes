@@ -272,23 +272,76 @@ class EmergentChangePipeline:
         target_path: str,
         backup_path: Optional[str] = None,
         initiator: str = "agent",
+        force: bool = False,
     ) -> bool:
         """Rollback a previously applied change.
 
         If backup_path is provided, restore from backup.
         Otherwise, delete the file (if it was a creation, not a modification).
 
+        Safety gate (mirrors the 🔒 tool-approval policy for dangerous
+        commands): an *autonomous* rollback (initiator in agent/system) is a
+        destructive file operation, so unless YOLO is enabled it must be
+        approved through the Gateway (desktop / Gateway approval dialog). A
+        *user*-initiated rollback (e.g. the panel "undo" button,
+        initiator="user") skips the gate because the click IS the
+        confirmation. ``force=True`` bypasses the gate — only call it after a
+        privileged approval already resolved upstream.
+
         Args:
             target_path:  The file to rollback
             backup_path:  Backup file to restore from (optional)
             initiator:   Who initiated the rollback (agent/user/system)
+            force:       Bypass the approval gate (only after explicit approval)
         """
+        # ── Autonomous (agent/system) approval gate ─────────────────────────
+        if initiator != "user" and not force:
+            try:
+                from tools.approval import (
+                    get_current_session_key,
+                    approve_privileged_action,
+                )
+                session_key = get_current_session_key(default="")
+                action_desc = (
+                    f"恢复备份 → {target_path}" if backup_path
+                    else f"删除文件 {target_path}"
+                )
+                approved = approve_privileged_action(
+                    session_key,
+                    {
+                        "command": f"rollback {target_path}",
+                        "description": f"Agent 请求回滚改写: {target_path}",
+                        "pattern_key": "self_modify_rollback",
+                        "pattern_keys": ["self_modify_rollback"],
+                        "diff": action_desc,
+                        "target_path": target_path,
+                        "backup_path": backup_path or "",
+                        "surface": "gui",
+                    },
+                    surface="gateway",
+                )
+            except Exception:
+                logger.debug("Rollback approval check failed", exc_info=True)
+                approved = False
+            if not approved:
+                # User denied / timeout / no active session → do NOT touch the file.
+                self._record_rollback_event(target_path, initiator=initiator, denied=True)
+                return False
+
+        # ── Execute rollback ────────────────────────────────────────────────
         try:
             if backup_path and os.path.exists(backup_path):
                 shutil.copy2(backup_path, target_path)
                 os.unlink(backup_path)
                 logger.info("Change rolled back (restored): %s", target_path)
+            elif backup_path:
+                # A backup was referenced but is gone (e.g. pruned by
+                # _cleanup_old_backups). Refuse to delete the current file —
+                # that would be destructive and wrong (we can't restore).
+                logger.error("Rollback aborted: backup missing %s", backup_path)
+                return False
             elif os.path.exists(target_path):
+                # No backup → treat as a creation rollback (delete the file).
                 os.unlink(target_path)
                 logger.info("Change rolled back (deleted): %s", target_path)
 
@@ -377,8 +430,13 @@ class EmergentChangePipeline:
                 "backup_path": backup_path or "",
                 "initiator": proposal.initiator,
             }
+            # Persist backup_path in result_preview so the Evolution panel can
+            # surface it for one-click rollback. args_preview is capped at 200
+            # chars and truncates backup_path away, so the only reliable place
+            # to recover it is here (result_preview allows 500 chars).
             result = (
-                f"committed: {proposal.target_path}"
+                (f"committed: {proposal.target_path}"
+                 + (f" || backup: {backup_path}" if backup_path else ""))
                 if committed
                 else f"rejected: {reason}"
             )
@@ -397,6 +455,7 @@ class EmergentChangePipeline:
         self,
         target_path: str,
         initiator: str = "agent",
+        denied: bool = False,
     ) -> None:
         """Record a rollback as a raw_event.
 
@@ -405,6 +464,10 @@ class EmergentChangePipeline:
         - 'user':   User explicitly rolled back (strong negative signal)
         - 'system': System-triggered rollback (restart/cleanup)
         Future: 'passive' for detected user-side file deletions
+
+        ``denied=True`` records a user/system rejection of an autonomous
+        rollback request (no file was touched) — a negative signal that the
+        clustering system can learn from.
         """
         try:
             from agent.raw_event import record_raw_event
@@ -414,8 +477,10 @@ class EmergentChangePipeline:
                 tool_args={
                     "target_path": target_path,
                     "initiator": initiator,
+                    "denied": denied,
                 },
-                result=f"rolled back: {target_path}",
+                result=(f"denied: {target_path}" if denied
+                        else f"rolled back: {target_path}"),
                 is_error=False,
                 duration=0.0,
             )
