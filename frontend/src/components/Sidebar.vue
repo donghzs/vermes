@@ -16,9 +16,7 @@ const router = useRouter()
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
 
-// 模块前端 UI 已移除，ScholarForge 通过 Agent 工具集在对话中调用
-
-// 模块加载已移除
+// ScholarForge: 12 个 Agent 工具，对话中自动调用（outline/write/polish/search/review/citations/plagiarism/deaigc/score/export/refs/style）
 
 function formatTime(ts) {
   if (!ts) return ''

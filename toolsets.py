@@ -171,11 +171,15 @@ TOOLSETS = {
     },
     
     "scholarforge": {
-        "description": "Academic paper writing tools: literature search, AI writing, review, citation replacement, and style learning",
+        "description": "Academic paper writing tools: outline, literature search, AI writing, polish, review, citation replacement, plagiarism check, de-AIGC, scoring, export, style learning",
         "tools": [
             "scholarforge_search", "scholarforge_write",
             "scholarforge_review", "scholarforge_replace_citations",
-            "scholarforge_learn_style"
+            "scholarforge_learn_style",
+            "scholarforge_outline", "scholarforge_polish",
+            "scholarforge_plagiarism_check", "scholarforge_deaigc",
+            "scholarforge_score", "scholarforge_export",
+            "scholarforge_format_refs"
         ],
         "includes": []
     },

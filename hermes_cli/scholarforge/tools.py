@@ -857,6 +857,644 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
     )
 # ──────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────
+# Tool: Generate Outline
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_OUTLINE_SCHEMA = {
+    "name": "scholarforge_outline",
+    "description": (
+        "生成学术论文大纲。输入论文主题和类型，输出完整的章节结构大纲（含每章要点和预估字数）。"
+        "适用于：论文写作的第一步、开题报告准备、规划论文整体结构。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "description": "论文主题/题目，如 '基于深度学习的文本分类研究'",
+            },
+            "paper_type": {
+                "type": "string",
+                "description": "论文类型",
+                "enum": [
+                    "本科论文", "课程论文", "硕士论文", "博士论文",
+                    "期刊论文", "会议论文", "综述论文", "开题报告",
+                    "调研报告", "实验报告", "案例分析", "毕业设计",
+                ],
+                "default": "本科论文",
+            },
+            "requirements": {
+                "type": "string",
+                "description": "可选，额外要求（如字数限制、必须包含的章节、特定研究方法等）",
+            },
+        },
+        "required": ["topic"],
+    },
+}
+
+
+async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
+    """生成论文大纲"""
+    topic = args.get("topic", "")
+    paper_type = args.get("paper_type", "本科论文")
+    requirements = args.get("requirements", "")
+
+    if not topic.strip():
+        return "❌ 请提供论文主题。"
+
+    from hermes_cli.scholarforge.agents import get_paper_type_prompt
+
+    system_prompt = (
+        "你是资深学术顾问，擅长规划论文结构。直接输出大纲，不要寒暄。"
+        "用 Markdown 格式，章节用 ## 标记，要点用列表。"
+    )
+
+    prompt = f"""请为以下论文生成详细大纲：
+
+【主题】{topic}
+【论文类型】{paper_type}
+"""
+    prompt += get_paper_type_prompt(paper_type)
+    if requirements:
+        prompt += f"\n【额外要求】{requirements}\n"
+
+    prompt += """
+
+大纲要求：
+1. 章节结构完整（含摘要、引言、文献综述、方法、实验、讨论、结论、参考文献）
+2. 每章列出 3-5 个要点
+3. 标注每章预估字数
+4. 标注每章写作难度（⭐~⭐⭐⭐）
+5. 给出推荐写作顺序
+"""
+
+    return await _call_llm(prompt, system_prompt)
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Polish
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_POLISH_SCHEMA = {
+    "name": "scholarforge_polish",
+    "description": (
+        "学术润色。改善语言表达、学术规范性、逻辑连贯性，不改变原意。"
+        "适用于：初稿写完后的语言打磨、投稿前的规范化、提升学术表达质量。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "需要润色的论文文本",
+            },
+            "focus": {
+                "type": "string",
+                "description": "润色重点：'language'(语言表达)、'logic'(逻辑连贯)、'format'(学术格式)、'all'(全面润色，默认)",
+                "enum": ["language", "logic", "format", "all"],
+                "default": "all",
+            },
+            "paper_type": {
+                "type": "string",
+                "description": "论文类型，影响润色风格",
+                "enum": [
+                    "本科论文", "课程论文", "硕士论文", "博士论文",
+                    "期刊论文", "会议论文", "综述论文", "开题报告",
+                    "调研报告", "实验报告", "案例分析", "毕业设计",
+                ],
+                "default": "本科论文",
+            },
+        },
+        "required": ["text"],
+    },
+}
+
+
+async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
+    """学术润色"""
+    text = args.get("text", "")
+    focus = args.get("focus", "all")
+    paper_type = args.get("paper_type", "本科论文")
+
+    if not text.strip():
+        return "❌ 请提供需要润色的文本。"
+
+    focus_guides = {
+        "language": "重点改善：用词准确性、句式多样性、学术语气、避免口语化表达",
+        "logic": "重点改善：段落间过渡、论点-论据-结论链条、上下文衔接",
+        "format": "重点改善：引用格式规范性、图表标注、章节编号、学术写作惯例",
+        "all": "全面润色：语言表达 + 逻辑连贯 + 学术格式规范",
+    }
+
+    system_prompt = (
+        "你是专业学术编辑。直接输出润色后的文本，不要解释改动。"
+        "保持原意不变，提升学术表达质量。使用 Markdown 格式。"
+    )
+
+    prompt = f"""请对以下学术文本进行润色：
+
+【论文类型】{paper_type}
+【润色重点】{focus_guides.get(focus, focus_guides['all'])}
+
+要求：
+1. 保持原意不变
+2. 提升用词准确性和学术规范性
+3. 改善句式结构和段落衔接
+4. 统一引用格式为 [n] 标记
+5. 直接输出润色后的全文
+
+原文：
+{text[:12000]}"""
+
+    polished = await _call_llm(prompt, system_prompt)
+
+    # 附加润色说明
+    summary = f"\n\n---\n*润色完成。主要改善：{focus_guides.get(focus, '全面润色')}*"
+    return polished + summary
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Plagiarism Check
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA = {
+    "name": "scholarforge_plagiarism_check",
+    "description": (
+        "论文查重检测。基于 SimHash + N-gram + AIGC 启发式检测，离线运行无需外部服务。"
+        "返回：综合重复率、内部相似段落、AI 痕迹评分、修改建议。"
+        "适用于：投稿前自查、写作过程中监控重复率、评估原创性。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "需要查重的论文全文或片段",
+            },
+            "title": {
+                "type": "string",
+                "description": "论文标题（可选，提高检测准确性）",
+            },
+        },
+        "required": ["text"],
+    },
+}
+
+
+async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
+    """查重检测"""
+    text = args.get("text", "")
+    title = args.get("title", "")
+
+    if not text.strip():
+        return "❌ 请提供需要查重的文本。"
+    if len(text) < 200:
+        return "⚠️ 文本过短（<200字），查重结果参考价值有限。"
+
+    try:
+        from hermes_cli.scholarforge.plagcheck import full_plagiarism_check
+
+        report = full_plagiarism_check(text, title=title)
+
+        lines = ["## 📊 查重检测报告\n"]
+        lines.append(f"**总字数**: {report.total_chars:,}")
+        lines.append(f"**段落数**: {report.total_paragraphs}")
+        lines.append(f"**综合重复率**: {report.overall_similarity:.1%}")
+        lines.append(f"**AI 痕迹率**: {report.aigc_overall_ratio:.1%}")
+        lines.append("")
+
+        # 重复率评估
+        sim = report.overall_similarity
+        if sim < 0.15:
+            lines.append("✅ 重复率较低，原创性良好")
+        elif sim < 0.30:
+            lines.append("⚠️ 重复率中等，建议关注高重复段落")
+        else:
+            lines.append("🔴 重复率偏高，建议修改高重复段落")
+
+        # AI 痕迹评估
+        aigc = report.aigc_overall_ratio
+        if aigc < 0.2:
+            lines.append("✅ AI 痕迹较低")
+        elif aigc < 0.4:
+            lines.append("⚠️ AI 痕迹中等，建议增加个人观点和案例")
+        else:
+            lines.append("🔴 AI 痕迹偏高，建议使用 scholarforge_deaigc 工具处理")
+
+        # 内部相似段落
+        if report.plag_results:
+            lines.append("\n### 高相似段落\n")
+            for r in report.plag_results[:5]:
+                lines.append(f"- 段落 {r.source_para} ↔ 段落 {r.target_para}：相似度 {r.similarity:.1%}")
+
+        # AIGC 特征
+        if report.aigc_results:
+            lines.append("\n### AI 痕迹特征\n")
+            for r in report.aigc_results[:5]:
+                lines.append(f"- {r.paragraph_preview[:60]}... → {r.label} (置信度 {r.confidence:.0%})")
+
+        # 建议
+        if report.suggestions:
+            lines.append("\n### 修改建议\n")
+            for s in report.suggestions:
+                lines.append(f"- {s}")
+
+        # 在线查重提示
+        lines.append("\n---\n💡 **提示**: 本检测为离线检测，如需更精确的查重结果，建议前往 PaperYY、大雅查重、知网查重等平台进行在线检测。")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"plagiarism_check error: {e}", exc_info=True)
+        return f"❌ 查重检测失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: De-AIGC
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_DEAIGC_SCHEMA = {
+    "name": "scholarforge_deaigc",
+    "description": (
+        "去 AI 痕迹。检测论文中的 AI 写作特征并自动改写，使其更像人类写作。"
+        "检测维度：句式模式、过渡词密度、词汇丰富度、段落结构。"
+        "适用于：AI 辅助写作后去除痕迹、降低 AIGC 检测分数、提升自然度。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "需要去 AI 痕迹的论文文本",
+            },
+            "aggressive": {
+                "type": "boolean",
+                "description": "是否激进模式（更多改写），默认 false（保守模式，仅改写高置信度段落）",
+                "default": False,
+            },
+        },
+        "required": ["text"],
+    },
+}
+
+
+async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
+    """去 AI 痕迹"""
+    text = args.get("text", "")
+    aggressive = args.get("aggressive", False)
+
+    if not text.strip():
+        return "❌ 请提供需要处理的文本。"
+
+    try:
+        from hermes_cli.scholarforge.plagcheck import check_aigc, apply_deaigc_suggestions, suggest_deaigc_fixes
+
+        # 1. 检测 AI 痕迹
+        aigc = check_aigc(text)
+        before_score = aigc.get("aigc_score", 0)
+
+        if before_score < 0.1:
+            return "✅ AI 痕迹评分很低，无需处理。"
+
+        # 2. 获取改写建议
+        suggestions = suggest_deaigc_fixes(text)
+
+        # 3. 自动改写
+        cleaned = apply_deaigc_suggestions(text)
+
+        # 4. 如果激进模式，再跑一轮 LLM 改写
+        if aggressive and cleaned != text:
+            system_prompt = (
+                "你是学术写作专家。请改写文本使其更自然，降低 AI 痕迹。"
+                "保持原意，改变句式结构，增加表达多样性。直接输出改写后的文本。"
+            )
+            prompt = f"请改写以下文本，降低 AI 痕迹，使其更像人类学术写作：\n\n{cleaned[:8000]}"
+            llm_result = await _call_llm(prompt, system_prompt)
+            if not llm_result.startswith("❌"):
+                cleaned = llm_result
+
+        # 5. 复检
+        aigc_after = check_aigc(cleaned)
+        after_score = aigc_after.get("aigc_score", 0)
+
+        lines = ["## 🔄 去 AI 痕迹报告\n"]
+        lines.append(f"**处理前 AI 评分**: {before_score:.0%}")
+        lines.append(f"**处理后 AI 评分**: {after_score:.0%}")
+        lines.append(f"**降幅**: {(before_score - after_score):.0%}")
+        lines.append("")
+
+        if suggestions:
+            lines.append("### 检测到的问题\n")
+            for s in suggestions[:8]:
+                lines.append(f"- **{s.get('fix', '')}**: {s.get('example', '')}")
+
+        if aigc_after.get("features"):
+            lines.append("\n### 剩余特征\n")
+            for f in aigc_after["features"][:5]:
+                lines.append(f"- {f}")
+
+        lines.append(f"\n---\n\n## 📄 处理后正文\n\n{cleaned}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"deaigc error: {e}", exc_info=True)
+        return f"❌ 去 AI 痕迹失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Score
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_SCORE_SCHEMA = {
+    "name": "scholarforge_score",
+    "description": (
+        "论文三维度评分：原创性(0-10) + 逻辑性(0-10) + 引用完整性(0-10)。"
+        "综合评分 = 原创性×0.3 + 逻辑性×0.35 + 引用×0.35。"
+        "适用于：投稿前评估、论文质量自检、了解改进方向。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "论文正文（Markdown 格式）",
+            },
+            "topic": {
+                "type": "string",
+                "description": "研究主题（可选，提高评分准确性）",
+            },
+        },
+        "required": ["content"],
+    },
+}
+
+
+async def _handle_scholarforge_score(args: dict, **kw: Any) -> str:
+    """论文评分"""
+    content = args.get("content", "")
+    topic = args.get("topic", "")
+
+    if not content.strip():
+        return "❌ 请提供论文内容。"
+    if len(content) < 500:
+        return "⚠️ 文本过短（<500字），评分参考价值有限。"
+
+    try:
+        from hermes_cli.scholarforge.scoring import score_paper
+
+        # 提取引用的文献列表（从 [n] 标记）
+        import re
+        ref_nums = set(int(n) for n in re.findall(r'\[(\d+)\]', content))
+        # 构造简易 papers 列表
+        papers = [{"title": f"Ref [{n}]", "year": ""} for n in sorted(ref_nums)]
+
+        result = await score_paper(content, papers, _make_llm=None, topic=topic)
+
+        lines = ["## 📊 论文评分报告\n"]
+
+        orig = result.get("originality", {})
+        logic = result.get("logic", {})
+        cite = result.get("citation_completeness", {})
+        overall = result.get("overall", 0)
+
+        lines.append(f"### 综合评分: {overall:.1f}/10\n")
+        lines.append(f"| 维度 | 评分 | 说明 |")
+        lines.append(f"|------|------|------|")
+        lines.append(f"| 原创性 (30%) | {orig.get('score', 0):.1f}/10 | {orig.get('reasoning', '')[:60]} |")
+        lines.append(f"| 逻辑性 (35%) | {logic.get('score', 0):.1f}/10 | {logic.get('reasoning', '')[:60]} |")
+        lines.append(f"| 引用完整性 (35%) | {cite.get('score', 0):.1f}/10 | {cite.get('reasoning', '')[:60]} |")
+        lines.append("")
+
+        # 评级
+        if overall >= 8:
+            lines.append("✅ 优秀——达到投稿水平")
+        elif overall >= 6:
+            lines.append("⚠️ 良好——少量改进后可投稿")
+        elif overall >= 4:
+            lines.append("🔴 一般——需要较大修改")
+        else:
+            lines.append("❌ 较差——建议重新组织")
+
+        if result.get("overall_reasoning"):
+            lines.append(f"\n**总评**: {result['overall_reasoning']}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"score error: {e}", exc_info=True)
+        return f"❌ 论文评分失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Export
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_EXPORT_SCHEMA = {
+    "name": "scholarforge_export",
+    "description": (
+        "导出论文为 Word/PDF/LaTeX/Markdown 格式。"
+        "适用于：论文定稿后导出到本地，在 WPS/Word/LaTeX 编辑器中进一步编辑。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "论文标题",
+            },
+            "content": {
+                "type": "string",
+                "description": "论文正文（Markdown 格式）",
+            },
+            "format": {
+                "type": "string",
+                "description": "导出格式",
+                "enum": ["docx", "pdf", "latex", "markdown", "bibtex"],
+                "default": "docx",
+            },
+            "abstract": {
+                "type": "string",
+                "description": "摘要（可选）",
+            },
+        },
+        "required": ["title", "content", "format"],
+    },
+}
+
+
+async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
+    """导出论文"""
+    title = args.get("title", "")
+    content = args.get("content", "")
+    fmt = args.get("format", "docx")
+    abstract = args.get("abstract", "")
+
+    if not title.strip() or not content.strip():
+        return "❌ 请提供论文标题和正文。"
+
+    try:
+        import os
+        import tempfile
+        import re
+
+        # 从正文中提取参考文献列表
+        papers = []
+        ref_section = re.search(r'##\s*参考文献\s*\n(.*)', content, re.DOTALL)
+        if ref_section:
+            ref_text = ref_section.group(1)
+            # 解析 [n] Author (Year). Title. Venue.
+            for m in re.finditer(r'\[(\d+)\]\s+(.+?)(?=\n\[|\n\n|$)', ref_text, re.DOTALL):
+                ref_num = int(m.group(1))
+                ref_body = m.group(2).strip().replace("\n", " ")
+                papers.append({
+                    "title": ref_body.split(".")[1].strip() if "." in ref_body else ref_body[:80],
+                    "authors": ref_body.split(".")[0].strip() if "." in ref_body else "",
+                    "year": "",
+                    "venue": "",
+                    "doi": "",
+                    "ref_num": ref_num,
+                })
+
+        export_path = os.path.join(tempfile.gettempdir(), f"scholarforge_export")
+        os.makedirs(export_path, exist_ok=True)
+
+        # 安全文件名
+        safe_title = re.sub(r'[^\w\u4e00-\u9fff]', '_', title)[:50]
+
+        if fmt == "docx":
+            from hermes_cli.scholarforge.export.full import export_docx
+            data = export_docx(title, content, papers, abstract=abstract)
+            filepath = os.path.join(export_path, f"{safe_title}.docx")
+            with open(filepath, "wb") as f:
+                f.write(data)
+            return f"✅ Word 文档已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB\n💡 可用 WPS 或 Microsoft Word 打开编辑。"
+
+        elif fmt == "pdf":
+            from hermes_cli.scholarforge.export.full import export_pdf
+            data = export_pdf(title, content, papers, abstract=abstract)
+            filepath = os.path.join(export_path, f"{safe_title}.pdf")
+            with open(filepath, "wb") as f:
+                f.write(data)
+            return f"✅ PDF 已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB"
+
+        elif fmt == "latex":
+            from hermes_cli.scholarforge.export.full import export_latex
+            latex_text = export_latex(title, content, papers, abstract=abstract)
+            filepath = os.path.join(export_path, f"{safe_title}.tex")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(latex_text)
+            return f"✅ LaTeX 已导出：{filepath}\n\n📄 文件大小：{len(latex_text)/1024:.0f} KB"
+
+        elif fmt == "markdown":
+            from hermes_cli.scholarforge.export.full import export_markdown
+            md_text = export_markdown(title, content, papers, abstract=abstract)
+            filepath = os.path.join(export_path, f"{safe_title}.md")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(md_text)
+            return f"✅ Markdown 已导出：{filepath}\n\n📄 文件大小：{len(md_text)/1024:.0f} KB"
+
+        elif fmt == "bibtex":
+            from hermes_cli.scholarforge.export.full import export_bibtex
+            bib_text = export_bibtex(papers)
+            filepath = os.path.join(export_path, f"{safe_title}.bib")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(bib_text)
+            return f"✅ BibTeX 已导出：{filepath}\n\n📄 文件大小：{len(bib_text)/1024:.0f} KB"
+
+        else:
+            return f"❌ 不支持的格式：{fmt}"
+
+    except Exception as e:
+        logger.error(f"export error: {e}", exc_info=True)
+        return f"❌ 导出失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Format References
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_FORMAT_REFS_SCHEMA = {
+    "name": "scholarforge_format_refs",
+    "description": (
+        "格式化参考文献列表。支持 GB/T 7714（国标）和 APA 7th 两种格式。"
+        "适用于：投稿前规范化参考文献、切换引用格式、生成标准参考文献列表。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "papers": {
+                "type": "string",
+                "description": "文献列表，每行一篇（格式：作者. 标题. 期刊/会议. 年份. DOI/URL），或 JSON 数组",
+            },
+            "style": {
+                "type": "string",
+                "description": "引用格式",
+                "enum": ["gbt7714", "apa7"],
+                "default": "gbt7714",
+            },
+        },
+        "required": ["papers"],
+    },
+}
+
+
+async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
+    """格式化参考文献"""
+    import json as json_mod
+
+    papers_raw = args.get("papers", "")
+    style = args.get("style", "gbt7714")
+
+    if not papers_raw.strip():
+        return "❌ 请提供文献列表。"
+
+    # 尝试解析 JSON 或按行解析
+    papers = []
+    try:
+        papers = json_mod.loads(papers_raw)
+    except (json_mod.JSONDecodeError, ValueError):
+        # 按行解析
+        for line in papers_raw.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            # 简单解析：Author. Title. Venue. Year.
+            parts = [p.strip() for p in line.split(".")]
+            paper = {
+                "title": parts[1] if len(parts) > 1 else line,
+                "authors": parts[0] if parts else "",
+                "year": "",
+                "venue": parts[2] if len(parts) > 2 else "",
+                "doi": "",
+            }
+            # 尝试提取年份
+            import re
+            year_m = re.search(r'(20\d{2}|19\d{2})', line)
+            if year_m:
+                paper["year"] = year_m.group(1)
+            papers.append(paper)
+
+    if not papers:
+        return "❌ 未能解析文献列表，请检查格式。"
+
+    try:
+        if style == "gbt7714":
+            from hermes_cli.scholarforge.quality import format_all_references_gbt7714
+            result = format_all_references_gbt7714(papers)
+        elif style == "apa7":
+            from hermes_cli.scholarforge.quality import format_apa7
+            lines = []
+            for i, p in enumerate(papers, 1):
+                lines.append(format_apa7(p, ref_num=i))
+            result = "\n\n".join(lines)
+        else:
+            return f"❌ 不支持的格式：{style}"
+
+        return f"## 📚 参考文献列表（{style.upper()} 格式）\n\n{result}"
+    except Exception as e:
+        logger.error(f"format_refs error: {e}", exc_info=True)
+        return f"❌ 格式化失败: {str(e)[:200]}"
+
+
 def _register_tools():
     """Register all ScholarForge tools in the global registry."""
     registry.register(
@@ -904,7 +1542,70 @@ def _register_tools():
         emoji="🎯",
         description="学习用户写作风格，后续写作自动仿写",
     )
-    logger.info("[ScholarForge] 5 Agent tools registered: search/write/review/replace_citations/learn_style")
+    registry.register(
+        name="scholarforge_outline",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_OUTLINE_SCHEMA,
+        handler=_handle_scholarforge_outline,
+        is_async=True,
+        emoji="📝",
+        description="生成论文大纲（章节结构+每章要点+预估字数）",
+    )
+    registry.register(
+        name="scholarforge_polish",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_POLISH_SCHEMA,
+        handler=_handle_scholarforge_polish,
+        is_async=True,
+        emoji="✨",
+        description="学术润色（语言+逻辑+格式）",
+    )
+    registry.register(
+        name="scholarforge_plagiarism_check",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA,
+        handler=_handle_scholarforge_plagiarism_check,
+        is_async=True,
+        emoji="📊",
+        description="论文查重检测（SimHash+N-gram+AIGC 启发式）",
+    )
+    registry.register(
+        name="scholarforge_deaigc",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_DEAIGC_SCHEMA,
+        handler=_handle_scholarforge_deaigc,
+        is_async=True,
+        emoji="🤖",
+        description="去 AI 痕迹（检测+自动改写）",
+    )
+    registry.register(
+        name="scholarforge_score",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_SCORE_SCHEMA,
+        handler=_handle_scholarforge_score,
+        is_async=True,
+        emoji="⭐",
+        description="论文三维度评分（原创性+逻辑性+引用完整性）",
+    )
+    registry.register(
+        name="scholarforge_export",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_EXPORT_SCHEMA,
+        handler=_handle_scholarforge_export,
+        is_async=True,
+        emoji="📤",
+        description="导出论文（Word/PDF/LaTeX/Markdown/BibTeX）",
+    )
+    registry.register(
+        name="scholarforge_format_refs",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_FORMAT_REFS_SCHEMA,
+        handler=_handle_scholarforge_format_refs,
+        is_async=True,
+        emoji="📚",
+        description="格式化参考文献（GB/T 7714 / APA 7th）",
+    )
+    logger.info("[ScholarForge] 12 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs")
 
 
 # Register on import
