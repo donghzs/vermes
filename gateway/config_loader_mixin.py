@@ -17,10 +17,7 @@ from utils import is_truthy_value
 logger = logging.getLogger(__name__)
 
 
-def _get_run_attr(name):
-    """Dynamically resolve a module-level attribute from gateway.run."""
-    from gateway import run as _run
-    return getattr(_run, name)
+from gateway._run_attr import _get_run_attr  # W2: shared, was duplicated in 4 mixins
 
 
 class ConfigLoaderMixin:
