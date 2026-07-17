@@ -4931,7 +4931,14 @@ def call_llm(
             api_key=resolved_api_key or api_key,
             async_mode=False,
         )
-        if client is None and resolved_provider != "auto" and not resolved_base_url:
+        # A0-2 fix: a named provider (e.g. xiaomi) configured with a vision
+        # base_url but no usable API key resolves to no client. The old
+        # ``not resolved_base_url`` guard skipped the auto-fallback here and
+        # raised RuntimeError, breaking browser_vision entirely. We now fall
+        # back to auto for any explicit *named* provider; only a genuinely
+        # explicit ``custom`` endpoint (user-supplied base_url) keeps the
+        # hard-fail so a misconfigured custom endpoint isn't silently masked.
+        if client is None and resolved_provider not in {"auto", "custom"}:
             logger.warning(
                 "Vision provider %s unavailable, falling back to auto vision backends",
                 resolved_provider,
@@ -5389,7 +5396,10 @@ async def async_call_llm(
             api_key=resolved_api_key or api_key,
             async_mode=True,
         )
-        if client is None and resolved_provider != "auto" and not resolved_base_url:
+        # A0-2 fix: mirror the sync branch — fall back to auto vision backends
+        # for any explicit named provider (e.g. xiaomi with a base_url but no
+        # key); only an explicit ``custom`` endpoint keeps the hard-fail.
+        if client is None and resolved_provider not in {"auto", "custom"}:
             logger.warning(
                 "Vision provider %s unavailable, falling back to auto vision backends",
                 resolved_provider,
