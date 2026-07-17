@@ -331,7 +331,7 @@ class TestRunAdapterIntegration:
     """Verify LINE is wired into run.py's authorization maps."""
 
     def test_line_in_allowlist_env_map(self):
-        with open("gateway/run.py") as f:
+        with open("gateway/auth_mixin.py") as f:
             content = f.read()
         assert 'Platform.LINE: "LINE_ALLOWED_USERS"' in content
         assert 'Platform.LINE: "LINE_ALLOW_ALL_USERS"' in content
