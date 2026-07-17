@@ -1409,6 +1409,204 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# Tool: Verify Citations (new validator)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_VERIFY_CITATIONS_SCHEMA = {
+    "name": "scholarforge_verify_citations",
+    "description": (
+        "验证论文引用的真实性。通过 CrossRef API 和 Semantic Scholar API 在线校验每条文献是否真实存在。"
+        "检测虚构引用、年份异常、作者缺失等问题。"
+        "适用于：投稿前引用核查、AI 生成论文的质量门控、确保参考文献真实可信。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "papers": {
+                "type": "string",
+                "description": (
+                    "文献列表，JSON 数组格式，每条含 title/authors/year/venue/doi。"
+                    "或每行一篇，格式：作者. 标题. 期刊. 年份. DOI"
+                ),
+            },
+            "enable_online": {
+                "type": "boolean",
+                "description": "是否启用在线验证（默认 true），关闭时仅做本地启发式检查",
+                "default": True,
+            },
+        },
+        "required": ["papers"],
+    },
+}
+
+
+async def _handle_scholarforge_verify_citations(args: dict, **kw: Any) -> str:
+    """验证引用真实性"""
+    import json as json_mod
+
+    papers_raw = args.get("papers", "")
+    enable_online = args.get("enable_online", True)
+
+    if not papers_raw.strip():
+        return "❌ 请提供文献列表。"
+
+    # 尝试解析 JSON
+    papers = []
+    try:
+        papers = json_mod.loads(papers_raw)
+    except (json_mod.JSONDecodeError, ValueError):
+        # 按行解析
+        for line in papers_raw.strip().split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # 尝试解析 [n] Author (Year). Title. Venue.
+            ref_match = re.match(r'\[?\d+\]?\s*(.+?)\s*\((\d{4})\)\.\s*(.+?)\.\s*(.+)', line)
+            if ref_match:
+                papers.append({
+                    "authors": ref_match.group(1).strip(),
+                    "year": ref_match.group(2),
+                    "title": ref_match.group(3).strip(),
+                    "venue": ref_match.group(4).strip(),
+                    "doi": "",
+                })
+            else:
+                parts = [p.strip() for p in line.split(".")]
+                papers.append({
+                    "title": parts[1] if len(parts) > 1 else line,
+                    "authors": parts[0] if parts else "",
+                    "year": "",
+                    "venue": parts[2] if len(parts) > 2 else "",
+                    "doi": "",
+                })
+
+    if not papers:
+        return "❌ 未能解析文献列表，请提供 JSON 数组或每行一篇的格式。"
+
+    try:
+        from hermes_cli.scholarforge.validators import verify_citation_authenticity, format_citation_report
+        checks = await verify_citation_authenticity(papers, enable_online=enable_online)
+        return format_citation_report(checks)
+    except Exception as e:
+        logger.error(f"verify_citations error: {e}", exc_info=True)
+        return f"❌ 引用验证失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Check Statistics Consistency (new validator)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_CHECK_STATS_SCHEMA = {
+    "name": "scholarforge_check_stats",
+    "description": (
+        "校验统计指标的内部一致性。自动检验 η²↔Cohen's d、t↔d、F↔η²、d↔均值差/标准差 等换算关系。"
+        "适用于：论文投稿前统计核查、确保报告的统计指标数学一致、防止计算错误。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "eta_squared": {"type": "number", "description": "η²（eta squared）效应量"},
+            "cohens_d": {"type": "number", "description": "Cohen's d 效应量"},
+            "t_value": {"type": "number", "description": "t 统计量"},
+            "df": {"type": "integer", "description": "自由度"},
+            "f_value": {"type": "number", "description": "F 统计量"},
+            "df_error": {"type": "integer", "description": "误差自由度"},
+            "p_value": {"type": "number", "description": "p 值"},
+            "n_group1": {"type": "integer", "description": "组1样本量"},
+            "n_group2": {"type": "integer", "description": "组2样本量"},
+            "mean_diff": {"type": "number", "description": "均值差"},
+            "pooled_sd": {"type": "number", "description": "合并标准差"},
+        },
+        "required": [],
+    },
+}
+
+
+async def _handle_scholarforge_check_stats(args: dict, **kw: Any) -> str:
+    """统计一致性校验"""
+    # 过滤掉未提供的参数
+    stats = {k: v for k, v in args.items() if v is not None}
+
+    if not stats:
+        return "❌ 请至少提供两个统计指标用于交叉校验。"
+
+    try:
+        from hermes_cli.scholarforge.validators import check_statistics_consistency, format_statistics_report
+        checks = check_statistics_consistency(stats)
+        return format_statistics_report(checks)
+    except Exception as e:
+        logger.error(f"check_stats error: {e}", exc_info=True)
+        return f"❌ 统计校验失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Detect Design Flaws (new validator)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_DETECT_DESIGN_FLAWS_SCHEMA = {
+    "name": "scholarforge_detect_design_flaws",
+    "description": (
+        "检测研究设计中的常见缺陷：多要素未分离、评估者偏差、样本代表性不足、"
+        "霍桑效应、追踪周期不足、测量工具验证不足、非随机分配、统计检验力不足。"
+        "适用于：论文开题前设计审查、投稿前质量自检、审稿时快速识别设计问题。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "paper_text": {
+                "type": "string",
+                "description": "论文全文或方法论章节（用于文本模式匹配检测）",
+            },
+            "design_type": {"type": "string", "description": "设计类型，如 '准实验'、'真实验'、'观察'"},
+            "n_groups": {"type": "integer", "description": "组数"},
+            "has_control": {"type": "boolean", "description": "是否设置对照组"},
+            "has_random_assignment": {"type": "boolean", "description": "是否随机分配"},
+            "intervention_elements": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "干预要素列表，如 ['户外', '主题建构']",
+            },
+            "fidelity_assessor": {
+                "type": "string",
+                "enum": ["self", "independent", "mixed"],
+                "description": "忠实度评估者：self=实施者自评，independent=独立观察者，mixed=混合",
+            },
+            "tracking_weeks": {"type": "integer", "description": "追踪周期（周）"},
+            "scale_validated": {"type": "boolean", "description": "量表是否经过完整心理测量学验证"},
+            "sample_source": {"type": "string", "description": "样本来源，如 '单一机构'、'多机构'"},
+            "sample_size": {"type": "integer", "description": "总样本量"},
+        },
+        "required": ["paper_text"],
+    },
+}
+
+
+async def _handle_scholarforge_detect_design_flaws(args: dict, **kw: Any) -> str:
+    """研究设计缺陷检测"""
+    paper_text = args.get("paper_text", "")
+
+    if not paper_text.strip():
+        return "❌ 请提供论文文本。"
+
+    # 构建 design_info
+    design_info = {}
+    for key in ["design_type", "n_groups", "has_control", "has_random_assignment",
+                "intervention_elements", "fidelity_assessor", "tracking_weeks",
+                "scale_validated", "sample_source", "sample_size"]:
+        val = args.get(key)
+        if val is not None:
+            design_info[key] = val
+
+    try:
+        from hermes_cli.scholarforge.validators import detect_design_flaws, format_design_report
+        flaws = detect_design_flaws(paper_text, design_info)
+        return format_design_report(flaws)
+    except Exception as e:
+        logger.error(f"detect_design_flaws error: {e}", exc_info=True)
+        return f"❌ 设计缺陷检测失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
 # Tool: Format References
 # ──────────────────────────────────────────────────────────────
 
@@ -1605,7 +1803,34 @@ def _register_tools():
         emoji="📚",
         description="格式化参考文献（GB/T 7714 / APA 7th）",
     )
-    logger.info("[ScholarForge] 12 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs")
+    registry.register(
+        name="scholarforge_verify_citations",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_VERIFY_CITATIONS_SCHEMA,
+        handler=_handle_scholarforge_verify_citations,
+        is_async=True,
+        emoji="🔬",
+        description="验证文献引用真实性（CrossRef/Semantic Scholar API 在线校验）",
+    )
+    registry.register(
+        name="scholarforge_check_stats",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_CHECK_STATS_SCHEMA,
+        handler=_handle_scholarforge_check_stats,
+        is_async=True,
+        emoji="📐",
+        description="统计指标一致性校验（η²↔d↔t↔F 值换算验证）",
+    )
+    registry.register(
+        name="scholarforge_detect_design_flaws",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_DETECT_DESIGN_FLAWS_SCHEMA,
+        handler=_handle_scholarforge_detect_design_flaws,
+        is_async=True,
+        emoji="⚠️",
+        description="研究设计缺陷检测（多要素未分离/评估者偏差/样本代表性等 8 类）",
+    )
+    logger.info("[ScholarForge] 15 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws")
 
 
 # Register on import
