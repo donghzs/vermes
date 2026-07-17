@@ -9956,8 +9956,8 @@ class HermesCLI:
             total = result.get("total", 0)
 
             if not added and not removed:
-                logger.info("  No new skills detected.")
-                logger.info(f"  📚 {total} skill(s) available")
+                logger.info("  未检测到新技能。")
+                logger.info(f"  📚 {total} 个技能可用")
                 return
 
             def _fmt_line(item: dict) -> str:
@@ -9966,14 +9966,14 @@ class HermesCLI:
                 return f"    - {nm}: {desc}" if desc else f"    - {nm}"
 
             if added:
-                logger.info("  ➕ Added Skills:")
+                logger.info("  ➕ 新增技能：")
                 for item in added:
                     logger.info(f"  {_fmt_line(item)}")
             if removed:
-                logger.info("  ➖ Removed Skills:")
+                logger.info("  ➖ 移除技能：")
                 for item in removed:
                     logger.info(f"  {_fmt_line(item)}")
-            logger.info(f"  📚 {total} skill(s) available")
+            logger.info(f"  📚 {total} 个技能可用")
 
             # Queue a one-shot note for the NEXT user turn. The CLI's agent
             # loop prepends ``_pending_skills_reload_note`` (if set) to the
@@ -9988,16 +9988,16 @@ class HermesCLI:
             sections = ["[USER INITIATED SKILLS RELOAD:"]
             if added:
                 sections.append("")
-                sections.append("Added Skills:")
+                sections.append("新增技能：")
                 for item in added:
                     sections.append(_fmt_line(item))
             if removed:
                 sections.append("")
-                sections.append("Removed Skills:")
+                sections.append("移除技能：")
                 for item in removed:
                     sections.append(_fmt_line(item))
             sections.append("")
-            sections.append("Use skills_list to see the updated catalog.]")
+            sections.append("使用 skills_list 查看更新后的技能列表。]")
             self._pending_skills_reload_note = "\n".join(sections)
 
         except Exception as e:

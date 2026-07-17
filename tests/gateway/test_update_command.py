@@ -359,7 +359,7 @@ class TestHandleUpdateCommand:
              patch("subprocess.Popen"):
             result = await runner._handle_update_command(event)
 
-        assert "stream progress" in result
+        assert "进度将在此处显示" in result
 
 
 # ---------------------------------------------------------------------------

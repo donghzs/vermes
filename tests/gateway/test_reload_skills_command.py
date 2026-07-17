@@ -130,12 +130,12 @@ async def test_reload_skills_handler_queues_note_on_diff(monkeypatch):
     assert session_key in pending
     note = pending[session_key]
     assert note.startswith("[USER INITIATED SKILLS RELOAD:")
-    assert note.endswith("Use skills_list to see the updated catalog.]")
+    assert note.endswith("使用 skills_list 查看更新后的技能列表。]")
     assert "新增技能：" in note
-    assert "    - alpha: Run alpha to do xyz" in note
-    assert "    - beta: Run beta to do abc" in note
+    assert "    - alpha：Run alpha to do xyz" in note
+    assert "    - beta：Run beta to do abc" in note
     assert "移除技能：" in note
-    assert "    - gamma: Old removed skill" in note
+    assert "    - gamma：Old removed skill" in note
 
 
 @pytest.mark.asyncio

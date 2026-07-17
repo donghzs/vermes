@@ -2470,16 +2470,16 @@ class SlashCommandsMixin:
             sections = ["[USER INITIATED SKILLS RELOAD:"]
             if added:
                 sections.append("")
-                sections.append("Added Skills:")
+                sections.append("新增技能：")
                 for item in added:
                     sections.append(_fmt_line(item))
             if removed:
                 sections.append("")
-                sections.append("Removed Skills:")
+                sections.append("移除技能：")
                 for item in removed:
                     sections.append(_fmt_line(item))
             sections.append("")
-            sections.append("Use skills_list to see the updated catalog.]")
+            sections.append("使用 skills_list 查看更新后的技能列表。]")
             note = "\n".join(sections)
 
             session_key = self._session_key_for_source(event.source)
