@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { stripBase64FromContent, loadFromStorage, saveToStorage, flushStorageWrites, onStorageWriteFailure } from '@/stores/chat-storage'
+import { 
+  stripBase64FromContent, 
+  loadFromStorage, 
+  saveToStorage, 
+  flushStorageWrites, 
+  onStorageWriteFailure,
+  saveMessagesToAPI,
+  loadMessagesFromAPI,
+  deleteMessagesFromAPI,
+} from '@/stores/chat-storage'
 
 describe('chat-storage', () => {
   beforeEach(() => {
@@ -98,6 +107,24 @@ describe('chat-storage', () => {
     })
   })
 
+  describe('flushStorageWrites', () => {
+    it('does not throw when no pending writes', () => {
+      expect(() => flushStorageWrites()).not.toThrow()
+    })
+
+    it('flushes pending large writes to localStorage', () => {
+      // Large data (> 2048 chars) goes to async queue
+      const bigData = { data: 'x'.repeat(3000) }
+      saveToStorage('big-key', bigData)
+      // Should not be in localStorage yet (async)
+      // After flush, it should be there
+      flushStorageWrites()
+      const stored = localStorage.getItem('big-key')
+      expect(stored).not.toBeNull()
+      expect(JSON.parse(stored).data.length).toBe(3000)
+    })
+  })
+
   describe('onStorageWriteFailure', () => {
     it('registers callback without error', () => {
       const cb = vi.fn()
@@ -105,9 +132,23 @@ describe('chat-storage', () => {
     })
   })
 
-  describe('flushStorageWrites', () => {
-    it('does not throw when no pending writes', () => {
-      expect(() => flushStorageWrites()).not.toThrow()
+  describe('saveMessagesToAPI', () => {
+    it('returns false when fetch fails', async () => {
+      const result = await saveMessagesToAPI('s1', [])
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('loadMessagesFromAPI', () => {
+    it('returns empty array when fetch fails', async () => {
+      const result = await loadMessagesFromAPI('s1')
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('deleteMessagesFromAPI', () => {
+    it('does not throw when fetch fails', async () => {
+      await expect(deleteMessagesFromAPI('s1')).resolves.not.toThrow()
     })
   })
 })
