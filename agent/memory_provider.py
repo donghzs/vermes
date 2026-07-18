@@ -33,6 +33,7 @@ Optional hooks (override to opt in):
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
@@ -152,23 +153,136 @@ class MemoryProvider(ABC):
     def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Federated search across this provider's reference store.
 
-        Optional — providers that expose a queryable knowledge base (e.g. the
-        built-in RAG provider, or an external KB like Mem0/Honcho) implement
-        this so ``MemoryManager.search_all`` can fan out a single query across
-        every active provider (unified memory base, Slice 3).
+        **Emergent / data-driven by default** (unified memory base, Slice 3):
+        if a provider does not override ``search()``, the base implementation
+        *discovers the provider's own search/query tool* (declared in
+        ``get_tool_schemas``) and invokes it through the identical public path
+        the agent uses (``handle_tool_call``). No vendor names live in core —
+        the provider advertises its capability via its tool schema, and the
+        federation adapts to whatever it exposes. This is the
+        "everything-is-memory, no hardcoding" principle: the other 7 external
+        KBs join the federation automatically through their own tool surface,
+        without per-vendor code in the framework.
 
-        Returns a list of hit dicts. Each hit SHOULD contain:
-          - ``content`` (str): the matching passage.
-          - ``pointer`` (str): a stable id / location for the hit.
-          - ``source`` (str): provider name (defaults to ``self.name``).
-          - ``score`` (float, optional): relevance score (higher = better).
-          - ``preview`` (str, optional): short excerpt.
-          - ``filename`` (str, optional): human-readable source label.
+        A provider MAY still override ``search()`` with a tighter typed adapter
+        (e.g. Supermemory does, returning normalized dicts directly). Both
+        paths feed ``MemoryManager.search_all`` identically.
 
-        Default returns ``[]`` so providers without a searchable store (pure
-        context/prefetch providers) are harmless no-ops in federation.
+        Returns a list of normalized hit dicts:
+          ``{content, pointer, source, score, preview?, filename?}``.
         """
+        # Discover this provider's own search/query tool — emergent, not
+        # hardcoded. We look for a tool name ending in "_search" or "_query"
+        # (e.g. supermemory_search, honcho_search, mem0_search, viking_search,
+        # brv_query). The unified entry "memory_search" is excluded because it
+        # IS the fabric's own router, not a provider KB.
+        search_tool = None
+        try:
+            for schema in self.get_tool_schemas():
+                name = schema.get("name", "")
+                if (
+                    name
+                    and name != "memory_search"
+                    and (name.endswith("_search") or name.endswith("_query"))
+                ):
+                    search_tool = name
+                    break
+        except Exception:
+            search_tool = None
+        if not search_tool:
+            return []
+        try:
+            raw = self.handle_tool_call(search_tool, {"query": query, "limit": limit})
+            return _normalize_provider_search_result(raw, source=self.name)
+        except Exception as e:
+            logger.debug(
+                "Provider '%s' default search via tool '%s' failed: %s",
+                self.name, search_tool, e,
+            )
+            return []
+
+
+def _normalize_provider_search_result(
+    raw: Any, source: str
+) -> List[Dict[str, Any]]:
+    """Coerce a provider search-tool result (JSON string or already-parsed)
+    into the unified recall hit shape.
+
+    Generic and fail-soft: handles the common shapes returned by the various
+    KB plugins' ``*_search`` tools (a top-level list, or a dict with a
+    ``results``/``memories``/``matches``/``items``/``hits``/``data`` list, or a
+    single dict). For each item it picks the most content-like string field.
+    """
+    if not raw:
         return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return []
+    items: Optional[List[Any]] = None
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        for key in ("results", "memories", "matches", "items", "hits", "data"):
+            v = data.get(key)
+            if isinstance(v, list):
+                items = v
+                break
+        if items is None:
+            items = [data]  # the dict itself is a single hit
+    if not items:
+        return []
+    hits: List[Dict[str, Any]] = []
+    for it in items:
+        if isinstance(it, str):
+            hits.append(
+                {
+                    "content": it,
+                    "pointer": f"{source}:{abs(hash(it)) % 100000}",
+                    "source": source,
+                    "score": 0.0,
+                }
+            )
+        elif isinstance(it, dict):
+            content = (
+                it.get("content")
+                or it.get("memory")
+                or it.get("text")
+                or it.get("excerpt")
+                or it.get("chunk")
+                or it.get("summary")
+            )
+            if not content and isinstance(it.get("content"), list):
+                content = " ".join(str(x) for x in it["content"])
+            if not content:
+                strs = [
+                    str(v)
+                    for v in it.values()
+                    if isinstance(v, str) and len(v) > 20
+                ]
+                content = max(strs, key=len) if strs else ""
+            if not content:
+                continue
+            pid = (
+                it.get("id")
+                or it.get("pointer")
+                or it.get("key")
+                or f"{source}:{abs(hash(content)) % 100000}"
+            )
+            try:
+                score = float(it.get("score") or it.get("similarity") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            hits.append(
+                {
+                    "content": content if isinstance(content, str) else str(content),
+                    "pointer": pid,
+                    "source": source,
+                    "score": score,
+                }
+            )
+        # non-str/dict items are ignored
+    return hits
 
     def shutdown(self) -> None:
         """Clean shutdown — flush queues, close connections."""

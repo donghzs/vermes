@@ -1185,9 +1185,22 @@ def init_agent(
     # first run (non-blocking background thread — idempotent backfill).
     if agent._memory_manager is not None:
         try:
-            from agent.memory_fabric import index_db_path, set_l4_federation_hook
+            from agent.memory_fabric import (
+                index_db_path,
+                set_l3_live_hook,
+                set_l4_federation_hook,
+            )
 
             set_l4_federation_hook(agent._memory_manager.search_all)
+            # L3 live hook: episodic recall (self-model / fusion / embeddings)
+            # feeds the unified hierarchical pipeline without fabric knowing
+            # memory_recall's internal shape — the adapter bridges the two.
+            try:
+                from agent.memory_recall import recall_context_as_hits
+
+                set_l3_live_hook(recall_context_as_hits)
+            except Exception as _l3_err:
+                _ra().logger.debug("L3 live hook wiring failed: %s", _l3_err)
             if not index_db_path().exists():
                 import threading as _th
 

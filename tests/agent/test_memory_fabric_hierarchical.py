@@ -133,3 +133,41 @@ def test_recall_hierarchical_empty_query_returns_empty(hermes_home):
     from agent.memory_fabric import recall_hierarchical
 
     assert recall_hierarchical("   ", limit=5) == []
+
+
+def test_recall_hierarchical_l3_live_hook(hermes_home):
+    from agent.memory_fabric import (
+        index_note,
+        recall_hierarchical,
+        set_l3_live_hook,
+    )
+
+    # seed an L1 note so we can verify L1 still outranks L3
+    index_note("memory", "MIG_L3_XYZ curated note")
+    set_l3_live_hook(
+        lambda q, limit: [
+            {
+                "content": "MIG_L3_XYZ episodic memory",
+                "pointer": "recall:1",
+                "source": "recall:outcomes",
+            }
+        ]
+    )
+    hits = recall_hierarchical("MIG_L3_XYZ", limit=10)
+    layers = [h["layer"] for h in hits]
+    assert "episodic" in layers
+    # L1 note must precede L3 episodic (layer priority)
+    assert layers.index("note") < layers.index("episodic")
+    epi = [h for h in hits if h["layer"] == "episodic"][0]
+    assert epi["content"] == "MIG_L3_XYZ episodic memory"
+
+
+def test_recall_hierarchical_l3_hook_failure_is_non_fatal(hermes_home):
+    from agent.memory_fabric import recall_hierarchical, set_l3_live_hook
+
+    def _boom(q, limit):
+        raise RuntimeError("recall down")
+
+    set_l3_live_hook(_boom)
+    # must not raise; returns empty (no index hits seeded)
+    assert recall_hierarchical("MIG_L3B_XYZ", limit=5) == []

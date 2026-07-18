@@ -486,6 +486,64 @@ def recall_context(user_message: str) -> Dict[str, Any]:
     return result
 
 
+def recall_context_as_hits(user_message: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Flatten ``recall_context`` into the unified L3 episodic hit shape.
+
+    Used as the live adapter behind ``memory_fabric.set_l3_live_hook`` so the
+    agent's episodic recall (self-model outcomes, fusion emotion, embedding
+    matches) participates in the unified hierarchical recall pipeline. The
+    fabric stays format-agnostic — this adapter is the only place that knows
+    ``recall_context``'s internal dict shape.
+
+    fail-soft: any error yields an empty list (the agent must never be
+    interrupted by a broken recall subsystem).
+    """
+    try:
+        ctx = recall_context(user_message) or {}
+    except Exception:
+        return []
+    hits: List[Dict[str, Any]] = []
+    section_sources = {
+        "recent_outcomes": "recall:outcomes",
+        "domain_stats": "recall:domain",
+        "emotion": "recall:emotion",
+        "embedding_matches": "recall:embedding",
+    }
+    for key, src in section_sources.items():
+        val = ctx.get(key)
+        if not val:
+            continue
+        items = val if isinstance(val, list) else [val]
+        for i, item in enumerate(items[:limit]):
+            if isinstance(item, dict):
+                content = (
+                    item.get("content")
+                    or item.get("text")
+                    or item.get("summary")
+                    or item.get("excerpt")
+                    or str(item)
+                )
+                pid = item.get("id") or f"{src}:{i}"
+                try:
+                    score = float(item.get("score") or item.get("similarity") or 0.0)
+                except (TypeError, ValueError):
+                    score = 0.0
+            else:
+                content = str(item)
+                pid = f"{src}:{i}"
+                score = 0.0
+            hits.append(
+                {
+                    "layer": "episodic",
+                    "source": src,
+                    "pointer": pid,
+                    "content": content if isinstance(content, str) else str(content),
+                    "score": score,
+                }
+            )
+    return hits[:limit]
+
+
 def format_recall_for_prompt(recall: Dict[str, Any]) -> str:
     """Format recalled context as a system prompt block.
 

@@ -5,6 +5,8 @@ provider's ``search()`` (RAG + external KB), and that the "rag is treated as
 builtin" fix lets RAG coexist with an external provider (the old bug rejected
 RAG once any external provider was active).
 """
+import json
+
 from agent.memory_manager import MemoryManager
 from agent.memory_provider import MemoryProvider
 
@@ -112,4 +114,72 @@ def test_default_search_is_noop_for_context_only_providers():
 
     mm = MemoryManager()
     mm.add_provider(_CtxOnly())
+    assert mm.search_all("q") == []
+
+
+def test_default_search_discovers_own_tool_emergent():
+    # A provider that does NOT override search() but declares its own *_search
+    # tool must auto-federate via handle_tool_call — proving the federation is
+    # emergent/data-driven, not per-vendor hardcoded. The other 7 external KBs
+    # join the unified recall this way without any framework-side vendor code.
+    class _EmergeProvider(MemoryProvider):
+        @property
+        def name(self):
+            return "honcho"
+
+        def is_available(self):
+            return True
+
+        def initialize(self, session_id, **kwargs):
+            pass
+
+        def get_tool_schemas(self):
+            return [{"name": "honcho_search", "description": "semantic search"}]
+
+        def handle_tool_call(self, tool_name, args, **kwargs):
+            assert tool_name == "honcho_search"
+            assert args.get("query") == "EMERGE_XYZ"
+            return json.dumps(
+                {
+                    "results": [
+                        {"memory": "EMERGE_XYZ from honcho", "id": "h:1", "score": 0.7}
+                    ]
+                }
+            )
+
+    mm = MemoryManager()
+    mm.add_provider(_EmergeProvider())
+    results = mm.search_all("EMERGE_XYZ", limit=5)
+    assert len(results) == 1, results
+    assert results[0]["content"] == "EMERGE_XYZ from honcho"
+    assert results[0]["pointer"] == "h:1"
+    assert results[0]["source"] == "honcho"
+    assert results[0]["score"] == 0.7
+
+
+def test_default_search_skips_unrelated_tools():
+    # The default search must NOT pick up the unified "memory_search" router
+    # or non-search tools — only the provider's own *_search/*_query tool.
+    class _Weird(MemoryProvider):
+        @property
+        def name(self):
+            return "weird"
+
+        def is_available(self):
+            return True
+
+        def initialize(self, session_id, **kwargs):
+            pass
+
+        def get_tool_schemas(self):
+            return [
+                {"name": "memory_search", "description": "unified router"},
+                {"name": "weird_frobnicate", "description": "not a search"},
+            ]
+
+        def handle_tool_call(self, tool_name, args, **kwargs):
+            raise AssertionError("should not be called")
+
+    mm = MemoryManager()
+    mm.add_provider(_Weird())
     assert mm.search_all("q") == []
