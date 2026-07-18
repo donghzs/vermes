@@ -680,6 +680,37 @@ def pytest_configure(config):  # noqa: D401 — pytest hook
     )
 
 
+# ── P3 测试分层收口 ────────────────────────────────────────────────────
+# Auto-mark every collected test with a layer marker based on its file path.
+# This lets developers run `pytest -m unit` (fast feedback loop) or
+# `pytest -m gateway` (gateway-only regression) without moving files.
+_LAYER_MARKS = {
+    "tests/e2e/": "e2e",
+    "tests/integration/": "integration",
+    "tests/stress/": "stress",
+    "tests/gateway/": "gateway",
+}
+
+
+def pytest_collection_modifyitems(config, items):  # noqa: D401 — pytest hook
+    """Auto-apply layer markers based on test file path (P3 test layering).
+
+    Every test gets exactly one layer marker. Tests not matching any
+    known layer directory default to ``unit``.
+    """
+    for item in items:
+        # Skip if already explicitly marked with a layer
+        item_path = str(item.fspath)
+        marked = False
+        for prefix, mark in _LAYER_MARKS.items():
+            if prefix in item_path:
+                item.add_marker(pytest.mark.__getattr__(mark))
+                marked = True
+                break
+        if not marked:
+            item.add_marker(pytest.mark.unit)
+
+
 @pytest.fixture(autouse=True)
 def _live_system_guard(request, monkeypatch):
     """Block real os.kill / systemctl / gateway-pid scans during tests.
