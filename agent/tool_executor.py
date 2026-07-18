@@ -355,6 +355,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 result = result + _suffix
         except Exception:
             pass  # 验证层永不阻塞工具执行
+        # H3.1: result structure validation (runtime quality gate, fail-open).
+        try:
+            from harness.result_validator import validate_result
+            _h3_warning = validate_result(function_name, result, function_args, is_error)
+            if _h3_warning:
+                result = f"{result}\n\n{_h3_warning}"
+                logger.warning("[H3.1] tool %s result validation: %s", function_name, _h3_warning)
+        except Exception:
+            pass  # H3.1 永不阻塞
         results[index] = (function_name, function_args, result, duration, is_error, False)
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
@@ -1048,6 +1057,16 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 _append_subdir_hint_to_multimodal(function_result, subdir_hints)
             else:
                 function_result += subdir_hints
+
+        # H3.1: result structure validation (sequential path, fail-open).
+        try:
+            from harness.result_validator import validate_result
+            _h3_seq = validate_result(function_name, function_result, function_args, _is_error_result)
+            if _h3_seq:
+                function_result = f"{function_result}\n\n{_h3_seq}"
+                logger.warning("[H3.1-seq] tool %s result validation: %s", function_name, _h3_seq)
+        except Exception:
+            pass
 
         # Unwrap _multimodal dicts to an OpenAI-style content list
         # (see parallel path for rationale). String results pass through.
