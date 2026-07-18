@@ -135,6 +135,27 @@ function formatToolPreview(tool) {
     return result
   }
 
+  // ── RecoverableFeedback：@recoverable_tool 返回的结构化错误 ──
+  if (tool.is_error || tool.status === 'error') {
+    try {
+      const parsed = JSON.parse(preview)
+      if (parsed && parsed.ok === false && parsed.what_failed) {
+        result = {
+          type: 'recoverable',
+          what_failed: parsed.what_failed || '',
+          what_missing: parsed.what_missing || '',
+          suggested_next: parsed.suggested_next || '',
+          error_type: parsed.error_type || '',
+          raw: preview,
+        }
+        _toolPreviewCache.set(tool, result)
+        return result
+      }
+    } catch (_) {
+      // 不是 JSON，走默认逻辑
+    }
+  }
+
   // 默认：纯文本
   result = { type: 'text', raw: preview }
   _toolPreviewCache.set(tool, result)
@@ -651,6 +672,21 @@ function streamElapsed(startTime) {
                         🌐 {{ formatToolPreview(tool).url }}
                       </div>
                       <pre class="text-[11px] text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">{{ formatToolPreview(tool).content }}</pre>
+                    </div>
+                  </template>
+                  <!-- RecoverableFeedback：结构化错误提示 -->
+                  <template v-else-if="formatToolPreview(tool)?.type === 'recoverable'">
+                    <div class="space-y-1.5">
+                      <div class="flex items-center gap-1.5 text-[11px] text-red-600 dark:text-red-400">
+                        <span>⚠️</span>
+                        <span class="font-medium">{{ formatToolPreview(tool).what_failed }}</span>
+                      </div>
+                      <div v-if="formatToolPreview(tool).what_missing" class="text-[11px] text-orange-500 dark:text-orange-400">
+                        💡 {{ formatToolPreview(tool).what_missing }}
+                      </div>
+                      <div v-if="formatToolPreview(tool).suggested_next" class="text-[11px] text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded px-2 py-1">
+                        🔧 {{ formatToolPreview(tool).suggested_next }}
+                      </div>
                     </div>
                   </template>
                   <!-- 默认模板 -->
