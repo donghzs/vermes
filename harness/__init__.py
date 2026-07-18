@@ -30,6 +30,7 @@ from .constraints import (
 )
 from .task_precheck import TaskPreCheckResult, check_task_constraints
 from .stability_hotpath import probe_tool_stability, is_probe_enabled
+from .failure_learning import FailurePattern, FailureLedger, get_ledger
 
 __all__ = [
     "RecoverableFeedback",
@@ -46,4 +47,7 @@ __all__ = [
     "check_task_constraints",
     "probe_tool_stability",
     "is_probe_enabled",
+    "FailurePattern",
+    "FailureLedger",
+    "get_ledger",
 ]

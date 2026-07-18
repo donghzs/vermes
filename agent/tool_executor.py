@@ -285,6 +285,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         _precheck_result = None
         try:
             from harness.tool_precheck import run_precheck
+            # H4.1: check historical failure patterns before tool execution.
+            try:
+                from harness.failure_learning import get_ledger
+                _h4_warn = get_ledger().should_warn(function_name)
+                if _h4_warn:
+                    logger.info("[H4.1] historical failure warning for %s", function_name)
+            except Exception:
+                pass
             _precheck_result = run_precheck(function_name, function_args, agent)
         except Exception:
             pass  # harness unavailable → no-op (additive design)
@@ -324,6 +332,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 else:
                     result = f"Error executing tool '{function_name}': {tool_error}"
                 logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
+                # H4.1: persist failure pattern for cross-session learning (fail-open).
+                try:
+                    from harness.failure_learning import get_ledger
+                    get_ledger().record(function_name, tool_error, function_args)
+                except Exception:
+                    pass
             # Append pre-check warning to the result so the LLM sees it.
             if _precheck_result is not None and not _precheck_result.passed and not _precheck_result.block:
                 result = f"{result}\n\n[harness pre-check] {_precheck_result.warning}"
@@ -890,6 +904,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _precheck_seq = None
             try:
                 from harness.tool_precheck import run_precheck
+                # H4.1: check historical failure patterns before tool execution.
+                try:
+                    from harness.failure_learning import get_ledger
+                    _h4_warn_seq = get_ledger().should_warn(function_name)
+                    if _h4_warn_seq:
+                        logger.info("[H4.1-seq] historical failure warning for %s", function_name)
+                except Exception:
+                    pass
                 _precheck_seq = run_precheck(function_name, function_args, agent)
             except Exception:
                 pass
@@ -923,6 +945,12 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         else:
                             function_result = f"Error executing tool '{function_name}': {tool_error}"
                         logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
+                        # H4.1: persist failure pattern for cross-session learning (fail-open).
+                        try:
+                            from harness.failure_learning import get_ledger
+                            get_ledger().record(function_name, tool_error, function_args)
+                        except Exception:
+                            pass
             finally:
                 tool_duration = time.time() - tool_start_time
                 cute_msg = _get_cute_tool_message_impl(function_name, function_args, tool_duration, result=_spinner_result)
@@ -935,6 +963,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _precheck_ns = None
             try:
                 from harness.tool_precheck import run_precheck
+                # H4.1: check historical failure patterns before tool execution.
+                try:
+                    from harness.failure_learning import get_ledger
+                    _h4_warn_ns = get_ledger().should_warn(function_name)
+                    if _h4_warn_ns:
+                        logger.info("[H4.1-ns] historical failure warning for %s", function_name)
+                except Exception:
+                    pass
                 _precheck_ns = run_precheck(function_name, function_args, agent)
             except Exception:
                 pass
@@ -964,6 +1000,12 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     else:
                         function_result = f"Error executing tool '{function_name}': {tool_error}"
                     logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
+                    # H4.1: persist failure pattern for cross-session learning (fail-open).
+                    try:
+                        from harness.failure_learning import get_ledger
+                        get_ledger().record(function_name, tool_error, function_args)
+                    except Exception:
+                        pass
             tool_duration = time.time() - tool_start_time
 
         if isinstance(function_result, str):
