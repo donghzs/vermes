@@ -53,6 +53,11 @@ from tools.tool_result_storage import (
 )
 from tools.budget_config import BudgetConfig, DEFAULT_BUDGET, budget_for_context_window
 
+try:
+    from harness.recoverable import classify_failure
+except ImportError:
+    classify_failure = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -285,7 +290,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 pre_tool_block_checked=True,
             )
         except Exception as tool_error:
-            result = f"Error executing tool '{function_name}': {tool_error}"
+            if classify_failure:
+                _etype, _cause = classify_failure(tool_error)
+                result = (
+                    f"Error executing tool '{function_name}': {tool_error}\n"
+                    f"[hint] failure_type={_etype}; {_cause}"
+                )
+            else:
+                result = f"Error executing tool '{function_name}': {tool_error}"
             logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
         duration = time.time() - start
         is_error, _ = _detect_tool_failure(function_name, result)
@@ -838,7 +850,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 )
                 _spinner_result = function_result
             except Exception as tool_error:
-                function_result = f"Error executing tool '{function_name}': {tool_error}"
+                if classify_failure:
+                    _etype, _cause = classify_failure(tool_error)
+                    function_result = (
+                        f"Error executing tool '{function_name}': {tool_error}\n"
+                        f"[hint] failure_type={_etype}; {_cause}"
+                    )
+                else:
+                    function_result = f"Error executing tool '{function_name}': {tool_error}"
                 logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
             finally:
                 tool_duration = time.time() - tool_start_time
@@ -857,7 +876,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     skip_pre_tool_call_hook=True,
                 )
             except Exception as tool_error:
-                function_result = f"Error executing tool '{function_name}': {tool_error}"
+                if classify_failure:
+                    _etype, _cause = classify_failure(tool_error)
+                    function_result = (
+                        f"Error executing tool '{function_name}': {tool_error}\n"
+                        f"[hint] failure_type={_etype}; {_cause}"
+                    )
+                else:
+                    function_result = f"Error executing tool '{function_name}': {tool_error}"
                 logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
             tool_duration = time.time() - tool_start_time
 
