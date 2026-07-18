@@ -314,14 +314,20 @@ _API_KEY_PROVIDER_AUX_MODELS_FALLBACK: Dict[str, str] = {
 # can still use this dict directly. Kept in sync with _FALLBACK above.
 _API_KEY_PROVIDER_AUX_MODELS: Dict[str, str] = _API_KEY_PROVIDER_AUX_MODELS_FALLBACK
 
-# Vision-specific model overrides for direct providers.
-# When the user's main provider has a dedicated vision/multimodal model that
-# differs from their main chat model, map it here.  The vision auto-detect
-# "exotic provider" branch checks this before falling back to the main model.
-_PROVIDER_VISION_MODELS: Dict[str, str] = {
-    "xiaomi": "mimo-v2-omni",
-    "zai": "glm-5v-turbo",
-}
+# Generic, vendor-agnostic heuristic: does a model NAME suggest it is a
+# multimodal / vision-capable model? Used only to pick a vision backend when
+# the caller hasn't already flagged the task as vision. This is deliberately
+# NOT a per-vendor model table — users configure their own preferred vision
+# model (e.g. via AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER), and we
+# must not hardcode any vendor's vision model or silently fall back to a model
+# we pay for.
+def _model_name_looks_multimodal(model: str | None) -> bool:
+    if not model:
+        return False
+    m = (model or "").strip().lower()
+    if not m:
+        return False
+    return any(tok in m for tok in ("vision", "vl", "omni", "image", "multimodal"))
 
 # Providers whose endpoint does not accept image input, even though the
 # provider's broader ecosystem has vision models available elsewhere.  When
@@ -3384,12 +3390,10 @@ def resolve_provider_client(
 
     # ── Nous Portal (OAuth) ──────────────────────────────────────────
     if provider == "nous":
-        # Detect vision tasks: either explicit model override from
-        # _PROVIDER_VISION_MODELS, or caller passed a known vision model.
-        _is_vision = (
-            model in _PROVIDER_VISION_MODELS.values()
-            or (model or "").strip().lower() == "mimo-v2-omni"
-        )
+        # Detect vision tasks: caller flagged is_vision, or the requested model
+        # name looks multimodal. No per-vendor vision-model table — the user
+        # configures their own vision model (e.g. AUXILIARY_VISION_MODEL).
+        _is_vision = bool(is_vision) or _model_name_looks_multimodal(model)
         client, default = _try_nous(vision=_is_vision)
         if client is None:
             logger.warning("resolve_provider_client: nous requested "
@@ -4048,21 +4052,21 @@ def resolve_vision_provider_client(
         return provider_for_base_override, client, final_model
 
     if requested == "auto":
-        # Vision auto-detection order:
-        #   1. User's main provider + main model (including aggregators).
-        #      _PROVIDER_VISION_MODELS provides per-provider vision model
-        #      overrides when the provider has a dedicated multimodal model
-        #      that differs from the chat model (e.g. xiaomi → mimo-v2-omni,
-        #      zai → glm-5v-turbo). Nous is the exception: it has a dedicated
-        #      strict vision backend with tier-aware defaults, so it must not
-        #      fall through to the user's text chat model here.
+        # Vision auto-detection order (generic — NO per-vendor vision-model
+        # table, and NO built-in/sponsored fallback model):
+        #   1. User's main provider + main model. If the main model is
+        #      multimodal it is used directly; otherwise the API call fails
+        #      and we fall through. The user picks their vision model via
+        #      AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER (or a
+        #      vision-capable main model) — we never assume a vendor's vision
+        #      model for them.
         #   2. OpenRouter  (vision-capable aggregator fallback)
         #   3. Nous Portal (vision-capable aggregator fallback)
         #   4. Stop
         main_provider = _read_main_provider()
         main_model = _read_main_model()
         if main_provider and main_provider not in {"auto", ""}:
-            vision_model = _PROVIDER_VISION_MODELS.get(main_provider, main_model)
+            vision_model = main_model
             if main_provider == "nous":
                 sync_client, default_model = _resolve_strict_vision_backend(
                     main_provider, vision_model

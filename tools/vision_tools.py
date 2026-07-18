@@ -1030,16 +1030,18 @@ async def vision_analyze_tool(
 def check_vision_requirements() -> bool:
     """Check if vision analysis is possible via any available path.
 
-    Returns True if at least one of these is available:
+    Generic (no hardcoded vendor vision models, no sponsored fallback). Returns
+    True if at least one of these is available:
     1. Main model supports native vision (multimodal tool results)
-    2. Provider has a dedicated vision model (e.g. xiaomi→mimo-v2-omni)
-    3. Another user-configured provider has vision capability (cross-provider)
-    4. Auxiliary vision client (OpenRouter/Nous/Anthropic aggregator chain)
-    5. OCR fallback (pytesseract installed)
+    2. Another user-configured provider resolves a vision client (the user
+       brings their own credentials — we never assume or pay for a model)
+    3. Auxiliary vision client (OpenRouter/Nous/Anthropic aggregator chain)
+    4. OCR fallback (pytesseract installed) — text-only last resort
     """
     try:
         from agent.auxiliary_client import (
-            _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS,
+            _read_main_provider, _read_main_model, resolve_provider_client,
+            resolve_vision_provider_client,
         )
 
         _raw_provider = _read_main_provider()
@@ -1055,16 +1057,11 @@ def check_vision_requirements() -> bool:
         except Exception:
             pass
 
-        # Check 2: Provider has a dedicated vision model
-        if _provider and _provider in _PROVIDER_VISION_MODELS:
-            return True
-
-        # Check 2.5: Another user-configured provider has vision
-        for cand_provider, _ in _build_vision_candidates(_provider or ""):
-            if cand_provider == _provider:
-                continue
+        # Check 2: Another user-configured provider resolves a vision client.
+        # Generic: we only discover which providers the user has credentials
+        # for; the vision model itself is resolved on demand (is_vision=True).
+        for cand_provider in _list_user_providers(_provider or ""):
             try:
-                from agent.auxiliary_client import resolve_provider_client
                 probe_client, _ = resolve_provider_client(
                     cand_provider, is_vision=True,
                 )
@@ -1074,12 +1071,11 @@ def check_vision_requirements() -> bool:
                 continue
 
         # Check 3: Auxiliary vision client (aggregator chain)
-        from agent.auxiliary_client import resolve_vision_provider_client
         _p, client, _m = resolve_vision_provider_client()
         if client is not None:
             return True
 
-        # Check 4: OCR fallback (pytesseract)
+        # Check 4: OCR fallback (pytesseract) — text-only last resort
         try:
             import pytesseract  # noqa: F401
             return True
@@ -1102,32 +1098,29 @@ if __name__ == "__main__":
     
     # Show current vision routing
     try:
-        from agent.auxiliary_client import (
-            _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS,
-        )
+        from agent.auxiliary_client import _read_main_provider, _read_main_model
         _provider = _read_main_provider()
         _model = _read_main_model()
         _resolved = _resolve_real_provider(_provider, _model)
-        _vision_model = _PROVIDER_VISION_MODELS.get(_resolved)
-        
+
         logger.info(f"📋 当前 provider: {_provider}")
         logger.info(f"📋 当前 model: {_model}")
-        if _vision_model and _vision_model != _model:
-            logger.info(f"📋 视觉专用 model: {_vision_model}")
-        
-        # Check native support
+
+        # Native vision support (generic, capability-based — no vendor map)
         if _supports_media_in_tool_results(_provider, _model):
             logger.info(f"✅ {_provider}/{_model} 支持原生视觉（native fast path）")
-        elif _vision_model:
-            logger.info(f"✅ {_provider} 有专用视觉模型: {_vision_model}")
         else:
-            logger.info(f"⚠️ {_provider}/{_model} 不支持视觉，将检查其他路径")
+            logger.info(f"⚠️ {_provider}/{_model} 不支持原生视觉")
 
-        # Show cross-provider candidates
-        logger.info("\n📋 已知支持视觉的供应商：")
-        for p, m in _PROVIDER_VISION_MODELS.items():
-            marker = " ← 当前" if p == _resolved else ""
-            logger.info(f"  • {p}: {m}{marker}")
+        # Other user-configured providers (generic discovery; vision model
+        # resolved on demand, never from a hardcoded table)
+        _others = _list_user_providers(_resolved)
+        if _others:
+            logger.info("\n📋 其他已配置的 provider（将按需解析视觉模型）:")
+            for p in _others:
+                logger.info(f"  • {p}")
+        else:
+            logger.info("\n📋 未配置其他 provider")
     except Exception as e:
         logger.info(f"⚠️ 无法读取当前配置: {e}")
     
@@ -1136,10 +1129,13 @@ if __name__ == "__main__":
     
     if not api_available:
         logger.info("❌ 没有可用的视觉分析路径")
-        logger.info("请配置以下任一方式：")
-        logger.info("  1. 使用支持视觉的模型（如 GPT-4o、Claude Sonnet、Gemini 3）")
-        logger.info("  2. 使用带专用视觉模型的提供商（如 xiaomi → mimo-v2-omni）")
-        logger.info("  3. 配置辅助视觉后端（OpenRouter、Nous、Anthropic）")
+        logger.info("请配置以下任一方式（我们不内置/不替你付费购买视觉模型）：")
+        logger.info("  1. 使用支持视觉的模型（如 GPT-4o、Claude、Gemini 等）")
+        logger.info("  2. 设置 AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER")
+        logger.info("     指向你偏好的视觉模型")
+        logger.info("  3. 配置辅助视觉后端（OpenRouter、Nous、Anthropic 等，需自备 key）")
+        logger.info("  注：最后的文字级退化手段是纯 OCR（pytesseract，CPU-only），"
+                    "只能抽文字、不是真识图")
         sys.exit(1)
     else:
         logger.info("✅ 视觉分析可用")
@@ -1278,88 +1274,62 @@ def _ocr_extract_text(image_source: str) -> str:
 
 # ── Cross-provider vision fallback ─────────────────────────────────────────
 
-# Providers known to have vision-capable models, and their best vision model.
-# Ordered by quality/cost — best first. This is the scan order when auto-
-# detecting a vision provider from the user's configured API keys.
-_CROSS_PROVIDER_VISION_MODELS = (
-    # (provider_id, vision_model)
-    # 主流 provider，按用户使用频率排序
-    ("openai", "gpt-4o"),
-    ("anthropic", "claude-sonnet-4-20250514"),
-    ("gemini", "gemini-2.5-flash"),
-    ("deepseek", "deepseek-chat"),
-    ("openrouter", None),
-    ("alibaba", "qwen-vl-max"),
-    ("xiaomi", "mimo-v2-omni"),
-    ("zai", "glm-5v-turbo"),
-    ("moonshot", "moonshot-v1-8k-vision-preview"),
-    ("minimax", "MiniMax-M2.7"),
-    ("siliconflow", "Qwen/Qwen2.5-VL-72B-Instruct"),
-    ("baidu", "ernie-4.5-vl-400b"),
-    # Vermes 自带免费体验服务（底层 xiaomi 模型）
-    ("vbit", "mimo-v2-omni"),
-)
+# Generic, vendor-agnostic provider discovery for the vision fallback chain.
+#
+# We deliberately keep NO per-vendor "vision model" table and NO built-in /
+# sponsored fallback model. Users configure their own preferred vision model
+# (e.g. via AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER, or by choosing
+# a multimodal main model). When scanning other user-configured providers for
+# vision, we resolve each one on demand via resolve_provider_client(is_vision=True)
+# — the actual model name then comes from the provider's own default, never from
+# a hardcoded map here.
 
-# Vermes 内置 provider（排在最后，优先用用户自己的）
-_BUILTIN_PROVIDERS = {"vbit"}
+# .env key → provider id. Generic mapping used ONLY to discover which providers
+# the user has credentials for; it never assigns vision models.
+_ENV_KEY_TO_PROVIDER = {
+    "ANTHROPIC_API_KEY": "anthropic", "OPENAI_API_KEY": "openai",
+    "GEMINI_API_KEY": "gemini", "OPENROUTER_API_KEY": "openrouter",
+    "DEEPSEEK_API_KEY": "deepseek", "QWEN_API_KEY": "alibaba",
+    "ZHIPU_API_KEY": "zai", "XIAOMI_API_KEY": "xiaomi",
+    "MOONSHOT_API_KEY": "moonshot", "MINIMAX_API_KEY": "minimax",
+    "NVIDIA_API_KEY": "nvidia", "SILICONFLOW_API_KEY": "siliconflow",
+    "STEPFUN_API_KEY": "stepfun", "TENCENT_API_KEY": "tencent-tokenhub",
+    "BAIDU_API_KEY": "baidu", "VBIT_API_KEY": "vbit",
+    "CUSTOM_API_KEY": "custom", "ONEAPI_KEY": "oneapi",
+}
 
 
-def _build_vision_candidates(main_provider: str) -> list[tuple[str, str | None]]:
-    """动态构建视觉候选列表：用户已配置的 provider 优先，内置 provider 最后。
+def _list_user_providers(main_provider: str) -> list[str]:
+    """Return provider ids the user has configured credentials for (.env key
+    present, or listed under config.yaml ``providers``), excluding the current
+    main provider.
 
-    只包含用户在 .env 中有 API key 的 provider。
-    返回 [(provider_id, vision_model), ...]
+    Generic by design: this only discovers *which* providers exist, never
+    which vision model to use for them. The vision model is resolved later,
+    per provider, via ``resolve_provider_client(is_vision=True)``.
     """
-    # provider → 视觉模型映射
-    _VISION_MODEL_MAP = dict(_CROSS_PROVIDER_VISION_MODELS)
-
     try:
         from hermes_cli.config import load_env, load_config
         env = load_env()
         cfg = load_config()
     except Exception:
-        return list(_CROSS_PROVIDER_VISION_MODELS)
+        return []
 
-    # .env key → provider 映射
-    _ENV_KEY_MAP = {
-        "ANTHROPIC_API_KEY": "anthropic", "OPENAI_API_KEY": "openai",
-        "GEMINI_API_KEY": "gemini", "OPENROUTER_API_KEY": "openrouter",
-        "DEEPSEEK_API_KEY": "deepseek", "QWEN_API_KEY": "alibaba",
-        "ZHIPU_API_KEY": "zai", "XIAOMI_API_KEY": "xiaomi",
-        "MOONSHOT_API_KEY": "moonshot", "MINIMAX_API_KEY": "minimax",
-        "NVIDIA_API_KEY": "nvidia", "SILICONFLOW_API_KEY": "siliconflow",
-        "STEPFUN_API_KEY": "stepfun", "TENCENT_API_KEY": "tencent-tokenhub",
-        "BAIDU_API_KEY": "baidu", "VBIT_API_KEY": "vbit",
-        "CUSTOM_API_KEY": "custom", "ONEAPI_KEY": "oneapi",
-    }
-
-    # 收集用户已配置的 provider（有 API key）
-    user_providers = set()
-    for env_key, provider in _ENV_KEY_MAP.items():
+    user_providers: set[str] = set()
+    for env_key, provider in _ENV_KEY_TO_PROVIDER.items():
         if env.get(env_key):
             user_providers.add(provider)
 
-    # 也从 config.yaml providers 段收集
     cfg_providers = cfg.get("providers", {})
-    for p in cfg_providers:
-        if isinstance(cfg_providers[p], dict):
-            user_providers.add(p)
+    if isinstance(cfg_providers, dict):
+        for p in cfg_providers:
+            if isinstance(cfg_providers[p], dict):
+                user_providers.add(p)
 
-    # 排除当前主 provider（Step 1/2 已试过）
     user_providers.discard(main_provider)
-
-    # 分组：用户 provider 在前，内置 provider 在后
-    user_candidates = []
-    builtin_candidates = []
-    for prov in user_providers:
-        model = _VISION_MODEL_MAP.get(prov)
-        if model:
-            if prov in _BUILTIN_PROVIDERS:
-                builtin_candidates.append((prov, model))
-            else:
-                user_candidates.append((prov, model))
-
-    return user_candidates + builtin_candidates
+    user_providers.discard("auto")
+    user_providers.discard("")
+    return sorted(user_providers)
 
 
 async def _try_other_provider_vision(
@@ -1367,12 +1337,12 @@ async def _try_other_provider_vision(
     full_prompt: str,
     main_provider: str,
 ) -> Optional[str]:
-    """Try vision analysis via a different user-configured provider.
+    """Try vision analysis via another user-configured provider.
 
-    Only scans providers where the user has an API key configured (reads from
-    .env). Does NOT iterate all 16 hardcoded candidates — too slow and wastes
-    quota on probe calls. Falls through to Step 3 (auxiliary chain) if nothing
-    found.
+    Generic: discovers providers the user has credentials for (via
+    _list_user_providers) and resolves each one on demand with
+    resolve_provider_client(is_vision=True) — no hardcoded per-vendor vision
+    model. Falls through to Step 3 (auxiliary chain) if nothing works.
 
     Returns the JSON result string on success, or None if nothing worked.
     """
@@ -1382,35 +1352,23 @@ async def _try_other_provider_vision(
         "(main=%s)", main_norm,
     )
 
-    # Read user's configured API keys from .env
-    try:
-        from hermes_cli.config import load_env
-        env = load_env()
-    except Exception:
-        env = {}
-
-    # 动态构建候选列表：用户已配置的 provider 优先，内置 provider 最后
-    candidates = _build_vision_candidates(main_norm)
-
-    for cand_provider, cand_vision_model in candidates:
-
+    for cand_provider in _list_user_providers(main_norm):
         try:
             from agent.auxiliary_client import resolve_provider_client
 
             probe_client, probe_model = resolve_provider_client(
-                cand_provider, cand_vision_model,
-                is_vision=True,
+                cand_provider, is_vision=True,
             )
             if probe_client is None:
                 continue
 
             logger.info(
                 "  -> trying %s (%s)", cand_provider,
-                probe_model or cand_vision_model or "default",
+                probe_model or "default",
             )
             result_str = await vision_analyze_tool(
                 image_url, full_prompt,
-                model=probe_model or cand_vision_model,
+                model=probe_model,
                 provider=cand_provider,
             )
             result = json.loads(result_str)
@@ -1428,9 +1386,10 @@ async def _try_other_provider_vision(
 @recoverable_tool(
     tool_name="vision_analyze",
     missing_hint=(
-        "视觉分析需要配置至少一个视觉模型 provider。"
-        "可设置 OPENROUTER_API_KEY / XIAOMI_API_KEY / ANTHROPIC_API_KEY，"
-        "或在 config.yaml 中配置 auxiliary.vision。"
+        "视觉分析需要配置一个支持视觉（多模态）的模型 / provider（我们不内置、"
+        "也不替你付费购买视觉模型）。可：选择多模态主模型，或设置 "
+        "AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER，或配置 OpenRouter / "
+        "Nous / Anthropic 等辅助视觉后端（需自备 key）。纯 OCR 仅能抽文字。"
     ),
     returns="json",
 )
@@ -1445,11 +1404,14 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     # for proxy providers (One-API, vbit.top, etc.).  The only reliable
     # test is to actually call the API.
     #
-    # Priority order:
+    # Priority order (generic — NO hardcoded vendor vision models, NO sponsored
+    # fallback model; the user configures their own vision model):
     #   1. Try current model directly (provider-aware, including proxy)
-    #   2. Try provider's dedicated vision model (xiaomi→mimo-v2-omni)
+    #   2. Try other user-configured providers (resolved on demand via
+    #      resolve_provider_client(is_vision=True) — the user brings their own
+    #      credentials, we never assume or pay for a model)
     #   3. Try auxiliary LLM chain (OpenRouter → Nous → Anthropic)
-    #   4. Try OCR fallback (local Pillow text extraction)
+    #   4. Try OCR fallback (local Pillow text extraction — text-only last resort)
     #
     # Each step catches errors and falls through to the next.
     # This handles ALL scenarios: direct providers, proxies (One-API,
@@ -1461,15 +1423,13 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     )
 
     # ── Step 1: Try current model directly ───────────────────────────────
-    # 国内版：直接尝试，不做预判。失败自动回退，用户无感知。
+    # 直接尝试，不做预判（不依赖任何厂商→视觉模型写死映射）。失败自动回退。
     _provider = ""
     _model = ""
-    _PROVIDER_VISION_MODELS = {}
     try:
         from agent.auxiliary_client import (
-            _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS as _PVM,
+            _read_main_provider, _read_main_model,
         )
-        _PROVIDER_VISION_MODELS = _PVM
 
         _raw_provider = _read_main_provider()
         _model = _read_main_model()
@@ -1498,41 +1458,11 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     except Exception as exc:
         logger.debug("Step 1 setup failed: %s", exc)
 
-    # ── Step 2: Try provider's dedicated vision model ────────────────────
-    # e.g. xiaomi→mimo-v2-omni, zai→glm-5v-turbo
-    try:
-        if not _provider:
-            from agent.auxiliary_client import (
-                _read_main_provider, _read_main_model, _PROVIDER_VISION_MODELS as _PVM,
-            )
-            _PROVIDER_VISION_MODELS = _PVM
-            _raw_provider = _read_main_provider()
-            _model = _read_main_model()
-            _provider = _resolve_real_provider(_raw_provider, _model)
-
-        _vision_model = _PROVIDER_VISION_MODELS.get(_provider) if _provider else None
-        if _vision_model and _vision_model != _model:
-            logger.info(
-                "vision_analyze Step 2: trying provider vision model "
-                "(provider=%s, vision_model=%s)",
-                _provider, _vision_model,
-            )
-            result_str = await vision_analyze_tool(
-                image_url, full_prompt, model=_vision_model, provider=_provider,
-            )
-            result = json.loads(result_str)
-            if result.get("success"):
-                logger.info("  -> provider vision model succeeded")
-                return result_str
-            logger.info("  -> provider vision model returned success=false")
-    except Exception as exc:
-        logger.info("Step 2 failed: %s", exc)
-
-    # ── Step 2.5: Try other user-configured providers with vision models ───
-    # When the main provider has no vision model (or its vision model failed),
-    # scan all other user-configured providers for one that supports vision.
-    # This covers: user has xiaomi (main, no omni) + openai (key configured)
-    # → auto-use gpt-4o for vision. No manual config needed.
+    # ── Step 2: Try other user-configured providers ───────────────────────
+    # Generic: discover providers the user has credentials for and resolve
+    # each on demand (resolve_provider_client(is_vision=True)). No hardcoded
+    # per-vendor vision model, no sponsored fallback — the user brings their
+    # own keys and picks their own vision model.
     try:
         _other_result = await _try_other_provider_vision(
             image_url, full_prompt, _provider,
@@ -1540,7 +1470,7 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
         if _other_result is not None:
             return _other_result
     except Exception as exc:
-        logger.info("Step 2.5 failed: %s", exc)
+        logger.info("Step 2 failed: %s", exc)
 
     # ── Step 3: Auxiliary LLM chain (OpenRouter -> Nous -> Anthropic) ──────
     try:
@@ -1590,12 +1520,20 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
         logger.info("Step 4 (OCR) failed: %s", exc)
 
     # ── All steps failed ─────────────────────────────────────────────────
-    logger.error("vision_analyze: all 4 steps failed")
+    logger.error("vision_analyze: all steps failed")
     return json.dumps({
         "success": False,
-        "error": "图片分析暂时不可用",
+        "error": "未配置可用的视觉模型",
         "analysis": (
-            "图片分析暂时不可用，请稍后重试。"
+            "当前账号未配置支持视觉（多模态）的模型，无法分析图片。\n"
+            "请配置一个支持视觉的模型 / provider：\n"
+            "  • 选择一个多模态主模型（如 GPT-4o、Claude、Gemini 等）；或\n"
+            "  • 设置 AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER 指向你\n"
+            "    偏好的视觉模型；或\n"
+            "  • 配置辅助视觉后端（OpenRouter / Nous / Anthropic 等，需自备 key）。\n"
+            "我们不内置、也不替你付费购买视觉模型。\n"
+            "最后说明：纯 OCR（pytesseract，CPU-only、较快）可作为文字级退化手段，\n"
+            "但只能抽取图中文字、不是真正的识图。"
         ),
     }, indent=2, ensure_ascii=False)
 

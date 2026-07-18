@@ -245,29 +245,35 @@ class TestResolveVisionMainFirst:
         assert client is not None
         assert model == "xiaomi/mimo-v2-omni"
 
-    def test_exotic_provider_with_vision_override_preserved(self):
-        """xiaomi → mimo-v2.5 override still wins over main_model."""
+    def test_explicit_vision_model_override_preserved(self):
+        """A user-configured vision model (e.g. AUXILIARY_VISION_MODEL) wins over
+        the text main model and is resolved with is_vision=True.
+
+        Generic design: there is NO per-vendor vision-model map, so the vision
+        model must come from the user's explicit configuration and is passed
+        straight through to the resolver with is_vision=True.
+        """
         with patch(
             "agent.auxiliary_client._read_main_provider", return_value="xiaomi",
         ), patch(
             "agent.auxiliary_client._read_main_model",
-            return_value="mimo-v2-pro",  # text model
+            return_value="mimo-v2-pro",  # text model (main)
         ), patch(
-            "agent.auxiliary_client.resolve_provider_client"
-        ) as mock_resolve, patch(
-            "agent.auxiliary_client._resolve_task_provider_model",
-            return_value=("auto", None, None, None, None),
-        ):
-            mock_resolve.return_value = (MagicMock(), "mimo-v2.5")
+            "agent.auxiliary_client._get_cached_client",
+        ) as mock_gcc:
+            mock_gcc.return_value = (MagicMock(), "mimo-v2.5")
 
             from agent.auxiliary_client import resolve_vision_provider_client
 
-            provider, client, model = resolve_vision_provider_client()
+            # Explicit vision override from the user's AUXILIARY_VISION_MODEL
+            provider, client, model = resolve_vision_provider_client(
+                provider="xiaomi", model="mimo-v2.5",
+            )
 
         assert provider == "xiaomi"
-        # Should use mimo-v2.5 (vision override), not mimo-v2-pro (text main)
-        assert mock_resolve.call_args.args[1] == "mimo-v2.5"
-        assert mock_resolve.call_args.kwargs.get("is_vision") is True
+        # The user's vision model is used, not the text main model
+        assert model == "mimo-v2.5"
+        assert mock_gcc.call_args.kwargs.get("is_vision") is True
 
     def test_copilot_vision_sets_vision_header(self, monkeypatch):
         """Copilot vision requests include the header required for vision routing."""

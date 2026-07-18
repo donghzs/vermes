@@ -341,11 +341,28 @@ class TestXiaomiAuxiliary:
         from agent.auxiliary_client import _API_KEY_PROVIDER_AUX_MODELS
         assert "xiaomi" not in _API_KEY_PROVIDER_AUX_MODELS
 
-    def test_vision_model_override(self):
-        """Xiaomi vision tasks should use mimo-v2.5 (multimodal), not the main model."""
-        from agent.auxiliary_client import _PROVIDER_VISION_MODELS
-        assert "xiaomi" in _PROVIDER_VISION_MODELS
-        assert _PROVIDER_VISION_MODELS["xiaomi"] == "mimo-v2.5"
+    def test_no_hardcoded_vendor_vision_map(self):
+        """Vision routing is vendor-agnostic: no per-vendor vision-model table."""
+        import agent.auxiliary_client as ac
+
+        assert not hasattr(ac, "_PROVIDER_VISION_MODELS"), \
+            "vision routing must not hardcode a per-vendor vision model table"
+        assert not hasattr(ac, "_CROSS_PROVIDER_VISION_MODELS"), \
+            "vision routing must not hardcode a cross-provider vision model table"
+
+    def test_model_name_multimodal_heuristic(self):
+        """Model-name heuristic detects multimodal models without vendor tables."""
+        from agent.auxiliary_client import _model_name_looks_multimodal
+
+        # multimodal-suffixed names are detected
+        assert _model_name_looks_multimodal("mimo-v2-omni") is True
+        assert _model_name_looks_multimodal("qwen2.5-vl-72b-instruct") is True
+        assert _model_name_looks_multimodal("gpt-4o-mini-vision") is True
+        # plain text models are not
+        assert _model_name_looks_multimodal("mimo-v2-pro") is False
+        assert _model_name_looks_multimodal("glm-5.1") is False
+        assert _model_name_looks_multimodal(None) is False
+        assert _model_name_looks_multimodal("") is False
 
 
 # =============================================================================

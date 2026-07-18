@@ -243,6 +243,7 @@ class TestResolveVisionProviderClientModelNormalization:
                 "api_key": "glm-key",
                 "base_url": "https://api.z.ai/api/paas/v4",
             }),
+            patch("agent.auxiliary_client._main_model_supports_vision", return_value=True),
             patch("agent.auxiliary_client.OpenAI") as mock_openai,
         ):
             mock_openai.return_value = MagicMock()
@@ -252,7 +253,9 @@ class TestResolveVisionProviderClientModelNormalization:
 
         assert provider == "zai"
         assert client is not None
-        assert model == "glm-5v-turbo"  # zai has dedicated vision model in _PROVIDER_VISION_MODELS
+        # Generic vision routing: the user's main model is used as-is — there is
+        # no hardcoded zai -> glm-5v-turbo mapping (vendor-agnostic by design).
+        assert model == "glm-5.1"
 
 
 class TestVisionPathApiMode:
