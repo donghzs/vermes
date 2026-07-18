@@ -364,6 +364,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 logger.warning("[H3.1] tool %s result validation: %s", function_name, _h3_warning)
         except Exception:
             pass  # H3.1 永不阻塞
+        # H3.2: stability probe for hot-path tools (opt-in, fail-open, never blocks).
+        try:
+            from harness.stability_hotpath import probe_tool_stability
+            _h3_2_warning = probe_tool_stability(agent, function_name, function_args)
+            if _h3_2_warning:
+                result = f"{result}\n\n{_h3_2_warning}"
+                logger.warning("[H3.2] tool %s stability: %s", function_name, _h3_2_warning)
+        except Exception:
+            pass  # H3.2 永不阻塞
         results[index] = (function_name, function_args, result, duration, is_error, False)
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
@@ -1067,6 +1076,16 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 logger.warning("[H3.1-seq] tool %s result validation: %s", function_name, _h3_seq)
         except Exception:
             pass
+
+        # H3.2: stability probe for hot-path tools (sequential path, opt-in, fail-open).
+        try:
+            from harness.stability_hotpath import probe_tool_stability
+            _h3_2_seq = probe_tool_stability(agent, function_name, function_args)
+            if _h3_2_seq:
+                function_result = f"{function_result}\n\n{_h3_2_seq}"
+                logger.warning("[H3.2-seq] tool %s stability: %s", function_name, _h3_2_seq)
+        except Exception:
+            pass  # H3.2 永不阻塞
 
         # Unwrap _multimodal dicts to an OpenAI-style content list
         # (see parallel path for rationale). String results pass through.
