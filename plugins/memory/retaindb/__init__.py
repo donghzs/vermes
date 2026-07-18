@@ -475,7 +475,7 @@ class RetainDBMemoryProvider(MemoryProvider):
         return "retaindb"
 
     def is_available(self) -> bool:
-        return bool(os.environ.get("RETAINDB_API_KEY"))
+        return bool(get_api_key("retaindb"))
 
     def get_config_schema(self) -> List[Dict[str, Any]]:
         return [
@@ -487,7 +487,7 @@ class RetainDBMemoryProvider(MemoryProvider):
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
     def initialize(self, session_id: str, **kwargs) -> None:
-        api_key = os.environ.get("RETAINDB_API_KEY", "")
+        api_key = get_api_key("retaindb") or ""
         base_url = re.sub(r"/+$", "", os.environ.get("RETAINDB_BASE_URL", _DEFAULT_BASE_URL))
 
         # Project resolution: RETAINDB_PROJECT > hermes-<profile> > "default"
@@ -764,3 +764,6 @@ class RetainDBMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register RetainDB as a memory provider plugin."""
     ctx.register_memory_provider(RetainDBMemoryProvider())
+
+from agent.service_credentials import get_api_key, register_service
+register_service("retaindb", api_key_env_var="RETAINDB_API_KEY", base_url_env_var="RETAINDB_BASE_URL", label="RetainDB")

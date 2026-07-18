@@ -452,7 +452,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
         return "supermemory"
 
     def is_available(self) -> bool:
-        api_key = os.environ.get("SUPERMEMORY_API_KEY", "")
+        api_key = get_api_key("supermemory")
         if not api_key:
             return False
         try:
@@ -483,7 +483,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
         self._session_id = session_id
         self._turn_count = 0
         self._config = _load_supermemory_config(self._hermes_home)
-        self._api_key = os.environ.get("SUPERMEMORY_API_KEY", "")
+        self._api_key = get_api_key("supermemory") or ""
 
         # Resolve container tag: env var > config > default.
         # Supports {identity} template for profile-scoped containers.
@@ -819,3 +819,9 @@ class SupermemoryMemoryProvider(MemoryProvider):
 
 def register(ctx):
     ctx.register_memory_provider(SupermemoryMemoryProvider())
+
+# Unified API credential access (owner directive): read the user-configured API
+# from one place instead of scattering env reads; the desktop frontend renders
+# this service under a single "services" section.
+from agent.service_credentials import get_api_key, register_service
+register_service("supermemory", api_key_env_var="SUPERMEMORY_API_KEY", label="Supermemory")

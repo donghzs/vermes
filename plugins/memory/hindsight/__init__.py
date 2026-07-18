@@ -408,7 +408,7 @@ def _build_embedded_profile_env(config: dict[str, Any], *, llm_api_key: str | No
         current_key = (
             config.get("llmApiKey")
             or config.get("llm_api_key")
-            or os.environ.get("HINDSIGHT_LLM_API_KEY", "")
+            or (get_api_key("hindsight", env_var="HINDSIGHT_LLM_API_KEY") or "")
         )
 
     current_provider = config.get("llm_provider", "")
@@ -1141,7 +1141,7 @@ class HindsightMemoryProvider(MemoryProvider):
                 )
                 self._mode = "disabled"
                 return
-        self._api_key = self._config.get("apiKey") or self._config.get("api_key") or os.environ.get("HINDSIGHT_API_KEY", "")
+        self._api_key = self._config.get("apiKey") or self._config.get("api_key") or (get_api_key("hindsight") or "")
         default_url = _DEFAULT_LOCAL_URL if self._mode in {"local_embedded", "local_external"} else _DEFAULT_API_URL
         self._api_url = self._config.get("api_url") or os.environ.get("HINDSIGHT_API_URL", default_url)
         self._llm_base_url = self._config.get("llm_base_url", "")
@@ -1765,3 +1765,6 @@ class HindsightMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register Hindsight as a memory provider plugin."""
     ctx.register_memory_provider(HindsightMemoryProvider())
+
+from agent.service_credentials import get_api_key, register_service
+register_service("hindsight", api_key_env_var="HINDSIGHT_API_KEY", label="Hindsight")

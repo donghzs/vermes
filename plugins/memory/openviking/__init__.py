@@ -462,7 +462,7 @@ class OpenVikingMemoryProvider(MemoryProvider):
 
     def initialize(self, session_id: str, **kwargs) -> None:
         self._endpoint = os.environ.get("OPENVIKING_ENDPOINT", _DEFAULT_ENDPOINT)
-        self._api_key = os.environ.get("OPENVIKING_API_KEY", "")
+        self._api_key = get_api_key("openviking") or ""
         self._account = os.environ.get("OPENVIKING_ACCOUNT", "default")
         self._user = os.environ.get("OPENVIKING_USER", "default")
         self._agent = os.environ.get("OPENVIKING_AGENT", "hermes")
@@ -956,3 +956,6 @@ class OpenVikingMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register OpenViking as a memory provider plugin."""
     ctx.register_memory_provider(OpenVikingMemoryProvider())
+
+from agent.service_credentials import get_api_key, register_service
+register_service("openviking", api_key_env_var="OPENVIKING_API_KEY", label="OpenViking")

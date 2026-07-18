@@ -33,7 +33,7 @@ def clone_honcho_for_profile(profile_name: str) -> bool:
     default_block = hosts.get(HOST, {})
 
     # No default host block and no root-level API key = Honcho not configured
-    has_key = bool(cfg.get("apiKey") or os.environ.get("HONCHO_API_KEY"))
+    has_key = bool(cfg.get("apiKey") or get_api_key("honcho"))
     if not default_block and not has_key:
         return False
 
@@ -169,7 +169,7 @@ def cmd_sync(args) -> None:
 
     hosts = cfg.get("hosts", {})
     default_block = hosts.get(HOST, {})
-    has_key = bool(cfg.get("apiKey") or os.environ.get("HONCHO_API_KEY"))
+    has_key = bool(cfg.get("apiKey") or get_api_key("honcho"))
 
     if not default_block and not has_key:
         logger.info("  Honcho not configured on default profile. Run 'hermes honcho setup' first.\n")
@@ -210,7 +210,7 @@ def sync_honcho_profiles_quiet() -> int:
         return 0
 
     default_block = cfg_get(cfg, "hosts", HOST, default={})
-    has_key = bool(cfg.get("apiKey") or os.environ.get("HONCHO_API_KEY"))
+    has_key = bool(cfg.get("apiKey") or get_api_key("honcho"))
     if not default_block and not has_key:
         return 0
 
@@ -274,7 +274,7 @@ def _resolve_api_key(cfg: dict) -> str:
     will reject them itself with a clearer error than ours.
     """
     host_key = ((cfg.get("hosts") or {}).get(_host_key()) or {}).get("apiKey")
-    key = host_key or cfg.get("apiKey", "") or os.environ.get("HONCHO_API_KEY", "")
+    key = host_key or cfg.get("apiKey", "") or (get_api_key("honcho") or "")
     if not key:
         base_url = cfg.get("baseUrl") or cfg.get("base_url") or os.environ.get("HONCHO_BASE_URL", "")
         base_url = (base_url or "").strip()
@@ -1420,3 +1420,7 @@ def register_cli(subparser) -> None:
     subs.add_parser("sync", help="Sync Honcho config to all existing profiles")
 
     subparser.set_defaults(func=honcho_command)
+
+# Unified API credential access (owner directive): read the user-configured API
+# from one place instead of scattering env reads.
+from agent.service_credentials import get_api_key

@@ -1339,3 +1339,9 @@ class HonchoMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register Honcho as a memory provider plugin."""
     ctx.register_memory_provider(HonchoMemoryProvider())
+
+# Unified API credential access (owner directive): read the user-configured API
+# from one place instead of scattering env reads; the desktop frontend renders
+# this service under a single "services" section.
+from agent.service_credentials import register_service
+register_service("honcho", api_key_env_var="HONCHO_API_KEY", label="Honcho")

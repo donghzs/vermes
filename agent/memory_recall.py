@@ -394,12 +394,15 @@ def _query_emotion_snapshot(conn: sqlite3.Connection) -> Optional[Dict[str, Any]
     }
 
 
-def recall_context(user_message: str) -> Dict[str, Any]:
-    """Recall relevant context for the current user message.
+def _collect_recall_sections(user_message: str) -> Dict[str, Any]:
+    """Pure read of the recall data sources — NO self-assessment write.
 
-    Queries multiple data sources and returns a structured dict.
-    Always returns a dict (even if empty) — the richness score is
-    computed on every call regardless of keyword matches.
+    Extracted so the live L3 adapter (``recall_context_as_hits``) reuses the
+    exact retrieval path as the per-turn prompt injection *without* the side
+    effect of recording a self-assessment raw_event on every search (which
+    would pollute the recall subsystem's own evaluation data). The only
+    difference from ``recall_context`` is the absence of ``assess_and_record``
+    and the richness/depth decoration (not needed by the search hit list).
     """
     keywords = _extract_keywords(user_message)
 
@@ -448,9 +451,26 @@ def recall_context(user_message: str) -> Dict[str, Any]:
     except Exception:
         pass  # No embedding API or DB — skip silently
 
-    if not result:
-        # Even if no keyword match, compute richness for the caller
-        pass
+    result["keywords"] = keywords
+    return result
+
+
+def recall_context(user_message: str) -> Dict[str, Any]:
+    """Recall relevant context for the current user message.
+
+    Queries multiple data sources and returns a structured dict.
+    Always returns a dict (even if empty) — the richness score is
+    computed on every call regardless of keyword matches.
+
+    This is the per-turn PROMPT-INJECTION path: it intentionally records a
+    self-assessment raw_event (``assess_and_record``) so Vermes can observe
+    its own retrieval quality. The live L3 SEARCH adapter
+    (``recall_context_as_hits``) uses the side-effect-free
+    ``_collect_recall_sections`` instead, so ``memory_search`` never pollutes
+    the recall subsystem's evaluation data.
+    """
+    result = _collect_recall_sections(user_message)
+    keywords = result.get("keywords", [])
 
     # ── Attach richness score ──
     try:
@@ -469,8 +489,6 @@ def recall_context(user_message: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    result["keywords"] = keywords
-
     # ── Self-assessment: record recall quality as raw_event ──
     # This is the emergence trigger foundation — the system observes
     # its own retrieval quality on every turn. When bottleneck signals
@@ -487,19 +505,25 @@ def recall_context(user_message: str) -> Dict[str, Any]:
 
 
 def recall_context_as_hits(user_message: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Flatten ``recall_context`` into the unified L3 episodic hit shape.
+    """Flatten episodic recall into the unified L3 hit shape — side-effect-free.
 
     Used as the live adapter behind ``memory_fabric.set_l3_live_hook`` so the
     agent's episodic recall (self-model outcomes, fusion emotion, embedding
     matches) participates in the unified hierarchical recall pipeline. The
     fabric stays format-agnostic — this adapter is the only place that knows
-    ``recall_context``'s internal dict shape.
+    the recall subsystem's internal dict shape.
+
+    Crucially this calls the PURE read path (``_collect_recall_sections``),
+    NOT ``recall_context`` — so a ``memory_search`` query does NOT trigger the
+    self-assessment ``assess_and_record`` raw_event write that the per-turn
+    prompt-injection path performs. Otherwise every search would corrupt the
+    recall subsystem's own evaluation data.
 
     fail-soft: any error yields an empty list (the agent must never be
     interrupted by a broken recall subsystem).
     """
     try:
-        ctx = recall_context(user_message) or {}
+        ctx = _collect_recall_sections(user_message) or {}
     except Exception:
         return []
     hits: List[Dict[str, Any]] = []

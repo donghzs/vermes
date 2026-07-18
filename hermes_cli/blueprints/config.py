@@ -417,7 +417,40 @@ async def get_cloud_models():
 
 
 async def get_schema():
-    return {"fields": CONFIG_SCHEMA, "category_order": _CATEGORY_ORDER}
+    # Base schema from DEFAULT_CONFIG (main LLM + system settings).
+    fields = dict(CONFIG_SCHEMA)
+
+    # Aggregate business-service API fields into ONE "services" category so the
+    # desktop frontend renders a single API section instead of enumerating every
+    # API-needing plugin/tool/skill separately (owner directive: the frontend
+    # "can't possibly list them all"). Plugins register their own service
+    # metadata at import time; the framework stays vendor-agnostic.
+    try:
+        from agent.service_credentials import get_registered_services
+
+        for sid, meta in get_registered_services().items():
+            label = meta.get("label", sid)
+            fields[f"services.{sid}.api_key"] = {
+                "type": "string",
+                "secret": True,
+                "description": f"{label} API key",
+                "category": "services",
+                "env_var": meta.get("api_key_env_var"),
+            }
+            if meta.get("base_url_env_var"):
+                fields[f"services.{sid}.base_url"] = {
+                    "type": "string",
+                    "description": f"{label} API base URL",
+                    "category": "services",
+                    "env_var": meta.get("base_url_env_var"),
+                }
+    except Exception:
+        pass
+
+    categories = list(_CATEGORY_ORDER)
+    if "services" not in categories:
+        categories = categories + ["services"]
+    return {"fields": fields, "category_order": categories}
 
 
 async def update_config(body: ConfigUpdate):

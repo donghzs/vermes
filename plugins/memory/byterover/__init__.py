@@ -381,3 +381,6 @@ class ByteRoverMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register ByteRover as a memory provider plugin."""
     ctx.register_memory_provider(ByteRoverMemoryProvider())
+
+from agent.service_credentials import get_api_key, register_service
+register_service("byterover", api_key_env_var="BRV_API_KEY", label="ByteRover")

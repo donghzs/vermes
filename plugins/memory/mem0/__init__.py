@@ -47,7 +47,7 @@ def _load_config() -> dict:
     from hermes_constants import get_hermes_home
 
     config = {
-        "api_key": os.environ.get("MEM0_API_KEY", ""),
+        "api_key": (get_api_key("mem0") or ""),
         "user_id": os.environ.get("MEM0_USER_ID", "hermes-user"),
         "agent_id": os.environ.get("MEM0_AGENT_ID", "hermes"),
         "rerank": True,
@@ -371,3 +371,6 @@ class Mem0MemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register Mem0 as a memory provider plugin."""
     ctx.register_memory_provider(Mem0MemoryProvider())
+
+from agent.service_credentials import get_api_key, register_service
+register_service("mem0", api_key_env_var="MEM0_API_KEY", label="Mem0")
