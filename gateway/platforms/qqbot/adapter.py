@@ -30,6 +30,7 @@ Reference: https://bot.q.qq.com/wiki/develop/api-v2/
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import asyncio
 import base64
@@ -2062,7 +2063,7 @@ class QQAdapter(BasePlatformAdapter):
                     }
 
         # 2. QQ-specific env vars (set by `hermes setup gateway` / `hermes gateway`)
-        qq_stt_key = os.getenv("QQ_STT_API_KEY", "")
+        qq_stt_key = get_api_key("qq_stt") or ""
         if qq_stt_key:
             base_url = os.getenv(
                 "QQ_STT_BASE_URL",
@@ -3069,3 +3070,5 @@ class QQAdapter(BasePlatformAdapter):
             return True
         self._seen_messages[msg_id] = now
         return False
+
+register_service("qq_stt", api_key_env_var="QQ_STT_API_KEY", label="QQ STT")

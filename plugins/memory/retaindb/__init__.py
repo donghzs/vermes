@@ -488,7 +488,7 @@ class RetainDBMemoryProvider(MemoryProvider):
 
     def initialize(self, session_id: str, **kwargs) -> None:
         api_key = get_api_key("retaindb") or ""
-        base_url = re.sub(r"/+$", "", os.environ.get("RETAINDB_BASE_URL", _DEFAULT_BASE_URL))
+        base_url = re.sub(r"/+$", "", get_service_credentials("retaindb", default_base_url=_DEFAULT_BASE_URL).get("base_url") or _DEFAULT_BASE_URL)
 
         # Project resolution: RETAINDB_PROJECT > hermes-<profile> > "default"
         # If unset, the API auto-creates and uses the "default" project — no config required.
@@ -764,6 +764,5 @@ class RetainDBMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register RetainDB as a memory provider plugin."""
     ctx.register_memory_provider(RetainDBMemoryProvider())
-
-from agent.service_credentials import get_api_key, register_service
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 register_service("retaindb", api_key_env_var="RETAINDB_API_KEY", base_url_env_var="RETAINDB_BASE_URL", label="RetainDB")

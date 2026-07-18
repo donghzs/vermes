@@ -22,6 +22,7 @@ from pathlib import Path
 
 from hermes_constants import get_hermes_home
 from hermes_cli.profiles import _get_default_hermes_home
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -330,8 +331,8 @@ class HonchoClientConfig:
     ) -> HonchoClientConfig:
         """Create config from environment variables (fallback)."""
         resolved_host = host or resolve_active_host()
-        api_key = os.environ.get("HONCHO_API_KEY")
-        base_url = os.environ.get("HONCHO_BASE_URL", "").strip() or None
+        api_key = get_api_key("honcho")
+        base_url = (get_service_credentials("honcho").get("base_url") or "").strip() or None
         timeout = _resolve_optional_float(os.environ.get("HONCHO_TIMEOUT"))
         return cls(
             host=resolved_host,
@@ -386,7 +387,7 @@ class HonchoClientConfig:
         api_key = (
             host_block.get("apiKey")
             or raw.get("apiKey")
-            or os.environ.get("HONCHO_API_KEY")
+            or get_api_key("honcho")
         )
 
         environment = (

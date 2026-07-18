@@ -6,6 +6,7 @@ ScholarForge 文献搜索模块 - 多源聚合
 付费源：通过 PaidSearchAPI 基类扩展
 """
 import asyncio
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 import logging
 import os
 import re
@@ -724,7 +725,7 @@ async def _search_core_free(query: str, limit: int = 10) -> list[PaperResult]:
                 "q": query,
                 "limit": min(limit, 10),
             }, timeout=10, headers={
-                "Authorization": "Bearer " + (os.environ.get("CORE_API_KEY", "")),
+                "Authorization": "Bearer " + (get_api_key("core") or ""),
                 "User-Agent": "ScholarForge/1.0",
             })
             if resp.status_code == 429:
@@ -1051,3 +1052,5 @@ async def get_configured_sources() -> dict:
         "accessible": accessible_count,
         "default_chain": DEFAULT_SOURCE_CHAIN,
     }
+
+register_service("core", api_key_env_var="CORE_API_KEY", label="ScholarForge Core")

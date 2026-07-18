@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict
-
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 from agent.web_search_provider import WebSearchProvider
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class BraveFreeWebSearchProvider(WebSearchProvider):
 
     def is_available(self) -> bool:
         """Return True when ``BRAVE_SEARCH_API_KEY`` is set to a non-empty value."""
-        return bool(os.getenv("BRAVE_SEARCH_API_KEY", "").strip())
+        return bool((get_api_key("brave_search", env_var="BRAVE_SEARCH_API_KEY") or "").strip())
 
     def supports_search(self) -> bool:
         return True
@@ -65,7 +65,7 @@ class BraveFreeWebSearchProvider(WebSearchProvider):
         """
         import httpx
 
-        api_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+        api_key = (get_api_key("brave_search", env_var="BRAVE_SEARCH_API_KEY") or "").strip()
         if not api_key:
             return {"success": False, "error": "BRAVE_SEARCH_API_KEY is not set"}
 
@@ -135,3 +135,4 @@ class BraveFreeWebSearchProvider(WebSearchProvider):
                 },
             ],
         }
+register_service("brave_search", api_key_env_var="BRAVE_SEARCH_API_KEY", label="Brave Search")

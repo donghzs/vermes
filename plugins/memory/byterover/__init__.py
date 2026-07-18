@@ -87,6 +87,12 @@ def _run_brv(args: List[str], timeout: int = _QUERY_TIMEOUT,
     Path(effective_cwd).mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
+    brv_key = get_api_key("byterover")
+    if brv_key:
+        env["BRV_API_KEY"] = brv_key
+    brv_key = get_api_key("byterover")
+    if brv_key:
+        env["BRV_API_KEY"] = brv_key
     brv_bin_dir = str(Path(brv_path).parent)
     env["PATH"] = brv_bin_dir + os.pathsep + env.get("PATH", "")
 
@@ -381,6 +387,5 @@ class ByteRoverMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register ByteRover as a memory provider plugin."""
     ctx.register_memory_provider(ByteRoverMemoryProvider())
-
-from agent.service_credentials import get_api_key, register_service
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 register_service("byterover", api_key_env_var="BRV_API_KEY", label="ByteRover")

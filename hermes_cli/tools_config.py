@@ -10,6 +10,7 @@ the `platform_toolsets` key.
 """
 
 import json as _json
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 import logging
 import os
 import shutil
@@ -120,7 +121,7 @@ def _xai_credentials_present() -> bool:
             return True
     except Exception:
         pass
-    return bool(str(os.environ.get("XAI_API_KEY") or "").strip())
+    return bool(str(get_api_key("xai") or "").strip())
 
 # Platform-scoped toolsets: only appear in the `hermes tools` checklist for
 # these platforms, and only resolve/save for these platforms.  A toolset

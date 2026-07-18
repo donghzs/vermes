@@ -7,6 +7,7 @@ consistently.
 """
 
 import os
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 _client = None
 
@@ -30,4 +31,7 @@ def get_async_client():
 
 def check_api_key() -> bool:
     """Check whether the OpenRouter API key is present."""
-    return bool(os.getenv("OPENROUTER_API_KEY"))
+    return bool(get_api_key("openrouter", env_var="OPENROUTER_API_KEY"))
+
+
+register_service("openrouter", api_key_env_var="OPENROUTER_API_KEY", label="OpenRouter")

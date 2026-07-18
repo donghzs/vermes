@@ -5,6 +5,7 @@ Diagnoses issues with Vermes setup.
 """
 
 import logging
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 logger = logging.getLogger(__name__)
 import os
@@ -1116,7 +1117,7 @@ def run_doctor(args):
     
     # Daytona (if using daytona backend)
     if terminal_env == "daytona":
-        daytona_key = os.getenv("DAYTONA_API_KEY")
+        daytona_key = get_api_key("daytona")
         if daytona_key:
             check_ok("Daytona API key", "(configured)")
         else:

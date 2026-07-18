@@ -13,6 +13,7 @@ Auth: Bearer token (AGNES_API_KEY env var)
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import logging
 import os
@@ -120,7 +121,7 @@ class AgnesVideoGenProvider(VideoGenProvider):
         return "Agnes AI"
 
     def is_available(self) -> bool:
-        return bool(os.environ.get("AGNES_API_KEY"))
+        return bool(get_api_key("agnes"))
 
     def list_models(self) -> List[Dict[str, Any]]:
         return [
@@ -188,7 +189,7 @@ class AgnesVideoGenProvider(VideoGenProvider):
                 provider="agnes",
             )
 
-        api_key = os.environ.get("AGNES_API_KEY")
+        api_key = get_api_key("agnes")
         if not api_key:
             return error_response(
                 error=(

@@ -1,6 +1,7 @@
 """Pipeline orchestration for Microsoft Teams meeting summaries."""
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import asyncio
 import json
@@ -689,3 +690,7 @@ def _render_summary_markdown(payload: TeamsMeetingSummaryPayload) -> str:
         payload.confidence_notes or "",
     ]
     return "\n".join(lines).strip()
+
+register_service("notion", api_key_env_var="NOTION_API_KEY", label="Notion")
+
+register_service("linear", api_key_env_var="LINEAR_API_KEY", label="Linear")

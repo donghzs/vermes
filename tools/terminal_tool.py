@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from utils import env_var_enabled
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 logger = logging.getLogger(__name__)
 
@@ -2244,7 +2245,7 @@ def check_terminal_requirements() -> bool:
 
         elif env_type == "daytona":
             from daytona import Daytona  # noqa: F401 — SDK presence check
-            return os.getenv("DAYTONA_API_KEY") is not None
+            return get_api_key("daytona", env_var="DAYTONA_API_KEY") is not None
 
         else:
             logger.error(
@@ -2386,3 +2387,6 @@ registry.register(
     emoji="💻",
     max_result_size_chars=100_000,
 )
+
+
+register_service("daytona", api_key_env_var="DAYTONA_API_KEY", label="Daytona")

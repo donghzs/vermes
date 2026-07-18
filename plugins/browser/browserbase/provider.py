@@ -30,6 +30,7 @@ Optional feature knobs::
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import logging
 import os
@@ -66,7 +67,7 @@ class BrowserbaseBrowserProvider(BrowserProvider):
     # ------------------------------------------------------------------
 
     def _get_config_or_none(self) -> Optional[Dict[str, Any]]:
-        api_key = os.environ.get("BROWSERBASE_API_KEY")
+        api_key = get_api_key("browserbase")
         project_id = os.environ.get("BROWSERBASE_PROJECT_ID")
         if api_key and project_id:
             return {
@@ -295,3 +296,5 @@ class BrowserbaseBrowserProvider(BrowserProvider):
             ],
             "post_setup": "agent_browser",
         }
+
+register_service("browserbase", api_key_env_var="BROWSERBASE_API_KEY", label="Browserbase")

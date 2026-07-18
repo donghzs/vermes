@@ -31,6 +31,7 @@ gateway downloads and delivers it.
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import logging
 import os
@@ -319,7 +320,7 @@ class FALVideoGenProvider(VideoGenProvider):
         return "FAL"
 
     def is_available(self) -> bool:
-        if not os.environ.get("FAL_KEY", "").strip():
+        if not (get_api_key("fal") or "").strip():
             return False
         try:
             import fal_client  # noqa: F401
@@ -390,7 +391,7 @@ class FALVideoGenProvider(VideoGenProvider):
         seed: Optional[int] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        if not os.environ.get("FAL_KEY", "").strip():
+        if not (get_api_key("fal") or "").strip():
             return error_response(
                 error=(
                     "FAL_KEY not set. Run `hermes tools` → Video Generation "
@@ -521,3 +522,5 @@ class FALVideoGenProvider(VideoGenProvider):
 def register(ctx) -> None:
     """Plugin entry point — wire ``FALVideoGenProvider`` into the registry."""
     ctx.register_video_gen_provider(FALVideoGenProvider())
+
+register_service("fal", api_key_env_var="FAL_KEY", label="FAL")

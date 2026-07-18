@@ -19,6 +19,7 @@ delivers it.
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import asyncio
 import logging
@@ -85,10 +86,10 @@ def _resolve_xai_credentials() -> Tuple[str, str]:
         logger.debug("xAI credential resolver failed: %s", exc)
         creds = {}
 
-    api_key = str(creds.get("api_key") or os.getenv("XAI_API_KEY", "")).strip()
+    api_key = str(creds.get("api_key") or get_api_key("xai") or "").strip()
     base_url = str(
         creds.get("base_url")
-        or os.getenv("XAI_BASE_URL")
+        or get_service_credentials("xai", base_url_env_var="XAI_BASE_URL").get("base_url")
         or DEFAULT_XAI_BASE_URL
     ).strip().rstrip("/")
     return api_key, base_url
@@ -439,3 +440,5 @@ class XAIVideoGenProvider(VideoGenProvider):
 def register(ctx) -> None:
     """Plugin entry point — wire ``XAIVideoGenProvider`` into the registry."""
     ctx.register_video_gen_provider(XAIVideoGenProvider())
+
+register_service("xai", api_key_env_var="XAI_API_KEY", base_url_env_var="XAI_BASE_URL", label="xAI")

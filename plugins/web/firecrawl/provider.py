@@ -49,7 +49,7 @@ import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
-
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 from agent.web_search_provider import WebSearchProvider
 from tools.website_policy import check_website_access
 
@@ -121,7 +121,7 @@ Firecrawl = _FirecrawlProxy()
 
 def _get_direct_firecrawl_config() -> Optional[tuple]:
     """Return explicit direct Firecrawl kwargs + cache key, or None when unset."""
-    api_key = os.getenv("FIRECRAWL_API_KEY", "").strip()
+    api_key = (get_api_key("firecrawl", env_var="FIRECRAWL_API_KEY") or "").strip()
     api_url = os.getenv("FIRECRAWL_API_URL", "").strip().rstrip("/")
 
     if not api_key and not api_url:
@@ -771,3 +771,5 @@ class FirecrawlWebSearchProvider(WebSearchProvider):
                 },
             ],
         }
+
+register_service("firecrawl", api_key_env_var="FIRECRAWL_API_KEY", label="Firecrawl")

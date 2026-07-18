@@ -2,6 +2,7 @@
 
 Runs as a standalone subprocess spawned by ``process_manager.py``. Reads config
 from env vars, writes status + transcript to files under
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 ``$HERMES_HOME/workspace/meetings/<meeting-id>/``. The main hermes process
 reads those files via the ``meet_*`` tools — no IPC beyond filesystem.
 
@@ -456,7 +457,7 @@ def run_bot() -> int:  # noqa: C901 — orchestration, explicit branches
     realtime_model = os.environ.get("HERMES_MEET_REALTIME_MODEL", "gpt-realtime")
     realtime_voice = os.environ.get("HERMES_MEET_REALTIME_VOICE", "alloy")
     realtime_instructions = os.environ.get("HERMES_MEET_REALTIME_INSTRUCTIONS", "")
-    realtime_api_key = os.environ.get("HERMES_MEET_REALTIME_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    realtime_api_key = get_api_key("google_meet") or os.environ.get("OPENAI_API_KEY", "")
 
     if not url or not _is_safe_meet_url(url):
         sys.stderr.write(
@@ -850,3 +851,5 @@ def _parse_duration(raw: str) -> Optional[float]:
 
 if __name__ == "__main__":  # pragma: no cover — subprocess entry point
     sys.exit(run_bot())
+
+register_service("google_meet", api_key_env_var="HERMES_MEET_REALTIME_KEY", label="Google Meet Realtime")

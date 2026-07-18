@@ -276,7 +276,7 @@ def _resolve_api_key(cfg: dict) -> str:
     host_key = ((cfg.get("hosts") or {}).get(_host_key()) or {}).get("apiKey")
     key = host_key or cfg.get("apiKey", "") or (get_api_key("honcho") or "")
     if not key:
-        base_url = cfg.get("baseUrl") or cfg.get("base_url") or os.environ.get("HONCHO_BASE_URL", "")
+        base_url = cfg.get("baseUrl") or cfg.get("base_url") or (get_service_credentials("honcho").get("base_url") or "")
         base_url = (base_url or "").strip()
         if base_url:
             from urllib.parse import urlparse
@@ -740,7 +740,7 @@ def _cmd_status_all() -> None:
     for name, host, block in rows:
         enabled = block.get("enabled", cfg.get("enabled"))
         if enabled is None:
-            has_creds = bool(cfg.get("apiKey") or os.environ.get("HONCHO_API_KEY"))
+            has_creds = bool(cfg.get("apiKey") or get_api_key("honcho"))
             enabled = has_creds if block else False
         enabled_str = "yes" if enabled else "no"
 
@@ -1423,4 +1423,4 @@ def register_cli(subparser) -> None:
 
 # Unified API credential access (owner directive): read the user-configured API
 # from one place instead of scattering env reads.
-from agent.service_credentials import get_api_key
+from agent.service_credentials import get_api_key, get_service_credentials, register_service

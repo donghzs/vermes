@@ -27,6 +27,7 @@ Env vars::
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import logging
 import os
@@ -73,7 +74,7 @@ def _get_sync_client() -> Any:
     if cached is not None:
         return cached
 
-    api_key = os.getenv("PARALLEL_API_KEY")
+    api_key = get_api_key("parallel")
     if not api_key:
         raise ValueError(
             "PARALLEL_API_KEY environment variable not set. "
@@ -99,7 +100,7 @@ def _get_async_client() -> Any:
     if cached is not None:
         return cached
 
-    api_key = os.getenv("PARALLEL_API_KEY")
+    api_key = get_api_key("parallel")
     if not api_key:
         raise ValueError(
             "PARALLEL_API_KEY environment variable not set. "
@@ -153,7 +154,7 @@ class ParallelWebSearchProvider(WebSearchProvider):
 
     def is_available(self) -> bool:
         """Return True when ``PARALLEL_API_KEY`` is set to a non-empty value."""
-        return bool(os.getenv("PARALLEL_API_KEY", "").strip())
+        return bool(get_api_key("parallel"))
 
     def supports_search(self) -> bool:
         return True
@@ -289,3 +290,5 @@ class ParallelWebSearchProvider(WebSearchProvider):
                 },
             ],
         }
+
+register_service("parallel", api_key_env_var="PARALLEL_API_KEY", label="Parallel")

@@ -25,6 +25,7 @@ Auth env vars::
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import logging
 import os
@@ -56,7 +57,7 @@ class FirecrawlBrowserProvider(BrowserProvider):
         return "Firecrawl"
 
     def is_available(self) -> bool:
-        return bool(os.environ.get("FIRECRAWL_API_KEY"))
+        return bool(get_api_key("firecrawl"))
 
     # ------------------------------------------------------------------
     # Session lifecycle
@@ -66,7 +67,7 @@ class FirecrawlBrowserProvider(BrowserProvider):
         return os.environ.get("FIRECRAWL_API_URL", _BASE_URL)
 
     def _headers(self) -> Dict[str, str]:
-        api_key = os.environ.get("FIRECRAWL_API_KEY")
+        api_key = get_api_key("firecrawl")
         if not api_key:
             raise ValueError(
                 "FIRECRAWL_API_KEY environment variable is required. "
@@ -166,3 +167,5 @@ class FirecrawlBrowserProvider(BrowserProvider):
             ],
             "post_setup": "agent_browser",
         }
+
+register_service("firecrawl", api_key_env_var="FIRECRAWL_API_KEY", label="Firecrawl")

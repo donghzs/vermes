@@ -48,6 +48,7 @@ import asyncio
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import httpx  # noqa: F401 — kept at module top so tests can patch tools.web_tools.httpx
 from harness.recoverable import recoverable_tool  # noqa: E402 — top-level for decorator use
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 # After the web-provider plugin migration (PR #25182), the Firecrawl SDK
 # proxy, client construction, and response-shape normalizers all live in
 # plugins.web.firecrawl.provider. We re-export the names that external
@@ -1400,8 +1401,8 @@ if __name__ == "__main__":
     # Check if API keys are available
     web_available = check_web_api_key()
     tool_gateway_available = _is_tool_gateway_ready()
-    firecrawl_key_available = bool(os.getenv("FIRECRAWL_API_KEY", "").strip())
-    firecrawl_url_available = bool(os.getenv("FIRECRAWL_API_URL", "").strip())
+    firecrawl_key_available = bool((get_api_key("firecrawl", env_var="FIRECRAWL_API_KEY") or "").strip())
+    firecrawl_url_available = bool((get_service_credentials("firecrawl", base_url_env_var="FIRECRAWL_API_URL").get("base_url") or "").strip())
     nous_available = check_auxiliary_model()
     default_summarizer_model = _get_default_summarizer_model()
 
@@ -1566,3 +1567,5 @@ registry.register(
     emoji="📄",
     max_result_size_chars=100_000,
 )
+
+register_service("firecrawl", api_key_env_var="FIRECRAWL_API_KEY", label="Firecrawl")

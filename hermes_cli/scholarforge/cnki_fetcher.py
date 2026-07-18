@@ -10,6 +10,7 @@ P0-1: 将知网源从空壳升级为真实可用
 提供统一的 PaperResult 返回，对上游透明
 """
 import asyncio
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 import logging
 import os
 import re
@@ -37,7 +38,7 @@ class CnkiPaper:
 async def _fetch_via_gateway(query: str, limit: int = 20) -> list[CnkiPaper]:
     """策略1: 通过用户自建 CNKI 网关"""
     gateway_url = os.environ.get("CNKI_GATEWAY_URL", "").strip()
-    api_key = os.environ.get("CNKI_API_KEY", "").strip()
+    api_key = (get_api_key("cnki") or "").strip()
     if not gateway_url:
         return []
 
@@ -90,7 +91,7 @@ async def _fetch_via_wanfang(query: str, limit: int = 20) -> list[CnkiPaper]:
     万方开放 API 申请地址: https://dev.wanfangdata.com.cn/
     免费额度: 100次/天
     """
-    api_key = os.environ.get("WANFANG_API_KEY", "").strip()
+    api_key = (get_api_key("wanfang") or "").strip()
     if not api_key:
         return []
 
@@ -231,3 +232,7 @@ async def search_cnki(query: str, limit: int = 20) -> list[CnkiPaper]:
 
     logger.warning(f"No CNKI results for '{query}' via any strategy")
     return []
+
+register_service("cnki", api_key_env_var="CNKI_API_KEY", label="CNKI")
+
+register_service("wanfang", api_key_env_var="WANFANG_API_KEY", label="Wanfang")

@@ -27,6 +27,7 @@ Auth env vars (one of)::
 """
 
 from __future__ import annotations
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 
 import logging
 import os
@@ -134,7 +135,7 @@ class BrowserUseBrowserProvider(BrowserProvider):
 
         # Direct API key wins unless the user has explicitly opted into the
         # managed Nous gateway via ``tool_gateway.browser: gateway``.
-        api_key = os.environ.get("BROWSER_USE_API_KEY")
+        api_key = get_api_key("browser_use")
         if api_key and not prefers_gateway("browser"):
             return {
                 "api_key": api_key,
@@ -308,3 +309,5 @@ class BrowserUseBrowserProvider(BrowserProvider):
             ],
             "post_setup": "agent_browser",
         }
+
+register_service("browser_use", api_key_env_var="BROWSER_USE_API_KEY", label="Browser Use")

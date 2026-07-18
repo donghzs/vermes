@@ -52,6 +52,7 @@ import asyncio
 import datetime
 from typing import Dict, Any, List, Optional
 from tools.openrouter_client import get_async_client as _get_openrouter_client, check_api_key as check_openrouter_api_key
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 from agent.auxiliary_client import extract_content_or_reasoning
 from tools.debug_helpers import DebugSession
 import sys
@@ -300,7 +301,7 @@ async def mixture_of_agents_tool(
         logger.info("Query: %s", user_prompt[:100])
         
         # Validate API key availability
-        if not os.getenv("OPENROUTER_API_KEY"):
+        if not get_api_key("openrouter", env_var="OPENROUTER_API_KEY"):
             raise ValueError("OPENROUTER_API_KEY environment variable not set")
         
         # Use provided models or defaults

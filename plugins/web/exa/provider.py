@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict, List
-
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 from agent.web_search_provider import WebSearchProvider
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def _get_exa_client() -> Any:
     if cached is not None:
         return cached
 
-    api_key = os.getenv("EXA_API_KEY")
+    api_key = get_api_key("exa")
     if not api_key:
         raise ValueError(
             "EXA_API_KEY environment variable not set. "
@@ -100,7 +100,7 @@ class ExaWebSearchProvider(WebSearchProvider):
 
     def is_available(self) -> bool:
         """Return True when ``EXA_API_KEY`` is set to a non-empty value."""
-        return bool(os.getenv("EXA_API_KEY", "").strip())
+        return bool((get_api_key("exa", env_var="EXA_API_KEY") or "").strip())
 
     def supports_search(self) -> bool:
         return True
@@ -210,3 +210,4 @@ class ExaWebSearchProvider(WebSearchProvider):
                 },
             ],
         }
+register_service("exa", api_key_env_var="EXA_API_KEY", label="Exa Search")

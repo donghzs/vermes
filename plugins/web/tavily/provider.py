@@ -35,7 +35,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Dict, List
-
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 from agent.web_search_provider import WebSearchProvider
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def _tavily_request(endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     import httpx
 
-    api_key = os.getenv("TAVILY_API_KEY")
+    api_key = get_api_key("tavily")
     if not api_key:
         raise ValueError(
             "TAVILY_API_KEY environment variable not set. "
@@ -151,7 +151,7 @@ class TavilyWebSearchProvider(WebSearchProvider):
 
     def is_available(self) -> bool:
         """Return True when ``TAVILY_API_KEY`` is set to a non-empty value."""
-        return bool(os.getenv("TAVILY_API_KEY", "").strip())
+        return bool((get_api_key("tavily", env_var="TAVILY_API_KEY") or "").strip())
 
     def supports_search(self) -> bool:
         return True
@@ -283,3 +283,4 @@ class TavilyWebSearchProvider(WebSearchProvider):
                 },
             ],
         }
+register_service("tavily", api_key_env_var="TAVILY_API_KEY", label="Tavily Search")

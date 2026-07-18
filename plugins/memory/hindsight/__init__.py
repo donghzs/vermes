@@ -322,7 +322,7 @@ def _load_config() -> dict:
 
     return {
         "mode": os.environ.get("HINDSIGHT_MODE", "cloud"),
-        "apiKey": os.environ.get("HINDSIGHT_API_KEY", ""),
+        "apiKey": get_api_key("hindsight") or "",
         "timeout": _parse_int_setting(os.environ.get("HINDSIGHT_TIMEOUT"), _DEFAULT_TIMEOUT),
         "idle_timeout": _parse_int_setting(os.environ.get("HINDSIGHT_IDLE_TIMEOUT"), _DEFAULT_IDLE_TIMEOUT),
         "retain_tags": os.environ.get("HINDSIGHT_RETAIN_TAGS", ""),
@@ -413,7 +413,7 @@ def _build_embedded_profile_env(config: dict[str, Any], *, llm_api_key: str | No
 
     current_provider = config.get("llm_provider", "")
     current_model = config.get("llm_model", "")
-    current_base_url = config.get("llm_base_url") or os.environ.get("HINDSIGHT_API_LLM_BASE_URL", "")
+    current_base_url = config.get("llm_base_url") or get_service_credentials("hindsight", base_url_env_var="HINDSIGHT_API_LLM_BASE_URL").get("base_url") or ""
 
     # The embedded daemon expects OpenAI wire format for these providers.
     daemon_provider = "openai" if current_provider in {"openai_compatible", "openrouter"} else current_provider
@@ -614,7 +614,7 @@ class HindsightMemoryProvider(MemoryProvider):
             has_key = bool(
                 cfg.get("apiKey")
                 or cfg.get("api_key")
-                or os.environ.get("HINDSIGHT_API_KEY", "")
+                or get_api_key("hindsight") or ""
             )
             has_url = bool(cfg.get("api_url") or os.environ.get("HINDSIGHT_API_URL", ""))
             return has_key or has_url
@@ -701,7 +701,7 @@ class HindsightMemoryProvider(MemoryProvider):
         # Step 3: Mode-specific config
         if mode == "cloud":
             logger.info("\n  Get your API key at https://ui.hindsight.vectorize.io\n")
-            existing_key = os.environ.get("HINDSIGHT_API_KEY", "")
+            existing_key = get_api_key("hindsight") or ""
             if existing_key:
                 masked = f"...{existing_key[-4:]}" if len(existing_key) > 4 else "set"
                 sys.stdout.write(f"  API key (current: {masked}, blank to keep): ")
@@ -905,7 +905,7 @@ class HindsightMemoryProvider(MemoryProvider):
                 kwargs = dict(
                     profile=self._config.get("profile", "hermes"),
                     llm_provider=llm_provider,
-                    llm_api_key=self._config.get("llmApiKey") or self._config.get("llm_api_key") or os.environ.get("HINDSIGHT_LLM_API_KEY", ""),
+                    llm_api_key=self._config.get("llmApiKey") or self._config.get("llm_api_key") or get_api_key("hindsight", env_var="HINDSIGHT_LLM_API_KEY") or "",
                     llm_model=self._config.get("llm_model", ""),
                 )
                 if self._llm_base_url:
@@ -1143,7 +1143,7 @@ class HindsightMemoryProvider(MemoryProvider):
                 return
         self._api_key = self._config.get("apiKey") or self._config.get("api_key") or (get_api_key("hindsight") or "")
         default_url = _DEFAULT_LOCAL_URL if self._mode in {"local_embedded", "local_external"} else _DEFAULT_API_URL
-        self._api_url = self._config.get("api_url") or os.environ.get("HINDSIGHT_API_URL", default_url)
+        self._api_url = self._config.get("api_url") or get_service_credentials("hindsight", base_url_env_var="HINDSIGHT_API_URL", default_base_url=default_url).get("base_url") or default_url
         self._llm_base_url = self._config.get("llm_base_url", "")
 
         banks = cfg_get(self._config, "banks", "hermes", default={})
@@ -1765,6 +1765,5 @@ class HindsightMemoryProvider(MemoryProvider):
 def register(ctx) -> None:
     """Register Hindsight as a memory provider plugin."""
     ctx.register_memory_provider(HindsightMemoryProvider())
-
-from agent.service_credentials import get_api_key, register_service
+from agent.service_credentials import get_api_key, get_service_credentials, register_service
 register_service("hindsight", api_key_env_var="HINDSIGHT_API_KEY", label="Hindsight")
