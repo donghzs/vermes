@@ -10548,6 +10548,30 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     except Exception as _mm_exc:
         logger.debug("Failed to start memory monitor: %s", _mm_exc)
 
+    # P2.2: install the process-wide LLM concurrency cap from config.
+    # Disabled by default (limit=0 → no-op); only throttles multi-agent
+    # fan-out when explicitly configured.
+    try:
+        from agent import llm_concurrency as _llm_conc
+        from hermes_cli.config import load_config as _load_cli_config2
+
+        _lc_cfg = (
+            (_load_cli_config2() or {}).get("agent", {}).get("llm_concurrency", {})
+            or {}
+        )
+        try:
+            _lc_limit = int(_lc_cfg.get("limit", 0) or 0)
+        except (TypeError, ValueError):
+            _lc_limit = 0
+        try:
+            _lc_timeout = float(_lc_cfg.get("acquire_timeout_seconds", 30) or 30)
+        except (TypeError, ValueError):
+            _lc_timeout = 30.0
+        if _lc_limit > 0:
+            _llm_conc.configure(limit=_lc_limit, acquire_timeout=_lc_timeout)
+    except Exception as _lc_exc:
+        logger.debug("Failed to configure LLM concurrency limiter: %s", _lc_exc)
+
     # Optional stderr handler — level driven by -v/-q flags on the CLI.
     # verbosity=None (-q/--quiet): no stderr output
     # verbosity=0    (default):    WARNING and above

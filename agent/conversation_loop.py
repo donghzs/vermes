@@ -1335,12 +1335,22 @@ def run_conversation(
                     if Mock is not None and isinstance(getattr(agent, "client", None), Mock):
                         _use_streaming = False
 
-                if _use_streaming:
-                    response = agent._interruptible_streaming_api_call(
-                        api_kwargs, on_first_delta=_stop_spinner
-                    )
-                else:
-                    response = agent._interruptible_api_call(api_kwargs)
+                # P2.2: opt-in process-wide in-flight cap. Disabled by
+                # default (no-op passthrough), so the single-agent path is
+                # unchanged. When enabled it throttles multi-agent fan-out
+                # (kanban / gateway) to avoid 429 storms against one provider.
+                # Acquired HERE — in the agent's own worker thread, outside the
+                # interrupt-check and stale-detector helper threads — so it can
+                # never nest inside them and deadlock. Fail-open on timeout.
+                from agent.llm_concurrency import get_limiter as _get_llm_limiter
+
+                with _get_llm_limiter().slot():
+                    if _use_streaming:
+                        response = agent._interruptible_streaming_api_call(
+                            api_kwargs, on_first_delta=_stop_spinner
+                        )
+                    else:
+                        response = agent._interruptible_api_call(api_kwargs)
                 
                 api_duration = time.time() - api_start_time
                 

@@ -543,6 +543,17 @@ DEFAULT_CONFIG = {
         # on flaky primaries; raise it if you prefer to tolerate longer
         # provider hiccups on a single provider.
         "api_max_retries": 3,
+        # P2.2 global LLM concurrency cap. Disabled by default (0 = unlimited)
+        # so the single-agent path is unchanged. Credential-level concurrency
+        # is already capped by the credential pool; this is a *process-wide*
+        # in-flight cap that only matters when many agents fan out at once
+        # (kanban dispatch, multi-agent gateway) and would otherwise trigger
+        # 429 storms against a single provider. Fail-open: if a slot can't be
+        # acquired within acquire_timeout_seconds the turn proceeds anyway.
+        "llm_concurrency": {
+            "limit": 0,                    # 0 = disabled (unlimited)
+            "acquire_timeout_seconds": 30,
+        },
         "service_tier": "",
         # Tool-use enforcement: injects system prompt guidance that tells the
         # model to actually call tools instead of describing intended actions.
