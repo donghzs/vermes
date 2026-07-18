@@ -457,6 +457,18 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                         logger.info("Skills extracted: %d", len(new_skills))
                 except Exception:
                     logger.debug("Skill extraction skipped", exc_info=True)
+
+                # ── H4.3 评测闭环：提取后评估 active 技能生命周期（fail-open）──
+                try:
+                    from agent.skill_extractor import evaluate_skill_lifecycle
+                    _life = evaluate_skill_lifecycle(db_path)
+                    if _life.get("demoted") or _life.get("reactivated") or _life.get("promoted"):
+                        logger.info(
+                            "Skill lifecycle eval: evaluated=%d demoted=%d promoted=%d reactivated=%d",
+                            _life["evaluated"], _life["demoted"], _life["promoted"], _life["reactivated"],
+                        )
+                except Exception:
+                    logger.debug("Skill lifecycle eval skipped", exc_info=True)
     except Exception:
         logger.debug("Clustering trigger skipped", exc_info=True)
 

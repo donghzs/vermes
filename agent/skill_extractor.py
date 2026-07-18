@@ -56,6 +56,15 @@ class ExtractedSkill:
         return f"  {icon} {self.name}: {tools} ({self.usage_count}x, {self.success_rate:.0%})"
 
 
+# ── 评测闭环阈值（相对基线，非全局预设）───────────────────────────────────
+# H4.3 技能自进化评测闭环：active 技能按 emergent_insight + success_rate 自动
+# 升/降/淘汰（stale = 归档）。阈值均相对用户自身基线，无绝对预设。
+_DEMOTE_SUCCESS_RATE = 0.5    # 成功率低于此 → 降级为 stale（低成功率）
+_PROMOTE_SUCCESS_RATE = 0.85 # 成功率高于此且用量足够 → 标记 proven（晋升）
+_MIN_USES_FOR_PROMOTE = 10   # 用量达到此才考虑晋升
+_ANTI_PATTERN_SEVERITY = 0.6 # 负面洞察严重度达到此 → 降级（其底层模式是反模式）
+
+
 # ── Table Schema ─────────────────────────────────────────────────────────────
 
 SKILLS_TABLE_SQL = """
@@ -393,6 +402,158 @@ class SkillExtractor:
         except Exception:
             return False
 
+    # ── H4.3 评测闭环：自进化技能生命周期评估 ──────────────────────────────
+
+    def evaluate_lifecycle(self) -> Dict[str, int]:
+        """Run the self-evolving skill evaluation loop (H4.3).
+
+        For each ACTIVE skill, combine emergent insights + success_rate + usage:
+          - anti_pattern insight matches cluster_id (severity >= thr) → demote (stale)
+          - success_rate < _DEMOTE_SUCCESS_RATE                    → demote (stale)
+          - success_rate >= _PROMOTE and usage >= _MIN_USES        → mark 'proven'
+
+        For each STALE skill that recovered (success >= _PROMOTE, usage >= _MIN_USES,
+        no anti_pattern) → reactivate to active.
+
+        Returns a summary dict; fail-open (any error → empty summary).
+        """
+        summary: Dict[str, int] = {
+            "evaluated": 0, "demoted": 0, "promoted": 0, "reactivated": 0
+        }
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            ensure_skill_tables(conn)
+
+            # anti_pattern 洞察按 cluster_id 聚合最高严重度（guarded，失败则空）
+            anti_by_cluster = self._load_anti_patterns(conn)
+
+            for row in conn.execute(
+                "SELECT * FROM extracted_skills WHERE status = 'active'"
+            ).fetchall():
+                skill = self._row_to_skill(row)
+                summary["evaluated"] += 1
+                reason = self._decide_demotion(skill, anti_by_cluster)
+                if reason:
+                    self._set_status(conn, skill.id, "stale", demote_reason=reason)
+                    summary["demoted"] += 1
+                    self._record_lifecycle_event(skill, "demote", reason)
+                elif (skill.success_rate >= _PROMOTE_SUCCESS_RATE
+                      and skill.usage_count >= _MIN_USES_FOR_PROMOTE):
+                    self._mark_proven(conn, skill.id)
+                    summary["promoted"] += 1
+
+            # 复活恢复健康的 stale 技能
+            for row in conn.execute(
+                "SELECT * FROM extracted_skills WHERE status = 'stale'"
+            ).fetchall():
+                skill = self._row_to_skill(row)
+                if (skill.success_rate >= _PROMOTE_SUCCESS_RATE
+                        and skill.usage_count >= _MIN_USES_FOR_PROMOTE
+                        and not anti_by_cluster.get(skill.cluster_id)):
+                    self._set_status(conn, skill.id, "active", demote_reason=None)
+                    summary["reactivated"] += 1
+                    self._record_lifecycle_event(skill, "reactivate", "recovered")
+
+            conn.close()
+        except Exception:
+            logger.debug("skill lifecycle eval failed", exc_info=True)
+        return summary
+
+    def _load_anti_patterns(self, conn: sqlite3.Connection) -> Dict[int, float]:
+        """Aggregate anti_pattern insight severity by cluster_id (guarded)."""
+        try:
+            from agent.emergent_insight import EmergentInsightExtractor
+
+            report = EmergentInsightExtractor(self.db_path).extract()
+            result: Dict[int, float] = {}
+            for ins in (report.anti_patterns or []):
+                cid = ins.cluster_id
+                if cid is None:
+                    continue
+                result[cid] = max(result.get(cid, 0.0), ins.severity)
+            return result
+        except Exception:
+            logger.debug("anti_pattern insight load skipped", exc_info=True)
+            return {}
+
+    @staticmethod
+    def _decide_demotion(
+        skill: "ExtractedSkill", anti_by_cluster: Dict[int, float]
+    ) -> Optional[str]:
+        """Return a demotion reason, or None to keep active."""
+        if (skill.cluster_id in anti_by_cluster
+                and anti_by_cluster[skill.cluster_id] >= _ANTI_PATTERN_SEVERITY):
+            return "anti_pattern"
+        if skill.success_rate < _DEMOTE_SUCCESS_RATE:
+            return "low_success"
+        return None
+
+    def _set_status(
+        self, conn: sqlite3.Connection, skill_id: int, status: str,
+        demote_reason: Optional[str] = None,
+    ) -> None:
+        """Set a skill's status, merging eval metadata (fail-open)."""
+        try:
+            row = conn.execute(
+                "SELECT metadata FROM extracted_skills WHERE id = ?", (skill_id,)
+            ).fetchone()
+            meta = json.loads(row[0]) if row and row[0] else {}
+            meta["last_eval_status"] = status
+            if demote_reason:
+                meta["demote_reason"] = demote_reason
+                meta["demoted_at"] = datetime.now().isoformat()
+            conn.execute(
+                """UPDATE extracted_skills SET status = ?, metadata = ?,
+                   updated_at = datetime('now') WHERE id = ?""",
+                (status, json.dumps(meta), skill_id),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
+    def _mark_proven(self, conn: sqlite3.Connection, skill_id: int) -> None:
+        """Mark a skill as proven (stays active; metadata badge only)."""
+        try:
+            row = conn.execute(
+                "SELECT metadata FROM extracted_skills WHERE id = ?", (skill_id,)
+            ).fetchone()
+            meta = json.loads(row[0]) if row and row[0] else {}
+            meta["grade"] = "proven"
+            meta["proven_at"] = datetime.now().isoformat()
+            conn.execute(
+                "UPDATE extracted_skills SET metadata = ?, updated_at = datetime('now') WHERE id = ?",
+                (json.dumps(meta), skill_id),
+            )
+            conn.commit()
+        except Exception:
+            pass
+
+    def _record_lifecycle_event(
+        self, skill: "ExtractedSkill", action: str, reason: str
+    ) -> None:
+        """Persist a lifecycle decision as a raw_event for learning (fail-open)."""
+        try:
+            from agent.raw_event import record_raw_event
+
+            record_raw_event(
+                tool_name="skill_lifecycle",
+                tool_args={
+                    "action": action,
+                    "skill_id": skill.id,
+                    "name": skill.name,
+                    "cluster_id": skill.cluster_id,
+                },
+                result=f"{action}:{reason}",
+                is_error=False,
+                duration=0.0,
+                trigger_clustering=False,
+            )
+        except Exception:
+            pass
+
     def get_active_skills_prompt(self) -> str:
         """Get active skills as a prompt block for system prompt injection."""
         skills = self.list_skills(status="active")
@@ -484,3 +645,13 @@ def reject_skill(db_path: str, skill_id: int) -> bool:
     """User rejects a skill."""
     extractor = SkillExtractor(db_path)
     return extractor.reject_skill(skill_id)
+
+
+def evaluate_skill_lifecycle(db_path: str) -> Dict[str, int]:
+    """Run the self-evolving skill evaluation loop (H4.3).
+
+    Called after each extraction cycle so active skills are continuously
+    promoted / demoted / retired based on emergent insights + success_rate.
+    """
+    extractor = SkillExtractor(db_path)
+    return extractor.evaluate_lifecycle()
