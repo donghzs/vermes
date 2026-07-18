@@ -337,7 +337,8 @@ class TestRunAdapterIntegration:
         assert 'Platform.LINE: "LINE_ALLOW_ALL_USERS"' in content
 
     def test_line_in_create_adapter(self):
-        with open("gateway/run.py") as f:
+        # _create_adapter was extracted to gateway/lifecycle_mixin.py (P3)
+        with open("gateway/lifecycle_mixin.py") as f:
             content = f.read()
         assert "Platform.LINE" in content
         assert "LineAdapter" in content

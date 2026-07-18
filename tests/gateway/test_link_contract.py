@@ -28,7 +28,7 @@ def test_harness_classes_importable():
 import gateway.run as _gw  # noqa: E402  (置于 harness 校验之后)
 
 EXPECTED_DIRECT_BASES = {
-    "MessageHandlerMixin", "AgentRunnerMixin", "TelegramTopicsMixin", "VoiceMixin", "GoalMixin", "KanbanMixin",
+    "MessageHandlerMixin", "AgentRunnerMixin", "LifecycleMixin", "TelegramTopicsMixin", "VoiceMixin", "GoalMixin", "KanbanMixin",
     "SlashCommandsMixin", "SessionMixin", "AuthMixin", "ConfigLoaderMixin", "WatcherMixin",
 }
 EXPECTED_MRO_MIXINS = EXPECTED_DIRECT_BASES | {
