@@ -47,6 +47,7 @@ import re
 import asyncio
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import httpx  # noqa: F401 — kept at module top so tests can patch tools.web_tools.httpx
+from harness.recoverable import recoverable_tool  # noqa: E402 — top-level for decorator use
 # After the web-provider plugin migration (PR #25182), the Firecrawl SDK
 # proxy, client construction, and response-shape normalizers all live in
 # plugins.web.firecrawl.provider. We re-export the names that external
@@ -733,6 +734,14 @@ def clean_base64_images(text: str) -> str:
 # dispatchers in this file resolve them via get_active_*_provider().
 
 
+@recoverable_tool(
+    tool_name="web_search",
+    missing_hint=(
+        "Web 搜索需要配置搜索后端。可设置 TAVILY_API_KEY / FIRECRAWL_API_KEY，"
+        "或在 config.yaml 的 web.search.backend 中指定。"
+    ),
+    returns="json",
+)
 def web_search_tool(query: str, limit: int = 5) -> str:
     """
     Search the web for information using available search API backend.
@@ -839,6 +848,14 @@ def web_search_tool(query: str, limit: int = 5) -> str:
         return tool_error(error_msg)
 
 
+@recoverable_tool(
+    tool_name="web_extract",
+    missing_hint=(
+        "网页内容提取需要配置提取后端。可设置 FIRECRAWL_API_KEY，"
+        "或在 config.yaml 的 web.extract.backend 中指定。"
+    ),
+    returns="json",
+)
 async def web_extract_tool(
     urls: List[str],
     format: str = None,
@@ -1486,7 +1503,7 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
-from tools.registry import registry, tool_error
+from tools.registry import registry, tool_error  # noqa: E402
 
 WEB_SEARCH_SCHEMA = {
     "name": "web_search",

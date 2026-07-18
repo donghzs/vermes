@@ -1183,6 +1183,7 @@ if __name__ == "__main__":
 # Registry
 # ---------------------------------------------------------------------------
 from tools.registry import registry, tool_error
+from harness.recoverable import recoverable_tool
 
 VISION_ANALYZE_SCHEMA = {
     "name": "vision_analyze",
@@ -1424,6 +1425,15 @@ async def _try_other_provider_vision(
     return None
 
 
+@recoverable_tool(
+    tool_name="vision_analyze",
+    missing_hint=(
+        "视觉分析需要配置至少一个视觉模型 provider。"
+        "可设置 OPENROUTER_API_KEY / XIAOMI_API_KEY / ANTHROPIC_API_KEY，"
+        "或在 config.yaml 中配置 auxiliary.vision。"
+    ),
+    returns="json",
+)
 async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
     image_url = args.get("image_url", "")
     question = args.get("question", "")
@@ -1955,6 +1965,14 @@ VIDEO_ANALYZE_SCHEMA = {
 }
 
 
+@recoverable_tool(
+    tool_name="video_analyze",
+    missing_hint=(
+        "视频分析需要配置 AUXILIARY_VIDEO_MODEL 或 AUXILIARY_VISION_MODEL。"
+        "可设置 OPENROUTER_API_KEY / XIAOMI_API_KEY 等视觉 provider。"
+    ),
+    returns="json",
+)
 def _handle_video_analyze(args: Dict[str, Any], **kw: Any) -> Awaitable[str]:
     video_url = args.get("video_url", "")
     question = args.get("question", "")

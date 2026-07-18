@@ -988,6 +988,7 @@ if __name__ == "__main__":
 # Registry
 # ---------------------------------------------------------------------------
 from tools.registry import registry, tool_error
+from harness.recoverable import recoverable_tool
 
 IMAGE_GENERATE_SCHEMA = {
     "name": "image_generate",
@@ -1166,6 +1167,14 @@ def _dispatch_to_plugin_provider(
     return json.dumps(result)
 
 
+@recoverable_tool(
+    tool_name="image_generate",
+    missing_hint=(
+        "图片生成需要配置 IMAGE_GEN_API_KEY 或 FAL_KEY，"
+        "或在 config.yaml 的 image_gen: section 中指定 provider。"
+    ),
+    returns="json",
+)
 def _handle_image_generate(args, **kw):
     prompt = args.get("prompt", "")
     if not prompt:

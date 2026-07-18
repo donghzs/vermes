@@ -2309,6 +2309,7 @@ if __name__ == "__main__":
 # Registry
 # ---------------------------------------------------------------------------
 from tools.registry import registry
+from harness.recoverable import recoverable_tool
 
 TERMINAL_SCHEMA = {
     "name": "terminal",
@@ -2355,6 +2356,14 @@ TERMINAL_SCHEMA = {
 }
 
 
+@recoverable_tool(
+    tool_name="terminal",
+    missing_hint=(
+        "终端工具执行失败。检查命令语法、工作目录、权限设置；"
+        "background 模式可通过 process 工具查看输出。"
+    ),
+    returns="json",
+)
 def _handle_terminal(args, **kw):
     return terminal_tool(
         command=args.get("command"),

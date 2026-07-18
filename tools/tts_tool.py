@@ -51,6 +51,7 @@ import uuid
 from pathlib import Path
 from typing import Callable, Dict, Any, Optional
 from urllib.parse import urljoin
+from harness.recoverable import recoverable_tool  # noqa: E402 — top-level for decorator use
 
 from hermes_constants import display_hermes_home
 
@@ -1618,6 +1619,15 @@ def _generate_kittentts(text: str, output_path: str, tts_config: Dict[str, Any])
 # ===========================================================================
 # Main tool function
 # ===========================================================================
+@recoverable_tool(
+    tool_name="text_to_speech",
+    missing_hint=(
+        "TTS 需要配置语音合成后端。可在 config.yaml 的 tts: section "
+        "中设置 provider（edge/elevenlabs/openai/xai/minimax），"
+        "edge_tts 免费无需 API key。"
+    ),
+    returns="json",
+)
 def text_to_speech_tool(
     text: str,
     output_path: Optional[str] = None,
@@ -2256,7 +2266,7 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
-from tools.registry import registry, tool_error
+from tools.registry import registry, tool_error  # noqa: E402 — late import, after registry
 
 TTS_SCHEMA = {
     "name": "text_to_speech",
