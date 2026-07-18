@@ -330,6 +330,21 @@ def _hermetic_environment(tmp_path, monkeypatch):
     (fake_hermes_home / "skills").mkdir()
     monkeypatch.setenv("HERMES_HOME", str(fake_hermes_home))
 
+    # 3b. Redirect the machine-local gateway lock dir to a per-test tempdir.
+    #     ``gateway.status._get_lock_dir()`` resolves to
+    #     ``$XDG_STATE_HOME/hermes/locks`` (default ``~/.local/state/...``) —
+    #     it is NOT covered by the HERMES_HOME redirect above. Without this,
+    #     tests that call ``acquire_scoped_lock`` (e.g. WhatsApp/Slack/Telegram
+    #     ``connect()`` paths) share the real on-disk lock dir with each other
+    #     AND with any real gateway running on the same machine (e.g. a locally
+    #     installed Vermes.app). That caused ``... session already in use
+    #     (PID N). Stop the other gateway first.`` failures that flip with run
+    #     order and with whatever gateway happens to be running. A fresh dir
+    #     per test makes scoped-lock acquisition deterministic and hermetic.
+    fake_lock_dir = tmp_path / "gateway_locks"
+    fake_lock_dir.mkdir()
+    monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(fake_lock_dir))
+
     # 4. Deterministic locale / timezone / hashseed. CI runs in UTC with
     #    C.UTF-8 locale; local dev often doesn't. Pin everything.
     monkeypatch.setenv("TZ", "UTC")
