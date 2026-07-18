@@ -1350,7 +1350,7 @@ def run_doctor(args):
     _probes: list = []  # list of (label, callable) submitted in display order
 
     def _probe_openrouter() -> _ConnectivityResult:
-        key = os.getenv("OPENROUTER_API_KEY")
+        key = get_api_key("openrouter", env_var="OPENROUTER_API_KEY")
         if not key:
             return _ConnectivityResult(
                 "OpenRouter API",

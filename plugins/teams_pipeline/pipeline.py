@@ -112,7 +112,7 @@ class NotionWriter:
     API_VERSION = "2025-09-03"
 
     def __init__(self, *, api_key: str | None = None, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.api_key = (api_key or os.getenv("NOTION_API_KEY", "")).strip()
+        self.api_key = (api_key or get_api_key("notion", env_var="NOTION_API_KEY") or "").strip()
         self._transport = transport
 
     async def write_summary(
@@ -208,7 +208,7 @@ class LinearWriter:
     API_URL = "https://api.linear.app/graphql"
 
     def __init__(self, *, api_key: str | None = None, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.api_key = (api_key or os.getenv("LINEAR_API_KEY", "")).strip()
+        self.api_key = (api_key or get_api_key("linear", env_var="LINEAR_API_KEY") or "").strip()
         self._transport = transport
 
     async def write_summary(

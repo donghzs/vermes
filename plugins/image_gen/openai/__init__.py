@@ -23,6 +23,8 @@ Selection precedence (first hit wins):
 
 from __future__ import annotations
 
+from agent.service_credentials import get_api_key, register_service
+
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -134,7 +136,7 @@ class OpenAIImageGenProvider(ImageGenProvider):
         return "OpenAI"
 
     def is_available(self) -> bool:
-        if not os.environ.get("OPENAI_API_KEY"):
+        if not get_api_key("openai_image", env_var="OPENAI_API_KEY"):
             return False
         try:
             import openai  # noqa: F401
@@ -198,7 +200,7 @@ class OpenAIImageGenProvider(ImageGenProvider):
                 aspect_ratio=aspect,
             )
 
-        if not os.environ.get("OPENAI_API_KEY"):
+        if not get_api_key("openai_image", env_var="OPENAI_API_KEY"):
             return error_response(
                 error=(
                     "OPENAI_API_KEY not set. Run `hermes tools` → Image "
@@ -328,3 +330,5 @@ class OpenAIImageGenProvider(ImageGenProvider):
 def register(ctx) -> None:
     """Plugin entry point — wire ``OpenAIImageGenProvider`` into the registry."""
     ctx.register_image_gen_provider(OpenAIImageGenProvider())
+
+register_service("openai_image", api_key_env_var="OPENAI_API_KEY", label="OpenAI Image")
