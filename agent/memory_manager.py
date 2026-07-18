@@ -31,6 +31,7 @@ import inspect
 from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
+from agent.memory_fabric import L4_REFERENCE
 from tools.registry import tool_error
 
 logger = logging.getLogger(__name__)
@@ -258,11 +259,15 @@ class MemoryManager:
     def add_provider(self, provider: MemoryProvider) -> None:
         """Register a memory provider.
 
-        Built-in provider (name ``"builtin"``) is always accepted.
-        Only **one** external (non-builtin) provider is allowed — a second
-        attempt is rejected with a warning.
+        Built-in providers (name ``"builtin"`` or ``"rag"``) are always
+        accepted. Exactly **one** non-builtin external provider is allowed —
+        a second external attempt is rejected with a warning. Treating the
+        RAG provider as builtin is what enables federated search (Slice 3):
+        the built-in RAG store coexists with the user's chosen external KB.
         """
-        is_builtin = provider.name == "builtin"
+        # The built-in RAG provider ("rag") is internal, not an "external"
+        # plugin, so it must not consume the single-external-provider slot.
+        is_builtin = provider.name in ("builtin", "rag")
 
         if not is_builtin:
             if self._has_external:
@@ -365,6 +370,51 @@ class MemoryManager:
                     "Memory provider '%s' queue_prefetch failed (non-fatal): %s",
                     provider.name, e,
                 )
+
+    def search_all(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Federated search across every active provider's reference store.
+
+        Unified memory base (Slice 3): fans a single query out to all
+        providers' ``search()`` implementations, normalizes the hits into the
+        unified recall shape, and aggregates them. The result is consumed by
+        ``memory_fabric.recall_hierarchical`` as the L4 layer. Failures in one
+        provider never block the others.
+        """
+        aggregated: List[Dict[str, Any]] = []
+        for provider in self._providers:
+            try:
+                hits = provider.search(query, limit)
+            except Exception as e:
+                logger.debug(
+                    "Memory provider '%s' search failed (non-fatal): %s",
+                    provider.name, e,
+                )
+                continue
+            if not hits:
+                continue
+            for i, hit in enumerate(hits[:limit]):
+                content = hit.get("content") or hit.get("preview") or ""
+                if not content:
+                    continue
+                pointer = hit.get("pointer") or (
+                    f"{provider.name}:{hit.get('filename', '')}#{hit.get('chunk_index', i)}"
+                )
+                supplied = hit.get("score")
+                score = (
+                    float(supplied)
+                    if isinstance(supplied, (int, float))
+                    else 1.0 - i / max(len(hits), 1)
+                )
+                aggregated.append(
+                    {
+                        "layer": L4_REFERENCE,
+                        "source": hit.get("source") or provider.name,
+                        "pointer": pointer,
+                        "content": content,
+                        "score": score,
+                    }
+                )
+        return aggregated
 
     # -- Sync ----------------------------------------------------------------
 

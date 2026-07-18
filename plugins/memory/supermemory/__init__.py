@@ -786,6 +786,36 @@ class SupermemoryMemoryProvider(MemoryProvider):
             return self._tool_profile(args)
         return tool_error(f"Unknown tool: {tool_name}")
 
+    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Federated search (unified memory base, Slice 3).
+
+        Reuses the same ``search_memories`` client call as the
+        ``supermemory_search`` tool so the provider contributes its knowledge
+        base to ``memory_manager.search_all`` / ``memory_fabric.recall_hierarchical``.
+        """
+        if not self._active or not self._client or not query.strip():
+            return []
+        try:
+            results = self._client.search_memories(query, limit=limit)
+        except Exception:
+            logger.debug("Supermemory search failed (federation)", exc_info=True)
+            return []
+        hits: List[Dict[str, Any]] = []
+        for item in results[:limit]:
+            content = item.get("memory") or ""
+            if not content:
+                continue
+            hits.append(
+                {
+                    "content": content,
+                    "pointer": f"supermemory:{item.get('id', '')}",
+                    "source": "supermemory",
+                    "score": float(item.get("similarity") or 0.0),
+                    "preview": content[:200].replace("\n", " "),
+                }
+            )
+        return hits
+
 
 def register(ctx):
     ctx.register_memory_provider(SupermemoryMemoryProvider())

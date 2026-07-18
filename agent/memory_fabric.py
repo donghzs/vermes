@@ -55,6 +55,12 @@ def _get_index_db() -> Path:
     return Path(get_hermes_home()) / "memory_index.db"
 
 
+def index_db_path() -> Path:
+    """Public accessor for the unified index DB location (e.g. for the
+    runtime to decide whether a one-time backfill is needed)."""
+    return _get_index_db()
+
+
 def _get_conn(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
@@ -270,3 +276,157 @@ def list_by_type(mtype: str, limit: int = 50) -> List[Dict[str, Any]]:
     except Exception:
         logger.warning("memory_fabric.list_by_type failed for %r", mtype, exc_info=True)
         return []
+
+
+# ---------------------------------------------------------------------------
+# Slice 2 — hierarchical recall pipeline
+# ---------------------------------------------------------------------------
+# Layer priority for unified recall ordering (lower number = surfaced first).
+# Curated notes (L1) and procedural skills (L2) are more reliable than
+# episodic (L3) / reference (L4), so they win ties.
+_LAYER_PRIORITY = {
+    L1_NOTE: 0,
+    L2_PROCEDURAL: 1,
+    L3_EPISODIC: 2,
+    L4_REFERENCE: 3,
+}
+
+# Pluggable federation hooks. The runtime injects them (e.g.
+# ``MemoryManager.search_all`` for L4, a live recall adapter for L3) so this
+# module stays decoupled from heavy subsystems (no circular imports, unit-
+# testable in isolation).
+_L4_FEDERATION_HOOK = None
+_L3_LIVE_HOOK = None
+
+
+def set_l4_federation_hook(fn) -> None:
+    """Register a callable ``fn(query, limit) -> List[Dict]`` that fans out to
+    live reference stores (RAG + external KBs). Its hits are merged into
+    ``recall_hierarchical`` as L4. Pass ``None`` to clear."""
+    global _L4_FEDERATION_HOOK
+    _L4_FEDERATION_HOOK = fn
+
+
+def get_l4_federation_hook():
+    """Return the currently registered L4 federation hook (or ``None``)."""
+    return _L4_FEDERATION_HOOK
+
+
+def set_l3_live_hook(fn) -> None:
+    """Register a callable ``fn(query, limit) -> List[Dict]`` that returns live
+    episodic recall hits (adapter around ``memory_recall.recall_context`` etc.).
+    Optional extension point; not required for the index-based path."""
+    global _L3_LIVE_HOOK
+    _L3_LIVE_HOOK = fn
+
+
+def _normalize_hit(hit: Dict[str, Any], default_layer: Optional[str]) -> Dict[str, Any]:
+    """Coerce a heterogeneous hit dict into the unified recall shape."""
+    layer = hit.get("layer") or default_layer or L4_REFERENCE
+    content = hit.get("content") or hit.get("preview") or ""
+    return {
+        "layer": layer,
+        "source": hit.get("source", ""),
+        "pointer": hit.get("pointer", ""),
+        "content": content,
+        "score": float(hit.get("score", 0.0) or 0.0),
+    }
+
+
+def recall_hierarchical(
+    query: str,
+    limit: int = 8,
+    layers: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Unified hierarchical recall across L1–L4 with ordering.
+
+    Pipeline:
+      1. fabric index (L1 notes / L2 skills / L3 recall rows / L4 pointers)
+         — already ordered by FTS5 rank within the result set.
+      2. optional L3 live hook (richer episodic recall).
+      3. optional L4 federation hook (live RAG + external KBs).
+
+    Ordering: **layer priority first** (L1 > L2 > L3 > L4), then FTS5 rank
+    within a layer (Python's sort is stable, so the rank order returned by
+    ``recall`` is preserved inside each layer). Results are de-duplicated by
+    ``pointer`` (or content fingerprint when no pointer).
+
+    fail-closed: hook failures are logged and skipped — the agent must never
+    be interrupted by a broken external KB or recall subsystem.
+    """
+    if not query or not query.strip():
+        return []
+    results: List[Dict[str, Any]] = []
+
+    # 1) fabric index (covers L1–L4 pointers)
+    for h in recall(query, layer=None, limit=max(limit * 3, 10)):
+        results.append(_normalize_hit(h, None))
+
+    # 2) optional L3 live recall
+    if _L3_LIVE_HOOK is not None and (layers is None or L3_EPISODIC in layers):
+        try:
+            for h in _L3_LIVE_HOOK(query, limit):
+                results.append(_normalize_hit(h, L3_EPISODIC))
+        except Exception:
+            logger.warning("memory_fabric L3 live hook failed", exc_info=True)
+
+    # 3) optional L4 federation (RAG + external KBs)
+    if _L4_FEDERATION_HOOK is not None and (layers is None or L4_REFERENCE in layers):
+        try:
+            for h in _L4_FEDERATION_HOOK(query, limit):
+                results.append(_normalize_hit(h, L4_REFERENCE))
+        except Exception:
+            logger.warning("memory_fabric L4 federation hook failed", exc_info=True)
+
+    # Order by layer priority (stable → preserves FTS rank within layer).
+    results.sort(key=lambda h: _LAYER_PRIORITY.get(h["layer"], 9))
+
+    # De-duplicate by pointer (fall back to content fingerprint).
+    seen: set = set()
+    deduped: List[Dict[str, Any]] = []
+    for h in results:
+        key = h["pointer"] or f"{h['layer']}:{h['content'][:40]}"
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(h)
+    return deduped[:limit]
+
+
+def index_skills(skills: List[Dict[str, Any]], scope: str = "") -> int:
+    """Bulk-index L2 procedural memory from an injected skill list.
+
+    ``skills`` is a list of dicts (typically from ``tools.skills_tool.
+    _find_all_skills`` / ``agent.skill_extractor``) with ``name``,
+    ``description``, optional ``category``/``pointer``. Each skill becomes one
+    L2 entry keyed by a stable ``pointer`` (``skill:<category>/<name>``).
+    Returns the number of skills indexed.
+    """
+    count = 0
+    for s in skills:
+        name = (s.get("name") or "").strip()
+        if not name:
+            continue
+        desc = (s.get("description") or "").strip()
+        category = (s.get("category") or "").strip()
+        pointer = s.get("pointer") or (
+            f"skill:{category}/{name}" if category else f"skill:{name}"
+        )
+        content = f"{name}: {desc}".strip()
+        if not content:
+            continue
+        try:
+            record(
+                {
+                    "source": "skill",
+                    "layer": L2_PROCEDURAL,
+                    "type": "skill",
+                    "scope": scope,
+                    "pointer": pointer,
+                    "fts_content": content,
+                }
+            )
+            count += 1
+        except Exception:
+            logger.warning("index_skills failed for %r", name, exc_info=True)
+    return count

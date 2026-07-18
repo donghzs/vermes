@@ -465,19 +465,28 @@ class RAGProvider(MemoryProvider):
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
     def _handle_search(self, args: Dict[str, Any]) -> str:
+        """Unified ``memory_search`` (logical-unify Slice 2/3).
+
+        Returns curated L1 notes (from the fabric index) plus L4 reference hits
+        (RAG documents + any external KB) via the federated L4 hook. This is the
+        single path the ``memory_search`` tool uses; bugs like Bug 1 (notes
+        invisible to search) are structurally impossible because notes and
+        reference stores all flow through ``memory_fabric``.
+        """
         query = args.get("query", "").strip()
         limit = min(max(args.get("limit", 5), 1), 10)
         if not query:
             return json.dumps({"error": "query is required"})
         results = []
-        # L1 notes: recall via the unified memory index (logical-unify Slice 1).
-        # This is what fixes Bug 1 at the logical level — curated notes are now
-        # reachable through the canonical index instead of a separate mirrored
-        # RAG store that could drift.
-        try:
-            from agent.memory_fabric import recall as fabric_recall
 
-            for hit in fabric_recall(query, layer="note", limit=limit):
+        # L1 curated notes — single canonical index (fixes Bug 1).
+        try:
+            from agent.memory_fabric import (
+                L1_NOTE,
+                recall as fabric_recall,
+            )
+
+            for hit in fabric_recall(query, layer=L1_NOTE, limit=limit):
                 content = hit.get("content") or ""
                 results.append({
                     "doc_id": None,
@@ -488,50 +497,43 @@ class RAGProvider(MemoryProvider):
                     "preview": content[:200].replace("\n", " "),
                 })
         except Exception:
-            logger.debug("memory_fabric recall failed (notes skipped): %s", query)
-        # L4 reference: existing RAG document store (file ingestion).
-        if self._initialized:
+            logger.debug("memory_fabric L1 recall failed (notes skipped): %s", query)
+
+        # L4 reference — live federation (RAG + external KBs) via the injected
+        # hook (memory_manager.search_all). When no hook is wired (legacy
+        # single-provider setup), fall back to this provider's own RAG chunks.
+        from agent.memory_fabric import get_l4_federation_hook
+
+        hook = get_l4_federation_hook()
+        if hook is not None:
             try:
-                conn = _get_conn(str(self._db_path))
-                c = conn.cursor()
-                safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
-                terms = safe_query.split()
-                if terms:
-                    fts_query = " OR ".join(f'"{t}"' for t in terms[:5])
-                    c.execute("""
-                        SELECT chunks.content, documents.filename, chunks.chunk_index,
-                               documents.id, documents.file_type
-                        FROM chunks_fts
-                        JOIN chunks ON chunks.id = chunks_fts.rowid
-                        JOIN documents ON documents.id = chunks.doc_id
-                        WHERE chunks_fts MATCH ?
-                        ORDER BY rank
-                        LIMIT ?
-                    """, (fts_query, limit))
-                    for row in c.fetchall():
-                        content, filename, chunk_idx, doc_id, file_type = row
-                        results.append({
-                            "doc_id": doc_id,
-                            "chunk_id": None,  # filled below
-                            "filename": filename,
-                            "chunk_index": chunk_idx,
-                            "content": content,
-                            "preview": content[:200].replace('\n', ' '),
-                        })
-                    # Resolve chunk_id for each result
-                    if results:
-                        for r in results:
-                            if r["doc_id"] is not None:
-                                c.execute(
-                                    "SELECT id FROM chunks WHERE doc_id=? AND chunk_index=?",
-                                    (r["doc_id"], r["chunk_index"]),
-                                )
-                                row = c.fetchone()
-                                r["chunk_id"] = row[0] if row else None
-                conn.close()
-            except Exception as e:
-                if not results:
-                    return json.dumps({"error": str(e)})
+                for hit in hook(query, limit):
+                    content = hit.get("content") or ""
+                    results.append({
+                        "doc_id": None,
+                        "chunk_id": None,
+                        "filename": hit.get("source") or hit.get("pointer"),
+                        "chunk_index": 0,
+                        "content": content,
+                        "preview": content[:200].replace("\n", " "),
+                    })
+            except Exception:
+                logger.debug("L4 federation failed (skipped): %s", query)
+        else:
+            # Fallback: this provider's own RAG document store.
+            for hit in self.search(query, limit):
+                content = hit.get("content") or ""
+                results.append({
+                    "doc_id": hit.get("doc_id"),
+                    "chunk_id": None,
+                    "filename": hit.get("filename"),
+                    "chunk_index": hit.get("chunk_index", 0),
+                    "content": content,
+                    "preview": hit.get(
+                        "preview", content[:200].replace("\n", " ")
+                    ),
+                })
+
         return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False)
 
     def _handle_ingest(self, args: Dict[str, Any]) -> str:

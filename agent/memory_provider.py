@@ -149,6 +149,27 @@ class MemoryProvider(ABC):
         """
         raise NotImplementedError(f"Provider {self.name} does not handle tool {tool_name}")
 
+    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Federated search across this provider's reference store.
+
+        Optional — providers that expose a queryable knowledge base (e.g. the
+        built-in RAG provider, or an external KB like Mem0/Honcho) implement
+        this so ``MemoryManager.search_all`` can fan out a single query across
+        every active provider (unified memory base, Slice 3).
+
+        Returns a list of hit dicts. Each hit SHOULD contain:
+          - ``content`` (str): the matching passage.
+          - ``pointer`` (str): a stable id / location for the hit.
+          - ``source`` (str): provider name (defaults to ``self.name``).
+          - ``score`` (float, optional): relevance score (higher = better).
+          - ``preview`` (str, optional): short excerpt.
+          - ``filename`` (str, optional): human-readable source label.
+
+        Default returns ``[]`` so providers without a searchable store (pure
+        context/prefetch providers) are harmless no-ops in federation.
+        """
+        return []
+
     def shutdown(self) -> None:
         """Clean shutdown — flush queues, close connections."""
 

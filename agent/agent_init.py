@@ -1179,6 +1179,32 @@ def init_agent(
         except Exception as _rage:
             _ra().logger.debug("RAG provider init failed: %s", _rage)
 
+    # Unified memory base (Slice 3/4): wire the L4 federation hook so
+    # ``memory_search`` / ``recall_hierarchical`` fan out across every active
+    # provider (built-in RAG + any external KB), and seed the fabric index on
+    # first run (non-blocking background thread — idempotent backfill).
+    if agent._memory_manager is not None:
+        try:
+            from agent.memory_fabric import index_db_path, set_l4_federation_hook
+
+            set_l4_federation_hook(agent._memory_manager.search_all)
+            if not index_db_path().exists():
+                import threading as _th
+
+                def _seed_fabric_index() -> None:
+                    try:
+                        from agent.memory_migration import migrate_memories_to_fabric
+
+                        migrate_memories_to_fabric()
+                    except Exception as _seed_err:
+                        _ra().logger.warning("memory index seeding failed: %s", _seed_err)
+
+                _th.Thread(
+                    target=_seed_fabric_index, name="memory-index-seed", daemon=True
+                ).start()
+        except Exception as _hook_err:
+            _ra().logger.debug("memory fabric hook wiring failed: %s", _hook_err)
+
     # Inject memory provider tool schemas into the tool surface.
     # Skip tools whose names already exist (plugins may register the
     # same tools via ctx.register_tool(), which lands in agent.tools
