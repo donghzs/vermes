@@ -28,6 +28,7 @@ from .constraints import (
     ConstraintReport,
     run_constraints,
 )
+from .task_precheck import TaskPreCheckResult, check_task_constraints
 
 __all__ = [
     "RecoverableFeedback",
@@ -40,4 +41,6 @@ __all__ = [
     "ConstraintResult",
     "ConstraintReport",
     "run_constraints",
+    "TaskPreCheckResult",
+    "check_task_constraints",
 ]

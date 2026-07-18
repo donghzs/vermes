@@ -355,6 +355,20 @@ def run_conversation(
     except Exception:
         pass
 
+    # H1.1: task-level pre-execution constraints (fail-open, never blocks).
+    # Runs after session is ensured but before any model call / tool dispatch.
+    try:
+        from harness.task_precheck import check_task_constraints
+        _task_precheck = check_task_constraints(user_message, agent)
+        if not _task_precheck.passed and _task_precheck.warning:
+            logger.warning("[H1.1] task pre-check warning: %s", _task_precheck.warning)
+            try:
+                agent._emit_status(f"⚠️ [harness] {_task_precheck.warning}")
+            except Exception:
+                pass
+    except Exception:
+        pass  # H1.1 永不阻塞
+
     # Tag all log records on this thread with the session ID so
     # ``hermes logs --session <id>`` can filter a single conversation.
     from hermes_logging import set_session_context
