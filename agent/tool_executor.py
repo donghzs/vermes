@@ -385,6 +385,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             if _h3_2_warning:
                 result = f"{result}\n\n{_h3_2_warning}"
                 logger.warning("[H3.2] tool %s stability: %s", function_name, _h3_2_warning)
+                # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
+                try:
+                    from harness.failure_learning import get_ledger
+                    get_ledger().record(function_name, _h3_2_warning, function_args)
+                except Exception:
+                    pass  # 学习落库失败不阻塞
         except Exception:
             pass  # H3.2 永不阻塞
         results[index] = (function_name, function_args, result, duration, is_error, False)
@@ -1126,6 +1132,12 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             if _h3_2_seq:
                 function_result = f"{function_result}\n\n{_h3_2_seq}"
                 logger.warning("[H3.2-seq] tool %s stability: %s", function_name, _h3_2_seq)
+                # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
+                try:
+                    from harness.failure_learning import get_ledger
+                    get_ledger().record(function_name, _h3_2_seq, function_args)
+                except Exception:
+                    pass  # 学习落库失败不阻塞
         except Exception:
             pass  # H3.2 永不阻塞
 

@@ -366,6 +366,13 @@ def run_conversation(
                 agent._emit_status(f"⚠️ [harness] {_task_precheck.warning}")
             except Exception:
                 pass
+            # 融合 P0：任务级约束复发信号持久化（复用 H4.1 同款落库，fail-open）
+            try:
+                from harness.failure_learning import get_ledger
+                for _check, _detail in (_task_precheck.detail or {}).items():
+                    get_ledger().record(f"task:{_check}", _task_precheck.warning, _detail)
+            except Exception:
+                pass  # 学习落库失败不阻塞
     except Exception:
         pass  # H1.1 永不阻塞
 
