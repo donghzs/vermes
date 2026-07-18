@@ -44,13 +44,16 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, Any, List, Union
 
-# account_usage imports the OpenAI SDK chain (~230 ms). Only needed by
-# /usage; we still import it at module top in the gateway because test
-# patches (tests/gateway/test_usage_command.py) target
-# `gateway.run.fetch_account_usage` as a module-level attribute. The
-# gateway is a long-running daemon, so its boot cost matters less than
-# preserving the established test-patch surface.
-from agent.account_usage import fetch_account_usage, render_account_usage_lines
+# P2.1 audit (2026-07-18): the ``agent.account_usage`` import
+# (fetch_account_usage, render_account_usage_lines) previously lived here at
+# module top, guarded by a comment claiming tests patched
+# ``gateway.run.fetch_account_usage``. That constraint is STALE —
+# tests/gateway/test_usage_command.py now patches
+# ``gateway.slash_handlers.system_handlers.fetch_account_usage`` instead, and
+# nothing in this module references either symbol. The import was pure dead
+# weight that pulled the OpenAI SDK chain (~66–230 ms) at every gateway boot
+# for no benefit. Removed; /usage resolves the symbol through the slash
+# handler path which imports it directly where needed.
 from agent.async_utils import safe_schedule_threadsafe
 from agent.i18n import t
 from hermes_cli.config import cfg_get
