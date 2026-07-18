@@ -280,25 +280,53 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             except Exception:
                 pass
         start = time.time()
+        # H2.1: pre-execution constraint check (runtime quality gate).
+        # Fail-open: warning = log + append to result; deny = skip handler.
+        _precheck_result = None
         try:
-            result = agent._invoke_tool(
-                function_name,
-                function_args,
-                effective_task_id,
-                tool_call.id,
-                messages=messages,
-                pre_tool_block_checked=True,
-            )
-        except Exception as tool_error:
-            if classify_failure:
-                _etype, _cause = classify_failure(tool_error)
+            from harness.tool_precheck import run_precheck
+            _precheck_result = run_precheck(function_name, function_args, agent)
+        except Exception:
+            pass  # harness unavailable → no-op (additive design)
+        if _precheck_result is not None and not _precheck_result.passed:
+            if _precheck_result.block:
                 result = (
-                    f"Error executing tool '{function_name}': {tool_error}\n"
-                    f"[hint] failure_type={_etype}; {_cause}"
+                    f"[blocked] {function_name}: {_precheck_result.warning}"
                 )
+                logger.warning(
+                    "[H2.1] tool %s blocked by pre-check: %s",
+                    function_name, _precheck_result.warning,
+                )
+                duration = time.time() - start
+                # Skip the handler entirely — go straight to result processing.
             else:
-                result = f"Error executing tool '{function_name}': {tool_error}"
-            logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
+                logger.warning(
+                    "[H2.1] tool %s pre-check warning: %s",
+                    function_name, _precheck_result.warning,
+                )
+        if _precheck_result is None or not _precheck_result.block:
+            try:
+                result = agent._invoke_tool(
+                    function_name,
+                    function_args,
+                    effective_task_id,
+                    tool_call.id,
+                    messages=messages,
+                    pre_tool_block_checked=True,
+                )
+            except Exception as tool_error:
+                if classify_failure:
+                    _etype, _cause = classify_failure(tool_error)
+                    result = (
+                        f"Error executing tool '{function_name}': {tool_error}\n"
+                        f"[hint] failure_type={_etype}; {_cause}"
+                    )
+                else:
+                    result = f"Error executing tool '{function_name}': {tool_error}"
+                logger.error("_invoke_tool raised for %s: %s", function_name, tool_error, exc_info=True)
+            # Append pre-check warning to the result so the LLM sees it.
+            if _precheck_result is not None and not _precheck_result.passed and not _precheck_result.block:
+                result = f"{result}\n\n[harness pre-check] {_precheck_result.warning}"
         duration = time.time() - start
         is_error, _ = _detect_tool_failure(function_name, result)
         # 桥：记录工具执行结果到自我进化系统，跨会话积累经验
@@ -840,25 +868,43 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 spinner = KawaiiSpinner(f"{face} {emoji} {preview}", spinner_type='dots', print_fn=agent._print_fn)
                 spinner.start()
             _spinner_result = None
+            # H2.1: pre-execution constraint check (sequential path).
+            _precheck_seq = None
             try:
-                function_result = _ra().handle_function_call(
-                    function_name, function_args, effective_task_id,
-                    tool_call_id=tool_call.id,
-                    session_id=agent.session_id or "",
-                    enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
-                    skip_pre_tool_call_hook=True,
-                )
-                _spinner_result = function_result
-            except Exception as tool_error:
-                if classify_failure:
-                    _etype, _cause = classify_failure(tool_error)
-                    function_result = (
-                        f"Error executing tool '{function_name}': {tool_error}\n"
-                        f"[hint] failure_type={_etype}; {_cause}"
-                    )
-                else:
-                    function_result = f"Error executing tool '{function_name}': {tool_error}"
-                logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
+                from harness.tool_precheck import run_precheck
+                _precheck_seq = run_precheck(function_name, function_args, agent)
+            except Exception:
+                pass
+            try:
+                if _precheck_seq is not None and not _precheck_seq.passed:
+                    if _precheck_seq.block:
+                        function_result = f"[blocked] {function_name}: {_precheck_seq.warning}"
+                        logger.warning("[H2.1-seq] tool %s blocked: %s", function_name, _precheck_seq.warning)
+                        _spinner_result = function_result
+                    else:
+                        logger.warning("[H2.1-seq] tool %s warning: %s", function_name, _precheck_seq.warning)
+                if _precheck_seq is None or not _precheck_seq.block:
+                    try:
+                        function_result = _ra().handle_function_call(
+                            function_name, function_args, effective_task_id,
+                            tool_call_id=tool_call.id,
+                            session_id=agent.session_id or "",
+                            enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
+                            skip_pre_tool_call_hook=True,
+                        )
+                        _spinner_result = function_result
+                        if _precheck_seq is not None and not _precheck_seq.passed:
+                            function_result = f"{function_result}\n\n[harness pre-check] {_precheck_seq.warning}"
+                    except Exception as tool_error:
+                        if classify_failure:
+                            _etype, _cause = classify_failure(tool_error)
+                            function_result = (
+                                f"Error executing tool '{function_name}': {tool_error}\n"
+                                f"[hint] failure_type={_etype}; {_cause}"
+                            )
+                        else:
+                            function_result = f"Error executing tool '{function_name}': {tool_error}"
+                        logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
             finally:
                 tool_duration = time.time() - tool_start_time
                 cute_msg = _get_cute_tool_message_impl(function_name, function_args, tool_duration, result=_spinner_result)
@@ -867,24 +913,39 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 elif agent._should_emit_quiet_tool_messages():
                     agent._vprint(f"  {cute_msg}")
         else:
+            # H2.1: pre-execution constraint check (sequential, no-spinner path).
+            _precheck_ns = None
             try:
-                function_result = _ra().handle_function_call(
-                    function_name, function_args, effective_task_id,
-                    tool_call_id=tool_call.id,
-                    session_id=agent.session_id or "",
-                    enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
-                    skip_pre_tool_call_hook=True,
-                )
-            except Exception as tool_error:
-                if classify_failure:
-                    _etype, _cause = classify_failure(tool_error)
-                    function_result = (
-                        f"Error executing tool '{function_name}': {tool_error}\n"
-                        f"[hint] failure_type={_etype}; {_cause}"
+                from harness.tool_precheck import run_precheck
+                _precheck_ns = run_precheck(function_name, function_args, agent)
+            except Exception:
+                pass
+            if _precheck_ns is not None and not _precheck_ns.passed and _precheck_ns.block:
+                function_result = f"[blocked] {function_name}: {_precheck_ns.warning}"
+                logger.warning("[H2.1-ns] tool %s blocked: %s", function_name, _precheck_ns.warning)
+            elif _precheck_ns is not None and not _precheck_ns.passed:
+                logger.warning("[H2.1-ns] tool %s warning: %s", function_name, _precheck_ns.warning)
+            if _precheck_ns is None or not _precheck_ns.block:
+                try:
+                    function_result = _ra().handle_function_call(
+                        function_name, function_args, effective_task_id,
+                        tool_call_id=tool_call.id,
+                        session_id=agent.session_id or "",
+                        enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
+                        skip_pre_tool_call_hook=True,
                     )
-                else:
-                    function_result = f"Error executing tool '{function_name}': {tool_error}"
-                logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
+                    if _precheck_ns is not None and not _precheck_ns.passed:
+                        function_result = f"{function_result}\n\n[harness pre-check] {_precheck_ns.warning}"
+                except Exception as tool_error:
+                    if classify_failure:
+                        _etype, _cause = classify_failure(tool_error)
+                        function_result = (
+                            f"Error executing tool '{function_name}': {tool_error}\n"
+                            f"[hint] failure_type={_etype}; {_cause}"
+                        )
+                    else:
+                        function_result = f"Error executing tool '{function_name}': {tool_error}"
+                    logger.error("handle_function_call raised for %s: %s", function_name, tool_error, exc_info=True)
             tool_duration = time.time() - tool_start_time
 
         if isinstance(function_result, str):
