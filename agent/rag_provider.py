@@ -469,50 +469,70 @@ class RAGProvider(MemoryProvider):
         limit = min(max(args.get("limit", 5), 1), 10)
         if not query:
             return json.dumps({"error": "query is required"})
-        if not self._initialized:
-            return json.dumps({"error": "RAG not initialized"})
+        results = []
+        # L1 notes: recall via the unified memory index (logical-unify Slice 1).
+        # This is what fixes Bug 1 at the logical level — curated notes are now
+        # reachable through the canonical index instead of a separate mirrored
+        # RAG store that could drift.
         try:
-            conn = _get_conn(str(self._db_path))
-            c = conn.cursor()
-            safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
-            terms = safe_query.split()
-            if not terms:
-                return json.dumps({"results": [], "message": "No valid search terms"})
-            fts_query = " OR ".join(f'"{t}"' for t in terms[:5])
-            c.execute("""
-                SELECT chunks.content, documents.filename, chunks.chunk_index,
-                       documents.id, documents.file_type
-                FROM chunks_fts
-                JOIN chunks ON chunks.id = chunks_fts.rowid
-                JOIN documents ON documents.id = chunks.doc_id
-                WHERE chunks_fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-            """, (fts_query, limit))
-            results = []
-            for row in c.fetchall():
-                content, filename, chunk_idx, doc_id, file_type = row
+            from agent.memory_fabric import recall as fabric_recall
+
+            for hit in fabric_recall(query, layer="note", limit=limit):
+                content = hit.get("content") or ""
                 results.append({
-                    "doc_id": doc_id,
-                    "chunk_id": None,  # filled below
-                    "filename": filename,
-                    "chunk_index": chunk_idx,
+                    "doc_id": None,
+                    "chunk_id": None,
+                    "filename": hit.get("pointer"),
+                    "chunk_index": 0,
                     "content": content,
-                    "preview": content[:200].replace('\n', ' '),
+                    "preview": content[:200].replace("\n", " "),
                 })
-            # Resolve chunk_id for each result
-            if results:
-                chunk_ids = []
-                for r in results:
-                    c.execute(
-                        "SELECT id FROM chunks WHERE doc_id=? AND chunk_index=?",
-                        (r["doc_id"], r["chunk_index"])
-                    )
-                    row = c.fetchone()
-                    r["chunk_id"] = row[0] if row else None
-            return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        except Exception:
+            logger.debug("memory_fabric recall failed (notes skipped): %s", query)
+        # L4 reference: existing RAG document store (file ingestion).
+        if self._initialized:
+            try:
+                conn = _get_conn(str(self._db_path))
+                c = conn.cursor()
+                safe_query = re.sub(r'[^\w\u4e00-\u9fff\s]', ' ', query).strip()
+                terms = safe_query.split()
+                if terms:
+                    fts_query = " OR ".join(f'"{t}"' for t in terms[:5])
+                    c.execute("""
+                        SELECT chunks.content, documents.filename, chunks.chunk_index,
+                               documents.id, documents.file_type
+                        FROM chunks_fts
+                        JOIN chunks ON chunks.id = chunks_fts.rowid
+                        JOIN documents ON documents.id = chunks.doc_id
+                        WHERE chunks_fts MATCH ?
+                        ORDER BY rank
+                        LIMIT ?
+                    """, (fts_query, limit))
+                    for row in c.fetchall():
+                        content, filename, chunk_idx, doc_id, file_type = row
+                        results.append({
+                            "doc_id": doc_id,
+                            "chunk_id": None,  # filled below
+                            "filename": filename,
+                            "chunk_index": chunk_idx,
+                            "content": content,
+                            "preview": content[:200].replace('\n', ' '),
+                        })
+                    # Resolve chunk_id for each result
+                    if results:
+                        for r in results:
+                            if r["doc_id"] is not None:
+                                c.execute(
+                                    "SELECT id FROM chunks WHERE doc_id=? AND chunk_index=?",
+                                    (r["doc_id"], r["chunk_index"]),
+                                )
+                                row = c.fetchone()
+                                r["chunk_id"] = row[0] if row else None
+                conn.close()
+            except Exception as e:
+                if not results:
+                    return json.dumps({"error": str(e)})
+        return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False)
 
     def _handle_ingest(self, args: Dict[str, Any]) -> str:
         file_path = args.get("file_path", "").strip()

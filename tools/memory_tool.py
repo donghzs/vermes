@@ -400,20 +400,25 @@ class MemoryStore:
         return self._success_response(target, "Entry removed.")
 
     def _sync_rag_index(self, target: str) -> None:
-        """Best-effort bridge: re-index this target's curated memory into the
-        RAG FTS5 store so ``memory_search`` (which queries that store) can find
-        it. The ``memory`` tool persists to MEMORY.md/USER.md — a separate store
-        from the RAG knowledge base — so without this bridge, writes via
-        ``memory`` were invisible to ``memory_search``.
+        """Index this target's curated memory into the unified memory index
+        (``memory_fabric``) so ``memory_search`` finds it via the canonical
+        path.
 
-        Fail-open: any error is swallowed; memory writes must never break.
+        Previously this mirrored MEMORY.md into the separate RAG FTS5 store via
+        a fail-open bridge (``index_memory_text``) — that dual-copy design
+        drifted (Bug 1). Notes now live in the single typed index; the fragile
+        bridge is retired.
+
+        fail-closed: an indexing error is logged (WARNING) rather than silently
+        swallowed, so drift is observable. The note itself is already persisted
+        to MEMORY.md, so a transient index failure never loses the memory.
         """
         try:
-            from agent.rag_provider import index_memory_text
+            from agent.memory_fabric import index_note
             entries = self._entries_for(target)
-            index_memory_text(target, "\n".join(entries))
-        except Exception:
-            pass
+            index_note(target, "\n".join(entries))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("memory index (fabric) update failed for %s: %s", target, e)
 
     def apply_batch(self, target: str, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Apply a sequence of add/replace/remove ops to one target atomically.
