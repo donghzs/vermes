@@ -7,19 +7,19 @@
     "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.2.exe"
   },
   "sha256": {
-    "macos_arm64": "2936a95da99509e11795ee3177f3d56ae7a28a4ac6ff3dee37c5f67c5d4c0f87",
-    "macos_x64": ""
+    "macos_arm64": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf",
+    "macos_x64": "cf194ca8ccbd58d2674522d225bc77ef01d17867de5c3ed91370116040cf07cb"
   },
   "macOS": {
     "arm64": {
       "dmg": "/vermes/downloads/Vermes-2.3.2-arm64.dmg",
-      "size": "183 MB",
-      "sha256": "2936a95da99509e11795ee3177f3d56ae7a28a4ac6ff3dee37c5f67c5d4c0f87"
+      "size": "245 MB",
+      "sha256": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf"
     },
     "x64": {
       "dmg": "/vermes/downloads/Vermes-2.3.2.dmg",
-      "size": "",
-      "sha256": ""
+      "size": "249 MB",
+      "sha256": "cf194ca8ccbd58d2674522d225bc77ef01d17867de5c3ed91370116040cf07cb"
     }
   },
   "windows": {

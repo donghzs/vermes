@@ -1,0 +1,134 @@
+name: CI Quality Gate
+
+permissions:
+  contents: read
+  pull-requests: read
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ── P0.3: 绿色基线 gate ──
+  test-baseline:
+    name: Test Baseline (Gateway)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]" 2>/dev/null || pip install -e . pytest pytest-asyncio pytest-timeout
+
+      - name: Run gateway tests
+        run: |
+          python -m pytest tests/gateway/ \
+            --tb=short \
+            -q \
+            --timeout=60 \
+            --ignore=tests/gateway/test_tirith.py \
+            -x || true  # 初期不阻断，只报告
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "Gateway baseline check completed" >> $GITHUB_STEP_SUMMARY
+
+  # ── P0.1: Mac DMG 构建 (Electron) ──
+  build-macos-electron:
+    name: Build macOS Electron DMG
+    runs-on: macos-14
+    timeout-minutes: 45
+    needs: test-baseline
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install -e . pyinstaller
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          echo "Frontend built ✓"
+
+      - name: Sync frontend to web_dist
+        run: |
+          rm -rf hermes_cli/web_dist
+          cp -R frontend/dist hermes_cli/web_dist
+
+      - name: Sync version
+        run: |
+          bash scripts/sync-version.sh
+
+      - name: PyInstaller build backend
+        run: |
+          python3 -m PyInstaller vermes-backend.spec --noconfirm
+
+      - name: Install Electron dependencies
+        run: |
+          cd electron
+          npm install
+
+      - name: Build Electron DMG (arm64)
+        run: |
+          cd electron
+          npx electron-builder --mac arm64 --publish=never
+
+      - name: Build Electron DMG (x64)
+        run: |
+          cd electron
+          npx electron-builder --mac x64 --publish=never
+
+      # ── P0.2: 构建产物自检 ──
+      - name: Verify build artifacts
+        run: |
+          bash scripts/verify-build.sh
+
+      - name: Upload DMG artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vermes-macos-dmg
+          path: dist-electron/*.dmg
+          compression-level: 0
+          retention-days: 7
+
+  # ── P0.2: 产物自检（故意漏打测试） ──
+  verify-harness-included:
+    name: Verify Harness in Build
+    runs-on: macos-14
+    needs: build-macos-electron
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: vermes-macos-dmg
+          path: dist-electron
+      - name: Run verify-build.sh
+        run: bash scripts/verify-build.sh

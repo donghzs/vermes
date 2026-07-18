@@ -24,6 +24,7 @@ for src, dst in [
     ('acp_adapter', 'acp_adapter'),
     ('acp_registry', 'acp_registry'),
     ('gateway', 'gateway'),
+    ('harness', 'harness'),
     ('hermes_constants.py', '.'),
     ('model_tools.py', '.'),
     ('run_agent.py', '.'),
@@ -107,10 +108,11 @@ hiddenimports = [
     'gateway.kanban_mixin',
     'gateway.slash_commands_mixin',
     'gateway.session_mixin',
-    'gateway.session_commands_mixin',
-    'gateway.config_commands_mixin',
-    'gateway.system_commands_mixin',
-    'gateway.capability_commands_mixin',
+    # slash_handlers 子包替代旧 mixin 名
+    'gateway.slash_handlers.session_handlers',
+    'gateway.slash_handlers.config_handlers',
+    'gateway.slash_handlers.system_handlers',
+    'gateway.slash_handlers.capability_handlers',
     'gateway.auth_mixin',
     'gateway.config_loader_mixin',
     'gateway.watcher_mixin',
@@ -123,7 +125,7 @@ hiddenimports = [
     'agent.trajectory', 'agent.memory_manager',
     'agent.think_scrubber', 'agent.retry_utils',
     'agent.browser_provider', 'agent.browser_registry',
-    'agent.init_agent',
+    'agent.agent_init',
     'agent.copilot_acp_client',
 
     # ScholarForge modules
@@ -152,7 +154,6 @@ hiddenimports = [
     'websockets',
 
     # Utils
-    'proxy_tools',
     'toolsets',
     'toolset_distributions',
 ]
