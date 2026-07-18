@@ -588,3 +588,55 @@ def load_and_format_recall(user_message: str) -> str:
     if not has_content:
         return ""
     return format_recall_for_prompt(recall)
+
+
+def refine_recall_per_turn(user_message: str) -> str:
+    """Per-turn recall refinement for the CURRENT user message (H4.5).
+
+    Unlike ``recall_context()`` (run once at turn 1 and injected into the
+    frozen system prompt), this is meant to be injected into the *per-turn
+    user message* so the stable prefix cache is never disturbed.
+
+    Token/latency budget (risk R-mem2) is bounded by design:
+      - ``fluent`` users already got full context at turn 1 → skip entirely.
+      - Only a lightweight DB recall (recent outcomes + domain stats) is run;
+        no embedding search, no self-assessment raw_event write.
+      - Empty string when there is nothing relevant to add (fail-open).
+
+    Returns a ``<recalled_context>`` block, or ``""`` if nothing to add.
+    """
+    try:
+        richness = compute_richness()
+    except Exception:
+        return ""
+    if getattr(richness, "tier", "") == "fluent":
+        return ""  # 系统提示已全量注入，逐轮细化跳过以省 token
+
+    keywords = _extract_keywords(user_message or "")
+    result: Dict[str, Any] = {}
+
+    self_model_db = _get_self_model_db()
+    if self_model_db:
+        try:
+            conn = sqlite3.connect(str(self_model_db))
+            conn.row_factory = sqlite3.Row
+            recent = _query_recent_outcomes(conn, keywords)
+            if recent:
+                result["recent_outcomes"] = recent
+            domain = _query_domain_stats(conn, keywords)
+            if domain:
+                result["domain_stats"] = domain
+            conn.close()
+        except Exception:
+            pass
+
+    if not result:
+        return ""  # 无相关内容，不注入
+
+    result["richness"] = richness
+    result["keywords"] = keywords
+    result["_recall_depth"] = "shallow"  # 逐轮细化用浅召回，省 token
+    try:
+        return format_recall_for_prompt(result)
+    except Exception:
+        return ""

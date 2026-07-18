@@ -1036,6 +1036,20 @@ def run_conversation(
                         _injections.append(_fenced)
                 if _plugin_user_context:
                     _injections.append(_plugin_user_context)
+                # H4.5: per-turn recall refinement — injected into the user
+                # message (NOT the system prompt) so the prefix cache stays
+                # intact. Skips fluent users; lightweight DB recall only.
+                try:
+                    from agent.memory_recall import refine_recall_per_turn
+
+                    _user_text = msg.get("content", "")
+                    if not isinstance(_user_text, str):
+                        _user_text = ""
+                    _turn_recall = refine_recall_per_turn(_user_text)
+                    if _turn_recall:
+                        _injections.append(_turn_recall)
+                except Exception:
+                    pass
                 if _injections:
                     _base = api_msg.get("content", "")
                     if isinstance(_base, str):
