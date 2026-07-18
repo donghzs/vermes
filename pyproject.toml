@@ -266,6 +266,9 @@ files = [
     "gateway/lifecycle_mixin.py",
     "agent/llm_concurrency.py",
     "gateway/_run_attr.py",
+    "harness/task_precheck.py",
+    "harness/stability_hotpath.py",
+    "harness/failure_learning.py",
 ]
 
 # Mixin 文件引用 GatewayRunner 组合属性(self.config/self.adapters 等),

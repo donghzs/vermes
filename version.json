@@ -1,10 +1,10 @@
 {
-  "version": "2.3.2",
+  "version": "2.3.3",
   "buildDate": "2026-07-18",
   "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.2-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.2.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.2.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.3-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.3.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.3.exe"
   },
   "sha256": {
     "macos_arm64": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf",
@@ -12,18 +12,18 @@
   },
   "macOS": {
     "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.2-arm64.dmg",
+      "dmg": "/vermes/downloads/Vermes-2.3.3-arm64.dmg",
       "size": "245 MB",
       "sha256": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf"
     },
     "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.2.dmg",
+      "dmg": "/vermes/downloads/Vermes-2.3.3.dmg",
       "size": "249 MB",
       "sha256": "cf194ca8ccbd58d2674522d225bc77ef01d17867de5c3ed91370116040cf07cb"
     }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.3.2.exe",
+    "exe": "/vermes/downloads/Vermes-Setup-2.3.3.exe",
     "size": ""
   },
   "changelog": [
