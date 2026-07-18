@@ -385,6 +385,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             if _h3_2_warning:
                 result = f"{result}\n\n{_h3_2_warning}"
                 logger.warning("[H3.2] tool %s stability: %s", function_name, _h3_2_warning)
+            # H4.2: feed learned tool precision back into routing guidance.
+            try:
+                from harness.precision_matrix import precision_guidance
+                _h4_2 = precision_guidance(function_name)
+                if _h4_2:
+                    result = f"{result}\n\n{_h4_2}"
+                    logger.warning("[H4.2] low-precision routing guidance for %s", function_name)
+            except Exception:
+                pass
                 # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
                 try:
                     from harness.failure_learning import get_ledger
@@ -1132,6 +1141,15 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             if _h3_2_seq:
                 function_result = f"{function_result}\n\n{_h3_2_seq}"
                 logger.warning("[H3.2-seq] tool %s stability: %s", function_name, _h3_2_seq)
+            # H4.2: feed learned tool precision back into routing guidance.
+            try:
+                from harness.precision_matrix import precision_guidance
+                _h4_2_seq = precision_guidance(function_name)
+                if _h4_2_seq:
+                    function_result = f"{function_result}\n\n{_h4_2_seq}"
+                    logger.warning("[H4.2-seq] low-precision routing guidance for %s", function_name)
+            except Exception:
+                pass
                 # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
                 try:
                     from harness.failure_learning import get_ledger
