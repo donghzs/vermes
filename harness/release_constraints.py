@@ -232,6 +232,15 @@ class RecoverableToolCoverageConstraint(Constraint):
         "text_to_speech",
         "image_generate",
         "terminal",
+        # Phase 1.1 batch 2 — high-frequency tools
+        "read_file",
+        "write_file",
+        "patch",
+        "search_files",
+        "execute_code",
+        "send_message",
+        "memory",
+        "delegate_task",
     ]
 
     async def check(self, ctx: Any = None) -> ConstraintResult:
@@ -248,6 +257,15 @@ class RecoverableToolCoverageConstraint(Constraint):
             "text_to_speech": ("tools.tts_tool", "text_to_speech_tool"),
             "image_generate": ("tools.image_generation_tool", "_handle_image_generate"),
             "terminal": ("tools.terminal_tool", "_handle_terminal"),
+            # Phase 1.1 batch 2
+            "read_file": ("tools.file_tools", "read_file_tool"),
+            "write_file": ("tools.file_tools", "write_file_tool"),
+            "patch": ("tools.file_tools", "patch_tool"),
+            "search_files": ("tools.file_tools", "search_tool"),
+            "execute_code": ("tools.code_execution_tool", "execute_code"),
+            "send_message": ("tools.send_message_tool", "send_message_tool"),
+            "memory": ("tools.memory_tool", "memory_tool"),
+            "delegate_task": ("tools.delegate_tool", "delegate_task"),
         }
 
         for tool_name, (mod_path, func_name) in tool_map.items():

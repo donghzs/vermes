@@ -17,6 +17,7 @@ from tools.file_operations import (
 )
 from tools import file_state
 from agent.redact import redact_sensitive_text
+from harness.recoverable import recoverable_tool
 
 logger = logging.getLogger(__name__)
 
@@ -617,6 +618,11 @@ def clear_file_ops_cache(task_id: str = None):
             _file_ops_cache.clear()
 
 
+@recoverable_tool(
+    tool_name="read_file",
+    returns="json",
+    missing_hint="确认文件路径正确且有读取权限；如路径含特殊字符请用绝对路径。",
+)
 def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = "default") -> str:
     """Read a file with pagination and line numbers."""
     try:
@@ -964,6 +970,11 @@ def _check_file_staleness(filepath: str, task_id: str) -> str | None:
     return None
 
 
+@recoverable_tool(
+    tool_name="write_file",
+    returns="json",
+    missing_hint="确认目标目录存在且有写入权限；检查路径是否被安全策略拦截。",
+)
 def write_file_tool(path: str, content: str, task_id: str = "default", cross_profile: bool = False) -> str:
     """Write content to a file."""
     sensitive_err = _check_sensitive_path(path, task_id)
@@ -1026,6 +1037,11 @@ def write_file_tool(path: str, content: str, task_id: str = "default", cross_pro
         return tool_error(str(e))
 
 
+@recoverable_tool(
+    tool_name="patch",
+    returns="json",
+    missing_hint="确认文件存在且 old_string 精确匹配（含缩进/空格）；patch 格式须为 V4A。",
+)
 def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
                new_string: str = None, replace_all: bool = False, patch: str = None,
                task_id: str = "default") -> str:
@@ -1122,6 +1138,11 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         return tool_error(str(e))
 
 
+@recoverable_tool(
+    tool_name="search_files",
+    returns="json",
+    missing_hint="确认搜索路径存在且 pattern 语法正确；grep 模式须为合法正则。",
+)
 def search_tool(pattern: str, target: str = "content", path: str = ".",
                 file_glob: str = None, limit: int = 50, offset: int = 0,
                 output_mode: str = "content", context: int = 0,

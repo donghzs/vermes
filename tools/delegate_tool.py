@@ -39,6 +39,7 @@ _RUNTIME_PROVIDER_CUSTOM = "custom"
 from tools import file_state
 from tools.terminal_tool import set_approval_callback as _set_subagent_approval_cb
 from utils import base_url_hostname, is_truthy_value
+from harness.recoverable import recoverable_tool
 
 
 # Tools that children must never have access to
@@ -1950,6 +1951,11 @@ def _recover_tasks_from_json_string(
     return parsed, None
 
 
+@recoverable_tool(
+    tool_name="delegate_task",
+    returns="json",
+    missing_hint="确认 parent_agent 上下文可用；检查子 Agent 工具集配置；复杂任务建议拆分为小目标。",
+)
 def delegate_task(
     goal: Optional[str] = None,
     context: Optional[str] = None,

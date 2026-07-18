@@ -16,6 +16,7 @@ from email.utils import formatdate
 from typing import Dict, Optional
 
 from agent.redact import redact_sensitive_text
+from harness.recoverable import recoverable_tool
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,11 @@ SEND_MESSAGE_SCHEMA = {
 }
 
 
+@recoverable_tool(
+    tool_name="send_message",
+    returns="json",
+    missing_hint="确认目标平台已配置且凭证有效（Telegram bot token / Discord token 等）；目标格式为 platform:target_id。",
+)
 def send_message_tool(args, **kw):
     """Handle cross-channel send_message tool calls."""
     action = args.get("action", "send")

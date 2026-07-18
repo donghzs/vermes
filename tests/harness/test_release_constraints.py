@@ -90,7 +90,7 @@ class TestRecoverableToolCoverageConstraint:
         report = await run_constraints([c])
         r = report.results[0]
         assert r.passed, f"Expected pass, got: {r.detail}"
-        assert "9/9" in r.detail
+        assert "17/17" in r.detail
 
     @pytest.mark.asyncio
     async def test_warning_severity(self):

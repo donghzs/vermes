@@ -33,6 +33,8 @@ from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Dict, Any, List, Optional
 
+from harness.recoverable import recoverable_tool
+
 from utils import atomic_replace
 
 # fcntl is Unix-only; on Windows use msvcrt for file locking
@@ -596,6 +598,11 @@ class MemoryStore:
             raise RuntimeError(f"Failed to write memory file {path}: {e}")
 
 
+@recoverable_tool(
+    tool_name="memory",
+    returns="json",
+    missing_hint="确认 MEMORY.md/USER.md 文件存在且有读写权限；检查 MemoryStore 是否已初始化。",
+)
 def memory_tool(
     action: str = None,
     target: str = "memory",

@@ -47,6 +47,8 @@ import uuid
 _IS_WINDOWS = platform.system() == "Windows"
 from typing import Any, Dict, List, Optional
 
+from harness.recoverable import recoverable_tool
+
 # Availability gate.  On Windows we fall back to loopback TCP for the
 # sandbox RPC transport (AF_UNIX is unreliable on Windows Python) — see
 # ``_use_tcp_rpc`` in ``_execute_local`` below.  That makes execute_code
@@ -1033,6 +1035,11 @@ def _execute_remote(
 # Main entry point
 # ---------------------------------------------------------------------------
 
+@recoverable_tool(
+    tool_name="execute_code",
+    returns="json",
+    missing_hint="确认 sandbox 环境可用（Linux/macOS）；检查 SANDBOX_ALLOWED_TOOLS 配置；远程模式需确保终端后端可达。",
+)
 def execute_code(
     code: str,
     task_id: Optional[str] = None,
