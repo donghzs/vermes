@@ -270,6 +270,7 @@ files = [
     "harness/stability_hotpath.py",
     "harness/failure_learning.py",
     "harness/precision_matrix.py",
+    "agent/feedback_learning.py",
 ]
 
 # Mixin 文件引用 GatewayRunner 组合属性(self.config/self.adapters 等),
