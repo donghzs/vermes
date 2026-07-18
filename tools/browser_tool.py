@@ -3211,6 +3211,15 @@ def browser_get_images(task_id: Optional[str] = None) -> str:
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 
 
+@recoverable_tool(
+    tool_name="browser_vision",
+    missing_hint=(
+        "browser_vision 需要视觉模型支持。"
+        "请确保配置了支持视觉的 provider（如 OPENAI_API_KEY / XIAOMI_API_KEY），"
+        "或检查 auxiliary.vision 配置。"
+    ),
+    returns="json",
+)
 def browser_vision(question: str, annotate: bool = False, task_id: Optional[str] = None) -> str:
     """
     Take a screenshot of the current page and analyze it with vision AI.

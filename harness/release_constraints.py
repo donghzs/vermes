@@ -224,6 +224,7 @@ class RecoverableToolCoverageConstraint(Constraint):
 
     EXPECTED_DECORATED = [
         "browser_back",
+        "browser_vision",
         "vision_analyze",
         "video_analyze",
         "web_search",
@@ -239,6 +240,7 @@ class RecoverableToolCoverageConstraint(Constraint):
 
         tool_map = {
             "browser_back": ("tools.browser_tool", "browser_back"),
+            "browser_vision": ("tools.browser_tool", "browser_vision"),
             "vision_analyze": ("tools.vision_tools", "_handle_vision_analyze"),
             "video_analyze": ("tools.vision_tools", "_handle_video_analyze"),
             "web_search": ("tools.web_tools", "web_search_tool"),
