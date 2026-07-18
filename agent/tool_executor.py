@@ -402,6 +402,17 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     pass  # 学习落库失败不阻塞
         except Exception:
             pass  # H3.2 永不阻塞
+        # H4.1: inject historical failure warning into the result so the model
+        # sees "this tool has failed before — consider alternatives" (fail-open).
+        # (The pre-exec should_warn above only logs; this is what actually reaches the LLM.)
+        try:
+            from harness.failure_learning import get_ledger
+            _h4_hist = get_ledger().should_warn(function_name)
+            if _h4_hist:
+                result = f"{result}\n\n{_h4_hist}"
+                logger.warning("[H4.1] injected historical failure warning for %s", function_name)
+        except Exception:
+            pass  # H4.1 注入永不阻塞
         results[index] = (function_name, function_args, result, duration, is_error, False)
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
@@ -1158,6 +1169,16 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     pass  # 学习落库失败不阻塞
         except Exception:
             pass  # H3.2 永不阻塞
+
+        # H4.1: inject historical failure warning into the result (fail-open).
+        try:
+            from harness.failure_learning import get_ledger
+            _h4_hist_seq = get_ledger().should_warn(function_name)
+            if _h4_hist_seq:
+                function_result = f"{function_result}\n\n{_h4_hist_seq}"
+                logger.warning("[H4.1-seq] injected historical failure warning for %s", function_name)
+        except Exception:
+            pass  # H4.1 注入永不阻塞
 
         # Unwrap _multimodal dicts to an OpenAI-style content list
         # (see parallel path for rationale). String results pass through.
