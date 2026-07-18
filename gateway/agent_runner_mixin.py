@@ -17,6 +17,7 @@ import inspect
 import json
 import logging
 import os
+import queue
 import re
 import threading
 import time
@@ -448,10 +449,10 @@ class AgentRunnerMixin:
         )
         
         # Queue for progress messages (thread-safe)
-        progress_queue = queue.Queue() if tool_progress_enabled else None
-        last_tool = [None]  # Mutable container for tracking in closure
-        last_progress_msg = [None]  # Track last message for dedup
-        repeat_count = [0]  # How many times the same message repeated
+        progress_queue: Optional[queue.Queue] = queue.Queue() if tool_progress_enabled else None
+        last_tool: List[Optional[str]] = [None]  # Mutable container for tracking in closure
+        last_progress_msg: List[Optional[str]] = [None]  # Track last message for dedup
+        repeat_count: List[int] = [0]  # How many times the same message repeated
 
         # Auto-cleanup of temporary progress bubbles (Telegram + any adapter
         # that implements ``delete_message``). When enabled via
@@ -2173,7 +2174,7 @@ class AgentRunnerMixin:
             if _inactivity_timeout:
                 # Build a diagnostic summary from the agent's activity tracker.
                 _timed_out_agent = agent_holder[0]
-                _activity = {}
+                _activity: dict = {}
                 if _timed_out_agent and hasattr(_timed_out_agent, "get_activity_summary"):
                     try:
                         _activity = _timed_out_agent.get_activity_summary()
@@ -2199,7 +2200,7 @@ class AgentRunnerMixin:
                 if _timed_out_agent and hasattr(_timed_out_agent, "interrupt"):
                     _timed_out_agent.interrupt(_get_run_attr("_INTERRUPT_REASON_TIMEOUT"))
 
-                _timeout_mins = int(_agent_timeout // 60) or 1
+                _timeout_mins = int((_agent_timeout or 0) // 60) or 1
 
                 # Construct a user-facing message with diagnostic context.
                 _diag_lines = [
@@ -2589,4 +2590,4 @@ class AgentRunnerMixin:
             except Exception as _rpe:
                 logger.debug("Post-delivery cleanup registration failed: %s", _rpe)
 
-        return response
+        return response  # type: ignore[return-value]

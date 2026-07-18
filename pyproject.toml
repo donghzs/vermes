@@ -243,6 +243,36 @@ python-version = "3.11"
 unknown-argument = "warn"
 redundant-cast = "ignore"
 
+# ── mypy 增量类型 (P3) ──────────────────────────────────────────────────
+# 策略：从新建 mixin 文件入手，逐步扩展到 gateway/ 全包。
+# 每个文件加入 files 列表前先修到 0 error。CI gate 仅检查已登记文件。
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+check_untyped_defs = false
+ignore_missing_imports = true
+follow_imports = "skip"  # 增量：不跟随 import 进入未登记文件
+no_implicit_optional = false  # 代码库广泛使用隐式 Optional（str = None），匹配既有约定
+# 增量：只检查以下文件（后续逐步扩展）
+files = [
+    "gateway/message_handler_mixin.py",
+    "gateway/agent_runner_mixin.py",
+    "gateway/lifecycle_mixin.py",
+    "agent/llm_concurrency.py",
+    "gateway/_run_attr.py",
+]
+
+# Mixin 文件引用 GatewayRunner 组合属性(self.config/self.adapters 等),
+# mypy 无法理解 mixin 组成 → 抑制 attr-defined,但保留其他真实类型检查
+[[tool.mypy.overrides]]
+module = [
+    "gateway.message_handler_mixin",
+    "gateway.agent_runner_mixin",
+    "gateway.lifecycle_mixin",
+]
+disable_error_code = ["attr-defined", "has-type"]
+
 [tool.ruff]
 preview = true  # required for PLW1514 (unspecified-encoding) — preview rule
 

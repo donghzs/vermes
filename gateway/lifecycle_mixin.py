@@ -67,7 +67,7 @@ class LifecycleMixin:
         try:
             self._gateway_loop = asyncio.get_running_loop()
         except RuntimeError:
-            self._gateway_loop = None
+            self._gateway_loop = None  # type: ignore[assignment]
         logger.info("Session storage: %s", self.config.sessions_dir)
 
         # Sanity-check that systemd's TimeoutStopSec covers our drain
@@ -1120,7 +1120,7 @@ class LifecycleMixin:
             logger.info("Gateway stopped (total teardown %.2fs)", _phase_elapsed())
 
         self._stop_task = asyncio.create_task(_stop_impl())
-        await self._stop_task
+        await self._stop_task  # type: ignore[misc]
 
     async def wait_for_shutdown(self) -> None:
         """Wait for shutdown signal."""
