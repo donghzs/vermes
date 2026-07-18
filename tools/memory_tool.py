@@ -281,6 +281,9 @@ class MemoryStore:
             except Exception:
                 pass
 
+            # Bridge to RAG store so memory_search can find curated memory.
+            self._sync_rag_index(target)
+
         return self._success_response(target, "Entry added.")
 
     def replace(self, target: str, old_text: str, new_content: str) -> Dict[str, Any]:
@@ -347,6 +350,9 @@ class MemoryStore:
             except Exception:
                 pass
 
+            # Bridge to RAG store so memory_search can find curated memory.
+            self._sync_rag_index(target)
+
         return self._success_response(target, "Entry replaced.")
 
     def remove(self, target: str, old_text: str) -> Dict[str, Any]:
@@ -388,7 +394,26 @@ class MemoryStore:
             except Exception:
                 pass
 
+            # Bridge to RAG store so memory_search can find curated memory.
+            self._sync_rag_index(target)
+
         return self._success_response(target, "Entry removed.")
+
+    def _sync_rag_index(self, target: str) -> None:
+        """Best-effort bridge: re-index this target's curated memory into the
+        RAG FTS5 store so ``memory_search`` (which queries that store) can find
+        it. The ``memory`` tool persists to MEMORY.md/USER.md — a separate store
+        from the RAG knowledge base — so without this bridge, writes via
+        ``memory`` were invisible to ``memory_search``.
+
+        Fail-open: any error is swallowed; memory writes must never break.
+        """
+        try:
+            from agent.rag_provider import index_memory_text
+            entries = self._entries_for(target)
+            index_memory_text(target, "\n".join(entries))
+        except Exception:
+            pass
 
     def apply_batch(self, target: str, operations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Apply a sequence of add/replace/remove ops to one target atomically.

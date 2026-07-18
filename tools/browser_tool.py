@@ -3358,11 +3358,6 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
                 ),
             }, ensure_ascii=False)
 
-        # Convert screenshot to base64 at full resolution.
-        _screenshot_bytes = screenshot_path.read_bytes()
-        _screenshot_b64 = base64.b64encode(_screenshot_bytes).decode("ascii")
-        data_url = f"data:image/png;base64,{_screenshot_b64}"
-
         vision_prompt = (
             f"You are analyzing a screenshot of a web browser.\n\n"
             f"User's question: {question}\n\n"
@@ -3372,69 +3367,37 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
             f"Focus on answering the user's specific question."
         )
 
-        # Use the centralized LLM router
-        vision_model = _get_vision_model()
-        logger.debug("browser_vision: analysing screenshot (%d bytes)",
-                     len(_screenshot_bytes))
-
-        # Read vision timeout/temperature from config (auxiliary.vision.*).
-        # Local vision models (llama.cpp, ollama) can take well over 30s for
-        # screenshot analysis, so the default timeout must be generous.
-        vision_timeout = 120.0
-        vision_temperature = 0.1
-        try:
-            from hermes_cli.config import load_config
-            _cfg = load_config()
-            _vision_cfg = cfg_get(_cfg, "auxiliary", "vision", default={})
-            _vt = _vision_cfg.get("timeout")
-            if _vt is not None:
-                vision_timeout = float(_vt)
-            _vtemp = _vision_cfg.get("temperature")
-            if _vtemp is not None:
-                vision_temperature = float(_vtemp)
-        except Exception:
-            pass
-
-        call_kwargs = {
-            "task": "vision",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": vision_prompt},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                }
-            ],
-            "max_tokens": 2000,
-            "temperature": vision_temperature,
-            "timeout": vision_timeout,
-        }
-        if vision_model:
-            call_kwargs["model"] = vision_model
-        # Try full-size screenshot; on size-related rejection, downscale and retry.
-        try:
-            response = call_llm(**call_kwargs)
-        except Exception as _api_err:
-            from tools.vision_tools import (
-                _is_image_size_error, _resize_image_for_vision, _RESIZE_TARGET_BYTES,
+        # Delegate analysis to the unified vision resolver (vision_analyze_tool),
+        # which resolves vision capability the SAME way the frontend image path
+        # does:
+        #   Step 1 — tries the ACTUAL current model (capability-tested, not
+        #            assumed from a hardcoded/env mapping);
+        #   Step 2 — falls back to the provider's dedicated vision model
+        #            (e.g. xiaomi -> mimo-v2-omni);
+        #   Step 3 — falls back to Vermes' built-in vbit vision model, so vision
+        #            works out of the box even when no user-configured model
+        #            supports it.
+        # This replaces the previous env-var-only path (_get_vision_model +
+        # raw call_llm) that bypassed all capability detection and the built-in
+        # fallback -- the root cause of "browser_vision fails but frontend images
+        # are recognized" (frontend routes through this same resolver).
+        import asyncio
+        from tools.vision_tools import vision_analyze_tool
+        _analysis_str = asyncio.run(
+            vision_analyze_tool(
+                image_url=str(screenshot_path),
+                user_prompt=vision_prompt,
             )
-            if (_is_image_size_error(_api_err)
-                    and len(data_url) > _RESIZE_TARGET_BYTES):
-                logger.info(
-                    "Vision API rejected screenshot (%.1f MB); "
-                    "auto-resizing to ~%.0f MB and retrying...",
-                    len(data_url) / (1024 * 1024),
-                    _RESIZE_TARGET_BYTES / (1024 * 1024),
-                )
-                data_url = _resize_image_for_vision(
-                    screenshot_path, mime_type="image/png")
-                call_kwargs["messages"][0]["content"][1]["image_url"]["url"] = data_url
-                response = call_llm(**call_kwargs)
-            else:
-                raise
+        )
+        _analysis_json = json.loads(_analysis_str)
+        if not _analysis_json.get("success"):
+            raise RuntimeError(
+                _analysis_json.get("analysis")
+                or _analysis_json.get("error")
+                or "vision analysis returned no result"
+            )
+        analysis = (_analysis_json.get("analysis") or "").strip()
 
-        analysis = (response.choices[0].message.content or "").strip()
         # Redact secrets the vision LLM may have read from the screenshot.
         from agent.redact import redact_sensitive_text
         analysis = redact_sensitive_text(analysis)

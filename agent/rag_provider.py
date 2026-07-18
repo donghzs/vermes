@@ -120,6 +120,59 @@ def _chunk_text(text: str, chunk_size: int = 0, overlap: int = 0, file_ext: str 
     return chunks
 
 
+def index_memory_text(target: str, content: str) -> None:
+    """Index curated ``memory``-tool content into the RAG FTS5 store.
+
+    The ``memory`` tool (MemoryStore) persists to MEMORY.md / USER.md — a
+    *separate* store from the RAG knowledge base that ``memory_search``
+    queries. Previously, writing via ``memory`` and then searching via
+    ``memory_search`` returned nothing because the two stores never talked.
+    This bridges them: every ``add`` / ``replace`` re-indexes the full target
+    content here, so ``memory_search`` can find curated memory.
+
+    Memory stores are small and bounded (~8KB), so a full re-index per write is
+    cheap and naturally de-duplicates replaces (old rows are deleted first).
+
+    Fail-open: any error is logged and swallowed so memory writes never break.
+    """
+    try:
+        if not content or not content.strip():
+            return
+        db_path = _get_rag_db()
+        _init_db(db_path)
+        conn = _get_conn(str(db_path))
+        c = conn.cursor()
+        doc_name = f"memory:{target}"
+        # Remove any previous index for this target (incl. the FTS shadow rows,
+        # which are NOT FK-cascaded), then re-index fresh.
+        c.execute("SELECT id FROM documents WHERE filename = ?", (doc_name,))
+        for (old_doc_id,) in c.fetchall():
+            c.execute(
+                "DELETE FROM chunks_fts WHERE rowid IN "
+                "(SELECT id FROM chunks WHERE doc_id = ?)",
+                (old_doc_id,),
+            )
+            c.execute("DELETE FROM chunks WHERE doc_id = ?", (old_doc_id,))
+        c.execute(
+            "INSERT INTO documents (path, filename, file_type, file_size, ingested_at, chunk_count) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (doc_name, doc_name, "memory", len(content), datetime.now().isoformat(), 0),
+        )
+        doc_id = c.lastrowid
+        chunks = _chunk_text(content, file_ext=".md")
+        for i, ch in enumerate(chunks):
+            c.execute(
+                "INSERT INTO chunks (doc_id, chunk_index, content, char_count) VALUES (?, ?, ?, ?)",
+                (doc_id, i, ch, len(ch)),
+            )
+            chunk_id = c.lastrowid
+            c.execute("INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)", (chunk_id, ch))
+        c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
+        conn.commit()
+    except Exception:
+        logger.debug("index_memory_text failed (non-fatal)", exc_info=True)
+
+
 def _extract_text(file_path: str) -> str:
     """Extract text from a file. Supports txt/md/py/js/json + PDF/DOCX/XLSX."""
     ext = Path(file_path).suffix.lower()

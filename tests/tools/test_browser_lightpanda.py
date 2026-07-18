@@ -398,27 +398,19 @@ class TestLightpandaFallbackWarning:
         bt._last_active_session_key.pop("warn-test3", None)
 
 
-    def test_browser_vision_lightpanda_uses_chrome_capture_and_normal_call_llm_shape(self, tmp_path):
+    def test_browser_vision_lightpanda_uses_chrome_capture_and_delegates_to_vision_resolver(self, tmp_path):
         import json
         import tools.browser_tool as bt
 
         chrome_shot = tmp_path / "chrome.png"
         chrome_shot.write_bytes(b"\x89PNG" + b"0" * 128)
 
-        class _Msg:
-            content = "Example Domain screenshot"
+        captured = {}
 
-        class _Choice:
-            message = _Msg()
-
-        class _Response:
-            choices = [_Choice()]
-
-        captured_kwargs = {}
-
-        def fake_call_llm(**kwargs):
-            captured_kwargs.update(kwargs)
-            return _Response()
+        async def fake_vision(image_url, user_prompt, model=None, provider=None):
+            captured["image_url"] = image_url
+            captured["user_prompt"] = user_prompt
+            return json.dumps({"success": True, "analysis": "Example Domain screenshot"})
 
         with patch("tools.browser_tool._get_browser_engine", return_value="lightpanda"), \
              patch("tools.browser_tool._should_inject_engine", return_value=True), \
@@ -426,16 +418,15 @@ class TestLightpandaFallbackWarning:
                  "success": True, "data": {"path": str(chrome_shot)}
              }), \
              patch("hermes_constants.get_hermes_dir", return_value=tmp_path), \
-             patch("tools.browser_tool.call_llm", side_effect=fake_call_llm):
+             patch("tools.vision_tools.vision_analyze_tool", fake_vision):
             response = json.loads(bt.browser_vision("what is this?", task_id="vision-test"))
 
         assert response["success"] is True
         assert response["analysis"] == "Example Domain screenshot"
         assert response["browser_engine"] == "chrome"
         assert "Lightpanda fallback" in response["fallback_warning"]
-        assert "messages" in captured_kwargs
-        assert "images" not in captured_kwargs
-        assert captured_kwargs["task"] == "vision"
+        # Delegation: the unified vision resolver (not raw call_llm) was used.
+        assert captured.get("user_prompt"), "vision_analyze_tool was not called"
 
 
     def test_browser_get_images_preserves_fallback_warning(self):
@@ -462,14 +453,12 @@ class TestLightpandaFallbackWarning:
         chrome_shot = tmp_path / "chrome-structured.png"
         chrome_shot.write_bytes(b"\x89PNG" + b"0" * 128)
 
-        class _Msg:
-            content = "Example Domain screenshot"
+        captured = {}
 
-        class _Choice:
-            message = _Msg()
-
-        class _Response:
-            choices = [_Choice()]
+        async def fake_vision(image_url, user_prompt, model=None, provider=None):
+            captured["image_url"] = image_url
+            captured["user_prompt"] = user_prompt
+            return json.dumps({"success": True, "analysis": "Example Domain screenshot"})
 
         with patch("tools.browser_tool._get_browser_engine", return_value="lightpanda"), \
              patch("tools.browser_tool._should_inject_engine", return_value=True), \
@@ -477,16 +466,19 @@ class TestLightpandaFallbackWarning:
                  "success": True, "data": {"path": str(chrome_shot)}
              }), \
              patch("hermes_constants.get_hermes_dir", return_value=tmp_path), \
-             patch("tools.browser_tool.call_llm", return_value=_Response()):
+             patch("tools.vision_tools.vision_analyze_tool", fake_vision):
             response = json.loads(bt.browser_vision("what is this?", task_id="vision-structured"))
 
         assert response["success"] is True
+        assert response["analysis"] == "Example Domain screenshot"
         assert response["browser_engine"] == "chrome"
         assert response["browser_engine_fallback"] == {
             "from": "lightpanda",
             "to": "chrome",
             "reason": "Lightpanda has no graphical renderer for screenshots; used Chrome for vision capture.",
         }
+        # Delegation: the unified vision resolver (not raw call_llm) was used.
+        assert captured.get("user_prompt"), "vision_analyze_tool was not called"
 
 # ---------------------------------------------------------------------------
 # _engine_override parameter

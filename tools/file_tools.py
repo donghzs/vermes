@@ -5,6 +5,7 @@ import errno
 import json
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -1138,6 +1139,30 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         return tool_error(str(e))
 
 
+def _looks_like_filename_glob(pattern: str) -> bool:
+    """Heuristic: does *pattern* look like a filename glob (e.g. ``*.txt``)?
+
+    Used to auto-route ``search_files`` calls that pass a glob as ``pattern``
+    (the common mistake) to file-name search instead of a content regex — which
+    would otherwise fail with "unexpected end of pattern".
+
+    Deliberately conservative: only matches the dominant glob shapes
+    (``*.txt``, ``foo*.md``, ``src/**/*.py``, ``dir/*``) so genuine content
+    regexes like ``a.*b`` are NOT misrouted.
+    """
+    if not pattern:
+        return False
+    if "*" not in pattern and "?" not in pattern and "[" not in pattern:
+        return False
+    # Path globs: leading '*', or a '/' adjacent to a '*'.
+    if pattern.startswith("*") or "/*" in pattern or "*/" in pattern:
+        return True
+    # Extension globs: '*.<ext>' or '<name>*.<ext>' at the end.
+    if re.search(r"\*\.\w{1,12}$", pattern) or re.search(r"\w+\*\.\w{1,12}$", pattern):
+        return True
+    return False
+
+
 @recoverable_tool(
     tool_name="search_files",
     returns="json",
@@ -1150,6 +1175,16 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
     """Search for content or files."""
     try:
         offset, limit = normalize_search_pagination(offset, limit)
+
+        # Auto-route obvious filename globs (e.g. `*.txt`) to file-name search
+        # instead of treating them as a content regex (which fails with an
+        # "unexpected end of pattern" error). Users expect `*.txt` to list
+        # matching files, not to regex-grep file *contents* for the literal
+        # string "*.txt".
+        _glob_routed = False
+        if target == "content" and not file_glob and _looks_like_filename_glob(pattern):
+            target = "files"
+            _glob_routed = True
 
         # Track searches to detect *consecutive* repeated search loops.
         # Include pagination args so users can page through truncated
@@ -1195,6 +1230,12 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
                 if hasattr(m, 'content') and m.content:
                     m.content = redact_sensitive_text(m.content, code_file=True)
         result_dict = result.to_dict()
+
+        if _glob_routed:
+            result_dict["_info"] = (
+                f"pattern '{pattern}' treated as a filename glob (target=files); "
+                f"use target='content' with a regex to grep file contents."
+            )
 
         if count >= 3:
             result_dict["_warning"] = (
