@@ -1624,6 +1624,17 @@ DEFAULT_CONFIG = {
         "memory_monitor": {
             "enabled": True,         # Flip to false to silence the periodic line
             "interval_seconds": 300, # Default: every 5 minutes
+            # P2.4 self-heal (opt-in). Both null by default → pure logging,
+            # identical to the historical behaviour. Set an MB threshold to
+            # let the monitor react when RSS climbs:
+            #   soft_limit_mb  → throttled gc.collect() (INFO), spaced by
+            #                    gc_min_interval_seconds so the collector
+            #                    isn't thrashed while hovering near the limit.
+            #   hard_limit_mb  → WARNING alert + a forced gc.collect() every
+            #                    tick until RSS drops back below it.
+            "soft_limit_mb": None,
+            "hard_limit_mb": None,
+            "gc_min_interval_seconds": 60,
         },
     },
 

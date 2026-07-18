@@ -120,3 +120,149 @@ def test_unavailable_rss_warns_and_does_not_start(caplog, monkeypatch):
     assert started is False
     assert mm.is_running() is False
     assert any("Memory monitoring unavailable" in r.getMessage() for r in caplog.records)
+
+
+# --------------------------------------------------------------------------- #
+# P2.4 self-heal — _maybe_self_heal() unit tests                              #
+# --------------------------------------------------------------------------- #
+#
+# These exercise the pure decision function directly (no thread), so they are
+# fast and deterministic. gc.collect() is patched to a counter so we assert
+# *whether* a collection was requested without depending on real GC timing.
+
+
+def _fresh_state(gc_min_interval=60.0, **extra):
+    state = {"last_gc_ts": 0.0, "gc_min_interval": gc_min_interval}
+    state.update(extra)
+    return state
+
+
+def test_self_heal_none_rss_returns_none(monkeypatch):
+    # When RSS can't be read, self-heal must be a no-op (never crash).
+    calls = []
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: calls.append(1))
+    result = mm._maybe_self_heal(None, soft_limit_mb=100, hard_limit_mb=200,
+                                 state=_fresh_state())
+    assert result is None
+    assert calls == []
+
+
+def test_self_heal_below_all_limits_returns_none(monkeypatch):
+    calls = []
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: calls.append(1))
+    result = mm._maybe_self_heal(50, soft_limit_mb=100, hard_limit_mb=200,
+                                 state=_fresh_state())
+    assert result is None
+    assert calls == []
+
+
+def test_self_heal_soft_limit_triggers_throttled_gc(monkeypatch, caplog):
+    calls = []
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: calls.append(1))
+    caplog.set_level(logging.INFO, logger="gateway.memory_monitor")
+    state = _fresh_state()
+
+    result = mm._maybe_self_heal(150, soft_limit_mb=100, hard_limit_mb=None,
+                                 state=state)
+    assert result == "soft"
+    assert len(calls) == 1
+    assert state["last_gc_ts"] > 0.0
+    assert any("soft-limit reached" in r.getMessage() for r in caplog.records)
+
+
+def test_self_heal_soft_limit_is_throttled_by_cooldown(monkeypatch):
+    calls = []
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: calls.append(1))
+    # last_gc_ts = now means we are inside the cooldown window.
+    state = _fresh_state(gc_min_interval=3600.0, last_gc_ts=time.monotonic())
+
+    result = mm._maybe_self_heal(150, soft_limit_mb=100, hard_limit_mb=None,
+                                 state=state)
+    # Within cooldown → no collection, and no "soft" action reported.
+    assert result is None
+    assert calls == []
+
+
+def test_self_heal_hard_limit_warns_and_forces_gc(monkeypatch, caplog):
+    calls = []
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: calls.append(1))
+    caplog.set_level(logging.WARNING, logger="gateway.memory_monitor")
+    # Even inside the cooldown window, a hard breach forces a collection.
+    state = _fresh_state(gc_min_interval=3600.0, last_gc_ts=time.monotonic())
+
+    result = mm._maybe_self_heal(250, soft_limit_mb=100, hard_limit_mb=200,
+                                 state=state)
+    assert result == "hard"
+    assert len(calls) == 1
+    assert any(
+        "hard-limit exceeded" in r.getMessage() and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
+
+
+def test_self_heal_hard_limit_invokes_alert_callback(monkeypatch):
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: None)
+    fired = []
+    state = _fresh_state(alert_cb=lambda before, limit, after: fired.append(
+        (before, limit, after)))
+
+    result = mm._maybe_self_heal(300, soft_limit_mb=None, hard_limit_mb=200,
+                                 state=state)
+    assert result == "hard"
+    assert len(fired) == 1
+    before, limit, _after = fired[0]
+    assert before == 300 and limit == 200
+
+
+def test_self_heal_alert_callback_exception_is_swallowed(monkeypatch):
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: None)
+
+    def _boom(*a, **k):
+        raise RuntimeError("callback blew up")
+
+    state = _fresh_state(alert_cb=_boom)
+    # Must not raise — an alert hook failure can never crash the monitor.
+    result = mm._maybe_self_heal(300, soft_limit_mb=None, hard_limit_mb=200,
+                                 state=state)
+    assert result == "hard"
+
+
+def test_self_heal_hard_takes_precedence_over_soft(monkeypatch, caplog):
+    calls = []
+    monkeypatch.setattr(mm.gc, "collect", lambda *a, **k: calls.append(1))
+    caplog.set_level(logging.WARNING, logger="gateway.memory_monitor")
+    # rss above both limits → hard branch wins.
+    result = mm._maybe_self_heal(500, soft_limit_mb=100, hard_limit_mb=200,
+                                 state=_fresh_state())
+    assert result == "hard"
+
+
+def test_start_forwards_limits_to_loop(monkeypatch):
+    # start_memory_monitoring must thread the self-heal knobs down to the
+    # loop verbatim. Capture the Thread kwargs to prove the plumbing.
+    captured = {}
+
+    class _FakeThread:
+        def __init__(self, *args, **kwargs):
+            captured["args"] = kwargs.get("args")
+            captured["kwargs"] = kwargs.get("kwargs")
+            self.daemon = kwargs.get("daemon", False)
+
+        def start(self):
+            pass
+
+        def is_alive(self):
+            return False
+
+    monkeypatch.setattr(mm.threading, "Thread", _FakeThread)
+    mm.start_memory_monitoring(
+        interval_seconds=123.0,
+        soft_limit_mb=111,
+        hard_limit_mb=222,
+        gc_min_interval_seconds=33.0,
+    )
+    assert captured["kwargs"] == {
+        "soft_limit_mb": 111,
+        "hard_limit_mb": 222,
+        "gc_min_interval": 33.0,
+    }

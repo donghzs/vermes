@@ -10519,7 +10519,32 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
                 _mm_interval = float(_mm_cfg.get("interval_seconds", 300))
             except (TypeError, ValueError):
                 _mm_interval = 300.0
-            _memory_monitor.start_memory_monitoring(interval_seconds=_mm_interval)
+
+            # P2.4 self-heal: opt-in soft/hard RSS thresholds. Unset (None)
+            # keeps the pure-logging behaviour. soft_limit → throttled
+            # gc.collect(); hard_limit → WARNING alert + forced collection.
+            def _mm_int_or_none(key):
+                val = _mm_cfg.get(key)
+                if val in (None, "", 0):
+                    return None
+                try:
+                    return int(val)
+                except (TypeError, ValueError):
+                    return None
+
+            _mm_soft = _mm_int_or_none("soft_limit_mb")
+            _mm_hard = _mm_int_or_none("hard_limit_mb")
+            try:
+                _mm_gc_gap = float(_mm_cfg.get("gc_min_interval_seconds", 60))
+            except (TypeError, ValueError):
+                _mm_gc_gap = 60.0
+
+            _memory_monitor.start_memory_monitoring(
+                interval_seconds=_mm_interval,
+                soft_limit_mb=_mm_soft,
+                hard_limit_mb=_mm_hard,
+                gc_min_interval_seconds=_mm_gc_gap,
+            )
     except Exception as _mm_exc:
         logger.debug("Failed to start memory monitor: %s", _mm_exc)
 

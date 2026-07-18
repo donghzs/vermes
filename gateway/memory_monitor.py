@@ -126,17 +126,106 @@ def log_memory_usage(prefix: str = "") -> None:
         )
 
 
-def _monitor_loop(stop_event: threading.Event, interval: float) -> None:
-    """Background thread body — log every ``interval`` seconds until stopped."""
+def _maybe_self_heal(
+    rss_mb: Optional[int],
+    soft_limit_mb: Optional[int],
+    hard_limit_mb: Optional[int],
+    state: dict,
+) -> Optional[str]:
+    """React to RSS crossing configured thresholds. Returns the action taken.
+
+    Both limits are opt-in (``None`` disables). Behaviour:
+
+    * ``rss >= hard_limit_mb`` → **WARNING** alert + a forced ``gc.collect()``
+      (ignores cooldown — a hard breach is worth a collection every tick) and,
+      if registered, an alert callback. Returns ``"hard"``.
+    * ``rss >= soft_limit_mb`` → ``gc.collect()`` throttled by
+      ``state['gc_min_interval']`` so we don't thrash the collector, logged at
+      INFO with the amount freed. Returns ``"soft"``.
+    * otherwise → ``None``.
+
+    ``state`` is a mutable dict owned by the monitor loop; this function only
+    reads/writes ``state['last_gc_ts']`` and ``state['gc_min_interval']``.
+    Kept as a free function (not a closure) so it is unit-testable in isolation.
+    """
+    if rss_mb is None:
+        return None
+
+    now = time.monotonic()
+
+    if hard_limit_mb is not None and rss_mb >= hard_limit_mb:
+        before = rss_mb
+        try:
+            gc.collect()
+        except Exception:
+            pass
+        state["last_gc_ts"] = now
+        after = _get_rss_mb() or before
+        logger.warning(
+            "[MEMORY] hard-limit exceeded: rss=%dMB >= %dMB — forced gc.collect() "
+            "(now %dMB, freed %dMB). Investigate a possible leak.",
+            before, hard_limit_mb, after, max(0, before - after),
+        )
+        cb = state.get("alert_cb")
+        if cb is not None:
+            try:
+                cb(before, hard_limit_mb, after)
+            except Exception as exc:  # never let an alert hook crash the monitor
+                logger.debug("Memory alert callback failed: %s", exc)
+        return "hard"
+
+    if soft_limit_mb is not None and rss_mb >= soft_limit_mb:
+        last = state.get("last_gc_ts", 0.0)
+        if now - last >= state.get("gc_min_interval", 60.0):
+            before = rss_mb
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            state["last_gc_ts"] = now
+            after = _get_rss_mb() or before
+            logger.info(
+                "[MEMORY] soft-limit reached: rss=%dMB >= %dMB — gc.collect() "
+                "freed %dMB (now %dMB)",
+                before, soft_limit_mb, max(0, before - after), after,
+            )
+            return "soft"
+
+    return None
+
+
+def _monitor_loop(
+    stop_event: threading.Event,
+    interval: float,
+    soft_limit_mb: Optional[int] = None,
+    hard_limit_mb: Optional[int] = None,
+    gc_min_interval: float = 60.0,
+) -> None:
+    """Background thread body — log every ``interval`` seconds until stopped.
+
+    When ``soft_limit_mb`` / ``hard_limit_mb`` are set, each tick also runs
+    :func:`_maybe_self_heal` after the usual ``[MEMORY]`` log line.
+    """
+    state = {"last_gc_ts": 0.0, "gc_min_interval": gc_min_interval}
     while not stop_event.wait(interval):
         try:
             log_memory_usage()
+            if soft_limit_mb is not None or hard_limit_mb is not None:
+                _maybe_self_heal(
+                    _get_rss_mb(), soft_limit_mb, hard_limit_mb, state
+                )
         except Exception as e:
             # Never let the monitor crash the gateway; just log and carry on.
             logger.debug("Memory monitor iteration failed: %s", e)
 
 
-def start_memory_monitoring(interval_seconds: float = 300.0) -> bool:
+def start_memory_monitoring(
+    interval_seconds: float = 300.0,
+    *,
+    soft_limit_mb: Optional[int] = None,
+    hard_limit_mb: Optional[int] = None,
+    gc_min_interval_seconds: float = 60.0,
+) -> bool:
     """Start periodic memory usage logging in a daemon thread.
 
     Logs immediately to capture a baseline, then every ``interval_seconds``.
@@ -148,6 +237,16 @@ def start_memory_monitoring(interval_seconds: float = 300.0) -> bool:
     interval_seconds
         How often to log.  Default 300s (5 minutes), matching the
         upstream cline/cline implementation.
+    soft_limit_mb
+        When set, every tick where ``rss >= soft_limit_mb`` triggers a
+        throttled ``gc.collect()`` (self-heal). ``None`` disables — the
+        default, so existing callers keep the pure-logging behaviour.
+    hard_limit_mb
+        When set, every tick where ``rss >= hard_limit_mb`` logs a WARNING
+        alert and forces a ``gc.collect()`` regardless of cooldown.
+    gc_min_interval_seconds
+        Minimum spacing between soft-limit collections so the collector is
+        not thrashed on a process that hovers around the soft limit.
 
     Returns
     -------
@@ -181,15 +280,29 @@ def start_memory_monitoring(interval_seconds: float = 300.0) -> bool:
         _monitor_thread = threading.Thread(
             target=_monitor_loop,
             args=(_stop_event, _interval_seconds),
+            kwargs={
+                "soft_limit_mb": soft_limit_mb,
+                "hard_limit_mb": hard_limit_mb,
+                "gc_min_interval": gc_min_interval_seconds,
+            },
             name="gateway-memory-monitor",
             daemon=True,
         )
         _monitor_thread.start()
 
-        logger.info(
-            "[MEMORY] Periodic memory monitoring started (interval: %ds)",
-            int(_interval_seconds),
-        )
+        if soft_limit_mb is not None or hard_limit_mb is not None:
+            logger.info(
+                "[MEMORY] Periodic memory monitoring started (interval: %ds, "
+                "soft_limit=%s hard_limit=%s)",
+                int(_interval_seconds),
+                f"{soft_limit_mb}MB" if soft_limit_mb is not None else "off",
+                f"{hard_limit_mb}MB" if hard_limit_mb is not None else "off",
+            )
+        else:
+            logger.info(
+                "[MEMORY] Periodic memory monitoring started (interval: %ds)",
+                int(_interval_seconds),
+            )
         return True
 
 
