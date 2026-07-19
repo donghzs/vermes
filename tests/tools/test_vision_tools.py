@@ -190,61 +190,96 @@ class TestHandleVisionAnalyze:
             # Clean up the coroutine to avoid RuntimeWarning
             result.close()
 
-    def test_prompt_contains_question(self):
+    @pytest.mark.asyncio
+    async def test_prompt_contains_question(self):
         """The full prompt should incorporate the user's question."""
-        with patch(
-            "tools.vision_tools.vision_analyze_tool", new_callable=AsyncMock
-        ) as mock_tool:
-            mock_tool.return_value = json.dumps({"result": "ok"})
-            coro = _handle_vision_analyze(
+        with (
+            patch(
+                "tools.vision_tools.vision_analyze_tool", new_callable=AsyncMock
+            ) as mock_tool,
+            patch(
+                "tools.vision_tools._try_other_provider_vision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "tools.vision_tools._ocr_extract_text",
+                return_value="",
+            ),
+            patch("agent.auxiliary_client._read_main_provider", return_value=""),
+            patch("agent.auxiliary_client._read_main_model", return_value=""),
+        ):
+            mock_tool.return_value = json.dumps({"success": True, "analysis": "ok"})
+            result = await _handle_vision_analyze(
                 {
                     "image_url": "https://example.com/img.png",
                     "question": "Describe the cat",
                 }
             )
-            # Clean up coroutine
-            coro.close()
             call_args = mock_tool.call_args
-            full_prompt = call_args[0][1]  # second positional arg
+            # Step 1 uses keyword args: vision_analyze_tool(url, prompt, model=..., provider=...)
+            full_prompt = call_args[0][1] if call_args.args else call_args[0][1]
             assert "Describe the cat" in full_prompt
-            assert "Fully describe and explain" in full_prompt
+            assert "描述" in full_prompt  # prompt is now in Chinese
 
-    def test_uses_auxiliary_vision_model_env(self):
-        """AUXILIARY_VISION_MODEL env var should override DEFAULT_VISION_MODEL."""
+    @pytest.mark.asyncio
+    async def test_uses_auxiliary_vision_model_env(self):
+        """AUXILIARY_VISION_MODEL env var should provide model for Step 3 fallback."""
         with (
             patch(
                 "tools.vision_tools.vision_analyze_tool", new_callable=AsyncMock
             ) as mock_tool,
             patch.dict(os.environ, {"AUXILIARY_VISION_MODEL": "custom/model-v1"}),
+            patch(
+                "tools.vision_tools._try_other_provider_vision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "tools.vision_tools._ocr_extract_text",
+                return_value="",
+            ),
+            # Make Step 1 fail so it falls through to Step 3 (auxiliary)
+            patch("agent.auxiliary_client._read_main_provider", side_effect=Exception("no provider")),
         ):
-            mock_tool.return_value = json.dumps({"result": "ok"})
-            coro = _handle_vision_analyze(
+            mock_tool.return_value = json.dumps({"success": True, "analysis": "ok"})
+            await _handle_vision_analyze(
                 {"image_url": "https://example.com/img.png", "question": "test"}
             )
-            coro.close()
             call_args = mock_tool.call_args
+            # Step 3 calls vision_analyze_tool(url, prompt, aux_model) positionally
             model = call_args[0][2]  # third positional arg
             assert model == "custom/model-v1"
 
-    def test_falls_back_to_default_model(self):
-        """Without AUXILIARY_VISION_MODEL, model should be None (let call_llm resolve default)."""
+    @pytest.mark.asyncio
+    async def test_falls_back_to_default_model(self):
+        """Without AUXILIARY_VISION_MODEL, Step 3 model should be None."""
         with (
             patch(
                 "tools.vision_tools.vision_analyze_tool", new_callable=AsyncMock
             ) as mock_tool,
             patch.dict(os.environ, {}, clear=False),
+            patch(
+                "tools.vision_tools._try_other_provider_vision",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "tools.vision_tools._ocr_extract_text",
+                return_value="",
+            ),
+            # Make Step 1 fail so it falls through to Step 3 (auxiliary)
+            patch("agent.auxiliary_client._read_main_provider", side_effect=Exception("no provider")),
         ):
             # Ensure AUXILIARY_VISION_MODEL is not set
             os.environ.pop("AUXILIARY_VISION_MODEL", None)
-            mock_tool.return_value = json.dumps({"result": "ok"})
-            coro = _handle_vision_analyze(
+            mock_tool.return_value = json.dumps({"success": True, "analysis": "ok"})
+            await _handle_vision_analyze(
                 {"image_url": "https://example.com/img.png", "question": "test"}
             )
-            coro.close()
             call_args = mock_tool.call_args
             model = call_args[0][2]
             # With no AUXILIARY_VISION_MODEL set, model should be None
-            # (the centralized call_llm router picks the default)
             assert model is None
 
     def test_empty_args_graceful(self):
@@ -712,8 +747,9 @@ class TestErrorClassification:
             result = json.loads(await vision_analyze_tool(str(img), "describe", "test/model"))
 
         assert result["success"] is False
-        assert "rejected the image" in result["analysis"].lower()
-        assert "smaller" in result["analysis"].lower()
+        # Error message is now in Chinese — match the actual text
+        assert "图片格式不支持" in result["analysis"]
+        assert "较小" in result["analysis"]
 
 
 class TestVisionRegistration:
