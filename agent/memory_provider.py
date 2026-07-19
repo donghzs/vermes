@@ -238,7 +238,7 @@ def _normalize_provider_search_result(
             hits.append(
                 {
                     "content": it,
-                    "pointer": f"{source}:{abs(hash(it)) % 100000}",
+                    "pointer": f"{source}#{abs(hash(it)) % 100000}",
                     "source": source,
                     "score": 0.0,
                 }
@@ -267,7 +267,7 @@ def _normalize_provider_search_result(
                 it.get("id")
                 or it.get("pointer")
                 or it.get("key")
-                or f"{source}:{abs(hash(content)) % 100000}"
+                or f"{source}#{abs(hash(content)) % 100000}"
             )
             try:
                 score = float(it.get("score") or it.get("similarity") or 0.0)

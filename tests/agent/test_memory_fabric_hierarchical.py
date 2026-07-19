@@ -44,7 +44,7 @@ def _seed_all_layers():
             "source": "recall",
             "layer": L3_EPISODIC,
             "type": "raw_event",
-            "pointer": "recall:self-model.db#1",
+            "pointer": "recall#1",
             "fts_content": "MIG_HIER_XYZ episodic recall about apples",
         }
     )
@@ -53,7 +53,7 @@ def _seed_all_layers():
             "source": "rag",
             "layer": L4_REFERENCE,
             "type": "document",
-            "pointer": "rag:documents.db#1",
+            "pointer": "rag#1",
             "fts_content": "MIG_HIER_XYZ reference document about apples",
         }
     )
@@ -97,6 +97,38 @@ def test_recall_hierarchical_l4_federation_hook(hermes_home):
     assert hits[0]["layer"] == "reference"
     assert hits[0]["source"] == "honcho"
     assert hits[0]["content"] == "MIG_HOOK_XYZ external kb passage"
+
+
+def test_recall_hierarchical_dedupes_seeded_vs_live_rag_pointer(hermes_home):
+    # A2 regression: a RAG document seeded into the fabric index (migration
+    # pointer ``rag#{doc_id}#{chunk_index}``) and the SAME document returned by
+    # the live L4 federation hook must de-duplicate to a single hit — they used
+    # to carry different formats (``rag:documents.db#5`` vs ``rag:file#0``) and
+    # silently doubled.
+    from agent.memory_fabric import record, recall_hierarchical, set_l4_federation_hook
+
+    record(
+        {
+            "source": "rag",
+            "layer": "reference",
+            "type": "document",
+            "pointer": "rag#5#0",
+            "fts_content": "DEDUP_XYZ seeded rag passage",
+        }
+    )
+    set_l4_federation_hook(
+        lambda q, limit: [
+            {
+                "content": "DEDUP_XYZ seeded rag passage",
+                "pointer": "rag#5#0",
+                "source": "rag",
+                "score": 0.9,
+            }
+        ]
+    )
+    hits = recall_hierarchical("DEDUP_XYZ", limit=10)
+    rag_hits = [h for h in hits if h["pointer"] == "rag#5#0"]
+    assert len(rag_hits) == 1, rag_hits
 
 
 def test_recall_hierarchical_l1_surfaces_before_l4_hook(hermes_home):
@@ -148,7 +180,7 @@ def test_recall_hierarchical_l3_live_hook(hermes_home):
         lambda q, limit: [
             {
                 "content": "MIG_L3_XYZ episodic memory",
-                "pointer": "recall:1",
+                "pointer": "recall#1",
                 "source": "recall:outcomes",
             }
         ]

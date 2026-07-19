@@ -410,7 +410,13 @@ class MemoryManager:
                 if not content:
                     continue
                 pointer = hit.get("pointer") or (
-                    f"{provider.name}:{hit.get('filename', '')}#{hit.get('chunk_index', i)}"
+                    # A2: unified ``{source}#{id}`` form. For RAG hits the
+                    # provider exposes ``doc_id`` + ``chunk_index``; mirroring
+                    # the migration pointer (``rag#{doc_id}#{chunk_index}``)
+                    # lets recall_hierarchical de-duplicate the same chunk
+                    # whether it came from the seeded index or live federation.
+                    f"{provider.name}#{hit.get('doc_id', hit.get('id', ''))}"
+                    + (f"#{hit.get('chunk_index', '')}" if hit.get("chunk_index", "") != "" else "")
                 )
                 supplied = hit.get("score")
                 score = (

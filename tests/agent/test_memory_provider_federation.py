@@ -64,11 +64,13 @@ def test_search_all_ranks_rag_chunks_with_pointer():
     mm.add_provider(
         _FakeProvider(
             "rag",
-            hits=[{"content": "RAG passage", "filename": "a.pdf", "chunk_index": 3}],
+            hits=[{"content": "RAG passage", "doc_id": 7, "filename": "a.pdf", "chunk_index": 3}],
         )
     )
     results = mm.search_all("query", limit=5)
-    assert results[0]["pointer"] == "rag:a.pdf#3"
+    # A2: unified ``{source}#{id}`` form — ``rag#{doc_id}#{chunk_index}`` so it
+    # matches the seeded-migration pointer and de-duplicates correctly.
+    assert results[0]["pointer"] == "rag#7#3"
 
 
 def test_search_all_isolates_provider_failure():

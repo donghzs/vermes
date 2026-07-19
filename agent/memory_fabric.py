@@ -145,7 +145,7 @@ def index_note(target: str, content: str, scope: str = "") -> None:
         conn = _get_conn(str(db_path))
         try:
             c = conn.cursor()
-            pointer = f"note:{target}"
+            pointer = f"note#{target}"
             c.execute(
                 "DELETE FROM memories WHERE source='note' AND pointer=? AND scope=?",
                 (pointer, scope),
@@ -381,11 +381,21 @@ def recall_hierarchical(
     # Order by layer priority (stable → preserves FTS rank within layer).
     results.sort(key=lambda h: _LAYER_PRIORITY.get(h["layer"], 9))
 
-    # De-duplicate by pointer (fall back to content fingerprint).
+    # De-duplicate. The unified pointer format is ``{source}#{id}`` (A2), so
+    # key primarily on it. As a safety net against legacy/heterogeneous
+    # pointers that reference the SAME underlying memory with different
+    # strings (e.g. a seeded ``rag#{doc}#0`` vs a live ``rag#{doc}#0`` that
+    # drifted in format), also fold in a content fingerprint within the same
+    # layer, so true duplicates are dropped regardless of format drift.
     seen: set = set()
     deduped: List[Dict[str, Any]] = []
     for h in results:
-        key = h["pointer"] or f"{h['layer']}:{h['content'][:40]}"
+        content_fp = (h.get("content") or "")[:80]
+        key = (
+            f"{h['pointer']}|{h['layer']}:{content_fp}"
+            if h["pointer"]
+            else f"{h['layer']}:{content_fp}"
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -410,7 +420,7 @@ def index_skills(skills: List[Dict[str, Any]], scope: str = "") -> int:
         desc = (s.get("description") or "").strip()
         category = (s.get("category") or "").strip()
         pointer = s.get("pointer") or (
-            f"skill:{category}/{name}" if category else f"skill:{name}"
+            f"skill#{category}/{name}" if category else f"skill#{name}"
         )
         content = f"{name}: {desc}".strip()
         if not content:

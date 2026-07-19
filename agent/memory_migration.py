@@ -199,7 +199,7 @@ def _migrate_recall(home: Path) -> int:
                         "source": "recall",
                         "layer": L3_EPISODIC,
                         "type": "handoff",
-                        "pointer": f"recall:session_handoffs.db#{row['id']}",
+                        "pointer": f"recall#{row['id']}",
                         "fts_content": content,
                     }
                 )
@@ -223,7 +223,7 @@ def _migrate_rag(home: Path) -> int:
     try:
         c = conn.cursor()
         for row in c.execute(
-            "SELECT d.id, d.filename, c.content "
+            "SELECT d.id, d.filename, c.chunk_index, c.content "
             "FROM documents d LEFT JOIN chunks c ON c.doc_id = d.id AND c.chunk_index = 0 "
             "ORDER BY d.id"
         ):
@@ -235,7 +235,12 @@ def _migrate_rag(home: Path) -> int:
                     "source": "rag",
                     "layer": L4_REFERENCE,
                     "type": "document",
-                    "pointer": f"rag:documents.db#{row['id']}",
+                    # Unified pointer format ``{source}#{id}`` (A2). The id
+                    # carries ``doc_id#chunk_index`` so it matches the live RAG
+                    # federation pointer exactly (same doc + same chunk 0),
+                    # letting recall_hierarchical de-duplicate without dropping
+                    # the other chunks of the document.
+                    "pointer": f"rag#{row['id']}#{row['chunk_index']}",
                     "fts_content": content,
                 }
             )
