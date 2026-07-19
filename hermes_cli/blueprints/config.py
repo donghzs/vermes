@@ -361,6 +361,31 @@ _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
 })
 
 
+def _allowed_env_keys():
+    """Allowlist for PUT /api/env.
+
+    Starts from the hardcoded provider/LLM keys and is unioned with every
+    dynamically registered business-service env var, so the unified "services"
+    API form (driven by the same ``register_service`` registry the schema
+    endpoint uses) can persist credentials. Single source of truth = the
+    registry, so the two can never drift.
+    """
+    keys = set(_ENV_WRITE_ALLOWED_KEYS)
+    try:
+        from agent.service_credentials import get_registered_services
+
+        for _sid, _meta in get_registered_services().items():
+            _k = _meta.get("api_key_env_var")
+            if _k:
+                keys.add(_k)
+            _b = _meta.get("base_url_env_var")
+            if _b:
+                keys.add(_b)
+    except Exception:
+        pass
+    return keys
+
+
 # ── Route handlers ───────────────────────────────────────────────────
 
 async def get_onboarding():
@@ -495,11 +520,37 @@ async def get_env_vars():
             "tools": info.get("tools", []),
             "advanced": info.get("advanced", False),
         }
+    # Append dynamically registered business-service env vars so the unified
+    # "services" API form can reflect set status (and mask values) for keys
+    # that aren't in the static OPTIONAL_ENV_VARS table.
+    try:
+        from agent.service_credentials import get_registered_services
+
+        for _sid, _meta in get_registered_services().items():
+            for _kind, _env in (
+                ("api_key", _meta.get("api_key_env_var")),
+                ("base_url", _meta.get("base_url_env_var")),
+            ):
+                if not _env or _env in result:
+                    continue
+                _val = env_on_disk.get(_env)
+                result[_env] = {
+                    "is_set": bool(_val),
+                    "redacted_value": redact_key(_val) if _val else None,
+                    "description": f"{_meta.get('label', _sid)} {_kind.replace('_', ' ')}",
+                    "url": None,
+                    "category": "services",
+                    "is_password": _kind == "api_key",
+                    "tools": [],
+                    "advanced": False,
+                }
+    except Exception:
+        pass
     return result
 
 
 async def set_env_var(body: EnvVarUpdate, request: Request):
-    if body.key not in _ENV_WRITE_ALLOWED_KEYS:
+    if body.key not in _allowed_env_keys():
         raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed")
     try:
         _log.info(f"[ENV] Updated {body.key}")

@@ -509,6 +509,105 @@ function clearAllSettings() {
   saved.value = true; setTimeout(() => saved.value = false, 2000)
 }
 
+// ── 服务 API（统一凭证表单，源自 GET /api/config/schema 的 services 分区） ──
+const serviceGroups = ref({})      // sid -> { sid, label, apiKeyEnv, apiKeyVal, saved }
+const servicesLoading = ref(false)
+const servicesSaving = ref(false)
+const _MASK = '●●●●●●●●'
+
+async function loadServices() {
+  servicesLoading.value = true
+  try {
+    // 1) schema -> 服务字段（category === 'services'）
+    const schemaResp = await fetch('/api/config/schema')
+    const schema = await schemaResp.json()
+    const fields = schema.fields || {}
+    const groups = {}
+    for (const [key, f] of Object.entries(fields)) {
+      if (f.category !== 'services') continue
+      const m = key.match(/^services\.([^.]+)\.api_key$/)
+      if (!m) continue
+      const sid = m[1]
+      groups[sid] = {
+        sid,
+        label: (f.description || '').replace(/ API key$/, '') || sid,
+        apiKeyEnv: f.env_var || null,
+        apiKeyVal: '',
+        saved: false,
+      }
+    }
+    // 2) env 状态 -> 已配置的服务显示掩码，避免保存时覆盖真实值
+    try {
+      const envResp = await fetch('/api/env')
+      const envData = await envResp.json()
+      for (const sid of Object.keys(groups)) {
+        const g = groups[sid]
+        if (g.apiKeyEnv && envData[g.apiKeyEnv] && envData[g.apiKeyEnv].is_set) {
+          g.apiKeyVal = _MASK
+        }
+      }
+    } catch (e) { console.error('[Services] env status error:', e) }
+    serviceGroups.value = groups
+  } catch (e) {
+    console.error('[Services] load schema error:', e)
+  } finally {
+    servicesLoading.value = false
+  }
+}
+
+async function saveService(sid) {
+  const g = serviceGroups.value[sid]
+  if (!g || !g.apiKeyEnv) return
+  if (!g.apiKeyVal || g.apiKeyVal === _MASK) { toast.warning('请输入 ' + g.label + ' 的 API Key 后再保存'); return }
+  servicesSaving.value = true
+  try {
+    const resp = await fetch('/api/env', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: g.apiKeyEnv, value: g.apiKeyVal }),
+    })
+    if (resp.ok) {
+      g.apiKeyVal = _MASK
+      g.saved = true
+      setTimeout(() => (g.saved = false), 2000)
+      toast.success('已保存 ' + g.label)
+    } else {
+      const d = await resp.json().catch(() => ({}))
+      toast.error('保存失败: ' + (d.detail || resp.status))
+    }
+  } catch (e) {
+    toast.error('保存请求失败: ' + e.message)
+  } finally {
+    servicesSaving.value = false
+  }
+}
+
+async function clearService(sid) {
+  const g = serviceGroups.value[sid]
+  if (!g || !g.apiKeyEnv) return
+  if (!confirm('清除 ' + g.label + ' 的 API Key？')) return
+  try {
+    const resp = await fetch('/api/env', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: g.apiKeyEnv }),
+    })
+    if (resp.ok) {
+      g.apiKeyVal = ''
+      toast.success('已清除 ' + g.label)
+    } else {
+      toast.error('清除失败')
+    }
+  } catch (e) {
+    toast.error('清除失败: ' + e.message)
+  }
+}
+
+// 聚焦输入框时清除掩码，方便直接输入新 Key
+function focusServiceKey(g) {
+  if (g.apiKeyVal === _MASK) g.apiKeyVal = ''
+}
+
 function back() { router.push('/') }
 
 // ── ProviderCard 事件路由 ──
@@ -564,6 +663,8 @@ onMounted(() => {
   fetchCacheMetrics()
   // 加载知识库文档列表
   fetchRagDocs()
+  // 加载统一服务 API 凭证表单（services 分区）
+  loadServices()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -582,6 +683,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
     <!-- Tab 栏 -->
     <div class="px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-0">
       <button @click="activeTab = 'providers'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'providers' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">提供商</button>
+      <button @click="activeTab = 'services'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'services' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔑 服务</button>
       <button @click="activeTab = 'security'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'security' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔒 安全</button>
       <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
       <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
@@ -715,6 +817,42 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             🔄 清除所有本地配置（保留聊天记录）
           </button>
           <p class="text-xs text-gray-400 mt-2 text-center">清除 API Key、模型列表、微信登录状态、试用 Token 等配置历史</p>
+        </div>
+      </div>
+
+      <!-- 服务（统一 API 凭证，源自 GET /api/config/schema 的 services 分区） -->
+      <div v-if="activeTab === 'services'" class="max-w-2xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🔑</span>
+            <h3 class="font-medium text-gray-800 dark:text-gray-200">服务 API 凭证</h3>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">所有插件 / 工具 / 技能所需的额外 API Key 统一在此配置，与 Agent 共享同一套读取逻辑，无需逐插件单独设置。</p>
+
+          <div v-if="servicesLoading" class="text-center text-sm text-gray-400 py-4">
+            <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div> 加载中...
+          </div>
+          <div v-else-if="Object.keys(serviceGroups).length === 0" class="text-center text-sm text-gray-400 py-4">暂无已注册的服务</div>
+          <div v-else class="space-y-3">
+            <div v-for="g in Object.values(serviceGroups)" :key="g.sid" class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
+                <span v-if="g.saved" class="text-green-500 text-xs">✅ 已保存</span>
+              </div>
+              <div class="flex gap-2">
+                <input
+                  v-model="g.apiKeyVal"
+                  type="password"
+                  :placeholder="g.apiKeyEnv"
+                  @focus="focusServiceKey(g)"
+                  class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
+                />
+                <button @click="saveService(g.sid)" :disabled="servicesSaving" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
+                <button @click="clearService(g.sid)" class="px-3 py-2 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+              </div>
+              <p class="text-[11px] text-gray-400 font-mono">{{ g.apiKeyEnv }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
