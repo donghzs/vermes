@@ -18,6 +18,7 @@ from enum import Enum
 
 from hermes_cli.config import get_hermes_home
 from utils import env_int, is_truthy_value
+from gateway.behavior_config import BehaviorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -507,6 +508,12 @@ class GatewayConfig:
     # fresh session exactly as if the reset policy had fired.  0 = disabled.
     session_store_max_age_days: int = 90
 
+    # D2b: Structured behavior config (parallel to env-var bridging).
+    # Provides per-session isolation that env vars cannot.  Populated from
+    # YAML in load_gateway_config().  Env-var bridging is retained for
+    # backward compatibility during the transition period.
+    behavior: BehaviorConfig = field(default_factory=BehaviorConfig)
+
     def get_connected_platforms(self) -> List[Platform]:
         """Return list of platforms that are enabled and configured."""
         connected = []
@@ -600,6 +607,7 @@ class GatewayConfig:
             "unauthorized_dm_behavior": self.unauthorized_dm_behavior,
             "streaming": self.streaming.to_dict(),
             "session_store_max_age_days": self.session_store_max_age_days,
+            "behavior": self.behavior.to_dict(),
         }
     
     @classmethod
@@ -668,6 +676,7 @@ class GatewayConfig:
             unauthorized_dm_behavior=unauthorized_dm_behavior,
             streaming=StreamingConfig.from_dict(data.get("streaming", {})),
             session_store_max_age_days=session_store_max_age_days,
+            behavior=BehaviorConfig.from_dict(data.get("behavior", {})),
         )
 
     def get_unauthorized_dm_behavior(self, platform: Optional[Platform] = None) -> str:
@@ -705,6 +714,7 @@ def load_gateway_config() -> GatewayConfig:
     """
     _home = get_hermes_home()
     gw_data: dict = {}
+    yaml_cfg: Optional[dict] = None
 
     # Legacy fallback: gateway.json provides the base layer.
     # config.yaml keys always win when both specify the same setting.
@@ -1215,6 +1225,14 @@ def load_gateway_config() -> GatewayConfig:
         )
 
     config = GatewayConfig.from_dict(gw_data)
+
+    # D2b: Build structured BehaviorConfig from the raw YAML cfg so that
+    # downstream code can access platform behavior settings without going
+    # through env vars.  Env-var bridging above is retained for backward
+    # compatibility.  When yaml_cfg is not available (config.yaml missing),
+    # behavior stays at defaults.
+    if yaml_cfg:
+        config.behavior = BehaviorConfig.from_yaml(yaml_cfg)
 
     # Override with environment variables
     _apply_env_overrides(config)
