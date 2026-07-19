@@ -48,6 +48,7 @@ from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import DiscordBehaviorConfig
 import re
 
 from gateway.platforms.helpers import MessageDeduplicator, ThreadParticipationTracker
@@ -551,13 +552,14 @@ class DiscordAdapter(BasePlatformAdapter):
     # Auto-disconnect from voice channel after this many seconds of inactivity
     VOICE_TIMEOUT = 300
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[DiscordBehaviorConfig] = None):
         super().__init__(config, Platform.DISCORD)
         self._client: Optional[commands.Bot] = None
         self._ready_event = asyncio.Event()
         self._allowed_user_ids: set = set()  # For button approval authorization
         self._allowed_role_ids: set = set()  # For DISCORD_ALLOWED_ROLES filtering
         self.gateway_runner = None  # Set by gateway/run.py for cross-platform delivery
+        self._behavior: DiscordBehaviorConfig = behavior or DiscordBehaviorConfig()
         # Voice channel state (per-guild)
         self._voice_clients: Dict[int, Any] = {}  # guild_id -> VoiceClient
         self._voice_locks: Dict[int, asyncio.Lock] = {}  # guild_id -> serialize join/leave
@@ -594,6 +596,85 @@ class DiscordAdapter(BasePlatformAdapter):
         # history backfill to skip the full scan on hot paths.  Falls back to
         # scanning channel.history() on cache miss (cold start / restart).
         self._last_self_message_id: Dict[str, str] = {}
+
+    # ─────────────────────────────────────────────────────────────
+    # BehaviorConfig accessors (Phase D2b: BehaviorConfig first,
+    # os.getenv fallback for transition compatibility)
+    # ─────────────────────────────────────────────────────────────
+
+    def _get_allow_bots(self) -> str:
+        """DISCORD_ALLOW_BOTS: 'none' | 'mentions' | 'all'."""
+        if self._behavior.allow_bots is not None:
+            return self._behavior.allow_bots.lower().strip()
+        return os.getenv("DISCORD_ALLOW_BOTS", "none").lower().strip()
+
+    def _get_reactions_enabled(self) -> bool:
+        """DISCORD_REACTIONS (default true)."""
+        if self._behavior.reactions is not None:
+            return self._behavior.reactions
+        return os.getenv("DISCORD_REACTIONS", "true").lower() not in {"false", "0", "no"}
+
+    def _get_allowed_channels(self) -> list:
+        """DISCORD_ALLOWED_CHANNELS (CSV string -> list)."""
+        if self._behavior.allowed_channels:
+            return list(self._behavior.allowed_channels)
+        raw = os.getenv("DISCORD_ALLOWED_CHANNELS", "")
+        return [ch.strip() for ch in raw.split(",") if ch.strip()]
+
+    def _get_ignored_channels(self) -> list:
+        """DISCORD_IGNORED_CHANNELS (CSV string -> list)."""
+        if self._behavior.ignored_channels:
+            return list(self._behavior.ignored_channels)
+        raw = os.getenv("DISCORD_IGNORED_CHANNELS", "")
+        return [ch.strip() for ch in raw.split(",") if ch.strip()]
+
+    def _get_require_mention(self) -> bool:
+        """DISCORD_REQUIRE_MENTION (default true)."""
+        if self._behavior.require_mention is not None:
+            return self._behavior.require_mention
+        return os.getenv("DISCORD_REQUIRE_MENTION", "true").lower() not in {"false", "0", "no", "off"}
+
+    def _get_free_response_channels(self) -> list:
+        """DISCORD_FREE_RESPONSE_CHANNELS (CSV string -> list)."""
+        if self._behavior.free_response_channels:
+            return list(self._behavior.free_response_channels)
+        raw = os.getenv("DISCORD_FREE_RESPONSE_CHANNELS", "")
+        return [ch.strip() for ch in raw.split(",") if ch.strip()]
+
+    def _get_thread_require_mention(self) -> bool:
+        """DISCORD_THREAD_REQUIRE_MENTION (default false)."""
+        if self._behavior.thread_require_mention is not None:
+            return self._behavior.thread_require_mention
+        return os.getenv("DISCORD_THREAD_REQUIRE_MENTION", "false").lower() in {"true", "1", "yes", "on"}
+
+    def _get_history_backfill(self) -> bool:
+        """DISCORD_HISTORY_BACKFILL (default true)."""
+        if self._behavior.history_backfill is not None:
+            return self._behavior.history_backfill
+        return os.getenv("DISCORD_HISTORY_BACKFILL", "true").lower() in {"true", "1", "yes"}
+
+    def _get_history_backfill_limit(self) -> int:
+        """DISCORD_HISTORY_BACKFILL_LIMIT (default 50)."""
+        if self._behavior.history_backfill_limit is not None:
+            return self._behavior.history_backfill_limit
+        raw = os.getenv("DISCORD_HISTORY_BACKFILL_LIMIT", "50")
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return 50
+
+    def _get_no_thread_channels(self) -> list:
+        """DISCORD_NO_THREAD_CHANNELS (CSV string -> list)."""
+        if self._behavior.no_thread_channels:
+            return list(self._behavior.no_thread_channels)
+        raw = os.getenv("DISCORD_NO_THREAD_CHANNELS", "")
+        return [ch.strip() for ch in raw.split(",") if ch.strip()]
+
+    def _get_auto_thread(self) -> bool:
+        """DISCORD_AUTO_THREAD (default true)."""
+        if self._behavior.auto_thread is not None:
+            return self._behavior.auto_thread
+        return os.getenv("DISCORD_AUTO_THREAD", "true").lower() in {"true", "1", "yes"}
 
     async def connect(self) -> bool:
         """Connect to Discord and start receiving events."""
@@ -748,7 +829,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 # permitted by DISCORD_ALLOW_BOTS are not rejected for
                 # not being in DISCORD_ALLOWED_USERS (fixes #4466).
                 if getattr(message.author, "bot", False):
-                    allow_bots = os.getenv("DISCORD_ALLOW_BOTS", "none").lower().strip()
+                    allow_bots = self._get_allow_bots()
                     if allow_bots == "none":
                         return
                     elif allow_bots == "mentions":
@@ -1346,7 +1427,7 @@ class DiscordAdapter(BasePlatformAdapter):
 
     def _reactions_enabled(self) -> bool:
         """Check if message reactions are enabled via config/env."""
-        return os.getenv("DISCORD_REACTIONS", "true").lower() not in {"false", "0", "no"}
+        return self._get_reactions_enabled()
 
     async def on_processing_start(self, event: MessageEvent) -> None:
         """Add an in-progress reaction for normal Discord message events."""
@@ -2331,9 +2412,9 @@ class DiscordAdapter(BasePlatformAdapter):
                     if parent_id:
                         channel_ids.add(str(parent_id))
 
-            allowed_raw = os.getenv("DISCORD_ALLOWED_CHANNELS", "")
-            if allowed_raw:
-                allowed = {c.strip() for c in allowed_raw.split(",") if c.strip()}
+            allowed_list = self._get_allowed_channels()
+            if allowed_list:
+                allowed = {c.strip() for c in allowed_list if c.strip()}
                 if "*" not in allowed:
                     if not channel_ids:
                         # Channel policy is configured but the interaction
@@ -2348,9 +2429,9 @@ class DiscordAdapter(BasePlatformAdapter):
             # Ignored beats allowed: even when a thread's parent channel
             # is on the allowlist, an explicit DISCORD_IGNORED_CHANNELS
             # entry on the thread or its parent rejects the interaction.
-            ignored_raw = os.getenv("DISCORD_IGNORED_CHANNELS", "")
-            if ignored_raw and channel_ids:
-                ignored = {c.strip() for c in ignored_raw.split(",") if c.strip()}
+            ignored_list = self._get_ignored_channels()
+            if ignored_list and channel_ids:
+                ignored = {c.strip() for c in ignored_list if c.strip()}
                 if "*" in ignored or (channel_ids & ignored):
                     return (False, "channel in DISCORD_IGNORED_CHANNELS")
 
@@ -3580,7 +3661,7 @@ class DiscordAdapter(BasePlatformAdapter):
             if isinstance(configured, str):
                 return configured.lower() not in {"false", "0", "no", "off"}
             return bool(configured)
-        return os.getenv("DISCORD_REQUIRE_MENTION", "true").lower() not in {"false", "0", "no", "off"}
+        return self._get_require_mention()
 
     def _discord_allow_any_attachment(self) -> bool:
         """Return whether Discord attachments bypass the SUPPORTED_DOCUMENT_TYPES allowlist.
@@ -3627,6 +3708,8 @@ class DiscordAdapter(BasePlatformAdapter):
         on wildcard membership, consistent with ``allowed_channels``.
         """
         raw = self.config.extra.get("free_response_channels")
+        if raw is None and self._behavior.free_response_channels:
+            raw = ",".join(self._behavior.free_response_channels)
         if raw is None:
             raw = os.getenv("DISCORD_FREE_RESPONSE_CHANNELS", "")
         if isinstance(raw, list):
@@ -3659,7 +3742,7 @@ class DiscordAdapter(BasePlatformAdapter):
             if isinstance(configured, str):
                 return configured.lower() not in {"false", "0", "no", "off"}
             return bool(configured)
-        return os.getenv("DISCORD_THREAD_REQUIRE_MENTION", "false").lower() in {"true", "1", "yes", "on"}
+        return self._get_thread_require_mention()
 
     def _discord_history_backfill(self) -> bool:
         """Return whether history backfill is enabled for shared sessions."""
@@ -3668,7 +3751,7 @@ class DiscordAdapter(BasePlatformAdapter):
             if isinstance(configured, str):
                 return configured.lower() not in {"false", "0", "no", "off"}
             return bool(configured)
-        return os.getenv("DISCORD_HISTORY_BACKFILL", "true").lower() in {"true", "1", "yes"}
+        return self._get_history_backfill()
 
     def _discord_history_backfill_limit(self) -> int:
         """Return the max number of messages to scan backwards for context.
@@ -3684,11 +3767,7 @@ class DiscordAdapter(BasePlatformAdapter):
                 return int(configured)
             except (ValueError, TypeError):
                 pass
-        raw = os.getenv("DISCORD_HISTORY_BACKFILL_LIMIT", "50")
-        try:
-            return int(raw)
-        except (ValueError, TypeError):
-            return 50
+        return self._get_history_backfill_limit()
 
     async def _fetch_channel_context(
         self,
@@ -3714,7 +3793,7 @@ class DiscordAdapter(BasePlatformAdapter):
             return ""
 
         # Determine which bot messages to include in context
-        allow_bots_raw = os.getenv("DISCORD_ALLOW_BOTS", "none").lower().strip()
+        allow_bots_raw = self._get_allow_bots()
         include_other_bots = allow_bots_raw != "none"
 
         # Use the in-memory cache to narrow the fetch window on hot paths.
@@ -4479,16 +4558,16 @@ class DiscordAdapter(BasePlatformAdapter):
                 channel_ids.add(parent_channel_id)
 
             # Check allowed channels - if set, only respond in these channels
-            allowed_channels_raw = os.getenv("DISCORD_ALLOWED_CHANNELS", "")
-            if allowed_channels_raw:
-                allowed_channels = {ch.strip() for ch in allowed_channels_raw.split(",") if ch.strip()}
+            allowed_channels_list = self._get_allowed_channels()
+            if allowed_channels_list:
+                allowed_channels = {ch.strip() for ch in allowed_channels_list if ch.strip()}
                 if "*" not in allowed_channels and not (channel_ids & allowed_channels):
                     logger.debug("[%s] Ignoring message in non-allowed channel: %s", self.name, channel_ids)
                     return
 
             # Check ignored channels - never respond even when mentioned
-            ignored_channels_raw = os.getenv("DISCORD_IGNORED_CHANNELS", "")
-            ignored_channels = {ch.strip() for ch in ignored_channels_raw.split(",") if ch.strip()}
+            ignored_channels_list = self._get_ignored_channels()
+            ignored_channels = {ch.strip() for ch in ignored_channels_list if ch.strip()}
             if "*" in ignored_channels or (channel_ids & ignored_channels):
                 logger.debug("[%s] Ignoring message in ignored channel: %s", self.name, channel_ids)
                 return
@@ -4529,10 +4608,10 @@ class DiscordAdapter(BasePlatformAdapter):
         # no_thread_channels: channels where bot responds directly without thread.
         auto_threaded_channel = None
         if not is_thread and not isinstance(message.channel, discord.DMChannel):
-            no_thread_channels_raw = os.getenv("DISCORD_NO_THREAD_CHANNELS", "")
-            no_thread_channels = {ch.strip() for ch in no_thread_channels_raw.split(",") if ch.strip()}
+            no_thread_channels_list = self._get_no_thread_channels()
+            no_thread_channels = {ch.strip() for ch in no_thread_channels_list if ch.strip()}
             skip_thread = bool(channel_ids & no_thread_channels) or is_free_channel
-            auto_thread = os.getenv("DISCORD_AUTO_THREAD", "true").lower() in {"true", "1", "yes"}
+            auto_thread = self._get_auto_thread()
             is_reply_message = getattr(message, "type", None) == discord.MessageType.reply
             if auto_thread and not skip_thread and not is_voice_linked_channel and not is_reply_message:
                 thread = await self._auto_create_thread(message)
