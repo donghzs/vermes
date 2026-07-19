@@ -63,6 +63,7 @@ from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import TelegramBehaviorConfig
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -387,8 +388,9 @@ class TelegramAdapter(BasePlatformAdapter):
         """Telegram measures message length in UTF-16 code units."""
         return utf16_len
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[TelegramBehaviorConfig] = None):
         super().__init__(config, Platform.TELEGRAM)
+        self._behavior: TelegramBehaviorConfig = behavior or TelegramBehaviorConfig()
         self._app: Optional[Application] = None
         self._bot: Optional[Bot] = None
         self._webhook_mode: bool = False
@@ -524,7 +526,11 @@ class TelegramAdapter(BasePlatformAdapter):
                     exc_info=True,
                 )
 
-        allowed_csv = os.getenv("TELEGRAM_ALLOWED_USERS", "").strip()
+        allowed_csv = ""
+        if self._behavior.allowed_users:
+            allowed_csv = ",".join(str(u) for u in self._behavior.allowed_users).strip()
+        if not allowed_csv:
+            allowed_csv = os.getenv("TELEGRAM_ALLOWED_USERS", "").strip()
         if not allowed_csv:
             # Fail-closed: no allowlist means deny by default.
             # The runner auth path in _is_user_authorized() handles
@@ -4171,6 +4177,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _telegram_require_mention(self) -> bool:
         """Return whether group chats should require an explicit bot trigger."""
+        if self._behavior.require_mention is not None:
+            return bool(self._behavior.require_mention)
         configured = self.config.extra.get("require_mention")
         if configured is not None:
             if isinstance(configured, str):
@@ -4180,6 +4188,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _telegram_guest_mode(self) -> bool:
         """Return whether non-allowlisted groups may trigger via direct @mention."""
+        if self._behavior.guest_mode is not None:
+            return bool(self._behavior.guest_mode)
         configured = self.config.extra.get("guest_mode")
         if configured is not None:
             if isinstance(configured, str):
@@ -4189,6 +4199,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _telegram_exclusive_bot_mentions(self) -> bool:
         """Return whether explicit @...bot mentions exclusively route group messages."""
+        if self._behavior.exclusive_bot_mentions is not None:
+            return bool(self._behavior.exclusive_bot_mentions)
         configured = self.config.extra.get("exclusive_bot_mentions")
         if configured is not None:
             if isinstance(configured, str):
@@ -4197,6 +4209,8 @@ class TelegramAdapter(BasePlatformAdapter):
         return os.getenv("TELEGRAM_EXCLUSIVE_BOT_MENTIONS", "true").lower() in {"true", "1", "yes", "on"}
 
     def _telegram_free_response_chats(self) -> set[str]:
+        if self._behavior.free_response_chats:
+            return {str(part).strip() for part in self._behavior.free_response_chats if str(part).strip()}
         raw = self.config.extra.get("free_response_chats")
         if raw is None:
             raw = os.getenv("TELEGRAM_FREE_RESPONSE_CHATS", "")
@@ -4212,6 +4226,8 @@ class TelegramAdapter(BasePlatformAdapter):
         explicitly @mentioned.  DMs are never filtered.
         Empty set means no restriction (fully backward compatible).
         """
+        if self._behavior.allowed_chats:
+            return {str(part).strip() for part in self._behavior.allowed_chats if str(part).strip()}
         raw = self.config.extra.get("allowed_chats")
         if raw is None:
             raw = os.getenv("TELEGRAM_ALLOWED_CHATS", "")
@@ -4227,6 +4243,8 @@ class TelegramAdapter(BasePlatformAdapter):
         ``message_thread_id`` for the forum General topic, so ``None`` is
         treated as topic ``1`` for matching purposes.
         """
+        if self._behavior.allowed_topics:
+            return {str(part).strip() for part in self._behavior.allowed_topics if str(part).strip()}
         raw = self.config.extra.get("allowed_topics")
         if raw is None:
             raw = os.getenv("TELEGRAM_ALLOWED_TOPICS", "")
@@ -4235,9 +4253,12 @@ class TelegramAdapter(BasePlatformAdapter):
         return {part.strip() for part in str(raw).split(",") if part.strip()}
 
     def _telegram_ignored_threads(self) -> set[int]:
-        raw = self.config.extra.get("ignored_threads")
-        if raw is None:
-            raw = os.getenv("TELEGRAM_IGNORED_THREADS", "")
+        if self._behavior.ignored_threads:
+            raw = self._behavior.ignored_threads
+        else:
+            raw = self.config.extra.get("ignored_threads")
+            if raw is None:
+                raw = os.getenv("TELEGRAM_IGNORED_THREADS", "")
 
         if isinstance(raw, list):
             values = raw
@@ -4257,7 +4278,11 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _compile_mention_patterns(self) -> List[re.Pattern]:
         """Compile optional regex wake-word patterns for group triggers."""
-        patterns = self.config.extra.get("mention_patterns")
+        patterns = None
+        if self._behavior.mention_patterns is not None:
+            patterns = self._behavior.mention_patterns
+        if patterns is None:
+            patterns = self.config.extra.get("mention_patterns")
         if patterns is None:
             raw = os.getenv("TELEGRAM_MENTION_PATTERNS", "").strip()
             if raw:
@@ -5389,6 +5414,8 @@ class TelegramAdapter(BasePlatformAdapter):
 
     def _reactions_enabled(self) -> bool:
         """Check if message reactions are enabled via config/env."""
+        if self._behavior.reactions is not None:
+            return bool(self._behavior.reactions)
         return os.getenv("TELEGRAM_REACTIONS", "false").lower() not in {"false", "0", "no"}
 
     async def _set_reaction(self, chat_id: str, message_id: str, emoji: str) -> bool:
