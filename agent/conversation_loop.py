@@ -1042,16 +1042,18 @@ def run_conversation(
                         _injections.append(_fenced)
                 if _plugin_user_context:
                     _injections.append(_plugin_user_context)
-                # H4.5: per-turn recall refinement — injected into the user
-                # message (NOT the system prompt) so the prefix cache stays
-                # intact. Skips fluent users; lightweight DB recall only.
+                # B2: per-turn layered recall (L1–L4) via recall_hierarchical —
+                # injected into the user message (NOT the system prompt) so the
+                # prefix cache stays intact. Surfaces unified memory every turn
+                # regardless of whether the model calls memory_search.
+                # Fail-open + token-bounded (see recall_hierarchical_per_turn).
                 try:
-                    from agent.memory_recall import refine_recall_per_turn
+                    from agent.memory_recall import recall_hierarchical_per_turn
 
                     _user_text = msg.get("content", "")
                     if not isinstance(_user_text, str):
                         _user_text = ""
-                    _turn_recall = refine_recall_per_turn(_user_text)
+                    _turn_recall = recall_hierarchical_per_turn(_user_text)
                     if _turn_recall:
                         _injections.append(_turn_recall)
                 except Exception:

@@ -722,3 +722,74 @@ def refine_recall_per_turn(user_message: str) -> str:
         return format_recall_for_prompt(result)
     except Exception:
         return ""
+
+
+def recall_hierarchical_per_turn(user_message: str) -> str:
+    """Per-turn layered recall (audit B2): surface L1–L4 via
+    ``memory_fabric.recall_hierarchical`` on *every* turn, so unified memory is
+    proactively available regardless of whether the model decides to call the
+    ``memory_search`` tool.
+
+    Injected into the per-turn user message (NOT the system prompt) to keep the
+    prompt-cache prefix intact. Fail-open (any error returns ``""``) and
+    token-bounded (``_MAX_BLOCK_CHARS``).
+
+    Fluent users already received full episodic (L3) context at turn 1 via the
+    frozen system prompt, so we skip L3 for them to save tokens — but we still
+    surface L1 (notes) / L2 (skills) / L4 (reference), which are never in the
+    system prompt. Non-fluent users get the full L1–L4 stack.
+
+    Ordering/de-dup inside each layer is handled by ``recall_hierarchical``
+    (layer priority first, then FTS5 rank; de-duplicated by ``{source}#{id}``
+    pointer + content fingerprint).
+    """
+    try:
+        from agent.memory_fabric import (
+            L1_NOTE,
+            L2_PROCEDURAL,
+            L4_REFERENCE,
+            recall_hierarchical,
+        )
+    except Exception:
+        return ""
+
+    try:
+        _rich = compute_richness()
+        _fluent = getattr(_rich, "tier", "") == "fluent"
+    except Exception:
+        _fluent = False
+
+    # Fluent users skip L3 (already in the turn-1 system prompt).
+    _layers = None if not _fluent else [L1_NOTE, L2_PROCEDURAL, L4_REFERENCE]
+
+    try:
+        hits = recall_hierarchical(user_message or "", limit=6, layers=_layers)
+    except Exception:
+        logger.warning("recall_hierarchical_per_turn failed (non-fatal)", exc_info=True)
+        return ""
+
+    if not hits:
+        return ""
+
+    _LABELS = {
+        L1_NOTE: "note",
+        L2_PROCEDURAL: "skill",
+        "episodic": "recall",
+        L4_REFERENCE: "reference",
+    }
+    parts = ["<memory_recall>"]
+    for h in hits:
+        _label = _LABELS.get(h.get("layer", ""), h.get("layer", ""))
+        _content = (h.get("content") or "").strip()
+        if _content:
+            parts.append(f"[{_label}] {_content}")
+    parts.append("</memory_recall>")
+    block = "\n".join(parts)
+
+    if len(block) > _MAX_BLOCK_CHARS:
+        block = block[:_MAX_BLOCK_CHARS] + "\n</memory_recall>"
+
+    _inner = block.replace("<memory_recall>", "").replace("</memory_recall>", "").strip()
+    if not _inner:
+        return ""
+    return block
