@@ -48,6 +48,7 @@ import threading
 import time
 from pathlib import Path  # noqa: F401 — used by test mocks
 from types import SimpleNamespace
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import urlparse, parse_qs, urlunparse
 
@@ -1677,9 +1678,9 @@ def _read_main_model() -> str:
     that gate on "the active main model" (e.g. ``vision_analyze``'s native
     fast path) see the live runtime, not the persisted config default.
     """
-    override = _RUNTIME_MAIN_MODEL
-    if isinstance(override, str) and override.strip():
-        return override.strip()
+    override = get_runtime_main()
+    if override is not None and override.model.strip():
+        return override.model.strip()
     try:
         from hermes_cli.config import load_config
         cfg = load_config()
@@ -1704,9 +1705,9 @@ def _read_main_provider() -> str:
     Runtime override: see ``_read_main_model`` — same mechanism for the
     provider half of the runtime tuple.
     """
-    override = _RUNTIME_MAIN_PROVIDER
-    if isinstance(override, str) and override.strip():
-        return override.strip().lower()
+    override = get_runtime_main()
+    if override is not None and override.provider.strip():
+        return override.provider.strip().lower()
     try:
         from hermes_cli.config import load_config
         cfg = load_config()
@@ -1720,13 +1721,36 @@ def _read_main_provider() -> str:
     return ""
 
 
-# Process-local override set by AIAgent at session/turn start. Single-threaded
-# per turn — no lock needed. Cleared by ``clear_runtime_main()``.
-_RUNTIME_MAIN_PROVIDER: str = ""
-_RUNTIME_MAIN_MODEL: str = ""
-_RUNTIME_MAIN_BASE_URL: str = ""
-_RUNTIME_MAIN_API_KEY: str = ""
-_RUNTIME_MAIN_API_MODE: str = ""
+@dataclass
+class RuntimeMainOverride:
+    """Explicit, injectable representation of the live main-runtime tuple.
+
+    Replaces the previous five loose module-level globals
+    (``_RUNTIME_MAIN_PROVIDER`` / ``_RUNTIME_MAIN_MODEL`` /
+    ``_RUNTIME_MAIN_BASE_URL`` / ``_RUNTIME_MAIN_API_KEY`` /
+    ``_RUNTIME_MAIN_API_MODE``). Callers may pass an instance explicitly into
+    the auxiliary resolver via ``resolve_provider_client(runtime_main=...)``
+    (dependency injection) instead of relying on the process-local global set
+    by ``set_runtime_main()`` (C2: explicit DI over module-level global state).
+    """
+
+    provider: str = ""
+    model: str = ""
+    base_url: str = ""
+    api_key: str = ""
+    api_mode: str = ""
+    auth_mode: str = ""
+
+
+# Process-local override set by the agent loop at session/turn start.
+# Single-threaded per turn — no lock needed. ``None`` means "no override; fall
+# back to config.yaml". Cleared by ``clear_runtime_main()``.
+#
+# C2: consolidated from five scattered module globals into ONE typed holder so
+# the runtime-main state is a single explicit object rather than a pile of
+# ``global``-mutated strings. Reads go through ``get_runtime_main()``; explicit
+# injection is available via the ``runtime_main`` kwarg on ``resolve_provider_client``.
+_runtime_main_override: Optional[RuntimeMainOverride] = None
 
 
 def set_runtime_main(
@@ -1736,36 +1760,43 @@ def set_runtime_main(
     base_url: str = "",
     api_key: str = "",
     api_mode: str = "",
+    auth_mode: str = "",
 ) -> None:
     """Record the live runtime provider/model/credentials for the current AIAgent.
 
-    Called by ``run_agent.AIAgent._sync_runtime_main_for_aux_routing`` (or
-    equivalent setter) at the top of each turn so that
-    ``_read_main_provider`` / ``_read_main_model`` reflect CLI/gateway
-    overrides instead of the stale config.yaml default.
+    Backward-compatible setter used by ``conversation_loop``. Callers that want
+    explicit dependency injection should instead build a ``RuntimeMainOverride``
+    and pass it to ``resolve_provider_client(runtime_main=...)`` (see C2).
 
     For ``custom:`` providers, ``base_url`` and ``api_key`` must also be
     recorded so that ``_resolve_auto`` can construct a valid client in
     Step 1 instead of falling through to the aggregator chain.
     """
-    global _RUNTIME_MAIN_PROVIDER, _RUNTIME_MAIN_MODEL
-    global _RUNTIME_MAIN_BASE_URL, _RUNTIME_MAIN_API_KEY, _RUNTIME_MAIN_API_MODE
-    _RUNTIME_MAIN_PROVIDER = (provider or "").strip().lower()
-    _RUNTIME_MAIN_MODEL = (model or "").strip()
-    _RUNTIME_MAIN_BASE_URL = (base_url or "").strip()
-    _RUNTIME_MAIN_API_KEY = api_key.strip() if isinstance(api_key, str) else ""
-    _RUNTIME_MAIN_API_MODE = (api_mode or "").strip()
+    global _runtime_main_override
+    _runtime_main_override = RuntimeMainOverride(
+        provider=(provider or "").strip().lower(),
+        model=(model or "").strip(),
+        base_url=(base_url or "").strip(),
+        api_key=api_key.strip() if isinstance(api_key, str) else "",
+        api_mode=(api_mode or "").strip(),
+        auth_mode=(auth_mode or "").strip(),
+    )
+
+
+def get_runtime_main() -> Optional[RuntimeMainOverride]:
+    """Single read point for the process-local runtime-main override (C2 DI seam).
+
+    Returns ``None`` when no override is active so callers fall back to
+    config.yaml. Centralizing the read here removes scattered ``_RUNTIME_MAIN_*``
+    global accesses and makes the state explicitly injectable.
+    """
+    return _runtime_main_override
 
 
 def clear_runtime_main() -> None:
     """Clear the runtime override (e.g. on session end)."""
-    global _RUNTIME_MAIN_PROVIDER, _RUNTIME_MAIN_MODEL
-    global _RUNTIME_MAIN_BASE_URL, _RUNTIME_MAIN_API_KEY, _RUNTIME_MAIN_API_MODE
-    _RUNTIME_MAIN_PROVIDER = ""
-    _RUNTIME_MAIN_MODEL = ""
-    _RUNTIME_MAIN_BASE_URL = ""
-    _RUNTIME_MAIN_API_KEY = ""
-    _RUNTIME_MAIN_API_MODE = ""
+    global _runtime_main_override
+    _runtime_main_override = None
 
 
 def _resolve_custom_runtime() -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -2177,6 +2208,16 @@ def _normalize_main_runtime(main_runtime: Optional[Dict[str, Any]]) -> Dict[str,
     if isinstance(provider, str):
         normalized["provider"] = provider.lower()
     return normalized
+
+
+def _runtime_main_to_dict(override: RuntimeMainOverride) -> Dict[str, Any]:
+    """Convert a :class:`RuntimeMainOverride` into the dict shape consumed by
+    ``_resolve_auto`` / ``_normalize_main_runtime`` (C2 explicit-DI bridge)."""
+    return {
+        field: getattr(override, field)
+        for field in _MAIN_RUNTIME_FIELDS
+        if getattr(override, field)
+    }
 
 
 def _get_provider_chain() -> List[tuple]:
@@ -3046,17 +3087,20 @@ def _resolve_auto(main_runtime: Optional[Dict[str, Any]] = None) -> Tuple[Option
     runtime_api_key = runtime.get("api_key", "")
     runtime_api_mode = str(runtime.get("api_mode") or "")
 
-    # Fall back to process-local globals when main_runtime dict was not
+    # Fall back to process-local override when main_runtime dict was not
     # provided or was incomplete.  ``set_runtime_main()`` now records
     # base_url/api_key/api_mode alongside provider/model, so custom:
     # providers get the full credential surface in Step 1 of the
-    # auto-detect chain.
-    if not runtime_base_url and _RUNTIME_MAIN_BASE_URL:
-        runtime_base_url = _RUNTIME_MAIN_BASE_URL
-    if not runtime_api_key and _RUNTIME_MAIN_API_KEY:
-        runtime_api_key = _RUNTIME_MAIN_API_KEY
-    if not runtime_api_mode and _RUNTIME_MAIN_API_MODE:
-        runtime_api_mode = _RUNTIME_MAIN_API_MODE
+    # auto-detect chain. C2: read through ``get_runtime_main()`` instead of
+    # scattered ``_RUNTIME_MAIN_*`` globals.
+    g = get_runtime_main()
+    if g is not None:
+        if not runtime_base_url and g.base_url:
+            runtime_base_url = g.base_url
+        if not runtime_api_key and g.api_key:
+            runtime_api_key = g.api_key
+        if not runtime_api_mode and g.api_mode:
+            runtime_api_mode = g.api_mode
 
     # ── Warn once if OPENAI_BASE_URL is set but config.yaml uses a named
     #    provider (not 'custom').  This catches the common "env poisoning"
@@ -3239,6 +3283,7 @@ def resolve_provider_client(
     api_mode: str = None,
     main_runtime: Optional[Dict[str, Any]] = None,
     is_vision: bool = False,
+    runtime_main: Optional[RuntimeMainOverride] = None,
 ) -> Tuple[Optional[Any], Optional[str]]:
     """Central router: given a provider name and optional model, return a
     configured client with the correct auth, base URL, and API format.
@@ -3271,6 +3316,11 @@ def resolve_provider_client(
         (client, resolved_model) or (None, None) if auth is unavailable.
     """
     _validate_proxy_env_urls()
+    # C2 explicit DI: a caller-supplied ``runtime_main`` override wins over the
+    # process-local global set by ``set_runtime_main()``. When neither is given,
+    # ``_resolve_auto`` falls back to config.yaml.
+    if main_runtime is None and runtime_main is not None:
+        main_runtime = _runtime_main_to_dict(runtime_main)
     # Preserve the original provider name before alias normalization so a
     # user-declared ``custom_providers`` entry whose name coincidentally
     # matches a built-in alias (e.g. user names their custom provider "kimi"
