@@ -491,6 +491,20 @@ class PluginContext:
             agent = getattr(cli, "agent", None) if cli else None
             if agent is not None:
                 kwargs["parent_agent"] = agent
+        else:
+            agent = kwargs.get("parent_agent")
+
+        # Unify dispatch precedence with the agent loop (agent/tool_executor.py)
+        # via the single source of truth in tools/registry.py. Memory-provider
+        # tools are NOT registered in the central tool registry, so routing
+        # them straight to registry.dispatch would return "Unknown tool".
+        # Resolving them through the agent's MemoryManager first keeps the two
+        # dispatch entry points behaviorally consistent and removes the
+        # fork-drift risk.
+        if registry.resolve_dispatch_mechanism(agent, tool_name) == "memory":
+            assert agent is not None
+            mem_mgr = agent._memory_manager
+            return mem_mgr.handle_tool_call(tool_name, args)
 
         return registry.dispatch(tool_name, args, **kwargs)
 

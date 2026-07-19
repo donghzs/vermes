@@ -21,7 +21,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -414,6 +414,37 @@ class ToolRegistry:
             except Exception:
                 sanitized = raw  # defensive: never let the sanitizer block error propagation
             return json.dumps({"error": sanitized})
+
+    # ------------------------------------------------------------------
+    # Dispatch precedence (single source of truth)
+    # ------------------------------------------------------------------
+
+    def resolve_dispatch_mechanism(self, agent: Any, tool_name: str) -> str:
+        """Return which mechanism owns *tool_name*.
+
+        Single source of truth for tool dispatch precedence. Mirrors the
+        agent loop (``agent/tool_executor.py``) and the plugin API
+        (``hermes_cli/plugins.py``). Keeping the order here prevents the two
+        entry points from drifting apart (the fork-risk called out in the
+        system audit).
+
+        Precedence:
+            1. ``"context_engine"`` — engine-specific tools (``lcm_grep`` ...)
+            2. ``"memory"``         — memory-provider tools (``hindsight_retain`` ...)
+            3. ``"registry"``       — everything else (central tool registry)
+
+        ``agent`` is the parent agent (or ``None`` in gateway mode). The
+        ``is True`` checks guard against ``MagicMock`` in tests where
+        ``has_tool`` returns a truthy non-bool.
+        """
+        if agent is not None:
+            ce_names = getattr(agent, "_context_engine_tool_names", None)
+            if ce_names and tool_name in ce_names:
+                return "context_engine"
+            mem_mgr = getattr(agent, "_memory_manager", None)
+            if mem_mgr is not None and mem_mgr.has_tool(tool_name) is True:
+                return "memory"
+        return "registry"
 
     # ------------------------------------------------------------------
     # Query helpers  (replace redundant dicts in model_tools.py)
