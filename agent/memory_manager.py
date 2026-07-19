@@ -382,10 +382,23 @@ class MemoryManager:
         """
         aggregated: List[Dict[str, Any]] = []
         for provider in self._providers:
+            # Contract probe: skip providers whose search() signature cannot be
+            # called as search(query, limit). Otherwise the TypeError is raised
+            # and silently swallowed, producing an empty (wrong) federation.
+            if not self._provider_search_accepts_query_limit(provider):
+                logger.warning(
+                    "Memory provider '%s' overrides search() with an incompatible "
+                    "signature (expected search(self, query, limit)); skipping it in "
+                    "federation (L4 layer). To participate, align the signature or "
+                    "remove the override and expose a '*_search'/'*_query' tool so the "
+                    "base tool-discovery path picks it up.",
+                    provider.name,
+                )
+                continue
             try:
                 hits = provider.search(query, limit)
             except Exception as e:
-                logger.debug(
+                logger.warning(
                     "Memory provider '%s' search failed (non-fatal): %s",
                     provider.name, e,
                 )
@@ -429,6 +442,33 @@ class MemoryManager:
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params):
             return True
         return "messages" in signature.parameters
+
+    @staticmethod
+    def _provider_search_accepts_query_limit(provider: MemoryProvider) -> bool:
+        """Return whether ``provider.search`` can be invoked as ``search(query, limit)``.
+
+        The federated-search contract (``MemoryProvider.search(self, query, limit)``)
+        is the single calling convention ``search_all`` uses. A provider that
+        overrides ``search`` with an incompatible signature (e.g. an extra
+        ``user_id``/``session_id`` positional) would raise ``TypeError`` at call
+        time and — historically — be silently swallowed. Instead we probe the
+        signature up front and skip + warn, so the contract violation is
+        observable rather than a silent empty result.
+
+        Generic and data-driven: we do not hardcode which providers are "valid";
+        we merely check that the call would bind.
+        """
+        try:
+            signature = inspect.signature(provider.search)
+        except (TypeError, ValueError):
+            return False
+        try:
+            # Bind exactly the args search_all passes. Raises TypeError if the
+            # provider's signature cannot accept them (e.g. missing 'query').
+            signature.bind("__probe_query__", 5)
+        except TypeError:
+            return False
+        return True
 
     def sync_all(
         self,
