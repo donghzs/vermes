@@ -428,7 +428,7 @@ _PLATFORM_CONNECTED_CHECKERS: dict[Platform, Callable[[PlatformConfig], bool]] =
     Platform.WHATSAPP: lambda cfg: True,  # bridge handles auth
     Platform.SIGNAL: lambda cfg: bool(cfg.extra.get("http_url")),
     Platform.EMAIL: lambda cfg: bool(cfg.extra.get("address")),
-    Platform.SMS: lambda cfg: bool(os.getenv("TWILIO_ACCOUNT_SID")),
+    Platform.SMS: lambda cfg: bool(cfg.extra.get("account_sid") or os.getenv("TWILIO_ACCOUNT_SID")),
     Platform.API_SERVER: lambda cfg: True,
     Platform.WEBHOOK: lambda cfg: True,
     Platform.MSGRAPH_WEBHOOK: lambda cfg: True,
@@ -453,11 +453,19 @@ _PLATFORM_CONNECTED_CHECKERS: dict[Platform, Callable[[PlatformConfig], bool]] =
         (cfg.extra.get("client_id") or os.getenv("DINGTALK_CLIENT_ID"))
         and (cfg.extra.get("client_secret") or os.getenv("DINGTALK_CLIENT_SECRET"))
     ),
-    Platform.IRC: lambda cfg: bool(os.getenv("IRC_NICK")),
-    Platform.TWITCH: lambda cfg: bool(os.getenv("IRC_NICK") and os.getenv("IRC_PASSWORD")),
-    Platform.ZALO: lambda cfg: bool(os.getenv("ZALO_ACCESS_TOKEN") and os.getenv("ZALO_SECRET_KEY")),
-    Platform.NOSTR: lambda cfg: bool(os.getenv("NOSTR_PRIVATE_KEY")),
-    Platform.SYNOLOGY_CHAT: lambda cfg: bool(os.getenv("SYNOLOGY_CHAT_INCOMING_URL")),
+    Platform.IRC: lambda cfg: bool(cfg.extra.get("nick") or os.getenv("IRC_NICK")),
+    Platform.TWITCH: lambda cfg: bool(
+        (cfg.extra.get("nick") or os.getenv("IRC_NICK"))
+        and (cfg.extra.get("password") or os.getenv("IRC_PASSWORD"))
+    ),
+    Platform.ZALO: lambda cfg: bool(
+        (cfg.extra.get("access_token") or os.getenv("ZALO_ACCESS_TOKEN"))
+        and (cfg.extra.get("secret_key") or os.getenv("ZALO_SECRET_KEY"))
+    ),
+    Platform.NOSTR: lambda cfg: bool(cfg.extra.get("private_key") or os.getenv("NOSTR_PRIVATE_KEY")),
+    Platform.SYNOLOGY_CHAT: lambda cfg: bool(
+        cfg.extra.get("incoming_url") or os.getenv("SYNOLOGY_CHAT_INCOMING_URL")
+    ),
 }
 
 
