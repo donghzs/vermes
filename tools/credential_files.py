@@ -26,22 +26,26 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Dict, List
 from hermes_cli.config import cfg_get
+from tools.session_env_registry import get_session_env_registry
 
 logger = logging.getLogger(__name__)
 
 # Session-scoped list of credential files to mount.
 # Backed by ContextVar to prevent cross-session data bleed in the gateway pipeline.
+# Kept for backward compatibility; SessionEnvRegistry is the canonical store.
 _registered_files_var: ContextVar[Dict[str, str]] = ContextVar("_registered_files")
 
 
 def _get_registered() -> Dict[str, str]:
-    """Get or create the registered credential files dict for the current context/session."""
-    try:
-        return _registered_files_var.get()
-    except LookupError:
-        val: Dict[str, str] = {}
-        _registered_files_var.set(val)
-        return val
+    """Get or create the registered credential files dict for the current context/session.
+
+    Delegates to SessionEnvRegistry; also mirrors into the legacy ContextVar
+    so any code reading ``_registered_files_var`` directly continues to work.
+    """
+    registry = get_session_env_registry()
+    files = registry.get_credential_files()
+    _registered_files_var.set(files)
+    return files
 
 
 # Cache for config-based file list (loaded once per process).
@@ -98,6 +102,10 @@ def register_credential_file(
         return False
 
     container_path = f"{container_base.rstrip('/')}/{relative_path}"
+    # Register with the unified SessionEnvRegistry (canonical store)
+    registry = get_session_env_registry()
+    registry.register_credential_file(container_path, str(resolved))
+    # Also update legacy ContextVar for any direct readers
     _get_registered()[container_path] = str(resolved)
     logger.debug("credential_files: registered %s -> %s", resolved, container_path)
     return True
@@ -431,6 +439,9 @@ def iter_cache_files(
 
 def clear_credential_files() -> None:
     """Reset the skill-scoped registry (e.g. on session reset)."""
+    registry = get_session_env_registry()
+    # Clear only credential files from the registry
+    registry._credential_files.clear()
     _get_registered().clear()
 
 

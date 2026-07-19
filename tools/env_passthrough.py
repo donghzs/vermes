@@ -23,22 +23,25 @@ import logging
 from contextvars import ContextVar
 from typing import Iterable
 from hermes_cli.config import cfg_get
+from tools.session_env_registry import get_session_env_registry
 
 logger = logging.getLogger(__name__)
 
 # Session-scoped set of env var names that should pass through to sandboxes.
 # Backed by ContextVar to prevent cross-session data bleed in the gateway pipeline.
+# Kept for backward compatibility; SessionEnvRegistry is the canonical store.
 _allowed_env_vars_var: ContextVar[set[str]] = ContextVar("_allowed_env_vars")
 
 
 def _get_allowed() -> set[str]:
-    """Get or create the allowed env vars set for the current context/session."""
-    try:
-        return _allowed_env_vars_var.get()
-    except LookupError:
-        val: set[str] = set()
-        _allowed_env_vars_var.set(val)
-        return val
+    """Get or create the allowed env vars set for the current context/session.
+
+    Delegates to SessionEnvRegistry; also mirrors into the legacy ContextVar
+    so any code reading ``_allowed_env_vars_var`` directly continues to work.
+    """
+    registry = get_session_env_registry()
+    # Return the live set from registry so mutations persist
+    return registry._allowed_env_vars
 
 
 # Cache for the config-based allowlist (loaded once per process).
@@ -97,6 +100,9 @@ def register_env_passthrough(var_names: Iterable[str]) -> None:
             )
             continue
         _get_allowed().add(name)
+        # Also register with the unified SessionEnvRegistry (canonical store)
+        registry = get_session_env_registry()
+        registry.register_env_passthrough([name])
         logger.debug("env passthrough: registered %s", name)
 
 
@@ -135,11 +141,17 @@ def is_env_passthrough(var_name: str) -> bool:
 
 def get_all_passthrough() -> frozenset[str]:
     """Return the union of skill-registered and config-based passthrough vars."""
-    return frozenset(_get_allowed()) | _load_config_passthrough()
+    # Read from the unified registry (canonical store)
+    registry = get_session_env_registry()
+    return frozenset(registry._allowed_env_vars) | _load_config_passthrough()
 
 
 def clear_env_passthrough() -> None:
     """Reset the skill-scoped allowlist (e.g. on session reset)."""
+    registry = get_session_env_registry()
+    # Clear only env passthrough from the registry
+    registry._allowed_env_vars.clear()
+    # Also clear legacy ContextVar (already same object via _get_allowed, but explicit for safety)
     _get_allowed().clear()
 
 
