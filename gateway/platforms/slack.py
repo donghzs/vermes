@@ -35,6 +35,7 @@ from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import SlackBehaviorConfig
 from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
@@ -304,8 +305,9 @@ class SlackAdapter(BasePlatformAdapter):
 
     MAX_MESSAGE_LENGTH = 39000  # Slack API allows 40,000 chars; leave margin
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[SlackBehaviorConfig] = None):
         super().__init__(config, Platform.SLACK)
+        self._behavior: SlackBehaviorConfig = behavior or SlackBehaviorConfig()
         self._app: Optional[Any] = None
         self._handler: Optional[Any] = None
         self._bot_user_id: Optional[str] = None
@@ -1321,6 +1323,8 @@ class SlackAdapter(BasePlatformAdapter):
 
     def _reactions_enabled(self) -> bool:
         """Check if message reactions are enabled via config/env."""
+        if self._behavior.reactions is not None:
+            return bool(self._behavior.reactions)
         return os.getenv("SLACK_REACTIONS", "true").lower() not in {"false", "0", "no"}
 
     async def on_processing_start(self, event: MessageEvent) -> None:
@@ -1789,6 +1793,8 @@ class SlackAdapter(BasePlatformAdapter):
         #   "all"      — accept all bot messages (except our own)
         if event.get("bot_id") or event.get("subtype") == "bot_message":
             allow_bots = self.config.extra.get("allow_bots", "")
+            if not allow_bots and self._behavior.allow_bots is not None:
+                allow_bots = self._behavior.allow_bots
             if not allow_bots:
                 allow_bots = os.getenv("SLACK_ALLOW_BOTS", "none")
             allow_bots = str(allow_bots).lower().strip()
@@ -2990,6 +2996,8 @@ class SlackAdapter(BasePlatformAdapter):
             if isinstance(configured, str):
                 return configured.lower() not in {"false", "0", "no", "off"}
             return bool(configured)
+        if self._behavior.require_mention is not None:
+            return bool(self._behavior.require_mention)
         return os.getenv("SLACK_REQUIRE_MENTION", "true").lower() not in {"false", "0", "no", "off"}
 
     def _slack_strict_mention(self) -> bool:
@@ -3002,11 +3010,15 @@ class SlackAdapter(BasePlatformAdapter):
             if isinstance(configured, str):
                 return configured.lower() in {"true", "1", "yes", "on"}
             return bool(configured)
+        if self._behavior.strict_mention is not None:
+            return bool(self._behavior.strict_mention)
         return os.getenv("SLACK_STRICT_MENTION", "false").lower() in {"true", "1", "yes", "on"}
 
     def _slack_free_response_channels(self) -> set:
         """Return channel IDs where no @mention is required."""
         raw = self.config.extra.get("free_response_channels")
+        if raw is None and self._behavior.free_response_channels:
+            raw = self._behavior.free_response_channels
         if raw is None:
             raw = os.getenv("SLACK_FREE_RESPONSE_CHANNELS", "")
         if isinstance(raw, list):
@@ -3030,6 +3042,8 @@ class SlackAdapter(BasePlatformAdapter):
         Empty set means no restriction (fully backward compatible).
         """
         raw = self.config.extra.get("allowed_channels")
+        if raw is None and self._behavior.allowed_channels:
+            raw = self._behavior.allowed_channels
         if raw is None:
             raw = os.getenv("SLACK_ALLOWED_CHANNELS", "")
         if isinstance(raw, list):
