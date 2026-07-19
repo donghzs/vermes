@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 from agent.memory_provider import MemoryProvider
 from agent.memory_fabric import L4_REFERENCE
 from tools.registry import tool_error
+from harness.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +382,7 @@ class MemoryManager:
         provider never block the others.
         """
         aggregated: List[Dict[str, Any]] = []
+        metrics = get_metrics()
         for provider in self._providers:
             # Contract probe: skip providers whose search() signature cannot be
             # called as search(query, limit). Otherwise the TypeError is raised
@@ -394,6 +396,7 @@ class MemoryManager:
                     "base tool-discovery path picks it up.",
                     provider.name,
                 )
+                metrics.record_federation_skip(provider.name, "signature_mismatch")
                 continue
             try:
                 hits = provider.search(query, limit)
@@ -402,8 +405,10 @@ class MemoryManager:
                     "Memory provider '%s' search failed (non-fatal): %s",
                     provider.name, e,
                 )
+                metrics.record_federation_error(provider.name)
                 continue
             if not hits:
+                metrics.record_federation_search(provider.name, total=0, hits=0)
                 continue
             for i, hit in enumerate(hits[:limit]):
                 content = hit.get("content") or hit.get("preview") or ""
@@ -433,6 +438,11 @@ class MemoryManager:
                         "score": score,
                     }
                 )
+        # Record federation metrics for this provider
+            metrics.record_federation_search(
+                provider.name, total=len(hits), hits=len(hits[:limit])
+            )
+        metrics.record_recall_layer("L4", hits=len(aggregated))
         return aggregated
 
     # -- Sync ----------------------------------------------------------------

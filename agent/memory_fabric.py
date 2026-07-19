@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from hermes_constants import get_hermes_home
+from harness.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -357,25 +358,35 @@ def recall_hierarchical(
     """
     if not query or not query.strip():
         return []
+    metrics = get_metrics()
+    import time as _time
+    _t0 = _time.monotonic()
     results: List[Dict[str, Any]] = []
 
     # 1) fabric index (covers L1–L4 pointers)
     for h in recall(query, layer=None, limit=max(limit * 3, 10)):
         results.append(_normalize_hit(h, None))
+    metrics.record_recall_layer("L1_L2_index", hits=len(results))
 
     # 2) optional L3 live recall
     if _L3_LIVE_HOOK is not None and (layers is None or L3_EPISODIC in layers):
         try:
+            _l3_hits = 0
             for h in _L3_LIVE_HOOK(query, limit):
                 results.append(_normalize_hit(h, L3_EPISODIC))
+                _l3_hits += 1
+            metrics.record_recall_layer("L3", hits=_l3_hits)
         except Exception:
             logger.warning("memory_fabric L3 live hook failed", exc_info=True)
 
     # 3) optional L4 federation (RAG + external KBs)
     if _L4_FEDERATION_HOOK is not None and (layers is None or L4_REFERENCE in layers):
         try:
+            _l4_hits = 0
             for h in _L4_FEDERATION_HOOK(query, limit):
                 results.append(_normalize_hit(h, L4_REFERENCE))
+                _l4_hits += 1
+            metrics.record_recall_layer("L4_federation", hits=_l4_hits)
         except Exception:
             logger.warning("memory_fabric L4 federation hook failed", exc_info=True)
 
@@ -398,9 +409,12 @@ def recall_hierarchical(
             else f"{h['layer']}:{content_fp}"
         )
         if key in seen:
+            metrics.record_dedup_collision(h["layer"])
             continue
         seen.add(key)
         deduped.append(h)
+    _elapsed_ms = (_time.monotonic() - _t0) * 1000.0
+    metrics.record_recall_latency_ms(_elapsed_ms)
     return deduped[:limit]
 
 

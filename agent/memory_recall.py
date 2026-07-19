@@ -46,6 +46,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from harness.metrics import get_metrics
+
 logger = logging.getLogger(__name__)
 
 # Token budget
@@ -769,6 +771,7 @@ def recall_hierarchical_per_turn(user_message: str) -> str:
         return ""
 
     if not hits:
+        get_metrics().record_per_turn(hits_total=0)
         return ""
 
     _LABELS = {
@@ -791,5 +794,7 @@ def recall_hierarchical_per_turn(user_message: str) -> str:
 
     _inner = block.replace("<memory_recall>", "").replace("</memory_recall>", "").strip()
     if not _inner:
+        get_metrics().record_per_turn(hits_total=0)
         return ""
+    get_metrics().record_per_turn(hits_total=len(hits))
     return block
