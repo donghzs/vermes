@@ -918,3 +918,78 @@ class TestIsImageSizeError:
 
     def test_empty_message(self):
         assert not _is_image_size_error(Exception(""))
+
+
+# ---------------------------------------------------------------------------
+# B3: OCR fallback must be EXPLICIT (ocr_only flag + actionable hint),
+# not a silent "success" that could be mistaken for true image understanding.
+# ---------------------------------------------------------------------------
+
+
+class TestB3OcrFallbackExplicit:
+    """When no real vision model is configured, the OCR-only path must clearly
+    signal it is degraded text extraction, not true vision."""
+
+    def _patch_chain(self, monkeypatch, ocr_text="发票金额 100 元 国徽图案"):
+        # Steps 1 & 3: native + auxiliary vision both fail
+        monkeypatch.setattr(
+            "tools.vision_tools.vision_analyze_tool",
+            AsyncMock(side_effect=RuntimeError("no vision model")),
+        )
+        # Step 2: no other provider resolves a vision client
+        monkeypatch.setattr(
+            "tools.vision_tools._try_other_provider_vision",
+            AsyncMock(return_value=None),
+        )
+        # Step 4 OCR extracts text
+        monkeypatch.setattr(
+            "tools.vision_tools._ocr_extract_text", lambda *a, **k: ocr_text
+        )
+        # resolve_provider_client (imported lazily inside the OCR block)
+        _fake_client = lambda messages, model=None, max_tokens=0: {"content": "发票金额 100 元"}
+        monkeypatch.setattr(
+            "agent.auxiliary_client.resolve_provider_client",
+            lambda *a, **k: ("fake", _fake_client, "fake-model"),
+        )
+        monkeypatch.setattr(
+            "tools.vision_tools.extract_content_or_reasoning",
+            lambda r: r.get("content") if isinstance(r, dict) else str(r),
+        )
+        # main provider/model reads (Step 1 setup) — return empties
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_provider", lambda: ""
+        )
+        monkeypatch.setattr(
+            "agent.auxiliary_client._read_main_model", lambda: ""
+        )
+
+    def test_ocr_only_flagged_and_actionable(self, monkeypatch):
+        self._patch_chain(monkeypatch)
+        res = asyncio.run(
+            _handle_vision_analyze(
+                {"image_url": "data:image/png;base64,AAAA", "question": "这是什么"}
+            )
+        )
+        data = json.loads(res)
+        assert data["success"] is True
+        assert data.get("ocr_only") is True
+        assert "未配置视觉" in data["analysis"]
+        assert "AUXILIARY_VISION_MODEL" in data["analysis"]
+        assert "发票金额 100 元" in data["analysis"]
+
+    def test_ocr_insufficient_text_still_errors(self, monkeypatch):
+        # OCR extracts too little text → no silent success; falls through to
+        # the explicit "未配置可用的视觉模型" error.
+        self._patch_chain(monkeypatch, ocr_text="")
+        res = asyncio.run(
+            _handle_vision_analyze(
+                {"image_url": "data:image/png;base64,AAAA", "question": "这是什么"}
+            )
+        )
+        data = json.loads(res)
+        # Either OCR failed (no ocr_only) or explicit no-vision error.
+        if data.get("ocr_only"):
+            assert "未配置视觉" in data["analysis"]
+        else:
+            assert data["success"] is False
+            assert "未配置可用的视觉模型" in data["error"]

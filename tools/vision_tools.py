@@ -1508,9 +1508,27 @@ async def _handle_vision_analyze(args: Dict[str, Any], **kw: Any) -> str:
                 response = client(messages, model=model_name, max_tokens=2000)
                 content = extract_content_or_reasoning(response)
                 if content:
-                    logger.info("  -> OCR + model analysis succeeded")
+                    logger.info("  -> OCR + model analysis succeeded (text-only fallback)")
+                    # B3: when we fall all the way to OCR it means NO real vision
+                    # model is configured. Do NOT return a silent "success" that
+                    # could be mistaken for true image understanding — make the
+                    # degraded path explicit and actionable.
                     return json.dumps(
-                        {"success": True, "analysis": content},
+                        {
+                            "success": True,
+                            "ocr_only": True,
+                            "analysis": (
+                                "⚠️ 未配置视觉（多模态）模型，已退化为纯 OCR 文字提取"
+                                "（非真识图，仅能读取图中文字）。\n"
+                                "要真正理解图片语义，请配置以下任一方式"
+                                "（我们不内置、也不替你付费购买视觉模型）：\n"
+                                "  • 选择多模态主模型（如 GPT-4o / Claude / Gemini 等）；或\n"
+                                "  • 设置 AUXILIARY_VISION_MODEL / AUXILIARY_VISION_PROVIDER"
+                                " 指向你偏好的视觉模型；或\n"
+                                "  • 配置辅助视觉后端（OpenRouter / Nous / Anthropic 等，需自备 key）。\n\n"
+                                f"── 以下仅基于图中文字作答 ──\n{content}"
+                            ),
+                        },
                         indent=2, ensure_ascii=False,
                     )
             logger.info("  -> OCR + model analysis failed")
