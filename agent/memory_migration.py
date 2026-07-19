@@ -26,7 +26,6 @@ Run once (or whenever you want to refresh the index):
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -34,8 +33,6 @@ from typing import Any, Dict, List, Optional
 from hermes_constants import get_hermes_home
 
 from agent.memory_fabric import (
-    L1_NOTE,
-    L2_PROCEDURAL,
     L3_EPISODIC,
     L4_REFERENCE,
     index_note,

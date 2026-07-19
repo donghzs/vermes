@@ -18,7 +18,8 @@ Layers (mirroring human memory):
 API:
 - ``recall(layer, query, limit)`` — route retrieval by layer (L0..L4).
 - ``index_note(target, content)`` — L1 note write into the unified index
-  (replaces the fragile ``_sync_rag_index`` bridge).
+  (added alongside the legacy ``_sync_rag_index`` bridge in
+  ``tools/memory_tool.py``, which still feeds the RAG FTS5 store).
 - ``record(memory)`` / ``list_by_type(type)`` — generic write / list.
 
 fail-closed: index operations no longer silently swallow errors (unlike the old
@@ -130,9 +131,9 @@ def _sanitize_fts(q: str) -> str:
 def index_note(target: str, content: str, scope: str = "") -> None:
     """Write L1 curated memory into the unified index.
 
-    Replaces the old ``_sync_rag_index`` -> ``index_memory_text`` fragile bridge
-    (which mirrored MEMORY.md into the separate RAG FTS5 store and silently
-    drifted — Bug 1). Notes now live in the single typed index.
+    Is the new L1 path for curated notes. The legacy ``_sync_rag_index`` bridge
+    in ``tools/memory_tool.py`` still maintains the separate RAG FTS5 store
+    (RAG recall depends on it), so this is additive, not a hard replacement.
 
     fail-closed: raises on failure so the caller logs it visibly instead of
     swallowing the error.
