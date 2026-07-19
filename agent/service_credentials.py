@@ -11,10 +11,16 @@ each plugin scattering its own ``os.environ.get("XXX_API_KEY")`` reads. This:
     metadata; the accessor is generic (no vendor names live here).
 
 Resolution order for a service's api_key:
-  1. central config: ``config["services"][service_id]["api_key"]``
-     (the user-configured API — the canonical source);
+  1. central config overlay: ``config["services"][service_id]["api_key"]``
+     (an OPTIONAL overlay the user/operator may set; when present it wins);
   2. env var: ``<SERVICE_ID_UPPER>_API_KEY`` by convention, or an explicit
-     ``env_var`` (backward-compat with existing env usage);
+     ``env_var`` (backward-compat with existing env usage).
+
+     The desktop frontend writes credentials here: ``PUT /api/env`` →
+     ``save_env_value`` → the active ``.env`` file. So in the normal UI flow
+     the central ``config["services"]`` is empty and the env fallback is what
+     actually delivers the user-set key to the agent at runtime. Both paths
+     are read; config overrides env only when explicitly populated.
   3. ``default`` (None).
 
 The accessor never raises — missing credentials return None so callers can

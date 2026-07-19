@@ -40,6 +40,30 @@ def test_get_api_key_config_precedence_over_env(monkeypatch):
     assert get_api_key("zz") == "cfgval"
 
 
+def test_get_api_key_ui_flow_reads_env_when_config_empty(monkeypatch):
+    """C3 contract: the frontend writes to .env (env), and in the normal UI
+    flow the central config['services'] is empty — so the env fallback is the
+    path that actually delivers the user-set key at runtime."""
+    monkeypatch.delenv("UI_API_KEY", raising=False)
+    monkeypatch.setenv("UI_API_KEY", "uival")
+    # empty central config (what the UI writes to, normally)
+    monkeypatch.setattr(sc, "_load_user_services", lambda: {})
+    register_service("ui", api_key_env_var="UI_API_KEY")
+    assert get_api_key("ui") == "uival"
+
+
+def test_get_api_key_env_var_name_from_registry(monkeypatch):
+    """The env var name used at read time matches what the schema tells the
+    frontend to write (registry metadata), closing the config-loop contract."""
+    monkeypatch.delenv("WIDGET_KEY", raising=False)
+    monkeypatch.setenv("WIDGET_KEY", "wval")
+    monkeypatch.setattr(sc, "_load_user_services", lambda: {})
+    register_service("widget", api_key_env_var="WIDGET_KEY")
+    # no convention-based WIDGET_API_KEY set; must hit the registered env_var
+    monkeypatch.delenv("WIDGET_API_KEY", raising=False)
+    assert get_api_key("widget") == "wval"
+
+
 def test_get_service_credentials_merges_base_url(monkeypatch):
     monkeypatch.setattr(
         sc, "_load_user_services",
