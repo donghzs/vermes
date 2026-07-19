@@ -76,3 +76,19 @@ def is_background_review() -> bool:
     """Convenience: True iff the current write origin is the background
     review fork."""
     return get_current_write_origin() == BACKGROUND_REVIEW
+
+
+def is_background_review_explicit(origin: str | None = None) -> bool:
+    """Check if write origin is background_review, with optional explicit override.
+
+    When *origin* is provided, it is compared directly to BACKGROUND_REVIEW,
+    bypassing the ContextVar.  When *origin* is ``None`` (the default),
+    this falls back to :func:`is_background_review` which reads the ContextVar.
+
+    This supports the D2b DI migration: callers that already have the origin
+    as an explicit parameter can pass it here instead of relying on the
+    ContextVar, while all existing callers continue to work unchanged.
+    """
+    if origin is not None:
+        return origin == BACKGROUND_REVIEW
+    return is_background_review()

@@ -178,15 +178,27 @@ def should_auto_approve_edit(proposal: EditProposal, policy: str, cwd: str | Non
     return False
 
 
-def maybe_require_edit_approval(tool_name: str, arguments: dict[str, Any]) -> str | None:
+def maybe_require_edit_approval(
+    tool_name: str,
+    arguments: dict[str, Any],
+    requester: EditApprovalRequester | None = None,
+) -> str | None:
     """Run ACP edit approval if bound.
 
     Returns a JSON tool-error string when the edit must be blocked, otherwise
     ``None`` so dispatch can continue.  Requester exceptions deny by default.
+
+    When *requester* is provided, it is used directly instead of reading the
+    ContextVar.  When *requester* is ``None`` (the default), this falls back
+    to :func:`get_edit_approval_requester` which reads the ContextVar.
+
+    This supports the D2b DI migration: callers that already have the
+    requester as an explicit parameter can pass it here instead of relying
+    on the ContextVar, while all existing callers continue to work unchanged.
     """
 
-    requester = get_edit_approval_requester()
-    if requester is None:
+    active_requester = requester if requester is not None else get_edit_approval_requester()
+    if active_requester is None:
         return None
 
     try:
@@ -199,7 +211,7 @@ def maybe_require_edit_approval(tool_name: str, arguments: dict[str, Any]) -> st
         return None
 
     try:
-        approved = bool(requester(proposal))
+        approved = bool(active_requester(proposal))
     except Exception as exc:
         logger.warning("ACP edit approval requester failed: %s", exc)
         approved = False
