@@ -127,6 +127,7 @@ FEISHU_WEBSOCKET_AVAILABLE = websockets is not None
 FEISHU_WEBHOOK_AVAILABLE = aiohttp is not None
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import FeishuBehaviorConfig
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -1417,10 +1418,11 @@ class FeishuAdapter(BasePlatformAdapter):
     # Lifecycle — init / settings / connect / disconnect
     # =========================================================================
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[FeishuBehaviorConfig] = None):
         super().__init__(config, Platform.FEISHU)
+        self._behavior: FeishuBehaviorConfig = behavior or FeishuBehaviorConfig()
 
-        self._settings = self._load_settings(config.extra or {})
+        self._settings = self._load_settings(config.extra or {}, self._behavior)
         self._apply_settings(self._settings)
         self._client: Optional[Any] = None
         self._ws_client: Optional[Any] = None
@@ -1470,7 +1472,7 @@ class FeishuAdapter(BasePlatformAdapter):
         self._load_seen_message_ids()
 
     @staticmethod
-    def _load_settings(extra: Dict[str, Any]) -> FeishuAdapterSettings:
+    def _load_settings(extra: Dict[str, Any], behavior: Optional[FeishuBehaviorConfig] = None) -> FeishuAdapterSettings:
         # Parse per-group rules from config
         raw_group_rules = extra.get("group_rules", {})
         group_rules: Dict[str, FeishuGroupRule] = {}
@@ -1499,7 +1501,8 @@ class FeishuAdapter(BasePlatformAdapter):
 
         # Env-only so adapter and gateway auth bypass share one source; yaml
         # feishu.allow_bots is bridged to this env var at config load.
-        allow_bots = os.getenv("FEISHU_ALLOW_BOTS", "none").strip().lower()
+        allow_bots = (behavior.allow_bots if behavior is not None and behavior.allow_bots is not None
+                     else os.getenv("FEISHU_ALLOW_BOTS", "none")).strip().lower()
         if allow_bots not in {"none", "mentions", "all"}:
             logger.warning(
                 "[Feishu] Unknown allow_bots=%r, falling back to 'none'. Valid: none, mentions, all.",
@@ -1516,10 +1519,12 @@ class FeishuAdapter(BasePlatformAdapter):
             ).strip().lower(),
             encrypt_key=os.getenv("FEISHU_ENCRYPT_KEY", "").strip(),
             verification_token=os.getenv("FEISHU_VERIFICATION_TOKEN", "").strip(),
-            group_policy=os.getenv("FEISHU_GROUP_POLICY", "allowlist").strip().lower(),
+            group_policy=(behavior.group_policy if behavior is not None and behavior.group_policy is not None
+                          else os.getenv("FEISHU_GROUP_POLICY", "allowlist")).strip().lower(),
             allowed_group_users=frozenset(
                 item.strip()
-                for item in os.getenv("FEISHU_ALLOWED_USERS", "").split(",")
+                for item in (",".join(behavior.allowed_users) if behavior is not None and behavior.allowed_users
+                             else os.getenv("FEISHU_ALLOWED_USERS", "")).split(",")
                 if item.strip()
             ),
             bot_open_id=os.getenv("FEISHU_BOT_OPEN_ID", "").strip(),
@@ -1565,7 +1570,9 @@ class FeishuAdapter(BasePlatformAdapter):
             group_rules=group_rules,
             allow_bots=allow_bots,
             require_mention=_to_boolean(
-                extra.get("require_mention", os.getenv("FEISHU_REQUIRE_MENTION", "true"))
+                extra.get("require_mention")
+                or (behavior.require_mention if behavior is not None and behavior.require_mention is not None else None)
+                or os.getenv("FEISHU_REQUIRE_MENTION", "true")
             ),
         )
 
@@ -2799,6 +2806,8 @@ class FeishuAdapter(BasePlatformAdapter):
     # =========================================================================
 
     def _reactions_enabled(self) -> bool:
+        if self._behavior.reactions is not None:
+            return bool(self._behavior.reactions)
         return os.getenv("FEISHU_REACTIONS", "true").strip().lower() not in {"false", "0", "no"}
 
     async def _add_reaction(self, message_id: str, emoji_type: str) -> Optional[str]:

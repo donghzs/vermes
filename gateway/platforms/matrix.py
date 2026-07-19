@@ -94,6 +94,7 @@ except ImportError:
     TrustState = _TrustStateStub  # type: ignore[misc,assignment]
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import MatrixBehaviorConfig
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -322,8 +323,9 @@ class MatrixAdapter(BasePlatformAdapter):
     # is almost certain.
     _SPLIT_THRESHOLD = 3900
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[MatrixBehaviorConfig] = None):
         super().__init__(config, Platform.MATRIX)
+        self._behavior: MatrixBehaviorConfig = behavior or MatrixBehaviorConfig()
 
         self._homeserver: str = (
             config.extra.get("homeserver", "") or os.getenv("MATRIX_HOMESERVER", "")
@@ -377,11 +379,14 @@ class MatrixAdapter(BasePlatformAdapter):
         self._threads = ThreadParticipationTracker("matrix")
 
         # Mention/thread gating — parsed once from env vars.
-        self._require_mention: bool = os.getenv(
-            "MATRIX_REQUIRE_MENTION", "true"
-        ).lower() not in {"false", "0", "no"}
+        self._require_mention: bool = (
+            bool(self._behavior.require_mention) if self._behavior.require_mention is not None
+            else os.getenv("MATRIX_REQUIRE_MENTION", "true").lower() not in {"false", "0", "no"}
+        )
         self._thread_require_mention: bool = self._parse_thread_require_mention(config)
         free_rooms_raw = config.extra.get("free_response_rooms")
+        if free_rooms_raw is None and self._behavior.free_response_rooms:
+            free_rooms_raw = self._behavior.free_response_rooms
         if free_rooms_raw is None:
             free_rooms_raw = os.getenv("MATRIX_FREE_RESPONSE_ROOMS", "")
         if isinstance(free_rooms_raw, list):
@@ -394,6 +399,8 @@ class MatrixAdapter(BasePlatformAdapter):
             }
         # If non-empty, bot ONLY responds in these rooms (whitelist); DMs exempt.
         allowed_rooms_raw = config.extra.get("allowed_rooms")
+        if allowed_rooms_raw is None and self._behavior.allowed_rooms:
+            allowed_rooms_raw = self._behavior.allowed_rooms
         if allowed_rooms_raw is None:
             allowed_rooms_raw = os.getenv("MATRIX_ALLOWED_ROOMS", "")
         if isinstance(allowed_rooms_raw, list):
@@ -404,22 +411,24 @@ class MatrixAdapter(BasePlatformAdapter):
             self._allowed_rooms: Set[str] = {
                 r.strip() for r in str(allowed_rooms_raw).split(",") if r.strip()
             }
-        self._auto_thread: bool = os.getenv("MATRIX_AUTO_THREAD", "true").lower() in {
-            "true",
-            "1",
-            "yes",
-        }
-        self._dm_auto_thread: bool = os.getenv(
-            "MATRIX_DM_AUTO_THREAD", "false"
-        ).lower() in {"true", "1", "yes"}
-        self._dm_mention_threads: bool = os.getenv(
-            "MATRIX_DM_MENTION_THREADS", "false"
-        ).lower() in {"true", "1", "yes"}
+        self._auto_thread: bool = (
+            bool(self._behavior.auto_thread) if self._behavior.auto_thread is not None
+            else os.getenv("MATRIX_AUTO_THREAD", "true").lower() in {"true", "1", "yes"}
+        )
+        self._dm_auto_thread: bool = (
+            bool(self._behavior.dm_auto_thread) if self._behavior.dm_auto_thread is not None
+            else os.getenv("MATRIX_DM_AUTO_THREAD", "false").lower() in {"true", "1", "yes"}
+        )
+        self._dm_mention_threads: bool = (
+            bool(self._behavior.dm_mention_threads) if self._behavior.dm_mention_threads is not None
+            else os.getenv("MATRIX_DM_MENTION_THREADS", "false").lower() in {"true", "1", "yes"}
+        )
 
         # Reactions: configurable via MATRIX_REACTIONS (default: true).
-        self._reactions_enabled: bool = os.getenv(
-            "MATRIX_REACTIONS", "true"
-        ).lower() not in {"false", "0", "no"}
+        self._reactions_enabled: bool = (
+            bool(self._behavior.reactions) if self._behavior.reactions is not None
+            else os.getenv("MATRIX_REACTIONS", "true").lower() not in {"false", "0", "no"}
+        )
         self._pending_reactions: dict[tuple[str, str], str] = {}
         # Delay before redacting reactions so Matrix homeservers have time to
         # deliver the final message event without tripping "missing event"
@@ -451,7 +460,8 @@ class MatrixAdapter(BasePlatformAdapter):
         }
         self._approval_prompts_by_event: Dict[str, _MatrixApprovalPrompt] = {}
         self._approval_prompt_by_session: Dict[str, str] = {}
-        allowed_users_raw = os.getenv("MATRIX_ALLOWED_USERS", "")
+        allowed_users_raw = (",".join(self._behavior.allowed_users) if self._behavior.allowed_users
+                             else os.getenv("MATRIX_ALLOWED_USERS", ""))
         self._allowed_user_ids: Set[str] = {
             u.strip() for u in allowed_users_raw.split(",") if u.strip()
         }
@@ -486,6 +496,8 @@ class MatrixAdapter(BasePlatformAdapter):
                 return configured.lower() not in {"false", "0", "no", "off"}
             # int, float, etc. — truthiness fallback
             return bool(configured)
+        if self._behavior.thread_require_mention is not None:
+            return bool(self._behavior.thread_require_mention)
         return os.getenv(
             "MATRIX_THREAD_REQUIRE_MENTION", "false"
         ).lower() in {"true", "1", "yes", "on"}

@@ -27,6 +27,7 @@ from urllib.parse import quote, unquote
 import httpx
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import SignalBehaviorConfig
 from gateway.platforms.base import (
     BasePlatformAdapter,
     MessageEvent,
@@ -180,8 +181,9 @@ class SignalAdapter(BasePlatformAdapter):
     # square behind in chat clients when edit attempts fail.
     SUPPORTS_MESSAGE_EDITING = False
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[SignalBehaviorConfig] = None):
         super().__init__(config, Platform.SIGNAL)
+        self._behavior: SignalBehaviorConfig = behavior or SignalBehaviorConfig()
 
         extra = config.extra or {}
         self.http_url = extra.get("http_url", "http://127.0.0.1:8080").rstrip("/")
@@ -189,7 +191,7 @@ class SignalAdapter(BasePlatformAdapter):
         self.ignore_stories = extra.get("ignore_stories", True)
 
         # Parse allowlists — group policy is derived from presence of group allowlist
-        group_allowed_str = os.getenv("SIGNAL_GROUP_ALLOWED_USERS", "")
+        group_allowed_str = ",".join(self._behavior.group_allowed_users) if self._behavior.group_allowed_users else os.getenv("SIGNAL_GROUP_ALLOWED_USERS", "")
         self.group_allow_from = set(_parse_comma_list(group_allowed_str))
 
         # Mention filter — only respond in groups when the bot account is @mentioned.
@@ -197,6 +199,8 @@ class SignalAdapter(BasePlatformAdapter):
         _rm_cfg = extra.get("require_mention")
         if _rm_cfg is not None:
             self.require_mention = bool(_rm_cfg)
+        elif self._behavior.require_mention is not None:
+            self.require_mention = bool(self._behavior.require_mention)
         else:
             self.require_mention = os.getenv("SIGNAL_REQUIRE_MENTION", "false").lower() in ("true", "1", "yes", "on")
 
@@ -206,7 +210,7 @@ class SignalAdapter(BasePlatformAdapter):
         # every inbound DM from any contact gets a 👀 reaction).
         # "*" means all users allowed (open mode); empty means no restriction
         # recorded at adapter level (run.py still enforces auth separately).
-        dm_allowed_str = os.getenv("SIGNAL_ALLOWED_USERS", "*")
+        dm_allowed_str = ",".join(self._behavior.allowed_users) if self._behavior.allowed_users else os.getenv("SIGNAL_ALLOWED_USERS", "*")
         self.dm_allow_from = set(_parse_comma_list(dm_allowed_str))
 
         # HTTP client
@@ -1486,7 +1490,10 @@ class SignalAdapter(BasePlatformAdapter):
            contacts from seeing the 👀 reaction (which fires before run.py's
            auth gate and would otherwise reveal that a bot is listening).
         """
-        if os.getenv("SIGNAL_REACTIONS", "true").lower() in {"false", "0", "no"}:
+        if self._behavior.reactions is not None:
+            if not self._behavior.reactions:
+                return False
+        elif os.getenv("SIGNAL_REACTIONS", "true").lower() in {"false", "0", "no"}:
             return False
         if event is not None:
             sender = getattr(getattr(event, "source", None), "user_id", None)

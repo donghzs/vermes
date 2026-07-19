@@ -56,11 +56,77 @@ class TelegramBehaviorConfig:
 
 
 @dataclass
+class WhatsAppBehaviorConfig:
+    require_mention: Optional[bool] = None
+    mention_patterns: Optional[str] = None
+    free_response_chats: List[str] = field(default_factory=list)
+    dm_policy: Optional[str] = None  # "open" / "allowlist" / "disabled"
+    group_policy: Optional[str] = None  # "open" / "allowlist" / "disabled"
+    mode: Optional[str] = None  # "self-chat" / other modes
+    reply_prefix: Optional[str] = None
+    allowed_users: List[str] = field(default_factory=list)
+    group_allowed_users: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SignalBehaviorConfig:
+    require_mention: Optional[bool] = None
+    reactions: Optional[bool] = None
+    allowed_users: List[str] = field(default_factory=list)
+    group_allowed_users: List[str] = field(default_factory=list)
+
+
+@dataclass
+class DingTalkBehaviorConfig:
+    require_mention: Optional[bool] = None
+    mention_patterns: Optional[str] = None
+    free_response_chats: List[str] = field(default_factory=list)
+    allowed_chats: List[str] = field(default_factory=list)
+    allowed_users: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MattermostBehaviorConfig:
+    require_mention: Optional[bool] = None
+    reply_mode: Optional[str] = None  # "off" / "thread"
+    free_response_channels: List[str] = field(default_factory=list)
+    allowed_channels: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MatrixBehaviorConfig:
+    require_mention: Optional[bool] = None
+    thread_require_mention: Optional[bool] = None
+    free_response_rooms: List[str] = field(default_factory=list)
+    allowed_rooms: List[str] = field(default_factory=list)
+    auto_thread: Optional[bool] = None
+    dm_auto_thread: Optional[bool] = None
+    dm_mention_threads: Optional[bool] = None
+    reactions: Optional[bool] = None
+    allowed_users: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FeishuBehaviorConfig:
+    allow_bots: Optional[str] = None  # "none" / "mentions" / "all"
+    group_policy: Optional[str] = None  # "allowlist" / other
+    allowed_users: List[str] = field(default_factory=list)
+    require_mention: Optional[bool] = None
+    reactions: Optional[bool] = None
+
+
+@dataclass
 class BehaviorConfig:
     """All platform behavior configs."""
     slack: SlackBehaviorConfig = field(default_factory=SlackBehaviorConfig)
     discord: DiscordBehaviorConfig = field(default_factory=DiscordBehaviorConfig)
     telegram: TelegramBehaviorConfig = field(default_factory=TelegramBehaviorConfig)
+    whatsapp: WhatsAppBehaviorConfig = field(default_factory=WhatsAppBehaviorConfig)
+    signal: SignalBehaviorConfig = field(default_factory=SignalBehaviorConfig)
+    dingtalk: DingTalkBehaviorConfig = field(default_factory=DingTalkBehaviorConfig)
+    mattermost: MattermostBehaviorConfig = field(default_factory=MattermostBehaviorConfig)
+    matrix: MatrixBehaviorConfig = field(default_factory=MatrixBehaviorConfig)
+    feishu: FeishuBehaviorConfig = field(default_factory=FeishuBehaviorConfig)
 
     @classmethod
     def from_yaml(cls, yaml_cfg: dict) -> "BehaviorConfig":
@@ -119,6 +185,78 @@ class BehaviorConfig:
                 allowed_users=_str_to_list(telegram_cfg.get("allow_from")),
             )
 
+        # WhatsApp
+        whatsapp_cfg = yaml_cfg.get("whatsapp", {})
+        if isinstance(whatsapp_cfg, dict):
+            bc.whatsapp = WhatsAppBehaviorConfig(
+                require_mention=_opt_bool(whatsapp_cfg.get("require_mention")),
+                mention_patterns=whatsapp_cfg.get("mention_patterns"),
+                free_response_chats=_str_to_list(whatsapp_cfg.get("free_response_chats")),
+                dm_policy=whatsapp_cfg.get("dm_policy"),
+                group_policy=whatsapp_cfg.get("group_policy"),
+                mode=whatsapp_cfg.get("mode"),
+                reply_prefix=whatsapp_cfg.get("reply_prefix"),
+                allowed_users=_str_to_list(whatsapp_cfg.get("allow_from")),
+                group_allowed_users=_str_to_list(whatsapp_cfg.get("group_allow_from")),
+            )
+
+        # Signal
+        signal_cfg = yaml_cfg.get("signal", {})
+        if isinstance(signal_cfg, dict):
+            bc.signal = SignalBehaviorConfig(
+                require_mention=_opt_bool(signal_cfg.get("require_mention")),
+                reactions=_opt_bool(signal_cfg.get("reactions")),
+                allowed_users=_str_to_list(signal_cfg.get("allow_from")),
+                group_allowed_users=_str_to_list(signal_cfg.get("group_allow_from")),
+            )
+
+        # DingTalk
+        dingtalk_cfg = yaml_cfg.get("dingtalk", {})
+        if isinstance(dingtalk_cfg, dict):
+            bc.dingtalk = DingTalkBehaviorConfig(
+                require_mention=_opt_bool(dingtalk_cfg.get("require_mention")),
+                mention_patterns=dingtalk_cfg.get("mention_patterns"),
+                free_response_chats=_str_to_list(dingtalk_cfg.get("free_response_chats")),
+                allowed_chats=_str_to_list(dingtalk_cfg.get("allowed_chats")),
+                allowed_users=_str_to_list(dingtalk_cfg.get("allowed_users")),
+            )
+
+        # Mattermost
+        mattermost_cfg = yaml_cfg.get("mattermost", {})
+        if isinstance(mattermost_cfg, dict):
+            bc.mattermost = MattermostBehaviorConfig(
+                require_mention=_opt_bool(mattermost_cfg.get("require_mention")),
+                reply_mode=_coerce_reply_to_mode(mattermost_cfg.get("reply_mode")),
+                free_response_channels=_str_to_list(mattermost_cfg.get("free_response_channels")),
+                allowed_channels=_str_to_list(mattermost_cfg.get("allowed_channels")),
+            )
+
+        # Matrix
+        matrix_cfg = yaml_cfg.get("matrix", {})
+        if isinstance(matrix_cfg, dict):
+            bc.matrix = MatrixBehaviorConfig(
+                require_mention=_opt_bool(matrix_cfg.get("require_mention")),
+                thread_require_mention=_opt_bool(matrix_cfg.get("thread_require_mention")),
+                free_response_rooms=_str_to_list(matrix_cfg.get("free_response_rooms")),
+                allowed_rooms=_str_to_list(matrix_cfg.get("allowed_rooms")),
+                auto_thread=_opt_bool(matrix_cfg.get("auto_thread")),
+                dm_auto_thread=_opt_bool(matrix_cfg.get("dm_auto_thread")),
+                dm_mention_threads=_opt_bool(matrix_cfg.get("dm_mention_threads")),
+                reactions=_opt_bool(matrix_cfg.get("reactions")),
+                allowed_users=_str_to_list(matrix_cfg.get("allow_from")),
+            )
+
+        # Feishu
+        feishu_cfg = yaml_cfg.get("feishu", {})
+        if isinstance(feishu_cfg, dict):
+            bc.feishu = FeishuBehaviorConfig(
+                allow_bots=feishu_cfg.get("allow_bots"),
+                group_policy=feishu_cfg.get("group_policy"),
+                allowed_users=_str_to_list(feishu_cfg.get("allow_from")),
+                require_mention=_opt_bool(feishu_cfg.get("require_mention")),
+                reactions=_opt_bool(feishu_cfg.get("reactions")),
+            )
+
         return bc
 
     def to_dict(self) -> Dict[str, Any]:
@@ -127,6 +265,12 @@ class BehaviorConfig:
             "slack": _dataclass_to_dict(self.slack),
             "discord": _dataclass_to_dict(self.discord),
             "telegram": _dataclass_to_dict(self.telegram),
+            "whatsapp": _dataclass_to_dict(self.whatsapp),
+            "signal": _dataclass_to_dict(self.signal),
+            "dingtalk": _dataclass_to_dict(self.dingtalk),
+            "mattermost": _dataclass_to_dict(self.mattermost),
+            "matrix": _dataclass_to_dict(self.matrix),
+            "feishu": _dataclass_to_dict(self.feishu),
         }
 
     @classmethod
@@ -174,6 +318,66 @@ class BehaviorConfig:
                 proxy=telegram_data.get("proxy"),
                 reply_to_mode=telegram_data.get("reply_to_mode"),
                 allowed_users=list(telegram_data.get("allowed_users", [])),
+            )
+        whatsapp_data = data.get("whatsapp", {})
+        if isinstance(whatsapp_data, dict):
+            bc.whatsapp = WhatsAppBehaviorConfig(
+                require_mention=whatsapp_data.get("require_mention"),
+                mention_patterns=whatsapp_data.get("mention_patterns"),
+                free_response_chats=list(whatsapp_data.get("free_response_chats", [])),
+                dm_policy=whatsapp_data.get("dm_policy"),
+                group_policy=whatsapp_data.get("group_policy"),
+                mode=whatsapp_data.get("mode"),
+                reply_prefix=whatsapp_data.get("reply_prefix"),
+                allowed_users=list(whatsapp_data.get("allowed_users", [])),
+                group_allowed_users=list(whatsapp_data.get("group_allowed_users", [])),
+            )
+        signal_data = data.get("signal", {})
+        if isinstance(signal_data, dict):
+            bc.signal = SignalBehaviorConfig(
+                require_mention=signal_data.get("require_mention"),
+                reactions=signal_data.get("reactions"),
+                allowed_users=list(signal_data.get("allowed_users", [])),
+                group_allowed_users=list(signal_data.get("group_allowed_users", [])),
+            )
+        dingtalk_data = data.get("dingtalk", {})
+        if isinstance(dingtalk_data, dict):
+            bc.dingtalk = DingTalkBehaviorConfig(
+                require_mention=dingtalk_data.get("require_mention"),
+                mention_patterns=dingtalk_data.get("mention_patterns"),
+                free_response_chats=list(dingtalk_data.get("free_response_chats", [])),
+                allowed_chats=list(dingtalk_data.get("allowed_chats", [])),
+                allowed_users=list(dingtalk_data.get("allowed_users", [])),
+            )
+        mattermost_data = data.get("mattermost", {})
+        if isinstance(mattermost_data, dict):
+            bc.mattermost = MattermostBehaviorConfig(
+                require_mention=mattermost_data.get("require_mention"),
+                reply_mode=mattermost_data.get("reply_mode"),
+                free_response_channels=list(mattermost_data.get("free_response_channels", [])),
+                allowed_channels=list(mattermost_data.get("allowed_channels", [])),
+            )
+        matrix_data = data.get("matrix", {})
+        if isinstance(matrix_data, dict):
+            bc.matrix = MatrixBehaviorConfig(
+                require_mention=matrix_data.get("require_mention"),
+                thread_require_mention=matrix_data.get("thread_require_mention"),
+                free_response_rooms=list(matrix_data.get("free_response_rooms", [])),
+                allowed_rooms=list(matrix_data.get("allowed_rooms", [])),
+                auto_thread=matrix_data.get("auto_thread"),
+                dm_auto_thread=matrix_data.get("dm_auto_thread"),
+                dm_mention_threads=matrix_data.get("dm_mention_threads"),
+                reactions=matrix_data.get("reactions"),
+                allowed_users=list(matrix_data.get("allowed_users", [])),
+            )
+        feishu_data = data.get("feishu", {})
+        if isinstance(feishu_data, dict):
+            bc.feishu = FeishuBehaviorConfig(
+                allow_bots=feishu_data.get("allow_bots"),
+                group_policy=feishu_data.get("group_policy"),
+                allowed_users=list(feishu_data.get("allowed_users", [])),
+                require_mention=feishu_data.get("require_mention"),
+                reactions=feishu_data.get("reactions"),
             )
         return bc
 

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import MattermostBehaviorConfig
 from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
@@ -71,8 +72,9 @@ def check_mattermost_requirements() -> bool:
 class MattermostAdapter(BasePlatformAdapter):
     """Gateway adapter for Mattermost (self-hosted or cloud)."""
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[MattermostBehaviorConfig] = None):
         super().__init__(config, Platform.MATTERMOST)
+        self._behavior: MattermostBehaviorConfig = behavior or MattermostBehaviorConfig()
 
         self._base_url: str = (
             config.extra.get("url", "")
@@ -93,6 +95,7 @@ class MattermostAdapter(BasePlatformAdapter):
         # Reply mode: "thread" to nest replies, "off" for flat messages.
         self._reply_mode: str = (
             config.extra.get("reply_mode", "")
+            or (str(self._behavior.reply_mode) if self._behavior.reply_mode is not None else "")
             or os.getenv("MATTERMOST_REPLY_MODE", "off")
         ).lower()
 
@@ -763,6 +766,8 @@ class MattermostAdapter(BasePlatformAdapter):
             # When set, messages from channels NOT in this list are silently
             # ignored, even if @mentioned.  DMs are already excluded above.
             allowed_raw = self.config.extra.get("allowed_channels") if self.config.extra else None
+            if allowed_raw is None and self._behavior.allowed_channels:
+                allowed_raw = self._behavior.allowed_channels
             if allowed_raw is None:
                 allowed_raw = os.getenv("MATTERMOST_ALLOWED_CHANNELS", "")
             if isinstance(allowed_raw, list):
@@ -778,11 +783,13 @@ class MattermostAdapter(BasePlatformAdapter):
                 )
                 return
 
-            require_mention = os.getenv(
-                "MATTERMOST_REQUIRE_MENTION", "true"
-            ).lower() not in {"false", "0", "no"}
+            require_mention = (
+                bool(self._behavior.require_mention) if self._behavior.require_mention is not None
+                else os.getenv("MATTERMOST_REQUIRE_MENTION", "true").lower() not in {"false", "0", "no"}
+            )
 
-            free_channels_raw = os.getenv("MATTERMOST_FREE_RESPONSE_CHANNELS", "")
+            free_channels_raw = (",".join(self._behavior.free_response_channels) if self._behavior.free_response_channels
+                                  else os.getenv("MATTERMOST_FREE_RESPONSE_CHANNELS", ""))
             free_channels = {ch.strip() for ch in free_channels_raw.split(",") if ch.strip()}
             is_free_channel = channel_id in free_channels
 

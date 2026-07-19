@@ -88,6 +88,7 @@ except ImportError:
     tea_util_models = None
 
 from gateway.config import Platform, PlatformConfig
+from gateway.behavior_config import DingTalkBehaviorConfig
 from gateway.platforms.helpers import MessageDeduplicator
 from gateway.platforms.base import (
     BasePlatformAdapter,
@@ -178,8 +179,9 @@ class DingTalkAdapter(BasePlatformAdapter):
         """
         return bool(self._card_template_id and self._card_sdk)
 
-    def __init__(self, config: PlatformConfig):
+    def __init__(self, config: PlatformConfig, behavior: Optional[DingTalkBehaviorConfig] = None):
         super().__init__(config, Platform.DINGTALK)
+        self._behavior: DingTalkBehaviorConfig = behavior or DingTalkBehaviorConfig()
 
         extra = config.extra or {}
         self._client_id: str = extra.get("client_id") or os.getenv(
@@ -379,10 +381,14 @@ class DingTalkAdapter(BasePlatformAdapter):
             if isinstance(configured, str):
                 return configured.lower() in {"true", "1", "yes", "on"}
             return bool(configured)
+        if self._behavior.require_mention is not None:
+            return bool(self._behavior.require_mention)
         return os.getenv("DINGTALK_REQUIRE_MENTION", "false").lower() in {"true", "1", "yes", "on"}
 
     def _dingtalk_free_response_chats(self) -> Set[str]:
         raw = self.config.extra.get("free_response_chats")
+        if raw is None and self._behavior.free_response_chats:
+            raw = self._behavior.free_response_chats
         if raw is None:
             raw = os.getenv("DINGTALK_FREE_RESPONSE_CHATS", "")
         if isinstance(raw, list):
@@ -397,6 +403,8 @@ class DingTalkAdapter(BasePlatformAdapter):
         Empty set means no restriction (fully backward compatible).
         """
         raw = self.config.extra.get("allowed_chats") if self.config.extra else None
+        if raw is None and self._behavior.allowed_chats:
+            raw = self._behavior.allowed_chats
         if raw is None:
             raw = os.getenv("DINGTALK_ALLOWED_CHATS", "")
         if isinstance(raw, list):
@@ -406,6 +414,8 @@ class DingTalkAdapter(BasePlatformAdapter):
     def _compile_mention_patterns(self) -> List[re.Pattern]:
         """Compile optional regex wake-word patterns for group triggers."""
         patterns = self.config.extra.get("mention_patterns") if self.config.extra else None
+        if patterns is None and self._behavior.mention_patterns is not None:
+            patterns = self._behavior.mention_patterns
         if patterns is None:
             raw = os.getenv("DINGTALK_MENTION_PATTERNS", "").strip()
             if raw:
@@ -448,6 +458,8 @@ class DingTalkAdapter(BasePlatformAdapter):
         ``sender_id``. A wildcard ``*`` disables the check.
         """
         raw = self.config.extra.get("allowed_users") if self.config.extra else None
+        if raw is None and self._behavior.allowed_users:
+            raw = self._behavior.allowed_users
         if raw is None:
             raw = os.getenv("DINGTALK_ALLOWED_USERS", "")
         if isinstance(raw, list):
