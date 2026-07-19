@@ -134,25 +134,23 @@ def main():
             os._exit(0)
 
         if restart_event.is_set():
-            logger.info("[Vermes] 收到重启信号，重启 Gateway...")
+            logger.info("[Vermes] 收到重启信号，重启进程...")
             restart_event.clear()
-            # 停止当前 uvicorn
+            # 优雅关闭当前 uvicorn
             if server_instance:
                 server_instance.should_exit = True
                 time.sleep(2)  # 等待 uvicorn 优雅关闭
-            # 重新启动 uvicorn（重新导入模块以加载更新的 Agent 框架）
-            logger.info("[Vermes] Gateway 重启中...")
-            import importlib
-            from hermes_cli import web_server as _ws
-
-
-            importlib.reload(_ws)
-            _ws._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
-            config = uvicorn.Config(_ws.app, host="127.0.0.1", port=port, log_level="info", lifespan="off")
-            server_instance = uvicorn.Server(config)
-            threading.Thread(target=server_instance.run, daemon=True).start()
-            logger.info("[Vermes] ✅ Gateway 已重启")
-            continue  # 回到等待循环
+            # 通过 subprocess 重启自身 (完全干净的进程)
+            import subprocess
+            env = os.environ.copy()
+            env["VERMES_RESTARTED"] = "1"
+            subprocess.Popen(
+                [sys.executable, __file__, "--port", str(port)],
+                env=env,
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+            )
+            logger.info("[Vermes] ✅ 新进程已启动，当前进程退出")
+            os._exit(0)
 
         # shutdown_event
         logger.info("[Vermes] 收到退出信号，关闭。")
