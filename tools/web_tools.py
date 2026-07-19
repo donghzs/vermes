@@ -1567,5 +1567,3 @@ registry.register(
     emoji="📄",
     max_result_size_chars=100_000,
 )
-
-register_service("firecrawl", api_key_env_var="FIRECRAWL_API_KEY", label="Firecrawl")
