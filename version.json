@@ -1,10 +1,10 @@
 {
-  "version": "2.3.3",
+  "version": "2.3.4",
   "buildDate": "2026-07-18",
   "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.3-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.3.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.3.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.4-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.4.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.4.exe"
   },
   "sha256": {
     "macos_arm64": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf",
@@ -12,21 +12,27 @@
   },
   "macOS": {
     "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.3-arm64.dmg",
+      "dmg": "/vermes/downloads/Vermes-2.3.4-arm64.dmg",
       "size": "245 MB",
       "sha256": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf"
     },
     "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.3.dmg",
+      "dmg": "/vermes/downloads/Vermes-2.3.4.dmg",
       "size": "249 MB",
       "sha256": "cf194ca8ccbd58d2674522d225bc77ef01d17867de5c3ed91370116040cf07cb"
     }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.3.3.exe",
+    "exe": "/vermes/downloads/Vermes-Setup-2.3.4.exe",
     "size": ""
   },
   "changelog": [
+    "全源码 API 配置统一 — 34 文件接入 service_credentials，27 个服务单一来源读取",
+    "前端「🔑 服务」Tab — 统一凭证表单，消费 GET /api/config/schema services 分区",
+    "后端写入白名单动态化 — register_service 注册表与 schema 永不漂移",
+    "记忆底座统一 — 分层召回管线 + 外部 KB 联邦 + 历史迁移",
+    "L3 适配器无副作用 + 实时钩子接 memory_recall",
+    "视觉模型去硬编码 — 改通用能力探测",
     "browser_vision 辅助模型回退修复 — 命名 provider(base_url 无 key)自动回退 auto 而非崩溃 (#A0-2)",
     "browser_back 非可导航文档返回友好提示而非原始 CDP 错误 (#A0-3)",
     "Harness 层：工具失败可恢复反馈装饰器 + 稳定性探针(best/worst-of-N) + 通用约束基类",
