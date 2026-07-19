@@ -352,8 +352,10 @@ def run_conversation(
             getattr(agent, "provider", "") or "",
             getattr(agent, "model", "") or "",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Fail-open: a runtime-main bind failure must never block the turn,
+        # but it is now observable instead of silently swallowed.
+        logger.debug("[harness] runtime-main bind failed (non-fatal): %s", e)
 
     # H1.1: task-level pre-execution constraints (fail-open, never blocks).
     # Runs after session is ensured but before any model call / tool dispatch.
@@ -364,17 +366,21 @@ def run_conversation(
             logger.warning("[H1.1] task pre-check warning: %s", _task_precheck.warning)
             try:
                 agent._emit_status(f"⚠️ [harness] {_task_precheck.warning}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[harness] status emit failed (non-fatal): %s", e)
             # 融合 P0：任务级约束复发信号持久化（复用 H4.1 同款落库，fail-open）
             try:
                 from harness.failure_learning import get_ledger
                 for _check, _detail in (_task_precheck.detail or {}).items():
                     get_ledger().record(f"task:{_check}", _task_precheck.warning, _detail)
-            except Exception:
-                pass  # 学习落库失败不阻塞
-    except Exception:
-        pass  # H1.1 永不阻塞
+            except Exception as e:
+                # Fail-open: learning persistence must not block the turn,
+                # but a failed record is now observable (was silently swallowed).
+                logger.warning("[harness] failure-learning record failed (non-fatal): %s", e)
+    except Exception as e:
+        # Fail-open: H1.1 must never block the agent loop — but the failure
+        # is now observable in logs rather than silently discarded.
+        logger.warning("[harness] H1.1 task pre-check failed (non-fatal, skipped): %s", e)
 
     # Tag all log records on this thread with the session ID so
     # ``hermes logs --session <id>`` can filter a single conversation.
