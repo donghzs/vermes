@@ -1518,3 +1518,58 @@ class TestPluginDebugLogging:
             plugins_mod._PLUGINS_DEBUG = original_debug
             plugins_mod.logger.setLevel(original_level)
             plugins_mod.logger.handlers = original_handlers
+
+
+# ---------------------------------------------------------------------------
+# C4: plugin.yaml schema validation
+# ---------------------------------------------------------------------------
+
+
+class TestPluginManifestSchemaValidation:
+    def test_valid_minimal(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        assert _validate_plugin_manifest_schema({"name": "x"}, "x.yaml") == []
+
+    def test_missing_name(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        errs = _validate_plugin_manifest_schema({}, "x.yaml")
+        assert any("name" in e for e in errs)
+
+    def test_empty_name(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        errs = _validate_plugin_manifest_schema({"name": "  "}, "x.yaml")
+        assert any("name" in e for e in errs)
+
+    def test_list_fields_wrong_type(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        errs = _validate_plugin_manifest_schema(
+            {"name": "x", "provides_tools": "vision_analyze"}, "x.yaml"
+        )
+        assert any("provides_tools" in e for e in errs)
+
+    def test_list_entry_bad(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        errs = _validate_plugin_manifest_schema(
+            {"name": "x", "requires_env": [123]}, "x.yaml"
+        )
+        assert any("requires_env[0]" in e for e in errs)
+
+    def test_list_entry_dict_ok(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        assert _validate_plugin_manifest_schema(
+            {"name": "x", "requires_env": [{"name": "FOO", "required": True}]},
+            "x.yaml",
+        ) == []
+
+    def test_unknown_keys_allowed(self):
+        from hermes_cli.plugins import _validate_plugin_manifest_schema
+
+        assert _validate_plugin_manifest_schema(
+            {"name": "x", "future_field": {"a": 1}}, "x.yaml"
+        ) == []

@@ -230,6 +230,51 @@ def _get_enabled_plugins() -> Optional[set]:
 _VALID_PLUGIN_KINDS: Set[str] = {"standalone", "backend", "exclusive", "platform", "model-provider"}
 
 
+def _validate_plugin_manifest_schema(data: Any, path: str) -> List[str]:
+    """Validate a parsed ``plugin.yaml`` dict (C4).
+
+    Returns a list of human-readable error strings (empty == valid). Only
+    structural/type mistakes are flagged — unknown extra keys are allowed so
+    manifests stay forward-compatible. A malformed manifest fails fast at
+    load time (the caller returns ``None`` + warns) instead of silently
+    degrading the plugin subsystem.
+    """
+    if not isinstance(data, dict):
+        return [f"top-level must be a mapping, got {type(data).__name__}"]
+
+    errors: List[str] = []
+
+    # name: required, non-empty string
+    name = data.get("name")
+    if name is None:
+        errors.append("missing required field 'name'")
+    elif not isinstance(name, str) or not name.strip():
+        errors.append("'name' must be a non-empty string")
+
+    # version: optional, but must be a string if present
+    if "version" in data and not isinstance(data["version"], (str, int, float)):
+        errors.append("'version' must be a string/number")
+
+    # kind: optional, string if present (value validity checked by caller)
+    if "kind" in data and not isinstance(data["kind"], str):
+        errors.append("'kind' must be a string")
+
+    # list-typed fields
+    for field in ("requires_env", "provides_tools", "provides_hooks"):
+        if field in data and not isinstance(data[field], list):
+            errors.append(f"'{field}' must be a list")
+        elif field in data and isinstance(data[field], list):
+            # each entry must be a string (or {name: ..., required: bool} dict)
+            for i, entry in enumerate(data[field]):
+                if isinstance(entry, dict):
+                    if "name" not in entry or not isinstance(entry.get("name"), str):
+                        errors.append(f"'{field}[{i}]' dict must have string 'name'")
+                elif not isinstance(entry, str):
+                    errors.append(f"'{field}[{i}]' must be a string or {{name:...}} dict")
+
+    return errors
+
+
 @dataclass
 class PluginManifest:
     """Parsed representation of a plugin.yaml manifest."""
@@ -1069,6 +1114,18 @@ class PluginManager:
                 logger.warning("PyYAML not installed – cannot load %s", manifest_file)
                 return None
             data = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+
+            # C4: lightweight plugin.yaml schema validation. Fail-fast on a
+            # malformed manifest (return None + warn) so scattered config
+            # mistakes surface at load time instead of silently degrading.
+            # Unknown extra keys are allowed (forward-compatible).
+            _schema_errs = _validate_plugin_manifest_schema(data, str(manifest_file))
+            if _schema_errs:
+                logger.warning(
+                    "Plugin manifest %s failed schema validation: %s",
+                    manifest_file, "; ".join(_schema_errs),
+                )
+                return None
 
             name = data.get("name", plugin_dir.name)
             key = f"{prefix}/{plugin_dir.name}" if prefix else name
