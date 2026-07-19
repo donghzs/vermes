@@ -1875,7 +1875,6 @@ def _get_session_info(task_id: Optional[str] = None) -> Dict[str, str]:
     return session_info
 
 
-
 def _find_agent_browser() -> str:
     """
     Find the agent-browser CLI executable.
@@ -2910,9 +2909,6 @@ def browser_press(key: str, task_id: Optional[str] = None) -> str:
             "error": result.get("error", f"Failed to press {key}")
         }
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
-
-
-
 
 
 def browser_console(clear: bool = False, expression: Optional[str] = None, task_id: Optional[str] = None) -> str:

@@ -89,7 +89,6 @@ class ClassifiedError:
         return self.reason in {FailoverReason.auth, FailoverReason.auth_permanent}
 
 
-
 # ── Provider-specific patterns ──────────────────────────────────────────
 
 # Patterns that indicate billing exhaustion (not transient rate limit)

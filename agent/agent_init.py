@@ -1463,7 +1463,6 @@ def init_agent(
     agent._ensure_lmstudio_runtime_loaded(_config_context_length)
 
 
-
     # Select context engine: config-driven (like memory providers).
     # 1. Check config.yaml context.engine setting
     # 2. Check plugins/context_engine/<name>/ directory (repo-shipped)
@@ -1724,7 +1723,6 @@ def init_agent(
             "anthropic_base_url": agent._anthropic_base_url,
             "is_anthropic_oauth": agent._is_anthropic_oauth,
         })
-
 
 
 __all__ = ["init_agent"]

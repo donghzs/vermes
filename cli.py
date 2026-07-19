@@ -1490,7 +1490,6 @@ except Exception:
     pass
 
 
-
 class _SkinAwareAnsi:
     """Lazy ANSI escape that resolves from the skin engine on first use.
 
@@ -1984,9 +1983,6 @@ def _resolve_attachment_path(raw_path: str) -> Path | None:
     return resolved
 
 
-
-
-
 def _detect_file_drop(user_input: str) -> "dict | None":
     """Detect if *user_input* starts with a real local file path.
 
@@ -2358,7 +2354,6 @@ HERMES_CADUCEUS = """[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡀⠀⣀⣀�
 [#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]"""
 
 
-
 def _build_compact_banner() -> str:
     """Build a compact banner that fits the current terminal width."""
     try:
@@ -2400,7 +2395,6 @@ def _build_compact_banner() -> str:
         f"[bold {border_color}]║[/] [dim {dim_color}]{line2}[/] [bold {border_color}]║[/]\n"
         f"[bold {border_color}]╚{bar}╝[/]\n"
     )
-
 
 
 # ============================================================================
@@ -2516,8 +2510,6 @@ def save_config_value(key_path: str, value: any) -> bool:
     except Exception as e:
         logger.error("Failed to save config: %s", e)
         return False
-
-
 
 
 # ============================================================================

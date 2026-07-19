@@ -311,7 +311,6 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[SimpleNamespace], str
     return extracted, cleaned
 
 
-
 def _ensure_path_within_cwd(path_text: str, cwd: str) -> Path:
     candidate = Path(path_text)
     if not candidate.is_absolute():

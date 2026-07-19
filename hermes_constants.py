@@ -439,7 +439,6 @@ def get_skills_dir() -> Path:
     return get_hermes_home() / "skills"
 
 
-
 def get_env_path() -> Path:
     """Return the path to the ``.env`` file under HERMES_HOME."""
     return get_hermes_home() / ".env"

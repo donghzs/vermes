@@ -1389,8 +1389,6 @@ def check_auxiliary_model() -> bool:
     return client is not None
 
 
-
-
 if __name__ == "__main__":
     """
     Simple test/demo when run directly

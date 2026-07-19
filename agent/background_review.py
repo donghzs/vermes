@@ -261,7 +261,6 @@ _DECISION_REVIEW_PROMPT = (
 )
 
 
-
 def summarize_background_review_actions(
     review_messages: List[Dict],
     prior_snapshot: List[Dict],

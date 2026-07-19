@@ -63,8 +63,6 @@ def _effective_temperature_for_model(
     return result
 
 
-
-
 # ============================================================================
 # Terminal Tool Definition (matches Hermes-Agent format)
 # ============================================================================

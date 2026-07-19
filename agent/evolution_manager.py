@@ -860,7 +860,6 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         return None
 
 
-
 def get_evolution_status() -> Dict[str, Any]:
     """Get current evolution system status."""
     if not is_evolution_active():

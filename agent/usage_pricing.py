@@ -867,7 +867,6 @@ def has_known_pricing(
     return entry is not None
 
 
-
 def format_duration_compact(seconds: float) -> str:
     if seconds < 60:
         return f"{seconds:.0f}s"

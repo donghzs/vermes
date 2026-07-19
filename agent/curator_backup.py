@@ -523,7 +523,6 @@ def _restore_cron_skill_links(snapshot_dir: Path) -> Dict[str, Any]:
     return report
 
 
-
 def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]]:
     """Restore ``~/.hermes/skills/`` from a snapshot.
 

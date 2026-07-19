@@ -183,7 +183,6 @@ PROVIDER_TO_MODELS_DEV: Dict[str, str] = {
 _MODELS_DEV_TO_PROVIDER: Optional[Dict[str, str]] = None
 
 
-
 def _get_cache_path() -> Path:
     """Return path to disk cache file."""
     from hermes_constants import get_hermes_home
@@ -595,7 +594,6 @@ def list_agentic_models(provider: str) -> List[str]:
             continue
         result.append(mid)
     return result
-
 
 
 # ---------------------------------------------------------------------------

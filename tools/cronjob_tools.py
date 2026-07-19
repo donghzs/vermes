@@ -186,8 +186,6 @@ def _canonical_skills(skill: Optional[str] = None, skills: Optional[Any] = None)
     return normalized
 
 
-
-
 def _resolve_model_override(model_obj: Optional[Dict[str, Any]]) -> tuple:
     """Resolve a model override object into (provider, model) for job storage.
 
@@ -591,7 +589,6 @@ def cronjob(
 
     except Exception as e:
         return tool_error(str(e), success=False)
-
 
 
 CRONJOB_SCHEMA = {

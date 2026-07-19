@@ -837,8 +837,6 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
         return tool_error(str(e))
 
 
-
-
 def reset_file_dedup(task_id: str = None):
     """Clear the deduplication cache for file reads.
 
@@ -1252,8 +1250,6 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
         return result_json
     except Exception as e:
         return tool_error(str(e))
-
-
 
 
 # ---------------------------------------------------------------------------

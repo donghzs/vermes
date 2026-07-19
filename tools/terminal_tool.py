@@ -62,8 +62,6 @@ from tools.interrupt import is_interrupted, _interrupt_event  # noqa: F401 — r
 # display_hermes_home imported lazily at call site (stale-module safety during hermes update)
 
 
-
-
 # =============================================================================
 # Custom Singularity Environment with more space
 # =============================================================================
@@ -1376,8 +1374,6 @@ def is_persistent_env(task_id: str) -> bool:
     if env is None:
         return False
     return bool(getattr(env, "_persistent", False))
-
-
 
 
 def cleanup_all_environments():

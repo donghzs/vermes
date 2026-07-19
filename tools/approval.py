@@ -59,7 +59,6 @@ def _fire_approval_hook(hook_name: str, **kwargs) -> None:
         logger.debug("Approval hook %s dispatch failed: %s", hook_name, exc)
 
 
-
 def set_current_session_key(session_key: str) -> contextvars.Token[str]:
     """Bind the active approval session key to the current context."""
     return _approval_session_key.set(session_key or "")
@@ -723,7 +722,6 @@ def load_permanent(patterns: set):
     """Bulk-load permanent allowlist entries from config."""
     with _lock:
         _permanent_approved.update(patterns)
-
 
 
 # =========================================================================

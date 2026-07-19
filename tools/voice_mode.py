@@ -64,7 +64,6 @@ def _termux_microphone_command() -> Optional[str]:
     return shutil.which("termux-microphone-record")
 
 
-
 def _termux_api_app_installed() -> bool:
     if not _is_termux_environment():
         return False

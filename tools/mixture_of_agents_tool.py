@@ -420,7 +420,6 @@ def check_moa_requirements() -> bool:
     return check_openrouter_api_key()
 
 
-
 def get_moa_configuration() -> Dict[str, Any]:
     """
     Get the current MoA configuration settings.

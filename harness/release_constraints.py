@@ -25,10 +25,9 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from harness.constraints import Constraint, ConstraintResult, run_constraints
 

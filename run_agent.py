@@ -173,7 +173,6 @@ from agent.tool_dispatch_helpers import (
 from utils import atomic_json_write, base_url_host_matches, base_url_hostname, env_float, is_truthy_value, model_forces_max_completion_tokens
 
 
-
 _MAX_TOOL_WORKERS = 8
 
 # Guard so the OpenRouter metadata pre-warm thread is only spawned once per
@@ -2886,14 +2885,6 @@ class AIAgent:
     def is_interrupted(self) -> bool:
         """Check if an interrupt has been requested."""
         return self._interrupt_requested
-
-
-
-
-
-
-
-
 
 
     def _build_system_prompt_parts(self, system_message: str = None) -> Dict[str, str]:
