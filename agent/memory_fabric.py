@@ -183,7 +183,8 @@ def recall(
         return []
     fts = " OR ".join(f'"{t}"' for t in terms[:8])
     sql = (
-        "SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer, m.fts_content "
+        "SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer, "
+        "m.fts_content, m.access_count "
         "FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid "
         "WHERE memories_fts MATCH ?"
     )
@@ -194,7 +195,9 @@ def recall(
     if scope:
         sql += " AND m.scope=?"
         params.append(scope)
-    sql += " ORDER BY rank LIMIT ?"
+    # 涌现式自适应：FTS 相关性(rank) 主排序；同相关性档内，被召回次数
+    # (access_count) 高者靠前。边界由真实使用分布自然涌现，不预设阈值。
+    sql += " ORDER BY rank, m.access_count DESC LIMIT ?"
     params.append(limit)
     try:
         with _LOCK:
@@ -202,6 +205,24 @@ def recall(
             try:
                 c = conn.cursor()
                 c.execute(sql, params)
+                rows = c.fetchall()
+                # 涌现式传感器：每次被召回即 +1（复用预留 access_count 列，
+                # 锁内同连接、fail-open；不影响召回结果，绝不删除/改写事实）。
+                bumped = False
+                try:
+                    for _r in rows:
+                        c.execute(
+                            "UPDATE memories SET access_count = access_count + 1 "
+                            "WHERE id = ?",
+                            (_r[0],),
+                        )
+                    conn.commit()
+                    bumped = True
+                except Exception:
+                    logger.debug(
+                        "memory_fabric.recall hit-count bump skipped", exc_info=True
+                    )
+                # 返回的 access_count 反映本次命中（+1）；fail-open 时保持原值。
                 return [
                     {
                         "id": r[0],
@@ -211,14 +232,43 @@ def recall(
                         "scope": r[4],
                         "pointer": r[5],
                         "content": r[6],
+                        "access_count": r[7] + (1 if bumped else 0),
                     }
-                    for r in c.fetchall()
+                    for r in rows
                 ]
             finally:
                 conn.close()
     except Exception:
         logger.warning("memory_fabric.recall failed for %r", query, exc_info=True)
         return []
+
+
+def get_memory_stats() -> Dict[str, Any]:
+    """Return per-layer entry counts and cumulative recall hits.
+
+    Observability probe for the emergent cold/hot layering: lets the runtime
+    watch whether recall is concentrating on a few high-frequency memories.
+    fail-closed: returns ``{}`` on any error.
+    """
+    db_path = _get_index_db()
+    if not os.path.exists(str(db_path)):
+        return {}
+    try:
+        with _LOCK:
+            conn = _get_conn(str(db_path))
+            try:
+                c = conn.cursor()
+                c.execute(
+                    "SELECT layer, COUNT(*), COALESCE(SUM(access_count), 0) "
+                    "FROM memories GROUP BY layer"
+                )
+                rows = c.fetchall()
+            finally:
+                conn.close()
+    except Exception:
+        logger.warning("memory_fabric.get_memory_stats failed", exc_info=True)
+        return {}
+    return {r["layer"]: {"count": r[1], "total_hits": r[2]} for r in rows}
 
 
 def search_notes(query: str, limit: int = 5) -> List[Dict[str, Any]]:
