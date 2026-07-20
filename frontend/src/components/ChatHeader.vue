@@ -195,6 +195,28 @@ function currentModelName() {
   return m ? m.name : chat.currentModel
 }
 
+// ── 顶部长任务步骤条（常驻，避免只在抽屉里）──
+const taskStats = computed(() => {
+  const items = chat.todoItems || []
+  return {
+    total: items.length,
+    completed: items.filter(i => i.status === 'completed').length,
+    inProgress: items.filter(i => i.status === 'in_progress').length,
+  }
+})
+const taskProgress = computed(() => {
+  if (!taskStats.value.total) return 0
+  return Math.round((taskStats.value.completed / taskStats.value.total) * 100)
+})
+const currentStepLabel = computed(() => {
+  const items = chat.todoItems || []
+  const cur = items.find(i => i.id === chat.currentTodoStepId)
+    || items.find(i => i.status === 'in_progress')
+  if (cur) return cur.content || '进行中…'
+  if (taskStats.value.total && taskStats.value.completed === taskStats.value.total) return '全部完成 🎉'
+  return '任务进行中…'
+})
+
 function closeDropdowns() {
   showModelSelect.value = false
   showStats.value = false
@@ -233,6 +255,24 @@ function closeDropdowns() {
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新 Agent' }}</h2>
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
       <button @click="emit('toggleHistory')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋</button>
+
+      <!-- 顶部长任务步骤条（常驻，避免只在抽屉里；点击展开详情） -->
+      <div v-if="chat.todoItems.length"
+           @click="chat.toggleTaskDrawer()"
+           class="hidden md:flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition cursor-pointer max-w-[300px]"
+           :title="`任务进度：${taskStats.completed}/${taskStats.total} 步已完成`">
+        <span class="text-xs flex-shrink-0" :class="{ 'animate-spin': taskStats.inProgress }">🔄</span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2 text-[10px] text-gray-400">
+            <span class="truncate max-w-[150px]">{{ currentStepLabel }}</span>
+            <span class="flex-shrink-0 tabular-nums">{{ taskStats.completed }}/{{ taskStats.total }}</span>
+          </div>
+          <div class="mt-0.5 w-full h-1 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+            <div class="h-full bg-blue-500 transition-all duration-500"
+                 :style="{ width: taskProgress + '%' }"></div>
+          </div>
+        </div>
+      </div>
       <!-- 任务清单（长任务分步骤 + 实时进度） -->
       <button @click="chat.toggleTaskDrawer()"
               class="relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm"

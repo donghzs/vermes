@@ -791,6 +791,131 @@ def compress_context(
     return compressed, new_system_prompt
 
 
+def prune_context(
+    agent: Any,
+    messages: list,
+    system_message: str,
+) -> Tuple[list, str]:
+    """Fatigue-bridge prune — lightweight, no-LLM context trimming.
+
+    Invoked by ``run_agent._prune_context`` when the agent is "fatigued"
+    (memory bridge ready + many user turns) but we want to STAY on the
+    same session_id (no rotation) to preserve a long task's continuity.
+    Unlike :func:`compress_context`, this never calls the summariser LLM
+    and never rotates the session.
+
+    Strategy (deterministic, fail-open):
+      * Protect the head ``protect_first_n`` and tail ``protect_last_n``
+        messages untouched (system seed + recent context).
+      * Group the middle window into user→user rounds and drop the OLDEST
+        whole rounds beyond a keep budget, so a tool_call is never split
+        from its observation.
+      * Carry key state forward via a short bridge note appended to the
+        system prompt (built from the agent's memory store).
+
+    Returns ``(pruned_messages, new_system_prompt)``. On any unexpected
+    error, returns the inputs unchanged so the caller's loop sees
+    ``len(returned) == len(input)`` and stops.
+    """
+    try:
+        comp = getattr(agent, "context_compressor", None)
+        protect_first = int(getattr(comp, "protect_first_n", 3)) if comp else 3
+        protect_last = int(getattr(comp, "protect_last_n", 20)) if comp else 20
+        total = len(messages)
+        # Not enough slack to prune meaningfully → no-op.
+        if total <= protect_first + protect_last + 4:
+            return messages, system_message
+
+        head = messages[:protect_first]
+        tail = messages[total - protect_last:]
+        body = messages[protect_first:total - protect_last]
+
+        # Group body into rounds (each round starts at a user message and
+        # runs up to the next user message). Dropping whole rounds keeps
+        # tool_call ↔ observation pairs intact.
+        rounds: list[list[dict]] = []
+        cur: list[dict] = []
+        for m in body:
+            if m.get("role") == "user" and cur:
+                rounds.append(cur)
+                cur = []
+            cur.append(m)
+        if cur:
+            rounds.append(cur)
+
+        keep_rounds = 24  # keep ~24 most-recent middle rounds after a prune
+        dropped = 0
+        if len(rounds) > keep_rounds:
+            dropped = len(rounds) - keep_rounds
+            rounds = rounds[dropped:]
+
+        pruned_body = [m for r in rounds for m in r]
+
+        # Build the bridge note (key-state carry-over) → append to system prompt.
+        bridge = _build_fatigue_bridge_note(agent)
+        note_parts = []
+        if dropped:
+            note_parts.append(
+                f"已精简掉较早的 {dropped} 轮对话历史以释放上下文窗口"
+            )
+        if bridge:
+            note_parts.append(bridge)
+        new_system = system_message
+        if note_parts:
+            suffix = "\n\n[上下文衔接摘要]\n" + "；".join(note_parts)
+            new_system = (system_message or "") + suffix
+
+        new_messages = head + pruned_body + tail
+        logger.info(
+            "fatigue-bridge prune: total=%d → %d (dropped %d rounds, bridge=%s)",
+            total, len(new_messages), dropped, "yes" if bridge else "no",
+        )
+        return new_messages, new_system
+    except Exception as exc:  # fail-open: never crash the agent loop
+        logger.warning("prune_context failed, keeping context unchanged: %s", exc)
+        return messages, system_message
+
+
+def _build_fatigue_bridge_note(agent: Any) -> str:
+    """Best-effort bridge summary from the agent's memory store.
+
+    Returns a short CJK string (or "") — no LLM, no blocking IO.
+    """
+    try:
+        store = getattr(agent, "_memory_store", None)
+        entries = getattr(store, "memory_entries", None) if store else None
+        if not entries:
+            # Fall back to the latest cross-session handoff summary.
+            try:
+                from agent.handoff_store import get_latest_handoff
+                h = get_latest_handoff(getattr(agent, "session_id", "") or "")
+                if h and h.get("summary_text"):
+                    return "此前会话衔接：" + h["summary_text"][:240]
+            except Exception:
+                return ""
+            return ""
+        recent = entries[-4:]
+        snippets = []
+        for e in recent:
+            text = (
+                getattr(e, "fts_content", None)
+                or getattr(e, "content", None)
+                or getattr(e, "text", None)
+                or (e.get("fts_content") if isinstance(e, dict) else None)
+                or (e.get("content") if isinstance(e, dict) else None)
+                or ""
+            )
+            text = (text or "").strip()
+            if text:
+                snippets.append(text[:160])
+        if not snippets:
+            return ""
+        joined = "；".join(snippets)
+        return f"关键记忆衔接：{joined[:480]}"
+    except Exception:
+        return ""
+
+
 def try_shrink_image_parts_in_messages(
     api_messages: list,
     *,
