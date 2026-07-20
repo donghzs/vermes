@@ -375,14 +375,14 @@ function closeDropdowns() {
             <span class="text-sm">{{ block.icon }}</span>
             <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ block.label }}</span>
           </div>
-          <span class="text-[10px] text-gray-400 font-mono">{{ block.chars }} chars</span>
+          <span class="text-[10px] text-gray-400 font-mono">{{ block.chars }} 字符</span>
         </div>
         <div class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-3">{{ block.preview }}</div>
       </div>
     </div>
     <!-- handoff 来源 -->
     <div v-if="memStatus.handoff_source" class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-      <div class="text-[10px] text-gray-400">来源会话: {{ memStatus.handoff_source.session_id?.slice(0, 12) }} · {{ memStatus.handoff_source.age_hours }}h ago</div>
+      <div class="text-[10px] text-gray-400">来源会话: {{ memStatus.handoff_source.session_id?.slice(0, 12) }} · {{ memStatus.handoff_source.age_hours }} 小时前</div>
     </div>
   </div>
 </template>
