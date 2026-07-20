@@ -7,6 +7,14 @@ import * as api from '../services/api'
 import { toast } from '../utils/toast'
 import ProviderCard from './ProviderCard.vue'
 
+// P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
+function envHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-Hermes-Session-Token': (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) || '',
+  }
+}
+
 const chat = useChatStore()
 const update = useUpdateStore()
 const router = useRouter()
@@ -405,7 +413,7 @@ function removeModel(p, modelId) {
 async function deleteProvider(p) {
   if (!confirm(`确定清除 ${p.name} 的 API Key 和模型配置？`)) return
   const envKey = getEnvKey(p.id)
-  try { await fetch('/api/env', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: envKey }) }) } catch(e) {}
+  try { await fetch('/api/env', { method: 'DELETE', headers: envHeaders(), body: JSON.stringify({ key: envKey }) }) } catch(e) {}
   p.key = ''; p.models = []; saveProvidersToStorage()
   saved.value = true; setTimeout(() => saved.value = false, 2000)
 }
@@ -474,7 +482,7 @@ async function save() {
     if (p.key && p.key !== '●●●●●●●●' && p.id !== 'ollama') {
       const envKey = getEnvKey(p.id)
       savePromises.push(
-        fetch('/api/env', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: envKey, value: p.key }) })
+        fetch('/api/env', { method: 'PUT', headers: envHeaders(), body: JSON.stringify({ key: envKey, value: p.key }) })
           .catch(() => {})
       )
       if (!firstRealKey && p.models && p.models.length > 0 && p.id !== 'vbit') firstRealKey = { id: p.id, name: p.name, model: p.models[0] }
@@ -547,7 +555,7 @@ async function loadServices() {
     }
     // 2) env 状态 -> 已配置的服务显示掩码，避免保存时覆盖真实值
     try {
-      const envResp = await fetch('/api/env')
+      const envResp = await fetch('/api/env', { headers: envHeaders() })
       const envData = await envResp.json()
       for (const sid of Object.keys(groups)) {
         const g = groups[sid]
@@ -572,7 +580,7 @@ async function saveService(sid) {
   try {
     const resp = await fetch('/api/env', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: envHeaders(),
       body: JSON.stringify({ key: g.apiKeyEnv, value: g.apiKeyVal }),
     })
     if (resp.ok) {
@@ -598,7 +606,7 @@ async function clearService(sid) {
   try {
     const resp = await fetch('/api/env', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: envHeaders(),
       body: JSON.stringify({ key: g.apiKeyEnv }),
     })
     if (resp.ok) {

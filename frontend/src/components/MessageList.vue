@@ -562,6 +562,18 @@ function streamElapsed(startTime) {
               <span v-if="msg.streaming && msg.content" class="typing-cursor"></span>
             </template>
           </div>
+          <!-- 推理链可视化：折叠/展开面板 -->
+          <div v-if="msg.reasoning" class="mt-2 reasoning-block">
+            <details :open="msg._reasoningExpanded || false" @toggle="msg._reasoningExpanded = $event.target.open">
+              <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 select-none flex items-center gap-1.5">
+                <span class="inline-block w-1 h-1 rounded-full bg-purple-400"></span>
+                <span>🤔 推理过程</span>
+                <span class="opacity-50">({{ msg.reasoning.length.toLocaleString() }} 字)</span>
+                <span v-if="msg.streaming" class="text-purple-400 animate-pulse">●</span>
+              </summary>
+              <div class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap max-h-96 overflow-y-auto" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
+            </details>
+          </div>
           <!-- 工具调用展示：流式中=单条状态，完成后=紧凑时间线 -->
           <div v-if="msg.toolInvocations && msg.toolInvocations.length > 0" class="mt-2">
             <!-- 流式中：进度条 + 当前工具 -->

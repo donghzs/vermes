@@ -61,6 +61,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentModel = ref(localStorage.getItem('vermes-current-model') || DEFAULT_MODEL_ID)
   const currentProvider = ref(localStorage.getItem('vermes-current-provider') || DEFAULT_PROVIDER_ID)
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
+  const searchEnabled = ref(localStorage.getItem('vermes-search-enabled') === 'true')
 
   // ── nextTurnSnapshot: 轮内模型一致性 ──
   // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
@@ -460,6 +461,14 @@ export const useChatStore = defineStore('chat', () => {
           sessionStatusMessages.value[sendSessionId] = arr
           scheduleScroll()
         },
+        onReasoning: (text) => {
+          // 推理链内容 delta：累加到 assistant message 的 reasoning 字段
+          const am = messages.value.find(m => m.id === aid)
+          if (!am) return
+          if (!am.reasoning) am.reasoning = ''
+          am.reasoning += text
+          scheduleScroll()
+        },
         onEvolution: (event) => {
           // 进化事件：成就解锁或策略建议
           const evoEvent = {
@@ -607,6 +616,7 @@ export const useChatStore = defineStore('chat', () => {
           mime: a.mime || a.mimeType || 'application/octet-stream', size: a.size,
         })),
         reasoning_effort: reasoningEffort.value || undefined,
+        web_search: searchEnabled.value || undefined,
       })
     } catch(e) {
       const am = messages.value.find(m => m.id === aid)
@@ -735,7 +745,7 @@ export const useChatStore = defineStore('chat', () => {
   return {
     sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
-    reasoningEffort, searchMode, searchQuery,
+    reasoningEffort, searchEnabled, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionActiveStreamIds, currentActiveStreamId,

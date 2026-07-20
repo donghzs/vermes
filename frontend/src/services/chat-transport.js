@@ -25,8 +25,8 @@ class ChatTransport {
     throw new Error('implement in subclass')
   }
 
-  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete }) {
-    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete })
+  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onReasoning }) {
+    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onReasoning })
   }
 
   off(sessionId) {
@@ -48,7 +48,7 @@ export class SSETransport extends ChatTransport {
     this._controllers = new Map()  // sessionId → AbortController
   }
 
-  async send(sessionId, { messages, model, provider, attachments, reasoning_effort }) {
+  async send(sessionId, { messages, model, provider, attachments, reasoning_effort, web_search }) {
     const oldAc = this._controllers.get(sessionId)
     if (oldAc) oldAc.abort()
     this._controllers.delete(sessionId)
@@ -68,6 +68,7 @@ export class SSETransport extends ChatTransport {
         stream: true,
       }
       if (reasoning_effort) body.reasoning_effort = reasoning_effort
+      if (web_search) body.web_search = true
 
       const resp = await fetch(`${this._baseUrl}/api/chat/completions`, {
         method: 'POST',
@@ -106,8 +107,14 @@ export class SSETransport extends ChatTransport {
             const data = JSON.parse(raw)
             const deltaContent = data.choices?.[0]?.delta?.content
             
-            if (data.type === 'stream_start' || data.type === 'thinking' || data.type === 'lifecycle') {
+            if (data.type === 'stream_start' || data.type === 'lifecycle') {
               this._emit(sessionId, 'onStatus', { type: data.type, message: data.message || '' })
+            } else if (data.type === 'thinking') {
+              // thinking = 迭代步数事件，走 onStatus
+              this._emit(sessionId, 'onStatus', { type: 'thinking', message: data.message || '', iteration: data.iteration })
+            } else if (data.type === 'reasoning') {
+              // reasoning = 真实推理内容 delta，走 onReasoning
+              this._emit(sessionId, 'onReasoning', data.content || '')
             } else if (data.type === 'delta' || data.type === 'text') {
               this._emit(sessionId, 'onMessage', { type: 'delta', content: data.content || deltaContent || '' })
             } else if (data.type === 'tool' || data.type === 'tool_start' || data.type === 'tool_end') {

@@ -505,7 +505,9 @@ async def update_config_raw(body: RawConfigUpdate):
         raise HTTPException(status_code=400, detail=f"Invalid YAML: {e}")
 
 
-async def get_env_vars():
+async def get_env_vars(request: Request):
+    from hermes_cli.web_server import _require_token
+    _require_token(request)
     env_on_disk = load_env()
     result = {}
     for var_name, info in OPTIONAL_ENV_VARS.items():
@@ -550,6 +552,8 @@ async def get_env_vars():
 
 
 async def set_env_var(body: EnvVarUpdate, request: Request):
+    from hermes_cli.web_server import _require_token
+    _require_token(request)
     if body.key not in _allowed_env_keys():
         raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed")
     try:
@@ -561,7 +565,9 @@ async def set_env_var(body: EnvVarUpdate, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-async def remove_env_var(body: EnvVarDelete):
+async def remove_env_var(body: EnvVarDelete, request: Request):
+    from hermes_cli.web_server import _require_token
+    _require_token(request)
     try:
         removed = remove_env_value(body.key)
         if not removed:

@@ -32,6 +32,12 @@ const currentReasoningLabel = computed(() => {
   return found || reasoningLevels[0]
 })
 
+// ── 联网搜索开关 ──
+function toggleSearch() {
+  chat.searchEnabled = !chat.searchEnabled
+  localStorage.setItem('vermes-search-enabled', String(chat.searchEnabled))
+}
+
 // ── 常量 ──
 const MAX_SINGLE_FILE = 20 * 1024 * 1024   // 20MB
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024     // 50MB
@@ -250,6 +256,10 @@ defineExpose({ inputText, uploadedFiles, inputRef })
           </button>
         </div>
       </div>
+      <!-- 联网搜索开关 -->
+      <button @click="toggleSearch()" class="p-3 rounded-xl border transition text-base"
+        :class="chat.searchEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'"
+        :title="chat.searchEnabled ? '联网搜索已开启' : '联网搜索已关闭'">🌐</button>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
         @input="onInputCheckFileRef" @paste="onPaste"

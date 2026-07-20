@@ -167,9 +167,14 @@ function handleLoginSuccess(data) {
   if (data.userName) try { localStorage.setItem('vermes_wechat_name', data.userName) } catch (_) {}
   if (data.userAvatar) try { localStorage.setItem('vermes_wechat_avatar', data.userAvatar) } catch (_) {}
 
+  // P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
+  const envHeaders = {
+    'Content-Type': 'application/json',
+    'X-Hermes-Session-Token': (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) || '',
+  }
   fetch('/api/env', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: envHeaders,
     body: JSON.stringify({ key: 'VBIT_API_KEY', value: data.token })
   }).catch(() => {})
 

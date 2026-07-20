@@ -326,6 +326,7 @@ class ChatRequest(BaseModel):
     wechat_openid: str | None = None
     session_id: str | None = None  # For agent caching
     reasoning_effort: str | None = None  # none / low / medium / high
+    web_search: bool = False  # 联网搜索开关
 
 
 # ── Attachment validation ────────────────────────────────────────────
@@ -787,6 +788,17 @@ async def chat_completions(req: ChatRequest):
             except Exception:
                 pass
 
+            # ── 联网搜索开关：注入 ephemeral 提示 ──
+            _search_prompt = ""
+            if req.web_search:
+                _search_prompt = (
+                    "【联网搜索已开启】用户希望获取最新信息。"
+                    "当问题涉及时事、最新数据、实时信息或你不确定的事实时，"
+                    "请主动使用 web_search 工具搜索互联网获取准确信息，"
+                    "并引用来源。对于常识性问题无需搜索。"
+                )
+            _combined_prompt = (_evo_prompt + "\n" + _search_prompt).strip() or None
+
             agent = AIAgent(
                 base_url=base_url,
                 api_key=api_key,
@@ -798,7 +810,7 @@ async def chat_completions(req: ChatRequest):
                 platform="web",
                 enabled_toolsets=_load_toolsets_for_web(),
                 disabled_toolsets=_disabled_toolsets,
-                ephemeral_system_prompt=_evo_prompt or None,
+                ephemeral_system_prompt=_combined_prompt,
                 reasoning_config=_reasoning_config,
             )
             _agent_cache.put(_cache_key, agent)
@@ -967,6 +979,11 @@ async def chat_completions(req: ChatRequest):
             }
             _safe_put(event)
 
+        def reasoning_handler(text: str):
+            """Route reasoning/thinking deltas to SSE stream for visualization."""
+            if text:
+                _safe_put({"type": "reasoning", "content": text})
+
         def run_sync():
             try:
                 _log.info(f"[Stream] Agent starting, model={model}, provider={provider}, stream_id={_stream_id}")
@@ -975,6 +992,7 @@ async def chat_completions(req: ChatRequest):
                 agent.step_callback = thinking_handler
                 agent.status_callback = status_callback
                 agent.evolution_event_callback = evolution_event_handler
+                agent.reasoning_callback = reasoning_handler
                 _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                 agent.max_tokens = _max_tokens
                 result = agent.run_conversation(

@@ -258,8 +258,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/update/progress",
     "/api/update/backups",
     "/api/update/rollback",
-    # Env vars (settings page needs to read/save keys)
-    "/api/env",
+    # Env vars (settings page needs to read/save keys — token-gated)
+    # Removed from public paths: /api/env now requires session token.
+    # SPA frontend auto-injects token, so normal usage is unaffected.
     # Dashboard UI
     "/api/dashboard/themes",
     "/api/dashboard/plugins",
@@ -1075,8 +1076,8 @@ _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
 })
 
 async def set_env_var(body: EnvVarUpdate, request: Request):
-    # /api/env is in _PUBLIC_API_PATHS — auth middleware already handles access control
-    # No need for a second _require_token check here
+    # /api/env was removed from _PUBLIC_API_PATHS — now requires session token.
+    # All env endpoints (GET/PUT/DELETE/reveal) are token-gated.
     if body.key not in _ENV_WRITE_ALLOWED_KEYS:
         raise HTTPException(status_code=403, detail=f"Key '{body.key}' is not allowed")
     try:
