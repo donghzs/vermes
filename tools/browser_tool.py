@@ -2893,7 +2893,8 @@ def browser_back(task_id: Optional[str] = None) -> str:
     else:
         response = {
             "success": False,
-            "error": _friendly_browser_back_error(result.get("error", ""))
+            "error": _friendly_browser_back_error(result.get("error", "")),
+            "hint": "当前页面不支持后退。请用 browser_navigate 直接导航到目标网页。"
         }
         return json.dumps(_copy_fallback_warning(response, result), ensure_ascii=False)
 

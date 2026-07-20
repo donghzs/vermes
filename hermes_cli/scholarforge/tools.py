@@ -138,42 +138,57 @@ _PROVIDER_FALLBACK_MODELS = {
 
 
 def _resolve_credentials():
-    """复用 Vermes 核心凭证链路，与聊天 Agent 完全同步。
+    """读取 config.yaml 获取凭证。直接读 config，绕过 _get_chat_credentials 避免编译版兼容问题。
     返回 dict(api_key, base_url, model, provider) 或 None。
     """
-    from hermes_cli.blueprints.chat import PROVIDERS, _get_chat_credentials
+    import yaml
+
     from hermes_constants import get_hermes_home
 
-    base_url, api_key, default_model = _get_chat_credentials()
+    home = get_hermes_home()
+    cfg_path = home / "config.yaml"
+
+    try:
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception:
+        cfg = {}
+
+    model_cfg = cfg.get("model", {})
+    provider = model_cfg.get("provider", "").strip() or "agnes"
+    default_model = model_cfg.get("default", "").strip() or "agnes-2.5-flash"
+    base_url = model_cfg.get("base_url", "").strip()
+
+    # 从 providers 配置中读取 api_key 和 base_url
+    prov_cfg = cfg.get("providers", {}).get(provider, {})
+    api_key = prov_cfg.get("api_key", "").strip()
+    if not base_url:
+        base_url = prov_cfg.get("base_url", "").strip()
+
+    if not base_url:
+        # 回退到 PROVIDERS 注册表中的默认 base_url
+        try:
+            from hermes_cli.blueprints.chat import PROVIDERS
+            base_url = (PROVIDERS.get(provider) or {}).get("base_url", "")
+        except Exception:
+            pass
+
     if not api_key or not base_url:
         return None
-    # 反查 provider：匹配 .env 中哪个 ENV_KEY 的值等于 default_key
-    env_path = get_hermes_home() / ".env"
-    env_lines = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
-    provider = None
-    for prov_key, prov_def in PROVIDERS.items():
-        env_key = prov_def.get("env_key", "")
-        if env_key:
-            for line in env_lines.splitlines():
-                line = line.strip()
-                if line.startswith(f"{env_key}="):
-                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    if val and val == api_key:
-                        provider = prov_key
-                        break
-        if provider:
-            break
+
     return {
         "api_key": api_key,
         "base_url": base_url.rstrip("/"),
         "model": default_model,
-        "provider": provider or "",
+        "provider": provider,
     }
 
 
 async def _call_llm(prompt: str, system: str = "") -> str:
-    """Call LLM with auto-detected credentials."""
-    import httpx
+    """Call LLM with auto-detected credentials. Uses urllib (sync) for maximum compatibility."""
+    import json
+    import urllib.request
+    import urllib.error
 
     creds = _resolve_credentials()
     if not creds:
@@ -193,28 +208,36 @@ async def _call_llm(prompt: str, system: str = "") -> str:
     if creds["model"]:
         body["model"] = creds["model"]
 
+    url = f"{creds['base_url']}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {creds['api_key']}",
+        "Content-Type": "application/json",
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{creds['base_url']}/chat/completions",
-                json=body,
-                headers={
-                    "Authorization": f"Bearer {creds['api_key']}",
-                    "Content-Type": "application/json",
-                },
-            )
-        if resp.status_code == 200:
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-        err = resp.text[:200]
-        logger.error(f"LLM call failed ({creds['provider']}/{creds['model']}): {resp.status_code} {err}")
-        return f"❌ LLM 调用失败 ({resp.status_code}): {err[:150]}"
-    except httpx.HTTPError as e:
-        logger.error(f"LLM network error ({creds['provider']}/{creds['model']}): {e}")
-        return f"❌ LLM 网络错误: {type(e).__name__}: {str(e)[:120]}"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content:
+                return content
+            return f"❌ LLM 响应格式异常: {json.dumps(data, ensure_ascii=False)[:300]}"
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8")[:300]
+        except Exception:
+            pass
+        logger.error(f"LLM call failed ({creds['provider']}/{creds['model']}): {e.code} {err_body}")
+        return f"❌ LLM 调用失败 (HTTP {e.code}): {err_body[:150]}"
     except Exception as e:
         logger.error(f"LLM unexpected error ({creds['provider']}/{creds['model']}): {e}", exc_info=True)
-        return f"❌ LLM 调用异常: {type(e).__name__}: {str(e)[:120]}"
+        return f"❌ LLM 调用异常: {type(e).__name__}: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
