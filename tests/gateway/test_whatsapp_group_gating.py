@@ -24,9 +24,16 @@ def _make_adapter(require_mention=None, mention_patterns=None, free_response_cha
     if group_allow_from is not None:
         extra["group_allow_from"] = group_allow_from
 
+    from gateway.behavior_config import WhatsAppBehaviorConfig
+
     adapter = object.__new__(WhatsAppAdapter)
     adapter.platform = Platform.WHATSAPP
     adapter.config = PlatformConfig(enabled=True, extra=extra)
+    adapter._behavior = WhatsAppBehaviorConfig(
+        require_mention=require_mention,
+        mention_patterns=mention_patterns,
+        free_response_chats=free_response_chats,
+    )
     adapter._message_handler = AsyncMock()
     adapter._dm_policy = str(extra.get("dm_policy", "open")).strip().lower()
     adapter._allow_from = WhatsAppAdapter._coerce_allow_list(extra.get("allow_from"))
@@ -125,8 +132,8 @@ def test_config_bridges_whatsapp_group_settings(monkeypatch, tmp_path):
     assert config is not None
     assert config.platforms[Platform.WHATSAPP].extra["require_mention"] is True
     assert config.platforms[Platform.WHATSAPP].extra["mention_patterns"] == [r"^\s*chompy\b"]
-    assert __import__("os").environ["WHATSAPP_REQUIRE_MENTION"] == "true"
-    assert json.loads(__import__("os").environ["WHATSAPP_MENTION_PATTERNS"]) == [r"^\s*chompy\b"]
+    assert config.behavior.whatsapp.require_mention is True
+    assert config.behavior.whatsapp.mention_patterns == [r"^\s*chompy\b"]
 
 
 def test_free_response_chats_bypass_mention_gating():
@@ -269,9 +276,8 @@ def test_config_bridges_whatsapp_dm_and_group_policy(monkeypatch, tmp_path):
     assert config.platforms[Platform.WHATSAPP].extra["dm_policy"] == "disabled"
     assert config.platforms[Platform.WHATSAPP].extra["group_policy"] == "allowlist"
     assert config.platforms[Platform.WHATSAPP].extra["group_allow_from"] == ["120363001234567890@g.us"]
-    assert __import__("os").environ["WHATSAPP_DM_POLICY"] == "disabled"
-    assert __import__("os").environ["WHATSAPP_GROUP_POLICY"] == "allowlist"
-    assert __import__("os").environ["WHATSAPP_GROUP_ALLOWED_USERS"] == "120363001234567890@g.us"
+    assert config.behavior.whatsapp.dm_policy == "disabled"
+    assert config.behavior.whatsapp.group_policy == "allowlist"
 
 
 def test_config_bridges_whatsapp_allow_from(monkeypatch, tmp_path):
@@ -294,8 +300,7 @@ def test_config_bridges_whatsapp_allow_from(monkeypatch, tmp_path):
     assert config is not None
     assert config.platforms[Platform.WHATSAPP].extra["dm_policy"] == "allowlist"
     assert config.platforms[Platform.WHATSAPP].extra["allow_from"] == ["6281234567890@s.whatsapp.net"]
-    assert __import__("os").environ["WHATSAPP_DM_POLICY"] == "allowlist"
-    assert __import__("os").environ["WHATSAPP_ALLOWED_USERS"] == "6281234567890@s.whatsapp.net"
+    assert config.behavior.whatsapp.dm_policy == "allowlist"
 
 
 # --- Broadcast / status / newsletter pseudo-chats are always dropped ---

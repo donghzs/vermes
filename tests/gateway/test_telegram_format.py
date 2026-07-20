@@ -851,8 +851,14 @@ def _guest_test_adapter(*, guest_mode=True, require_mention=True, allowed_chats=
             "allowed_chats": allowed_chats or ["-100200"],
         },
     )
+    from gateway.behavior_config import TelegramBehaviorConfig
+
     adapter = object.__new__(TelegramAdapter)
     adapter.config = config
+    adapter._behavior = TelegramBehaviorConfig(
+        require_mention=require_mention,
+        allowed_chats=allowed_chats or ["-100200"],
+    )
     adapter._bot = SimpleNamespace(id=999, username="hermes_bot")
     adapter._mention_patterns = adapter._compile_mention_patterns()
     # PR db50af910 added a TELEGRAM_ALLOWED_USERS allowlist gate to

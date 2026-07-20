@@ -479,8 +479,7 @@ class MatrixAdapter(BasePlatformAdapter):
         self._processed_events_set.add(event_id)
         return False
 
-    @staticmethod
-    def _parse_thread_require_mention(config) -> bool:
+    def _parse_thread_require_mention(self, config) -> bool:
         """Parse thread_require_mention from config.extra or env var.
 
         Handles both YAML booleans and string values (``\"true\"``, ``\"false\"``,
