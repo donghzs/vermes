@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
+import api from '../services/api.js'
 
 const chat = useChatStore()
 const router = useRouter()
@@ -92,6 +93,45 @@ const quickStarts = [
   { icon: '📝', text: '帮我写一篇公众号文章' },
   { icon: '💻', text: '写一段Python代码' },
 ]
+
+// 专家能力（开箱即用的能力发现）
+const experts = ref([])
+const expertBusy = ref('')
+
+function zh(obj, fallback = '') {
+  if (!obj) return fallback
+  return obj.zh || obj.en || fallback
+}
+
+async function loadExperts() {
+  try {
+    const data = await api.getExperts()
+    experts.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    experts.value = []
+  }
+}
+
+async function useExpert(expert, promptText) {
+  expertBusy.value = expert.id
+  try {
+    for (const ss of (expert.skills_status || [])) {
+      try {
+        if (ss.installed && !ss.enabled) await api.toggleSkill(ss.name, true)
+        else if (!ss.installed) await api.installSkill({ identifier: ss.name, name: ss.name })
+      } catch (e) { /* 技能不可用时仍进入对话 */ }
+    }
+    const text = promptText || expert.prompt || zh(expert.quickPrompts?.[0]) || ''
+    await chat.createSession(zh(expert.profession) || '专家')
+    await chat.sendMessage(text)
+  } catch (e) {
+    console.error('useExpert failed', e)
+  } finally {
+    expertBusy.value = ''
+  }
+}
+
+onMounted(loadExperts)
 </script>
 
 <template>
@@ -145,6 +185,20 @@ const quickStarts = [
             </div>
           </div>
         </button>
+      </div>
+
+      <!-- 专家能力：开箱即用的能力发现 -->
+      <div class="mt-8">
+        <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-3">或者，挑一个专家直接开始</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button v-for="expert in experts" :key="expert.id"
+                  @click="useExpert(expert)"
+                  :disabled="expertBusy === expert.id"
+                  class="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 transition text-left disabled:opacity-50">
+            <div class="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{{ zh(expert.profession) }}</div>
+            <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ zh(expert.displayDescription) }}</div>
+          </button>
+        </div>
       </div>
     </div>
 

@@ -3,8 +3,10 @@
 Vermes skills and toolsets endpoints.
 """
 
+import json
 import logging
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -16,6 +18,13 @@ _log = logging.getLogger(__name__)
 class SkillToggle(BaseModel):
     name: str
     enabled: bool
+
+
+class SkillInstallRequest(BaseModel):
+    identifier: str
+    name: Optional[str] = None
+    source: Optional[str] = None
+    force: bool = False
 
 
 # ── route handlers ─────────────────────────────────────────────
@@ -79,6 +88,121 @@ async def get_toolsets():
     return result
 
 
+# ── market handlers ────────────────────────────────────────────
+
+async def get_experts():
+    """Curated expert catalog (qclaw-style) merged with live skill status."""
+    from tools.skills_tool import _find_all_skills
+    from hermes_cli.skills_config import get_disabled_skills
+    from hermes_cli.config import load_config
+
+    catalog_path = Path(__file__).parent.parent / "experts_catalog.json"
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _log.warning("Failed to load experts catalog: %s", exc)
+        catalog = []
+
+    config = load_config()
+    disabled = set(get_disabled_skills(config))
+    try:
+        installed_skills = _find_all_skills(skip_disabled=True)
+    except Exception:
+        installed_skills = []
+    installed_names = {s.get("name") for s in installed_skills}
+
+    out = []
+    for e in catalog:
+        skill_names = e.get("skills", []) or []
+        skills_status = []
+        for sn in skill_names:
+            is_installed = sn in installed_names
+            skills_status.append({
+                "name": sn,
+                "installed": is_installed,
+                "enabled": is_installed and sn not in disabled,
+            })
+        ready = all(s["installed"] for s in skills_status) if skills_status else True
+        out.append({**e, "skills_status": skills_status, "ready": ready})
+    return out
+
+
+class _CaptureConsole:
+    """Rich-console stand-in that records printed text (no TTY needed)."""
+
+    def __init__(self):
+        self.lines: List[str] = []
+
+    def print(self, *args, **kwargs):
+        self.lines.append(" ".join(str(a) for a in args))
+
+    def status(self, *args, **kwargs):
+        class _Ctx:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        return _Ctx()
+
+    def rule(self, *args, **kwargs):
+        pass
+
+
+async def market_search(q: str = "", source: str = "all", limit: int = 24):
+    """Search the skills hub (official / clawhub / github / lobehub / ...)."""
+    from tools.skills_hub import (
+        GitHubAuth, create_source_router, unified_search, _skill_meta_to_dict,
+    )
+    try:
+        auth = GitHubAuth()
+        sources = create_source_router(auth)
+        results = unified_search(
+            q or "", sources,
+            source_filter=source or "all",
+            limit=max(1, min(int(limit), 100)),
+        )
+    except Exception as exc:
+        _log.warning("Skills market search failed: %s", exc)
+        return {"items": [], "total": 0, "error": str(exc)}
+    items = [_skill_meta_to_dict(r) for r in results]
+    return {"items": items, "total": len(items), "query": q, "source": source}
+
+
+async def market_install(body: SkillInstallRequest):
+    """Install a skill non-interactively (quarantine + scan + install)."""
+    from hermes_cli.skills_hub import do_install
+    from tools.skills_hub import HubLockFile
+    cap = _CaptureConsole()
+    installed_name = (body.name or "").strip()
+    try:
+        do_install(
+            body.identifier,
+            category="",
+            force=body.force,
+            console=cap,
+            skip_confirm=True,
+            name_override=installed_name,
+        )
+    except Exception as exc:
+        return {"ok": False, "name": installed_name, "message": str(exc)}
+    lock = HubLockFile()
+    resolved = installed_name or body.identifier.split("/")[-1]
+    if lock.get_installed(resolved):
+        return {"ok": True, "name": resolved, "message": "已安装"}
+    return {"ok": False, "name": resolved, "message": "\n".join(cap.lines) or "安装失败"}
+
+
+async def market_uninstall(name: str):
+    """Uninstall a hub-installed skill."""
+    from tools.skills_hub import uninstall_skill
+    try:
+        ok, msg = uninstall_skill(name)
+        return {"ok": ok, "name": name, "message": msg}
+    except Exception as exc:
+        return {"ok": False, "name": name, "message": str(exc)}
+
+
 # ── registration ───────────────────────────────────────────────
 
 def register_to(app):
@@ -91,6 +215,18 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/tools/toolsets", get_toolsets, methods=["GET"], name="get_toolsets"
+    )
+    app.add_api_route(
+        "/api/skills/market", market_search, methods=["GET"], name="market_search"
+    )
+    app.add_api_route(
+        "/api/experts", get_experts, methods=["GET"], name="get_experts"
+    )
+    app.add_api_route(
+        "/api/skills/install", market_install, methods=["POST"], name="market_install"
+    )
+    app.add_api_route(
+        "/api/skills/{name}", market_uninstall, methods=["DELETE"], name="market_uninstall"
     )
 
 

@@ -8,6 +8,7 @@ import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 import MCPManager from './MCPManager.vue'
 import SkillManager from './SkillManager.vue'
+import ExpertCatalog from './ExpertCatalog.vue'
 // 生态模块前端动态加载已弃用，改为 Agent 工具集模式
 
 const chat = useChatStore()
@@ -196,6 +197,7 @@ const showCustomPrompt = ref(false)
 const showKnowledgeBase = ref(false)
 const showMCPManager = ref(false)
 const showSkillManager = ref(false)
+const showExpert = ref(false)
 const customPromptInput = ref('')
 const customPromptRef = ref(null)
 
@@ -477,6 +479,10 @@ async function handleImportFile(e) {
           <span class="text-base">🧩</span>
           <span class="sidebar-tooltip group-hover:opacity-100">技能管理</span>
         </button>
+        <button @click="showExpert = !showExpert" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showExpert ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="专家">
+          <span class="text-base">🧠</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">专家</span>
+        </button>
       </div>
       <!-- 知识库面板 -->
       <div v-if="showKnowledgeBase" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
@@ -489,6 +495,10 @@ async function handleImportFile(e) {
       <!-- 技能管理面板 -->
       <div v-if="showSkillManager" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
         <SkillManager />
+      </div>
+      <!-- 专家面板 -->
+      <div v-if="showExpert" class="shrink-0 max-h-80 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
+        <ExpertCatalog />
       </div>
       <!-- 进化系统面板 -->
       <div class="shrink-0 max-h-80 overflow-y-auto evolution-panel-wrapper">

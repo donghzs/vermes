@@ -486,6 +486,20 @@ const api = {
   },
   getToolsets() { return this.get('/tools/toolsets') },
 
+  // ── 专家目录 ──
+  getExperts() { return this.get('/experts') },
+
+  // ── Skills 市场 ──
+  searchSkills(q = '', source = 'all', limit = 24) {
+    return this.get(`/skills/market?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}&limit=${limit}`)
+  },
+  installSkill(payload) {
+    return request('/skills/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+  },
+  uninstallSkill(name) {
+    return request(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(r => r.json())
+  },
+
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
 }
