@@ -311,6 +311,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/cache/metrics",
     # ScholarForge 论文写作（独立模块）
     "/api/scholar",
+    # Studio 创作空间（直连大模型的试点；SPA 带用户 Key 调用，与 /api/provider/add 同源设计）
+    "/api/studio",
 })
 
 
