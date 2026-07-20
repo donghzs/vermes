@@ -97,6 +97,7 @@ const quickStarts = [
 // 专家能力（开箱即用的能力发现）
 const experts = ref([])
 const expertBusy = ref('')
+const recommendations = ref([])   // 你可能想用（按使用频次个性化）
 
 function zh(obj, fallback = '') {
   if (!obj) return fallback
@@ -112,6 +113,22 @@ async function loadExperts() {
   }
 }
 
+// 你可能想用：有使用记录则按频次推荐，否则回退到前 3 个精选专家
+async function loadRecommendations() {
+  let recs = []
+  try {
+    const data = await api.getUsageRecommendations('expert', 3)
+    const items = (data && data.items) || []
+    const byId = new Map(experts.value.map((e) => [e.id, e]))
+    for (const it of items) {
+      const ex = byId.get(it.id)
+      if (ex) recs.push({ ...ex, _count: it.count })
+    }
+  } catch (e) { /* no-op */ }
+  if (recs.length === 0) recs = experts.value.slice(0, 3)
+  recommendations.value = recs
+}
+
 async function useExpert(expert, promptText) {
   expertBusy.value = expert.id
   try {
@@ -121,6 +138,10 @@ async function useExpert(expert, promptText) {
         else if (!ss.installed) await api.installSkill({ identifier: ss.name, name: ss.name })
       } catch (e) { /* 技能不可用时仍进入对话 */ }
     }
+    // 记录使用（越用越懂用户）——失败不影响主流程
+    try {
+      await api.recordUsage({ kind: 'expert', id: expert.id, title: zh(expert.profession) })
+    } catch (e) { /* no-op */ }
     const text = promptText || expert.prompt || zh(expert.quickPrompts?.[0]) || ''
     await chat.createSession(zh(expert.profession) || '专家')
     await chat.sendMessage(text)
@@ -131,7 +152,9 @@ async function useExpert(expert, promptText) {
   }
 }
 
-onMounted(loadExperts)
+onMounted(() => {
+  loadExperts().then(loadRecommendations)
+})
 </script>
 
 <template>
@@ -185,6 +208,20 @@ onMounted(loadExperts)
             </div>
           </div>
         </button>
+      </div>
+
+      <!-- 你可能想用（个性化推荐） -->
+      <div v-if="recommendations.length" class="mt-8">
+        <p class="text-center text-sm text-gray-400 dark:text-gray-500 mb-3">你可能想用</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button v-for="expert in recommendations" :key="expert.id"
+                  @click="useExpert(expert)"
+                  :disabled="expertBusy === expert.id"
+                  class="p-3 bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-500 transition text-left disabled:opacity-50">
+            <div class="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{{ zh(expert.profession) }}</div>
+            <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ zh(expert.displayDescription) }}</div>
+          </button>
+        </div>
       </div>
 
       <!-- 专家能力：开箱即用的能力发现 -->

@@ -455,3 +455,85 @@ def index_skills(skills: List[Dict[str, Any]], scope: str = "") -> int:
         except Exception:
             logger.warning("index_skills failed for %r", name, exc_info=True)
     return count
+
+
+# ── usage telemetry (越用越懂用户) ──────────────────────────────
+# Lightweight, local-only capability-usage ledger. Each launch of an expert or
+# skill writes one row into the unified index (source="usage"); the shared
+# logical ``pointer`` lets get_usage_counts GROUP BY it for true frequency.
+# Everything lives in the local memory_index.db — zero network upload.
+
+def record_usage(kind: str, item_id: str, title: str = "", scope: str = "") -> None:
+    """Record one usage event for a capability (expert/skill) as an L1 memory.
+
+    fail-closed: raises on failure so callers can log it visibly instead of
+    silently dropping the signal.
+    """
+    if not kind or not item_id:
+        return
+    content = f"{title} {item_id}".strip()
+    if not content:
+        return
+    db_path = _get_index_db()
+    _init_db(db_path)
+    pointer = f"usage:{kind}:{item_id}"
+    with _LOCK:
+        conn = _get_conn(str(db_path))
+        try:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO memories(source, layer, type, scope, pointer, "
+                "fts_content, updated_at) VALUES(?,?,?,?,?,?,?)",
+                ("usage", L1_NOTE, f"usage_{kind}", scope, pointer, content, _now()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def get_usage_counts(kind: Optional[str] = None, scope: str = "",
+                     limit: int = 6) -> List[Dict[str, Any]]:
+    """Return most-used capabilities ranked by frequency then recency.
+
+    Returns a list of ``{"kind", "id", "count", "last_used"}`` dicts.
+    fail-closed: a missing/corrupt index returns ``[]``.
+    """
+    db_path = _get_index_db()
+    if not os.path.exists(str(db_path)):
+        return []
+    sql = (
+        "SELECT pointer, COUNT(*) AS cnt, MAX(updated_at) AS last "
+        "FROM memories WHERE source='usage'"
+    )
+    params: List[Any] = []
+    if kind:
+        sql += " AND type=?"
+        params.append(f"usage_{kind}")
+    if scope:
+        sql += " AND scope=?"
+        params.append(scope)
+    sql += " GROUP BY pointer ORDER BY cnt DESC, last DESC LIMIT ?"
+    params.append(limit)
+    try:
+        with _LOCK:
+            conn = _get_conn(str(db_path))
+            try:
+                c = conn.cursor()
+                c.execute(sql, params)
+                rows = c.fetchall()
+            finally:
+                conn.close()
+    except Exception:
+        logger.warning("memory_fabric.get_usage_counts failed", exc_info=True)
+        return []
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        pointer = r["pointer"]
+        parts = pointer.split(":", 2)
+        out.append({
+            "kind": parts[1] if len(parts) > 1 else (kind or ""),
+            "id": parts[2] if len(parts) > 2 else pointer,
+            "count": r["cnt"],
+            "last_used": r["last"],
+        })
+    return out

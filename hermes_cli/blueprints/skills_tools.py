@@ -27,6 +27,13 @@ class SkillInstallRequest(BaseModel):
     force: bool = False
 
 
+class UsageRecord(BaseModel):
+    kind: str                       # "expert" | "skill"
+    id: str                         # stable capability id
+    title: Optional[str] = None    # human label (for readability)
+    scope: Optional[str] = ""      # user/session scope ("" = global)
+
+
 # ── route handlers ─────────────────────────────────────────────
 
 async def get_skills():
@@ -203,6 +210,30 @@ async def market_uninstall(name: str):
         return {"ok": False, "name": name, "message": str(exc)}
 
 
+# ── usage telemetry (越用越懂用户) ──────────────────────────────
+
+async def record_usage(body: UsageRecord):
+    """Record one capability-usage event into the unified memory base."""
+    from agent.memory_fabric import record_usage as _record
+    try:
+        _record(body.kind, body.id, body.title or "", body.scope or "")
+        return {"ok": True, "kind": body.kind, "id": body.id}
+    except Exception as exc:
+        _log.warning("record_usage failed: %s", exc)
+        return {"ok": False, "kind": body.kind, "id": body.id, "message": str(exc)}
+
+
+async def get_usage_recommend(kind: Optional[str] = None, limit: int = 4):
+    """Top-used capabilities (experts/skills) for "你可能想用"."""
+    from agent.memory_fabric import get_usage_counts
+    try:
+        items = get_usage_counts(kind, "", max(1, min(int(limit), 20)))
+    except Exception as exc:
+        _log.warning("usage recommend failed: %s", exc)
+        items = []
+    return {"items": items, "kind": kind, "limit": limit}
+
+
 # ── registration ───────────────────────────────────────────────
 
 def register_to(app):
@@ -227,6 +258,12 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/skills/{name}", market_uninstall, methods=["DELETE"], name="market_uninstall"
+    )
+    app.add_api_route(
+        "/api/usage", record_usage, methods=["POST"], name="record_usage"
+    )
+    app.add_api_route(
+        "/api/usage/recommend", get_usage_recommend, methods=["GET"], name="get_usage_recommend"
     )
 
 

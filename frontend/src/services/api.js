@@ -500,6 +500,14 @@ const api = {
     return request(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(r => r.json())
   },
 
+  // ── 使用记录（越用越懂用户）──
+  recordUsage(payload) {
+    return request('/usage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+  },
+  getUsageRecommendations(kind = 'expert', limit = 4) {
+    return this.get(`/usage/recommend?kind=${encodeURIComponent(kind)}&limit=${limit}`)
+  },
+
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
 }

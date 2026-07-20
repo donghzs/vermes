@@ -6,6 +6,7 @@ import { useChatStore } from '../stores/chat.js'
 const experts = ref([])
 const loading = ref(false)
 const busyId = ref('')
+const frequent = ref([])   // 常用来宾（按使用频次）
 
 const chat = useChatStore()
 
@@ -42,6 +43,23 @@ async function loadExperts() {
   }
 }
 
+// 常用来宾：按使用频次拉取 top-3，并映射到专家目录
+async function loadFrequent() {
+  try {
+    const data = await api.getUsageRecommendations('expert', 3)
+    const items = (data && data.items) || []
+    const byId = new Map(experts.value.map((e) => [e.id, e]))
+    const mapped = []
+    for (const it of items) {
+      const ex = byId.get(it.id)
+      if (ex) mapped.push({ ...ex, _count: it.count })
+    }
+    frequent.value = mapped
+  } catch (e) {
+    frequent.value = []
+  }
+}
+
 async function useExpert(expert, promptText) {
   busyId.value = expert.id
   try {
@@ -57,6 +75,10 @@ async function useExpert(expert, promptText) {
         // 技能不可用时不影响进入对话
       }
     }
+    // 记录使用（越用越懂用户）——失败不影响主流程
+    try {
+      await api.recordUsage({ kind: 'expert', id: expert.id, title: zh(expert.profession) })
+    } catch (e) { /* no-op */ }
     const text = promptText || expert.prompt || zh(expert.quickPrompts?.[0]) || ''
     await chat.createSession(zh(expert.profession) || '专家')
     await chat.sendMessage(text)
@@ -68,7 +90,7 @@ async function useExpert(expert, promptText) {
 }
 
 onMounted(() => {
-  loadExperts()
+  loadExperts().then(loadFrequent)
 })
 </script>
 
@@ -81,6 +103,20 @@ onMounted(() => {
     </div>
 
     <div class="space-y-2 max-h-80 overflow-y-auto">
+      <!-- 常用来宾：按使用频次推荐 -->
+      <div v-if="frequent.length" class="rounded-lg bg-blue-50 dark:bg-blue-950/40 p-3 space-y-2">
+        <div class="text-[10px] text-blue-500 font-medium">常用来宾 · 越用越懂你</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button v-for="ex in frequent" :key="ex.id"
+                  @click="useExpert(ex)"
+                  :disabled="busyId === ex.id"
+                  class="text-[10px] px-2 py-1 rounded-full bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-300 hover:border-blue-400 disabled:opacity-50">
+            {{ zh(ex.profession) }}
+            <span class="text-gray-400 ml-0.5">×{{ ex._count }}</span>
+          </button>
+        </div>
+      </div>
+
       <div v-for="expert in experts" :key="expert.id"
            class="rounded-lg bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
         <div class="flex items-start justify-between gap-2">
