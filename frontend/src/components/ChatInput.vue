@@ -18,7 +18,7 @@ const emit = defineEmits(['send'])
 const reasoningLevels = [
   { value: '', label: '自动', icon: '⚡' },
   { value: 'low', label: '快速', icon: '🚀' },
-  { value: 'medium', label: '标准', icon: '🧠' },
+  { value: 'medium', label: '标准', icon: '💡' },
   { value: 'high', label: '深度', icon: '🔬' },
 ]
 const showReasoningPicker = ref(false)
@@ -243,10 +243,17 @@ defineExpose({ inputText, uploadedFiles, inputRef })
       <input ref="fileInput" type="file" multiple
         accept="image/*,video/*,.pdf,.txt,.md,.csv,.json,.py,.js,.ts,.html,.css,.yaml,.yml,.toml,.sh,.bash,.java,.go,.rs,.c,.cpp,.h,.rb,.php,.swift,.kt,.docx,.xlsx,.pptx,.zip,.tar,.gz"
         class="hidden" @change="handleFileSelect" />
-      <button @click="triggerFileUpload()" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base" title="上传文件/图片/视频">📎</button>
+      <!-- 📎 上传文件 -->
+      <div class="relative group">
+        <button @click="triggerFileUpload()" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base">📎</button>
+        <span class="sidebar-tooltip group-hover:opacity-100">上传文件</span>
+      </div>
       <!-- 推理强度选择器 -->
       <div class="relative">
-        <button @click="showReasoningPicker = !showReasoningPicker" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base" :title="'推理强度: ' + currentReasoningLabel.label">{{ currentReasoningLabel.icon }}</button>
+        <div class="relative group">
+          <button @click="showReasoningPicker = !showReasoningPicker" class="p-3 rounded-xl border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition text-base">{{ currentReasoningLabel.icon }}</button>
+          <span class="sidebar-tooltip group-hover:opacity-100">推理强度 · {{ currentReasoningLabel.label }}</span>
+        </div>
         <div v-if="showReasoningPicker" class="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg py-1 min-w-[120px] z-50">
           <button v-for="r in reasoningLevels" :key="r.value" @click="selectReasoning(r.value)" 
             class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition"
@@ -257,9 +264,11 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         </div>
       </div>
       <!-- 联网搜索开关 -->
-      <button @click="toggleSearch()" class="p-3 rounded-xl border transition text-base"
-        :class="chat.searchEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'"
-        :title="chat.searchEnabled ? '联网搜索已开启' : '联网搜索已关闭'">🌐</button>
+      <div class="relative group">
+        <button @click="toggleSearch()" class="p-3 rounded-xl border transition text-base"
+          :class="chat.searchEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'">🌐</button>
+        <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.searchEnabled ? '联网搜索 · 已开启' : '联网搜索 · 已关闭' }}</span>
+      </div>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"
         @input="onInputCheckFileRef" @paste="onPaste"

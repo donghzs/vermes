@@ -97,7 +97,7 @@ onMounted(() => {
 <template>
   <div class="space-y-3">
     <div class="flex items-center gap-2">
-      <span class="text-lg">🧠</span>
+      <span class="text-lg">🎓</span>
       <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">专家</h3>
       <span class="text-xs text-gray-400">陪你解决问题的 AI 搭档</span>
     </div>
@@ -160,7 +160,7 @@ onMounted(() => {
 
       <div v-if="loading" class="text-center py-4 text-xs text-gray-400 animate-pulse">加载中…</div>
       <div v-else-if="experts.length === 0" class="text-center py-6 text-xs text-gray-400">
-        <div class="text-2xl mb-1">🧠</div>
+        <div class="text-2xl mb-1">🎓</div>
         <div>暂无专家</div>
       </div>
     </div>

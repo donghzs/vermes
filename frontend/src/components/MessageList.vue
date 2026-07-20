@@ -354,6 +354,19 @@ watch(() => chat.filteredMessages?.length ?? 0, async () => {
   // 流式中不在此处滚动（由 store 的 _scheduleScroll RAF 调度处理）
 })
 
+// ── 推理面板自动滚底 ──
+const reasoningContentRefs = {}
+watch(() => chat.messages.map(m => m.reasoning?.length).join(','), () => {
+  nextTick(() => {
+    for (const msg of chat.messages) {
+      const el = reasoningContentRefs[msg.id]
+      if (el && msg.streaming && msg.reasoning) {
+        el.scrollTop = el.scrollHeight
+      }
+    }
+  })
+})
+
 // ── 回到底部按钮 ──
 const showScrollBtn = ref(false)
 
@@ -564,14 +577,14 @@ function streamElapsed(startTime) {
           </div>
           <!-- 推理链可视化：折叠/展开面板 -->
           <div v-if="msg.reasoning" class="mt-2 reasoning-block">
-            <details :open="msg._reasoningExpanded || false" @toggle="msg._reasoningExpanded = $event.target.open">
-              <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 select-none flex items-center gap-1.5">
-                <span class="inline-block w-1 h-1 rounded-full bg-purple-400"></span>
-                <span>🤔 推理过程</span>
+            <details :open="msg._reasoningExpanded || false" @toggle="msg._reasoningExpanded = $event.target.open" class="reasoning-details">
+              <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 select-none flex items-center gap-1.5 reasoning-summary">
+                <span class="reasoning-chevron">▸</span>
+                <span>💡 推理过程</span>
                 <span class="opacity-50">({{ msg.reasoning.length.toLocaleString() }} 字)</span>
                 <span v-if="msg.streaming" class="text-purple-400 animate-pulse">●</span>
               </summary>
-              <div class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap max-h-96 overflow-y-auto" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
+              <div :ref="el => reasoningContentRefs[msg.id] = el" class="mt-1.5 pl-3 border-l-2 border-purple-200 dark:border-purple-800 text-sm text-gray-500 dark:text-gray-400 italic whitespace-pre-wrap max-h-96 overflow-y-auto reasoning-content" style="white-space:pre-wrap;word-break:break-word;">{{ msg.reasoning }}</div>
             </details>
           </div>
           <!-- 工具调用展示：流式中=单条状态，完成后=紧凑时间线 -->
@@ -995,5 +1008,49 @@ function streamElapsed(startTime) {
 .achievement-pop-leave-to {
   opacity: 0;
   transform: translate(-50%, -10px) scale(0.95);
+}
+/* ── 推理链展开/收起动画 ── */
+.reasoning-details > summary {
+  list-style: none;
+}
+.reasoning-details > summary::-webkit-details-marker {
+  display: none;
+}
+.reasoning-chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 10px;
+  color: #a78bfa;
+}
+.reasoning-details[open] .reasoning-chevron {
+  transform: rotate(90deg);
+}
+.reasoning-content {
+  animation: reasoning-expand 0.25s ease-out;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+@keyframes reasoning-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 24rem;
+  }
+}
+.reasoning-details:not([open]) .reasoning-content {
+  display: none;
+}
+/* 推理文本滚动条美化 */
+.reasoning-content::-webkit-scrollbar {
+  width: 4px;
+}
+.reasoning-content::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 2px;
 }
 </style>

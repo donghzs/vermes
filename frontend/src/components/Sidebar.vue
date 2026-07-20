@@ -480,7 +480,7 @@ async function handleImportFile(e) {
           <span class="sidebar-tooltip group-hover:opacity-100">技能管理</span>
         </button>
         <button @click="showExpert = !showExpert" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showExpert ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="专家">
-          <span class="text-base">🧠</span>
+          <span class="text-base">🎓</span>
           <span class="sidebar-tooltip group-hover:opacity-100">专家</span>
         </button>
       </div>
