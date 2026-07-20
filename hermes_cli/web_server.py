@@ -285,6 +285,14 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/memory/status",
     "/api/evolution/achievements",
     "/api/evolution/dag",
+    # 进化系统自改写（EvolutionPanel 回滚/撤销/历史）
+    "/api/evolution/self_modify_history",
+    "/api/evolution/retract",
+    "/api/evolution/self_modify_rollback",
+    # 涌现系统（EvolutionPanel 状态/技能列表/技能确认-拒绝）
+    "/api/emergence/status",
+    "/api/emergence/skills",
+    "/api/emergence/skill",
     # RAG 知识库（前端 Settings 页文件管理 + 搜索）
     "/api/rag/documents",
     "/api/rag/delete/{doc_id}",
