@@ -196,6 +196,12 @@ class SearchResult:
     def to_dict(self) -> dict:
         result = {"total_count": self.total_count}
         pk = self.primary_key
+        # Convert matches once — reused by both the primary-key and the
+        # backward-compat branches below (avoids duplicating the comprehension).
+        match_dicts = [
+            {"path": m.path, "line": m.line_number, "content": m.content}
+            for m in self.matches
+        ]
         # Always emit the primary key so 0-result responses are structurally
         # identical to populated ones (fixes the API-shape inconsistency where
         # empty searches returned only {"total_count": 0}).
@@ -204,20 +210,14 @@ class SearchResult:
         elif pk == "counts":
             result["counts"] = self.counts
         else:
-            result["matches"] = [
-                {"path": m.path, "line": m.line_number, "content": m.content}
-                for m in self.matches
-            ]
+            result["matches"] = match_dicts
         # Backward-compat: include any other populated collection too.
         if pk != "files" and self.files:
             result["files"] = self.files
         if pk != "counts" and self.counts:
             result["counts"] = self.counts
         if pk != "matches" and self.matches:
-            result["matches"] = [
-                {"path": m.path, "line": m.line_number, "content": m.content}
-                for m in self.matches
-            ]
+            result["matches"] = match_dicts
         if self.truncated:
             result["truncated"] = True
         if self.error:
