@@ -851,6 +851,19 @@ def prune_context(
 
         pruned_body = [m for r in rounds for m in r]
 
+        # P3: protect the latest in-progress tool observation that fell
+        # into the dropped body zone.  If the agent has an in-progress todo
+        # step, salvage the most-recent tool_call↔observation pair from the
+        # discarded rounds so the agent can resume mid-step after pruning.
+        if dropped > 0:
+            salvaged = _salvage_in_progress_observation(
+                messages, head, pruned_body, tail, agent)
+            if salvaged:
+                pruned_body = pruned_body + salvaged
+                logger.info(
+                    "fatigue-bridge prune: salvaged %d in-progress obs messages",
+                    len(salvaged))
+
         # Build the bridge note (key-state carry-over) → append to system prompt.
         bridge = _build_fatigue_bridge_note(agent)
         note_parts = []
@@ -874,6 +887,63 @@ def prune_context(
     except Exception as exc:  # fail-open: never crash the agent loop
         logger.warning("prune_context failed, keeping context unchanged: %s", exc)
         return messages, system_message
+
+
+def _salvage_in_progress_observation(
+    messages: list,
+    head: list,
+    pruned_body: list,
+    tail: list,
+    agent: Any,
+) -> list:
+    """Salvage the latest tool_call↔observation pair from the dropped zone.
+
+    When prune_context discards body rounds, an in-progress todo step may
+    have its last tool observation in the dropped zone.  We salvage that
+    pair so the agent can resume mid-step after pruning.
+
+    Returns a list of 0 or 2 messages [tool_call, tool_result].
+    """
+    try:
+        store = getattr(agent, "_todo_store", None)
+        if store is None:
+            return []
+        in_progress_ids = {
+            it["id"]
+            for it in store.read()
+            if it.get("status") == "in_progress" and it.get("id")
+        }
+        if not in_progress_ids:
+            return []
+
+        # The dropped zone = everything not in head + pruned_body + tail.
+        kept_ids = {id(m) for m in head + pruned_body + tail}
+        dropped_msgs = [m for m in messages if id(m) not in kept_ids]
+
+        # Walk dropped_msgs in reverse to find the LAST tool_call↔observation
+        # pair whose step_id matches an in_progress todo.
+        tool_result = None
+        tool_call = None
+        for m in reversed(dropped_msgs):
+            if tool_result is None and m.get("role") == "tool":
+                # Check if this observation belongs to an in_progress step.
+                # tool messages may carry step_id in content metadata, but
+                # in practice the association is via the preceding
+                # assistant tool_call.  We salvage the pair regardless.
+                tool_result = m
+            elif tool_result is not None and m.get("role") == "assistant":
+                # Found the assistant message that contains the tool_call.
+                # Verify it actually has tool_calls.
+                if m.get("tool_calls"):
+                    tool_call = m
+                    break
+                tool_result = None  # reset, keep scanning
+
+        if tool_call and tool_result:
+            return [tool_call, tool_result]
+    except Exception:
+        logger.debug("salvage_in_progress_observation failed", exc_info=True)
+    return []
 
 
 def _build_fatigue_bridge_note(agent: Any) -> str:
@@ -1145,4 +1215,5 @@ __all__ = [
     "replay_compression_warning",
     "compress_context",
     "try_shrink_image_parts_in_messages",
+    "prune_context",
 ]

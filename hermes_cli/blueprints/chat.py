@@ -906,13 +906,19 @@ async def chat_completions(req: ChatRequest):
         def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
             _log.info(f"[ToolEvent] {event_type}: {tool_name}")
             # 关联当前进行中的 todo 步骤，供前端把工具调用挂到对应步骤下
+            # ordinal 序位：取 in_progress 条目在列表中的 1-based 序位 + total
             step_id = None
+            step_index = None
+            step_total = None
             try:
                 store = getattr(agent, "_todo_store", None)
                 if store is not None:
-                    for _it in store.read():
+                    _items = store.read()
+                    step_total = len(_items)
+                    for _i, _it in enumerate(_items):
                         if _it.get("status") == "in_progress":
                             step_id = _it.get("id")
+                            step_index = _i + 1  # 1-based ordinal
                             break
             except Exception:
                 pass
@@ -925,6 +931,8 @@ async def chat_completions(req: ChatRequest):
                     "tool_name": tool_name,
                     "arguments": args or {},
                     "step_id": step_id,
+                    "step_index": step_index,
+                    "step_total": step_total,
                 }
             else:
                 event = {
@@ -935,6 +943,8 @@ async def chat_completions(req: ChatRequest):
                     "is_error": kwargs.get("is_error", False),
                     "result_preview": preview or "",
                     "step_id": step_id,
+                    "step_index": step_index,
+                    "step_total": step_total,
                 }
                 if tool_name == "todo" and preview:
                     try:
