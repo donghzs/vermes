@@ -61,8 +61,24 @@ function currentRunningTool(tools) {
 const _toolPreviewCache = new WeakMap()
 const _showAllTools = reactive({})
 
-// ── 2.1 推理面板展开态：用组件级 reactive map 持久化，避免 store 重建消息后 _reasoningExpanded 丢失 ──
-const reasoningExpanded = reactive({})
+// ── 2.1 推理面板展开态：组件级 reactive map，并从 localStorage 恢复/持久化，整页刷新不重置 ──
+const REASONING_EXPANDED_KEY = 'vermes_reasoning_expanded'
+function loadReasoningExpanded() {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(REASONING_EXPANDED_KEY) : null
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+const reasoningExpanded = reactive(loadReasoningExpanded())
+watch(reasoningExpanded, () => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(REASONING_EXPANDED_KEY, JSON.stringify(reasoningExpanded))
+    }
+  } catch { /* 忽略持久化异常（隐私模式 / 配额超限） */ }
+}, { deep: true })
 const reasoningMsgs = computed(() => chat.filteredMessages.filter(m => m && m.reasoning))
 const allReasoningExpanded = computed(() =>
   reasoningMsgs.value.length > 0 && reasoningMsgs.value.every(m => reasoningExpanded[m.id])

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { logger } from '@/utils/logger'
+import { useConfirm } from '@/composables/useConfirm'
 
 // 版本号从后端 /health 运行时读取，不编译时硬编码
 // 框架更新不触发前端重建
@@ -541,11 +542,18 @@ export const useUpdateStore = defineStore('update', () => {
     }
   }
 
+  // 统一确认弹窗（替代 native confirm）
+  const { confirm } = useConfirm()
+
   /**
    * 回滚到指定版本
    */
   async function rollback(version) {
-    if (!confirm(`确定要回滚到 v${version} 吗？应用将自动重启。`)) return
+    if (!(await confirm({
+      title: '回滚确认',
+      message: `确定要回滚到 v${version} 吗？应用将自动重启。`,
+      danger: true,
+    }))) return
 
     try {
       updateStatus.value = 'applying'
