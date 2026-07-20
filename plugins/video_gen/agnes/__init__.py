@@ -73,6 +73,31 @@ def _load_config() -> Dict[str, Any]:
         return {}
 
 
+def _resolve_base_url() -> str:
+    """Agnes endpoint. Override with AGNES_BASE_URL (self-hosted / proxy)."""
+    env = os.environ.get("AGNES_BASE_URL")
+    if env:
+        return env.rstrip("/")
+    return BASE_URL
+
+
+def _resolve_verify() -> Any:
+    """TLS verification policy for Agnes HTTP calls.
+
+    Default: pin the certifi CA bundle for robust chain verification.
+    Escape hatch: ``AGNES_SSL_VERIFY=false`` disables verification (use only
+    behind a trusted proxy or with a self-signed internal cert).
+    """
+    v = os.environ.get("AGNES_SSL_VERIFY", "true").strip().lower()
+    if v in ("false", "0", "no"):
+        return False
+    try:
+        import certifi
+        return certifi.where()
+    except Exception:
+        return True
+
+
 def _resolve_model() -> str:
     env = os.environ.get("AGNES_VIDEO_MODEL")
     if env and env in MODELS:
@@ -210,6 +235,9 @@ class AgnesVideoGenProvider(VideoGenProvider):
             "Content-Type": "application/json",
         }
 
+        base_url = _resolve_base_url()
+        verify = _resolve_verify()
+
         payload: Dict[str, Any] = {
             "model": model_id,
             "prompt": prompt,
@@ -234,10 +262,11 @@ class AgnesVideoGenProvider(VideoGenProvider):
         # Submit async task
         try:
             resp = httpx.post(
-                f"{BASE_URL}/videos",
+                f"{base_url}/videos",
                 headers=headers,
                 json=payload,
                 timeout=30,
+                verify=verify,
             )
             resp.raise_for_status()
             task_data = resp.json()
@@ -265,7 +294,7 @@ class AgnesVideoGenProvider(VideoGenProvider):
         # Use recommended query endpoint: /agnesapi?video_id=<ID>
         # (per Agnes API docs — Legacy /v1/videos/{id} still works but is deprecated)
         video_id = task_data.get("video_id") or task_id
-        poll_url = f"{BASE_URL}/agnesapi?video_id={video_id}"
+        poll_url = f"{base_url}/agnesapi?video_id={video_id}"
 
         # Poll for completion
         deadline = time.time() + POLL_TIMEOUT
@@ -279,6 +308,7 @@ class AgnesVideoGenProvider(VideoGenProvider):
                     poll_url,
                     headers=headers,
                     timeout=15,
+                    verify=verify,
                 )
                 result_resp.raise_for_status()
                 result = result_resp.json()

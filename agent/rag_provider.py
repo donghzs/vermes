@@ -191,6 +191,10 @@ def _extract_text(file_path: str) -> str:
         with open(file_path, 'rb') as f:
             raw = f.read()
         return _extract_text_from_bytes(raw, ext)
+    except RuntimeError:
+        # Explicit, user-facing errors (e.g. scanned PDF without OCR engine)
+        # must reach the caller instead of being swallowed as empty text.
+        raise
     except Exception as e:
         logger.error("Failed to read binary %s: %s", file_path, e)
         return ""
@@ -225,26 +229,60 @@ def _extract_text_from_bytes(raw: bytes, ext: str) -> str:
 
 
 def _extract_pdf(raw: bytes) -> str:
-    """Extract text from PDF bytes using PyMuPDF (fitz)."""
+    """Extract text from PDF bytes using PyMuPDF (fitz), with OCR fallback.
+
+    Returns extracted text. Raises RuntimeError with an explicit Chinese
+    message when the PDF appears to be a scanned/image PDF and no OCR engine
+    is available to recover its text.
+    """
     try:
         import fitz  # PyMuPDF
-        doc = fitz.open(stream=raw, filetype='pdf')
-        parts = []
-        for page in doc:
-            parts.append(page.get_text())
-        doc.close()
-        text = '\n\n'.join(parts)
-        if text.strip():
-            return text
-        # Fallback: if no text extracted, PDF might be scanned images
-        logger.warning("PDF text extraction returned empty (possibly scanned PDF): %d bytes", len(raw))
-        return ""
     except ImportError:
         logger.error("PyMuPDF (fitz) not installed — cannot parse PDF")
         return ""
-    except Exception as e:
-        logger.error("PDF extraction error: %s", e)
-        return ""
+
+    doc = fitz.open(stream=raw, filetype='pdf')
+    try:
+        parts = []
+        for page in doc:
+            parts.append(page.get_text())
+        text = '\n\n'.join(parts)
+        if text.strip():
+            return text
+        # Empty text layer → likely a scanned/image-only PDF. Try OCR.
+        logger.warning("PDF text layer empty (possibly scanned PDF): %d bytes", len(raw))
+        return _extract_pdf_ocr(doc)
+    finally:
+        doc.close()
+
+
+def _extract_pdf_ocr(doc) -> str:
+    """Best-effort OCR over a PyMuPDF document. Returns text or raises."""
+    try:
+        from PIL import Image
+        import pytesseract
+    except ImportError:
+        raise RuntimeError(
+            "PDF 为扫描件/图片型，未检测到 OCR 引擎（需安装 pytesseract 与 "
+            "tesseract-ocr 及中文语言包 chi_sim）。请安装 OCR 引擎后重试，或将 "
+            "PDF 转为包含可复制文字的版本。"
+        )
+    try:
+        pages_text = []
+        for page in doc:
+            pix = page.get_pixmap(dpi=200)
+            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            pages_text.append(pytesseract.image_to_string(img, lang="chi_sim+eng"))
+        ocr_text = '\n\n'.join(pages_text)
+        if ocr_text.strip():
+            return ocr_text
+        raise RuntimeError(
+            "PDF 经 OCR 处理仍未提取到文字，可能是空白页或无法识别的内容。"
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"PDF OCR 处理失败：{exc}")
 
 
 def _extract_docx(raw: bytes) -> str:
@@ -548,7 +586,10 @@ class RAGProvider(MemoryProvider):
             _init_db(_get_rag_db())
             self._db_path = _get_rag_db()
             self._initialized = True
-        text = _extract_text(file_path)
+        try:
+            text = _extract_text(file_path)
+        except RuntimeError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
         if not text.strip():
             return json.dumps({"error": f"No text extracted from {file_path}"})
         p = Path(file_path)

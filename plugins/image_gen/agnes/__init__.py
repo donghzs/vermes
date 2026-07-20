@@ -76,6 +76,31 @@ BASE_URL = "https://apihub.agnes-ai.com/v1"
 # Config
 # ---------------------------------------------------------------------------
 
+def _resolve_base_url() -> str:
+    """Agnes endpoint. Override with AGNES_BASE_URL (self-hosted / proxy)."""
+    env = os.environ.get("AGNES_BASE_URL")
+    if env:
+        return env.rstrip("/")
+    return BASE_URL
+
+
+def _resolve_verify() -> Any:
+    """TLS verification policy for Agnes HTTP calls.
+
+    Default: pin the certifi CA bundle for robust chain verification.
+    Escape hatch: ``AGNES_SSL_VERIFY=false`` disables verification (use only
+    behind a trusted proxy or with a self-signed internal cert).
+    """
+    v = os.environ.get("AGNES_SSL_VERIFY", "true").strip().lower()
+    if v in ("false", "0", "no"):
+        return False
+    try:
+        import certifi
+        return certifi.where()
+    except Exception:
+        return True
+
+
 def _load_config() -> Dict[str, Any]:
     try:
         from hermes_cli.config import load_config
@@ -203,6 +228,9 @@ class AgnesImageGenProvider(ImageGenProvider):
             "Content-Type": "application/json",
         }
 
+        base_url = _resolve_base_url()
+        verify = _resolve_verify()
+
         payload: Dict[str, Any] = {
             "model": model_id,
             "prompt": prompt,
@@ -240,10 +268,11 @@ class AgnesImageGenProvider(ImageGenProvider):
 
         try:
             resp = httpx.post(
-                f"{BASE_URL}/images/generations",
+                f"{base_url}/images/generations",
                 headers=headers,
                 json=payload,
                 timeout=60,
+                verify=verify,
             )
             resp.raise_for_status()
             data = resp.json()
