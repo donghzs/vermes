@@ -855,8 +855,9 @@ def prune_context(
         # into the dropped body zone.  If the agent has an in-progress todo
         # step, salvage the most-recent tool_call↔observation pair from the
         # discarded rounds so the agent can resume mid-step after pruning.
+        # (best-effort: last dropped pair, not validated to that step)
         if dropped > 0:
-            salvaged = _salvage_in_progress_observation(
+            salvaged = _salvage_active_task_observation(
                 messages, head, pruned_body, tail, agent)
             if salvaged:
                 pruned_body = pruned_body + salvaged
@@ -889,20 +890,25 @@ def prune_context(
         return messages, system_message
 
 
-def _salvage_in_progress_observation(
+def _salvage_active_task_observation(
     messages: list,
     head: list,
     pruned_body: list,
     tail: list,
     agent: Any,
 ) -> list:
-    """Salvage the latest tool_call↔observation pair from the dropped zone.
+    """Best-effort anchor for an in-progress task across a prune.
 
     When prune_context discards body rounds, an in-progress todo step may
     have its last tool observation in the dropped zone.  We salvage that
     pair so the agent can resume mid-step after pruning.
 
     Returns a list of 0 or 2 messages [tool_call, tool_result].
+
+    Note: best-effort only.  It salvages the LAST dropped tool_call↔
+    observation pair whenever ANY todo is in_progress, but does NOT verify
+    the pair actually belongs to that specific in-progress step (the
+    preceding assistant tool_call carries no reliable step_id link).
     """
     try:
         store = getattr(agent, "_todo_store", None)

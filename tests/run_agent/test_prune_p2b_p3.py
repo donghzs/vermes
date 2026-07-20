@@ -4,8 +4,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from agent.conversation_compression import (
     prune_context,
-    _salvage_in_progress_observation,
+    _salvage_active_task_observation,
 )
+from tools.todo_tool import compute_active_step_ordinal
 
 
 class FakeTodoStore:
@@ -27,66 +28,41 @@ def _msg(role, content, **kw):
     return m
 
 
-# ─── P2b: step_id ordinal 序位 ─────────────────────────────────
+# ─── P2b: step_id ordinal 序位（调用真实函数，非重算逻辑） ───────
 
 def test_step_id_ordinal_no_in_progress():
-    """No in_progress → step_id is None, step_index/total are None."""
-    # This is a sanity check; the actual logic is in chat.py but we
-    # verify the data flow: empty store → all None.
+    """No in_progress → (None, None, total). Real compute_active_step_ordinal."""
     store = FakeTodoStore([
         {"id": "1", "content": "done", "status": "completed"},
         {"id": "2", "content": "pending", "status": "pending"},
     ])
-    items = store.read()
-    step_id = None
-    step_index = None
-    step_total = len(items)
-    for i, it in enumerate(items):
-        if it.get("status") == "in_progress":
-            step_id = it.get("id")
-            step_index = i + 1
-            break
+    step_id, step_index, step_total = compute_active_step_ordinal(store)
     assert step_id is None
     assert step_index is None
     assert step_total == 2
 
 
 def test_step_id_ordinal_first_in_progress():
-    """First in_progress in a linear list → ordinal 1-based index."""
+    """First in_progress in a linear list → 1-based index = 2."""
     store = FakeTodoStore([
         {"id": "1", "content": "step one", "status": "completed"},
         {"id": "2", "content": "step two", "status": "in_progress"},
         {"id": "3", "content": "step three", "status": "pending"},
     ])
-    items = store.read()
-    step_id = None
-    step_index = None
-    step_total = len(items)
-    for i, it in enumerate(items):
-        if it.get("status") == "in_progress":
-            step_id = it.get("id")
-            step_index = i + 1
-            break
+    step_id, step_index, step_total = compute_active_step_ordinal(store)
     assert step_id == "2"
     assert step_index == 2  # 1-based, second item
     assert step_total == 3
 
 
 def test_step_id_ordinal_multiple_in_progress():
-    """Multiple in_progress → takes the FIRST one (list order = priority)."""
+    """Multiple in_progress → FIRST one (list order = priority), index 1."""
     store = FakeTodoStore([
         {"id": "a", "content": "first", "status": "in_progress"},
         {"id": "b", "content": "second", "status": "in_progress"},
         {"id": "c", "content": "third", "status": "pending"},
     ])
-    items = store.read()
-    step_id = None
-    step_index = None
-    for i, it in enumerate(items):
-        if it.get("status") == "in_progress":
-            step_id = it.get("id")
-            step_index = i + 1
-            break
+    step_id, step_index, step_total = compute_active_step_ordinal(store)
     assert step_id == "a"
     assert step_index == 1  # first in_progress, 1-based
 
@@ -104,7 +80,7 @@ def test_salvage_no_in_progress_todo():
         _msg("tool", "result data"),
         _msg("assistant", "done"),
     ]
-    result = _salvage_in_progress_observation(messages, [], [], [], agent)
+    result = _salvage_active_task_observation(messages, [], [], [], agent)
     assert result == []
 
 
@@ -130,7 +106,7 @@ def test_salvage_finds_in_progress_observation():
     head = messages[:3]
     pruned_body = [messages[5]]
     tail = messages[6:]
-    result = _salvage_in_progress_observation(messages, head, pruned_body, tail, agent)
+    result = _salvage_active_task_observation(messages, head, pruned_body, tail, agent)
     assert len(result) == 2
     assert result[0] is tool_call
     assert result[1] is tool_result
@@ -147,7 +123,7 @@ def test_salvage_no_tool_pair_in_dropped_zone():
         _msg("user", "bye"),
         _msg("assistant", "bye"),
     ]
-    result = _salvage_in_progress_observation(messages, messages[:2], [], messages[2:], agent)
+    result = _salvage_active_task_observation(messages, messages[:2], [], messages[2:], agent)
     assert result == []
 
 

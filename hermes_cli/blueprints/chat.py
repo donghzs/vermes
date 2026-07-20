@@ -907,21 +907,13 @@ async def chat_completions(req: ChatRequest):
             _log.info(f"[ToolEvent] {event_type}: {tool_name}")
             # 关联当前进行中的 todo 步骤，供前端把工具调用挂到对应步骤下
             # ordinal 序位：取 in_progress 条目在列表中的 1-based 序位 + total
-            step_id = None
-            step_index = None
-            step_total = None
+            # 逻辑抽到 tools.todo_tool.compute_active_step_ordinal，便于单测（真测而非重算）
             try:
-                store = getattr(agent, "_todo_store", None)
-                if store is not None:
-                    _items = store.read()
-                    step_total = len(_items)
-                    for _i, _it in enumerate(_items):
-                        if _it.get("status") == "in_progress":
-                            step_id = _it.get("id")
-                            step_index = _i + 1  # 1-based ordinal
-                            break
+                from tools.todo_tool import compute_active_step_ordinal
+                step_id, step_index, step_total = compute_active_step_ordinal(
+                    getattr(agent, "_todo_store", None))
             except Exception:
-                pass
+                step_id = step_index = step_total = None
             if event_type == "tool.started":
                 _tool_id = secrets.token_urlsafe(8)
                 _tool_ids[tool_name] = _tool_id

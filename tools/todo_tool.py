@@ -319,3 +319,40 @@ registry.register(
     check_fn=check_todo_requirements,
     emoji="📋",
 )
+
+
+def compute_active_step_ordinal(store):
+    """Compute the 1-based ordinal position of the first in-progress todo.
+
+    Used by the streaming layer to attach step_id/step_index/step_total to
+    tool-progress SSE events, so the frontend can pin a tool call to the
+    correct step of a long task.
+
+    Args:
+        store: any object exposing ``read() -> list[dict]`` of todo items
+               (each having ``id``, ``status``, ...). May be None.
+
+    Returns:
+        (step_id, step_index, step_total):
+          - step_id:    id of the first in_progress todo, else None
+          - step_index: 1-based position of that todo in the list
+                        (list order == priority), else None
+          - step_total: total number of todos, else None
+        Any failure (including a missing store) returns (None, None, None)
+        so the caller degrades gracefully (fail-open).
+    """
+    step_id = None
+    step_index = None
+    step_total = None
+    try:
+        if store is not None:
+            items = store.read()
+            step_total = len(items)
+            for i, it in enumerate(items):
+                if it.get("status") == "in_progress":
+                    step_id = it.get("id")
+                    step_index = i + 1  # 1-based ordinal
+                    break
+    except Exception:
+        pass
+    return step_id, step_index, step_total
