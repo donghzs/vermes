@@ -2607,10 +2607,29 @@ def browser_navigate(url: str, task_id: Optional[str] = None) -> str:
 
         return json.dumps(response, ensure_ascii=False)
     else:
-        return json.dumps({
+        err = result.get("error") or "Navigation failed"
+        # Surface any HTTP status the backend exposed so the agent can tell a
+        # 404/500 (page loaded but errored) apart from a hard navigation
+        # failure (DNS/connection refused/timeout). Previously every failure
+        # collapsed to the generic "Navigation failed" string.
+        status = (result.get("status") or result.get("status_code")
+                  or result.get("http_status") or result.get("response_status"))
+        response = {
             "success": False,
-            "error": result.get("error", "Navigation failed")
-        }, ensure_ascii=False)
+            "error": err,
+        }
+        if status is not None:
+            response["status"] = status
+            try:
+                code = int(status)
+                if 400 <= code < 600:
+                    response["error"] = (
+                        f"HTTP {code} error while navigating to {url}. "
+                        f"Original message: {err}"
+                    )
+            except (TypeError, ValueError):
+                pass
+        return json.dumps(response, ensure_ascii=False)
 
 
 def browser_snapshot(

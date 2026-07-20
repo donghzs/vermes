@@ -139,7 +139,14 @@ class TestSearchResult:
         r = SearchResult()
         d = r.to_dict()
         assert d["total_count"] == 0
-        assert "matches" not in d
+        # Empty search keeps its primary key so consumers never KeyError on it.
+        assert d["matches"] == []
+
+    def test_to_dict_empty_files_mode(self):
+        r = SearchResult(primary_key="files")
+        d = r.to_dict()
+        assert d["total_count"] == 0
+        assert d["files"] == []
 
     def test_to_dict_files_mode(self):
         r = SearchResult(files=["a.py", "b.py"], total_count=2)

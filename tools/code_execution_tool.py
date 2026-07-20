@@ -210,9 +210,9 @@ _TOOL_STUBS = {
     ),
     "search_files": (
         "search_files",
-        'pattern: str, target: str = "content", path: str = ".", file_glob: str = None, limit: int = 50, offset: int = 0, output_mode: str = "content", context: int = 0',
-        '"""Search file contents (target="content") or find files by name (target="files"). Returns dict with "matches"."""',
-        '{"pattern": pattern, "target": target, "path": path, "file_glob": file_glob, "limit": limit, "offset": offset, "output_mode": output_mode, "context": context}',
+        'pattern: str, target: str = "content", path: str = ".", file_glob: str = None, limit: int = 50, offset: int = 0, output_mode: str = "content", context: int = 0, respect_gitignore: bool = False',
+        '"""Search file contents (target="content") or find files by name (target="files"). Returns dict with "matches". Defaults respect_gitignore=False so files you just wrote in this sandbox are always findable."""',
+        '{"pattern": pattern, "target": target, "path": path, "file_glob": file_glob, "limit": limit, "offset": offset, "output_mode": output_mode, "context": context, "respect_gitignore": respect_gitignore}',
     ),
     "patch": (
         "patch",

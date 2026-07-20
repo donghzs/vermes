@@ -187,18 +187,37 @@ class SearchResult:
     total_count: int = 0
     truncated: bool = False
     error: Optional[str] = None
-    
+    # Which key the consumer should ALWAYS see, even when empty. Set by
+    # FileOperations.search() from the requested target/output_mode so a
+    # zero-result response keeps the same shape as a populated one (otherwise
+    # callers doing result["matches"] crash on KeyError for empty searches).
+    primary_key: str = "matches"
+
     def to_dict(self) -> dict:
         result = {"total_count": self.total_count}
-        if self.matches:
+        pk = self.primary_key
+        # Always emit the primary key so 0-result responses are structurally
+        # identical to populated ones (fixes the API-shape inconsistency where
+        # empty searches returned only {"total_count": 0}).
+        if pk == "files":
+            result["files"] = self.files
+        elif pk == "counts":
+            result["counts"] = self.counts
+        else:
             result["matches"] = [
                 {"path": m.path, "line": m.line_number, "content": m.content}
                 for m in self.matches
             ]
-        if self.files:
+        # Backward-compat: include any other populated collection too.
+        if pk != "files" and self.files:
             result["files"] = self.files
-        if self.counts:
+        if pk != "counts" and self.counts:
             result["counts"] = self.counts
+        if pk != "matches" and self.matches:
+            result["matches"] = [
+                {"path": m.path, "line": m.line_number, "content": m.content}
+                for m in self.matches
+            ]
         if self.truncated:
             result["truncated"] = True
         if self.error:
@@ -1432,7 +1451,8 @@ class ShellFileOperations(FileOperations):
     
     def search(self, pattern: str, path: str = ".", target: str = "content",
                file_glob: Optional[str] = None, limit: int = 50, offset: int = 0,
-               output_mode: str = "content", context: int = 0) -> SearchResult:
+               output_mode: str = "content", context: int = 0,
+               respect_gitignore: bool = True) -> SearchResult:
         """
         Search for content or files.
         
@@ -1450,6 +1470,12 @@ class ShellFileOperations(FileOperations):
             SearchResult with matches or file list
         """
         offset, limit = normalize_search_pagination(offset, limit)
+
+        # Which result key the caller should always see, even when empty.
+        # Mirrors the requested mode so a 0-result response keeps the same
+        # shape as a populated one (fixes the empty-search API inconsistency).
+        primary = ("files" if target == "files"
+                   else "counts" if output_mode == "count" else "matches")
 
         # Expand ~ and other shell paths
         path = self._expand_path(path)
@@ -1484,16 +1510,20 @@ class ShellFileOperations(FileOperations):
                         )
             return SearchResult(
                 error=". ".join(hint_parts),
-                total_count=0
+                total_count=0,
+                primary_key=primary,
             )
         
         if target == "files":
-            return self._search_files(pattern, path, limit, offset)
+            result = self._search_files(pattern, path, limit, offset, respect_gitignore)
         else:
-            return self._search_content(pattern, path, file_glob, limit, offset, 
-                                        output_mode, context)
+            result = self._search_content(pattern, path, file_glob, limit, offset,
+                                          output_mode, context, respect_gitignore)
+        result.primary_key = primary
+        return result
     
-    def _search_files(self, pattern: str, path: str, limit: int, offset: int) -> SearchResult:
+    def _search_files(self, pattern: str, path: str, limit: int, offset: int,
+                      respect_gitignore: bool = True) -> SearchResult:
         """Search for files by name pattern (glob-like)."""
         # Auto-prepend **/ for recursive search if not already present
         if not pattern.startswith('**/') and '/' not in pattern:
@@ -1511,7 +1541,7 @@ class ShellFileOperations(FileOperations):
         # default, and has parallel directory traversal (~200x faster than
         # find on wide trees).  Mirrors _search_content which already uses rg.
         if self._has_command('rg'):
-            return self._search_files_rg(search_pattern, path, limit, offset)
+            return self._search_files_rg(search_pattern, path, limit, offset, respect_gitignore)
 
         # Fallback: find (slower, no .gitignore awareness)
         if not self._has_command('find'):
@@ -1575,7 +1605,8 @@ class ShellFileOperations(FileOperations):
             total_count=len(files)
         )
 
-    def _search_files_rg(self, pattern: str, path: str, limit: int, offset: int) -> SearchResult:
+    def _search_files_rg(self, pattern: str, path: str, limit: int, offset: int,
+                         respect_gitignore: bool = True) -> SearchResult:
         """Search for files by name using ripgrep's --files mode.
 
         rg --files respects .gitignore and excludes hidden directories by
@@ -1590,10 +1621,15 @@ class ShellFileOperations(FileOperations):
         else:
             glob_pattern = pattern
 
+        # When callers opt out of gitignore respect (e.g. the execute_code
+        # sandbox, where user-generated files must always be findable),
+        # pass --no-ignore so rg doesn't skip gitignored paths.
+        no_ignore = "" if respect_gitignore else " --no-ignore"
+
         fetch_limit = limit + offset
         # Try mtime-sorted first (rg 13+); fall back to unsorted if not supported.
         cmd_sorted = (
-            f"rg --files --sortr=modified -g {self._escape_shell_arg(glob_pattern)} "
+            f"rg{no_ignore} --files --sortr=modified -g {self._escape_shell_arg(glob_pattern)} "
             f"{self._escape_shell_arg(path)} 2>/dev/null "
             f"| head -n {fetch_limit}"
         )
@@ -1603,7 +1639,7 @@ class ShellFileOperations(FileOperations):
         if not all_files:
             # --sortr may have failed on older rg; retry without it.
             cmd_plain = (
-                f"rg --files -g {self._escape_shell_arg(glob_pattern)} "
+                f"rg{no_ignore} --files -g {self._escape_shell_arg(glob_pattern)} "
                 f"{self._escape_shell_arg(path)} 2>/dev/null "
                 f"| head -n {fetch_limit}"
             )
@@ -1619,15 +1655,16 @@ class ShellFileOperations(FileOperations):
         )
     
     def _search_content(self, pattern: str, path: str, file_glob: Optional[str],
-                        limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
+                        limit: int, offset: int, output_mode: str, context: int,
+                        respect_gitignore: bool = True) -> SearchResult:
         """Search for content inside files (grep-like)."""
         # Try ripgrep first (fast), fallback to grep (slower but works)
         if self._has_command('rg'):
-            return self._search_with_rg(pattern, path, file_glob, limit, offset, 
-                                        output_mode, context)
+            return self._search_with_rg(pattern, path, file_glob, limit, offset,
+                                        output_mode, context, respect_gitignore)
         elif self._has_command('grep'):
             return self._search_with_grep(pattern, path, file_glob, limit, offset,
-                                          output_mode, context)
+                                          output_mode, context, respect_gitignore)
         else:
             # Neither rg nor grep available (Windows without Git Bash, etc.)
             return SearchResult(
@@ -1636,9 +1673,14 @@ class ShellFileOperations(FileOperations):
             )
     
     def _search_with_rg(self, pattern: str, path: str, file_glob: Optional[str],
-                        limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
+                        limit: int, offset: int, output_mode: str, context: int,
+                        respect_gitignore: bool = True) -> SearchResult:
         """Search using ripgrep."""
         cmd_parts = ["rg", "--line-number", "--no-heading", "--with-filename"]
+        if not respect_gitignore:
+            # Sandbox/execute_code context: user-generated files must be
+            # findable even inside gitignored paths (e.g. data/, tmp/, dist/).
+            cmd_parts.append("--no-ignore")
         
         # Add context if requested
         if context > 0:
@@ -1734,8 +1776,14 @@ class ShellFileOperations(FileOperations):
             )
     
     def _search_with_grep(self, pattern: str, path: str, file_glob: Optional[str],
-                          limit: int, offset: int, output_mode: str, context: int) -> SearchResult:
-        """Fallback search using grep."""
+                          limit: int, offset: int, output_mode: str, context: int,
+                          respect_gitignore: bool = True) -> SearchResult:
+        """Fallback search using grep.
+
+        Note: plain grep does not consult .gitignore, so ``respect_gitignore``
+        has no effect here — it is accepted only for signature parity with the
+        ripgrep path (which is the default on this platform).
+        """
         cmd_parts = ["grep", "-rnH"]  # -H forces filename even for single-file searches
         
         # Exclude hidden directories (matching ripgrep's default behavior).
