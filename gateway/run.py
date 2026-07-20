@@ -83,6 +83,18 @@ _TELEGRAM_NOISY_STATUS_RE = re.compile(
     r"|max\s+retries\s+\(\d+\).*(?:trying\s+fallback|exhausted|invalid\s+responses)"
     r"|stream\s+(?:drop|drop\s+mid\s+tool-call).+retry\s+\d"
     r"|stale\s+connections\s+from\s+a\s+previous\s+provider\s+issue"
+    # 中文文案（与上面英文分支一一对应，UI 汉化后仍需在 Telegram 抑制）
+    r"|预检压缩"
+    r"|压缩摘要失败"
+    r"|兜底的上下文标记"
+    r"|已配置的压缩模型.+失败"
+    r"|未配置辅助\s*LLM\s*服务商"
+    r"|阈值下调"
+    r"|触发限流"
+    r"|后重试"
+    r"|最大重试次数"
+    r"|流式.+重试\s*\d"
+    r"|遗留的失效连接"
     r")",
     re.IGNORECASE | re.DOTALL,
 )
@@ -153,19 +165,19 @@ def _gateway_provider_error_reply(text: str) -> str:
     """Map raw provider/API errors to a short user-safe Telegram reply."""
     if _GATEWAY_AUTH_ERROR_RE.search(text):
         return (
-            "⚠️ Provider authentication failed. Check the configured credentials; "
-            "raw provider details are in the gateway logs."
+            "⚠️ 服务商认证失败。请检查已配置的凭据；"
+            "原始服务商详情已记录在网关日志中。"
         )
     if _GATEWAY_PROVIDER_POLICY_RE.search(text):
         return (
-            "⚠️ The model provider rejected the request. I kept the raw provider "
-            "error out of chat; check gateway logs for details or try rephrasing."
+            "⚠️ 模型服务商拒绝了此请求。我已将原始服务商报错"
+            "挡在聊天之外；详情见网关日志，或尝试换一种表述。"
         )
     if _GATEWAY_RATE_LIMIT_RE.search(text):
-        return "⏱️ The model provider is rate-limiting requests. Please wait a moment and try again."
+        return "⏱️ 模型服务商正在限流。请稍候片刻后重试。"
     return (
-        "⚠️ The model provider failed after retries. I kept raw provider details "
-        "out of chat; check gateway logs for diagnostics."
+        "⚠️ 模型服务商多次重试后仍失败。我已将原始服务商详情"
+        "挡在聊天之外；诊断信息见网关日志。"
     )
 
 
@@ -179,6 +191,11 @@ _GATEWAY_PROVIDER_ERROR_SHAPE_RE = re.compile(
     r"|http\s*\d{3}\b"
     r"|incorrect\s+api\s+key"
     r"|invalid\s+api\s+key"
+    # 中文文案（UI 汉化后，provider 报错前缀改写仍需生效）
+    r"|重试\s*\d+\s*次后"
+    r"|不可重试的错误"
+    r"|服务商安全过滤"
+    r"|认证失败"
     r")",
     re.IGNORECASE,
 )

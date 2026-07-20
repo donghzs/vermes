@@ -251,8 +251,8 @@ def _get_continuation_prompt(is_partial_stub: bool, dropped_tools: Optional[List
 # ``content_policy_blocked``) end with the same actionable next steps, so they
 # share one trailer to keep the guidance from drifting between the two sites.
 _CONTENT_POLICY_RECOVERY_HINT = (
-    "Try rephrasing the request, narrowing the context, or "
-    "adding a fallback provider with `hermes fallback add`."
+    "可以尝试换一种表述、缩小上下文范围，或"
+    "使用 `hermes fallback add` 添加一个备用服务商。"
 )
 
 
@@ -965,9 +965,8 @@ def run_conversation(
         try:
             if agent._cleanup_dead_connections():
                 agent._emit_status(
-                    "🔌 Detected stale connections from a previous provider "
-                    "issue - cleaned up automatically. Proceeding with fresh "
-                    "connection."
+                    "🔌 检测到上一个服务商遗留的失效连接 "
+                    "—— 已自动清理，正在使用新连接继续。"
                 )
         except Exception:
             pass
@@ -1141,9 +1140,9 @@ def run_conversation(
                 f"{agent.context_compressor.context_length:,}",
             )
             agent._emit_status(
-                f"📦 Preflight compression: ~{_preflight_tokens:,} tokens "
-                f">= {agent.context_compressor.threshold_tokens:,} threshold. "
-                "This may take a moment."
+                f"📦 预检压缩：约 {_preflight_tokens:,} tokens "
+                f"≥ {agent.context_compressor.threshold_tokens:,} 阈值。"
+                "这可能需要一点时间。"
             )
             # May need multiple passes for very large sessions with small
             # context windows (each pass summarises the middle N turns).
@@ -1232,8 +1231,8 @@ def run_conversation(
             logger.info("Scheduler proactive compression: mode=%s tokens=~%s reason=%s",
                         _sched_decision.mode, f"{_sched_tokens:,}", _sched_decision.reason)
             agent._emit_status(
-                f"📦 Proactive compression ({_sched_decision.mode}): ~{_sched_tokens:,} tokens. "
-                "This may take a moment."
+                f"📦 主动压缩（{_sched_decision.mode}）：约 {_sched_tokens:,} tokens。"
+                "这可能需要一点时间。"
             )
             _orig_len = len(messages)
             messages, active_system_prompt = agent._compress_context(
@@ -1419,7 +1418,7 @@ def run_conversation(
         elif not agent.iteration_budget.consume():
             _turn_exit_reason = "budget_exhausted"
             if not agent.quiet_mode:
-                agent._safe_print(f"\n⚠️  Iteration budget exhausted ({agent.iteration_budget.used}/{agent.iteration_budget.max_total} iterations used)")
+                agent._safe_print(f"\n⚠️  迭代次数预算已用尽（已用 {agent.iteration_budget.used}/{agent.iteration_budget.max_total} 次）")
             break
 
         # Fire step_callback for gateway hooks (agent:step event)
@@ -1788,7 +1787,7 @@ def run_conversation(
                     # rate-limit symptom.  Switch to fallback immediately
                     # rather than retrying with extended backoff.
                     if agent._fallback_index < len(agent._fallback_chain):
-                        agent._emit_status("⚠️ Empty/malformed response - switching to fallback...")
+                        agent._emit_status("⚠️ 响应为空或格式错误 —— 正在切换到备用服务商……")
                     if agent._try_activate_fallback():
                         active_system_prompt = _sync_failover_system_message(
                             agent, api_messages, active_system_prompt)
@@ -1860,7 +1859,7 @@ def run_conversation(
 
                     if retry_count >= max_retries:
                         # Try fallback before giving up
-                        agent._emit_status(f"⚠️ Max retries ({max_retries}) for invalid responses - trying fallback...")
+                        agent._emit_status(f"⚠️ 无效响应已达最大重试次数（{max_retries}）—— 正在尝试备用服务商……")
                         if agent._try_activate_fallback():
                             active_system_prompt = _sync_failover_system_message(
                                 agent, api_messages, active_system_prompt)
@@ -1868,7 +1867,7 @@ def run_conversation(
                             compression_attempts = 0
                             primary_recovery_attempted = False
                             continue
-                        agent._emit_status(f"❌ Max retries ({max_retries}) exceeded for invalid responses. Giving up.")
+                        agent._emit_status(f"❌ 无效响应超过最大重试次数（{max_retries}）。已放弃。")
                         logging.error(f"{agent.log_prefix}Invalid API response after {max_retries} retries.")
                         agent._persist_session(messages, conversation_history)
                         return {
@@ -2002,7 +2001,7 @@ def run_conversation(
                     # refuse); otherwise surface the refusal terminally.
                     if agent._has_pending_fallback():
                         agent._buffer_status(
-                            "⚠️ Model declined to respond (safety refusal) - trying fallback..."
+                            "⚠️ 模型拒绝响应（安全策略拒绝）—— 正在尝试备用服务商……"
                         )
                     if agent._try_activate_fallback():
                         active_system_prompt = _sync_failover_system_message(
@@ -2025,17 +2024,17 @@ def run_conversation(
                         _refusal_log or "(no text)",
                     )
                     agent._emit_status(
-                        "⚠️ The model declined to respond to this request (safety refusal)."
+                        "⚠️ 模型拒绝响应此请求（安全策略拒绝）。"
                     )
 
                     _refusal_detail = (
-                        f"Model's explanation: {_refusal_text}"
+                        f"模型的解释：{_refusal_text}"
                         if _refusal_text
-                        else "The model returned no explanation."
+                        else "模型未给出任何解释。"
                     )
                     _refusal_response = (
-                        "⚠️  The model declined to respond to this request "
-                        "(safety refusal - not a Hermes/gateway failure).\n\n"
+                        "⚠️  模型拒绝响应此请求 "
+                        "（安全策略拒绝 —— 并非 Hermes/网关故障）。\n\n"
                         f"{_refusal_detail}\n\n"
                         f"{_CONTENT_POLICY_RECOVERY_HINT}"
                     )
@@ -2115,12 +2114,12 @@ def run_conversation(
                         # CLI (response box) and gateway (chat message) both
                         # display it naturally instead of a suppressed error.
                         _exhaust_response = (
-                            "⚠️ **Thinking Budget Exhausted**\n\n"
-                            "The model used all its output tokens on reasoning "
-                            "and had none left for the actual response.\n\n"
-                            "To fix this:\n"
-                            "→ Lower reasoning effort: `/thinkon low` or `/thinkon minimal`\n"
-                            "→ Or switch to a larger/non-reasoning model with `/model`"
+                            "⚠️ **思考预算已用尽**\n\n"
+                            "模型把全部输出 token 都用在了推理上，"
+                            "没有余量生成实际回答。\n\n"
+                            "解决方法：\n"
+                            "→ 降低推理强度：`/thinkon low` 或 `/thinkon minimal`\n"
+                            "→ 或用 `/model` 切换到更大的/非推理模型"
                         )
                         agent._cleanup_task_resources(effective_task_id)
                         agent._persist_session(messages, conversation_history)
@@ -3019,8 +3018,8 @@ def run_conversation(
                         conversation_history = None
                         if len(messages) < original_len or old_ctx > _reduced_ctx:
                             agent._emit_status(
-                                f"🗜️ Context reduced to {_reduced_ctx:,} tokens "
-                                f"(was {old_ctx:,}), retrying..."
+                                f"🗜️ 上下文已缩减至 {_reduced_ctx:,} tokens "
+                                f"（原为 {old_ctx:,}），正在重试……"
                             )
                             time.sleep(2)
                             restart_with_compressed_messages = True
@@ -3047,7 +3046,7 @@ def run_conversation(
                         base_url=getattr(agent, "base_url", None),
                     )
                     if not pool_may_recover:
-                        agent._emit_status("⚠️ Rate limited - switching to fallback provider...")
+                        agent._emit_status("⚠️ 触发限流 —— 正在切换到备用服务商……")
                         if agent._try_activate_fallback(reason=classified.reason):
                             active_system_prompt = _sync_failover_system_message(
                                 agent, api_messages, active_system_prompt)
@@ -3078,8 +3077,8 @@ def run_conversation(
                 ):
                     auth_failover_attempted = True
                     agent._buffer_status(
-                        "🔐 Authentication failed and could not be refreshed - "
-                        "switching to fallback provider..."
+                        "🔐 认证失败且无法刷新 —— "
+                        "正在切换到备用服务商……"
                     )
                     if agent._try_activate_fallback(reason=classified.reason):
                         active_system_prompt = _sync_failover_system_message(
@@ -3207,7 +3206,7 @@ def run_conversation(
                             "failed": True,
                             "compression_exhausted": True,
                         }
-                    agent._emit_status(f"⚠️  Request payload too large (413) - compression attempt {compression_attempts}/{max_compression_attempts}...")
+                    agent._emit_status(f"⚠️  请求体过大（413）—— 正在尝试压缩 {compression_attempts}/{max_compression_attempts}……")
 
                     original_len = len(messages)
                     messages, active_system_prompt = agent._compress_context(
@@ -3220,7 +3219,7 @@ def run_conversation(
                     conversation_history = None
 
                     if len(messages) < original_len:
-                        agent._emit_status(f"🗜️ Compressed {original_len} → {len(messages)} messages, retrying...")
+                        agent._emit_status(f"🗜️ 已压缩 {original_len} → {len(messages)} 条消息，正在重试……")
                         time.sleep(2)  # Brief pause between compression retries
                         restart_with_compressed_messages = True
                         break
@@ -3364,7 +3363,7 @@ def run_conversation(
                             "failed": True,
                             "compression_exhausted": True,
                         }
-                    agent._emit_status(f"🗜️ Context too large (~{approx_tokens:,} tokens) - compressing ({compression_attempts}/{max_compression_attempts})...")
+                    agent._emit_status(f"🗜️ 上下文过大（约 {approx_tokens:,} tokens）—— 正在压缩（{compression_attempts}/{max_compression_attempts}）……")
 
                     original_len = len(messages)
                     messages, active_system_prompt = agent._compress_context(
@@ -3378,7 +3377,7 @@ def run_conversation(
 
                     if len(messages) < original_len or new_ctx and new_ctx < old_ctx:
                         if len(messages) < original_len:
-                            agent._emit_status(f"🗜️ Compressed {original_len} → {len(messages)} messages, retrying...")
+                            agent._emit_status(f"🗜️ 已压缩 {original_len} → {len(messages)} 条消息，正在重试……")
                         time.sleep(2)  # Brief pause between compression retries
                         restart_with_compressed_messages = True
                         break
@@ -3443,7 +3442,7 @@ def run_conversation(
                 if is_client_error:
                     # Try fallback before aborting - a different provider
                     # may not have the same issue (rate limit, auth, etc.)
-                    agent._emit_status(f"⚠️ Non-retryable error (HTTP {status_code}) - trying fallback...")
+                    agent._emit_status(f"⚠️ 不可重试的错误（HTTP {status_code}）—— 正在尝试备用服务商……")
                     if agent._try_activate_fallback():
                         active_system_prompt = _sync_failover_system_message(
                             agent, api_messages, active_system_prompt)
@@ -3467,12 +3466,12 @@ def run_conversation(
                     _nonretryable_summary = agent._summarize_api_error(api_error)
                     if classified.reason == FailoverReason.content_policy_blocked:
                         agent._emit_status(
-                            f"❌ Provider safety filter blocked this request: "
+                            f"❌ 服务商安全过滤拦截了此请求："
                             f"{_nonretryable_summary}"
                         )
                     else:
                         agent._emit_status(
-                            f"❌ Non-retryable error (HTTP {status_code}): "
+                            f"❌ 不可重试的错误（HTTP {status_code}）："
                             f"{_nonretryable_summary}"
                         )
                     agent._vprint(f"{agent.log_prefix}❌ Non-retryable client error (HTTP {status_code}). Aborting.", force=True)
@@ -3532,7 +3531,7 @@ def run_conversation(
                         retry_count = 0
                         continue
                     # Try fallback before giving up entirely
-                    agent._emit_status(f"⚠️ Max retries ({max_retries}) exhausted - trying fallback...")
+                    agent._emit_status(f"⚠️ 已用尽最大重试次数（{max_retries}）—— 正在尝试备用服务商……")
                     if agent._try_activate_fallback():
                         active_system_prompt = _sync_failover_system_message(
                             agent, api_messages, active_system_prompt)
@@ -3542,9 +3541,9 @@ def run_conversation(
                         continue
                     _final_summary = agent._summarize_api_error(api_error)
                     if is_rate_limited:
-                        agent._emit_status(f"❌ Rate limited after {max_retries} retries - {_final_summary}")
+                        agent._emit_status(f"❌ 重试 {max_retries} 次后仍被限流 —— {_final_summary}")
                     else:
-                        agent._emit_status(f"❌ API failed after {max_retries} retries - {_final_summary}")
+                        agent._emit_status(f"❌ 重试 {max_retries} 次后 API 仍失败 —— {_final_summary}")
                     agent._vprint(f"{agent.log_prefix}   💀 Final error: {_final_summary}", force=True)
 
                     # Detect SSE stream-drop pattern (e.g. "Network
@@ -3618,9 +3617,9 @@ def run_conversation(
                                 pass
                 wait_time = _retry_after if _retry_after else jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
                 if is_rate_limited:
-                    agent._emit_status(f"⏱️ Rate limited. Waiting {wait_time:.1f}s (attempt {retry_count + 1}/{max_retries})...")
+                    agent._emit_status(f"⏱️ 触发限流，等待 {wait_time:.1f}s（第 {retry_count + 1}/{max_retries} 次尝试）……")
                 else:
-                    agent._emit_status(f"⏳ Retrying in {wait_time:.1f}s (attempt {retry_count}/{max_retries})...")
+                    agent._emit_status(f"⏳ {wait_time:.1f}s 后重试（第 {retry_count}/{max_retries} 次尝试）……")
                 logger.warning(
                     "Retrying API call in %ss (attempt %s/%s) %s error=%s",
                     wait_time,
@@ -4127,7 +4126,7 @@ def run_conversation(
                     _turn_exit_reason = "guardrail_halt"
                     final_response = agent._toolguard_controlled_halt_response(decision)
                     agent._emit_status(
-                        f"⚠️ Tool guardrail halted {decision.tool_name}: {decision.code}"
+                        f"⚠️ 工具防护已拦截 {decision.tool_name}：{decision.code}"
                     )
                     messages.append({"role": "assistant", "content": final_response})
                     break
@@ -4232,8 +4231,8 @@ def run_conversation(
                             len(_recovered),
                         )
                         agent._emit_status(
-                            "↻ Stream interrupted - using delivered content "
-                            "as final response"
+                            "↻ 流式响应中断 —— 使用已接收内容 "
+                            "作为最终响应"
                         )
                         final_response = _recovered
                         agent._response_was_previewed = True
@@ -4253,7 +4252,7 @@ def run_conversation(
                     if fallback and getattr(agent, '_last_content_tools_all_housekeeping', False):
                         _turn_exit_reason = "fallback_prior_turn_content"
                         logger.info("Empty follow-up after tool calls - using prior turn content as final response")
-                        agent._emit_status("↻ Empty response after tool calls - using earlier content as final answer")
+                        agent._emit_status("↻ 工具调用后响应为空 —— 使用先前内容作为最终回答")
                         agent._last_content_with_tools = None
                         agent._last_content_tools_all_housekeeping = False
                         agent._empty_content_retries = 0
@@ -4309,8 +4308,8 @@ def run_conversation(
                             "to continue processing"
                         )
                         agent._emit_status(
-                            "⚠️ Model returned empty after tool calls - "
-                            "nudging to continue"
+                            "⚠️ 模型在工具调用后返回空响应 —— "
+                            "正在提示其继续"
                         )
                         # Append the empty assistant message first so the
                         # message sequence stays valid:
@@ -4355,8 +4354,8 @@ def run_conversation(
                             agent._thinking_prefill_retries,
                         )
                         agent._emit_status(
-                            f"↻ Thinking-only response - prefilling to continue "
-                            f"({agent._thinking_prefill_retries}/2)"
+                            f"↻ 仅有思考、无正式回答 —— 正在预填以继续 "
+                            f"（{agent._thinking_prefill_retries}/2）"
                         )
                         interim_msg = agent._build_assistant_message(
                             assistant_message, "incomplete"
@@ -4391,8 +4390,8 @@ def run_conversation(
                             agent._empty_content_retries, agent.model,
                         )
                         agent._emit_status(
-                            f"⚠️ Empty response from model - retrying "
-                            f"({agent._empty_content_retries}/3)"
+                            f"⚠️ 模型返回空响应 —— 正在重试 "
+                            f"（{agent._empty_content_retries}/3）"
                         )
                         continue
 
@@ -4410,16 +4409,16 @@ def run_conversation(
                             agent.provider,
                         )
                         agent._emit_status(
-                            "⚠️ Model returning empty responses - "
-                            "switching to fallback provider..."
+                            "⚠️ 模型持续返回空响应 —— "
+                            "正在切换到备用服务商……"
                         )
                         if agent._try_activate_fallback():
                             active_system_prompt = _sync_failover_system_message(
                                 agent, api_messages, active_system_prompt)
                             agent._empty_content_retries = 0
                             agent._emit_status(
-                                f"↻ Switched to fallback: {agent.model} "
-                                f"({agent.provider})"
+                                f"↻ 已切换到备用服务商：{agent.model} "
+                                f"（{agent.provider}）"
                             )
                             logger.info(
                                 "Fallback activated after empty responses: "
@@ -4452,8 +4451,8 @@ def run_conversation(
                             "Reasoning: %s", reasoning_preview,
                         )
                         agent._emit_status(
-                            "⚠️ Model produced reasoning but no visible "
-                            "response after all retries. Returning empty."
+                            "⚠️ 多次重试后模型只有推理、没有可见回答。"
+                            "返回空结果。"
                         )
                     else:
                         logger.warning(
@@ -4464,9 +4463,9 @@ def run_conversation(
                             agent.provider,
                         )
                         agent._emit_status(
-                            "❌ Model returned no content after all retries"
-                            + (" and fallback attempts." if agent._fallback_chain else
-                               ". No fallback providers configured.")
+                            "❌ 多次重试后模型仍无任何内容返回"
+                            + ("，且备用服务商也已尝试。" if agent._fallback_chain else
+                               "。未配置备用服务商。")
                         )
 
                     final_response = "(empty)"
@@ -4596,13 +4595,13 @@ def run_conversation(
         # user message and makes a single toolless request.
         _turn_exit_reason = f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
         agent._emit_status(
-            f"⚠️ Iteration budget exhausted ({api_call_count}/{agent.max_iterations}) "
-            "- asking model to summarise"
+            f"⚠️ 迭代次数预算已用尽（{api_call_count}/{agent.max_iterations}）"
+            "—— 正在请模型进行总结"
         )
         if not agent.quiet_mode:
             agent._safe_print(
-                f"\n⚠️  Iteration budget exhausted ({api_call_count}/{agent.max_iterations}) "
-                "- requesting summary..."
+                f"\n⚠️  迭代次数预算已用尽（{api_call_count}/{agent.max_iterations}）"
+                "—— 正在请求总结……"
             )
         final_response = agent._handle_max_iterations(messages, api_call_count)
 

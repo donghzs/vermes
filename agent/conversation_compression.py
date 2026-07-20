@@ -45,9 +45,9 @@ logger = logging.getLogger(__name__)
 # drivers like the desktop app can show an explicit "Summarizing…" indicator
 # instead of the transcript appearing to silently reset. Keep the marker phrase
 # intact if you reword COMPACTION_STATUS.
-COMPACTION_STATUS_MARKER = "Compacting context"
+COMPACTION_STATUS_MARKER = "正在压缩上下文"
 COMPACTION_STATUS = (
-    f"🗜️ {COMPACTION_STATUS_MARKER} — summarizing earlier conversation so I can continue..."
+    f"🗜️ {COMPACTION_STATUS_MARKER} —— 正在总结此前的对话，以便我继续……"
 )
 
 
@@ -112,17 +112,16 @@ def check_compression_model_feasibility(agent: Any) -> None:
         if client is None or not aux_model:
             if _aux_cfg_provider and _aux_cfg_provider != "auto":
                 msg = (
-                    "⚠ Configured auxiliary compression provider "
-                    f"'{_aux_cfg_provider}' is unavailable — context "
-                    "compression will drop middle turns without a summary. "
-                    "Check auxiliary.compression in config.yaml and "
-                    "reauthenticate that provider."
+                    f"⚠ 已配置的辅助压缩服务商 '{_aux_cfg_provider}' 当前不可用 "
+                    "—— 上下文压缩将直接丢弃中间轮次且不生成摘要。"
+                    "请检查 config.yaml 中的 auxiliary.compression 配置，"
+                    "并重新对该服务商进行认证。"
                 )
             else:
                 msg = (
-                    "⚠ No auxiliary LLM provider configured — context "
-                    "compression will drop middle turns without a summary. "
-                    "Run `hermes setup` or set OPENROUTER_API_KEY."
+                    "⚠ 未配置辅助 LLM 服务商 —— 上下文压缩将直接丢弃"
+                    "中间轮次且不生成摘要。"
+                    "请运行 `hermes setup` 或设置 OPENROUTER_API_KEY。"
                 )
             agent._compression_warning = msg
             agent._emit_status(msg)
@@ -223,18 +222,18 @@ def check_compression_model_feasibility(agent: Any) -> None:
             )
             _aux_label = f"{aux_model} ({_aux_provider_label})"
             msg = (
-                f"⚠ Compression model {_aux_label} context is "
-                f"{aux_context:,} tokens, but the main model "
-                f"{_main_label}'s compression threshold was "
-                f"{old_threshold:,} tokens. "
-                f"Auto-lowered this session's threshold to "
-                f"{new_threshold:,} tokens so compression can run.\n"
-                f"  To make this permanent, edit config.yaml — either:\n"
-                f"  1. Use a larger compression model:\n"
+                f"⚠ 压缩模型 {_aux_label} 的上下文为 "
+                f"{aux_context:,} tokens，而主模型 "
+                f"{_main_label} 的压缩阈值为 "
+                f"{old_threshold:,} tokens。"
+                f"已自动把本次会话的阈值下调至 "
+                f"{new_threshold:,} tokens，以便压缩能够运行。\n"
+                f"  若要永久生效，请编辑 config.yaml —— 二选一：\n"
+                f"  1. 换用上下文更大的压缩模型：\n"
                 f"       auxiliary:\n"
                 f"         compression:\n"
-                f"           model: <model-with-{old_threshold:,}+-context>\n"
-                f"  2. Lower the compression threshold:\n"
+                f"           model: <上下文 {old_threshold:,}+ 的模型>\n"
+                f"  2. 调低压缩阈值：\n"
                 f"       compression:\n"
                 f"         threshold: 0.{safe_pct:02d}"
             )
@@ -424,9 +423,9 @@ def compress_context(
                 agent._last_compression_lock_warning_sid = _lock_sid
                 try:
                     agent._emit_warning(
-                        "⚠ Skipping concurrent compression — another path "
-                        "is already compressing this session. Will retry "
-                        "after it finishes."
+                        "⚠ 跳过并发压缩 —— 另一路径 "
+                        "正在压缩本会话。将在其完成后 "
+                        "重试。"
                     )
                 except Exception:
                     pass
@@ -472,9 +471,9 @@ def compress_context(
         if getattr(agent, "_last_compression_summary_warning", None) != _err:
             agent._last_compression_summary_warning = _err
             agent._emit_warning(
-                f"⚠ Compression aborted: {_err}. "
-                "No messages were dropped — conversation continues unchanged. "
-                "Run /compress to retry, or /new to start a fresh session."
+                f"⚠ 压缩已中止：{_err}。"
+                "未丢弃任何消息 —— 对话将原样继续。"
+                "可运行 /compress 重试，或用 /new 开启新会话。"
             )
         _existing_sp = getattr(agent, "_cached_system_prompt", None)
         if not _existing_sp:
@@ -487,8 +486,8 @@ def compress_context(
         if getattr(agent, "_last_compression_summary_warning", None) != summary_error:
             agent._last_compression_summary_warning = summary_error
             agent._emit_warning(
-                f"⚠ Compression summary failed: {summary_error}. "
-                "Inserted a fallback context marker."
+                f"⚠ 压缩摘要失败：{summary_error}。"
+                "已插入一个兜底的上下文标记。"
             )
     else:
         # No hard failure — but did the configured aux model error out
@@ -503,9 +502,9 @@ def compress_context(
             if getattr(agent, "_last_aux_fallback_warning_key", None) != _aux_key:
                 agent._last_aux_fallback_warning_key = _aux_key
                 agent._emit_warning(
-                    f"ℹ Configured compression model '{_aux_fail_model}' failed "
-                    f"({_aux_fail_err or 'unknown error'}). Recovered using main model — "
-                    "check auxiliary.compression.model in config.yaml."
+                    f"ℹ 已配置的压缩模型 '{_aux_fail_model}' 失败 "
+                    f"（{_aux_fail_err or 'unknown error'}）。已改用主模型恢复 —— "
+                    "请检查 config.yaml 中的 auxiliary.compression.model。"
                 )
 
     todo_snapshot = agent._todo_store.format_for_injection()
@@ -728,8 +727,8 @@ def compress_context(
     _cc = agent.context_compressor.compression_count
     if _cc >= 2:
         _cc_msg = (
-            f"{agent.log_prefix}⚠️  Session compressed {_cc} times — "
-            f"accuracy may degrade. Consider /new to start fresh."
+            f"{agent.log_prefix}⚠️  本次会话已压缩 {_cc} 次 —— "
+            f"准确度可能下降。建议使用 /new 开启新会话。"
         )
         agent._compression_warning = _cc_msg
         agent._emit_status(_cc_msg)

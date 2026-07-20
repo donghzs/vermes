@@ -87,14 +87,14 @@ def _check_message_length(user_message: str) -> Optional[tuple[str, dict]]:
     """Check that the user message is non-empty and not excessively long."""
     if not user_message or not user_message.strip():
         return (
-            "User message is empty — the agent will receive no task content.",
+            "用户消息为空 —— 智能体将收不到任何任务内容。",
             {"check": "message_length", "issue": "empty"},
         )
     if len(user_message) > _MAX_MESSAGE_LENGTH:
         return (
-            f"User message is very long ({len(user_message)} chars, "
-            f"max {_MAX_MESSAGE_LENGTH}) — this may cause performance issues "
-            f"or exceed context limits.",
+            f"用户消息过长（{len(user_message)} 个字符，"
+            f"上限 {_MAX_MESSAGE_LENGTH}）—— 可能导致性能下降"
+            f"或超出上下文长度限制。",
             {
                 "check": "message_length",
                 "issue": "too_long",
@@ -114,8 +114,8 @@ def _check_iteration_budget(agent: Any) -> Optional[tuple[str, dict]]:
         remaining = budget.remaining
         if remaining <= 0:
             return (
-                f"Iteration budget is exhausted ({budget.used}/{budget.max_total} "
-                "used) — the agent may not be able to complete any tool calls.",
+                f"迭代次数预算已用尽（已用 {budget.used}/{budget.max_total}）"
+                "—— 智能体可能无法再执行任何工具调用。",
                 {
                     "check": "iteration_budget",
                     "issue": "exhausted",
@@ -143,8 +143,8 @@ def _check_disabled_toolsets(agent: Any) -> Optional[tuple[str, dict]]:
                 disabled_list = []
         if disabled_list:
             return (
-                f"Toolsets disabled for this session: {', '.join(disabled_list)}. "
-                "Some tools may be unavailable.",
+                f"本次会话已禁用的工具集：{', '.join(disabled_list)}。"
+                "部分工具可能不可用。",
                 {
                     "check": "disabled_toolsets",
                     "issue": "has_disabled",

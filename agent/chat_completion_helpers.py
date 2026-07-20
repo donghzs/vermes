@@ -378,15 +378,15 @@ def interruptible_api_call(agent, api_kwargs: dict):
             )
             if _silent_hint:
                 agent._buffer_status(
-                    f"⚠️ No first byte from provider in {int(_elapsed)}s "
-                    f"(codex stream, model: {api_kwargs.get('model', 'unknown')}). "
-                    f"Reconnecting. {_silent_hint}"
+                    f"⚠️ {int(_elapsed)}s 内未收到服务商首字节 "
+                    f"（codex 流式，模型：{api_kwargs.get('model', 'unknown')}）。"
+                    f"正在重连。{_silent_hint}"
                 )
             else:
                 agent._buffer_status(
-                    f"⚠️ No first byte from provider in {int(_elapsed)}s "
-                    f"(codex stream, model: {api_kwargs.get('model', 'unknown')}). "
-                    f"Reconnecting."
+                    f"⚠️ {int(_elapsed)}s 内未收到服务商首字节 "
+                    f"（codex 流式，模型：{api_kwargs.get('model', 'unknown')}）。"
+                    f"正在重连。"
                 )
             try:
                 _close_request_client_once("codex_ttfb_kill")
@@ -430,9 +430,9 @@ def interruptible_api_call(agent, api_kwargs: dict):
                 f"{_est_tokens_for_codex_watchdog:,}",
             )
             agent._buffer_status(
-                f"⚠️ Codex stream sent no events for {int(_event_stale_elapsed)}s "
-                f"after first byte (model: {api_kwargs.get('model', 'unknown')}). "
-                f"Reconnecting."
+                f"⚠️ Codex 流在首字节后 {int(_event_stale_elapsed)}s 内未发送任何事件 "
+                f"（模型：{api_kwargs.get('model', 'unknown')}）。"
+                f"正在重连。"
             )
             try:
                 _close_request_client_once("codex_stream_idle_kill")
@@ -468,15 +468,15 @@ def interruptible_api_call(agent, api_kwargs: dict):
             )
             if _silent_hint:
                 agent._buffer_status(
-                    f"⚠️ No response from provider for {int(_elapsed)}s "
-                    f"(non-streaming, model: {api_kwargs.get('model', 'unknown')}). "
+                    f"⚠️ {int(_elapsed)}s 内服务商无响应 "
+                    f"（非流式，模型：{api_kwargs.get('model', 'unknown')}）。"
                     f"{_silent_hint}"
                 )
             else:
                 agent._buffer_status(
-                    f"⚠️ No response from provider for {int(_elapsed)}s "
-                    f"(non-streaming, model: {api_kwargs.get('model', 'unknown')}). "
-                    f"Aborting call."
+                    f"⚠️ {int(_elapsed)}s 内服务商无响应 "
+                    f"（非流式，模型：{api_kwargs.get('model', 'unknown')}）。"
+                    f"正在中止调用。"
                 )
             try:
                 if agent.api_mode == "anthropic_messages":
@@ -1278,8 +1278,8 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
         rewrite_prompt_model_identity(agent, fb_model, fb_provider)
 
         agent._buffer_status(
-            f"🔄 Primary model failed — switching to fallback: "
-            f"{fb_model} via {fb_provider}"
+            f"🔄 主模型失败 —— 正在切换到备用："
+            f"{fb_model}（经 {fb_provider}）"
         )
         logger.info(
             "Fallback activated: %s → %s (%s)",
@@ -2268,15 +2268,15 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                             diag=request_client_holder.get("diag"),
                         )
                         agent._buffer_status(
-                            "❌ Provider returned malformed streaming data after "
-                            f"{_max_stream_retries + 1} attempts. "
-                            "The provider may be experiencing issues — "
-                            "try again in a moment."
+                            "❌ 服务商在 "
+                            f"{_max_stream_retries + 1} 次尝试后仍返回格式错误的流式数据。"
+                            "服务商可能出现问题 —— "
+                            "请稍后再试。"
                             if _is_stream_parse_err else
-                            "❌ Connection to provider failed after "
-                            f"{_max_stream_retries + 1} attempts. "
-                            "The provider may be experiencing issues — "
-                            "try again in a moment."
+                            "❌ 在 "
+                            f"{_max_stream_retries + 1} 次尝试后仍无法连接到服务商。"
+                            "服务商可能出现问题 —— "
+                            "请稍后再试。"
                         )
                     else:
                         _err_lower = str(e).lower()
@@ -2287,10 +2287,10 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                         if _is_stream_unsupported:
                             agent._disable_streaming = True
                             agent._safe_print(
-                                "\n⚠  Streaming is not supported for this "
-                                "model/provider. Switching to non-streaming.\n"
-                                "   To avoid this delay, set display.streaming: false "
-                                "in config.yaml\n"
+                                "\n⚠  当前模型/服务商不支持流式输出。"
+                                "已切换为非流式。\n"
+                                "   若要避免此延迟，请在 config.yaml 中设置 "
+                                "display.streaming: false\n"
                             )
                         logger.info(
                             "Streaming failed before delivery: %s",
@@ -2375,10 +2375,10 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
             )
             agent._buffer_status(
-                f"⚠️ No response from provider for {int(_stale_elapsed)}s "
-                f"(model: {api_kwargs.get('model', 'unknown')}, "
-                f"context: ~{_est_ctx:,} tokens). "
-                f"Reconnecting..."
+                f"⚠️ {int(_stale_elapsed)}s 内服务商无响应 "
+                f"（模型：{api_kwargs.get('model', 'unknown')}，"
+                f"上下文约 {_est_ctx:,} tokens）。"
+                f"正在重连……"
             )
             try:
                 _close_request_client_once("stale_stream_kill")

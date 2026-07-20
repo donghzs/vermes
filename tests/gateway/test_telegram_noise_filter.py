@@ -22,6 +22,30 @@ def test_telegram_status_suppresses_auxiliary_and_retry_noise():
         assert _prepare_gateway_status_message(Platform.TELEGRAM, "warn", message) is None
 
 
+def test_telegram_status_suppresses_chinese_noise():
+    """汉化后的瞬时状态文案同样应在 Telegram 抑制（与英文分支一一对应）。"""
+    noisy_messages = [
+        "⚠ 压缩摘要失败：upstream error。已插入一个兜底的上下文标记。",
+        "ℹ 已配置的压缩模型 'small-model' 失败 （timeout）。已改用主模型恢复 —— 请检查 config.yaml 中的 auxiliary.compression.model。",
+        "⏳ 4.2s 后重试（第 1/3 次尝试）……",
+        "⏱️ 触发限流，等待 30.0s（第 2/3 次尝试）……",
+        "⚠️ 已用尽最大重试次数（3）—— 正在尝试备用服务商……",
+        "📦 预检压缩：约 819 tokens ≥ 200 阈值。这可能需要一点时间。",
+        "🔌 检测到上一个服务商遗留的失效连接 —— 已自动清理，正在使用新连接继续。",
+    ]
+    for message in noisy_messages:
+        assert _prepare_gateway_status_message(Platform.TELEGRAM, "warn", message) is None
+
+
+def test_telegram_sanitizes_chinese_provider_errors():
+    """汉化后的 provider 报错前缀仍应被改写为简短安全回复，不泄漏原始报错。"""
+    raw = "❌ 重试 3 次后 API 仍失败 —— HTTP 400: request blocked because Operation contains cybersecurity risk"
+    sanitized = _prepare_gateway_status_message(Platform.TELEGRAM, "lifecycle", raw)
+    assert sanitized is not None
+    assert "cybersecurity" not in sanitized.lower()
+    assert "HTTP 400" not in sanitized
+
+
 def test_non_telegram_status_is_unchanged():
     """The Telegram quieting policy must not hide CLI/Discord diagnostics."""
     message = "⏳ Retrying in 4.2s (attempt 1/3)..."
@@ -40,7 +64,7 @@ def test_telegram_status_sanitizes_raw_provider_security_errors():
     sanitized = _prepare_gateway_status_message(Platform.TELEGRAM, "lifecycle", raw)
 
     assert sanitized is not None
-    assert "provider rejected" in sanitized.lower()
+    assert "拒绝了此请求" in sanitized
     assert "cybersecurity risk" not in sanitized.lower()
     assert "HTTP 400" not in sanitized
     assert "req_123" not in sanitized
@@ -55,7 +79,7 @@ def test_telegram_final_response_sanitizes_raw_provider_errors():
 
     sanitized = _sanitize_gateway_final_response(Platform.TELEGRAM, raw)
 
-    assert "provider rejected" in sanitized.lower()
+    assert "拒绝了此请求" in sanitized
     assert "cybersecurity risk" not in sanitized.lower()
     assert "HTTP 400" not in sanitized
     assert "req_abc" not in sanitized
@@ -70,8 +94,8 @@ def test_telegram_final_response_redacts_auth_secrets():
 
     sanitized = _sanitize_gateway_final_response(Platform.TELEGRAM, raw)
 
-    assert "authentication failed" in sanitized.lower()
-    assert "check the configured credentials" in sanitized.lower()
+    assert "认证失败" in sanitized
+    assert "请检查已配置的凭据" in sanitized
     assert "sk-live" not in sanitized
 
 
