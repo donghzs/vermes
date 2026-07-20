@@ -1,5 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { toast } from '../utils/toast'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 
 const status = ref(null)
 const loading = ref(true)
@@ -10,15 +13,20 @@ const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详�
 const emergenceData = ref(null)
 const skillsData = ref(null)
 const selfModifyHistory = ref([])
+const _retryFns = {} // 失败可重试的函数引用
+
+function _fail(fnName, fn, errMsg) {
+  toast.error(`${fnName}失败: ${errMsg || '网络错误'}`)
+  _retryFns[fnName] = fn
+}
 
 async function fetchStatus() {
   try {
     const r = await fetch('/api/evolution/status')
-    if (r.ok) {
-      status.value = await r.json()
-    }
-  } catch {
-    // 静默失败
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    status.value = await r.json()
+  } catch (e) {
+    _fail('进化状态', fetchStatus, e.message)
   } finally {
     loading.value = false
   }
@@ -27,79 +35,78 @@ async function fetchStatus() {
 async function fetchAchievements() {
   try {
     const r = await fetch('/api/evolution/achievements?limit=5')
-    if (r.ok) {
-      achievements.value = await r.json()
-    }
-  } catch {
-    // 静默失败
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    achievements.value = await r.json()
+  } catch (e) {
+    _fail('成就列表', fetchAchievements, e.message)
   }
 }
 
 async function fetchDag() {
   try {
     const r = await fetch('/api/evolution/dag?limit=50')
-    if (r.ok) {
-      dagData.value = await r.json()
-    }
-  } catch {
-    // 静默失败
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    dagData.value = await r.json()
+  } catch (e) {
+    _fail('DAG关系', fetchDag, e.message)
   }
 }
 
 async function fetchEmergence() {
   try {
     const r = await fetch('/api/emergence/status')
-    if (r.ok) {
-      emergenceData.value = await r.json()
-    }
-  } catch {
-    // 静默失败
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    emergenceData.value = await r.json()
+  } catch (e) {
+    _fail('涌现状态', fetchEmergence, e.message)
   }
 }
 
 async function fetchSkills() {
   try {
     const r = await fetch('/api/emergence/skills')
-    if (r.ok) {
-      skillsData.value = await r.json()
-    }
-  } catch {
-    // 静默失败
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    skillsData.value = await r.json()
+  } catch (e) {
+    _fail('涌现技能', fetchSkills, e.message)
   }
 }
 
 async function confirmSkill(id) {
   try {
-    await fetch(`/api/emergence/skill/${id}/confirm`, { method: 'POST' })
+    const r = await fetch(`/api/emergence/skill/${id}/confirm`, { method: 'POST' })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
     await fetchSkills()
-  } catch {
-    // 静默失败
+    toast.success('技能已确认')
+  } catch (e) {
+    _fail('确认技能', () => confirmSkill(id), e.message)
   }
 }
 
 async function rejectSkill(id) {
   try {
-    await fetch(`/api/emergence/skill/${id}/reject`, { method: 'POST' })
+    const r = await fetch(`/api/emergence/skill/${id}/reject`, { method: 'POST' })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
     await fetchSkills()
-  } catch {
-    // 静默失败
+    toast.success('技能已拒绝')
+  } catch (e) {
+    _fail('拒绝技能', () => rejectSkill(id), e.message)
   }
 }
 
 async function fetchSelfModifyHistory() {
   try {
     const r = await fetch('/api/evolution/self_modify_history?limit=50')
-    if (r.ok) {
-      const data = await r.json()
-      selfModifyHistory.value = data.events || []
-    }
-  } catch {
-    // 静默失败
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const data = await r.json()
+    selfModifyHistory.value = data.events || []
+  } catch (e) {
+    _fail('自改写历史', fetchSelfModifyHistory, e.message)
   }
 }
 
 async function rollbackChange(target, backup) {
-  if (!confirm(`确定回滚此自我改写？\n\n${target}\n\n将恢复备份、撤销该次改写。此操作不可自动恢复。`)) {
+  if (!await confirm({ title: '回滚自我改写', message: `${target}\n\n将恢复备份、撤销该次改写。此操作不可自动恢复。`, confirmText: '回滚', danger: true })) {
     return
   }
   try {
@@ -111,14 +118,17 @@ async function rollbackChange(target, backup) {
     const data = await r.json()
     if (data.ok) {
       await fetchSelfModifyHistory()
+      toast.success('回滚成功')
+    } else {
+      throw new Error(data.detail || '未知错误')
     }
-  } catch {
-    // 静默失败
+  } catch (e) {
+    _fail('回滚改写', () => rollbackChange(target, backup), e.message)
   }
 }
 
 async function retractCapability(capName) {
-  if (!confirm(`确定撤回能力「${capName}」？\n\n撤回后该能力将不再被自动建议，但原始记录保留。`)) {
+  if (!await confirm({ title: '撤回能力', message: `撤回能力「${capName}」？\n\n撤回后该能力将不再被自动建议，但原始记录保留。`, confirmText: '撤回', danger: true })) {
     return
   }
   try {
@@ -130,9 +140,12 @@ async function retractCapability(capName) {
     const data = await r.json()
     if (data.ok) {
       await fetchSelfModifyHistory()
+      toast.success('能力已撤回')
+    } else {
+      throw new Error(data.detail || '未知错误')
     }
-  } catch {
-    // 静默失败
+  } catch (e) {
+    _fail('撤回能力', () => retractCapability(capName), e.message)
   }
 }
 
@@ -143,10 +156,13 @@ onMounted(() => {
   fetchEmergence()
   fetchSkills()
   fetchSelfModifyHistory()
-  // 每 30 秒刷新
+  // 每 30 秒刷新全部数据（含成就/DAG/技能）
   const timer = setInterval(() => {
     fetchStatus()
+    fetchAchievements()
+    fetchDag()
     fetchEmergence()
+    fetchSkills()
     fetchSelfModifyHistory()
   }, 30000)
   onUnmounted(() => clearInterval(timer))

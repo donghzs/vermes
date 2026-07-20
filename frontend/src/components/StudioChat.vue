@@ -235,9 +235,11 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 
 const router = useRouter()
 
@@ -332,8 +334,8 @@ function addToGallery(item) {
   if (gallery.value.length > 50) gallery.value = gallery.value.slice(0, 50)
   saveGallery()
 }
-function clearGallery() {
-  if (!confirm('清空所有生成历史？')) return
+async function clearGallery() {
+  if (!await confirm({ title: '清空历史', message: '清空所有生成历史？', confirmText: '清空', danger: true })) return
   gallery.value = []
   saveGallery()
 }
@@ -755,6 +757,16 @@ function goBack() {
   router.push('/')
 }
 
+// ── 卸载时清理所有视频轮询 timer，防内存泄漏 ──
+onUnmounted(() => {
+  messages.value.forEach(msg => {
+    if (msg._pollTimer) {
+      clearInterval(msg._pollTimer)
+      msg._pollTimer = null
+    }
+  })
+})
+
 function downloadResult(url) {
   const a = document.createElement('a')
   a.href = url
@@ -843,7 +855,7 @@ async function confirmAddProvider() {
 
 // 从后端删除厂商
 async function removeProvider(providerName) {
-  if (!confirm(`删除厂商「${providerName}」？`)) return
+  if (!await confirm({ title: '删除厂商', message: `删除厂商「${providerName}」？`, confirmText: '删除', danger: true })) return
   try {
     const resp = await fetch(`/api/studio/providers/${encodeURIComponent(providerName)}`, { method: 'DELETE' })
     const data = await resp.json()
@@ -861,10 +873,10 @@ async function removeProvider(providerName) {
   }
 }
 
-function deleteCurrentConfig() {
+async function deleteCurrentConfig() {
   const idx = Number(selectedConfigIndex.value)
   if (idx < 0 || idx >= savedConfigs.value.length) return
-  if (!confirm(`删除配置「${savedConfigs.value[idx].name}」？`)) return
+  if (!await confirm({ title: '删除配置', message: `删除配置「${savedConfigs.value[idx].name}」？`, confirmText: '删除', danger: true })) return
   savedConfigs.value.splice(idx, 1)
   selectedConfigIndex.value = -1
   saveSavedList()

@@ -5,6 +5,8 @@ import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
 import * as api from '../services/api'
 import { toast } from '../utils/toast'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 import ProviderCard from './ProviderCard.vue'
 
 // P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
@@ -183,7 +185,7 @@ function onRagDrop(e) {
 }
 
 async function deleteRagDoc(id) {
-  if (!confirm('删除这个文档？')) return
+  if (!await confirm({ title: '删除文档', message: '删除这个文档？', confirmText: '删除', danger: true })) return
   try {
     const resp = await fetch(`/api/rag/delete/${id}`, { method: 'DELETE' })
     const data = await resp.json()
@@ -411,7 +413,7 @@ function removeModel(p, modelId) {
 }
 
 async function deleteProvider(p) {
-  if (!confirm(`确定清除 ${p.name} 的 API Key 和模型配置？`)) return
+  if (!await confirm({ title: '清除配置', message: `确定清除 ${p.name} 的 API Key 和模型配置？`, confirmText: '清除', danger: true })) return
   const envKey = getEnvKey(p.id)
   try { await fetch('/api/env', { method: 'DELETE', headers: envHeaders(), body: JSON.stringify({ key: envKey }) }) } catch(e) {}
   p.key = ''; p.models = []; saveProvidersToStorage()
@@ -513,8 +515,8 @@ async function save() {
   saved.value = true; setTimeout(() => saved.value = false, 2000)
 }
 
-function clearAllSettings() {
-  if (!confirm('清除所有本地配置？\n\n这将清除：\n- 所有提供商 API Key 和模型列表\n- 当前模型选择\n- 微信登录状态\n- 试用 Token\n\n聊天记录不受影响。')) return
+async function clearAllSettings() {
+  if (!await confirm({ title: '清除所有配置', message: '这将清除：\n- 所有提供商 API Key 和模型列表\n- 当前模型选择\n- 微信登录状态\n- 试用 Token\n\n聊天记录不受影响。', confirmText: '全部清除', danger: true })) return
   const keys = []
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i)
@@ -602,7 +604,7 @@ async function saveService(sid) {
 async function clearService(sid) {
   const g = serviceGroups.value[sid]
   if (!g || !g.apiKeyEnv) return
-  if (!confirm('清除 ' + g.label + ' 的 API Key？')) return
+  if (!await confirm({ title: '清除 API Key', message: '清除 ' + g.label + ' 的 API Key？', confirmText: '清除', danger: true })) return
   try {
     const resp = await fetch('/api/env', {
       method: 'DELETE',

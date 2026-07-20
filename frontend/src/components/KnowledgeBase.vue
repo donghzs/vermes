@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import api from '../services/api.js'
+import { toast } from '../utils/toast'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 
 const documents = ref([])
 const loading = ref(false)
@@ -57,13 +60,13 @@ async function toggleChunks(docId) {
 }
 
 async function deleteDoc(docId) {
-  if (!confirm('确定删除这个文档吗？关联的检索 chunks 也会被删除。')) return
+  if (!await confirm({ title: '删除文档', message: '确定删除这个文档吗？关联的检索 chunks 也会被删除。', confirmText: '删除', danger: true })) return
   try {
     await api.ragDelete(docId)
     documents.value = documents.value.filter(d => d.id !== docId)
     delete chunks.value[docId]
   } catch (e) {
-    alert('删除失败: ' + e.message)
+    toast.error('删除失败: ' + e.message)
   }
 }
 

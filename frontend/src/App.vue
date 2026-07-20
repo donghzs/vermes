@@ -4,6 +4,7 @@ import ErrorBoundary from './components/ErrorBoundary.vue'
 import Sidebar from './components/Sidebar.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import ApprovalDialog from './components/ApprovalDialog.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import { useChatStore } from './stores/chat'
 
 const chat = useChatStore()
@@ -38,6 +39,7 @@ onMounted(async () => {
       </div>
       <ToastContainer />
       <ApprovalDialog />
+      <ConfirmDialog />
     </ErrorBoundary>
   </div>
 </template>

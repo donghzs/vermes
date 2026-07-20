@@ -3,6 +3,8 @@ import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
 import { useRouter } from 'vue-router'
 import { toast } from '../utils/toast'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
@@ -186,8 +188,8 @@ function onContextMenu(e, s) {
 
 function closeContextMenu() { contextMenu.value.show = false }
 
-function handleDelete(id) {
-  if (confirm('确定删除此会话？')) chat.deleteSession(id)
+async function handleDelete(id) {
+  if (await confirm({ title: '删除会话', message: '确定删除此会话？', confirmText: '删除', danger: true })) chat.deleteSession(id)
   closeContextMenu()
 }
 

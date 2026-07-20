@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import api from '../services/api.js'
+import { toast } from '../utils/toast'
 
 const skills = ref([])
 const toolsets = ref([])
@@ -62,7 +63,7 @@ async function toggleSkill(name, enabled) {
   } catch (e) {
     const skill = skills.value.find(s => s.name === name)
     if (skill) skill.enabled = !enabled
-    alert('切换失败: ' + e.message)
+    toast.error('切换失败: ' + e.message)
   }
 }
 

@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '../services/api.js'
+import { toast } from '../utils/toast'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 
 const servers = ref([])
 const loading = ref(false)
@@ -50,17 +53,17 @@ async function addServer() {
     newArgs.value = ''
     newEnv.value = ''
   } catch (e) {
-    alert('添加失败: ' + e.message)
+    toast.error('添加失败: ' + e.message)
   }
 }
 
 async function removeServer(name) {
-  if (!confirm(`确定删除 MCP server "${name}" 吗？`)) return
+  if (!await confirm({ title: '删除 MCP Server', message: `确定删除 MCP server "${name}" 吗？`, confirmText: '删除', danger: true })) return
   try {
     await api.mcpRemoveServer(name)
     servers.value = servers.value.filter(s => s.name !== name)
   } catch (e) {
-    alert('删除失败: ' + e.message)
+    toast.error('删除失败: ' + e.message)
   }
 }
 

@@ -295,9 +295,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { logger } from '@/utils/logger'
+import { useConfirm } from '../composables/useConfirm'
+const { confirm } = useConfirm()
 
 // ── 状态 ──
 const router = useRouter()
@@ -549,7 +551,9 @@ function scrollBottom() {
   })
 }
 
-// ── 视频轮询（per-message） ──
+// ── 视频轮询（per-message）──
+const _pollTimeouts = new Set()
+
 async function pollVideo(msg) {
   if (!msg.video_id || !baseUrl.value || !apiKey.value) return
   try {
@@ -562,62 +566,26 @@ async function pollVideo(msg) {
     } else if (data.note && data.note.includes('processing')) {
       msg.note = data.note
       msg.polling = true
-      setTimeout(() => pollVideo(msg), 5000)
+      const t = setTimeout(() => pollVideo(msg), 5000)
+      _pollTimeouts.add(t)
     } else if (data.error) {
       msg.error = data.error
       msg.polling = false
     }
   } catch (e) {
-    setTimeout(() => pollVideo(msg), 5000)
+    const t = setTimeout(() => pollVideo(msg), 5000)
+    _pollTimeouts.add(t)
   }
 }
+
+// ── 卸载时清理所有轮询 timeout ──
+onUnmounted(() => {
+  _pollTimeouts.forEach(t => clearTimeout(t))
+  _pollTimeouts.clear()
+})
 
 function goBack() {
   router.push('/')
-}
-
-function onVideoError() {
-  videoLoadError.value = true
-}
-
-// ── 视频轮询 ──
-let pollTimer = null
-
-async function pollVideoStatus(videoId) {
-  // 手动触发一次查询（停掉自动轮询避免冲突）
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-  await _checkVideoStatus(videoId)
-  // 如果还没完成，重新启动自动轮询
-  const r = result.value
-  if (!r || !r.video_url) {
-    pollTimer = setInterval(() => _checkVideoStatus(videoId), 5000)
-  }
-}
-
-async function _checkVideoStatus(videoId) {
-  if (!videoId || !baseUrl.value || !apiKey.value) return
-  try {
-    const resp = await fetch(`/api/studio/status/${videoId}?base_url=${encodeURIComponent(baseUrl.value)}&api_key=${encodeURIComponent(apiKey.value)}`)
-    const data = await resp.json()
-    if (data.success) {
-      clearInterval(pollTimer)
-      pollTimer = null
-      result.value = data
-      logger.log('STUDIO_VIDEO_COMPLETE:', JSON.stringify(data))
-    } else if (data.note && data.note.includes('processing')) {
-      result.value = { success: false, mode: 'video', video_id: videoId, note: data.note }
-    } else if (data.error) {
-      result.value = data
-      clearInterval(pollTimer)
-      pollTimer = null
-      logger.log('STUDIO_VIDEO_ERROR:', JSON.stringify(data))
-    }
-  } catch (e) {
-    // 轮询失败不中断
-  }
 }
 
 // ── 图片拖拽/上传 ──
@@ -750,10 +718,10 @@ function confirmSave() {
   saveName.value = ''
 }
 
-function deleteCurrentConfig() {
+async function deleteCurrentConfig() {
   const idx = Number(selectedConfigIndex.value)
   if (idx < 0 || idx >= savedConfigs.value.length) return
-  if (!confirm(`删除配置「${savedConfigs.value[idx].name}」？`)) return
+  if (!await confirm({ title: '删除配置', message: `删除配置「${savedConfigs.value[idx].name}」？`, confirmText: '删除', danger: true })) return
   savedConfigs.value.splice(idx, 1)
   selectedConfigIndex.value = -1
   saveSavedList()
