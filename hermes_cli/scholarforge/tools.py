@@ -138,11 +138,34 @@ _PROVIDER_FALLBACK_MODELS = {
 
 
 def _resolve_credentials():
-    """读取 config.yaml 获取凭证。直接读 config，绕过 _get_chat_credentials 避免编译版兼容问题。
+    """获取主 LLM 凭证。优先用主链路 _get_chat_credentials，回退到直接读 config。
+
+    统一逻辑：和 Vermes Agent 聊天用同一套凭证源，避免配置不一致。
     返回 dict(api_key, base_url, model, provider) 或 None。
     """
-    import yaml
+    # 优先：主链路凭证函数（和 Agent 聊天同一套）
+    try:
+        from hermes_cli.blueprints.chat import _get_chat_credentials
+        base_url, api_key, default_model = _get_chat_credentials()
+        if api_key and base_url:
+            from hermes_constants import get_hermes_home
+            import yaml as _yaml
+            cfg_path = get_hermes_home() / "config.yaml"
+            provider = ""
+            if cfg_path.exists():
+                with open(cfg_path, encoding="utf-8") as f:
+                    provider = (_yaml.safe_load(f) or {}).get("model", {}).get("provider", "")
+            return {
+                "api_key": api_key,
+                "base_url": base_url.rstrip("/"),
+                "model": default_model,
+                "provider": provider or "deepseek",
+            }
+    except Exception:
+        pass
 
+    # 回退：直接读 config.yaml + .env（PyInstaller 兼容场景）
+    import yaml
     from hermes_constants import get_hermes_home
 
     home = get_hermes_home()
@@ -169,14 +192,12 @@ def _resolve_credentials():
     if not api_key:
         env_path = home / ".env"
         if env_path.exists():
-            # 构建 env_key：provider 名称大写 + _API_KEY
             env_var_name = f"{provider.upper()}_API_KEY"
             for line in env_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if line.startswith(f"{env_var_name}="):
                     api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
                     break
-            # 也尝试 OPENAI_API_KEY 作为通用回退
             if not api_key:
                 for line in env_path.read_text(encoding="utf-8").splitlines():
                     line = line.strip()
@@ -185,7 +206,6 @@ def _resolve_credentials():
                         break
 
     if not base_url:
-        # 回退到 PROVIDERS 注册表中的默认 base_url
         try:
             from hermes_cli.blueprints.chat import PROVIDERS
             base_url = (PROVIDERS.get(provider) or {}).get("base_url", "")
