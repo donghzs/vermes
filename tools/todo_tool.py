@@ -15,6 +15,7 @@ Design:
 """
 
 import json
+import time
 from typing import Dict, Any, List, Optional
 
 
@@ -45,8 +46,8 @@ class TodoStore:
                    existing items by id and append new ones.
         """
         if not merge:
-            # Replace mode: new list entirely
-            self._items = [self._validate(t) for t in self._dedupe_by_id(todos)]
+            # Replace mode: new list entirely (no previous timestamps to diff)
+            self._items = [self._stamp(self._validate(t), None) for t in self._dedupe_by_id(todos)]
         else:
             # Merge mode: update existing items by id, append new ones
             existing = {item["id"]: item for item in self._items}
@@ -56,16 +57,22 @@ class TodoStore:
                     continue  # Can't merge without an id
 
                 if item_id in existing:
-                    # Update only the fields the LLM actually provided
+                    # Merge only the fields the LLM actually provided
+                    old = existing[item_id]
+                    merged = dict(old)
                     if "content" in t and t["content"]:
-                        existing[item_id]["content"] = str(t["content"]).strip()
+                        merged["content"] = str(t["content"]).strip()
                     if "status" in t and t["status"]:
                         status = str(t["status"]).strip().lower()
                         if status in VALID_STATUSES:
-                            existing[item_id]["status"] = status
+                            merged["status"] = status
+                    validated = self._validate(merged)
+                    self._stamp(validated, old)
+                    existing[item_id] = validated
                 else:
                     # New item -- validate fully and append to end
                     validated = self._validate(t)
+                    self._stamp(validated, None)
                     existing[validated["id"]] = validated
                     self._items.append(validated)
             # Rebuild _items preserving order for existing items
@@ -78,6 +85,33 @@ class TodoStore:
                     seen.add(current["id"])
             self._items = rebuilt
         return self.read()
+
+    def _stamp(self, item: Dict[str, Any], old: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Stamp started_at / finished_at based on status transitions.
+
+        - entering in_progress  → record started_at (preserve if already running)
+        - leaving in_progress    → record finished_at
+        - completed/cancelled     → preserve started_at for duration display
+        Extra fields are ignored by older frontends (additive change).
+        """
+        now = time.time()
+        new_status = item.get("status")
+        old_status = old.get("status") if old else None
+        if new_status == "in_progress":
+            if old_status != "in_progress":
+                item["started_at"] = now
+            else:
+                item["started_at"] = old.get("started_at") if (old and old.get("started_at") is not None) else now
+            item["finished_at"] = None
+        else:
+            if old and old.get("started_at") is not None:
+                item["started_at"] = old["started_at"]
+            if old_status == "in_progress":
+                item["finished_at"] = now
+            elif old and old.get("finished_at") is not None:
+                item["finished_at"] = old["finished_at"]
+        return item
 
     def read(self) -> List[Dict[str, str]]:
         """Return a copy of the current list."""
@@ -141,7 +175,17 @@ class TodoStore:
         if status not in VALID_STATUSES:
             status = "pending"
 
-        return {"id": item_id, "content": content, "status": status}
+        # Preserve any timestamps the store already assigned (None if absent)
+        started_at = item.get("started_at")
+        finished_at = item.get("finished_at")
+
+        return {
+            "id": item_id,
+            "content": content,
+            "status": status,
+            "started_at": started_at,
+            "finished_at": finished_at,
+        }
 
     @staticmethod
     def _dedupe_by_id(todos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

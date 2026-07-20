@@ -893,6 +893,17 @@ async def chat_completions(req: ChatRequest):
 
         def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
             _log.info(f"[ToolEvent] {event_type}: {tool_name}")
+            # 关联当前进行中的 todo 步骤，供前端把工具调用挂到对应步骤下
+            step_id = None
+            try:
+                store = getattr(agent, "_todo_store", None)
+                if store is not None:
+                    for _it in store.read():
+                        if _it.get("status") == "in_progress":
+                            step_id = _it.get("id")
+                            break
+            except Exception:
+                pass
             if event_type == "tool.started":
                 _tool_id = secrets.token_urlsafe(8)
                 _tool_ids[tool_name] = _tool_id
@@ -901,6 +912,7 @@ async def chat_completions(req: ChatRequest):
                     "tool_call_id": _tool_id,
                     "tool_name": tool_name,
                     "arguments": args or {},
+                    "step_id": step_id,
                 }
             else:
                 event = {
@@ -910,6 +922,7 @@ async def chat_completions(req: ChatRequest):
                     "duration": kwargs.get("duration", 0),
                     "is_error": kwargs.get("is_error", False),
                     "result_preview": preview or "",
+                    "step_id": step_id,
                 }
                 if tool_name == "todo" and preview:
                     try:
@@ -921,6 +934,11 @@ async def chat_completions(req: ChatRequest):
                             "summary": todo_data.get("summary", {}),
                         }
                         _safe_put(todo_event)
+                        # 任务全部完成 → 发庆祝事件（additive，旧前端忽略）
+                        _s = todo_data.get("summary", {})
+                        if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
+                                and _s.get("in_progress", 0) == 0:
+                            _safe_put({"type": "task_complete", "summary": _s})
                     except Exception:
                         pass
             _safe_put(event)

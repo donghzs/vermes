@@ -117,12 +117,26 @@ export const useChatStore = defineStore('chat', () => {
   const achievementData = ref(null)  // 当前展示的成就
   const pendingApproval = ref(null)  // 工具审批请求
   const todoItems = ref([])          // Agent todo 列表
-  const showTodoPanel = ref(false)   // Todo 面板显隐
+  const showTodoPanel = ref(false)   // Todo 面板显隐（兼容旧逻辑）
+  // ── 实时任务面板（长任务分步骤 + 进度）──
+  const showTaskDrawer = ref(false)       // 任务抽屉显隐
+  const todoStepActivities = ref({})      // step_id → 该步骤下的实时工具调用列表
+  const todoAllDone = ref(false)          // 全部步骤完成（庆祝态）
+  const todoInterrupted = ref(false)      // 用户停止/中断（保留已做部分）
   const currentStatusMessages = computed(() => 
     sessionStatusMessages.value[currentSessionId.value] || []
   )
   const currentActiveStreamId = computed(() =>
     sessionActiveStreamIds.value[currentSessionId.value] || null
+  )
+  // 当前进行中的 todo 步骤 id（工具事件未带 step_id 时回退用）
+  const currentTodoStepId = computed(() => {
+    const it = todoItems.value.find(i => i.status === 'in_progress')
+    return it ? it.id : null
+  })
+  // 进行中步骤数（头部徽标）
+  const todoInProgressCount = computed(() =>
+    todoItems.value.filter(i => i.status === 'in_progress').length
   )
   const lastTokenUsage = ref(null)
 
@@ -381,6 +395,11 @@ export const useChatStore = defineStore('chat', () => {
 
     // P4: per-session loading
     if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = true
+    // 新一轮：重置实时任务面板状态（保留抽屉开关由 todo_update 决定是否自动展开）
+    todoStepActivities.value = {}
+    todoAllDone.value = false
+    todoInterrupted.value = false
+    todoItems.value = []
     const sendSessionId = currentSessionId.value  // 锁定发送时所在的会话
     const aid = uid()
     try {
@@ -485,9 +504,46 @@ export const useChatStore = defineStore('chat', () => {
             todoItems.value = data.todos
             if (data.todos.length > 0) {
               showTodoPanel.value = true
+              // 小白友好：多步骤任务出现时自动展开任务抽屉，便于一眼看到进度
+              showTaskDrawer.value = true
+            }
+            // 计划未全部完成则清除庆祝态
+            const s = data.summary || {}
+            if (!(s.total > 0 && s.completed === s.total && s.in_progress === 0)) {
+              todoAllDone.value = false
             }
             scheduleScroll()
           }
+        },
+        onToolCall: (data) => {
+          // 工具调用实时事件：挂到当前进行中的步骤下，形成"步骤 → 子任务"树
+          const sid = data.step_id || currentTodoStepId.value
+          if (!sid) return
+          const acts = { ...todoStepActivities.value }
+          const list = acts[sid] ? acts[sid].slice() : []
+          if (data.type === 'tool_start') {
+            list.push({
+              id: data.tool_call_id, name: data.tool_name,
+              status: 'running', start: Date.now(), duration: 0, is_error: false,
+            })
+          } else if (data.type === 'tool_end') {
+            const idx = list.findIndex(a => a.id === data.tool_call_id)
+            const done = {
+              id: data.tool_call_id, name: data.tool_name,
+              status: 'done', start: Date.now(),
+              duration: data.duration || 0,
+              is_error: data.is_error || false,
+              preview: data.result_preview || '',
+            }
+            if (idx >= 0) list[idx] = done
+            else list.push(done)
+          }
+          acts[sid] = list
+          todoStepActivities.value = acts
+        },
+        onTaskComplete: (data) => {
+          // 全部步骤完成 → 庆祝态
+          todoAllDone.value = true
         },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
@@ -592,13 +648,14 @@ export const useChatStore = defineStore('chat', () => {
       sessionStatusMessages.value[sid] = []
     }
     evolutionEvents.value = []  // 清空进化事件
-    todoItems.value = []  // 清空 todo
-    showTodoPanel.value = false
+    // 保留 todoItems：小白用户停止后仍需看到「已完成 / 进行中」进度，不清空
+    todoInterrupted.value = true
     // nextTurnSnapshot: 停止生成也应用 pending 模型切换
     _applyPendingModel(sid)
   }
   // ── 工具函数 ──
   function toggleSidebar() { sidebarOpen.value = !sidebarOpen.value }
+  function toggleTaskDrawer() { showTaskDrawer.value = !showTaskDrawer.value }
 
   function persistSessions() { saveToStorage(SESSIONS_KEY, sessions.value) }
 
@@ -686,6 +743,8 @@ export const useChatStore = defineStore('chat', () => {
     cacheMetrics,
     evolutionEvents, showAchievement, achievementData,
     todoItems, showTodoPanel,
+    showTaskDrawer, todoStepActivities, todoAllDone, todoInterrupted,
+    currentTodoStepId, todoInProgressCount, toggleTaskDrawer,
     pendingApproval, resolveApproval,
     pendingModel, appendModelChange,
     init, initOnce,

@@ -233,6 +233,17 @@ function closeDropdowns() {
       <h2 class="font-semibold text-gray-800 dark:text-gray-200">{{ chat.currentSession?.name || '新 Agent' }}</h2>
       <span @click="showStats = !showStats" class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300 transition">{{ chat.filteredMessages?.length ?? 0 }} 条消息</span>
       <button @click="emit('toggleHistory')" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="历史记录">📋</button>
+      <!-- 任务清单（长任务分步骤 + 实时进度） -->
+      <button @click="chat.toggleTaskDrawer()"
+              class="relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm"
+              title="任务清单">
+        🗂️
+        <span v-if="chat.todoItems.length"
+              class="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] leading-4 text-center"
+              :class="{ 'bg-green-500': chat.todoAllDone }">
+          {{ chat.todoAllDone ? '✓' : (chat.todoInProgressCount || chat.todoItems.length) }}
+        </span>
+      </button>
       <!-- 消息搜索 -->
       <div v-if="chat.searchMode" class="flex items-center gap-1">
         <input v-model="chat.searchQuery" 
