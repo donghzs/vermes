@@ -167,7 +167,7 @@ PROVIDER_TEMPLATES = {
 
 class ProviderAddRequest(BaseModel):
     provider_id: str
-    api_key: str
+    api_key: Optional[str] = None
     base_url: Optional[str] = None
 
 
@@ -187,12 +187,20 @@ def get_provider_templates():
 
 
 async def add_provider(body: ProviderAddRequest):
-    """Add a new provider by writing API key to .env file."""
+    """Add a new provider by writing API key to .env file.
+
+    An empty / missing ``api_key`` must NOT overwrite a previously stored
+    key. The desktop Settings UI saves *all* providers in one pass and only
+    supplies a real key for the provider the user just edited; masked
+    providers (whose key is already in .env) are sent with an empty key.
+    Writing that empty value would silently wipe a working provider's
+    credentials — verified regression: saving provider B cleared provider A.
+    Clearing a key is the job of DELETE /api/env, not of an empty add.
+    """
     template = PROVIDER_TEMPLATES.get(body.provider_id)
-    if template:
-        save_env_value(template["api_key_env"], body.api_key)
-    else:
-        env_key = f"{body.provider_id.upper().replace('-', '_')}_API_KEY"
+    env_key = template["api_key_env"] if template else f"{body.provider_id.upper().replace('-', '_')}_API_KEY"
+    # Only persist a key when the caller actually supplies one.
+    if body.api_key:
         save_env_value(env_key, body.api_key)
 
     if body.base_url:

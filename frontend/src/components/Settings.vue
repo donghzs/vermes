@@ -449,10 +449,14 @@ async function saveMaxTokens() {
 
 function saveProvidersToStorage() {
   const data = providers.value
-    .filter(p => (p.key && p.key !== '●●●●●●●●' && p.key.trim() !== '') || (p.models && p.models.length > 0) || (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]))
+    // A masked key ('●●●●●●●●') means "key already saved in .env" — keep it.
+    // Previously this filter dropped masked providers, so saving *any* other
+    // provider would silently drop a working one from storage and the UI
+    // would show it as cleared on next open.
+    .filter(p => (p.key && p.key.trim() !== '') || (p.models && p.models.length > 0) || (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]))
     .map(p => ({
       id: p.id, name: p.name,
-      key: (p.key && p.key !== '●●●●●●●●') ? '***saved***' : '',
+      key: (p.key && p.key.trim() !== '') ? '***saved***' : '',
       baseUrl: p.baseUrl, models: p.models || []
     }))
   try { localStorage.setItem('vermes-providers', JSON.stringify(data)) } catch(e) {}
@@ -476,8 +480,13 @@ async function save() {
       if (!firstRealKey && p.models && p.models.length > 0 && p.id !== 'vbit') firstRealKey = { id: p.id, name: p.name, model: p.models[0] }
     }
     if (p.baseUrl) {
+      const payload = { provider_id: p.id, base_url: p.baseUrl }
+      // Only include a real key. A masked provider ('●●●●●●●●') already has
+      // its key in .env; sending the empty mask would wipe it. (Backend also
+      // guards against empty api_key, but we avoid the bad request entirely.)
+      if (p.key && p.key !== '●●●●●●●●') payload.api_key = p.key
       savePromises.push(
-        fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider_id: p.id, base_url: p.baseUrl, api_key: p.key && p.key !== '●●●●●●●●' ? p.key : '' }) })
+        fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
           .catch(() => {})
       )
     }
