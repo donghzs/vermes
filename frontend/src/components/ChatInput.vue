@@ -158,10 +158,12 @@ function onInputCheckFileRef(e) {
     const partial = atMatch[1]
     // 简单提示：显示当前目录下的文件
     showFileHint.value = true
+    // 3.3：后端无工作区文件列举接口，且桌面端 cwd 为后端安装目录（非用户项目），
+    // 真实枚举无意义。明确标为「示例」，避免假数据误导；用户输入真实 @路径即可引用。
     fileHintItems.value = [
-      { label: '输入文件路径，如 @src/main.py', hint: '支持代码文件、配置文件、文档等' },
-      { label: '@AGENTS.md', hint: '工作区配置' },
-      { label: '@package.json', hint: '项目配置' },
+      { label: '@AGENTS.md', hint: '示例 · 工作区配置' },
+      { label: '@package.json', hint: '示例 · 项目配置' },
+      { label: '@src/main.py', hint: '示例 · 代码文件' },
     ]
   } else {
     showFileHint.value = false
@@ -277,7 +279,7 @@ defineExpose({ inputText, uploadedFiles, inputRef })
       </textarea>
       <!-- @file 引用提示 -->
       <div v-if="showFileHint" class="absolute bottom-full mb-2 left-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg py-1 min-w-[240px] z-50">
-        <div class="px-3 py-1.5 text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700">📁 输入文件路径引用文件内容</div>
+        <div class="px-3 py-1.5 text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700">📁 @ 引用文件 · 以下为示例，请直接输入真实路径</div>
         <button v-for="item in fileHintItems" :key="item.label" @click="insertFileRef(item.label.replace('@', ''))"
           class="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition text-left">
           <span class="text-green-500">📄</span>

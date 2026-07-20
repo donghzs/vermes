@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick, watch, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarget } from '../stores/chat'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
@@ -60,6 +60,34 @@ function currentRunningTool(tools) {
 // 工具结果预览模板化
 const _toolPreviewCache = new WeakMap()
 const _showAllTools = reactive({})
+
+// ── 2.1 推理面板展开态：用组件级 reactive map 持久化，避免 store 重建消息后 _reasoningExpanded 丢失 ──
+const reasoningExpanded = reactive({})
+const reasoningMsgs = computed(() => chat.filteredMessages.filter(m => m && m.reasoning))
+const allReasoningExpanded = computed(() =>
+  reasoningMsgs.value.length > 0 && reasoningMsgs.value.every(m => reasoningExpanded[m.id])
+)
+function toggleAllReasoning() {
+  const target = !allReasoningExpanded.value
+  reasoningMsgs.value.forEach(m => { reasoningExpanded[m.id] = target })
+}
+
+// ── 2.2 流式超长内容按边界切片：避免切断未闭合代码块 / 段落 ──
+function tailByBoundary(content, max = 8000) {
+  if (!content || content.length <= max) return content
+  let cut = content.length - max
+  // 切片点若落在未闭合的代码围栏（```）内，回退到围栏开头，保证代码块完整渲染
+  const before = content.slice(0, cut)
+  const fenceCount = (before.match(/```/g) || []).length
+  if (fenceCount % 2 === 1) {
+    const openIdx = before.lastIndexOf('```')
+    if (openIdx !== -1) cut = openIdx
+  }
+  // 尽量从段落边界（双换行）开始，截断更自然
+  const nl = content.indexOf('\n\n', cut)
+  if (nl !== -1 && nl - cut < 4000) cut = nl + 2
+  return content.slice(cut)
+}
 
 function formatToolPreview(tool) {
   if (!tool.result_preview) return null
@@ -525,6 +553,13 @@ function streamElapsed(startTime) {
 
     <!-- 消息列表 -->
     <div v-else>
+      <!-- 2.1 推理面板：展开全部 / 收起全部 -->
+      <div v-if="reasoningMsgs.length > 0" class="flex justify-end px-4 pb-1">
+        <button @click="toggleAllReasoning"
+                class="text-[11px] text-purple-500 dark:text-purple-400 hover:underline select-none">
+          {{ allReasoningExpanded ? '▾ 收起全部推理' : '▸ 展开全部推理' }} ({{ reasoningMsgs.length }})
+        </button>
+      </div>
       <div v-for="msg in chat.filteredMessages" :key="msg.id"
            :data-role="msg.role"
            class="flex gap-3 group px-4 py-2"
@@ -564,7 +599,7 @@ function streamElapsed(startTime) {
             <template v-else>
               <!-- ── 长任务优化 #5: 内容分片 ── -->
               <!-- 流式中只渲染最新 8K 字符，避免超长内容卡顿 -->
-              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg._expanded || !msg.streaming || msg.content.length <= 8000 ? msg.content : msg.content.slice(-8000))" @click="handleContentClick($event)"></div>
+              <div v-if="msg.content" class="vermes-md" v-html="renderMd(msg._expanded || !msg.streaming || msg.content.length <= 8000 ? msg.content : tailByBoundary(msg.content, 8000))" @click="handleContentClick($event)"></div>
               <!-- 展开按钮：流式中内容超过 8K 时显示 -->
               <button v-if="msg.streaming && msg.content && msg.content.length > 8000 && !msg._expanded"
                       @click="msg._expanded = true"
@@ -577,7 +612,7 @@ function streamElapsed(startTime) {
           </div>
           <!-- 推理链可视化：折叠/展开面板 -->
           <div v-if="msg.reasoning" class="mt-2 reasoning-block">
-            <details :open="msg._reasoningExpanded || false" @toggle="msg._reasoningExpanded = $event.target.open" class="reasoning-details">
+            <details :open="reasoningExpanded[msg.id] || false" @toggle="reasoningExpanded[msg.id] = $event.target.open" class="reasoning-details">
               <summary class="cursor-pointer text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 select-none flex items-center gap-1.5 reasoning-summary">
                 <span class="reasoning-chevron">▸</span>
                 <span>💡 推理过程</span>

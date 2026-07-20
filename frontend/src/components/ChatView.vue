@@ -127,12 +127,6 @@ function onEditMessage(msg) {
 }
 
 // ── 生命周期 ──
-const _modelChangedHandler = (e) => {
-  chat.currentModel = e.detail.model
-  chat.currentProvider = e.detail.provider
-}
-
-// ── 全局快捷键 ──
 const _globalKeyHandler = (e) => {
   const mod = e.metaKey || e.ctrlKey
   // Cmd/Ctrl + K → 聚焦输入框
@@ -179,13 +173,11 @@ const _globalKeyHandler = (e) => {
 }
 
 onMounted(() => {
-  window.addEventListener('model-changed', _modelChangedHandler)
   window.addEventListener('keydown', _globalKeyHandler)
   setupQuotaEvents()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('model-changed', _modelChangedHandler)
   window.removeEventListener('keydown', _globalKeyHandler)
   teardownQuotaEvents()
 })

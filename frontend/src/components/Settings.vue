@@ -429,9 +429,7 @@ async function setCurrentModel(p, modelId) {
     })
     const data = await resp.json()
     if (!data.ok) { toast.error('设置失败: ' + (data.detail || JSON.stringify(data))); return }
-    try { localStorage.setItem('vermes-current-model', modelId) } catch(e) {}
-    try { localStorage.setItem('vermes-current-provider', provider) } catch(e) {}
-    window.dispatchEvent(new CustomEvent('model-changed', { detail: { model: modelId, provider } }))
+    chat.setCurrentModel(modelId, provider)   // 3.4：统一走 store，取代 localStorage + window 事件中转
     saved.value = true; setTimeout(() => saved.value = false, 2000)
   } catch (e) { toast.error('设置失败: ' + e.message) }
 }
@@ -507,9 +505,7 @@ async function save() {
   if (firstRealKey) {
     const currentProvider = localStorage.getItem('vermes-current-provider')
     if (!currentProvider || currentProvider === 'vbit.top' || currentProvider === 'vbit') {
-      try { localStorage.setItem('vermes-current-model', firstRealKey.model) } catch(e) {}
-      try { localStorage.setItem('vermes-current-provider', firstRealKey.id) } catch(e) {}
-      window.dispatchEvent(new CustomEvent('model-changed', { detail: { model: firstRealKey.model, provider: firstRealKey.id } }))
+      chat.setCurrentModel(firstRealKey.model, firstRealKey.id)   // 3.4：统一走 store
     }
   }
   saved.value = true; setTimeout(() => saved.value = false, 2000)
@@ -628,6 +624,41 @@ function focusServiceKey(g) {
 }
 
 function back() { router.push('/') }
+
+// ── 2.5 逐提供商连接测试（复用 sync-models 接口校验 Key 有效性）──
+async function testProvider(p) {
+  p.testing = true
+  p.testResult = null
+  try {
+    if (!p.key && p.id !== 'ollama') {
+      p.testResult = { ok: false, error: '请先填写 API Key' }
+      return
+    }
+    let data
+    if (p.id === 'ollama') {
+      const resp = await fetch('/api/model/discover', { method: 'POST' })
+      data = await resp.json()
+    } else {
+      const body = { provider_id: p.id }
+      if (p.baseUrl && p.baseUrl !== DEFAULT_BASE_URLS[p.id]) body.base_url = p.baseUrl
+      if (p.key && p.key !== '●●●●●●●●') body.api_key = p.key
+      const resp = await fetch('/api/provider/sync-models', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      })
+      data = await resp.json()
+    }
+    if (data && data.ok) {
+      p.testResult = { ok: true, message: '✅ 连接成功' + (data.models ? `（${data.models.length} 个模型）` : '') }
+    } else {
+      p.testResult = { ok: false, error: (data && data.error) || '连接失败' }
+    }
+  } catch (e) {
+    p.testResult = { ok: false, error: e.message }
+  } finally {
+    p.testing = false
+  }
+}
+function onCardTest(p) { testProvider(p) }
 
 // ── ProviderCard 事件路由 ──
 function onCardSync(p) { syncModels(p) }
@@ -774,6 +805,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             @save="onCardSave"
             @set-model="onCardSetModel"
             @add-model="onCardAddModel"
+            @test="onCardTest"
           />
         </div>
 
@@ -793,7 +825,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                   :provider="p" :expanded="isExpanded(p.id)" compact
                   :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
                   @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
-                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel"
+                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
                 />
               </div>
             </div>
@@ -806,7 +838,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                   :provider="p" :expanded="isExpanded(p.id)" compact
                   :show-delete="true" :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
                   @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
-                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel"
+                  @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
                 />
               </div>
             </div>
@@ -818,7 +850,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 :provider="p" :expanded="isExpanded(p.id)" compact
                 :show-delete="false" :default-base-url="''"
                 @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave"
-                @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel"
+                @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
               />
               <button @click="addCustomProvider"
                 class="mt-2 w-full py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-sm text-gray-400 hover:text-green-500 hover:border-green-400 dark:hover:border-green-600 transition">

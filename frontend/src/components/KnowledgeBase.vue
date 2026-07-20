@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
@@ -141,6 +141,41 @@ function fileIcon(type) {
   return icons[type] || '📄'
 }
 
+// ── 2.4 文档列表分页 + 名称筛选 ──
+const docFilter = ref('')
+const currentPage = ref(1)
+const pageSize = 8
+const filteredDocs = computed(() => {
+  const q = docFilter.value.trim().toLowerCase()
+  if (!q) return documents.value
+  return documents.value.filter(d => (d.name || d.filename || '').toLowerCase().includes(q))
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredDocs.value.length / pageSize)))
+const pagedDocs = computed(() =>
+  filteredDocs.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize)
+)
+function goPrevPage() { if (currentPage.value > 1) currentPage.value-- }
+function goNextPage() { if (currentPage.value < totalPages.value) currentPage.value++ }
+
+// ── 2.3 检索结果溯源：点击跳回原文档并高亮对应 chunk ──
+const activeResult = ref(null)
+async function jumpToResult(result) {
+  const docId = result.doc_id
+  if (expandedDoc.value !== docId) {
+    expandedDoc.value = docId
+    if (!chunks.value[docId]) {
+      try {
+        const data = await api.ragGetChunks(docId)
+        chunks.value[docId] = data.chunks || []
+      } catch { chunks.value[docId] = [] }
+    }
+  }
+  activeResult.value = { docId, index: result.chunk_index }
+  await nextTick()
+  const el = document.getElementById(`chunk-${docId}-${result.chunk_index}`)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
 onMounted(() => {
   loadDocuments()
 })
@@ -197,7 +232,8 @@ onMounted(() => {
         <button @click="showSearch = false; searchResults = []" class="text-gray-400 hover:text-gray-600">✕</button>
       </div>
       <div v-for="(result, i) in searchResults" :key="i"
-           class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-xs">
+           class="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-xs cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+           @click="jumpToResult(result)">
         <div class="flex items-center gap-2 mb-1">
           <span class="text-gray-400">{{ fileIcon(result.file_type) }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300 truncate">{{ result.doc_name || result.filename || '未知' }}</span>
@@ -226,7 +262,12 @@ onMounted(() => {
 
     <!-- Document list -->
     <div class="space-y-1.5">
-      <div v-for="doc in documents" :key="doc.id"
+      <!-- 2.4 名称筛选 -->
+      <div v-if="documents.length > pageSize" class="flex items-center gap-2">
+        <input v-model="docFilter" @input="currentPage = 1" type="text" placeholder="筛选文档名..."
+               class="flex-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-green-400" />
+      </div>
+      <div v-for="doc in pagedDocs" :key="doc.id"
            class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
         <!-- Doc header -->
         <div class="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
@@ -245,7 +286,9 @@ onMounted(() => {
         <!-- Chunks preview -->
         <div v-if="expandedDoc === doc.id" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-750 max-h-48 overflow-y-auto">
           <div v-for="(chunk, i) in (chunks[doc.id] || [])" :key="i"
-               class="px-3 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700 last:border-0">
+               :id="`chunk-${doc.id}-${i}`"
+               class="px-3 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700 last:border-0 transition-colors"
+               :class="{ 'bg-yellow-100 dark:bg-yellow-900/30': activeResult && activeResult.docId === doc.id && activeResult.index === i }">
             <span class="text-gray-400 mr-1">[{{ i + 1 }}]</span>
             {{ chunk.content?.substring(0, 150) }}...
           </div>
@@ -253,6 +296,14 @@ onMounted(() => {
             加载中...
           </div>
         </div>
+      </div>
+      <!-- 2.4 分页 -->
+      <div v-if="totalPages > 1" class="flex items-center justify-center gap-3 pt-1">
+        <button @click="goPrevPage" :disabled="currentPage === 1"
+                class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
+        <span class="text-xs text-gray-400">{{ currentPage }} / {{ totalPages }}</span>
+        <button @click="goNextPage" :disabled="currentPage === totalPages"
+                class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
       </div>
       <!-- Empty state -->
       <div v-if="!loading && documents.length === 0" class="text-center py-8 text-xs text-gray-400">

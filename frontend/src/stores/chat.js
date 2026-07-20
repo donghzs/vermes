@@ -742,6 +742,14 @@ export const useChatStore = defineStore('chat', () => {
     pendingApproval.value = null
   }
 
+  // 3.4：统一设置当前模型（响应式 + 持久化），替代 Settings 的 localStorage + window 事件中转
+  function setCurrentModel(modelId, provider) {
+    currentModel.value = modelId
+    currentProvider.value = provider
+    try { localStorage.setItem('vermes-current-model', modelId) } catch(e) {}
+    try { localStorage.setItem('vermes-current-provider', provider) } catch(e) {}
+  }
+
   return {
     sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
@@ -764,6 +772,7 @@ export const useChatStore = defineStore('chat', () => {
     getMessageCount, getFirstMessage, formatSize, newSession,
     searchAllMessages, getSessionStats, sendCompareMessage,
     refreshCacheMetrics,
+    setCurrentModel,
   }
 })
 

@@ -475,6 +475,9 @@ const api = {
   mcpRemoveServer(name) {
     return this.del(`/mcp/servers/${name}`)
   },
+  mcpSetEnabled(name, enabled) {
+    return this.post(`/mcp/servers/${encodeURIComponent(name)}/enabled`, { enabled })
+  },
   mcpTestServer(name) {
     return this.post('/mcp/test', { name })
   },

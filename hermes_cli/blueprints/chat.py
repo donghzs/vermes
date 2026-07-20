@@ -1972,6 +1972,25 @@ async def mcp_test_server(request: Request):
         return {"error": str(e), "ok": False}
 
 
+async def mcp_set_enabled(name: str, request: Request):
+    """Enable or disable an MCP server (persists the ``enabled`` flag in config)."""
+    try:
+        from hermes_cli.mcp_config import _get_mcp_servers, _save_mcp_server
+        body = await request.json()
+        enabled = body.get("enabled", True)
+        if not name:
+            return {"error": "name is required", "ok": False}
+        servers = _get_mcp_servers()
+        if name not in servers:
+            return {"error": f"Server '{name}' not found", "ok": False}
+        cfg = dict(servers[name])
+        cfg["enabled"] = bool(enabled)
+        _save_mcp_server(name, cfg)
+        return {"ok": True, "name": name, "enabled": bool(enabled)}
+    except Exception as e:
+        return {"error": str(e), "ok": False}
+
+
 async def approve_command(request: Request):
     """Handle tool approval/deny from frontend.
 
@@ -2141,6 +2160,12 @@ def register_to(app):
         mcp_test_server,
         methods=["POST"],
         name="mcp_test_server",
+    )
+    app.add_api_route(
+        "/api/mcp/servers/{name}/enabled",
+        mcp_set_enabled,
+        methods=["POST"],
+        name="mcp_set_enabled",
     )
     app.add_api_route(
         "/api/approve",

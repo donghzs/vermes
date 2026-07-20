@@ -23,7 +23,7 @@ const props = defineProps({
   defaultBaseUrl: { type: String, default: '' },
 })
 
-const emit = defineEmits(['sync', 'save', 'delete', 'set-model', 'add-model', 'remove-model', 'toggle'])
+const emit = defineEmits(['sync', 'save', 'delete', 'set-model', 'add-model', 'remove-model', 'toggle', 'test'])
 
 const customModelInput = ref('')
 
@@ -71,8 +71,15 @@ function onAddModel() {
           <svg v-if="provider.syncing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
           {{ provider.syncing ? '同步中...' : '🔄 同步模型' }}
         </button>
+        <button @click="emit('test', provider)" :disabled="provider.testing" class="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded-lg text-xs font-medium transition flex items-center gap-1">
+          <svg v-if="provider.testing" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          {{ provider.testing ? '测试中...' : '🔌 测试连接' }}
+        </button>
         <button @click="emit('save')" class="px-4 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium transition">💾 保存</button>
         <button v-if="showDelete" @click="emit('delete', provider)" class="px-4 py-1.5 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-500 rounded-lg text-xs font-medium transition">🗑 清除</button>
+      </div>
+      <div v-if="provider.testResult" class="text-xs" :class="provider.testResult.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'">
+        {{ provider.testResult.ok ? provider.testResult.message : '❌ ' + provider.testResult.error }}
       </div>
       <!-- Model list -->
       <div v-if="provider.models && provider.models.length > 0" class="space-y-1">

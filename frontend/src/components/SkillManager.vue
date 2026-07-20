@@ -94,6 +94,7 @@ async function searchMarket() {
     } else {
       marketItems.value = (data && data.items) || []
       marketTotal.value = (data && data.total) || marketItems.value.length
+      marketPage.value = 1
     }
   } catch (e) {
     marketError.value = e.message || String(e)
@@ -146,6 +147,33 @@ async function uninstallMarket(item) {
   }
 }
 
+// ── 2.4 已装技能：名称筛选 + 分页 ──
+const installedFilter = ref('')
+const installedPage = ref(1)
+const installedPageSize = 12
+const filteredSkills = computed(() => {
+  const q = installedFilter.value.trim().toLowerCase()
+  if (!q) return skills.value
+  return skills.value.filter(s =>
+    (s.name || '').toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q))
+})
+const installedTotalPages = computed(() => Math.max(1, Math.ceil(filteredSkills.value.length / installedPageSize)))
+const pagedSkills = computed(() =>
+  filteredSkills.value.slice((installedPage.value - 1) * installedPageSize, installedPage.value * installedPageSize)
+)
+function installedPrev() { if (installedPage.value > 1) installedPage.value-- }
+function installedNext() { if (installedPage.value < installedTotalPages.value) installedPage.value++ }
+
+// ── 2.4 发现市场：客户端分页（API 返回上限 24 条）──
+const marketPage = ref(1)
+const marketPageSize = 12
+const marketTotalPages = computed(() => Math.max(1, Math.ceil(marketItems.value.length / marketPageSize)))
+const pagedMarket = computed(() =>
+  marketItems.value.slice((marketPage.value - 1) * marketPageSize, marketPage.value * marketPageSize)
+)
+function marketPrev() { if (marketPage.value > 1) marketPage.value-- }
+function marketNext() { if (marketPage.value < marketTotalPages.value) marketPage.value++ }
+
 onMounted(() => {
   loadSkills()
 })
@@ -196,8 +224,12 @@ onMounted(() => {
         </div>
       </div>
 
+      <div class="flex gap-2">
+        <input v-model="installedFilter" @input="installedPage = 1" type="text" placeholder="筛选已装技能..."
+               class="flex-1 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500" />
+      </div>
       <div class="space-y-1 max-h-64 overflow-y-auto">
-        <div v-for="skill in skills" :key="skill.name"
+        <div v-for="skill in pagedSkills" :key="skill.name"
              class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750">
           <span class="text-sm flex-shrink-0">{{ skillIcon(skill.source) }}</span>
           <div class="flex-1 min-w-0">
@@ -216,6 +248,12 @@ onMounted(() => {
           <div>暂无已安装技能</div>
         </div>
         <div v-if="loading" class="text-center py-3 text-xs text-gray-400 animate-pulse">加载中...</div>
+      </div>
+      <!-- 2.4 分页 -->
+      <div v-if="installedTotalPages > 1" class="flex items-center justify-center gap-3 pt-1">
+        <button @click="installedPrev" :disabled="installedPage === 1" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
+        <span class="text-xs text-gray-400">{{ installedPage }} / {{ installedTotalPages }}</span>
+        <button @click="installedNext" :disabled="installedPage === installedTotalPages" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
       </div>
     </template>
 
@@ -236,7 +274,7 @@ onMounted(() => {
       <div v-if="marketMsg" :class="marketMsgOk ? 'text-green-600' : 'text-red-500'" class="text-[11px] px-1">{{ marketMsg }}</div>
 
       <div class="space-y-1.5 max-h-72 overflow-y-auto">
-        <div v-for="item in marketItems" :key="item.identifier || item.name"
+        <div v-for="item in pagedMarket" :key="item.identifier || item.name"
              class="flex items-start gap-2 px-2 py-2 rounded-lg bg-gray-50 dark:bg-gray-800">
           <span class="text-base flex-shrink-0 mt-0.5">{{ skillIcon(item.source) }}</span>
           <div class="flex-1 min-w-0">
@@ -267,6 +305,12 @@ onMounted(() => {
           <div class="text-2xl mb-1">🔍</div>
           <div>输入关键词搜索技能，或从 QClaw / GitHub 等来源发现</div>
         </div>
+      </div>
+      <!-- 2.4 分页 -->
+      <div v-if="marketTotalPages > 1" class="flex items-center justify-center gap-3 pt-1">
+        <button @click="marketPrev" :disabled="marketPage === 1" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">‹ 上一页</button>
+        <span class="text-xs text-gray-400">{{ marketPage }} / {{ marketTotalPages }}</span>
+        <button @click="marketNext" :disabled="marketPage === marketTotalPages" class="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800">下一页 ›</button>
       </div>
     </template>
   </div>

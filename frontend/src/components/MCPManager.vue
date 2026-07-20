@@ -26,6 +26,7 @@ async function loadServers() {
       command: cfg.command || '',
       args: cfg.args || [],
       env: cfg.env || {},
+      enabled: cfg.enabled !== false,
     }))
   } catch (e) {
     console.error('Failed to load MCP servers:', e)
@@ -80,6 +81,17 @@ async function testServer(name) {
   }
 }
 
+async function toggleServer(srv) {
+  try {
+    const target = !srv.enabled
+    await api.mcpSetEnabled(srv.name, target)
+    srv.enabled = target
+    toast.success(`${srv.name} 已${target ? '启用' : '禁用'}`)
+  } catch (e) {
+    toast.error('切换失败: ' + e.message)
+  }
+}
+
 onMounted(() => {
   loadServers()
 })
@@ -121,9 +133,16 @@ onMounted(() => {
       <div v-for="srv in servers" :key="srv.name"
            class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2">
         <div class="flex items-center gap-2">
+          <!-- 3.5 启用/禁用开关 -->
+          <button @click="toggleServer(srv)" :title="srv.enabled ? '点击禁用' : '点击启用'"
+                  class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition"
+                  :class="srv.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'">
+            <span class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+                  :class="srv.enabled ? 'translate-x-4' : 'translate-x-0.5'"></span>
+          </button>
           <span class="text-sm">🔌</span>
           <div class="flex-1 min-w-0">
-            <div class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ srv.name }}</div>
+            <div class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ srv.name }}<span v-if="!srv.enabled" class="ml-1 text-[9px] text-gray-400">(已禁用)</span></div>
             <div class="text-[10px] text-gray-400 truncate">
               {{ srv.command }} {{ srv.args?.join(' ') || '' }}
             </div>
