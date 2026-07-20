@@ -165,6 +165,25 @@ def _resolve_credentials():
     if not base_url:
         base_url = prov_cfg.get("base_url", "").strip()
 
+    # 如果 config.yaml 中没有 api_key，从 .env 文件读取
+    if not api_key:
+        env_path = home / ".env"
+        if env_path.exists():
+            # 构建 env_key：provider 名称大写 + _API_KEY
+            env_var_name = f"{provider.upper()}_API_KEY"
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith(f"{env_var_name}="):
+                    api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+            # 也尝试 OPENAI_API_KEY 作为通用回退
+            if not api_key:
+                for line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if line.startswith("OPENAI_API_KEY="):
+                        api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+
     if not base_url:
         # 回退到 PROVIDERS 注册表中的默认 base_url
         try:
@@ -1716,8 +1735,12 @@ async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
         return f"❌ 格式化失败: {str(e)[:200]}"
 
 
-def _register_tools():
-    """Register all ScholarForge tools in the global registry."""
+def register_tools(host_api=None):
+    """Register all ScholarForge tools in the global registry.
+
+    Called by module_loader after host_api injection.
+    Not called on import to avoid premature registration.
+    """
     registry.register(
         name="scholarforge_search",
         toolset="scholarforge",
@@ -1854,7 +1877,3 @@ def _register_tools():
         description="研究设计缺陷检测（多要素未分离/评估者偏差/样本代表性等 8 类）",
     )
     logger.info("[ScholarForge] 15 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws")
-
-
-# Register on import
-_register_tools()

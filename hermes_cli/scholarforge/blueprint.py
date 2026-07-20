@@ -282,8 +282,16 @@ def _sse(data: dict) -> str:
 
 
 # === Blueprint 注册函数 ===
-def register_to(app):
-    """向 FastAPI app 注册 ScholarForge 路由 — 全部挂载在 /api/scholar"""
+def register_to(app, host_api=None):
+    """向 FastAPI app 注册 ScholarForge 路由 — 全部挂载在 /api/scholar
+
+    Args:
+        app: FastAPI 应用实例
+        host_api: 宿主接口（由 module_loader 注入，用于运行时模块模式）
+    """
+    if host_api is not None:
+        import host_api as _ha
+        _ha._inject(host_api)
 
     @app.get("/api/scholar/model")
     async def current_model_info():
