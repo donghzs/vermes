@@ -677,13 +677,16 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     # 存储每个编号的候选论文列表
     candidates: dict[int, list[PaperResult]] = {}
 
-    async def search_one(n: int, keyword: str):
+    async def search_one(n: int, keyword: str, force: bool = False):
+        """搜索论文并存入 candidates。force=True 时覆盖已有候选（用于碰撞后重搜）。"""
         if not keyword:
             return
+        if n in candidates and not force:
+            return  # 已搜过且未要求覆盖
         papers = []
-        async for paper in search_papers(keyword, limit=5):
+        async for paper in search_papers(keyword, limit=10):
             papers.append(paper)
-            if len(papers) >= 3:
+            if len(papers) >= 8:
                 break
         if papers:
             candidates[n] = papers
@@ -717,38 +720,19 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
                                 num_keywords[n] = llm_kw
                                 logger.info(f"  [{n}] refined: '{llm_kw[:60]}'")
 
-    # 重新搜索被 LLM 改善过的关键词
+    # 重新搜索被 LLM 改善过的关键词（force=True 覆盖旧候选）
     if collision_detected:
         tasks2 = [
-            search_one(n, num_keywords[n])
+            search_one(n, num_keywords[n], force=True)
             for n in num_keywords
-            if n not in candidates  # 只重新搜索未搜过的
+            if n in num_context  # 有上下文的才重搜
         ]
         if tasks2:
             await asyncio.gather(*tasks2, return_exceptions=True)
 
     # 对每个编号，从候选中选最佳匹配
     def score_relevance(paper: PaperResult, context: str, keyword: str) -> float:
-        """计算论文与上下文的相关性分数（0-1）
-
-        四因子评分：
-        - 专有名词精确匹配 40%（如 RAGAS vs FActScore 可区分）
-        - 标题 token 重叠 20%
-        - 模糊相似度 20%
-        - 摘要关键词匹配 20%
-        """
-        # 提取专有名词（大写开头）
-        proper_kw = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', keyword))
-        proper_title = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', paper.title))
-        proper_abs = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', paper.abstract or ''))
-
-        # 专有名词精确匹配（最高权重）
-        proper_match = 0.0
-        has_proper = bool(proper_kw)
-        if has_proper:
-            matched = proper_kw & (proper_title | proper_abs)
-            proper_match = len(matched) / len(proper_kw)
-
+        """粗排评分（0-1），用于在 LLM 精排前缩小候选池。"""
         # 标题与关键词的 token 重叠（含中文）
         kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
         title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', paper.title.lower()))
@@ -760,18 +744,54 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             (paper.title + ' ' + (paper.abstract or '')[:80]).lower()
         ).ratio()
 
-        # 摘要关键词匹配
-        abstract_match = 0.0
-        if paper.abstract:
-            abs_lower = paper.abstract.lower()
-            abstract_match = sum(1 for t in kw_tokens if t.lower() in abs_lower) / max(len(kw_tokens), 1)
+        return min(overlap * 0.5 + fuzzy * 0.5, 1.0)
 
-        # 权重分配：有英文专有名词时正常四因子；无时重分配给中文因子
-        if has_proper:
-            return min(proper_match * 0.4 + overlap * 0.2 + fuzzy * 0.2 + abstract_match * 0.2, 1.0)
-        else:
-            # 纯中文场景：overlap 35% + fuzzy 30% + abstract 35%
-            return min(overlap * 0.35 + fuzzy * 0.3 + abstract_match * 0.35, 1.0)
+    async def llm_rerank(candidates_list: list[PaperResult], context: str, keyword: str) -> list[tuple[PaperResult, float]]:
+        """用 LLM 对候选论文做相对排序，返回 (paper, score) 列表降序。"""
+        if not candidates_list:
+            return []
+        if len(candidates_list) == 1:
+            return [(candidates_list[0], 1.0)]
+
+        # 构造候选清单
+        paper_lines = []
+        for i, p in enumerate(candidates_list):
+            title = p.title[:120]
+            abstract = (p.abstract or '')[:200]
+            paper_lines.append(f"{i+1}. {title} | {abstract}")
+        papers_text = "\n".join(paper_lines)
+
+        prompt = (
+            f"上下文引用片段：\"{context[:300]}\"\n\n"
+            f"搜索关键词：{keyword}\n\n"
+            f"候选论文：\n{papers_text}\n\n"
+            f"请根据与引用上下文的相关性，对以上候选论文打分（0.0-1.0）。"
+            f"只返回每行一个分数，按候选编号顺序：\n"
+            f"1: 0.85\n2: 0.42\n..."
+        )
+        try:
+            result = await _call_llm(prompt)
+            if result and not result.startswith("❌"):
+                # 解析分数
+                scores = []
+                for line in result.strip().split("\n"):
+                    m = re.match(r'\d+[:\.\s]+([\d\.]+)', line.strip())
+                    if m:
+                        try:
+                            scores.append(min(max(float(m.group(1)), 0.0), 1.0))
+                        except ValueError:
+                            scores.append(0.0)
+                    else:
+                        scores.append(0.0)
+                # 如果解析出的分数数量与候选不匹配，用粗排分数兜底
+                if len(scores) != len(candidates_list):
+                    raise ValueError(f"score count mismatch: {len(scores)} vs {len(candidates_list)}")
+                return list(zip(candidates_list, scores))
+        except Exception as e:
+            logger.debug(f"[ScholarForge] llm_rerank fallback to heuristic: {e}")
+
+        # 兜底：用粗排分数
+        return [(p, score_relevance(p, context, keyword)) for p in candidates_list]
 
     # 选择最佳匹配
     seen_titles: set[str] = set()
@@ -786,13 +806,17 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             failed.append(n)
             continue
 
-        # 按相似度排序
-        scored = [(p, score_relevance(p, num_context.get(n, ''), num_keywords.get(n, '')))
+        # 粗排 + LLM 精排
+        coarse = [(p, score_relevance(p, num_context.get(n, ''), num_keywords.get(n, '')))
                   for p in candidates[n]]
-        scored.sort(key=lambda x: x[1], reverse=True)
+        coarse.sort(key=lambda x: x[1], reverse=True)
 
-        # 取最佳匹配（分数 > 0.3 阈值，避免低质量替换）
-        best_paper, best_score = scored[0]
+        # 取 top-5 粗排候选送 LLM 精排
+        top_candidates = [p for p, _ in coarse[:5]]
+        reranked = await llm_rerank(top_candidates, num_context.get(n, ''), num_keywords.get(n, ''))
+        reranked.sort(key=lambda x: x[1], reverse=True)
+
+        best_paper, best_score = reranked[0]
         if best_score < 0.3:
             failed.append(n)
             match_log.append(f"  [{n}] ⚠️ 最佳匹配分数过低 ({best_score:.2f})，跳过")

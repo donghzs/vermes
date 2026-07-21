@@ -308,7 +308,7 @@ def format_citation_report(checks: list[CitationCheck]) -> str:
     if suspicious > 0:
         lines.append(f"\n### 💡 建议\n")
         lines.append(f"- {suspicious} 篇文献未能在线验证，建议手动在知网/Google Scholar 搜索确认")
-        lines.append("- 使用 `scholarforge_search` 工具搜索相关主题的真实文献替换存疑引用")
+        lines.append("- 使用 `scholarforge_replace_citations` 工具自动重新搜索并替换存疑引用（会根据上下文重新匹配真实文献）")
 
     return "\n".join(lines)
 
