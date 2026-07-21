@@ -141,15 +141,16 @@ async def _fetch_via_openalex_cn(query: str, limit: int = 20) -> list[CnkiPaper]
 
     OpenAlex 索引了来自 Crossref/Datacite 的中文论文元数据。
     虽不如知网丰富，但免费、稳定、可做兜底。
+    使用 title.search 提升相关性（全文 search 会返回不相关结果）。
     """
     import httpx
     try:
         async with httpx.AsyncClient() as client:
+            # 优先用 title.search 精确匹配标题
             resp = await client.get(
                 "https://api.openalex.org/works",
                 params={
-                    "search": query,
-                    "filter": "language:zh,type:article",
+                    "filter": f"title.search:{query},language:zh,type:article",
                     "per_page": min(limit, 25),
                     "sort": "cited_by_count:desc",
                 },
