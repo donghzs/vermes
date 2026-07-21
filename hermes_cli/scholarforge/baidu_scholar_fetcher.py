@@ -19,6 +19,8 @@ import httpx
 
 logger = logging.getLogger("scholarforge.baidu_scholar")
 
+from agent.service_credentials import register_service
+
 # 复用 cnki_fetcher 的 CnkiPaper 保持接口一致
 from .cnki_fetcher import CnkiPaper
 
@@ -310,3 +312,7 @@ async def search_baidu_scholar(query: str, limit: int = 10) -> list[CnkiPaper]:
                      f"(Crossref: {len(crossref_results)}, OpenAlex: {len(openalex_results)})")
 
     return merged
+
+
+# 纳入统一凭证体系（免费源，无 api_key 依赖）
+register_service("baidu_scholar", label="Baidu Scholar 中文聚合")

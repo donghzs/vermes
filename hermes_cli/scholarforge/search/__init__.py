@@ -38,6 +38,35 @@ def _set_cooldown(source_name: str):
     logger.info(f"[ScholarForge] {source_name} 进入 {_COOLDOWN_SECONDS}s 429 冷却")
 
 
+def _query_is_chinese(text: str) -> bool:
+    """判断查询是否包含中文字符（用于中文优先源路由）"""
+    return bool(re.search(r"[\u4e00-\u9fff]", text or ""))
+
+
+def _select_default_sources(query: str) -> list[str]:
+    """按查询语言选择默认搜索源（可单测直接覆盖）。
+
+    - 中文查询：用 baidu_scholar 替代 crossref/openalex（baidu_scholar 内部已聚合
+      二者并按中文优先排序），避免重复调用；同时补入 cnki（有 key→网关，
+      无 key→OpenAlex 中文兜底）。
+    - 英文查询：保持原默认链。
+    最后并入已激活的付费源。
+    """
+    if _query_is_chinese(query):
+        sources = [s for s in DEFAULT_SOURCE_CHAIN if s not in ("crossref", "openalex")]
+        sources.append("baidu_scholar")
+        # cnki 已注册（付费网关源），无 key 时 search_cnki 自动降级到 OpenAlex 中文兜底
+        if "cnki" in _SEARCH_SOURCES:
+            sources.append("cnki")
+    else:
+        sources = [s for s in DEFAULT_SOURCE_CHAIN if s in _SEARCH_SOURCES]
+    # 加入已激活的付费源
+    for src_name, entry in _PAID_SOURCE_REGISTRY.items():
+        if entry.get("enabled") and src_name in _SEARCH_SOURCES and src_name not in sources:
+            sources.append(src_name)
+    return sources
+
+
 @dataclass
 class PaperResult:
     """统一论文结果格式"""
@@ -185,12 +214,8 @@ async def search_papers(
     4. 单源超时 8s，避免卡死
     """
     if not sources:
-        # 默认：免费源 + 已激活的付费源
-        sources = [s for s in DEFAULT_SOURCE_CHAIN if s in _SEARCH_SOURCES]
-        # 加入已激活的付费源
-        for src_name, entry in _PAID_SOURCE_REGISTRY.items():
-            if entry.get("enabled") and src_name in _SEARCH_SOURCES and src_name not in sources:
-                sources.append(src_name)
+        # 默认：按查询语言选择（中文查询优先中文源）
+        sources = _select_default_sources(query)
 
     # 过滤 429 冷却源
     active_sources = [s for s in sources if not _is_cooled_down(s)]
@@ -972,6 +997,38 @@ async def _search_cnki_gateway(query: str, limit: int = 10) -> list[PaperResult]
         return []
 
 
+async def _search_baidu_scholar_source(query: str, limit: int = 10) -> list[PaperResult]:
+    """百度学术风格中文聚合源 — 免费（Crossref + OpenAlex 中文聚合，中文优先排序）
+
+    与默认链的 crossref/openalex 同源，仅在中文查询时由 _select_default_sources
+    选入以替代二者，避免重复调用。无 API Key 依赖。
+    """
+    try:
+        from hermes_cli.scholarforge.baidu_scholar_fetcher import search_baidu_scholar
+
+        papers = await search_baidu_scholar(query, limit)
+        results = []
+        for cp in papers:
+            results.append(PaperResult(
+                paper_id=f"{cp.source}:{(cp.doi or cp.url or cp.title)[:80]}",
+                title=cp.title,
+                authors=cp.authors,
+                year=cp.year,
+                venue=cp.journal,
+                abstract=cp.abstract,
+                citation_count=cp.cited_count,
+                url=cp.url or f"https://scholar.google.com/scholar?q={cp.title}",
+                source=cp.source,
+                doi=cp.doi,
+            ))
+        if results:
+            logger.info(f"[ScholarForge] Baidu Scholar source: {len(results)} results for '{query}'")
+        return results
+    except Exception as e:
+        logger.error(f"[ScholarForge] Baidu Scholar source failed: {e}")
+        return []
+
+
 # 注册全部搜索源 — 免费 + 付费
 # 免费源
 register_search_source("arxiv", _search_arxiv)
@@ -987,6 +1044,7 @@ register_search_source("scopus", _search_scopus)
 register_search_source("web_of_science", _search_wos)
 register_search_source("google_scholar", _search_serpapi_scholar)
 register_search_source("cnki", _search_cnki_gateway)
+register_search_source("baidu_scholar", _search_baidu_scholar_source)
 
 # 默认搜索链（仅免费源，付费源需用户手动激活后加入）
 DEFAULT_SOURCE_CHAIN = ["arxiv", "crossref", "openalex", "doaj", "semantic_scholar", "pubmed", "core"]
