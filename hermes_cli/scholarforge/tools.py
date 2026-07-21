@@ -1239,13 +1239,14 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
         if report.plag_results:
             lines.append("\n### 高相似段落\n")
             for r in report.plag_results[:5]:
-                lines.append(f"- 段落 {r.source_para} ↔ 段落 {r.target_para}：相似度 {r.similarity:.1%}")
+                lines.append(f"- 位置 {r.position}：相似度 {r.score:.1%}  {r.text[:50]}...")
 
         # AIGC 特征
         if report.aigc_results:
             lines.append("\n### AI 痕迹特征\n")
             for r in report.aigc_results[:5]:
-                lines.append(f"- {r.paragraph_preview[:60]}... → {r.label} (置信度 {r.confidence:.0%})")
+                feats = ", ".join(r.features[:3]) if r.features else "无"
+                lines.append(f"- 位置 {r.position}：AI 概率 {r.aigc_probability:.0%}  特征: {feats}")
 
         # 建议
         if report.suggestions:
@@ -1603,38 +1604,41 @@ async def _handle_scholarforge_verify_citations(args: dict, **kw: Any) -> str:
     papers_raw = args.get("papers", "")
     enable_online = args.get("enable_online", True)
 
-    if not papers_raw.strip():
+    # 接受 list 或 JSON 字符串或纯文本
+    if isinstance(papers_raw, list):
+        papers = papers_raw
+    elif not papers_raw.strip():
         return "❌ 请提供文献列表。"
-
-    # 尝试解析 JSON
-    papers = []
-    try:
-        papers = json_mod.loads(papers_raw)
-    except (json_mod.JSONDecodeError, ValueError):
-        # 按行解析
-        for line in papers_raw.strip().split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            # 尝试解析 [n] Author (Year). Title. Venue.
-            ref_match = re.match(r'\[?\d+\]?\s*(.+?)\s*\((\d{4})\)\.\s*(.+?)\.\s*(.+)', line)
-            if ref_match:
-                papers.append({
-                    "authors": ref_match.group(1).strip(),
-                    "year": ref_match.group(2),
-                    "title": ref_match.group(3).strip(),
-                    "venue": ref_match.group(4).strip(),
-                    "doi": "",
-                })
-            else:
-                parts = [p.strip() for p in line.split(".")]
-                papers.append({
-                    "title": parts[1] if len(parts) > 1 else line,
-                    "authors": parts[0] if parts else "",
-                    "year": "",
-                    "venue": parts[2] if len(parts) > 2 else "",
-                    "doi": "",
-                })
+    else:
+        # 尝试解析 JSON
+        papers = []
+        try:
+            papers = json_mod.loads(papers_raw)
+        except (json_mod.JSONDecodeError, ValueError):
+            # 按行解析
+            for line in papers_raw.strip().split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # 尝试解析 [n] Author (Year). Title. Venue.
+                ref_match = re.match(r'\[?\d+\]?\s*(.+?)\s*\((\d{4})\)\.\s*(.+?)\.\s*(.+)', line)
+                if ref_match:
+                    papers.append({
+                        "authors": ref_match.group(1).strip(),
+                        "year": ref_match.group(2),
+                        "title": ref_match.group(3).strip(),
+                        "venue": ref_match.group(4).strip(),
+                        "doi": "",
+                    })
+                else:
+                    parts = [p.strip() for p in line.split(".")]
+                    papers.append({
+                        "title": parts[1] if len(parts) > 1 else line,
+                        "authors": parts[0] if parts else "",
+                        "year": "",
+                        "venue": parts[2] if len(parts) > 2 else "",
+                        "doi": "",
+                    })
 
     if not papers:
         return "❌ 未能解析文献列表，请提供 JSON 数组或每行一篇的格式。"

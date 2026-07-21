@@ -53,11 +53,13 @@ def _select_default_sources(query: str) -> list[str]:
     最后并入已激活的付费源。
     """
     if _query_is_chinese(query):
-        sources = [s for s in DEFAULT_SOURCE_CHAIN if s not in ("crossref", "openalex")]
-        sources.append("baidu_scholar")
-        # cnki 已注册（付费网关源），无 key 时 search_cnki 自动降级到 OpenAlex 中文兜底
+        # 中文查询：排除对中文支持差的英文源（doaj/pubmed/arxiv），
+        # 优先中文源 baidu_scholar + cnki（cnki 内部降级到 OpenAlex title.search）
+        sources = [s for s in DEFAULT_SOURCE_CHAIN if s not in ("crossref", "openalex", "doaj", "pubmed", "arxiv")]
+        # 语义学者对中文有一定支持，保留
+        sources.insert(0, "baidu_scholar")
         if "cnki" in _SEARCH_SOURCES:
-            sources.append("cnki")
+            sources.insert(0, "cnki")
     else:
         sources = [s for s in DEFAULT_SOURCE_CHAIN if s in _SEARCH_SOURCES]
     # 加入已激活的付费源
