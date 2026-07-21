@@ -583,10 +583,11 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     if len(unique_nums) > max_refs:
         unique_nums = unique_nums[:max_refs]
 
-    # ── 修复1: 本地提取关键词（不依赖 LLM）──
-    # 从每个 [n] 前后上下文提取中英文关键词
+    # ── 修复1: 混合关键词提取（LLM 辅助 + 正则兜底）──
+    # 先用 LLM 从上下文提取 2-3 个学术搜索词（高精度），
+    # 失败时回退到正则提取（低精度但零延迟）
     def extract_keywords(text: str) -> str:
-        """从上下文文本提取搜索关键词"""
+        """从上下文文本提取搜索关键词（纯正则，兜底方案）"""
         # 优先提取专有名词：连续大写字母开头（如 RAGAS, GPT, BERT, TransE）
         proper_nouns = re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', text)
         # 排除常见非术语
@@ -633,6 +634,23 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             return text[:60].strip()
         return ' '.join(all_words[:6])
 
+    async def extract_keywords_llm(context: str) -> str | None:
+        """用 LLM 从上下文提取精准学术搜索词（2-3 个短语）"""
+        try:
+            prompt = (
+                f"从以下论文引用上下文提取 2-3 个用于学术搜索的关键短语（英文/中文均可）。"
+                f"只返回空格分隔的短语，不要解释：\n\n{context[:500]}"
+            )
+            result = await _call_llm(prompt)
+            if result and not result.startswith("❌"):
+                # 取第一行，清洗掉引号和多余字符
+                kw = result.strip().split("\n")[0].strip('"\'。，, ')
+                if kw and len(kw) >= 3:
+                    return kw[:120]
+        except Exception:
+            pass
+        return None
+
     # 为每个编号提取上下文和关键词
     # 使用扩展后的 cite_pattern 来定位所有引用位置（含范围引用）
     num_context: dict[int, str] = {}
@@ -673,6 +691,41 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     tasks = [search_one(n, kw) for n, kw in num_keywords.items()]
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+
+    # ── 碰撞检测：多个占位符搜到同一篇论文时，用 LLM 增强关键词重新搜索 ──
+    # 阈值 0.3 → 低于此分不选，但对同一篇低分但撞车的论文要区分
+    collision_detected = False
+    if len(num_keywords) >= 2:
+        kw_values = [(n, kw) for n, kw in num_keywords.items() if kw]
+        for i in range(len(kw_values)):
+            for j in range(i + 1, len(kw_values)):
+                n1, kw1 = kw_values[i]
+                n2, kw2 = kw_values[j]
+                # 关键词相似 → 可能碰撞
+                if kw1 and kw2 and (
+                    kw1.lower() == kw2.lower() or
+                    max(len(kw1), len(kw2)) > 0 and sum(1 for w in kw1.split() if w.lower() in kw2.lower().split()) >= min(len(kw1.split()), len(kw2.split())) * 0.6
+                ):
+                    if not collision_detected:
+                        logger.info(f"[ScholarForge] replace_citations: collision detected between [{n1}]({kw1[:30]}) and [{n2}]({kw2[:30]}), using LLM to refine")
+                        collision_detected = True
+                    # 用 LLM 重新提取更精准的关键词
+                    for n in (n1, n2):
+                        if n in num_context:
+                            llm_kw = await extract_keywords_llm(num_context[n])
+                            if llm_kw and llm_kw != num_keywords.get(n, ''):
+                                num_keywords[n] = llm_kw
+                                logger.info(f"  [{n}] refined: '{llm_kw[:60]}'")
+
+    # 重新搜索被 LLM 改善过的关键词
+    if collision_detected:
+        tasks2 = [
+            search_one(n, num_keywords[n])
+            for n in num_keywords
+            if n not in candidates  # 只重新搜索未搜过的
+        ]
+        if tasks2:
+            await asyncio.gather(*tasks2, return_exceptions=True)
 
     # 对每个编号，从候选中选最佳匹配
     def score_relevance(paper: PaperResult, context: str, keyword: str) -> float:
@@ -738,9 +791,9 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
                   for p in candidates[n]]
         scored.sort(key=lambda x: x[1], reverse=True)
 
-        # 取最佳匹配（分数 > 0.1 阈值）
+        # 取最佳匹配（分数 > 0.3 阈值，避免低质量替换）
         best_paper, best_score = scored[0]
-        if best_score < 0.1:
+        if best_score < 0.3:
             failed.append(n)
             match_log.append(f"  [{n}] ⚠️ 最佳匹配分数过低 ({best_score:.2f})，跳过")
             continue
@@ -1111,8 +1164,7 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
 
     if not text.strip():
         return "❌ 请提供需要查重的文本。"
-    if len(text) < 200:
-        return "⚠️ 文本过短（<200字），查重结果参考价值有限。"
+    degraded = len(text) < 200
 
     try:
         from hermes_cli.scholarforge.plagcheck import full_plagiarism_check
@@ -1163,7 +1215,10 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
                 lines.append(f"- {s}")
 
         # 在线查重提示
-        lines.append("\n---\n💡 **提示**: 本检测为离线检测，如需更精确的查重结果，建议前往 PaperYY、大雅查重、知网查重等平台进行在线检测。")
+        if degraded:
+            lines.append(f"\n---\n⚠️ **注意**: 文本仅 {len(text)} 字（不足 200 字），查重结果参考价值有限，建议扩充内容后重新检测。")
+        else:
+            lines.append("\n---\n💡 **提示**: 本检测为离线检测，如需更精确的查重结果，建议前往 PaperYY、大雅查重、知网查重等平台进行在线检测。")
 
         return "\n".join(lines)
     except Exception as e:

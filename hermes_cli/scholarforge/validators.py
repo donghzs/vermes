@@ -113,39 +113,63 @@ async def verify_citation_authenticity(
         check.issue = "; ".join(issues)
 
         # ── 在线验证 ──
+        api_errors: list[str] = []
+        crossref_result = None
+        s2_result = None
+        any_api_ok = False  # 至少一次 API 非 error 响应
+
         if enable_online and title:
             # 先尝试 CrossRef（如果有 DOI）
             if doi:
                 crossref_result = await _verify_crossref_doi(doi)
-                if crossref_result:
+                if crossref_result and not crossref_result.get("error"):
                     check.verified = True
                     check.confidence = 0.95
                     check.source = "crossref"
                     check.doi = doi
+                    if check.issue:
+                        check.issue = ""
                     logger.info(f"[CitationVerify] [{i}] DOI verified via CrossRef: {doi}")
                     results.append(check)
                     continue
+                elif crossref_result and crossref_result.get("error"):
+                    api_errors.append(f"CrossRef: {crossref_result['reason']}")
+                else:
+                    any_api_ok = True  # CrossRef 正常响应但无匹配
 
             # 再尝试 Semantic Scholar（标题搜索）
             s2_result = await _verify_semantic_scholar(title, authors, year)
-            if s2_result:
+            if s2_result and not s2_result.get("error"):
                 check.verified = True
                 check.confidence = s2_result.get("confidence", 0.8)
                 check.source = "semantic_scholar"
                 check.doi = s2_result.get("doi", "")
-                if not check.issue:
+                if check.issue:
                     check.issue = ""
                 logger.info(f"[CitationVerify] [{i}] Title verified via Semantic Scholar: {title[:50]}")
                 results.append(check)
                 continue
-
-            # 在线验证失败
-            if check.issue:
-                check.confidence = 0.2
-                check.issue = f"在线验证未找到匹配文献; {check.issue}"
+            elif s2_result and s2_result.get("error"):
+                api_errors.append(f"SemanticScholar: {s2_result['reason']}")
             else:
-                check.confidence = 0.3
-                check.issue = "在线验证未找到匹配文献，可能不存在或为虚构"
+                any_api_ok = True  # S2 正常响应但无匹配
+
+            # ── 区分：API 不可用 vs 文献不存在 ──
+            if api_errors and not any_api_ok:
+                # 所有 API 调用均报错，未执行任何有效验证
+                check.source = "api_unavailable"
+                check.confidence = 0.0
+                check.issue = f"在线验证服务不可用（{'；'.join(api_errors)}）"
+                logger.warning(f"[CitationVerify] [{i}] All APIs unavailable: {'; '.join(api_errors)}")
+            else:
+                # 至少一次 API 成功调用但未匹配 → 文献可能不存在
+                prefix = f"({'；'.join(api_errors)}；)" if api_errors else ""
+                if check.issue:
+                    check.confidence = 0.2
+                    check.issue = f"{prefix}在线验证未找到匹配文献; {check.issue}"
+                else:
+                    check.confidence = 0.3
+                    check.issue = f"{prefix}在线验证未找到匹配文献，可能不存在或为虚构"
         else:
             # 仅本地检查
             if not check.issue:
@@ -160,7 +184,13 @@ async def verify_citation_authenticity(
 
 
 async def _verify_crossref_doi(doi: str) -> dict | None:
-    """通过 CrossRef API 验证 DOI 是否真实存在"""
+    """通过 CrossRef API 验证 DOI 是否真实存在
+    
+    Returns:
+        {"verified": True, ...} — 验证成功
+        None — 文献不存在（API 返回但无匹配）
+        {"error": True, "reason": "..."} — API 不可用（网络/超时/限流等）
+    """
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -171,13 +201,24 @@ async def _verify_crossref_doi(doi: str) -> dict | None:
         if resp.status_code == 200:
             data = resp.json()
             return {"verified": True, "data": data.get("message", {})}
+        elif resp.status_code == 404:
+            return None  # DOI 不存在
+        else:
+            logger.warning(f"CrossRef API unexpected status {resp.status_code} for {doi}")
+            return {"error": True, "reason": f"HTTP {resp.status_code}"}
     except Exception as e:
-        logger.debug(f"CrossRef DOI verify failed for {doi}: {e}")
-    return None
+        logger.warning(f"CrossRef API error for {doi}: {e}")
+        return {"error": True, "reason": str(e)[:100]}
 
 
 async def _verify_semantic_scholar(title: str, authors: str, year: str) -> dict | None:
-    """通过 Semantic Scholar API 搜索标题验证文献是否存在"""
+    """通过 Semantic Scholar API 搜索标题验证文献是否存在
+    
+    Returns:
+        {"verified": True, ...} — 验证成功
+        None — 文献不存在（搜索返回但无匹配）
+        {"error": True, "reason": "..."} — API 不可用（网络/超时/限流等）
+    """
     import httpx
     try:
         # 搜索标题
@@ -195,7 +236,7 @@ async def _verify_semantic_scholar(title: str, authors: str, year: str) -> dict 
             data = resp.json()
             papers = data.get("data", [])
             if not papers:
-                return None
+                return None  # 搜索无结果
 
             # 模糊匹配标题
             import difflib
@@ -212,21 +253,40 @@ async def _verify_semantic_scholar(title: str, authors: str, year: str) -> dict 
                         "confidence": min(confidence, 0.95),
                         "doi": p.get("externalIds", {}).get("DOI", ""),
                     }
+            return None  # 有结果但不匹配
+        elif resp.status_code == 429:
+            logger.warning(f"Semantic Scholar rate limited for '{title[:30]}'")
+            return {"error": True, "reason": "rate_limited"}
+        else:
+            logger.warning(f"Semantic Scholar API unexpected status {resp.status_code}")
+            return {"error": True, "reason": f"HTTP {resp.status_code}"}
     except Exception as e:
-        logger.debug(f"Semantic Scholar verify failed for '{title[:30]}': {e}")
-    return None
+        logger.warning(f"Semantic Scholar API error for '{title[:30]}': {e}")
+        return {"error": True, "reason": str(e)[:100]}
 
 
 def format_citation_report(checks: list[CitationCheck]) -> str:
     """格式化引用验证报告"""
     total = len(checks)
     verified = sum(1 for c in checks if c.verified)
-    suspicious = sum(1 for c in checks if not c.verified and c.confidence < 0.3)
+    api_unavailable = sum(1 for c in checks if c.source == "api_unavailable")
+    suspicious = sum(1 for c in checks if not c.verified and c.source != "api_unavailable" and c.confidence < 0.3)
 
     lines = [f"## 🔍 文献引用真实性验证报告\n"]
     lines.append(f"**总计**: {total} 篇文献")
     lines.append(f"**已验证**: {verified} 篇 ({verified*100//max(total,1)}%)")
+    if api_unavailable:
+        lines.append(f"**⚠️ 验证服务不可用**: {api_unavailable} 篇 (API 连接失败，未完成在线验证)")
     lines.append(f"**存疑**: {suspicious} 篇\n")
+
+    if api_unavailable > 0:
+        lines.append("### ⚠️ 验证服务不可用（建议稍后重试或手动验证）\n")
+        for c in checks:
+            if c.source == "api_unavailable":
+                lines.append(f"- **[{c.ref_num}]** {c.title[:60]}...")
+                lines.append(f"  - 作者: {c.authors[:40]}")
+                lines.append(f"  - 原因: {c.issue}")
+                lines.append("")
 
     if suspicious > 0:
         lines.append("### ⚠️ 存疑文献\n")
