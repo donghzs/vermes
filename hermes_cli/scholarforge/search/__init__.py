@@ -744,13 +744,17 @@ async def _search_core_free(query: str, limit: int = 10) -> list[PaperResult]:
     if _is_cooled_down("core"):
         logger.info("[ScholarForge] CORE 冷却中，跳过")
         return []
+    core_key = get_api_key("core") or ""
+    if not core_key:
+        logger.debug("[ScholarForge] CORE 无 API Key，跳过")
+        return []
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get("https://api.core.ac.uk/v3/search/works", params={
                 "q": query,
                 "limit": min(limit, 10),
             }, timeout=10, headers={
-                "Authorization": "Bearer " + (get_api_key("core") or ""),
+                "Authorization": f"Bearer {core_key}",
                 "User-Agent": "ScholarForge/1.0",
             })
             if resp.status_code == 429:
