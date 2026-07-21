@@ -5,11 +5,21 @@ ScholarForge Agent Tools — 测试套件
 import json
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Ensure hermes_cli is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+# ScholarForge 工具采用惰性注册（import 不触发 register_tools），
+# 在任意测试类运行前于模块加载时显式注册一次，避免测试类执行顺序导致的注册缺失。
+import hermes_cli.scholarforge.tools as _sf_tools  # noqa: E402
+from tools.registry import registry as _sf_registry  # noqa: E402
+
+if _sf_registry.get_entry("scholarforge_search") is None:
+    _sf_tools.register_tools()
 
 
 class TestScholarForgeToolsRegistration(unittest.TestCase):
@@ -17,10 +27,8 @@ class TestScholarForgeToolsRegistration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        import hermes_cli.scholarforge.tools  # noqa: F401 — triggers registration
-        from tools.registry import registry
-
-        cls.registry = registry
+        # 注册已在模块加载时完成（见文件顶部 _sf_tools.register_tools()）
+        cls.registry = _sf_registry
 
     def test_all_three_tools_registered(self):
         for name in [
@@ -183,26 +191,31 @@ class TestHandlerSignature(unittest.TestCase):
 
 
 class TestCredentialResolution(unittest.TestCase):
-    """验证凭证解析逻辑不抛异常"""
+    """验证凭证解析逻辑不抛异常，且无配置时返回 None（环境无关）"""
 
     def test_resolve_credentials_no_config(self):
-        """无凭证配置时返回 None（不抛异常）"""
+        """主链路与配置文件均无凭证时返回 None（不抛异常）"""
         from hermes_cli.scholarforge.tools import _resolve_credentials
 
-        with patch("hermes_cli.blueprints.chat._get_chat_credentials", return_value=("", "", "")):
-            result = _resolve_credentials()
+        with tempfile.TemporaryDirectory() as tmp:
+            # 主链路返回空 + 本地 home 无 config.yaml/.env → 两路皆空 → None
+            with patch("hermes_cli.blueprints.chat._get_chat_credentials", return_value=("", "", "")):
+                with patch("hermes_constants.get_hermes_home", return_value=Path(tmp)):
+                    result = _resolve_credentials()
             self.assertIsNone(result)
 
     def test_resolve_credentials_does_not_crash(self):
-        """即使凭证读取异常也不崩溃"""
+        """主链路抛异常时也应优雅降级返回 None（不崩溃）"""
         from hermes_cli.scholarforge.tools import _resolve_credentials
 
-        with patch("hermes_cli.blueprints.chat._get_chat_credentials", side_effect=Exception("mock")):
-            try:
-                result = _resolve_credentials()
-            except Exception:
-                result = None
-            # Should handle gracefully
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("hermes_cli.blueprints.chat._get_chat_credentials", side_effect=Exception("mock")):
+                with patch("hermes_constants.get_hermes_home", return_value=Path(tmp)):
+                    try:
+                        result = _resolve_credentials()
+                    except Exception:
+                        result = "RAISED"
+            # 不应抛异常，且两路皆空应返回 None
             self.assertIsNone(result)
 
 

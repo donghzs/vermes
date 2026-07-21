@@ -530,6 +530,81 @@ SCHOLARFORGE_LEARN_STYLE_SCHEMA = {
 }
 
 
+def score_relevance(paper, context: str, keyword: str) -> float:
+    """粗排评分（0-1），用于在 LLM 精排前缩小候选池。
+
+    模块级纯函数（从 _handle_scholarforge_replace_citations 内抽取），
+    便于单测直接覆盖，避免闭包逻辑无守护溜入回归。
+    """
+    import re
+    import difflib
+    # 标题与关键词的 token 重叠（含中文）
+    kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
+    title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', paper.title.lower()))
+    overlap = len(kw_tokens & title_tokens) / max(len(kw_tokens), 1)
+
+    # 模糊相似度
+    fuzzy = difflib.SequenceMatcher(None,
+        keyword[:80].lower(),
+        (paper.title + ' ' + (paper.abstract or '')[:80]).lower()
+    ).ratio()
+
+    return min(overlap * 0.5 + fuzzy * 0.5, 1.0)
+
+
+async def llm_rerank(candidates_list, context: str, keyword: str) -> list:
+    """用 LLM 对候选论文做相对排序，返回 (paper, score) 列表降序。
+
+    模块级函数（从 _handle_scholarforge_replace_citations 内抽取）。
+    LLM 返回分数数量与候选不符或异常时，fail-open 兜底回 score_relevance 粗排。
+    """
+    import re
+    if not candidates_list:
+        return []
+    if len(candidates_list) == 1:
+        return [(candidates_list[0], 1.0)]
+
+    # 构造候选清单
+    paper_lines = []
+    for i, p in enumerate(candidates_list):
+        title = p.title[:120]
+        abstract = (p.abstract or '')[:200]
+        paper_lines.append(f"{i+1}. {title} | {abstract}")
+    papers_text = "\n".join(paper_lines)
+
+    prompt = (
+        f"上下文引用片段：\"{context[:300]}\"\n\n"
+        f"搜索关键词：{keyword}\n\n"
+        f"候选论文：\n{papers_text}\n\n"
+        f"请根据与引用上下文的相关性，对以上候选论文打分（0.0-1.0）。"
+        f"只返回每行一个分数，按候选编号顺序：\n"
+        f"1: 0.85\n2: 0.42\n..."
+    )
+    try:
+        result = await _call_llm(prompt)
+        if result and not result.startswith("❌"):
+            # 解析分数
+            scores = []
+            for line in result.strip().split("\n"):
+                m = re.match(r'\d+[:\.\s]+([\d\.]+)', line.strip())
+                if m:
+                    try:
+                        scores.append(min(max(float(m.group(1)), 0.0), 1.0))
+                    except ValueError:
+                        scores.append(0.0)
+                else:
+                    scores.append(0.0)
+            # 如果解析出的分数数量与候选不匹配，用粗排分数兜底
+            if len(scores) != len(candidates_list):
+                raise ValueError(f"score count mismatch: {len(scores)} vs {len(candidates_list)}")
+            return list(zip(candidates_list, scores))
+    except Exception as e:
+        logger.debug(f"[ScholarForge] llm_rerank fallback to heuristic: {e}")
+
+    # 兜底：用粗排分数
+    return [(p, score_relevance(p, context, keyword)) for p in candidates_list]
+
+
 async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     """替换占位符引用为真实文献
 
@@ -731,67 +806,7 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             await asyncio.gather(*tasks2, return_exceptions=True)
 
     # 对每个编号，从候选中选最佳匹配
-    def score_relevance(paper: PaperResult, context: str, keyword: str) -> float:
-        """粗排评分（0-1），用于在 LLM 精排前缩小候选池。"""
-        # 标题与关键词的 token 重叠（含中文）
-        kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
-        title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', paper.title.lower()))
-        overlap = len(kw_tokens & title_tokens) / max(len(kw_tokens), 1)
-
-        # 模糊相似度
-        fuzzy = difflib.SequenceMatcher(None,
-            keyword[:80].lower(),
-            (paper.title + ' ' + (paper.abstract or '')[:80]).lower()
-        ).ratio()
-
-        return min(overlap * 0.5 + fuzzy * 0.5, 1.0)
-
-    async def llm_rerank(candidates_list: list[PaperResult], context: str, keyword: str) -> list[tuple[PaperResult, float]]:
-        """用 LLM 对候选论文做相对排序，返回 (paper, score) 列表降序。"""
-        if not candidates_list:
-            return []
-        if len(candidates_list) == 1:
-            return [(candidates_list[0], 1.0)]
-
-        # 构造候选清单
-        paper_lines = []
-        for i, p in enumerate(candidates_list):
-            title = p.title[:120]
-            abstract = (p.abstract or '')[:200]
-            paper_lines.append(f"{i+1}. {title} | {abstract}")
-        papers_text = "\n".join(paper_lines)
-
-        prompt = (
-            f"上下文引用片段：\"{context[:300]}\"\n\n"
-            f"搜索关键词：{keyword}\n\n"
-            f"候选论文：\n{papers_text}\n\n"
-            f"请根据与引用上下文的相关性，对以上候选论文打分（0.0-1.0）。"
-            f"只返回每行一个分数，按候选编号顺序：\n"
-            f"1: 0.85\n2: 0.42\n..."
-        )
-        try:
-            result = await _call_llm(prompt)
-            if result and not result.startswith("❌"):
-                # 解析分数
-                scores = []
-                for line in result.strip().split("\n"):
-                    m = re.match(r'\d+[:\.\s]+([\d\.]+)', line.strip())
-                    if m:
-                        try:
-                            scores.append(min(max(float(m.group(1)), 0.0), 1.0))
-                        except ValueError:
-                            scores.append(0.0)
-                    else:
-                        scores.append(0.0)
-                # 如果解析出的分数数量与候选不匹配，用粗排分数兜底
-                if len(scores) != len(candidates_list):
-                    raise ValueError(f"score count mismatch: {len(scores)} vs {len(candidates_list)}")
-                return list(zip(candidates_list, scores))
-        except Exception as e:
-            logger.debug(f"[ScholarForge] llm_rerank fallback to heuristic: {e}")
-
-        # 兜底：用粗排分数
-        return [(p, score_relevance(p, context, keyword)) for p in candidates_list]
+    # score_relevance / llm_rerank 已抽取为模块级函数（见文件上方），直接调用
 
     # 选择最佳匹配
     seen_titles: set[str] = set()
