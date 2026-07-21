@@ -59,6 +59,20 @@ class TestDefaultSourceSelection(unittest.TestCase):
         for s in ("arxiv", "crossref", "openalex", "doaj", "semantic_scholar", "pubmed", "core"):
             self.assertIn(s, sources)
 
+    def test_chinese_query_excludes_irrelevant_english_sources(self):
+        """Bug3 回归：中文查询必须排除 doaj/pubmed/arxiv（这些源对中文返回无关医学/材料论文）；
+        同时中文源 cnki/baidu_scholar 应入选。"""
+        sources = _select_default_sources("认知负荷理论在教学中的应用")
+        # 英文源对中文支持差 → 必须排除
+        self.assertNotIn("doaj", sources)
+        self.assertNotIn("pubmed", sources)
+        self.assertNotIn("arxiv", sources)
+        # 中文源应入选（并提至列表头部优先返回）
+        self.assertIn("cnki", sources)
+        self.assertIn("baidu_scholar", sources)
+        # 中文源应排在英文兜底源之前
+        self.assertLess(sources.index("cnki"), sources.index("semantic_scholar"))
+
 
 class TestBaiduScholarWrapperConversion(unittest.TestCase):
     def test_converts_cnki_paper_to_paper_result(self):

@@ -238,5 +238,75 @@ class TestLLMCallNoKey(unittest.TestCase):
         asyncio.run(run())
 
 
+class TestPlagiarismReportFormatting(unittest.TestCase):
+    """P0 Bug1 回归：plagiarism_check 输出格式化必须使用 PlagResult/AigcResult 真实字段，
+    不能用不存在的 source_para/target_para/similarity/paragraph_preview/label/confidence。
+    若字段名写错，handler 会吞掉 AttributeError 并返回 '❌ 查重检测失败'，本测试据此捕获回归。"""
+
+    def test_formatting_uses_real_fields_not_phantom(self):
+        import asyncio
+
+        from hermes_cli.scholarforge.plagcheck import (
+            PlagResult,
+            AigcResult,
+            PlagReport,
+        )
+        from hermes_cli.scholarforge.tools import (
+            _handle_scholarforge_plagiarism_check,
+        )
+
+        # 构造含高相似段落 + AIGC 命中的报告，强制走格式化分支
+        report = PlagReport(
+            total_chars=1234,
+            total_paragraphs=5,
+            overall_similarity=0.42,
+            aigc_overall_ratio=0.55,
+            plag_results=[
+                PlagResult(
+                    text="重复片段示例文本用于查重检测",
+                    length=12,
+                    position=80,
+                    score=0.91,
+                    source="internal",
+                )
+            ],
+            aigc_results=[
+                AigcResult(
+                    text="AI生成段落内容",
+                    position=200,
+                    aigc_probability=0.88,
+                    features=["句长CV=0.20", "连接词=3"],
+                )
+            ],
+            suggestions=["建议：改写高重复段落"],
+            checked_sources=["simhash"],
+        )
+
+        async def run():
+            # 直接替换底层检测函数，隔离网络与算法，仅验证报告格式化
+            with patch(
+                "hermes_cli.scholarforge.plagcheck.full_plagiarism_check",
+                return_value=report,
+            ):
+                return await _handle_scholarforge_plagiarism_check(
+                    {"text": "任意文本用于触发格式化分支"}
+                )
+
+        out = asyncio.run(run())
+
+        # 回归捕获：字段名写错时 handler 会吞异常返回失败串
+        self.assertNotIn("❌ 查重检测失败", out)
+        # 高相似段落分支（PlagResult.position / score / text）
+        self.assertIn("位置 80", out)
+        self.assertIn("相似度 91.0%", out)
+        self.assertIn("重复片段示例文本用于查重检测", out)
+        # AIGC 特征分支（AigcResult.position / aigc_probability / features）
+        self.assertIn("位置 200", out)
+        self.assertIn("AI 概率 88%", out)
+        self.assertIn("特征: 句长CV=0.20, 连接词=3", out)
+        # 建议分支
+        self.assertIn("建议：改写高重复段落", out)
+
+
 if __name__ == "__main__":
     unittest.main()
