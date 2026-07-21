@@ -97,6 +97,12 @@ _LAST_RESOLVED_KEY: str = ""
 # us from picking up newer/better embedding models.
 _EMBED_MODEL_CACHE_TTL_SECS = 7 * 86400
 
+# Opt-in semantic rerank: blend the composite score with query↔candidate
+# embedding cosine similarity. OFF by default (zero behavior change); enable
+# via env VERMES_RERANK_EMBEDDING=1. Fail-open: any error → unchanged order.
+_EMBEDDING_RERANK_ENABLED = os.environ.get("VERMES_RERANK_EMBEDDING", "").lower() in ("1", "true", "yes")
+_EMBEDDING_RERANK_BLEND = 0.3  # weight given to semantic cosine vs composite score
+
 
 def _resolve_embedding_api() -> tuple[str, str, str]:
     """Resolve embedding API credentials from user's configured provider.
@@ -548,7 +554,55 @@ def _composite_search(
     return [item for _, item in scored[:top_k]]
 
 
-def rich_search(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def _rerank_by_query_embedding(
+    candidates: List[Dict[str, Any]],
+    query: str,
+    top_k: int,
+    blend: float = _EMBEDDING_RERANK_BLEND,
+) -> List[Dict[str, Any]]:
+    """Optional semantic rerank: blend composite score with query↔candidate
+    embedding cosine similarity.
+
+    Reuses each candidate's STORED write-time embedding vector (a local DB read,
+    no extra API calls per candidate). Fail-open: any error returns candidates
+    unchanged, so the production recall path is never broken by a rerank failure.
+
+    This is the lean, zero-new-dependency reranker. A heavier local
+    cross-encoder (bge/cohere) can later hang off the same hook, but that
+    requires un-excluding torch/transformers in the PyInstaller spec.
+    """
+    if not candidates:
+        return candidates
+    try:
+        q_vec = _get_embedding(query)
+        if not q_vec:
+            return candidates
+        db_path = _get_db_path()
+        if not db_path.exists():
+            return candidates
+        conn = _get_conn(db_path)
+        try:
+            reranked: List[tuple[float, Dict[str, Any]]] = []
+            for cand in candidates:
+                content = cand.get("content", "")
+                row = conn.execute(
+                    "SELECT vector FROM embeddings WHERE content = ? LIMIT 1", (content,)
+                ).fetchone()
+                cand_vec = _blob_to_vector(row[0]) if row and row[0] else None
+                sim = _cosine_similarity(q_vec, cand_vec) if cand_vec else 0.0
+                base = float(cand.get("score", 0.0))
+                new_score = (1.0 - blend) * base + blend * max(0.0, sim)
+                reranked.append((new_score, cand))
+        finally:
+            conn.close()
+        reranked.sort(key=lambda x: x[0], reverse=True)
+        return [c for _, c in reranked[:top_k]]
+    except Exception as exc:
+        logger.debug("embedding rerank skipped (fail-open): %s", exc)
+        return candidates
+
+
+def rich_search(query: str, top_k: int = 3, rerank: Optional[bool] = None) -> List[Dict[str, Any]]:
     """Semantic hybrid search — embedding + Jaccard + recency + frequency.
 
     No intent routing, no synonym expansion, no language assumptions.
@@ -556,6 +610,13 @@ def rich_search(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
     hardcoded patterns for zh/en only reduce recall for other languages
     and inject domain bias.
 
-    Preferred entry point for production.
+    Preferred entry point for production. When ``rerank`` is True (or the
+    VERMES_RERANK_EMBEDDING env flag is set), results are re-ranked by
+    query↔candidate embedding cosine similarity as a semantic boost.
     """
-    return _composite_search(query, top_k=top_k)
+    results = _composite_search(query, top_k=top_k)
+    if rerank is None:
+        rerank = _EMBEDDING_RERANK_ENABLED
+    if rerank:
+        results = _rerank_by_query_embedding(results, query, top_k)
+    return results

@@ -430,3 +430,104 @@ def test_cosine_zero_vector():
     from agent.hybrid_retriever import _cosine_similarity
 
     assert _cosine_similarity([0, 0], [1, 1]) == 0.0
+
+
+# ── embedding rerank (Route A-2, lean reranker) ──────────────────────
+
+
+def _make_embeddings_db(path: Path, rows):
+    """Build a minimal embeddings.db from rows of (content, vector)."""
+    conn = sqlite3.connect(str(path))
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content_hash TEXT UNIQUE NOT NULL,
+            content TEXT NOT NULL,
+            target TEXT NOT NULL DEFAULT 'memory',
+            vector BLOB,
+            created_at TEXT NOT NULL
+        )"""
+    )
+    for content, vec in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO embeddings (content_hash, content, target, vector, created_at) VALUES (?,?,?,?,?)",
+            (str(hash(content)), content, "memory", struct.pack(f"{len(vec)}f", *vec), "2026-01-01T00:00:00"),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_rerank_fail_open_when_no_embedding(monkeypatch):
+    """No embedding API → rerank returns candidates unchanged (order kept)."""
+    from agent import hybrid_retriever
+
+    cands = [
+        {"content": "alpha", "target": "memory", "score": 0.9},
+        {"content": "beta", "target": "memory", "score": 0.5},
+    ]
+    with patch.object(hybrid_retriever, "_get_embedding", return_value=None):
+        out = hybrid_retriever._rerank_by_query_embedding(cands, "q", top_k=5)
+    assert out == cands
+
+
+def test_rerank_reorders_by_cosine(monkeypatch, tmp_path):
+    """Candidate whose stored vector is closest to the (mocked) query vector
+    wins after the semantic boost, even if its composite score was lower."""
+    from agent import hybrid_retriever
+
+    q_vec = [1.0, 0.0, 0.0]
+    alpha_vec = [0.0, 1.0, 0.0]  # orthogonal to query → sim 0
+    beta_vec = [1.0, 0.0, 0.0]   # identical to query → sim 1
+
+    db = tmp_path / "embeddings.db"
+    _make_embeddings_db(db, [("alpha", alpha_vec), ("beta", beta_vec)])
+
+    cands = [
+        {"content": "alpha", "target": "memory", "score": 0.9},  # high composite, low sim
+        {"content": "beta", "target": "memory", "score": 0.5},   # low composite, high sim
+    ]
+
+    with patch.object(hybrid_retriever, "_get_db_path", return_value=db), \
+         patch.object(hybrid_retriever, "_get_embedding", return_value=q_vec):
+        out = hybrid_retriever._rerank_by_query_embedding(cands, "q", top_k=5)
+
+    assert out[0]["content"] == "beta"
+    assert out[1]["content"] == "alpha"
+
+
+def test_rich_search_rerank_off_by_default(monkeypatch, tmp_path):
+    """rich_search rerank is opt-in; a default call must NOT invoke rerank
+    (zero behavior change when the env flag is unset)."""
+    from agent import hybrid_retriever
+
+    called = {"rerank": False}
+
+    def spy(cands, query, top_k, blend=0.3):
+        called["rerank"] = True
+        return cands
+
+    db = tmp_path / "embeddings.db"
+    _make_embeddings_db(db, [("x", [1.0, 0.0]), ("y", [0.0, 1.0])])
+    monkeypatch.setattr(hybrid_retriever, "_EMBEDDING_RERANK_ENABLED", False)
+    with patch.object(hybrid_retriever, "_get_db_path", return_value=db), \
+         patch.object(hybrid_retriever, "_rerank_by_query_embedding", spy):
+        hybrid_retriever.rich_search("q", top_k=3)
+    assert called["rerank"] is False
+
+
+def test_rich_search_rerank_true_invokes(monkeypatch, tmp_path):
+    """rich_search(rerank=True) must invoke the rerank hook."""
+    from agent import hybrid_retriever
+
+    called = {"rerank": False}
+
+    def spy(cands, query, top_k, blend=0.3):
+        called["rerank"] = True
+        return cands
+
+    db = tmp_path / "embeddings.db"
+    _make_embeddings_db(db, [("x", [1.0, 0.0]), ("y", [0.0, 1.0])])
+    with patch.object(hybrid_retriever, "_get_db_path", return_value=db), \
+         patch.object(hybrid_retriever, "_rerank_by_query_embedding", spy):
+        hybrid_retriever.rich_search("q", top_k=3, rerank=True)
+    assert called["rerank"] is True
