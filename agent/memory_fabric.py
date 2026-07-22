@@ -509,6 +509,7 @@ def recall_hierarchical(
     query: str,
     limit: int = 8,
     layers: Optional[List[str]] = None,
+    prioritize_tags: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Unified hierarchical recall across L1–L4 with ordering.
 
@@ -523,6 +524,12 @@ def recall_hierarchical(
     ``recall`` is preserved inside each layer). Results are de-duplicated by
     ``pointer`` (or content fingerprint when no pointer).
 
+    Args:
+        prioritize_tags: If provided, memories with these lifecycle_tags
+            (e.g. ["decision", "preference"]) are fetched first and
+            guaranteed a slot in the result, so user hard constraints are
+            never truncated away by volume noise.
+
     fail-closed: hook failures are logged and skipped — the agent must never
     be interrupted by a broken external KB or recall subsystem.
     """
@@ -534,9 +541,22 @@ def recall_hierarchical(
     results: List[Dict[str, Any]] = []
 
     # 1) fabric index (covers L1–L4 pointers)
+    # Route E P1: 优先召回 @decision/@preference，保证用户硬约束不被容量截断
+    _prioritized: List[Dict[str, Any]] = []
+    if prioritize_tags:
+        try:
+            for h in recall(query, layer=None, limit=max(limit, 5),
+                            tag_filter=prioritize_tags):
+                _prioritized.append(_normalize_hit(h, None))
+        except Exception:
+            logger.debug("recall_hierarchical: prioritize_tags query failed",
+                         exc_info=True)
+    # 普通召回（无 tag_filter，包含全部标签）
     for h in recall(query, layer=None, limit=max(limit * 3, 10)):
         results.append(_normalize_hit(h, None))
     metrics.record_recall_layer("L1_L2_index", hits=len(results))
+    # 合并：优先标签结果置顶
+    results = _prioritized + results
 
     # 2) optional L3 live recall
     if _L3_LIVE_HOOK is not None and (layers is None or L3_EPISODIC in layers):
@@ -560,8 +580,15 @@ def recall_hierarchical(
         except Exception:
             logger.warning("memory_fabric L4 federation hook failed", exc_info=True)
 
-    # Order by layer priority (stable → preserves FTS rank within layer).
-    results.sort(key=lambda h: _LAYER_PRIORITY.get(h["layer"], 9))
+    # Order by: 1) prioritized tags first (Route E P1), 2) layer priority.
+    # Stable sort preserves FTS rank within each ordering tier.
+    _prio_set = set(prioritize_tags) if prioritize_tags else set()
+    results.sort(
+        key=lambda h: (
+            0 if h.get("lifecycle_tag", "") in _prio_set else 1,
+            _LAYER_PRIORITY.get(h["layer"], 9),
+        )
+    )
 
     # De-duplicate. The unified pointer format is ``{source}#{id}`` (A2), so
     # key primarily on it. As a safety net against legacy/heterogeneous

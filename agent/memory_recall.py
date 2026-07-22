@@ -766,7 +766,10 @@ def recall_hierarchical_per_turn(user_message: str) -> str:
     _layers = None if not _fluent else [L1_NOTE, L2_PROCEDURAL, L4_REFERENCE]
 
     try:
-        hits = recall_hierarchical(user_message or "", limit=6, layers=_layers)
+        hits = recall_hierarchical(
+            user_message or "", limit=6, layers=_layers,
+            prioritize_tags=["decision", "preference"],
+        )
     except Exception:
         logger.warning("recall_hierarchical_per_turn failed (non-fatal)", exc_info=True)
         return ""
