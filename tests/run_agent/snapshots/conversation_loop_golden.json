@@ -1,0 +1,11 @@
+{
+  "final_response": "Hello! How can I help you today?",
+  "interrupted": false,
+  "message_count": 2,
+  "message_roles": [
+    "user",
+    "assistant"
+  ],
+  "user_message": "hello",
+  "assistant_message": "Hello! How can I help you today?"
+}
