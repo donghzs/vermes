@@ -247,18 +247,49 @@ def _get_memory_count() -> int:
 def _check_capacity() -> dict:
     """Check memory capacity and return degradation directives.
 
+    Route E P7: 超阈值时优先清理 volatile 冷记忆（唯一允许物理删除的场景）。
+    volatile 是会话级临时数据，物理删除安全；decision/preference 永不删除。
+
     Returns dict with:
       - over_capacity: bool
       - total_count: int
       - limit_scale: float (1.0 normal, <1.0 degraded)
       - skip_cold: bool (True = skip low access_count entries)
+      - pruned_volatile: int (number of volatile entries pruned)
     """
     global _last_capacity_warn_count
     count = _get_memory_count()
     over = count > _MAX_MEMORIES_TOTAL
+    _pruned_volatile = 0
+    if over:
+        # Route E P7: 优先清理 volatile 冷记忆
+        try:
+            with _LOCK:
+                conn = _get_conn(str(_get_index_db()))
+                try:
+                    c = conn.cursor()
+                    c.execute(
+                        "DELETE FROM memories WHERE lifecycle_tag='volatile' "
+                        "AND access_count <= ?",
+                        (_COLD_ACCESS_THRESHOLD,),
+                    )
+                    _pruned_volatile = c.rowcount
+                    conn.commit()
+                    if _pruned_volatile > 0:
+                        logger.info(
+                            "Capacity prune: removed %d cold volatile memories",
+                            _pruned_volatile,
+                        )
+                finally:
+                    conn.close()
+            # 重新计数
+            count = _get_memory_count()
+            over = count > _MAX_MEMORIES_TOTAL
+        except Exception:
+            logger.debug("Capacity prune: volatile cleanup failed", exc_info=True)
     if over and (count - _last_capacity_warn_count) >= _CAPACITY_WARN_INTERVAL:
         logger.warning(
-            "Memory capacity: %d rows > %d limit \u2014 degrading recall (skip_cold=True, limit_scale=%.1f)",
+            "Memory capacity: %d rows > %d limit — degrading recall (skip_cold=True, limit_scale=%.1f)",
             count, _MAX_MEMORIES_TOTAL, _RECALL_LIMIT_COLD_SCALE,
         )
         _last_capacity_warn_count = count
@@ -272,6 +303,7 @@ def _check_capacity() -> dict:
         "total_count": count,
         "limit_scale": _RECALL_LIMIT_COLD_SCALE if over else 1.0,
         "skip_cold": over,
+        "pruned_volatile": _pruned_volatile,
     }
 
 
