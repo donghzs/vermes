@@ -788,8 +788,13 @@ def recall_hierarchical_per_turn(user_message: str) -> str:
     for h in hits:
         _label = _LABELS.get(h.get("layer", ""), h.get("layer", ""))
         _content = (h.get("content") or "").strip()
+        _tag = h.get("lifecycle_tag", "")
         if _content:
-            parts.append(f"[{_label}] {_content}")
+            # Route E P5: 注入 lifecycle_tag 标注，让 LLM 区分记忆类型
+            if _tag and _tag != "reference":
+                parts.append(f"[{_label}@{_tag}] {_content}")
+            else:
+                parts.append(f"[{_label}] {_content}")
     parts.append("</memory_recall>")
     block = "\n".join(parts)
 
