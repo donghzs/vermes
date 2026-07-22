@@ -45,6 +45,20 @@ for src, dst in [
     else:
         print(f"[Vermes Backend] Skipping missing data path: {src}")
 
+# Vector backend (A-1): bundle sqlite-vec dylib as binary resource
+try:
+    import sqlite_vec as _sv
+    _vec_dylib = os.path.join(os.path.dirname(_sv.__file__), 'vec0.dylib')
+    if not os.path.exists(_vec_dylib):
+        _vec_dylib = os.path.join(os.path.dirname(_sv.__file__), 'vec0.so')
+    if os.path.exists(_vec_dylib):
+        datas.append((_vec_dylib, 'sqlite_vec'))
+        print(f"[Vermes Backend] Bundled sqlite-vec: {_vec_dylib}")
+    else:
+        print("[Vermes Backend] sqlite-vec dylib not found — vector backend disabled in DMG")
+except ImportError:
+    print("[Vermes Backend] sqlite-vec not installed — vector backend disabled in DMG")
+
 # Hidden imports — core server only (no pywebview/pyobjc)
 hiddenimports = [
     # Core uvicorn
@@ -156,6 +170,8 @@ hiddenimports = [
     # Utils
     'toolsets',
     'toolset_distributions',
+    # Vector backend (A-1): sqlite-vec
+    'sqlite_vec',
 ]
 
 # Platform specific

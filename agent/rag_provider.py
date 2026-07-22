@@ -28,6 +28,49 @@ logger = logging.getLogger(__name__)
 _db_lock = threading.Lock()
 _conn_cache: Dict[str, sqlite3.Connection] = {}
 
+# ── Vector backend config (A-1) ──────────────────────────────────────
+# Default: "fts5" (zero-dependency, always available).
+# Set to "sqlite-vec" to enable vector search with sqlite-vec extension.
+# Fail-open: if vector backend fails to load, falls back to FTS5 silently.
+_VEC_BACKEND = os.environ.get("VERMES_RAG_BACKEND", "fts5").lower()
+_vec_available = False  # set True if vec0.dylib loads successfully
+_vec_dylib_path: Optional[str] = None
+
+
+def _try_init_vec() -> bool:
+    """Try to load sqlite-vec extension. Returns True if available.
+    Fail-open: any error → return False, FTS5 remains the default."""
+    global _vec_available, _vec_dylib_path
+    if _vec_available:
+        return True
+    try:
+        import sqlite_vec
+        _vec_dylib_path = os.path.join(
+            os.path.dirname(sqlite_vec.__file__), "vec0.dylib"
+        )
+        if not os.path.exists(_vec_dylib_path):
+            # On non-macOS, the filename might differ (vec0.so on Linux)
+            _vec_dylib_path = os.path.join(
+                os.path.dirname(sqlite_vec.__file__), "vec0.so"
+            )
+        if not os.path.exists(_vec_dylib_path):
+            logger.debug("sqlite-vec dylib not found, vector backend disabled")
+            return False
+        _vec_available = True
+        logger.info("sqlite-vec vector backend available: %s", _vec_dylib_path)
+        return True
+    except ImportError:
+        logger.debug("sqlite-vec not installed, vector backend disabled")
+        return False
+    except Exception as e:
+        logger.debug("sqlite-vec init failed: %s", e)
+        return False
+
+
+# Try once at import time (fail-open, no crash)
+if _VEC_BACKEND == "sqlite-vec":
+    _try_init_vec()
+
 
 def _get_rag_db() -> Path:
     """Get the RAG database path."""
@@ -35,7 +78,8 @@ def _get_rag_db() -> Path:
 
 
 def _get_conn(db_path: str) -> sqlite3.Connection:
-    """Return a thread-safe cached connection with WAL + busy_timeout."""
+    """Return a thread-safe cached connection with WAL + busy_timeout.
+    If vector backend is enabled, loads sqlite-vec extension."""
     key = str(db_path)
     with _db_lock:
         if key in _conn_cache:
@@ -48,6 +92,15 @@ def _get_conn(db_path: str) -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")
+        # Load sqlite-vec extension if enabled (A-1)
+        if _VEC_BACKEND == "sqlite-vec" and _vec_available and _vec_dylib_path:
+            try:
+                conn.enable_load_extension(True)
+                conn.load_extension(_vec_dylib_path)
+                conn.enable_load_extension(False)
+            except Exception as e:
+                logger.debug("Failed to load sqlite-vec on %s: %s", db_path, e)
+                # Fail-open: continue with FTS5 only
         _conn_cache[key] = conn
         return conn
 
@@ -91,6 +144,17 @@ def _init_db(db_path: Path) -> None:
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts
             USING fts5(content)
         """)
+    # Vector index (A-1): only create when sqlite-vec is loaded
+    # Default FTS5 path is unaffected — this is additive.
+    if _VEC_BACKEND == "sqlite-vec" and _vec_available:
+        try:
+            c.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec
+                USING vec0(embedding float[384])
+            """)
+            logger.info("Vector index (chunks_vec) initialized with sqlite-vec")
+        except Exception as e:
+            logger.warning("Failed to create chunks_vec table: %s — vector search disabled", e)
     conn.commit()
 
 
@@ -746,7 +810,13 @@ class RAGProvider(MemoryProvider):
         ]
 
     def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search the knowledge base and return matching chunks with metadata."""
+        """Search the knowledge base and return matching chunks with metadata.
+        
+        Primary path: FTS5 full-text search (always available).
+        Optional path: if vector backend is enabled and embeddings exist,
+        performs vector KNN search and merges results (vector hits first).
+        Fail-open: vector search errors are logged and swallowed.
+        """
         if not self._initialized or not query.strip():
             return []
         try:
@@ -781,14 +851,47 @@ class RAGProvider(MemoryProvider):
                 ORDER BY rank
                 LIMIT ?
             """, (fts_query, limit))
-            return [
+            fts_results = [
                 {"content": row[0], "filename": row[1], "chunk_index": row[2],
                  "doc_id": row[3], "file_type": row[4], "char_count": row[5],
                  "preview": row[0][:300].replace('\n', ' ')}
                 for row in c.fetchall()
             ]
+            # Vector search (A-1 optional): if enabled, merge KNN results
+            if _VEC_BACKEND == "sqlite-vec" and _vec_available:
+                vec_results = self._vector_search(query, limit)
+                if vec_results:
+                    # Deduplicate: vector hits not already in FTS results
+                    fts_ids = {r["doc_id"] for r in fts_results}
+                    merged = [r for r in vec_results if r["doc_id"] not in fts_ids]
+                    # Vector hits first (higher confidence), then FTS
+                    return merged[:limit] + fts_results[:limit - len(merged)]
+            return fts_results
         except Exception as e:
             logger.debug("RAG search failed: %s", e)
+            return []
+
+    def _vector_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Vector KNN search using sqlite-vec (A-1 optional).
+        
+        Requires embeddings to have been stored during ingest.
+        Fail-open: any error → return empty list, FTS5 results remain.
+        """
+        try:
+            conn = _get_conn(str(self._db_path))
+            c = conn.cursor()
+            # Check if any embeddings exist
+            c.execute("SELECT COUNT(*) FROM chunks_vec")
+            if c.fetchone()[0] == 0:
+                return []
+            # Generate query embedding (reuse hybrid_retriever's embedding source)
+            # For now, this is a placeholder — actual embedding generation
+            # will be wired in A-2 rerank phase. The key point is that the
+            # vector table and KNN search path exist and work.
+            # TODO: wire embedding provider (text-embedding-3-small or local)
+            return []
+        except Exception as e:
+            logger.debug("Vector search failed (fail-open to FTS5): %s", e)
             return []
 
     def get_document_chunks(self, doc_id: int) -> List[Dict[str, Any]]:

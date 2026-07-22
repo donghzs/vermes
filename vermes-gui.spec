@@ -42,6 +42,20 @@ for src, dst in [
 ]:
     if os.path.exists(src):
         datas.append((src, dst))
+
+# Vector backend (A-1): bundle sqlite-vec dylib as binary resource
+try:
+    import sqlite_vec as _sv
+    _vec_dylib = os.path.join(os.path.dirname(_sv.__file__), 'vec0.dylib')
+    if not os.path.exists(_vec_dylib):
+        _vec_dylib = os.path.join(os.path.dirname(_sv.__file__), 'vec0.so')
+    if os.path.exists(_vec_dylib):
+        datas.append((_vec_dylib, 'sqlite_vec'))
+        print(f"[Vermes GUI] Bundled sqlite-vec: {_vec_dylib}")
+    else:
+        print("[Vermes GUI] sqlite-vec dylib not found — vector backend disabled in DMG")
+except ImportError:
+    print("[Vermes GUI] sqlite-vec not installed — vector backend disabled in DMG")
     else:
         print(f"[Vermes] Skipping missing data path: {src}")
 
@@ -162,6 +176,8 @@ hiddenimports = [
     'proxy_tools',
     'toolsets',
     'toolset_distributions',
+    # Vector backend (A-1): sqlite-vec
+    'sqlite_vec',
 ]
 
 # Platform specific
