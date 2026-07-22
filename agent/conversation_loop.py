@@ -1161,9 +1161,12 @@ def run_conversation(
                     messages, system_message,
                 )
                 conversation_history = None
-                from agent.metrics import record_prune, record_fatigue_bridge
-                record_prune()
-                record_fatigue_bridge()
+                try:
+                    from agent.metrics import record_prune, record_fatigue_bridge
+                    record_prune()
+                    record_fatigue_bridge()
+                except Exception:
+                    pass  # metrics best-effort
             else:
                 for _pass in range(3):
                     _orig_len = len(messages)
@@ -1252,8 +1255,11 @@ def run_conversation(
                 agent._empty_content_retries = 0
                 agent._thinking_prefill_retries = 0
                 _scheduler.record_compression()
-                from agent.metrics import record_compression as _metrics_record_compression
-                _metrics_record_compression()
+                try:
+                    from agent.metrics import record_compression as _metrics_record_compression
+                    _metrics_record_compression()
+                except Exception:
+                    pass  # metrics best-effort
                 logger.info("Scheduler compression complete: %d→%d messages",
                             _orig_len, len(messages))
 
