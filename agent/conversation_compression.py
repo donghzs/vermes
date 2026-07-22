@@ -523,6 +523,38 @@ def compress_context(
             # away regardless of whether the id rotates).
             agent.commit_memory_session(messages)
 
+            # ── Route E P2: 压缩＝交割 (handoff to cold memory) ──
+            # 将压缩摘要写入 memory_fabric，使被压缩的上下文可通过 recall 召回。
+            # fail-open：handoff 失败不阻断压缩主流程。
+            try:
+                from agent.memory_fabric import record as _mf_record, L2_PROCEDURAL
+                _sid = agent.session_id or "unknown"
+                _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # 从 compressed 消息列表中提取摘要文本
+                _summary_text = ""
+                for _msg in compressed:
+                    _c = _msg.get("content", "")
+                    if isinstance(_c, str) and len(_c) > 50 and (
+                        "SUMMARY" in _c.upper() or "CONTEXT SUMMARY" in _c.upper()
+                        or _msg.get("role") == "system"
+                    ):
+                        _summary_text = _c
+                        break
+                if _summary_text:
+                    _mf_record({
+                        "source": "compression",
+                        "pointer": f"session#{_sid}#{_ts}",
+                        "fts_content": _summary_text[:4000],
+                        "layer": L2_PROCEDURAL,
+                        "type": "compression_handoff",
+                        "scope": _sid,
+                        "lifecycle_tag": "volatile",
+                    })
+                    logger.info("P2 handoff: compression summary saved to memory_fabric (session=%s, %d chars)",
+                                _sid, len(_summary_text))
+            except Exception as _e:
+                logger.debug("P2 compression handoff failed (non-fatal): %s", _e)
+
             if in_place:
                 # ── In-place compaction: keep the same session_id ──────────
                 # No end_session, no new row, no parent_session_id, no title
