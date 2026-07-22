@@ -164,6 +164,30 @@ def load_continuity_context(
         logger.warning("Continuity facade: continuity source failed: %s", e)
         ctx.sources_failed.append("continuity")
 
+    # 5. Compression handoff recall (Route E P3)
+    #    Recall compression summaries from memory_fabric for the current scope.
+    try:
+        from agent.memory_fabric import recall as _mf_recall
+        # 用空查询匹配全部 handoff 记录，然后按 source 过滤
+        _handoff_results = _mf_recall("compression handoff", limit=3)
+        _handoff_hits = [
+            h for h in _handoff_results
+            if h.get("source") == "compression"
+            and h.get("type") == "compression_handoff"
+        ]
+        if _handoff_hits:
+            _lines = ["📎 压缩上下文快照（来自上次压缩交割）："]
+            for h in _handoff_hits[:2]:
+                _content = (h.get("content") or "")[:500]
+                _lines.append(f"  • [{h.get('scope', '?')}] {_content}")
+            ctx.recall_block = (ctx.recall_block or "") + "\n" + "\n".join(_lines)
+            ctx.sources_loaded.append("compression_handoff")
+            logger.debug("Continuity facade: loaded %d compression handoff(s)",
+                         len(_handoff_hits))
+    except Exception as e:
+        logger.warning("Continuity facade: compression handoff source failed: %s", e)
+        ctx.sources_failed.append("compression_handoff")
+
     if ctx.is_empty:
         logger.debug("Continuity facade: cold start (no blocks)")
     else:
