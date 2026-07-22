@@ -99,8 +99,8 @@ class _BackgroundLoop:
         finally:
             try:
                 loop.close()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug("manager.py:  run forever failed: %s", e)
 
     def run(self, coro, *, timeout: Optional[float] = None) -> Any:
         """Submit a coroutine to the loop and block until done.
@@ -430,8 +430,8 @@ class LSPService:
                 # Fire-and-forget shutdown — give it a second to cleanup,
                 # but don't block.  We're already on a slow path.
                 self._loop.run(client.shutdown(), timeout=1.0)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug("manager.py:  mark broken for file failed: %s", e)
 
         if not already_broken:
             eventlog.log_spawn_failed(srv.server_id, per_server_root, exc)

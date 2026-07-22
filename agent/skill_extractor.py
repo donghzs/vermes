@@ -319,8 +319,8 @@ class SkillExtractor:
                  cluster["id"]),
             )
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("skill_extractor.py:  update skill stats failed: %s", e)
 
     # ── Skill Management ────────────────────────────────────────────────────
 
@@ -395,8 +395,8 @@ class SkillExtractor:
                     is_error=False,
                     duration=0.0,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("skill_extractor.py: reject skill failed: %s", e)
 
             return True
         except Exception:
@@ -511,8 +511,8 @@ class SkillExtractor:
                 (status, json.dumps(meta), skill_id),
             )
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("skill_extractor.py:  set status failed: %s", e)
 
     def _mark_proven(self, conn: sqlite3.Connection, skill_id: int) -> None:
         """Mark a skill as proven (stays active; metadata badge only)."""
@@ -528,8 +528,8 @@ class SkillExtractor:
                 (json.dumps(meta), skill_id),
             )
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("skill_extractor.py:  mark proven failed: %s", e)
 
     def _record_lifecycle_event(
         self, skill: "ExtractedSkill", action: str, reason: str
@@ -551,8 +551,8 @@ class SkillExtractor:
                 duration=0.0,
                 trigger_clustering=False,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("skill_extractor.py:  record lifecycle event failed: %s", e)
 
     def get_active_skills_prompt(self) -> str:
         """Get active skills as a prompt block for system prompt injection."""

@@ -266,8 +266,8 @@ class CodexAppServerSession:
         if self._client is not None:
             try:
                 self._client.close()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                pass
+            except Exception as e:  # pragma: no cover - best-effort cleanup
+                logger.debug("codex_app_server_session.py: close failed: %s", e)
             self._client = None
         self._thread_id = None
 

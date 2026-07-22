@@ -738,8 +738,8 @@ def try_recover_primary_transport(
                 agent._close_openai_client(
                     agent.client, reason="primary_recovery", shared=True,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("agent_runtime_helpers.py: try recover primary transport failed: %s", e)
 
         # Rebuild from primary snapshot
         rt = agent._primary_runtime
@@ -1485,8 +1485,8 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
                 continue
             try:
                 setattr(agent, _name, _value)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug("agent_runtime_helpers.py: switch model failed: %s", e)
         raise
 
     # ── Re-evaluate prompt caching ──
@@ -1612,8 +1612,8 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
             block_message = get_pre_tool_call_block_message(
                 function_name, function_args, task_id=effective_task_id or "",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("agent_runtime_helpers.py: invoke tool failed: %s", e)
     if block_message is not None:
         return json.dumps({"error": block_message}, ensure_ascii=False)
 
@@ -1663,8 +1663,8 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
                         tool_call_id=tool_call_id,
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("agent_runtime_helpers.py: invoke tool failed: %s", e)
         return result
     elif agent._memory_manager and agent._memory_manager.has_tool(function_name):
         return agent._memory_manager.handle_tool_call(function_name, function_args)

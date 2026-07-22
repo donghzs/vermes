@@ -556,8 +556,8 @@ def _post_form(url: str, data: Dict[str, str], timeout: float) -> Dict[str, Any]
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("google_oauth.py:  post form failed: %s", e)
         # Detect invalid_grant to signal credential revocation
         code = "google_oauth_token_http_error"
         if "invalid_grant" in detail.lower():
@@ -927,12 +927,12 @@ def start_oauth_flow(
     finally:
         try:
             server.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("google_oauth.py: start oauth flow failed: %s", e)
         try:
             server.server_close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("google_oauth.py: start oauth flow failed: %s", e)
         server_thread.join(timeout=2.0)
 
     if not code:

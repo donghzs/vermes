@@ -73,8 +73,8 @@ def run_codex_app_server_turn(
         # respawns from scratch instead of reusing a dead client.
         try:
             agent._codex_session.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("codex_runtime.py: run codex app server turn failed: %s", e)
         agent._codex_session = None
         return {
             "final_response": (
@@ -100,8 +100,8 @@ def run_codex_app_server_turn(
         )
         try:
             agent._codex_session.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("codex_runtime.py: run codex app server turn failed: %s", e)
         agent._codex_session = None
 
     # Splice projected messages into the conversation. The projector emits
@@ -511,8 +511,8 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
             if callable(close_fn):
                 try:
                     close_fn()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("codex_runtime.py: run codex stream failed: %s", e)
 
 
 def run_codex_create_stream_fallback(agent, api_kwargs: dict, client: Any = None):

@@ -308,8 +308,8 @@ def import_graph(db_path: str, graph_data: Dict[str, Any]) -> ImportResult:
         try:
             from agent.skill_extractor import ensure_skill_tables
             ensure_skill_tables(conn)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("graph_sync.py: import graph failed: %s", e)
 
         # Import clusters
         for cluster in graph_data.get("clusters", []):

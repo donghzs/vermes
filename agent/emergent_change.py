@@ -521,8 +521,8 @@ class EmergentChangePipeline:
                 ts = row["timestamp"]
                 # Format: "2026-07-17T06:05:00" → "07-17 06:05"
                 return ts[5:16].replace("T", " ") if ts else ""
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("emergent_change.py:  lookup committed time failed: %s", e)
         return ""
 
     def _has_sufficient_rollback_history(self, target_path: str, min_samples: int = 5) -> bool:

@@ -273,8 +273,8 @@ def replay_compression_warning(agent: Any) -> None:
     if msg and agent.status_callback:
         try:
             agent.status_callback("lifecycle", msg)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("conversation_compression.py: replay compression warning failed: %s", e)
 
 
 def compress_context(
@@ -427,8 +427,8 @@ def compress_context(
                         "正在压缩本会话。将在其完成后 "
                         "重试。"
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("conversation_compression.py: compress context failed: %s", e)
             _existing_sp = getattr(agent, "_cached_system_prompt", None)
             if not _existing_sp:
                 _existing_sp = agent._build_system_prompt(system_message)
@@ -446,8 +446,8 @@ def compress_context(
     if agent._memory_manager:
         try:
             agent._memory_manager.on_pre_compress(messages)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("conversation_compression.py: compress context failed: %s", e)
 
     try:
         compressed = agent.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic, force=force)
@@ -588,8 +588,8 @@ def compress_context(
                     from hermes_logging import set_session_context
 
                     set_session_context(agent.session_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("conversation_compression.py: compress context failed: %s", e)
                 agent._session_db_created = False
                 try:
                     agent._session_db.create_session(
@@ -623,14 +623,14 @@ def compress_context(
                     try:
                         from hermes_logging import set_session_context
                         set_session_context(agent.session_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_compression.py: compress context failed: %s", e)
                     # Re-open the parent: it was ended above, but we're
                     # continuing on it, so it must not stay closed.
                     try:
                         agent._session_db.reopen_session(old_session_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_compression.py: compress context failed: %s", e)
                     old_session_id = None  # no rotation happened
                     # The parent row already exists in state.db, so mark the
                     # session as created — _ensure_db_session would otherwise
@@ -774,8 +774,8 @@ def compress_context(
     try:
         from tools.file_tools import reset_file_dedup
         reset_file_dedup(task_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("conversation_compression.py: compress context failed: %s", e)
 
     logger.info(
         "context compression done: session=%s messages=%d->%d rough_tokens=~%s awaiting_real_usage=true",
@@ -1122,8 +1122,8 @@ def try_shrink_image_parts_in_messages(
             finally:
                 try:
                     Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("conversation_compression.py:  shrink data url failed: %s", e)
             if not resized:
                 # Resize returned nothing — Pillow couldn't help.
                 return None, True

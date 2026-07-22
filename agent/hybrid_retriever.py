@@ -153,8 +153,8 @@ def _resolve_embedding_api() -> tuple[str, str, str]:
                         env_key = tmpl.get("api_key_env", "")
                         if env_key:
                             api_key = env.get(env_key, "")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("hybrid_retriever.py:  resolve embedding api failed: %s", e)
 
             if api_key and base_url and base_url not in _NO_EMBED_PROVIDERS:
                 return base_url, api_key, model
@@ -185,8 +185,8 @@ def _resolve_embedding_api() -> tuple[str, str, str]:
                 burl = tmpl.get("base_url", "").rstrip("/")
                 if burl and burl not in _NO_EMBED_PROVIDERS:
                     return burl, env_val, model
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("hybrid_retriever.py:  resolve embedding api failed: %s", e)
 
     except Exception as exc:
         logger.debug("_resolve_embedding_api failed: %s", exc)
@@ -222,8 +222,8 @@ def _discover_embedding_model(base_url: str, api_key: str) -> str:
             if age < _EMBED_MODEL_CACHE_TTL_SECS:
                 return row[0]
             logger.debug("Embedding model cache for %s expired (%.1f days old), re-discovering", base_url, age / 86400)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("hybrid_retriever.py:  discover embedding model failed: %s", e)
 
     try:
         import httpx
@@ -258,8 +258,8 @@ def _discover_embedding_model(base_url: str, api_key: str) -> str:
                         (cache_ts_key, now),
                     )
                     conn.commit()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("hybrid_retriever.py:  discover embedding model failed: %s", e)
                 logger.info("Discovered embedding model for %s: %s", base_url, chosen)
                 return chosen
     except Exception as exc:

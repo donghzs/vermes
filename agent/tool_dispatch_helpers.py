@@ -336,8 +336,8 @@ def _extract_error_preview(result: Any, max_len: int = 180) -> str:
             data = json.loads(stripped)
             if isinstance(data, dict) and isinstance(data.get("error"), str):
                 text = data["error"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_dispatch_helpers.py:  extract error preview failed: %s", e)
     # Collapse whitespace, trim to max_len.
     text = " ".join(text.split())
     if len(text) > max_len:

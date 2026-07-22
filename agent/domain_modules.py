@@ -237,8 +237,8 @@ class ModuleEmergenceDetector:
                         result["strategies"].append(desc)
 
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("domain_modules.py:  get cluster insights failed: %s", e)
         return result
 
 

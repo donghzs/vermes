@@ -231,8 +231,8 @@ class CrossSessionContinuity:
             if len(current_modules) > last_module_count:
                 for m in current_modules[last_module_count:]:
                     briefing.new_modules.append(m.name)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cross_session_continuity.py: generate briefing failed: %s", e)
 
         # Events since last snapshot
         try:
@@ -244,8 +244,8 @@ class CrossSessionContinuity:
             )
             briefing.total_events_since = cursor.fetchone()[0]
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cross_session_continuity.py: generate briefing failed: %s", e)
 
         briefing.total_clusters = len(current_clusters)
         return briefing

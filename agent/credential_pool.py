@@ -2146,8 +2146,8 @@ def _seed_custom_pool(pool_key: str, entries: List[PooledCredential]) -> Tuple[b
                                 "label": "model_config",
                             },
                         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("credential_pool.py:  seed custom pool failed: %s", e)
 
     return changed, active_sources
 

@@ -838,8 +838,8 @@ class GeminiNativeClient:
         self.is_closed = True
         try:
             self._http.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("gemini_native_adapter.py: close failed: %s", e)
 
     def __enter__(self):
         return self

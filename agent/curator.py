@@ -1433,8 +1433,8 @@ def run_curator_review(
             if snap is not None and on_summary:
                 try:
                     on_summary(f"curator: snapshot created ({snap.name})")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("curator.py: run curator review failed: %s", e)
         except Exception as e:
             logger.debug("Curator pre-run snapshot failed: %s", e, exc_info=True)
         counts = apply_automatic_transitions(now=start)
@@ -1557,8 +1557,8 @@ def run_curator_review(
         if on_summary:
             try:
                 on_summary(f"curator: {final_summary}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("curator.py:  llm pass failed: %s", e)
 
     if synchronous:
         _llm_pass()
@@ -1770,8 +1770,8 @@ def _run_llm_review(prompt: str) -> Dict[str, Any]:
         if review_agent is not None:
             try:
                 review_agent.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("curator.py:  run llm review failed: %s", e)
     return result_meta
 
 

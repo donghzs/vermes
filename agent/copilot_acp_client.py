@@ -8,6 +8,9 @@ back into the minimal shape Hermes expects from an OpenAI client.
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import json
 import os
 import queue
@@ -77,8 +80,8 @@ def _resolve_home_dir() -> str:
         profile_home = get_subprocess_home()
         if profile_home:
             return profile_home
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("copilot_acp_client.py:  resolve home dir failed: %s", e)
 
     home = os.environ.get("HOME", "").strip()
     if home:
@@ -94,8 +97,8 @@ def _resolve_home_dir() -> str:
         resolved = pwd.getpwuid(os.getuid()).pw_dir.strip()  # windows-footgun: ok — POSIX fallback inside try/except (pwd import fails on Windows)
         if resolved:
             return resolved
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("copilot_acp_client.py:  resolve home dir failed: %s", e)
 
     # Last resort: /tmp (writable on any POSIX system). Avoids crashing the
     # subprocess with no HOME; callers can set HERMES_HOME explicitly if they
@@ -378,8 +381,8 @@ class CopilotACPClient:
         except Exception:
             try:
                 proc.kill()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("copilot_acp_client.py: close failed: %s", e)
 
     def _create_chat_completion(
         self,

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -132,14 +135,14 @@ def is_write_denied(path: str) -> bool:
             mcp_real = os.path.realpath(os.path.join(base_real, mcp_tokens_dir_name))
             if resolved == mcp_real or resolved.startswith(mcp_real + os.sep):
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("file_safety.py: is write denied failed: %s", e)
         try:
             pairing_real = os.path.realpath(os.path.join(base_real, "pairing"))
             if resolved == pairing_real or resolved.startswith(pairing_real + os.sep):
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("file_safety.py: is write denied failed: %s", e)
 
     safe_root = get_safe_write_root()
     if safe_root and not (resolved == safe_root or resolved.startswith(safe_root + os.sep)):

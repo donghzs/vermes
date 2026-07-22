@@ -298,8 +298,8 @@ def build_bundle_invocation_message(
         try:
             from tools.skill_usage import bump_use
             bump_use(skill_name)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("skill_bundles.py: build bundle invocation message failed: %s", e)
 
         activation_note = (
             f'[Loaded as part of the "{bundle_name}" skill bundle.]'

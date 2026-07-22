@@ -491,8 +491,8 @@ def resolve_skill_config_values(
             parsed = yaml_load(config_path.read_text(encoding="utf-8"))
             if isinstance(parsed, dict):
                 config = parsed
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("skill_utils.py: resolve skill config values failed: %s", e)
 
     resolved: Dict[str, Any] = {}
     for var in config_vars:

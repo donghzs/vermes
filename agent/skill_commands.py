@@ -66,8 +66,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
             trusted_roots = [SKILLS_DIR]
             try:
                 trusted_roots.extend(get_external_skills_dirs())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("skill_commands.py:  load skill payload failed: %s", e)
 
             # Prefer the lexical path under a trusted skill root before
             # resolving symlinks.  Slash-command discovery can legitimately
@@ -321,8 +321,8 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
                     }
                 except Exception:
                     continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("skill_commands.py: scan skill commands failed: %s", e)
     return _skill_commands
 
 

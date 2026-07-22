@@ -16,6 +16,9 @@ runtime is not selected.
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import json
 import os
 import queue
@@ -172,8 +175,8 @@ class CodexAppServerClient:
         try:
             if self._proc.stdin and not self._proc.stdin.closed:
                 self._proc.stdin.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("codex_app_server.py: close failed: %s", e)
         try:
             self._proc.terminate()
             self._proc.wait(timeout=timeout)
@@ -181,8 +184,8 @@ class CodexAppServerClient:
             try:
                 self._proc.kill()
                 self._proc.wait(timeout=1.0)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("codex_app_server.py: close failed: %s", e)
 
     def __enter__(self) -> "CodexAppServerClient":
         return self
@@ -351,8 +354,8 @@ class CodexAppServerClient:
                     # Bound memory: keep last 500 lines.
                     if len(self._stderr_lines) > 500:
                         self._stderr_lines = self._stderr_lines[-500:]
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as e:  # pragma: no cover
+            logger.debug("codex_app_server.py:  read stderr failed: %s", e)
 
 
 def parse_codex_version(output: str) -> Optional[tuple[int, int, int]]:

@@ -154,8 +154,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 if file_path:
                     work_dir = agent._checkpoint_mgr.get_working_dir_for_path(file_path)
                     agent._checkpoint_mgr.ensure_checkpoint(work_dir, f"before {function_name}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls concurrent failed: %s", e)
 
         # Checkpoint before destructive terminal commands
         if function_name == "terminal" and agent._checkpoint_mgr.enabled:
@@ -166,8 +166,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     agent._checkpoint_mgr.ensure_checkpoint(
                         cwd, f"before terminal: {cmd[:60]}"
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls concurrent failed: %s", e)
 
         block_result = None
         blocked_by_guardrail = False
@@ -256,8 +256,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         if agent._interrupt_requested:
             try:
                 _ra()._set_interrupt(True, _worker_tid)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
         # Set the activity callback on THIS worker thread so
         # _wait_for_process (terminal commands) can fire heartbeats.
         # The callback is thread-local; the main thread's callback
@@ -265,20 +265,20 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         try:
             from tools.environments.base import set_activity_callback
             set_activity_callback(agent._touch_activity)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_executor.py:  run tool failed: %s", e)
         # Propagate approval/sudo callbacks to this worker thread.
         # Mirrors cli.py run_agent() pattern (GHSA-qg5c-hvr5-hjgr).
         if _parent_approval_cb is not None:
             try:
                 _set_approval_callback(_parent_approval_cb)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
         if _parent_sudo_cb is not None:
             try:
                 _set_sudo_password_callback(_parent_sudo_cb)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
         start = time.time()
         # H2.1: pre-execution constraint check (runtime quality gate).
         # Fail-open: warning = log + append to result; deny = skip handler.
@@ -291,8 +291,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 _h4_warn = get_ledger().should_warn(function_name)
                 if _h4_warn:
                     logger.info("[H4.1] historical failure warning for %s", function_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
             _precheck_result = run_precheck(function_name, function_args, agent)
         except Exception:
             pass  # harness unavailable → no-op (additive design)
@@ -336,8 +336,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 try:
                     from harness.failure_learning import get_ledger
                     get_ledger().record(function_name, tool_error, function_args)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("tool_executor.py:  run tool failed: %s", e)
             # Append pre-check warning to the result so the LLM sees it.
             if _precheck_result is not None and not _precheck_result.passed and not _precheck_result.block:
                 result = f"{result}\n\n[harness pre-check] {_precheck_result.warning}"
@@ -353,8 +353,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         if _evo_event and hasattr(agent, "evolution_event_callback"):
             try:
                 agent.evolution_event_callback(_evo_event, function_name, is_error, duration)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
         if is_error:
             logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
         else:
@@ -392,8 +392,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 if _h4_2:
                     result = f"{result}\n\n{_h4_2}"
                     logger.warning("[H4.2] low-precision routing guidance for %s", function_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
                 # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
                 try:
                     from harness.failure_learning import get_ledger
@@ -418,8 +418,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         if not is_error and hasattr(agent, "_record_tool_signature"):
             try:
                 agent._record_tool_signature(function_name, function_args, result)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py:  run tool failed: %s", e)
         # Tear down worker-tid tracking.  Clear any interrupt bit we may
         # have set so the next task scheduled onto this recycled tid
         # starts with a clean slate.
@@ -427,15 +427,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             agent._tool_worker_threads.discard(_worker_tid)
         try:
             _ra()._set_interrupt(False, _worker_tid)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_executor.py:  run tool failed: %s", e)
         # Clear thread-local callbacks so a recycled worker thread
         # doesn't hold stale references to a disposed CLI instance.
         try:
             _set_approval_callback(None)
             _set_sudo_password_callback(None)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_executor.py:  run tool failed: %s", e)
 
     # Start spinner for CLI mode (skip when TUI handles tool progress)
     spinner = None
@@ -577,8 +577,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             try:
                 from agent.metrics import record_tool_call as _rc_tool
                 _rc_tool(function_name, tool_duration * 1000, error=is_error)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls concurrent failed: %s", e)
 
         # Print cute message per tool
         if agent._should_emit_quiet_tool_messages():
@@ -689,8 +689,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _block_msg = get_pre_tool_call_block_message(
                 function_name, function_args, task_id=effective_task_id or "",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
 
         _guardrail_block_decision: ToolGuardrailDecision | None = None
         if _block_msg is None:
@@ -730,8 +730,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             try:
                 from tools.environments.base import set_activity_callback
                 set_activity_callback(agent._touch_activity)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
 
         if not _execution_blocked and agent.tool_progress_callback:
             try:
@@ -836,8 +836,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                             tool_call_id=getattr(tool_call, "id", None),
                         ),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             tool_duration = time.time() - tool_start_time
             if agent._should_emit_quiet_tool_messages():
                 agent._vprint(f"  {_get_cute_tool_message_impl('memory', function_args, tool_duration, result=function_result)}")
@@ -942,11 +942,11 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     _h4_warn_seq = get_ledger().should_warn(function_name)
                     if _h4_warn_seq:
                         logger.info("[H4.1-seq] historical failure warning for %s", function_name)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
                 _precheck_seq = run_precheck(function_name, function_args, agent)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             try:
                 if _precheck_seq is not None and not _precheck_seq.passed:
                     if _precheck_seq.block:
@@ -981,8 +981,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         try:
                             from harness.failure_learning import get_ledger
                             get_ledger().record(function_name, tool_error, function_args)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             finally:
                 tool_duration = time.time() - tool_start_time
                 cute_msg = _get_cute_tool_message_impl(function_name, function_args, tool_duration, result=_spinner_result)
@@ -1001,11 +1001,11 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     _h4_warn_ns = get_ledger().should_warn(function_name)
                     if _h4_warn_ns:
                         logger.info("[H4.1-ns] historical failure warning for %s", function_name)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
                 _precheck_ns = run_precheck(function_name, function_args, agent)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             if _precheck_ns is not None and not _precheck_ns.passed and _precheck_ns.block:
                 function_result = f"[blocked] {function_name}: {_precheck_ns.warning}"
                 logger.warning("[H2.1-ns] tool %s blocked: %s", function_name, _precheck_ns.warning)
@@ -1036,8 +1036,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     try:
                         from harness.failure_learning import get_ledger
                         get_ledger().record(function_name, tool_error, function_args)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
             tool_duration = time.time() - tool_start_time
 
         if isinstance(function_result, str):
@@ -1097,8 +1097,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         if not _execution_blocked and not _is_error_result and hasattr(agent, "_record_tool_signature"):
             try:
                 agent._record_tool_signature(function_name, function_args, function_result)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
 
         if not _execution_blocked and agent.tool_progress_callback:
             try:
@@ -1118,8 +1118,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         try:
             from agent.metrics import record_tool_call as _rc_tool_seq
             _rc_tool_seq(function_name, tool_duration * 1000, error=_is_error_result)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
 
         if agent.verbose_logging:
             logging.debug(f"Tool {function_name} completed in {tool_duration:.2f}s")
@@ -1155,8 +1155,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             if _h3_seq:
                 function_result = f"{function_result}\n\n{_h3_seq}"
                 logger.warning("[H3.1-seq] tool %s result validation: %s", function_name, _h3_seq)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
 
         # H3.2: stability probe for hot-path tools (sequential path, opt-in, fail-open).
         try:
@@ -1172,8 +1172,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 if _h4_2_seq:
                     function_result = f"{function_result}\n\n{_h4_2_seq}"
                     logger.warning("[H4.2-seq] low-precision routing guidance for %s", function_name)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
                 # 融合 P0：稳定性 verdict 持久化到学习账本（复用 H4.1 落库，fail-open）
                 try:
                     from harness.failure_learning import get_ledger

@@ -390,8 +390,8 @@ def interruptible_api_call(agent, api_kwargs: dict):
                 )
             try:
                 _close_request_client_once("codex_ttfb_kill")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible api call failed: %s", e)
             agent._touch_activity(
                 f"codex stream killed after {int(_elapsed)}s with no first byte"
             )
@@ -436,8 +436,8 @@ def interruptible_api_call(agent, api_kwargs: dict):
             )
             try:
                 _close_request_client_once("codex_stream_idle_kill")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible api call failed: %s", e)
             agent._touch_activity(
                 f"codex stream killed after {int(_event_stale_elapsed)}s with no SSE events"
             )
@@ -484,8 +484,8 @@ def interruptible_api_call(agent, api_kwargs: dict):
                     agent._rebuild_anthropic_client()
                 else:
                     _close_request_client_once("stale_call_kill")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible api call failed: %s", e)
             agent._touch_activity(
                 f"stale non-streaming call killed after {int(_elapsed)}s"
             )
@@ -515,8 +515,8 @@ def interruptible_api_call(agent, api_kwargs: dict):
                     agent._rebuild_anthropic_client()
                 else:
                     _close_request_client_once("interrupt_abort")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible api call failed: %s", e)
             raise InterruptedError("Agent interrupted during API call")
     if result["error"] is not None:
         raise result["error"]
@@ -682,8 +682,8 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
         try:
             from agent.anthropic_adapter import _get_anthropic_max_output
             _ant_max = _get_anthropic_max_output(agent.model)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("chat_completion_helpers.py: build api kwargs failed: %s", e)
 
     # Qwen session metadata
     _qwen_meta = None
@@ -817,8 +817,8 @@ def build_assistant_message(agent, assistant_message, finish_reason: str) -> dic
         if not agent.stream_delta_callback and not agent._stream_callback:
             try:
                 agent.reasoning_callback(reasoning_text)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: build assistant message failed: %s", e)
 
     # Sanitize surrogates from API response — some models (e.g. Kimi/GLM via Ollama)
     # can return invalid surrogate code points that crash json.dumps() on persist.
@@ -1592,8 +1592,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 first_delta_fired["done"] = True
                 try:
                     on_first_delta()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("chat_completion_helpers.py:  fire first failed: %s", e)
 
         def _bedrock_call():
             try:
@@ -1694,8 +1694,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
             first_delta_fired["done"] = True
             try:
                 on_first_delta()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py:  fire first delta failed: %s", e)
 
     def _call_chat_completions():
         """Stream a chat completions response."""
@@ -1798,10 +1798,10 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 # survives stub provider differences.
                 try:
                     _diag["bytes"] = int(_diag.get("bytes", 0)) + len(repr(chunk))
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                except Exception as e:
+                    logger.debug("chat_completion_helpers.py:  call chat completions failed: %s", e)
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py:  call chat completions failed: %s", e)
 
             if agent._interrupt_requested:
                 break
@@ -1847,8 +1847,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                     try:
                         agent.stream_delta_callback(delta.content)
                         agent._record_streamed_assistant_text(delta.content)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("chat_completion_helpers.py:  call chat completions failed: %s", e)
 
             # Accumulate tool call deltas — notify display on first name
             if delta and delta.tool_calls:
@@ -2009,8 +2009,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 agent._stream_diag_capture_response(
                     _diag, getattr(stream, "response", None)
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py:  call anthropic failed: %s", e)
             for event in stream:
                 # Update stale-stream timer on every event so the
                 # outer poll loop knows data is flowing.  Without
@@ -2028,10 +2028,10 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                         _diag["first_chunk_at"] = last_chunk_time["t"]
                     try:
                         _diag["bytes"] = int(_diag.get("bytes", 0)) + len(repr(event))
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                    except Exception as e:
+                        logger.debug("chat_completion_helpers.py:  call anthropic failed: %s", e)
+                except Exception as e:
+                    logger.debug("chat_completion_helpers.py:  call anthropic failed: %s", e)
 
                 if agent._interrupt_requested:
                     break
@@ -2169,16 +2169,16 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                                 "\n\n⚠ Connection dropped mid tool-call; "
                                 "reconnecting…\n\n"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("chat_completion_helpers.py:  call failed: %s", e)
                         # Reset the streamed-text buffer so the retry's
                         # fresh preamble doesn't get double-recorded in
                         # _current_streamed_assistant_text (which would
                         # pollute the interim-visible-text comparison).
                         try:
                             agent._reset_stream_delivery_tracking()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("chat_completion_helpers.py:  call failed: %s", e)
                         # Reset in-memory accumulators so the next
                         # attempt's chunks don't concat onto the dead
                         # stream's partial JSON.
@@ -2197,8 +2197,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                             agent._replace_primary_openai_client(
                                 reason="stream_mid_tool_retry_pool_cleanup"
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("chat_completion_helpers.py:  call failed: %s", e)
                         continue
 
                     # SSE error events from proxies (e.g. OpenRouter sends
@@ -2250,8 +2250,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                                 agent._replace_primary_openai_client(
                                     reason="stream_retry_pool_cleanup"
                                 )
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("chat_completion_helpers.py:  call failed: %s", e)
                             continue
                         # Retries exhausted. Log the final failure with
                         # full diagnostic detail (chain, headers,
@@ -2382,14 +2382,14 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
             )
             try:
                 _close_request_client_once("stale_stream_kill")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible streaming api call failed: %s", e)
             # Rebuild the primary client too — its connection pool
             # may hold dead sockets from the same provider outage.
             try:
                 agent._replace_primary_openai_client(reason="stale_stream_pool_cleanup")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible streaming api call failed: %s", e)
             # Reset the timer so we don't kill repeatedly while
             # the inner thread processes the closure.
             last_chunk_time["t"] = time.time()
@@ -2404,8 +2404,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                     agent._rebuild_anthropic_client()
                 else:
                     _close_request_client_once("stream_interrupt_abort")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("chat_completion_helpers.py: interruptible streaming api call failed: %s", e)
             raise InterruptedError("Agent interrupted during streaming API call")
     if result["error"] is not None:
         if deltas_were_sent["yes"]:
@@ -2434,8 +2434,8 @@ def interruptible_streaming_api_call(agent, api_kwargs: dict, *, on_first_delta=
                 # Fire as streaming delta so the user sees it immediately.
                 try:
                     agent._fire_stream_delta(_warn)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("chat_completion_helpers.py: interruptible streaming api call failed: %s", e)
                 logger.warning(
                     "Partial stream dropped tool call(s) %s after %s chars "
                     "of text; surfaced warning to user: %s",

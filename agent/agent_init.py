@@ -336,8 +336,8 @@ def init_agent(
 
         if agent.provider not in _AGGREGATOR_PROVIDERS:
             agent.model = normalize_model_for_provider(agent.model, agent.provider)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("agent_init.py: init agent failed: %s", e)
 
     # GPT-5.x models usually require the Responses API path, but some
     # providers have exceptions (for example Copilot's gpt-5-mini still
@@ -482,8 +482,8 @@ def init_agent(
         _ttl = _pc_cfg.get("cache_ttl", "5m")
         if _ttl in {"5m", "1h"}:
             agent._cache_ttl = _ttl
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("agent_init.py: init agent failed: %s", e)
 
     # Iteration budget: the LLM is only notified when it actually exhausts
     # the iteration budget (api_call_count >= max_iterations).  At that
@@ -679,8 +679,8 @@ def init_agent(
                     agent._bedrock_guardrail_config["streamProcessingMode"] = _gr["stream_processing_mode"]
                 if _gr.get("trace"):
                     agent._bedrock_guardrail_config["trace"] = _gr["trace"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("agent_init.py: init agent failed: %s", e)
         agent.client = None
         agent._client_kwargs = {}
         if not agent.quiet_mode:
@@ -742,8 +742,8 @@ def init_agent(
                     _ph = _gpf(agent.provider)
                     if _ph and _ph.default_headers:
                         client_kwargs["default_headers"] = dict(_ph.default_headers)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("agent_init.py: init agent failed: %s", e)
         else:
             # No explicit creds — use the centralized provider router
             from agent.auxiliary_client import resolve_provider_client
@@ -782,8 +782,8 @@ def init_agent(
                         _pcfg = PROVIDER_REGISTRY.get(_explicit)
                         if _pcfg and _pcfg.api_key_env_vars:
                             _env_hint = _pcfg.api_key_env_vars[0]
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("agent_init.py: init agent failed: %s", e)
                     # --- Init-time fallback (#17929) ---
                     _fb_entries = []
                     if isinstance(fallback_model, list):
@@ -1001,8 +1001,8 @@ def init_agent(
         from hermes_cli.config import load_config as _load_sess_cfg
         _sess_cfg = (_load_sess_cfg().get("sessions") or {})
         agent._session_json_enabled = bool(_sess_cfg.get("write_json_snapshots", False))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("agent_init.py: init agent failed: %s", e)
     # logs_dir is retained unconditionally for request_dump_*.json (debug
     # breadcrumb path written by agent_runtime_helpers.dump_api_request_debug).
     
@@ -1124,8 +1124,8 @@ def init_agent(
                             _st = agent._session_db.get_session_title(agent.session_id)
                             if _st:
                                 _init_kwargs["session_title"] = _st
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("agent_init.py: init agent failed: %s", e)
                     # Thread gateway user identity for per-user memory scoping
                     if agent._user_id:
                         _init_kwargs["user_id"] = agent._user_id
@@ -1150,8 +1150,8 @@ def init_agent(
                         _profile = get_active_profile_name()
                         _init_kwargs["agent_identity"] = _profile
                         _init_kwargs["agent_workspace"] = "hermes"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("agent_init.py: init agent failed: %s", e)
                     agent._memory_manager.initialize_all(**_init_kwargs)
                     _ra().logger.info("Memory provider '%s' activated", _mem_provider_name)
                 else:
@@ -1256,8 +1256,8 @@ def init_agent(
     try:
         skills_config = _agent_cfg.get("skills", {})
         agent._skill_nudge_interval = int(skills_config.get("creation_nudge_interval", 10))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("agent_init.py: init agent failed: %s", e)
 
     # Tool-use enforcement config: "auto" (default — matches hardcoded
     # model list), true (always), false (never), or list of substrings.
@@ -1308,8 +1308,8 @@ def init_agent(
         _model_cthresh = _cthresh_fn(agent.model)
         if _model_cthresh is not None:
             compression_threshold = _model_cthresh
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("agent_init.py: init agent failed: %s", e)
     compression_enabled = str(_compression_cfg.get("enabled", True)).lower() in {"true", "1", "yes"}
     compression_target_ratio = float(_compression_cfg.get("target_ratio", 0.20))
     compression_protect_last = int(_compression_cfg.get("protect_last_n", 20))
@@ -1473,8 +1473,8 @@ def init_agent(
     try:
         _ctx_cfg = _agent_cfg.get("context", {}) if isinstance(_agent_cfg, dict) else {}
         _engine_name = _ctx_cfg.get("engine", "compressor") or "compressor"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("agent_init.py: init agent failed: %s", e)
 
     if _engine_name != "compressor":
         # Try loading from plugins/context_engine/<name>/
@@ -1491,8 +1491,8 @@ def init_agent(
                 _candidate = get_plugin_context_engine()
                 if _candidate and _candidate.name == _engine_name:
                     _selected_engine = _candidate
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("agent_init.py: init agent failed: %s", e)
 
         if _selected_engine is None:
             _ra().logger.warning(

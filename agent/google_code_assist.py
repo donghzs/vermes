@@ -160,8 +160,8 @@ def _post_json(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("google_code_assist.py:  post json failed: %s", e)
         # Special case: VPC-SC violation should be distinguishable
         if _is_vpc_sc_violation(detail):
             raise CodeAssistError(

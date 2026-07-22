@@ -541,8 +541,8 @@ def _prepare_api_messages(
                         blocks = list(existing) if existing else []
                         blocks.append({"type": "text", "text": marker})
                         _sm["content"] = blocks
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py:  prepare api messages failed: %s", e)
                 _injected = True
                 logger.debug(
                     "Pre-API-call steer drain: injected into tool msg at index %d",
@@ -604,8 +604,8 @@ def _prepare_api_messages(
                 _turn_recall = recall_hierarchical_per_turn(_user_text)
                 if _turn_recall:
                     _injections.append(_turn_recall)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("conversation_loop.py:  prepare api messages failed: %s", e)
             if _injections:
                 _base = api_msg.get("content", "")
                 if isinstance(_base, str):
@@ -955,8 +955,8 @@ def _initialize_turn(
                     "🔌 检测到上一个服务商遗留的失效连接 "
                     "—— 已自动清理，正在使用新连接继续。"
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("conversation_loop.py:  initialize turn failed: %s", e)
 
     return user_message, persist_user_message, effective_task_id
 
@@ -1532,14 +1532,14 @@ def run_conversation(
                 agent._recall_context = _sections["recall_context"]
             if "continuity_context" in _sections:
                 agent._continuity_context = _sections["continuity_context"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("conversation_loop.py: run conversation failed: %s", e)
     if agent._memory_manager:
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
             agent._memory_manager.on_turn_start(agent._user_turn_count, _turn_msg)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
     # External memory provider: prefetch once before the tool loop.
     # Reuse the cached result on every iteration to avoid re-calling
@@ -1551,8 +1551,8 @@ def run_conversation(
         try:
             _query = original_user_message if isinstance(original_user_message, str) else ""
             _ext_prefetch_cache = agent._memory_manager.prefetch_all(_query) or ""
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
     # turn to the codex app-server subprocess (terminal/file ops/patching
@@ -1778,8 +1778,8 @@ def run_conversation(
                         request_char_count=total_chars,
                         max_tokens=agent.max_tokens,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
                 if env_var_enabled("HERMES_DUMP_REQUESTS"):
                     agent._dump_api_request_debug(api_kwargs, reason="preflight")
@@ -2541,8 +2541,8 @@ def run_conversation(
                     try:
                         from agent.nous_rate_guard import clear_nous_rate_limit
                         clear_nous_rate_limit()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py: run conversation failed: %s", e)
                 agent._touch_activity(f"API call #{api_call_count} completed")
                 break  # Success, exit retry loop
 
@@ -2753,8 +2753,8 @@ def run_conversation(
                     _err_body = str(getattr(api_error, "body", None) or
                                     getattr(api_error, "message", None) or
                                     str(api_error))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("conversation_loop.py: run conversation failed: %s", e)
                 _err_status = getattr(api_error, "status_code", None)
                 _IMAGE_REJECTION_PHRASES = (
                     "only 'text' content type is supported",
@@ -2897,8 +2897,8 @@ def run_conversation(
                         agent._oauth_1m_beta_disabled = True
                         try:
                             agent._anthropic_client.close()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("conversation_loop.py: run conversation failed: %s", e)
                         agent._rebuild_anthropic_client()
                         agent._vprint(
                             f"{agent.log_prefix}🔕 OAuth subscription doesn't support "
@@ -2938,8 +2938,8 @@ def run_conversation(
                         _body = getattr(api_error, "body", None) or getattr(api_error, "response", None)
                         if _body is not None:
                             _body_text = str(_body)[:200]
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py: run conversation failed: %s", e)
                     logger.info(f"{agent.log_prefix}🔐 Nous 401 - Portal authentication failed.")
                     if _body_text:
                         logger.info(f"{agent.log_prefix}   Response: {_body_text}")
@@ -3315,8 +3315,8 @@ def run_conversation(
                                 "last-known state) -- not tripping "
                                 "cross-session breaker."
                             )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py: run conversation failed: %s", e)
                     if _genuine_nous_rate_limit:
                         # Skip straight to max_retries -- the
                         # top-of-loop guard will handle fallback or
@@ -3915,8 +3915,8 @@ def run_conversation(
                     assistant_content_chars=len(_assistant_text),
                     assistant_tool_call_count=len(_assistant_tool_calls),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
             # Handle assistant response
             if assistant_message.content and not agent.quiet_mode:
@@ -3939,13 +3939,13 @@ def run_conversation(
                 if first_line and getattr(agent, '_delegate_depth', 0) > 0:
                     try:
                         agent.tool_progress_callback("_thinking", first_line)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py: run conversation failed: %s", e)
                 elif _think_text:
                     try:
                         agent.tool_progress_callback("reasoning.available", "_thinking", _think_text[:500], None)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
             # Check for incomplete <REASONING_SCRATCHPAD> (opened but never closed)
             # This means the model ran out of output tokens mid-reasoning - retry up to 2 times
@@ -4290,8 +4290,8 @@ def run_conversation(
                 if agent.stream_delta_callback:
                     try:
                         agent.stream_delta_callback(None)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 

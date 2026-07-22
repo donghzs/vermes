@@ -285,8 +285,8 @@ def record_raw_event(
         try:
             _maybe_trigger_clustering(session_id)
             _LAST_EMERGENCE_OK = datetime.now()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("raw_event.py: record raw event failed: %s", e)
 
     return rowid
 

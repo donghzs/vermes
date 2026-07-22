@@ -199,8 +199,8 @@ class EmergentInsightExtractor:
             )
             recent_events = cursor.fetchone()[0]
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("emergent_insight.py:  compute overall stats failed: %s", e)
 
         # Daily average over last 7 days
         daily_avg = recent_events / 7.0 if recent_events > 0 else 0.0

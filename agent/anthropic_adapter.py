@@ -310,8 +310,8 @@ def _detect_claude_code_version() -> str:
                 version = result.stdout.strip().split()[0]
                 if version and version[0].isdigit():
                     return version
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("anthropic_adapter.py:  detect claude code version failed: %s", e)
     return _CLAUDE_CODE_VERSION_FALLBACK
 
 
@@ -1250,8 +1250,8 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
         try:
             webbrowser.open(auth_url)
             logger.info("  (Browser opened automatically)")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("anthropic_adapter.py: run hermes oauth login pure failed: %s", e)
 
     logger.info()
     logger.info("After authorizing, you'll see a code. Paste it below.")

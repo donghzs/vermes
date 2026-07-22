@@ -296,8 +296,8 @@ def _check_multi_session(
                 if cursor.fetchone():
                     cursor = conn.execute("SELECT COUNT(*) FROM handoffs")
                     handoff_count = cursor.fetchone()[0]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("capability_evolver.py:  check multi session failed: %s", e)
 
             # Many sessions but few handoffs = cross-session continuity gap
             if handoff_count < recent_sessions / 2:

@@ -42,8 +42,8 @@ def shutdown_connections() -> None:
         for key, conn in list(_conn_cache.items()):
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("evolution_manager.py: shutdown connections failed: %s", e)
         _conn_cache.clear()
 
 
@@ -130,8 +130,8 @@ def is_evolution_active() -> bool:
                 value REAL,
                 details TEXT)""")
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("evolution_manager.py: is evolution active failed: %s", e)
     _evolution_active = True
     return True
 
@@ -380,8 +380,8 @@ def get_current_emotional_state() -> Optional[str]:
         row = cursor.fetchone()
         if row:
             return f"情绪:{row[0]}({row[1]:.1f})"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("evolution_manager.py: get current emotional state failed: %s", e)
     return None
 
 
@@ -448,8 +448,8 @@ def _record_evolution_metric(metric: str, value: float, details: str = "") -> No
             (datetime.now().isoformat(), metric, value, details),
         )
         conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("evolution_manager.py:  record evolution metric failed: %s", e)
 
 
 def _write_pattern_to_memory(
@@ -501,8 +501,8 @@ def _write_pattern_to_memory(
         store.add("memory", content)
         logger.info("闭环新增: 反模式 '%s:%s' → MEMORY.md (频率=%d, 等级=%s)",
                     tool_name, error_type, frequency, severity)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("evolution_manager.py:  write pattern to memory failed: %s", e)
 
 
 def record_tool_outcome(
@@ -615,8 +615,8 @@ def record_tool_outcome(
                     ('outcome', outcome_id, 'emotional_state', _emotion_id, 'caused_emotion', 0.5, timestamp),
                 )
                 _ec.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("evolution_manager.py: record tool outcome failed: %s", e)
 
         # ── DAG: anti_pattern → skill（预留，skills 表有 ID 后启用）─
         # Skill 关联暂不实现，等 skill 系统提供技能 ID 后在此写入：
@@ -644,8 +644,8 @@ def record_tool_outcome(
                             "VALUES (?, ?, ?, ?, ?, ?, ?)",
                             ('outcome', outcome_id, 'chunk', _chunk_id, 'retrieved', 0.8, timestamp),
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("evolution_manager.py: record tool outcome failed: %s", e)
 
         # ── 策略记录：outcome → strategy（激活 strategies 表）──
         try:
@@ -675,8 +675,8 @@ def record_tool_outcome(
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 ('outcome', outcome_id, 'strategy', _sid, 'used_strategy', 1.0, timestamp)
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("evolution_manager.py: record tool outcome failed: %s", e)
 
         # ── 指标记录 ──────────────────────────────────────────────
         try:
@@ -771,8 +771,8 @@ def record_tool_outcome(
         if is_error:
             try:
                 advice = get_strategy_advice(tool_name, domain)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("evolution_manager.py: record tool outcome failed: %s", e)
         
         # ── 成就检查 ──────────────────────────────────────────────
         # 直接从已写入的数据库查最新计数，避免重复全量查询 get_evolution_status()

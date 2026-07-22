@@ -302,8 +302,8 @@ class ClusterLifecycleManager:
             )
             conn.commit()
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cluster_lifecycle.py:  touch last active failed: %s", e)
 
     def _record_transition(
         self, cluster_id: int, from_stage: str, to_stage: str, reason: str = ""
@@ -318,8 +318,8 @@ class ClusterLifecycleManager:
             )
             conn.commit()
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cluster_lifecycle.py:  record transition failed: %s", e)
 
     # ── Data Retention ──────────────────────────────────────────────────────
 

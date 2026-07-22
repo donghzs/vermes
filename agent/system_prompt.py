@@ -23,6 +23,9 @@ Pure helpers that read the agent's state.  AIAgent keeps thin forwarders.
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -333,8 +336,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _entry = platform_registry.get(platform_key)
             if _entry and _entry.platform_hint:
                 _default_hint = _entry.platform_hint
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
     _effective_hint = _resolve_platform_hint(agent, platform_key, _default_hint)
     if _effective_hint:
@@ -379,8 +382,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _ext_mem_block = agent._memory_manager.build_system_prompt()
             if _ext_mem_block:
                 volatile_parts.append(_ext_mem_block)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
     # Session handoff: cross-session continuity (loaded at turn 1)
     _handoff_block = getattr(agent, "_handoff_context", None)
@@ -399,8 +402,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     try:
         from agent.decision_tracker import format_decisions_for_prompt
         _decisions_block = format_decisions_for_prompt(limit=5)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
     # Phase 5: Apply unified memory budget across all memory injections
     _memory_blocks = {
@@ -438,8 +441,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         _cap_prompt = get_capability_report_prompt()
         if _cap_prompt:
             volatile_parts.append(_cap_prompt)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
     # ── Extracted skills: active skills + pending for user confirmation ──
     try:
@@ -453,8 +456,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _pending_skills = get_pending_skills_prompt(str(_db))
             if _pending_skills:
                 volatile_parts.append(_pending_skills)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
     from hermes_time import now as _hermes_now
     now = _hermes_now()

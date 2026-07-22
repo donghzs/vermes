@@ -387,8 +387,8 @@ try:
         _host = _pp.get_hostname()
         if _host and _host not in _URL_TO_PROVIDER:
             _URL_TO_PROVIDER[_host] = _pp.name
-except Exception:
-    pass
+except Exception as e:
+    logger.debug("model_metadata.py: module scope failed: %s", e)
 
 
 def _infer_provider_from_url(base_url: str) -> Optional[str]:
@@ -486,8 +486,8 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                 r = client.get(f"{server_url}/api/v1/models")
                 if r.status_code == 200:
                     return "lm-studio"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("model_metadata.py: detect local server type failed: %s", e)
             # Ollama exposes /api/tags and responds with {"models": [...]}
             # LM Studio returns {"error": "Unexpected endpoint"} with status 200
             # on this path, so we must verify the response contains "models".
@@ -498,10 +498,10 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                         data = r.json()
                         if "models" in data:
                             return "ollama"
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as e:
+                        logger.debug("model_metadata.py: detect local server type failed: %s", e)
+            except Exception as e:
+                logger.debug("model_metadata.py: detect local server type failed: %s", e)
             # llama.cpp exposes /v1/props (older builds used /props without the /v1 prefix)
             try:
                 r = client.get(f"{server_url}/v1/props")
@@ -509,8 +509,8 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                     r = client.get(f"{server_url}/props")  # fallback for older builds
                 if r.status_code == 200 and "default_generation_settings" in r.text:
                     return "llamacpp"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("model_metadata.py: detect local server type failed: %s", e)
             # vLLM: /version
             try:
                 r = client.get(f"{server_url}/version")
@@ -518,10 +518,10 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                     data = r.json()
                     if "version" in data:
                         return "vllm"
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.debug("model_metadata.py: detect local server type failed: %s", e)
+    except Exception as e:
+        logger.debug("model_metadata.py: detect local server type failed: %s", e)
 
     return None
 
@@ -774,8 +774,8 @@ def fetch_endpoint_model_metadata(
                         model_alias = props.get("model_alias", "")
                         if n_ctx and model_alias and model_alias in cache:
                             cache[model_alias]["context_length"] = n_ctx
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("model_metadata.py: fetch endpoint model metadata failed: %s", e)
 
             _endpoint_model_metadata_cache[normalized] = cache
             _endpoint_model_metadata_cache_time[normalized] = time.time()
@@ -1046,8 +1046,8 @@ def query_ollama_num_ctx(model: str, base_url: str, api_key: str = "") -> Option
             for key, value in model_info.items():
                 if "context_length" in key and isinstance(value, (int, float)):
                     return int(value)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("model_metadata.py: query ollama num ctx failed: %s", e)
     return None
 
 
@@ -1107,8 +1107,8 @@ def _query_ollama_api_show(model: str, base_url: str, api_key: str = "") -> Opti
                                     return ctx
                             except ValueError:
                                 pass
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("model_metadata.py:  query ollama api show failed: %s", e)
     return None
 
 
@@ -1212,8 +1212,8 @@ def _query_local_context_length(model: str, base_url: str, api_key: str = "") ->
                         ctx = m.get("max_model_len") or m.get("context_length") or m.get("max_tokens")
                         if ctx and isinstance(ctx, (int, float)):
                             return int(ctx)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("model_metadata.py:  query local context length failed: %s", e)
 
     return None
 

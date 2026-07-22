@@ -285,8 +285,8 @@ def _get_aux_model_for_provider(provider_id: str) -> str:
         _p = get_provider_profile(provider_id)
         if _p and _p.default_aux_model:
             return _p.default_aux_model
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  get aux model for provider failed: %s", e)
     return _API_KEY_PROVIDER_AUX_MODELS_FALLBACK.get(provider_id, "")
 
 
@@ -505,8 +505,8 @@ def _codex_cloudflare_headers(access_token: str) -> Dict[str, str]:
         acct_id = claims.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
         if isinstance(acct_id, str) and acct_id:
             headers["ChatGPT-Account-ID"] = acct_id
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  codex cloudflare headers failed: %s", e)
     return headers
 
 
@@ -865,8 +865,8 @@ class _CodexCompletionsAdapter:
                 if callable(close_fn):
                     try:
                         close_fn()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("auxiliary_client.py: create failed: %s", e)
 
             if final is None:
                 raise RuntimeError("Codex auxiliary Responses stream did not return a final response")
@@ -1497,8 +1497,8 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
                     _ph_aux = _gpf_aux(provider_id)
                     if _ph_aux and _ph_aux.default_headers:
                         extra["default_headers"] = dict(_ph_aux.default_headers)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("auxiliary_client.py:  resolve api key provider failed: %s", e)
             _client = OpenAI(api_key=api_key, base_url=base_url, **extra)
             _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
             return _client, model
@@ -1534,8 +1534,8 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
                 _ph_aux2 = _gpf_aux2(provider_id)
                 if _ph_aux2 and _ph_aux2.default_headers:
                     extra["default_headers"] = dict(_ph_aux2.default_headers)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("auxiliary_client.py:  resolve api key provider failed: %s", e)
         _client = OpenAI(api_key=api_key, base_url=base_url, **extra)
         _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
         return _client, model
@@ -1594,8 +1594,8 @@ def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
             )
             _mark_provider_unhealthy("nous", ttl=_remaining)
             return None, None
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  try nous failed: %s", e)
 
     nous = _read_nous_auth()
     runtime = _resolve_nous_runtime_api(force_refresh=False)
@@ -1689,8 +1689,8 @@ def _read_main_model() -> str:
             default = model_cfg.get("default", "")
             if isinstance(default, str) and default.strip():
                 return default.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  read main model failed: %s", e)
     return ""
 
 
@@ -1714,8 +1714,8 @@ def _read_main_provider() -> str:
             provider = model_cfg.get("provider", "")
             if isinstance(provider, str) and provider.strip():
                 return provider.strip().lower()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  read main provider failed: %s", e)
     return ""
 
 
@@ -2155,8 +2155,8 @@ def _try_anthropic(explicit_api_key: str = None) -> Tuple[Optional[Any], Optiona
                 cfg_base_url = (model_cfg.get("base_url") or "").strip().rstrip("/")
                 if cfg_base_url:
                     base_url = cfg_base_url
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  try anthropic failed: %s", e)
 
     from agent.anthropic_adapter import _is_oauth_token
     is_oauth = _is_oauth_token(token)
@@ -2550,8 +2550,8 @@ def _evict_cached_clients(provider: str) -> None:
                     close_fn = getattr(client, "close", None)
                     if callable(close_fn):
                         close_fn()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("auxiliary_client.py:  evict cached clients failed: %s", e)
             _client_cache.pop(key, None)
 
 
@@ -2657,8 +2657,8 @@ def _recoverable_pool_provider(
                     rt_base = str(getattr(pconfig, "inference_base_url", "") or "").rstrip("/")
                     if rt_base and base_url_host_matches(base, base_url_hostname(rt_base)):
                         return rt_provider
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("auxiliary_client.py:  recoverable pool provider failed: %s", e)
     return None
 
 
@@ -3254,8 +3254,8 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
                 _ph_async = _gpf_async(_inferred)
                 if _ph_async and _ph_async.default_headers:
                     async_kwargs["default_headers"] = dict(_ph_async.default_headers)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("auxiliary_client.py:  to async client failed: %s", e)
     return AsyncOpenAI(**async_kwargs), model
 
 
@@ -3545,8 +3545,8 @@ def resolve_provider_client(
                     _ph_custom = _gpf_custom(provider)
                     if _ph_custom and _ph_custom.default_headers:
                         extra["default_headers"] = dict(_ph_custom.default_headers)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("auxiliary_client.py: resolve provider client failed: %s", e)
             client = OpenAI(api_key=custom_key, base_url=_clean_base, **extra)
             client = _wrap_if_needed(client, final_model, custom_base, custom_key)
             return (_to_async_client(client, final_model, is_vision=is_vision) if async_mode
@@ -3791,8 +3791,8 @@ def resolve_provider_client(
                 _ph_main = _gpf_main(provider)
                 if _ph_main and _ph_main.default_headers:
                     headers.update(_ph_main.default_headers)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("auxiliary_client.py: resolve provider client failed: %s", e)
         client = OpenAI(api_key=api_key, base_url=base_url,
                         **({"default_headers": headers} if headers else {}))
 
@@ -4297,8 +4297,8 @@ def _store_cached_client(cache_key: tuple, client: Any, default_model: Optional[
                 close_fn = getattr(old_entry[0], "close", None)
                 if callable(close_fn):
                     close_fn()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("auxiliary_client.py:  store cached client failed: %s", e)
         _client_cache[cache_key] = (client, default_model, bound_loop)
 
 
@@ -4395,8 +4395,8 @@ def _force_close_async_httpx(client: Any) -> None:
         inner = getattr(client, "_client", None)
         if inner is not None and not getattr(inner, "is_closed", True):
             inner._state = ClientState.CLOSED
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auxiliary_client.py:  force close async httpx failed: %s", e)
 
 
 def shutdown_cached_clients() -> None:
@@ -4421,8 +4421,8 @@ def shutdown_cached_clients() -> None:
                 close_fn = getattr(client, "close", None)
                 if close_fn and not inspect.iscoroutinefunction(close_fn):
                     close_fn()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("auxiliary_client.py: shutdown cached clients failed: %s", e)
         _client_cache.clear()
 
 

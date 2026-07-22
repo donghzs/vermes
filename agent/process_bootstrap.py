@@ -134,8 +134,8 @@ def _get_proxy_for_base_url(base_url: Optional[str]) -> Optional[str]:
     try:
         if urllib.request.proxy_bypass_environment(host):
             return None
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("process_bootstrap.py:  get proxy for base url failed: %s", e)
 
     return proxy
 

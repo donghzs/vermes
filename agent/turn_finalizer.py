@@ -22,6 +22,9 @@ keep the exact logger name (``"agent.conversation_loop"``).
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 
 from agent.codex_responses_adapter import _summarize_user_message_for_log
@@ -112,8 +115,8 @@ def finalize_turn(
                 finally:
                     try:
                         _conn.close()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("turn_finalizer.py: finalize turn failed: %s", e)
             except Exception:
                 logger.warning(
                     "Failed to record budget-exhausted failure for task %s",

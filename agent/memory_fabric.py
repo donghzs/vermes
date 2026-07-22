@@ -211,8 +211,8 @@ def _check_capacity() -> dict:
         try:
             from agent.metrics import record_count as _rc
             _rc("memory_capacity_degraded")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("memory_fabric.py:  check capacity failed: %s", e)
     return {
         "over_capacity": over,
         "total_count": count,

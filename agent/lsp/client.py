@@ -404,8 +404,8 @@ class LSPClient:
                     pass
                 try:
                     await self._send_notification("exit", None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("client.py: shutdown failed: %s", e)
         finally:
             self._state = "stopped"
             await self._cleanup_process()
@@ -416,13 +416,13 @@ class LSPClient:
             try:
                 await self._reader_task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+                logger.debug("client.py:  cleanup process failed: %s", e)
         if self._stderr_task is not None and not self._stderr_task.done():
             self._stderr_task.cancel()
             try:
                 await self._stderr_task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+                logger.debug("client.py:  cleanup process failed: %s", e)
         proc = self._proc
         self._proc = None
         if proc is None:
@@ -814,7 +814,7 @@ class LSPClient:
                 try:
                     await t
                 except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
+                    logger.debug("client.py: wait for diagnostics failed: %s", e)
 
             # If we got a fresh push for our version, we're done.
             current_v = self._published_version.get(abs_path)

@@ -29,6 +29,9 @@ unified memory base).
 """
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import os
 from typing import Any, Dict, List, Optional
 
@@ -77,8 +80,8 @@ def _load_user_services() -> Dict[str, Any]:
         services = cfg.get(_SERVICES_CONFIG_KEY)
         if isinstance(services, dict):
             return services
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("service_credentials.py:  load user services failed: %s", e)
     return {}
 
 

@@ -1244,8 +1244,8 @@ def _extract_error_body(error: Exception) -> dict:
             json_body = response.json()
             if isinstance(json_body, dict):
                 return json_body
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("error_classifier.py:  extract error body failed: %s", e)
     return {}
 
 

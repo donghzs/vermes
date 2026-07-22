@@ -617,8 +617,8 @@ class GeminiCloudCodeClient:
         self.is_closed = True
         try:
             self._http.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("gemini_cloudcode_adapter.py: close failed: %s", e)
 
     # Implement the OpenAI SDK's context-manager-ish closure check
     def __enter__(self):

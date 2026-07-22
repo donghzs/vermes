@@ -265,8 +265,8 @@ def resolve_aws_auth_env_var(env: Optional[Dict[str, str]] = None) -> Optional[s
             resolved = credentials.get_frozen_credentials()
             if resolved and resolved.access_key:
                 return "iam-role"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("bedrock_adapter.py: resolve aws auth env var failed: %s", e)
     return None
 
 
@@ -296,8 +296,8 @@ def has_aws_credentials(env: Optional[Dict[str, str]] = None) -> bool:
             resolved = credentials.get_frozen_credentials()
             if resolved and resolved.access_key:
                 return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("bedrock_adapter.py: has aws credentials failed: %s", e)
     return False
 
 
@@ -327,8 +327,8 @@ def resolve_bedrock_region(env: Optional[Dict[str, str]] = None) -> str:
         region = botocore.session.get_session().get_config_variable("region")
         if region:
             return region
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("bedrock_adapter.py: resolve bedrock region failed: %s", e)
     return "us-east-1"
 
 
@@ -347,8 +347,8 @@ def bedrock_model_ids_or_none() -> Optional[List[str]]:
         discovered = discover_bedrock_models(resolve_bedrock_region())
         if discovered:
             return [m["id"] for m in discovered]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("bedrock_adapter.py: bedrock model ids or none failed: %s", e)
     return None
 
 
