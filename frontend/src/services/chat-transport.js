@@ -129,6 +129,12 @@ export class SSETransport extends ChatTransport {
               this._emit(sessionId, 'onApprovalRequest', data.data || data)
             } else if (data.type === 'status') {
               this._emit(sessionId, 'onStatus', data)
+            } else if (data.type === 'stage') {
+              // Pipeline stage event: { stage, pipeline: 'start'|'done'|'error', papers? }
+              this._emit(sessionId, 'onStage', data)
+            } else if (data.type === 'checkpoint') {
+              // Pipeline checkpoint: { stage, next, message, completed, remaining }
+              this._emit(sessionId, 'onCheckpoint', data)
             } else if (data.type === 'error') {
               this._emit(sessionId, 'onError', data.message || data.content)
             } else if (deltaContent) {

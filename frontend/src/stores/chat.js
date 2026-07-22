@@ -554,12 +554,42 @@ export const useChatStore = defineStore('chat', () => {
           // 全部步骤完成 → 庆祝态
           todoAllDone.value = true
         },
+        onStage: (data) => {
+          // Pipeline stage event (from Pipeline abstraction)
+          // data: { stage, pipeline: 'start'|'done'|'error', papers?, message? }
+          const am = messages.value.find(m => m.id === aid)
+          if (!am) return
+          if (!am.pipelineStages) am.pipelineStages = []
+          if (data.pipeline === 'start') {
+            am.pipelineStages.push({
+              name: data.stage,
+              status: 'running',
+              startedAt: Date.now(),
+            })
+          } else if (data.pipeline === 'done') {
+            const s = am.pipelineStages.find(s => s.name === data.stage && s.status === 'running')
+            if (s) { s.status = 'done'; s.completedAt = Date.now(); s.papers = data.papers }
+          } else if (data.pipeline === 'error') {
+            const s = am.pipelineStages.find(s => s.name === data.stage && s.status === 'running')
+            if (s) { s.status = 'error'; s.error = data.message || '' }
+          }
+          scheduleScroll()
+        },
+        onCheckpoint: (data) => {
+          // Pipeline checkpoint: pause between stages
+          // data: { stage, next, message, completed, remaining }
+          const am = messages.value.find(m => m.id === aid)
+          if (!am) return
+          am.checkpoint = data
+          scheduleScroll()
+        },
         onDone: (usageInfo) => {
           const am = messages.value.find(m => m.id === aid)
           if (am) {
             if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
             am.streaming = false; am._currentStep = null; am._streamStartTime = null; am._toolCount = null
+            am.checkpoint = null  // clear checkpoint on done
             // 检测空回复：后端流结束但没有任何内容输出
             if (!am.content || !am.content.trim()) {
               am.content = '⚠️ 回复为空，可能是后端处理异常。请重试或更换模型。'
