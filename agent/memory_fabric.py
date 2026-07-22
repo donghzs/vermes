@@ -52,6 +52,15 @@ L4_REFERENCE = "reference"
 
 _LOCK = threading.RLock()
 
+# ── B 硬容量护栏（Route B） ──────────────────────────────────
+# 铁律：只降级不删除。超阈值时降低 recall limit、跳过低 access_count 层。
+# 绝不物理删除 memories 行，绝不 LLM 改写事实内容。
+_MAX_MEMORIES_TOTAL = 5000       # memories 表总行数上限
+_COLD_ACCESS_THRESHOLD = 2       # access_count ≤ 此值视为"冷"层
+_RECALL_LIMIT_COLD_SCALE = 0.5   # 超阈值时 limit 缩放比例
+_CAPACITY_WARN_INTERVAL = 50     # 每超阈值 50 行 log 一次（避免刷屏）
+_last_capacity_warn_count = 0    # 上次警告时的行数
+
 
 def _get_index_db() -> Path:
     return Path(get_hermes_home()) / "memory_index.db"
@@ -162,6 +171,56 @@ def index_note(target: str, content: str, scope: str = "") -> None:
             conn.close()
 
 
+def _get_memory_count() -> int:
+    """Return total row count of memories table (fail-open: 0 on error)."""
+    db_path = _get_index_db()
+    if not os.path.exists(str(db_path)):
+        return 0
+    try:
+        with _LOCK:
+            conn = _get_conn(str(db_path))
+            try:
+                c = conn.cursor()
+                c.execute("SELECT COUNT(*) FROM memories")
+                return c.fetchone()[0]
+            finally:
+                conn.close()
+    except Exception:
+        logger.debug("memory_fabric._get_memory_count failed", exc_info=True)
+        return 0
+
+
+def _check_capacity() -> dict:
+    """Check memory capacity and return degradation directives.
+
+    Returns dict with:
+      - over_capacity: bool
+      - total_count: int
+      - limit_scale: float (1.0 normal, <1.0 degraded)
+      - skip_cold: bool (True = skip low access_count entries)
+    """
+    global _last_capacity_warn_count
+    count = _get_memory_count()
+    over = count > _MAX_MEMORIES_TOTAL
+    if over and (count - _last_capacity_warn_count) >= _CAPACITY_WARN_INTERVAL:
+        logger.warning(
+            "Memory capacity: %d rows > %d limit \u2014 degrading recall (skip_cold=True, limit_scale=%.1f)",
+            count, _MAX_MEMORIES_TOTAL, _RECALL_LIMIT_COLD_SCALE,
+        )
+        _last_capacity_warn_count = count
+        try:
+            from agent.metrics import record_count as _rc
+            _rc("memory_capacity_degraded")
+        except Exception:
+            pass
+    return {
+        "over_capacity": over,
+        "total_count": count,
+        "limit_scale": _RECALL_LIMIT_COLD_SCALE if over else 1.0,
+        "skip_cold": over,
+    }
+
+
 def recall(
     query: str,
     layer: Optional[str] = None,
@@ -181,6 +240,12 @@ def recall(
     terms = _sanitize_fts(query).split()
     if not terms:
         return []
+
+    # ── B 硬容量护栏：超阈值时降级 ──
+    cap = _check_capacity()
+    effective_limit = max(1, int(limit * cap["limit_scale"]))
+    skip_cold = cap["skip_cold"]
+
     fts = " OR ".join(f'"{t}"' for t in terms[:8])
     sql = (
         "SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer, "
@@ -195,10 +260,14 @@ def recall(
     if scope:
         sql += " AND m.scope=?"
         params.append(scope)
+    # B 硬容量护栏：超阈值时跳低 access_count 层（冷归档，不删除）
+    if skip_cold:
+        sql += " AND m.access_count > ?"
+        params.append(_COLD_ACCESS_THRESHOLD)
     # 涌现式自适应：FTS 相关性(rank) 主排序；同相关性档内，被召回次数
     # (access_count) 高者靠前。边界由真实使用分布自然涌现，不预设阈值。
     sql += " ORDER BY rank, m.access_count DESC LIMIT ?"
-    params.append(limit)
+    params.append(effective_limit)
     try:
         with _LOCK:
             conn = _get_conn(str(db_path))

@@ -101,6 +101,10 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_session ON cluster_snapshots(session_id
 CREATE INDEX IF NOT EXISTS idx_snapshots_time ON cluster_snapshots(timestamp);
 """
 
+# ── B 硬容量护栏：快照数量上限 ──
+# 超限时删除最旧快照（删的是快照索引，不是事实数据；快照本身是状态副本）
+_MAX_SNAPSHOTS = 100
+
 
 class CrossSessionContinuity:
     """Manages cluster/module continuity across sessions."""
@@ -138,6 +142,24 @@ class CrossSessionContinuity:
             "INSERT INTO cluster_snapshots (session_id, timestamp, data) VALUES (?, ?, ?)",
             (session_id, snapshot.timestamp, json.dumps(snapshot.to_dict()))
         )
+        # B 硬容量护栏：超限时删除最旧快照
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM cluster_snapshots")
+            total = cursor.fetchone()[0]
+            if total > _MAX_SNAPSHOTS:
+                excess = total - _MAX_SNAPSHOTS
+                cursor.execute(
+                    "DELETE FROM cluster_snapshots WHERE id IN ("
+                    "SELECT id FROM cluster_snapshots ORDER BY id ASC LIMIT ?)",
+                    (excess,)
+                )
+                logger.info(
+                    "Capacity guard: trimmed %d old cluster snapshots (total was %d, limit %d)",
+                    excess, total, _MAX_SNAPSHOTS,
+                )
+        except Exception:
+            logger.debug("Snapshot capacity trim failed", exc_info=True)
         conn.commit()
         conn.close()
 

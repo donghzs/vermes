@@ -44,6 +44,7 @@ class ContinuityContext:
     sources_loaded: list[str] = field(default_factory=list)
     sources_failed: list[str] = field(default_factory=list)
     total_events_since: int = 0
+    capacity_status: dict = field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:
@@ -177,5 +178,17 @@ def load_continuity_context(
         )
     except Exception:
         pass  # metrics are best-effort
+
+    # ── B 硬容量护栏：返回容量状态 ──
+    try:
+        from agent.memory_fabric import _check_capacity
+        cap = _check_capacity()
+        ctx.capacity_status = {
+            "total_memories": cap["total_count"],
+            "over_capacity": cap["over_capacity"],
+            "limit_scale": cap["limit_scale"],
+        }
+    except Exception:
+        pass  # capacity check is best-effort
 
     return ctx

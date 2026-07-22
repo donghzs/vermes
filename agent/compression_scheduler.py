@@ -331,6 +331,10 @@ class CompressionScheduler:
         self._cooldown_until_turn: int = 0
         self._decision_history: List[CompressionDecision] = []
 
+        # B 硬容量护栏：压缩轮次上限（防无限压缩循环）
+        self._compression_rounds: int = 0
+        self._max_compression_rounds: int = 20  # 每 session 最多压缩 20 次
+
     @property
     def cache_observer(self) -> CacheObserver:
         """Expose the cache observer for debugging / introspection."""
@@ -485,6 +489,12 @@ class CompressionScheduler:
         self._last_compress_turn = self._turn_count
         # Cooldown: at least 2 turns before next compression evaluation
         self._cooldown_until_turn = self._turn_count + 3
+        # B 硬容量护栏：压缩轮次计数
+        self._compression_rounds += 1
+
+    def compression_exhausted(self) -> bool:
+        """Return True if max compression rounds reached (B 硬容量护栏)."""
+        return self._compression_rounds >= self._max_compression_rounds
 
     # ── Internal helpers ────────────────────────────────────────────────────
 

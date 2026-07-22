@@ -1238,7 +1238,8 @@ def run_conversation(
                             _stripped, _before_len, len(messages))
                 conversation_history = None
 
-        elif _sched_decision.should_compress:
+        elif _sched_decision.should_compress and not _scheduler.compression_exhausted():
+            # B 硬容量护栏：超过压缩轮次上限则不再压缩
             logger.info("Scheduler proactive compression: mode=%s tokens=~%s reason=%s",
                         _sched_decision.mode, f"{_sched_tokens:,}", _sched_decision.reason)
             agent._emit_status(
