@@ -530,16 +530,19 @@ def compress_context(
                 from agent.memory_fabric import record as _mf_record, L2_PROCEDURAL
                 _sid = agent.session_id or "unknown"
                 _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # 从 compressed 消息列表中提取摘要文本
-                _summary_text = ""
-                for _msg in compressed:
-                    _c = _msg.get("content", "")
-                    if isinstance(_c, str) and len(_c) > 50 and (
-                        "SUMMARY" in _c.upper() or "CONTEXT SUMMARY" in _c.upper()
-                        or _msg.get("role") == "system"
-                    ):
-                        _summary_text = _c
-                        break
+                # 结构化优先：context_compressor 直接存了 _last_summary_text
+                _summary_text = getattr(agent.context_compressor, "_last_summary_text", "") or ""
+                # 回退：扫描 system 角色消息（最可能是压缩摘要）
+                if not _summary_text:
+                    _candidates = [
+                        _msg.get("content", "")
+                        for _msg in compressed
+                        if isinstance(_msg.get("content"), str)
+                        and len(_msg["content"]) > 100
+                        and _msg.get("role") == "system"
+                    ]
+                    if _candidates:
+                        _summary_text = max(_candidates, key=len)
                 if _summary_text:
                     _mf_record({
                         "source": "compression",

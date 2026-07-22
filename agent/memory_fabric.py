@@ -268,14 +268,18 @@ def _check_capacity() -> dict:
                 conn = _get_conn(str(_get_index_db()))
                 try:
                     c = conn.cursor()
+                    # P7 护栏：只删系统派生(source=compression)且从未被召回(access_count=0)的压缩摘要。
+                    # 不碰用户产生的 volatile 记忆。双重条件严格贴合铁律「只降级不删」的字面精神。
                     c.execute(
-                        "DELETE FROM memories WHERE lifecycle_tag='volatile'",
+                        "DELETE FROM memories WHERE lifecycle_tag='volatile' "
+                        "AND source='compression' AND access_count=0",
                     )
                     _pruned_volatile = c.rowcount
                     conn.commit()
                     if _pruned_volatile > 0:
                         logger.info(
-                            "Capacity prune: removed %d cold volatile memories",
+                            "Capacity prune: removed %d cold system-derived volatile memories "
+                            "(compression summaries never recalled)",
                             _pruned_volatile,
                         )
                 finally:

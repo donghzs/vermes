@@ -896,9 +896,103 @@ async def chat_completions(req: ChatRequest):
             }
             _safe_put(event)
 
+        # ── 任务规划事件检测 ─────────────────────────────────────────────
+        _plan_text_buffer = []  # 累积输出，检测 plan JSON
+        _plan_emitted = False   # 防重复 emit
+
+        def _detect_and_emit_plan(text: str):
+            """检测 plan JSON 并通过 SSE 发送规划事件。
+            使用平衡括号解析器，支持嵌套对象和转义字符。"""
+            nonlocal _plan_emitted
+            if _plan_emitted:
+                return
+            _plan_text_buffer.append(text)
+            combined = "".join(_plan_text_buffer)
+            # 去掉 markdown fence
+            stripped = re.sub(r'^```[a-z]*\s*', '', combined, flags=re.MULTILINE)
+            stripped = re.sub(r'```\s*$', '', stripped, flags=re.MULTILINE)
+            # 平衡括号解析：找第一个包含 "plan" 键的 JSON 对象
+            depth = 0
+            start = -1
+            in_str = False
+            esc_next = False
+            for i_c, ch in enumerate(stripped):
+                if esc_next:
+                    esc_next = False
+                    continue
+                if ch == '\\':
+                    esc_next = True
+                    continue
+                if ch == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch == '{':
+                    if start == -1: start = i_c
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0 and start >= 0:
+                        candidate = stripped[start:i_c+1]
+                        if '"plan"' in candidate:
+                            try:
+                                data = json.loads(candidate)
+                            except Exception:
+                                pass
+                            else:
+                                plan_data = data.get("plan", data)
+                                steps_out = []
+                                for i_s, s in enumerate(plan_data.get("steps", [])):
+                                    steps_out.append({
+                                        "id": s.get("id") or f"step_{i_s+1}",
+                                        "title": s.get("title", f"Step {i_s+1}"),
+                                        "description": s.get("description", ""),
+                                        "status": "pending",
+                                        "agent_role": s.get("agent_role", "default"),
+                                        "order": i_s,
+                                        "tool_calls": [],
+                                    })
+                                plan_event = {
+                                    "type": "plan_created",
+                                    "plan": {
+                                        "id": re.sub(r'[^a-z0-9]', '',
+                                            (plan_data.get("title", "task") or "task")[:10].lower()) + str(i_s),
+                                        "title": plan_data.get("title", "任务规划"),
+                                        "description": plan_data.get("description", ""),
+                                        "steps": steps_out,
+                                        "status": "pending",
+                                        "progress_percent": 0,
+                                        "stats": {
+                                            "total": len(steps_out),
+                                            "completed": 0,
+                                            "in_progress": 0,
+                                            "pending": len(steps_out),
+                                        },
+                                        "estimated_duration": plan_data.get("estimated_duration", 0),
+                                        "required_tools": plan_data.get("required_tools", []),
+                                    }
+                                }
+                                _safe_put(plan_event)
+                                _log.info(f"[Plan] Detected plan: {plan_event['plan']['title']} with {len(steps_out)} steps")
+                                _plan_emitted = True
+                                # 立即标记第一步为进行中，传递"实时反馈的快感"
+                                if steps_out:
+                                    _safe_put({
+                                        "type": "plan_step_update",
+                                        "step": {
+                                            "id": steps_out[0]["id"],
+                                            "status": "in_progress",
+                                            "started_at": int(time.time()),
+                                        }
+                                    })
+                                return
+                        start = -1
+
         def stream_callback(delta: str):
             if delta is not None:
                 _log.info(f"[Stream] DELTA: {repr(delta[:60])}")
+                _detect_and_emit_plan(delta)
                 _safe_put(delta)
             else:
                 _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
@@ -995,6 +1089,11 @@ async def chat_completions(req: ChatRequest):
                 agent.status_callback = status_callback
                 agent.evolution_event_callback = evolution_event_handler
                 agent.reasoning_callback = reasoning_handler
+
+                def plan_event_handler(event_type: str, data: dict):
+                    """Route plan events (step_update, tool_call, plan_completed) to SSE."""
+                    _safe_put({"type": f"plan_{event_type}", **data})
+                agent.plan_event_callback = plan_event_handler
                 _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
                 agent.max_tokens = _max_tokens
                 result = agent.run_conversation(

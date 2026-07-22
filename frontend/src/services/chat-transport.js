@@ -25,8 +25,8 @@ class ChatTransport {
     throw new Error('implement in subclass')
   }
 
-  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onReasoning }) {
-    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onReasoning })
+  on(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onReasoning, onPlanCreated, onPlanUpdate }) {
+    this._handlers.set(sessionId, { onMessage, onDone, onError, onStatus, onEvolution, onTodoUpdate, onApprovalRequest, onToolCall, onTaskComplete, onReasoning, onPlanCreated, onPlanUpdate })
   }
 
   off(sessionId) {
@@ -129,6 +129,11 @@ export class SSETransport extends ChatTransport {
               this._emit(sessionId, 'onApprovalRequest', data.data || data)
             } else if (data.type === 'status') {
               this._emit(sessionId, 'onStatus', data)
+            } else if (data.type === 'plan_created') {
+              this._emit(sessionId, 'onPlanCreated', data.plan || data)
+            } else if (data.type && data.type.startsWith('plan_')) {
+              // plan_step_update, plan_tool_started, plan_tool_completed, plan_completed, etc.
+              this._emit(sessionId, 'onPlanUpdate', { subtype: data.type.replace('plan_', ''), ...data })
             } else if (data.type === 'stage') {
               // Pipeline stage event: { stage, pipeline: 'start'|'done'|'error', papers? }
               this._emit(sessionId, 'onStage', data)

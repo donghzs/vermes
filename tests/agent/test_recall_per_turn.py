@@ -100,7 +100,7 @@ def test_b2_empty_when_no_hits(monkeypatch):
 
 def test_b2_formats_layered_block(monkeypatch):
     """recall_hierarchical hits across layers → <memory_recall> block."""
-    def _fake(query, limit=8, layers=None):
+    def _fake(query, limit=8, layers=None, prioritize_tags=None):
         return [
             {"layer": "note", "source": "mem", "pointer": "note#1", "content": "API key lives in services.", "score": 0.9},
             {"layer": "procedural", "source": "skill", "pointer": "skill#git", "content": "Use rebase for feature branches.", "score": 0.8},
@@ -117,7 +117,7 @@ def test_b2_formats_layered_block(monkeypatch):
 
 def test_b2_fluent_skips_episodic_but_keeps_notes(monkeypatch):
     """Fluent users: L3 omitted, but L1/L2/L4 still surfaced."""
-    def _fake(query, limit=8, layers=None):
+    def _fake(query, limit=8, layers=None, prioritize_tags=None):
         # layers should exclude episodic for fluent users
         assert layers is not None and "episodic" not in layers, layers
         all_hits = [

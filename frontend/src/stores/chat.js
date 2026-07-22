@@ -554,6 +554,83 @@ export const useChatStore = defineStore('chat', () => {
           // 全部步骤完成 → 庆祝态
           todoAllDone.value = true
         },
+        onPlanCreated: (plan) => {
+          // 任务规划已创建 → 填充 todoItems 并自动打开抽屉
+          if (!plan || !plan.steps) return
+          todoItems.value = plan.steps.map(s => ({
+            id: s.id,
+            content: s.title,
+            status: s.status || 'pending',
+            agent_role: s.agent_role,
+            started_at: s.started_at ? s.started_at : null,
+            finished_at: s.finished_at ? s.finished_at : null,
+            description: s.description || '',
+          }))
+          // 自动打开任务抽屉
+          showTaskDrawer.value = true
+          // 标记第一个步骤为进行中
+          if (todoItems.value.length > 0) {
+            todoItems.value[0].status = 'in_progress'
+            todoItems.value[0].started_at = Math.floor(Date.now() / 1000)
+          }
+          scheduleScroll()
+        },
+        onPlanUpdate: (data) => {
+          // plan_step_update / plan_tool_started / plan_completed 等
+          const subtype = data.subtype
+          if (subtype === 'step_update' || subtype === 'step_started' || subtype === 'step_completed') {
+            const step = data.step
+            if (!step) return
+            const idx = todoItems.value.findIndex(i => i.id === step.id)
+            if (idx >= 0) {
+              todoItems.value[idx] = {
+                ...todoItems.value[idx],
+                status: step.status,
+                started_at: step.started_at || (step.status === 'in_progress' ? Math.floor(Date.now() / 1000) : null),
+                finished_at: step.finished_at || null,
+              }
+            }
+            // step_started → 自动打开抽屉
+            if (subtype === 'step_started') {
+              showTaskDrawer.value = true
+            }
+          } else if (subtype === 'tool_started') {
+            // 挂到当前进行中步骤下
+            const sid = data.step_id
+            if (!sid) return
+            const acts = { ...todoStepActivities.value }
+            const list = acts[sid] ? [...acts[sid]] : []
+            list.push({
+              id: data.tool?.id || uid(),
+              name: data.tool?.name || 'tool',
+              status: 'running', start: Date.now(), duration: 0, is_error: false,
+            })
+            acts[sid] = list
+            todoStepActivities.value = acts
+          } else if (subtype === 'tool_completed') {
+            const sid = data.step_id
+            if (!sid) return
+            const acts = { ...todoStepActivities.value }
+            const list = acts[sid] ? [...acts[sid]] : []
+            const idx = list.findIndex(a => a.id === (data.tool?.id || ''))
+            const done = {
+              id: data.tool?.id || '',
+              name: data.tool?.name || '',
+              status: 'done',
+              start: Date.now(),
+              duration: data.tool?.duration || 0,
+              is_error: data.tool?.is_error || false,
+              preview: data.tool?.result_summary || '',
+            }
+            if (idx >= 0) list[idx] = done
+            else list.push(done)
+            acts[sid] = list
+            todoStepActivities.value = acts
+          } else if (subtype === 'completed') {
+            todoAllDone.value = true
+          }
+          scheduleScroll()
+        },
         onStage: (data) => {
           // Pipeline stage event (from Pipeline abstraction)
           // data: { stage, pipeline: 'start'|'done'|'error', papers?, message? }
