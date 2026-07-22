@@ -162,6 +162,7 @@ hiddenimports = [
     'agent.think_scrubber', 'agent.retry_utils',
     'agent.browser_provider', 'agent.browser_registry',
     'agent.continuity_facade',
+    'agent.pipeline',
 
     # Provider backends
     'openai', 'anthropic',

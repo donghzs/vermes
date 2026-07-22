@@ -15,6 +15,8 @@ from fastapi import HTTPException, Path, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from agent.pipeline import Pipeline, PipelineConfig, Stage
+
 logger = logging.getLogger(__name__)
 
 # RAG retriever 缓存 (project_id → (paper_count, PaperRetriever))
@@ -922,83 +924,18 @@ def register_to(app, host_api=None):
             try:
                 if req.pipeline:
                     use_checkpoint = req.checkpoint and req.pipeline
-                    pipeline_stages = ["topic", "literature", "outline", "writing", "refinement", "reviewer"]
 
-                    # P1: 支持 continue_from — 从指定阶段继续，跳过已完成的阶段
-                    start_idx = 0
-                    if req.continue_from and req.continue_from in pipeline_stages:
-                        start_idx = pipeline_stages.index(req.continue_from)
-                        # 加载已有项目上下文（大纲、文献等）
-                        if pid > 0:
-                            try:
-                                # 恢复 topic
-                                p = db.get_project(pid)
-                                if p:
-                                    ctx.topic = p.get("title", "")
-                                    ctx.paper_type = p.get("paper_type", "")
-                                    ctx.target_words = int(p.get("target_words", 8000))
-                                # 恢复大纲
-                                outline_data = db.get_outline(pid)
-                                if outline_data:
-                                    ctx.outline = {"sections": outline_data}
-                                # 恢复文献（转换为 PaperCard 对象）
-                                from hermes_cli.scholarforge.agents import PaperCard
-                                lit_rows = db.list_literature(pid)
-                                for lr in lit_rows:
-                                    ctx.add_paper(PaperCard(
-                                        paper_id=str(lr.get("paper_id", lr.get("id", ""))),
-                                        title=lr.get("title", ""),
-                                        authors=lr.get("authors", []) if isinstance(lr.get("authors"), list) else [],
-                                        year=str(lr.get("year", "")),
-                                        venue=lr.get("venue", ""),
-                                        abstract=lr.get("abstract", ""),
-                                        url=lr.get("url", ""),
-                                        source=lr.get("source", ""),
-                                    ))
-                                # 恢复已写内容
-                                sections = db.get_all_sections(pid)
-                                if sections:
-                                    draft_parts = []
-                                    for sk, content in sections.items():
-                                        ctx.section_contents[sk] = content
-                                        draft_parts.append(content)
-                                    if draft_parts:
-                                        ctx.draft = "\n\n".join(draft_parts)
-                            except Exception as e:
-                                logging.warning(f"Failed to restore context for continue_from: {e}")
-                        yield await _sse_rl({"type": "thinking", "message": f"📍 从 {pipeline_stages[start_idx]} 阶段继续..."}, client_id)
+                    # ── 构建 ScholarForge pipeline ──
+                    from hermes_cli.scholarforge.agents import AGENTS as _AGENTS
 
-                    for stage_idx, stage in enumerate(pipeline_stages):
-                        if stage_idx < start_idx:
-                            continue  # 跳过已完成阶段
-                        # 客户端断开检查 — 防止僵尸请求堆积
-                        if await request.is_disconnected():
-                            logger.info(f"[ScholarForge] Client disconnected during pipeline stage={stage}")
-                            return
-                        yield await _sse_rl({"type": "stage", "stage": stage, "pipeline": "start"}, client_id)
+                    _STAGE_LABELS = {
+                        "topic": "选题分析", "literature": "文献综述",
+                        "outline": "论文大纲", "writing": "章节撰写",
+                        "refinement": "润色检查", "reviewer": "审稿",
+                    }
 
-                        from hermes_cli.scholarforge.agents import AGENTS
-                        agent_cls = AGENTS.get(stage)
-                        if not agent_cls:
-                            continue
-
-                        cfg = agent_cfg.get(stage, {})
-                        agent_llm = await _make_llm(cfg.get("provider"), cfg.get("model"))
-                        agent = agent_cls(ctx, agent_llm)
-                        # 透传参数
-                        kwargs = {"user_input": req.message}
-                        if stage == "writing" and req.section:
-                            kwargs["section"] = req.section
-                        if stage == "literature" and req.depth:
-                            kwargs["depth"] = req.depth
-                        async for evt in agent.run(**kwargs):
-                            yield await _sse_rl(evt, client_id)
-
-                        yield await _sse_rl({"type": "stage", "stage": stage, "pipeline": "done",
-                                     "papers": len(ctx.papers)}, client_id)
-
-                        # 大纲阶段完成后，将大纲保存到数据库
-                        if stage == "outline" and pid > 0:
+                    def _outline_hook(ctx, stage_name):
+                        if stage_name == "outline" and pid > 0:
                             try:
                                 outline_data = ctx.outline.get("sections", []) if isinstance(ctx.outline, dict) else []
                                 if outline_data:
@@ -1006,24 +943,86 @@ def register_to(app, host_api=None):
                             except Exception as e:
                                 logger.debug(f"Failed to save outline after pipeline: {e}")
 
-                        # 写作完成后，保存组装后的完整论文到 section_contents
-                        if stage == "writing" and pid > 0:
+                    def _writing_hook(ctx, stage_name):
+                        if stage_name == "writing" and pid > 0:
                             try:
                                 db.save_section_content(pid, "full_paper", ctx.draft or "")
                             except Exception as e:
                                 logger.debug(f"Failed to save full paper after pipeline: {e}")
 
-                        # Checkpoint: 非最后阶段时，发出 wait 信号暂停等待用户确认
-                        if use_checkpoint and stage_idx < len(pipeline_stages) - 1:
-                            stage_labels = {"topic": "选题分析", "literature": "文献综述", "outline": "论文大纲",
-                                            "writing": "章节撰写", "refinement": "润色检查",
-                                            "reviewer": "审稿"}
-                            yield await _sse_rl({"type": "checkpoint",
-                                         "stage": stage,
-                                         "next": pipeline_stages[stage_idx + 1],
-                                         "message": f"{stage_labels.get(stage, stage)}完成，是否继续{pipeline_stages[stage_idx+1]}？",
-                                         "completed": stage,
-                                         "remaining": pipeline_stages[stage_idx + 1:]}, client_id)
+                    _pipeline = Pipeline(stages=[
+                        Stage("topic", _AGENTS["topic"], label=_STAGE_LABELS["topic"]),
+                        Stage("literature", _AGENTS["literature"], label=_STAGE_LABELS["literature"], depth_kwarg="depth"),
+                        Stage("outline", _AGENTS["outline"], label=_STAGE_LABELS["outline"], post_hooks=[_outline_hook]),
+                        Stage("writing", _AGENTS["writing"], label=_STAGE_LABELS["writing"], section_kwarg="section", post_hooks=[_writing_hook]),
+                        Stage("refinement", _AGENTS["refinement"], label=_STAGE_LABELS["refinement"]),
+                        Stage("reviewer", _AGENTS["reviewer"], label=_STAGE_LABELS["reviewer"]),
+                    ])
+
+                    # P1: 加载已有项目上下文（continue_from 时恢复）
+                    if req.continue_from and req.continue_from in _pipeline.stage_names and pid > 0:
+                        try:
+                            p = db.get_project(pid)
+                            if p:
+                                ctx.topic = p.get("title", "")
+                                ctx.paper_type = p.get("paper_type", "")
+                                ctx.target_words = int(p.get("target_words", 8000))
+                            outline_data = db.get_outline(pid)
+                            if outline_data:
+                                ctx.outline = {"sections": outline_data}
+                            from hermes_cli.scholarforge.agents import PaperCard
+                            lit_rows = db.list_literature(pid)
+                            for lr in lit_rows:
+                                ctx.add_paper(PaperCard(
+                                    paper_id=str(lr.get("paper_id", lr.get("id", ""))),
+                                    title=lr.get("title", ""),
+                                    authors=lr.get("authors", []) if isinstance(lr.get("authors"), list) else [],
+                                    year=str(lr.get("year", "")),
+                                    venue=lr.get("venue", ""),
+                                    abstract=lr.get("abstract", ""),
+                                    url=lr.get("url", ""),
+                                    source=lr.get("source", ""),
+                                ))
+                            sections = db.get_all_sections(pid)
+                            if sections:
+                                draft_parts = []
+                                for sk, content in sections.items():
+                                    ctx.section_contents[sk] = content
+                                    draft_parts.append(content)
+                                if draft_parts:
+                                    ctx.draft = "\n\n".join(draft_parts)
+                        except Exception as e:
+                            logging.warning(f"Failed to restore context for continue_from: {e}")
+
+                    # ── make_agent callback ──
+                    async def _make_stage_agent(stage, ctx):
+                        cfg = agent_cfg.get(stage.name, {})
+                        agent_llm = await _make_llm(cfg.get("provider"), cfg.get("model"))
+                        return stage.agent_cls(ctx, agent_llm)
+
+                    # ── is_disconnected callback ──
+                    async def _check_disconnect():
+                        return await request.is_disconnected()
+
+                    # ── 执行 pipeline ──
+                    _config = PipelineConfig(
+                        checkpoint=use_checkpoint,
+                        continue_from=req.continue_from,
+                    )
+                    _extra_kwargs = {}
+                    if req.section:
+                        _extra_kwargs["section"] = req.section
+                    if req.depth:
+                        _extra_kwargs["depth"] = req.depth
+
+                    async for _evt in _pipeline.run(
+                        ctx, _config, _make_stage_agent,
+                        user_input=req.message,
+                        extra_kwargs=_extra_kwargs,
+                        is_disconnected=_check_disconnect,
+                        stage_labels=_STAGE_LABELS,
+                    ):
+                        yield await _sse_rl(_evt, client_id)
 
                     # Pipeline 完成后自动尝试替换伪引用为真实文献
                     citations_replaced = False
