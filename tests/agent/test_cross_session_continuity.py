@@ -130,9 +130,9 @@ def test_memory_budget_has_continuity():
 # ── Integration: conversation_loop loads continuity at turn 1 ────────────────
 
 def test_conversation_loop_imports_continuity():
-    """conversation_loop.py should import get_continuity_prompt at turn 1."""
+    """conversation_loop.py should load continuity context at turn 1 via facade."""
     src = open("agent/conversation_loop.py").read()
-    assert "get_continuity_prompt" in src
+    assert "continuity_facade" in src or "load_continuity_context" in src
     assert "_continuity_context" in src
 
 

@@ -1324,40 +1324,22 @@ def run_conversation(
     #
     # First turn: load previous session handoff + evolution data for
     # cross-session continuity and learned experience injection.
+    # Uses unified ContinuityFacade (Route C-1) — single entry point for
+    # all four cross-session sources, each independently fail-open.
     if agent._user_turn_count == 1:
         try:
-            from agent.session_handoff import load_handoff_for_new_session, format_handoff_for_prompt
+            from agent.continuity_facade import load_continuity_context
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
-            _handoff = load_handoff_for_new_session(_turn_msg)
-            if _handoff:
-                agent._handoff_context = format_handoff_for_prompt(_handoff)
-        except Exception:
-            pass
-        try:
-            from agent.evolution_injector import load_and_format_evolution
-            _evo_block = load_and_format_evolution(
-                original_user_message if isinstance(original_user_message, str) else ""
-            )
-            if _evo_block:
-                agent._evolution_context = _evo_block
-        except Exception:
-            pass
-        try:
-            from agent.memory_recall import load_and_format_recall
-            _recall_block = load_and_format_recall(
-                original_user_message if isinstance(original_user_message, str) else ""
-            )
-            if _recall_block:
-                agent._recall_context = _recall_block
-        except Exception:
-            pass
-        try:
-            from agent.cross_session_continuity import get_continuity_prompt
-            from agent.memory_recall import _get_self_model_db
-            _db = _get_self_model_db()
-            _continuity_block = get_continuity_prompt(str(_db) if _db else "")
-            if _continuity_block:
-                agent._continuity_context = _continuity_block
+            _ctx = load_continuity_context(_turn_msg)
+            _sections = _ctx.to_prompt_sections()
+            if "handoff_context" in _sections:
+                agent._handoff_context = _sections["handoff_context"]
+            if "evolution_context" in _sections:
+                agent._evolution_context = _sections["evolution_context"]
+            if "recall_context" in _sections:
+                agent._recall_context = _sections["recall_context"]
+            if "continuity_context" in _sections:
+                agent._continuity_context = _sections["continuity_context"]
         except Exception:
             pass
     if agent._memory_manager:
