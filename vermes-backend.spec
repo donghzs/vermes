@@ -215,7 +215,9 @@ a = Analysis(
     noarchive=False,
 )
 
-a.datas = [d for d in a.datas if not any(
+# Filter out test/cache/.venv paths — but preserve sqlite-vec dylib (A-1)
+_vec_keep = lambda d: 'vec0' in str(d).replace('\\', '/')
+a.datas = [d for d in a.datas if _vec_keep(d[0]) or not any(
     ex in str(d[0]).replace('\\', '/')
     for ex in ['/test', '/tests', '/__pycache__', '/.git', '/.venv', '/node_modules']
 )]
