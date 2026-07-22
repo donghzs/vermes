@@ -150,7 +150,7 @@ def _init_db(db_path: Path) -> None:
         try:
             c.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec
-                USING vec0(embedding float[384])
+                USING vec0(embedding float[1536])
             """)
             logger.info("Vector index (chunks_vec) initialized with sqlite-vec")
         except Exception as e:
@@ -644,6 +644,25 @@ class RAGProvider(MemoryProvider):
             return json.dumps({"error": f"File not found: {file_path}"})
         return self.ingest_file(file_path)
 
+    def _store_embedding(self, c: sqlite3.Cursor, chunk_id: int, content: str) -> None:
+        """Generate and store embedding for a chunk (fail-open).
+
+        Called during ingest. If embedding API is unavailable, silently skips —
+        FTS5 search still works. If sqlite-vec is not loaded, also skips.
+        """
+        if _VEC_BACKEND != "sqlite-vec" or not _vec_available:
+            return
+        try:
+            from agent.hybrid_retriever import _get_embedding, _vector_to_blob
+            vec = _get_embedding(content)
+            if vec:
+                c.execute(
+                    "INSERT OR REPLACE INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)",
+                    (chunk_id, _vector_to_blob(vec))
+                )
+        except Exception as e:
+            logger.debug("Embedding storage skipped for chunk %d: %s", chunk_id, e)
+
     def ingest_file(self, file_path: str) -> str:
         """Index a file into the RAG database."""
         if not self._initialized:
@@ -682,6 +701,7 @@ class RAGProvider(MemoryProvider):
             )
             chunk_id = c.lastrowid
             c.execute("INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)", (chunk_id, chunk))
+            self._store_embedding(c, chunk_id, chunk)
         # Update chunk count
         c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
         conn.commit()
@@ -729,6 +749,7 @@ class RAGProvider(MemoryProvider):
             )
             chunk_id = c.lastrowid
             c.execute("INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)", (chunk_id, chunk))
+            self._store_embedding(c, chunk_id, chunk)
         c.execute("UPDATE documents SET chunk_count = ? WHERE id = ?", (len(chunks), doc_id))
         conn.commit()
         logger.info("Ingested content %s: %d chunks", filename, len(chunks))
@@ -872,9 +893,10 @@ class RAGProvider(MemoryProvider):
             return []
 
     def _vector_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Vector KNN search using sqlite-vec (A-1 optional).
-        
+        """Vector KNN search using sqlite-vec.
+
         Requires embeddings to have been stored during ingest.
+        Reuses hybrid_retriever._get_embedding() for query embedding generation.
         Fail-open: any error → return empty list, FTS5 results remain.
         """
         try:
@@ -884,12 +906,45 @@ class RAGProvider(MemoryProvider):
             c.execute("SELECT COUNT(*) FROM chunks_vec")
             if c.fetchone()[0] == 0:
                 return []
-            # Generate query embedding (reuse hybrid_retriever's embedding source)
-            # For now, this is a placeholder — actual embedding generation
-            # will be wired in A-2 rerank phase. The key point is that the
-            # vector table and KNN search path exist and work.
-            # TODO: wire embedding provider (text-embedding-3-small or local)
-            return []
+            # Generate query embedding via hybrid_retriever's provider resolution
+            from agent.hybrid_retriever import _get_embedding, _vector_to_blob
+            query_vec = _get_embedding(query)
+            if not query_vec:
+                logger.debug("RAG vector search: embedding unavailable, falling back to FTS5")
+                return []
+            # KNN search via sqlite-vec
+            query_blob = _vector_to_blob(query_vec)
+            c.execute(
+                "SELECT chunk_id, distance FROM chunks_vec "
+                "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                (query_blob, limit)
+            )
+            rows = c.fetchall()
+            if not rows:
+                return []
+            # Fetch chunk content for matched IDs
+            results = []
+            for chunk_id, distance in rows:
+                c.execute(
+                    "SELECT c.id, c.doc_id, c.chunk_index, c.content, c.char_count, "
+                    "d.filename FROM chunks c JOIN documents d ON c.doc_id = d.id "
+                    "WHERE c.id = ?",
+                    (chunk_id,)
+                )
+                row = c.fetchone()
+                if row:
+                    results.append({
+                        "chunk_id": row[0],
+                        "doc_id": row[1],
+                        "chunk_index": row[2],
+                        "content": row[3],
+                        "char_count": row[4],
+                        "filename": row[5],
+                        "score": 1.0 - distance,  # distance is 0 (identical) to 2 (opposite)
+                        "source": "vector",
+                    })
+            logger.debug("RAG vector search: %d results for query (len=%d)", len(results), len(query))
+            return results
         except Exception as e:
             logger.debug("Vector search failed (fail-open to FTS5): %s", e)
             return []
@@ -919,6 +974,12 @@ class RAGProvider(MemoryProvider):
         chunk_ids = [row[0] for row in c.fetchall()]
         for cid in chunk_ids:
             c.execute("DELETE FROM chunks_fts WHERE rowid = ?", (cid,))
+            # Also clean up vector embeddings if table exists
+            if _VEC_BACKEND == "sqlite-vec" and _vec_available:
+                try:
+                    c.execute("DELETE FROM chunks_vec WHERE chunk_id = ?", (cid,))
+                except Exception as e:
+                    logger.debug("chunks_vec cleanup skipped: %s", e)
         c.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
         c.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         conn.commit()
