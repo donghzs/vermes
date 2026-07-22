@@ -2754,4 +2754,20 @@ async def session_token_refresh():
     return {"token": _SESSION_TOKEN}
 
 
+# ── /api/v1/metrics：Route D 可观测性端点 ──
+@app.get("/api/v1/metrics")
+async def prometheus_metrics():
+    """Prometheus-format metrics for agent runtime observability.
+
+    Returns text/plain metrics in Prometheus exposition format.
+    Zero external dependencies, zero upload — purely local.
+    """
+    from agent.metrics import render_prometheus
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        content=render_prometheus(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
 mount_spa(app)

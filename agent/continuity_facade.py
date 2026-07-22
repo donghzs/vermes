@@ -168,4 +168,14 @@ def load_continuity_context(
     else:
         logger.info("Continuity facade loaded: %s", ctx.summary())
 
+    # ── Route D metrics ──
+    try:
+        from agent.metrics import record_continuity_load
+        record_continuity_load(
+            sources_loaded=ctx.sources_loaded,
+            sources_failed=ctx.sources_failed,
+        )
+    except Exception:
+        pass  # metrics are best-effort
+
     return ctx

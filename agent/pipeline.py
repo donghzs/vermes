@@ -173,6 +173,9 @@ class Pipeline:
             # Stage start
             yield stage_event(stage.name, "start")
 
+            # ── Route D metrics ──
+            _stage_error = False
+
             # Instantiate and run agent
             try:
                 agent = await make_agent(stage, ctx)
@@ -185,6 +188,7 @@ class Pipeline:
                 async for evt in agent.run(**kwargs):
                     yield evt
             except Exception as exc:
+                _stage_error = True
                 logger.warning(
                     "Pipeline: stage=%s failed: %s", stage.name, exc
                 )
@@ -192,6 +196,12 @@ class Pipeline:
                     stage.name, "error", message=str(exc)
                 )
                 # fail-open: continue to next stage
+
+            try:
+                from agent.metrics import record_pipeline_stage
+                record_pipeline_stage(stage.name, error=_stage_error)
+            except Exception:
+                pass  # metrics are best-effort
 
             # Stage done
             papers_count = len(getattr(ctx, "papers", []))

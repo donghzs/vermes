@@ -573,6 +573,13 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 logging.debug(f"Tool {function_name} completed in {tool_duration:.2f}s")
                 logging.debug(f"Tool result ({len(function_result)} chars): {function_result}")
 
+            # ── Route D metrics ──
+            try:
+                from agent.metrics import record_tool_call as _rc_tool
+                _rc_tool(function_name, tool_duration * 1000, error=is_error)
+            except Exception:
+                pass
+
         # Print cute message per tool
         if agent._should_emit_quiet_tool_messages():
             cute_msg = _get_cute_tool_message_impl(name, args, tool_duration, result=function_result)
@@ -1106,6 +1113,13 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
         agent._current_tool = None
         agent._touch_activity(f"tool completed: {function_name} ({tool_duration:.1f}s)")
+
+        # ── Route D metrics (sequential path) ──
+        try:
+            from agent.metrics import record_tool_call as _rc_tool_seq
+            _rc_tool_seq(function_name, tool_duration * 1000, error=_is_error_result)
+        except Exception:
+            pass
 
         if agent.verbose_logging:
             logging.debug(f"Tool {function_name} completed in {tool_duration:.2f}s")

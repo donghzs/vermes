@@ -387,6 +387,11 @@ def _record_turn_metrics(
         ))
         agent._current_turn_tool_names = _tool_names_this_turn
         agent._last_turn_tool_names = _tool_names_this_turn
+        # ── Route D metrics ──
+        from agent.metrics import record_turn_completed, record_tool_call
+        record_turn_completed()
+        for _tn in _tool_names_this_turn:
+            record_tool_call(_tn, _api_latency / max(len(_tool_names_this_turn), 1))
     except Exception:
         pass  # scheduler metrics are best-effort - never block turn completion
 
@@ -1156,6 +1161,9 @@ def run_conversation(
                     messages, system_message,
                 )
                 conversation_history = None
+                from agent.metrics import record_prune, record_fatigue_bridge
+                record_prune()
+                record_fatigue_bridge()
             else:
                 for _pass in range(3):
                     _orig_len = len(messages)
@@ -1244,6 +1252,8 @@ def run_conversation(
                 agent._empty_content_retries = 0
                 agent._thinking_prefill_retries = 0
                 _scheduler.record_compression()
+                from agent.metrics import record_compression as _metrics_record_compression
+                _metrics_record_compression()
                 logger.info("Scheduler compression complete: %d→%d messages",
                             _orig_len, len(messages))
 

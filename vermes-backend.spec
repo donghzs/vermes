@@ -143,6 +143,7 @@ hiddenimports = [
     'agent.copilot_acp_client',
     'agent.continuity_facade',
     'agent.pipeline',
+    'agent.metrics',
 
     # ScholarForge modules
     'hermes_cli.scholarforge', 'hermes_cli.scholarforge.tools',
