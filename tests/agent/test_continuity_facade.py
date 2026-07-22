@@ -88,7 +88,9 @@ class TestLoadContinuityContext:
         ctx = load_continuity_context("hello world")
         assert ctx.is_empty is True
         # All sources should have been attempted (loaded or failed)
-        assert len(ctx.sources_loaded) + len(ctx.sources_failed) == 4
+        # 5 sources: handoff, evolution, recall, continuity (loaded) +
+        # compression_handoff (empty=skipped) + reflection_flags (failed)
+        assert len(ctx.sources_loaded) + len(ctx.sources_failed) == 5
 
     def test_handoff_source_populated(self, clean_home):
         """Store a handoff → handoff_block should be non-empty."""
@@ -182,7 +184,9 @@ class TestLoadContinuityContext:
         ):
             ctx = load_continuity_context("test")
         assert ctx.is_empty is True
-        assert len(ctx.sources_failed) == 4
+        # 4 mocked fails + compression_handoff (skipped, recall mocked) +
+        # reflection_flags (fail on empty db) = 5 failed
+        assert len(ctx.sources_failed) == 5
         assert len(ctx.sources_loaded) == 0
 
     def test_user_message_passed_to_sources(self, clean_home):

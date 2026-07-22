@@ -192,6 +192,22 @@ def load_continuity_context(
         logger.warning("Continuity facade: compression handoff source failed: %s", e)
         ctx.sources_failed.append("compression_handoff")
 
+    # 6. Reflection flags (Route E-Reflection R3)
+    #    Inject open flags from memory_flags table so the agent is aware of
+    #    potential memory issues (contradictions, outdated info, etc.).
+    try:
+        from agent.memory_reflection import get_open_flags, format_flags_for_context
+        flags = get_open_flags(limit=10)
+        if flags:
+            block = format_flags_for_context(flags)
+            if block:
+                ctx.recall_block = (ctx.recall_block or "") + "\n" + block
+                ctx.sources_loaded.append("reflection_flags")
+                logger.debug("Continuity facade: loaded %d reflection flags", len(flags))
+    except Exception as e:
+        logger.warning("Continuity facade: reflection flags source failed: %s", e)
+        ctx.sources_failed.append("reflection_flags")
+
     if ctx.is_empty:
         logger.debug("Continuity facade: cold start (no blocks)")
     else:
