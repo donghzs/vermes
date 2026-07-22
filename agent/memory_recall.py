@@ -315,8 +315,8 @@ def compute_richness() -> "RichnessScore":
             score.cluster_density = _sigmoid(score.stable_cluster_count, _REF_STABLE_CLUSTERS)
 
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("memory_recall: raw_events richness query failed: %s", e)
 
     # ── Session count (breadth) ──
     try:
@@ -329,8 +329,8 @@ def compute_richness() -> "RichnessScore":
             score.session_count = row[0] if row else 0
             score.session_density = _sigmoid(score.session_count, _REF_SESSIONS)
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("memory_recall: session count richness query failed: %s", e)
 
     # ── Handoffs (cross-session continuity) ──
     try:
@@ -341,8 +341,8 @@ def compute_richness() -> "RichnessScore":
             score.handoff_count = row[0] if row else 0
             score.handoff_density = _sigmoid(score.handoff_count, _REF_HANDOFFS)
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("memory_recall: handoff richness query failed: %s", e)
 
     # ── Weighted composite ──
     score.value = round(
@@ -450,8 +450,8 @@ def _collect_recall_sections(user_message: str) -> Dict[str, Any]:
         embedding_results = _rich_search(user_message, top_k=3)
         if embedding_results:
             result["embedding_matches"] = embedding_results
-    except Exception:
-        pass  # No embedding API or DB — skip silently
+    except Exception as e:
+        logger.debug("memory_recall: embedding search skipped: %s", e)
 
     result["keywords"] = keywords
     return result
@@ -488,8 +488,8 @@ def recall_context(user_message: str) -> Dict[str, Any]:
             result["_recall_depth"] = "shallow"
         else:
             result["_recall_depth"] = "minimal"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("memory_recall: recall depth assessment failed: %s", e)
 
     # ── Self-assessment: record recall quality as raw_event ──
     # This is the emergence trigger foundation — the system observes
@@ -500,8 +500,8 @@ def recall_context(user_message: str) -> Dict[str, Any]:
     try:
         from agent.self_assessment import assess_and_record
         assess_and_record(result, keywords, session_id="", turn_number=0)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("memory_recall: self_assessment recording failed: %s", e)
 
     return result
 
@@ -711,8 +711,8 @@ def refine_recall_per_turn(user_message: str) -> str:
             if domain:
                 result["domain_stats"] = domain
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("memory_recall: refine_recall domain stats query failed: %s", e)
 
     if not result:
         return ""  # 无相关内容，不注入
@@ -758,7 +758,8 @@ def recall_hierarchical_per_turn(user_message: str) -> str:
     try:
         _rich = compute_richness()
         _fluent = getattr(_rich, "tier", "") == "fluent"
-    except Exception:
+    except Exception as e:
+        logger.debug("memory_recall: richness tier check failed: %s", e)
         _fluent = False
 
     # Fluent users skip L3 (already in the turn-1 system prompt).

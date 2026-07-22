@@ -34,3 +34,15 @@ fi
 
 echo ""
 echo "DMG: $DMG_FILE ($(du -h "$DMG_FILE" | cut -f1))"
+
+# ── sqlite_vec 运行时断言（T2）──
+echo "▶ 6/6 sqlite_vec 运行时检查..."
+.venv/bin/python -c "
+import sqlite3, sqlite_vec
+conn = sqlite3.connect(':memory:')
+conn.enable_load_extension(True)
+sqlite_vec.load(conn)
+ver = sqlite_vec.version
+conn.close()
+print(f'  sqlite_vec {ver} loaded OK')
+" || { echo '❌ sqlite_vec 运行时检查失败 — vec0 扩展不可加载'; exit 1; }

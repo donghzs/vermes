@@ -71,6 +71,10 @@ def _create_test_self_model(db_path: Path):
              "grep_search", 1, "", 0.3, "搜索"),
         )
 
+    # ── v_outcomes 视图（生产代码查 v_outcomes，由 evolution_manager 创建）
+    # 测试需同步创建，否则 memory_recall 查询报 no such table: v_outcomes
+    conn.execute("CREATE VIEW IF NOT EXISTS v_outcomes AS SELECT * FROM outcomes")
+
     conn.commit()
     conn.close()
 

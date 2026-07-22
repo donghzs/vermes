@@ -154,8 +154,8 @@ def load_continuity_context(
             try:
                 from agent.memory_recall import _get_self_model_db
                 resolved_db = str(_get_self_model_db() or "")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Continuity facade: self_model_db resolve failed: %s", e)
         block = get_continuity_prompt(resolved_db)
         if block:
             ctx.continuity_block = block
@@ -176,8 +176,8 @@ def load_continuity_context(
             sources_loaded=ctx.sources_loaded,
             sources_failed=ctx.sources_failed,
         )
-    except Exception:
-        pass  # metrics are best-effort
+    except Exception as e:
+        logger.debug("Continuity facade: metrics collection failed: %s", e)
 
     # ── B 硬容量护栏：返回容量状态 ──
     try:
@@ -188,7 +188,7 @@ def load_continuity_context(
             "over_capacity": cap["over_capacity"],
             "limit_scale": cap["limit_scale"],
         }
-    except Exception:
-        pass  # capacity check is best-effort
+    except Exception as e:
+        logger.debug("Continuity facade: capacity check failed: %s", e)
 
     return ctx
