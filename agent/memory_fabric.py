@@ -66,15 +66,30 @@ def _infer_lifecycle_tag(memory: Dict[str, Any]) -> str:
     """从 memory dict 推导 lifecycle_tag。
 
     优先级：显式传入 > 文本启发式 > 默认 reference。
+    Route E P6: 增强启发式覆盖 volatile/decision/preference 更多模式。
     """
     tag = memory.get("lifecycle_tag")
     if tag and tag in LIFECYCLE_TAGS:
         return tag
-    # 启发式：fts_content 含 @decision/@preference 标记
+    # 启发式：fts_content 含 @tag 标记或关键词模式
     content = (memory.get("fts_content") or "").lower()
     if "@decision" in content:
         return "decision"
     if "@preference" in content:
+        return "preference"
+    # Route E P6: 扩展启发式
+    # volatile: 压缩交割、临时快照、会话级中间态
+    _source = (memory.get("source") or "").lower()
+    _type = (memory.get("type") or "").lower()
+    if _source == "compression" or _type == "compression_handoff":
+        return "volatile"
+    if any(kw in content for kw in ("临时", "快照", "会话级", "temp", "snapshot")):
+        return "volatile"
+    # decision: 决定/选择/方案确定
+    if any(kw in content for kw in ("@decision", "决定", "确定", "选定", "方案确定", "chose", "decided")):
+        return "decision"
+    # preference: 偏好/习惯/总是/从不
+    if any(kw in content for kw in ("@preference", "偏好", "习惯", "总是", "从不", "prefer", "always", "never")):
         return "preference"
     return _DEFAULT_LIFECYCLE_TAG
 
