@@ -269,9 +269,7 @@ def _check_capacity() -> dict:
                 try:
                     c = conn.cursor()
                     c.execute(
-                        "DELETE FROM memories WHERE lifecycle_tag='volatile' "
-                        "AND access_count <= ?",
-                        (_COLD_ACCESS_THRESHOLD,),
+                        "DELETE FROM memories WHERE lifecycle_tag='volatile'",
                     )
                     _pruned_volatile = c.rowcount
                     conn.commit()

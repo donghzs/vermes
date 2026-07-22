@@ -168,8 +168,12 @@ def load_continuity_context(
     #    Recall compression summaries from memory_fabric for the current scope.
     try:
         from agent.memory_fabric import recall as _mf_recall
-        # 用空查询匹配全部 handoff 记录，然后按 source 过滤
-        _handoff_results = _mf_recall("compression handoff", limit=3)
+        # 用 tag_filter 查 volatile 标签的记忆，回退到纯 tag 查询
+        _handoff_results = _mf_recall(
+            "compression handoff summary context",
+            limit=3,
+            tag_filter=["volatile"],
+        )
         _handoff_hits = [
             h for h in _handoff_results
             if h.get("source") == "compression"
