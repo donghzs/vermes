@@ -50,6 +50,35 @@ L2_PROCEDURAL = "procedural"
 L3_EPISODIC = "episodic"
 L4_REFERENCE = "reference"
 
+# ── Route E: 生命周期标签 ──────────────────────────────────
+# 同一份 lifecycle_tag 同时管辖记忆层（活多久）与上下文层（多不可压缩）。
+LIFECYCLE_TAGS = {
+    "ephemeral",   # 临时：单轮/极短命，优先被裁剪/压缩
+    "volatile",    # 易变：会话级，压缩时可交割到冷记忆
+    "reference",   # 参考（默认）：普通知识
+    "decision",    # 决策：用户已拍板，不可压缩、不可裁剪
+    "preference",  # 偏好：用户硬约束，不可压缩、不可裁剪
+}
+_DEFAULT_LIFECYCLE_TAG = "reference"
+
+
+def _infer_lifecycle_tag(memory: Dict[str, Any]) -> str:
+    """从 memory dict 推导 lifecycle_tag。
+
+    优先级：显式传入 > 文本启发式 > 默认 reference。
+    """
+    tag = memory.get("lifecycle_tag")
+    if tag and tag in LIFECYCLE_TAGS:
+        return tag
+    # 启发式：fts_content 含 @decision/@preference 标记
+    content = (memory.get("fts_content") or "").lower()
+    if "@decision" in content:
+        return "decision"
+    if "@preference" in content:
+        return "preference"
+    return _DEFAULT_LIFECYCLE_TAG
+
+
 _LOCK = threading.RLock()
 
 # ── B 硬容量护栏（Route B） ──────────────────────────────────
@@ -98,10 +127,17 @@ def _init_db(db_path: Path) -> None:
                 pointer TEXT NOT NULL,
                 fts_content TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                access_count INTEGER NOT NULL DEFAULT 0
+                access_count INTEGER NOT NULL DEFAULT 0,
+                lifecycle_tag TEXT NOT NULL DEFAULT 'reference'
             )
             """
         )
+        # ── Route E P0: 幂等迁移——存量库加 lifecycle_tag 列 ──
+        cols = [r[1] for r in c.execute("PRAGMA table_info(memories)").fetchall()]
+        if "lifecycle_tag" not in cols:
+            c.execute(
+                "ALTER TABLE memories ADD COLUMN lifecycle_tag TEXT NOT NULL DEFAULT 'reference'"
+            )
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_ptr "
             "ON memories(source, pointer, scope)"
@@ -152,6 +188,9 @@ def index_note(target: str, content: str, scope: str = "") -> None:
         return
     db_path = _get_index_db()
     _init_db(db_path)
+    # 启发式推导 lifecycle_tag
+    _mem = {"fts_content": content}
+    lifecycle_tag = _infer_lifecycle_tag(_mem)
     with _LOCK:
         conn = _get_conn(str(db_path))
         try:
@@ -163,8 +202,8 @@ def index_note(target: str, content: str, scope: str = "") -> None:
             )
             c.execute(
                 "INSERT INTO memories(source, layer, type, scope, pointer, "
-                "fts_content, updated_at) VALUES(?,?,?,?,?,?,?)",
-                ("note", L1_NOTE, "note_text", scope, pointer, content, _now()),
+                "fts_content, updated_at, lifecycle_tag) VALUES(?,?,?,?,?,?,?,?)",
+                ("note", L1_NOTE, "note_text", scope, pointer, content, _now(), lifecycle_tag),
             )
             conn.commit()
         finally:
@@ -226,8 +265,13 @@ def recall(
     layer: Optional[str] = None,
     limit: int = 5,
     scope: Optional[str] = None,
+    tag_filter: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Route retrieval by layer. ``layer=None`` searches across all layers.
+
+    Args:
+        tag_filter: Optional lifecycle_tag filter (e.g. ["decision", "preference"])
+            to restrict results to specific lifecycle categories.
 
     fail-closed: a missing/corrupt index returns ``[]`` and logs (must not
     interrupt the agent).
@@ -249,7 +293,7 @@ def recall(
     fts = " OR ".join(f'"{t}"' for t in terms[:8])
     sql = (
         "SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer, "
-        "m.fts_content, m.access_count "
+        "m.fts_content, m.access_count, m.lifecycle_tag "
         "FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid "
         "WHERE memories_fts MATCH ?"
     )
@@ -260,6 +304,10 @@ def recall(
     if scope:
         sql += " AND m.scope=?"
         params.append(scope)
+    if tag_filter:
+        placeholders = ",".join("?" for _ in tag_filter)
+        sql += f" AND m.lifecycle_tag IN ({placeholders})"
+        params.extend(tag_filter)
     # B 硬容量护栏：超阈值时跳低 access_count 层（冷归档，不删除）
     if skip_cold:
         sql += " AND m.access_count > ?"
@@ -302,6 +350,7 @@ def recall(
                         "pointer": r[5],
                         "content": r[6],
                         "access_count": r[7] + (1 if bumped else 0),
+                        "lifecycle_tag": r[8],
                     }
                     for r in rows
                 ]
@@ -357,6 +406,7 @@ def record(memory: Dict[str, Any]) -> None:
     layer = memory.get("layer", L4_REFERENCE)
     mtype = memory.get("type", "generic")
     scope = memory.get("scope", "")
+    lifecycle_tag = _infer_lifecycle_tag(memory)
     db_path = _get_index_db()
     _init_db(db_path)
     with _LOCK:
@@ -369,8 +419,8 @@ def record(memory: Dict[str, Any]) -> None:
             )
             c.execute(
                 "INSERT INTO memories(source, layer, type, scope, pointer, "
-                "fts_content, updated_at) VALUES(?,?,?,?,?,?,?)",
-                (source, layer, mtype, scope, pointer, fts_content, _now()),
+                "fts_content, updated_at, lifecycle_tag) VALUES(?,?,?,?,?,?,?,?)",
+                (source, layer, mtype, scope, pointer, fts_content, _now(), lifecycle_tag),
             )
             conn.commit()
         finally:
@@ -451,6 +501,7 @@ def _normalize_hit(hit: Dict[str, Any], default_layer: Optional[str]) -> Dict[st
         "pointer": hit.get("pointer", ""),
         "content": content,
         "score": float(hit.get("score", 0.0) or 0.0),
+        "lifecycle_tag": hit.get("lifecycle_tag", _DEFAULT_LIFECYCLE_TAG),
     }
 
 
@@ -602,8 +653,8 @@ def record_usage(kind: str, item_id: str, title: str = "", scope: str = "") -> N
             c = conn.cursor()
             c.execute(
                 "INSERT INTO memories(source, layer, type, scope, pointer, "
-                "fts_content, updated_at) VALUES(?,?,?,?,?,?,?)",
-                ("usage", L1_NOTE, f"usage_{kind}", scope, pointer, content, _now()),
+                "fts_content, updated_at, lifecycle_tag) VALUES(?,?,?,?,?,?,?,?)",
+                ("usage", L1_NOTE, f"usage_{kind}", scope, pointer, content, _now(), "ephemeral"),
             )
             conn.commit()
         finally:
