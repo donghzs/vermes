@@ -323,6 +323,29 @@ def recall(
                 c = conn.cursor()
                 c.execute(sql, params)
                 rows = c.fetchall()
+                # Route E P1: tag_filter 回退——FTS 查询词可能与标签记忆内容
+                # 不匹配（如查 "decision" 但记忆是中文），回退到纯 tag 查询
+                if tag_filter and not rows:
+                    _fb_sql = (
+                        "SELECT m.id, m.source, m.layer, m.type, m.scope, "
+                        "m.pointer, m.fts_content, m.access_count, m.lifecycle_tag "
+                        "FROM memories m WHERE m.lifecycle_tag IN (%s)"
+                        % placeholders
+                    )
+                    _fb_params: List[Any] = list(tag_filter)
+                    if layer:
+                        _fb_sql += " AND m.layer=?"
+                        _fb_params.append(layer)
+                    if scope:
+                        _fb_sql += " AND m.scope=?"
+                        _fb_params.append(scope)
+                    if skip_cold:
+                        _fb_sql += " AND m.access_count > ?"
+                        _fb_params.append(_COLD_ACCESS_THRESHOLD)
+                    _fb_sql += " ORDER BY m.access_count DESC LIMIT ?"
+                    _fb_params.append(effective_limit)
+                    c.execute(_fb_sql, _fb_params)
+                    rows = c.fetchall()
                 # 涌现式传感器：每次被召回即 +1（复用预留 access_count 列，
                 # 锁内同连接、fail-open；不影响召回结果，绝不删除/改写事实）。
                 bumped = False

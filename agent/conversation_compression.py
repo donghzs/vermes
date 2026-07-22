@@ -988,8 +988,34 @@ def _build_fatigue_bridge_note(agent: Any) -> str:
     """Best-effort bridge summary from the agent's memory store.
 
     Returns a short CJK string (or "") — no LLM, no blocking IO.
+    Route E P4: injects @decision/@preference memories so lifecycle-tagged
+    hard constraints survive prune_context's deterministic round-dropping.
     """
     try:
+        # ── Route E P4: 优先注入 @decision/@preference 记忆 ──
+        try:
+            from agent.memory_fabric import recall as _mf_recall
+            _prio_hits = _mf_recall(
+                "decision preference constraint rule",
+                limit=3,
+                tag_filter=["decision", "preference"],
+            )
+            if _prio_hits:
+                _prio_snippets = []
+                for h in _prio_hits:
+                    _t = (h.get("content") or "")[:160]
+                    if _t:
+                        _tag = h.get("lifecycle_tag", "")
+                        _prio_snippets.append(f"[{_tag}] {_t}")
+                if _prio_snippets:
+                    _prio_block = "硬约束衔接：" + "；".join(_prio_snippets)[:480]
+                else:
+                    _prio_block = ""
+            else:
+                _prio_block = ""
+        except Exception:
+            _prio_block = ""
+
         store = getattr(agent, "_memory_store", None)
         entries = getattr(store, "memory_entries", None) if store else None
         if not entries:
@@ -998,10 +1024,11 @@ def _build_fatigue_bridge_note(agent: Any) -> str:
                 from agent.handoff_store import get_latest_handoff
                 h = get_latest_handoff(getattr(agent, "session_id", "") or "")
                 if h and h.get("summary_text"):
-                    return "此前会话衔接：" + h["summary_text"][:240]
+                    _handoff_text = "此前会话衔接：" + h["summary_text"][:240]
+                    return (_prio_block + "\n" + _handoff_text).strip() if _prio_block else _handoff_text
             except Exception:
-                return ""
-            return ""
+                return _prio_block or ""
+            return _prio_block or ""
         recent = entries[-4:]
         snippets = []
         for e in recent:
@@ -1016,10 +1043,13 @@ def _build_fatigue_bridge_note(agent: Any) -> str:
             text = (text or "").strip()
             if text:
                 snippets.append(text[:160])
-        if not snippets:
+        if not snippets and not _prio_block:
             return ""
         joined = "；".join(snippets)
-        return f"关键记忆衔接：{joined[:480]}"
+        _general = f"关键记忆衔接：{joined[:480]}" if snippets else ""
+        if _prio_block and _general:
+            return _prio_block + "\n" + _general
+        return _prio_block or _general
     except Exception:
         return ""
 
