@@ -5478,18 +5478,15 @@ class TestMemoryNudgeCounterPersistence:
         assert a._iters_since_skill == 0
 
     def test_counters_not_reset_in_preamble(self):
-        """The run_conversation preamble must not zero the nudge counters."""
+        """The turn initialization must not zero the nudge counters."""
         import inspect
-        from agent.conversation_loop import run_conversation as _rc
-        src = inspect.getsource(_rc)
-        # The preamble resets many fields (retry counts, budget, etc.)
-        # before the main loop. Find that reset block and verify our
-        # counters aren't in it. The reset block ends at iteration_budget.
-        # The extracted body uses ``agent.X`` (not ``self.X``).  Anchor
-        # exactly on ``agent.iteration_budget = IterationBudget`` so an
-        # unrelated identifier ending in ``iteration_budget`` (e.g.
-        # ``_iteration_budget`` or ``shared_iteration_budget``) can't
-        # match the boundary.
+        # After B-3 Phase 3a extraction, the preamble spans two helpers:
+        # _initialize_turn (up to connection health) and _prepare_messages
+        # (compression replay, iteration_budget, conversation turn start).
+        # The reset block ends at ``agent.iteration_budget = IterationBudget``
+        # which now lives inside _prepare_messages.
+        from agent.conversation_loop import _initialize_turn, _prepare_messages
+        src = inspect.getsource(_initialize_turn) + inspect.getsource(_prepare_messages)
         preamble_end = src.index("agent.iteration_budget = IterationBudget")
         preamble = src[:preamble_end]
         assert "agent._turns_since_memory = 0" not in preamble
