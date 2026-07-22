@@ -826,36 +826,18 @@ def _build_conversation_result(
     return result
 
 
-def run_conversation(
+def _initialize_turn(
     agent,
     user_message: str,
-    system_message: str = None,
-    conversation_history: List[Dict[str, Any]] = None,
-    task_id: str = None,
+    persist_user_message: Optional[str],
+    task_id: Optional[str],
     stream_callback: Optional[callable] = None,
-    persist_user_message: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Run a complete conversation with tool calling until completion.
+) -> tuple:
+    """Turn initialization — stdio guard, provider bind, task constraints,
+    session tagging, surrogate sanitize, stream callback, retry reset, connection health.
 
-    Args:
-        user_message (str): The user's message/question
-        system_message (str): Custom system message (optional, overrides ephemeral_system_prompt if provided)
-        conversation_history (List[Dict]): Previous conversation messages (optional)
-        task_id (str): Unique identifier for this task to isolate VMs between concurrent tasks (optional, auto-generated if not provided)
-        stream_callback: Optional callback invoked with each text delta during streaming.
-            Used by the TTS pipeline to start audio generation before the full response.
-            When None (default), API calls use the standard non-streaming path.
-        persist_user_message: Optional clean user message to store in
-            transcripts/history when user_message contains API-only
-            synthetic prefixes.
-                or queuing follow-up prefetch work.
-
-    Returns:
-        Dict: Complete conversation result with final response and message history
+    Returns (user_message, persist_user_message, effective_task_id).
     """
-    # Guard stdio against OSError from broken pipes (systemd/headless/daemon).
-    # Installed once, transparent when streams are healthy, prevents crash on write.
     _install_safe_stdio()
 
     agent._ensure_db_session()
@@ -975,6 +957,21 @@ def run_conversation(
                 )
         except Exception:
             pass
+
+    return user_message, persist_user_message, effective_task_id
+
+
+def _prepare_messages(
+    agent,
+    user_message: str,
+    persist_user_message: Optional[str],
+    conversation_history: Optional[List[Dict[str, Any]]],
+) -> tuple:
+    """Message preparation — conversation copy, todo hydrate, nudge counters,
+    user turn tracking, user message append, boundary marker.
+
+    Returns (messages, original_user_message, current_turn_user_idx, _should_review_memory).
+    """
     # Replay compression warning through status_callback for gateway
     # platforms (the callback was not wired during __init__).
     if agent._compression_warning:
@@ -1091,6 +1088,184 @@ def run_conversation(
     if not agent.quiet_mode:
         _print_preview = _summarize_user_message_for_log(user_message)
         agent._safe_print(f"💬 Starting conversation: '{_print_preview[:60]}{'...' if len(_print_preview) > 60 else ''}'")
+
+
+    return messages, original_user_message, current_turn_user_idx, _should_review_memory
+
+
+def _finalize_turn(
+    agent,
+    messages: List[Dict[str, Any]],
+    final_response: Optional[str],
+    interrupted: bool,
+    api_call_count: int,
+    effective_task_id: str,
+    _turn_exit_reason: str,
+    _scheduler,
+    api_start_time,
+    user_message: str,
+    original_user_message: str,
+    _should_review_memory: bool,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Finalization — max-iterations summary, trajectory save, cleanup,
+    session persist, turn logging, metrics, file mutation footer, operator claim
+    verification, plugin hooks, conversation result build.
+    """
+    if final_response is None and (
+        api_call_count >= agent.max_iterations
+        or agent.iteration_budget.remaining <= 0
+    ):
+        # Budget exhausted - ask the model for a summary via one extra
+        # API call with tools stripped.  _handle_max_iterations injects a
+        # user message and makes a single toolless request.
+        _turn_exit_reason = f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
+        agent._emit_status(
+            f"⚠️ 迭代次数预算已用尽（{api_call_count}/{agent.max_iterations}）"
+            "—— 正在请模型进行总结"
+        )
+        if not agent.quiet_mode:
+            agent._safe_print(
+                f"\n⚠️  迭代次数预算已用尽（{api_call_count}/{agent.max_iterations}）"
+                "—— 正在请求总结……"
+            )
+        final_response = agent._handle_max_iterations(messages, api_call_count)
+
+        # If running as a kanban worker, block the task so the dispatcher
+        # knows the worker could not complete (rather than treating it as a
+        # protocol violation).  The agent loop strips tools before calling
+        # _handle_max_iterations, so the model cannot call kanban_block
+        # itself - we must do it on its behalf.
+        _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
+        if _kanban_task:
+            try:
+                _ra().handle_function_call(
+                    "kanban_block",
+                    {
+                        "task_id": _kanban_task,
+                        "reason": (
+                            f"Iteration budget exhausted "
+                            f"({api_call_count}/{agent.max_iterations}) - "
+                            "task could not complete within the allowed "
+                            "iterations"
+                        ),
+                    },
+                    task_id=effective_task_id,
+                )
+                logger.info(
+                    "kanban_block called for task %s after iteration "
+                    "exhaustion (%d/%d)",
+                    _kanban_task, api_call_count, agent.max_iterations,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to call kanban_block after iteration "
+                    "exhaustion for task %s",
+                    _kanban_task,
+                    exc_info=True,
+                )
+
+    # Determine if conversation completed successfully
+    completed = final_response is not None and api_call_count < agent.max_iterations
+
+    # Save trajectory if enabled.  ``user_message`` may be a multimodal
+    # list of parts; the trajectory format wants a plain string.
+    agent._save_trajectory(messages, _summarize_user_message_for_log(user_message), completed)
+
+    # Clean up VM and browser for this task after conversation completes
+    agent._cleanup_task_resources(effective_task_id)
+
+    # Persist session to both JSON log and SQLite only after private retry
+    # scaffolding has been removed. Otherwise a later user "continue" turn
+    # can replay assistant("(empty)") / recovery nudges and fall into the
+    # same empty-response loop again.
+    agent._drop_trailing_empty_response_scaffolding(messages)
+    agent._persist_session(messages, conversation_history)
+
+    _log_turn_exit(agent, messages, final_response, interrupted, _turn_exit_reason, api_call_count)
+
+    _record_turn_metrics(agent, messages, _scheduler, api_start_time, approx_tokens if 'approx_tokens' in dir() else 0)
+
+    final_response = _apply_file_mutation_footer(agent, final_response, interrupted)
+
+    final_response, messages = _apply_operator_claim_verifier(agent, messages, final_response, interrupted)
+
+    # Plugin hook: transform_llm_output
+    # Fired once per turn after the tool-calling loop completes.
+    # Plugins can transform the LLM's output text before it's returned.
+    # First hook to return a string wins; None/empty return leaves text unchanged.
+    if final_response and not interrupted:
+        try:
+            from hermes_cli.plugins import invoke_hook as _invoke_hook
+            _transform_results = _invoke_hook(
+                "transform_llm_output",
+                response_text=final_response,
+                session_id=agent.session_id or "",
+                model=agent.model,
+                platform=getattr(agent, "platform", None) or "",
+            )
+            for _hook_result in _transform_results:
+                if isinstance(_hook_result, str) and _hook_result:
+                    final_response = _hook_result
+                    break  # First non-empty string wins
+        except Exception as exc:
+            logger.warning("transform_llm_output hook failed: %s", exc)
+
+    # Pre-compute skill review trigger (based on tool iterations THIS turn used)
+    _should_review_skills = False
+    if (agent._skill_nudge_interval > 0
+            and agent._iters_since_skill >= agent._skill_nudge_interval
+            and "skill_manage" in agent.valid_tool_names):
+        _should_review_skills = True
+        agent._iters_since_skill = 0
+
+    _run_post_llm_hooks(agent, final_response, interrupted, messages, original_user_message)
+
+    result = _build_conversation_result(
+        agent, messages, final_response, interrupted, api_call_count,
+        _turn_exit_reason, original_user_message, completed,
+        _should_review_memory, _should_review_skills,
+    )
+
+    return result
+
+def run_conversation(
+    agent,
+    user_message: str,
+    system_message: str = None,
+    conversation_history: List[Dict[str, Any]] = None,
+    task_id: str = None,
+    stream_callback: Optional[callable] = None,
+    persist_user_message: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Run a complete conversation with tool calling until completion.
+
+    Args:
+        user_message (str): The user's message/question
+        system_message (str): Custom system message (optional, overrides ephemeral_system_prompt if provided)
+        conversation_history (List[Dict]): Previous conversation messages (optional)
+        task_id (str): Unique identifier for this task to isolate VMs between concurrent tasks (optional, auto-generated if not provided)
+        stream_callback: Optional callback invoked with each text delta during streaming.
+            Used by the TTS pipeline to start audio generation before the full response.
+            When None (default), API calls use the standard non-streaming path.
+        persist_user_message: Optional clean user message to store in
+            transcripts/history when user_message contains API-only
+            synthetic prefixes.
+                or queuing follow-up prefetch work.
+
+    Returns:
+        Dict: Complete conversation result with final response and message history
+    """
+    # Guard stdio against OSError from broken pipes (systemd/headless/daemon).
+    # Installed once, transparent when streams are healthy, prevents crash on write.
+    user_message, persist_user_message, effective_task_id = _initialize_turn(
+        agent, user_message, persist_user_message, task_id, stream_callback,
+    )
+
+    messages, original_user_message, current_turn_user_idx, _should_review_memory = _prepare_messages(
+        agent, user_message, persist_user_message, conversation_history,
+    )
 
     # ── System prompt (cached per session for prefix caching) ──
     # Built once on first call, reused for all subsequent calls.
@@ -4585,122 +4760,13 @@ def run_conversation(
                 messages.append({"role": "assistant", "content": final_response})
                 break
 
-    if final_response is None and (
-        api_call_count >= agent.max_iterations
-        or agent.iteration_budget.remaining <= 0
-    ):
-        # Budget exhausted - ask the model for a summary via one extra
-        # API call with tools stripped.  _handle_max_iterations injects a
-        # user message and makes a single toolless request.
-        _turn_exit_reason = f"max_iterations_reached({api_call_count}/{agent.max_iterations})"
-        agent._emit_status(
-            f"⚠️ 迭代次数预算已用尽（{api_call_count}/{agent.max_iterations}）"
-            "—— 正在请模型进行总结"
-        )
-        if not agent.quiet_mode:
-            agent._safe_print(
-                f"\n⚠️  迭代次数预算已用尽（{api_call_count}/{agent.max_iterations}）"
-                "—— 正在请求总结……"
-            )
-        final_response = agent._handle_max_iterations(messages, api_call_count)
-
-        # If running as a kanban worker, block the task so the dispatcher
-        # knows the worker could not complete (rather than treating it as a
-        # protocol violation).  The agent loop strips tools before calling
-        # _handle_max_iterations, so the model cannot call kanban_block
-        # itself - we must do it on its behalf.
-        _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
-        if _kanban_task:
-            try:
-                _ra().handle_function_call(
-                    "kanban_block",
-                    {
-                        "task_id": _kanban_task,
-                        "reason": (
-                            f"Iteration budget exhausted "
-                            f"({api_call_count}/{agent.max_iterations}) - "
-                            "task could not complete within the allowed "
-                            "iterations"
-                        ),
-                    },
-                    task_id=effective_task_id,
-                )
-                logger.info(
-                    "kanban_block called for task %s after iteration "
-                    "exhaustion (%d/%d)",
-                    _kanban_task, api_call_count, agent.max_iterations,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to call kanban_block after iteration "
-                    "exhaustion for task %s",
-                    _kanban_task,
-                    exc_info=True,
-                )
-
-    # Determine if conversation completed successfully
-    completed = final_response is not None and api_call_count < agent.max_iterations
-
-    # Save trajectory if enabled.  ``user_message`` may be a multimodal
-    # list of parts; the trajectory format wants a plain string.
-    agent._save_trajectory(messages, _summarize_user_message_for_log(user_message), completed)
-
-    # Clean up VM and browser for this task after conversation completes
-    agent._cleanup_task_resources(effective_task_id)
-
-    # Persist session to both JSON log and SQLite only after private retry
-    # scaffolding has been removed. Otherwise a later user "continue" turn
-    # can replay assistant("(empty)") / recovery nudges and fall into the
-    # same empty-response loop again.
-    agent._drop_trailing_empty_response_scaffolding(messages)
-    agent._persist_session(messages, conversation_history)
-
-    _log_turn_exit(agent, messages, final_response, interrupted, _turn_exit_reason, api_call_count)
-
-    _record_turn_metrics(agent, messages, _scheduler, api_start_time, approx_tokens if 'approx_tokens' in dir() else 0)
-
-    final_response = _apply_file_mutation_footer(agent, final_response, interrupted)
-
-    final_response, messages = _apply_operator_claim_verifier(agent, messages, final_response, interrupted)
-
-    # Plugin hook: transform_llm_output
-    # Fired once per turn after the tool-calling loop completes.
-    # Plugins can transform the LLM's output text before it's returned.
-    # First hook to return a string wins; None/empty return leaves text unchanged.
-    if final_response and not interrupted:
-        try:
-            from hermes_cli.plugins import invoke_hook as _invoke_hook
-            _transform_results = _invoke_hook(
-                "transform_llm_output",
-                response_text=final_response,
-                session_id=agent.session_id or "",
-                model=agent.model,
-                platform=getattr(agent, "platform", None) or "",
-            )
-            for _hook_result in _transform_results:
-                if isinstance(_hook_result, str) and _hook_result:
-                    final_response = _hook_result
-                    break  # First non-empty string wins
-        except Exception as exc:
-            logger.warning("transform_llm_output hook failed: %s", exc)
-
-    # Pre-compute skill review trigger (based on tool iterations THIS turn used)
-    _should_review_skills = False
-    if (agent._skill_nudge_interval > 0
-            and agent._iters_since_skill >= agent._skill_nudge_interval
-            and "skill_manage" in agent.valid_tool_names):
-        _should_review_skills = True
-        agent._iters_since_skill = 0
-
-    _run_post_llm_hooks(agent, final_response, interrupted, messages, original_user_message)
-
-    result = _build_conversation_result(
+    result = _finalize_turn(
         agent, messages, final_response, interrupted, api_call_count,
-        _turn_exit_reason, original_user_message, completed,
-        _should_review_memory, _should_review_skills,
+        effective_task_id, _turn_exit_reason, _scheduler, api_start_time,
+        user_message, original_user_message, _should_review_memory,
+        conversation_history,
     )
 
     return result
-
 
 __all__ = ["run_conversation"]
