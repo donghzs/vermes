@@ -180,6 +180,10 @@ def _init_db(db_path: Path) -> None:
             "INSERT INTO memories_fts(rowid, fts_content) VALUES (new.id, new.fts_content); END"
         )
         conn.commit()
+        
+        # ── Route E-Reflection R0: 创建 memory_flags 表 ──
+        from agent.memory_reflection import ensure_reflection_schema
+        ensure_reflection_schema(db_path)
     finally:
         conn.close()
 
