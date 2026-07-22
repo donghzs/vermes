@@ -9,10 +9,9 @@ FLAG 记忆反思引擎 — 复用 curator idiom（空闲门控 + fork 辅助 ag
 import json
 import logging
 import sqlite3
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 from hermes_constants import get_hermes_home
 
@@ -61,15 +60,23 @@ def get_reflection_min_idle_hours() -> float:
 
 
 def _is_idle_enough() -> bool:
-    """检查是否足够空闲"""
+    """检查是否足够空闲（基于上次反思时间）"""
     state = _load_state()
     if state.get("paused"):
         return False
 
-    min_hours = get_reflection_min_idle_hours()
-    # 这里简化实现，实际需要检查用户最后活动时间
-    # curator.py 有完整的空闲检测逻辑
-    return True  # 暂时返回 True，后续补完整逻辑
+    last_run = state.get("last_run_at")
+    if not last_run:
+        return True  # 从未运行过
+
+    try:
+        last_dt = datetime.fromisoformat(last_run)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        elapsed_hours = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+        return elapsed_hours >= get_reflection_min_idle_hours()
+    except Exception:
+        return True  # 状态损坏时允许运行
 
 
 # ── 数据库 Schema ──────────────────────────────────────────────────
@@ -107,48 +114,153 @@ def ensure_reflection_schema(db_path: Optional[Path] = None):
 
 # ── 核心入口 ────────────────────────────────────────────────────────
 
-def maybe_run_reflection():
-    """空闲门控 + 触发反思（镜像 curator.maybe_run_curator）"""
-    if not _is_idle_enough():
-        logger.debug("[Reflection] Not idle enough, skip")
-        return
+def maybe_run_reflection(
+    *,
+    idle_for_seconds: Optional[float] = None,
+    on_summary: Optional[Callable[[str], None]] = None,
+) -> None:
+    """空闲门控 + 触发反思（镜像 curator.maybe_run_curator）
 
+    Args:
+        idle_for_seconds: 调用方提供的空闲秒数；None 表示不检查。
+        on_summary: 反思完成后的回调。
+    """
     state = _load_state()
     if state.get("paused"):
         logger.debug("[Reflection] Paused, skip")
         return
 
+    if not _is_idle_enough():
+        logger.debug("[Reflection] Not idle enough, skip")
+        return
+
+    # Idle gating: only enforce when the caller provided a measurement.
+    if idle_for_seconds is not None:
+        min_idle_s = get_reflection_min_idle_hours() * 3600.0
+        if idle_for_seconds < min_idle_s:
+            return
+
     try:
         run_reflection_review()
+        if on_summary:
+            on_summary("Reflection completed")
     except Exception as e:
         logger.warning(f"[Reflection] Reflection failed: {e} (fail-open)")
 
 
 def run_reflection_review():
-    """Fork 辅助 agent 执行反思（镜像 curator.run_curator_review）
+    """执行反思（镜像 curator.run_curator_review）
 
-    当前为骨架实现，R1-R4 逐步填充：
-    - R1: 矛盾校核（复用 decision_tracker）
-    - R2: 四类校核（LLM 反思）
-    - R3: FlagFloatUp（continuity_facade 第 6 通道）
-    - R4: Resolution（双通道）
+    R1: 矛盾校核（复用 decision_tracker._check_contradiction）
+    R2-R4: 待实现
     """
     ensure_reflection_schema()
     logger.info("[Reflection] Starting reflection review...")
 
-    # R1-R4 实现点
-    # ...
+    flags_created = 0
+
+    # R1: 矛盾校核
+    try:
+        flags_created += _scan_contradictions()
+    except Exception as e:
+        logger.warning(f"[Reflection] R1 contradiction scan failed: {e}")
 
     # 更新状态
     state = _load_state()
     state["last_run_at"] = datetime.now(timezone.utc).isoformat()
-    state["last_summary"] = "Reflection completed (skeleton)"
+    state["last_summary"] = f"Reflection completed: {flags_created} flag(s) created"
     _save_state(state)
 
-    logger.info("[Reflection] Reflection review done")
+    logger.info("[Reflection] Reflection review done: %d flag(s)", flags_created)
 
 
-# ── 辅助函数 ────────────────────────────────────────────────────────
+# ── R1: 矛盾校核 ────────────────────────────────────────────────
+
+def _scan_contradictions() -> int:
+    """扫描 @decision 标签的记忆，检测两两矛盾。
+
+    复用 decision_tracker._check_contradiction 纯函数。
+    只读 memories 表，只 INSERT INTO memory_flags。
+
+    Returns:
+        新增 flag 数量
+    """
+    from agent.memory_fabric import _get_index_db as _get_mem_db
+    from agent.decision_tracker import (
+        _check_contradiction,
+        _extract_decision_keywords,
+    )
+
+    db_path = _get_mem_db()
+    if isinstance(db_path, Path):
+        db_path = str(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        # 读取所有 @decision 记忆（lifecycle_tag=decision）
+        rows = conn.execute(
+            """SELECT id, fts_content, pointer, scope
+               FROM memories
+               WHERE lifecycle_tag = 'decision'
+               ORDER BY id DESC
+               LIMIT 100""",
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if len(rows) < 2:
+        logger.debug("[Reflection] R1: <2 decision memories, skip")
+        return 0
+
+    # 提取关键词
+    decisions = []
+    for row in rows:
+        mem_id = str(row[0])
+        content = row[1] or ""
+        keywords = _extract_decision_keywords(content)
+        if keywords:  # 跳过无关键词的
+            decisions.append({
+                "id": mem_id,
+                "content": content,
+                "keywords": keywords,
+            })
+
+    flags_created = 0
+    # 两两比对（O(n²) 但 n≤100，可接受）
+    for i in range(len(decisions)):
+        for j in range(i + 1, len(decisions)):
+            new = decisions[i]  # 较新的（DESC 排序）
+            old = decisions[j]  # 较旧的
+
+            reason = _check_contradiction(
+                new_decision=new["content"],
+                old_decision=old["content"],
+                new_keywords=new["keywords"],
+                old_keywords=old["keywords"],
+            )
+            if reason:
+                flag_id = write_flag(
+                    memory_id=new["id"],
+                    flag_type="contradiction",
+                    evidence=f"与记忆 #{old['id']} 矛盾: {reason}",
+                    confidence=0.7,
+                )
+                # write_flag 返回已存在 flag 的 ID 也会是 >0，
+                # 但只统计真正新增的会比较 ID 是否首次出现
+                if flag_id:
+                    flags_created += 1
+                    logger.info(
+                        "[Reflection] R1: contradiction found "
+                        "between #%s and #%s: %s",
+                        new["id"], old["id"], reason,
+                    )
+
+    logger.info("[Reflection] R1: scanned %d decisions, %d flags created",
+                len(decisions), flags_created)
+    return flags_created
+
+
+# ── 辅助函数 ────────────────────────────────────────────────────────────
 
 def get_open_flags(limit: int = 50) -> List[Dict]:
     """获取 open 状态的 flags（供 continuity_facade 注入）"""

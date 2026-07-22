@@ -3590,6 +3590,20 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
             except Exception as e:
                 logger.debug("Curator tick error: %s", e)
 
+        # Reflection — piggy-back on the same cron ticker.
+        # maybe_run_reflection() is internally gated by its own idle
+        # interval (default 6h), so REFLECTION_EVERY is just the poll rate.
+        REFLECTION_EVERY = 120  # ticks — poll every ~2h (inner gate: 6h)
+        if tick_count % REFLECTION_EVERY == 0:
+            try:
+                from agent.memory_reflection import maybe_run_reflection
+                maybe_run_reflection(
+                    idle_for_seconds=float("inf"),
+                    on_summary=lambda msg: logger.info("reflection: %s", msg),
+                )
+            except Exception as e:
+                logger.debug("Reflection tick error: %s", e)
+
         stop_event.wait(timeout=interval)
     logger.info("Cron ticker stopped")
 
