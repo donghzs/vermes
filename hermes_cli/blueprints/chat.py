@@ -1092,6 +1092,10 @@ async def chat_completions(req: ChatRequest):
 
                 def plan_event_handler(event_type: str, data: dict):
                     """Route plan events (step_update, tool_call, plan_completed) to SSE."""
+                    # 幂等去重：若 _detect_and_emit_plan 已发射 plan_created，跳过重复
+                    if event_type == "created" and _plan_emitted:
+                        _log.debug("[Plan] Duplicate plan_created via bridge, skipping")
+                        return
                     _safe_put({"type": f"plan_{event_type}", **data})
                 agent.plan_event_callback = plan_event_handler
                 _max_tokens = getattr(req, 'max_tokens', None) or _resolve_max_tokens(model)
