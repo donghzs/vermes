@@ -5,6 +5,7 @@ and run_agent.py for pre-flight context checks.
 """
 
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -1826,25 +1827,112 @@ def _estimate_message_chars(msg: Dict[str, Any]) -> int:
     return len(str(shadow))
 
 
+_TIKTOKEN_ENCODER = None
+_TIKTOKEN_TRIED = False
+
+
+def _get_tiktoken_encoder():
+    """Lazily load a tiktoken encoder. Cached; returns None if unavailable (fail-open)."""
+    global _TIKTOKEN_ENCODER, _TIKTOKEN_TRIED
+    if _TIKTOKEN_TRIED:
+        return _TIKTOKEN_ENCODER
+    _TIKTOKEN_TRIED = True
+    try:
+        import tiktoken
+
+        # cl100k_base is a reasonable cross-model approximation; exact tokenizers
+        # vary per provider (deepseek/custom), so this is "precise-ish", not canonical.
+        _TIKTOKEN_ENCODER = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        _TIKTOKEN_ENCODER = None
+    return _TIKTOKEN_ENCODER
+
+
+def _precise_text_tokens(text: str) -> Optional[int]:
+    """Precise token count for text via tiktoken. Returns None if unavailable (fail-open)."""
+    if not text:
+        return 0
+    enc = _get_tiktoken_encoder()
+    if enc is None:
+        return None
+    try:
+        return len(enc.encode(text))
+    except Exception:
+        return None
+
+
 def estimate_request_tokens_rough(
     messages: List[Dict[str, Any]],
     *,
     system_prompt: str = "",
     tools: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
-    """Rough token estimate for a full chat-completions request.
+    """Token estimate for a full chat-completions request.
 
-    Includes the major payload buckets Hermes sends to providers:
-    system prompt, conversation messages, and tool schemas.  With 50+
-    tools enabled, schemas alone can add 20-30K tokens — a significant
-    blind spot when only counting messages. Image content is counted
-    at a flat per-image cost (see estimate_messages_tokens_rough).
+    #2 boundary fix: prefers tiktoken precise counting for text buckets
+    (system prompt, message text, tool schemas); falls back to the char/4
+    rough estimate when tiktoken is unavailable (fail-open). Image content
+    is always counted at a flat per-image cost (see estimate_messages_tokens_rough),
+    since base64 char length would massively over-count.
+
+    The precise path narrows the "估算偏低导致未触发 prune" tail without
+    changing behavior when tiktoken is absent.
     """
+    enc = _get_tiktoken_encoder()
+    if enc is None:
+        # Fail-open: original rough estimate
+        total = 0
+        if system_prompt:
+            total += (len(system_prompt) + 3) // 4
+        if messages:
+            total += estimate_messages_tokens_rough(messages)
+        if tools:
+            total += (len(str(tools)) + 3) // 4
+        return total
+
+    # Precise path (tiktoken for text; flat cost for images)
     total = 0
     if system_prompt:
-        total += (len(system_prompt) + 3) // 4
+        total += _precise_text_tokens(system_prompt) or ((len(system_prompt) + 3) // 4)
     if messages:
-        total += estimate_messages_tokens_rough(messages)
+        _IMAGE_TOKEN_COST = 1500
+        for msg in messages:
+            _chars = _estimate_message_chars(msg)
+            # _estimate_message_chars returns char count of text parts; reconstruct
+            # precise tokens by encoding the extractable text, fall back to char/4.
+            _text = _extract_message_text(msg)
+            _precise = _precise_text_tokens(_text)
+            total += _precise if _precise is not None else ((_chars + 3) // 4)
+            total += _count_image_tokens(msg, _IMAGE_TOKEN_COST)
     if tools:
-        total += (len(str(tools)) + 3) // 4
+        _tools_str = str(tools)
+        total += _precise_text_tokens(_tools_str) or ((len(_tools_str) + 3) // 4)
     return total
+
+
+def _extract_message_text(msg: Dict[str, Any]) -> str:
+    """Extract concatenated text content from a message (text parts only, no images)."""
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        base = content
+    elif isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") in ("text", "input_text") and part.get("text"):
+                    parts.append(str(part["text"]))
+                elif "text" in part and isinstance(part.get("text"), str):
+                    parts.append(part["text"])
+            elif isinstance(part, str):
+                parts.append(part)
+        base = " ".join(parts)
+    else:
+        base = str(content) if content else ""
+    # Include tool_calls payloads (function args) which count toward tokens.
+    tc = msg.get("tool_calls")
+    if tc:
+        try:
+            base += " " + json.dumps(tc, ensure_ascii=False)
+        except Exception:
+            base += " " + str(tc)
+    return base
