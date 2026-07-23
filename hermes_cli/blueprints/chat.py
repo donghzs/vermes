@@ -2566,6 +2566,14 @@ def register_to(app):
     def _pre_create_agent():
         """Start default agent at Gateway launch - stays alive for all sessions."""
         try:
+            # Bootstrap literature providers so they appear in Settings UI
+            # immediately (not only when ScholarForge search is first used)
+            from agent.literature_registry import bootstrap_builtin_providers
+            bootstrap_builtin_providers()
+            _log.info("[Agent] Literature providers bootstrapped")
+        except Exception as e:
+            _log.warning(f"[Agent] Literature bootstrap failed: {e}")
+        try:
             cfg = load_config()
             default_model = cfg.get("model", {}).get("default", "")
             default_provider = cfg.get("model", {}).get("provider", "")

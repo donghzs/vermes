@@ -42,7 +42,7 @@ import sqlite3, sqlite_vec
 conn = sqlite3.connect(':memory:')
 conn.enable_load_extension(True)
 sqlite_vec.load(conn)
-ver = sqlite_vec.version
+# sqlite_vec 无 version 属性，验证 load 不抛异常即正常
 conn.close()
-print(f'  sqlite_vec {ver} loaded OK')
+print('  sqlite_vec loaded OK')
 " || { echo '❌ sqlite_vec 运行时检查失败 — vec0 扩展不可加载'; exit 1; }

@@ -764,11 +764,14 @@ async function loadLiterature() {
         url: meta.url || '',
         fields,
         custom: !!meta.custom,
-        // 判断是否为免费源：无字段 或 描述中包含"免费"或"可选"
-        isFree: fields.length === 0 || 
-                (meta.description || '').includes('免费') ||
-                (meta.description || '').includes('可选') ||
-                (meta.description || '').includes('无需'),
+        // 仅无任何配置字段才是免费源（无需凭证即可使用）
+        // CORE/SemanticScholar 有可选 API Key 字段，归入付费区但标记"可选"
+        isFree: fields.length === 0,
+        isOptional: fields.length > 0 && (
+          (meta.description || '').includes('可选') ||
+          (meta.description || '').includes('提升限额') ||
+          (meta.description || '').includes('提升速率')
+        ),
       }
       
       if (item.custom) {
@@ -1218,6 +1221,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
                       <span v-if="litConfigured(g)" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
+                      <span v-if="g.isOptional" class="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400">可选</span>
                     </div>
                     <div class="flex items-center gap-2">
                       <a v-if="g.url" :href="g.url" target="_blank" rel="noopener" @click.stop class="text-[11px] text-blue-500 hover:underline">申请入口 ↗</a>
