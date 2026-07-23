@@ -1,15 +1,23 @@
 """
 Vermes Windows 构建脚本 — 在 A11 上运行
-流程: git pull → PyInstaller COLLECT → Inno Setup 安装包
+流程: git pull → (可选前端构建) → PyInstaller COLLECT → Inno Setup 安装包
 
 用法 (在 A11 PowerShell 中):
-  cd C:\Projects\vermes
+  cd C:\Projects\vermes-src
   python build-windows-installer.py
 """
 import subprocess
 import sys
 import os
 import shutil
+import io
+
+# 强制 UTF-8 输出，避免 Windows GBK 终端打印 emoji 崩溃
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# 允许跳过 npm 构建（web_dist 已 commit 进仓库时使用：VERMES_SKIP_NPM=1）
+SKIP_NPM = os.environ.get("VERMES_SKIP_NPM") == "1"
 import time
 
 VERMES_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,9 +62,11 @@ def main():
     # ── Step 2: 构建前端 ──
     step(2, "构建前端 (npm run build)")
     frontend_dir = os.path.join(VERMES_DIR, "frontend")
-    if os.path.exists(os.path.join(frontend_dir, "package.json")):
+    if SKIP_NPM:
+        print("  跳过 npm run build (VERMES_SKIP_NPM=1)")
+    elif os.path.exists(os.path.join(frontend_dir, "package.json")):
         if not run("npm run build", cwd=frontend_dir):
-            print("⚠️ 前端构建失败，使用已有 web_dist")
+            print("  警告: npm run build 失败，将使用仓库中已有的 web_dist")
     else:
         print("  跳过（无 frontend 目录）")
 
