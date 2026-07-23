@@ -47,8 +47,9 @@ for src, dst in [
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
 ]:
-    if os.path.exists(src):
-        datas.append((src, dst))
+    _abs_src = src if os.path.isabs(src) else os.path.join(spec_dir, src)
+    if os.path.exists(_abs_src):
+        datas.append((_abs_src, dst))
     else:
         print(f"[Vermes Backend] Skipping missing data path: {src}")
 
@@ -196,8 +197,8 @@ if sys.platform == 'win32':
     hiddenimports.extend(['pywin32', 'win32api', 'win32con'])
 
 a = Analysis(
-    ['backend_main.py'],
-    pathex=[],
+    [os.path.join(spec_dir, 'backend_main.py')],
+    pathex=[spec_dir],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
