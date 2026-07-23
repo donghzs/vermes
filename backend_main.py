@@ -106,7 +106,7 @@ def main():
     from hermes_cli import web_server
     web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
 
-    # 启动时即注册所有文献源（Settings UI 依赖此数据）
+    # 启动时即注册所有文献源 + 工具服务（Settings UI 依赖此数据）
     # 注意：lifespan="off" 禁用 startup 事件，必须在这里手动调用
     try:
         from agent.literature_registry import bootstrap_builtin_providers
@@ -114,6 +114,13 @@ def main():
         logger.info("[Vermes Backend] ✅ 文献源 provider 已注册")
     except Exception as _e:
         logger.warning(f"[Vermes Backend] ⚠️ 文献源注册失败: {_e}")
+    # 触发 tools 模块的 register_service（openrouter/daytona 等）
+    try:
+        import tools.openrouter_client  # noqa: F401 — side-effect: register_service
+        import tools.terminal_tool      # noqa: F401 — side-effect: register_service
+        logger.info("[Vermes Backend] ✅ 工具服务凭证已注册")
+    except Exception as _e:
+        logger.warning(f"[Vermes Backend] ⚠️ 工具服务注册失败: {_e}")
 
     logger.info(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
 

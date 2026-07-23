@@ -654,6 +654,24 @@ function customFieldTypes() {
   return t
 }
 
+// 认证方式 ↔ 凭证字段联动
+function onAuthSchemeChange() {
+  const scheme = customForm.auth_scheme
+  // 先全部清空
+  customForm.api_key = false
+  customForm.base_url_field = false
+  customForm.user = false
+  customForm.password = false
+  // 根据认证方式自动勾选
+  if (scheme === 'bearer' || scheme === 'header' || scheme === 'query') {
+    customForm.api_key = true
+  } else if (scheme === 'basic') {
+    customForm.user = true
+    customForm.password = true
+  }
+  // 'none' 不勾选任何字段
+}
+
 function openAddCustom() {
   customEditingId.value = null
   Object.assign(customForm, {
@@ -686,7 +704,7 @@ function closeCustomModal() { showCustomModal.value = false }
 async function saveCustom() {
   if (!customForm.label.trim()) { toast.warning('请填写文献库名称'); return }
   const ft = customFieldTypes()
-  if (ft.length === 0) { toast.warning('请至少勾选一种凭证字段（如 API Key）'); return }
+  if (ft.length === 0 && customForm.auth_scheme !== 'none') { toast.warning('请至少勾选一种凭证字段（如 API Key）'); return }
   customSaving.value = true
   const payload = {
     label: customForm.label.trim(),
@@ -1326,7 +1344,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">认证方式</label>
-                <select v-model="customForm.auth_scheme" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none">
+                <select v-model="customForm.auth_scheme" @change="onAuthSchemeChange" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none">
                   <option value="bearer">Bearer Token</option>
                   <option value="basic">账号密码 Basic</option>
                   <option value="header">自定义 Header</option>
@@ -1354,7 +1372,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">需要的凭证字段</label>
               <div class="flex flex-wrap gap-3 text-sm">
                 <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.api_key" /> API Key</label>
-                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.base_url_field" /> 网关地址</label>
+                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.base_url_field" /> 接口地址</label>
                 <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.user" /> 账号</label>
                 <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.password" /> 密码</label>
               </div>
