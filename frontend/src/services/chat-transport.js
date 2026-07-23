@@ -33,6 +33,12 @@ class ChatTransport {
     this._handlers.delete(sessionId)
   }
 
+  // 默认实现：该会话是否仍注册了消息处理器（即处于活动对话中）。
+  // 子类可覆写得更精确（SSE 用 _controllers 跟踪在途 fetch）。
+  isStreaming(sessionId) {
+    return this._handlers.has(sessionId)
+  }
+
   _emit(sessionId, event, data) {
     const h = this._handlers.get(sessionId)
     if (h && h[event]) h[event](data)

@@ -290,7 +290,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.filter(m => m.streaming).forEach(m => {
         // 仅把当前已缓冲文本落盘，避免切换瞬间的内容抖动；保留定时器与 streaming 标记
         if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
-        const _stillStreaming = _bgTransport && _bgTransport.isStreaming(m.sessionId)
+        const _stillStreaming = !!(_bgTransport && typeof _bgTransport.isStreaming === 'function' && _bgTransport.isStreaming(m.sessionId))
         if (!_stillStreaming) {
           // 真孤儿流（后端已无该会话活动流）：安全清理定时器，防泄漏
           if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
