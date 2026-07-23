@@ -158,7 +158,8 @@ def run_reflection_review():
     """执行反思（镜像 curator.run_curator_review）
 
     R1: 矛盾校核（复用 decision_tracker._check_contradiction）
-    R2-R4: 待实现
+    R2: 四类 LLM 校核（stale/contradiction_with_new/scope_creep/redundant）
+    R3-R4: 待实现（continuity_facade 已注入 + /resolve_flag）
     """
     ensure_reflection_schema()
     logger.info("[Reflection] Starting reflection review...")
