@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
@@ -626,9 +626,109 @@ function focusServiceKey(g) {
 // ── 文献源（category === 'literature'，源自 GET /api/registered-services） ──
 // 与大模型厂商 API Key 同一套体验：用户自备 API Key / 网关地址 / 账号密码，
 // 填入即启用对应文献库（多字段卡片，逐字段落盘到统一 .env）。
-const literatureGroups = ref({})   // sid -> { sid, label, description, url, fields: [{key,label,secret,val,isSet,saved}] }
+const literatureGroups = ref({})   // sid -> { sid, label, description, url, fields: [{key,label,secret,val,isSet,saved}], custom }
 const literatureLoading = ref(false)
 const literatureSaving = ref(false)
+// 自定义文献源完整定义（用于编辑模态框预填），sid -> full definition
+const customDefs = ref({})
+const showCustomModal = ref(false)
+const customEditingId = ref(null)
+const customSaving = ref(false)
+const customForm = reactive({
+  label: '', description: '', url: '', base_url: '',
+  auth_scheme: 'bearer', api_key_header: 'X-API-KEY',
+  query_param: 'q', method: 'GET',
+  api_key: true, base_url_field: false, user: false, password: false,
+})
+
+function customFieldTypes() {
+  const t = []
+  if (customForm.api_key) t.push('api_key')
+  if (customForm.base_url_field) t.push('base_url')
+  if (customForm.user) t.push('user')
+  if (customForm.password) t.push('password')
+  return t
+}
+
+function openAddCustom() {
+  customEditingId.value = null
+  Object.assign(customForm, {
+    label: '', description: '', url: '', base_url: '',
+    auth_scheme: 'bearer', api_key_header: 'X-API-KEY',
+    query_param: 'q', method: 'GET',
+    api_key: true, base_url_field: false, user: false, password: false,
+  })
+  showCustomModal.value = true
+}
+
+function openEditCustom(sid) {
+  const d = customDefs.value[sid]
+  if (!d) return
+  customEditingId.value = sid
+  const ft = new Set(d.field_types || [])
+  Object.assign(customForm, {
+    label: d.label || '', description: d.description || '', url: d.url || '',
+    base_url: d.base_url || '', auth_scheme: d.auth_scheme || 'bearer',
+    api_key_header: d.api_key_header || 'X-API-KEY', query_param: d.query_param || 'q',
+    method: d.method || 'GET',
+    api_key: ft.has('api_key'), base_url_field: ft.has('base_url'),
+    user: ft.has('user'), password: ft.has('password'),
+  })
+  showCustomModal.value = true
+}
+
+function closeCustomModal() { showCustomModal.value = false }
+
+async function saveCustom() {
+  if (!customForm.label.trim()) { toast.warning('请填写文献库名称'); return }
+  const ft = customFieldTypes()
+  if (ft.length === 0) { toast.warning('请至少勾选一种凭证字段（如 API Key）'); return }
+  customSaving.value = true
+  const payload = {
+    label: customForm.label.trim(),
+    description: customForm.description.trim(),
+    url: customForm.url.trim(),
+    base_url: customForm.base_url.trim(),
+    auth_scheme: customForm.auth_scheme,
+    api_key_header: customForm.api_key_header.trim() || 'X-API-KEY',
+    query_param: customForm.query_param.trim() || 'q',
+    method: customForm.method,
+    field_types: ft,
+  }
+  try {
+    const url = customEditingId.value
+      ? `/api/literature-custom-sources/${customEditingId.value}`
+      : '/api/literature-custom-sources'
+    const resp = await fetch(url, {
+      method: customEditingId.value ? 'PUT' : 'POST',
+      headers: envHeaders(),
+      body: JSON.stringify(payload),
+    })
+    const data = await resp.json().catch(() => ({}))
+    if (resp.ok) {
+      toast.success(customEditingId.value ? '已更新自定义文献库' : '已添加自定义文献库')
+      closeCustomModal()
+      await loadLiterature()
+    } else {
+      toast.error(data.detail || '保存失败')
+    }
+  } catch (e) {
+    toast.error('保存失败: ' + e.message)
+  } finally {
+    customSaving.value = false
+  }
+}
+
+async function deleteCustomSource(sid) {
+  const d = customDefs.value[sid]
+  const name = (d && d.label) || sid
+  if (!await confirm({ title: '删除自定义文献库', message: `删除「${name}」？其已保存凭证也会一并清除。`, confirmText: '删除', danger: true })) return
+  try {
+    const resp = await fetch(`/api/literature-custom-sources/${sid}`, { method: 'DELETE', headers: envHeaders() })
+    if (resp.ok) { toast.success('已删除 ' + name); await loadLiterature() }
+    else { const dd = await resp.json().catch(() => ({})); toast.error(dd.detail || '删除失败') }
+  } catch (e) { toast.error('删除失败: ' + e.message) }
+}
 
 async function loadLiterature() {
   literatureLoading.value = true
@@ -654,6 +754,7 @@ async function loadLiterature() {
         description: meta.description || '',
         url: meta.url || '',
         fields,
+        custom: !!meta.custom,
       }
     }
     // env 状态 -> 已配置字段显示掩码，避免保存时覆盖真实值
@@ -669,6 +770,14 @@ async function loadLiterature() {
         }
       }
     } catch (e) { console.error('[Literature] env status error:', e) }
+    // 拉取自定义源完整定义（含端点/认证方式），供编辑模态框预填
+    try {
+      const cdResp = await fetch('/api/literature-custom-sources')
+      const cdData = await cdResp.json()
+      const cmap = {}
+      for (const s of (cdData.sources || [])) cmap[s.id] = s
+      customDefs.value = cmap
+    } catch (e) { console.error('[Literature] custom defs error:', e) }
     literatureGroups.value = groups
   } catch (e) {
     console.error('[Literature] load error:', e)
@@ -1028,9 +1137,12 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
       <!-- 文献源 -->
       <div v-if="activeTab === 'literature'" class="max-w-2xl space-y-4">
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
-          <div class="flex items-center gap-2">
-            <span class="text-lg">📖</span>
-            <h3 class="font-medium text-gray-800 dark:text-gray-200">文献源设置</h3>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">📖</span>
+              <h3 class="font-medium text-gray-800 dark:text-gray-200">文献源设置</h3>
+            </div>
+            <button @click="openAddCustom" class="px-3 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">➕ 添加自定义文献库</button>
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400">与大模型厂商 API Key 相同的体验：用户自备 API Key / 网关地址 / 账号密码，填入即启用对应文献库，Agent 论文写作与文献检索会自动路由到已配置的最优源。免费源（OpenAlex / Crossref / PubMed / arXiv / Europe PMC 等）无需任何配置，开箱即用。</p>
 
@@ -1044,8 +1156,13 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
                   <span v-if="litConfigured(g)" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
+                  <span v-if="g.custom" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">自定义</span>
                 </div>
-                <a v-if="g.url" :href="g.url" target="_blank" rel="noopener" class="text-[11px] text-blue-500 hover:underline">申请入口 ↗</a>
+                <div class="flex items-center gap-2">
+                  <a v-if="g.url" :href="g.url" target="_blank" rel="noopener" class="text-[11px] text-blue-500 hover:underline">申请入口 ↗</a>
+                  <button v-if="g.custom" @click="openEditCustom(g.sid)" class="text-[11px] text-gray-400 hover:text-green-500">✎ 编辑</button>
+                  <button v-if="g.custom" @click="deleteCustomSource(g.sid)" class="text-[11px] text-gray-400 hover:text-red-500">🗑 删除</button>
+                </div>
               </div>
               <p v-if="g.description" class="text-[11px] text-gray-400">{{ g.description }}</p>
               <div v-for="f in g.fields" :key="f.key" class="flex gap-2 items-center">
@@ -1064,6 +1181,78 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 <button @click="clearLiterature(g.sid)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 自定义文献库 模态框 -->
+      <div v-if="showCustomModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" @click.self="closeCustomModal">
+        <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="font-medium text-gray-800 dark:text-gray-200">{{ customEditingId ? '编辑自定义文献库' : '添加自定义文献库' }}</h3>
+            <button @click="closeCustomModal" class="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">用于接入高校 / 医院 / 企事业研究机构自建的内部文献数据库。填写接口与认证方式后，即可像其他文献源一样在 Agent 论文写作与文献检索中使用；凭证统一存入 .env 并自动掩码。</p>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">名称 *</label>
+              <input v-model="customForm.label" placeholder="如：我校医学图书馆" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">描述</label>
+              <input v-model="customForm.description" placeholder="可选，便于辨识" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">接口地址（API 端点）</label>
+              <input v-model="customForm.base_url" placeholder="https://api.your-lib.edu/search" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">主页链接</label>
+              <input v-model="customForm.url" placeholder="https://lib.your-org.edu（可选）" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none" />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">认证方式</label>
+                <select v-model="customForm.auth_scheme" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none">
+                  <option value="bearer">Bearer Token</option>
+                  <option value="basic">账号密码 Basic</option>
+                  <option value="header">自定义 Header</option>
+                  <option value="query">Query 参数</option>
+                  <option value="none">无需认证</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">请求方法</label>
+                <select v-model="customForm.method" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                </select>
+              </div>
+            </div>
+            <div v-if="customForm.auth_scheme === 'header'">
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">自定义 Header 名</label>
+              <input v-model="customForm.api_key_header" placeholder="X-API-KEY" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">查询参数名</label>
+              <input v-model="customForm.query_param" placeholder="q" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">需要的凭证字段</label>
+              <div class="flex flex-wrap gap-3 text-sm">
+                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.api_key" /> API Key</label>
+                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.base_url_field" /> 网关地址</label>
+                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.user" /> 账号</label>
+                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.password" /> 密码</label>
+              </div>
+              <p class="text-[11px] text-gray-400 mt-1">勾选后，该文献库卡片会显示对应输入框；填写的凭证统一存入 .env 并自动掩码。</p>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button @click="closeCustomModal" class="px-4 py-1.5 text-sm rounded-lg text-gray-400 hover:text-gray-600 border border-gray-300 dark:border-gray-600">取消</button>
+            <button @click="saveCustom" :disabled="customSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40">{{ customEditingId ? '保存修改' : '添加' }}</button>
           </div>
         </div>
       </div>

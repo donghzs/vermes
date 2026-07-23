@@ -1,7 +1,7 @@
 """Offline tests for the literature_search tool wrapper.
 
-The handler binds ``get_active_literature_provider`` / ``get_provider`` as
-module-level names, so we monkeypatch them on the module to inject fake
+The handler binds ``get_active_literature_provider`` / ``get_provider_by_ref``
+as module-level names, so we monkeypatch them on the module to inject fake
 providers and avoid real network calls (the sandbox has no outbound network).
 """
 
@@ -86,7 +86,7 @@ def test_handler_explicit_source(monkeypatch, _mod):
         def search(self, q, limit=10):
             return {"success": True, "data": {"papers": [{"title": q, "source": "wanfang"}]}}
 
-    monkeypatch.setattr(_mod, "get_provider", lambda s: Wf() if s == "wanfang" else None)
+    monkeypatch.setattr(_mod, "get_provider_by_ref", lambda s: Wf() if s == "wanfang" else None)
     out = asyncio.run(_mod._handle_literature_search({"query": "x", "source": "wanfang"}))
     d = json.loads(out)
     assert d["success"] is True

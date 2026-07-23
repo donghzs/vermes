@@ -24,18 +24,22 @@ from tools.registry import registry
 
 from agent.literature_registry import (
     bootstrap_builtin_providers,
+    bootstrap_custom_providers,
     get_active_literature_provider,
-    get_provider,
+    get_provider_by_ref,
 )
 
-# Ensure bundled providers are registered the moment this tool is loaded.
+# Ensure bundled + custom providers are registered the moment this tool loads.
 bootstrap_builtin_providers()
+bootstrap_custom_providers()
 
 LITERATURE_SEARCH_SCHEMA = {
     "name": "literature_search",
     "description": (
-        "检索中文学术文献（知网 / 万方 / OpenAlex / Crossref）。"
-        "用户配置了知网或万方凭证时自动优先使用付费中文源；否则使用免费开放源。"
+        "检索学术文献（知网 / 万方 / OpenAlex / Crossref / PubMed / arXiv / Scopus / IEEE / WOS 等内置源，"
+        "以及用户在设置中自建的自定义文献库）。"
+        "用户配置了知网或万方凭证时自动优先使用付费中文源；否则使用免费开放源；"
+        "也可用 source 参数显式指定任意源。"
         "返回论文标题、作者、年份、期刊、摘要、引用数、DOI 与链接。"
     ),
     "parameters": {
@@ -52,7 +56,7 @@ LITERATURE_SEARCH_SCHEMA = {
             },
             "source": {
                 "type": "string",
-                "description": "指定文献源：openalex / crossref / cnki / wanfang（可选，默认按凭证自动选最优源）",
+                "description": "指定文献源：openalex / crossref / cnki / wanfang / pubmed / arxiv / scopus / ieee / wos 等内置源，或用户在设置中自建的自定义文献库 id（可选，默认按凭证自动选最优源）",
             },
         },
         "required": ["query"],
@@ -77,18 +81,20 @@ async def _handle_literature_search(args: Dict[str, Any]) -> str:
 
     source = args.get("source")
 
-    # Idempotent — picks up any user-registered providers too.
+    # Idempotent — picks up any user-registered (built-in or custom) providers too.
     bootstrap_builtin_providers()
+    bootstrap_custom_providers()
 
-    provider = get_provider(source) if source else get_active_literature_provider()
+    provider = get_provider_by_ref(source) if source else get_active_literature_provider()
 
     if provider is None:
         return json.dumps(
             {
                 "success": False,
                 "error": (
-                    "没有可用的文献源。请配置知网/万方凭证，"
-                    "或确认免费源 OpenAlex/Crossref 可用。"
+                    "没有可用的文献源。可配置知网/万方凭证，"
+                    "或使用免费的 OpenAlex/Crossref/PubMed/arXiv；"
+                    "也可在设置 → 文献源 中添加自定义文献库。"
                 ),
             },
             ensure_ascii=False,

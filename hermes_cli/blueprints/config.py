@@ -497,6 +497,75 @@ async def get_registered_services_endpoint():
         return {"services": {}}
 
 
+# ── 自定义文献源（用户自建机构内部文献库，无限添加） ────────────────────────
+# 元数据（字段名/认证方式/端点）持久化到 ~/.vermes/literature_custom_sources.json；
+# 实际凭证仍走 PUT /api/env（命名空间 LIT_<ID>_*），复用掩码/审计/白名单。
+
+
+async def list_literature_custom_sources():
+    """List user-defined literature sources (metadata only — never secrets)."""
+    try:
+        from agent.literature_custom_store import list_custom_sources
+
+        return {"sources": list_custom_sources()}
+    except Exception:
+        _log.exception("GET /api/literature-custom-sources failed")
+        return {"sources": []}
+
+
+async def create_literature_custom_source(body: Dict[str, Any], request: Request):
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    try:
+        from agent.literature_custom_store import add_custom_source
+
+        definition = add_custom_source(body or {})
+        return {"ok": True, "source": definition}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        _log.exception("POST /api/literature-custom-sources failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+async def update_literature_custom_source(source_id: str, body: Dict[str, Any], request: Request):
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    try:
+        from agent.literature_custom_store import update_custom_source
+
+        definition = update_custom_source(source_id, body or {})
+        if definition is None:
+            raise HTTPException(status_code=404, detail=f"自定义文献源 '{source_id}' 不存在")
+        return {"ok": True, "source": definition}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        _log.exception("PUT /api/literature-custom-sources failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+async def delete_literature_custom_source(source_id: str, request: Request):
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    try:
+        from agent.literature_custom_store import delete_custom_source
+
+        if not delete_custom_source(source_id):
+            raise HTTPException(status_code=404, detail=f"自定义文献源 '{source_id}' 不存在")
+        return {"ok": True, "id": source_id}
+    except HTTPException:
+        raise
+    except Exception:
+        _log.exception("DELETE /api/literature-custom-sources failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 async def update_config(body: ConfigUpdate):
     try:
         save_config(_denormalize_config_from_web(body.config))
@@ -637,6 +706,10 @@ def register_to(app):
     app.add_api_route("/api/config/cloud-models", get_cloud_models, methods=["GET"])
     app.add_api_route("/api/config/schema", get_schema, methods=["GET"])
     app.add_api_route("/api/registered-services", get_registered_services_endpoint, methods=["GET"])
+    app.add_api_route("/api/literature-custom-sources", list_literature_custom_sources, methods=["GET"])
+    app.add_api_route("/api/literature-custom-sources", create_literature_custom_source, methods=["POST"])
+    app.add_api_route("/api/literature-custom-sources/{source_id}", update_literature_custom_source, methods=["PUT"])
+    app.add_api_route("/api/literature-custom-sources/{source_id}", delete_literature_custom_source, methods=["DELETE"])
     app.add_api_route("/api/config/raw", get_config_raw, methods=["GET"])
     app.add_api_route("/api/config/raw", update_config_raw, methods=["PUT"])
     app.add_api_route("/api/env", get_env_vars, methods=["GET"])

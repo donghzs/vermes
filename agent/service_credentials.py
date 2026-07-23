@@ -234,4 +234,19 @@ def get_registered_services() -> Dict[str, Dict[str, Any]]:
         entry.setdefault("label", sid)
         entry["fields"] = get_service_fields(sid)
         out[sid] = entry
+    # Merge user-defined custom literature sources (institutions' internal
+    # portals) so the same form / whitelist / masking applies to them for free.
+    try:
+        from agent.literature_custom_store import get_custom_service_entries
+
+        for _sid, _entry in get_custom_service_entries().items():
+            if _sid in out:
+                continue
+            _entry = dict(_entry)
+            _entry.setdefault("category", "literature")
+            _entry.setdefault("label", _sid)
+            _entry.setdefault("fields", [])
+            out[_sid] = _entry
+    except Exception:
+        logger.debug("get_registered_services: skipped custom sources")
     return out

@@ -89,6 +89,26 @@ def get_provider(name: str) -> Optional[LiteratureProvider]:
         return _providers.get(name.strip())
 
 
+def get_provider_by_ref(ref: str) -> Optional[LiteratureProvider]:
+    """Resolve a provider by id (``name``) or by human ``label`` (case-insensitive).
+
+    Lets users reference a custom source either by its stable id or by the
+    display name they typed in the Settings UI.
+    """
+    if not isinstance(ref, str) or not ref.strip():
+        return None
+    direct = get_provider(ref)
+    if direct is not None:
+        return direct
+    ref_l = ref.strip().lower()
+    with _lock:
+        for p in _providers.values():
+            p_label = getattr(p, "label", None) or getattr(p, "display_name", None)
+            if (p.name or "").lower() == ref_l or (p_label or "").lower() == ref_l:
+                return p
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Active-provider resolution
 # ---------------------------------------------------------------------------
@@ -283,3 +303,29 @@ def bootstrap_builtin_providers() -> None:
             register_provider(cls())
         except Exception as exc:  # noqa: BLE001
             logger.debug("bootstrap literature provider %s failed: %s", cls.__name__, exc)
+
+
+def bootstrap_custom_providers() -> None:
+    """Register user-defined custom literature sources (institutions' internal
+    portals). Safe to call repeatedly; re-reads the persisted definitions each
+    time so edits in the Settings UI take effect without a restart.
+
+    Kept separate from :func:`bootstrap_builtin_providers` so the built-in
+    provider count stays stable for tests, while custom sources are layered on
+    top at tool-dispatch time.
+    """
+    try:
+        from agent.literature_custom_store import list_custom_sources
+        from agent.literature_providers.custom import CustomHttpProvider
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("custom literature providers unavailable: %s", exc)
+        return
+
+    for definition in list_custom_sources():
+        name = definition.get("id")
+        if not name:
+            continue
+        try:
+            register_provider(CustomHttpProvider(definition))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("bootstrap custom literature provider %s failed: %s", name, exc)
