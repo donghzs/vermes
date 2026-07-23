@@ -106,6 +106,15 @@ def main():
     from hermes_cli import web_server
     web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
 
+    # 启动时即注册所有文献源（Settings UI 依赖此数据）
+    # 注意：lifespan="off" 禁用 startup 事件，必须在这里手动调用
+    try:
+        from agent.literature_registry import bootstrap_builtin_providers
+        bootstrap_builtin_providers()
+        logger.info("[Vermes Backend] ✅ 文献源 provider 已注册")
+    except Exception as _e:
+        logger.warning(f"[Vermes Backend] ⚠️ 文献源注册失败: {_e}")
+
     logger.info(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
 
     # 注册 SIGTERM 处理器（Electron 关闭后端时发送 SIGTERM）
