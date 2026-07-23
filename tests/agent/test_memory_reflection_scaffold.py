@@ -161,7 +161,7 @@ class TestReflectionScaffold:
             lambda: test_db
         )
 
-        flag_id = write_flag(
+        flag_id, is_new = write_flag(
             memory_id="mem_123",
             flag_type="contradiction",
             evidence="Test contradiction",
@@ -169,6 +169,7 @@ class TestReflectionScaffold:
         )
 
         assert flag_id > 0
+        assert is_new is True
 
         # 验证数据库
         conn = sqlite3.connect(str(test_db))
@@ -199,10 +200,12 @@ class TestReflectionScaffold:
         )
 
         # 第一次写入
-        id1 = write_flag("mem_123", "contradiction", "Test 1", 0.8)
+        id1, is_new1 = write_flag("mem_123", "contradiction", "Test 1", 0.8)
+        assert is_new1 is True
 
         # 第二次写入（同 memory_id + flag_type）
-        id2 = write_flag("mem_123", "contradiction", "Test 2", 0.9)
+        id2, is_new2 = write_flag("mem_123", "contradiction", "Test 2", 0.9)
+        assert is_new2 is False
 
         # 应返回相同 ID（已存在）
         assert id1 == id2

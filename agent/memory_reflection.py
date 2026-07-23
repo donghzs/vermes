@@ -30,7 +30,7 @@ def _load_state() -> Dict:
     if path.exists():
         try:
             return json.loads(path.read_text())
-        except:
+        except Exception:
             pass
     return {"last_run_at": None, "paused": False, "last_summary": ""}
 
@@ -51,10 +51,10 @@ def get_reflection_min_idle_hours() -> float:
         from hermes_constants import get_hermes_home
         cfg_path = get_hermes_home() / "curator_config.json"
         if cfg_path.exists():
-            import json
-            cfg = json.loads(cfg_path.read_text())
+            import json as _json
+            cfg = _json.loads(cfg_path.read_text())
             return float(cfg.get("min_idle_hours", DEFAULT_MIN_IDLE_HOURS))
-    except:
+    except Exception:
         pass
     return DEFAULT_MIN_IDLE_HOURS
 
@@ -239,15 +239,13 @@ def _scan_contradictions() -> int:
                 old_keywords=old["keywords"],
             )
             if reason:
-                flag_id = write_flag(
+                flag_id, is_new = write_flag(
                     memory_id=new["id"],
                     flag_type="contradiction",
                     evidence=f"与记忆 #{old['id']} 矛盾: {reason}",
                     confidence=0.7,
                 )
-                # write_flag 返回已存在 flag 的 ID 也会是 >0，
-                # 但只统计真正新增的会比较 ID 是否首次出现
-                if flag_id:
+                if is_new:
                     flags_created += 1
                     logger.info(
                         "[Reflection] R1: contradiction found "
@@ -322,8 +320,12 @@ def format_flags_for_context(flags: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-def write_flag(memory_id: str, flag_type: str, evidence: str, confidence: float = 0.8) -> int:
-    """写入单条 flag（去重：同 memory_id + flag_type 已 open 则跳过）"""
+def write_flag(memory_id: str, flag_type: str, evidence: str, confidence: float = 0.8) -> tuple:
+    """写入单条 flag（去重：同 memory_id + flag_type 已 open 则跳过）
+
+    Returns:
+        (flag_id, is_new) — flag_id 为数据库 ID；is_new 表示是否本次新增。
+    """
     from agent.memory_fabric import _get_index_db as _get_mem_db
 
     db_path = _get_mem_db()
@@ -340,7 +342,7 @@ def write_flag(memory_id: str, flag_type: str, evidence: str, confidence: float 
         ).fetchone()
         if existing:
             logger.debug(f"[Reflection] Flag already exists for {memory_id}/{flag_type}")
-            return existing[0]
+            return (existing[0], False)
 
         # 插入新 flag
         cursor = conn.execute(
@@ -350,6 +352,6 @@ def write_flag(memory_id: str, flag_type: str, evidence: str, confidence: float 
             (memory_id, flag_type, confidence, evidence, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
-        return cursor.lastrowid
+        return (cursor.lastrowid, True)
     finally:
         conn.close()
