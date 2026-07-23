@@ -492,6 +492,12 @@ const api = {
   // ── 专家目录 ──
   getExperts() { return this.get('/experts') },
 
+  // ── Route E-Reflection：记忆 flag ──
+  getFlags() { return this.get('/flags') },
+  resolveFlag(flagId, resolution) {
+    return this.post('/resolve_flag', { flag_id: flagId, resolution })
+  },
+
   // ── Skills 市场 ──
   searchSkills(q = '', source = 'all', limit = 24) {
     return this.get(`/skills/market?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}&limit=${limit}`)

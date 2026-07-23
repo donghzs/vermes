@@ -2130,6 +2130,38 @@ async def approve_command(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+async def resolve_flag_endpoint(request: Request):
+    """Resolve a memory flag from frontend/CLI.
+
+    Body: { flag_id: int, resolution: "demote"|"merge"|"false_positive" }
+    """
+    try:
+        body = await request.json()
+        flag_id = body.get("flag_id")
+        resolution = body.get("resolution", "")
+        if not isinstance(flag_id, int):
+            try:
+                flag_id = int(flag_id)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "flag_id must be an integer"}
+        if resolution not in ("demote", "merge", "false_positive"):
+            return {"ok": False, "error": "resolution must be demote|merge|false_positive"}
+        from agent.memory_reflection import resolve_flag
+        ok = resolve_flag(flag_id, resolution)
+        return {"ok": ok, "flag_id": flag_id, "resolution": resolution}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def list_flags_endpoint(request: Request):
+    """List open memory flags for the frontend panel."""
+    try:
+        from agent.memory_reflection import get_open_flags
+        return {"ok": True, "flags": get_open_flags()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -2293,6 +2325,18 @@ def register_to(app):
         approve_command,
         methods=["POST"],
         name="approve_command",
+    )
+    app.add_api_route(
+        "/api/resolve_flag",
+        resolve_flag_endpoint,
+        methods=["POST"],
+        name="resolve_flag",
+    )
+    app.add_api_route(
+        "/api/flags",
+        list_flags_endpoint,
+        methods=["GET"],
+        name="list_flags",
     )
 
     # Pre-create default agent at startup for persistence
