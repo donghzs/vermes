@@ -88,6 +88,24 @@ def _ra():
     return run_agent
 
 
+# #1 boundary fix: soft strong constraint — nudge the model to keep using the
+# todo tool for multi-step tasks so the front-end plan/todo view stays truthful.
+# Idempotent: never appends the reminder twice.
+_PLANNING_REMINDER = (
+    "\n\n[任务进度] 若任务包含多个步骤，请始终使用 todo 工具持续维护每个步骤的状态"
+    "（pending / in_progress / completed / interrupted），以便前端实时、准确地展示进度。"
+)
+
+
+def _with_planning_reminder(system_prompt: str) -> str:
+    """Append the planning/todo reminder to the system prompt (idempotent, fail-open)."""
+    if not system_prompt:
+        return _PLANNING_REMINDER.lstrip("\n")
+    if _PLANNING_REMINDER.strip() in system_prompt:
+        return system_prompt
+    return system_prompt + _PLANNING_REMINDER
+
+
 def _restore_or_build_system_prompt(agent, system_message, conversation_history):
     """Restore the cached system prompt from the session DB or build it fresh.
 
@@ -1281,7 +1299,7 @@ def run_conversation(
     if agent._cached_system_prompt is None:
         _restore_or_build_system_prompt(agent, system_message, conversation_history)
 
-    active_system_prompt = agent._cached_system_prompt
+    active_system_prompt = _with_planning_reminder(agent._cached_system_prompt)
 
     # ── Initialize compression scheduler (one per session) ──
     if not hasattr(agent, '_compression_scheduler'):
