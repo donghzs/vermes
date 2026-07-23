@@ -950,7 +950,8 @@ async def chat_completions(req: ChatRequest):
         # 终端命令 / 代码执行在 YOLO 模式下由 check_dangerous_command /
         # check_execute_code_guard 提前短路放行（approval.py:1066 / 1320），
         # 不会触发本回调；只有显式走 request_gateway_approval 的特权动作
-        # （如 self_modify 自我改写）会弹窗 —— 即使 YOLO 开启也必须真人确认。
+        # （如 self_modify 自我改写）会弹窗 —— YOLO 模式下也会被自动放行
+        # （approval.py:629），与 dangerous command 策略一致。
         async def _notify_approval(approval_data: dict):
             try:
                 await _delta_queue.put({
