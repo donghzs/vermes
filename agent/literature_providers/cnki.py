@@ -32,7 +32,13 @@ register_service(
     api_key_env_var="CNKI_API_KEY",
     base_url_env_var="CNKI_GATEWAY_URL",
     label="CNKI 知网",
-    extra_fields=["CNKI_GATEWAY_URL", "CNKI_USERNAME", "CNKI_PASSWORD"],
+    category="literature",
+    description="中文文献主源 — 网关 / API Key / 账号密码多策略",
+    url="https://www.cnki.net/",
+    extra_fields=[
+        {"key": "CNKI_USERNAME", "label": "知网账号（用户名）", "secret": False},
+        {"key": "CNKI_PASSWORD", "label": "知网密码", "secret": True},
+    ],
 )
 
 

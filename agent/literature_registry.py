@@ -16,8 +16,9 @@ The active provider is chosen by configuration with this precedence:
 1. ``literature.search_backend`` (per-capability override).
 2. ``literature.backend`` (shared fallback).
 3. If exactly one registered provider is available, use it.
-4. Legacy preference order — ``cnki`` → ``wanfang`` → ``openalex`` →
-   ``crossref`` — filtered by availability. Paid providers are listed first
+4. Legacy preference order — paid Chinese sources (``cnki``/``wanfang``/``vip``)
+   → paid international (``wos``/``scopus``/…) → free fallbacks
+   (``openalex``/``crossref``/…) — filtered by availability. Paid providers are listed first
    so a user who has supplied credentials lands on a higher-quality Chinese
    source, while a user with no credentials transparently falls through to
    the always-free OpenAlex / Crossref sources.
@@ -115,10 +116,24 @@ def _read_config_key(*path: str) -> Optional[str]:
 # lands on the best-quality source, free sources last as the fallback for users
 # who have configured nothing. Filtered by ``is_available()`` at walk time.
 _LEGACY_PREFERENCE = (
+    # 中文付费源（凭证具备时质量最高）
     "cnki",
     "wanfang",
+    "vip",
+    # 国际付费源
+    "wos",
+    "scopus",
+    "sciencedirect",
+    "ieee",
+    "springer",
+    "ebsco",
+    # 免费兜底源（零配置可用）
     "openalex",
     "crossref",
+    "semanticscholar",
+    "pubmed",
+    "arxiv",
+    "europepmc",
 )
 
 
@@ -227,16 +242,43 @@ def bootstrap_builtin_providers() -> None:
     """
     try:
         from agent.literature_providers import (
+            ArxivProvider,
             CnkiProvider,
             CrossrefProvider,
+            EbscoProvider,
+            EuropePmcProvider,
+            IeeeProvider,
             OpenAlexProvider,
+            PubMedProvider,
+            ScienceDirectProvider,
+            ScopusProvider,
+            SemanticScholarProvider,
+            SpringerProvider,
+            VipProvider,
             WanfangProvider,
+            WosProvider,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to import bundled literature providers: %s", exc)
         return
 
-    for cls in (OpenAlexProvider, CrossrefProvider, CnkiProvider, WanfangProvider):
+    for cls in (
+        OpenAlexProvider,
+        CrossrefProvider,
+        PubMedProvider,
+        ArxivProvider,
+        SemanticScholarProvider,
+        EuropePmcProvider,
+        CnkiProvider,
+        WanfangProvider,
+        VipProvider,
+        WosProvider,
+        ScopusProvider,
+        ScienceDirectProvider,
+        IeeeProvider,
+        SpringerProvider,
+        EbscoProvider,
+    ):
         try:
             register_provider(cls())
         except Exception as exc:  # noqa: BLE001

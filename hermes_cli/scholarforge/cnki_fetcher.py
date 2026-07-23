@@ -234,6 +234,6 @@ async def search_cnki(query: str, limit: int = 20) -> list[CnkiPaper]:
     logger.warning(f"No CNKI results for '{query}' via any strategy")
     return []
 
-register_service("cnki", api_key_env_var="CNKI_API_KEY", label="CNKI")
+register_service("cnki", api_key_env_var="CNKI_API_KEY", label="CNKI", category="literature")
 
-register_service("wanfang", api_key_env_var="WANFANG_API_KEY", label="Wanfang")
+register_service("wanfang", api_key_env_var="WANFANG_API_KEY", label="Wanfang", category="literature")

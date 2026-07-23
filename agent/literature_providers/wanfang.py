@@ -25,7 +25,13 @@ register_service(
     "wanfang",
     api_key_env_var="WANFANG_API_KEY",
     label="Wanfang 万方",
-    extra_fields=["WANFANG_USER", "WANFANG_PASSWORD"],
+    category="literature",
+    description="万方中文文献库 — API Key 或账号密码",
+    url="https://www.wanfangdata.com.cn/",
+    extra_fields=[
+        {"key": "WANFANG_USER", "label": "万方账号（用户名）", "secret": False},
+        {"key": "WANFANG_PASSWORD", "label": "万方密码", "secret": True},
+    ],
 )
 
 

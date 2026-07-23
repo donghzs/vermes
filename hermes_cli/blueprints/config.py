@@ -375,12 +375,10 @@ def _allowed_env_keys():
         from agent.service_credentials import get_registered_services
 
         for _sid, _meta in get_registered_services().items():
-            _k = _meta.get("api_key_env_var")
-            if _k:
-                keys.add(_k)
-            _b = _meta.get("base_url_env_var")
-            if _b:
-                keys.add(_b)
+            for _field in _meta.get("fields", []):
+                _k = _field.get("key")
+                if _k:
+                    keys.add(_k)
     except Exception:
         pass
     return keys
@@ -453,29 +451,50 @@ async def get_schema():
     try:
         from agent.service_credentials import get_registered_services
 
+        dynamic_categories = []
         for sid, meta in get_registered_services().items():
             label = meta.get("label", sid)
-            fields[f"services.{sid}.api_key"] = {
-                "type": "string",
-                "secret": True,
-                "description": f"{label} API key",
-                "category": "services",
-                "env_var": meta.get("api_key_env_var"),
-            }
-            if meta.get("base_url_env_var"):
-                fields[f"services.{sid}.base_url"] = {
+            category = meta.get("category", "services")
+            if category not in dynamic_categories:
+                dynamic_categories.append(category)
+            for field in meta.get("fields", []):
+                kind = field.get("kind", "extra")
+                suffix = kind if kind in ("api_key", "base_url") else field["key"].lower()
+                entry = {
                     "type": "string",
-                    "description": f"{label} API base URL",
-                    "category": "services",
-                    "env_var": meta.get("base_url_env_var"),
+                    "description": field.get("label") or f"{label} {kind}",
+                    "category": category,
+                    "env_var": field.get("key"),
                 }
+                if field.get("secret"):
+                    entry["secret"] = True
+                fields[f"services.{sid}.{suffix}"] = entry
     except Exception:
-        pass
+        dynamic_categories = ["services"]
 
     categories = list(_CATEGORY_ORDER)
-    if "services" not in categories:
-        categories = categories + ["services"]
+    for cat in dynamic_categories or ["services"]:
+        if cat not in categories:
+            categories.append(cat)
     return {"fields": fields, "category_order": categories}
+
+
+async def get_registered_services_endpoint():
+    """Expose the plugin-declared service registry for the settings UI.
+
+    Metadata only (labels/categories/field descriptors) — never credential
+    values. The frontend combines this with GET /api/env (token-protected)
+    for set-status/masking, and PUT /api/env to persist values. Powers the
+    grouped settings tabs (e.g. category="literature" → 文献源 tab) without
+    the framework hardcoding any vendor names.
+    """
+    try:
+        from agent.service_credentials import get_registered_services
+
+        return {"services": get_registered_services()}
+    except Exception:
+        _log.exception("GET /api/registered-services failed")
+        return {"services": {}}
 
 
 async def update_config(body: ConfigUpdate):
@@ -529,20 +548,20 @@ async def get_env_vars(request: Request):
         from agent.service_credentials import get_registered_services
 
         for _sid, _meta in get_registered_services().items():
-            for _kind, _env in (
-                ("api_key", _meta.get("api_key_env_var")),
-                ("base_url", _meta.get("base_url_env_var")),
-            ):
+            _category = _meta.get("category", "services")
+            for _field in _meta.get("fields", []):
+                _env = _field.get("key")
                 if not _env or _env in result:
                     continue
                 _val = env_on_disk.get(_env)
                 result[_env] = {
                     "is_set": bool(_val),
                     "redacted_value": redact_key(_val) if _val else None,
-                    "description": f"{_meta.get('label', _sid)} {_kind.replace('_', ' ')}",
-                    "url": None,
-                    "category": "services",
-                    "is_password": _kind == "api_key",
+                    "description": _field.get("label")
+                        or f"{_meta.get('label', _sid)} {_field.get('kind', '')}".strip(),
+                    "url": _meta.get("url"),
+                    "category": _category,
+                    "is_password": bool(_field.get("secret")),
                     "tools": [],
                     "advanced": False,
                 }
@@ -617,6 +636,7 @@ def register_to(app):
     app.add_api_route("/api/config/defaults", get_defaults, methods=["GET"])
     app.add_api_route("/api/config/cloud-models", get_cloud_models, methods=["GET"])
     app.add_api_route("/api/config/schema", get_schema, methods=["GET"])
+    app.add_api_route("/api/registered-services", get_registered_services_endpoint, methods=["GET"])
     app.add_api_route("/api/config/raw", get_config_raw, methods=["GET"])
     app.add_api_route("/api/config/raw", update_config_raw, methods=["PUT"])
     app.add_api_route("/api/env", get_env_vars, methods=["GET"])

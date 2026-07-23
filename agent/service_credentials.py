@@ -44,18 +44,51 @@ _SERVICES: Dict[str, Dict[str, Any]] = {}
 _SERVICES_CONFIG_KEY = "services"
 
 
+# Env-var name fragments that imply a secret (masked) input field.
+_SECRET_HINTS = ("KEY", "PASSWORD", "SECRET", "TOKEN", "PASSWD", "PWD")
+
+
+def _normalize_extra_field(field: Any) -> Dict[str, Any]:
+    """Normalize an extra_fields entry (str or dict) to a canonical dict.
+
+    Accepted forms:
+      * ``"CNKI_USERNAME"`` — bare env-var name; label defaults to the name,
+        secret-ness inferred from the name (PASSWORD/TOKEN/... → secret).
+      * ``{"key": "CNKI_USERNAME", "label": "账号", "secret": False}`` — full
+        declaration (only ``key`` is required).
+    """
+    if isinstance(field, dict):
+        key = str(field.get("key", "")).strip()
+        out = {"key": key}
+        if field.get("label"):
+            out["label"] = str(field["label"])
+        if "secret" in field:
+            out["secret"] = bool(field["secret"])
+        return out
+    return {"key": str(field).strip()}
+
+
 def register_service(
     service_id: str,
     *,
     api_key_env_var: Optional[str] = None,
     base_url_env_var: Optional[str] = None,
     label: str = "",
-    extra_fields: Optional[List[str]] = None,
+    extra_fields: Optional[List[Any]] = None,
+    category: Optional[str] = None,
+    description: Optional[str] = None,
+    url: Optional[str] = None,
 ) -> None:
     """Declare a service's credential metadata (plugin-side, not framework).
 
     Call this once at plugin import time. It powers schema aggregation so the
     frontend can render every service's API fields from one source.
+
+    ``category`` groups services in the settings UI (default ``"services"``;
+    e.g. literature providers register with ``category="literature"`` so the
+    frontend can render a dedicated "文献源" tab). ``extra_fields`` entries may
+    be bare env-var names or dicts ``{key, label, secret}`` for richer
+    rendering (username/password/gateway fields).
     """
     meta = _SERVICES.setdefault(service_id, {})
     if api_key_env_var:
@@ -64,11 +97,69 @@ def register_service(
         meta["base_url_env_var"] = base_url_env_var
     if label:
         meta["label"] = label
+    if category:
+        meta["category"] = category
+    if description:
+        meta["description"] = description
+    if url:
+        meta["url"] = url
     if extra_fields:
         ef = meta.setdefault("extra_fields", [])
+        known = {(_f.get("key") if isinstance(_f, dict) else _f) for _f in ef}
         for f in extra_fields:
-            if f not in ef:
-                ef.append(f)
+            nf = _normalize_extra_field(f)
+            if nf["key"] and nf["key"] not in known:
+                ef.append(nf)
+                known.add(nf["key"])
+            elif nf["key"] in known and (len(nf) > 1):
+                # Merge richer metadata into a previously bare declaration.
+                for idx, existing in enumerate(ef):
+                    ekey = existing.get("key") if isinstance(existing, dict) else existing
+                    if ekey == nf["key"]:
+                        merged = _normalize_extra_field(existing)
+                        merged.update(nf)
+                        ef[idx] = merged
+                        break
+
+
+def _is_secret_key(env_key: str) -> bool:
+    upper = env_key.upper()
+    return any(h in upper for h in _SECRET_HINTS)
+
+
+def get_service_fields(service_id: str) -> List[Dict[str, Any]]:
+    """Return the ordered, deduplicated credential field list for a service.
+
+    Each field: ``{"key": ENV_VAR, "kind": "api_key"|"base_url"|"extra",
+    "label": str, "secret": bool}``. This is the single source the schema
+    endpoint / env allowlist / frontend form all derive from.
+    """
+    meta = _SERVICES.get(service_id, {})
+    label = meta.get("label", service_id)
+    fields: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    ak = meta.get("api_key_env_var")
+    if ak:
+        fields.append({"key": ak, "kind": "api_key", "label": f"{label} API Key", "secret": True})
+        seen.add(ak)
+    bu = meta.get("base_url_env_var")
+    if bu and bu not in seen:
+        fields.append({"key": bu, "kind": "base_url", "label": f"{label} Base URL", "secret": False})
+        seen.add(bu)
+    for ef in meta.get("extra_fields", []) or []:
+        nf = _normalize_extra_field(ef)
+        key = nf.get("key")
+        if not key or key in seen:
+            continue
+        fields.append({
+            "key": key,
+            "kind": "extra",
+            "label": nf.get("label") or key,
+            "secret": nf.get("secret", _is_secret_key(key)),
+        })
+        seen.add(key)
+    return fields
 
 
 def _load_user_services() -> Dict[str, Any]:
@@ -130,5 +221,17 @@ def get_service_credentials(
 
 
 def get_registered_services() -> Dict[str, Dict[str, Any]]:
-    """Return service metadata for schema aggregation (frontend single source)."""
-    return {sid: dict(meta) for sid, meta in _SERVICES.items()}
+    """Return service metadata for schema aggregation (frontend single source).
+
+    Each entry carries the raw registration metadata plus a computed
+    ``fields`` list (see :func:`get_service_fields`) and a resolved
+    ``category`` (default ``"services"``) so consumers never re-derive them.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for sid, meta in _SERVICES.items():
+        entry = dict(meta)
+        entry.setdefault("category", "services")
+        entry.setdefault("label", sid)
+        entry["fields"] = get_service_fields(sid)
+        out[sid] = entry
+    return out

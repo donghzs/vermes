@@ -623,6 +623,121 @@ function focusServiceKey(g) {
   if (g.apiKeyVal === _MASK) g.apiKeyVal = ''
 }
 
+// ── 文献源（category === 'literature'，源自 GET /api/registered-services） ──
+// 与大模型厂商 API Key 同一套体验：用户自备 API Key / 网关地址 / 账号密码，
+// 填入即启用对应文献库（多字段卡片，逐字段落盘到统一 .env）。
+const literatureGroups = ref({})   // sid -> { sid, label, description, url, fields: [{key,label,secret,val,isSet,saved}] }
+const literatureLoading = ref(false)
+const literatureSaving = ref(false)
+
+async function loadLiterature() {
+  literatureLoading.value = true
+  try {
+    const resp = await fetch('/api/registered-services')
+    const data = await resp.json()
+    const services = data.services || {}
+    const groups = {}
+    for (const [sid, meta] of Object.entries(services)) {
+      if (meta.category !== 'literature') continue
+      const fields = (meta.fields || []).map(f => ({
+        key: f.key,
+        label: f.label || f.key,
+        secret: !!f.secret,
+        val: '',
+        isSet: false,
+        saved: false,
+      }))
+      if (fields.length === 0) continue
+      groups[sid] = {
+        sid,
+        label: meta.label || sid,
+        description: meta.description || '',
+        url: meta.url || '',
+        fields,
+      }
+    }
+    // env 状态 -> 已配置字段显示掩码，避免保存时覆盖真实值
+    try {
+      const envResp = await fetch('/api/env', { headers: envHeaders() })
+      const envData = await envResp.json()
+      for (const g of Object.values(groups)) {
+        for (const f of g.fields) {
+          if (envData[f.key] && envData[f.key].is_set) {
+            f.isSet = true
+            f.val = _MASK
+          }
+        }
+      }
+    } catch (e) { console.error('[Literature] env status error:', e) }
+    literatureGroups.value = groups
+  } catch (e) {
+    console.error('[Literature] load error:', e)
+  } finally {
+    literatureLoading.value = false
+  }
+}
+
+function litConfigured(g) {
+  return g.fields.some(f => f.isSet)
+}
+
+function focusLitField(f) {
+  if (f.val === _MASK) f.val = ''
+}
+
+async function saveLiterature(sid) {
+  const g = literatureGroups.value[sid]
+  if (!g) return
+  const dirty = g.fields.filter(f => f.val && f.val !== _MASK)
+  if (dirty.length === 0) { toast.warning('请先填写 ' + g.label + ' 的凭证字段再保存'); return }
+  literatureSaving.value = true
+  let okCount = 0
+  try {
+    for (const f of dirty) {
+      const resp = await fetch('/api/env', {
+        method: 'PUT',
+        headers: envHeaders(),
+        body: JSON.stringify({ key: f.key, value: f.val }),
+      })
+      if (resp.ok) {
+        f.val = _MASK
+        f.isSet = true
+        f.saved = true
+        setTimeout(() => (f.saved = false), 2000)
+        okCount++
+      } else {
+        const d = await resp.json().catch(() => ({}))
+        toast.error(f.label + ' 保存失败: ' + (d.detail || resp.status))
+      }
+    }
+    if (okCount > 0) toast.success('已保存 ' + g.label + '（' + okCount + ' 个字段）')
+  } catch (e) {
+    toast.error('保存请求失败: ' + e.message)
+  } finally {
+    literatureSaving.value = false
+  }
+}
+
+async function clearLiterature(sid) {
+  const g = literatureGroups.value[sid]
+  if (!g) return
+  if (!await confirm({ title: '清除文献源凭证', message: '清除 ' + g.label + ' 的全部已保存凭证？', confirmText: '清除', danger: true })) return
+  try {
+    for (const f of g.fields) {
+      if (!f.isSet) continue
+      const resp = await fetch('/api/env', {
+        method: 'DELETE',
+        headers: envHeaders(),
+        body: JSON.stringify({ key: f.key }),
+      })
+      if (resp.ok) { f.val = ''; f.isSet = false }
+    }
+    toast.success('已清除 ' + g.label)
+  } catch (e) {
+    toast.error('清除失败: ' + e.message)
+  }
+}
+
 function back() { router.push('/') }
 
 // ── 2.5 逐提供商连接测试（复用 sync-models 接口校验 Key 有效性）──
@@ -715,6 +830,8 @@ onMounted(() => {
   fetchRagDocs()
   // 加载统一服务 API 凭证表单（services 分区）
   loadServices()
+  // 加载文献源凭证表单（literature 分区）
+  loadLiterature()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -734,6 +851,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
     <div class="px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-0">
       <button @click="activeTab = 'providers'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'providers' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">提供商</button>
       <button @click="activeTab = 'services'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'services' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔑 服务</button>
+      <button @click="activeTab = 'literature'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'literature' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📖 文献源</button>
       <button @click="activeTab = 'security'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'security' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔒 安全</button>
       <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
       <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
@@ -902,6 +1020,49 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 <button @click="clearService(g.sid)" class="px-3 py-2 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
               </div>
               <p class="text-[11px] text-gray-400 font-mono">{{ g.apiKeyEnv }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 文献源 -->
+      <div v-if="activeTab === 'literature'" class="max-w-2xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">📖</span>
+            <h3 class="font-medium text-gray-800 dark:text-gray-200">文献源设置</h3>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">与大模型厂商 API Key 相同的体验：用户自备 API Key / 网关地址 / 账号密码，填入即启用对应文献库，Agent 论文写作与文献检索会自动路由到已配置的最优源。免费源（OpenAlex / Crossref / PubMed / arXiv / Europe PMC 等）无需任何配置，开箱即用。</p>
+
+          <div v-if="literatureLoading" class="text-center text-sm text-gray-400 py-4">
+            <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div> 加载中...
+          </div>
+          <div v-else-if="Object.keys(literatureGroups).length === 0" class="text-center text-sm text-gray-400 py-4">暂无已注册的文献源</div>
+          <div v-else class="space-y-3">
+            <div v-for="g in Object.values(literatureGroups)" :key="g.sid" class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
+                  <span v-if="litConfigured(g)" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
+                </div>
+                <a v-if="g.url" :href="g.url" target="_blank" rel="noopener" class="text-[11px] text-blue-500 hover:underline">申请入口 ↗</a>
+              </div>
+              <p v-if="g.description" class="text-[11px] text-gray-400">{{ g.description }}</p>
+              <div v-for="f in g.fields" :key="f.key" class="flex gap-2 items-center">
+                <label class="w-40 shrink-0 text-xs text-gray-500 dark:text-gray-400 truncate" :title="f.key">{{ f.label }}</label>
+                <input
+                  v-model="f.val"
+                  :type="f.secret ? 'password' : 'text'"
+                  :placeholder="f.key"
+                  @focus="focusLitField(f)"
+                  class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
+                />
+                <span v-if="f.saved" class="text-green-500 text-xs whitespace-nowrap">✅</span>
+              </div>
+              <div class="flex gap-2 justify-end pt-1">
+                <button @click="saveLiterature(g.sid)" :disabled="literatureSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
+                <button @click="clearLiterature(g.sid)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+              </div>
             </div>
           </div>
         </div>
