@@ -21,6 +21,7 @@ except Exception:
 import sys
 import os
 import time
+import tempfile
 import threading
 
 # 确保项目根目录在 sys.path 中
@@ -84,7 +85,8 @@ def main():
     logger.info("[Vermes] ✅ 启动预检通过")
 
     # ── 启动崩溃看门狗 ─────────────────────────────────────────────────
-    _CRASH_MARKER = "/tmp/vermes-startup.lock"
+    # 跨平台临时目录（Windows 上 /tmp 不存在会导致启动崩溃）
+    _CRASH_MARKER = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
     if os.path.exists(_CRASH_MARKER):
         logger.info("[Vermes] ⚠️ 检测到上次启动异常退出")
         # 尝试回滚到上一个备份版本
