@@ -37,6 +37,31 @@ from hermes_cli.blueprints.agent_cache import (
 # session_id → {"plan": dict|None, "todo_states": dict, "plan_emitted": bool}
 _session_plan_store: dict[str, dict] = {}
 
+
+def _persist_session_plan(session_id: str, state: dict) -> None:
+    """Best-effort persist plan state to SQLite (closes cross-restart gap). Fail-open."""
+    try:
+        from agent.session_plan_store import save_plan_state
+
+        save_plan_state(
+            session_id,
+            state.get("plan"),
+            state.get("todo_states", {}),
+            state.get("plan_emitted", False),
+        )
+    except Exception:
+        pass
+
+
+def _restore_session_plan(session_id: str):
+    """Best-effort restore plan state from SQLite (covers process restart). Fail-open."""
+    try:
+        from agent.session_plan_store import load_plan_state
+
+        return load_plan_state(session_id)
+    except Exception:
+        return None
+
 # ── Attachment constants ─────────────────────────────────────────────
 
 _ALLOWED_MIME_TYPES: frozenset = frozenset({
@@ -753,7 +778,11 @@ async def chat_completions(req: ChatRequest):
     # Extract session ID for agent caching
     _session_id = req.session_id or "default"
 
-    # P1-3: Initialize session plan store for SSE reconnect snapshot
+    # P1-3: Initialize / restore session plan store for SSE reconnect snapshot
+    if _session_id not in _session_plan_store:
+        _restored = _restore_session_plan(_session_id)
+        if _restored is not None:
+            _session_plan_store[_session_id] = _restored
     _session_plan_store.setdefault(_session_id, {"plan": None, "todo_states": {}, "plan_emitted": False})
 
     # Agent cache: reuse agent instance per session for persistence
@@ -960,6 +989,7 @@ async def chat_completions(req: ChatRequest):
             _plan_emitted = True
             # P1-3: Persist plan to session store for SSE reconnect snapshot
             _session_plan_store[_session_id] = {"plan": plan_event["plan"], "todo_states": _prev_todo_states, "plan_emitted": True}
+            _persist_session_plan(_session_id, _session_plan_store[_session_id])
             # 立即标记第一步为进行中，传递"实时反馈的快感"
             if steps_out:
                 _safe_put({
@@ -1048,6 +1078,7 @@ async def chat_completions(req: ChatRequest):
                                 _prev_todo_states[_tid] = _new_status
                         # P1-3: Sync todo states to session store
                         _session_plan_store[_session_id] = {"plan": _session_plan_store.get(_session_id, {}).get("plan"), "todo_states": _prev_todo_states, "plan_emitted": _plan_emitted}
+                        _persist_session_plan(_session_id, _session_plan_store[_session_id])
                         # 任务全部完成 → 发庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
                         if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
@@ -1131,6 +1162,7 @@ async def chat_completions(req: ChatRequest):
                         _prev_todo_states[_tid] = "interrupted"
                 # P1-3: Sync final state to session store
                 _session_plan_store[_session_id] = {"plan": _session_plan_store.get(_session_id, {}).get("plan"), "todo_states": _prev_todo_states, "plan_emitted": _plan_emitted}
+                _persist_session_plan(_session_id, _session_plan_store[_session_id])
                 _agent_done.set()
 
         async def stream_generator():
@@ -2230,8 +2262,14 @@ async def list_flags_endpoint(request: Request):
 
 
 async def plan_snapshot(session_id: str):
-    """P1-3: Return current plan + todo state for SSE reconnect recovery."""
+    """P1-3: Return current plan + todo state for SSE reconnect recovery.
+
+    Restores from SQLite if not in memory (covers process restart / cross-process
+    takeover — closes the cross-restart recovery gap).
+    """
     state = _session_plan_store.get(session_id)
+    if state is None:
+        state = _restore_session_plan(session_id)
     if state is None:
         return {"ok": True, "session_id": session_id, "plan": None, "todo_states": {}, "plan_emitted": False}
     return {
