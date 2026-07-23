@@ -40,6 +40,27 @@ const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || '
 // ── 全局状态 ──
 const streamConnected = ref(false)
 
+/**
+ * 切换会话时，判断某条仍在 streaming 的消息是否应保活其流式状态与刷新定时器。
+ *
+ * 背景：文本 delta 从 _streamBuffer 落到 am.content 的唯一通道是 _streamBufTimer；
+ * reasoning（思考）则 direct append 不过定时器。若切换会话时清掉仍在后台流式输出
+ * 的会话的定时器，模型进入长推理、暂不发文本的阶段时，文本会表现为「冻住/不流式」，
+ * 但后端任务与思考照常推进——即「文本不流式但思考还在进行」的根因。
+ *
+ * 规则：仅当 transport 明确报告该会话已无活动流（真孤儿）时才允许清理定时器防泄漏；
+ * 否则保活。定时器/streaming 标记的真正清理由 onDone/onError 负责。
+ */
+export function keepStreamAliveOnSwitch(msg, transport) {
+  if (!msg || !msg.streaming) return false
+  const stillStreaming = !!(
+    transport &&
+    typeof transport.isStreaming === 'function' &&
+    transport.isStreaming(msg.sessionId)
+  )
+  return stillStreaming
+}
+
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref(loadFromStorage(SESSIONS_KEY))
   const currentSessionId = ref(null)
@@ -290,8 +311,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.filter(m => m.streaming).forEach(m => {
         // 仅把当前已缓冲文本落盘，避免切换瞬间的内容抖动；保留定时器与 streaming 标记
         if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
-        const _stillStreaming = !!(_bgTransport && typeof _bgTransport.isStreaming === 'function' && _bgTransport.isStreaming(m.sessionId))
-        if (!_stillStreaming) {
+        if (!keepStreamAliveOnSwitch(m, _bgTransport)) {
           // 真孤儿流（后端已无该会话活动流）：安全清理定时器，防泄漏
           if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
           m.streaming = false
