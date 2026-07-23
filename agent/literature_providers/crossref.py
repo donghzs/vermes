@@ -11,8 +11,17 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from agent.literature_provider import LiteratureProvider, PaperRecord
+from agent.service_credentials import register_service
 
 logger = logging.getLogger(__name__)
+
+register_service(
+    "crossref",
+    label="Crossref (免费)",
+    category="literature",
+    description="免费 DOI 元数据库，无需任何凭证即可检索",
+    url="https://www.crossref.org/",
+)
 
 _CROSSREF_URL = "https://api.crossref.org/works"
 

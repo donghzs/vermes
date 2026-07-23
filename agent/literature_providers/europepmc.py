@@ -11,8 +11,17 @@ from typing import Any, Dict
 
 from agent.literature_provider import LiteratureProvider, PaperRecord
 from agent.literature_providers._http import http_get_json
+from agent.service_credentials import register_service
 
 logger = logging.getLogger(__name__)
+
+register_service(
+    "europepmc",
+    label="Europe PMC (免费)",
+    category="literature",
+    description="生物医学文献免费检索（含 PubMed/PMC/预印本），无需凭证",
+    url="https://europepmc.org/",
+)
 
 _EPMC_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 

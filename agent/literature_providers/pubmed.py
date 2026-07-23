@@ -11,8 +11,17 @@ from typing import Any, Dict
 
 from agent.literature_provider import LiteratureProvider, PaperRecord
 from agent.literature_providers._http import http_get_json
+from agent.service_credentials import register_service
 
 logger = logging.getLogger(__name__)
+
+register_service(
+    "pubmed",
+    label="PubMed (免费)",
+    category="literature",
+    description="生物医学/生命科学文献免费检索（NCBI E-utilities），无需凭证",
+    url="https://pubmed.ncbi.nlm.nih.gov/",
+)
 
 _ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 _ESUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
