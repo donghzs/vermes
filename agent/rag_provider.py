@@ -45,16 +45,20 @@ def _try_init_vec() -> bool:
         return True
     try:
         import sqlite_vec
-        _vec_dylib_path = os.path.join(
-            os.path.dirname(sqlite_vec.__file__), "vec0.dylib"
-        )
-        if not os.path.exists(_vec_dylib_path):
-            # On non-macOS, the filename might differ (vec0.so on Linux)
-            _vec_dylib_path = os.path.join(
-                os.path.dirname(sqlite_vec.__file__), "vec0.so"
-            )
-        if not os.path.exists(_vec_dylib_path):
-            logger.debug("sqlite-vec dylib not found, vector backend disabled")
+        # Extension filename is platform-specific: vec0.dylib (macOS),
+        # vec0.so (Linux), vec0.dll (Windows).  Probe all three so the
+        # vector backend works cross-platform — previously only .dylib/.so
+        # were checked, silently disabling vector search on Windows even
+        # when vec0.dll was bundled.
+        _vec_dir = os.path.dirname(sqlite_vec.__file__)
+        _vec_dylib_path = None
+        for _ext in ("vec0.dylib", "vec0.so", "vec0.dll"):
+            _candidate = os.path.join(_vec_dir, _ext)
+            if os.path.exists(_candidate):
+                _vec_dylib_path = _candidate
+                break
+        if not _vec_dylib_path:
+            logger.debug("sqlite-vec extension not found, vector backend disabled")
             return False
         _vec_available = True
         logger.info("sqlite-vec vector backend available: %s", _vec_dylib_path)
