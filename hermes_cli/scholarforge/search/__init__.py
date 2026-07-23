@@ -154,20 +154,29 @@ async def get_paid_source_configs() -> list[dict]:
     ]
 
 
-async def activate_paid_source(source_name: str, api_key: str, gateway_url: str = "") -> bool:
+async def activate_paid_source(
+    source_name: str,
+    api_key: str,
+    gateway_url: str = "",
+    username: str = "",
+    password: str = "",
+) -> bool:
     """激活付费文献源
-    
+
     验证 API Key 有效性后启用该源。
-    CNKI 源额外接受 gateway_url 参数（用户自建网关地址）。
+    CNKI 源额外接受 gateway_url（自建网关）以及 username/password（卡密，走 Basic 认证）。
+
+    R1 修复：把 UI 填的凭证同步桥接到环境变量，使 cnki_fetcher._fetch_via_gateway
+    （只读 env / 统一凭证层）能真正拿到网站/卡号/卡密。
     """
     cfg = next((c for c in _PAID_SOURCE_DEFINITIONS if c["name"] == source_name), None)
     if not cfg:
         logger.warning(f"Unknown paid source: {source_name}")
         return False
 
-    # 基本 Key 格式验证
-    if not api_key or len(api_key) < 8:
-        logger.warning(f"[ScholarForge] Invalid API key length for {source_name}")
+    # 基本 Key 格式验证（允许仅有 username/password 的网关账号模式）
+    if not api_key and not (username and password):
+        logger.warning(f"[ScholarForge] Invalid credentials for {source_name}")
         return False
 
     entry = {
@@ -178,8 +187,23 @@ async def activate_paid_source(source_name: str, api_key: str, gateway_url: str 
     # CNKI 特殊处理：需要 gateway_url
     if cfg.get("needs_gateway_url") and gateway_url:
         entry["gateway_url"] = gateway_url
-    
+    if username:
+        entry["username"] = username
+    if password:
+        entry["password"] = password
+
     _PAID_SOURCE_REGISTRY[source_name] = entry
+
+    # R1 修复：桥接到环境变量（cnki_fetcher 优先读统一凭证层，env 为兜底）
+    if cfg.get("needs_gateway_url") and gateway_url:
+        os.environ["CNKI_GATEWAY_URL"] = gateway_url
+    if api_key:
+        os.environ["CNKI_API_KEY"] = api_key
+    if username:
+        os.environ["CNKI_USERNAME"] = username
+    if password:
+        os.environ["CNKI_PASSWORD"] = password
+
     logger.info(f"[ScholarForge] Paid source activated: {source_name}")
     return True
 

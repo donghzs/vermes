@@ -212,10 +212,14 @@ def register_modules(app, host_api: HostAPI):
     registered = []
     for manifest in manifests:
         from hermes_constants import get_hermes_home
-        mod = load_module_pyd(
-            get_hermes_home() / "modules" / manifest.name,
-            manifest,
+        # P4 修复：打印实际加载路径，避免「改了源码却不生效」的双路径陷阱
+        # （运行时从 ~/.vermes/modules 加载，而非仓库内 hermes_cli/scholarforge）
+        _mod_dir = get_hermes_home() / "modules" / manifest.name
+        logger.info(
+            "Module %s: loading from %s (this path is authoritative at runtime)",
+            manifest.name, _mod_dir,
         )
+        mod = load_module_pyd(_mod_dir, manifest)
         if mod is None:
             continue
 

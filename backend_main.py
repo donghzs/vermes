@@ -62,10 +62,11 @@ def main():
     for _f in _KEY_FILES:
         _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), _f)
         if os.path.exists(_p):
-            import py_compile
+            import ast
             try:
-                py_compile.compile(_p, doraise=True)
-            except py_compile.PyCompileError as _e:
+                with open(_p, "r", encoding="utf-8") as _fh:
+                    ast.parse(_fh.read(), filename=_f)
+            except SyntaxError as _e:
                 logger.info(f"[Vermes] ❌ 启动失败: {_f} 语法错误")
                 logger.info(f"       {_e}")
                 sys.exit(1)

@@ -217,6 +217,13 @@ def get_service_credentials(
     creds: Dict[str, Any] = {"api_key": api_key}
     if base_url is not None:
         creds["base_url"] = base_url
+    # R1 fix: surface declared extra_fields (e.g. CNKI_USERNAME/CNKI_PASSWORD)
+    # so callers like the CNKI fetcher can use account+password auth, not just
+    # the api_key. Only keys the service explicitly declared are exposed.
+    for ef in meta.get("extra_fields", []) or []:
+        ek = ef.get("key")
+        if ek and ek not in creds and svc.get(ek):
+            creds[ek] = svc[ek]
     return creds
 
 

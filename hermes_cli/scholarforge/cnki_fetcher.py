@@ -36,16 +36,28 @@ class CnkiPaper:
 
 
 async def _fetch_via_gateway(query: str, limit: int = 20) -> list[CnkiPaper]:
-    """策略1: 通过用户自建 CNKI 网关"""
-    gateway_url = os.environ.get("CNKI_GATEWAY_URL", "").strip()
-    api_key = (get_api_key("cnki") or "").strip()
+    """策略1: 通过用户自建 CNKI 网关（支持 Bearer 卡号 / Basic 账号密码）
+
+    R1 修复：凭证统一从 agent.service_credentials 读取（用户在 Settings 文献源
+    中填的网站/卡号/卡密都进统一层），不再只依赖裸环境变量。优先用
+    账号+密码走 Basic 认证，否则回退 Bearer 卡号。
+    """
+    creds = get_service_credentials("cnki", base_url_env_var="CNKI_GATEWAY_URL")
+    gateway_url = (creds.get("base_url") or os.environ.get("CNKI_GATEWAY_URL", "")).strip()
+    api_key = (creds.get("api_key") or "").strip()
+    username = (creds.get("CNKI_USERNAME") or os.environ.get("CNKI_USERNAME", "")).strip()
+    password = (creds.get("CNKI_PASSWORD") or os.environ.get("CNKI_PASSWORD", "")).strip()
     if not gateway_url:
         return []
 
+    import base64
     import httpx
     try:
         headers = {"Content-Type": "application/json"}
-        if api_key:
+        if username and password:
+            token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
+        elif api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         async with httpx.AsyncClient() as client:
             resp = await client.post(
