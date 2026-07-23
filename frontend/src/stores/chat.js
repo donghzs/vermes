@@ -508,12 +508,32 @@ export const useChatStore = defineStore('chat', () => {
           }
         },
         onTodoUpdate: (data) => {
-          // Agent todo 列表更新
+          // P0-2: merge 而非 replace，避免 plan 与 todo 竞态覆盖
+          // 逐条按 id merge：新条目追加，已有条目更新字段
           if (data.todos && Array.isArray(data.todos)) {
-            todoItems.value = data.todos
+            const existingMap = new Map(todoItems.value.map(i => [i.id, i]))
+            for (const t of data.todos) {
+              const old = existingMap.get(t.id)
+              if (old) {
+                existingMap.set(t.id, { ...old, ...t, 
+                  started_at: t.started_at ?? old.started_at,
+                  finished_at: t.finished_at ?? old.finished_at,
+                })
+              } else {
+                existingMap.set(t.id, { ...t, tool_calls: t.tool_calls || [] })
+              }
+            }
+            // 保留原有顺序 + 追加新条目
+            const oldOrder = todoItems.value.map(i => i.id)
+            const merged = []
+            for (const id of oldOrder) {
+              const item = existingMap.get(id)
+              if (item) { merged.push(item); existingMap.delete(id) }
+            }
+            for (const item of existingMap.values()) merged.push(item)
+            todoItems.value = merged
             if (data.todos.length > 0) {
               showTodoPanel.value = true
-              // 小白友好：多步骤任务出现时自动展开任务抽屉，便于一眼看到进度
               showTaskDrawer.value = true
             }
             // 计划未全部完成则清除庆祝态

@@ -1324,8 +1324,51 @@ def run_conversation(
                 f"≥ {agent.context_compressor.threshold_tokens:,} 阈值。"
                 "这可能需要一点时间。"
             )
-            # May need multiple passes for very large sessions with small
-            # context windows (each pass summarises the middle N turns).
+            # P1-2: 硬护栏——token 估算超过阈值 1.5x 时先确定性 prune 再 LLM 压缩
+            # 不依赖 LLM，避免极端长会话下 LLM 压缩本身也超 token 上限
+            if _preflight_tokens >= int(agent.context_compressor.threshold_tokens * 1.5):
+                _log.info("Hard prune: tokens %s >= 1.5x threshold %s, pruning first",
+                          _preflight_tokens, agent.context_compressor.threshold_tokens)
+                messages, active_system_prompt = agent._prune_context(
+                    messages, system_message,
+                )
+                conversation_history = None
+                try:
+                    from agent.metrics import record_prune
+                    record_prune()
+                except Exception:
+                    pass
+                # 重新估算
+                _preflight_tokens = estimate_request_tokens_rough(
+                    messages,
+                    system_prompt=active_system_prompt or "",
+                    tools=agent.tools or None,
+                )
+                if _preflight_tokens < agent.context_compressor.threshold_tokens:
+                    pass  # prune 已足够，跳过 LLM 压缩
+                else:
+                    # 仍然超阈值，继续 LLM 压缩
+                    for _pass in range(3):
+                        _orig_len = len(messages)
+                        messages, active_system_prompt = agent._compress_context(
+                            messages, system_message, approx_tokens=_preflight_tokens,
+                            task_id=effective_task_id,
+                        )
+                        if len(messages) >= _orig_len:
+                            break
+                        conversation_history = None
+                        agent._empty_content_retries = 0
+                        agent._thinking_prefill_retries = 0
+                        agent._last_content_with_tools = None
+                        agent._last_content_tools_all_housekeeping = False
+                        agent._mute_post_response = False
+                        _preflight_tokens = estimate_request_tokens_rough(
+                            messages,
+                            system_prompt=active_system_prompt or "",
+                            tools=agent.tools or None,
+                        )
+                        if _preflight_tokens < agent.context_compressor.threshold_tokens:
+                            break
             # If bridge is ready and fatigued, prune instead of compress.
             _bridge_ready = (
                 agent._memory_store

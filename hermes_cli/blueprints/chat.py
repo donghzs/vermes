@@ -13,6 +13,7 @@ import logging
 logger = logging.getLogger(__name__)
 import os
 import secrets
+import hashlib
 import time
 from pathlib import Path
 from typing import Optional
@@ -899,6 +900,7 @@ async def chat_completions(req: ChatRequest):
         # ── 任务规划事件检测 ─────────────────────────────────────────────
         _plan_text_buffer = []  # 累积输出，检测 plan JSON
         _plan_emitted = False   # 防重复 emit
+        _prev_todo_states = {}  # P0-1: 跟踪 todo 步骤状态变化，驱动 plan_step_update
 
         def _detect_and_emit_plan(text: str):
             """检测 plan JSON 并通过 SSE 发送规划事件。
@@ -930,8 +932,8 @@ async def chat_completions(req: ChatRequest):
             plan_event = {
                 "type": "plan_created",
                 "plan": {
-                    "id": re.sub(r'[^a-z0-9]', '',
-                        (plan_data.get("title", "task") or "task")[:10].lower()) + str(i_s),
+                    "id": hashlib.md5(
+                        (plan_data.get("title", "task") or "task").encode()).hexdigest()[:8],
                     "title": plan_data.get("title", "任务规划"),
                     "description": plan_data.get("description", ""),
                     "steps": steps_out,
@@ -1015,6 +1017,27 @@ async def chat_completions(req: ChatRequest):
                             "summary": todo_data.get("summary", {}),
                         }
                         _safe_put(todo_event)
+                        # P0-1: 同步发射 plan_step_update 使步骤 1..n 进度实时更新
+                        # 逐条比对 _prev_todo_states 与新状态，只发变化的步骤
+                        _new_todos = todo_data.get("todos", [])
+                        for _t in _new_todos:
+                            _tid = _t.get("id", "")
+                            _new_status = _t.get("status", "")
+                            _old_status = _prev_todo_states.get(_tid)
+                            if _new_status != _old_status:
+                                _step_update = {
+                                    "type": "plan_step_update",
+                                    "step": {
+                                        "id": _tid,
+                                        "status": _new_status,
+                                    },
+                                }
+                                if _new_status == "in_progress":
+                                    _step_update["step"]["started_at"] = int(time.time())
+                                elif _new_status in ("completed", "cancelled"):
+                                    _step_update["step"]["finished_at"] = int(time.time())
+                                _safe_put(_step_update)
+                                _prev_todo_states[_tid] = _new_status
                         # 任务全部完成 → 发庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
                         if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
@@ -1084,6 +1107,18 @@ async def chat_completions(req: ChatRequest):
                 _log.error(f"[Stream] Agent error: {e}")
                 raise
             finally:
+                # P1-1: 预算退出收尾——agent 结束后将残留 in_progress 步骤标记为 interrupted
+                for _tid, _status in _prev_todo_states.items():
+                    if _status == "in_progress":
+                        _safe_put({
+                            "type": "plan_step_update",
+                            "step": {
+                                "id": _tid,
+                                "status": "interrupted",
+                                "finished_at": int(time.time()),
+                            },
+                        })
+                        _prev_todo_states[_tid] = "interrupted"
                 _agent_done.set()
 
         async def stream_generator():
@@ -1273,6 +1308,7 @@ def _find_first_plan_json(text: str) -> dict | None:
     """平衡括号解析器：从 text 中提取第一个包含 'plan' 键的 JSON 对象。
 
     支持：嵌套对象、转义字符、markdown fence 前缀/后缀已被调用方处理。
+    P2-1: 加最小 schema 校验——plan 键存在且 steps 可提取。
     Returns: 解析后的 dict 或 None。
     """
     depth = 0
@@ -1301,9 +1337,28 @@ def _find_first_plan_json(text: str) -> dict | None:
                 candidate = text[start:i_c + 1]
                 if '"plan"' in candidate:
                     try:
-                        return json.loads(candidate)
+                        parsed = json.loads(candidate)
                     except Exception:
-                        pass
+                        start = -1
+                        continue
+                    # P2-1: 最小 schema 校验
+                    # plan 值可以是 string 或 dict；steps 必须可提取
+                    plan_val = parsed.get("plan")
+                    if plan_val is None:
+                        start = -1
+                        continue
+                    if isinstance(plan_val, dict):
+                        steps = plan_val.get("steps")
+                    elif isinstance(plan_val, str):
+                        # plan 是标题字符串，steps 在顶层
+                        steps = parsed.get("steps")
+                    else:
+                        start = -1
+                        continue
+                    if not isinstance(steps, list) or len(steps) == 0:
+                        start = -1
+                        continue
+                    return parsed
                 start = -1
     return None
 

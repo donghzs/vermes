@@ -41,18 +41,21 @@ const STATUS_TEXT = {
   in_progress: '进行中',
   completed: '已完成',
   cancelled: '已跳过',
+  interrupted: '已中断',
 }
 const STATUS_ICON = {
   pending: '⬜',
   in_progress: '🔄',
   completed: '✅',
   cancelled: '⏭️',
+  interrupted: '⚠️',
 }
 const STATUS_ROW = {
   pending: 'opacity-60',
   in_progress: 'bg-blue-50 dark:bg-blue-900/15 ring-1 ring-blue-200 dark:ring-blue-800',
   completed: '',
   cancelled: 'opacity-50 line-through',
+  interrupted: 'opacity-50 text-amber-600 dark:text-amber-400',
 }
 
 const stats = computed(() => {

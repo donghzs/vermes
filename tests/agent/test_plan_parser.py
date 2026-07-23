@@ -36,19 +36,19 @@ class TestBalancedBracketParser:
 
     def test_escaped_quotes(self):
         """转义引号"""
-        text = r'''{"plan":{"title":"He said \"hello\"","steps":[]}}'''
+        text = '{"plan":{"title":"He said \\"hello\\"","steps":[{"id":"s1"}]}}'
         result = self._parse_balanced(text)
         assert result["plan"]["title"] == 'He said "hello"'
 
     def test_escaped_backslash(self):
         """转义反斜杠"""
-        text = r'''{"plan":{"path":"C:\\Users\\test","steps":[]}}'''
+        text = '{"plan":{"path":"C:\\\\Users\\\\test","steps":[{"id":"s1"}]}}'
         result = self._parse_balanced(text)
-        assert result["plan"]["path"] == "C:\\Users\\test"
+        assert result["plan"]["path"] == 'C:\\Users\\test'
 
     def test_multiple_objects(self):
         """多个 JSON 对象，只取含 plan 的"""
-        text = '''{"foo":"bar"}{"plan":{"steps":[]}}{"baz":"qux"}'''
+        text = '''{"foo":"bar"}{"plan":{"steps":[{"id":"s1"}]}}{"baz":"qux"}'''
         result = self._parse_balanced(text)
         assert "plan" in result
         assert "foo" not in result
@@ -73,26 +73,26 @@ class TestBalancedBracketParser:
 
     def test_string_with_braces(self):
         """字符串内包含大括号"""
-        text = '''{"plan":{"description":"Use {placeholder} in template","steps":[]}}'''
+        text = '''{"plan":{"description":"Use {placeholder} in template","steps":[{"id":"s1"}]}}'''
         result = self._parse_balanced(text)
         assert "{placeholder}" in result["plan"]["description"]
 
     def test_deeply_nested(self):
         """深度嵌套（5层）"""
-        text = '''{"plan":{"a":{"b":{"c":{"d":{"e":"deep"}}}}}}'''
+        text = '''{"plan":{"a":{"b":{"c":{"d":{"e":"deep"}}}},"steps":[{"id":"s1"}]}}'''
         result = self._parse_balanced(text)
         assert result["plan"]["a"]["b"]["c"]["d"]["e"] == "deep"
 
     def test_empty_plan(self):
-        """空 plan 对象"""
+        """空 plan 对象——P2-1 schema 校验拒绝无 steps 的 plan"""
         text = '''{"plan":{}}'''
         result = self._parse_balanced(text)
-        assert "plan" in result
-        assert result["plan"] == {}
+        # P2-1: 无 steps 键 → 返回空 dict（未命中）
+        assert result == {}
 
     def test_plan_with_unicode(self):
         """Unicode 字符"""
-        text = '''{"plan":{"title":"任务计划","steps":[]}}'''
+        text = '''{"plan":{"title":"任务计划","steps":[{"id":"s1"}]}}'''
         result = self._parse_balanced(text)
         assert result["plan"]["title"] == "任务计划"
 
