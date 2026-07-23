@@ -667,6 +667,31 @@ class PluginContext:
             self.manifest.name, provider.name,
         )
 
+    def register_literature_provider(self, provider) -> None:
+        """Register an academic-literature backend.
+
+        ``provider`` must be an instance of
+        :class:`agent.literature_provider.LiteratureProvider`. The
+        ``provider.name`` attribute is what ``literature.search_backend`` /
+        ``literature.backend`` in ``config.yaml`` matches when routing
+        ``literature_search`` tool calls.
+        """
+        from agent.literature_provider import LiteratureProvider
+        from agent.literature_registry import register_provider as _register_literature_provider
+
+        if not isinstance(provider, LiteratureProvider):
+            logger.warning(
+                "Plugin '%s' tried to register a literature provider that does "
+                "not inherit from LiteratureProvider. Ignoring.",
+                self.manifest.name,
+            )
+            return
+        _register_literature_provider(provider)
+        logger.info(
+            "Plugin '%s' registered literature provider: %s",
+            self.manifest.name, provider.name,
+        )
+
     # -- browser provider registration ---------------------------------------
 
     def register_browser_provider(self, provider) -> None:
