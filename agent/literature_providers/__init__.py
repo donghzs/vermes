@@ -9,7 +9,9 @@ at import time and is registered into the literature registry by
 
 from agent.literature_providers.arxiv import ArxivProvider
 from agent.literature_providers.cnki import CnkiProvider
+from agent.literature_providers.core import CoreProvider
 from agent.literature_providers.crossref import CrossrefProvider
+from agent.literature_providers.doaj import DoajProvider
 from agent.literature_providers.ebsco import EbscoProvider
 from agent.literature_providers.europepmc import EuropePmcProvider
 from agent.literature_providers.ieee import IeeeProvider
@@ -31,6 +33,8 @@ __all__ = [
     "ArxivProvider",
     "SemanticScholarProvider",
     "EuropePmcProvider",
+    "DoajProvider",
+    "CoreProvider",
     # 中文付费源
     "CnkiProvider",
     "WanfangProvider",

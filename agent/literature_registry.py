@@ -154,6 +154,8 @@ _LEGACY_PREFERENCE = (
     "pubmed",
     "arxiv",
     "europepmc",
+    "doaj",
+    "core",
 )
 
 
@@ -264,7 +266,9 @@ def bootstrap_builtin_providers() -> None:
         from agent.literature_providers import (
             ArxivProvider,
             CnkiProvider,
+            CoreProvider,
             CrossrefProvider,
+            DoajProvider,
             EbscoProvider,
             EuropePmcProvider,
             IeeeProvider,
@@ -289,6 +293,8 @@ def bootstrap_builtin_providers() -> None:
         ArxivProvider,
         SemanticScholarProvider,
         EuropePmcProvider,
+        DoajProvider,
+        CoreProvider,
         CnkiProvider,
         WanfangProvider,
         VipProvider,

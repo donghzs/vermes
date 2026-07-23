@@ -113,12 +113,6 @@ class CustomHttpProvider(LiteratureProvider):
     @property
     def display_name(self) -> str:
         return self.label
-        self._base_url = (definition.get("base_url") or "").strip().rstrip("/")
-        self._auth = definition.get("auth_scheme", "bearer")
-        self._api_key_header = definition.get("api_key_header") or "X-API-KEY"
-        self._query_param = definition.get("query_param") or "q"
-        self._method = (definition.get("method") or "GET").upper()
-        self._fields = definition.get("fields", []) or []
 
     # ── capability ──────────────────────────────────────────────────────────
 

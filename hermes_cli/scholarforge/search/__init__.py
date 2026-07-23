@@ -44,28 +44,47 @@ def _query_is_chinese(text: str) -> bool:
 
 
 def _select_default_sources(query: str) -> list[str]:
-    """按查询语言选择默认搜索源（可单测直接覆盖）。
+    """按查询语言选择默认搜索源（统一路由后覆盖 registry + 本地源）。
 
-    - 中文查询：用 baidu_scholar 替代 crossref/openalex（baidu_scholar 内部已聚合
-      二者并按中文优先排序），避免重复调用；同时补入 cnki（有 key→网关，
-      无 key→OpenAlex 中文兜底）。
-    - 英文查询：保持原默认链。
-    最后并入已激活的付费源。
+    统一路由后，默认源列表同时包含：
+    - registry 内置源（openalex/crossref/pubmed/arxiv/semanticscholar/europepmc/doaj/core）
+    - 本地 _SEARCH_SOURCES（baidu_scholar/cnki 等未入 registry 的源）
+
+    中文查询优先 baidu_scholar + cnki；英文查询用全 registry 免费链。
+    最后并入已激活的付费源（registry + 本地）。
     """
+    # registry 免费源列表
+    _registry_free = (
+        "openalex", "crossref", "pubmed", "arxiv",
+        "semanticscholar", "europepmc", "doaj", "core",
+    )
     if _query_is_chinese(query):
-        # 中文查询：排除对中文支持差的英文源（doaj/pubmed/arxiv），
-        # 优先中文源 baidu_scholar + cnki（cnki 内部降级到 OpenAlex title.search）
-        sources = [s for s in DEFAULT_SOURCE_CHAIN if s not in ("crossref", "openalex", "doaj", "pubmed", "arxiv")]
-        # 语义学者对中文有一定支持，保留
-        sources.insert(0, "baidu_scholar")
-        if "cnki" in _SEARCH_SOURCES:
-            sources.insert(0, "cnki")
+        # 中文查询：优先中文源 baidu_scholar + cnki
+        sources = ["baidu_scholar", "cnki"]
+        # 补入对中文有一定支持的 registry 源（语义学者等）
+        sources.extend([s for s in _registry_free if s not in ("crossref", "openalex", "doaj", "pubmed", "arxiv")])
+        # 补入本地 _SEARCH_SOURCES 中不重复的
+        for s in DEFAULT_SOURCE_CHAIN:
+            if s not in sources and s in _SEARCH_SOURCES:
+                sources.append(s)
     else:
-        sources = [s for s in DEFAULT_SOURCE_CHAIN if s in _SEARCH_SOURCES]
-    # 加入已激活的付费源
+        # 英文查询：registry 免费源 + 本地默认链
+        sources = list(_registry_free)
+        for s in DEFAULT_SOURCE_CHAIN:
+            if s not in sources and s in _SEARCH_SOURCES:
+                sources.append(s)
+    # 加入已激活的本地付费源
     for src_name, entry in _PAID_SOURCE_REGISTRY.items():
         if entry.get("enabled") and src_name in _SEARCH_SOURCES and src_name not in sources:
             sources.append(src_name)
+    # 加入 registry 中已配置凭证的付费源
+    try:
+        from agent.literature_registry import list_providers
+        for p in list_providers():
+            if p.name not in sources and p.name not in _registry_free and p.is_available():
+                sources.append(p.name)
+    except Exception:
+        pass
     return sources
 
 
@@ -209,6 +228,14 @@ async def search_papers(
     """
     多源聚合搜索，快速返回，流式产出结果（去重）
 
+    统一路由：优先委托 :mod:`agent.literature_registry`（含 17 个内置源 +
+    用户自定义源），覆盖 arXiv / Crossref / OpenAlex / PubMed / Semantic Scholar /
+    DOAJ / CORE / Europe PMC / CNKI / 万方 / 维普 / Scopus / IEEE / WOS / Springer /
+    ScienceDirect / EBSCO + 任意自定义机构内部文献库。
+
+    如果 registry 中找不到某源（如百度学术 / Google Scholar），
+    回退到本地 ``_SEARCH_SOURCES`` 实现。
+
     策略：
     1. 并发所有源，先完成的先出
     2. 到达 min_results 后，max_wait 秒内没新结果就停止
@@ -216,22 +243,33 @@ async def search_papers(
     4. 单源超时 8s，避免卡死
     """
     if not sources:
-        # 默认：按查询语言选择（中文查询优先中文源）
         sources = _select_default_sources(query)
 
-    # 过滤 429 冷却源
-    active_sources = [s for s in sources if not _is_cooled_down(s)]
-    skipped = set(sources) - set(active_sources)
-    if skipped:
-        logger.info(f"[ScholarForge] 跳过冷却源: {skipped}")
+    # ── 统一路由：先走 literature_registry，覆盖所有内置+自定义源 ──
+    registry_papers = await _search_via_registry(query, limit, sources)
+    if registry_papers:
+        seen = set()
+        for p in registry_papers:
+            title_key = p.title.lower().strip()[:50]
+            if title_key and title_key not in seen:
+                seen.add(title_key)
+                yield p
+        return
 
-    if not active_sources:
-        logger.warning("[ScholarForge] 所有搜索源均在冷却中")
+    # ── 回退：本地 _SEARCH_SOURCES（百度学术 / Google Scholar 等未入 registry 的源） ──
+    # 过滤已在 registry 处理的源
+    local_sources = [s for s in sources if s in _SEARCH_SOURCES and not _is_cooled_down(s)]
+    skipped = set(sources) - set(local_sources)
+    if skipped:
+        logger.debug(f"[ScholarForge] sources not in local _SEARCH_SOURCES: {skipped}")
+
+    if not local_sources:
+        logger.info("[ScholarForge] 无本地源可搜索（已由 registry 处理或全部冷却）")
         return
 
     per_source_timeout = min(timeout, 8.0)
     pending = set()
-    for src in active_sources:
+    for src in local_sources:
         task = asyncio.create_task(_search_with_timeout(src, query, limit, per_source_timeout))
         task._scholarforge_source = src
         pending.add(task)
@@ -278,6 +316,93 @@ async def search_papers(
 
     for t in pending:
         t.cancel()
+
+
+async def _search_via_registry(
+    query: str, limit: int, sources: list[str] | None
+) -> list[PaperResult]:
+    """桥接到 :mod:`agent.literature_registry` 统一检索。
+
+    遍历 sources 列表，对每个 source 名在 registry 中查找 provider；
+    如果找到且可用，调用 provider.search() 并转换为 PaperResult。
+    如果 source 列表为 None 或空，使用 active provider 自动选源。
+
+    返回空列表表示没有 registry 可处理的源（调用方回退到本地实现）。
+    """
+    try:
+        from agent.literature_registry import (
+            bootstrap_builtin_providers,
+            bootstrap_custom_providers,
+            get_active_literature_provider,
+            get_provider_by_ref,
+        )
+
+        bootstrap_builtin_providers()
+        bootstrap_custom_providers()
+    except Exception as exc:
+        logger.debug("[ScholarForge] literature_registry unavailable: %s", exc)
+        return []
+
+    import asyncio as _aio
+
+    # 确定 providers 列表
+    providers = []
+    if sources:
+        for src_name in sources:
+            p = get_provider_by_ref(src_name)
+            if p is not None:
+                providers.append(p)
+            else:
+                logger.debug(
+                    "[ScholarForge] source '%s' not in registry, will try local", src_name
+                )
+    else:
+        active = get_active_literature_provider()
+        if active is not None:
+            providers = [active]
+        else:
+            # 没有可用 provider，返回空让调用方回退
+            return []
+
+    if not providers:
+        return []
+
+    async def _call_one(p):
+        try:
+            import asyncio as _a
+            result = await _a.to_thread(p.search, query, limit)
+        except Exception as exc:
+            logger.debug("[ScholarForge] registry provider %s failed: %s", p.name, exc)
+            return []
+        if not isinstance(result, dict) or not result.get("success"):
+            err = result.get("error", "unknown") if isinstance(result, dict) else "non-dict"
+            logger.debug("[ScholarForge] registry provider %s returned error: %s", p.name, err)
+            return []
+        papers_data = (result.get("data") or {}).get("papers", [])
+        out = []
+        for pd in papers_data:
+            out.append(PaperResult(
+                paper_id=pd.get("doi") or pd.get("url") or pd.get("title", "")[:50],
+                title=pd.get("title", ""),
+                authors=list(pd.get("authors") or []),
+                year=str(pd.get("year", "")),
+                venue=pd.get("journal", ""),
+                abstract=pd.get("abstract", ""),
+                citation_count=int(pd.get("cited_count") or 0),
+                url=pd.get("url", ""),
+                source=pd.get("source") or p.name,
+                pdf_url=pd.get("pdf_url", ""),
+                doi=pd.get("doi", ""),
+            ))
+        return out
+
+    tasks = [_call_one(p) for p in providers]
+    results = await _aio.gather(*tasks, return_exceptions=True)
+    all_papers = []
+    for r in results:
+        if isinstance(r, list):
+            all_papers.extend(r)
+    return all_papers[:limit]
 
 
 async def _search_with_timeout(source: str, query: str, limit: int, timeout: float) -> list[PaperResult]:

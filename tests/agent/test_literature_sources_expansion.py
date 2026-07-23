@@ -163,7 +163,7 @@ def test_real_registry_exposes_literature_credential_fields():
 # ── 3. Provider 层 ─────────────────────────────────────────────────
 
 
-def test_bootstrap_registers_all_fifteen_providers():
+def test_bootstrap_registers_all_seventeen_providers():
     from agent import literature_registry as lr
 
     lr._reset_for_tests()
@@ -172,7 +172,8 @@ def test_bootstrap_registers_all_fifteen_providers():
         names = {p.name for p in lr.list_providers()}
         assert names == {
             "openalex", "crossref", "pubmed", "arxiv", "semanticscholar",
-            "europepmc", "cnki", "wanfang", "vip", "wos", "scopus",
+            "europepmc", "doaj", "core",
+            "cnki", "wanfang", "vip", "wos", "scopus",
             "sciencedirect", "ieee", "springer", "ebsco",
         }
     finally:
