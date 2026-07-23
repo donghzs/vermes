@@ -83,12 +83,14 @@ RUN_BACKEND_E2E=1 HERMES_HOME=/tmp/vermes-e2e npx playwright test chat-cross-res
 
 - `frontend-e2e`（**阻断**）：装 Node 20 + `@playwright/test` + chromium，跑 `npm run test:e2e`
   （纯前端 mock 两个用例，默认即可全绿，守护 P1-3 重连/快照合并）。
-- `frontend-e2e-backend`（**非阻断 / continue-on-error**，待稳定后去保护）：`RUN_BACKEND_E2E=1`
-  同时跑真实后端跨重启恢复用例，验证 `session_plan_store` 落库/恢复路径。
+- `frontend-e2e-backend`（**阻断**）：`RUN_BACKEND_E2E=1` 同时跑真实后端跨重启恢复用例，
+  验证 `session_plan_store` 落库/恢复路径（复用真实 `save_plan_state` / `load_plan_state`）。
+  已去 `continue-on-error`，失败即阻断 PR 合并；`--retries=1` 吸收偶发抖动。
 
 ## 后续可扩展
 
-- 稳定后去掉 `frontend-e2e-backend` 的 `continue-on-error`，使其成为正式门禁。
 - 增加超时/预算退出（边界 #3）的前端提示断言。
 - 若日后有「mock LLM provider」，可让真实后端在 e2e 中真实产出 plan（write 路径），
   而不仅验证 read/恢复路径。
+- 仓库管理员可在 Branch protection 中将两项 `Frontend E2E (...)` 标记为 Required status checks，
+  使其成为硬性合并门槛（PR 模板已列出）。

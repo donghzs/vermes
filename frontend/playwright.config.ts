@@ -16,7 +16,12 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
-  reporter: [['list'], ['html', { open: 'never', outputFolder: '../playwright-report' }]],
+  reporter: [
+    ['list'],
+    ['line'],
+    ['html', { open: 'never', outputFolder: '../playwright-report' }],
+    ['junit', { outputFile: '../test-results/results.xml' }],
+  ],
   use: {
     baseURL: BASE_URL,
     headless: true,

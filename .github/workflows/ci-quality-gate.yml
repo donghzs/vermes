@@ -71,7 +71,7 @@ jobs:
       - name: Run frontend e2e (pure-frontend mock)
         run: |
           cd frontend
-          npx playwright test --reporter=line
+          npx playwright test --retries=1
 
       - name: Upload Playwright report
         if: always()
@@ -81,13 +81,28 @@ jobs:
           path: frontend/playwright-report
           retention-days: 7
 
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e-junit
+          path: frontend/test-results
+          retention-days: 7
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Frontend E2E (Playwright, mock)" >> $GITHUB_STEP_SUMMARY
+          echo "阻断级门禁：失败将阻止 PR 合并。" >> $GITHUB_STEP_SUMMARY
+          echo "JUnit 报告见 artifacts \`frontend-e2e-junit\`；HTML 报告见 \`frontend-e2e-report\`。" >> $GITHUB_STEP_SUMMARY
+
   # ── 边界优化 #4: 跨重启恢复真实后端 e2e（触达 session_plan_store.py）──
-  # 非阻断：初期仅报告，待稳定后去掉 continue-on-error 升为正式门禁。
+  # 阻断级门禁：chromium + python3 已安装；RUN_BACKEND_E2E=1 启用真实后端路径。
+  # --retries=1 吸收浏览器 e2e 的偶发抖动；失败即阻断 PR 合并（无 continue-on-error）。
   frontend-e2e-backend:
     name: Frontend E2E (real backend recovery)
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -117,7 +132,7 @@ jobs:
           HERMES_HOME: /tmp/vermes-e2e
         run: |
           cd frontend
-          npx playwright test chat-cross-restart.spec.ts --reporter=line
+          npx playwright test chat-cross-restart.spec.ts --retries=1
 
       - name: Upload Playwright report
         if: always()
@@ -126,6 +141,21 @@ jobs:
           name: frontend-e2e-backend-report
           path: frontend/playwright-report
           retention-days: 7
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e-backend-junit
+          path: frontend/test-results
+          retention-days: 7
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Frontend E2E (real backend recovery)" >> $GITHUB_STEP_SUMMARY
+          echo "阻断级门禁：失败将阻止 PR 合并（边界 #4 跨重启 SQLite 恢复路径）。" >> $GITHUB_STEP_SUMMARY
+          echo "JUnit 报告见 artifacts \`frontend-e2e-backend-junit\`；HTML 报告见 \`frontend-e2e-backend-report\`。" >> $GITHUB_STEP_SUMMARY
 
   # ── P0.1: Mac DMG 构建 (Electron) ──
   build-macos-electron:

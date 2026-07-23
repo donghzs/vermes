@@ -48,6 +48,8 @@ Fixes #
 - [ ] My PR contains **only** changes related to this fix/feature (no unrelated commits)
 - [ ] I've run `pytest tests/ -q` and all tests pass
 - [ ] I've added tests for my changes (required for bug fixes, strongly encouraged for features)
+- [ ] If I changed frontend SSE / `TaskDrawer` / plan code, I confirmed CI `Frontend E2E` checks pass
+      (or ran `cd frontend && npx playwright test` locally)
 - [ ] I've tested on my platform: <!-- e.g. Ubuntu 24.04, macOS 15.2, Windows 11 -->
 
 ### Documentation & Housekeeping
@@ -59,6 +61,21 @@ Fixes #
 - [ ] I've updated `CONTRIBUTING.md` or `AGENTS.md` if I changed architecture or workflows — or N/A
 - [ ] I've considered cross-platform impact (Windows, macOS) per the [compatibility guide](https://github.com/NousResearch/hermes-agent/blob/main/CONTRIBUTING.md#cross-platform-compatibility) — or N/A
 - [ ] I've updated tool descriptions/schemas if I changed tool behavior — or N/A
+
+### Frontend E2E (CI Gating)
+
+<!-- 两个 Frontend E2E job 现在为阻断级门禁；失败会阻止 PR 合并。 -->
+
+必过 CI 门禁（合并前需全绿）：
+- [ ] `Frontend E2E (Playwright, mock)` — 边界 #3 P1-3：SSE 重连 + 快照合并（纯前端 mock）
+- [ ] `Frontend E2E (real backend recovery)` — 边界 #4：跨重启 SQLite 恢复（真实后端 `session_plan_store`）
+
+e2e 失败排查：
+- 在 PR 的 **Checks** 面板查看 `Frontend E2E (...)` 详情；产物区下载：
+  - `frontend-e2e-report` / `frontend-e2e-backend-report` — HTML 报表（含 trace）
+  - `frontend-e2e-junit` / `frontend-e2e-backend-junit` — JUnit XML（结构化结果）
+- 改动上述任一区域时务必确认两个 e2e 仍通过：`chat-transport.js`、`stores/chat.js`、`TaskDrawer.vue`、`ChatInput.vue`、`agent/session_plan_store.py`
+- 仓库管理员可在 Branch protection 中将两项 `Frontend E2E (...)` 标记为 **Required status checks**，使其成为硬性合并门槛
 
 ## For New Skills
 
