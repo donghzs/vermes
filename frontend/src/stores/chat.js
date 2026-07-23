@@ -689,7 +689,13 @@ export const useChatStore = defineStore('chat', () => {
             am.checkpoint = null  // clear checkpoint on done
             // 检测空回复：后端流结束但没有任何内容输出
             if (!am.content || !am.content.trim()) {
-              am.content = '⚠️ 回复为空，可能是后端处理异常。请重试或更换模型。'
+              // 带上后端最后一条 warn（空响应重试/切换服务商/最终失败原因），
+              // 让用户看到真实原因而非笼统提示
+              const _warns = (sessionStatusMessages.value[sendSessionId] || []).filter(s => s.type === 'warn')
+              const _lastWarn = _warns.length ? _warns[_warns.length - 1].message : ''
+              am.content = '⚠️ 回复为空，可能是后端处理异常。'
+                + (_lastWarn ? `\n\n后端状态：${_lastWarn}` : '')
+                + '\n\n请重试或更换模型。'
               am._isEmpty = true
             }
           }

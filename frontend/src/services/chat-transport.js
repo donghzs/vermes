@@ -121,7 +121,9 @@ export class SSETransport extends ChatTransport {
             const data = JSON.parse(raw)
             const deltaContent = data.choices?.[0]?.delta?.content
             
-            if (data.type === 'stream_start' || data.type === 'lifecycle') {
+            if (data.type === 'stream_start' || data.type === 'lifecycle' || data.type === 'warn') {
+              // warn = 后端关键状态（模型空响应重试/切换备用服务商/最终失败原因）。
+              // 修复：此前无 warn 分支，事件被静默丢弃，空回复时用户看不到任何原因。
               this._emit(sessionId, 'onStatus', { type: data.type, message: data.message || '' })
             } else if (data.type === 'thinking') {
               // thinking = 迭代步数事件，走 onStatus

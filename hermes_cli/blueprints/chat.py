@@ -12,6 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 import os
+import re
 import secrets
 import hashlib
 import time
@@ -90,6 +91,33 @@ def clean_session_plan_state(session_id: str) -> None:
         delete_plan_state(session_id)
     except Exception:
         pass
+
+
+def _normalize_stream_text(text) -> str:
+    """折叠空白做宽松比对（与 run_agent._normalize_interim_visible_text 同规则）。"""
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _should_emit_final_fallback(final_response, streamed_text) -> bool:
+    """流式衔接兜底判定：final_response 是否需要补发到 SSE 队列。
+
+    背景：SSE 生成器只转发流式 delta，run_conversation 的返回值从不入队。
+    当最终回答未经过 stream_delta_callback 流出（非流式回退、
+    fallback_prior_turn_content、guardrail halt、partial recovery 等路径）
+    时，后端明明有答案，前端却收到 0 个 content delta → "⚠ 回复为空"。
+
+    规则：final_response 是非空真实内容（排除 "(empty)" 失败哨兵——那是
+    给 gateway 的失败标记，对应的用户提示已由 status warn 事件传达），
+    且归一化后的已流出文本不包含它（中途工具叙述流出过 ≠ 最终回答流出过）。
+    包含则说明已流出，补发会造成重复。
+    """
+    final_n = _normalize_stream_text(final_response)
+    if not final_n or final_n == "(empty)":
+        return False
+    streamed_n = _normalize_stream_text(streamed_text)
+    if not streamed_n:
+        return True
+    return final_n not in streamed_n
 
 
 # ── Attachment constants ─────────────────────────────────────────────
@@ -966,6 +994,10 @@ async def chat_completions(req: ChatRequest):
         _plan_text_buffer = []  # 累积输出，检测 plan JSON
         _plan_emitted = False   # 防重复 emit
         _prev_todo_states = {}  # P0-1: 跟踪 todo 步骤状态变化，驱动 plan_step_update
+        # 流式衔接兜底：累积本轮已发出的文本 delta。
+        # 若 run_conversation 返回的 final_response 未包含在已流出文本中，
+        # 说明最终回答走了非流式路径（回退/恢复/halt），需补发，否则前端空回复。
+        _streamed_text_parts = []
 
         def _detect_and_emit_plan(text: str):
             """检测 plan JSON 并通过 SSE 发送规划事件。
@@ -1034,6 +1066,8 @@ async def chat_completions(req: ChatRequest):
         def stream_callback(delta: str):
             if delta is not None:
                 _log.info(f"[Stream] DELTA: {repr(delta[:60])}")
+                if delta.strip():
+                    _streamed_text_parts.append(delta)
                 _detect_and_emit_plan(delta)
                 _safe_put(delta)
             else:
@@ -1171,6 +1205,23 @@ async def chat_completions(req: ChatRequest):
                     stream_callback=None,
                 )
                 _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
+                # ── 流式衔接兜底（空回复修复）─────────────────────────
+                # SSE 生成器只转发流式 delta；当最终回答未经过
+                # stream_delta_callback 流出（非流式回退、prior-turn
+                # fallback、guardrail halt、partial recovery 等路径），
+                # run_conversation 的返回值不会到达前端 → "⚠ 回复为空"。
+                # 此处检测"整轮零文本 delta 但有真实 final_response"，
+                # 将其补发入队，保证后端有答案时前端必能收到。
+                try:
+                    _final = (result or {}).get("final_response") or ""
+                    if _should_emit_final_fallback(_final, "".join(_streamed_text_parts)):
+                        _log.warning(
+                            f"[Stream] Final response never streamed "
+                            f"({len(_final)} chars) - emitting fallback to SSE queue"
+                        )
+                        _safe_put(_final)
+                except Exception as _fb_exc:
+                    _log.error(f"[Stream] Final fallback emission failed: {_fb_exc}")
                 return result
             except Exception as e:
                 _log.error(f"[Stream] Agent error: {e}")
