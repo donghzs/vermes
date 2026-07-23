@@ -116,14 +116,31 @@ export const useChatStore = defineStore('chat', () => {
   const evolutionEvents = ref([])    // 进化事件（成就/建议）
   const showAchievement = ref(false) // 成就弹窗
   const achievementData = ref(null)  // 当前展示的成就
+  // ── per-session 任务面板状态（方案 B：分片隔离）──
+  // 每个会话独立维护任务进度，避免并行会话串台
+  const sessionTodoItems = ref({})            // sessionId → todo[]
+  const sessionTodoStepActivities = ref({})   // sessionId → { step_id: toolCall[] }
+  const sessionTodoAllDone = ref({})          // sessionId → boolean
+  const sessionTodoInterrupted = ref({})      // sessionId → boolean
+  const sessionShowTaskDrawer = ref({})       // sessionId → boolean
+  const sessionShowTodoPanel = ref({})        // sessionId → boolean
+
+  // ── 全局 UI 状态（跨会话共享，不需要分片）──
   const pendingApproval = ref(null)  // 工具审批请求
-  const todoItems = ref([])          // Agent todo 列表
-  const showTodoPanel = ref(false)   // Todo 面板显隐（兼容旧逻辑）
-  // ── 实时任务面板（长任务分步骤 + 进度）──
-  const showTaskDrawer = ref(false)       // 任务抽屉显隐
-  const todoStepActivities = ref({})      // step_id → 该步骤下的实时工具调用列表
-  const todoAllDone = ref(false)          // 全部步骤完成（庆祝态）
-  const todoInterrupted = ref(false)      // 用户停止/中断（保留已做部分）
+
+  // ── 当前会话的 computed 视图（自动跟随 currentSessionId）──
+  const todoItems = computed(() => sessionTodoItems.value[currentSessionId.value] || [])
+  const todoStepActivities = computed(() => sessionTodoStepActivities.value[currentSessionId.value] || {})
+  const todoAllDone = computed(() => !!sessionTodoAllDone.value[currentSessionId.value])
+  const todoInterrupted = computed(() => !!sessionTodoInterrupted.value[currentSessionId.value])
+  const showTaskDrawer = computed({
+    get: () => !!sessionShowTaskDrawer.value[currentSessionId.value],
+    set: (v) => { sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [currentSessionId.value]: v } },
+  })
+  const showTodoPanel = computed({
+    get: () => !!sessionShowTodoPanel.value[currentSessionId.value],
+    set: (v) => { sessionShowTodoPanel.value = { ...sessionShowTodoPanel.value, [currentSessionId.value]: v } },
+  })
   const currentStatusMessages = computed(() => 
     sessionStatusMessages.value[currentSessionId.value] || []
   )
@@ -132,13 +149,15 @@ export const useChatStore = defineStore('chat', () => {
   )
   // 当前进行中的 todo 步骤 id（工具事件未带 step_id 时回退用）
   const currentTodoStepId = computed(() => {
-    const it = todoItems.value.find(i => i.status === 'in_progress')
+    const items = sessionTodoItems.value[currentSessionId.value] || []
+    const it = items.find(i => i.status === 'in_progress')
     return it ? it.id : null
   })
   // 进行中步骤数（头部徽标）
-  const todoInProgressCount = computed(() =>
-    todoItems.value.filter(i => i.status === 'in_progress').length
-  )
+  const todoInProgressCount = computed(() => {
+    const items = sessionTodoItems.value[currentSessionId.value] || []
+    return items.filter(i => i.status === 'in_progress').length
+  })
   const lastTokenUsage = ref(null)
 
   const isOnline = typeof window !== 'undefined' && window.__VERMES_ONLINE__ === true
@@ -260,11 +279,23 @@ export const useChatStore = defineStore('chat', () => {
         oldSession.model = currentModel.value
         oldSession.provider = currentProvider.value
       }
-      // 清理旧会话的 streaming 状态和定时器，防止内存泄漏
+      // 关键修复：后台仍在流式输出的会话必须保持流式状态与刷新定时器！
+      // onMessage 仍会把文本 delta 写入 _streamBuffer，而 _streamBufTimer 是把
+      // _streamBuffer 落到 am.content 的唯一通道；reasoning（思考）则是 direct append
+      // 到 am.reasoning，不经过定时器。若这里清掉定时器，在「模型长推理、暂不发文本」
+      // 的阶段切走再切回，文本会表现为「不流式输出」，但后端任务 / 思考仍在跑——
+      // 这正是切换/并行会话时原会话「文本不流式但思考还在进行」的根因。
+      // 定时器与 streaming 标记的真正清理由 onDone / onError 负责（已防内存泄漏）。
+      const _bgTransport = getChatTransport()
       messages.value.filter(m => m.streaming).forEach(m => {
-        m.streaming = false
-        if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
+        // 仅把当前已缓冲文本落盘，避免切换瞬间的内容抖动；保留定时器与 streaming 标记
         if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
+        const _stillStreaming = _bgTransport && _bgTransport.isStreaming(m.sessionId)
+        if (!_stillStreaming) {
+          // 真孤儿流（后端已无该会话活动流）：安全清理定时器，防泄漏
+          if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
+          m.streaming = false
+        }
       })
       await persistMessages(oldSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     }
@@ -308,6 +339,14 @@ export const useChatStore = defineStore('chat', () => {
       if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
       if (m._streamBuffer) { m.content += m._streamBuffer; m._streamBuffer = '' }
     })
+    // 清理被删会话的任务面板分片
+    const _d = (obj) => { const n = { ...obj }; delete n[id]; return n }
+    sessionTodoItems.value = _d(sessionTodoItems.value)
+    sessionTodoStepActivities.value = _d(sessionTodoStepActivities.value)
+    sessionTodoAllDone.value = _d(sessionTodoAllDone.value)
+    sessionTodoInterrupted.value = _d(sessionTodoInterrupted.value)
+    sessionShowTaskDrawer.value = _d(sessionShowTaskDrawer.value)
+    sessionShowTodoPanel.value = _d(sessionShowTodoPanel.value)
     await _deleteSession(sessions.value, messages.value, id, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
     if (currentSessionId.value === id) {
       if (sessions.value.length > 0) {
@@ -396,11 +435,12 @@ export const useChatStore = defineStore('chat', () => {
 
     // P4: per-session loading
     if (currentSessionId.value) sessionLoading.value[currentSessionId.value] = true
-    // 新一轮：重置实时任务面板状态（保留抽屉开关由 todo_update 决定是否自动展开）
-    todoStepActivities.value = {}
-    todoAllDone.value = false
-    todoInterrupted.value = false
-    todoItems.value = []
+    // 重置当前会话的实时任务面板状态（per-session 分片）
+    const _sid_reset = currentSessionId.value
+    sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [_sid_reset]: {} }
+    sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [_sid_reset]: false }
+    sessionTodoInterrupted.value = { ...sessionTodoInterrupted.value, [_sid_reset]: false }
+    sessionTodoItems.value = { ...sessionTodoItems.value, [_sid_reset]: [] }
     const sendSessionId = currentSessionId.value  // 锁定发送时所在的会话
     const aid = uid()
     try {
@@ -509,46 +549,49 @@ export const useChatStore = defineStore('chat', () => {
         },
         onTodoUpdate: (data) => {
           // P0-2: merge 而非 replace，避免 plan 与 todo 竞态覆盖
-          // 逐条按 id merge：新条目追加，已有条目更新字段
-          if (data.todos && Array.isArray(data.todos)) {
-            const existingMap = new Map(todoItems.value.map(i => [i.id, i]))
-            for (const t of data.todos) {
-              const old = existingMap.get(t.id)
-              if (old) {
-                existingMap.set(t.id, { ...old, ...t, 
-                  started_at: t.started_at ?? old.started_at,
-                  finished_at: t.finished_at ?? old.finished_at,
-                })
-              } else {
-                existingMap.set(t.id, { ...t, tool_calls: t.tool_calls || [] })
-              }
+          // 方案 B: per-session 分片写入，用 sendSessionId 定位
+          if (!data.todos || !Array.isArray(data.todos)) return
+          const cur = sessionTodoItems.value[sendSessionId] || []
+          const existingMap = new Map(cur.map(i => [i.id, i]))
+          for (const t of data.todos) {
+            const old = existingMap.get(t.id)
+            if (old) {
+              existingMap.set(t.id, { ...old, ...t,
+                started_at: t.started_at ?? old.started_at,
+                finished_at: t.finished_at ?? old.finished_at,
+              })
+            } else {
+              existingMap.set(t.id, { ...t, tool_calls: t.tool_calls || [] })
             }
-            // 保留原有顺序 + 追加新条目
-            const oldOrder = todoItems.value.map(i => i.id)
-            const merged = []
-            for (const id of oldOrder) {
-              const item = existingMap.get(id)
-              if (item) { merged.push(item); existingMap.delete(id) }
-            }
-            for (const item of existingMap.values()) merged.push(item)
-            todoItems.value = merged
-            if (data.todos.length > 0) {
-              showTodoPanel.value = true
-              showTaskDrawer.value = true
-            }
-            // 计划未全部完成则清除庆祝态
-            const s = data.summary || {}
-            if (!(s.total > 0 && s.completed === s.total && s.in_progress === 0)) {
-              todoAllDone.value = false
-            }
-            scheduleScroll()
           }
+          const oldOrder = cur.map(i => i.id)
+          const merged = []
+          for (const id of oldOrder) {
+            const item = existingMap.get(id)
+            if (item) { merged.push(item); existingMap.delete(id) }
+          }
+          for (const item of existingMap.values()) merged.push(item)
+          sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: merged }
+          if (data.todos.length > 0) {
+            sessionShowTodoPanel.value = { ...sessionShowTodoPanel.value, [sendSessionId]: true }
+            sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
+          }
+          // 计划未全部完成则清除庆祝态
+          const s = data.summary || {}
+          if (!(s.total > 0 && s.completed === s.total && s.in_progress === 0)) {
+            sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [sendSessionId]: false }
+          }
+          scheduleScroll()
         },
         onToolCall: (data) => {
           // 工具调用实时事件：挂到当前进行中的步骤下，形成"步骤 → 子任务"树
-          const sid = data.step_id || currentTodoStepId.value
+          // 方案 B: per-session 分片写入
+          const items = sessionTodoItems.value[sendSessionId] || []
+          const fallbackStep = items.find(i => i.status === 'in_progress')
+          const sid = data.step_id || (fallbackStep ? fallbackStep.id : null)
           if (!sid) return
-          const acts = { ...todoStepActivities.value }
+          const curActs = sessionTodoStepActivities.value[sendSessionId] || {}
+          const acts = { ...curActs }
           const list = acts[sid] ? acts[sid].slice() : []
           if (data.type === 'tool_start') {
             list.push({
@@ -568,16 +611,16 @@ export const useChatStore = defineStore('chat', () => {
             else list.push(done)
           }
           acts[sid] = list
-          todoStepActivities.value = acts
+          sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }
         },
         onTaskComplete: (data) => {
-          // 全部步骤完成 → 庆祝态
-          todoAllDone.value = true
+          // 全部步骤完成 → 庆祝态（per-session）
+          sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [sendSessionId]: true }
         },
         onPlanCreated: (plan) => {
-          // 任务规划已创建 → 填充 todoItems 并自动打开抽屉
+          // 任务规划已创建 → 填充当前会话的 todoItems 并自动打开抽屉
           if (!plan || !plan.steps) return
-          todoItems.value = plan.steps.map(s => ({
+          const items = plan.steps.map(s => ({
             id: s.id,
             content: s.title,
             status: s.status || 'pending',
@@ -586,39 +629,42 @@ export const useChatStore = defineStore('chat', () => {
             finished_at: s.finished_at ? s.finished_at : null,
             description: s.description || '',
           }))
-          // 自动打开任务抽屉
-          showTaskDrawer.value = true
           // 标记第一个步骤为进行中
-          if (todoItems.value.length > 0) {
-            todoItems.value[0].status = 'in_progress'
-            todoItems.value[0].started_at = Math.floor(Date.now() / 1000)
+          if (items.length > 0) {
+            items[0].status = 'in_progress'
+            items[0].started_at = Math.floor(Date.now() / 1000)
           }
+          sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: items }
+          sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
           scheduleScroll()
         },
         onPlanUpdate: (data) => {
           // plan_step_update / plan_tool_started / plan_completed 等
+          // 方案 B: per-session 分片写入
           const subtype = data.subtype
+          const curItems = sessionTodoItems.value[sendSessionId] || []
+          const curActs = sessionTodoStepActivities.value[sendSessionId] || {}
           if (subtype === 'step_update' || subtype === 'step_started' || subtype === 'step_completed') {
             const step = data.step
             if (!step) return
-            const idx = todoItems.value.findIndex(i => i.id === step.id)
+            const idx = curItems.findIndex(i => i.id === step.id)
+            const newItems = curItems.slice()
             if (idx >= 0) {
-              todoItems.value[idx] = {
-                ...todoItems.value[idx],
+              newItems[idx] = {
+                ...newItems[idx],
                 status: step.status,
                 started_at: step.started_at || (step.status === 'in_progress' ? Math.floor(Date.now() / 1000) : null),
                 finished_at: step.finished_at || null,
               }
             }
-            // step_started → 自动打开抽屉
+            sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: newItems }
             if (subtype === 'step_started') {
-              showTaskDrawer.value = true
+              sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
             }
           } else if (subtype === 'tool_started') {
-            // 挂到当前进行中步骤下
             const sid = data.step_id
             if (!sid) return
-            const acts = { ...todoStepActivities.value }
+            const acts = { ...curActs }
             const list = acts[sid] ? [...acts[sid]] : []
             list.push({
               id: data.tool?.id || uid(),
@@ -626,11 +672,11 @@ export const useChatStore = defineStore('chat', () => {
               status: 'running', start: Date.now(), duration: 0, is_error: false,
             })
             acts[sid] = list
-            todoStepActivities.value = acts
+            sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }
           } else if (subtype === 'tool_completed') {
             const sid = data.step_id
             if (!sid) return
-            const acts = { ...todoStepActivities.value }
+            const acts = { ...curActs }
             const list = acts[sid] ? [...acts[sid]] : []
             const idx = list.findIndex(a => a.id === (data.tool?.id || ''))
             const done = {
@@ -645,9 +691,9 @@ export const useChatStore = defineStore('chat', () => {
             if (idx >= 0) list[idx] = done
             else list.push(done)
             acts[sid] = list
-            todoStepActivities.value = acts
+            sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }
           } else if (subtype === 'completed') {
-            todoAllDone.value = true
+            sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [sendSessionId]: true }
           }
           scheduleScroll()
         },
@@ -799,7 +845,9 @@ export const useChatStore = defineStore('chat', () => {
     }
     evolutionEvents.value = []  // 清空进化事件
     // 保留 todoItems：小白用户停止后仍需看到「已完成 / 进行中」进度，不清空
-    todoInterrupted.value = true
+    if (sid) {
+      sessionTodoInterrupted.value = { ...sessionTodoInterrupted.value, [sid]: true }
+    }
     // nextTurnSnapshot: 停止生成也应用 pending 模型切换
     _applyPendingModel(sid)
   }
