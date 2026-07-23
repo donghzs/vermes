@@ -68,6 +68,8 @@ except ImportError:
 
 # Hidden imports — core server only (no pywebview/pyobjc)
 hiddenimports = [
+    # Windows UTF-8 bootstrap (fix GBK UnicodeEncodeError + subprocess decode)
+    'hermes_bootstrap',
     # Core uvicorn
     'uvicorn', 'uvicorn.__main__', 'uvicorn.main', 'uvicorn.config',
     'uvicorn.server', 'uvicorn.workers', 'uvicorn.importer',

@@ -52,96 +52,6 @@ def _handle_sigterm(signum, frame):
         os._exit(0)
 
 
-def _deploy_builtin_modules():
-    """首次启动时将内置生态模块（ScholarForge）部署到 ~/.vermes/modules/。
-
-    打包里 hermes_cli/scholarforge/ 有源码但模块加载器只扫 ~/.vermes/modules/。
-    检测 module.yaml 不存在时复制后端代码 + 写入清单文件。
-    前端 dist 不在打包里，跳过（用户可通过对话方式使用文献工具）。
-    """
-    import shutil
-
-    # 定位打包内的 scholarforge 源码目录
-    _root = os.path.dirname(os.path.abspath(__file__))
-    _pkg_sf = os.path.join(_root, "hermes_cli", "scholarforge")
-    if not os.path.isdir(_pkg_sf):
-        logger.debug("[Vermes] 内置 scholarforge 源码目录不存在，跳过部署")
-        return
-
-    # 定位模块安装目录
-    try:
-        from hermes_constants import get_hermes_home
-        _modules_dir = get_hermes_home() / "modules"
-    except Exception:
-        # hermes_constants 可能未初始化，回退到 ~/.vermes
-        from pathlib import Path
-        _modules_dir = Path(os.path.expanduser("~")) / ".vermes" / "modules"
-
-    _sf_dir = _modules_dir / "scholarforge"
-    _manifest = _sf_dir / "module.yaml"
-
-    if _manifest.exists():
-        logger.debug("[Vermes] ScholarForge 模块已部署，跳过")
-        return
-
-    # 创建模块目录
-    _sf_dir.mkdir(parents=True, exist_ok=True)
-
-    # 复制后端代码到 backend/
-    _backend_dir = _sf_dir / "backend"
-    _backend_dir.mkdir(exist_ok=True)
-    for _fn in os.listdir(_pkg_sf):
-        if _fn.startswith("__pycache__") or _fn.startswith("tests"):
-            continue
-        _src = os.path.join(_pkg_sf, _fn)
-        _dst = _backend_dir / _fn
-        if os.path.isfile(_src) and _fn.endswith(".py"):
-            shutil.copy2(_src, _dst)
-        elif os.path.isdir(_src):
-            shutil.copytree(_src, _dst, dirs_exist_ok=True)
-
-    # 复制根级 tools.py（module.yaml 指向 backend/tools.py，但旧版在根目录）
-    _root_tools = os.path.join(_pkg_sf, "tools.py")
-    if os.path.exists(_root_tools):
-        shutil.copy2(_root_tools, _sf_dir / "tools.py")
-
-    # 写入 module.yaml
-    _yaml_content = """\
-name: scholarforge
-display_name: ScholarForge 论文写作
-version: 1.0.0
-description: AI 全链路学术写作——文献搜索、STORM 写作、查重检测、论文评分、Word 导出
-author: Vermes Team
-license: MIT
-homepage: https://vbit.top/vermes
-
-backend:
-  entry: backend/blueprint.py
-  tools_entry: backend/tools.py
-  dependencies:
-    - pyyaml>=6.0
-
-frontend:
-  entry: frontend/dist/entry.js
-  route: /scholarforge
-  icon: 📝
-  menu_title: 论文
-
-permissions:
-  - llm_call
-  - file_read
-  - file_write
-  - web_search
-
-compatibility:
-  vermes_min: "2.1.0"
-  platforms: [macos, windows, linux]
-"""
-    _manifest.write_text(_yaml_content, encoding="utf-8")
-
-    logger.info("[Vermes Backend] ✅ ScholarForge 模块已部署到 %s", _sf_dir)
-
-
 def main():
     global server_instance
 
@@ -224,13 +134,9 @@ def main():
     except Exception as _e:
         logger.warning(f"[Vermes Backend] ⚠️ 工具服务注册失败: {_e}")
 
-    # ── 部署内置生态模块（ScholarForge 等）到 ~/.vermes/modules/ ──
-    # 首次安装时 modules/ 目录不存在，生态模块加载器找不到模块。
-    # 从打包内的 hermes_cli/scholarforge/ 复制后端代码 + 写入 module.yaml。
-    try:
-        _deploy_builtin_modules()
-    except Exception as _e:
-        logger.warning(f"[Vermes Backend] ⚠️ 内置模块部署失败: {_e}")
+    # ScholarForge 等内置模块现在直接从打包内 hermes_cli/scholarforge/ 加载
+    # （agent/module_loader.discover_builtin_modules），无需部署到 ~/.vermes/modules/。
+    # 第三方插件仍可热加载到 ~/.vermes/modules/。
 
     logger.info(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
 
