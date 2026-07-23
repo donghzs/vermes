@@ -708,6 +708,13 @@ export const useChatStore = defineStore('chat', () => {
           _applyPendingModel(sendSessionId)
         },
         onError: (error) => {
+          // P1-3: If reconnect flagged, show status but don't show error UI
+          if (error && error.reconnect) {
+            const errMsgs = sessionStatusMessages.value[sendSessionId] || []
+            errMsgs.push({ id: uid(), type: 'info', message: error.message || '重连中', timestamp: Date.now() })
+            sessionStatusMessages.value[sendSessionId] = errMsgs
+            return  // Don't mark as error — caller may retry
+          }
           const am = messages.value.find(m => m.id === aid)
           if (am) {
             if (am._streamBufTimer) { clearInterval(am._streamBufTimer); am._streamBufTimer = null }

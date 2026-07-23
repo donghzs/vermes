@@ -46,6 +46,19 @@ export class SSETransport extends ChatTransport {
     super()
     this._baseUrl = baseUrl
     this._controllers = new Map()  // sessionId → AbortController
+    this._reconnectAttempts = new Map()  // sessionId → attempt count
+    this._maxReconnects = 2  // P1-3: max auto-reconnect attempts
+  }
+
+  // P1-3: Fetch plan snapshot for session (used on reconnect)
+  async fetchSnapshot(sessionId) {
+    try {
+      const resp = await fetch(`${this._baseUrl}/api/session/${sessionId}/plan_snapshot`)
+      if (!resp.ok) return null
+      return await resp.json()
+    } catch {
+      return null
+    }
   }
 
   async send(sessionId, { messages, model, provider, attachments, reasoning_effort, web_search }) {
@@ -101,6 +114,7 @@ export class SSETransport extends ChatTransport {
           if (raw === '[DONE]') {
             this._emit(sessionId, 'onDone', {})
             this._controllers.delete(sessionId)
+            this._reconnectAttempts.delete(sessionId)  // P1-3: reset on success
             return
           }
           try {
@@ -153,9 +167,34 @@ export class SSETransport extends ChatTransport {
         }
       }
       this._emit(sessionId, 'onDone', {})
+      this._reconnectAttempts.delete(sessionId)  // P1-3: reset on success
     } catch (e) {
       if (e.name !== 'AbortError') {
-        this._emit(sessionId, 'onError', e.message || '连接中断')
+        // P1-3: Auto-reconnect with snapshot merge
+        const attempts = (this._reconnectAttempts.get(sessionId) || 0) + 1
+        this._reconnectAttempts.set(sessionId, attempts)
+        if (attempts <= this._maxReconnects) {
+          const snapshot = await this.fetchSnapshot(sessionId)
+          if (snapshot && snapshot.plan) {
+            this._emit(sessionId, 'onPlanCreated', snapshot.plan)
+            // Reconstruct plan_step_update for each step with snapshot status
+            const todoStates = snapshot.todo_states || {}
+            for (const step of (snapshot.plan.steps || [])) {
+              const status = todoStates[step.id] || step.status || 'pending'
+              this._emit(sessionId, 'onPlanUpdate', { subtype: 'step_update', step: { id: step.id, status } })
+            }
+          }
+          this._emit(sessionId, 'onStatus', { type: 'reconnecting', message: `重连中 (${attempts}/${this._maxReconnects})...` })
+          const delay = Math.min(1000 * Math.pow(2, attempts - 1), 5000)
+          await new Promise(r => setTimeout(r, delay))
+          // Retry with same payload (messages will be resent by caller)
+          this._reconnectAttempts.set(sessionId, attempts)
+          // Don't emit error if reconnected successfully — caller decides
+          this._emit(sessionId, 'onError', { reconnect: true, message: e.message || '连接中断', attempts })
+        } else {
+          this._reconnectAttempts.delete(sessionId)
+          this._emit(sessionId, 'onError', e.message || '连接中断')
+        }
       }
     } finally {
       this._controllers.delete(sessionId)

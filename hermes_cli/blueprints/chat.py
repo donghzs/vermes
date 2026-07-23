@@ -33,6 +33,9 @@ from hermes_cli.blueprints.agent_cache import (
     clean_agent_for_session,
 )
 
+# ── Session plan state store (for SSE reconnect snapshot) ──────────
+# session_id → {"plan": dict|None, "todo_states": dict, "plan_emitted": bool}
+_session_plan_store: dict[str, dict] = {}
 
 # ── Attachment constants ─────────────────────────────────────────────
 
@@ -750,6 +753,9 @@ async def chat_completions(req: ChatRequest):
     # Extract session ID for agent caching
     _session_id = req.session_id or "default"
 
+    # P1-3: Initialize session plan store for SSE reconnect snapshot
+    _session_plan_store.setdefault(_session_id, {"plan": None, "todo_states": {}, "plan_emitted": False})
+
     # Agent cache: reuse agent instance per session for persistence
     _cache_key = f"{provider}:{model}:{_session_id}"
     agent = _agent_cache.get(_cache_key)
@@ -952,6 +958,8 @@ async def chat_completions(req: ChatRequest):
             _safe_put(plan_event)
             _log.info(f"[Plan] Detected plan: {plan_event['plan']['title']} with {len(steps_out)} steps")
             _plan_emitted = True
+            # P1-3: Persist plan to session store for SSE reconnect snapshot
+            _session_plan_store[_session_id] = {"plan": plan_event["plan"], "todo_states": _prev_todo_states, "plan_emitted": True}
             # 立即标记第一步为进行中，传递"实时反馈的快感"
             if steps_out:
                 _safe_put({
@@ -1038,6 +1046,8 @@ async def chat_completions(req: ChatRequest):
                                     _step_update["step"]["finished_at"] = int(time.time())
                                 _safe_put(_step_update)
                                 _prev_todo_states[_tid] = _new_status
+                        # P1-3: Sync todo states to session store
+                        _session_plan_store[_session_id] = {"plan": _session_plan_store.get(_session_id, {}).get("plan"), "todo_states": _prev_todo_states, "plan_emitted": _plan_emitted}
                         # 任务全部完成 → 发庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
                         if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
@@ -1119,6 +1129,8 @@ async def chat_completions(req: ChatRequest):
                             },
                         })
                         _prev_todo_states[_tid] = "interrupted"
+                # P1-3: Sync final state to session store
+                _session_plan_store[_session_id] = {"plan": _session_plan_store.get(_session_id, {}).get("plan"), "todo_states": _prev_todo_states, "plan_emitted": _plan_emitted}
                 _agent_done.set()
 
         async def stream_generator():
@@ -2217,6 +2229,20 @@ async def list_flags_endpoint(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+async def plan_snapshot(session_id: str):
+    """P1-3: Return current plan + todo state for SSE reconnect recovery."""
+    state = _session_plan_store.get(session_id)
+    if state is None:
+        return {"ok": True, "session_id": session_id, "plan": None, "todo_states": {}, "plan_emitted": False}
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "plan": state.get("plan"),
+        "todo_states": state.get("todo_states", {}),
+        "plan_emitted": state.get("plan_emitted", False),
+    }
+
+
 def register_to(app):
     """Register chat routes on the FastAPI app."""
     app.add_api_route(
@@ -2392,6 +2418,12 @@ def register_to(app):
         list_flags_endpoint,
         methods=["GET"],
         name="list_flags",
+    )
+    app.add_api_route(
+        "/api/session/{session_id}/plan_snapshot",
+        plan_snapshot,
+        methods=["GET"],
+        name="plan_snapshot",
     )
 
     # Pre-create default agent at startup for persistence
