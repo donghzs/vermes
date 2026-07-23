@@ -1,52 +1,24 @@
 """Plan 解析器专项测试：平衡括号 + JSON 提取 + 跨 delta 分片"""
 import pytest
 import json
+import re
 
-# ── 平衡括号解析器 ────────────────────────────────────────────────
+# ── 从生产代码 import 纯函数 ──────────────────────────────────────
+
+from hermes_cli.blueprints.chat import _find_first_plan_json
+
+# ── 平衡括号解析器（直接测试生产代码）────────────────────────────
 
 class TestBalancedBracketParser:
-    """验证 _detect_and_emit_plan 中的平衡括号解析器"""
+    """验证 _find_first_plan_json 生产代码"""
 
     def _parse_balanced(self, text: str) -> dict:
-        """从 chat.py 提取的平衡括号解析逻辑（简化版，用于测试）"""
-        # 去除 markdown fence
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1] if lines[-1].startswith("```") else lines[1:])
-
-        # 平衡括号解析
-        depth = 0
-        in_str = False
-        esc_next = False
-        start_idx = None
-        for i, ch in enumerate(text):
-            if esc_next:
-                esc_next = False
-                continue
-            if ch == "\\":
-                esc_next = True
-                continue
-            if ch == '"' and not esc_next:
-                in_str = not in_str
-                continue
-            if in_str:
-                continue
-            if ch == "{":
-                if depth == 0:
-                    start_idx = i
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0 and start_idx is not None:
-                    candidate = text[start_idx:i+1]
-                    try:
-                        obj = json.loads(candidate)
-                        if "plan" in obj:
-                            return obj
-                    except:
-                        pass
-                    start_idx = None
-        return {}
+        """调用生产代码，返回 {} 表示未找到"""
+        # 去除 markdown fence（与闭包中一致的前处理）
+        stripped = re.sub(r'^```[a-z]*\s*', '', text, flags=re.MULTILINE)
+        stripped = re.sub(r'```\s*$', '', stripped, flags=re.MULTILINE)
+        result = _find_first_plan_json(stripped)
+        return result if result is not None else {}
 
     def test_simple_plan(self):
         """简单 plan JSON"""

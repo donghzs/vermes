@@ -912,82 +912,55 @@ async def chat_completions(req: ChatRequest):
             stripped = re.sub(r'^```[a-z]*\s*', '', combined, flags=re.MULTILINE)
             stripped = re.sub(r'```\s*$', '', stripped, flags=re.MULTILINE)
             # 平衡括号解析：找第一个包含 "plan" 键的 JSON 对象
-            depth = 0
-            start = -1
-            in_str = False
-            esc_next = False
-            for i_c, ch in enumerate(stripped):
-                if esc_next:
-                    esc_next = False
-                    continue
-                if ch == '\\':
-                    esc_next = True
-                    continue
-                if ch == '"':
-                    in_str = not in_str
-                    continue
-                if in_str:
-                    continue
-                if ch == '{':
-                    if start == -1: start = i_c
-                    depth += 1
-                elif ch == '}':
-                    depth -= 1
-                    if depth == 0 and start >= 0:
-                        candidate = stripped[start:i_c+1]
-                        if '"plan"' in candidate:
-                            try:
-                                data = json.loads(candidate)
-                            except Exception:
-                                pass
-                            else:
-                                plan_data = data.get("plan", data)
-                                steps_out = []
-                                for i_s, s in enumerate(plan_data.get("steps", [])):
-                                    steps_out.append({
-                                        "id": s.get("id") or f"step_{i_s+1}",
-                                        "title": s.get("title", f"Step {i_s+1}"),
-                                        "description": s.get("description", ""),
-                                        "status": "pending",
-                                        "agent_role": s.get("agent_role", "default"),
-                                        "order": i_s,
-                                        "tool_calls": [],
-                                    })
-                                plan_event = {
-                                    "type": "plan_created",
-                                    "plan": {
-                                        "id": re.sub(r'[^a-z0-9]', '',
-                                            (plan_data.get("title", "task") or "task")[:10].lower()) + str(i_s),
-                                        "title": plan_data.get("title", "任务规划"),
-                                        "description": plan_data.get("description", ""),
-                                        "steps": steps_out,
-                                        "status": "pending",
-                                        "progress_percent": 0,
-                                        "stats": {
-                                            "total": len(steps_out),
-                                            "completed": 0,
-                                            "in_progress": 0,
-                                            "pending": len(steps_out),
-                                        },
-                                        "estimated_duration": plan_data.get("estimated_duration", 0),
-                                        "required_tools": plan_data.get("required_tools", []),
-                                    }
-                                }
-                                _safe_put(plan_event)
-                                _log.info(f"[Plan] Detected plan: {plan_event['plan']['title']} with {len(steps_out)} steps")
-                                _plan_emitted = True
-                                # 立即标记第一步为进行中，传递"实时反馈的快感"
-                                if steps_out:
-                                    _safe_put({
-                                        "type": "plan_step_update",
-                                        "step": {
-                                            "id": steps_out[0]["id"],
-                                            "status": "in_progress",
-                                            "started_at": int(time.time()),
-                                        }
-                                    })
-                                return
-                        start = -1
+            result = _find_first_plan_json(stripped)
+            if result is None:
+                return
+            plan_data = result.get("plan", result)
+            steps_out = []
+            for i_s, s in enumerate(plan_data.get("steps", [])):
+                steps_out.append({
+                    "id": s.get("id") or f"step_{i_s+1}",
+                    "title": s.get("title", f"Step {i_s+1}"),
+                    "description": s.get("description", ""),
+                    "status": "pending",
+                    "agent_role": s.get("agent_role", "default"),
+                    "order": i_s,
+                    "tool_calls": [],
+                })
+            plan_event = {
+                "type": "plan_created",
+                "plan": {
+                    "id": re.sub(r'[^a-z0-9]', '',
+                        (plan_data.get("title", "task") or "task")[:10].lower()) + str(i_s),
+                    "title": plan_data.get("title", "任务规划"),
+                    "description": plan_data.get("description", ""),
+                    "steps": steps_out,
+                    "status": "pending",
+                    "progress_percent": 0,
+                    "stats": {
+                        "total": len(steps_out),
+                        "completed": 0,
+                        "in_progress": 0,
+                        "pending": len(steps_out),
+                    },
+                    "estimated_duration": plan_data.get("estimated_duration", 0),
+                    "required_tools": plan_data.get("required_tools", []),
+                }
+            }
+            _safe_put(plan_event)
+            _log.info(f"[Plan] Detected plan: {plan_event['plan']['title']} with {len(steps_out)} steps")
+            _plan_emitted = True
+            # 立即标记第一步为进行中，传递"实时反馈的快感"
+            if steps_out:
+                _safe_put({
+                    "type": "plan_step_update",
+                    "step": {
+                        "id": steps_out[0]["id"],
+                        "status": "in_progress",
+                        "started_at": int(time.time()),
+                    }
+                })
+                return
 
         def stream_callback(delta: str):
             if delta is not None:
@@ -1292,6 +1265,49 @@ async def chat_models():
     except Exception:
         pass
     return {"data": []}
+
+
+# ── Plan 解析纯函数（供 _detect_and_emit_plan 闭包与测试共用）──
+
+def _find_first_plan_json(text: str) -> dict | None:
+    """平衡括号解析器：从 text 中提取第一个包含 'plan' 键的 JSON 对象。
+
+    支持：嵌套对象、转义字符、markdown fence 前缀/后缀已被调用方处理。
+    Returns: 解析后的 dict 或 None。
+    """
+    depth = 0
+    start = -1
+    in_str = False
+    esc_next = False
+    for i_c, ch in enumerate(text):
+        if esc_next:
+            esc_next = False
+            continue
+        if ch == '\\':
+            esc_next = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == '{':
+            if start == -1:
+                start = i_c
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start >= 0:
+                candidate = text[start:i_c + 1]
+                if '"plan"' in candidate:
+                    try:
+                        return json.loads(candidate)
+                    except Exception:
+                        pass
+                start = -1
+    return None
+
+
 class AgentRunRequest(BaseModel):
     task: str
     session_id: str = "api-default"
