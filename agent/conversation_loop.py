@@ -106,6 +106,42 @@ def _with_planning_reminder(system_prompt: str) -> str:
     return system_prompt + _PLANNING_REMINDER
 
 
+def _compress_until_under_threshold(agent, messages, system_message, active_system_prompt,
+                                    approx_tokens, effective_task_id, conversation_history):
+    """Compress up to 3 passes, stopping when under threshold or no further reduction.
+
+    Shared by the P1-2 hard-guard fallback and the normal pre-flight path so the
+    compress-loop body isn't duplicated (audit improvement #3).  Returns the
+    (possibly updated) messages, active_system_prompt, approx_tokens, and
+    conversation_history — the last is reset to None whenever a pass actually
+    shrinks the context, signalling a new session that must flush all messages.
+    """
+    for _pass in range(3):
+        _orig_len = len(messages)
+        messages, active_system_prompt = agent._compress_context(
+            messages, system_message, approx_tokens=approx_tokens,
+            task_id=effective_task_id,
+        )
+        if len(messages) >= _orig_len:
+            break  # Cannot compress further
+        # Compression created a new session - drop the history reference so the
+        # flush writes ALL compressed messages (not just the delta).
+        conversation_history = None
+        agent._empty_content_retries = 0
+        agent._thinking_prefill_retries = 0
+        agent._last_content_with_tools = None
+        agent._last_content_tools_all_housekeeping = False
+        agent._mute_post_response = False
+        approx_tokens = estimate_request_tokens_rough(
+            messages,
+            system_prompt=active_system_prompt or "",
+            tools=agent.tools or None,
+        )
+        if approx_tokens < agent.context_compressor.threshold_tokens:
+            break
+    return messages, active_system_prompt, approx_tokens, conversation_history
+
+
 def _restore_or_build_system_prompt(agent, system_message, conversation_history):
     """Restore the cached system prompt from the session DB or build it fresh.
 
@@ -1366,27 +1402,12 @@ def run_conversation(
                     pass  # prune 已足够，跳过 LLM 压缩
                 else:
                     # 仍然超阈值，继续 LLM 压缩
-                    for _pass in range(3):
-                        _orig_len = len(messages)
-                        messages, active_system_prompt = agent._compress_context(
-                            messages, system_message, approx_tokens=_preflight_tokens,
-                            task_id=effective_task_id,
+                    messages, active_system_prompt, _preflight_tokens, conversation_history = (
+                        _compress_until_under_threshold(
+                            agent, messages, system_message, active_system_prompt,
+                            _preflight_tokens, effective_task_id, conversation_history,
                         )
-                        if len(messages) >= _orig_len:
-                            break
-                        conversation_history = None
-                        agent._empty_content_retries = 0
-                        agent._thinking_prefill_retries = 0
-                        agent._last_content_with_tools = None
-                        agent._last_content_tools_all_housekeeping = False
-                        agent._mute_post_response = False
-                        _preflight_tokens = estimate_request_tokens_rough(
-                            messages,
-                            system_prompt=active_system_prompt or "",
-                            tools=agent.tools or None,
-                        )
-                        if _preflight_tokens < agent.context_compressor.threshold_tokens:
-                            break
+                    )
             # If bridge is ready and fatigued, prune instead of compress.
             _bridge_ready = (
                 agent._memory_store
@@ -1404,38 +1425,12 @@ def run_conversation(
                 except Exception:
                     pass  # metrics best-effort
             else:
-                for _pass in range(3):
-                    _orig_len = len(messages)
-                    messages, active_system_prompt = agent._compress_context(
-                        messages, system_message, approx_tokens=_preflight_tokens,
-                        task_id=effective_task_id,
+                messages, active_system_prompt, _preflight_tokens, conversation_history = (
+                    _compress_until_under_threshold(
+                        agent, messages, system_message, active_system_prompt,
+                        _preflight_tokens, effective_task_id, conversation_history,
                     )
-                    if len(messages) >= _orig_len:
-                        break  # Cannot compress further
-                    # Compression created a new session - clear the history
-                    # reference so _flush_messages_to_session_db writes ALL
-                    # compressed messages to the new session's SQLite, not
-                    # skipping them because conversation_history is still the
-                    # pre-compression length.
-                    conversation_history = None
-                    # Fix: reset retry counters after compression so the model
-                    # gets a fresh budget on the compressed context.  Without
-                    # this, pre-compression retries carry over and the model
-                    # hits "(empty)" immediately after compression-induced
-                    # context loss.
-                    agent._empty_content_retries = 0
-                    agent._thinking_prefill_retries = 0
-                    agent._last_content_with_tools = None
-                    agent._last_content_tools_all_housekeeping = False
-                    agent._mute_post_response = False
-                    # Re-estimate after compression
-                    _preflight_tokens = estimate_request_tokens_rough(
-                        messages,
-                        system_prompt=active_system_prompt or "",
-                        tools=agent.tools or None,
-                    )
-                    if _preflight_tokens < agent.context_compressor.threshold_tokens:
-                        break  # Under threshold
+                )
 
     # ── Scheduler-driven proactive compression ──
     # The preflight block above handles the "session load exceeds threshold"

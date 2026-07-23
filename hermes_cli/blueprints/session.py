@@ -135,6 +135,13 @@ async def delete_session_endpoint(session_id: str):
             raise HTTPException(status_code=404, detail="Session not found")
         # Sync cleanup: release cached Agent instance for this session
         clean_agent_for_session(session_id)
+        # P1-3: also drop in-memory + SQLite plan state (closes mem-leak gap, audit #1)
+        try:
+            from hermes_cli.blueprints.chat import clean_session_plan_state
+
+            clean_session_plan_state(session_id)
+        except Exception:
+            pass  # best-effort cleanup
         return {"ok": True}
     finally:
         db.close()

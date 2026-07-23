@@ -62,6 +62,36 @@ def _restore_session_plan(session_id: str):
     except Exception:
         return None
 
+
+def _update_session_plan(session_id: str, plan=None, todo_states=None, plan_emitted=None) -> None:
+    """Partially update in-memory plan state and persist to SQLite (audit #2 DRY).
+
+    Only the supplied fields are overwritten; the rest keep their current value.
+    Fail-open: never raises.
+    """
+    state = _session_plan_store.setdefault(
+        session_id, {"plan": None, "todo_states": {}, "plan_emitted": False}
+    )
+    if plan is not None:
+        state["plan"] = plan
+    if todo_states is not None:
+        state["todo_states"] = todo_states
+    if plan_emitted is not None:
+        state["plan_emitted"] = plan_emitted
+    _persist_session_plan(session_id, state)
+
+
+def clean_session_plan_state(session_id: str) -> None:
+    """Drop in-memory + persisted plan state on session delete (closes mem-leak gap, audit #1)."""
+    _session_plan_store.pop(session_id, None)
+    try:
+        from agent.session_plan_store import delete_plan_state
+
+        delete_plan_state(session_id)
+    except Exception:
+        pass
+
+
 # ── Attachment constants ─────────────────────────────────────────────
 
 _ALLOWED_MIME_TYPES: frozenset = frozenset({
@@ -988,8 +1018,7 @@ async def chat_completions(req: ChatRequest):
             _log.info(f"[Plan] Detected plan: {plan_event['plan']['title']} with {len(steps_out)} steps")
             _plan_emitted = True
             # P1-3: Persist plan to session store for SSE reconnect snapshot
-            _session_plan_store[_session_id] = {"plan": plan_event["plan"], "todo_states": _prev_todo_states, "plan_emitted": True}
-            _persist_session_plan(_session_id, _session_plan_store[_session_id])
+            _update_session_plan(_session_id, plan=plan_event["plan"], todo_states=_prev_todo_states, plan_emitted=True)
             # 立即标记第一步为进行中，传递"实时反馈的快感"
             if steps_out:
                 _safe_put({
@@ -1077,8 +1106,7 @@ async def chat_completions(req: ChatRequest):
                                 _safe_put(_step_update)
                                 _prev_todo_states[_tid] = _new_status
                         # P1-3: Sync todo states to session store
-                        _session_plan_store[_session_id] = {"plan": _session_plan_store.get(_session_id, {}).get("plan"), "todo_states": _prev_todo_states, "plan_emitted": _plan_emitted}
-                        _persist_session_plan(_session_id, _session_plan_store[_session_id])
+                        _update_session_plan(_session_id, todo_states=_prev_todo_states, plan_emitted=_plan_emitted)
                         # 任务全部完成 → 发庆祝事件（additive，旧前端忽略）
                         _s = todo_data.get("summary", {})
                         if _s.get("total", 0) > 0 and _s.get("completed", 0) == _s.get("total") \
@@ -1161,8 +1189,7 @@ async def chat_completions(req: ChatRequest):
                         })
                         _prev_todo_states[_tid] = "interrupted"
                 # P1-3: Sync final state to session store
-                _session_plan_store[_session_id] = {"plan": _session_plan_store.get(_session_id, {}).get("plan"), "todo_states": _prev_todo_states, "plan_emitted": _plan_emitted}
-                _persist_session_plan(_session_id, _session_plan_store[_session_id])
+                _update_session_plan(_session_id, todo_states=_prev_todo_states, plan_emitted=_plan_emitted)
                 _agent_done.set()
 
         async def stream_generator():
