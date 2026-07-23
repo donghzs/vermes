@@ -737,7 +737,7 @@ async function deleteCustomSource(sid) {
 async function loadLiterature() {
   literatureLoading.value = true
   try {
-    const resp = await fetch('/api/registered-services')
+    const resp = await fetch('/api/registered-services', { headers: envHeaders() })
     const data = await resp.json()
     const services = data.services || {}
     
@@ -804,7 +804,7 @@ async function loadLiterature() {
     
     // 拉取自定义源完整定义（含端点/认证方式），供编辑模态框预填
     try {
-      const cdResp = await fetch('/api/literature-custom-sources')
+      const cdResp = await fetch('/api/literature-custom-sources', { headers: envHeaders() })
       const cdData = await cdResp.json()
       const cmap = {}
       for (const s of (cdData.sources || [])) cmap[s.id] = s
