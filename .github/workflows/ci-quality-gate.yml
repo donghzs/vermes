@@ -45,6 +45,88 @@ jobs:
           echo "## Test Results" >> $GITHUB_STEP_SUMMARY
           echo "Gateway baseline check completed" >> $GITHUB_STEP_SUMMARY
 
+  # ── 边界优化 #3: 前端 e2e（纯前端 mock，守护 P1-3 SSE 重连+快照合并）──
+  frontend-e2e:
+    name: Frontend E2E (Playwright, mock)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+
+      - name: Run frontend e2e (pure-frontend mock)
+        run: |
+          cd frontend
+          npx playwright test --reporter=line
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e-report
+          path: frontend/playwright-report
+          retention-days: 7
+
+  # ── 边界优化 #4: 跨重启恢复真实后端 e2e（触达 session_plan_store.py）──
+  # 非阻断：初期仅报告，待稳定后去掉 continue-on-error 升为正式门禁。
+  frontend-e2e-backend:
+    name: Frontend E2E (real backend recovery)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+
+      - name: Run frontend e2e (real-backend recovery)
+        env:
+          RUN_BACKEND_E2E: '1'
+          HERMES_HOME: /tmp/vermes-e2e
+        run: |
+          cd frontend
+          npx playwright test chat-cross-restart.spec.ts --reporter=line
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e-backend-report
+          path: frontend/playwright-report
+          retention-days: 7
+
   # ── P0.1: Mac DMG 构建 (Electron) ──
   build-macos-electron:
     name: Build macOS Electron DMG

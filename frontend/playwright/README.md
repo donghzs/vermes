@@ -54,8 +54,41 @@ npm run test:e2e        # 等价于 npx playwright test
 故作为**可维护资产交付，不在此处实跑**。CI 环境（已装 chromium + `@playwright/test`）可直接 `npx playwright test`。
 建议接入 CI 的 `e2e` 阶段，作为 P1-3 的回归门禁。
 
+## 跨重启恢复（真实后端用例）
+
+`chat-cross-restart.spec.ts` 覆盖审计第 6 节遗留的「跨重启恢复」边界（边界 #4），**真正触达
+生产模块 `agent/session_plan_store.py`**，而非纯前端 mock：
+
+- `seed_session_plan.py`（进程 A）用真实 `save_plan_state` 把 plan 写入 `HERMES_HOME/session_plans.db`；
+- `mock_backend.py`（进程 B，独立进程）的 `plan_snapshot` 走真实 `load_plan_state` 从 SQLite 读回；
+- 前端 `chat/completions` 被主动 `abort`（模拟断线）→ 触发重连 → 拉 `plan_snapshot` → 从 SQLite 恢复渲染。
+
+即「一个进程写入 SQLite → 另一进程（模拟重启后）读回」的跨进程持久化闭环，验证
+`session_plan_store` 的落库/恢复路径。
+
+**前置**：需 `python3` 且仓库 `agent` 包可导入（CI 的 ubuntu/python3.11 满足）。默认**不运行**，
+置环境变量启用：
+
+```bash
+cd frontend
+RUN_BACKEND_E2E=1 HERMES_HOME=/tmp/vermes-e2e npx playwright test chat-cross-restart.spec.ts
+```
+
+`HERMES_HOME` 指向临时目录，避免触碰用户真实的 `session_plans.db`。未置 `RUN_BACKEND_E2E=1`
+时该用例 `test.skip()`，纯前端 mock 用例仍正常跑。
+
+## CI 接入
+
+`.github/workflows/ci-quality-gate.yml` 新增两个 job：
+
+- `frontend-e2e`（**阻断**）：装 Node 20 + `@playwright/test` + chromium，跑 `npm run test:e2e`
+  （纯前端 mock 两个用例，默认即可全绿，守护 P1-3 重连/快照合并）。
+- `frontend-e2e-backend`（**非阻断 / continue-on-error**，待稳定后去保护）：`RUN_BACKEND_E2E=1`
+  同时跑真实后端跨重启恢复用例，验证 `session_plan_store` 落库/恢复路径。
+
 ## 后续可扩展
 
-- 增加「跨重启恢复」端到端用例：起真实后端（含 SQLite `session_plans.db`），发消息→落库→
-  重启后端→前端重连拉快照，断言步骤从 SQLite 恢复（当前为纯前端 mock，未触达 `session_plan_store.py` 落库路径）。
+- 稳定后去掉 `frontend-e2e-backend` 的 `continue-on-error`，使其成为正式门禁。
 - 增加超时/预算退出（边界 #3）的前端提示断言。
+- 若日后有「mock LLM provider」，可让真实后端在 e2e 中真实产出 plan（write 路径），
+  而不仅验证 read/恢复路径。
