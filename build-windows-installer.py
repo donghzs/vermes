@@ -68,8 +68,23 @@ def main():
         print("  VERMES_SKIP_NPM=1: 跳过 web_dist 同步（使用仓库内的 web_dist）")
     elif src_dist and os.path.exists(src_dist):
         if os.path.exists(dst_dist):
+            # 保留 modules/ 目录（ScholarForge 前端是独立构建、存进仓库的，
+            # 不在主前端 npm run build 流程里，rmtree 会误删）
+            modules_dir = os.path.join(dst_dist, "modules")
+            tmp_modules = None
+            if os.path.exists(modules_dir):
+                import tempfile
+                tmp_modules = tempfile.mkdtemp(prefix="sf_modules_")
+                shutil.copytree(modules_dir, tmp_modules, dirs_exist_ok=True)
+                print(f"  暂存 web_dist/modules/ 至 {tmp_modules}")
             shutil.rmtree(dst_dist)
-        shutil.copytree(src_dist, dst_dist)
+            shutil.copytree(src_dist, dst_dist)
+            if tmp_modules:
+                shutil.copytree(tmp_modules, modules_dir, dirs_exist_ok=True)
+                shutil.rmtree(tmp_modules, ignore_errors=True)
+                print(f"  恢复 web_dist/modules/")
+        else:
+            shutil.copytree(src_dist, dst_dist)
         print(f"  ✅ web_dist 已同步 ({len(os.listdir(dst_dist))} files)")
 
     # ── Step 3: PyInstaller COLLECT ──
