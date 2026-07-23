@@ -55,13 +55,19 @@ class TestShouldEmitFinalFallback:
         ) is False
 
     def test_short_final_embedded_midstream_emits(self):
-        """P2#2 修复：极短 final 恰为中间句子子串（非流尾）→ 不能漏发，否则重现空回复。"""
+        """P2#2 收紧：极短 final 夹在句子中间 → 不能漏发，否则重现空回复。"""
         assert _should_emit_final_fallback(
             "OK", "请稍候…… OK 服务器已响应"
         ) is True
 
-    def test_short_final_at_stream_tail_does_not_reemit(self):
-        """极短 final 确实位于流尾（已流式展示）→ 不补发。"""
+    def test_short_final_as_tail_suffix_emits(self):
+        """极短 final 恰为更长流式句子的尾部子串（"一切 ok" 的尾 "ok"）→ 作为独立
+        最终回答并未呈现，保守补发（最多一条短重复），不分位置漏判。"""
         assert _should_emit_final_fallback(
             "OK", "处理完成 OK"
-        ) is False
+        ) is True
+
+    def test_short_final_exact_streamed_does_not_reemit(self):
+        """极短 final 且整段流文本精确等于它（确为已流式展示的短答）→ 不补发。"""
+        assert _should_emit_final_fallback("OK", "OK") is False
+        assert _should_emit_final_fallback("收到", "收到") is False

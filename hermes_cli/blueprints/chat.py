@@ -124,11 +124,18 @@ def _should_emit_final_fallback(final_response, streamed_text) -> bool:
     streamed_n = _normalize_stream_text(streamed_text)
     if not streamed_n:
         return True
-    if streamed_n.endswith(final_n):
+    # 已完整流式呈现：归一化后整段流文本恰好就是 final → 不补发。
+    if streamed_n == final_n:
         return False
-    if len(final_n) >= 8:
-        return final_n not in streamed_n
-    return True
+    # 极短回答(<=7 归一化字符)：模型文本答案里夹短词（"ok"/"收到"等）可能恰好是
+    # 流文本任意位置的子串/尾缀（"一切 ok" 的尾 "ok"），用 `in`/`endswith` 都会误判为
+    # 「已呈现」而漏发兜底，重现「⚠ 回复为空」（P2#2）。除「整段精确等于」外一律补发——
+    # 最多一条短重复，远优于空回复。
+    if len(final_n) < 8:
+        return True
+    # 长回答：归一化已流出文本包含 final 即视为已展示（partial recovery：
+    # final 是更长流式文本的子串/前缀），避免重复补发。长串巧合命中概率低，可接受。
+    return final_n not in streamed_n
 
 
 # ── Attachment constants ─────────────────────────────────────────────
