@@ -48,7 +48,20 @@ class TestShouldEmitFinalFallback:
         assert _should_emit_final_fallback("   \n  ", "") is False
 
     def test_final_substring_of_streamed_does_not_reemit(self):
-        """partial recovery：final 是已流出文本的子串 → 已呈现，不补发。"""
+        """partial recovery：较长 final 是已流出文本的子串/前缀 → 已呈现，不补发。"""
         assert _should_emit_final_fallback(
-            "结论是 A", "推导过程……结论是 A（详见上文）"
+            "结论是该方案可行且风险可控",
+            "经过推导结论是该方案可行且风险可控，详见上文",
+        ) is False
+
+    def test_short_final_embedded_midstream_emits(self):
+        """P2#2 修复：极短 final 恰为中间句子子串（非流尾）→ 不能漏发，否则重现空回复。"""
+        assert _should_emit_final_fallback(
+            "OK", "请稍候…… OK 服务器已响应"
+        ) is True
+
+    def test_short_final_at_stream_tail_does_not_reemit(self):
+        """极短 final 确实位于流尾（已流式展示）→ 不补发。"""
+        assert _should_emit_final_fallback(
+            "OK", "处理完成 OK"
         ) is False

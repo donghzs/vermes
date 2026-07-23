@@ -108,8 +108,15 @@ def _should_emit_final_fallback(final_response, streamed_text) -> bool:
 
     规则：final_response 是非空真实内容（排除 "(empty)" 失败哨兵——那是
     给 gateway 的失败标记，对应的用户提示已由 status warn 事件传达），
-    且归一化后的已流出文本不包含它（中途工具叙述流出过 ≠ 最终回答流出过）。
-    包含则说明已流出，补发会造成重复。
+    且归一化后的已流出文本【没有】把它作为最终回答呈现过，才补发。
+    已呈现的判断优先级：
+      1) 流尾匹配——streamed 以 final 收尾（最终回答就是最后流出的文本）→ 已呈现；
+      2) 长回答子串——final 较长(>=8 归一化字符)且为 streamed 子串，视为
+         partial recovery（final 是更长流式文本的子串/前缀）→ 已呈现，避免重复；
+         长串巧合命中概率低，可接受；
+      3) 极短回答(<=7 字符)——`in` 易把中间巧合子串（如 "ok" 夹在句子里）
+         误判为已呈现而漏发，重现空回复（P2#2）。此时宁可补发（最多一条短
+         重复），非流尾即视为未呈现。
     """
     final_n = _normalize_stream_text(final_response)
     if not final_n or final_n == "(empty)":
@@ -117,7 +124,11 @@ def _should_emit_final_fallback(final_response, streamed_text) -> bool:
     streamed_n = _normalize_stream_text(streamed_text)
     if not streamed_n:
         return True
-    return final_n not in streamed_n
+    if streamed_n.endswith(final_n):
+        return False
+    if len(final_n) >= 8:
+        return final_n not in streamed_n
+    return True
 
 
 # ── Attachment constants ─────────────────────────────────────────────

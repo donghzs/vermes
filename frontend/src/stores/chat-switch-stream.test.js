@@ -43,7 +43,7 @@ vi.mock('../services/chat-transport', () => ({
   getChatTransport: () => ({ on: vi.fn(), off: vi.fn(), send: vi.fn(), stop: vi.fn(), fetchSnapshot: vi.fn() }),
 }))
 
-import { keepStreamAliveOnSwitch } from './chat'
+import { keepStreamAliveOnSwitch, applyPlanStepUpdate } from './chat'
 
 describe('keepStreamAliveOnSwitch', () => {
   const streamingMsg = (sessionId = 's1', extra = {}) => ({
@@ -77,5 +77,33 @@ describe('keepStreamAliveOnSwitch', () => {
   it('不同会话的 sessionId 不匹配 → 不保活（per-session 精确性）', () => {
     const transport = { isStreaming: (sid) => sid === 's-other' }
     expect(keepStreamAliveOnSwitch(streamingMsg('s1'), transport)).toBe(false)
+  })
+})
+
+describe('applyPlanStepUpdate (P2#1 防白触发响应式)', () => {
+  const base = [
+    { id: 's1', status: 'pending', started_at: null, finished_at: null },
+    { id: 's2', status: 'pending', started_at: null, finished_at: null },
+  ]
+
+  it('已知步骤：返回更新后的新数组，且原数组不被修改（不可变）', () => {
+    const out = applyPlanStepUpdate(base, { id: 's1', status: 'in_progress' })
+    expect(out).not.toBeNull()
+    expect(out).toHaveLength(2)
+    expect(out[0].status).toBe('in_progress')
+    // 原数组不受影响
+    expect(base[0].status).toBe('pending')
+    expect(out).not.toBe(base)
+  })
+
+  it('in_progress 且无 started_at → 自动补当前时间戳', () => {
+    const out = applyPlanStepUpdate(base, { id: 's2', status: 'in_progress' })
+    expect(out[1].started_at).toBeTypeOf('number')
+  })
+
+  it('未知步骤(idx < 0) → 返回 null，调用方据此跳过重赋值（不白触发响应式）', () => {
+    expect(applyPlanStepUpdate(base, { id: 'nope', status: 'in_progress' })).toBeNull()
+    expect(applyPlanStepUpdate(null, { id: 'x' })).toBeNull()
+    expect(applyPlanStepUpdate(base, null)).toBeNull()
   })
 })

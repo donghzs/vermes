@@ -61,6 +61,29 @@ export function keepStreamAliveOnSwitch(msg, transport) {
   return stillStreaming
 }
 
+/**
+ * 把单个 plan 步骤状态变更合并进当前 todo 列表。
+ * 纯函数：不触碰响应式状态，便于单测。
+ *
+ * 返回更新后的【新数组】；当步骤 id 不在列表中(idx < 0)时返回 null，
+ * 调用方据此跳过重赋值，避免「无变化的副本」白触发一次响应式更新（P2#1）。
+ */
+export function applyPlanStepUpdate(curItems, step) {
+  if (!step || !Array.isArray(curItems)) return null
+  const idx = curItems.findIndex((i) => i.id === step.id)
+  if (idx < 0) return null
+  const newItems = curItems.slice()
+  newItems[idx] = {
+    ...newItems[idx],
+    status: step.status,
+    started_at:
+      step.started_at ||
+      (step.status === 'in_progress' ? Math.floor(Date.now() / 1000) : null),
+    finished_at: step.finished_at || null,
+  }
+  return newItems
+}
+
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref(loadFromStorage(SESSIONS_KEY))
   const currentSessionId = ref(null)
@@ -667,17 +690,12 @@ export const useChatStore = defineStore('chat', () => {
           if (subtype === 'step_update' || subtype === 'step_started' || subtype === 'step_completed') {
             const step = data.step
             if (!step) return
-            const idx = curItems.findIndex(i => i.id === step.id)
-            const newItems = curItems.slice()
-            if (idx >= 0) {
-              newItems[idx] = {
-                ...newItems[idx],
-                status: step.status,
-                started_at: step.started_at || (step.status === 'in_progress' ? Math.floor(Date.now() / 1000) : null),
-                finished_at: step.finished_at || null,
-              }
+            // P2#1：步骤不存在(idx<0)时 applyPlanStepUpdate 返回 null，
+            // 跳过「无变化副本」的重赋值，避免白触发一次响应式更新。
+            const newItems = applyPlanStepUpdate(curItems, step)
+            if (newItems !== null) {
+              sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: newItems }
             }
-            sessionTodoItems.value = { ...sessionTodoItems.value, [sendSessionId]: newItems }
             if (subtype === 'step_started') {
               sessionShowTaskDrawer.value = { ...sessionShowTaskDrawer.value, [sendSessionId]: true }
             }
