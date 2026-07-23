@@ -5,7 +5,7 @@
 ; 前置条件: PyInstaller COLLECT 构建已完成 (dist/Vermes/ 目录)
 
 #define MyAppName "Vermes"
-#define MyAppVersion "2.0.9"
+#define MyAppVersion "2.3.5"
 #define MyAppPublisher "胜比特"
 #define MyAppURL "https://vbit.top"
 #define MyAppExeName "Vermes.exe"
@@ -28,12 +28,12 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; 安装包图标
-SetupIconFile=packaging\vermes.ico
+; 安装包图标（vermes.ico 已存在于 packaging/ 目录）
+SetupIconFile=vermes.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; 外观
-WizardImageFile=packaging\vermes-wizard.bmp
-WizardSmallImageFile=packaging\vermes-icon-small.bmp
+; 外观（bmp 资源未入仓库，用 Inno 默认向导图）
+; WizardImageFile=vermes-wizard.bmp
+; WizardSmallImageFile=vermes-icon-small.bmp
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
