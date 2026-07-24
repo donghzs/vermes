@@ -1597,48 +1597,56 @@ SCHOLARFORGE_VERIFY_CITATIONS_SCHEMA = {
 }
 
 
+def _parse_papers(raw: Any) -> list[dict]:
+    """解析文献列表 — 接受 list / JSON 字符串 / 纯文本，返回统一的 dict 列表。
+
+    verify_citations 和 review_claims 两个 handler 共用。
+    """
+    if isinstance(raw, list):
+        return raw
+    if not raw or (isinstance(raw, str) and not raw.strip()):
+        return []
+
+    # 尝试 JSON
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 按行解析
+    papers = []
+    for line in raw.strip().split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        ref_match = re.match(r'\[?\d+\]?\s*(.+?)\s*\((\d{4})\)\.\s*(.+?)\.\s*(.+)', line)
+        if ref_match:
+            papers.append({
+                "authors": ref_match.group(1).strip(),
+                "year": ref_match.group(2),
+                "title": ref_match.group(3).strip(),
+                "venue": ref_match.group(4).strip(),
+                "doi": "",
+            })
+        else:
+            parts = [p.strip() for p in line.split(".")]
+            papers.append({
+                "title": parts[1] if len(parts) > 1 else line,
+                "authors": parts[0] if parts else "",
+                "year": "",
+                "venue": parts[2] if len(parts) > 2 else "",
+                "doi": "",
+            })
+    return papers
+
+
 async def _handle_scholarforge_verify_citations(args: dict, **kw: Any) -> str:
     """验证引用真实性"""
-    import json as json_mod
-
     papers_raw = args.get("papers", "")
     enable_online = args.get("enable_online", True)
-
-    # 接受 list 或 JSON 字符串或纯文本
-    if isinstance(papers_raw, list):
-        papers = papers_raw
-    elif not papers_raw.strip():
-        return "❌ 请提供文献列表。"
-    else:
-        # 尝试解析 JSON
-        papers = []
-        try:
-            papers = json_mod.loads(papers_raw)
-        except (json_mod.JSONDecodeError, ValueError):
-            # 按行解析
-            for line in papers_raw.strip().split("\n"):
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                # 尝试解析 [n] Author (Year). Title. Venue.
-                ref_match = re.match(r'\[?\d+\]?\s*(.+?)\s*\((\d{4})\)\.\s*(.+?)\.\s*(.+)', line)
-                if ref_match:
-                    papers.append({
-                        "authors": ref_match.group(1).strip(),
-                        "year": ref_match.group(2),
-                        "title": ref_match.group(3).strip(),
-                        "venue": ref_match.group(4).strip(),
-                        "doi": "",
-                    })
-                else:
-                    parts = [p.strip() for p in line.split(".")]
-                    papers.append({
-                        "title": parts[1] if len(parts) > 1 else line,
-                        "authors": parts[0] if parts else "",
-                        "year": "",
-                        "venue": parts[2] if len(parts) > 2 else "",
-                        "doi": "",
-                    })
+    papers = _parse_papers(papers_raw)
 
     if not papers:
         return "❌ 未能解析文献列表，请提供 JSON 数组或每行一篇的格式。"
@@ -1650,6 +1658,72 @@ async def _handle_scholarforge_verify_citations(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"verify_citations error: {e}", exc_info=True)
         return f"❌ 引用验证失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Review Claims (主张-证据审查流水线)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_REVIEW_CLAIMS_SCHEMA = {
+    "name": "scholarforge_review_claims",
+    "description": (
+        "主张-证据审查流水线：从论文中抽取核心主张(Claim)，逐条检查引用真实性、"
+        "统计一致性、研究设计缺陷，生成结构化审查报告。"
+        "适用于：投稿前自检、审稿辅助、AI 生成论文的质量门控。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "paper_text": {
+                "type": "string",
+                "description": "论文全文或主要章节文本",
+            },
+            "references": {
+                "type": "string",
+                "description": (
+                    "文献列表，JSON 数组格式，每条含 title/authors/year/venue/doi。"
+                    "或每行一篇，格式：作者. 标题. 期刊. 年份. DOI。"
+                    "不提供则跳过引用核查。"
+                ),
+            },
+            "design_info": {
+                "type": "object",
+                "description": "可选的结构化设计信息，如 {\"design\":\"between-subjects\",\"groups\":2}",
+            },
+            "enable_online": {
+                "type": "boolean",
+                "description": "是否启用在线引用验证（默认 true），关闭时仅做本地启发式检查",
+                "default": True,
+            },
+        },
+        "required": ["paper_text"],
+    },
+}
+
+
+async def _handle_scholarforge_review_claims(args: dict, **kw: Any) -> str:
+    """主张-证据审查流水线"""
+    paper_text = args.get("paper_text", "")
+    if not paper_text.strip():
+        return "❌ 请提供论文文本。"
+
+    references_raw = args.get("references", "")
+    references = _parse_papers(references_raw) if references_raw else None
+
+    design_info = args.get("design_info")
+    enable_online = args.get("enable_online", True)
+
+    try:
+        from hermes_cli.scholarforge.claim_audit import review_claims
+        return await review_claims(
+            paper_text,
+            references=references,
+            design_info=design_info,
+            enable_online=enable_online,
+        )
+    except Exception as e:
+        logger.error(f"review_claims error: {e}", exc_info=True)
+        return f"❌ 主张-证据审查失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1994,4 +2068,13 @@ def register_tools(host_api=None):
         emoji="⚠️",
         description="研究设计缺陷检测（多要素未分离/评估者偏差/样本代表性等 8 类）",
     )
-    logger.info("[ScholarForge] 15 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws")
+    registry.register(
+        name="scholarforge_review_claims",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_REVIEW_CLAIMS_SCHEMA,
+        handler=_handle_scholarforge_review_claims,
+        is_async=True,
+        emoji="⚖️",
+        description="主张-证据审查流水线（抽取 Claim → 逐条检查引用/统计/设计 → 结构化报告）",
+    )
+    logger.info("[ScholarForge] 16 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims")
