@@ -178,6 +178,35 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_lit_tag ON literature_tags(literature_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tag ON literature_tags(tag)")
 
+        # ── Literature Cards（文献知识沉淀，独立于 project，跨会话累积）──
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS literature_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                authors TEXT,
+                year TEXT,
+                venue TEXT,
+                doi TEXT,
+                url TEXT,
+                pdf_url TEXT,
+                source TEXT,
+                abstract TEXT,
+                research_question TEXT,
+                methods TEXT,
+                datasets TEXT,
+                findings TEXT,
+                limitations TEXT,
+                key_claims TEXT,
+                tags TEXT,
+                added_at INTEGER NOT NULL,
+                UNIQUE(doi, title)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_card_doi ON literature_cards(doi)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_card_year ON literature_cards(year)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_card_source ON literature_cards(source)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_card_title ON literature_cards(title)")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Project CRUD
