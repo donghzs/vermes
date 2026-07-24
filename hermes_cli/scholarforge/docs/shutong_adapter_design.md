@@ -114,4 +114,30 @@ class ShutongProvider(CustomHttpProvider):
 
 ---
 
-_最后更新：2026-07-24 — `ShutongProvider` 已**全自动打通**：登录 → SSO JWT → 动态 KNS8 镜像 → 标准知网 `/kns8s/brief/grid` 检索 → 解析 `result-table-list`，无需浏览器、无需 DevTools、无需用户配置任何 URL（由用户不满“需 DevTools 抓 URL”而推动实装）。_
+## 7. 通用化：整族代理"配置接入"而非"逐个写 adapter"
+
+shutong 跑通后，用户提出"粘贴网站+账号+密码类第三方文献库是否该直接能用"。实证表明 shutong / wenx / ccki 等购买到的中文文献代理**架构同构**：EmpireCMS 卡密登录 → 某 SSO 入口 → 动态 KNS8 镜像 → 标准知网 `/kns8s/brief/grid` 检索。差异仅在入口形式，**可用配置表达**：
+
+| 差异项 | shutong | wenx / ccki |
+|--------|---------|-------------|
+| SSO 入口 | `/l77.php`（JS 跳 → api88 token → 302） | `/cs00.php` 等（直接 302） |
+| `sso_mode` | `token_then_redirect` | `direct_302` |
+| 频道开通 | 已开通 | 常需购买群组开通（`channel_gate`） |
+
+故将 shutong 的检索逻辑抽离为通用基类
+`agent/literature_providers/kns8_login_provider.py:Kns8TempLoginProvider`，shutong / wenx
+退化为只声明差异常量的子类（`ShutongProvider` / `WenxProvider`）。注册时
+`_looks_like_empirecms` 自动补齐 EmpireCMS 登录字段（username + enews 等），
+`provider_type` 或域名特征路由到对应子类。**新增同族代理 = 填几个配置，无需重写检索逻辑。**
+
+**会话缓存（防封号核心）**：登录态 cookie + 镜像地址缓存带 TTL（默认 10min），
+同实例多次查询复用、失效才重登。避免 agent 单会话反复登录触发网关防暴破
+（曾因探测过频封停用户账号 24h）。
+
+**边界**：检索契约是标准知网 KNS8，故该族可通用打通；纯 EmpireCMS 内容站（无
+KNS8 镜像、仅 ShowInfo 文章页）或非标准检索 API 不在此列。`ccki` 入口路径待探
+（同族大概率为 `/csNN.php`，届时补 `sso_path` 即可）。
+
+---
+
+_最后更新：2026-07-24 — `ShutongProvider` 已**全自动打通**；并抽象出通用 `Kns8TempLoginProvider` 骨架，wenx / ccki 同族代理配置接入即打通，登录态带 TTL 缓存防封号（由用户"粘贴网站+账号密码应直接能用"的诉求推动实装）。_
