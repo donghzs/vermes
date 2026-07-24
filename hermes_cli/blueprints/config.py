@@ -14,6 +14,7 @@ Endpoints:
 - POST /api/env/reveal        — 揭示环境变量值
 """
 
+import asyncio
 import logging
 import time
 from typing import Any, Dict
@@ -566,6 +567,119 @@ async def delete_literature_custom_source(source_id: str, request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+async def parse_literature_credential_source(body: Dict[str, Any], request: Request):
+    """粘贴凭证块 → 自动识别并一键接入为自定义文献源。
+
+    接收 ``{"text": "卡号：...\\n密码：...\\n网址：..."}``，解析后创建自定义文献源
+    并将凭证落盘到 .env（命名空间 LIT_<ID>_*）。返回脱敏摘要，绝不回显明文密码。
+    """
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    text = (body or {}).get("text", "")
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="请提供要识别的凭证文本（卡号/密码/网址）")
+    try:
+        from agent.literature_custom_store import register_source_from_credential_block
+
+        result = register_source_from_credential_block(text)
+    except Exception:
+        _log.exception("POST /api/literature-custom-sources/parse failed")
+        raise HTTPException(status_code=500, detail="识别失败")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "识别失败"))
+    return result
+
+
+# ── 本地文献库（用户本地文件夹 / USB）──────────────────────────────────────────
+
+async def list_literature_local_sources():
+    """List the user's local literature libraries (config only, no secrets)."""
+    try:
+        from agent.local_library_store import list_local_libraries
+
+        return {"sources": list_local_libraries()}
+    except Exception:
+        _log.exception("GET /api/literature-local-sources failed")
+        return {"sources": []}
+
+
+async def create_literature_local_source(body: Dict[str, Any], request: Request):
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    root = (body or {}).get("root", "")
+    label = (body or {}).get("label", "")
+    description = (body or {}).get("description", "")
+    try:
+        from agent.local_library_store import add_local_library
+
+        rec = add_local_library(root, label or None, description=description or "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        _log.exception("POST /api/literature-local-sources failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    # Index off the request thread so the UI stays responsive on large folders.
+    try:
+        from agent.local_library_index import index_library
+        from agent.local_library_store import touch_indexed
+
+        summary = await asyncio.to_thread(index_library, rec["id"], rec["root"], False)
+        touch_indexed(
+            rec["id"],
+            summary.get("indexed", 0) + summary.get("updated", 0),
+            "indexed" if summary.get("errors", 0) == 0 else "error",
+        )
+        rec = {**rec, "index_summary": summary}
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("local library index failed (deferred): %s", exc)
+        rec = {**rec, "index_summary": {"error": str(exc)}}
+    return {"ok": True, "source": rec}
+
+
+async def delete_literature_local_source(source_id: str, request: Request):
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    try:
+        from agent.local_library_store import delete_local_library
+
+        if not delete_local_library(source_id):
+            raise HTTPException(status_code=404, detail=f"本地文献库 '{source_id}' 不存在")
+        return {"ok": True, "id": source_id}
+    except HTTPException:
+        raise
+    except Exception:
+        _log.exception("DELETE /api/literature-local-sources failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+async def reindex_literature_local_source(source_id: str, request: Request):
+    from hermes_cli.web_server import _require_token
+
+    _require_token(request)
+    try:
+        from agent.local_library_index import index_library
+        from agent.local_library_store import get_local_library, touch_indexed
+
+        lib = get_local_library(source_id)
+        if lib is None:
+            raise HTTPException(status_code=404, detail=f"本地文献库 '{source_id}' 不存在")
+        summary = await asyncio.to_thread(index_library, source_id, lib["root"], True)
+        touch_indexed(
+            source_id,
+            summary.get("indexed", 0) + summary.get("updated", 0),
+            "indexed" if summary.get("errors", 0) == 0 else "error",
+        )
+        return {"ok": True, "id": source_id, "summary": summary}
+    except HTTPException:
+        raise
+    except Exception:
+        _log.exception("POST /api/literature-local-sources/{id}/index failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 async def update_config(body: ConfigUpdate):
     try:
         save_config(_denormalize_config_from_web(body.config))
@@ -710,6 +824,13 @@ def register_to(app):
     app.add_api_route("/api/literature-custom-sources", create_literature_custom_source, methods=["POST"])
     app.add_api_route("/api/literature-custom-sources/{source_id}", update_literature_custom_source, methods=["PUT"])
     app.add_api_route("/api/literature-custom-sources/{source_id}", delete_literature_custom_source, methods=["DELETE"])
+    app.add_api_route("/api/literature-custom-sources/parse", parse_literature_credential_source, methods=["POST"])
+
+    # --- Local literature libraries (user folders / USB) ---
+    app.add_api_route("/api/literature-local-sources", list_literature_local_sources, methods=["GET"])
+    app.add_api_route("/api/literature-local-sources", create_literature_local_source, methods=["POST"])
+    app.add_api_route("/api/literature-local-sources/{source_id}", delete_literature_local_source, methods=["DELETE"])
+    app.add_api_route("/api/literature-local-sources/{source_id}/index", reindex_literature_local_source, methods=["POST"])
     app.add_api_route("/api/config/raw", get_config_raw, methods=["GET"])
     app.add_api_route("/api/config/raw", update_config_raw, methods=["PUT"])
     app.add_api_route("/api/env", get_env_vars, methods=["GET"])

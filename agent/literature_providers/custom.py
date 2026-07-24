@@ -7,7 +7,9 @@ adapter:
 
   * builds the request from the source definition (endpoint, auth scheme,
     query-param / method, credential fields);
-  * attaches auth as Bearer / Basic / custom header / query-param / none;
+  * attaches auth as Bearer / Basic / custom header / query-param / none /
+    ``form`` (card-number + password login → session cookie, then search on
+    that session — for purchased third-party literature gateways like 书童);
   * tolerantly extracts a paper list from the most common JSON shapes
     (``results`` / ``records`` / ``data`` / ``items`` / ``papers`` / ``hits`` …
     and per-item title / authors / year / abstract / url / doi / journal).
@@ -25,7 +27,11 @@ import os
 from typing import Any, Dict, List, Optional
 
 from agent.literature_provider import LiteratureProvider
-from agent.literature_providers._http import http_get_json, http_post_json
+from agent.literature_providers._http import (
+    http_get_json,
+    http_login_then_search,
+    http_post_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +111,13 @@ class CustomHttpProvider(LiteratureProvider):
         self._query_param = definition.get("query_param") or "q"
         self._method = (definition.get("method") or "GET").upper()
         self._fields = definition.get("fields", []) or []
+        # ── form-login (card-gateway) config ──
+        self._login_url = (definition.get("login_url") or self._base_url).strip().rstrip("/")
+        self._login_user_field = definition.get("login_user_field") or "user"
+        self._login_password_field = definition.get("login_password_field") or "password"
+        extra = definition.get("login_extra_fields")
+        self._login_extra_fields = extra if isinstance(extra, dict) else {}
+        self._search_url = (definition.get("search_url") or self._base_url).strip().rstrip("/")
 
     @property
     def name(self) -> str:
@@ -163,6 +176,11 @@ class CustomHttpProvider(LiteratureProvider):
             return bool(creds.get("api_key"))
         if self._auth == "basic":
             return bool(creds.get("user") and creds.get("password"))
+        if self._auth == "form":
+            # 卡号+密码表单登录：需要登录地址与账号密码
+            if not self._login_url:
+                return False
+            return bool(creds.get("user") and creds.get("password"))
         return True
 
     # ── search ────────────────────────────────────────────────────────────────
@@ -195,6 +213,45 @@ class CustomHttpProvider(LiteratureProvider):
         user = creds.get("user")
         password = creds.get("password")
         target = params if self._method == "GET" else body
+
+        # ── form-login (card-gateway): login → session → search ──
+        if self._auth == "form":
+            login_payload = {
+                self._login_user_field: user or "",
+                self._login_password_field: password or "",
+            }
+            login_payload.update(self._login_extra_fields or {})
+            if self._method == "GET":
+                sp = {qp: query, "limit": limit}
+                r = http_login_then_search(
+                    login_url=self._login_url,
+                    login_payload=login_payload,
+                    search_url=self._search_url or endpoint,
+                    search_method="GET",
+                    search_params=sp,
+                    headers=headers,
+                )
+            else:
+                sj = {qp: query, "limit": limit}
+                r = http_login_then_search(
+                    login_url=self._login_url,
+                    login_payload=login_payload,
+                    search_url=self._search_url or endpoint,
+                    search_method="POST",
+                    search_params=sj,
+                    search_json=sj,
+                    headers=headers,
+                )
+            if not r.get("ok"):
+                return {
+                    "success": False,
+                    "error": r.get("error", "表单登录/检索失败（请检查登录地址与字段名）"),
+                }
+            papers = self._parse(r.get("data") or r.get("text"), limit)
+            return {
+                "success": True,
+                "data": {"papers": papers, "source": self.name, "count": len(papers)},
+            }
 
         if self._auth == "bearer" and ak:
             headers["Authorization"] = "Bearer " + ak

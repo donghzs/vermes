@@ -10,6 +10,7 @@ P0-1: 将知网源从空壳升级为真实可用
 提供统一的 PaperResult 返回，对上游透明
 """
 import asyncio
+import json
 from agent.service_credentials import get_api_key, get_service_credentials, register_service
 import logging
 import os
@@ -220,16 +221,147 @@ async def _fetch_via_openalex_cn(query: str, limit: int = 20) -> list[CnkiPaper]
         return []
 
 
+def _get_cnki_account_credentials() -> tuple[str, str]:
+    """回读用户配置的知网账号（卡号卡密）。
+
+    优先读环境变量 ``CNKI_USERNAME`` / ``CNKI_PASSWORD``（与 ``register_service``
+    的 ``extra_fields`` key 同名），回退到用户 services 配置。仅使用用户自有
+    合法凭证，绝不共享/转售。
+    """
+    username = (os.environ.get("CNKI_USERNAME") or "").strip()
+    password = (os.environ.get("CNKI_PASSWORD") or "").strip()
+    if not (username and password):
+        try:
+            from hermes_cli.config import load_config
+
+            svc = (load_config() or {}).get("services", {}).get("cnki", {}) or {}
+            username = username or (svc.get("CNKI_USERNAME") or "").strip()
+            password = password or (svc.get("CNKI_PASSWORD") or "").strip()
+        except Exception:
+            pass
+    return username, password
+
+
+async def _fetch_via_cnki_account(
+    query: str, limit: int = 20, username: str = "", password: str = ""
+) -> list[CnkiPaper]:
+    """策略1.5：用知网账号（卡号卡密）登录后检索。
+
+    仅使用用户自有合法凭证。知网登录含滑块/验证码反爬，自动登录可能被拦截；
+    登录失败则优雅降级返回 ``[]``，并建议改用「第三方网关」路径
+    (``CNKI_GATEWAY_URL`` + ``CNKI_API_KEY``)。
+    """
+    if not username or not password:
+        return []
+
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+            # 1) 取得 kns 会话 SID
+            await client.get("https://kns.cnki.net/kns8s/defaultresult/index", timeout=15)
+            # 2) 登录知网通行证
+            await client.post(
+                "https://login.cnki.net/Login.aspx",
+                data={
+                    "UserName": username,
+                    "PassWord": password,
+                    "LoginType": "Document",
+                    "r": "https://www.cnki.net/",
+                    "code": "",
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15,
+            )
+            # 3) 判定登录是否成功：拿到认证 cookie
+            if not _cnki_session_authenticated(client):
+                logger.warning("CNKI 账号登录未成功（可能被验证码/反爬拦截），已回退其它策略")
+                return []
+            # 4) 检索
+            search_resp = await client.post(
+                "https://kns.cnki.net/kns8s/brief/grid",
+                data={
+                    "QueryJson": json.dumps(
+                        {"Platform": "", "Resource": "", "Query": query, "Lng": "CHINA"}
+                    )
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=20,
+            )
+            return _parse_cnki_grid_html(search_resp.text, limit)
+    except Exception as e:
+        logger.error(f"CNKI account search error: {e}")
+        return []
+
+
+def _cnki_session_authenticated(client) -> bool:
+    """粗略判定知网登录是否成功：存在认证 cookie。"""
+    try:
+        cookies = {c.name: c.value for c in client.cookies.jar}
+    except Exception:
+        return False
+    return bool(cookies.get("cnkiUserKey")) or (
+        cookies.get("SID") and cookies.get("ASP.NET_SessionId")
+    )
+
+
+def _parse_cnki_grid_html(html: str, limit: int) -> list[CnkiPaper]:
+    """尽力解析 CNKI 检索结果 HTML（best-effort，解析失败返回 ``[]``）。
+
+    BeautifulSoup 为可选依赖；缺失时记录日志并降级（此时建议用第三方网关）。
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.debug("未安装 bs4，跳过 CNKI HTML 解析（建议配置第三方网关 CNKI_GATEWAY_URL）")
+        return []
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("table.GridTableContent tr") or soup.select(".result-table tr")
+        papers: list[CnkiPaper] = []
+        for row in rows[:limit]:
+            title_a = row.select_one("a.fz14") or row.select_one("a[title]")
+            title = (title_a.get("title") or title_a.get_text(strip=True)) if title_a else ""
+            if not title:
+                continue
+            author_td = row.select_one("td.author_flag") or row.select_one("td:nth-child(2)")
+            author_text = author_td.get_text(strip=True) if author_td else ""
+            year = ""
+            m = re.search(r"(\d{4})", row.get_text())
+            if m:
+                year = m.group(1)
+            papers.append(
+                CnkiPaper(
+                    title=title,
+                    authors=[a.strip() for a in author_text.split(";") if a.strip()],
+                    year=year,
+                    source="cnki",
+                )
+            )
+        return papers
+    except Exception as e:
+        logger.debug(f"CNKI HTML 解析失败: {e}")
+        return []
+
+
 async def search_cnki(query: str, limit: int = 20) -> list[CnkiPaper]:
     """多策略知网搜索 — 自动降级
 
-    策略1→2→3，拿到结果就返回（不限 >0 即视为有效）
+    策略1(网关) → 1.5(账号卡密) → 2(万方) → 3(OpenAlex)，拿到结果即返回。
     """
-    # 策略1: 用户自建网关
+    # 策略1: 用户自建网关（最稳定）
     papers = await _fetch_via_gateway(query, limit)
     if papers:
         logger.info(f"CNKI gateway: {len(papers)} results for '{query}'")
         return papers
+
+    # 策略1.5: 知网账号（卡号卡密）直接登录检索
+    username, password = _get_cnki_account_credentials()
+    if username and password:
+        papers = await _fetch_via_cnki_account(query, limit, username, password)
+        if papers:
+            logger.info(f"CNKI account: {len(papers)} results for '{query}'")
+            return papers
 
     # 策略2: 万方 API
     papers = await _fetch_via_wanfang(query, limit)
