@@ -2083,6 +2083,38 @@ SCHOLARFORGE_MANAGE_SNAPSHOTS_SCHEMA = {
 }
 
 
+SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA = {
+    "name": "scholarforge_apply_template",
+    "description": (
+        "论文模板管理：列出预设模板、获取模板详情、从模板创建项目、从已有项目导出模板。"
+        "适用于：快速开始新论文、标准化论文结构、导师模板复用。"
+        "action: list=列出预设模板, get=获取模板详情, create=从模板创建项目, export=从项目导出模板。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "description": "操作: list/get/create/export",
+            },
+            "template_key": {
+                "type": "string",
+                "description": "模板标识（list/get/create 使用，如 cs_undergraduate）",
+            },
+            "title": {
+                "type": "string",
+                "description": "新项目标题（create 必填）",
+            },
+            "project_id": {
+                "type": "integer",
+                "description": "已有项目 ID（export 使用）",
+            },
+        },
+        "required": ["action"],
+    },
+}
+
+
 async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     """综述矩阵"""
     topic = args.get("topic", "")
@@ -2225,6 +2257,131 @@ async def _handle_scholarforge_manage_snapshots(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"manage_snapshots error: {e}", exc_info=True)
         return f"❌ 快照操作失败: {str(e)[:200]}"
+
+
+# ────────────────────────────────────────────────────────────────────
+# Tool: Apply Template (Phase 4 — 模板导入)
+# ────────────────────────────────────────────────────────────────────
+
+async def _handle_scholarforge_apply_template(args: dict, **kw: Any) -> str:
+    """论文模板管理。"""
+    action = args.get("action", "list")
+    template_key = args.get("template_key", "")
+    title = args.get("title", "")
+    project_id = args.get("project_id", 0)
+
+    try:
+        from hermes_cli.scholarforge.project_templates import (
+            list_builtin_templates,
+            get_builtin_template,
+            export_project_as_template,
+            create_project_from_template,
+        )
+
+        if action == "list":
+            templates = list_builtin_templates()
+            if not templates:
+                return "暂无预设模板。"
+            lines = ["## 📋 预设论文模板\n"]
+            for t in templates:
+                tk = t["key"]
+                tn = t["name"]
+                tpt = t["paper_type"]
+                ts = t["sections"]
+                tw = t["target_words"]
+                lines.append(
+                    f"  `{tk}` — {tn}"
+                    f"（{tpt}，{ts} 章节，目标 {tw} 字）"
+                )
+            lines.append("\n使用 action=create + template_key 创建项目。")
+            return "\n".join(lines)
+
+        elif action == "get":
+            if not template_key:
+                return "❌ 需要 template_key 参数"
+            t = get_builtin_template(template_key)
+            if not t:
+                return f"❌ 模板 {template_key} 不存在"
+            t_name = t["name"]
+            t_type = t["paper_type"]
+            t_words = t["target_words"]
+            t_style = t["citation_style"]
+            t_outline = t["outline"]
+            n_out = len(t_outline)
+            lines = [
+                f"## 📋 模板: {t_name}\n",
+                f"论文类型: {t_type}",
+                f"目标字数: {t_words}",
+                f"引用格式: {t_style}",
+                f"\n大纲 ({n_out} 章节):",
+            ]
+            for s in t_outline:
+                wc = s.get("wordCount", 0)
+                wc_str = f" ({wc} 字)" if wc else ""
+                s_num = s.get("number", "")
+                s_title = s.get("title", "")
+                lines.append(f"  {s_num} {s_title}{wc_str}")
+            return "\n".join(lines)
+
+        elif action == "create":
+            if not template_key:
+                return "❌ 需要 template_key 参数"
+            if not title:
+                return "❌ 需要 title 参数（新项目标题）"
+            t = get_builtin_template(template_key)
+            if not t:
+                return f"❌ 模板 {template_key} 不存在"
+            result = create_project_from_template(t, title)
+            err = result.get("error")
+            if err:
+                return f"❌ 创建失败: {err}"
+            pid = result.get("id", "?")
+            n_sections = len(result.get("outline", []))
+            t_name = t["name"]
+            t_type = t["paper_type"]
+            t_words = t["target_words"]
+            return (
+                f"✅ 项目已创建\n\n"
+                f"项目 ID: {pid}\n"
+                f"标题: {title}\n"
+                f"模板: {t_name}\n"
+                f"大纲: {n_sections} 章节\n"
+                f"论文类型: {t_type}\n"
+                f"目标字数: {t_words} 字\n"
+            )
+
+        elif action == "export":
+            if not project_id:
+                return "❌ 需要 project_id 参数"
+            template = export_project_as_template(project_id)
+            err = template.get("error")
+            if err:
+                return f"❌ 导出失败: {err}"
+            tp_name = template["name"]
+            tp_type = template["paper_type"]
+            tp_words = template["target_words"]
+            tp_outline = template["outline"]
+            n_tp = len(tp_outline)
+            lines = [
+                f"## 📋 模板已导出\n",
+                f"名称: {tp_name}",
+                f"论文类型: {tp_type}",
+                f"目标字数: {tp_words}",
+                f"大纲: {n_tp} 章节",
+            ]
+            for s in tp_outline:
+                s_num = s.get("number", "")
+                s_title = s.get("title", "")
+                lines.append(f"  {s_num} {s_title}")
+            lines.append("\n可使用此模板创建新项目。")
+            return "\n".join(lines)
+
+        else:
+            return f"❌ 未知操作: {action}\n\n支持: list/get/create/export"
+
+    except Exception as e:
+        logger.error(f"apply_template error: {e}", exc_info=True)
+        return f"❌ 模板操作失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -2631,4 +2788,13 @@ def register_tools(host_api=None):
         emoji="📸",
         description="版本快照管理（创建/列出/恢复/查看/删除）",
     )
-    logger.info("[ScholarForge] 20 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots")
+    registry.register(
+        name="scholarforge_apply_template",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA,
+        handler=_handle_scholarforge_apply_template,
+        is_async=True,
+        emoji="📋",
+        description="论文模板管理（预设/导出/创建）",
+    )
+    logger.info("[ScholarForge] 21 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template")
