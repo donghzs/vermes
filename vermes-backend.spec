@@ -9,6 +9,13 @@ import os
 
 block_cipher = None
 
+# spec 文件所在目录：datas / 入口必须用绝对路径，否则在 WinRM 等 cwd 非仓库根
+# 的环境下 os.path.exists() 全部失败 -> 依赖被静默跳过 -> 打出的 exe 缺 gateway/ 等。
+# 注意：PyInstaller 控制台脚本调用时 spec 内 __file__ 可能未定义，故从 sys.argv
+# 解析 spec 路径（必含 .spec 参数），跨平台稳健，不依赖 cwd。
+_spec_arg = next((a for a in sys.argv if a.endswith('.spec')), None)
+spec_dir = os.path.dirname(os.path.abspath(_spec_arg)) if _spec_arg else os.getcwd()
+
 # Collect data files — 与 vermes-gui.spec 共用路径
 datas = []
 for src, dst in [
@@ -61,6 +68,8 @@ except ImportError:
 
 # Hidden imports — core server only (no pywebview/pyobjc)
 hiddenimports = [
+    # Windows UTF-8 bootstrap (fix GBK UnicodeEncodeError + subprocess decode)
+    'hermes_bootstrap',
     # Core uvicorn
     'uvicorn', 'uvicorn.__main__', 'uvicorn.main', 'uvicorn.config',
     'uvicorn.server', 'uvicorn.workers', 'uvicorn.importer',

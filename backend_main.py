@@ -7,6 +7,17 @@ Vermes Backend (Headless) — Electron 后端专用入口。
 import logging
 
 logger = logging.getLogger(__name__)
+
+# ── Windows UTF-8 bootstrap ──────────────────────────────────────────
+# 必须在任何 stdout/print/subprocess 之前。修复两个 Windows 中文 locale 问题：
+#   1) StreamHandler 写 emoji/中文时 UnicodeEncodeError: 'gbk' codec
+#   2) subprocess text=True 默认 GBK 解码 → 工具输出丢失 → "无响应"
+# import 即生效（模块底部自动调用 apply_windows_utf8_bootstrap）。POSIX 无副作用。
+try:
+    import hermes_bootstrap  # noqa: F401 — side-effect: reconfigure stdio to UTF-8
+except Exception:
+    pass
+
 import sys
 import os
 import time
@@ -62,10 +73,11 @@ def main():
     for _f in _KEY_FILES:
         _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), _f)
         if os.path.exists(_p):
-            import py_compile
+            import ast
             try:
-                py_compile.compile(_p, doraise=True)
-            except py_compile.PyCompileError as _e:
+                with open(_p, "r", encoding="utf-8") as _fh:
+                    ast.parse(_fh.read(), filename=_f)
+            except SyntaxError as _e:
                 logger.info(f"[Vermes] ❌ 启动失败: {_f} 语法错误")
                 logger.info(f"       {_e}")
                 sys.exit(1)
@@ -105,6 +117,26 @@ def main():
     # 强制启用 agent 模式（WebSocket 聊天端点）
     from hermes_cli import web_server
     web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
+
+    # 启动时即注册所有文献源 + 工具服务（Settings UI 依赖此数据）
+    # 注意：lifespan="off" 禁用 startup 事件，必须在这里手动调用
+    try:
+        from agent.literature_registry import bootstrap_builtin_providers
+        bootstrap_builtin_providers()
+        logger.info("[Vermes Backend] ✅ 文献源 provider 已注册")
+    except Exception as _e:
+        logger.warning(f"[Vermes Backend] ⚠️ 文献源注册失败: {_e}")
+    # 触发 tools 模块的 register_service（openrouter/daytona 等）
+    try:
+        import tools.openrouter_client  # noqa: F401 — side-effect: register_service
+        import tools.terminal_tool      # noqa: F401 — side-effect: register_service
+        logger.info("[Vermes Backend] ✅ 工具服务凭证已注册")
+    except Exception as _e:
+        logger.warning(f"[Vermes Backend] ⚠️ 工具服务注册失败: {_e}")
+
+    # ScholarForge 等内置模块现在直接从打包内 hermes_cli/scholarforge/ 加载
+    # （agent/module_loader.discover_builtin_modules），无需部署到 ~/.vermes/modules/。
+    # 第三方插件仍可热加载到 ~/.vermes/modules/。
 
     logger.info(f"[Vermes Backend] 启动 FastAPI, port={port}, agent模式=已启用")
 

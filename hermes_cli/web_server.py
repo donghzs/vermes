@@ -313,6 +313,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/scholar",
     # Studio 创作空间（直连大模型的试点；SPA 带用户 Key 调用，与 /api/provider/add 同源设计）
     "/api/studio",
+    # 文献源注册表（只返回元数据：label/category/字段描述，不含凭证值）
+    "/api/registered-services",
+    "/api/literature-custom-sources",
 })
 
 
@@ -1083,6 +1086,14 @@ _ENV_WRITE_ALLOWED_KEYS: frozenset = frozenset({
     "COHERE_API_KEY",
     # 自定义
     "CUSTOM_API_KEY",
+    # 文献源 env keys（ScholarForge literature providers）
+    "CNKI_API_KEY", "CNKI_GATEWAY_URL", "CNKI_USERNAME", "CNKI_PASSWORD",
+    "WANFANG_API_KEY", "WANFANG_USER", "WANFANG_PASSWORD",
+    "VIP_API_KEY", "VIP_GATEWAY_URL", "VIP_USERNAME", "VIP_PASSWORD",
+    "SCOPUS_API_KEY", "SCOPUS_INST_TOKEN",
+    "IEEE_API_KEY", "WOS_API_KEY", "SCIENCEDIRECT_API_KEY",
+    "SPRINGER_API_KEY", "S2_API_KEY", "CORE_API_KEY",
+    "EBSCO_USER_ID", "EBSCO_PASSWORD", "EBSCO_PROFILE",
 })
 
 async def set_env_var(body: EnvVarUpdate, request: Request):

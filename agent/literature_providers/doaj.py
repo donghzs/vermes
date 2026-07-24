@@ -11,8 +11,17 @@ from typing import Any, Dict
 
 from agent.literature_provider import LiteratureProvider, PaperRecord
 from agent.literature_providers._http import http_get_json
+from agent.service_credentials import register_service
 
 logger = logging.getLogger(__name__)
+
+register_service(
+    "doaj",
+    label="DOAJ (免费)",
+    category="literature",
+    description="开放获取期刊元数据检索，无需凭证",
+    url="https://doaj.org/",
+)
 
 _DOAJ_URL = "https://doaj.org/api/search/articles/{query}"
 

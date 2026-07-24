@@ -626,9 +626,13 @@ function focusServiceKey(g) {
 // ── 文献源（category === 'literature'，源自 GET /api/registered-services） ──
 // 与大模型厂商 API Key 同一套体验：用户自备 API Key / 网关地址 / 账号密码，
 // 填入即启用对应文献库（多字段卡片，逐字段落盘到统一 .env）。
-const literatureGroups = ref({})   // sid -> { sid, label, description, url, fields: [{key,label,secret,val,isSet,saved}], custom }
+// 分组：内置付费源、免费源、自定义源
+const literaturePaid = ref([])     // 内置付费源（IEEE/Scopus/知网等）
+const literatureFree = ref([])     // 免费源（PubMed/arXiv/OpenAlex等）
+const literatureCustom = ref([])   // 自定义源
 const literatureLoading = ref(false)
 const literatureSaving = ref(false)
+const literatureExpanded = ref({}) // sid -> bool 展开状态
 // 自定义文献源完整定义（用于编辑模态框预填），sid -> full definition
 const customDefs = ref({})
 const showCustomModal = ref(false)
@@ -648,6 +652,24 @@ function customFieldTypes() {
   if (customForm.user) t.push('user')
   if (customForm.password) t.push('password')
   return t
+}
+
+// 认证方式 ↔ 凭证字段联动
+function onAuthSchemeChange() {
+  const scheme = customForm.auth_scheme
+  // 先全部清空
+  customForm.api_key = false
+  customForm.base_url_field = false
+  customForm.user = false
+  customForm.password = false
+  // 根据认证方式自动勾选
+  if (scheme === 'bearer' || scheme === 'header' || scheme === 'query') {
+    customForm.api_key = true
+  } else if (scheme === 'basic') {
+    customForm.user = true
+    customForm.password = true
+  }
+  // 'none' 不勾选任何字段
 }
 
 function openAddCustom() {
@@ -682,7 +704,7 @@ function closeCustomModal() { showCustomModal.value = false }
 async function saveCustom() {
   if (!customForm.label.trim()) { toast.warning('请填写文献库名称'); return }
   const ft = customFieldTypes()
-  if (ft.length === 0) { toast.warning('请至少勾选一种凭证字段（如 API Key）'); return }
+  if (ft.length === 0 && customForm.auth_scheme !== 'none') { toast.warning('请至少勾选一种凭证字段（如 API Key）'); return }
   customSaving.value = true
   const payload = {
     label: customForm.label.trim(),
@@ -733,12 +755,17 @@ async function deleteCustomSource(sid) {
 async function loadLiterature() {
   literatureLoading.value = true
   try {
-    const resp = await fetch('/api/registered-services')
+    const resp = await fetch('/api/registered-services', { headers: envHeaders() })
     const data = await resp.json()
     const services = data.services || {}
-    const groups = {}
+    
+    const paid = []
+    const free = []
+    const custom = []
+    
     for (const [sid, meta] of Object.entries(services)) {
       if (meta.category !== 'literature') continue
+      
       const fields = (meta.fields || []).map(f => ({
         key: f.key,
         label: f.label || f.key,
@@ -747,21 +774,43 @@ async function loadLiterature() {
         isSet: false,
         saved: false,
       }))
-      if (fields.length === 0) continue
-      groups[sid] = {
+      
+      const item = {
         sid,
         label: meta.label || sid,
         description: meta.description || '',
         url: meta.url || '',
         fields,
         custom: !!meta.custom,
+        // 仅无任何配置字段才是免费源（无需凭证即可使用）
+        // CORE/SemanticScholar 有可选 API Key 字段，归入付费区但标记"可选"
+        isFree: fields.length === 0,
+        isOptional: fields.length > 0 && (
+          (meta.description || '').includes('可选') ||
+          (meta.description || '').includes('提升限额') ||
+          (meta.description || '').includes('提升速率')
+        ),
+      }
+      
+      if (item.custom) {
+        custom.push(item)
+      } else if (item.isFree) {
+        free.push(item)
+      } else {
+        paid.push(item)
       }
     }
+    
+    // 按名称排序
+    paid.sort((a, b) => a.label.localeCompare(b.label))
+    free.sort((a, b) => a.label.localeCompare(b.label))
+    custom.sort((a, b) => a.label.localeCompare(b.label))
+    
     // env 状态 -> 已配置字段显示掩码，避免保存时覆盖真实值
     try {
       const envResp = await fetch('/api/env', { headers: envHeaders() })
       const envData = await envResp.json()
-      for (const g of Object.values(groups)) {
+      for (const g of [...paid, ...free, ...custom]) {
         for (const f of g.fields) {
           if (envData[f.key] && envData[f.key].is_set) {
             f.isSet = true
@@ -770,15 +819,19 @@ async function loadLiterature() {
         }
       }
     } catch (e) { console.error('[Literature] env status error:', e) }
+    
     // 拉取自定义源完整定义（含端点/认证方式），供编辑模态框预填
     try {
-      const cdResp = await fetch('/api/literature-custom-sources')
+      const cdResp = await fetch('/api/literature-custom-sources', { headers: envHeaders() })
       const cdData = await cdResp.json()
       const cmap = {}
       for (const s of (cdData.sources || [])) cmap[s.id] = s
       customDefs.value = cmap
     } catch (e) { console.error('[Literature] custom defs error:', e) }
-    literatureGroups.value = groups
+    
+    literaturePaid.value = paid
+    literatureFree.value = free
+    literatureCustom.value = custom
   } catch (e) {
     console.error('[Literature] load error:', e)
   } finally {
@@ -794,8 +847,14 @@ function focusLitField(f) {
   if (f.val === _MASK) f.val = ''
 }
 
+function _findLitGroup(sid) {
+  return literaturePaid.value.find(x => x.sid === sid) 
+      || literatureFree.value.find(x => x.sid === sid)
+      || literatureCustom.value.find(x => x.sid === sid)
+}
+
 async function saveLiterature(sid) {
-  const g = literatureGroups.value[sid]
+  const g = _findLitGroup(sid)
   if (!g) return
   const dirty = g.fields.filter(f => f.val && f.val !== _MASK)
   if (dirty.length === 0) { toast.warning('请先填写 ' + g.label + ' 的凭证字段再保存'); return }
@@ -828,7 +887,7 @@ async function saveLiterature(sid) {
 }
 
 async function clearLiterature(sid) {
-  const g = literatureGroups.value[sid]
+  const g = _findLitGroup(sid)
   if (!g) return
   if (!await confirm({ title: '清除文献源凭证', message: '清除 ' + g.label + ' 的全部已保存凭证？', confirmText: '清除', danger: true })) return
   try {
@@ -1144,41 +1203,112 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             </div>
             <button @click="openAddCustom" class="px-3 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 whitespace-nowrap">➕ 添加自定义文献库</button>
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">与大模型厂商 API Key 相同的体验：用户自备 API Key / 网关地址 / 账号密码，填入即启用对应文献库，Agent 论文写作与文献检索会自动路由到已配置的最优源。免费源（OpenAlex / Crossref / PubMed / arXiv / Europe PMC 等）无需任何配置，开箱即用。</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">与大模型厂商 API Key 相同的体验：用户自备 API Key / 网关地址 / 账号密码，填入即启用对应文献库。Agent 会自动路由到已配置的最优源。</p>
 
           <div v-if="literatureLoading" class="text-center text-sm text-gray-400 py-4">
             <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div> 加载中...
           </div>
-          <div v-else-if="Object.keys(literatureGroups).length === 0" class="text-center text-sm text-gray-400 py-4">暂无已注册的文献源</div>
-          <div v-else class="space-y-3">
-            <div v-for="g in Object.values(literatureGroups)" :key="g.sid" class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 space-y-2">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
-                  <span v-if="litConfigured(g)" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
-                  <span v-if="g.custom" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">自定义</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <a v-if="g.url" :href="g.url" target="_blank" rel="noopener" class="text-[11px] text-blue-500 hover:underline">申请入口 ↗</a>
-                  <button v-if="g.custom" @click="openEditCustom(g.sid)" class="text-[11px] text-gray-400 hover:text-green-500">✎ 编辑</button>
-                  <button v-if="g.custom" @click="deleteCustomSource(g.sid)" class="text-[11px] text-gray-400 hover:text-red-500">🗑 删除</button>
+          <div v-else-if="literaturePaid.length === 0 && literatureFree.length === 0 && literatureCustom.length === 0" class="text-center text-sm text-gray-400 py-4">暂无已注册的文献源</div>
+          
+          <div v-else class="space-y-4">
+            <!-- 免费源（开箱即用） -->
+            <div v-if="literatureFree.length > 0" class="space-y-2">
+              <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <span class="text-green-500">✓</span> 免费源（开箱即用，{{ literatureFree.length }} 个）
+              </h4>
+              <div class="grid grid-cols-2 gap-2">
+                <div v-for="g in literatureFree" :key="g.sid" class="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已启用</span>
+                  </div>
+                  <p v-if="g.description" class="text-[11px] text-gray-400 mt-1 truncate" :title="g.description">{{ g.description }}</p>
                 </div>
               </div>
-              <p v-if="g.description" class="text-[11px] text-gray-400">{{ g.description }}</p>
-              <div v-for="f in g.fields" :key="f.key" class="flex gap-2 items-center">
-                <label class="w-40 shrink-0 text-xs text-gray-500 dark:text-gray-400 truncate" :title="f.key">{{ f.label }}</label>
-                <input
-                  v-model="f.val"
-                  :type="f.secret ? 'password' : 'text'"
-                  :placeholder="f.key"
-                  @focus="focusLitField(f)"
-                  class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
-                />
-                <span v-if="f.saved" class="text-green-500 text-xs whitespace-nowrap">✅</span>
+            </div>
+
+            <!-- 内置付费源 -->
+            <div v-if="literaturePaid.length > 0" class="space-y-2">
+              <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <span>🔐</span> 内置付费源（填入凭证启用，{{ literaturePaid.length }} 个）
+              </h4>
+              <div class="space-y-2">
+                <div v-for="g in literaturePaid" :key="g.sid" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 overflow-hidden">
+                  <!-- 头部：点击展开 -->
+                  <div @click="literatureExpanded[g.sid] = !literatureExpanded[g.sid]" class="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 transition">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
+                      <span v-if="litConfigured(g)" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
+                      <span v-if="g.isOptional" class="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400">可选</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <a v-if="g.url" :href="g.url" target="_blank" rel="noopener" @click.stop class="text-[11px] text-blue-500 hover:underline">申请入口 ↗</a>
+                      <span class="text-gray-400 text-xs">{{ literatureExpanded[g.sid] ? '▼' : '▶' }}</span>
+                    </div>
+                  </div>
+                  <!-- 展开内容：凭证字段 -->
+                  <div v-if="literatureExpanded[g.sid]" class="px-3 pb-3 space-y-2 border-t border-gray-200 dark:border-gray-700">
+                    <p v-if="g.description" class="text-[11px] text-gray-400 pt-2">{{ g.description }}</p>
+                    <div v-for="f in g.fields" :key="f.key" class="flex gap-2 items-center">
+                      <label class="w-32 shrink-0 text-xs text-gray-500 dark:text-gray-400 truncate" :title="f.key">{{ f.label }}</label>
+                      <input
+                        v-model="f.val"
+                        :type="f.secret ? 'password' : 'text'"
+                        :placeholder="f.key"
+                        @focus="focusLitField(f)"
+                        class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
+                      />
+                      <span v-if="f.saved" class="text-green-500 text-xs whitespace-nowrap">✅</span>
+                    </div>
+                    <div class="flex gap-2 justify-end pt-1">
+                      <button @click="saveLiterature(g.sid)" :disabled="literatureSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
+                      <button @click="clearLiterature(g.sid)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="flex gap-2 justify-end pt-1">
-                <button @click="saveLiterature(g.sid)" :disabled="literatureSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
-                <button @click="clearLiterature(g.sid)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+            </div>
+
+            <!-- 自定义源 -->
+            <div v-if="literatureCustom.length > 0" class="space-y-2">
+              <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <span>📚</span> 自定义文献库（{{ literatureCustom.length }} 个）
+              </h4>
+              <div class="space-y-2">
+                <div v-for="g in literatureCustom" :key="g.sid" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 overflow-hidden">
+                  <!-- 头部：点击展开 -->
+                  <div @click="literatureExpanded[g.sid] = !literatureExpanded[g.sid]" class="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 transition">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
+                      <span v-if="litConfigured(g)" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">自定义</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button @click.stop="openEditCustom(g.sid)" class="text-[11px] text-gray-400 hover:text-green-500">✎ 编辑</button>
+                      <button @click.stop="deleteCustomSource(g.sid)" class="text-[11px] text-gray-400 hover:text-red-500">🗑 删除</button>
+                      <span class="text-gray-400 text-xs">{{ literatureExpanded[g.sid] ? '▼' : '▶' }}</span>
+                    </div>
+                  </div>
+                  <!-- 展开内容：凭证字段 -->
+                  <div v-if="literatureExpanded[g.sid]" class="px-3 pb-3 space-y-2 border-t border-gray-200 dark:border-gray-700">
+                    <p v-if="g.description" class="text-[11px] text-gray-400 pt-2">{{ g.description }}</p>
+                    <div v-for="f in g.fields" :key="f.key" class="flex gap-2 items-center">
+                      <label class="w-32 shrink-0 text-xs text-gray-500 dark:text-gray-400 truncate" :title="f.key">{{ f.label }}</label>
+                      <input
+                        v-model="f.val"
+                        :type="f.secret ? 'password' : 'text'"
+                        :placeholder="f.key"
+                        @focus="focusLitField(f)"
+                        class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
+                      />
+                      <span v-if="f.saved" class="text-green-500 text-xs whitespace-nowrap">✅</span>
+                    </div>
+                    <div class="flex gap-2 justify-end pt-1">
+                      <button @click="saveLiterature(g.sid)" :disabled="literatureSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
+                      <button @click="clearLiterature(g.sid)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1214,7 +1344,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">认证方式</label>
-                <select v-model="customForm.auth_scheme" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none">
+                <select v-model="customForm.auth_scheme" @change="onAuthSchemeChange" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none">
                   <option value="bearer">Bearer Token</option>
                   <option value="basic">账号密码 Basic</option>
                   <option value="header">自定义 Header</option>
@@ -1242,7 +1372,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">需要的凭证字段</label>
               <div class="flex flex-wrap gap-3 text-sm">
                 <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.api_key" /> API Key</label>
-                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.base_url_field" /> 网关地址</label>
+                <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.base_url_field" /> 接口地址</label>
                 <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.user" /> 账号</label>
                 <label class="flex items-center gap-1"><input type="checkbox" v-model="customForm.password" /> 密码</label>
               </div>

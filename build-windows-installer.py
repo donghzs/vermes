@@ -60,10 +60,13 @@ def main():
     else:
         print("  跳过（无 frontend 目录）")
 
-    # 同步 web_dist
+    # 同步 web_dist（仅在真正跑 npm build 时执行；
+    # SKIP_NPM=1 时仓库中的 web_dist 已是权威源，不碰）
     src_dist = os.path.join(frontend_dir, "dist") if os.path.exists(frontend_dir) else None
     dst_dist = os.path.join(VERMES_DIR, "hermes_cli", "web_dist")
-    if src_dist and os.path.exists(src_dist):
+    if SKIP_NPM:
+        print("  VERMES_SKIP_NPM=1: 跳过 web_dist 同步（使用仓库内的 web_dist）")
+    elif src_dist and os.path.exists(src_dist):
         if os.path.exists(dst_dist):
             shutil.rmtree(dst_dist)
         shutil.copytree(src_dist, dst_dist)

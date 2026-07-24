@@ -12,8 +12,17 @@ from typing import Any, Dict
 
 from agent.literature_provider import LiteratureProvider, PaperRecord
 from agent.literature_providers._http import http_get_text
+from agent.service_credentials import register_service
 
 logger = logging.getLogger(__name__)
+
+register_service(
+    "arxiv",
+    label="arXiv (免费)",
+    category="literature",
+    description="物理/计算机/数学等预印本免费检索，无需凭证",
+    url="https://arxiv.org/",
+)
 
 _ARXIV_URL = "https://export.arxiv.org/api/query"
 _ATOM = "{http://www.w3.org/2005/Atom}"

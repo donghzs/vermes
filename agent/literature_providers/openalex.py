@@ -11,8 +11,17 @@ import logging
 from typing import Any, Dict, Optional
 
 from agent.literature_provider import LiteratureProvider, PaperRecord
+from agent.service_credentials import register_service
 
 logger = logging.getLogger(__name__)
+
+register_service(
+    "openalex",
+    label="OpenAlex (免费)",
+    category="literature",
+    description="免费开放学术库，无需任何凭证即可检索（含中文论文）",
+    url="https://openalex.org/",
+)
 
 _OPENALEX_URL = "https://api.openalex.org/works"
 

@@ -112,7 +112,7 @@ def simhash_similarity(a: str, b: str) -> float:
 
 # ─── N-gram 覆盖度 ───
 
-def ngram_coverage(text: str, n: int = 5) -> float:
+def ngram_coverage(text: str, n: int = 6) -> float:
     """N-gram 覆盖率 - 评估文本内部自重复程度"""
     chars = list(text.replace('\n', ' ').replace('\r', ''))
     if len(chars) < n:
@@ -146,7 +146,7 @@ def _split_paragraphs(text: str) -> list[tuple[int, str]]:
     return paragraphs
 
 
-def check_internal_plagiarism(text: str, threshold: float = 0.75) -> list[PlagResult]:
+def check_internal_plagiarism(text: str, threshold: float = 0.65) -> list[PlagResult]:
     """段落级内部查重 - SimHash 比较
 
     threshold: SimHash 相似度阈值,>= 此值视为重复
@@ -227,7 +227,7 @@ def check_aigc(text: str) -> dict:
     citation_density = citation_count / max(words_approx / 100, 1)  # 每100字引用数
 
     # ── 5. N-gram 重复度 ──
-    ngram_dup = ngram_coverage(text, n=5)
+    ngram_dup = ngram_coverage(text, n=6)
 
     # ── 6. 四字套话密度 ──
     cliche_phrases = [
@@ -483,7 +483,7 @@ def full_plagiarism_check(text: str, title: str = "") -> PlagReport:
     internal_results = check_internal_plagiarism(text)
 
     # N-gram 重复率 → 总体相似度估算
-    ngram_dup = ngram_coverage(text, n=5)
+    ngram_dup = ngram_coverage(text, n=6)
     overall_sim = min(min(ngram_dup * 2.5, 1.0) if internal_results else ngram_dup * 1.5, 1.0)
 
     # AIGC 检测

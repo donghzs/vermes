@@ -1172,12 +1172,14 @@ def register_to(app, host_api=None):
         source_name = req.get("source")
         api_key = req.get("api_key", "")
         gateway_url = req.get("gateway_url", "")
-        if not source_name or not api_key:
-            raise HTTPException(400, "source 和 api_key 必填")
+        username = req.get("username", "")
+        password = req.get("password", "")
+        if not source_name or not (api_key or (username and password)):
+            raise HTTPException(400, "source 与 (api_key 或 username+password) 必填")
 
         from hermes_cli.scholarforge.search import activate_paid_source
 
-        ok = await activate_paid_source(source_name, api_key, gateway_url)
+        ok = await activate_paid_source(source_name, api_key, gateway_url, username, password)
         if not ok:
             return {"status": "error", "message": f"来源 '{source_name}' 激活失败"}
         return {"status": "ok", "source": source_name}
