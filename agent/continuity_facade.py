@@ -208,6 +208,19 @@ def load_continuity_context(
         logger.warning("Continuity facade: reflection flags source failed: %s", e)
         ctx.sources_failed.append("reflection_flags")
 
+    # 7. ScholarForge project handoff (Phase 3)
+    #    Inject active paper project state so the agent can resume work.
+    try:
+        from hermes_cli.scholarforge.project_context import format_active_projects_prompt
+        block = format_active_projects_prompt()
+        if block:
+            ctx.handoff_block = (ctx.handoff_block or "") + "\n" + block
+            ctx.sources_loaded.append("project_handoff")
+            logger.debug("Continuity facade: loaded project handoff")
+    except Exception as e:
+        logger.warning("Continuity facade: project handoff source failed: %s", e)
+        ctx.sources_failed.append("project_handoff")
+
     if ctx.is_empty:
         logger.debug("Continuity facade: cold start (no blocks)")
     else:
