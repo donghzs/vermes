@@ -2253,4 +2253,4 @@ def register_tools(host_api=None):
         emoji="📊",
         description="综述矩阵（已沉淀卡片→按方法/数据/发现分列+gap 提示）",
     )
-    logger.info("[ScholarForge] 18 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix")
+    logger.info("[ScholarForge] 19 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix")
