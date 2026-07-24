@@ -220,6 +220,116 @@ def literature_matrix(
     return _format_matrix(cards, topic or tag or "全部")
 
 
+def _read_cards(tag: str = "", limit: int = 200) -> list[dict]:
+    """读取已沉淀的文献卡片（复用 literature_matrix 的查询逻辑）。"""
+    from hermes_cli.scholarforge.database import get_conn, init_db
+
+    init_db()
+    with get_conn() as conn:
+        if tag:
+            rows = conn.execute(
+                """SELECT * FROM literature_cards
+                   WHERE tags LIKE ? OR tags LIKE ? OR tags LIKE ?
+                   ORDER BY added_at DESC LIMIT ?""",
+                (f'["{tag}"]', f'%"{tag}"%', f'%"{tag}",%', limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM literature_cards ORDER BY added_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def cards_as_papers(tag: str = "", limit: int = 200) -> list[dict]:
+    """把已沉淀卡片转成标准文献 dict 列表，可直接喂给
+    `scholarforge_format_refs` / `scholarforge_replace_citations`。
+
+    返回字段：title / authors(list) / year / venue / doi / url。
+    """
+    papers = []
+    for c in _read_cards(tag, limit):
+        try:
+            authors = json.loads(c.get("authors") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            authors = []
+        if isinstance(authors, str):
+            authors = [authors]
+        papers.append({
+            "title": c.get("title", ""),
+            "authors": authors,
+            "year": str(c.get("year", "") or ""),
+            "venue": c.get("venue", "") or "",
+            "doi": c.get("doi", "") or "",
+            "url": c.get("url", "") or "",
+        })
+    return papers
+
+
+def _bibtex_key(c: dict, idx: int) -> str:
+    """生成 BibTeX cite key：首作者姓氏 + 年 + 标题首词。"""
+    try:
+        authors = json.loads(c.get("authors") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        authors = []
+    if isinstance(authors, str):
+        authors = [authors]
+    first = (authors[0].split()[-1] if authors else "") if authors else ""
+    first = re.sub(r"[^\w一-龥]", "", first) or "anon"
+    year = str(c.get("year", "") or "")[:4] or "nd"
+    title_word = re.sub(r"[^\w一-龥]", "", (c.get("title", "") or "").split()[-1] or "ref")
+    return (f"{first}{year}{title_word}" or f"ref{idx}")[:40]
+
+
+def export_cards_bibtex(tag: str = "", limit: int = 200) -> str:
+    """把已沉淀文献卡片导出为 BibTeX 字符串（可写入 .bib 供 LaTeX/Zotero 使用）。"""
+    import time
+
+    cards = _read_cards(tag, limit)
+    if not cards:
+        return "ℹ️ 文献卡片库为空，无可导出条目。"
+
+    entries = []
+    used_keys = set()
+    for i, c in enumerate(cards):
+        key = _bibtex_key(c, i)
+        base, n = key, 1
+        while key in used_keys:
+            key = f"{base}{n}"
+            n += 1
+        used_keys.add(key)
+
+        try:
+            authors = json.loads(c.get("authors") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            authors = []
+        if isinstance(authors, str):
+            authors = [authors]
+        author_str = " and ".join(authors) if authors else "Anonymous"
+
+        year = str(c.get("year", "") or "").strip()
+        title = (c.get("title", "") or "").strip()
+        venue = (c.get("venue", "") or "").strip()
+        doi = (c.get("doi", "") or "").strip()
+
+        fields = [f"  title = {{{title}}}", f"  author = {{{author_str}}}"]
+        if year:
+            fields.append(f"  year = {{{year}}}")
+        if venue:
+            fields.append(f"  journal = {{{venue}}}")
+        if doi:
+            fields.append(f"  doi = {{{doi}}}")
+        fields.append("  note = {{Vermes ScholarForge literature card}}")
+
+        entries.append(f"@article{{{key},\n" + ",\n".join(fields) + "\n}}")
+
+    header = (
+        f"% ScholarForge 文献卡片导出（共 {len(entries)} 篇）\n"
+        f"% 生成时间: {time.strftime('%Y-%m-%d %H:%M')}\n"
+    )
+    return header + "\n".join(entries) + "\n"
+
+
 def _format_matrix(cards: list[dict], label: str) -> str:
     """格式化为 Markdown 综述矩阵 + gap 提示"""
     lines = [

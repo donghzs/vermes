@@ -221,6 +221,26 @@ class TestDesignFlawDetection:
         assert len(power) >= 1
         assert power[0].severity == "P2"
 
+    def test_section_tagging(self):
+        """分段检测：缺陷应被标记到触发关键词所在章节。"""
+        paper = (
+            "## 引言\n本研究探讨幼儿教育。\n\n"
+            "## 方法\n我们在一所幼儿园开展了准实验，实验组与对照组各 30 名幼儿。\n\n"
+            "## 讨论\n结果有意义。\n"
+        )
+        flaws = detect_design_flaws(paper)
+        assert len(flaws) > 0
+        for f in flaws:
+            assert f.section == "方法"
+
+    def test_no_heading_fallback_section_empty(self):
+        """无 ## 标题时退化为全文单段，section 为空串（向后兼容）。"""
+        paper = "我们在一所幼儿园开展了研究，实验组与对照组各 30 名幼儿。"
+        flaws = detect_design_flaws(paper)
+        assert len(flaws) > 0
+        for f in flaws:
+            assert f.section == ""
+
     def test_no_flaws(self):
         """良好设计不应产生严重缺陷"""
         paper = "本研究采用真实验设计，随机分配被试至多水平实验条件。"

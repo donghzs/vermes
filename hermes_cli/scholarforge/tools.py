@@ -1876,6 +1876,183 @@ async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# Tool: Writing Pipeline (编排：研究地图→大纲→撰写→主张审查→文献沉淀→矩阵)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_WRITING_PIPELINE_SCHEMA = {
+    "name": "scholarforge_writing_pipeline",
+    "description": (
+        "写作流水线：把科研写作拆成可检查、可持续推进的工作模块并自动串联——"
+        "研究选题拆解(research_map) → 大纲(outline) → 逐章撰写(write) → "
+        "主张-证据审查(review_claims) → 文献卡片沉淀(save_cards) → 综述矩阵(literature_matrix)。"
+        "一次性产出研究地图、大纲、初稿、审查表与文献矩阵，并在末尾给出检查点清单。"
+        "适用于：从模糊方向到可投稿初稿的端到端推进、规范化写作流程。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "description": "研究方向或大题目，如 '大语言模型在教育中的应用'",
+            },
+            "paper_type": {
+                "type": "string",
+                "description": "论文类型，影响大纲与撰写风格",
+                "enum": [
+                    "本科论文", "课程论文", "硕士论文", "博士论文",
+                    "期刊论文", "会议论文", "综述论文", "开题报告",
+                    "调研报告", "实验报告", "案例分析", "毕业设计",
+                ],
+                "default": "本科论文",
+            },
+            "sections": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "要撰写的章节列表（section_type），默认全 7 章。可选值：abstract/introduction/literature_review/method/experiment/discussion/conclusion",
+            },
+            "enable_online": {
+                "type": "boolean",
+                "description": "主张-证据审查是否联网查证引用（需同时提供 references）。默认 False（仅跑统计/设计审查，避免长流水线中的意外网络调用）",
+                "default": False,
+            },
+            "skip_cards": {
+                "type": "boolean",
+                "description": "是否跳过文献卡片沉淀与矩阵（设为 true 可避免检索网络调用，仅产出研究地图/大纲/初稿/审查）",
+                "default": False,
+            },
+        },
+        "required": ["topic"],
+    },
+}
+
+
+async def _handle_scholarforge_writing_pipeline(args: dict, **kw: Any) -> str:
+    """写作流水线：串联 research_map → outline → write* → review_claims → save_cards → literature_matrix。"""
+    topic = args.get("topic", "")
+    if not topic.strip():
+        return "❌ 请提供研究方向 / 主题。"
+
+    paper_type = args.get("paper_type", "本科论文")
+    sections = args.get("sections") or [
+        "abstract", "introduction", "literature_review",
+        "method", "experiment", "discussion", "conclusion",
+    ]
+    enable_online = bool(args.get("enable_online", False))
+    skip_cards = bool(args.get("skip_cards", False))
+
+    steps: list = []
+
+    # 1) 研究选题拆解
+    research = await _handle_scholarforge_research_map({"topic": topic})
+    steps.append(("🔬 研究地图 (research_map)", research))
+
+    # 2) 大纲（把研究地图作为上下文喂入）
+    outline_md = await _handle_scholarforge_outline({
+        "topic": topic,
+        "paper_type": paper_type,
+        "requirements": f"参考以下研究地图组织大纲：\n{research[:1500]}",
+    })
+    steps.append(("📐 大纲 (outline)", outline_md))
+
+    # 3) 逐章撰写（上下文随已写章节增长，截断到最近 4000 字符以控成本）
+    draft_parts: list = []
+    ctx = outline_md
+    for s in sections:
+        sec = await _handle_scholarforge_write({
+            "topic": topic, "section_type": s,
+            "context": ctx, "paper_type": paper_type,
+        })
+        draft_parts.append(f"## {s}\n{sec}")
+        ctx = (outline_md + "\n\n" + "\n\n".join(draft_parts))[-4000:]
+    draft = "\n\n".join(draft_parts)
+    steps.append(("✍️ 初稿 (write)", draft))
+
+    # 4) 主张-证据审查（默认不联网，避免长流水线意外网络调用）
+    audit = await _handle_scholarforge_review_claims({
+        "paper_text": draft, "enable_online": enable_online,
+    })
+    steps.append(("⚖️ 主张-证据审查 (review_claims)", audit))
+
+    # 5)+6) 文献沉淀 + 综述矩阵（可选，避免检索网络）
+    if not skip_cards:
+        cards = await _handle_scholarforge_save_cards({"query": topic, "limit": 20})
+        steps.append(("📚 文献卡片沉淀 (save_cards)", cards))
+        matrix = await _handle_scholarforge_literature_matrix({"topic": topic, "limit": 30})
+        steps.append(("🗂️ 综述矩阵 (literature_matrix)", matrix))
+
+    # 组装
+    report = [
+        "# 📝 写作流水线 Writing Pipeline", "",
+        f"**主题**：{topic}", f"**论文类型**：{paper_type}",
+        f"**章节**：{', '.join(sections)}", "",
+    ]
+    for title, body in steps:
+        report.append(f"---\n\n## {title}\n\n{body}\n")
+    report.append(
+        "---\n\n## ✅ 检查点 / 下一步\n"
+        "- 复核研究地图中的研究空白是否已被大纲覆盖\n"
+        "- 按大纲逐章扩写（本流水线已产出初稿桩，可再单独调用 `scholarforge_write` 深化）\n"
+        "- 给 `scholarforge_review_claims` 补 `references` 做完整引用查证\n"
+        "- 用 `scholarforge_literature_matrix` 调已沉淀卡片写综述，并把 gaps 回灌 `scholarforge_research_map` 提新研究问题\n"
+    )
+    return "\n".join(report)
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Export Literature Cards (导出 .bib / 喂 format_refs)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_EXPORT_CARDS_SCHEMA = {
+    "name": "scholarforge_export_cards",
+    "description": (
+        "导出已沉淀的文献卡片：BibTeX（写 .bib 供 LaTeX/Zotero）或 papers JSON"
+        "（直接喂给 scholarforge_format_refs / scholarforge_replace_citations）。"
+        "适用于：把 ScholarForge 沉淀的文献库导出为可复用引用、写综述时接入参考文献格式化。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "tag": {
+                "type": "string",
+                "description": "可选，按标签过滤导出的卡片",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "最多导出条数，默认 200",
+            },
+            "format": {
+                "type": "string",
+                "description": "导出格式：bibtex（默认）或 papers（标准文献 dict JSON）",
+                "enum": ["bibtex", "papers"],
+                "default": "bibtex",
+            },
+        },
+    },
+}
+
+
+async def _handle_scholarforge_export_cards(args: dict, **kw: Any) -> str:
+    """导出文献卡片为 BibTeX 或 papers JSON。"""
+    import json as _json
+
+    tag = args.get("tag", "")
+    limit = args.get("limit", 200)
+    fmt = args.get("format", "bibtex")
+
+    try:
+        from hermes_cli.scholarforge.literature_cards import (
+            export_cards_bibtex, cards_as_papers,
+        )
+        if fmt == "papers":
+            papers = cards_as_papers(tag=tag, limit=limit)
+            return _json.dumps(papers, ensure_ascii=False, indent=2)
+        return export_cards_bibtex(tag=tag, limit=limit)
+    except Exception as e:
+        logger.error(f"export_cards error: {e}", exc_info=True)
+        return f"❌ 导出文献卡片失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
 # Tool: Check Statistics Consistency (new validator)
 # ──────────────────────────────────────────────────────────────
 
@@ -2253,4 +2430,22 @@ def register_tools(host_api=None):
         emoji="📊",
         description="综述矩阵（已沉淀卡片→按方法/数据/发现分列+gap 提示）",
     )
-    logger.info("[ScholarForge] 18 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix")
+    registry.register(
+        name="scholarforge_writing_pipeline",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_WRITING_PIPELINE_SCHEMA,
+        handler=_handle_scholarforge_writing_pipeline,
+        is_async=True,
+        emoji="📝",
+        description="写作流水线（research_map→outline→write→review_claims→save_cards→literature_matrix 一键串联）",
+    )
+    registry.register(
+        name="scholarforge_export_cards",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_EXPORT_CARDS_SCHEMA,
+        handler=_handle_scholarforge_export_cards,
+        is_async=True,
+        emoji="📤",
+        description="导出文献卡片（BibTeX 写 .bib / papers JSON 喂 format_refs·replace_citations）",
+    )
+    logger.info("[ScholarForge] 21 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/writing_pipeline/export_cards")

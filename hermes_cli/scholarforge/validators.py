@@ -640,9 +640,10 @@ class DesignFlaw:
     description: str  # 问题描述
     evidence: str  # 证据（论文中的原文片段）
     suggestion: str  # 修复建议
+    section: str = ""  # 所属章节（按 ## 标题切分；空串=未分段/全文）
 
 
-def detect_design_flaws(
+def _detect_design_flaws_core(
     paper_text: str,
     design_info: dict | None = None,
 ) -> list[DesignFlaw]:
@@ -850,6 +851,44 @@ def detect_design_flaws(
                 suggestion="进行事后统计检验力分析（G*Power），报告实际 power 值",
             ))
 
+    return flaws
+
+
+def _split_sections(text: str) -> list:
+    """按 Markdown `## ` 标题切分论文为 (章节名, 章节正文) 列表。
+
+    章节正文包含标题行本身，使标题中的关键词也能参与规则匹配。
+    无 `## ` 标题时返回 [("", text)]（保持全文单段行为）。
+    """
+    parts = re.split(r"(?m)^##\s+(.+?)\s*$", text)
+    sections = []
+    if parts and parts[0].strip():
+        sections.append(("", parts[0]))
+    for i in range(1, len(parts), 2):
+        name = parts[i].strip()
+        body = parts[i + 1] if i + 1 < len(parts) else ""
+        sections.append((name, f"## {name}\n{body}"))
+    if not sections:
+        sections.append(("", text))
+    return sections
+
+
+def detect_design_flaws(
+    paper_text: str,
+    design_info: dict | None = None,
+) -> list[DesignFlaw]:
+    """检测研究设计缺陷，并按章节给每条缺陷打 `section` 标签。
+
+    对每个 `## ` 章节独立运行规则检测，使缺陷可定位到具体章节，
+    供 claim_audit 做「同章节精确匹配」。无章节标题时退化为全文单段
+    （`section` 为空串，行为与旧版一致）。
+    """
+    design_info = design_info or {}
+    flaws: list[DesignFlaw] = []
+    for sec_name, sec_text in _split_sections(paper_text):
+        for f in _detect_design_flaws_core(sec_text, design_info):
+            f.section = sec_name
+            flaws.append(f)
     return flaws
 
 
