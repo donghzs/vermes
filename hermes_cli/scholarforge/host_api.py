@@ -45,12 +45,14 @@ def get_providers():
 
 
 def get_hermes_home():
-    """返回 hermes home 目录 Path"""
+    """返回 hermes home 目录 Path（与 hermes_constants.get_hermes_home 保持一致）"""
     if _get_hermes_home:
         return _get_hermes_home()
-    from pathlib import Path
     import os
-    return Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
+    from pathlib import Path
+    # VERMES_HOME 优先，HERMES_HOME 兼容，默认 ~/.vermes（避免误落到 ~/.hermes）
+    _val = os.environ.get("VERMES_HOME") or os.environ.get("HERMES_HOME") or "~/.vermes"
+    return Path(_val).expanduser()
 
 
 def get_registry():

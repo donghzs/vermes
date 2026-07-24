@@ -400,11 +400,14 @@ def register_module_api(app, host_api: HostAPI):
         try:
             full = full.resolve()
             base = base.resolve()
-            # 路径穿越防护
-            if not str(full).startswith(str(base)):
+            # 路径穿越防护：规范化后必须仍位于 base 之下。
+            # 尾斜杠防止 “base 是另一目录前缀” 的误判（如 /a/b/scholar vs /a/b/scholarX）。
+            _base_prefix = str(base).rstrip("/") + "/"
+            if not str(full).startswith(_base_prefix):
                 return JSONResponse({"error": "forbidden"}, status_code=403)
         except Exception:
-            pass
+            # 规范化失败（符号链接异常 / 权限问题等）一律拒绝，不跳过校验
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         if not full.exists() or not full.is_file():
             return JSONResponse({"error": "not found"}, status_code=404)
         _mime, _ = mimetypes.guess_type(str(full))
