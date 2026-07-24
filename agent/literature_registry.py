@@ -332,8 +332,9 @@ def bootstrap_custom_providers() -> None:
         if not name:
             continue
         try:
-            # 专用适配器：书童 shutong（EmpireCMS 登录 + SSO JWT 检索）
-            if (definition.get("provider_type") or "").lower() == "shutong":
+            # 专用适配器：书童 shutong（EmpireCMS 登录 + SSO → KNS8 镜像检索）。
+            # provider_type 命中，或域名/字段带 shutong 特征（兼容加检测前注册的存量源）。
+            if _is_shutong_source(definition):
                 from agent.literature_providers.shutong import ShutongProvider
 
                 register_provider(ShutongProvider(definition))
@@ -341,6 +342,21 @@ def bootstrap_custom_providers() -> None:
                 register_provider(CustomHttpProvider(definition))
         except Exception as exc:  # noqa: BLE001
             logger.debug("bootstrap custom literature provider %s failed: %s", name, exc)
+
+
+def _is_shutong_source(definition: dict) -> bool:
+    """判定自定义源是否为书童 shutong（用于路由到专用适配器）。
+
+    显式 ``provider_type == "shutong"`` 优先；否则按域名特征兜底识别，
+    以兼容在 provider_type 检测落地之前就已注册的存量源。
+    """
+    if (definition.get("provider_type") or "").lower() == "shutong":
+        return True
+    haystack = " ".join(
+        str(definition.get(k) or "")
+        for k in ("id", "label", "base_url", "login_url", "url", "sso_url")
+    ).lower()
+    return "shutong" in haystack
 
 
 # Registry of local-file providers registered by the most recent
