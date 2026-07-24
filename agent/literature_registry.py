@@ -332,9 +332,53 @@ def bootstrap_custom_providers() -> None:
         if not name:
             continue
         try:
-            register_provider(CustomHttpProvider(definition))
+            # 专用适配器（EmpireCMS 登录 + SSO → 动态 KNS8 镜像检索）。
+            # 整族代理共用通用骨架 Kns8TempLoginProvider，仅入口差异靠配置表达。
+            if _is_shutong_source(definition):
+                from agent.literature_providers.shutong import ShutongProvider
+
+                register_provider(ShutongProvider(definition))
+            elif _is_wenx_source(definition):
+                from agent.literature_providers.wenx import WenxProvider
+
+                register_provider(WenxProvider(definition))
+            else:
+                register_provider(CustomHttpProvider(definition))
         except Exception as exc:  # noqa: BLE001
             logger.debug("bootstrap custom literature provider %s failed: %s", name, exc)
+
+
+def _is_shutong_source(definition: dict) -> bool:
+    """判定自定义源是否为书童 shutong（用于路由到专用适配器）。
+
+    显式 ``provider_type == "shutong"`` 优先；否则按域名特征兜底识别，
+    以兼容在 provider_type 检测落地之前就已注册的存量源。
+    """
+    if (definition.get("provider_type") or "").lower() == "shutong":
+        return True
+    haystack = " ".join(
+        str(definition.get(k) or "")
+        for k in ("id", "label", "base_url", "login_url", "url", "sso_url")
+    ).lower()
+    return "shutong" in haystack
+
+
+def _is_wenx_source(definition: dict) -> bool:
+    """判定自定义源是否为文献云图书馆 wenx / ccki 等同族代理。
+
+    与 shutong 同构（EmpireCMS 登录 + SSO → KNS8 镜像），差异仅在入口形式
+    （``/csNN.php`` 直接 302、且知网频道常需购买群组开通）。
+
+    显式 ``provider_type == "wenx"`` 优先；否则按域名特征兜底识别，
+    以兼容在 provider_type 检测落地之前就已注册的存量源。
+    """
+    if (definition.get("provider_type") or "").lower() in ("wenx", "ccki"):
+        return True
+    haystack = " ".join(
+        str(definition.get(k) or "")
+        for k in ("id", "label", "base_url", "login_url", "url", "sso_url")
+    ).lower()
+    return any(k in haystack for k in ("wenx", "ccki"))
 
 
 # Registry of local-file providers registered by the most recent

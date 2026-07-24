@@ -153,6 +153,7 @@ def _normalize_definition(raw: Dict[str, Any], *, source_id: str) -> Dict[str, A
         "description": (raw.get("description") or "").strip(),
         "url": (raw.get("url") or "").strip(),
         "base_url": (raw.get("base_url") or "").strip(),
+        "provider_type": (raw.get("provider_type") or "").strip(),
         "auth_scheme": auth,
         "api_key_header": (raw.get("api_key_header") or "X-API-KEY").strip(),
         "query_param": (raw.get("query_param") or "q").strip() or "q",
@@ -165,6 +166,9 @@ def _normalize_definition(raw: Dict[str, Any], *, source_id: str) -> Dict[str, A
         "login_password_field": (raw.get("login_password_field") or "password").strip() or "password",
         "login_extra_fields": extra,
         "search_url": search_url,
+        "sso_url": (raw.get("sso_url") or "").strip(),
+        "sso_referer": (raw.get("sso_referer") or "").strip(),
+        "token_scheme": (raw.get("token_scheme") or "bearer").strip().lower() or "bearer",
         "created_at": raw.get("created_at") or time.time(),
         "updated_at": time.time(),
     }
@@ -216,10 +220,10 @@ def update_custom_source(source_id: str, payload: Dict[str, Any]) -> Optional[Di
         if d.get("id") == source_id:
             merged = dict(d)
             for k in (
-                "label", "description", "url", "base_url", "auth_scheme",
+                "label", "description", "url", "base_url", "provider_type", "auth_scheme",
                 "api_key_header", "query_param", "method", "field_types",
                 "login_url", "login_user_field", "login_password_field",
-                "login_extra_fields", "search_url",
+                "login_extra_fields", "search_url", "sso_url", "sso_referer", "token_scheme",
             ):
                 if k in payload:
                     merged[k] = payload[k]
@@ -428,6 +432,39 @@ def _build_credential_summary(parsed: Dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+_EMPIRECMS_SIG = "/e/member/"
+
+
+def _looks_like_empirecms(url: str) -> bool:
+    """轻量探测：站点是否为 EmpireCMS（购买到的第三方中文文献库多为帝国CMS）。
+
+    这类站点登录表单字段是 ``username``（非通用的 ``user``），且需
+    ``enews=login`` 等隐藏域作为登录动作标识；通用 ``form`` 注册若不修正字段
+    会登录失败。这里只做一次只读 GET 检查 ``/e/member/`` 特征，失败则保守返回 False。
+    """
+    if not url:
+        return False
+    candidates = [url.rstrip("/") + "/e/member/login/", url.rstrip("/") + "/"]
+    try:
+        import httpx
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        }
+        with httpx.Client(timeout=12, follow_redirects=True, headers=headers) as c:
+            for cand in candidates:
+                try:
+                    r = c.get(cand)
+                except Exception:  # noqa: BLE001
+                    continue
+                if r.status_code == 200 and _EMPIRECMS_SIG in r.text:
+                    return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def register_source_from_credential_block(
     text: str, *, persist_credentials: bool = True
 ) -> Dict[str, Any]:
@@ -469,12 +506,42 @@ def register_source_from_credential_block(
         "method": "GET",
         "field_types": field_types,
     }
+
+    # 书童 shutong 专用适配器识别：域名命中即标注 provider_type，
+    # 并预填 EmpireCMS 登录隐藏域（enews/lifetime/ecmsfrom）。
+    is_shutong = bool(url) and "shutong" in (url or "").lower()
+    if is_shutong:
+        definition["provider_type"] = "shutong"
+
     if auth == "form":
         definition["login_url"] = url
         definition["search_url"] = url
         definition["login_user_field"] = "user"
         definition["login_password_field"] = "password"
-        definition["login_extra_fields"] = {}
+        if is_shutong:
+            definition["login_extra_fields"] = {
+                "enews": "login",
+                "lifetime": "0",
+                "ecmsfrom": "/zhongwenku/",
+            }
+            definition["sso_url"] = (url.rstrip("/") + "/l77.php")
+            definition["sso_referer"] = (url.rstrip("/") + "/zhongwenku/")
+            definition["token_scheme"] = "bearer"
+        else:
+            # 通用第三方文献库多为 EmpireCMS：登录字段是 username，且需
+            # enews=login/tobind/lifetime 等帝国CMS登录动作隐藏域。若不修正，
+            # 通用 form 登录会因字段名错误而失败（用户"粘贴网站+账号+密码"
+            # 本应直接可用，这里补全以真正打通登录半边）。
+            if _looks_like_empirecms(url):
+                definition["login_user_field"] = "username"
+                definition["login_extra_fields"] = {
+                    "enews": "login",
+                    "tobind": "0",
+                    "lifetime": "0",
+                    "ecmsfrom": "/",
+                }
+            else:
+                definition["login_extra_fields"] = {}
 
     try:
         defn = add_custom_source(definition)
