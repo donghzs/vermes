@@ -322,5 +322,46 @@ async def test_handle_save_cards_no_args(temp_db):
     assert "❌" in result
 
 
+@pytest.mark.asyncio
+async def test_export_cards_bibtex(temp_db):
+    """沉淀后导出 BibTeX，含 @article 与标题与来源标注。"""
+    with patch(
+        "hermes_cli.scholarforge.tools._call_llm",
+        AsyncMock(return_value=LLM_RESPONSE),
+    ):
+        from hermes_cli.scholarforge.literature_cards import (
+            save_cards, export_cards_bibtex,
+        )
+        await save_cards(SAMPLE_PAPERS)
+        bib = export_cards_bibtex()
+    assert "@article" in bib
+    assert "Deep Learning for Medical Image Analysis" in bib
+    assert "Vermes ScholarForge literature card" in bib
+
+
+@pytest.mark.asyncio
+async def test_export_cards_papers_json(temp_db):
+    """导出 papers JSON 可直接喂 format_refs / replace_citations。"""
+    with patch(
+        "hermes_cli.scholarforge.tools._call_llm",
+        AsyncMock(return_value=LLM_RESPONSE),
+    ):
+        from hermes_cli.scholarforge.literature_cards import (
+            save_cards, cards_as_papers,
+        )
+        await save_cards(SAMPLE_PAPERS)
+        papers = cards_as_papers()
+    assert isinstance(papers, list) and len(papers) == 2
+    assert papers[0]["title"] == "Deep Learning for Medical Image Analysis"
+    assert papers[0]["doi"] == "10.1234/dl-medical"
+
+
+@pytest.mark.asyncio
+async def test_export_cards_empty(temp_db):
+    """空库导出给出友好提示。"""
+    from hermes_cli.scholarforge.literature_cards import export_cards_bibtex
+    assert "文献卡片库为空" in export_cards_bibtex()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

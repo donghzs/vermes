@@ -208,5 +208,37 @@ async def test_handle_review_claims_empty_paper():
     assert "论文文本" in result
 
 
+# ──────────────────────────────────────────────────────────────
+# claim↔DesignFlaw 精确匹配（section 字段）
+# ──────────────────────────────────────────────────────────────
+
+def test_design_overlap_same_section_match():
+    from hermes_cli.scholarforge.claim_audit import _check_design_overlap
+    from hermes_cli.scholarforge.validators import DesignFlaw
+
+    flaw = DesignFlaw(
+        severity="P2", category="霍桑效应替代解释",
+        description="对照组仅做常规活动", evidence="对照组进行常规教育活动",
+        suggestion="设置活性对照", section="方法",
+    )
+    # 同章节 + 关键词重叠 → 命中
+    r = _check_design_overlap("实验组与对照组，对照组做常规活动训练", [flaw], "方法")
+    assert "⚠️" in r
+
+
+def test_design_overlap_diff_section_no_overlap():
+    from hermes_cli.scholarforge.claim_audit import _check_design_overlap
+    from hermes_cli.scholarforge.validators import DesignFlaw
+
+    flaw = DesignFlaw(
+        severity="P2", category="霍桑效应替代解释",
+        description="对照组仅做常规活动", evidence="对照组进行常规教育活动",
+        suggestion="设置活性对照", section="方法",
+    )
+    # 不同章节 + 无关键词重叠 → 不命中（精确匹配生效，避免跨章误报）
+    r = _check_design_overlap("本研究结果具有现实意义", [flaw], "讨论")
+    assert "✅" in r
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

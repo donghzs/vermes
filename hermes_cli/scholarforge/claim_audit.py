@@ -85,22 +85,39 @@ async def _extract_claims(paper_text: str) -> list[dict]:
     ]
 
 
-def _check_design_overlap(claim_text: str, flaws: list) -> str:
-    """软匹配：claim 文本与 DesignFlaw.evidence/description 的中文二元组重叠≥2。
+def _cjk_bigrams(text: str) -> set:
+    """中文 2 字滑动窗口 bigram 集合（比最长连续串更鲁棒，可捕捉部分重叠）。"""
+    chars = re.findall(r"[\u4e00-\u9fff]", text)
+    if len(chars) < 2:
+        return set()
+    return {chars[i] + chars[i + 1] for i in range(len(chars) - 1)}
 
-    v1 近似方案；后续可给 DesignFlaw 加 section 字段做精确匹配。
+
+def _check_design_overlap(claim_text: str, flaws: list, claim_section: str = "") -> str:
+    """claim↔DesignFlaw 匹配：同章节精确优先，跨章节软匹配兜底。
+
+    - 同章节(claim_section==flaw.section)：1 个中文 bigram 重叠即判受影响（章节内强信号）
+    - 跨章节/无章节：软匹配（重叠≥2 bigram）兜底
     """
     if not flaws:
         return "✅ 未检出相关缺陷"
 
-    claim_bigrams = set(re.findall(r"[\u4e00-\u9fff]{2,}", claim_text))
-    if not claim_bigrams:
+    claim_bg = _cjk_bigrams(claim_text)
+    if not claim_bg:
         return "✅ 未检出相关缺陷"
 
+    # 1) 同章节精确匹配（最强信号）
+    if claim_section:
+        for f in flaws:
+            if f.section and f.section == claim_section:
+                hay = _cjk_bigrams(f"{f.evidence} {f.description}")
+                if claim_bg & hay:
+                    return f"⚠️ 受影响({f.category})"
+
+    # 2) 跨章节 / 无章节：软匹配（重叠≥2 bigram）
     for f in flaws:
-        hay = f"{f.evidence} {f.description}"
-        hay_bigrams = set(re.findall(r"[\u4e00-\u9fff]{2,}", hay))
-        if len(claim_bigrams & hay_bigrams) >= 2:
+        hay = _cjk_bigrams(f"{f.evidence} {f.description}")
+        if len(claim_bg & hay) >= 2:
             return f"⚠️ 受影响({f.category})"
 
     return "✅ 未检出相关缺陷"
@@ -189,9 +206,9 @@ async def review_claims(
         else:
             stat_s = "—"
 
-        # 设计支撑（软匹配）
+        # 设计支撑（同章节精确匹配优先，跨章节软匹配兜底）
         claim_text = f"{c.get('evidence_quote', '')} {c.get('claim', '')}"
-        des_s = _check_design_overlap(claim_text, flaws)
+        des_s = _check_design_overlap(claim_text, flaws, c.get("section", ""))
         if des_s.startswith("⚠️"):
             weak_count += 1
 
