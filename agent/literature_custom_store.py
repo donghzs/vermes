@@ -432,6 +432,39 @@ def _build_credential_summary(parsed: Dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+_EMPIRECMS_SIG = "/e/member/"
+
+
+def _looks_like_empirecms(url: str) -> bool:
+    """轻量探测：站点是否为 EmpireCMS（购买到的第三方中文文献库多为帝国CMS）。
+
+    这类站点登录表单字段是 ``username``（非通用的 ``user``），且需
+    ``enews=login`` 等隐藏域作为登录动作标识；通用 ``form`` 注册若不修正字段
+    会登录失败。这里只做一次只读 GET 检查 ``/e/member/`` 特征，失败则保守返回 False。
+    """
+    if not url:
+        return False
+    candidates = [url.rstrip("/") + "/e/member/login/", url.rstrip("/") + "/"]
+    try:
+        import httpx
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        }
+        with httpx.Client(timeout=12, follow_redirects=True, headers=headers) as c:
+            for cand in candidates:
+                try:
+                    r = c.get(cand)
+                except Exception:  # noqa: BLE001
+                    continue
+                if r.status_code == 200 and _EMPIRECMS_SIG in r.text:
+                    return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def register_source_from_credential_block(
     text: str, *, persist_credentials: bool = True
 ) -> Dict[str, Any]:
@@ -495,7 +528,20 @@ def register_source_from_credential_block(
             definition["sso_referer"] = (url.rstrip("/") + "/zhongwenku/")
             definition["token_scheme"] = "bearer"
         else:
-            definition["login_extra_fields"] = {}
+            # 通用第三方文献库多为 EmpireCMS：登录字段是 username，且需
+            # enews=login/tobind/lifetime 等帝国CMS登录动作隐藏域。若不修正，
+            # 通用 form 登录会因字段名错误而失败（用户"粘贴网站+账号+密码"
+            # 本应直接可用，这里补全以真正打通登录半边）。
+            if _looks_like_empirecms(url):
+                definition["login_user_field"] = "username"
+                definition["login_extra_fields"] = {
+                    "enews": "login",
+                    "tobind": "0",
+                    "lifetime": "0",
+                    "ecmsfrom": "/",
+                }
+            else:
+                definition["login_extra_fields"] = {}
 
     try:
         defn = add_custom_source(definition)
