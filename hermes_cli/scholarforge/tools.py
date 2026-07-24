@@ -1770,6 +1770,112 @@ async def _handle_scholarforge_research_map(args: dict, **kw: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# Tool: Save Literature Cards (文献知识沉淀)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_SAVE_CARDS_SCHEMA = {
+    "name": "scholarforge_save_literature_cards",
+    "description": (
+        "文献知识沉淀：把搜索结果存为结构化卡片（LLM 抽取研究问题/方法/数据/发现/局限/主张/标签），跨会话累积。"
+        "适用于：文献调研后沉淀、积累个人文献库、为综述写作储备素材。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "搜索关键词，触发检索后自动沉淀。与 papers 二选一。",
+            },
+            "papers": {
+                "type": "string",
+                "description": "已有的文献 JSON 数组（每条含 title/authors/year/abstract/doi 等），与 query 二选一。",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "最大沉淀数量，默认 10",
+            },
+        },
+    },
+}
+
+
+async def _handle_scholarforge_save_cards(args: dict, **kw: Any) -> str:
+    """文献知识沉淀"""
+    query = args.get("query", "")
+    papers_json = args.get("papers", "")
+    limit = args.get("limit", 10)
+
+    try:
+        from hermes_cli.scholarforge.literature_cards import save_cards, save_cards_from_query
+
+        if papers_json.strip():
+            import json as _json
+            try:
+                papers = _json.loads(papers_json)
+            except _json.JSONDecodeError:
+                return "❌ papers 参数不是合法的 JSON 数组。"
+            result = await save_cards(papers)
+        elif query.strip():
+            result = await save_cards_from_query(query, limit=limit)
+        else:
+            return "❌ 请提供 query 或 papers 参数。"
+
+        return (
+            f"✅ 文献卡片沉淀完成\n"
+            f"  新增: {result['added']} 篇\n"
+            f"  跳过(重复/无效): {result['skipped']} 篇\n"
+            f"  总计: {result['total']} 篇"
+        )
+    except Exception as e:
+        logger.error(f"save_cards error: {e}", exc_info=True)
+        return f"❌ 文献沉淀失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Tool: Literature Matrix (综述矩阵)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_MATRIX_SCHEMA = {
+    "name": "scholarforge_literature_matrix",
+    "description": (
+        "从已沉淀的文献卡片生成综述矩阵：按研究问题/方法/数据/发现/局限分列展示，并提示潜在研究空白。"
+        "适用于：写文献综述时梳理已有文献、发现研究 gap。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "description": "可选，用 TF-IDF 对摘要做语义排序",
+            },
+            "tag": {
+                "type": "string",
+                "description": "可选，按标签过滤",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "最多返回条数，默认 30",
+            },
+        },
+    },
+}
+
+
+async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
+    """综述矩阵"""
+    topic = args.get("topic", "")
+    tag = args.get("tag", "")
+    limit = args.get("limit", 30)
+
+    try:
+        from hermes_cli.scholarforge.literature_cards import literature_matrix
+        return literature_matrix(topic=topic, tag=tag, limit=limit)
+    except Exception as e:
+        logger.error(f"literature_matrix error: {e}", exc_info=True)
+        return f"❌ 生成综述矩阵失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
 # Tool: Check Statistics Consistency (new validator)
 # ──────────────────────────────────────────────────────────────
 
@@ -2129,4 +2235,22 @@ def register_tools(host_api=None):
         emoji="🗺️",
         description="研究选题拆解（方向→问题树+共识/分歧/空白+可验证假设）",
     )
-    logger.info("[ScholarForge] 17 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map")
+    registry.register(
+        name="scholarforge_save_literature_cards",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_SAVE_CARDS_SCHEMA,
+        handler=_handle_scholarforge_save_cards,
+        is_async=True,
+        emoji="📇",
+        description="文献知识沉淀（search→结构化卡片+LLM 抽取 7 字段+跨会话累积）",
+    )
+    registry.register(
+        name="scholarforge_literature_matrix",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_MATRIX_SCHEMA,
+        handler=_handle_scholarforge_literature_matrix,
+        is_async=True,
+        emoji="📊",
+        description="综述矩阵（已沉淀卡片→按方法/数据/发现分列+gap 提示）",
+    )
+    logger.info("[ScholarForge] 18 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix")
