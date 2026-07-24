@@ -153,6 +153,7 @@ def _normalize_definition(raw: Dict[str, Any], *, source_id: str) -> Dict[str, A
         "description": (raw.get("description") or "").strip(),
         "url": (raw.get("url") or "").strip(),
         "base_url": (raw.get("base_url") or "").strip(),
+        "provider_type": (raw.get("provider_type") or "").strip(),
         "auth_scheme": auth,
         "api_key_header": (raw.get("api_key_header") or "X-API-KEY").strip(),
         "query_param": (raw.get("query_param") or "q").strip() or "q",
@@ -165,6 +166,9 @@ def _normalize_definition(raw: Dict[str, Any], *, source_id: str) -> Dict[str, A
         "login_password_field": (raw.get("login_password_field") or "password").strip() or "password",
         "login_extra_fields": extra,
         "search_url": search_url,
+        "sso_url": (raw.get("sso_url") or "").strip(),
+        "sso_referer": (raw.get("sso_referer") or "").strip(),
+        "token_scheme": (raw.get("token_scheme") or "bearer").strip().lower() or "bearer",
         "created_at": raw.get("created_at") or time.time(),
         "updated_at": time.time(),
     }
@@ -216,10 +220,10 @@ def update_custom_source(source_id: str, payload: Dict[str, Any]) -> Optional[Di
         if d.get("id") == source_id:
             merged = dict(d)
             for k in (
-                "label", "description", "url", "base_url", "auth_scheme",
+                "label", "description", "url", "base_url", "provider_type", "auth_scheme",
                 "api_key_header", "query_param", "method", "field_types",
                 "login_url", "login_user_field", "login_password_field",
-                "login_extra_fields", "search_url",
+                "login_extra_fields", "search_url", "sso_url", "sso_referer", "token_scheme",
             ):
                 if k in payload:
                     merged[k] = payload[k]
@@ -469,12 +473,29 @@ def register_source_from_credential_block(
         "method": "GET",
         "field_types": field_types,
     }
+
+    # 书童 shutong 专用适配器识别：域名命中即标注 provider_type，
+    # 并预填 EmpireCMS 登录隐藏域（enews/lifetime/ecmsfrom）。
+    is_shutong = bool(url) and "shutong" in (url or "").lower()
+    if is_shutong:
+        definition["provider_type"] = "shutong"
+
     if auth == "form":
         definition["login_url"] = url
         definition["search_url"] = url
         definition["login_user_field"] = "user"
         definition["login_password_field"] = "password"
-        definition["login_extra_fields"] = {}
+        if is_shutong:
+            definition["login_extra_fields"] = {
+                "enews": "login",
+                "lifetime": "0",
+                "ecmsfrom": "/zhongwenku/",
+            }
+            definition["sso_url"] = (url.rstrip("/") + "/l77.php")
+            definition["sso_referer"] = (url.rstrip("/") + "/zhongwenku/")
+            definition["token_scheme"] = "bearer"
+        else:
+            definition["login_extra_fields"] = {}
 
     try:
         defn = add_custom_source(definition)

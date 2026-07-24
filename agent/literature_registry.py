@@ -332,7 +332,13 @@ def bootstrap_custom_providers() -> None:
         if not name:
             continue
         try:
-            register_provider(CustomHttpProvider(definition))
+            # 专用适配器：书童 shutong（EmpireCMS 登录 + SSO JWT 检索）
+            if (definition.get("provider_type") or "").lower() == "shutong":
+                from agent.literature_providers.shutong import ShutongProvider
+
+                register_provider(ShutongProvider(definition))
+            else:
+                register_provider(CustomHttpProvider(definition))
         except Exception as exc:  # noqa: BLE001
             logger.debug("bootstrap custom literature provider %s failed: %s", name, exc)
 

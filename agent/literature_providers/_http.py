@@ -95,6 +95,40 @@ def http_post_json(
         return {"ok": False, "error": str(exc)}
 
 
+def http_login_then_get(
+    *,
+    login_url: str,
+    login_payload: Dict[str, Any],
+    get_url: str,
+    get_headers: Optional[Dict[str, str]] = None,
+    timeout: int = _DEFAULT_TIMEOUT,
+) -> Dict[str, Any]:
+    """Card-gateway pattern: POST a form login to get a session cookie, then
+    GET *get_url* on the same session and return the raw text body.
+
+    Used by providers (e.g. 书童 shutong) whose retrieval requires an extra
+    SSO hop: after the portal login you must visit a token-dispensing endpoint
+    and parse a redirect/token out of the HTML before calling the real search
+    API. Returns {ok, text|error, status}.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return {"ok": False, "error": "httpx 未安装 — pip install httpx"}
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+            client.post(login_url, data=login_payload or {}, headers=get_headers or {})
+            resp = client.get(get_url, headers=get_headers or {})
+            return {
+                "ok": True,
+                "status": resp.status_code,
+                "text": resp.text,
+            }
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("http_login_then_get(%s) failed: %s", get_url, exc)
+        return {"ok": False, "error": str(exc)}
+
+
 def http_login_then_search(
     *,
     login_url: str,
