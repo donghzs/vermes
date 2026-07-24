@@ -1727,6 +1727,49 @@ async def _handle_scholarforge_review_claims(args: dict, **kw: Any) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# Tool: Research Map (研究选题拆解)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_RESEARCH_MAP_SCHEMA = {
+    "name": "scholarforge_research_map",
+    "description": (
+        "研究选题拆解：将模糊研究方向拆成研究问题树、共识/分歧/空白、可验证假设。"
+        "适用于：开题前选题分析、确定研究gap、生成可测试假设。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "description": "研究方向或大题目，如 '大语言模型在教育中的应用'",
+            },
+            "context": {
+                "type": "string",
+                "description": "可选补充上下文（已有文献、方法、限制条件等）",
+            },
+        },
+        "required": ["topic"],
+    },
+}
+
+
+async def _handle_scholarforge_research_map(args: dict, **kw: Any) -> str:
+    """研究选题拆解"""
+    topic = args.get("topic", "")
+    if not topic.strip():
+        return "❌ 请提供研究方向。"
+
+    context = args.get("context", "")
+
+    try:
+        from hermes_cli.scholarforge.research_map import research_map
+        return await research_map(topic, context=context)
+    except Exception as e:
+        logger.error(f"research_map error: {e}", exc_info=True)
+        return f"❌ 研究选题拆解失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────
 # Tool: Check Statistics Consistency (new validator)
 # ──────────────────────────────────────────────────────────────
 
@@ -2077,4 +2120,13 @@ def register_tools(host_api=None):
         emoji="⚖️",
         description="主张-证据审查流水线（抽取 Claim → 逐条检查引用/统计/设计 → 结构化报告）",
     )
-    logger.info("[ScholarForge] 16 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims")
+    registry.register(
+        name="scholarforge_research_map",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_RESEARCH_MAP_SCHEMA,
+        handler=_handle_scholarforge_research_map,
+        is_async=True,
+        emoji="🗺️",
+        description="研究选题拆解（方向→问题树+共识/分歧/空白+可验证假设）",
+    )
+    logger.info("[ScholarForge] 17 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map")
