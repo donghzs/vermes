@@ -44,8 +44,11 @@ _FIELD_TYPES: Dict[str, Dict[str, Any]] = {
 }
 _FIELD_ORDER = ("api_key", "base_url", "user", "password")
 
-# Authentication schemes a custom source may use.
-AUTH_SCHEMES = ("none", "bearer", "basic", "header", "query")
+# Authentication schemes a custom source may use. ``form`` = card-number /
+# password login (POST credentials → session cookie) then search with that
+# session — the typical pattern for purchased third-party literature portals
+# (e.g. 书童 shutong, 各类卡号卡密文献网关).
+AUTH_SCHEMES = ("none", "bearer", "basic", "header", "query", "form")
 
 # In-memory cache keyed on file mtime to avoid re-parsing on every request.
 _cache: Dict[str, Any] = {"mtime": 0.0, "data": None}
@@ -139,6 +142,11 @@ def _normalize_definition(raw: Dict[str, Any], *, source_id: str) -> Dict[str, A
     method = (raw.get("method") or "GET").upper()
     if method not in ("GET", "POST"):
         method = "GET"
+    login_url = (raw.get("login_url") or raw.get("url") or "").strip()
+    search_url = (raw.get("search_url") or raw.get("url") or raw.get("base_url") or "").strip()
+    extra = raw.get("login_extra_fields")
+    if not isinstance(extra, dict):
+        extra = {}
     return {
         "id": source_id,
         "label": (raw.get("label") or source_id).strip() or source_id,
@@ -151,6 +159,12 @@ def _normalize_definition(raw: Dict[str, Any], *, source_id: str) -> Dict[str, A
         "method": method,
         "field_types": field_types,
         "fields": _build_fields(source_id, field_types),
+        # ── form-login (card-gateway) config ──
+        "login_url": login_url,
+        "login_user_field": (raw.get("login_user_field") or "user").strip() or "user",
+        "login_password_field": (raw.get("login_password_field") or "password").strip() or "password",
+        "login_extra_fields": extra,
+        "search_url": search_url,
         "created_at": raw.get("created_at") or time.time(),
         "updated_at": time.time(),
     }
@@ -204,6 +218,8 @@ def update_custom_source(source_id: str, payload: Dict[str, Any]) -> Optional[Di
             for k in (
                 "label", "description", "url", "base_url", "auth_scheme",
                 "api_key_header", "query_param", "method", "field_types",
+                "login_url", "login_user_field", "login_password_field",
+                "login_extra_fields", "search_url",
             ):
                 if k in payload:
                     merged[k] = payload[k]
@@ -269,3 +285,242 @@ def get_custom_service_entries() -> Dict[str, Dict[str, Any]]:
             "fields": norm_fields,
         }
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 凭证块「输入识别」：把用户粘贴的卡号/密码/网址文本解析成结构化字段，
+# 并一键注册为自定义文献源（同时把凭证落盘到 .env，复用掩码/审计）。
+# 典型输入（中文第三方卡号卡密文献网关）：
+#     卡号：83219570
+#     密码：335779
+#     【使用方法】复制网址 http://3.shutong2.com/ 到浏览器登录即可。
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 宽松匹配的识别规则（兼容中文全/半角冒号与空格）。
+_URL_RE = re.compile(
+    r"https?://[^\s，。、）)】\]\n<>\"'\u3002\uff1b\uff0c\uff1a]+"
+)
+_DOMAIN_RE = re.compile(r"[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+\.[a-zA-Z]{2,}(?:/[^\s，。、）)】\n]*)?")
+_USER_RE = re.compile(
+    r"(?:卡\s*号|账\s*号|用\s*户\s*名|用\s*户|学\s*号|工\s*号|会员\s*号|编\s*号)\s*[:：]\s*([^\s，。、）)】\n]+)"
+)
+_PWD_RE = re.compile(
+    r"(?:密\s*码|口\s*令|卡\s*密\s*码|查\s*询\s*密\s*码|登\s*录\s*密\s*码)\s*[:：]\s*([^\s，。、）)】\n]+)"
+)
+_KEY_RE = re.compile(
+    r"(?:api[_ ]?key|密钥|令牌|token|access[_ ]?key)\s*[:：]\s*([^\s，。、）)】\n]+)",
+    re.IGNORECASE,
+)
+_LABEL_RE = re.compile(r"(?:名称|文献库名|图书馆名|站点名|平台名)\s*[:：]\s*([^\n]{1,40})")
+_LABEL_KEY_RE = re.compile(
+    r"(?:网址|网关|站点|链接|接口地址|地址|域名)\s*[:：]\s*([^\s，。、）)】\n]+)"
+)
+
+
+def _clean(v: str) -> str:
+    if not v:
+        return ""
+    return v.strip().strip("\"'“”‘’").strip()
+
+
+def _mask(v: str) -> str:
+    """脱敏展示：保留首尾各两位，中间打码。"""
+    if not v:
+        return ""
+    if len(v) <= 2:
+        return "*" * len(v)
+    return v[:2] + "*" * max(2, len(v) - 4) + v[-2:]
+
+
+def parse_literature_credential_block(text: str) -> Dict[str, Any]:
+    """从用户粘贴的凭证文本中识别文献库字段。
+
+    Returns::
+
+        {
+          "ok": bool,
+          "label": str,          # 建议的文献库名称（缺省取域名）
+          "url": str,            # 网关/站点地址
+          "user": str | None,    # 卡号 / 账号
+          "password": str | None,
+          "api_key": str | None,
+          "detected_auth": str,  # "form" / "bearer" / None
+          "warnings": List[str],
+        }
+
+    识别规则对中文常见格式鲁棒：``卡号：``/``密码：``/``账号：``/``用户名：``，
+    以及散落在说明文字里的 ``复制网址 http://...`` / ``网关地址：http://...``。
+    """
+    if not text or not text.strip():
+        return {"ok": False, "label": "", "url": "", "user": None,
+                "password": None, "api_key": None, "detected_auth": None,
+                "warnings": ["文本为空"]}
+
+    url = ""
+    m = _URL_RE.search(text)
+    if m:
+        url = m.group(0).rstrip("/")
+    if not url:  # 退而求其次：标签后的裸域名
+        km = _LABEL_KEY_RE.search(text)
+        if km:
+            cand = _clean(km.group(1))
+            if "." in cand:
+                url = ("http://" + cand) if not cand.startswith("http") else cand
+        if not url:
+            dm = _DOMAIN_RE.search(text)
+            if dm:
+                url = "http://" + dm.group(0)
+
+    user = _clean(_USER_RE.search(text).group(1)) if _USER_RE.search(text) else None
+    password = _clean(_PWD_RE.search(text).group(1)) if _PWD_RE.search(text) else None
+    api_key = _clean(_KEY_RE.search(text).group(1)) if _KEY_RE.search(text) else None
+
+    label = ""
+    lm = _LABEL_RE.search(text)
+    if lm:
+        label = _clean(lm.group(1))
+    if not label and url:
+        from urllib.parse import urlparse
+
+        netloc = urlparse(url).netloc or url
+        label = netloc.replace("www.", "") or "第三方文献库"
+    if not label:
+        label = "第三方文献库"
+
+    warnings: List[str] = []
+    detected_auth: Optional[str] = None
+    if user and password:
+        detected_auth = "form"  # 卡号+密码 → 表单登录网关
+        if not url:
+            warnings.append("已识别卡号与密码，但未识别到网址；请在设置中补全网关/登录地址")
+    elif api_key:
+        detected_auth = "bearer"
+        if not url:
+            warnings.append("已识别 API Key，但未识别到网址；请在设置中补全网关地址")
+    elif (user or password) and not (user and password):
+        warnings.append("卡号与密码需成对出现才能使用表单登录；已识别其一，请补齐全")
+    elif url:
+        warnings.append("仅识别到网址，未识别卡号/密码/API Key；将按无认证创建，可能需要手动设置")
+
+    ok = bool(url or user or password or api_key)
+    return {
+        "ok": ok,
+        "label": label,
+        "url": url,
+        "user": user,
+        "password": password,
+        "api_key": api_key,
+        "detected_auth": detected_auth,
+        "warnings": warnings,
+    }
+
+
+def _build_credential_summary(parsed: Dict[str, Any]) -> str:
+    parts = []
+    if parsed.get("user"):
+        parts.append(f"卡号 {_mask(parsed['user'])}")
+    if parsed.get("password"):
+        parts.append("密码 已保存")
+    if parsed.get("api_key"):
+        parts.append(f"API Key {_mask(parsed['api_key'])}")
+    if parsed.get("url"):
+        parts.append(f"网址 {parsed['url']}")
+    return " · ".join(parts)
+
+
+def register_source_from_credential_block(
+    text: str, *, persist_credentials: bool = True
+) -> Dict[str, Any]:
+    """解析粘贴的凭证块并一键注册为自定义文献源。
+
+    返回的 ``summary`` 已脱敏；真实凭证（若有）写入 ``.env`` 的命名空间
+    ``LIT_<ID>_*``（与 UI 行为一致，受掩码/审计保护），**不**进入本函数或日志。
+    """
+    parsed = parse_literature_credential_block(text)
+    if not parsed["ok"]:
+        return {
+            "success": False,
+            "error": "未能从文本中识别到文献库凭证（需要 网址 / 卡号 / 密码 / API Key 中至少一个）",
+            "parsed": parsed,
+        }
+
+    url = parsed["url"]
+    field_types: List[str] = []
+    if parsed.get("api_key"):
+        field_types.append("api_key")
+    if url:
+        field_types.append("base_url")
+    if parsed.get("user"):
+        field_types.append("user")
+    if parsed.get("password"):
+        field_types.append("password")
+    if not field_types:
+        field_types = ["user", "password"]
+
+    auth = parsed["detected_auth"] or "form"
+    definition: Dict[str, Any] = {
+        "label": parsed["label"],
+        "description": "自动识别接入的第三方文献库（卡号+密码表单登录）"
+        if auth == "form" else "自动识别接入的第三方文献库",
+        "url": url,
+        "base_url": url,
+        "auth_scheme": auth,
+        "query_param": "q",
+        "method": "GET",
+        "field_types": field_types,
+    }
+    if auth == "form":
+        definition["login_url"] = url
+        definition["search_url"] = url
+        definition["login_user_field"] = "user"
+        definition["login_password_field"] = "password"
+        definition["login_extra_fields"] = {}
+
+    try:
+        defn = add_custom_source(definition)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "success": False,
+            "error": f"创建自定义文献源失败: {exc}",
+            "parsed": parsed,
+        }
+
+    source_id = defn["id"]
+    cred_keys: List[str] = []
+    if persist_credentials and (parsed.get("user") or parsed.get("password")
+                                or parsed.get("api_key") or url):
+        try:
+            from hermes_cli.config import save_env_value
+
+            prefix = f"{ENV_PREFIX}{source_id.upper()}_"
+            if parsed.get("api_key"):
+                save_env_value(prefix + "API_KEY", parsed["api_key"])
+                cred_keys.append(prefix + "API_KEY")
+            if url:
+                save_env_value(prefix + "BASE_URL", url)
+                cred_keys.append(prefix + "BASE_URL")
+            if parsed.get("user"):
+                save_env_value(prefix + "USER", parsed["user"])
+                cred_keys.append(prefix + "USER")
+            if parsed.get("password"):
+                save_env_value(prefix + "PASSWORD", parsed["password"])
+                cred_keys.append(prefix + "PASSWORD")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("register_source_from_credential_block: 凭证落盘失败: %s", exc)
+            cred_keys.append(f"(凭证落盘失败: {exc})")
+
+    return {
+        "success": True,
+        "source_id": source_id,
+        "label": defn["label"],
+        "auth_scheme": auth,
+        "summary": _build_credential_summary(parsed),
+        "credential_keys": cred_keys,
+        "warnings": parsed.get("warnings", []),
+        "source": {
+            "id": source_id,
+            "label": defn["label"],
+            "auth_scheme": auth,
+            "url": url,
+        },
+    }

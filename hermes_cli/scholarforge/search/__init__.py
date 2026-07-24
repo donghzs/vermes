@@ -357,12 +357,15 @@ async def _search_via_registry(
         from agent.literature_registry import (
             bootstrap_builtin_providers,
             bootstrap_custom_providers,
+            bootstrap_local_providers,
             get_active_literature_provider,
             get_provider_by_ref,
+            iter_local_providers,
         )
 
         bootstrap_builtin_providers()
         bootstrap_custom_providers()
+        bootstrap_local_providers()
     except Exception as exc:
         logger.debug("[ScholarForge] literature_registry unavailable: %s", exc)
         return []
@@ -384,7 +387,11 @@ async def _search_via_registry(
         active = get_active_literature_provider()
         if active is not None:
             providers = [active]
-        else:
+        # 并入所有可用的本地文献库（文件夹/USB），让本地已备论文也参与检索
+        for lp in iter_local_providers():
+            if lp.is_available() and lp not in providers:
+                providers.append(lp)
+        if not providers:
             # 没有可用 provider，返回空让调用方回退
             return []
 

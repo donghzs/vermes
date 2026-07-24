@@ -25,6 +25,23 @@ from agent.service_credentials import get_api_key, register_service
 
 logger = logging.getLogger(__name__)
 
+
+def _run_async(coro):
+    """在已有事件循环中安全运行协程，避免 ``asyncio.run`` 嵌套循环报错。
+
+    ``verify_citation_authenticity`` 等异步调用方已在事件循环内 await 本方法，
+    直接 ``asyncio.run`` 会抛 "cannot be called from a running event loop"。
+    此时改在独立线程跑一个全新事件循环，隔离副作用。
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        return ex.submit(lambda: asyncio.run(coro)).result()
+
 # Declare credential metadata (idempotent — merges with the entry already made
 # by scholarforge.cnki_fetcher so extra_fields accumulate across the tree).
 register_service(
@@ -71,11 +88,14 @@ class CnkiProvider(LiteratureProvider):
 
     def is_available(self) -> bool:
         # Available whenever any upstream strategy has credentials. The
-        # fetcher itself will skip strategies it can't service.
+        # fetcher itself will skip strategies it can't service. 卡号卡密
+        # （CNKI_USERNAME/CNKI_PASSWORD）也是合法启用路径。
         return bool(
             os.environ.get("CNKI_GATEWAY_URL")
             or get_api_key("cnki")
             or get_api_key("wanfang")
+            or os.environ.get("CNKI_USERNAME")
+            or os.environ.get("CNKI_PASSWORD")
         )
 
     def supports_fulltext(self) -> bool:
@@ -88,7 +108,7 @@ class CnkiProvider(LiteratureProvider):
             return {"success": False, "error": f"无法加载 CNKI fetcher: {exc}"}
 
         try:
-            papers = asyncio.run(search_cnki(query, int(limit)))
+            papers = _run_async(search_cnki(query, int(limit)))
         except Exception as exc:  # noqa: BLE001
             logger.error("CNKI search error: %s", exc)
             return {"success": False, "error": f"CNKI 检索失败: {exc}"}

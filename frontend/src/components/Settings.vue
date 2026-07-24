@@ -635,6 +635,13 @@ const literatureSaving = ref(false)
 const literatureExpanded = ref({}) // sid -> bool 展开状态
 // 自定义文献源完整定义（用于编辑模态框预填），sid -> full definition
 const customDefs = ref({})
+
+// 本地文献库（用户本地文件夹 / USB）
+const localLibs = ref([])
+const localDraft = reactive({ path: '', label: '' })
+const localAdding = ref(false)
+const localMsg = ref('')
+const localMsgOk = ref(true)
 const showCustomModal = ref(false)
 const customEditingId = ref(null)
 const customSaving = ref(false)
@@ -643,7 +650,12 @@ const customForm = reactive({
   auth_scheme: 'bearer', api_key_header: 'X-API-KEY',
   query_param: 'q', method: 'GET',
   api_key: true, base_url_field: false, user: false, password: false,
+  login_url: '', login_user_field: 'user', login_password_field: 'password', search_url: '',
 })
+// 粘贴凭证自动识别（卡号/密码/网址 → 一键接入）
+const pasteBlock = ref('')
+const pasteMsg = ref('')
+const pasteLoading = ref(false)
 
 function customFieldTypes() {
   const t = []
@@ -670,6 +682,12 @@ function onAuthSchemeChange() {
     customForm.password = true
   }
   // 'none' 不勾选任何字段
+  // 'form' 卡号+密码表单登录（第三方文献网关）：自动勾选 账号/密码/接口地址
+  if (scheme === 'form') {
+    customForm.user = true
+    customForm.password = true
+    customForm.base_url_field = true
+  }
 }
 
 function openAddCustom() {
@@ -679,6 +697,7 @@ function openAddCustom() {
     auth_scheme: 'bearer', api_key_header: 'X-API-KEY',
     query_param: 'q', method: 'GET',
     api_key: true, base_url_field: false, user: false, password: false,
+    login_url: '', login_user_field: 'user', login_password_field: 'password', search_url: '',
   })
   showCustomModal.value = true
 }
@@ -695,6 +714,8 @@ function openEditCustom(sid) {
     method: d.method || 'GET',
     api_key: ft.has('api_key'), base_url_field: ft.has('base_url'),
     user: ft.has('user'), password: ft.has('password'),
+    login_url: d.login_url || '', login_user_field: d.login_user_field || 'user',
+    login_password_field: d.login_password_field || 'password', search_url: d.search_url || '',
   })
   showCustomModal.value = true
 }
@@ -716,6 +737,13 @@ async function saveCustom() {
     query_param: customForm.query_param.trim() || 'q',
     method: customForm.method,
     field_types: ft,
+  }
+  if (customForm.auth_scheme === 'form') {
+    payload.login_url = customForm.login_url.trim()
+    payload.login_user_field = customForm.login_user_field.trim() || 'user'
+    payload.login_password_field = customForm.login_password_field.trim() || 'password'
+    payload.search_url = customForm.search_url.trim()
+    payload.login_extra_fields = {}
   }
   try {
     const url = customEditingId.value
@@ -750,6 +778,40 @@ async function deleteCustomSource(sid) {
     if (resp.ok) { toast.success('已删除 ' + name); await loadLiterature() }
     else { const dd = await resp.json().catch(() => ({})); toast.error(dd.detail || '删除失败') }
   } catch (e) { toast.error('删除失败: ' + e.message) }
+}
+
+// 粘贴凭证块 → 自动识别并一键接入为自定义文献源
+async function parseAndAddSource() {
+  const text = pasteBlock.value.trim()
+  if (!text) { toast.warning('请粘贴文献库凭证（卡号/密码/网址）'); return }
+  pasteLoading.value = true
+  pasteMsg.value = ''
+  try {
+    const resp = await fetch('/api/literature-custom-sources/parse', {
+      method: 'POST',
+      headers: envHeaders(),
+      body: JSON.stringify({ text }),
+    })
+    const data = await resp.json().catch(() => ({}))
+    if (resp.ok && data.success) {
+      const s = data.source || {}
+      pasteMsg.value = `已识别并接入「${s.label || data.source_id}」` + (data.summary ? `（${data.summary}）` : '')
+      if (data.warnings && data.warnings.length) {
+        pasteMsg.value += ' ⚠️ ' + data.warnings.join('；')
+      }
+      toast.success('已识别并接入文献库')
+      pasteBlock.value = ''
+      await loadLiterature()
+    } else {
+      pasteMsg.value = data.detail || '识别失败'
+      toast.error(data.detail || '识别失败')
+    }
+  } catch (e) {
+    pasteMsg.value = '识别失败: ' + e.message
+    toast.error('识别失败: ' + e.message)
+  } finally {
+    pasteLoading.value = false
+  }
 }
 
 async function loadLiterature() {
@@ -832,6 +894,7 @@ async function loadLiterature() {
     literaturePaid.value = paid
     literatureFree.value = free
     literatureCustom.value = custom
+    await loadLocalLibraries()
   } catch (e) {
     console.error('[Literature] load error:', e)
   } finally {
@@ -841,6 +904,80 @@ async function loadLiterature() {
 
 function litConfigured(g) {
   return g.fields.some(f => f.isSet)
+}
+
+// ── 本地文献库（文件夹 / USB）──
+
+async function loadLocalLibraries() {
+  try {
+    const resp = await fetch('/api/literature-local-sources', { headers: envHeaders() })
+    const data = await resp.json()
+    localLibs.value = (data.sources || []).map(s => ({ ...s, _busy: false }))
+  } catch (e) {
+    console.error('[LocalLib] load error:', e)
+  }
+}
+
+async function addLocalLibrary() {
+  const path = (localDraft.path || '').trim()
+  if (!path) { localMsg.value = '请填写文献文件夹路径'; localMsgOk.value = false; return }
+  localAdding.value = true
+  localMsg.value = ''
+  try {
+    const resp = await fetch('/api/literature-local-sources', {
+      method: 'POST',
+      headers: { ...envHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: path, label: localDraft.label.trim() || undefined }),
+    })
+    const data = await resp.json()
+    if (resp.ok && data.ok) {
+      localMsg.value = `已添加并索引：${data.source.label}（${ (data.source.index_summary?.indexed||0) + (data.source.index_summary?.updated||0) } 篇）`
+      localMsgOk.value = true
+      localDraft.path = ''
+      localDraft.label = ''
+      await loadLocalLibraries()
+    } else {
+      localMsg.value = data.detail || '添加失败'
+      localMsgOk.value = false
+    }
+  } catch (e) {
+    localMsg.value = '添加失败: ' + e.message
+    localMsgOk.value = false
+  } finally {
+    localAdding.value = false
+  }
+}
+
+async function reindexLocalLibrary(id) {
+  const lib = localLibs.value.find(x => x.id === id)
+  if (lib) lib._busy = true
+  try {
+    const resp = await fetch(`/api/literature-local-sources/${id}/index`, {
+      method: 'POST', headers: envHeaders(),
+    })
+    const data = await resp.json()
+    if (resp.ok && data.ok) {
+      toast.success(`已重新索引：${data.summary?.indexed || 0} 篇新增`)
+    } else {
+      toast.error(data.detail || '重新索引失败')
+    }
+  } catch (e) {
+    toast.error('重新索引失败: ' + e.message)
+  } finally {
+    if (lib) lib._busy = false
+    await loadLocalLibraries()
+  }
+}
+
+async function deleteLocalLibrary(id) {
+  const lib = localLibs.value.find(x => x.id === id)
+  if (!lib) return
+  if (!await confirm({ title: '删除本地文献库', message: `删除「${lib.label}」？本地索引会一并清除（源文件夹本身不动）。`, confirmText: '删除', danger: true })) return
+  try {
+    const resp = await fetch(`/api/literature-local-sources/${id}`, { method: 'DELETE', headers: envHeaders() })
+    if (resp.ok) { toast.success('已删除 ' + lib.label); await loadLocalLibraries() }
+    else { const dd = await resp.json().catch(() => ({})); toast.error(dd.detail || '删除失败') }
+  } catch (e) { toast.error('删除失败: ' + e.message) }
 }
 
 function focusLitField(f) {
@@ -1205,6 +1342,21 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400">与大模型厂商 API Key 相同的体验：用户自备 API Key / 网关地址 / 账号密码，填入即启用对应文献库。Agent 会自动路由到已配置的最优源。</p>
 
+          <!-- 粘贴凭证自动识别 -->
+          <div class="rounded-lg border border-dashed border-green-300 dark:border-green-700 bg-green-50/40 dark:bg-green-900/10 p-4 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm">📋</span>
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-200">粘贴凭证自动识别</span>
+            </div>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400">把商家给的卡号/密码/网址整段粘贴进来，Vermes 会自动识别并接入为自定义文献源（如书童等第三方卡号卡密文献网关）。凭证仅存本机 .env 并自动掩码。</p>
+            <textarea v-model="pasteBlock" rows="3" placeholder="例如：&#10;卡号：83219570&#10;密码：335779&#10;复制网址 http://3.shutong2.com/ 到浏览器登录即可" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono resize-y"></textarea>
+            <div class="flex items-center gap-2">
+              <button @click="parseAndAddSource" :disabled="pasteLoading" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">识别并接入</button>
+              <span v-if="pasteLoading" class="text-xs text-gray-400">识别中…</span>
+            </div>
+            <p v-if="pasteMsg" class="text-[11px] text-green-600 dark:text-green-400 break-all">{{ pasteMsg }}</p>
+          </div>
+
           <div v-if="literatureLoading" class="text-center text-sm text-gray-400 py-4">
             <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div> 加载中...
           </div>
@@ -1311,6 +1463,41 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                 </div>
               </div>
             </div>
+
+            <!-- 本地文献库（用户本地文件夹 / USB） -->
+            <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+              <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <span>💾</span> 本地文献库（文件夹 / USB）
+              </h4>
+              <div class="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30 p-4 space-y-2">
+                <p class="text-[11px] text-gray-500 dark:text-gray-400">把你已准备好的文献文件夹（PDF / BibTeX / RIS 导出）路径填进来，Vermes 会建立本地索引；普通检索会自动并入这些本地论文，引号级引用与文献核实也能直接用本地 PDF 全文。</p>
+                <div class="flex gap-2">
+                  <input v-model="localDraft.path" placeholder="/Volumes/USB/文献 或 /Users/you/papers" class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+                  <input v-model="localDraft.label" placeholder="名称（可选）" class="w-40 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none" />
+                  <button @click="addLocalLibrary" :disabled="localAdding" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">添加并索引</button>
+                </div>
+                <p v-if="localMsg" class="text-[11px]" :class="localMsgOk ? 'text-green-600 dark:text-green-400' : 'text-red-500'">{{ localMsg }}</p>
+              </div>
+              <div v-if="localLibs.length > 0" class="space-y-2">
+                <div v-for="l in localLibs" :key="l.id" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 p-3">
+                  <div class="flex items-center justify-between">
+                    <div class="min-w-0">
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ l.label }}</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-300 ml-1">本地</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button @click="reindexLocalLibrary(l.id)" :disabled="l._busy" class="text-[11px] text-gray-400 hover:text-green-500">↻ 重新索引</button>
+                      <button @click="deleteLocalLibrary(l.id)" class="text-[11px] text-gray-400 hover:text-red-500">🗑 删除</button>
+                    </div>
+                  </div>
+                  <p class="text-[11px] text-gray-400 mt-1 truncate font-mono" :title="l.root">{{ l.root }}</p>
+                  <p class="text-[11px] text-gray-400 mt-0.5">
+                    状态：{{ l.status === 'indexed' ? '已索引' : (l.status === 'error' ? '索引异常' : '待索引') }} · 文献 {{ l.file_count || 0 }} 篇
+                    <template v-if="l.index_summary"> · 扫描 {{ l.index_summary.scanned }}，新增 {{ l.index_summary.indexed }}<template v-if="l.index_summary.errors">，错误 {{ l.index_summary.errors }}</template></template>
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1349,6 +1536,7 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
                   <option value="basic">账号密码 Basic</option>
                   <option value="header">自定义 Header</option>
                   <option value="query">Query 参数</option>
+                  <option value="form">卡号+密码表单登录（第三方文献网关）</option>
                   <option value="none">无需认证</option>
                 </select>
               </div>
@@ -1363,6 +1551,27 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
             <div v-if="customForm.auth_scheme === 'header'">
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">自定义 Header 名</label>
               <input v-model="customForm.api_key_header" placeholder="X-API-KEY" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+            </div>
+            <div v-if="customForm.auth_scheme === 'form'" class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+              <p class="text-[11px] text-gray-500 dark:text-gray-400">表单登录网关：先 POST 登录拿到会话，再带会话检索。字段名若与商家网站不一致，请按实际网页表单的 name 修改。</p>
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">登录地址（表单提交 URL）</label>
+                <input v-model="customForm.login_url" placeholder="http://3.shutong2.com/login" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">登录用户名表单字段名</label>
+                  <input v-model="customForm.login_user_field" placeholder="user / username / card" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">登录密码表单字段名</label>
+                  <input v-model="customForm.login_password_field" placeholder="password / pwd" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">检索地址（留空则用登录地址）</label>
+                <input v-model="customForm.search_url" placeholder="http://3.shutong2.com/search" class="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 outline-none font-mono" />
+              </div>
             </div>
             <div>
               <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">查询参数名</label>

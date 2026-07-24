@@ -335,3 +335,45 @@ def bootstrap_custom_providers() -> None:
             register_provider(CustomHttpProvider(definition))
         except Exception as exc:  # noqa: BLE001
             logger.debug("bootstrap custom literature provider %s failed: %s", name, exc)
+
+
+# Registry of local-file providers registered by the most recent
+# :func:`bootstrap_local_providers` call. Used by the search tool to fan out to
+# all available local libraries in addition to the active HTTP provider.
+_local_providers: List["LiteratureProvider"] = []
+
+
+def bootstrap_local_providers() -> None:
+    """Register the user's local literature libraries (folders / USB volumes).
+
+    Safe to call repeatedly; re-reads ``~/.vermes/literature_local_sources.json``
+    each time so adding/removing a local library takes effect without a restart.
+    Only libraries whose folder is currently mounted & readable are registered.
+    """
+    global _local_providers
+    _local_providers = []
+    try:
+        from agent.local_library_store import list_local_libraries
+        from agent.literature_providers.local_file import LocalFileProvider
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("local literature providers unavailable: %s", exc)
+        return
+
+    for lib in list_local_libraries():
+        lid = lib.get("id")
+        if not lid:
+            continue
+        try:
+            provider = LocalFileProvider(
+                {"id": lid, "root": lib.get("root", ""), "label": lib.get("label", lid)}
+            )
+            if provider.is_available():
+                register_provider(provider)
+                _local_providers.append(provider)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("bootstrap local literature provider %s failed: %s", lid, exc)
+
+
+def iter_local_providers() -> List["LiteratureProvider"]:
+    """Return local-file providers registered by the last bootstrap call."""
+    return list(_local_providers)

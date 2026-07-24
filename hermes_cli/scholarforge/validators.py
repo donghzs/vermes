@@ -119,7 +119,28 @@ async def verify_citation_authenticity(
         any_api_ok = False  # 至少一次 API 非 error 响应
 
         if enable_online and title:
-            # 先尝试 CrossRef（如果有 DOI）
+            # 0) 先查用户本地已备文献库——用户手里有这篇 PDF/条目即最强存在证据
+            local_result = await _verify_via_local_library(title, authors, year)
+            if local_result and local_result.get("verified") and not local_result.get("error"):
+                check.verified = True
+                check.confidence = local_result.get("confidence", 0.95)
+                check.source = "local_library"
+                check.issue = ""
+                logger.info(f"[CitationVerify] [{i}] verified via local library: {title[:50]}")
+                results.append(check)
+                continue
+            # 1) 再查用户配置的付费/中文文献源（CNKI/Wanfang/...），
+            #    中文文献在其覆盖远优于 Crossref/SemanticScholar。
+            prov_result = await _verify_via_configured_provider(title, authors, year)
+            if prov_result and prov_result.get("verified") and not prov_result.get("error"):
+                check.verified = True
+                check.confidence = prov_result.get("confidence", 0.85)
+                check.source = prov_result.get("source", "configured_provider")
+                check.issue = ""
+                logger.info(f"[CitationVerify] [{i}] verified via configured provider '{check.source}': {title[:50]}")
+                results.append(check)
+                continue
+            # 再尝试 CrossRef（如果有 DOI）
             if doi:
                 crossref_result = await _verify_crossref_doi(doi)
                 if crossref_result and not crossref_result.get("error"):
@@ -181,6 +202,101 @@ async def verify_citation_authenticity(
         results.append(check)
 
     return results
+
+
+async def _verify_via_configured_provider(
+    title: str, authors: str, year: str
+) -> dict | None:
+    """用用户配置的付费/中文文献源查证文献是否真实存在。
+
+    优先于 Crossref/SemanticScholar——中文文献（如幼儿合作能力、户外建构游戏）
+    在 CNKI/Wanfang 覆盖最好。当用户仅配置了国际免费源（openalex/crossref/
+    semanticscholar 等）时返回 ``None``，交给下方专用逻辑，避免重复查询。
+
+    Returns:
+        ``{"verified": True, "confidence": float, "source": "<provider>"}``
+        ``None`` — 未配置合适源 / 检索无匹配
+        ``{"error": True, "reason": "..."}`` — 源调用异常
+    """
+    try:
+        from agent.literature_registry import get_active_search_provider
+    except Exception as exc:
+        logger.debug(f"文献源注册表不可用，跳过配置源查证: {exc}")
+        return None
+
+    provider = get_active_search_provider()
+    if provider is None:
+        return None
+
+    name = (getattr(provider, "name", "") or "").lower()
+    # 国际免费源由下方 Crossref/S2 逻辑覆盖，这里只接管「用户配的付费/中文源」
+    if name in (
+        "openalex",
+        "crossref",
+        "semanticscholar",
+        "pubmed",
+        "arxiv",
+        "europepmc",
+        "doaj",
+        "core",
+    ):
+        return None
+
+    try:
+        resp = provider.search(title, limit=3)
+    except Exception as exc:
+        logger.warning(f"文献源 {name} 查证失败: {exc}")
+        return {"error": True, "reason": str(exc)[:100]}
+
+    if not resp or not resp.get("success"):
+        return None
+
+    hits = (resp.get("data") or {}).get("papers", [])
+    if not hits:
+        return None
+
+    import difflib
+
+    best = 0.0
+    for h in hits:
+        ht = h.get("title", "") or ""
+        if ht:
+            best = max(best, difflib.SequenceMatcher(None, title.lower(), ht.lower()).ratio())
+    if best >= 0.6:
+        return {
+            "verified": True,
+            "confidence": min(0.95, 0.7 + best * 0.25),
+            "source": name,
+        }
+    return None
+
+
+async def _verify_via_local_library(title: str, authors: str, year: str) -> dict | None:
+    """用用户本地已备文献库核实文献真实性（最高信任信号）。
+
+    用户本地文件夹/USB 里真有这篇 PDF 或 BibTeX/RIS 条目，等于「用户亲手收藏
+    过这篇文献」——比任何在线源都更强的存在性证据。命中即 verified=True。
+
+    Returns:
+        ``{"verified": True, "confidence": float, "source": "local_library",
+           "hit_title": str, "hit_path": str}``
+        ``None`` — 本地无匹配（无本地库 / 未索引 / 确实没有这篇）
+    """
+    try:
+        from agent.local_library_index import verify_local
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("本地文献索引不可用，跳过本地核实: %s", exc)
+        return None
+
+    try:
+        result = verify_local(title, authors, year)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("本地文献核实异常: %s", exc)
+        return None
+
+    if result and result.get("verified"):
+        return result
+    return None
 
 
 async def _verify_crossref_doi(doi: str) -> dict | None:
