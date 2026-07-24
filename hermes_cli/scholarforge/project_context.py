@@ -1,5 +1,5 @@
 """
-ScholarForge — 项目上下文注入层 (Phase 1)
+ScholarForge — 项目上下文注入层 (Phase 1) + 版本快照 (Phase 2)
 
 让 19 个 Agent 工具感知项目：
 - load_project_context(project_id) → 从 DB 加载项目状态，格式化为 prompt 前缀
@@ -7,10 +7,15 @@ ScholarForge — 项目上下文注入层 (Phase 1)
 - save_outline(project_id, sections) → 写回 outlines
 - save_papers(project_id, papers) → 写回 literatures
 
+Phase 2:
+- auto_snapshot(project_id, label) → 关键操作前自动创建快照
+- restore_snapshot(sid) → 从快照恢复项目状态
+
 设计原则：
 - LLM 调用最小化（上下文用模板拼接，不额外调 LLM）
 - 确定性优先（纯 DB 读取）
 - fail-open（项目不存在/DB 错误不阻断工具执行）
+- 自动快照 fail-open（快照失败不阻断主操作）
 """
 from __future__ import annotations
 
@@ -270,3 +275,67 @@ def format_active_projects_prompt() -> str:
         parts.append("\n提示：使用 project_id 参数指定要操作的论文项目。")
 
     return "\n".join(parts)
+
+
+# ── Phase 2: 版本快照 ──
+
+def auto_snapshot(project_id: int, label: str = "", note: str = "") -> int:
+    """在关键操作前自动创建快照。fail-open：快照失败不阻断主操作。
+
+    返回 snapshot_id，失败返回 0。
+    """
+    if not project_id or project_id <= 0:
+        return 0
+
+    try:
+        from hermes_cli.scholarforge.database import create_project_snapshot
+        sid = create_project_snapshot(project_id, label=label, note=note)
+        if sid:
+            logger.info("auto_snapshot(%s, label=%s) → sid=%s", project_id, label, sid)
+        return sid
+    except Exception as e:
+        logger.warning("auto_snapshot(%s) failed: %s", project_id, e)
+        return 0
+
+
+def restore_snapshot(snapshot_id: int) -> dict:
+    """从快照恢复项目状态。
+
+    返回恢复信息 dict，失败返回 {"error": ...}。
+    """
+    try:
+        from hermes_cli.scholarforge.database import restore_snapshot as _restore
+        return _restore(snapshot_id)
+    except Exception as e:
+        logger.warning("restore_snapshot(%s) failed: %s", snapshot_id, e)
+        return {"error": str(e)}
+
+
+def list_snapshots(project_id: int) -> list[dict]:
+    """列出项目所有快照。"""
+    try:
+        from hermes_cli.scholarforge.database import list_snapshots as _list
+        return _list(project_id)
+    except Exception as e:
+        logger.warning("list_snapshots(%s) failed: %s", project_id, e)
+        return []
+
+
+def get_snapshot_detail(snapshot_id: int) -> dict:
+    """获取单个快照详情。"""
+    try:
+        from hermes_cli.scholarforge.database import get_snapshot as _get
+        return _get(snapshot_id) or {"error": "快照不存在"}
+    except Exception as e:
+        logger.warning("get_snapshot_detail(%s) failed: %s", snapshot_id, e)
+        return {"error": str(e)}
+
+
+def delete_snapshot(snapshot_id: int) -> bool:
+    """删除单个快照。"""
+    try:
+        from hermes_cli.scholarforge.database import delete_snapshot as _delete
+        return _delete(snapshot_id)
+    except Exception as e:
+        logger.warning("delete_snapshot(%s) failed: %s", snapshot_id, e)
+        return False

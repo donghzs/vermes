@@ -762,6 +762,15 @@ def register_to(app, host_api=None):
         db.delete_snapshot(sid)
         return {"deleted": True}
 
+    @app.post("/api/scholar/snapshots/{sid}/restore")
+    async def api_restore_snapshot(sid: int):
+        """从快照恢复项目状态（大纲+章节内容+项目元信息）"""
+        from . import database as db
+        result = db.restore_snapshot(sid)
+        if result.get("error"):
+            raise HTTPException(400, result["error"])
+        return result
+
     @app.get("/api/scholar/projects/{pid}/citation-verifications")
     async def api_get_citation_verifications(pid: int):
         """获取项目的引用验证结果（持久化，刷新后保留）"""

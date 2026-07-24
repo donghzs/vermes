@@ -353,7 +353,9 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
     # 注入项目上下文
     project_ctx = ""
     if project_id:
-        from hermes_cli.scholarforge.project_context import format_project_context_prompt
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt, auto_snapshot
+        # Phase 2: 写操作前自动创建快照
+        auto_snapshot(project_id, label=f"write_{section_type}", note="自动快照：写操作前")
         project_ctx = format_project_context_prompt(project_id)
         if project_ctx:
             # 如果用户没传 topic，从项目信息中推断
@@ -692,6 +694,11 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
 
     if not draft.strip():
         return "❌ 请提供包含 [n] 占位符的论文草稿。"
+
+    # Phase 2: 引用替换前自动创建快照
+    if project_id:
+        from hermes_cli.scholarforge.project_context import auto_snapshot
+        auto_snapshot(project_id, label="replace_citations_pre", note="自动快照：引用替换前")
 
     # ── P0修复: 支持三种占位符格式 [n] / [n-m] / [n,m,...] ──
     # 1. 先展开所有占位符为独立编号
@@ -1133,7 +1140,9 @@ async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
     # 注入项目上下文
     project_ctx = ""
     if project_id:
-        from hermes_cli.scholarforge.project_context import format_project_context_prompt, load_project_context
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt, load_project_context, auto_snapshot
+        # Phase 2: 大纲操作前自动创建快照
+        auto_snapshot(project_id, label="outline_pre", note="自动快照：大纲生成前")
         project_ctx = format_project_context_prompt(project_id)
         if not topic:
             proj = load_project_context(project_id)
@@ -2038,6 +2047,42 @@ SCHOLARFORGE_MATRIX_SCHEMA = {
 }
 
 
+SCHOLARFORGE_MANAGE_SNAPSHOTS_SCHEMA = {
+    "name": "scholarforge_manage_snapshots",
+    "description": (
+        "管理论文项目版本快照：创建快照、列出快照、恢复快照、删除快照。"
+        "适用于：写论文前创建安全回滚点、恢复到之前版本、查看历史版本。"
+        "action: create=创建快照, list=列出快照, restore=恢复快照, get=查看快照详情, delete=删除快照。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "description": "操作: create/list/restore/get/delete",
+            },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID（create/list 必填）",
+            },
+            "snapshot_id": {
+                "type": "integer",
+                "description": "快照 ID（restore/get/delete 必填）",
+            },
+            "label": {
+                "type": "string",
+                "description": "快照标签（create 可选，如'大纲定稿'）",
+            },
+            "note": {
+                "type": "string",
+                "description": "快照备注（create 可选）",
+            },
+        },
+        "required": ["action"],
+    },
+}
+
+
 async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     """综述矩阵"""
     topic = args.get("topic", "")
@@ -2051,6 +2096,135 @@ async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"literature_matrix error: {e}", exc_info=True)
         return f"❌ 生成综述矩阵失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Tool: Manage Snapshots (Phase 2 — 版本快照)
+# ──────────────────────────────────────────────────────────────────────────
+
+async def _handle_scholarforge_manage_snapshots(args: dict, **kw: Any) -> str:
+    """管理论文项目版本快照。"""
+    action = args.get("action", "list")
+    project_id = args.get("project_id", 0)
+    snapshot_id = args.get("snapshot_id", 0)
+    label = args.get("label", "")
+    note = args.get("note", "")
+
+    try:
+        from hermes_cli.scholarforge.project_context import (
+            auto_snapshot,
+            restore_snapshot,
+            list_snapshots,
+            get_snapshot_detail,
+            delete_snapshot,
+        )
+
+        if action == "create":
+            if not project_id:
+                return "❌ 创建快照需要 project_id"
+            sid = auto_snapshot(project_id, label=label, note=note)
+            if sid:
+                return f"✅ 快照已创建\n\n快照 ID: {sid}\n标签: {label or '(无)'}\n备注: {note or '(无)'}\n\n可在未来使用 action=restore + snapshot_id={sid} 恢复到此版本。"
+            return f"❌ 创建快照失败（项目 {project_id} 可能不存在）"
+
+        elif action == "list":
+            if not project_id:
+                return "❌ 列出快照需要 project_id"
+            snaps = list_snapshots(project_id)
+            if not snaps:
+                return f"项目 {project_id} 暂无快照。\n\n使用 action=create 创建快照。"
+            lines = [f"## 📸 项目 {project_id} 的快照列表\n"]
+            for s in snaps:
+                import time as _t
+                ts = _t.strftime("%Y-%m-%d %H:%M", _t.localtime(s["created_at"]))
+                size_kb = (s.get("size", 0) or 0) / 1024
+                sid_val = s["id"]
+                label_val = s["label"] or "(无标签)"
+                note_val = s.get("note", "")
+                lines.append(f"  #{sid_val} [{ts}] {label_val} ({size_kb:.1f}KB)")
+                if note_val:
+                    lines.append(f"    备注: {note_val}")
+            lines.append(f"\n共 {len(snaps)} 个快照。")
+            return "\n".join(lines)
+
+        elif action == "restore":
+            if not snapshot_id:
+                return "❌ 恢复快照需要 snapshot_id"
+            result = restore_snapshot(snapshot_id)
+            err = result.get("error")
+            if err:
+                return f"❌ 恢复失败: {err}"
+            pid_r = result.get("project_id")
+            sid_r = result.get("snapshot_id")
+            label_r = result.get("label")
+            outline_n = result.get("outline_sections", 0)
+            content_n = result.get("content_sections", 0)
+            return (
+                f"✅ 快照已恢复\n\n"
+                f"项目 ID: {pid_r}\n"
+                f"快照 ID: {sid_r}\n"
+                f"标签: {label_r}\n"
+                f"大纲节数: {outline_n}\n"
+                f"章节数: {content_n}\n\n"
+                f"⚠️ 当前项目状态已被覆盖。如需撤销，可使用原快照 ID 重新恢复。"
+            )
+
+        elif action == "get":
+            if not snapshot_id:
+                return "❌ 查看快照需要 snapshot_id"
+            snap = get_snapshot_detail(snapshot_id)
+            err = snap.get("error")
+            if err:
+                return f"❌ {err}"
+            import time as _t
+            ts = _t.strftime("%Y-%m-%d %H:%M", _t.localtime(snap.get("created_at", 0)))
+            snap_id = snap["id"]
+            snap_pid = snap.get("project_id", "?")
+            snap_label = snap.get("label", "")
+            snap_note = snap.get("note", "")
+            lines = [
+                f"## 📸 快照 #{snap_id}\n",
+                f"项目 ID: {snap_pid}",
+                f"标签: {snap_label}",
+                f"备注: {snap_note}",
+                f"创建时间: {ts}",
+            ]
+            payload = snap.get("payload", {})
+            if payload:
+                p_title = payload.get("title", "")
+                p_type = payload.get("paper_type", "")
+                lines.append(f"\n项目标题: {p_title}")
+                lines.append(f"论文类型: {p_type}")
+                outline = payload.get("outline", [])
+                if outline:
+                    lines.append("\n大纲:")
+                    for s in outline:
+                        s_num = s.get("section_number", "")
+                        s_title = s.get("section_title", "")
+                        lines.append(f"  {s_num} {s_title}")
+                contents = payload.get("contents", {})
+                if contents:
+                    lines.append(f"\n章节内容: {len(contents)} 段")
+                    for key, content in contents.items():
+                        preview = (content or "")[:100]
+                        cl = len(content or "")
+                        lines.append(f"  {key} ({cl} 字): {preview}...")
+            return "\n".join(lines)
+
+        elif action == "delete":
+            if not snapshot_id:
+                return "❌ 删除快照需要 snapshot_id"
+            ok = delete_snapshot(snapshot_id)
+            if ok:
+                return f"✅ 快照 {snapshot_id} 已删除。"
+            return f"❌ 删除失败"
+
+        else:
+            return f"❌ 未知操作: {action}\n\n支持: create/list/restore/get/delete"
+
+    except Exception as e:
+        logger.error(f"manage_snapshots error: {e}", exc_info=True)
+        return f"❌ 快照操作失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -2448,4 +2622,13 @@ def register_tools(host_api=None):
         emoji="📊",
         description="综述矩阵（已沉淀卡片→按方法/数据/发现分列+gap 提示）",
     )
-    logger.info("[ScholarForge] 18 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix")
+    registry.register(
+        name="scholarforge_manage_snapshots",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_MANAGE_SNAPSHOTS_SCHEMA,
+        handler=_handle_scholarforge_manage_snapshots,
+        is_async=True,
+        emoji="📸",
+        description="版本快照管理（创建/列出/恢复/查看/删除）",
+    )
+    logger.info("[ScholarForge] 20 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots")
