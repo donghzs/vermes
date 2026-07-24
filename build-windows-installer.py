@@ -1,15 +1,23 @@
 """
 Vermes Windows 构建脚本 — 在 A11 上运行
-流程: git pull → PyInstaller COLLECT → Inno Setup 安装包
+流程: git pull → (可选前端构建) → PyInstaller COLLECT → Inno Setup 安装包
 
 用法 (在 A11 PowerShell 中):
-  cd C:\Projects\vermes
+  cd C:\Projects\vermes-src
   python build-windows-installer.py
 """
 import subprocess
 import sys
 import os
 import shutil
+import io
+
+# 强制 UTF-8 输出，避免 Windows GBK 终端打印 emoji 崩溃
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# 允许跳过 npm 构建（web_dist 已 commit 进仓库时使用：VERMES_SKIP_NPM=1）
+SKIP_NPM = os.environ.get("VERMES_SKIP_NPM") == "1"
 import time
 
 VERMES_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,9 +62,11 @@ def main():
     # ── Step 2: 构建前端 ──
     step(2, "构建前端 (npm run build)")
     frontend_dir = os.path.join(VERMES_DIR, "frontend")
-    if os.path.exists(os.path.join(frontend_dir, "package.json")):
+    if SKIP_NPM:
+        print("  跳过 npm run build (VERMES_SKIP_NPM=1)")
+    elif os.path.exists(os.path.join(frontend_dir, "package.json")):
         if not run("npm run build", cwd=frontend_dir):
-            print("⚠️ 前端构建失败，使用已有 web_dist")
+            print("  警告: npm run build 失败，将使用仓库中已有的 web_dist")
     else:
         print("  跳过（无 frontend 目录）")
 
@@ -68,8 +78,23 @@ def main():
         print("  VERMES_SKIP_NPM=1: 跳过 web_dist 同步（使用仓库内的 web_dist）")
     elif src_dist and os.path.exists(src_dist):
         if os.path.exists(dst_dist):
+            # 保留 modules/ 目录（ScholarForge 前端是独立构建、存进仓库的，
+            # 不在主前端 npm run build 流程里，rmtree 会误删）
+            modules_dir = os.path.join(dst_dist, "modules")
+            tmp_modules = None
+            if os.path.exists(modules_dir):
+                import tempfile
+                tmp_modules = tempfile.mkdtemp(prefix="sf_modules_")
+                shutil.copytree(modules_dir, tmp_modules, dirs_exist_ok=True)
+                print(f"  暂存 web_dist/modules/ 至 {tmp_modules}")
             shutil.rmtree(dst_dist)
-        shutil.copytree(src_dist, dst_dist)
+            shutil.copytree(src_dist, dst_dist)
+            if tmp_modules:
+                shutil.copytree(tmp_modules, modules_dir, dirs_exist_ok=True)
+                shutil.rmtree(tmp_modules, ignore_errors=True)
+                print(f"  恢复 web_dist/modules/")
+        else:
+            shutil.copytree(src_dist, dst_dist)
         print(f"  ✅ web_dist 已同步 ({len(os.listdir(dst_dist))} files)")
 
     # ── Step 3: PyInstaller COLLECT ──

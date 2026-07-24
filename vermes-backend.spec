@@ -47,24 +47,30 @@ for src, dst in [
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
 ]:
-    if os.path.exists(src):
-        datas.append((src, dst))
+    _abs_src = src if os.path.isabs(src) else os.path.join(spec_dir, src)
+    if os.path.exists(_abs_src):
+        datas.append((_abs_src, dst))
     else:
         print(f"[Vermes Backend] Skipping missing data path: {src}")
 
-# Vector backend (A-1): bundle sqlite-vec dylib as binary resource
+# Vector backend (A-1): bundle sqlite-vec native lib as binary resource.
+# Shared-object suffix differs per platform: .dll (Windows), .dylib (macOS), .so (Linux).
 try:
     import sqlite_vec as _sv
-    _vec_dylib = os.path.join(os.path.dirname(_sv.__file__), 'vec0.dylib')
-    if not os.path.exists(_vec_dylib):
-        _vec_dylib = os.path.join(os.path.dirname(_sv.__file__), 'vec0.so')
-    if os.path.exists(_vec_dylib):
+    _vec_dir = os.path.dirname(_sv.__file__)
+    _vec_dylib = None
+    for _ext in ('vec0.dll', 'vec0.dylib', 'vec0.so'):
+        _cand = os.path.join(_vec_dir, _ext)
+        if os.path.exists(_cand):
+            _vec_dylib = _cand
+            break
+    if _vec_dylib:
         datas.append((_vec_dylib, 'sqlite_vec'))
         print(f"[Vermes Backend] Bundled sqlite-vec: {_vec_dylib}")
     else:
-        print("[Vermes Backend] sqlite-vec dylib not found — vector backend disabled in DMG")
+        print("[Vermes Backend] sqlite-vec native lib not found — vector backend disabled in package")
 except ImportError:
-    print("[Vermes Backend] sqlite-vec not installed — vector backend disabled in DMG")
+    print("[Vermes Backend] sqlite-vec not installed — vector backend disabled in package")
 
 # Hidden imports — core server only (no pywebview/pyobjc)
 hiddenimports = [
@@ -191,8 +197,8 @@ if sys.platform == 'win32':
     hiddenimports.extend(['pywin32', 'win32api', 'win32con'])
 
 a = Analysis(
-    ['backend_main.py'],
-    pathex=[],
+    [os.path.join(spec_dir, 'backend_main.py')],
+    pathex=[spec_dir],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

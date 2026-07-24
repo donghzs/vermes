@@ -56,8 +56,6 @@ try:
         print("[Vermes GUI] sqlite-vec dylib not found — vector backend disabled in DMG")
 except ImportError:
     print("[Vermes GUI] sqlite-vec not installed — vector backend disabled in DMG")
-    else:
-        print(f"[Vermes] Skipping missing data path: {src}")
 
 # Hidden imports
 hiddenimports = [
