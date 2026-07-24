@@ -61,11 +61,13 @@ def _select_default_sources(query: str) -> list[str]:
     if _query_is_chinese(query):
         # 中文查询：优先中文源 baidu_scholar + cnki
         sources = ["baidu_scholar", "cnki"]
+        # 中文查询排除的英文源（对中文返回无关结果）
+        _chinese_excluded = {"crossref", "openalex", "doaj", "pubmed", "arxiv"}
         # 补入对中文有一定支持的 registry 源（语义学者等）
-        sources.extend([s for s in _registry_free if s not in ("crossref", "openalex", "doaj", "pubmed", "arxiv")])
-        # 补入本地 _SEARCH_SOURCES 中不重复的
+        sources.extend([s for s in _registry_free if s not in _chinese_excluded])
+        # 补入本地 _SEARCH_SOURCES 中不重复的（同样排除中文不友好的源）
         for s in DEFAULT_SOURCE_CHAIN:
-            if s not in sources and s in _SEARCH_SOURCES:
+            if s not in sources and s not in _chinese_excluded and s in _SEARCH_SOURCES:
                 sources.append(s)
     else:
         # 英文查询：registry 免费源 + 本地默认链
