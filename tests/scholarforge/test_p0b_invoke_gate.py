@@ -96,3 +96,39 @@ def test_api_save_section_runs_quality_gate(monkeypatch):
     # 净化后的内容用于落库 —— 消除「前端编辑直存绕过闸门」缺口
     assert saves, "save_section_content was not called"
     assert saves[0][2] == "raw draft text [PURIFIED]"
+
+
+# ── P0c-1 后端前置：GET /api/scholar/tools 暴露 schema 供前端 SchemaForm ──
+P0C1 = [
+    "scholarforge_search",
+    "scholarforge_outline",
+    "scholarforge_write",
+    "scholarforge_score",
+    "scholarforge_plagiarism_check",
+]
+
+
+def test_tools_schema_endpoint_returns_schemas():
+    client = TestClient(_make_app())
+    resp = client.get("/api/scholar/tools")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "tools" in body
+    names = {t["name"] for t in body["tools"]}
+    for name in P0C1:
+        assert name in names, f"{name} missing from /api/scholar/tools"
+    for t in body["tools"]:
+        assert t["schema"] and "parameters" in t["schema"]
+        assert "is_async" in t
+        # P0c-1 五个工具均含可选 project_id 字段
+        if t["name"] in P0C1:
+            assert t["requires_project_id"] is True
+            assert "project_id" in t["schema"]["parameters"]["properties"]
+
+
+def test_tools_schema_only_scholarforge_toolset():
+    client = TestClient(_make_app())
+    resp = client.get("/api/scholar/tools")
+    body = resp.json()
+    # 端点只暴露 scholarforge 工具，不混入其他 toolset
+    assert all(t["name"].startswith("scholarforge_") for t in body["tools"])

@@ -18,8 +18,10 @@ const router = useRouter()
 
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
+function goScholarForge() { router.push('/scholarforge') }
 
-// ScholarForge: 12 个 Agent 工具，对话中自动调用（outline/write/polish/search/review/citations/plagiarism/deaigc/score/export/refs/style）
+// ScholarForge: 22 个 Agent 工具（对话中自动调用）；另提供专用面板入口 /scholarforge
+// （前端/src 新建，复用主框架 Vue+Pinia+Tailwind，A 入口与对话式 C 并存）
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -484,6 +486,10 @@ async function handleImportFile(e) {
         <button @click="showExpert = !showExpert" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showExpert ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="专家">
           <span class="text-base">🎓</span>
           <span class="sidebar-tooltip group-hover:opacity-100">专家</span>
+        </button>
+        <button @click="goScholarForge()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/scholarforge' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作">
+          <span class="text-base">📝</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">论文写作</span>
         </button>
       </div>
       <!-- 知识库面板 -->
