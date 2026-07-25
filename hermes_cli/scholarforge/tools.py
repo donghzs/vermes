@@ -606,12 +606,12 @@ async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
         aigc = check_aigc(draft)
         suggestions = suggest_deaigc_fixes(draft)
         if suggestions or aigc.get("verdict"):
-            deaigc_section = "\n\n---\n## 🤖 AI 痕迹检测\n"
-            deaigc_section += f"**综合评分**: {aigc.get('aigc_score', 0)*100:.0f}/100"
+            deaigc_section = "\n\n---\n## ✍️ AI 写作特征提示（启发式）\n"
+            deaigc_section += f"**机械化特征指数**: {aigc.get('aigc_score', 0)*100:.0f}/100（风格度量，非 AI 生成概率）"
             if aigc.get("verdict"):
                 deaigc_section += f"\n**判断**: {aigc['verdict']}"
             if aigc.get("features"):
-                deaigc_section += "\n\n**检测到的问题**:\n"
+                deaigc_section += "\n\n**检测到的机械化特征**:\n"
                 for f in aigc["features"][:8]:
                     deaigc_section += f"- {f}\n"
             if suggestions:
@@ -632,7 +632,9 @@ SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA = {
     "name": "scholarforge_replace_citations",
     "description": (
         "替换论文草稿中的 [n] 占位符引用为真实文献。"
-        "自动搜索相关学术文献，根据上下文匹配最合适的引用，并生成参考文献列表。"
+        "流程：LLM 从上下文提取被引主张(claim)生成检索式 → 优先匹配项目本地文献库 → "
+        "再联网检索学术数据库 → LLM 精排选最佳匹配 → 生成参考文献列表。"
+        "指定 project_id 时新文献自动写回项目文献库（按 DOI/标题去重）。"
         "适用于：AI 生成的论文草稿中引用标记需要替换为真实文献时。"
     ),
     "parameters": {
@@ -911,11 +913,63 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     for n, kw in num_keywords.items():
         logger.debug(f"  [{n}] kw='{kw[:50]}' ctx='{num_context[n][:40]}'")
 
+    # ── Phase 2: claim→检索闭环 ─────────────────────────────
+    # 批量用 LLM 从每个占位符上下文提取「被引主张(claim)对应的检索式」，
+    # 一次 LLM 调用覆盖全部占位符（而非仅在关键词碰撞时才触发）。
+    # LLM 失败时保留正则关键词兜底，流程不中断。
+    if num_context:
+        try:
+            items = sorted(num_context.items())
+            numbered_ctx = "\n".join(f"{n}. {ctx[:200]}" for n, ctx in items)
+            claim_prompt = (
+                "以下是论文草稿中若干引用占位符的上下文片段（编号. 片段）。\n"
+                "对每个编号，先理解该处被引用支撑的核心主张(claim)，"
+                "再给出一条用于学术数据库检索的查询式（2-4 个关键短语，中英文均可，"
+                "优先使用领域术语与专有名词）。\n"
+                "严格按 '编号: 查询式' 逐行返回，不要解释，不要多余内容。\n\n"
+                f"{numbered_ctx}"
+            )
+            claim_result = await _call_llm(claim_prompt)
+            if claim_result and not claim_result.startswith("❌"):
+                for line in claim_result.strip().split("\n"):
+                    lm = re.match(r'^\s*\[?(\d+)\]?\s*[:：.]\s*(.+)$', line.strip())
+                    if lm:
+                        ln, lq = int(lm.group(1)), lm.group(2).strip().strip('"\'`')
+                        if ln in num_keywords and 3 <= len(lq) <= 150:
+                            num_keywords[ln] = lq
+                logger.info("[ScholarForge] replace_citations: claim-based queries extracted via LLM")
+        except Exception as e:
+            logger.debug(f"claim extraction failed, fallback to regex keywords: {e}")
+
     # ── 修复2: 并行搜索 top-3 → 按相似度排序取最佳 ──
     from hermes_cli.scholarforge.search import search_papers, PaperResult
 
     # 存储每个编号的候选论文列表
     candidates: dict[int, list[PaperResult]] = {}
+
+    # ── Phase 2: 项目本地文献库优先参与匹配 ──────────────
+    # 用户已导入的文献（PDF 上传/手动添加）优先作为候选，与在线检索结果
+    # 一起进入粗排+LLM 精排；本地命中则无需联网也能闭环。
+    local_papers: list[PaperResult] = []
+    if project_id:
+        try:
+            from hermes_cli.scholarforge.database import list_literature as _list_lit
+            for lit in _list_lit(project_id)[:50]:
+                local_papers.append(PaperResult(
+                    paper_id=f"local_{lit['id']}",
+                    title=lit.get("title") or "",
+                    authors=lit.get("authors") or [],
+                    year=str(lit.get("year") or ""),
+                    venue=lit.get("venue") or "",
+                    abstract=lit.get("abstract") or "",
+                    url=lit.get("url") or "",
+                    doi=lit.get("doi") or "",
+                    source="local",
+                ))
+            if local_papers:
+                logger.info(f"[ScholarForge] replace_citations: {len(local_papers)} local literatures loaded as candidates")
+        except Exception as e:
+            logger.debug(f"local literature load failed: {e}")
 
     async def search_one(n: int, keyword: str, force: bool = False):
         """搜索论文并存入 candidates。force=True 时覆盖已有候选（用于碰撞后重搜）。"""
@@ -982,13 +1036,21 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     failed: list[int] = []
 
     for n in unique_nums:
-        if n not in candidates or not candidates[n]:
+        # Phase 2: 本地文献库与在线检索结果合并为候选池（本地在前，按标题去重）
+        pool: list = []
+        pool_titles: set[str] = set()
+        for p in local_papers + candidates.get(n, []):
+            tk = (p.title or "").lower().strip()[:80]
+            if tk and tk not in pool_titles:
+                pool_titles.add(tk)
+                pool.append(p)
+        if not pool:
             failed.append(n)
             continue
 
         # 粗排 + LLM 精排
         coarse = [(p, score_relevance(p, num_context.get(n, ''), num_keywords.get(n, '')))
-                  for p in candidates[n]]
+                  for p in pool]
         coarse.sort(key=lambda x: x[1], reverse=True)
 
         # 取 top-5 粗排候选送 LLM 精排
@@ -1015,6 +1077,7 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
 
         seen_titles.add(title_key)
         num_to_ref[n] = next_ref_num
+        is_local = getattr(best_paper, "source", "") == "local"
         ref_list.append({
             "ref_num": next_ref_num,
             "title": best_paper.title,
@@ -1022,9 +1085,13 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             "year": best_paper.year or "n.d.",
             "venue": best_paper.venue or "",
             "doi": best_paper.doi or "",
+            "url": getattr(best_paper, "url", "") or "",
+            "abstract": (getattr(best_paper, "abstract", "") or "")[:1000],
+            "source": getattr(best_paper, "source", "") or "",
             "score": round(best_score, 2),
         })
-        match_log.append(f"  [{n}] → [{next_ref_num}] ✅ ({best_score:.0%}) {best_paper.title[:50]}")
+        tag = "📚本地" if is_local else "🌐"
+        match_log.append(f"  [{n}] → [{next_ref_num}] ✅ {tag} ({best_score:.0%}) {best_paper.title[:50]}")
         next_ref_num += 1
 
     # 替换草稿中的占位符（支持 [n] / [n-m] / [n,m,...]）
@@ -1085,6 +1152,45 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
         except Exception as e:
             logger.debug(f"citation gate failed: {e}")
 
+    # ── Phase 2: 兑现 schema 承诺——新文献自动写回项目文献库 ──
+    saved_count = 0
+    if project_id and ref_list:
+        try:
+            from hermes_cli.scholarforge.database import add_literature as _add_lit, list_literature as _list_lit2
+            existing = _list_lit2(project_id)
+            existing_dois = {(l.get("doi") or "").lower() for l in existing if l.get("doi")}
+            existing_titles = {(l.get("title") or "").lower().strip()[:80] for l in existing}
+            for ref in ref_list:
+                if ref.get("source") == "local":
+                    continue  # 本来就在库里
+                doi_key = (ref.get("doi") or "").lower()
+                title_key = (ref.get("title") or "").lower().strip()[:80]
+                if (doi_key and doi_key in existing_dois) or title_key in existing_titles:
+                    continue
+                year_val = None
+                try:
+                    year_val = int(str(ref.get("year", "")).strip()[:4])
+                except (ValueError, TypeError):
+                    pass
+                _add_lit(
+                    project_id,
+                    title=ref["title"],
+                    authors=[a.strip() for a in ref["authors"].split(",") if a.strip()],
+                    year=year_val,
+                    venue=ref.get("venue", ""),
+                    abstract=ref.get("abstract", ""),
+                    url=ref.get("url", ""),
+                    doi=ref.get("doi", ""),
+                )
+                existing_titles.add(title_key)
+                if doi_key:
+                    existing_dois.add(doi_key)
+                saved_count += 1
+            if saved_count:
+                logger.info(f"[ScholarForge] replace_citations: {saved_count} new literatures saved to project {project_id}")
+        except Exception as e:
+            logger.warning(f"literature write-back failed: {e}")
+
     replaced = len(num_to_ref)
     unreplaced = len(failed)
 
@@ -1097,6 +1203,8 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
         report_lines.append(f"  编号: {failed}\n")
         report_lines.append("  建议手动搜索文献后替换\n")
     report_lines.append(f"\n**统计**: 成功 {replaced}/{len(unique_nums)} ({replaced*100//max(len(unique_nums),1)}%)\n")
+    if project_id and saved_count:
+        report_lines.append(f"**📥 已写回项目文献库**: {saved_count} 篇新文献（按 DOI/标题去重）\n")
 
     if verify_report:
         report_lines.append(verify_report)
@@ -1490,14 +1598,14 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
         else:
             lines.append("🔴 文档内部重复偏高，可能存在段落复制粘贴，建议改写")
 
-        # AI 痕迹评估
+        # 机械化写作特征评估（启发式提示，非 AI 检测结论）
         aigc = report.aigc_overall_ratio
         if aigc < 0.2:
-            lines.append("✅ AI 痕迹较低")
+            lines.append("✅ 机械化写作特征较少")
         elif aigc < 0.4:
-            lines.append("⚠️ AI 痕迹中等，建议增加个人观点和案例")
+            lines.append("⚠️ 机械化写作特征中等，建议增加个人观点和案例")
         else:
-            lines.append("🔴 AI 痕迹偏高，建议使用 scholarforge_deaigc 工具处理")
+            lines.append("🔴 机械化写作特征偏多，建议使用 scholarforge_deaigc 做文风自然化")
 
         # 内部相似段落
         if report.plag_results:
@@ -1505,12 +1613,12 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
             for r in report.plag_results[:5]:
                 lines.append(f"- 位置 {r.position}：与本文档他段相似度 {r.score:.1%}  {r.text[:50]}...")
 
-        # AIGC 特征
+        # 机械化写作特征（启发式）
         if report.aigc_results:
-            lines.append("\n### AI 写作特征\n")
+            lines.append("\n### 机械化写作特征提示（启发式，非 AI 概率）\n")
             for r in report.aigc_results[:5]:
                 feats = ", ".join(r.features[:3]) if r.features else "无"
-                lines.append(f"- 位置 {r.position}：AI 概率 {r.aigc_probability:.0%}  特征: {feats}")
+                lines.append(f"- 位置 {r.position}：特征强度 {r.aigc_probability:.0%}  特征: {feats}")
 
         # 建议
         if report.suggestions:
@@ -1537,16 +1645,18 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
 SCHOLARFORGE_DEAIGC_SCHEMA = {
     "name": "scholarforge_deaigc",
     "description": (
-        "去 AI 痕迹。检测论文中的 AI 写作特征并自动改写，使其更像人类写作。"
-        "检测维度：句式模式、过渡词密度、词汇丰富度、段落结构。"
-        "适用于：AI 辅助写作后去除痕迹、降低 AIGC 检测分数、提升自然度。"
+        "AI 写作特征提示 + 文风自然化改写。基于启发式规则提示文本中的「机械化写作特征」"
+        "（句式模板化、过渡词堆砌、词汇单一、段落结构僵硬）并给出/执行改写。"
+        "注意：特征指数是启发式风格度量，【不是】AI 生成概率，本工具不是 AI 检测器，"
+        "也不保证通过知网 AIGC 检测、GPTZero 等任何检测平台。"
+        "适用于：提升 AI 辅助写作后的文本自然度、消除模板化表达。"
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "text": {
                 "type": "string",
-                "description": "需要去 AI 痕迹的论文文本",
+                "description": "需要自然化改写的论文文本",
             },
             "aggressive": {
                 "type": "boolean",
@@ -1581,7 +1691,7 @@ async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
         before_score = aigc.get("aigc_score", 0)
 
         if before_score < 0.1:
-            return "✅ AI 痕迹评分很低，无需处理。"
+            return "✅ 机械化写作特征很少，无需处理。（注：此为启发式风格度量，非 AI 检测结论）"
 
         # 2. 获取改写建议
         suggestions = suggest_deaigc_fixes(text)
@@ -1609,19 +1719,19 @@ async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
         aigc_after = check_aigc(cleaned)
         after_score = aigc_after.get("aigc_score", 0)
 
-        lines = ["## 🔄 去 AI 痕迹报告\n"]
-        lines.append(f"**处理前 AI 评分**: {before_score:.0%}")
-        lines.append(f"**处理后 AI 评分**: {after_score:.0%}")
-        lines.append(f"**降幅**: {(before_score - after_score):.0%}")
+        lines = ["## ✍️ 文风自然化报告\n"]
+        lines.append("> 「机械化特征指数」为启发式风格度量（句式模板/过渡词/词汇多样性/段落结构），**不是 AI 生成概率**，不代表任何 AIGC 检测平台的结论。\n")
+        lines.append(f"**处理前机械化特征指数**: {before_score:.0%}")
+        lines.append(f"**处理后机械化特征指数**: {after_score:.0%}")
         lines.append("")
 
         if suggestions:
-            lines.append("### 检测到的问题\n")
+            lines.append("### 检测到的机械化特征\n")
             for s in suggestions[:8]:
                 lines.append(f"- **{s.get('fix', '')}**: {s.get('example', '')}")
 
         if aigc_after.get("features"):
-            lines.append("\n### 剩余特征\n")
+            lines.append("\n### 剩余特征提示\n")
             for f in aigc_after["features"][:5]:
                 lines.append(f"- {f}")
 
@@ -1630,7 +1740,7 @@ async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
         return "\n".join(lines)
     except Exception as e:
         logger.error(f"deaigc error: {e}", exc_info=True)
-        return f"❌ 去 AI 痕迹失败: {str(e)[:200]}"
+        return f"❌ 文风自然化失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -2674,7 +2784,8 @@ async def _handle_scholarforge_detect_design_flaws(args: dict, **kw: Any) -> str
 SCHOLARFORGE_FORMAT_REFS_SCHEMA = {
     "name": "scholarforge_format_refs",
     "description": (
-        "格式化参考文献列表。支持 GB/T 7714（国标）和 APA 7th 两种格式。"
+        "格式化参考文献列表。支持 4 种主流格式：GB/T 7714-2015（国标）、APA 7th、"
+        "IEEE、MLA 9th，覆盖国内学位论文与主流期刊投稿场景。"
         "适用于：投稿前规范化参考文献、切换引用格式、生成标准参考文献列表。"
     ),
     "parameters": {
@@ -2686,8 +2797,8 @@ SCHOLARFORGE_FORMAT_REFS_SCHEMA = {
             },
             "style": {
                 "type": "string",
-                "description": "引用格式",
-                "enum": ["gbt7714", "apa7"],
+                "description": "引用格式：gbt7714=国标 GB/T 7714-2015，apa=APA 7th，ieee=IEEE，mla=MLA 9th",
+                "enum": ["gbt7714", "apa", "ieee", "mla"],
                 "default": "gbt7714",
             },
             "project_id": {
@@ -2704,6 +2815,7 @@ SCHOLARFORGE_FORMAT_REFS_SCHEMA = {
 async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
     """格式化参考文献"""
     import json as json_mod
+    import re
 
     project_id = args.get("project_id", 0)
     papers_raw = args.get("papers", "")
@@ -2741,20 +2853,36 @@ async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
     if not papers:
         return "❌ 未能解析文献列表，请检查格式。"
 
+    # 向后兼容：旧枚举值 apa7 → apa
+    if style == "apa7":
+        style = "apa"
+
+    STYLE_LABELS = {
+        "gbt7714": "GB/T 7714-2015",
+        "apa": "APA 7th",
+        "ieee": "IEEE",
+        "mla": "MLA 9th",
+    }
+    if style not in STYLE_LABELS:
+        return f"❌ 不支持的格式：{style}。支持：gbt7714 / apa / ieee / mla"
+
     try:
         if style == "gbt7714":
+            # GB/T 7714 保留 quality.py 的成熟实现（含中文规则）
             from hermes_cli.scholarforge.quality import format_all_references_gbt7714
             result = format_all_references_gbt7714(papers)
-        elif style == "apa7":
-            from hermes_cli.scholarforge.quality import format_apa7
+        else:
+            # APA/IEEE/MLA 统一走 citation_provider 的样式引擎
+            from hermes_cli.scholarforge.citation_provider import format_citation
             lines = []
             for i, p in enumerate(papers, 1):
-                lines.append(format_apa7(p, ref_num=i))
+                # 作者字段兼容字符串输入（按行解析路径产出 str）
+                if isinstance(p.get("authors"), str):
+                    p = {**p, "authors": [a.strip() for a in re.split(r'[,;，；]', p["authors"]) if a.strip()]}
+                lines.append(format_citation(p, style=style, index=i))
             result = "\n\n".join(lines)
-        else:
-            return f"❌ 不支持的格式：{style}"
 
-        return f"## 📚 参考文献列表（{style.upper()} 格式）\n\n{result}"
+        return f"## 📚 参考文献列表（{STYLE_LABELS[style]} 格式）\n\n{result}"
     except Exception as e:
         logger.error(f"format_refs error: {e}", exc_info=True)
         return f"❌ 格式化失败: {str(e)[:200]}"
@@ -2822,6 +2950,37 @@ async def _handle_scholarforge_quality_gate(args: dict, **kw: Any) -> str:
         return f"❌ 质量检查失败: {str(e)[:200]}"
 
 
+def _with_usage(name: str, handler):
+    """工具使用埋点包装器（用户场景验证）。
+
+    记录每次调用的工具名/成败/耗时到 scholarforge 自有 DB 的 tool_usage 表，
+    用真实使用数据驱动后续优化优先级。埋点失败静默，绝不影响工具本身。
+    成败判定：handler 抛异常或返回以 ❌ 开头的字符串视为失败。
+    """
+    import functools
+    import time as _time
+
+    @functools.wraps(handler)
+    async def wrapped(args: dict, **kw):
+        _t0 = _time.monotonic()
+        ok = True
+        try:
+            result = await handler(args, **kw)
+            ok = not (isinstance(result, str) and result.lstrip().startswith("❌"))
+            return result
+        except Exception:
+            ok = False
+            raise
+        finally:
+            try:
+                from hermes_cli.scholarforge.database import record_tool_usage
+                record_tool_usage(name, ok=ok, duration_ms=int((_time.monotonic() - _t0) * 1000))
+            except Exception:
+                pass
+
+    return wrapped
+
+
 def register_tools(host_api=None):
     """Register all ScholarForge tools in the global registry.
 
@@ -2832,7 +2991,7 @@ def register_tools(host_api=None):
         name="scholarforge_search",
         toolset="scholarforge",
         schema=SCHOLARFORGE_SEARCH_SCHEMA,
-        handler=_handle_scholarforge_search,
+        handler=_with_usage("scholarforge_search", _handle_scholarforge_search),
         is_async=True,
         emoji="📚",
         description="搜索学术文献（arXiv/Crossref/Semantic Scholar/PubMed 等 7 个免费源）",
@@ -2841,7 +3000,7 @@ def register_tools(host_api=None):
         name="scholarforge_write",
         toolset="scholarforge",
         schema=SCHOLARFORGE_WRITE_SCHEMA,
-        handler=_handle_scholarforge_write,
+        handler=_with_usage("scholarforge_write", _handle_scholarforge_write),
         is_async=True,
         emoji="✍️",
         description="撰写学术论文内容（引言/文献综述/方法/实验/讨论/结论）",
@@ -2850,7 +3009,7 @@ def register_tools(host_api=None):
         name="scholarforge_review",
         toolset="scholarforge",
         schema=SCHOLARFORGE_REVIEW_SCHEMA,
-        handler=_handle_scholarforge_review,
+        handler=_with_usage("scholarforge_review", _handle_scholarforge_review),
         is_async=True,
         emoji="🔍",
         description="审阅论文草稿，给出结构化评审意见",
@@ -2859,7 +3018,7 @@ def register_tools(host_api=None):
         name="scholarforge_replace_citations",
         toolset="scholarforge",
         schema=SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA,
-        handler=_handle_scholarforge_replace_citations,
+        handler=_with_usage("scholarforge_replace_citations", _handle_scholarforge_replace_citations),
         is_async=True,
         emoji="🔗",
         description="替换 [n] 占位符为真实文献引用",
@@ -2868,7 +3027,7 @@ def register_tools(host_api=None):
         name="scholarforge_learn_style",
         toolset="scholarforge",
         schema=SCHOLARFORGE_LEARN_STYLE_SCHEMA,
-        handler=_handle_scholarforge_learn_style,
+        handler=_with_usage("scholarforge_learn_style", _handle_scholarforge_learn_style),
         is_async=True,
         emoji="🎯",
         description="学习用户写作风格，后续写作自动仿写",
@@ -2877,7 +3036,7 @@ def register_tools(host_api=None):
         name="scholarforge_outline",
         toolset="scholarforge",
         schema=SCHOLARFORGE_OUTLINE_SCHEMA,
-        handler=_handle_scholarforge_outline,
+        handler=_with_usage("scholarforge_outline", _handle_scholarforge_outline),
         is_async=True,
         emoji="📝",
         description="生成论文大纲（章节结构+每章要点+预估字数）",
@@ -2886,7 +3045,7 @@ def register_tools(host_api=None):
         name="scholarforge_polish",
         toolset="scholarforge",
         schema=SCHOLARFORGE_POLISH_SCHEMA,
-        handler=_handle_scholarforge_polish,
+        handler=_with_usage("scholarforge_polish", _handle_scholarforge_polish),
         is_async=True,
         emoji="✨",
         description="学术润色（语言+逻辑+格式）",
@@ -2895,7 +3054,7 @@ def register_tools(host_api=None):
         name="scholarforge_plagiarism_check",
         toolset="scholarforge",
         schema=SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA,
-        handler=_handle_scholarforge_plagiarism_check,
+        handler=_with_usage("scholarforge_plagiarism_check", _handle_scholarforge_plagiarism_check),
         is_async=True,
         emoji="📊",
         description="论文查重检测（SimHash+N-gram+AIGC 启发式）",
@@ -2904,16 +3063,16 @@ def register_tools(host_api=None):
         name="scholarforge_deaigc",
         toolset="scholarforge",
         schema=SCHOLARFORGE_DEAIGC_SCHEMA,
-        handler=_handle_scholarforge_deaigc,
+        handler=_with_usage("scholarforge_deaigc", _handle_scholarforge_deaigc),
         is_async=True,
         emoji="🤖",
-        description="去 AI 痕迹（检测+自动改写）",
+        description="文风自然化（机械化特征提示+改写，非 AI 检测器）",
     )
     registry.register(
         name="scholarforge_score",
         toolset="scholarforge",
         schema=SCHOLARFORGE_SCORE_SCHEMA,
-        handler=_handle_scholarforge_score,
+        handler=_with_usage("scholarforge_score", _handle_scholarforge_score),
         is_async=True,
         emoji="⭐",
         description="论文三维度评分（原创性+逻辑性+引用完整性）",
@@ -2922,7 +3081,7 @@ def register_tools(host_api=None):
         name="scholarforge_export",
         toolset="scholarforge",
         schema=SCHOLARFORGE_EXPORT_SCHEMA,
-        handler=_handle_scholarforge_export,
+        handler=_with_usage("scholarforge_export", _handle_scholarforge_export),
         is_async=True,
         emoji="📤",
         description="导出论文（Word/PDF/LaTeX/Markdown/BibTeX）",
@@ -2931,7 +3090,7 @@ def register_tools(host_api=None):
         name="scholarforge_format_refs",
         toolset="scholarforge",
         schema=SCHOLARFORGE_FORMAT_REFS_SCHEMA,
-        handler=_handle_scholarforge_format_refs,
+        handler=_with_usage("scholarforge_format_refs", _handle_scholarforge_format_refs),
         is_async=True,
         emoji="📚",
         description="格式化参考文献（GB/T 7714 / APA 7th）",
@@ -2940,7 +3099,7 @@ def register_tools(host_api=None):
         name="scholarforge_verify_citations",
         toolset="scholarforge",
         schema=SCHOLARFORGE_VERIFY_CITATIONS_SCHEMA,
-        handler=_handle_scholarforge_verify_citations,
+        handler=_with_usage("scholarforge_verify_citations", _handle_scholarforge_verify_citations),
         is_async=True,
         emoji="🔬",
         description="验证文献引用真实性（CrossRef/Semantic Scholar API 在线校验）",
@@ -2949,7 +3108,7 @@ def register_tools(host_api=None):
         name="scholarforge_check_stats",
         toolset="scholarforge",
         schema=SCHOLARFORGE_CHECK_STATS_SCHEMA,
-        handler=_handle_scholarforge_check_stats,
+        handler=_with_usage("scholarforge_check_stats", _handle_scholarforge_check_stats),
         is_async=True,
         emoji="📐",
         description="统计指标一致性校验（η²↔d↔t↔F 值换算验证）",
@@ -2958,7 +3117,7 @@ def register_tools(host_api=None):
         name="scholarforge_detect_design_flaws",
         toolset="scholarforge",
         schema=SCHOLARFORGE_DETECT_DESIGN_FLAWS_SCHEMA,
-        handler=_handle_scholarforge_detect_design_flaws,
+        handler=_with_usage("scholarforge_detect_design_flaws", _handle_scholarforge_detect_design_flaws),
         is_async=True,
         emoji="⚠️",
         description="研究设计缺陷检测（多要素未分离/评估者偏差/样本代表性等 8 类）",
@@ -2967,7 +3126,7 @@ def register_tools(host_api=None):
         name="scholarforge_review_claims",
         toolset="scholarforge",
         schema=SCHOLARFORGE_REVIEW_CLAIMS_SCHEMA,
-        handler=_handle_scholarforge_review_claims,
+        handler=_with_usage("scholarforge_review_claims", _handle_scholarforge_review_claims),
         is_async=True,
         emoji="⚖️",
         description="主张-证据审查流水线（抽取 Claim → 逐条检查引用/统计/设计 → 结构化报告）",
@@ -2976,7 +3135,7 @@ def register_tools(host_api=None):
         name="scholarforge_research_map",
         toolset="scholarforge",
         schema=SCHOLARFORGE_RESEARCH_MAP_SCHEMA,
-        handler=_handle_scholarforge_research_map,
+        handler=_with_usage("scholarforge_research_map", _handle_scholarforge_research_map),
         is_async=True,
         emoji="🗺️",
         description="研究选题拆解（方向→问题树+共识/分歧/空白+可验证假设）",
@@ -2985,7 +3144,7 @@ def register_tools(host_api=None):
         name="scholarforge_save_literature_cards",
         toolset="scholarforge",
         schema=SCHOLARFORGE_SAVE_CARDS_SCHEMA,
-        handler=_handle_scholarforge_save_cards,
+        handler=_with_usage("scholarforge_save_literature_cards", _handle_scholarforge_save_cards),
         is_async=True,
         emoji="📇",
         description="文献知识沉淀（search→结构化卡片+LLM 抽取 7 字段+跨会话累积）",
@@ -2994,7 +3153,7 @@ def register_tools(host_api=None):
         name="scholarforge_literature_matrix",
         toolset="scholarforge",
         schema=SCHOLARFORGE_MATRIX_SCHEMA,
-        handler=_handle_scholarforge_literature_matrix,
+        handler=_with_usage("scholarforge_literature_matrix", _handle_scholarforge_literature_matrix),
         is_async=True,
         emoji="📊",
         description="综述矩阵（已沉淀卡片→按方法/数据/发现分列+gap 提示）",
@@ -3003,7 +3162,7 @@ def register_tools(host_api=None):
         name="scholarforge_manage_snapshots",
         toolset="scholarforge",
         schema=SCHOLARFORGE_MANAGE_SNAPSHOTS_SCHEMA,
-        handler=_handle_scholarforge_manage_snapshots,
+        handler=_with_usage("scholarforge_manage_snapshots", _handle_scholarforge_manage_snapshots),
         is_async=True,
         emoji="📸",
         description="版本快照管理（创建/列出/恢复/查看/删除）",
@@ -3012,7 +3171,7 @@ def register_tools(host_api=None):
         name="scholarforge_apply_template",
         toolset="scholarforge",
         schema=SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA,
-        handler=_handle_scholarforge_apply_template,
+        handler=_with_usage("scholarforge_apply_template", _handle_scholarforge_apply_template),
         is_async=True,
         emoji="📋",
         description="论文模板管理（预设/导出/创建）",
@@ -3021,7 +3180,7 @@ def register_tools(host_api=None):
         name="scholarforge_quality_gate",
         toolset="scholarforge",
         schema=SCHOLARFORGE_QUALITY_GATE_SCHEMA,
-        handler=_handle_scholarforge_quality_gate,
+        handler=_with_usage("scholarforge_quality_gate", _handle_scholarforge_quality_gate),
         is_async=True,
         emoji="🛡️",
         description="显式全量质量检查（引用真实性+统计一致性+设计缺陷，可选在线验证）",

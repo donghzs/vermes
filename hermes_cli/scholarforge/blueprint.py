@@ -353,6 +353,19 @@ def register_to(app, host_api=None):
         tools.sort(key=lambda t: t["name"])
         return {"tools": tools}
 
+    @app.get("/api/scholar/usage")
+    async def api_tool_usage(days: int = 30):
+        """工具使用统计（用户场景验证：真实使用数据驱动优先级）。
+
+        返回最近 N 天每个工具的调用次数/成功率/平均耗时/最近使用时间，
+        数据来自 tool_usage 表（register_tools 的 _with_usage 包装器自动埋点）。
+        """
+        from .database import get_tool_usage_stats
+
+        days = max(1, min(days, 365))
+        stats = get_tool_usage_stats(days=days)
+        return {"days": days, "stats": stats}
+
     # ═══════════════════════════════════════════════════════════════
     # 质量报告 — QualityView 读取/保存 section_quality 表
     # ═══════════════════════════════════════════════════════════════

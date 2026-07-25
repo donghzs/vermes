@@ -65,7 +65,7 @@ def run_quality_gate(
             if cleaned != content:
                 content = cleaned
                 report_parts.append(
-                    f"🤖 De-AIGC 已净化（AI 痕迹率 {aigc_score:.0%}）"
+                    f"✍️ 已做文风自然化（机械化特征指数 {aigc_score:.0%}，启发式风格度量，非 AI 检测结论）"
                 )
     except Exception as e:
         logger.warning("gate aigc failed: %s", e)
