@@ -7,6 +7,7 @@
 // 与对话式(C) 共享同一后端引擎：工具箱经 invokeTool → POST /api/tools/invoke →
 // handler 内部含 run_quality_gate，故质量护栏对两种入口行为一致（P0b 已封堵缺口）。
 import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useScholarStore } from '../stores/scholar'
 import ToolBox from './scholar/ToolBox.vue'
 import ProjectSpace from './scholar/ProjectSpace.vue'
@@ -14,7 +15,10 @@ import QualityView from './scholar/QualityView.vue'
 import FlowGuide from './scholar/FlowGuide.vue'
 import Uploader from './scholar/Uploader.vue'
 
+const router = useRouter()
 const scholar = useScholarStore()
+
+function goChat() { router.push('/') }
 
 const TABS = [
   { key: 'tools', label: '🧰 工具箱' },
@@ -32,6 +36,15 @@ onMounted(() => {
 <template>
   <div class="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
     <header class="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 flex-wrap">
+      <button
+        @click="goChat"
+        class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-gray-500"
+        title="返回会话"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
       <h1 class="text-base font-semibold flex items-center gap-2">
         <span>📝</span> 论文写作
       </h1>

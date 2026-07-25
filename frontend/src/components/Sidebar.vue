@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 const { confirm } = useConfirm()
@@ -15,10 +15,17 @@ import ExpertCatalog from './ExpertCatalog.vue'
 
 const chat = useChatStore()
 const router = useRouter()
+const route = useRoute()
 
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
 function goScholarForge() { router.push('/scholarforge') }
+
+// 点击会话项：切换会话 + 如果不在聊天页则跳回
+function switchAndGoChat(id) {
+  chat.switchSession(id)
+  if (route.path !== '/') router.push('/')
+}
 
 // ScholarForge: 22 个 Agent 工具（对话中自动调用）；另提供专用面板入口 /scholarforge
 // （前端/src 新建，复用主框架 Vue+Pinia+Tailwind，A 入口与对话式 C 并存）
@@ -367,7 +374,7 @@ async function handleImportFile(e) {
           <div class="px-4 pt-1 pb-0.5 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">📌 已置顶</div>
           <div
             v-for="s in groupedSessions.pinned" :key="'p-' + s.id"
-            @click="chat.switchSession(s.id)"
+            @click="switchAndGoChat(s.id)"
             @contextmenu.prevent="onContextMenu($event, s)"
             class="px-3 py-2 mx-2 mb-0.5 rounded-lg cursor-pointer text-sm transition-all duration-200 group relative"
             :class="s.id === chat.currentSessionId
@@ -414,7 +421,7 @@ async function handleImportFile(e) {
           <!-- 会话项 -->
           <div
             v-else-if="item.type === 'session'"
-            @click="chat.switchSession(item.data.id)"
+            @click="switchAndGoChat(item.data.id)"
             @contextmenu.prevent="onContextMenu($event, item.data)"
             class="px-3 py-2 mx-2 mb-0.5 rounded-lg cursor-pointer text-sm transition-all duration-200 group relative"
             :class="item.data.id === chat.currentSessionId

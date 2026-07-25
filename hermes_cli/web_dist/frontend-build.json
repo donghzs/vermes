@@ -1,7 +1,7 @@
 {
   "version": "2.3.5",
-  "gitHash": "a6305c2d8",
-  "gitBranch": "win-build-fixes",
-  "buildTime": "2026-07-23T16:30:38.548Z",
+  "gitHash": "5ada07227",
+  "gitBranch": "main",
+  "buildTime": "2026-07-25T05:35:30.287Z",
   "nodeVersion": "v22.22.3"
 }
