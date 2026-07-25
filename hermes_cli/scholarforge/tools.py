@@ -243,11 +243,73 @@ def _resolve_credentials():
     }
 
 
-async def _call_llm(prompt: str, system: str = "") -> str:
-    """Call LLM with auto-detected credentials. Uses urllib (sync) for maximum compatibility."""
+class _LlmHttpError(Exception):
+    """内部异常：区分可重试（5xx / 网络抖动）与不可重试（4xx）。"""
+
+    def __init__(self, message: str, retryable: bool, http_code: int = 0):
+        super().__init__(message)
+        self.message = message
+        self.retryable = retryable
+        self.http_code = http_code
+
+
+def _call_llm_sync(url: str, body: dict, headers: dict) -> str:
+    """真正的同步网络请求。抛 _LlmHttpError 携带 retryable 标志，供上层决定是否重试。
+
+    注意：本函数为纯阻塞 IO，必须由 _call_llm 通过 asyncio.to_thread 调用，
+    绝不能在异步框架（FastAPI/gateway）中直接 await——否则会阻塞事件循环。
+    """
     import json
     import urllib.request
     import urllib.error
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content:
+                return content
+            # 响应格式异常：不可重试（重发无意义）
+            raise _LlmHttpError(
+                f"❌ LLM 响应格式异常: {json.dumps(data, ensure_ascii=False)[:300]}",
+                retryable=False,
+            )
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8")[:300]
+        except Exception:
+            pass
+        # 5xx 服务端错误可重试；4xx 客户端错误（鉴权/参数）不可重试
+        retryable = e.code >= 500
+        raise _LlmHttpError(
+            f"❌ LLM 调用失败 (HTTP {e.code}): {err_body[:150]}",
+            retryable=retryable,
+            http_code=e.code,
+        ) from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        # 网络层错误（连接失败/超时/DNS）：可重试
+        raise _LlmHttpError(
+            f"❌ LLM 网络错误: {type(e).__name__}: {str(e)[:200]}",
+            retryable=True,
+        ) from e
+
+
+async def _call_llm(prompt: str, system: str = "") -> str:
+    """Call LLM with auto-detected credentials.
+
+    同步 urllib 请求经 asyncio.to_thread 卸载到线程池执行，避免阻塞事件循环
+    （此前直接在 async 函数内跑 urlopen(timeout=120) 会卡死 FastAPI/gateway 的
+    整个事件循环长达 2 分钟）。可重试错误（5xx / 网络抖动）最多重试 3 次，
+    退避 0.5s/1s；4xx 与格式异常不重试。签名保持不变，所有 await 调用方零改动。
+    """
+    import asyncio
 
     creds = _resolve_credentials()
     if not creds:
@@ -273,30 +335,39 @@ async def _call_llm(prompt: str, system: str = "") -> str:
         "Content-Type": "application/json",
     }
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if content:
-                return content
-            return f"❌ LLM 响应格式异常: {json.dumps(data, ensure_ascii=False)[:300]}"
-    except urllib.error.HTTPError as e:
-        err_body = ""
+    max_attempts = 3
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
         try:
-            err_body = e.read().decode("utf-8")[:300]
-        except Exception:
-            pass
-        logger.error(f"LLM call failed ({creds['provider']}/{creds['model']}): {e.code} {err_body}")
-        return f"❌ LLM 调用失败 (HTTP {e.code}): {err_body[:150]}"
-    except Exception as e:
-        logger.error(f"LLM unexpected error ({creds['provider']}/{creds['model']}): {e}", exc_info=True)
-        return f"❌ LLM 调用异常: {type(e).__name__}: {str(e)[:200]}"
+            return await asyncio.to_thread(_call_llm_sync, url, body, headers)
+        except _LlmHttpError as e:
+            last_error = e.message
+            if not e.retryable or attempt == max_attempts:
+                if e.retryable:
+                    logger.error(
+                        f"LLM call failed after {max_attempts} attempts "
+                        f"({creds['provider']}/{creds['model']}): {e.message}"
+                    )
+                else:
+                    logger.error(
+                        f"LLM call failed ({creds['provider']}/{creds['model']}): {e.message}"
+                    )
+                return e.message
+            # 可重试：退避后再试（0.5s, 1s）
+            backoff = 0.5 * attempt
+            logger.warning(
+                f"LLM call attempt {attempt}/{max_attempts} failed "
+                f"({creds['provider']}/{creds['model']}): {e.message}; retrying in {backoff}s"
+            )
+            await asyncio.sleep(backoff)
+        except Exception as e:  # noqa: BLE001 — 兜底，防止未预期异常泄漏
+            logger.error(
+                f"LLM unexpected error ({creds['provider']}/{creds['model']}): {e}",
+                exc_info=True,
+            )
+            return f"❌ LLM 调用异常: {type(e).__name__}: {str(e)[:200]}"
+
+    return last_error or "❌ LLM 调用失败：未知错误"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -444,6 +515,16 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 【项目上下文】
 {project_ctx}"""
 
+    # 注入已学习的写作风格（learn_style 落库的 style_prompt），实现自动仿写
+    if project_id:
+        from hermes_cli.scholarforge.project_context import get_style_prompt
+        style_prompt = get_style_prompt(project_id)
+        if style_prompt:
+            prompt += f"""
+
+【写作风格要求（请严格模仿）】
+{style_prompt}"""
+
     prompt += """
 
 请直接输出该章节的完整内容（Markdown 格式，{label} 用 ## 标记），
@@ -475,12 +556,6 @@ async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
     """审阅论文"""
     draft = args.get("draft", "")
     project_id = args.get("project_id", 0)
-    # 注入项目上下文
-    if project_id:
-        from hermes_cli.scholarforge.project_context import format_project_context_prompt as _fpc
-        _pc = _fpc(project_id)
-        if _pc:
-            prompt += f"\n\n{_pc}"
     focus = args.get("focus", "全面审阅")
 
     if not draft.strip():
@@ -514,6 +589,13 @@ async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
 
 论文草稿：
 {draft[:8000]}"""
+
+    # 注入项目上下文（此前该注入写在 prompt 定义之前，会 UnboundLocalError 崩溃且从未生效）
+    if project_id:
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt as _fpc
+        _pc = _fpc(project_id)
+        if _pc:
+            prompt += f"\n\n【项目上下文】\n{_pc}"
 
     llm_result = await _call_llm(prompt, system_prompt)
 
@@ -1035,6 +1117,7 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
     import statistics
 
     sample = args.get("sample_text", "")
+    project_id = args.get("project_id", 0)
     if len(sample.strip()) < 100:
         return "❌ 样本文本过短，至少需要 500 字才能提取风格特征。"
 
@@ -1097,11 +1180,35 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
 8. **常用过渡词**: {', '.join([t for t in transitions if sample.count(t) > 0][:5]) or '不明显'}
 """
 
+    # ── 落库：写回 projects.style_prompt，供 write 自动仿写 ──
+    # 此前 learn_style 只 return 风格提示词、从不落库，导致 write 永远读不到 →
+    # schema 承诺的"后续 scholarforge_write 会自动仿写该风格"从未兑现（孤儿功能）。
+    saved = False
+    if project_id:
+        from hermes_cli.scholarforge.project_context import save_style_profile
+        saved = save_style_profile(project_id, style_prompt)
+
+    if saved:
+        persist_line = (
+            f"✅ 已保存到项目 #{project_id}，后续对该项目调用 scholarforge_write "
+            f"（传入相同 project_id）时会自动应用此风格。\n\n"
+        )
+    elif project_id:
+        persist_line = (
+            f"⚠️ 风格已提取，但写回项目 #{project_id} 失败（项目可能不存在），"
+            f"本次风格不会被 write 自动复用。\n\n"
+        )
+    else:
+        persist_line = (
+            "💡 未指定 project_id，风格未落库。若希望 scholarforge_write 自动仿写，"
+            "请在调用本工具时传入 project_id，并对同一项目写作。\n\n"
+        )
+
     return (
         f"✅ 风格学习完成！已提取 8 维风格特征。\n\n"
         f"**风格摘要**: 句长{avg_sent_len:.0f}字、段落{'均匀' if para_cv < 0.3 else '变化'}、"
         f"术语密度{'高' if term_density > 3 else '中'}、过渡词{'多' if transition_density > 1.5 else '适中'}\n\n"
-        f"后续使用 scholarforge_write 时将自动应用此风格。\n\n"
+        f"{persist_line}"
         f"---\n{style_prompt}"
     )
 # ──────────────────────────────────────────────────────────────
@@ -1321,9 +1428,13 @@ async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
 SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA = {
     "name": "scholarforge_plagiarism_check",
     "description": (
-        "论文查重检测。基于 SimHash + N-gram + AIGC 启发式检测，离线运行无需外部服务。"
-        "返回：综合重复率、内部相似段落、AI 痕迹评分、修改建议。"
-        "适用于：投稿前自查、写作过程中监控重复率、评估原创性。"
+        "文档内部自相似检测（非外部库查重）。基于 SimHash + N-gram 逐段比对本文档"
+        "各段落之间的重复，配合 AIGC 写作特征启发式，完全离线运行。"
+        "⚠️ 本工具只在【本文档内部】查找自我重复/复制粘贴段落，"
+        "不连接知网/万方/维普等任何外部比对库，因此无法检测与他人已发表文献的重复，"
+        "结果不能替代知网/维普/PaperPass 等正式查重报告。"
+        "返回：文档内部重复率、重复段落、AI 写作特征评分、修改建议。"
+        "适用于：写作过程中自查段落复用、发现无意重复、初步评估原创度。"
     ),
     "parameters": {
         "type": "object",
@@ -1362,21 +1473,22 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
 
         report = full_plagiarism_check(text, title=title)
 
-        lines = ["## 📊 查重检测报告\n"]
+        lines = ["## 📊 文档内部自相似检测报告\n"]
+        lines.append("> 仅比对本文档各段落之间的重复，**未连接任何外部查重库**，不能替代知网/维普查重。\n")
         lines.append(f"**总字数**: {report.total_chars:,}")
         lines.append(f"**段落数**: {report.total_paragraphs}")
-        lines.append(f"**综合重复率**: {report.overall_similarity:.1%}")
-        lines.append(f"**AI 痕迹率**: {report.aigc_overall_ratio:.1%}")
+        lines.append(f"**文档内部重复率**: {report.overall_similarity:.1%}")
+        lines.append(f"**AI 写作特征率**: {report.aigc_overall_ratio:.1%}")
         lines.append("")
 
-        # 重复率评估
+        # 内部重复率评估
         sim = report.overall_similarity
         if sim < 0.15:
-            lines.append("✅ 重复率较低，原创性良好")
+            lines.append("✅ 文档内部重复较低，段落复用少")
         elif sim < 0.30:
-            lines.append("⚠️ 重复率中等，建议关注高重复段落")
+            lines.append("⚠️ 文档内部重复中等，建议关注下方高重复段落")
         else:
-            lines.append("🔴 重复率偏高，建议修改高重复段落")
+            lines.append("🔴 文档内部重复偏高，可能存在段落复制粘贴，建议改写")
 
         # AI 痕迹评估
         aigc = report.aigc_overall_ratio
@@ -1389,13 +1501,13 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
 
         # 内部相似段落
         if report.plag_results:
-            lines.append("\n### 高相似段落\n")
+            lines.append("\n### 文档内高相似段落\n")
             for r in report.plag_results[:5]:
-                lines.append(f"- 位置 {r.position}：相似度 {r.score:.1%}  {r.text[:50]}...")
+                lines.append(f"- 位置 {r.position}：与本文档他段相似度 {r.score:.1%}  {r.text[:50]}...")
 
         # AIGC 特征
         if report.aigc_results:
-            lines.append("\n### AI 痕迹特征\n")
+            lines.append("\n### AI 写作特征\n")
             for r in report.aigc_results[:5]:
                 feats = ", ".join(r.features[:3]) if r.features else "无"
                 lines.append(f"- 位置 {r.position}：AI 概率 {r.aigc_probability:.0%}  特征: {feats}")
@@ -1406,16 +1518,16 @@ async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
             for s in report.suggestions:
                 lines.append(f"- {s}")
 
-        # 在线查重提示
+        # 使用边界提示
         if degraded:
-            lines.append(f"\n---\n⚠️ **注意**: 文本仅 {len(text)} 字（不足 200 字），查重结果参考价值有限，建议扩充内容后重新检测。")
+            lines.append(f"\n---\n⚠️ **注意**: 文本仅 {len(text)} 字（不足 200 字），内部自相似检测参考价值有限，建议扩充内容后重新检测。")
         else:
-            lines.append("\n---\n💡 **提示**: 本检测为离线检测，如需更精确的查重结果，建议前往 PaperYY、大雅查重、知网查重等平台进行在线检测。")
+            lines.append("\n---\n💡 **提示**: 本工具只做【文档内部】自相似 + AI 写作特征检测，**不与知网/万方/维普等外部库比对**，无法发现与他人已发表文献的重复。投稿/答辩前的正式查重，请使用知网、维普、PaperPass 等官方平台。")
 
         return "\n".join(lines)
     except Exception as e:
         logger.error(f"plagiarism_check error: {e}", exc_info=True)
-        return f"❌ 查重检测失败: {str(e)[:200]}"
+        return f"❌ 文档内部自相似检测失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1571,10 +1683,18 @@ async def _handle_scholarforge_score(args: dict, **kw: Any) -> str:
         # 提取引用的文献列表（从 [n] 标记）
         import re
         ref_nums = set(int(n) for n in re.findall(r'\[(\d+)\]', content))
-        # 构造简易 papers 列表
-        papers = [{"title": f"Ref [{n}]", "year": ""} for n in sorted(ref_nums)]
+        # 构造简易 papers 列表（使用带属性的轻量对象，便于 score_paper 读取 title/authors/year）
+        class _PaperRef:
+            def __init__(self, title):
+                self.title = title
+                self.authors = []
+                self.year = ""
+        papers = [_PaperRef(f"文献 [{n}]") for n in sorted(ref_nums)]
 
-        result = await score_paper(content, papers, _make_llm=None, topic=topic)
+        # 接入真实 LLM 评分工厂：
+        # 此前误传 _make_llm=None → score_paper 永远走 _fallback_score 启发式假评分（原创性恒 5.0）。
+        # 与 blueprint.py:1501 的 scholar_stream 评分调用保持一致，传入 _call_llm 工厂。
+        result = await score_paper(content, papers, _make_llm=lambda: _call_llm, topic=topic)
 
         lines = ["## 📊 论文评分报告\n"]
 
@@ -2529,9 +2649,19 @@ async def _handle_scholarforge_detect_design_flaws(args: dict, **kw: Any) -> str
             design_info[key] = val
 
     try:
-        from hermes_cli.scholarforge.validators import detect_design_flaws, format_design_report
-        flaws = detect_design_flaws(paper_text, design_info)
-        return format_design_report(flaws)
+        from hermes_cli.scholarforge.validators import (
+            detect_design_flaws, detect_design_flaws_llm, format_design_report, _dedup_flaws,
+        )
+        # 双路检测：① 同步启发式（教育/心理学关键词，快、零成本、确定性）
+        #          ② LLM 语义分析（学科无关，覆盖医学/工程/经济/CS 等任意领域）
+        heuristic = detect_design_flaws(paper_text, design_info)
+        llm_flaws = await detect_design_flaws_llm(paper_text, design_info, call_llm=_call_llm)
+        # 合并去重：启发式在前（确定性优先），LLM 补充其未覆盖的学科通用缺陷
+        merged = _dedup_flaws(heuristic + llm_flaws)
+        report = format_design_report(merged)
+        if llm_flaws:
+            report += "\n\n> ℹ️ 本报告已融合关键词启发式与 LLM 语义分析（学科无关），LLM 结果供参考请人工复核。"
+        return report
     except Exception as e:
         logger.error(f"detect_design_flaws error: {e}", exc_info=True)
         return f"❌ 设计缺陷检测失败: {str(e)[:200]}"
