@@ -53,17 +53,29 @@ class TestProjectHandoff:
         assert "论文A" in prompt
         assert "论文B" in prompt
 
-    def test_continuity_facade_loads_project_handoff(self, tmp_db):
-        """continuity_facade 应加载 project_handoff 源。"""
-        tmp_db.create_project(title="快照论文", paper_type="本科论文")
+    def test_continuity_facade_loads_project_handoff(self, tmp_db, monkeypatch):
+        """continuity_facade 应加载 project_handoff 源（Phase 5: 通用表）。"""
+        # Phase 5: facade 读 agent/project_handoffs 表，不再直读 ScholarForge
+        import agent.project_handoff as ph
+        # 用临时 DB
+        import hermes_cli.scholarforge.database as sfdb
+        tmp_db_path = str(sfdb.DB_PATH).replace("scholarforge", "test_handoff_memory")
+        from pathlib import Path
+        monkeypatch.setattr(ph, "_db_path", lambda: Path(tmp_db_path))
+
+        ph.record_project_handoff(
+            domain="paper", project_id=1,
+            title="快照论文", status="writing",
+            progress="2/9 章节",
+        )
 
         from agent.continuity_facade import load_continuity_context
         ctx = load_continuity_context("继续写我的论文")
-        
+
         # project_handoff 应在 sources_loaded 中
         assert "project_handoff" in ctx.sources_loaded
         # handoff_block 应包含项目信息
-        assert "快照论文" in ctx.handoff_block
+        assert "快照论文" in (ctx.handoff_block or "")
 
     def test_continuity_facade_cold_start_no_projects(self, tmp_db):
         """无项目时 project_handoff block 为空，不阻断其他源。"""
