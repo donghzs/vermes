@@ -295,6 +295,22 @@ def register_to(app, host_api=None):
         import host_api as _ha
         _ha._inject(host_api)
 
+    @app.post("/api/tools/invoke")
+    async def api_invoke_tool(req: dict):
+        """通用工具直接调用端点 — 走 registry.dispatch，复用已注册 handler。
+
+        写回类工具（如 scholarforge_write）内部已含 run_quality_gate，质量闸门自然生效。
+        请求体: {"name": "scholarforge_write", "args": {...}}
+        响应: {"result": "<handler 返回的字符串>"}
+        """
+        from tools.registry import registry
+        name = (req or {}).get("name")
+        args = (req or {}).get("args") or {}
+        if not name:
+            raise HTTPException(400, "missing tool name")
+        result = registry.dispatch(name, args)
+        return {"result": result}
+
     @app.get("/api/scholar/model")
     async def current_model_info():
         """返回当前默认模型与 Provider，便于前端展示"""
@@ -372,11 +388,20 @@ def register_to(app, host_api=None):
 
     @app.post("/api/scholar/projects/{pid}/section/{section_key}")
     async def api_save_section(pid: int, section_key: str, req: dict):
-        """保存章节内容"""
+        """保存章节内容（写回前过质量闸门，与 agent write handler 行为一致）"""
         from . import database as db
+        from .quality_gate import run_quality_gate
         content = req.get("content", "")
+        # 质量闸门前移（与 commit 0fa84d3f9 的 write handler 一致）：
+        # Tier1 De-AIGC+查重恒跑，mode=flag 写回成功+报告附返回+落 section_quality 表。
+        # 消除「前端编辑直存绕过闸门」缺口；flag 模式不拦截，净化后 content 同用于落库。
+        if pid and content:
+            content, _gate_report, _blocked = run_quality_gate(
+                pid, section_key, content, mode="flag", stage="write"
+            )
         db.save_section_content(pid, section_key, content)
         db.update_project(pid, last_section_key=section_key)
+        return {"saved": True, "section_key": section_key}
 
     # ═══════════════════════════════════════════════════════════════
     # P0-1: 逐句自动补全 — Jenni AI 核心体验

@@ -106,7 +106,18 @@ def hamming_distance(a: str, b: str) -> int:
 
 
 def simhash_similarity(a: str, b: str) -> float:
-    """SimHash 相似度 0.0~1.0"""
+    """SimHash 相似度 0.0~1.0。
+
+    参数可以是 simhash hex 字符串或原始文本。
+    如果传入原始文本，会自动先计算 simhash。
+    """
+    # 如果不是 hex 字符串，先计算 simhash
+    try:
+        int(a, 16)
+        int(b, 16)
+    except ValueError:
+        a = simhash(a)
+        b = simhash(b)
     return 1.0 - hamming_distance(a, b) / 64.0
 
 
@@ -318,6 +329,7 @@ def check_aigc(text: str) -> dict:
 
     return {
         "overall_ratio": round(overall, 3),
+        "aigc_score": round(overall, 3),  # 兼容字段：tools.py 期望 aigc_score
         "results": aigc_results,
         "features": detected_features,
         "metrics": {
