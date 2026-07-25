@@ -328,6 +328,31 @@ def register_to(app, host_api=None):
         except Exception as e:
             return {"model": "deepseek-v4-flash", "provider": "deepseek", "base_url": "", "error": str(e)}
 
+    @app.get("/api/scholar/tools")
+    async def api_list_tool_schemas():
+        """暴露 scholarforge 工具 schema，供前端 SchemaForm 自动生成参数表单。
+
+        返回每项: {name, description, emoji, is_async, schema, requires_project_id}
+        schema 即工具注册时的 JSON Schema（parameters.properties / required）。
+        """
+        from tools.registry import registry
+        tools = []
+        for entry in registry._snapshot_entries():
+            if getattr(entry, "toolset", None) != "scholarforge":
+                continue
+            params = entry.schema.get("parameters", {}) if entry.schema else {}
+            props = params.get("properties", {}) or {}
+            tools.append({
+                "name": entry.name,
+                "description": entry.description or "",
+                "emoji": getattr(entry, "emoji", "") or "",
+                "is_async": bool(getattr(entry, "is_async", False)),
+                "schema": entry.schema,
+                "requires_project_id": "project_id" in props,
+            })
+        tools.sort(key=lambda t: t["name"])
+        return {"tools": tools}
+
     # ═══════════════════════════════════════════════════════════════
     # 项目管理 — 每个论文项目独立的工作空间
     # ═══════════════════════════════════════════════════════════════
