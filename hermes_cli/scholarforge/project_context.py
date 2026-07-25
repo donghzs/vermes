@@ -280,22 +280,49 @@ def format_active_projects_prompt() -> str:
 # ── Phase 2: 版本快照 ──
 
 def auto_snapshot(project_id: int, label: str = "", note: str = "") -> int:
-    """在关键操作前自动创建快照。fail-open：快照失败不阻断主操作。
+    """在关键操作前自动创建快照 + 发射到 agent 通用 handoff 层。
 
+    fail-open：快照/发射失败均不阻断主操作。
     返回 snapshot_id，失败返回 0。
     """
     if not project_id or project_id <= 0:
         return 0
 
     try:
-        from hermes_cli.scholarforge.database import create_project_snapshot
+        from hermes_cli.scholarforge.database import create_project_snapshot, get_project
         sid = create_project_snapshot(project_id, label=label, note=note)
         if sid:
             logger.info("auto_snapshot(%s, label=%s) → sid=%s", project_id, label, sid)
-        return sid
     except Exception as e:
         logger.warning("auto_snapshot(%s) failed: %s", project_id, e)
-        return 0
+        sid = 0
+
+    # ── 发射桥：向 agent 通用 project_handoffs 表写入状态 ──
+    # Phase 5: 让 continuity_facade turn-1 注入能看到论文进度
+    try:
+        from agent.project_handoff import record_project_handoff
+        proj = get_project(project_id) or {}
+        outline = proj.get("outline", [])
+        section_count = len(outline)
+        total_words = sum(s.get("word_count", 0) for s in outline)
+        lit_count = proj.get("literature_count", 0)
+        record_project_handoff(
+            domain="paper",
+            project_id=project_id,
+            title=proj.get("title", ""),
+            status="writing",
+            progress=f"{section_count} 章 / {total_words} 字 / {lit_count} 文献",
+            last_section=label or proj.get("last_section_key", ""),
+            extra={
+                "paper_type": proj.get("paper_type", ""),
+                "target_words": proj.get("target_words", 0),
+                "citation_style": proj.get("citation_style", ""),
+            },
+        )
+    except Exception as e:
+        logger.warning("auto_snapshot(%s) handoff emit failed: %s", project_id, e)
+
+    return sid
 
 
 def restore_snapshot(snapshot_id: int) -> dict:
