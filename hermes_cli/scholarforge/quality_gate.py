@@ -224,3 +224,36 @@ def get_quality_report(project_id: int, section_key: str) -> str:
             (project_id, section_key),
         ).fetchone()
         return row["report"] if row else ""
+
+
+def list_quality_reports(project_id: int) -> list[dict]:
+    """列出某项目的全部质量报告（按检查时间倒序）。
+
+    供前端 QualityView 读取。section_key 为空字符串的全量检查统一记为 "__full__"。
+    """
+    from hermes_cli.scholarforge.database import get_conn, init_db
+
+    init_db()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT section_key, report, checked_at FROM section_quality "
+            "WHERE project_id=? ORDER BY checked_at DESC, id DESC",
+            (project_id,),
+        ).fetchall()
+        return [
+            {
+                "section_key": (r["section_key"] or "__full__"),
+                "report": r["report"],
+                "checked_at": r["checked_at"],
+            }
+            for r in rows
+        ]
+
+
+def save_quality_report(project_id: int, section_key: str, report: str) -> None:
+    """显式保存一份质量报告（如用户在前端手动触发全量检查）。
+
+    复用 _save_quality_report 的 upsert 逻辑；section_key 空串归入 "__full__"。
+    """
+    key = section_key or "__full__"
+    _save_quality_report(project_id, key, report)
