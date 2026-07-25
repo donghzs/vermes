@@ -164,6 +164,12 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        # outlines.updated_at column (used by save_outline)
+        try:
+            conn.execute("ALTER TABLE outlines ADD COLUMN updated_at INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
         # Collection/标签系统
         conn.execute("""
             CREATE TABLE IF NOT EXISTS literature_tags (
@@ -834,3 +840,108 @@ def delete_snapshot(sid: int) -> bool:
     with get_conn() as conn:
         conn.execute("DELETE FROM snapshots WHERE id=?", (sid,))
         return True
+
+
+def restore_snapshot(sid: int) -> dict:
+    """从快照恢复项目状态。
+
+    payload 格式: {"title","paper_type","target_words","citation_style",
+                    "outline":[...], "contents":{"section_key": "content"}}
+
+    恢复策略:
+    1. 从 payload 读取项目元信息，更新 projects 表
+    2. 清空旧大纲，从 payload 重建
+    3. 清空旧章节内容，从 payload 重写
+    4. 不恢复 literatures（文献库不可逆覆盖）
+
+    返回恢复信息 dict。
+    """
+    import json, time
+    init_db()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, project_id, label, note, payload, created_at FROM snapshots WHERE id=?",
+            (sid,),
+        ).fetchone()
+        if not row:
+            return {"error": "快照不存在"}
+
+        pid = row["project_id"]
+        data = json.loads(row["payload"]) if row["payload"] else {}
+        now = int(time.time())
+
+        # 1. 恢复项目元信息
+        if data.get("title"):
+            conn.execute(
+                "UPDATE projects SET title=?, paper_type=?, target_words=?, citation_style=?, updated_at=? WHERE id=?",
+                (
+                    data.get("title", ""),
+                    data.get("paper_type", "本科论文"),
+                    data.get("target_words", 8000),
+                    data.get("citation_style", "gbt7714"),
+                    now,
+                    pid,
+                ),
+            )
+
+        # 2. 恢复大纲
+        outline = data.get("outline", [])
+        if outline:
+            conn.execute("DELETE FROM outlines WHERE project_id=?", (pid,))
+            for i, s in enumerate(outline):
+                conn.execute(
+                    "INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order) VALUES (?,?,?,?,?,?,?)",
+                    (
+                        pid,
+                        s.get("section_key", f"section_{i+1}"),
+                        s.get("section_number", str(i+1)),
+                        s.get("section_title", s.get("title", "")),
+                        s.get("word_count", 0),
+                        s.get("status", "pending"),
+                        i,
+                    ),
+                )
+
+        # 3. 恢复章节内容
+        contents = data.get("contents", {})
+        if contents:
+            conn.execute("DELETE FROM section_contents WHERE project_id=?", (pid,))
+            for key, content in contents.items():
+                conn.execute(
+                    "INSERT INTO section_contents (project_id, section_key, content, updated_at) VALUES (?,?,?,?)",
+                    (pid, key, content, now),
+                )
+
+        return {
+            "restored": True,
+            "project_id": pid,
+            "snapshot_id": sid,
+            "label": row["label"],
+            "outline_sections": len(outline),
+            "content_sections": len(contents),
+        }
+
+
+def create_project_snapshot(project_id: int, label: str = "", note: str = "") -> int:
+    """自动快照：捕获当前项目完整状态。
+
+    在关键操作（write/outline/replace_citations）前自动调用。
+    payload 包含项目元信息 + 大纲 + 章节内容。
+    """
+    init_db()
+    import json, time
+
+    proj = get_project(project_id)
+    if not proj:
+        return 0
+
+    data = {
+        "title": proj.get("title", ""),
+        "paper_type": proj.get("paper_type", ""),
+        "target_words": proj.get("target_words", 0),
+        "citation_style": proj.get("citation_style", ""),
+        "outline": proj.get("outline", []),
+        "contents": proj.get("contents", {}),
+    }
+
+    return create_snapshot(project_id, label=label, note=note, data=data)

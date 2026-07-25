@@ -43,6 +43,11 @@ SCHOLARFORGE_SEARCH_SCHEMA = {
                 "maximum": 30,
                 "default": 10,
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["query"],
     },
@@ -91,6 +96,11 @@ SCHOLARFORGE_WRITE_SCHEMA = {
                 ],
                 "default": "本科论文",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["topic", "section_type"],
     },
@@ -117,6 +127,11 @@ SCHOLARFORGE_REVIEW_SCHEMA = {
                     "默认为全面审阅。"
                 ),
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["draft"],
     },
@@ -301,8 +316,16 @@ async def _handle_scholarforge_search(args: dict, **kw: Any) -> str:
         if not papers:
             return f"🔍 未找到与「{query}」相关的文献。建议：试试换用英文关键词，或调整搜索词。"
 
+        # 结果写回项目 DB
+        project_id = args.get("project_id", 0)
+        if project_id and papers:
+            from hermes_cli.scholarforge.project_context import save_papers
+            saved = save_papers(project_id, [p.to_dict() for p in papers])
+
         lines = [f"## 文献搜索结果: {query}"]
         lines.append(f"找到 {len(papers)} 篇文献：\n")
+        if project_id and papers:
+            lines.append(f"（已自动保存 {saved} 篇到项目 #{project_id}）\n")
         for i, p in enumerate(papers, 1):
             authors = ", ".join(p.authors[:3] if p.authors else [])
             if len(p.authors) > 3:
@@ -325,6 +348,27 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
     section_type = args.get("section_type", "introduction")
     context = args.get("context", "")
     paper_type = args.get("paper_type", "本科论文")
+    project_id = args.get("project_id", 0)
+
+    # 注入项目上下文
+    project_ctx = ""
+    if project_id:
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt, auto_snapshot
+        # Phase 2: 写操作前自动创建快照
+        auto_snapshot(project_id, label=f"write_{section_type}", note="自动快照：写操作前")
+        project_ctx = format_project_context_prompt(project_id)
+        if project_ctx:
+            # 如果用户没传 topic，从项目信息中推断
+            if not topic:
+                from hermes_cli.scholarforge.project_context import load_project_context
+                proj = load_project_context(project_id)
+                if proj:
+                    topic = proj.get("title", "")
+            if not paper_type or paper_type == "本科论文":
+                from hermes_cli.scholarforge.project_context import load_project_context
+                proj = load_project_context(project_id)
+                if proj and proj.get("paper_type"):
+                    paper_type = proj["paper_type"]
 
     section_guides = {
         "introduction": (
@@ -389,6 +433,11 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 
 【已有上下文】
 {context[:2000]}"""
+    if project_ctx:
+        prompt += f"""
+
+【项目上下文】
+{project_ctx}"""
 
     prompt += """
 
@@ -396,6 +445,11 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 引用文献时使用 [n] 标记（n为编号占位，用户后续会替换为真实文献）。"""
 
     content = await _call_llm(prompt, system_prompt)
+
+    # 写回项目 DB
+    if project_id and content and not content.startswith("❌"):
+        from hermes_cli.scholarforge.project_context import save_section
+        save_section(project_id, section_type, content)
 
     # ── Write 后质量门控: 自动 De-AIGC ─────────────────────
     try:
@@ -414,6 +468,13 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
     """审阅论文"""
     draft = args.get("draft", "")
+    project_id = args.get("project_id", 0)
+    # 注入项目上下文
+    if project_id:
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt as _fpc
+        _pc = _fpc(project_id)
+        if _pc:
+            prompt += f"\n\n{_pc}"
     focus = args.get("focus", "全面审阅")
 
     if not draft.strip():
@@ -500,6 +561,11 @@ SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA = {
                 "maximum": 30,
                 "default": 15,
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["draft"],
     },
@@ -524,6 +590,11 @@ SCHOLARFORGE_LEARN_STYLE_SCHEMA = {
                 "type": "string",
                 "description": "用户已有的论文片段（至少 500 字），作为风格学习样本",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["sample_text"],
     },
@@ -617,11 +688,17 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     import asyncio
     import difflib
 
+    project_id = args.get("project_id", 0)
     draft = args.get("draft", "")
     max_refs = min(args.get("max_refs", 15), 30)
 
     if not draft.strip():
         return "❌ 请提供包含 [n] 占位符的论文草稿。"
+
+    # Phase 2: 引用替换前自动创建快照
+    if project_id:
+        from hermes_cli.scholarforge.project_context import auto_snapshot
+        auto_snapshot(project_id, label="replace_citations_pre", note="自动快照：引用替换前")
 
     # ── P0修复: 支持三种占位符格式 [n] / [n-m] / [n,m,...] ──
     # 1. 先展开所有占位符为独立编号
@@ -1042,6 +1119,11 @@ SCHOLARFORGE_OUTLINE_SCHEMA = {
                 "type": "string",
                 "description": "可选，额外要求（如字数限制、必须包含的章节、特定研究方法等）",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["topic"],
     },
@@ -1053,6 +1135,23 @@ async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
     topic = args.get("topic", "")
     paper_type = args.get("paper_type", "本科论文")
     requirements = args.get("requirements", "")
+    project_id = args.get("project_id", 0)
+
+    # 注入项目上下文
+    project_ctx = ""
+    if project_id:
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt, load_project_context, auto_snapshot
+        # Phase 2: 大纲操作前自动创建快照
+        auto_snapshot(project_id, label="outline_pre", note="自动快照：大纲生成前")
+        project_ctx = format_project_context_prompt(project_id)
+        if not topic:
+            proj = load_project_context(project_id)
+            if proj:
+                topic = proj.get("title", "")
+        if not paper_type or paper_type == "本科论文":
+            proj = load_project_context(project_id)
+            if proj and proj.get("paper_type"):
+                paper_type = proj["paper_type"]
 
     if not topic.strip():
         return "❌ 请提供论文主题。"
@@ -1072,6 +1171,8 @@ async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
     prompt += get_paper_type_prompt(paper_type)
     if requirements:
         prompt += f"\n【额外要求】{requirements}\n"
+    if project_ctx:
+        prompt += f"\n【项目上下文】\n{project_ctx}\n"
 
     prompt += """
 
@@ -1083,7 +1184,22 @@ async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
 5. 给出推荐写作顺序
 """
 
-    return await _call_llm(prompt, system_prompt)
+    outline_result = await _call_llm(prompt, system_prompt)
+
+    # 写回项目 DB
+    if project_id and outline_result and not outline_result.startswith("❌"):
+        from hermes_cli.scholarforge.project_context import save_outline
+        # 简单解析大纲为 sections
+        sections = []
+        for line in outline_result.split("\n"):
+            line = line.strip()
+            if line.startswith("## "):
+                title = line[3:].strip()
+                sections.append({"section_key": f"section_{len(sections)+1}", "title": title, "word_count": 0, "status": "pending"})
+        if sections:
+            save_outline(project_id, sections)
+
+    return outline_result
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1119,6 +1235,11 @@ SCHOLARFORGE_POLISH_SCHEMA = {
                 ],
                 "default": "本科论文",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["text"],
     },
@@ -1128,6 +1249,7 @@ SCHOLARFORGE_POLISH_SCHEMA = {
 async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
     """学术润色"""
     text = args.get("text", "")
+    project_id = args.get("project_id", 0)
     focus = args.get("focus", "all")
     paper_type = args.get("paper_type", "本科论文")
 
@@ -1161,6 +1283,12 @@ async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
 原文：
 {text[:12000]}"""
 
+    if project_id:
+        from hermes_cli.scholarforge.project_context import format_project_context_prompt as _fpc
+        _pc = _fpc(project_id)
+        if _pc:
+            prompt += f"\n\n{_pc}"
+
     polished = await _call_llm(prompt, system_prompt)
 
     # 附加润色说明
@@ -1190,6 +1318,11 @@ SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA = {
                 "type": "string",
                 "description": "论文标题（可选，提高检测准确性）",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["text"],
     },
@@ -1199,6 +1332,7 @@ SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA = {
 async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
     """查重检测"""
     text = args.get("text", "")
+    project_id = args.get("project_id", 0)
     title = args.get("title", "")
 
     if not text.strip():
@@ -1289,6 +1423,11 @@ SCHOLARFORGE_DEAIGC_SCHEMA = {
                 "description": "是否激进模式（更多改写），默认 false（保守模式，仅改写高置信度段落）",
                 "default": False,
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["text"],
     },
@@ -1298,6 +1437,7 @@ SCHOLARFORGE_DEAIGC_SCHEMA = {
 async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
     """去 AI 痕迹"""
     text = args.get("text", "")
+    project_id = args.get("project_id", 0)
     aggressive = args.get("aggressive", False)
 
     if not text.strip():
@@ -1326,6 +1466,11 @@ async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
                 "保持原意，改变句式结构，增加表达多样性。直接输出改写后的文本。"
             )
             prompt = f"请改写以下文本，降低 AI 痕迹，使其更像人类学术写作：\n\n{cleaned[:8000]}"
+            if project_id:
+                from hermes_cli.scholarforge.project_context import format_project_context_prompt as _fpc
+                _pc = _fpc(project_id)
+                if _pc:
+                    prompt += f"\n\n{_pc}"
             llm_result = await _call_llm(prompt, system_prompt)
             if not llm_result.startswith("❌"):
                 cleaned = llm_result
@@ -1380,6 +1525,11 @@ SCHOLARFORGE_SCORE_SCHEMA = {
                 "type": "string",
                 "description": "研究主题（可选，提高评分准确性）",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["content"],
     },
@@ -1389,6 +1539,7 @@ SCHOLARFORGE_SCORE_SCHEMA = {
 async def _handle_scholarforge_score(args: dict, **kw: Any) -> str:
     """论文评分"""
     content = args.get("content", "")
+    project_id = args.get("project_id", 0)
     topic = args.get("topic", "")
 
     if not content.strip():
@@ -1472,6 +1623,11 @@ SCHOLARFORGE_EXPORT_SCHEMA = {
                 "type": "string",
                 "description": "摘要（可选）",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["title", "content", "format"],
     },
@@ -1479,8 +1635,9 @@ SCHOLARFORGE_EXPORT_SCHEMA = {
 
 
 async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
-    """导出论文"""
+    """导出论文（导出成功后标记项目完成）。"""
     title = args.get("title", "")
+    project_id = args.get("project_id", 0)
     content = args.get("content", "")
     fmt = args.get("format", "docx")
     abstract = args.get("abstract", "")
@@ -1488,6 +1645,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
     if not title.strip() or not content.strip():
         return "❌ 请提供论文标题和正文。"
 
+    _export_result = ""
     try:
         import os
         import tempfile
@@ -1523,7 +1681,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.docx")
             with open(filepath, "wb") as f:
                 f.write(data)
-            return f"✅ Word 文档已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB\n💡 可用 WPS 或 Microsoft Word 打开编辑。"
+            _export_result = f"✅ Word 文档已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB\n💡 可用 WPS 或 Microsoft Word 打开编辑。"
 
         elif fmt == "pdf":
             from hermes_cli.scholarforge.export.full import export_pdf
@@ -1531,7 +1689,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.pdf")
             with open(filepath, "wb") as f:
                 f.write(data)
-            return f"✅ PDF 已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB"
+            _export_result = f"✅ PDF 已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB"
 
         elif fmt == "latex":
             from hermes_cli.scholarforge.export.full import export_latex
@@ -1539,7 +1697,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.tex")
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(latex_text)
-            return f"✅ LaTeX 已导出：{filepath}\n\n📄 文件大小：{len(latex_text)/1024:.0f} KB"
+            _export_result = f"✅ LaTeX 已导出：{filepath}\n\n📄 文件大小：{len(latex_text)/1024:.0f} KB"
 
         elif fmt == "markdown":
             from hermes_cli.scholarforge.export.full import export_markdown
@@ -1547,7 +1705,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.md")
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(md_text)
-            return f"✅ Markdown 已导出：{filepath}\n\n📄 文件大小：{len(md_text)/1024:.0f} KB"
+            _export_result = f"✅ Markdown 已导出：{filepath}\n\n📄 文件大小：{len(md_text)/1024:.0f} KB"
 
         elif fmt == "bibtex":
             from hermes_cli.scholarforge.export.full import export_bibtex
@@ -1555,7 +1713,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.bib")
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(bib_text)
-            return f"✅ BibTeX 已导出：{filepath}\n\n📄 文件大小：{len(bib_text)/1024:.0f} KB"
+            _export_result = f"✅ BibTeX 已导出：{filepath}\n\n📄 文件大小：{len(bib_text)/1024:.0f} KB"
 
         else:
             return f"❌ 不支持的格式：{fmt}"
@@ -1563,6 +1721,15 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"export error: {e}", exc_info=True)
         return f"❌ 导出失败: {str(e)[:200]}"
+
+    # 导出成功 → 标记项目完成（fail-open）
+    if _export_result and project_id:
+        try:
+            from hermes_cli.scholarforge.project_context import mark_project_done
+            mark_project_done(project_id)
+        except Exception:
+            pass
+    return _export_result
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1591,6 +1758,11 @@ SCHOLARFORGE_VERIFY_CITATIONS_SCHEMA = {
                 "description": "是否启用在线验证（默认 true），关闭时仅做本地启发式检查",
                 "default": True,
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["papers"],
     },
@@ -1645,6 +1817,7 @@ def _parse_papers(raw: Any) -> list[dict]:
 async def _handle_scholarforge_verify_citations(args: dict, **kw: Any) -> str:
     """验证引用真实性"""
     papers_raw = args.get("papers", "")
+    project_id = args.get("project_id", 0)
     enable_online = args.get("enable_online", True)
     papers = _parse_papers(papers_raw)
 
@@ -1695,6 +1868,11 @@ SCHOLARFORGE_REVIEW_CLAIMS_SCHEMA = {
                 "description": "是否启用在线引用验证（默认 true），关闭时仅做本地启发式检查",
                 "default": True,
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["paper_text"],
     },
@@ -1704,6 +1882,7 @@ SCHOLARFORGE_REVIEW_CLAIMS_SCHEMA = {
 async def _handle_scholarforge_review_claims(args: dict, **kw: Any) -> str:
     """主张-证据审查流水线"""
     paper_text = args.get("paper_text", "")
+    project_id = args.get("project_id", 0)
     if not paper_text.strip():
         return "❌ 请提供论文文本。"
 
@@ -1747,6 +1926,11 @@ SCHOLARFORGE_RESEARCH_MAP_SCHEMA = {
                 "type": "string",
                 "description": "可选补充上下文（已有文献、方法、限制条件等）",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["topic"],
     },
@@ -1756,6 +1940,7 @@ SCHOLARFORGE_RESEARCH_MAP_SCHEMA = {
 async def _handle_scholarforge_research_map(args: dict, **kw: Any) -> str:
     """研究选题拆解"""
     topic = args.get("topic", "")
+    project_id = args.get("project_id", 0)
     if not topic.strip():
         return "❌ 请提供研究方向。"
 
@@ -1794,6 +1979,11 @@ SCHOLARFORGE_SAVE_CARDS_SCHEMA = {
                 "type": "integer",
                 "description": "最大沉淀数量，默认 10",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
     },
 }
@@ -1802,6 +1992,7 @@ SCHOLARFORGE_SAVE_CARDS_SCHEMA = {
 async def _handle_scholarforge_save_cards(args: dict, **kw: Any) -> str:
     """文献知识沉淀"""
     query = args.get("query", "")
+    project_id = args.get("project_id", 0)
     papers_json = args.get("papers", "")
     limit = args.get("limit", 10)
 
@@ -1856,7 +2047,80 @@ SCHOLARFORGE_MATRIX_SCHEMA = {
                 "type": "integer",
                 "description": "最多返回条数，默认 30",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
+    },
+}
+
+
+SCHOLARFORGE_MANAGE_SNAPSHOTS_SCHEMA = {
+    "name": "scholarforge_manage_snapshots",
+    "description": (
+        "管理论文项目版本快照：创建快照、列出快照、恢复快照、删除快照。"
+        "适用于：写论文前创建安全回滚点、恢复到之前版本、查看历史版本。"
+        "action: create=创建快照, list=列出快照, restore=恢复快照, get=查看快照详情, delete=删除快照。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "description": "操作: create/list/restore/get/delete",
+            },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID（create/list 必填）",
+            },
+            "snapshot_id": {
+                "type": "integer",
+                "description": "快照 ID（restore/get/delete 必填）",
+            },
+            "label": {
+                "type": "string",
+                "description": "快照标签（create 可选，如'大纲定稿'）",
+            },
+            "note": {
+                "type": "string",
+                "description": "快照备注（create 可选）",
+            },
+        },
+        "required": ["action"],
+    },
+}
+
+
+SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA = {
+    "name": "scholarforge_apply_template",
+    "description": (
+        "论文模板管理：列出预设模板、获取模板详情、从模板创建项目、从已有项目导出模板。"
+        "适用于：快速开始新论文、标准化论文结构、导师模板复用。"
+        "action: list=列出预设模板, get=获取模板详情, create=从模板创建项目, export=从项目导出模板。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "description": "操作: list/get/create/export",
+            },
+            "template_key": {
+                "type": "string",
+                "description": "模板标识（list/get/create 使用，如 cs_undergraduate）",
+            },
+            "title": {
+                "type": "string",
+                "description": "新项目标题（create 必填）",
+            },
+            "project_id": {
+                "type": "integer",
+                "description": "已有项目 ID（export 使用）",
+            },
+        },
+        "required": ["action"],
     },
 }
 
@@ -1864,6 +2128,7 @@ SCHOLARFORGE_MATRIX_SCHEMA = {
 async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     """综述矩阵"""
     topic = args.get("topic", "")
+    project_id = args.get("project_id", 0)
     tag = args.get("tag", "")
     limit = args.get("limit", 30)
 
@@ -1873,6 +2138,260 @@ async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"literature_matrix error: {e}", exc_info=True)
         return f"❌ 生成综述矩阵失败: {str(e)[:200]}"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Tool: Manage Snapshots (Phase 2 — 版本快照)
+# ──────────────────────────────────────────────────────────────────────────
+
+async def _handle_scholarforge_manage_snapshots(args: dict, **kw: Any) -> str:
+    """管理论文项目版本快照。"""
+    action = args.get("action", "list")
+    project_id = args.get("project_id", 0)
+    snapshot_id = args.get("snapshot_id", 0)
+    label = args.get("label", "")
+    note = args.get("note", "")
+
+    try:
+        from hermes_cli.scholarforge.project_context import (
+            auto_snapshot,
+            restore_snapshot,
+            list_snapshots,
+            get_snapshot_detail,
+            delete_snapshot,
+        )
+
+        if action == "create":
+            if not project_id:
+                return "❌ 创建快照需要 project_id"
+            sid = auto_snapshot(project_id, label=label, note=note)
+            if sid:
+                return f"✅ 快照已创建\n\n快照 ID: {sid}\n标签: {label or '(无)'}\n备注: {note or '(无)'}\n\n可在未来使用 action=restore + snapshot_id={sid} 恢复到此版本。"
+            return f"❌ 创建快照失败（项目 {project_id} 可能不存在）"
+
+        elif action == "list":
+            if not project_id:
+                return "❌ 列出快照需要 project_id"
+            snaps = list_snapshots(project_id)
+            if not snaps:
+                return f"项目 {project_id} 暂无快照。\n\n使用 action=create 创建快照。"
+            lines = [f"## 📸 项目 {project_id} 的快照列表\n"]
+            for s in snaps:
+                import time as _t
+                ts = _t.strftime("%Y-%m-%d %H:%M", _t.localtime(s["created_at"]))
+                size_kb = (s.get("size", 0) or 0) / 1024
+                sid_val = s["id"]
+                label_val = s["label"] or "(无标签)"
+                note_val = s.get("note", "")
+                lines.append(f"  #{sid_val} [{ts}] {label_val} ({size_kb:.1f}KB)")
+                if note_val:
+                    lines.append(f"    备注: {note_val}")
+            lines.append(f"\n共 {len(snaps)} 个快照。")
+            return "\n".join(lines)
+
+        elif action == "restore":
+            if not snapshot_id:
+                return "❌ 恢复快照需要 snapshot_id"
+            result = restore_snapshot(snapshot_id)
+            err = result.get("error")
+            if err:
+                return f"❌ 恢复失败: {err}"
+            pid_r = result.get("project_id")
+            sid_r = result.get("snapshot_id")
+            label_r = result.get("label")
+            outline_n = result.get("outline_sections", 0)
+            content_n = result.get("content_sections", 0)
+            return (
+                f"✅ 快照已恢复\n\n"
+                f"项目 ID: {pid_r}\n"
+                f"快照 ID: {sid_r}\n"
+                f"标签: {label_r}\n"
+                f"大纲节数: {outline_n}\n"
+                f"章节数: {content_n}\n\n"
+                f"⚠️ 当前项目状态已被覆盖。如需撤销，可使用原快照 ID 重新恢复。"
+            )
+
+        elif action == "get":
+            if not snapshot_id:
+                return "❌ 查看快照需要 snapshot_id"
+            snap = get_snapshot_detail(snapshot_id)
+            err = snap.get("error")
+            if err:
+                return f"❌ {err}"
+            import time as _t
+            ts = _t.strftime("%Y-%m-%d %H:%M", _t.localtime(snap.get("created_at", 0)))
+            snap_id = snap["id"]
+            snap_pid = snap.get("project_id", "?")
+            snap_label = snap.get("label", "")
+            snap_note = snap.get("note", "")
+            lines = [
+                f"## 📸 快照 #{snap_id}\n",
+                f"项目 ID: {snap_pid}",
+                f"标签: {snap_label}",
+                f"备注: {snap_note}",
+                f"创建时间: {ts}",
+            ]
+            payload = snap.get("payload", {})
+            if payload:
+                p_title = payload.get("title", "")
+                p_type = payload.get("paper_type", "")
+                lines.append(f"\n项目标题: {p_title}")
+                lines.append(f"论文类型: {p_type}")
+                outline = payload.get("outline", [])
+                if outline:
+                    lines.append("\n大纲:")
+                    for s in outline:
+                        s_num = s.get("section_number", "")
+                        s_title = s.get("section_title", "")
+                        lines.append(f"  {s_num} {s_title}")
+                contents = payload.get("contents", {})
+                if contents:
+                    lines.append(f"\n章节内容: {len(contents)} 段")
+                    for key, content in contents.items():
+                        preview = (content or "")[:100]
+                        cl = len(content or "")
+                        lines.append(f"  {key} ({cl} 字): {preview}...")
+            return "\n".join(lines)
+
+        elif action == "delete":
+            if not snapshot_id:
+                return "❌ 删除快照需要 snapshot_id"
+            ok = delete_snapshot(snapshot_id)
+            if ok:
+                return f"✅ 快照 {snapshot_id} 已删除。"
+            return f"❌ 删除失败"
+
+        else:
+            return f"❌ 未知操作: {action}\n\n支持: create/list/restore/get/delete"
+
+    except Exception as e:
+        logger.error(f"manage_snapshots error: {e}", exc_info=True)
+        return f"❌ 快照操作失败: {str(e)[:200]}"
+
+
+# ────────────────────────────────────────────────────────────────────
+# Tool: Apply Template (Phase 4 — 模板导入)
+# ────────────────────────────────────────────────────────────────────
+
+async def _handle_scholarforge_apply_template(args: dict, **kw: Any) -> str:
+    """论文模板管理。"""
+    action = args.get("action", "list")
+    template_key = args.get("template_key", "")
+    title = args.get("title", "")
+    project_id = args.get("project_id", 0)
+
+    try:
+        from hermes_cli.scholarforge.project_templates import (
+            list_builtin_templates,
+            get_builtin_template,
+            export_project_as_template,
+            create_project_from_template,
+        )
+
+        if action == "list":
+            templates = list_builtin_templates()
+            if not templates:
+                return "暂无预设模板。"
+            lines = ["## 📋 预设论文模板\n"]
+            for t in templates:
+                tk = t["key"]
+                tn = t["name"]
+                tpt = t["paper_type"]
+                ts = t["sections"]
+                tw = t["target_words"]
+                lines.append(
+                    f"  `{tk}` — {tn}"
+                    f"（{tpt}，{ts} 章节，目标 {tw} 字）"
+                )
+            lines.append("\n使用 action=create + template_key 创建项目。")
+            return "\n".join(lines)
+
+        elif action == "get":
+            if not template_key:
+                return "❌ 需要 template_key 参数"
+            t = get_builtin_template(template_key)
+            if not t:
+                return f"❌ 模板 {template_key} 不存在"
+            t_name = t["name"]
+            t_type = t["paper_type"]
+            t_words = t["target_words"]
+            t_style = t["citation_style"]
+            t_outline = t["outline"]
+            n_out = len(t_outline)
+            lines = [
+                f"## 📋 模板: {t_name}\n",
+                f"论文类型: {t_type}",
+                f"目标字数: {t_words}",
+                f"引用格式: {t_style}",
+                f"\n大纲 ({n_out} 章节):",
+            ]
+            for s in t_outline:
+                wc = s.get("wordCount", 0)
+                wc_str = f" ({wc} 字)" if wc else ""
+                s_num = s.get("number", "")
+                s_title = s.get("title", "")
+                lines.append(f"  {s_num} {s_title}{wc_str}")
+            return "\n".join(lines)
+
+        elif action == "create":
+            if not template_key:
+                return "❌ 需要 template_key 参数"
+            if not title:
+                return "❌ 需要 title 参数（新项目标题）"
+            t = get_builtin_template(template_key)
+            if not t:
+                return f"❌ 模板 {template_key} 不存在"
+            result = create_project_from_template(t, title)
+            err = result.get("error")
+            if err:
+                return f"❌ 创建失败: {err}"
+            pid = result.get("id", "?")
+            n_sections = len(result.get("outline", []))
+            t_name = t["name"]
+            t_type = t["paper_type"]
+            t_words = t["target_words"]
+            return (
+                f"✅ 项目已创建\n\n"
+                f"项目 ID: {pid}\n"
+                f"标题: {title}\n"
+                f"模板: {t_name}\n"
+                f"大纲: {n_sections} 章节\n"
+                f"论文类型: {t_type}\n"
+                f"目标字数: {t_words} 字\n"
+            )
+
+        elif action == "export":
+            if not project_id:
+                return "❌ 需要 project_id 参数"
+            template = export_project_as_template(project_id)
+            err = template.get("error")
+            if err:
+                return f"❌ 导出失败: {err}"
+            tp_name = template["name"]
+            tp_type = template["paper_type"]
+            tp_words = template["target_words"]
+            tp_outline = template["outline"]
+            n_tp = len(tp_outline)
+            lines = [
+                f"## 📋 模板已导出\n",
+                f"名称: {tp_name}",
+                f"论文类型: {tp_type}",
+                f"目标字数: {tp_words}",
+                f"大纲: {n_tp} 章节",
+            ]
+            for s in tp_outline:
+                s_num = s.get("number", "")
+                s_title = s.get("title", "")
+                lines.append(f"  {s_num} {s_title}")
+            lines.append("\n可使用此模板创建新项目。")
+            return "\n".join(lines)
+
+        else:
+            return f"❌ 未知操作: {action}\n\n支持: list/get/create/export"
+
+    except Exception as e:
+        logger.error(f"apply_template error: {e}", exc_info=True)
+        return f"❌ 模板操作失败: {str(e)[:200]}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1899,6 +2418,11 @@ SCHOLARFORGE_CHECK_STATS_SCHEMA = {
             "n_group2": {"type": "integer", "description": "组2样本量"},
             "mean_diff": {"type": "number", "description": "均值差"},
             "pooled_sd": {"type": "number", "description": "合并标准差"},
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": [],
     },
@@ -1958,6 +2482,11 @@ SCHOLARFORGE_DETECT_DESIGN_FLAWS_SCHEMA = {
             "scale_validated": {"type": "boolean", "description": "量表是否经过完整心理测量学验证"},
             "sample_source": {"type": "string", "description": "样本来源，如 '单一机构'、'多机构'"},
             "sample_size": {"type": "integer", "description": "总样本量"},
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["paper_text"],
     },
@@ -1967,6 +2496,7 @@ SCHOLARFORGE_DETECT_DESIGN_FLAWS_SCHEMA = {
 async def _handle_scholarforge_detect_design_flaws(args: dict, **kw: Any) -> str:
     """研究设计缺陷检测"""
     paper_text = args.get("paper_text", "")
+    project_id = args.get("project_id", 0)
 
     if not paper_text.strip():
         return "❌ 请提供论文文本。"
@@ -2012,6 +2542,11 @@ SCHOLARFORGE_FORMAT_REFS_SCHEMA = {
                 "enum": ["gbt7714", "apa7"],
                 "default": "gbt7714",
             },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
+            },
+
         },
         "required": ["papers"],
     },
@@ -2022,6 +2557,7 @@ async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
     """格式化参考文献"""
     import json as json_mod
 
+    project_id = args.get("project_id", 0)
     papers_raw = args.get("papers", "")
     style = args.get("style", "gbt7714")
 
@@ -2253,4 +2789,22 @@ def register_tools(host_api=None):
         emoji="📊",
         description="综述矩阵（已沉淀卡片→按方法/数据/发现分列+gap 提示）",
     )
-    logger.info("[ScholarForge] 18 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix")
+    registry.register(
+        name="scholarforge_manage_snapshots",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_MANAGE_SNAPSHOTS_SCHEMA,
+        handler=_handle_scholarforge_manage_snapshots,
+        is_async=True,
+        emoji="📸",
+        description="版本快照管理（创建/列出/恢复/查看/删除）",
+    )
+    registry.register(
+        name="scholarforge_apply_template",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA,
+        handler=_handle_scholarforge_apply_template,
+        is_async=True,
+        emoji="📋",
+        description="论文模板管理（预设/导出/创建）",
+    )
+    logger.info("[ScholarForge] 21 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template")

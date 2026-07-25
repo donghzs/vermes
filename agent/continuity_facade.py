@@ -208,6 +208,20 @@ def load_continuity_context(
         logger.warning("Continuity facade: reflection flags source failed: %s", e)
         ctx.sources_failed.append("reflection_flags")
 
+    # 7. Project handoffs (Phase 5 — 通用跨域项目状态)
+    #    Read from agent-layer project_handoffs table; any domain
+    #    (paper/screenplay/novel/shortdrama) can emit via record_project_handoff().
+    try:
+        from agent.project_handoff import format_handoffs_prompt
+        block = format_handoffs_prompt()
+        if block:
+            ctx.handoff_block = (ctx.handoff_block or "") + "\n" + block
+            ctx.sources_loaded.append("project_handoff")
+            logger.debug("Continuity facade: loaded project handoffs")
+    except Exception as e:
+        logger.warning("Continuity facade: project handoff source failed: %s", e)
+        ctx.sources_failed.append("project_handoff")
+
     if ctx.is_empty:
         logger.debug("Continuity facade: cold start (no blocks)")
     else:
