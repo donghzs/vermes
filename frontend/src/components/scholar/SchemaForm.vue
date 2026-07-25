@@ -15,6 +15,8 @@ import { useScholarStore } from '../../stores/scholar'
 
 const props = defineProps({
   schema: { type: Object, required: true },
+  // 预填值（Uploader 导入文本 → 注入指定字段）。键为字段名，值为原始值。
+  initialValues: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['submit'])
 
@@ -27,23 +29,38 @@ const propEntries = computed(() => Object.entries(properties.value).filter(([k])
 const form = reactive({})
 const error = ref('')
 
+function defaultFor(k, v) {
+  if (v.default !== undefined) {
+    if (v.type === 'object') return JSON.stringify(v.default, null, 2)
+    if (v.type === 'array') return Array.isArray(v.default) ? v.default.join('\n') : ''
+    return v.default
+  }
+  if (v.type === 'boolean') return false
+  if (v.type === 'integer' || v.type === 'number') return (v.minimum !== undefined ? v.minimum : '')
+  return ''
+}
+
 function initForm() {
   // 清空并依据 schema 初始化默认值
   for (const k of Object.keys(form)) delete form[k]
   for (const [k, v] of Object.entries(properties.value)) {
     if (k === 'project_id') continue
-    if (v.default !== undefined) {
-      // object/array 默认值序列化为文本供编辑
-      if (v.type === 'object') form[k] = JSON.stringify(v.default, null, 2)
-      else if (v.type === 'array') form[k] = Array.isArray(v.default) ? v.default.join('\n') : ''
-      else form[k] = v.default
-    }
-    else if (v.type === 'boolean') form[k] = false
-    else if (v.type === 'integer' || v.type === 'number') form[k] = (v.minimum !== undefined ? v.minimum : '')
-    else form[k] = ''
+    form[k] = defaultFor(k, v)
+  }
+  // 应用预填（Uploader）。按字段类型把原始值转成表单文本形态。
+  for (const [k, raw] of Object.entries(props.initialValues || {})) {
+    if (k === 'project_id' || !(k in properties.value)) continue
+    const t = properties.value[k]?.type
+    if (t === 'array') form[k] = Array.isArray(raw) ? raw.join('\n') : String(raw || '')
+    else if (t === 'object') form[k] = typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2)
+    else if (t === 'boolean') form[k] = !!raw
+    else if (t === 'integer' || t === 'number') form[k] = raw === '' || raw == null ? '' : Number(raw)
+    else form[k] = String(raw ?? '')
   }
 }
 watch(() => props.schema, initForm, { immediate: true })
+// Uploader 切换预填目标时重新初始化（会覆盖上一轮用户编辑，符合「导入即替换」语义）
+watch(() => props.initialValues, initForm)
 
 function fieldType(v) {
   if (v.enum) return 'enum'

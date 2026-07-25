@@ -1,10 +1,13 @@
 <script setup>
 // 工具箱：P0c-2 全量接入 22 个 scholarforge 工具，按功能分组展示。
 // 点卡片 → SchemaForm 填参 → invokeTool → ToolResult 列表（最新在上）。
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useScholarStore } from '../../stores/scholar'
 import { invokeTool } from '../../utils/invokeTool'
 import SchemaForm from './SchemaForm.vue'
 import ToolResult from './ToolResult.vue'
+
+const scholar = useScholarStore()
 
 // 分组定义（组内顺序即展示顺序；未列出的新工具自动落「其他」组，前端免改）
 const TOOL_GROUPS = [
@@ -58,6 +61,7 @@ const results = ref([])
 const loading = ref(false)
 const loadError = ref('')
 const filter = ref('')
+const prefillValues = ref({})
 
 onMounted(async () => {
   try {
@@ -69,6 +73,19 @@ onMounted(async () => {
     loadError.value = `工具清单加载失败：${e.message}`
   }
 })
+
+// FlowGuide / Uploader 跨组件协调：选中指定工具并（可选）预填字段
+watch(
+  () => scholar.pendingTool,
+  (name) => {
+    if (!name) return
+    const t = tools.value.find((x) => x.name === name)
+    if (t) selected.value = t
+    const pf = scholar.pendingPrefill
+    prefillValues.value = pf ? { [pf.field]: pf.value } : {}
+    scholar.clearPending()
+  },
+)
 
 // 分组 + 过滤后的展示结构；后端新增而未入组的工具落「其他」
 const groupedTools = computed(() => {
@@ -181,7 +198,7 @@ async function runTool(args) {
           取消
         </button>
       </div>
-      <SchemaForm :schema="selected.schema" @submit="runTool" />
+      <SchemaForm :schema="selected.schema" :initial-values="prefillValues" @submit="runTool" />
     </div>
 
     <!-- 结果列表 -->

@@ -13,6 +13,29 @@ export const useScholarStore = defineStore('scholar', () => {
   const projects = ref([])
   const projectsLoaded = ref(false)
 
+  // 跨子组件协调：FlowGuide / Uploader 触发工具箱动作时统一经此。
+  const activeTab = ref('tools') // 'tools' | 'projects' | 'quality' | 'guide'
+  const pendingTool = ref(null) // FlowGuide 点「执行」→ ToolBox 选中该工具
+  const pendingPrefill = ref(null) // Uploader 导入 → { tool, field, value }
+
+  // FlowGuide：跳到工具箱并选中指定工具
+  function runToolInBox(toolName) {
+    pendingTool.value = toolName
+    activeTab.value = 'tools'
+  }
+
+  // Uploader：跳到工具箱、选中工具并预填某字段（如上传 PDF 的文献文本喂给 review.draft）
+  function prefillTool(toolName, field, value) {
+    pendingPrefill.value = { tool: toolName, field, value }
+    pendingTool.value = toolName
+    activeTab.value = 'tools'
+  }
+
+  function clearPending() {
+    pendingTool.value = null
+    pendingPrefill.value = null
+  }
+
   async function loadProjects() {
     try {
       const resp = await fetch('/api/scholar/projects')
@@ -71,6 +94,12 @@ export const useScholarStore = defineStore('scholar', () => {
     currentProjectId,
     projects,
     projectsLoaded,
+    activeTab,
+    pendingTool,
+    pendingPrefill,
+    runToolInBox,
+    prefillTool,
+    clearPending,
     loadProjects,
     createProject,
     removeProject,

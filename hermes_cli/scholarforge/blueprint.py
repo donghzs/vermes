@@ -354,6 +354,35 @@ def register_to(app, host_api=None):
         return {"tools": tools}
 
     # ═══════════════════════════════════════════════════════════════
+    # 质量报告 — QualityView 读取/保存 section_quality 表
+    # ═══════════════════════════════════════════════════════════════
+
+    @app.get("/api/scholar/quality")
+    async def api_list_quality(project_id: int = 0):
+        """列出某项目的全部质量报告（按检查时间倒序）。
+
+        数据来自 section_quality 表（写回闸门 flag 模式落库 + 前端手动全量检查落库）。
+        """
+        from .quality_gate import list_quality_reports
+
+        if not project_id:
+            return {"reports": []}
+        return {"reports": list_quality_reports(project_id)}
+
+    @app.post("/api/scholar/quality")
+    async def api_save_quality(req: dict):
+        """显式保存一份质量报告（前端手动触发 scholarforge_quality_gate 后落库）。"""
+        from .quality_gate import save_quality_report
+
+        project_id = req.get("project_id")
+        section_key = req.get("section_key", "") or ""
+        report = req.get("report", "")
+        if not project_id:
+            raise HTTPException(400, "project_id 必填")
+        save_quality_report(project_id, section_key, report)
+        return {"saved": True}
+
+    # ═══════════════════════════════════════════════════════════════
     # 项目管理 — 每个论文项目独立的工作空间
     # ═══════════════════════════════════════════════════════════════
 

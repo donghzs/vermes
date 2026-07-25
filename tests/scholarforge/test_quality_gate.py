@@ -201,6 +201,52 @@ class TestExplicitQualityGate:
         assert isinstance(report, str)
 
 
+class TestQualityReportPersistence:
+    """section_quality 报告持久化（P0c-3 QualityView 后端）。"""
+
+    def test_save_and_list_reports(self, isolated_db, sample_project):
+        """保存报告后可按项目列出，倒序排列，空 section_key 归入 __full__。"""
+        from hermes_cli.scholarforge.quality_gate import (
+            save_quality_report,
+            list_quality_reports,
+        )
+
+        save_quality_report(sample_project, "introduction", "## 引言质量报告\n无问题")
+        save_quality_report(sample_project, "", "## 全量检查\n引用真实性 OK")
+        save_quality_report(sample_project, "method", "## 方法质量报告\nP0 缺陷提示")
+
+        reports = list_quality_reports(sample_project)
+        assert len(reports) == 3
+        keys = [r["section_key"] for r in reports]
+        assert "__full__" in keys
+        assert "introduction" in keys
+        assert "method" in keys
+        # 倒序：最后写的 method 应排最前
+        assert reports[0]["section_key"] == "method"
+        # 报告内容齐全
+        assert any("P0 缺陷提示" in r["report"] for r in reports)
+        assert any("引用真实性 OK" in r["report"] for r in reports)
+
+    def test_list_empty_for_unknown_project(self, isolated_db):
+        """未知项目返回空列表，不抛异常。"""
+        from hermes_cli.scholarforge.quality_gate import list_quality_reports
+
+        assert list_quality_reports(999999) == []
+
+    def test_upsert_overwrites_same_section(self, isolated_db, sample_project):
+        """同 project+section_key 保存两次，列表仍只 1 条（upsert）。"""
+        from hermes_cli.scholarforge.quality_gate import (
+            save_quality_report,
+            list_quality_reports,
+        )
+
+        save_quality_report(sample_project, "introduction", "v1")
+        save_quality_report(sample_project, "introduction", "v2")
+        reports = list_quality_reports(sample_project)
+        assert len(reports) == 1
+        assert reports[0]["report"] == "v2"
+
+
 class TestQualityGateIntegration:
     """写回闸门集成测试（通过 tools.py handler）"""
 
