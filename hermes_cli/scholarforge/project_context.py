@@ -366,3 +366,35 @@ def delete_snapshot(snapshot_id: int) -> bool:
     except Exception as e:
         logger.warning("delete_snapshot(%s) failed: %s", snapshot_id, e)
         return False
+
+
+def mark_project_done(project_id: int) -> None:
+    """标记论文项目完成 — 发射 status=done 到 agent 通用 handoff 层。
+
+    在导出/收尾动作成功后调用。fail-open。
+    """
+    if not project_id or project_id <= 0:
+        return
+    try:
+        from agent.project_handoff import record_project_handoff
+        from hermes_cli.scholarforge.database import get_project as _get_proj
+        proj = _get_proj(project_id) or {}
+        outline = proj.get("outline", [])
+        section_count = len(outline)
+        total_words = sum(s.get("word_count", 0) for s in outline)
+        lit_count = proj.get("literature_count", 0)
+        record_project_handoff(
+            domain="paper",
+            project_id=project_id,
+            title=proj.get("title", ""),
+            status="done",
+            progress=f"已完成：{section_count} 章 / {total_words} 字 / {lit_count} 文献",
+            last_section=proj.get("last_section_key") or "",
+            extra={
+                "paper_type": proj.get("paper_type", ""),
+                "target_words": proj.get("target_words", 0),
+            },
+        )
+        logger.info("mark_project_done(%s): emitted status=done", project_id)
+    except Exception as e:
+        logger.warning("mark_project_done(%s) failed: %s", project_id, e)

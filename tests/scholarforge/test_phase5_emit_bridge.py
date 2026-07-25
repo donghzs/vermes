@@ -154,3 +154,47 @@ class TestEndToEndInjection:
         ctx = load_continuity_context("你好")
 
         assert "project_handoff" not in ctx.sources_failed
+
+
+class TestMarkDone:
+    """验证导出后 status=done，项目不再出现在活跃列表。"""
+
+    def test_mark_done_removes_from_active(self, isolated_env):
+        """mark_project_done 后项目不在 get_active_handoffs 中。"""
+        sfdb = isolated_env["sfdb"]
+        ph = isolated_env["ph"]
+
+        pid = _create_project(sfdb, title="已完成的论文", paper_type="本科论文")
+
+        from hermes_cli.scholarforge.project_context import auto_snapshot, mark_project_done
+        auto_snapshot(pid, label="write:conclusion")
+        assert len(ph.get_active_handoffs()) == 1
+
+        mark_project_done(pid)
+
+        # status=done 的项目不在活跃列表
+        active = ph.get_active_handoffs()
+        assert len(active) == 0
+
+    def test_mark_done_after_export(self, isolated_env):
+        """导出操作触发 mark_project_done（端到端）。"""
+        sfdb = isolated_env["sfdb"]
+        ph = isolated_env["ph"]
+
+        pid = _create_project(sfdb, title="导出测试论文", paper_type="本科论文")
+
+        from hermes_cli.scholarforge.project_context import auto_snapshot
+        auto_snapshot(pid, label="write:final")
+        assert len(ph.get_active_handoffs()) == 1
+
+        # 模拟导出 handler 调用 mark_project_done
+        from hermes_cli.scholarforge.project_context import mark_project_done
+        mark_project_done(pid)
+
+        # 导出后不在活跃列表
+        assert len(ph.get_active_handoffs()) == 0
+
+        # 但 facade 不会报错
+        from agent.continuity_facade import load_continuity_context
+        ctx = load_continuity_context("继续写论文")
+        assert "project_handoff" not in ctx.sources_failed

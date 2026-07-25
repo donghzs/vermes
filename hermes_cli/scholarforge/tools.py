@@ -1635,7 +1635,7 @@ SCHOLARFORGE_EXPORT_SCHEMA = {
 
 
 async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
-    """导出论文"""
+    """导出论文（导出成功后标记项目完成）。"""
     title = args.get("title", "")
     project_id = args.get("project_id", 0)
     content = args.get("content", "")
@@ -1645,6 +1645,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
     if not title.strip() or not content.strip():
         return "❌ 请提供论文标题和正文。"
 
+    _export_result = ""
     try:
         import os
         import tempfile
@@ -1680,7 +1681,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.docx")
             with open(filepath, "wb") as f:
                 f.write(data)
-            return f"✅ Word 文档已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB\n💡 可用 WPS 或 Microsoft Word 打开编辑。"
+            _export_result = f"✅ Word 文档已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB\n💡 可用 WPS 或 Microsoft Word 打开编辑。"
 
         elif fmt == "pdf":
             from hermes_cli.scholarforge.export.full import export_pdf
@@ -1688,7 +1689,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.pdf")
             with open(filepath, "wb") as f:
                 f.write(data)
-            return f"✅ PDF 已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB"
+            _export_result = f"✅ PDF 已导出：{filepath}\n\n📄 文件大小：{len(data)/1024:.0f} KB"
 
         elif fmt == "latex":
             from hermes_cli.scholarforge.export.full import export_latex
@@ -1696,7 +1697,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.tex")
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(latex_text)
-            return f"✅ LaTeX 已导出：{filepath}\n\n📄 文件大小：{len(latex_text)/1024:.0f} KB"
+            _export_result = f"✅ LaTeX 已导出：{filepath}\n\n📄 文件大小：{len(latex_text)/1024:.0f} KB"
 
         elif fmt == "markdown":
             from hermes_cli.scholarforge.export.full import export_markdown
@@ -1704,7 +1705,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.md")
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(md_text)
-            return f"✅ Markdown 已导出：{filepath}\n\n📄 文件大小：{len(md_text)/1024:.0f} KB"
+            _export_result = f"✅ Markdown 已导出：{filepath}\n\n📄 文件大小：{len(md_text)/1024:.0f} KB"
 
         elif fmt == "bibtex":
             from hermes_cli.scholarforge.export.full import export_bibtex
@@ -1712,7 +1713,7 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             filepath = os.path.join(export_path, f"{safe_title}.bib")
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(bib_text)
-            return f"✅ BibTeX 已导出：{filepath}\n\n📄 文件大小：{len(bib_text)/1024:.0f} KB"
+            _export_result = f"✅ BibTeX 已导出：{filepath}\n\n📄 文件大小：{len(bib_text)/1024:.0f} KB"
 
         else:
             return f"❌ 不支持的格式：{fmt}"
@@ -1720,6 +1721,15 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
     except Exception as e:
         logger.error(f"export error: {e}", exc_info=True)
         return f"❌ 导出失败: {str(e)[:200]}"
+
+    # 导出成功 → 标记项目完成（fail-open）
+    if _export_result and project_id:
+        try:
+            from hermes_cli.scholarforge.project_context import mark_project_done
+            mark_project_done(project_id)
+        except Exception:
+            pass
+    return _export_result
 
 
 # ──────────────────────────────────────────────────────────────
