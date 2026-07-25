@@ -267,6 +267,9 @@ class ChatCompletionsTransport(ProviderTransport):
             if is_moonshot_model(model):
                 tools = sanitize_moonshot_tools(tools)
             api_kwargs["tools"] = tools
+            # Explicitly set tool_choice="auto" — see profile path for rationale.
+            if "tool_choice" not in api_kwargs:
+                api_kwargs["tool_choice"] = "auto"
 
         # max_tokens resolution — priority: ephemeral > user > provider default
         max_tokens_fn = params.get("max_tokens_param_fn")
@@ -455,6 +458,12 @@ class ChatCompletionsTransport(ProviderTransport):
             if is_moonshot_model(model):
                 tools = sanitize_moonshot_tools(tools)
             api_kwargs["tools"] = tools
+            # Explicitly set tool_choice="auto" so providers know tools are
+            # available and should be used. Some providers (e.g. DeepSeek in
+            # thinking mode) default to not calling tools when tool_choice is
+            # omitted, even though OpenAI spec says the default is "auto".
+            if "tool_choice" not in api_kwargs:
+                api_kwargs["tool_choice"] = "auto"
 
         # max_tokens resolution — priority: ephemeral > user > profile default
         max_tokens_fn = params.get("max_tokens_param_fn")
