@@ -153,6 +153,30 @@ def save_section(project_id: int, section_key: str, content: str) -> bool:
         return False
 
 
+def save_style_profile(project_id: int, style_prompt: str) -> bool:
+    """写回 learn_style 提取的写作风格指令到 projects.style_prompt。
+
+    后续 scholarforge_write 会读取该字段并注入 prompt，实现"自动仿写用户风格"。
+    fail-open：无 project_id 或写失败均返回 False，不阻断工具执行。
+    """
+    if not project_id or project_id <= 0 or not style_prompt:
+        return False
+    try:
+        from hermes_cli.scholarforge.database import update_project
+        return update_project(project_id, style_prompt=style_prompt)
+    except Exception as e:
+        logger.warning("save_style_profile(%s) failed: %s", project_id, e)
+        return False
+
+
+def get_style_prompt(project_id: int) -> str:
+    """读取项目已学习的写作风格指令；无则返回空字符串。"""
+    proj = load_project_context(project_id)
+    if not proj:
+        return ""
+    return proj.get("style_prompt", "") or ""
+
+
 def save_outline(project_id: int, sections: list[dict]) -> bool:
     """写回大纲到 outlines 表。"""
     if not project_id or project_id <= 0 or not sections:

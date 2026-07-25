@@ -853,6 +853,109 @@ def detect_design_flaws(
     return flaws
 
 
+async def detect_design_flaws_llm(
+    paper_text: str,
+    design_info: dict | None = None,
+    call_llm=None,
+) -> list[DesignFlaw]:
+    """学科无关的研究设计缺陷检测（LLM 语义分析）。
+
+    同步的 detect_design_flaws 硬编码了教育/心理学关键词（"户外/建构/幼儿园/教师自评"
+    等），传入其他学科（医学、工程、经济、计算机…）时几乎恒返回空结果——"名不副实"。
+    本函数改用 LLM 做语义级设计审查，覆盖任意学科，作为启发式的兜底与补充。
+
+    Args:
+        paper_text: 论文全文
+        design_info: 可选结构化设计信息（会作为提示附加给 LLM）
+        call_llm: async(prompt, system) -> str 的 LLM 调用函数（由调用方注入，
+                  避免 validators ← tools 循环导入）。为 None 时直接返回空列表。
+    Returns:
+        DesignFlaw 列表（LLM 无法解析时 fail-open 返回空）
+    """
+    if not paper_text or not paper_text.strip() or call_llm is None:
+        return []
+
+    import json as _json
+
+    design_hint = ""
+    if design_info:
+        try:
+            design_hint = "\n【已知设计信息】\n" + _json.dumps(design_info, ensure_ascii=False)
+        except Exception:
+            design_hint = ""
+
+    system = (
+        "你是严谨的科研方法学审稿人，精通各学科（自然科学/工程/医学/社会科学/人文）的"
+        "研究设计。请只输出 JSON，不要任何解释性文字。"
+    )
+    prompt = f"""请审查以下论文的研究设计，找出方法学缺陷。适用于任意学科，不要假设是教育学。
+
+关注但不限于：变量混淆/未分离、缺对照或对照不当、非随机分配导致的选择偏差、
+样本代表性与样本量、测量工具的信效度、评估者/实验者偏差、追踪或随访周期、
+统计检验力、可重复性、伦理与数据可得性等。
+
+请按严重程度分级：P0（致命，结论不可信）、P1（重要，需补充数据或讨论）、P2（建议优化）。
+
+严格输出如下 JSON（flaws 可为空数组）：
+{{"flaws": [{{"severity": "P0|P1|P2", "category": "缺陷类别", "description": "问题描述", "evidence": "论文中的依据或缺失点", "suggestion": "改进建议"}}]}}
+{design_hint}
+
+论文全文：
+{paper_text[:10000]}"""
+
+    try:
+        raw = await call_llm(prompt, system)
+    except Exception as e:
+        logger.warning("detect_design_flaws_llm call failed: %s", e)
+        return []
+
+    if not raw or raw.startswith("❌"):
+        return []
+
+    # 容错解析：剥离 ```json 围栏、截取首个 { 到末个 }
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+    lb, rb = text.find("{"), text.rfind("}")
+    if lb >= 0 and rb > lb:
+        text = text[lb:rb + 1]
+
+    flaws: list[DesignFlaw] = []
+    try:
+        data = _json.loads(text)
+        for item in data.get("flaws", []):
+            sev = str(item.get("severity", "P2")).upper()
+            if sev not in ("P0", "P1", "P2"):
+                sev = "P2"
+            flaws.append(DesignFlaw(
+                severity=sev,
+                category=str(item.get("category", "设计问题"))[:80],
+                description=str(item.get("description", ""))[:500],
+                evidence=str(item.get("evidence", ""))[:500],
+                suggestion=str(item.get("suggestion", ""))[:500],
+            ))
+    except Exception as e:
+        logger.warning("detect_design_flaws_llm parse failed: %s | raw=%s", e, raw[:200])
+        return []
+
+    return flaws
+
+
+def _dedup_flaws(flaws: list[DesignFlaw]) -> list[DesignFlaw]:
+    """按 (category, description 前 40 字) 去重，合并启发式与 LLM 双路结果。"""
+    seen: set[tuple[str, str]] = set()
+    out: list[DesignFlaw] = []
+    for f in flaws:
+        key = (f.category.strip(), f.description.strip()[:40])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(f)
+    return out
+
+
 def format_design_report(flaws: list[DesignFlaw]) -> str:
     """格式化研究设计缺陷报告"""
     if not flaws:

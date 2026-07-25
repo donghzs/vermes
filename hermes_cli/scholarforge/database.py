@@ -164,6 +164,12 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        # style_prompt column: learn_style 提取的写作风格指令，write 时自动注入
+        try:
+            conn.execute("ALTER TABLE projects ADD COLUMN style_prompt TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
         # outlines.updated_at column (used by save_outline)
         try:
             conn.execute("ALTER TABLE outlines ADD COLUMN updated_at INTEGER DEFAULT 0")
@@ -445,7 +451,7 @@ def get_project(pid: int) -> Optional[Dict[str, Any]]:
 
 def update_project(pid: int, **kwargs) -> bool:
     init_db()
-    allowed = {"title", "paper_type", "target_words", "current_model", "last_section_key", "citation_style"}
+    allowed = {"title", "paper_type", "target_words", "current_model", "last_section_key", "citation_style", "style_prompt"}
     fields = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
     if not fields:
         return False
