@@ -100,7 +100,12 @@ SCHOLARFORGE_WRITE_SCHEMA = {
                 "type": "integer",
                 "description": "论文项目 ID。指定后工具会自动加载该项目上下文（标题/大纲/已有章节/文献），结果自动写回项目库。",
             },
-
+            "quality_gate": {
+                "type": "string",
+                "description": "质量护栏模式：off(仅AIGC+查重) | flag(默认，写回+报告) | block(P0缺陷拒绝写回)",
+                "enum": ["off", "flag", "block"],
+                "default": "flag",
+            },
         },
         "required": ["topic", "section_type"],
     },
@@ -446,22 +451,23 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 
     content = await _call_llm(prompt, system_prompt)
 
-    # 写回项目 DB
+    # ── 质量护栏前移：写回闸门 ────────────────────────
+    quality_gate_mode = args.get("quality_gate", "flag")
+    gate_report = ""
+
     if project_id and content and not content.startswith("❌"):
-        from hermes_cli.scholarforge.project_context import save_section
-        save_section(project_id, section_type, content)
+        from hermes_cli.scholarforge.quality_gate import run_quality_gate
+        content, gate_report, blocked = run_quality_gate(
+            project_id, section_type, content, mode=quality_gate_mode, stage="write",
+        )
+        if not blocked:
+            from hermes_cli.scholarforge.project_context import save_section
+            save_section(project_id, section_type, content)
+        else:
+            return f"🚫 质量闸门拦截（mode=block）：检测到 P0 级严重问题，已拒绝写回。\n\n---\n\n{gate_report}\n\n---\n\n请根据报告修改后重新提交。"
 
-    # ── Write 后质量门控: 自动 De-AIGC ─────────────────────
-    try:
-        from hermes_cli.scholarforge.plagcheck import check_aigc, apply_deaigc_suggestions
-        _aigc = check_aigc(content)
-        if _aigc.get("aigc_score", 0) > 0.4:
-            _cleaned = apply_deaigc_suggestions(content)
-            if _cleaned != content:
-                content = _cleaned
-    except Exception:
-        pass
-
+    if gate_report:
+        return f"{content}\n\n---\n\n{gate_report}"
     return content
 
 
@@ -988,6 +994,15 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
             f"{ref['title']}. {ref['venue']}."
         )
 
+    # ── 质量护栏：引用解析后闸门 ────────────────────────
+    citation_gate_report = ""
+    if ref_list:
+        try:
+            from hermes_cli.scholarforge.quality_gate import run_citation_gate
+            citation_gate_report, _ = await run_citation_gate(ref_list, mode="flag")
+        except Exception as e:
+            logger.debug(f"citation gate failed: {e}")
+
     replaced = len(num_to_ref)
     unreplaced = len(failed)
 
@@ -1003,6 +1018,9 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
 
     if verify_report:
         report_lines.append(verify_report)
+
+    if citation_gate_report:
+        report_lines.append(f"\n---\n\n{citation_gate_report}")
 
     report_lines.append(f"\n---\n\n## 📄 处理后正文\n\n{result_draft}")
     report_lines.append("\n".join(ref_lines))
@@ -2612,6 +2630,68 @@ async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
         return f"❌ 格式化失败: {str(e)[:200]}"
 
 
+# ──────────────────────────────────────────────────────────────
+# 质量护栏显式工具
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_QUALITY_GATE_SCHEMA = {
+    "name": "scholarforge_quality_gate",
+    "description": (
+        "显式全量质量检查。对已写回的章/全文运行引用真实性+统计一致性+设计缺陷检测。"
+        "适用于：投稿前最终质检、章写完后深度检查、用户主动要求质量审查。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。",
+            },
+            "section_key": {
+                "type": "string",
+                "description": "指定章/节（如 'introduction'），不传则检查全项目。",
+            },
+            "stats": {
+                "type": "object",
+                "description": "统计指标字典（如 {eta_squared: 0.05, cohens_d: 0.3}），用于统计一致性校验。",
+            },
+            "paper_text": {
+                "type": "string",
+                "description": "论文全文（不传则从项目 DB 读取）。",
+            },
+            "design_info": {
+                "type": "object",
+                "description": "结构化设计信息（如 {design: 'between-subjects', control_group: true}）。",
+            },
+        },
+        "required": ["project_id"],
+    },
+}
+
+
+async def _handle_scholarforge_quality_gate(args: dict, **kw: Any) -> str:
+    """显式全量质量检查"""
+    from hermes_cli.scholarforge.quality_gate import run_full_quality_gate
+
+    project_id = args.get("project_id", 0)
+    if not project_id:
+        return "❌ 请提供 project_id。"
+
+    try:
+        report = await run_full_quality_gate(
+            project_id=project_id,
+            section_key=args.get("section_key"),
+            papers=None,  # 从 DB 读
+            stats=args.get("stats"),
+            paper_text=args.get("paper_text", ""),
+            design_info=args.get("design_info"),
+        )
+        return report or "✅ 未发现质量问题。"
+    except Exception as e:
+        logger.error(f"quality_gate error: {e}", exc_info=True)
+        return f"❌ 质量检查失败: {str(e)[:200]}"
+
+
 def register_tools(host_api=None):
     """Register all ScholarForge tools in the global registry.
 
@@ -2807,4 +2887,13 @@ def register_tools(host_api=None):
         emoji="📋",
         description="论文模板管理（预设/导出/创建）",
     )
-    logger.info("[ScholarForge] 21 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template")
+    registry.register(
+        name="scholarforge_quality_gate",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_QUALITY_GATE_SCHEMA,
+        handler=_handle_scholarforge_quality_gate,
+        is_async=True,
+        emoji="🛡️",
+        description="显式全量质量检查（引用真实性+统计一致性+设计缺陷，可选在线验证）",
+    )
+    logger.info("[ScholarForge] 22 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate")

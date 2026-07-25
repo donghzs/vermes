@@ -213,6 +213,20 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_card_source ON literature_cards(source)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_card_title ON literature_cards(title)")
 
+        # 质量护栏报告表（写回闸门产出）
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS section_quality (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                section_key TEXT NOT NULL,
+                report TEXT NOT NULL,
+                checked_at INTEGER NOT NULL,
+                UNIQUE(project_id, section_key),
+                FOREIGN KEY(project_id) REFERENCES projects(id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sq_project ON section_quality(project_id)")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Project CRUD
