@@ -1,19 +1,55 @@
 <script setup>
-// 工具箱：P0c-1 接入 5 个高频工具，构成「文献→大纲→写作→评分→查重」链路。
-//   search → outline → write → score → plagiarism_check
+// 工具箱：P0c-2 全量接入 22 个 scholarforge 工具，按功能分组展示。
 // 点卡片 → SchemaForm 填参 → invokeTool → ToolResult 列表（最新在上）。
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { invokeTool } from '../../utils/invokeTool'
 import SchemaForm from './SchemaForm.vue'
 import ToolResult from './ToolResult.vue'
 
-// P0c-1 锁定的 5 个工具（决策 #2：export 依赖 pandoc，MVP 易卡，故换为 outline）
-const P0C1_TOOLS = [
-  'scholarforge_search',
-  'scholarforge_outline',
-  'scholarforge_write',
-  'scholarforge_score',
-  'scholarforge_plagiarism_check',
+// 分组定义（组内顺序即展示顺序；未列出的新工具自动落「其他」组，前端免改）
+const TOOL_GROUPS = [
+  {
+    label: '✍️ 写作主链',
+    names: [
+      'scholarforge_search',
+      'scholarforge_outline',
+      'scholarforge_write',
+      'scholarforge_polish',
+      'scholarforge_score',
+    ],
+  },
+  {
+    label: '📚 引用与文献',
+    names: [
+      'scholarforge_replace_citations',
+      'scholarforge_format_refs',
+      'scholarforge_verify_citations',
+      'scholarforge_save_literature_cards',
+      'scholarforge_literature_matrix',
+      'scholarforge_research_map',
+    ],
+  },
+  {
+    label: '🛡️ 质量检查',
+    names: [
+      'scholarforge_plagiarism_check',
+      'scholarforge_deaigc',
+      'scholarforge_quality_gate',
+      'scholarforge_check_stats',
+      'scholarforge_detect_design_flaws',
+      'scholarforge_review_claims',
+      'scholarforge_review',
+    ],
+  },
+  {
+    label: '🗂️ 项目与导出',
+    names: [
+      'scholarforge_export',
+      'scholarforge_manage_snapshots',
+      'scholarforge_apply_template',
+      'scholarforge_learn_style',
+    ],
+  },
 ]
 
 const tools = ref([])
@@ -21,19 +57,41 @@ const selected = ref(null)
 const results = ref([])
 const loading = ref(false)
 const loadError = ref('')
+const filter = ref('')
 
 onMounted(async () => {
   try {
     const resp = await fetch('/api/scholar/tools')
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const data = await resp.json()
-    const all = data.tools || []
-    tools.value = P0C1_TOOLS
-      .map((name) => all.find((t) => t.name === name))
-      .filter(Boolean)
+    tools.value = data.tools || []
   } catch (e) {
     loadError.value = `工具清单加载失败：${e.message}`
   }
+})
+
+// 分组 + 过滤后的展示结构；后端新增而未入组的工具落「其他」
+const groupedTools = computed(() => {
+  const byName = new Map(tools.value.map((t) => [t.name, t]))
+  const seen = new Set()
+  const kw = filter.value.trim().toLowerCase()
+  const match = (t) =>
+    !kw ||
+    t.name.toLowerCase().includes(kw) ||
+    (t.description || '').toLowerCase().includes(kw)
+
+  const groups = TOOL_GROUPS.map((g) => {
+    const items = g.names
+      .map((n) => {
+        seen.add(n)
+        return byName.get(n)
+      })
+      .filter((t) => t && match(t))
+    return { label: g.label, items }
+  })
+  const rest = tools.value.filter((t) => !seen.has(t.name) && match(t))
+  if (rest.length) groups.push({ label: '🧩 其他', items: rest })
+  return groups.filter((g) => g.items.length)
 })
 
 async function runTool(args) {
@@ -76,20 +134,38 @@ async function runTool(args) {
 
     <p v-if="loadError" class="text-sm text-red-500">{{ loadError }}</p>
 
-    <!-- 工具卡片网格 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      <button
-        v-for="t in tools"
-        :key="t.name"
-        @click="selected = t"
-        class="text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 hover:border-blue-400 hover:shadow-sm transition"
-      >
-        <div class="flex items-center gap-2">
-          <span class="text-lg">{{ t.emoji || '🔧' }}</span>
-          <span class="text-sm font-medium">{{ t.name.replace('scholarforge_', '') }}</span>
-        </div>
-        <p class="mt-1 text-xs text-gray-400 leading-snug line-clamp-2">{{ t.description }}</p>
-      </button>
+    <!-- 搜索过滤 -->
+    <input
+      v-model="filter"
+      type="text"
+      placeholder="🔍 搜索工具（名称或描述）"
+      class="w-full sm:w-72 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+    />
+
+    <!-- 分组工具卡片 -->
+    <div v-for="g in groupedTools" :key="g.label" class="space-y-2">
+      <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+        {{ g.label }}
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <button
+          v-for="t in g.items"
+          :key="t.name"
+          @click="selected = t"
+          :class="[
+            'text-left rounded-lg border p-3 hover:border-blue-400 hover:shadow-sm transition',
+            selected && selected.name === t.name
+              ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/20'
+              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800',
+          ]"
+        >
+          <div class="flex items-center gap-2">
+            <span class="text-lg">{{ t.emoji || '🔧' }}</span>
+            <span class="text-sm font-medium">{{ t.name.replace('scholarforge_', '') }}</span>
+          </div>
+          <p class="mt-1 text-xs text-gray-400 leading-snug line-clamp-2">{{ t.description }}</p>
+        </button>
+      </div>
     </div>
 
     <!-- 选中工具的参数表单 -->
