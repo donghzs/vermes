@@ -921,6 +921,18 @@ async def chat_completions(req: ChatRequest):
     _cache_key = f"{provider}:{model}:{_session_id}"
     agent = _agent_cache.get(_cache_key)
 
+    # ── 联网搜索开关：ephemeral 提示，每次请求都按当前 req.web_search 重算 ──
+    # 提到 if 外：保证缓存复用时开关变更即时生效（此前只在建 agent 时注入，
+    # 复用后 req.web_search 改动不生效）。
+    _search_prompt = ""
+    if req.web_search:
+        _search_prompt = (
+            "【联网搜索已开启】用户希望获取最新信息。"
+            "当问题涉及时事、最新数据、实时信息或你不确定的事实时，"
+            "请主动使用 web_search 工具搜索互联网获取准确信息，"
+            "并引用来源。对于常识性问题无需搜索。"
+        )
+
     if agent is None:
         # ── 跨会话涌现：注入进化上下文 + 行为引导（提炼至 evolution_manager）──
             _evo_prompt = ""
@@ -956,15 +968,6 @@ async def chat_completions(req: ChatRequest):
             except Exception:
                 pass
 
-            # ── 联网搜索开关：注入 ephemeral 提示 ──
-            _search_prompt = ""
-            if req.web_search:
-                _search_prompt = (
-                    "【联网搜索已开启】用户希望获取最新信息。"
-                    "当问题涉及时事、最新数据、实时信息或你不确定的事实时，"
-                    "请主动使用 web_search 工具搜索互联网获取准确信息，"
-                    "并引用来源。对于常识性问题无需搜索。"
-                )
             _combined_prompt = (_evo_prompt + "\n" + _search_prompt).strip() or None
 
             agent = AIAgent(
@@ -981,10 +984,32 @@ async def chat_completions(req: ChatRequest):
                 ephemeral_system_prompt=_combined_prompt,
                 reasoning_config=_reasoning_config,
             )
+            # 记录进化基线提示，供缓存复用时与最新联网开关重组 ephemeral prompt。
+            agent._evo_base_prompt = _evo_prompt
+            _n_tools = len(getattr(agent, "tools", None) or [])
+            # 空工具 agent 不会被缓存（agent_cache.put 内部拒绝），下次请求重建。
             _agent_cache.put(_cache_key, agent)
-            _log.info(f"[Agent] Created new agent for session {_session_id}")
+            if _n_tools == 0:
+                _log.warning(
+                    f"[Agent] Created agent with 0 tools for session {_session_id} "
+                    f"— tool registry may be cold; this request cannot use tools, "
+                    f"next request will rebuild (not cached)."
+                )
+            else:
+                _log.info(
+                    f"[Agent] Created new agent for session {_session_id} (tools={_n_tools})"
+                )
     else:
-        _log.info(f"[Agent] Reusing cached agent for session {_session_id}")
+        _log.info(
+            f"[Agent] Reusing cached agent for session {_session_id} "
+            f"(tools={len(getattr(agent, 'tools', None) or [])})"
+        )
+
+    # ── ephemeral prompt 刷新：无论新建或复用，都用当前 req.web_search 重组 ──
+    # 保证同一会话中途切换联网开关即时生效（复用路径此前完全失效）。
+    if agent is not None:
+        _evo_base = getattr(agent, "_evo_base_prompt", "") or ""
+        agent.ephemeral_system_prompt = (_evo_base + "\n" + _search_prompt).strip() or None
 
     if agent:
         from tools.approval import enable_session_yolo, set_current_session_key, register_gateway_notify, unregister_gateway_notify
@@ -1624,8 +1649,12 @@ async def agent_run(req: AgentRunRequest):
                 ephemeral_system_prompt=_evo_prompt or None,
                 reasoning_config=_reasoning_config,
             )
+    # 空工具 agent 不会被缓存（agent_cache.put 内部拒绝）。
     _agent_cache.put(_cache_key, agent)
-    _log.info(f"[Agent] Created API agent for session {req.session_id}")
+    _log.info(
+        f"[Agent] Created API agent for session {req.session_id} "
+        f"(tools={len(getattr(agent, 'tools', None) or [])})"
+    )
 
     # Apply max_tokens from config
     try:

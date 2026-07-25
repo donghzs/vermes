@@ -13,6 +13,14 @@ from collections import OrderedDict
 _log = logging.getLogger(__name__)
 
 
+def _agent_has_tools(agent) -> bool:
+    """agent 是否携带非空工具集。防御式：任何异常都返回 False，绝不抛。"""
+    try:
+        return bool(getattr(agent, "tools", None))
+    except Exception:
+        return False
+
+
 class _AgentCache:
     """LRU Agent 缓存，超限淘汰最久未用。线程安全。"""
     def __init__(self, maxsize: int = 20):
@@ -24,18 +32,42 @@ class _AgentCache:
             'hits': 0,
             'misses': 0,
             'evictions': 0,
+            'rejected_empty': 0,   # put 时因空工具被拒绝的次数
+            'self_healed': 0,      # get 时命中空工具 agent 被自愈剔除的次数
         }
 
     def get(self, key: str):
         with self._lock:
             if key in self._cache:
+                agent = self._cache[key]
+                # 自愈：命中但工具为空（历史遗留缓存 / 工具被清空）→ 视作 miss，
+                # 剔除后让调用方重建，避免整个会话卡在"无工具→直接 LLM 回复"状态。
+                if not _agent_has_tools(agent):
+                    del self._cache[key]
+                    self.metrics['self_healed'] += 1
+                    self.metrics['misses'] += 1
+                    _log.warning(
+                        f"[Agent] Self-heal: evicted empty-tools cached agent for {key} "
+                        f"(will rebuild)"
+                    )
+                    return None
                 self._cache.move_to_end(key)
                 self.metrics['hits'] += 1
-                return self._cache[key]
+                return agent
             self.metrics['misses'] += 1
         return None
 
     def put(self, key: str, agent):
+        # 空工具 agent 绝不缓存：否则整个 session 会持续复用一个无工具的 agent，
+        # 表现为"直接 LLM 回复、不走 agent"。拒绝缓存 → 下次请求 get miss → 重建重试。
+        if not _agent_has_tools(agent):
+            with self._lock:
+                self.metrics['rejected_empty'] += 1
+            _log.warning(
+                f"[Agent] Refusing to cache empty-tools agent for {key} "
+                f"(len(tools)={len(getattr(agent, 'tools', None) or [])}); will rebuild next request"
+            )
+            return
         with self._lock:
             self._cache[key] = agent
             self._cache.move_to_end(key)
