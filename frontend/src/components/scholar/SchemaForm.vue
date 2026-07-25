@@ -4,7 +4,7 @@
 // 决策 #5（用户 2026-07-25 评审）：
 //  - P0c-1 支持 string / integer / boolean + enum（nested object 留 P0c-2）。
 //  - project_id 字段：从 useScholarStore.currentProjectId 自动填充，UI 不渲染输入框。
-import { reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useScholarStore } from '../../stores/scholar'
 
 const props = defineProps({
