@@ -4435,6 +4435,27 @@ def run_conversation(
                 # No tool calls - this is the final response
                 final_response = assistant_message.content or ""
 
+                # ── 诊断埋点：区分"直接 LLM 回复不走 agent"的两类根因 ──
+                # A = 工具压根没上（len(agent.tools)==0）；B = 有工具但模型未调用。
+                # api_call_count==1 且零 tool_call 即"首轮就收尾"（用户报告的核心症状）。
+                try:
+                    _n_tools = len(getattr(agent, "tools", None) or [])
+                    if api_call_count <= 1:
+                        _cause = "A:empty-tools" if _n_tools == 0 else "B:model-declined"
+                        logger.info(
+                            "[agent-exit] zero-tool-call final response on FIRST turn "
+                            "(cause=%s, tools=%d, resp_chars=%d)",
+                            _cause, _n_tools, len(final_response),
+                        )
+                    else:
+                        logger.debug(
+                            "[agent-exit] zero-tool-call final response after %d api calls "
+                            "(tools=%d)",
+                            api_call_count, _n_tools,
+                        )
+                except Exception:
+                    pass
+
                 # Fix: unmute output when entering the no-tool-call branch
                 # so the user can see empty-response warnings and recovery
                 # status messages.  _mute_post_response was set during a
