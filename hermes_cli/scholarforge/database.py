@@ -176,6 +176,22 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+        # ── 工具使用埋点（用户场景验证：真实使用数据驱动优先级）──
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS tool_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tool_name TEXT NOT NULL,
+                    ok INTEGER NOT NULL DEFAULT 1,
+                    duration_ms INTEGER DEFAULT 0,
+                    called_at INTEGER NOT NULL
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_tool ON tool_usage(tool_name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_time ON tool_usage(called_at)")
+        except sqlite3.OperationalError as e:
+            logger.warning(f"tool_usage table migration: {e}")
+
         # Collection/标签系统
         conn.execute("""
             CREATE TABLE IF NOT EXISTS literature_tags (
@@ -965,3 +981,39 @@ def create_project_snapshot(project_id: int, label: str = "", note: str = "") ->
     }
 
     return create_snapshot(project_id, label=label, note=note, data=data)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 工具使用埋点（用户场景验证：用真实使用数据驱动工具优先级）
+# ══════════════════════════════════════════════════════════════════
+
+def record_tool_usage(tool_name: str, ok: bool = True, duration_ms: int = 0) -> None:
+    """记录一次工具调用。失败静默（埋点绝不能影响工具本身）。"""
+    try:
+        init_db()
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO tool_usage (tool_name, ok, duration_ms, called_at) VALUES (?, ?, ?, ?)",
+                (tool_name, 1 if ok else 0, int(duration_ms), int(time.time())),
+            )
+    except Exception:
+        pass
+
+
+def get_tool_usage_stats(days: int = 30) -> List[Dict[str, Any]]:
+    """按工具聚合最近 N 天的使用统计（调用次数/成功率/平均耗时/最近使用）。"""
+    init_db()
+    since = int(time.time()) - days * 86400
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT tool_name,
+                   COUNT(*) AS calls,
+                   SUM(ok) AS successes,
+                   AVG(duration_ms) AS avg_ms,
+                   MAX(called_at) AS last_used
+            FROM tool_usage
+            WHERE called_at >= ?
+            GROUP BY tool_name
+            ORDER BY calls DESC
+        """, (since,)).fetchall()
+        return [dict(r) for r in rows]

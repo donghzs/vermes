@@ -98,6 +98,41 @@ def _normalize_stream_text(text) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+def _longest_common_ratio(a: str, b: str) -> float:
+    """计算两个字符串的最长公共子串占 b 的比例（0.0~1.0）。
+
+    用于判断 streamed_text 是否已覆盖 final_response 的大部分内容。
+    使用滑动窗口 + 二分搜索，O(n*m*log(min(n,m))) 复杂度。
+    """
+    if not b:
+        return 0.0
+    if not a:
+        return 0.0
+    if a == b:
+        return 1.0
+    # 限制搜索范围，避免超长文本卡顿
+    a, b = a[:5000], b[:5000]
+    m, n = len(a), len(b)
+    # 二分搜索最长公共子串长度
+    lo, hi = 0, min(m, n)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        # 检查是否存在长度为 mid 的公共子串
+        seen = set()
+        for i in range(m - mid + 1):
+            seen.add(a[i:i + mid])
+        found = False
+        for j in range(n - mid + 1):
+            if b[j:j + mid] in seen:
+                found = True
+                break
+        if found:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo / len(b) if b else 0.0
+
+
 def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
     """计算需要补发到 SSE 队列的「尾部差分」文本；已完整呈现则返回 None。
 
@@ -133,7 +168,24 @@ def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
     # 已呈现而漏发，重现空回复。除整段精确等于外一律补发（最多一条短重复）。
     if len(final_n) < 8:
         return final_n
-    # 长回答且无包含关系：整段补发（保持原行为）
+    # 长回答且无精确包含关系：检查重叠度。如果 streamed 已经覆盖了 final
+    # 的大部分内容，说明流式已经发过，差异可能是 scrubber 处理
+    # 导致的细微差异——不整段补发，避免重复输出。
+    overlap = _longest_common_ratio(streamed_n, final_n)
+    if overlap >= 0.8:
+        # 高重叠：内容几乎相同，差异可忽略，不补发
+        return None
+    if overlap >= 0.6:
+        # 中重叠：可能有尾部缺失，用 difflib 提取差分
+        import difflib
+        s = difflib.SequenceMatcher(None, streamed_n, final_n)
+        tail_parts = []
+        for tag, i1, i2, j1, j2 in s.get_opcodes():
+            if tag in ('insert', 'replace'):
+                tail_parts.append(final_n[j1:j2])
+        tail = ''.join(tail_parts).strip()
+        return tail or None
+    # 真正无包含关系（不同内容） → 整段补发（保持原行为，不丢内容）
     return final_n
 
 
