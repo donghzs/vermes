@@ -110,7 +110,11 @@ def _longest_common_ratio(a: str, b: str) -> float:
         return 0.0
     if a == b:
         return 1.0
-    # 限制搜索范围，避免超长文本卡顿
+    # 限制搜索范围，避免超长文本卡顿。
+    # 当 a 远长于 b 时，取 a 的尾部（b 长度的 1.5x）来比对，
+    # 因为 final_response 通常对应 streamed_text 的最后一段。
+    if len(a) > len(b) * 2:
+        a = a[-int(len(b) * 1.5):]
     a, b = a[:5000], b[:5000]
     m, n = len(a), len(b)
     # 二分搜索最长公共子串长度
@@ -179,26 +183,14 @@ def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
         tail_len = int(len(final_n) * 1.5)
         streamed_tail = streamed_n[-tail_len:]
         tail_overlap = _longest_common_ratio(streamed_tail, final_n)
-        if tail_overlap >= 0.7:
+        if tail_overlap >= 0.5:
             # 尾部高重叠：最终回复已通过流式发出，不补发
             return None
-        if tail_overlap >= 0.5:
-            # 尾部中等重叠：可能有细微差异（标点/空白），提取差分补发
-            import difflib
-            s = difflib.SequenceMatcher(None, streamed_tail, final_n)
-            tail_parts = []
-            for tag, i1, i2, j1, j2 in s.get_opcodes():
-                if tag in ('insert', 'replace'):
-                    tail_parts.append(final_n[j1:j2])
-            tail = ''.join(tail_parts).strip()
-            return tail or None
 
     overlap = _longest_common_ratio(streamed_n, final_n)
-    if overlap >= 0.8:
-        # 高重叠：内容几乎相同，差异可忽略，不补发
-        return None
-    if overlap >= 0.6:
-        # 中重叠：可能有尾部缺失，用 difflib 提取差分
+    if overlap >= 0.5:
+        # 中高重叠：内容已通过流式发出，差异可能是 scrubber/空白处理导致
+        # 不整段补发，只提取差分部分（如果有）
         import difflib
         s = difflib.SequenceMatcher(None, streamed_n, final_n)
         tail_parts = []
@@ -206,6 +198,9 @@ def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
             if tag in ('insert', 'replace'):
                 tail_parts.append(final_n[j1:j2])
         tail = ''.join(tail_parts).strip()
+        if len(tail) < len(final_n) * 0.3:
+            # 差分小于 final 30%，认为是噪声，不补发
+            return None
         return tail or None
     # 真正无包含关系（不同内容） → 整段补发（保持原行为，不丢内容）
     return final_n
@@ -1339,11 +1334,20 @@ async def chat_completions(req: ChatRequest):
                 # 将其补发入队，保证后端有答案时前端必能收到。
                 try:
                     _final = (result or {}).get("final_response") or ""
-                    _tail = _compute_final_fallback_tail(_final, "".join(_streamed_text_parts))
+                    _streamed_full = "".join(_streamed_text_parts)
+                    _tail = _compute_final_fallback_tail(_final, _streamed_full)
                     if _tail:
+                        _final_n = _normalize_stream_text(_final)
+                        _streamed_n = _normalize_stream_text(_streamed_full)
+                        _overlap = _longest_common_ratio(_streamed_n, _final_n)
                         _log.warning(
                             f"[Stream] Final response never streamed "
-                            f"({len(_final)} chars, emitting tail {len(_tail)} chars) - emitting fallback to SSE queue"
+                            f"({len(_final)} chars, emitting tail {len(_tail)} chars) "
+                            f"- emitting fallback to SSE queue "
+                            f"[overlap={_overlap:.2f} "
+                            f"final_n={len(_final_n)} streamed_n={len(_streamed_n)} "
+                            f"final_preview={repr(_final_n[:80])} "
+                            f"streamed_tail_preview={repr(_streamed_n[-80:])}]"
                         )
                         _safe_put(_tail)
                 except Exception as _fb_exc:
