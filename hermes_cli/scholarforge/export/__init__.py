@@ -2,6 +2,7 @@
 ScholarForge 导出模块 — Markdown + BibTeX + (未来) LaTeX/Word
 完全独立于 Vermes 核心
 """
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -172,3 +173,143 @@ def format_export_bibtex(papers: list) -> str:
         entries.append(entry)
 
     return "\n\n".join(entries)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Zotero CSL JSON 导出
+# ═══════════════════════════════════════════════════════════════════
+
+def _looks_like_given(s: str) -> bool:
+    """ initials（如 'J.' / 'J. K.'）视作 given，而非姓。"""
+    return bool(re.search(r'\.', s))
+
+
+def _split_authors(raw: str) -> list:
+    """把 'Smith, J., Lee, K.' / 'Smith, J. and Lee, K.' 拆成 [{family, given}]。
+
+    规则：
+      - 先用 ' and ' 切分多作者；
+      - 每个 chunk 用逗号切分，出现「Family, Given(含句点)」时两两配对。
+    """
+    if not raw:
+        return []
+    out = []
+    for chunk in re.split(r'\s+and\s+', raw, flags=re.IGNORECASE):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        parts = [p.strip() for p in chunk.split(",") if p.strip()]
+        if len(parts) == 1:
+            toks = parts[0].split()
+            if len(toks) == 1:
+                out.append({"family": toks[0], "given": ""})
+            else:
+                out.append({"family": toks[-1], "given": " ".join(toks[:-1])})
+            continue
+        i = 0
+        while i < len(parts):
+            family = parts[i]
+            given = ""
+            if i + 1 < len(parts) and _looks_like_given(parts[i + 1]):
+                given = parts[i + 1]
+                i += 2
+            else:
+                i += 1
+            out.append({"family": family, "given": given})
+    return out
+
+
+def _normalize_csl_authors(authors) -> list:
+    """兼容 authors 为 字符串 / 字符串列表 / {family,given} 字典列表 / ExportPaper 列表。"""
+    if not authors:
+        return []
+    if isinstance(authors, str):
+        return _split_authors(authors)
+    if isinstance(authors, list):
+        result = []
+        for a in authors:
+            if isinstance(a, str):
+                result.extend(_split_authors(a))
+            elif isinstance(a, dict):
+                result.append({
+                    "family": str(a.get("family", "") or ""),
+                    "given": str(a.get("given", "") or ""),
+                })
+            else:
+                fam = getattr(a, "family", "") or ""
+                giv = getattr(a, "given", "") or ""
+                if not fam and not giv:
+                    # ExportPaper 风格：authors 是字符串列表
+                    continue
+                result.append({"family": str(fam), "given": str(giv)})
+        return result
+    return []
+
+
+def parse_references_csl(ref_text: str) -> list:
+    """从参考文献区文本解析出结构化文献列表（供 CSL JSON 使用）。
+
+    支持常见 '[n] Author (Year). Title. Venue. DOI:...' 形式；
+    兼容中文逗号/「and」分隔的多作者；尽力抽取 year/doi。
+    不读 SQLite，仅基于传入文本。
+    """
+    papers = []
+    for m in re.finditer(r'\[(\d+)\]\s+(.+?)(?=\n\[|\n\n|$)', ref_text, re.DOTALL):
+        body = m.group(2).strip().replace("\n", " ")
+        ym = re.search(r'\((\d{4})\)', body)
+        year = ym.group(1) if ym else ""
+
+        am = re.match(r'^(.*?)\(\d{4}\)', body)
+        authors_raw = am.group(1).strip() if am else body.split(".")[0].strip()
+        authors = _split_authors(authors_raw)
+
+        rest = body[am.end():] if am else body
+        rest = rest.lstrip(". ").strip()
+        parts = re.split(r'\.\s+', rest, maxsplit=1)
+        title = parts[0].strip().rstrip(".").strip()
+        venue = parts[1].strip().rstrip(".").strip() if len(parts) > 1 else ""
+
+        doi = ""
+        dm = re.search(
+            r'(?i)doi[:\s]+([0-9.][^\s,;]*)|https?://(?:dx\.)?doi\.org/([^\s,;]+)',
+            venue or title,
+        )
+        if dm:
+            doi = (dm.group(1) or dm.group(2) or "").rstrip(").,")
+            venue = re.sub(r'(?i)\s*(doi[:\s]+[0-9.][^\s,;]*|https?://(?:dx\.)?doi\.org/[^\s,;]+)',
+                           '', venue).strip().rstrip(".").strip()
+        papers.append({
+            "title": title,
+            "authors": authors,
+            "year": year,
+            "venue": venue,
+            "doi": doi,
+        })
+    return papers
+
+
+def format_export_csl_json(papers: list) -> str:
+    """把文献列表转为 Zotero 兼容的 CSL JSON（数组）。"""
+    items = []
+    for i, p in enumerate(papers, 1):
+        title = p.get("title") if isinstance(p, dict) else getattr(p, "title", "")
+        authors = p.get("authors") if isinstance(p, dict) else getattr(p, "authors", [])
+        year = str(p.get("year") if isinstance(p, dict) else getattr(p, "year", "") or "")
+        venue = p.get("venue") if isinstance(p, dict) else getattr(p, "venue", "")
+        doi = p.get("doi") if isinstance(p, dict) else getattr(p, "doi", "")
+
+        item = {
+            "id": i,
+            "type": "article-journal",
+            "title": title or "",
+            "author": _normalize_csl_authors(authors),
+        }
+        if venue:
+            item["container-title"] = venue
+        if year.isdigit():
+            item["issued"] = {"date-parts": [[int(year)]]}
+        if doi:
+            item["DOI"] = doi
+            item["URL"] = f"https://doi.org/{doi}"
+        items.append(item)
+    return json.dumps(items, ensure_ascii=False, indent=2)

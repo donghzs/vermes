@@ -376,3 +376,9 @@ def export_markdown(title: str, content: str, papers: list, abstract: str = "") 
 def export_bibtex(papers: list) -> str:
     from . import format_export_bibtex
     return format_export_bibtex(papers)
+
+
+def export_csl_json(papers: list) -> str:
+    """导出 Zotero 兼容的 CSL JSON（不读 SQLite，仅基于传入文献列表）。"""
+    from . import format_export_csl_json
+    return format_export_csl_json(papers)

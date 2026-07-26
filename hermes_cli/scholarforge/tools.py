@@ -1879,8 +1879,9 @@ async def _handle_scholarforge_score(args: dict, **kw: Any) -> str:
 SCHOLARFORGE_EXPORT_SCHEMA = {
     "name": "scholarforge_export",
     "description": (
-        "导出论文为 Word/PDF/LaTeX/Markdown 格式。"
-        "适用于：论文定稿后导出到本地，在 WPS/Word/LaTeX 编辑器中进一步编辑。"
+        "导出论文为 Word/PDF/LaTeX/Markdown/BibTeX/Zotero(CSL JSON) 格式。"
+        "适用于：论文定稿后导出到本地，在 WPS/Word/LaTeX 编辑器中进一步编辑，"
+        "或导出 CSL JSON 直接导入 Zotero 文献库。"
     ),
     "parameters": {
         "type": "object",
@@ -1895,8 +1896,8 @@ SCHOLARFORGE_EXPORT_SCHEMA = {
             },
             "format": {
                 "type": "string",
-                "description": "导出格式",
-                "enum": ["docx", "pdf", "latex", "markdown", "bibtex"],
+                "description": "导出格式：docx/pdf/latex/markdown/bibtex/zotero（Zotero 用 CSL JSON，可直接导入文献库）",
+                "enum": ["docx", "pdf", "latex", "markdown", "bibtex", "zotero"],
                 "default": "docx",
             },
             "abstract": {
@@ -1994,6 +1995,25 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(bib_text)
             _export_result = f"✅ BibTeX 已导出：{filepath}\n\n📄 文件大小：{len(bib_text)/1024:.0f} KB"
+
+        elif fmt == "zotero":
+            # CSL JSON 直接从参考文献区解析（不读 SQLite），质量优于弱 parser 的 papers
+            csl_papers = []
+            if ref_section:
+                from hermes_cli.scholarforge.export import parse_references_csl
+
+                csl_papers = parse_references_csl(ref_section.group(1))
+            from hermes_cli.scholarforge.export.full import export_csl_json
+
+            csl_text = export_csl_json(csl_papers)
+            filepath = os.path.join(export_path, f"{safe_title}.json")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(csl_text)
+            _export_result = (
+                f"✅ Zotero CSL JSON 已导出：{filepath}\n\n"
+                f"📚 收录文献：{len(csl_papers)} 篇\n"
+                f"💡 可直接在 Zotero「文件 → 导入」该 JSON 入库"
+            )
 
         else:
             return f"❌ 不支持的格式：{fmt}"
