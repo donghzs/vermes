@@ -3013,6 +3013,120 @@ def _with_usage(name: str, handler):
     return wrapped
 
 
+# ──────────────────────────────────────────────────────────────
+# Tool: Citation Graph (一跳引用图谱)
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_CITATION_GRAPH_SCHEMA = {
+    "name": "scholarforge_citation_graph",
+    "description": (
+        "构建论文的一跳引用图谱：输入一篇论文的 DOI 或 Semantic Scholar 论文 ID，"
+        "返回它「被哪些论文引用」(citations)、「引用了哪些论文」(references)、"
+        "以及「Semantic Scholar 推荐的相似论文」(recommendations)。"
+        "适用于：开题找相关工作、梳理某领域的引文脉络、发现高影响力论文、"
+        "为文献综述补充候选文献。结果带本地缓存，避免触发 S2 限流。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "paper_id": {
+                "type": "string",
+                "description": "论文标识：DOI（如 10.1145/3292500.3330701）或 Semantic Scholar 论文 ID（40 位 hex）",
+            },
+            "kinds": {
+                "type": "array",
+                "description": "要获取的边类型，默认全部三类。可选子集：citations / references / recommendations",
+                "items": {
+                    "type": "string",
+                    "enum": ["citations", "references", "recommendations"],
+                },
+                "default": ["citations", "references", "recommendations"],
+            },
+            "limit": {
+                "type": "integer",
+                "description": "每类边最多返回条数，默认 50，最大 100",
+                "minimum": 1,
+                "maximum": 100,
+                "default": 50,
+            },
+            "use_cache": {
+                "type": "boolean",
+                "description": "是否使用本地缓存（默认 true，30 天内同论文直接命中缓存，避开 S2 限流）",
+                "default": True,
+            },
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID（可选）。仅用于上下文关联，不改变写回行为。",
+            },
+        },
+        "required": ["paper_id"],
+    },
+}
+
+
+async def _handle_scholarforge_citation_graph(args: dict, **kw: Any) -> str:
+    """构建一跳引用图谱（复用 S2 学术图谱 + 本地缓存）"""
+    paper_id = args.get("paper_id", "")
+    if not paper_id or not str(paper_id).strip():
+        return "❌ 请提供论文标识（DOI 或 Semantic Scholar 论文 ID）。"
+
+    kinds = args.get("kinds") or ["citations", "references", "recommendations"]
+    if isinstance(kinds, str):
+        kinds = [kinds]
+    limit = min(int(args.get("limit", 50) or 50), 100)
+    use_cache = args.get("use_cache", True)
+    if isinstance(use_cache, str):
+        use_cache = use_cache.lower() != "false"
+
+    try:
+        from hermes_cli.scholarforge.citation_graph import build_citation_graph
+
+        result = build_citation_graph(
+            paper_id, kinds=list(kinds), limit=limit, use_cache=use_cache
+        )
+    except Exception as e:
+        logger.error(f"citation_graph error: {e}", exc_info=True)
+        return f"❌ 引用图谱构建失败: {str(e)[:200]}"
+
+    if not result.get("success"):
+        err = result.get("error", "未知错误")
+        e2 = result.get("errors") or {}
+        if e2:
+            err += "（" + "; ".join(f"{k}: {v}" for k, v in e2.items()) + "）"
+        return f"❌ 引用图谱获取失败: {err}"
+
+    data = result["data"]
+    counts = result["counts"]
+    cache_tag = "（命中本地缓存）" if result.get("cache_hit") else ""
+    lines = [f"## 论文引用图谱: {paper_id}{cache_tag}", ""]
+    lines.append(
+        f"边统计：被引 **{counts['citations']}** · 引证 **{counts['references']}** · "
+        f"推荐 **{counts['recommendations']}** · 去重节点 **{result.get('node_count')}**"
+    )
+    lines.append("")
+
+    def _fmt_nodes(nodes, label):
+        nodes = nodes or []
+        lines.append(f"### {label}（{len(nodes)}）")
+        if not nodes:
+            lines.append("（无）")
+        for i, n in enumerate(nodes[:limit], 1):
+            authors = ", ".join((n.get("authors") or [])[:3])
+            if len(n.get("authors") or []) > 3:
+                authors += " et al."
+            cite = n.get("citationCount", 0)
+            doi = n.get("doi", "")
+            suffix = f" · 📎 {cite} 引用" + (f" · DOI:{doi}" if doi else "")
+            lines.append(f"**[{i}] {n.get('title', '')}**")
+            lines.append(f"  {authors} · {n.get('year', '')}{suffix}")
+        lines.append("")
+
+    _fmt_nodes(data.get("citations"), "被以下论文引用 (citations)")
+    _fmt_nodes(data.get("references"), "引用了以下论文 (references)")
+    _fmt_nodes(data.get("recommendations"), "Semantic Scholar 推荐 (recommendations)")
+    return "\n".join(lines)
+
+
 def register_tools(host_api=None):
     """Register all ScholarForge tools in the global registry.
 
@@ -3217,4 +3331,13 @@ def register_tools(host_api=None):
         emoji="🛡️",
         description="显式全量质量检查（引用真实性+统计一致性+设计缺陷，可选在线验证）",
     )
-    logger.info("[ScholarForge] 22 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate")
+    registry.register(
+        name="scholarforge_citation_graph",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_CITATION_GRAPH_SCHEMA,
+        handler=_with_usage("scholarforge_citation_graph", _handle_scholarforge_citation_graph),
+        is_async=True,
+        emoji="🕸️",
+        description="构建论文一跳引用图谱（被引/引证/推荐），复用 S2 学术图谱 + 本地缓存避限流",
+    )
+    logger.info("[ScholarForge] 23 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph")

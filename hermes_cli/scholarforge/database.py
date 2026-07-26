@@ -249,6 +249,14 @@ def init_db():
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sq_project ON section_quality(project_id)")
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS citation_graph_cache (
+                key TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                cached_at INTEGER NOT NULL
+            )
+        """)
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Project CRUD
@@ -1017,3 +1025,47 @@ def get_tool_usage_stats(days: int = 30) -> List[Dict[str, Any]]:
             ORDER BY calls DESC
         """, (since,)).fetchall()
         return [dict(r) for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 引用图谱缓存（避开 Semantic Scholar 严格限流）
+# ═══════════════════════════════════════════════════════════════════
+
+_CITATION_GRAPH_TTL = 30 * 24 * 3600  # 30 天
+
+
+def get_citation_graph_cache(key: str) -> Optional[Dict[str, Any]]:
+    """命中则返回缓存的引用图谱 payload；过期/缺失返回 None。"""
+    init_db()
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT payload, cached_at FROM citation_graph_cache WHERE key=?",
+                (key,),
+            ).fetchone()
+        if not row:
+            return None
+        if int(time.time()) - int(row["cached_at"]) > _CITATION_GRAPH_TTL:
+            return None
+        try:
+            return json.loads(row["payload"])
+        except (ValueError, TypeError):
+            return None
+    except Exception:
+        return None
+
+
+def set_citation_graph_cache(key: str, payload: Dict[str, Any]) -> None:
+    """写入（或刷新）引用图谱缓存。失败静默。"""
+    try:
+        init_db()
+        now = int(time.time())
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO citation_graph_cache(key, payload, cached_at) VALUES(?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET "
+                "payload=excluded.payload, cached_at=excluded.cached_at",
+                (key, json.dumps(payload, ensure_ascii=False), now),
+            )
+    except Exception:
+        pass
