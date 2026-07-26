@@ -207,3 +207,45 @@ class TestClaimAuditLazyImport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestContextvarStreamPropagation(unittest.IsolatedAsyncioTestCase):
+    """ScholarForge 工具 handler 通过 contextvar 获取 stream callback。"""
+
+    async def test_contextvar_set_get(self):
+        """set_stream_callback / get_stream_callback 基本可用。"""
+        from hermes_cli.scholarforge.tools import set_stream_callback, get_stream_callback
+        self.assertIsNone(get_stream_callback())
+        cb = lambda x: None
+        set_stream_callback(cb)
+        self.assertIs(get_stream_callback(), cb)
+        set_stream_callback(None)
+        self.assertIsNone(get_stream_callback())
+
+    async def test_write_handler_uses_contextvar(self):
+        """write handler 没传 stream_callback kw 时，从 contextvar 获取。"""
+        from hermes_cli.scholarforge import tools as T
+
+        chunks = []
+        def _cb(delta):
+            chunks.append(delta)
+
+        async def mock_stream(prompt, system=""):
+            yield "chunk1"
+            yield "chunk2"
+
+        T.set_stream_callback(_cb)
+        try:
+            with patch.object(T, "stream_call_llm", new=mock_stream), \
+                 patch.object(T, "_call_llm", new=AsyncMock(return_value="fallback")), \
+                 patch("hermes_cli.scholarforge.project_context.save_section", new=AsyncMock()):
+                # 不传 stream_callback kw，project_id=0 避免触发 DB
+                await T._handle_scholarforge_write({
+                    "project_id": 0,
+                    "section_type": "introduction",
+                    "instructions": "test",
+                })
+        finally:
+            T.set_stream_callback(None)
+
+        self.assertEqual(chunks, ["chunk1", "chunk2"])

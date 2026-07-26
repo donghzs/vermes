@@ -19,6 +19,20 @@ from tools.registry import registry
 
 logger = logging.getLogger("scholarforge.tools")
 
+# ── 流式回调 ContextVar ──
+# Agent 调用 ScholarForge 工具时，conversation_loop 通过 contextvars
+# 传播 stream delta callback，工具 handler 内部读取以实现逐 chunk 流式输出。
+import contextvars as _cv
+_stream_cb_var: _cv.ContextVar = _cv.ContextVar("_scholarforge_stream_cb", default=None)
+
+def set_stream_callback(cb):
+    """设置当前上下文的流式回调（由 conversation_loop 在工具执行前调用）。"""
+    _stream_cb_var.set(cb)
+
+def get_stream_callback():
+    """获取当前上下文的流式回调（工具 handler 内部调用）。"""
+    return _stream_cb_var.get()
+
 # ──────────────────────────────────────────────────────────────
 # Schema definitions
 # ──────────────────────────────────────────────────────────────
@@ -633,8 +647,8 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 请直接输出该章节的完整内容（Markdown 格式，{label} 用 ## 标记），
 引用文献时使用 [n] 标记（n为编号占位，用户后续会替换为真实文献）。"""
 
-    # 流式回调：如果调用方传入 stream_callback，则用 stream_call_llm 逐 chunk 回调
-    stream_cb = kw.get("stream_callback")
+    # 流式回调：优先从 kw 获取，退退从 contextvar 获取（Agent 调用链路）
+    stream_cb = kw.get("stream_callback") or get_stream_callback()
     if stream_cb and callable(stream_cb):
         parts: list[str] = []
         async for chunk in stream_call_llm(prompt, system_prompt):
@@ -1634,8 +1648,8 @@ async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
         if _pc:
             prompt += f"\n\n{_pc}"
 
-    # 流式回调：润色也是长文本生成，支持流式
-    stream_cb = kw.get("stream_callback")
+    # 流式回调：润色也是长文本生成，优先从 kw 获取，退退从 contextvar
+    stream_cb = kw.get("stream_callback") or get_stream_callback()
     if stream_cb and callable(stream_cb):
         parts: list[str] = []
         async for chunk in stream_call_llm(prompt, system_prompt):

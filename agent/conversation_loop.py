@@ -4349,7 +4349,24 @@ def run_conversation(
                     except Exception as e:
                         logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
+                # ── ScholarForge 流式传播 ──
+                # 将 agent.stream_delta_callback 注入 contextvar，
+                # 让 ScholarForge 工具 handler 内部能读取并逐 chunk 流式输出。
+                try:
+                    from hermes_cli.scholarforge.tools import set_stream_callback
+                    if agent.stream_delta_callback:
+                        set_stream_callback(agent.stream_delta_callback)
+                except Exception:
+                    pass
+
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
+
+                # ── 清理 ScholarForge 流式 contextvar ──
+                try:
+                    from hermes_cli.scholarforge.tools import set_stream_callback
+                    set_stream_callback(None)
+                except Exception:
+                    pass
 
                 if agent._tool_guardrail_halt_decision is not None:
                     decision = agent._tool_guardrail_halt_decision
