@@ -682,11 +682,30 @@ def detect_design_flaws(
     # ── 检测 1: 多要素未分离 ──
     elements = design_info.get("intervention_elements", [])
     if not elements:
-        # 从文本中推断
-        if "户外" in paper_text and "建构" in paper_text and "主题" in paper_text:
-            elements = ["户外", "主题建构"]
-        elif "户外" in paper_text and "游戏" in paper_text:
-            elements = ["户外", "游戏"]
+        # 从文本中通用推断干预要素（不再硬编码教育/心理学关键词）
+        # 策略：查找「包含/结合/整合 A 和 B」型列举
+        import re as _re
+        _element_patterns = [
+            # 中文「结合A和B」型列举，要素限2-8字
+            r'(?:包含|结合|整合|融合|采用)[了]?(?:了)?([\u4e00-\u9fff]{2,6}?)\s*(?:和|与|及)\s*([\u4e00-\u9fff]{2,6}?)(?:[，。；的]|两种|三种|等)',
+            # 英文 "combined A and B"
+            r'(?:combined|integrating|incorporating)\s+(\w+(?:\s+\w+)?)\s+and\s+(\w+(?:\s+\w+)?)',
+        ]
+        for pat in _element_patterns:
+            matches = _re.findall(pat, paper_text[:5000])
+            if matches:
+                elements = []
+                for m in matches[:2]:
+                    if isinstance(m, tuple):
+                        elements.extend([p.strip() for p in m])
+                    else:
+                        elements.append(m.strip())
+                break
+        # 退退：查找「A+B」型联合干预
+        if not elements:
+            combined = _re.findall(r'([\u4e00-\u9fff]{2,6})\s*\+\s*([\u4e00-\u9fff]{2,6})', paper_text[:5000])
+            if combined:
+                elements = [combined[0][0], combined[0][1]]
 
     n_groups = design_info.get("n_groups", 0)
     if not n_groups:
@@ -695,9 +714,10 @@ def detect_design_flaws(
             n_groups = 2
 
     if len(elements) >= 2 and n_groups <= 2:
-        # 检查是否设置了多水平对比组
+        # 检查是否设置了多水平对比组（通用关键词）
         has_multi_level = any(kw in paper_text for kw in
-                             ["多水平", "对比组", "不同强度", "自由建构组", "室内主题建构组"])
+                             ["多水平", "对比组", "不同强度", "不同剂量", "不同条件",
+                              "multi-level", "dose-response", "different intensity"])
         if not has_multi_level:
             flaws.append(DesignFlaw(
                 severity="P0",
@@ -706,9 +726,9 @@ def detect_design_flaws(
                     f"研究包含 {len(elements)} 个干预要素（{'/'.join(elements)}），"
                     f"但仅设置了 {n_groups} 组（实验组+对照组），无法分离各要素的独立贡献"
                 ),
-                evidence="未设置不同干预强度的对比组（如自由建构组、室内主题建构组）",
+                evidence="未设置不同干预强度的对比组",
                 suggestion=(
-                    "建议设置多水平实验条件（如：户外主题建构组 vs 室内主题建构组 vs 户外自由建构组），"
+                    "建议设置多水平实验条件（不同干预强度/单要素组），"
                     "以精确分离各要素的贡献。如无法增加组数，应在局限性中明确说明"
                 ),
             ))
@@ -716,11 +736,11 @@ def detect_design_flaws(
     # ── 检测 2: 评估者偏差 ──
     assessor = design_info.get("fidelity_assessor", "")
     if not assessor:
-        # 从文本推断
-        if "忠实度" in paper_text or "忠实性" in paper_text:
-            if any(kw in paper_text for kw in ["教师自评", "实施教师", "带班教师评估"]):
+        # 从文本中通用推断（不再硬编码教育场景）
+        if "忠实度" in paper_text or "忠实性" in paper_text or "fidelity" in text_lower:
+            if any(kw in paper_text for kw in ["自评", "自我评估", "实施者评估", "self-eval", "self-report"]):
                 assessor = "self"
-            elif "独立观察" in paper_text or "第三方评估" in paper_text:
+            elif any(kw in paper_text for kw in ["独立观察", "第三方评估", "independent observer", "third-party"]):
                 assessor = "independent"
 
     if assessor == "self":
@@ -736,13 +756,13 @@ def detect_design_flaws(
     sample_source = design_info.get("sample_source", "")
     sample_size = design_info.get("sample_size", 0)
     if not sample_source:
-        # 从文本推断
-        if "一所" in paper_text and ("幼儿园" in paper_text or "学校" in paper_text):
+        # 从文本中通用推断样本来源（不再硬编码幼儿园/学校）
+        if any(kw in paper_text for kw in ["一所", "单个", "一家", "某院", "single institution", "one hospital", "one school"]):
             sample_source = "单一机构"
-            # 提取样本量
-            size_match = re.search(r'(\d+)\s*(名|个|位).*(?:幼儿|儿童|学生|被试)', paper_text)
-            if size_match and not sample_size:
-                sample_size = int(size_match.group(1))
+        # 通用提取样本量：数字 + 量词 + 被试词
+        size_match = re.search(r'(\d+)\s*(名|个|位|例|名患者|名受试者).*(?:幼儿|儿童|学生|被试|患者|受试者|subject|patient|participant|sample)', paper_text, re.IGNORECASE)
+        if size_match and not sample_size:
+            sample_size = int(size_match.group(1))
 
     if sample_source == "单一机构" or (sample_size and sample_size < 100):
         flaws.append(DesignFlaw(

@@ -240,8 +240,8 @@ class TestDesignFlawDetection:
         assert len(p1) == 0
 
     def test_text_inference_multi_element(self):
-        """从文本自动推断多要素"""
-        paper = "实验组接受户外主题建构游戏干预，对照组进行常规活动。"
+        """从文本自动推断多要素（通用列举模式）"""
+        paper = "本研究结合了认知训练和有氧运动两种干预，实验组接受联合干预，对照组进行常规活动。"
         flaws = detect_design_flaws(paper)
         multi = [f for f in flaws if "多要素" in f.category]
         assert len(multi) >= 1
