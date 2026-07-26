@@ -54,7 +54,7 @@ async def save_cards(
         return {"added": 0, "skipped": 0, "total": 0}
 
     from hermes_cli.scholarforge.database import get_conn, init_db
-    from hermes_cli.scholarforge.tools import _call_llm
+    from hermes_cli.scholarforge.tools import _call_llm, ANALYSIS_MODEL
 
     # 1. 整批 LLM 抽取 7 字段
     papers_for_llm = []
@@ -67,7 +67,7 @@ async def save_cards(
     prompt = _PROMPT_TEMPLATE.format(papers_json=json.dumps(papers_for_llm, ensure_ascii=False, indent=2))
 
     try:
-        raw = await _call_llm(prompt, _SYS)
+        raw = await _call_llm(prompt, _SYS, temperature=0.2, model=ANALYSIS_MODEL)
     except Exception as e:
         logger.error("LLM call failed during save_cards: %s", e)
         raw = "[]"

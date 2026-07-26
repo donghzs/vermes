@@ -49,7 +49,7 @@ class TestLLMRerank(unittest.TestCase):
     def _run(self, candidates, llm_return):
         from hermes_cli.scholarforge.tools import llm_rerank
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             return llm_return
 
         async def go():
@@ -87,7 +87,7 @@ class TestLLMRerank(unittest.TestCase):
         c = _paper("Sleep C", abstract="partial")
         candidates = [a, b, c]
 
-        async def boom(prompt, system=""):
+        async def boom(prompt, system="", **kwargs):
             raise RuntimeError("llm down")
 
         async def go():
@@ -127,7 +127,7 @@ class TestForceResarchOnCollision(unittest.TestCase):
             for p in pool:
                 yield p
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             if "关键短语" in prompt:
                 return "refined keyword"
             if "打分" in prompt:

@@ -34,7 +34,7 @@ async def _extract_claims(paper_text: str) -> list[dict]:
     返回 dict 列表，每条含:
       claim, type, section, evidence_quote, citations, stats
     """
-    from hermes_cli.scholarforge.tools import _call_llm
+    from hermes_cli.scholarforge.tools import _call_llm, ANALYSIS_MODEL
 
     prompt = (
         '请从论文中逐段抽取"核心主张(Claim)"——作者明确断言且需被证据支撑的陈述。\n'
@@ -51,7 +51,7 @@ async def _extract_claims(paper_text: str) -> list[dict]:
         f"论文：\n{paper_text[:9000]}"
     )
     try:
-        raw = await _call_llm(prompt, _SYS)
+        raw = await _call_llm(prompt, _SYS, temperature=0.2, model=ANALYSIS_MODEL)
     except Exception as e:
         logger.error("LLM call failed during claim extraction: %s", e)
         return []

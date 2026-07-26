@@ -69,14 +69,14 @@ async def research_map(topic: str, context: str = "") -> str:
     if not topic.strip():
         return "❌ 请提供研究方向。"
 
-    from hermes_cli.scholarforge.tools import _call_llm
+    from hermes_cli.scholarforge.tools import _call_llm, ANALYSIS_MODEL
 
     context_hint = f"\n【补充上下文】{context}" if context.strip() else ""
 
     prompt = _PROMPT_TEMPLATE.format(topic=topic, context_hint=context_hint)
 
     try:
-        raw = await _call_llm(prompt, _SYS)
+        raw = await _call_llm(prompt, _SYS, temperature=0.2, model=ANALYSIS_MODEL)
     except Exception as e:
         logger.error("LLM call failed during research_map: %s", e)
         return f"❌ 研究选题拆解失败: {str(e)[:200]}"

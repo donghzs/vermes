@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import httpx
 from typing import Any
 
 from tools.registry import registry
@@ -253,64 +254,92 @@ class _LlmHttpError(Exception):
         self.http_code = http_code
 
 
-def _call_llm_sync(url: str, body: dict, headers: dict) -> str:
-    """真正的同步网络请求。抛 _LlmHttpError 携带 retryable 标志，供上层决定是否重试。
+# ── httpx 异步客户端：按事件循环缓存 ──────────────────────────
+# 服务端单 loop 复用连接池（keep-alive，摆脱 urllib 每次新建连接）；
+# 测试 asyncio.run 每次新 loop 自动新建，避免 "Event loop is closed"。
+_LLM_CLIENTS: dict[int, httpx.AsyncClient] = {}
 
-    注意：本函数为纯阻塞 IO，必须由 _call_llm 通过 asyncio.to_thread 调用，
-    绝不能在异步框架（FastAPI/gateway）中直接 await——否则会阻塞事件循环。
-    """
-    import json
-    import urllib.request
-    import urllib.error
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
-            headers=headers,
-            method="POST",
+def _get_llm_client() -> httpx.AsyncClient:
+    loop = asyncio.get_running_loop()
+    client = _LLM_CLIENTS.get(id(loop))
+    if client is None or client.is_closed:
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0),
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            if content:
-                return content
-            # 响应格式异常：不可重试（重发无意义）
-            raise _LlmHttpError(
-                f"❌ LLM 响应格式异常: {json.dumps(data, ensure_ascii=False)[:300]}",
-                retryable=False,
-            )
-    except urllib.error.HTTPError as e:
-        err_body = ""
-        try:
-            err_body = e.read().decode("utf-8")[:300]
-        except Exception:
-            pass
-        # 5xx 服务端错误可重试；4xx 客户端错误（鉴权/参数）不可重试
-        retryable = e.code >= 500
-        raise _LlmHttpError(
-            f"❌ LLM 调用失败 (HTTP {e.code}): {err_body[:150]}",
-            retryable=retryable,
-            http_code=e.code,
-        ) from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        _LLM_CLIENTS[id(loop)] = client
+    return client
+
+
+async def _call_llm_request(url: str, body: dict, headers: dict) -> str:
+    """真正的一次 HTTP 请求（httpx 异步，原生不阻塞事件循环）。
+
+    抛 _LlmHttpError 携带 retryable 标志，供上层决定是否重试。
+    """
+    client = _get_llm_client()
+    try:
+        resp = await client.post(url, json=body, headers=headers)
+    except (httpx.TransportError, httpx.TimeoutException, OSError) as e:
         # 网络层错误（连接失败/超时/DNS）：可重试
         raise _LlmHttpError(
-            f"❌ LLM 网络错误: {type(e).__name__}: {str(e)[:200]}",
-            retryable=True,
+            f"❌ LLM 网络错误: {type(e).__name__}: {str(e)[:200]}", retryable=True
         ) from e
 
+    if resp.status_code >= 500:
+        raise _LlmHttpError(
+            f"❌ LLM 调用失败 (HTTP {resp.status_code}): {resp.text[:150]}",
+            retryable=True,
+            http_code=resp.status_code,
+        )
+    if resp.status_code >= 400:
+        # 4xx 客户端错误（鉴权/参数）不可重试
+        raise _LlmHttpError(
+            f"❌ LLM 调用失败 (HTTP {resp.status_code}): {resp.text[:150]}",
+            retryable=False,
+            http_code=resp.status_code,
+        )
 
-async def _call_llm(prompt: str, system: str = "") -> str:
+    try:
+        data = resp.json()
+    except Exception:
+        raise _LlmHttpError(f"❌ LLM 响应解析失败: {resp.text[:300]}", retryable=False)
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if content:
+        return content
+    # 响应格式异常：不可重试（重发无意义）
+    raise _LlmHttpError(
+        f"❌ LLM 响应格式异常: {json.dumps(data, ensure_ascii=False)[:300]}",
+        retryable=False,
+    )
+
+
+# 可选：分析类任务用轻模型（成本降一个数量级）。未设置则沿用默认模型。
+ANALYSIS_MODEL = os.environ.get("SCHOLARFORGE_ANALYSIS_MODEL")
+
+
+async def _call_llm(
+    prompt: str,
+    system: str = "",
+    *,
+    temperature: float = 0.7,
+    model: str | None = None,
+    json_mode: bool = False,
+    max_tokens: int = 8192,
+) -> str:
     """Call LLM with auto-detected credentials.
 
-    同步 urllib 请求经 asyncio.to_thread 卸载到线程池执行，避免阻塞事件循环
-    （此前直接在 async 函数内跑 urlopen(timeout=120) 会卡死 FastAPI/gateway 的
-    整个事件循环长达 2 分钟）。可重试错误（5xx / 网络抖动）最多重试 3 次，
-    退避 0.5s/1s；4xx 与格式异常不重试。签名保持不变，所有 await 调用方零改动。
-    """
-    import asyncio
+    改用 httpx 异步客户端（原生 asyncio，不再经 asyncio.to_thread 卸载到线程池，
+    避免线程池上限对并发的隐性钳制）。可重试错误（5xx / 网络抖动）最多重试 3 次，
+    退避 0.5s/1s；4xx 与格式异常不重试。
 
+    新增参数（向后兼容，所有既有 await 调用方零改动，仅新增关键字参数）：
+    - temperature: 写作 0.7；分析类任务（打分/查重/claim 提取/研究拆解）建议 0.2
+    - model: 覆盖模型，用于简单任务走轻模型降本（分析站点传 ANALYSIS_MODEL）
+    - json_mode: 设 response_format={"type":"json_object"}；需调用方同步改写
+      prompt 与解析逻辑（本轮尚未接入既有工具，避免部分 provider 拒收 response_format
+      且现有稳健正则解析无需变更）
+    """
     creds = _resolve_credentials()
     if not creds:
         return "❌ 未找到已配置的 API Key。请在 Vermes 设置中添加至少一个 Provider 的 API Key。"
@@ -322,12 +351,15 @@ async def _call_llm(prompt: str, system: str = "") -> str:
 
     body = {
         "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": 8192,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
         "stream": False,
     }
-    if creds["model"]:
-        body["model"] = creds["model"]
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    effective_model = model or creds["model"]
+    if effective_model:
+        body["model"] = effective_model
 
     url = f"{creds['base_url']}/chat/completions"
     headers = {
@@ -339,7 +371,7 @@ async def _call_llm(prompt: str, system: str = "") -> str:
     last_error = ""
     for attempt in range(1, max_attempts + 1):
         try:
-            return await asyncio.to_thread(_call_llm_sync, url, body, headers)
+            return await _call_llm_request(url, body, headers)
         except _LlmHttpError as e:
             last_error = e.message
             if not e.retryable or attempt == max_attempts:
@@ -742,7 +774,7 @@ async def llm_rerank(candidates_list, context: str, keyword: str) -> list:
         f"1: 0.85\n2: 0.42\n..."
     )
     try:
-        result = await _call_llm(prompt)
+        result = await _call_llm(prompt, temperature=0.2, model=ANALYSIS_MODEL)
         if result and not result.startswith("❌"):
             # 解析分数
             scores = []
@@ -883,7 +915,7 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
                 f"从以下论文引用上下文提取 2-3 个用于学术搜索的关键短语（英文/中文均可）。"
                 f"只返回空格分隔的短语，不要解释：\n\n{context[:500]}"
             )
-            result = await _call_llm(prompt)
+            result = await _call_llm(prompt, temperature=0.2, model=ANALYSIS_MODEL)
             if result and not result.startswith("❌"):
                 # 取第一行，清洗掉引号和多余字符
                 kw = result.strip().split("\n")[0].strip('"\'。，, ')
@@ -929,7 +961,7 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
                 "严格按 '编号: 查询式' 逐行返回，不要解释，不要多余内容。\n\n"
                 f"{numbered_ctx}"
             )
-            claim_result = await _call_llm(claim_prompt)
+            claim_result = await _call_llm(claim_prompt, temperature=0.2, model=ANALYSIS_MODEL)
             if claim_result and not claim_result.startswith("❌"):
                 for line in claim_result.strip().split("\n"):
                     lm = re.match(r'^\s*\[?(\d+)\]?\s*[:：.]\s*(.+)$', line.strip())

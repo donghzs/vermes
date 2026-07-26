@@ -302,7 +302,7 @@ class TestPlagiarismReportFormatting(unittest.TestCase):
         self.assertIn("重复片段示例文本用于查重检测", out)
         # AIGC 特征分支（AigcResult.position / aigc_probability / features）
         self.assertIn("位置 200", out)
-        self.assertIn("AI 概率 88%", out)
+        self.assertIn("特征强度 88%", out)
         self.assertIn("特征: 句长CV=0.20, 连接词=3", out)
         # 建议分支
         self.assertIn("建议：改写高重复段落", out)
