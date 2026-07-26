@@ -999,15 +999,17 @@ async def run_all_validators(
     paper_text: str = "",
     design_info: dict | None = None,
     enable_online_citation: bool = True,
+    claims: list[str] | None = None,
 ) -> str:
     """运行所有验证器，返回综合报告
 
     Args:
-        papers: 文献列表（用于引用验证）
+        papers: 文献列表（用于引用验证 + Tier3 论断-摘要支持校验）
         stats: 统计指标字典（用于统计一致性校验）
         paper_text: 论文全文（用于设计缺陷检测）
         design_info: 设计信息（用于设计缺陷检测）
         enable_online_citation: 是否启用在线引用验证
+        claims: 显式论断列表（Tier3 深度验证用）；为 None 且有 paper_text 时自动抽取
     Returns:
         综合验证报告（Markdown）
     """
@@ -1024,6 +1026,30 @@ async def run_all_validators(
     if paper_text:
         flaws = detect_design_flaws(paper_text, design_info)
         sections.append(format_design_report(flaws))
+
+    # ── Tier3 深度验证：论断是否被所引论文摘要支持 ──
+    if papers:
+        if claims is None and paper_text:
+            try:
+                from hermes_cli.scholarforge.scoring import extract_key_claims
+
+                claims = await extract_key_claims(paper_text, max_claims=5)
+            except Exception as e:
+                logger.warning("deep_verify claim extraction failed: %s", e)
+                claims = []
+        if claims:
+            try:
+                from hermes_cli.scholarforge.deep_verify import (
+                    deep_verify_claims,
+                    format_deep_verify_report,
+                )
+
+                dv_results = await deep_verify_claims(claims, papers)
+                report = format_deep_verify_report(dv_results)
+                if report:
+                    sections.append(report)
+            except Exception as e:
+                logger.warning("deep_verify failed: %s", e)
 
     if not sections:
         return "ℹ️ 未提供验证数据，跳过验证"

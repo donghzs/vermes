@@ -1069,3 +1069,33 @@ def set_citation_graph_cache(key: str, payload: Dict[str, Any]) -> None:
             )
     except Exception:
         pass
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 文献摘要回填（按 DOI 从 Semantic Scholar 补 abstract）
+# ═══════════════════════════════════════════════════════════════════
+
+def list_literatures_for_backfill(project_id: int) -> List[Dict[str, Any]]:
+    """返回该项目中有 DOI 但 abstract 缺失的文献行（id/title/doi）。"""
+    init_db()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, title, doi FROM literatures "
+            "WHERE project_id=? AND doi IS NOT NULL AND doi != '' "
+            "AND (abstract IS NULL OR abstract = '')",
+            (project_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def set_literature_abstract(lit_id: int, abstract: str) -> None:
+    """回填单条文献的 abstract。失败静默。"""
+    try:
+        init_db()
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE literatures SET abstract=? WHERE id=?",
+                (abstract, lit_id),
+            )
+    except Exception:
+        pass

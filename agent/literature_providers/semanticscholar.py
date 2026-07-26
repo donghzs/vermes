@@ -189,6 +189,29 @@ class SemanticScholarProvider(LiteratureProvider):
             }
         return {"success": True, "data": data, "errors": errors}
 
+    def get_paper(self, paper_id: str) -> Dict[str, Any]:
+        """返回单篇论文的归一化节点（用于按 DOI 补 abstract 等）。
+
+        Returns::
+
+            {"success": True, "paper": {...normalized node...}}
+            {"success": False, "error": str}
+        """
+        key = self._s2_paper_key(paper_id)
+        headers: Dict[str, str] = {}
+        s2key = get_api_key("semanticscholar")
+        if s2key:
+            headers["x-api-key"] = s2key
+        res = http_get_json(
+            f"https://api.semanticscholar.org/graph/v1/paper/{key}",
+            params={"fields": _CG_FIELDS},
+            headers=headers,
+            timeout=30,
+        )
+        if not res.get("ok"):
+            return {"success": False, "error": res.get("error", "unknown")}
+        return {"success": True, "paper": self._normalize_s2_paper(res.get("data", {}) or {})}
+
     def get_setup_schema(self) -> Dict[str, Any]:
         return {
             "name": self.display_name,
