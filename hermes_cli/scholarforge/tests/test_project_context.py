@@ -214,7 +214,13 @@ class TestSchemaHasProjectId(unittest.TestCase):
 
         self.assertGreaterEqual(len(schemas), 19, f"Expected >=19 schemas, got {len(schemas)}")
 
+        # 例外：发现工具 list_projects 本身不绑定 project_id（否则无法先发现 id）。
+        # 其余所有写回/操作类工具都必须带 project_id。
+        EXEMPT = {"SCHOLARFORGE_LIST_PROJECTS_SCHEMA"}
+
         for schema_name in schemas:
+            if schema_name in EXEMPT:
+                continue
             schema = getattr(tools, schema_name)
             self.assertIsInstance(schema, dict, f"{schema_name} is not a dict")
             # schema 结构: {"parameters": {"properties": {...}}}

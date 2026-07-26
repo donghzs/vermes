@@ -17,6 +17,13 @@ from typing import Any
 
 from tools.registry import registry
 
+from .active_project import (
+    PROJECT_ID_MISSING_MSG,
+    get_active_project,
+    resolve_project_id,
+    set_active_project,
+)
+
 logger = logging.getLogger("scholarforge.tools")
 
 # ── 流式回调 ContextVar ──
@@ -541,7 +548,9 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
     section_type = args.get("section_type", "introduction")
     context = args.get("context", "")
     paper_type = args.get("paper_type", "本科论文")
-    project_id = args.get("project_id", 0)
+    # 解析 project_id：显式参数优先，否则回退到激活项目
+    project_id = resolve_project_id(args)
+    _missing_pid = not project_id  # 缺失时不静默成功：生成内容但明确标记未保存（ok=0）
 
     # 注入项目上下文
     project_ctx = ""
@@ -672,6 +681,15 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
             save_section(project_id, section_type, content)
         else:
             return f"🚫 质量闸门拦截（mode=block）：检测到 P0 级严重问题，已拒绝写回。\n\n---\n\n{gate_report}\n\n---\n\n请根据报告修改后重新提交。"
+
+    if _missing_pid:
+        # project_id 缺失：内容已生成但明确标记未保存（_with_usage 会因 ❌ 前缀记 ok=0）
+        warn = ("❌ 未关联 project_id：内容已生成但未写回任何项目。请调用 "
+                "scholarforge_set_active_project 设置激活项目，或在调用时显式传入 project_id"
+                "（如 project_id=52）。")
+        if gate_report:
+            return f"{warn}\n\n{content}\n\n---\n\n{gate_report}"
+        return f"{warn}\n\n{content}"
 
     if gate_report:
         return f"{content}\n\n---\n\n{gate_report}"
@@ -904,7 +922,9 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     import asyncio
     import difflib
 
-    project_id = args.get("project_id", 0)
+    # 解析 project_id：显式参数优先，否则回退到激活项目；缺失不静默成功
+    project_id = resolve_project_id(args)
+    _missing_pid = not project_id  # 缺失时不静默成功：仍生成替换结果但明确标记未写回（ok=0）
     draft = args.get("draft", "")
     max_refs = min(args.get("max_refs", 15), 30)
 
@@ -1342,6 +1362,13 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     report_lines.append("\n".join(ref_lines))
 
     logger.info(f"[ScholarForge] replace_citations: {replaced}/{len(unique_nums)} replaced")
+    if _missing_pid:
+        # project_id 缺失：引用已替换但未写回任何项目文献库（新文献未落库）。
+        # 前置 ❌ 警告使 _with_usage 自动记 ok=0（不静默成功）。
+        warn = ("❌ 未关联 project_id：引用已替换但未写回任何项目文献库（新文献未落库）。请调用 "
+                "scholarforge_set_active_project 设置激活项目，或在调用时显式传入 project_id"
+                "（如 project_id=52）。")
+        return f"{warn}\n\n" + "\n".join(report_lines)
     return "\n".join(report_lines)
 
 
@@ -1351,7 +1378,10 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
     import statistics
 
     sample = args.get("sample_text", "")
-    project_id = args.get("project_id", 0)
+    # 解析 project_id：显式参数优先，否则回退到激活项目；缺失则明确报错
+    project_id = resolve_project_id(args)
+    if not project_id:
+        return PROJECT_ID_MISSING_MSG
     if len(sample.strip()) < 100:
         return "❌ 样本文本过短，至少需要 500 字才能提取风格特征。"
 
@@ -2025,7 +2055,8 @@ SCHOLARFORGE_EXPORT_SCHEMA = {
 async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
     """导出论文（导出成功后标记项目完成）。"""
     title = args.get("title", "")
-    project_id = args.get("project_id", 0)
+    # 软解析：优先显式 project_id，否则回退激活项目；导出正文由 content 提供，project_id 仅用于收尾标记
+    project_id = resolve_project_id(args)
     content = args.get("content", "")
     fmt = args.get("format", "docx")
     abstract = args.get("abstract", "")
@@ -2554,7 +2585,8 @@ async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
 async def _handle_scholarforge_manage_snapshots(args: dict, **kw: Any) -> str:
     """管理论文项目版本快照。"""
     action = args.get("action", "list")
-    project_id = args.get("project_id", 0)
+    # 软解析：优先显式 project_id，否则回退激活项目；restore 等动作不依赖 project_id
+    project_id = resolve_project_id(args)
     snapshot_id = args.get("snapshot_id", 0)
     label = args.get("label", "")
     note = args.get("note", "")
@@ -2685,7 +2717,8 @@ async def _handle_scholarforge_apply_template(args: dict, **kw: Any) -> str:
     action = args.get("action", "list")
     template_key = args.get("template_key", "")
     title = args.get("title", "")
-    project_id = args.get("project_id", 0)
+    # 软解析：优先显式 project_id，否则回退激活项目；list/get/create 动作不依赖它
+    project_id = resolve_project_id(args)
 
     try:
         from hermes_cli.scholarforge.project_templates import (
@@ -3254,6 +3287,96 @@ async def _handle_scholarforge_citation_graph(args: dict, **kw: Any) -> str:
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────────────────────
+# Schema + Tool: 项目发现与激活（修复「agent 不知道 project_id」根因）
+# ──────────────────────────────────────────────────────────────
+
+SCHOLARFORGE_LIST_PROJECTS_SCHEMA = {
+    "name": "scholarforge_list_projects",
+    "description": (
+        "列出当前所有论文项目，并标出哪一个被设为「激活项目」。\n"
+        "激活项目是此后写回类工具（scholarforge_write / replace_citations / learn_style / "
+        "manage_snapshots / apply_template / export）默认作用的对象——当调用未显式传 project_id 时生效。\n"
+        "当不知道该操作哪个项目、或想切换项目时调用本工具。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    },
+}
+
+
+SCHOLARFORGE_SET_ACTIVE_PROJECT_SCHEMA = {
+    "name": "scholarforge_set_active_project",
+    "description": (
+        "设置当前「激活论文项目」。设置后，所有写回类工具若未显式传 project_id，"
+        "将默认作用于此项目（解决 agent 对话路径拿不到 project_id 导致写回不落库的问题）。\n"
+        "用于切换正在撰写的论文。可用 scholarforge_list_projects 查看可选 id。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_id": {
+                "type": "integer",
+                "description": "要设为激活项目的论文项目 id（正整数，可用 scholarforge_list_projects 查看）",
+            },
+        },
+        "required": ["project_id"],
+    },
+}
+
+
+async def _handle_scholarforge_list_projects(args: dict, **kw: Any) -> str:
+    """列出论文项目并标出激活项目。"""
+    from hermes_cli.scholarforge.database import list_projects
+
+    active = get_active_project()
+    projects = list_projects()
+    if not projects:
+        return "📭 当前没有任何论文项目。请先在面板新建，或调用对应创建工具。"
+
+    lines = ["## 📚 论文项目列表", ""]
+    for p in projects:
+        mark = " ➡️ [激活]" if p.get("id") == active else ""
+        lines.append(
+            f"- #{p.get('id')} 《{p.get('title')}》"
+            f"（{p.get('paper_type', '')}，{p.get('section_count', 0)} 章 / "
+            f"{p.get('total_words', 0)} 字 / {p.get('literature_count', 0)} 文献）{mark}"
+        )
+    if active:
+        lines.append(
+            "\n当前激活项目为 "
+            f"#{active}。写回类工具会自动作用于它；切换请调用 scholarforge_set_active_project。"
+        )
+    else:
+        lines.append(
+            "\n尚未设置激活项目。写回类工具将要求显式 project_id，"
+            "或请先调用 scholarforge_set_active_project。"
+        )
+    return "\n".join(lines)
+
+
+async def _handle_scholarforge_set_active_project(args: dict, **kw: Any) -> str:
+    """设置激活论文项目。"""
+    raw = args.get("project_id", 0)
+    try:
+        pid = int(raw) if raw else 0
+    except (TypeError, ValueError):
+        pid = 0
+    if pid <= 0:
+        return "❌ 请提供有效的 project_id（正整数）。可用 scholarforge_list_projects 查看项目列表。"
+    from hermes_cli.scholarforge.database import get_project
+
+    if not get_project(pid):
+        return f"❌ 项目 #{pid} 不存在。可用 scholarforge_list_projects 查看有效项目。"
+    set_active_project(pid)
+    return (
+        f"✅ 已将项目 #{pid} 设为激活项目。后续写回类工具默认作用于它；"
+        "切换请再次调用 scholarforge_set_active_project。"
+    )
+
+
 def register_tools(host_api=None):
     """Register all ScholarForge tools in the global registry.
 
@@ -3467,4 +3590,22 @@ def register_tools(host_api=None):
         emoji="🕸️",
         description="构建论文一跳引用图谱（被引/引证/推荐），复用 S2 学术图谱 + 本地缓存避限流",
     )
-    logger.info("[ScholarForge] 23 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph")
+    registry.register(
+        name="scholarforge_list_projects",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_LIST_PROJECTS_SCHEMA,
+        handler=_with_usage("scholarforge_list_projects", _handle_scholarforge_list_projects),
+        is_async=True,
+        emoji="🗂️",
+        description="列出所有论文项目并标出当前激活项目",
+    )
+    registry.register(
+        name="scholarforge_set_active_project",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_SET_ACTIVE_PROJECT_SCHEMA,
+        handler=_with_usage("scholarforge_set_active_project", _handle_scholarforge_set_active_project),
+        is_async=True,
+        emoji="🎯",
+        description="设置当前激活论文项目（写回类工具默认作用对象）",
+    )
+    logger.info("[ScholarForge] 25 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project")

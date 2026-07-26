@@ -61,7 +61,10 @@ export const useScholarStore = defineStore('scholar', () => {
     }
     const proj = await resp.json()
     await loadProjects()
-    if (proj && proj.id != null) currentProjectId.value = proj.id
+    if (proj && proj.id != null) {
+      currentProjectId.value = proj.id
+      setActiveProject(proj.id)
+    }
     return proj
   }
 
@@ -90,6 +93,28 @@ export const useScholarStore = defineStore('scholar', () => {
     return proj
   }
 
+  // 把当前选中项目种入后端「激活项目」，使 agent 对话路径零样本写回也能落到正确项目。
+  // 桌面本地运行，失败静默（不影响面板本身）。
+  async function setActiveProject(pid) {
+    const id = Number(pid)
+    if (!Number.isInteger(id) || id <= 0) return
+    try {
+      await fetch('/api/scholar/active-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: id }),
+      })
+    } catch (e) {
+      /* 忽略：本地后端不可达时不阻断面板 */
+    }
+  }
+
+  // 选中项目 = 更新当前 id + 种入后端激活项目
+  function selectProject(pid) {
+    currentProjectId.value = pid
+    setActiveProject(pid)
+  }
+
   return {
     currentProjectId,
     projects,
@@ -104,5 +129,7 @@ export const useScholarStore = defineStore('scholar', () => {
     createProject,
     removeProject,
     updateProject,
+    setActiveProject,
+    selectProject,
   }
 })

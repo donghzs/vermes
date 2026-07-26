@@ -6,11 +6,32 @@
 //
 // 端点（blueprint.py:298）无 auth 依赖（桌面本地运行），仅带 Content-Type。
 // 请求体: { name, args }   响应: { result }   失败: { error } 或 HTTP 400 { detail }
+//
+// D 防御：若调用方未显式传 project_id，自动并入当前面板选中项目（currentProjectId），
+// 覆盖 SchemaForm 之外的调用路径（FlowGuide / Uploader 等），与后端「激活项目」兜底互补。
+import { useScholarStore } from '../stores/scholar'
+
+function withProjectId(args) {
+  const finalArgs = { ...(args || {}) }
+  if (finalArgs.project_id == null) {
+    try {
+      const store = useScholarStore()
+      if (store && store.currentProjectId != null) {
+        finalArgs.project_id = store.currentProjectId
+      }
+    } catch (e) {
+      /* pinia 未就绪时忽略，退回后端激活项目兜底 */
+    }
+  }
+  return finalArgs
+}
+
 export async function invokeTool(name, args) {
+  const finalArgs = withProjectId(args)
   const resp = await fetch('/api/tools/invoke', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, args: args || {} }),
+    body: JSON.stringify({ name, args: finalArgs }),
   })
 
   let data = null

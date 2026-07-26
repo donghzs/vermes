@@ -405,6 +405,27 @@ def register_to(app, host_api=None):
         from . import database as db
         return {"projects": db.list_projects()}
 
+    @app.post("/api/scholar/active-project")
+    async def api_set_active_project(req: dict):
+        """设置当前激活论文项目（供 agent 对话路径零样本写回使用）。
+
+        前端面板激活/切换项目时调用，把 project_id 种入后端进程全局；
+        agent 调用写回类工具时若未显式传 project_id，会自动取此激活项目。
+        """
+        from . import database as db
+        from .active_project import set_active_project
+        raw = req.get("project_id", 0)
+        try:
+            pid = int(raw) if raw else 0
+        except (TypeError, ValueError):
+            pid = 0
+        if pid <= 0:
+            raise HTTPException(400, "project_id 必须为正整数")
+        if not db.get_project(pid):
+            raise HTTPException(404, "项目不存在")
+        set_active_project(pid)
+        return {"active_project_id": pid}
+
     @app.post("/api/scholar/projects")
     async def api_create_project(req: dict):
         """创建新论文项目"""

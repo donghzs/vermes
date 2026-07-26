@@ -159,7 +159,7 @@ async function onRename(pid) {
             ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-900/20 ring-1 ring-blue-400'
             : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300',
         ]"
-        @click="scholar.currentProjectId = p.id"
+        @click="scholar.selectProject(p.id)"
       >
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
