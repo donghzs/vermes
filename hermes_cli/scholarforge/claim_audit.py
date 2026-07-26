@@ -13,15 +13,24 @@ import logging
 import re
 from typing import Any
 
-from hermes_cli.scholarforge.validators import (
-    check_statistics_consistency,
-    detect_design_flaws,
-    format_citation_report,
-    format_design_report,
-    verify_citation_authenticity,
-)
-
 logger = logging.getLogger("scholarforge.claim_audit")
+
+# Lazy imports — avoid top-level binding so test patches on validators module take effect.
+def _import_validators():
+    from hermes_cli.scholarforge.validators import (
+        check_statistics_consistency,
+        detect_design_flaws,
+        format_citation_report,
+        format_design_report,
+        verify_citation_authenticity,
+    )
+    return (
+        check_statistics_consistency,
+        detect_design_flaws,
+        format_citation_report,
+        format_design_report,
+        verify_citation_authenticity,
+    )
 
 _SYS = (
     "你是一个严谨的方法学审稿人。只输出 JSON，不要解释或 Markdown 代码块包裹。"
@@ -129,13 +138,15 @@ async def review_claims(
         return "ℹ️ 未能从论文中抽取到可审查的核心主张。"
 
     # Step 2: 三个 validator 各跑一次
+    _check_stats, _detect_flaws, _fmt_cit, _fmt_design, _verify_cit = _import_validators()
+
     # 2a: 设计缺陷（全文跑 1 次）
-    flaws = detect_design_flaws(paper_text, design_info or {})
+    flaws = _detect_flaws(paper_text, design_info or {})
 
     # 2b: 引用真实性（references 批量跑 1 次）
     cit_checks: list = []
     if references:
-        cit_checks = await verify_citation_authenticity(
+        cit_checks = await _verify_cit(
             references, enable_online=enable_online
         )
     cit_by_ref = {c.ref_num: c for c in cit_checks}
@@ -145,7 +156,7 @@ async def review_claims(
     stat_results: dict[int, list] = {}
     for i, c in enumerate(claims):
         if c.get("type") == "statistical" and c.get("stats"):
-            stat_results[i] = check_statistics_consistency(c["stats"])
+            stat_results[i] = _check_stats(c["stats"])
 
     # Step 3: 逐条 claim 拼证据链
     rows: list[tuple] = []
@@ -226,10 +237,10 @@ async def review_claims(
         "---",
         "",
         "### 引用核查明细",
-        format_citation_report(cit_checks) if cit_checks else "（未提供文献列表）",
+        _fmt_cit(cit_checks) if cit_checks else "（未提供文献列表）",
         "",
         "### 设计缺陷明细",
-        format_design_report(flaws) if flaws else "（未检出）",
+        _fmt_design(flaws) if flaws else "（未检出）",
     ]
 
     return "\n".join(lines)

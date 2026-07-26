@@ -402,6 +402,77 @@ async def _call_llm(
     return last_error or "❌ LLM 调用失败：未知错误"
 
 
+async def stream_call_llm(
+    prompt: str,
+    system: str = "",
+    *,
+    temperature: float = 0.7,
+    model: str | None = None,
+    max_tokens: int = 8192,
+) -> "AsyncGenerator[str, None]":
+    """流式调用 LLM，逐 chunk yield 文本增量。
+
+    与 _call_llm 共享连接池与凭证解析，但 body 中 stream=True，
+    逐行读取 SSE `data:` 行并提取 delta.content。
+    用于 write/polish 等长文本生成场景，前端可实时渲染。
+    """
+    creds = _resolve_credentials()
+    if not creds:
+        yield "❌ 未找到已配置的 API Key。请在 Vermes 设置中添加至少一个 Provider 的 API Key。"
+        return
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    body = {
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+    effective_model = model or creds["model"]
+    if effective_model:
+        body["model"] = effective_model
+
+    url = f"{creds['base_url']}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {creds['api_key']}",
+        "Content-Type": "application/json",
+    }
+
+    client = _get_llm_client()
+    try:
+        async with client.stream("POST", url, json=body, headers=headers) as resp:
+            if resp.status_code >= 400:
+                error_text = await resp.aread()
+                logger.error(f"LLM stream failed (HTTP {resp.status_code}): {error_text[:200]}")
+                yield f"❌ LLM 流式调用失败 (HTTP {resp.status_code})"
+                return
+
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload = line[6:]
+                if payload.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(payload)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    text = delta.get("content", "")
+                    if text:
+                        yield text
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
+    except (httpx.TransportError, httpx.TimeoutException, OSError) as e:
+        logger.error(f"LLM stream network error: {e}")
+        yield f"❌ LLM 流式网络错误: {type(e).__name__}: {str(e)[:200]}"
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"LLM stream unexpected error: {e}", exc_info=True)
+        yield f"❌ LLM 流式异常: {type(e).__name__}: {str(e)[:200]}"
+
+
 # ──────────────────────────────────────────────────────────────
 # Tool handlers
 # ──────────────────────────────────────────────────────────────
@@ -562,7 +633,16 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 请直接输出该章节的完整内容（Markdown 格式，{label} 用 ## 标记），
 引用文献时使用 [n] 标记（n为编号占位，用户后续会替换为真实文献）。"""
 
-    content = await _call_llm(prompt, system_prompt)
+    # 流式回调：如果调用方传入 stream_callback，则用 stream_call_llm 逐 chunk 回调
+    stream_cb = kw.get("stream_callback")
+    if stream_cb and callable(stream_cb):
+        parts: list[str] = []
+        async for chunk in stream_call_llm(prompt, system_prompt):
+            stream_cb(chunk)
+            parts.append(chunk)
+        content = "".join(parts)
+    else:
+        content = await _call_llm(prompt, system_prompt)
 
     # ── 质量护栏前移：写回闸门 ────────────────────────
     quality_gate_mode = args.get("quality_gate", "flag")
@@ -629,7 +709,7 @@ async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
         if _pc:
             prompt += f"\n\n【项目上下文】\n{_pc}"
 
-    llm_result = await _call_llm(prompt, system_prompt)
+    llm_result = await _call_llm(prompt, system_prompt, temperature=0.2, model=ANALYSIS_MODEL)
 
     # ── De-AIGC 校准建议 ─────────────────────────────────────
     deaigc_section = ""
@@ -1554,7 +1634,16 @@ async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
         if _pc:
             prompt += f"\n\n{_pc}"
 
-    polished = await _call_llm(prompt, system_prompt)
+    # 流式回调：润色也是长文本生成，支持流式
+    stream_cb = kw.get("stream_callback")
+    if stream_cb and callable(stream_cb):
+        parts: list[str] = []
+        async for chunk in stream_call_llm(prompt, system_prompt):
+            stream_cb(chunk)
+            parts.append(chunk)
+        polished = "".join(parts)
+    else:
+        polished = await _call_llm(prompt, system_prompt)
 
     # 附加润色说明
     summary = f"\n\n---\n*润色完成。主要改善：{focus_guides.get(focus, '全面润色')}*"
@@ -1836,7 +1925,11 @@ async def _handle_scholarforge_score(args: dict, **kw: Any) -> str:
         # 接入真实 LLM 评分工厂：
         # 此前误传 _make_llm=None → score_paper 永远走 _fallback_score 启发式假评分（原创性恒 5.0）。
         # 与 blueprint.py:1501 的 scholar_stream 评分调用保持一致，传入 _call_llm 工厂。
-        result = await score_paper(content, papers, _make_llm=lambda: _call_llm, topic=topic)
+        # 评分是分析任务，用低温度 + 分析模型降低随机性。
+        _ANALYSIS_MODEL = ANALYSIS_MODEL
+        async def _analysis_llm(prompt, system="", **kw):
+            return await _call_llm(prompt, system, temperature=0.2, model=_ANALYSIS_MODEL, **kw)
+        result = await score_paper(content, papers, _make_llm=lambda: _analysis_llm, topic=topic)
 
         lines = ["## 📊 论文评分报告\n"]
 

@@ -1,7 +1,7 @@
 {
   "version": "2.3.5",
-  "gitHash": "5ada07227",
-  "gitBranch": "main",
-  "buildTime": "2026-07-25T05:35:30.287Z",
+  "gitHash": "f8a028da8",
+  "gitBranch": "feature/scholarforge-phase2-3",
+  "buildTime": "2026-07-25T06:51:58.653Z",
   "nodeVersion": "v22.22.3"
 }
