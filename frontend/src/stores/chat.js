@@ -520,6 +520,10 @@ export const useChatStore = defineStore('chat', () => {
           }
           if (chunk?.type === 'text' || chunk?.type === 'delta') {
             am._streamBuffer += chunk.content || ''
+          } else if (chunk?.type === 'turn_boundary') {
+            // 工具输出与 Agent 回复之间的分隔：刷新 buffer
+            // 分隔符由 _fire_stream_delta 的 _stream_needs_break 机制处理
+            if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
           } else if (chunk?.type === 'tool') {
             if (am._streamBuffer) { am.content += am._streamBuffer; am._streamBuffer = '' }
             am._currentStep = chunk.name || ''

@@ -162,6 +162,9 @@ export class SSETransport extends ChatTransport {
             } else if (data.type === 'checkpoint') {
               // Pipeline checkpoint: { stage, next, message, completed, remaining }
               this._emit(sessionId, 'onCheckpoint', data)
+            } else if (data.type === 'turn_boundary') {
+              // 工具输出与 Agent 回复之间的分隔标记
+              this._emit(sessionId, 'onMessage', { type: 'turn_boundary' })
             } else if (data.type === 'error') {
               this._emit(sessionId, 'onError', data.message || data.content)
             } else if (deltaContent) {

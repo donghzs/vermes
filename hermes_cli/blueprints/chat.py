@@ -1193,7 +1193,10 @@ async def chat_completions(req: ChatRequest):
                 _detect_and_emit_plan(delta)
                 _safe_put(delta)
             else:
+                # Turn boundary: Agent 即将开始工具调用或新回合。
+                # 发送分隔事件让前端在工具输出和 Agent 回复之间做视觉分隔。
                 _log.info(f"[Stream] Turn boundary (delta=None), agent still running")
+                _safe_put({"type": "turn_boundary"})
 
         def tool_progress_handler(event_type: str, tool_name: str, preview: str, args: dict, **kwargs):
             _log.info(f"[ToolEvent] {event_type}: {tool_name}")
