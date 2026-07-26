@@ -171,6 +171,28 @@ def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
     # 长回答且无精确包含关系：检查重叠度。如果 streamed 已经覆盖了 final
     # 的大部分内容，说明流式已经发过，差异可能是 scrubber 处理
     # 导致的细微差异——不整段补发，避免重复输出。
+    #
+    # 尾部匹配：当 streamed 远长于 final（典型场景：工具流式输出 + 最终简短回复），
+    # 整体 overlap 会被工具内容稀释。改为只比较 streamed 尾部（长度 = final 的 1.5x）
+    # 与 final，精准检测最终回复是否已流式发出。
+    if len(streamed_n) > len(final_n) * 2:
+        tail_len = int(len(final_n) * 1.5)
+        streamed_tail = streamed_n[-tail_len:]
+        tail_overlap = _longest_common_ratio(streamed_tail, final_n)
+        if tail_overlap >= 0.7:
+            # 尾部高重叠：最终回复已通过流式发出，不补发
+            return None
+        if tail_overlap >= 0.5:
+            # 尾部中等重叠：可能有细微差异（标点/空白），提取差分补发
+            import difflib
+            s = difflib.SequenceMatcher(None, streamed_tail, final_n)
+            tail_parts = []
+            for tag, i1, i2, j1, j2 in s.get_opcodes():
+                if tag in ('insert', 'replace'):
+                    tail_parts.append(final_n[j1:j2])
+            tail = ''.join(tail_parts).strip()
+            return tail or None
+
     overlap = _longest_common_ratio(streamed_n, final_n)
     if overlap >= 0.8:
         # 高重叠：内容几乎相同，差异可忽略，不补发
