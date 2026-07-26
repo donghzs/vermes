@@ -285,4 +285,4 @@ class TestUsageTracking:
         import hermes_cli.scholarforge.tools as tools_mod
 
         src = inspect.getsource(tools_mod.register_tools)
-        assert src.count("_with_usage(") == 22
+        assert src.count("_with_usage(") == 25

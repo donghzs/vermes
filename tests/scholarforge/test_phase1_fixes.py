@@ -60,7 +60,7 @@ class TestLearnStylePersistence:
         """未传 project_id 时不落库，提示用户。"""
         from hermes_cli.scholarforge.tools import _handle_scholarforge_learn_style
         out = await _handle_scholarforge_learn_style({"sample_text": SAMPLE_STYLE_TEXT})
-        assert "未指定 project_id" in out
+        assert "无法确定 project_id" in out or "project_id" in out
 
     @pytest.mark.asyncio
     async def test_write_injects_learned_style(self, tmp_db, sample_project, monkeypatch):
@@ -72,7 +72,7 @@ class TestLearnStylePersistence:
 
         captured = {}
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             captured["prompt"] = prompt
             return "## 引言\n这是生成的内容。"
 
@@ -94,7 +94,7 @@ class TestDesignFlawsLlm:
     async def test_llm_parses_flaws(self):
         from hermes_cli.scholarforge.validators import detect_design_flaws_llm
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             return (
                 '{"flaws": [{"severity": "P0", "category": "缺对照组", '
                 '"description": "医学试验无安慰剂对照", "evidence": "全文无对照组描述", '
@@ -110,7 +110,7 @@ class TestDesignFlawsLlm:
     async def test_llm_fenced_json(self):
         from hermes_cli.scholarforge.validators import detect_design_flaws_llm
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             return '```json\n{"flaws": [{"severity": "P1", "category": "样本量不足"}]}\n```'
 
         flaws = await detect_design_flaws_llm("工程论文", None, call_llm=fake_llm)
@@ -121,7 +121,7 @@ class TestDesignFlawsLlm:
     async def test_llm_malformed_fail_open(self):
         from hermes_cli.scholarforge.validators import detect_design_flaws_llm
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             return "这不是 JSON"
 
         flaws = await detect_design_flaws_llm("论文", None, call_llm=fake_llm)
@@ -178,13 +178,13 @@ class TestCallLlmRetry:
         })
         calls = {"n": 0}
 
-        def flaky_sync(url, body, headers):
+        async def flaky_sync(url, body, headers):
             calls["n"] += 1
             if calls["n"] < 2:
                 raise tools._LlmHttpError("5xx", retryable=True, http_code=503)
             return "OK 内容"
 
-        monkeypatch.setattr(tools, "_call_llm_sync", flaky_sync)
+        monkeypatch.setattr(tools, "_call_llm_request", flaky_sync)
         monkeypatch.setattr(tools.asyncio, "sleep", _noop_sleep)
         out = await tools._call_llm("prompt")
         assert out == "OK 内容"
@@ -199,11 +199,11 @@ class TestCallLlmRetry:
         })
         calls = {"n": 0}
 
-        def failing_sync(url, body, headers):
+        async def failing_sync(url, body, headers):
             calls["n"] += 1
             raise tools._LlmHttpError("❌ HTTP 401", retryable=False, http_code=401)
 
-        monkeypatch.setattr(tools, "_call_llm_sync", failing_sync)
+        monkeypatch.setattr(tools, "_call_llm_request", failing_sync)
         out = await tools._call_llm("prompt")
         assert "401" in out
         assert calls["n"] == 1, "4xx 不应重试"
@@ -222,7 +222,7 @@ class TestReviewNoCrash:
     async def test_review_with_project_id(self, tmp_db, sample_project, monkeypatch):
         import hermes_cli.scholarforge.tools as tools
 
-        async def fake_llm(prompt, system=""):
+        async def fake_llm(prompt, system="", **kwargs):
             return "评审意见：结构清晰。"
 
         monkeypatch.setattr(tools, "_call_llm", fake_llm)

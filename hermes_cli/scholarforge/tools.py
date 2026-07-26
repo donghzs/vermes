@@ -517,7 +517,7 @@ async def _handle_scholarforge_search(args: dict, **kw: Any) -> str:
             return f"🔍 未找到与「{query}」相关的文献。建议：试试换用英文关键词，或调整搜索词。"
 
         # 结果写回项目 DB
-        project_id = args.get("project_id", 0)
+        project_id = resolve_project_id(args)
         if project_id and papers:
             from hermes_cli.scholarforge.project_context import save_papers
             saved = save_papers(project_id, [p.to_dict() for p in papers])
@@ -699,7 +699,7 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 async def _handle_scholarforge_review(args: dict, **kw: Any) -> str:
     """审阅论文"""
     draft = args.get("draft", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     focus = args.get("focus", "全面审阅")
 
     if not draft.strip():
@@ -1524,7 +1524,7 @@ async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
     topic = args.get("topic", "")
     paper_type = args.get("paper_type", "本科论文")
     requirements = args.get("requirements", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
 
     # 注入项目上下文
     project_ctx = ""
@@ -1638,7 +1638,7 @@ SCHOLARFORGE_POLISH_SCHEMA = {
 async def _handle_scholarforge_polish(args: dict, **kw: Any) -> str:
     """学术润色"""
     text = args.get("text", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     focus = args.get("focus", "all")
     paper_type = args.get("paper_type", "本科论文")
 
@@ -1734,7 +1734,7 @@ SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA = {
 async def _handle_scholarforge_plagiarism_check(args: dict, **kw: Any) -> str:
     """查重检测"""
     text = args.get("text", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     title = args.get("title", "")
 
     if not text.strip():
@@ -1842,7 +1842,7 @@ SCHOLARFORGE_DEAIGC_SCHEMA = {
 async def _handle_scholarforge_deaigc(args: dict, **kw: Any) -> str:
     """去 AI 痕迹"""
     text = args.get("text", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     aggressive = args.get("aggressive", False)
 
     if not text.strip():
@@ -1944,7 +1944,7 @@ SCHOLARFORGE_SCORE_SCHEMA = {
 async def _handle_scholarforge_score(args: dict, **kw: Any) -> str:
     """论文评分"""
     content = args.get("content", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     topic = args.get("topic", "")
 
     if not content.strip():
@@ -2255,7 +2255,7 @@ def _parse_papers(raw: Any) -> list[dict]:
 async def _handle_scholarforge_verify_citations(args: dict, **kw: Any) -> str:
     """验证引用真实性"""
     papers_raw = args.get("papers", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     enable_online = args.get("enable_online", True)
     papers = _parse_papers(papers_raw)
 
@@ -2320,7 +2320,7 @@ SCHOLARFORGE_REVIEW_CLAIMS_SCHEMA = {
 async def _handle_scholarforge_review_claims(args: dict, **kw: Any) -> str:
     """主张-证据审查流水线"""
     paper_text = args.get("paper_text", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     if not paper_text.strip():
         return "❌ 请提供论文文本。"
 
@@ -2378,7 +2378,7 @@ SCHOLARFORGE_RESEARCH_MAP_SCHEMA = {
 async def _handle_scholarforge_research_map(args: dict, **kw: Any) -> str:
     """研究选题拆解"""
     topic = args.get("topic", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     if not topic.strip():
         return "❌ 请提供研究方向。"
 
@@ -2430,7 +2430,7 @@ SCHOLARFORGE_SAVE_CARDS_SCHEMA = {
 async def _handle_scholarforge_save_cards(args: dict, **kw: Any) -> str:
     """文献知识沉淀"""
     query = args.get("query", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     papers_json = args.get("papers", "")
     limit = args.get("limit", 10)
 
@@ -2566,7 +2566,7 @@ SCHOLARFORGE_APPLY_TEMPLATE_SCHEMA = {
 async def _handle_scholarforge_literature_matrix(args: dict, **kw: Any) -> str:
     """综述矩阵"""
     topic = args.get("topic", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     tag = args.get("tag", "")
     limit = args.get("limit", 30)
 
@@ -2936,7 +2936,7 @@ SCHOLARFORGE_DETECT_DESIGN_FLAWS_SCHEMA = {
 async def _handle_scholarforge_detect_design_flaws(args: dict, **kw: Any) -> str:
     """研究设计缺陷检测"""
     paper_text = args.get("paper_text", "")
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
 
     if not paper_text.strip():
         return "❌ 请提供论文文本。"
@@ -3009,7 +3009,7 @@ async def _handle_scholarforge_format_refs(args: dict, **kw: Any) -> str:
     import json as json_mod
     import re
 
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     papers_raw = args.get("papers", "")
     style = args.get("style", "gbt7714")
 
@@ -3123,7 +3123,7 @@ async def _handle_scholarforge_quality_gate(args: dict, **kw: Any) -> str:
     """显式全量质量检查"""
     from hermes_cli.scholarforge.quality_gate import run_full_quality_gate
 
-    project_id = args.get("project_id", 0)
+    project_id = resolve_project_id(args)
     if not project_id:
         return "❌ 请提供 project_id。"
 
