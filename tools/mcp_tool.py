@@ -2630,6 +2630,98 @@ async def _connect_server(name: str, config: dict) -> MCPServerTask:
 # Handler / check-fn factories
 # ---------------------------------------------------------------------------
 
+# ── URL safety gate for MCP tool calls ─────────────────────────────────────
+#
+# Scans MCP tool arguments for URL values and applies the same SSRF /
+# secret-in-URL checks that built-in web tools use.  This is the
+# structural fix for the issue where third-party MCP servers bypass
+# Vermes' security护栏 because they run as external subprocesses.
+
+# Parameter names that commonly carry URLs — checked case-insensitively.
+_URL_PARAM_NAMES = frozenset({
+    "url", "urls", "link", "links", "endpoint", "api_endpoint",
+    "webhook", "callback_url", "redirect_uri", "target", "target_url",
+    "src", "source_url", "page", "page_url", "address",
+})
+
+
+def _extract_urls_from_args(args: dict) -> List[str]:
+    """Extract URL strings from MCP tool arguments.
+
+    Checks two sources:
+    1. Parameters whose names suggest URLs (url, link, endpoint, …)
+    2. Any string value that looks like an http(s):// URL regardless of
+       parameter name (catches unconventional naming)
+    """
+    urls: List[str] = []
+    if not isinstance(args, dict):
+        return urls
+    for key, value in args.items():
+        if not isinstance(value, str):
+            continue
+        # Source 1: known URL parameter names
+        if key.lower() in _URL_PARAM_NAMES and value.strip():
+            urls.append(value.strip())
+            continue
+        # Source 2: any string that starts with http:// or https://
+        stripped = value.strip()
+        if stripped and stripped.lower().startswith(("http://", "https://")):
+            urls.append(stripped)
+    return urls
+
+
+def _check_mcp_url_safety(args: dict, server_name: str, tool_name: str) -> Optional[str]:
+    """Return an error message if any URL in args is unsafe, else None.
+
+    Applies:
+      1. SSRF check via tools.url_safety.is_safe_url — blocks private /
+         internal / cloud-metadata addresses.
+      2. Secret-in-URL check via agent.redact._PREFIX_RE — blocks URLs
+         containing API keys or tokens (exfiltration prevention).
+    """
+    urls = _extract_urls_from_args(args)
+    if not urls:
+        return None
+
+    # Lazy imports — these modules may not be needed in every process.
+    try:
+        from tools.url_safety import is_safe_url
+    except ImportError:
+        is_safe_url = None
+    try:
+        from agent.redact import _PREFIX_RE
+        from urllib.parse import unquote
+    except ImportError:
+        _PREFIX_RE = None
+        unquote = None
+
+    for url in urls:
+        # SSRF check
+        if is_safe_url is not None and not is_safe_url(url):
+            logger.warning(
+                "MCP URL safety gate blocked SSRF: server=%s tool=%s url=%s",
+                server_name, tool_name, url,
+            )
+            return (
+                f"Blocked: URL targets a private or internal network address "
+                f"(SSRF protection). URL: {url}"
+            )
+
+        # Secret-in-URL check
+        if _PREFIX_RE is not None and unquote is not None:
+            if _PREFIX_RE.search(url) or _PREFIX_RE.search(unquote(url)):
+                logger.warning(
+                    "MCP URL safety gate blocked secret in URL: server=%s tool=%s",
+                    server_name, tool_name,
+                )
+                return (
+                    "Blocked: URL contains what appears to be an API key or "
+                    "token. Secrets must not be sent in URLs."
+                )
+
+    return None
+
+
 def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
     """Return a sync handler that calls an MCP tool via the background loop.
 
@@ -2671,6 +2763,19 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
             return json.dumps({
                 "error": f"MCP server '{server_name}' is not connected"
             }, ensure_ascii=False)
+
+        # ── URL safety gate — block SSRF before the request reaches the MCP server ──
+        #
+        # MCP servers run as external subprocesses and may not inherit
+        # Vermes' built-in SSRF protection (tools/url_safety.py).  This
+        # gate scans tool arguments for URL-valued parameters and rejects
+        # requests targeting private/internal/cloud-metadata addresses.
+        # It applies to *every* MCP tool call regardless of which server
+        # or tool is involved, so third-party MCP servers get the same
+        # protection as built-in web tools.
+        blocked = _check_mcp_url_safety(args, server_name, tool_name)
+        if blocked:
+            return json.dumps({"error": blocked}, ensure_ascii=False)
 
         async def _call():
             async with server._rpc_lock:
