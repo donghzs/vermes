@@ -6,29 +6,34 @@
     "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.6.dmg",
     "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.6.exe"
   },
-  "sha256": {},
+  "sha256": {
+    "macos_arm64": "acd8e758a0d8646c61347751d1697fb3b4b0b792ba430a1660941e39361001e2",
+    "macos_x64": "49fae2670240c27959d518065d9c8519e0923e95e7ea304178ecb8eee4acdd67",
+    "windows": "31b2498f94bb706d53ece8bd7ea8ed9a58a774cbbd6bb6504dfa0fa21c29a9b9"
+  },
   "macOS": {
     "arm64": {
       "dmg": "/vermes/downloads/Vermes-2.3.6-arm64.dmg",
-      "size": "242 MB",
-      "sha256": "b6aae6a77af0c35c93d1909b9b36ae7a3638fd1e545c9162df03acc55d2b7576"
+      "size": "210 MB",
+      "sha256": "acd8e758a0d8646c61347751d1697fb3b4b0b792ba430a1660941e39361001e2"
     },
     "x64": {
       "dmg": "/vermes/downloads/Vermes-2.3.6.dmg",
       "size": "215 MB",
-      "sha256": "ba0ffa0d98fa7602618a162e0767f4eb90ab8f3d5cd8b7368b9af5a45996872b"
+      "sha256": "49fae2670240c27959d518065d9c8519e0923e95e7ea304178ecb8eee4acdd67"
     }
   },
   "windows": {
     "exe": "/vermes/downloads/Vermes-Setup-2.3.6.exe",
     "size": "208 MB",
-    "sha256": "5768c42c1fac175309b0691e2e9fe16671e7ee4aea11e47268d564d6a44cdab5"
+    "sha256": "31b2498f94bb706d53ece8bd7ea8ed9a58a774cbbd6bb6504dfa0fa21c29a9b9"
   },
   "changelog": [
     "MCP 客户端层统一 URL 安全拦截 — SSRF 防护 + 密钥泄露防护，第三方 MCP server 自动带护栏",
     "shutong/EmpireCMS 文献源登录修复 — 正确的登录端点与字段名",
     "测试套件修复 — emergent_change 冷启动门 + literature_search 本地 provider mock",
     "流式回复重复修复 — SequenceMatcher 替代 LCS",
-    "Electron Windows 启动崩溃修复 — 移除 dead electron-updater require"
+    "Electron Windows 启动崩溃修复 — 移除 dead electron-updater require",
+    "Windows 构建流程标准化 — build-win-ci.ps1 实战验证，A11 一键出包"
   ]
 }
