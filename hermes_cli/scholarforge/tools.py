@@ -2061,8 +2061,24 @@ async def _handle_scholarforge_export(args: dict, **kw: Any) -> str:
     fmt = args.get("format", "docx")
     abstract = args.get("abstract", "")
 
+    # content 为空时自动从 DB 组装已写回的章节
+    if not content.strip() and project_id:
+        from hermes_cli.scholarforge.database import get_all_sections, get_outline
+        sections = get_all_sections(project_id)
+        outline = get_outline(project_id)
+        parts = []
+        for sec in outline:
+            key = sec.get("id", "")
+            sec_title = sec.get("title", key)
+            sec_content = sections.get(key, "")
+            if sec_content.strip():
+                parts.append(f"## {sec_title}\n\n{sec_content}")
+        if parts:
+            content = "\n\n".join(parts)
+            logger.info(f"export: auto-assembled {len(parts)} sections from DB (project_id={project_id})")
+
     if not title.strip() or not content.strip():
-        return "❌ 请提供论文标题和正文。"
+        return "❌ 请提供论文标题和正文，或先使用 write 工具写入章节内容后重试。"
 
     _export_result = ""
     try:
@@ -3357,6 +3373,53 @@ async def _handle_scholarforge_list_projects(args: dict, **kw: Any) -> str:
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────────────────────
+# Tool: Read Section (读取章节内容)
+# ──────────────────────────────────────────────────────────────
+
+async def _handle_scholarforge_read_section(args: dict, **kw: Any) -> str:
+    """读取论文项目中已写入的章节内容。"""
+    project_id = resolve_project_id(args)
+    if not project_id:
+        return PROJECT_ID_MISSING_MSG
+
+    section_key = args.get("section_key", "").strip()
+
+    from hermes_cli.scholarforge.database import (
+        get_all_sections,
+        get_outline,
+        get_section_content,
+    )
+
+    if section_key:
+        # 读取单个章节
+        content = get_section_content(project_id, section_key)
+        if not content.strip():
+            return f"📄 章节 `{section_key}` 尚未写入内容。"
+        return f"## {section_key}\n\n{content}"
+
+    # 读取全部章节概览
+    sections = get_all_sections(project_id)
+    outline = get_outline(project_id)
+    lines = [f"📋 项目 #{project_id} 章节概览：\n"]
+    total_words = 0
+    written = 0
+    for sec in outline:
+        key = sec.get("id", "")
+        title = sec.get("title", key)
+        status = sec.get("status", "pending")
+        content = sections.get(key, "")
+        wc = len(content)
+        total_words += wc
+        if wc > 0:
+            written += 1
+        lines.append(f"  - **{title}** (`{key}`) — {wc} 字，状态: {status}")
+    lines.append(f"\n📊 总计：{written}/{len(outline)} 章已写入，{total_words} 字")
+    if total_words == 0:
+        lines.append("⚠️ 所有章节均未写入内容。请先使用 `scholarforge_write` 写入章节。")
+    return "\n".join(lines)
+
+
 async def _handle_scholarforge_set_active_project(args: dict, **kw: Any) -> str:
     """设置激活论文项目。"""
     raw = args.get("project_id", 0)
@@ -3608,4 +3671,32 @@ def register_tools(host_api=None):
         emoji="🎯",
         description="设置当前激活论文项目（写回类工具默认作用对象）",
     )
-    logger.info("[ScholarForge] 25 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project")
+
+    # ── read_section ──
+    registry.register(
+        name="scholarforge_read_section",
+        toolset="scholarforge",
+        schema={
+            "name": "scholarforge_read_section",
+            "description": (
+                "读取论文项目中已写入的章节内容。可指定 section_key 读单个章节，"
+                "或不指定读取全部章节概览（标题+字数+状态）。"
+                "用于 export 前确认已写回的内容。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer", "description": "论文项目 ID"},
+                    "section_key": {
+                        "type": "string",
+                        "description": "章节标识（如 intro/method/result）。留空则返回全部章节概览。",
+                    },
+                },
+            },
+        },
+        handler=_with_usage("scholarforge_read_section", _handle_scholarforge_read_section),
+        is_async=True,
+        emoji="📖",
+        description="读取论文章节内容（单章或全部概览）",
+    )
+    logger.info("[ScholarForge] 26 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section")
