@@ -7,6 +7,7 @@ Endpoints:
 
 import asyncio
 import base64 as b64mod
+import difflib
 import json
 import logging
 
@@ -99,10 +100,14 @@ def _normalize_stream_text(text) -> str:
 
 
 def _longest_common_ratio(a: str, b: str) -> float:
-    """计算两个字符串的最长公共子串占 b 的比例（0.0~1.0）。
+    """计算两个字符串的相似度比例（0.0~1.0）。
 
     用于判断 streamed_text 是否已覆盖 final_response 的大部分内容。
-    使用滑动窗口 + 二分搜索，O(n*m*log(min(n,m))) 复杂度。
+    使用 difflib.SequenceMatcher.ratio() 做字符级相似度比对，
+    对流式分块导致的细微差异（标点/空白/截断位置不同）鲁棒。
+
+    性能：O(n*m) 最坏情况，但 difflib 有内部优化（只匹配连续块），
+    实际场景下远快于理论复杂度。对超长文本截断到 5000 字符。
     """
     if not b:
         return 0.0
@@ -116,25 +121,8 @@ def _longest_common_ratio(a: str, b: str) -> float:
     if len(a) > len(b) * 2:
         a = a[-int(len(b) * 1.5):]
     a, b = a[:5000], b[:5000]
-    m, n = len(a), len(b)
-    # 二分搜索最长公共子串长度
-    lo, hi = 0, min(m, n)
-    while lo < hi:
-        mid = (lo + hi + 1) // 2
-        # 检查是否存在长度为 mid 的公共子串
-        seen = set()
-        for i in range(m - mid + 1):
-            seen.add(a[i:i + mid])
-        found = False
-        for j in range(n - mid + 1):
-            if b[j:j + mid] in seen:
-                found = True
-                break
-        if found:
-            lo = mid
-        else:
-            hi = mid - 1
-    return lo / len(b) if b else 0.0
+    import difflib
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
 
 
 def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
@@ -191,7 +179,6 @@ def _compute_final_fallback_tail(final_response, streamed_text) -> "str | None":
     if overlap >= 0.5:
         # 中高重叠：内容已通过流式发出，差异可能是 scrubber/空白处理导致
         # 不整段补发，只提取差分部分（如果有）
-        import difflib
         s = difflib.SequenceMatcher(None, streamed_n, final_n)
         tail_parts = []
         for tag, i1, i2, j1, j2 in s.get_opcodes():
