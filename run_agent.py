@@ -2374,6 +2374,11 @@ class AIAgent:
         r"(?:已|已经)(?:帮你|把|已).{0,6}(?:做好?了|搞定|发过去|发给你|发送完毕)",
         r"(?:已经|已)(?:发过去|发给你|发给你了|发送完毕)",
         r"(?:^|[。，！\n])(?:搞定|处理好?(?:了)?|做好?(?:了)?|跑完|配好?(?:了)?)(?:了)?",  # 无前缀口语化完成
+        # English completion claims
+        r"(?i)(?:I|I've|I have) (?:already )?(?:installed|built|compiled|deployed|generated|downloaded|created|updated|saved|uploaded|started|stopped|restarted|fixed|repaired|executed|ran|completed|finished|done|configured|set up)",
+        r"(?i)(?:successfully |just )?(?:installed|built|compiled|deployed|generated|downloaded|created|updated|saved|uploaded|started|stopped|restarted|fixed|executed|completed|finished|configured)",
+        r"(?i)(?:pip|npm|apt) (?:install|build|run) (?:has )?(?:completed|finished|succeeded)",
+        r"(?i)(?:done|finished|complete|all set|good to go)(?:[.!\n]|$)",
     ]
 
     @staticmethod

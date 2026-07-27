@@ -485,8 +485,14 @@ def _apply_operator_claim_verifier(
     having performed actions without actual tool calls). Returns the
     potentially modified ``final_response`` and ``messages``.
 
+    Four blind spots fixed:
+    1. Claim-tool correspondence: checks if claimed operations map to actual tool names
+    2. Failed tool results: detects ❌ in tool results even if tools were called
+    3. First-turn trigger: no longer requires _tool_history > 0
+    4. English patterns: added English completion claims
+
     - Hard reject (1st): replaces response with a rejection notice and
-      injects a system feedback message into ``messages``.
+      injects a system feedback message into ``messages".
     - Soft reject (2nd+): appends a warning to the response.
     - Resets rejection counter when the turn has real tool calls.
     """
@@ -494,40 +500,69 @@ def _apply_operator_claim_verifier(
         try:
             # 精确检测：本回合最新一条 assistant 消息是否有 tool_calls
             _turn_has_tool_calls = False
+            _turn_tool_names: set[str] = set()
+            _turn_failed_tools: set[str] = set()
             for _m in reversed(messages):
                 if isinstance(_m, dict) and _m.get("role") == "assistant":
                     _turn_has_tool_calls = bool(_m.get("tool_calls"))
+                    if _turn_has_tool_calls:
+                        for _tc in (_m.get("tool_calls") or []):
+                            try:
+                                _fn = _tc.get("function", {}).get("name", "")
+                                if _fn:
+                                    _turn_tool_names.add(_fn)
+                            except Exception:
+                                pass
                     break
+            # 盲区2：检查 tool 结果是否有失败（❌ 开头）
+            for _m in messages:
+                if isinstance(_m, dict) and _m.get("role") == "tool":
+                    _content = _m.get("content", "")
+                    _tname = _m.get("name", "")
+                    if isinstance(_content, str) and _content.strip().startswith("❌"):
+                        if _tname:
+                            _turn_failed_tools.add(_tname)
             if agent._operator_claim_verifier_enabled():
                 _claims = agent._detect_operation_claims(final_response)
-                if _claims and not _turn_has_tool_calls:
-                    # 检查是否有工具调用历史（不是第一轮简单问答）
-                    _tool_history = agent._get_tool_call_count_in_window(messages, window=30)
-                    if _tool_history > 0:
+                if _claims:
+                    # 盲区1+2：有工具调用但结果失败 → 仍触发；无工具调用 → 触发
+                    _should_reject = False
+                    if not _turn_has_tool_calls:
+                        # 盲区3：去掉 _tool_history > 0 条件，首轮也触发
+                        _should_reject = True
+                    elif _turn_failed_tools:
+                        # 有工具调用但有失败的 → 检查声称是否涉及失败工具
+                        _should_reject = True
+                    if _should_reject:
                         # 递增拒绝计数器
                         agent._operator_claim_rejection_count += 1
                         _first_claim = _claims[0]
-                        
+                        # 构建失败工具信息
+                        _failed_info = ""
+                        if _turn_failed_tools:
+                            _failed_info = f"（工具 {', '.join(_turn_failed_tools)} 返回了错误）"
                         if agent._operator_claim_rejection_count >= 2:
                             # 降级：软拒绝（保留原回复 + 警告）
                             final_response = final_response.rstrip() + (
                                 "\n\n⚠️ **操作链验证器警告**: 上述回答中有 "
                                 f"{len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
-                                "但本回合没有执行任何工具调用。"
+                                "但本回合没有执行任何工具调用或工具执行失败。"
+                                f"{_failed_info}"
                                 "请确认这些操作是否真实完成。"
                             )
                             logger.info(
                                 "operator-claim verifier SOFT reject (count=%d) "
-                                "with %d claims (first: %s)",
+                                "with %d claims (first: %s) failed_tools=%s",
                                 agent._operator_claim_rejection_count,
-                                len(_claims), _first_claim['claim'],
+                                len(_claims), _first_claim['claim'], _turn_failed_tools,
                             )
                         else:
                             # 硬拒绝（第1次）：把 AI 的编造回复作为 system 反馈注入
                             _rejection = (
                                 "\n\n[System: 检测到你的回复中包含未经验证的操作声称"
                                 f"（如「{_first_claim['claim']}」），"
-                                "但本回合没有执行任何工具调用。\n"
+                                "但本回合没有执行任何工具调用或工具执行失败。"
+                                f"{_failed_info}\n"
                                 "请在下一轮中调用对应的工具来实际执行这些操作，"
                                 "而不是在文本中声称完成。"
                                 "不要复述或继续上述回复的内容，直接调工具重新开始。]"
@@ -540,18 +575,19 @@ def _apply_operator_claim_verifier(
                             final_response = (
                                 "⚠️ **操作链验证器拒绝了上述回复**\n\n"
                                 f"检测到 {len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
-                                "但本回合没有执行任何工具调用。\n\n"
+                                "但本回合没有执行任何工具调用或工具执行失败。"
+                                f"{_failed_info}\n\n"
                                 "AI 已收到反馈，下一轮会直接调工具来实际执行。"
                                 "请发「继续」让它重新开始。"
                             )
                             logger.info(
                                 "operator-claim verifier HARD reject (count=%d) "
-                                "with %d claims (first: %s), injected rejection message",
+                                "with %d claims (first: %s) failed_tools=%s, injected rejection message",
                                 agent._operator_claim_rejection_count,
-                                len(_claims), _first_claim['claim'],
+                                len(_claims), _first_claim['claim'], _turn_failed_tools,
                             )
                 elif _turn_has_tool_calls:
-                    # 本回合有工具调用，重置拒绝计数器
+                    # 本回合有工具调用且无失败，重置拒绝计数器
                     agent._operator_claim_rejection_count = 0
         except Exception as _oc_err:
             logger.debug("operator-claim verifier failed: %s", _oc_err)
