@@ -25,11 +25,14 @@ Initially: ALL changes auto-commit after format validation.
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import json
 import logging
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -220,6 +223,28 @@ class EmergentChangePipeline:
             # Clean up staging
             os.unlink(staging_path)
 
+            # Step 3b: import validation for Python files
+            # After writing, try to import the module. If import fails
+            # (syntax error that passed format check, missing dependency,
+            # circular import, etc.), automatically rollback to the backup.
+            import_error = self._validate_import(target)
+            if import_error:
+                logger.warning("Import validation failed for %s — rolling back: %s",
+                               proposal.target_path, import_error)
+                self._do_rollback(target, backup_path)
+                event_id = self._record_change_event(
+                    proposal, committed=False,
+                    reason=f"import_validation_failed: {import_error}",
+                )
+                return ChangeResult(
+                    committed=False,
+                    target_path=proposal.target_path,
+                    error=f"Import validation failed: {import_error}. "
+                          f"File rolled back to previous version.",
+                    raw_event_id=event_id,
+                    backup_path=backup_path,
+                )
+
             # Step 4: record raw_event
             event_id = self._record_change_event(proposal, committed=True, backup_path=backup_path)
 
@@ -392,6 +417,63 @@ class EmergentChangePipeline:
             return 0
 
     # ── Internal helpers ────────────────────────────────────────────────────
+
+    # ── Import validation ───────────────────────────────────────────────────
+
+    def _validate_import(self, target: Path) -> Optional[str]:
+        """Try to import the written .py file. Return error message if import fails.
+
+        For non-.py files, skip (return None = no error).
+        Uses importlib.util.spec_from_file_location to load the module in
+        isolation, then attempts to exec it. This catches:
+          - Syntax errors that slipped past format validation
+          - Missing dependencies (ImportError)
+          - Circular imports
+          - Runtime errors at module level (NameError, AttributeError, etc.)
+
+        The import is done in a temporary module name to avoid polluting
+        sys.modules or shadowing the existing loaded version.
+        """
+        if target.suffix != ".py":
+            return None
+
+        try:
+            # Generate a unique temporary module name to avoid sys.modules collision
+            tmp_mod_name = f"_emergent_validate_{target.stem}_{datetime.now().strftime('%H%M%S%f')}"
+            spec = importlib.util.spec_from_file_location(tmp_mod_name, str(target))
+            if spec is None or spec.loader is None:
+                return f"Cannot create module spec for {target}"
+
+            module = importlib.util.module_from_spec(spec)
+            # Temporarily add to sys.modules so relative imports work
+            sys.modules[tmp_mod_name] = module
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                # Clean up: remove the temp module from sys.modules
+                sys.modules.pop(tmp_mod_name, None)
+
+            logger.debug("Import validation passed: %s", target)
+            return None
+
+        except SyntaxError as e:
+            return f"SyntaxError: {e.msg} (line {e.lineno})"
+        except ImportError as e:
+            return f"ImportError: {e}"
+        except Exception as e:
+            return f"{type(e).__name__}: {e}"
+
+    def _do_rollback(self, target: Path, backup_path: Optional[str]) -> None:
+        """Restore target from backup (or delete if no backup = creation rollback)."""
+        try:
+            if backup_path and os.path.exists(backup_path):
+                shutil.copy2(backup_path, str(target))
+                logger.info("Auto-rollback restored from %s", backup_path)
+            elif target.exists():
+                os.unlink(str(target))
+                logger.info("Auto-rollback deleted (no backup = was creation)")
+        except Exception as e:
+            logger.error("Auto-rollback FAILED for %s: %s", target, e)
 
     def _write_to_staging(self, proposal: ChangeProposal) -> Optional[str]:
         """Write proposal content to a staging file."""
