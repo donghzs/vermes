@@ -974,6 +974,22 @@ async def chat_completions(req: ChatRequest):
 
             _combined_prompt = (_evo_prompt + "\n" + _search_prompt).strip() or None
 
+            from hermes_cli.tools_config import _get_platform_tools
+            # Route web through the same governed toolset resolver used by the
+            # CLI/TUI so that `hermes tools` choices (and platform_toolsets.web)
+            # actually take effect for the desktop/Web agent.  Fall back to the
+            # legacy rich default when platform_toolsets.web is absent or empty
+            # (e.g. fresh installs, or a wizard-written empty list) — the
+            # governed resolver returns an empty set in that case and would
+            # otherwise yield a zero-tool web agent.
+            try:
+                _web_cfg = (_cfg.get("platform_toolsets") or {}).get("web")
+            except Exception:
+                _web_cfg = None
+            if _web_cfg:
+                _web_toolsets = _get_platform_tools(_cfg, "web")
+            else:
+                _web_toolsets = _load_toolsets_for_web()
             agent = AIAgent(
                 base_url=base_url,
                 api_key=api_key,
@@ -983,7 +999,7 @@ async def chat_completions(req: ChatRequest):
                 quiet_mode=True,
                 verbose_logging=False,
                 platform="web",
-                enabled_toolsets=_load_toolsets_for_web(),
+                enabled_toolsets=list(_web_toolsets),
                 disabled_toolsets=_disabled_toolsets,
                 ephemeral_system_prompt=_combined_prompt,
                 reasoning_config=_reasoning_config,

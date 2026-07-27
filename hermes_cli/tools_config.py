@@ -2826,7 +2826,14 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
     _done_idx = _reconfig_idx + (2 if _has_mcp else 1)
 
     while True:
-        idx = _prompt_choice("Select an option:", platform_choices, default=0)
+        # Default to "Configure all platforms (global)" so a plain `hermes
+        # tools` run writes every platform (including web/desktop), not just
+        # the CLI platform. Single-platform installs keep default=0.
+        idx = _prompt_choice(
+            "Select an option:",
+            platform_choices,
+            default=(_global_idx if _global_idx >= 0 else 0),
+        )
 
         # "Done" selected
         if idx == _done_idx:
