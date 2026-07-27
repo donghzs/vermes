@@ -101,6 +101,14 @@ SCHOLARFORGE_WRITE_SCHEMA = {
                     "experiment", "discussion", "conclusion", "abstract",
                 ],
             },
+            "section_key": {
+                "type": "string",
+                "description": (
+                    "章节保存键，对应 outline 中的 section id（如 'intro', 'method', 'result'）。"
+                    "如果已知大纲章节的 key，传此参数可确保写入内容与大纲对齐，"
+                    "read_section 和 export 也能正确读取。不传则使用 section_type 作为 key。"
+                ),
+            },
             "context": {
                 "type": "string",
                 "description": "可选的已有上下文（如大纲、前几章内容、已知文献），帮助生成更连贯的内容",
@@ -546,6 +554,9 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
     """撰写论文内容"""
     topic = args.get("topic", "")
     section_type = args.get("section_type", "introduction")
+    # section_key 优先：如果用户传了 section_key（对应 outline 中的 id），用它作为保存键
+    # 这样 write 保存的 key 与 outline 一致，read/export 能正确读取
+    section_key = args.get("section_key", "") or section_type
     context = args.get("context", "")
     paper_type = args.get("paper_type", "本科论文")
     # 解析 project_id：显式参数优先，否则回退到激活项目
@@ -678,7 +689,7 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
         )
         if not blocked:
             from hermes_cli.scholarforge.project_context import save_section
-            save_section(project_id, section_type, content)
+            save_section(project_id, section_key, content)
         else:
             return f"🚫 质量闸门拦截（mode=block）：检测到 P0 级严重问题，已拒绝写回。\n\n---\n\n{gate_report}\n\n---\n\n请根据报告修改后重新提交。"
 
