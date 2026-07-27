@@ -2,7 +2,6 @@ const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron')
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
-const { autoUpdater } = require('electron-updater');
 
 // 强制 Chromium 解析微信桌面本地服务域名 → 127.0.0.1
 app.commandLine.appendSwitch('host-resolver-rules', 'MAP localhost.weixin.qq.com 127.0.0.1');
@@ -499,94 +498,6 @@ ipcMain.on('splash:retry', () => {
 // IPC: 后端状态查询
 ipcMain.handle('backend:status', () => {
   return { running: !!backendProcess, pid: backendProcess?.pid || null };
-});
-
-// ── 自动更新 (electron-updater) ──
-
-// 配置更新源：vbit.top 发布服务器
-// 签名: electron-updater generic provider 自动校验 blockmap (SHA512 per block)
-// HTTPS + blockmap 提供传输层 + 完整性双重保护
-autoUpdater.autoDownload = false;           // 手动控制下载时机
-autoUpdater.autoInstallOnAppQuit = true;    // 退出时自动安装
-autoUpdater.allowDowngrade = false;
-
-// 根据平台设置更新 feed URL
-const updateFeedBase = 'https://vbit.top/vermes/updates';
-const platform = process.platform === 'darwin' ? 'mac' : 'win';
-const arch = process.arch === 'arm64' ? 'arm64' : (process.platform === 'darwin' ? 'x64' : 'x64');
-autoUpdater.setFeedURL({
-  provider: 'generic',
-  url: `${updateFeedBase}/${platform}/${arch}/`
-});
-
-// 事件：发现有更新
-autoUpdater.on('update-available', (info) => {
-  console.log('[Vermes] 发现新版本:', info.version);
-  mainWindow?.webContents.send('update:available', {
-    version: info.version,
-    releaseNotes: info.releaseNotes,
-    releaseDate: info.releaseDate,
-  });
-});
-
-// 事件：没有更新
-autoUpdater.on('update-not-available', () => {
-  console.log('[Vermes] 已是最新版本');
-  mainWindow?.webContents.send('update:not-available');
-});
-
-// 事件：下载进度
-autoUpdater.on('download-progress', (progress) => {
-  mainWindow?.webContents.send('update:download-progress', {
-    percent: progress.percent,
-    bytesPerSecond: progress.bytesPerSecond,
-    transferred: progress.transferred,
-    total: progress.total,
-  });
-});
-
-// 事件：下载完成，准备安装
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('[Vermes] 更新已下载:', info.version);
-  mainWindow?.webContents.send('update:downloaded', {
-    version: info.version,
-  });
-});
-
-// 事件：更新出错
-autoUpdater.on('error', (err) => {
-  console.error('[Vermes] 更新出错:', err.message);
-  mainWindow?.webContents.send('update:error', {
-    message: err.message,
-  });
-});
-
-// IPC: 检查更新
-ipcMain.handle('update:check', async () => {
-  try {
-    const result = await autoUpdater.checkForUpdates();
-    return { success: true, updateInfo: result?.updateInfo || null };
-  } catch (err) {
-    console.error('[Vermes] 检查更新失败:', err.message);
-    return { success: false, error: err.message };
-  }
-});
-
-// IPC: 开始下载更新
-ipcMain.handle('update:download', async () => {
-  try {
-    await autoUpdater.downloadUpdate();
-    return { success: true };
-  } catch (err) {
-    console.error('[Vermes] 下载更新失败:', err.message);
-    return { success: false, error: err.message };
-  }
-});
-
-// IPC: 安装更新并重启
-ipcMain.handle('update:install', async () => {
-  autoUpdater.quitAndInstall();
-  return { success: true };
 });
 
 // ── 单实例锁 ──
