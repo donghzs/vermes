@@ -39,8 +39,18 @@ def tmp_hermes_home(tmp_path):
 
 @pytest.fixture
 def pipeline(tmp_hermes_home):
-    """Create a pipeline with temp HERMES_HOME."""
-    return EmergentChangePipeline(hermes_home=tmp_hermes_home)
+    """Create a pipeline with temp HERMES_HOME.
+
+    The cold-start safety gate (``_has_sufficient_rollback_history``) is
+    bypassed in tests because the temp HERMES_HOME has no rollback data —
+    the gate would hold every agent-initiated change for confirmation,
+    which is the correct production behaviour but not what these unit
+    tests exercise. Tests that specifically want to verify the gate can
+    re-patch it on the returned instance.
+    """
+    p = EmergentChangePipeline(hermes_home=tmp_hermes_home)
+    p._has_sufficient_rollback_history = lambda *a, **kw: True
+    return p
 
 
 # ---------------------------------------------------------------------------

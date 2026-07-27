@@ -70,6 +70,7 @@ def test_handler_unavailable_prompt(monkeypatch, _mod):
             return {"env_vars": [{"key": "CNKI_API_KEY"}]}
 
     monkeypatch.setattr(_mod, "get_active_literature_provider", lambda: CnkiProv())
+    monkeypatch.setattr(_mod, "iter_local_providers", lambda: [])
     out = asyncio.run(_mod._handle_literature_search({"query": "x"}))
     d = json.loads(out)
     assert d["success"] is False
