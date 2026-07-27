@@ -1,48 +1,34 @@
 {
-  "version": "2.3.4",
-  "buildDate": "2026-07-18",
+  "version": "2.3.6",
+  "buildDate": "2026-07-27",
   "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.4-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.4.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.4.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.6-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.6.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.6.exe"
   },
-  "sha256": {
-    "macos_arm64": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf",
-    "macos_x64": "cf194ca8ccbd58d2674522d225bc77ef01d17867de5c3ed91370116040cf07cb"
-  },
+  "sha256": {},
   "macOS": {
     "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.4-arm64.dmg",
-      "size": "245 MB",
-      "sha256": "38734e78d69a55d05c15edd3080ac78d96e2bc691c7f412d7eb699a8c9fd35cf"
+      "dmg": "/vermes/downloads/Vermes-2.3.6-arm64.dmg",
+      "size": "242 MB",
+      "sha256": "b6aae6a77af0c35c93d1909b9b36ae7a3638fd1e545c9162df03acc55d2b7576"
     },
     "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.4.dmg",
-      "size": "249 MB",
-      "sha256": "cf194ca8ccbd58d2674522d225bc77ef01d17867de5c3ed91370116040cf07cb"
+      "dmg": "/vermes/downloads/Vermes-2.3.6.dmg",
+      "size": "215 MB",
+      "sha256": "ba0ffa0d98fa7602618a162e0767f4eb90ab8f3d5cd8b7368b9af5a45996872b"
     }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.3.4.exe",
-    "size": ""
+    "exe": "/vermes/downloads/Vermes-Setup-2.3.6.exe",
+    "size": "208 MB",
+    "sha256": "5768c42c1fac175309b0691e2e9fe16671e7ee4aea11e47268d564d6a44cdab5"
   },
   "changelog": [
-    "全源码 API 配置统一 — 34 文件接入 service_credentials，27 个服务单一来源读取",
-    "前端「🔑 服务」Tab — 统一凭证表单，消费 GET /api/config/schema services 分区",
-    "后端写入白名单动态化 — register_service 注册表与 schema 永不漂移",
-    "记忆底座统一 — 分层召回管线 + 外部 KB 联邦 + 历史迁移",
-    "L3 适配器无副作用 + 实时钩子接 memory_recall",
-    "视觉模型去硬编码 — 改通用能力探测",
-    "browser_vision 辅助模型回退修复 — 命名 provider(base_url 无 key)自动回退 auto 而非崩溃 (#A0-2)",
-    "browser_back 非可导航文档返回友好提示而非原始 CDP 错误 (#A0-3)",
-    "Harness 层：工具失败可恢复反馈装饰器 + 稳定性探针(best/worst-of-N) + 通用约束基类",
-    "构建修复：GUI 包补全 ScholarForge 与 gateway 9 个 Mixin / slash_handlers 隐式导入",
-    "ScholarForge write/review / replace_citations 经重建出包交付（源码已修复，属 STALE 项）",
-    "ScholarForge SSE 僵尸请求修复 — 离开模块时自动 abort + 后端断开检测",
-    "线程安全修复 — asyncio.Queue 跨线程写入导致 SSE 永久挂起",
-    "Agent 超时保护 — 流式 30s + 全局 30min 硬上限",
-    "LLM 超时 120s→60s — 可通过 SCHOLAR_LLM_TIMEOUT 环境变量配置",
-    "生态模块系统 — ScholarForge 分离为首个热插拔模块",
-    "数据冗余审计 — 停止 anti_patterns 写入 + TTL 清理 + 视图替代双写"
+    "MCP 客户端层统一 URL 安全拦截 — SSRF 防护 + 密钥泄露防护，第三方 MCP server 自动带护栏",
+    "shutong/EmpireCMS 文献源登录修复 — 正确的登录端点与字段名",
+    "测试套件修复 — emergent_change 冷启动门 + literature_search 本地 provider mock",
+    "流式回复重复修复 — SequenceMatcher 替代 LCS",
+    "Electron Windows 启动崩溃修复 — 移除 dead electron-updater require"
   ]
 }

@@ -22,5 +22,53 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "version": "2.3.6",
+  "build": {
+    "appId": "top.vbit.vermes",
+    "productName": "Vermes",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/main.js",
+      "splash.html",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        }
+      ],
+      "icon": "packaging/vermes.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "extraResources": [
+      {
+        "from": "dist/vermes-backend",
+        "to": "backend"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "main": "electron/main.js"
 }
