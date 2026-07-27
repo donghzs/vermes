@@ -144,4 +144,6 @@ def test_register_source_persist_false_creates_definition(tmp_path, monkeypatch)
     data = json.loads((tmp_path / "literature_custom_sources.json").read_text(encoding="utf-8"))
     assert len(data) == 1
     assert data[0]["auth_scheme"] == "form"
-    assert data[0]["login_url"] == "http://3.shutong2.com"
+    # EmpireCMS 真机：登录脚本是 /e/member/doaction.php，字段名是 username
+    assert data[0]["login_url"] == "http://3.shutong2.com/e/member/doaction.php"
+    assert data[0]["login_user_field"] == "username"

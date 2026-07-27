@@ -514,34 +514,39 @@ def register_source_from_credential_block(
         definition["provider_type"] = "shutong"
 
     if auth == "form":
-        definition["login_url"] = url
+        empirecms = is_shutong or _looks_like_empirecms(url)
+        if empirecms:
+            # EmpireCMS 真机抓包（书童/文轩等第三方中文文献代理）：真实登录处理
+            # 脚本是 /e/member/doaction.php，表单字段名是 username（非通用的
+            # user），且需 enews=login/tobind/lifetime/ecmsfrom 等帝国CMS登录动作
+            # 隐藏域。不修正则登录 POST 到根路径、字段名错误 → 登录失败、SSO 不
+            # 跳转、search 静默 0 篇（用户"粘贴网站+账号+密码"本应直接可用）。
+            definition["login_url"] = url.rstrip("/") + "/e/member/doaction.php"
+            definition["login_user_field"] = "username"
+        else:
+            definition["login_url"] = url
+            definition["login_user_field"] = "user"
         definition["search_url"] = url
-        definition["login_user_field"] = "user"
         definition["login_password_field"] = "password"
         if is_shutong:
             definition["login_extra_fields"] = {
                 "enews": "login",
+                "tobind": "0",
                 "lifetime": "0",
                 "ecmsfrom": "/zhongwenku/",
             }
             definition["sso_url"] = (url.rstrip("/") + "/l77.php")
             definition["sso_referer"] = (url.rstrip("/") + "/zhongwenku/")
             definition["token_scheme"] = "bearer"
+        elif _looks_like_empirecms(url):
+            definition["login_extra_fields"] = {
+                "enews": "login",
+                "tobind": "0",
+                "lifetime": "0",
+                "ecmsfrom": "/",
+            }
         else:
-            # 通用第三方文献库多为 EmpireCMS：登录字段是 username，且需
-            # enews=login/tobind/lifetime 等帝国CMS登录动作隐藏域。若不修正，
-            # 通用 form 登录会因字段名错误而失败（用户"粘贴网站+账号+密码"
-            # 本应直接可用，这里补全以真正打通登录半边）。
-            if _looks_like_empirecms(url):
-                definition["login_user_field"] = "username"
-                definition["login_extra_fields"] = {
-                    "enews": "login",
-                    "tobind": "0",
-                    "lifetime": "0",
-                    "ecmsfrom": "/",
-                }
-            else:
-                definition["login_extra_fields"] = {}
+            definition["login_extra_fields"] = {}
 
     try:
         defn = add_custom_source(definition)

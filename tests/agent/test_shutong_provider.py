@@ -219,6 +219,11 @@ def test_register_detects_shutong_sets_provider_type(tmp_path, monkeypatch):
     assert res["auth_scheme"] == "form"
     data = json.loads((tmp_path / "literature_custom_sources.json").read_text(encoding="utf-8"))
     assert data[0]["provider_type"] == "shutong"
+    # EmpireCMS 真机字段：登录脚本是 /e/member/doaction.php（非根路径），
+    # 表单字段名是 username（非通用的 user）。错配会导致登录失败、SSO 不跳转、search 0 篇。
+    assert data[0]["login_url"] == "http://3.shutong2.com/e/member/doaction.php"
+    assert data[0]["login_user_field"] == "username"
+    assert data[0]["login_password_field"] == "password"
     assert data[0]["login_extra_fields"].get("enews") == "login"
     assert data[0]["login_extra_fields"].get("ecmsfrom") == "/zhongwenku/"
     assert data[0]["sso_url"].endswith("/l77.php")
