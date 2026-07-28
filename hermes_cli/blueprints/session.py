@@ -24,8 +24,18 @@ async def get_sessions(limit: int = 20, offset: int = 0):
 
         db = SessionDB()
         try:
-            sessions = db.list_sessions_rich(limit=limit, offset=offset)
-            total = db.session_count()
+            # 取足够大的窗口，在内存中按“有消息优先、再按最近活动”重排，
+            # 避免空壳会话（如批量产生的 telegram 空 session）淹没真实聊天。
+            all_sessions = db.list_sessions_rich(limit=100000, offset=0)
+            all_sessions.sort(
+                key=lambda s: (
+                    (s.get("message_count") or 0) > 0,
+                    s.get("last_active") or s.get("started_at") or 0,
+                ),
+                reverse=True,
+            )
+            total = len(all_sessions)
+            sessions = all_sessions[offset : offset + limit]
             now = time.time()
             for s in sessions:
                 s["is_active"] = (
@@ -125,6 +135,62 @@ async def get_session_messages(session_id: str):
         db.close()
 
 
+async def send_from_desktop(session_id: str, request: Request):
+    """步骤3：send-from-desktop 桥 —— 桌面代发渠道消息（web 进程侧）。
+
+    只做三件事：校验 + 写 pending relay 信号 + 立即返回。
+    - 不跑 agent（gateway 进程消费信号后走 _handle_message 管线）；
+    - 不 append_message（gateway 管线自己落 user/assistant 消息，避免双写）；
+    - 拒绝 source='web'（web 会话 relay 会绕回 web 进程形成环路）。
+    认证：/api/sessions/* 非公开路径，web_server auth_middleware 已强制
+    X-Hermes-Session-Token（即设计中的桌面 token 护栏）。
+    """
+    from hermes_state import SessionDB
+
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    if len(text) > 20000:
+        raise HTTPException(status_code=400, detail="text too long")
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        session = db.get_session(sid) if sid else None
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if (session.get("source") or "").lower() == "web":
+            raise HTTPException(
+                status_code=400,
+                detail="web sessions cannot be relayed (use normal chat)",
+            )
+        token = request.headers.get("X-Hermes-Session-Token", "")
+        if not db.request_desktop_relay(sid, text, token, ttl=300.0):
+            raise HTTPException(
+                status_code=409,
+                detail="another relay/handoff is already in flight for this session",
+            )
+        return {"ok": True, "session_id": sid, "state": "pending"}
+    finally:
+        db.close()
+
+
+async def get_relay_state(session_id: str):
+    """轮询 relay 进度（pending/running/completed/failed + error）。"""
+    from hermes_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        state = db.get_desktop_relay_state(sid)
+        return {"session_id": sid, "relay": state}
+    finally:
+        db.close()
+
+
 async def delete_session_endpoint(session_id: str):
     from hermes_state import SessionDB
     from hermes_cli.blueprints.agent_cache import clean_agent_for_session
@@ -172,6 +238,18 @@ def register_to(app):
         get_session_messages,
         methods=["GET"],
         name="get_session_messages",
+    )
+    app.add_api_route(
+        "/api/sessions/{session_id}/send-from-desktop",
+        send_from_desktop,
+        methods=["POST"],
+        name="send_from_desktop",
+    )
+    app.add_api_route(
+        "/api/sessions/{session_id}/relay-state",
+        get_relay_state,
+        methods=["GET"],
+        name="get_relay_state",
     )
     app.add_api_route(
         "/api/sessions/{session_id}",

@@ -61,23 +61,90 @@ class WatcherMixin:
                     session_id = row.get("id")
                     if not session_id:
                         continue
+                    # 桌面 relay 记录（relay_source='desktop'）与既有 CLI→渠道
+                    # handoff 语义分流，互不干扰。
+                    is_desktop_relay = row.get("relay_source") == "desktop"
+                    # 超时护栏：过期的 relay 直接标 failed，不消费
+                    if is_desktop_relay:
+                        expire_at = row.get("relay_expire_at") or 0
+                        if expire_at and time.time() > expire_at:
+                            if self._session_db.claim_handoff(session_id):
+                                self._session_db.fail_handoff(
+                                    session_id, "relay expired before gateway pickup"
+                                )
+                                self._session_db.clear_desktop_relay(session_id)
+                            continue
                     if not self._session_db.claim_handoff(session_id):
                         # Another tick or another gateway already claimed it.
                         continue
                     try:
-                        await self._process_handoff(row)
+                        if is_desktop_relay:
+                            await self._process_desktop_relay(row)
+                        else:
+                            await self._process_handoff(row)
                         self._session_db.complete_handoff(session_id)
                     except Exception as exc:
                         logger.warning(
-                            "Handoff for session %s failed: %s",
+                            "%s for session %s failed: %s",
+                            "Desktop relay" if is_desktop_relay else "Handoff",
                             session_id, exc, exc_info=True,
                         )
                         self._session_db.fail_handoff(session_id, str(exc))
+                    finally:
+                        if is_desktop_relay:
+                            self._session_db.clear_desktop_relay(session_id)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.debug("Handoff watcher tick error: %s", exc, exc_info=True)
             await asyncio.sleep(interval)
+
+    async def _process_desktop_relay(self, row: dict) -> None:
+        """Relay a desktop-originated user message into a channel session.
+
+        步骤 3（send-from-desktop 桥）：桌面控制台经 web 后端写入 pending relay
+        信号，gateway 在此消费——还原该 session 的原渠道 SessionSource，构造
+        internal MessageEvent 走正常 `_handle_message` 管线：agent 运行、回复经
+        该渠道 adapter.send 发回原渠道用户、user/assistant 消息由管线自身落
+        state.db（**本方法不直接 append_message，避免双写**）、记忆逐轮摄入。
+
+        绝不经 web 进程 chat.py。任何失败抛异常由 watcher 标 failed。
+        """
+        session_id = row.get("id")
+        relay_text = (row.get("relay_text") or "").strip()
+        if not relay_text:
+            raise RuntimeError("desktop relay has empty relay_text")
+        if (row.get("source") or "").lower() == "web":
+            # 端点已拒绝，双保险：web 会话不 relay（会绕回 web 进程形成环路）
+            raise RuntimeError("refusing to relay web-source session")
+
+        source = self._find_source_by_session_id(session_id)
+        if source is None:
+            raise RuntimeError(
+                "session source not resolvable (channel not connected yet? "
+                "have the channel send/receive one message first)"
+            )
+
+        adapter = self.adapters.get(source.platform)
+        if adapter is None:
+            raise RuntimeError(
+                f"platform {getattr(source.platform, 'value', source.platform)} "
+                "not connected — cannot deliver reply to the original channel"
+            )
+
+        event = MessageEvent(
+            text=relay_text,
+            message_type=MessageType.TEXT,
+            source=source,
+            internal=True,
+        )
+        logger.info(
+            "Desktop relay: injecting message into %s chat=%s (session %s)",
+            getattr(source.platform, "value", source.platform),
+            source.chat_id,
+            session_id,
+        )
+        await self._handle_message(event)
 
     async def _platform_reconnect_watcher(self) -> None:
         """Background task that periodically retries connecting failed platforms.

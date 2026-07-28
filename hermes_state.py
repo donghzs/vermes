@@ -336,6 +336,16 @@ CREATE TABLE IF NOT EXISTS sessions (
     handoff_state TEXT,
     handoff_platform TEXT,
     handoff_error TEXT,
+    relay_text TEXT,
+    relay_source TEXT,
+    desktop_token TEXT,
+    relay_expire_at REAL,
+    chat_id TEXT,
+    chat_type TEXT,
+    thread_id TEXT,
+    display_name TEXT,
+    session_key TEXT,
+    origin_json TEXT,
     FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
 );
 
@@ -633,6 +643,47 @@ class SessionDB:
         finally:
             ref.close()
 
+    # §3.5 channel/relay columns. EXEMPT from the blanket schema reconcile
+    # (see _reconcile_columns): they are created lazily only when a channel or
+    # desktop-relay session is actually written, so opening a legacy DB never
+    # mutates it eagerly (rollback-safety invariant).
+    _RECONCILE_EXEMPT_COLUMNS = frozenset({
+        "chat_id", "chat_type", "thread_id", "session_key", "display_name",
+        "origin_json", "relay_text", "relay_source", "desktop_token",
+        "relay_expire_at",
+    })
+    # (column name, SQL type) pairs for the lazy ALTER in
+    # _ensure_session_origin_columns.
+    _SESSION_ORIGIN_COLUMNS = (
+        ("chat_id", "TEXT"), ("chat_type", "TEXT"), ("thread_id", "TEXT"),
+        ("session_key", "TEXT"), ("display_name", "TEXT"), ("origin_json", "TEXT"),
+        ("relay_text", "TEXT"), ("relay_source", "TEXT"),
+        ("desktop_token", "TEXT"), ("relay_expire_at", "REAL"),
+    )
+
+    def _ensure_session_origin_columns(self, conn) -> None:
+        """Lazily ALTER the §3.5 channel/relay columns into the sessions table.
+
+        Called only from the write paths that actually use these columns
+        (channel-session creation, origin backfill, desktop relay), so a legacy
+        DB is never mutated merely by being opened. Idempotent: columns already
+        present are skipped. Safe to call on every relevant write.
+        """
+        try:
+            cur = conn.execute('PRAGMA table_info("sessions")')
+            live = {r[1] for r in cur.fetchall()}
+        except sqlite3.OperationalError:
+            return
+        for name, ctype in self._SESSION_ORIGIN_COLUMNS:
+            if name in live:
+                continue
+            safe = name.replace('"', '""')
+            try:
+                conn.execute(f'ALTER TABLE "sessions" ADD COLUMN "{safe}" {ctype}')
+            except sqlite3.OperationalError:
+                # duplicate column (race) or other — non-fatal
+                pass
+
     def _reconcile_columns(self, cursor: sqlite3.Cursor) -> None:
         """Ensure live tables have every column declared in SCHEMA_SQL.
 
@@ -663,6 +714,15 @@ class SessionDB:
 
             for col_name, col_type in declared_cols.items():
                 if col_name not in live_cols:
+                    # §3.5 channel/relay columns are intentionally exempt from
+                    # eager reconcile: adding them to every legacy DB on open
+                    # would violate rollback-safety (test_topic_mode_schema_*
+                    # — upgrading must not mutate an old bot's state.db until
+                    # the feature is actually used). They are created lazily by
+                    # _ensure_session_origin_columns() on the write paths that
+                    # need them.
+                    if table_name == "sessions" and col_name in self._RECONCILE_EXEMPT_COLUMNS:
+                        continue
                     safe_name = col_name.replace('"', '""')
                     try:
                         cursor.execute(
@@ -874,13 +934,28 @@ class SessionDB:
         system_prompt: str = None,
         user_id: str = None,
         parent_session_id: str = None,
+        chat_id: str = None,
+        chat_type: str = None,
+        thread_id: str = None,
+        display_name: str = None,
+        session_key: str = None,
+        origin_json: str = None,
     ) -> None:
-        """Shared INSERT OR IGNORE for session rows."""
+        """Shared INSERT OR IGNORE for session rows.
+
+        chat_id/chat_type/thread_id/display_name/session_key/origin_json 为
+        自研最小移植（对齐上游 #58899 origin_json 格式）：gateway 创建渠道会话
+        时补传，使 state.db 成为渠道还原的权威真相源（desktop relay 兜底 +
+        解决 SessionStore 90 天 prune 边界）。origin_json 必须是
+        ``json.dumps(SessionSource.to_dict())``，勿手拼。
+        """
         def _do(conn):
+            self._ensure_session_origin_columns(conn)
             conn.execute(
                 """INSERT OR IGNORE INTO sessions (id, source, user_id, model, model_config,
-                   system_prompt, parent_session_id, started_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   system_prompt, parent_session_id, started_at,
+                   chat_id, chat_type, thread_id, display_name, session_key, origin_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     session_id,
                     source,
@@ -890,7 +965,40 @@ class SessionDB:
                     system_prompt,
                     parent_session_id,
                     time.time(),
+                    chat_id,
+                    chat_type,
+                    thread_id,
+                    display_name,
+                    session_key,
+                    origin_json,
                 ),
+            )
+        self._execute_write(_do)
+
+    def backfill_session_origin(
+        self,
+        session_id: str,
+        session_key: str = None,
+        chat_id: str = None,
+        chat_type: str = None,
+        thread_id: str = None,
+        display_name: str = None,
+        origin_json: str = None,
+    ) -> None:
+        """存量回填渠道还原元数据（幂等，COALESCE 只补 NULL，不覆盖既有值）。"""
+        def _do(conn):
+            self._ensure_session_origin_columns(conn)
+            conn.execute(
+                """UPDATE sessions SET
+                   session_key  = COALESCE(session_key, ?),
+                   chat_id      = COALESCE(chat_id, ?),
+                   chat_type    = COALESCE(chat_type, ?),
+                   thread_id    = COALESCE(thread_id, ?),
+                   display_name = COALESCE(display_name, ?),
+                   origin_json  = COALESCE(origin_json, ?)
+                   WHERE id = ?""",
+                (session_key, chat_id, chat_type, thread_id,
+                 display_name, origin_json, session_id),
             )
         self._execute_write(_do)
 
@@ -3747,6 +3855,68 @@ class SessionDB:
                 "UPDATE sessions SET handoff_state = 'failed', "
                 "handoff_error = ? WHERE id = ?",
                 (error[:500], session_id),
+            )
+        self._execute_write(_do)
+
+    # ------------------------------------------------------------------
+    # Desktop relay（send-from-desktop 桥）
+    #
+    # 复用 handoff_state 信号列（pending/running/completed/failed）+ 扩展
+    # relay_* 列携带真实文本。一条 relay_source='desktop' 的 pending 记录 =
+    # "桌面请求 gateway 代发一条真实用户消息到该渠道会话"。
+    # 消费方：gateway/watcher_mixin._handoff_watcher（按 relay_source 分流）。
+    # ------------------------------------------------------------------
+
+    def request_desktop_relay(
+        self, session_id: str, text: str, token: str, ttl: float = 300.0
+    ) -> bool:
+        """Request the gateway to relay a real user message to a channel session.
+
+        Returns False if the session is already in a non-terminal handoff/relay
+        state (one in-flight relay per session at a time).
+        """
+        def _do(conn):
+            self._ensure_session_origin_columns(conn)
+            cur = conn.execute(
+                "UPDATE sessions "
+                "SET handoff_state = 'pending', "
+                "    handoff_platform = NULL, "
+                "    handoff_error = NULL, "
+                "    relay_text = ?, "
+                "    relay_source = 'desktop', "
+                "    desktop_token = ?, "
+                "    relay_expire_at = ? "
+                "WHERE id = ? AND (handoff_state IS NULL "
+                "                  OR handoff_state IN ('completed', 'failed'))",
+                (text, token, time.time() + ttl, session_id),
+            )
+            return cur.rowcount > 0
+        return self._execute_write(_do)
+
+    def get_desktop_relay_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Read relay progress for frontend polling (state/error/expire)."""
+        cur = self._conn.execute(
+            "SELECT handoff_state, handoff_error, relay_source, relay_expire_at "
+            "FROM sessions WHERE id = ?",
+            (session_id,),
+        )
+        row = cur.fetchone()
+        if row is None or row["relay_source"] != "desktop":
+            return None
+        return {
+            "state": row["handoff_state"],
+            "error": row["handoff_error"],
+            "expire_at": row["relay_expire_at"],
+        }
+
+    def clear_desktop_relay(self, session_id: str) -> None:
+        """Clear relay payload columns after terminal state (keep handoff_state)."""
+        def _do(conn):
+            self._ensure_session_origin_columns(conn)
+            conn.execute(
+                "UPDATE sessions SET relay_text = NULL, desktop_token = NULL "
+                "WHERE id = ?",
+                (session_id,),
             )
         self._execute_write(_do)
 

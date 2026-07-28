@@ -91,6 +91,53 @@ class MessageHandlerMixin:
 
         await adapter.send(source.chat_id, content, metadata=metadata)
 
+    def _find_source_by_session_id(self, session_id: str):
+        """按 session_id 还原原渠道 SessionSource（desktop relay 用）。
+
+        主路径：遍历 gateway SessionStore._entries（sessions.json 权威索引，
+        覆盖全部历史会话；entry.origin 为完整 SessionSource）。
+        兜底 1：state.db origin_json（自研最小移植 #58899 格式后写入）。
+        兜底 2：state.db chat_id 列重建最小 SessionSource。
+        再无 → None（拒绝 relay）。
+
+        边界：SessionStore.prune_old_entries 默认 90 天清理，超龄会话必走兜底。
+        """
+        # 主路径：SessionStore 内存索引
+        store = getattr(self, "session_store", None)
+        if store is not None:
+            try:
+                store._ensure_loaded()
+                for entry in store._entries.values():
+                    if entry.session_id == session_id and entry.origin is not None:
+                        return entry.origin  # 字段名是 origin（session.py:956），不是 source
+            except Exception as exc:
+                logger.debug("desktop relay: session_store scan failed: %s", exc)
+        # 兜底：state.db
+        try:
+            from gateway.session import SessionSource
+            from hermes_state import SessionDB
+
+            db = SessionDB()
+            try:
+                row = db.get_session(session_id)
+            finally:
+                db.close()
+            if row:
+                origin_json = row.get("origin_json")
+                if origin_json:
+                    return SessionSource.from_dict(json.loads(origin_json))
+                if row.get("chat_id"):
+                    return SessionSource(
+                        platform=Platform(row["source"]),
+                        chat_id=row["chat_id"],
+                        chat_type=row.get("chat_type") or "dm",
+                        thread_id=row.get("thread_id"),
+                        user_id=row.get("user_id"),
+                    )
+        except Exception as exc:
+            logger.debug("desktop relay: state.db fallback failed for %s: %s", session_id, exc)
+        return None
+
     async def _handle_message(self, event: MessageEvent) -> Optional[str]:
         """
         Handle an incoming message from any platform.

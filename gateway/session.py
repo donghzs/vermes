@@ -968,6 +968,14 @@ class SessionStore:
                 "session_id": session_id,
                 "source": source.platform.value,
                 "user_id": source.user_id,
+                # 自研最小移植（对齐上游 #58899）：补写渠道还原元数据，
+                # 让 state.db 成为权威真相源（desktop relay 兜底 / 90 天 prune 边界）
+                "chat_id": source.chat_id,
+                "chat_type": source.chat_type,
+                "thread_id": source.thread_id,
+                "display_name": source.chat_name,
+                "session_key": session_key,
+                "origin_json": json.dumps(source.to_dict()),
             }
 
         # SQLite operations outside the lock
@@ -1194,6 +1202,13 @@ class SessionStore:
                 "session_id": session_id,
                 "source": old_entry.platform.value if old_entry.platform else "unknown",
                 "user_id": old_entry.origin.user_id if old_entry.origin else None,
+                # 自研最小移植（对齐上游 #58899）：rotate 路径同样补写还原元数据
+                "chat_id": old_entry.origin.chat_id if old_entry.origin else None,
+                "chat_type": old_entry.chat_type,
+                "thread_id": old_entry.origin.thread_id if old_entry.origin else None,
+                "display_name": new_entry.display_name,
+                "session_key": session_key,
+                "origin_json": json.dumps(old_entry.origin.to_dict()) if old_entry.origin else None,
             }
 
         if self._db and db_end_session_id:
