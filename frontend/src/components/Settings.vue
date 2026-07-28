@@ -1344,12 +1344,14 @@ async function toggleChannel(platformKey) {
             :link-text="PROVIDER_EXTRAS[p.id]?.linkText || ''"
             :hide-key-input="PROVIDER_EXTRAS[p.id]?.hideKeyInput || false"
             :default-base-url="DEFAULT_BASE_URLS[p.id] || ''"
-            :show-delete="false"
+            :show-delete="true"
             @toggle="onCardToggle"
             @sync="onCardSync"
             @save="onCardSave"
+            @delete="onCardDelete"
             @set-model="onCardSetModel"
             @add-model="onCardAddModel"
+            @remove-model="onCardRemoveModel"
             @test="onCardTest"
           />
         </div>
@@ -1393,8 +1395,8 @@ async function toggleChannel(platformKey) {
               <div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2">🔧 自定义</div>
               <ProviderCard v-for="p in customProviders" :key="p.id"
                 :provider="p" :expanded="isExpanded(p.id)" compact
-                :show-delete="false" :default-base-url="''"
-                @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave"
+                :show-delete="true" :default-base-url="''"
+                @toggle="onCardToggle" @sync="onCardSync" @save="onCardSave" @delete="onCardDelete"
                 @set-model="onCardSetModel" @add-model="onCardAddModel" @remove-model="onCardRemoveModel" @test="onCardTest"
               />
               <button @click="addCustomProvider"
