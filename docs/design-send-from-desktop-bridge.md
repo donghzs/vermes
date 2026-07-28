@@ -46,7 +46,7 @@
 
 `POST /api/sessions/{session_id}/send-from-desktop`
 
-1. 校验请求头 `X-Desktop-Token` 与启动时 `_SESSION_TOKEN` 一致 → 否则 `403`。
+1. ~~校验请求头 `X-Desktop-Token` 与启动时 `_SESSION_TOKEN` 一致 → 否则 `403`~~ **【实现勘误】**：最终实现复用全站 `X-Hermes-Session-Token` auth_middleware（`/api/sessions/*` 非公开路径强制校验），缺失/伪造返回 **401**（中间件层），未新增独立 `X-Desktop-Token` 头。`source='web'` 拒绝 = **400**（端点层）；relay 防重放 = **409**。
 2. 解析 `session_id`，确认它在 state.db 中存在且 `source ∈ {telegram, feishu, discord, slack, …}`（**拒绝 `source='web'`**，避免绕回 web 进程形成环路）。
 3. 把真实用户消息写入共享 state.db：
    ```python
@@ -199,7 +199,7 @@ def _find_source_by_session_id(self, session_id: str):
 ## 5. 风险护栏
 
 - **强制 gateway 进程执行**：relay 信号只由 gateway 消费；web 后端只写信号、不跑 agent。gateway 未运行时 relay 永不消费 → 触发超时回退。
-- **桌面 session token 防伪造**：端点校验 `X-Desktop-Token`，伪造请求直接 `403`。
+- **桌面 session token 防伪造**：实现复用全站 `X-Hermes-Session-Token` auth_middleware，伪造/缺失请求返回 **401**（见 §3.2 勘误；设计初稿的 `X-Desktop-Token`/403 方案未采用）。
 - **超时回退**：`expire_at` 过期未被 claim → 端点/前端标记“发送失败，渠道未响应”，可重试；gateway `claim` 后亦校验未过期。
 - **只 relay 渠道会话**：端点拒绝 `source='web'` 的 `session_id`，并校验 `session_id` 存在于 state.db，杜绝双写/环路。
 - **防重放**：`claim_handoff` 幂等，同一 `relay_id` 只处理一次。

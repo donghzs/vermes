@@ -1,6 +1,6 @@
 # 桌面端全渠道统一 — 统一审计报告
 
-> 日期：2026-07-17
+> 日期：2026-07-28
 > 范围：步骤 1（统一视图）+ 步骤 2（web 落 state.db）+ 步骤 3（send-from-desktop 桥 + §3.5 渠道还原元数据）+ 步骤 4（记忆 scope 治理）+ 存量回填脚本
 > 配套设计/规划文档：`docs/design-send-from-desktop-bridge.md`、`docs/plan-desktop-channel-unification.md`、`docs/report-desktop-channel-unification-discussion.md`
 > 执行顺序（按 `plan` 修正版）：**1 → 3（TG 验证）→ 2 → 4**，全部完成。
@@ -49,7 +49,8 @@
 
 - **端点**（`hermes_cli/blueprints/session.py`）：`POST /api/sessions/{id}/send-from-desktop` 只做「校验 + 写 pending relay 信号 + 立即返回」。**不跑 agent、不 append_message**（gateway 管线统一落库）。拒绝 `source='web'`（防环路）。`GET /api/sessions/{id}/relay-state` 供前端轮询。
 - **消费**（`gateway/watcher_mixin.py`）：`_handoff_watcher` 轮询 state.db，识别 `relay_source='desktop'` 记录 → 过期标 `failed` + `clear_desktop_relay` → `claim_handoff` 后走 `_process_desktop_relay` → `_find_source_by_session_id` 还原 `SessionSource` → 构造 `internal MessageEvent` → `_handle_message(event)`（agent 运行、回复经 `adapter.send` 回原渠道、管线落库、记忆逐轮摄入）。
-- **护栏三件套**：`X-Hermes-Session-Token` 防伪造（web_server auth_middleware 强制校验）；300s 超时回退（前端 5min + 后端 `relay_expire_at` 过期标 failed）；`claim_handoff` 幂等防重放；拒绝 `source='web'` 防环路。
+- **护栏三件套**：`X-Hermes-Session-Token` 防伪造（web_server auth_middleware 强制校验，**缺失/伪造 → 401**）；300s 超时回退（前端 5min + 后端 `relay_expire_at` 过期标 failed）；`claim_handoff` 幂等防重放（重复 relay → **409**）；拒绝 `source='web'` 防环路（端点层 → **400**）。
+- **状态码口径（统一）**：token 护栏 = **401**（中间件层，非 403——设计稿 §2 曾写「`X-Desktop-Token` → 403」，实现改为复用全站 `X-Hermes-Session-Token` auth_middleware，返回 401，以设计稿附录勘误为准）；`source='web'` 拒绝 = **400**（端点层）；relay 防重放 = **409**（端点层）。
 
 ### 3.2 §3.5 渠道还原元数据（origin_json / chat_id 等列）
 
@@ -117,7 +118,7 @@
 1. **统一视图**：启动 gateway + 桌面，确认 TG/飞书历史会话出现在左侧列表并带渠道徽标；点开可读消息。
 2. **桌面代发（TG）**：在桌面选中某 TG 会话 → 发一条消息 → 原渠道用户收到回复 + 桌面轮询看到 assistant 回复 + `memory_index.db` 出现该轮。
 3. **web 落库**：浏览器/web 端发起对话 → `~/.hermes/state.db` 的 `sessions`/`messages` 出现该 web 会话（source='web'）。
-4. **护栏**：gateway 未运行时桌面代发 → 5 分钟内前端显示超时提示；伪造无 token 的 `/api/sessions/*` 请求 → 401。
+4. **护栏**：gateway 未运行时桌面代发 → 5 分钟内前端显示超时提示；带错/无 token 的 `/api/sessions/*` 请求被 **auth_middleware 拦截返回 401**（不是 403——中间件层统一 401）；对渠道会话端点提交 `source='web'` 会话 → 端点返回 **400**；对同一 pending relay 重复提交 → **409**。
 
 ---
 
@@ -141,7 +142,7 @@
 |---|---|
 | 步骤 2 顺序错（先切读源后落库） | 已规避：web 落库与读源切换 coexist，mergedSessions 去重防消失 |
 | handoff 消费者被 relay 污染 | `relay_source='desktop'` 过滤 + 单测 `test_session_origin_columns`/`test_session_handoff` |
-| relay 端点被伪造 | `X-Hermes-Session-Token` + 拒绝 `source='web'` |
+| relay 端点被伪造 | `X-Hermes-Session-Token`（auth_middleware → **401**）+ 拒绝 `source='web'`（端点 → **400**）+ 防重放（**409**） |
 | gateway 未运行 → 死信 | `relay_expire_at` 超时 + 前端失败态 |
 | web 双写不一致 | 端点只写 relay 信号，绝不 append_message；state.db 写者唯一 |
 | §3.5 急切改写旧库 schema | **已修正为惰性创建**，通过 `test_topic_mode_schema_is_not_auto_migrated_on_open` |
