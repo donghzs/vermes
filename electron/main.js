@@ -42,9 +42,38 @@ function getBackendArgs() {
   return ['-m', 'uvicorn', 'hermes_cli.web_server:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--log-level', 'warning'];
 }
 
+// ── G3 · 资源路径容错泛化（docs/design-startup-integrity-guards-final.md §G3）──
+// 打包后 __dirname 为 app.asar/electron，dev 为项目 electron/；不同布局下资源位置不同。
+// 统一用「多候选路径探测」命中第一个存在项，找不到时 console.error 带全部候选，
+// 避免静默 undefined（历史上缺 preload.js → window.vermes 为 undefined 导致微信登录跳浏览器）。
+function resolveResource(relPath, candidates) {
+  const list = (candidates || []).filter(Boolean);
+  if (list.length === 0) {
+    // 默认候选：覆盖 dev / asar / 解包 三种布局
+    list.push(
+      path.join(__dirname, relPath),                 // dev: electron/<rel>
+      path.join(__dirname, '..', relPath),           // 打包: app.asar/<rel>
+      path.join(getAppDir(), relPath),               // dev: 项目根/<rel>
+      process.resourcesPath ? path.join(process.resourcesPath, 'app.asar', relPath) : '',   // 打包兜底
+      process.resourcesPath ? path.join(process.resourcesPath, 'app', relPath) : '',         // 解包兜底
+    );
+  }
+  const found = list.find(p => { try { return fs.existsSync(p); } catch (_) { return false; } });
+  if (!found) {
+    console.error(`[Vermes] 资源未找到: ${relPath}，候选路径:\n  ` + list.join('\n  '));
+    return null;
+  }
+  return found;
+}
+
 function getIconPath() {
   const iconFile = process.platform === 'win32' ? 'icon.png' : 'vermes.icns';
-  return path.join(__dirname, 'assets', iconFile);
+  // 图标候选：dev 在 electron/assets，打包在 app.asar/assets 或解包 app/assets
+  return resolveResource(path.join('assets', iconFile), [
+    path.join(__dirname, 'assets', iconFile),
+    path.join(process.resourcesPath || '', 'app', 'assets', iconFile),
+    path.join(process.resourcesPath || '', 'app.asar', 'assets', iconFile),
+  ]);
 }
 
 // ── 后端管理 ──
@@ -275,7 +304,7 @@ function maybeCleanPartitionStorage(ses) {
 
 // ── 创建窗口 ──
 async function createWindow() {
-  const iconPath = fs.existsSync(getIconPath()) ? getIconPath() : undefined;
+  const iconPath = getIconPath() || undefined;  // getIconPath 找不到时返回 null → 不设置 icon
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -289,7 +318,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: resolveResource('preload.js') || path.join(__dirname, 'preload.js'),
       partition: 'persist:vermes',
     },
   });
@@ -314,14 +343,7 @@ async function createWindow() {
   // 先加载启动欢迎页（立即显示，不等后端）
   // splash.html 在打包后位于 app.asar 根目录，dev 模式位于项目根目录；
   // __dirname 在打包后为 app.asar/electron，需向上一级查找，保证两种布局都能命中。
-  const candidateSplashPaths = [
-    path.join(__dirname, 'splash.html'),            // dev: electron/splash.html（若放此处）
-    path.join(__dirname, '..', 'splash.html'),      // 打包: app.asar/splash.html
-    path.join(getAppDir(), 'splash.html'),          // dev: 项目根/splash.html
-    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar', 'splash.html') : '',  // 打包兜底
-    process.resourcesPath ? path.join(process.resourcesPath, 'app', 'splash.html') : '',        // 解包兜底
-  ].filter(Boolean);
-  const splashPath = candidateSplashPaths.find(p => fs.existsSync(p));
+  const splashPath = resolveResource('splash.html');
   if (splashPath) {
     mainWindow.loadFile(splashPath);
   } else {
