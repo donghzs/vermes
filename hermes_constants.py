@@ -11,7 +11,19 @@ from pathlib import Path
 
 
 _profile_fallback_warned: bool = False
+# G5 (startup integrity guards): queryable counterpart of the stderr-only
+# profile-fallback warning below.  Desktop users never see stderr; /health
+# exposes this flag so the UI can show a persistent mismatch banner.
+_profile_fallback_active: bool = False
 _UNSET = object()
+
+
+def get_profile_fallback_active() -> bool:
+    """True if get_hermes_home() ever fell back to the default profile while
+    a non-default profile was sticky-active (data may land in the wrong
+    profile).  Read-only; set once by the warning branch in
+    get_hermes_home()."""
+    return _profile_fallback_active
 _HERMES_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
     "_HERMES_HOME_OVERRIDE", default=_UNSET
 )
@@ -71,7 +83,7 @@ def get_hermes_home() -> Path:
 
     # Guard: if a non-default profile is sticky-active, warn once that
     # the fallback to the default profile is almost certainly wrong.
-    global _profile_fallback_warned
+    global _profile_fallback_warned, _profile_fallback_active
     if not _profile_fallback_warned:
         try:
             # Inline the default-root resolution from get_default_hermes_root()
@@ -83,6 +95,7 @@ def get_hermes_home() -> Path:
             active = ""
         if active and active != "default":
             _profile_fallback_warned = True
+            _profile_fallback_active = True
             # Write directly to stderr.  We intentionally do NOT route this
             # through ``logging`` because (a) this function is called at
             # module-import time from 30+ sites, often before logging is

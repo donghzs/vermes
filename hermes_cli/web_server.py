@@ -80,6 +80,33 @@ else:
     WEB_DIST = Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
 
+# ── G1 启动完整性哨兵（docs/design-startup-integrity-guards-final.md）──
+# 必须在任何 SessionDB() 实例化之前跑完（审计修正 C：SessionDB.__init__ 缺库
+# 即静默建空库，会把 missing_with_profile 洗白成 0 字节新库）。此处位于所有
+# blueprint 注册之前，是本进程最早的可注入点。probe 自身用 mode=ro 只读连接，
+# 零磁盘写入。判坏 → hermes_state 进入 lockdown（方案 a：SessionDB raise 而非
+# 新建），后端保持存活仅服务 /health 与静态资源。
+try:
+    import hermes_state as _hermes_state_probe
+    _startup_integrity = _hermes_state_probe.startup_integrity_probe()
+    if _startup_integrity.get("state_db") in ("corrupt", "missing_with_profile"):
+        _log.error(
+            "[G1] state.db integrity verdict=%s path=%s detail=%s — "
+            "write path LOCKED DOWN (plan a); no data has been modified",
+            _startup_integrity.get("state_db"),
+            _startup_integrity.get("db_path"),
+            _startup_integrity.get("detail"),
+        )
+    else:
+        _log.info(
+            "[G1] state.db integrity verdict=%s path=%s",
+            _startup_integrity.get("state_db"),
+            _startup_integrity.get("db_path"),
+        )
+except Exception as _probe_exc:  # probe 自身失败绝不阻断启动（fail-open 仅限探测本身）
+    _startup_integrity = {"state_db": "probe_error", "detail": str(_probe_exc)}
+    _log.warning("[G1] integrity probe failed (non-fatal): %s", _probe_exc)
+
 app = FastAPI(title="Vermes", version=__version__)
 
 
@@ -2750,13 +2777,40 @@ except Exception as e:
     logger.warning("[Modules] Module loader failed: %s", e)
     import traceback; traceback.print_exc()
 
-# ── /health 端点：Electron 后端就绪检测 ──
+# ── /health 端点：Electron 后端就绪检测 + G1/G5 完整性透传 ──
 @app.get("/health")
 async def health_check():
-    """Simple health endpoint for Electron splash screen backend detection."""
+    """Health endpoint for Electron splash screen backend detection.
+
+    G4: carries the G1 integrity verdict and the G5 profile-mismatch flag so
+    main.js can branch the splash (db_corrupt/missing_with_profile → hard
+    block; profile_mismatch → banner).  ``status`` stays "ok" whenever the
+    process is alive — backward compatible with the current resp.ok-only
+    polling in main.js; the splash branching lands in c3.
+    """
     from hermes_cli import __version__
 
-    return {"status": "ok", "version": __version__}
+    integrity: Dict[str, Any] = {"state_db": "probing", "profile_mismatch": False, "detail": ""}
+    try:
+        import hermes_state as _hs
+        _status = _hs.get_integrity_status()
+        if _status is not None:
+            integrity["state_db"] = _status.get("state_db", "probing")
+            integrity["detail"] = _status.get("detail", "")
+            integrity["db_path"] = _status.get("db_path", "")
+        elif isinstance(_startup_integrity, dict):
+            integrity["state_db"] = _startup_integrity.get("state_db", "probing")
+            integrity["detail"] = _startup_integrity.get("detail", "")
+        integrity["lockdown"] = _hs.is_integrity_lockdown()
+    except Exception:
+        pass
+    try:
+        from hermes_constants import get_profile_fallback_active
+        integrity["profile_mismatch"] = get_profile_fallback_active()
+    except Exception:
+        pass
+
+    return {"status": "ok", "version": __version__, "integrity": integrity}
 
 
 @app.get("/api/session-token")

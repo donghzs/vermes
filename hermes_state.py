@@ -207,6 +207,157 @@ def format_session_db_unavailable(prefix: str = "Session database not available"
     return f"{prefix}: {cause}{hint}."
 
 
+# ---------------------------------------------------------------------------
+# G1 · Startup integrity sentinel (docs/design-startup-integrity-guards-final.md)
+# ---------------------------------------------------------------------------
+# Read-only probe of the state.db ledger, run ONCE at process startup and
+# BEFORE any SessionDB() instantiation (audit correction C: SessionDB.__init__
+# silently creates an empty DB on connect, which would whitewash a
+# missing_with_profile verdict into a 0-byte "ok" ledger).
+#
+# Four-state verdict:
+#   ok                    → ledger present and quick_check passes
+#   corrupt               → ledger present (size > 0) but unreadable/failed check
+#   missing_with_profile  → ledger absent/empty BUT profile traces exist
+#                           (the "upgrade ate my data" incident signature)
+#   fresh_install         → ledger absent and home is pristine (legal, silent)
+#
+# Plan a (user adjudication 2026-07-28): corrupt / missing_with_profile set a
+# module-level lockdown.  While locked down, SessionDB() targeting the guarded
+# path RAISES instead of silently creating a fresh DB — zero bytes written,
+# incident scene preserved for manual recovery.  Iron rule: probe → report →
+# wait for a human.  Never rename/delete/REINDEX/auto-recover.
+
+# quick_check is O(db size); above this threshold we only verify the header
+# is readable (PRAGMA schema_version) to keep startup fast on multi-GB DBs.
+_INTEGRITY_QUICK_CHECK_MAX_BYTES = 4 * 1024 * 1024
+
+_integrity_status: Optional[Dict[str, Any]] = None
+_integrity_lockdown: bool = False
+_integrity_lock = threading.Lock()
+
+
+class IntegrityLockdownError(RuntimeError):
+    """Raised by SessionDB() when the startup integrity probe found the
+    guarded ledger corrupt/missing and creating a fresh DB would destroy
+    the incident scene (plan a lockdown)."""
+
+
+def _profile_trace_signals(home: Path) -> List[str]:
+    """Return the list of profile-history signals present under *home*.
+
+    Any non-empty result means "a user lived here" — a missing ledger is
+    then an incident, not a fresh install.  WAL/SHM remnants are the
+    strongest signal (main DB deleted mid-flight).
+    """
+    traces: List[str] = []
+    try:
+        for name in ("state.db-wal", "state.db-shm", "config.yaml"):
+            if (home / name).exists():
+                traces.append(name)
+        sessions_dir = home / "sessions"
+        if sessions_dir.is_dir() and any(sessions_dir.iterdir()):
+            traces.append("sessions/")
+        messages_dir = home / "messages"
+        if messages_dir.is_dir() and next(messages_dir.glob("*.json"), None) is not None:
+            traces.append("messages/*.json")
+    except OSError:
+        # Unreadable home: report no traces rather than guessing.  The
+        # subsequent open attempt will surface the real OS error.
+        pass
+    return traces
+
+
+def startup_integrity_probe(home: Optional[Path] = None) -> Dict[str, Any]:
+    """Read-only integrity probe of the state.db ledger. Never writes.
+
+    MUST be called before any ``SessionDB()`` instantiation in the process
+    (audit correction C).  *home* defaults to ``get_hermes_home()`` resolved
+    AT CALL TIME (audit correction B: two homes coexist on real disks —
+    ``~/.hermes`` legacy vs ``~/.vermes`` active — hardcoding would probe
+    the wrong ledger, the exact accident this guard exists to prevent).
+
+    Side effects (module state only, zero disk writes):
+    records the verdict in ``_integrity_status`` and, for
+    corrupt/missing_with_profile, arms ``_integrity_lockdown``.
+    """
+    global _integrity_status, _integrity_lockdown
+    home = Path(home) if home is not None else get_hermes_home()
+    db_path = home / "state.db"
+    verdict = "ok"
+    detail = ""
+    traces: List[str] = []
+
+    try:
+        size = db_path.stat().st_size if db_path.exists() else -1
+    except OSError as exc:
+        size = -1
+        detail = f"stat failed: {exc}"
+
+    if size > 0:
+        # Ledger present: verify readability with a READ-ONLY connection.
+        # mode=ro guarantees the probe itself can never create/modify the DB.
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5.0)
+            try:
+                if size <= _INTEGRITY_QUICK_CHECK_MAX_BYTES:
+                    row = conn.execute("PRAGMA quick_check").fetchone()
+                    if not row or str(row[0]).lower() != "ok":
+                        verdict = "corrupt"
+                        detail = f"quick_check: {row[0] if row else 'no result'}"
+                else:
+                    # Large ledger: header + schema readability only.
+                    conn.execute("PRAGMA schema_version").fetchone()
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            verdict = "corrupt"
+            detail = f"{type(exc).__name__}: {exc}"
+    else:
+        # Ledger absent or 0-byte placeholder (a persistent 0-byte state.db is
+        # never legitimate — SessionDB writes schema immediately on creation —
+        # so an empty file must NOT whitewash a prior incident into "ok").
+        traces = _profile_trace_signals(home)
+        if traces:
+            verdict = "missing_with_profile"
+            detail = f"ledger absent but profile traces exist: {', '.join(traces)}"
+        else:
+            verdict = "fresh_install"
+
+    status: Dict[str, Any] = {
+        "state_db": verdict,
+        "db_path": str(db_path),
+        "home": str(home),
+        "detail": detail,
+        "traces": traces,
+        "checked_at": time.time(),
+    }
+    with _integrity_lock:
+        _integrity_status = status
+        _integrity_lockdown = verdict in ("corrupt", "missing_with_profile")
+    return status
+
+
+def get_integrity_status() -> Optional[Dict[str, Any]]:
+    """Return the last probe verdict, or None if the probe hasn't run."""
+    with _integrity_lock:
+        return dict(_integrity_status) if _integrity_status is not None else None
+
+
+def is_integrity_lockdown() -> bool:
+    """True when plan-a lockdown is armed (corrupt / missing_with_profile)."""
+    with _integrity_lock:
+        return _integrity_lockdown
+
+
+def _reset_integrity_state() -> None:
+    """Test-only: clear probe verdict and disarm lockdown."""
+    global _integrity_status, _integrity_lockdown
+    with _integrity_lock:
+        _integrity_status = None
+        _integrity_lockdown = False
+
+
 def _on_disk_journal_mode(conn: sqlite3.Connection) -> Optional[str]:
     """Read the journal mode from the SQLite DB header on disk.
 
@@ -471,6 +622,28 @@ class SessionDB:
 
     def __init__(self, db_path: Path = None):
         self.db_path = db_path or DEFAULT_DB_PATH
+
+        # G1 plan-a lockdown (docs/design-startup-integrity-guards-final.md):
+        # if the startup probe found the guarded ledger corrupt or
+        # missing-with-profile, refuse to touch it — connecting would either
+        # silently create a fresh empty DB (whitewashing the incident so the
+        # NEXT boot's probe reports "ok") or write into a damaged file.
+        # Scope: ONLY the probed path is fused; explicit custom db_path
+        # targets (tests, tooling) are unaffected.  Checked BEFORE
+        # mkdir/connect so lockdown guarantees zero bytes on disk.
+        with _integrity_lock:
+            _lockdown = _integrity_lockdown
+            _guarded = _integrity_status.get("db_path") if _integrity_status else None
+            _verdict = _integrity_status.get("state_db") if _integrity_status else None
+        if _lockdown and _guarded and str(self.db_path) == _guarded:
+            msg = (
+                f"integrity lockdown ({_verdict}): refusing to open/create "
+                f"{self.db_path} — startup probe flagged the ledger; manual "
+                f"recovery required (no data has been modified)"
+            )
+            _set_last_init_error(msg)
+            raise IntegrityLockdownError(msg)
+
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.Lock()
