@@ -20,6 +20,10 @@ class SkillToggle(BaseModel):
     enabled: bool
 
 
+class ToolsetToggle(BaseModel):
+    enabled: bool
+
+
 class SkillInstallRequest(BaseModel):
     identifier: str
     name: Optional[str] = None
@@ -66,18 +70,16 @@ async def toggle_skill(body: SkillToggle):
 async def get_toolsets():
     from hermes_cli.tools_config import (
         _get_effective_configurable_toolsets,
-        _get_platform_tools,
+        get_effective_web_toolset_keys,
         _toolset_has_keys,
     )
     from toolsets import resolve_toolset
     from hermes_cli.config import load_config
 
     config = load_config()
-    enabled_toolsets = _get_platform_tools(
-        config,
-        "cli",
-        include_default_mcp_servers=False,
-    )
+    # Reflect what the web/desktop agent actually runs (platform_toolsets.web),
+    # not the CLI config — the app is the web platform.
+    enabled_toolsets = get_effective_web_toolset_keys(config)
     result = []
     for name, label, desc in _get_effective_configurable_toolsets():
         try:
@@ -93,6 +95,41 @@ async def get_toolsets():
             "tools": tools,
         })
     return result
+
+
+async def toggle_toolset(name: str, body: ToolsetToggle):
+    """Enable/disable a toolset for the web/desktop platform.
+
+    Persists to ``platform_toolsets.web``. The web chat backend re-reads
+    config per request, so the change takes effect on the next conversation
+    without a restart.
+
+    Crucially we toggle against the user's *explicit* ``.web`` list, not the
+    governed resolver output: the resolver drops the ``hermes-cli`` composite
+    (a platform default carrying terminal/skills/vision) and re-expands it
+    lazily. Saving the resolver's output would strip ``hermes-cli`` and silently
+    amputate the agent's core tools. Toggling the raw list preserves it.
+    """
+    from hermes_cli.tools_config import (
+        get_effective_web_toolset_keys,
+        _save_platform_tools,
+    )
+    from hermes_cli.config import load_config
+
+    config = load_config()
+    raw_web = (config.get("platform_toolsets") or {}).get("web")
+    if raw_web:
+        base = set(raw_web)
+    else:
+        # No explicit .web yet (fresh install) — start from the governed
+        # default set, then flip the requested toolset.
+        base = set(get_effective_web_toolset_keys(config))
+    if body.enabled:
+        base.add(name)
+    else:
+        base.discard(name)
+    _save_platform_tools(config, "web", base)
+    return {"ok": True, "name": name, "enabled": body.enabled}
 
 
 # ── market handlers ────────────────────────────────────────────
@@ -246,6 +283,9 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/tools/toolsets", get_toolsets, methods=["GET"], name="get_toolsets"
+    )
+    app.add_api_route(
+        "/api/tools/toolsets/{name}", toggle_toolset, methods=["PUT"], name="toggle_toolset"
     )
     app.add_api_route(
         "/api/skills/market", market_search, methods=["GET"], name="market_search"

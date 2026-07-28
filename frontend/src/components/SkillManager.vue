@@ -67,6 +67,18 @@ async function toggleSkill(name, enabled) {
   }
 }
 
+async function toggleToolset(name, enabled) {
+  try {
+    await api.toggleToolset(name, enabled)
+    const ts = toolsets.value.find(t => t.name === name)
+    if (ts) ts.enabled = enabled
+  } catch (e) {
+    const ts = toolsets.value.find(t => t.name === name)
+    if (ts) ts.enabled = !enabled
+    toast.error('切换失败: ' + e.message)
+  }
+}
+
 function isInstalled(name) {
   return skills.value.some(s => s.name === name)
 }
@@ -214,13 +226,20 @@ onMounted(() => {
             <span class="text-gray-700 dark:text-gray-300">{{ ts.label || ts.name }}</span>
             <span v-if="ts.configured === false" class="text-[10px] text-orange-400 ml-1">未配置</span>
           </div>
-          <div class="flex flex-wrap gap-0.5 max-w-[50%]">
+          <div class="flex flex-wrap gap-0.5 max-w-[40%]">
             <span v-for="tool in (ts.tools || []).slice(0, 4)" :key="tool"
                   class="text-[9px] px-1 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-400 rounded truncate max-w-[80px]">
               {{ tool }}
             </span>
             <span v-if="(ts.tools || []).length > 4" class="text-[9px] text-gray-400">+{{ ts.tools.length - 4 }}</span>
           </div>
+          <button @click="toggleToolset(ts.name, !ts.enabled)"
+                  class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0"
+                  :class="ts.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                  :title="ts.enabled ? '已开启，点击关闭' : '已关闭，点击开启'">
+            <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
+                  :class="ts.enabled ? 'translate-x-3.5' : 'translate-x-0.5'"></span>
+          </button>
         </div>
       </div>
 

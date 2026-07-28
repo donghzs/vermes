@@ -488,6 +488,9 @@ const api = {
     return request('/skills/toggle', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, enabled }) }).then(r => r.json())
   },
   getToolsets() { return this.get('/tools/toolsets') },
+  toggleToolset(name, enabled) {
+    return request(`/tools/toolsets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }).then(r => r.json())
+  },
 
   // ── 专家目录 ──
   getExperts() { return this.get('/experts') },

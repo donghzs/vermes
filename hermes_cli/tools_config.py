@@ -79,6 +79,7 @@ CONFIGURABLE_TOOLSETS = [
     ("discord_admin",   "🛡️  Discord Server Admin",    "list channels/roles, pin, assign roles"),
     ("yuanbao",          "🤖 Yuanbao",                  "group info, member queries, DM"),
     ("computer_use",     "🖱️  Computer Use (macOS)",     "background desktop control via cua-driver"),
+    ("scholarforge",     "📝 ScholarForge 论文写作",     "文献检索 / 论文撰写 / 引用校验 / 统计核查 / 导出"),
 ]
 
 # Toolsets that are OFF by default for new installs.
@@ -95,7 +96,7 @@ CONFIGURABLE_TOOLSETS = [
 # `hermes tools` → X (Twitter) Search setup walks users through credential
 # setup. The tool's check_fn means the schema still won't appear to the
 # model if the credential later goes missing or expires.
-_DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "spotify", "discord", "discord_admin", "video", "video_gen", "x_search"}
+_DEFAULT_OFF_TOOLSETS = {"moa", "homeassistant", "spotify", "discord", "discord_admin", "video", "video_gen", "x_search", "scholarforge"}
 
 
 def _xai_credentials_present() -> bool:
@@ -179,6 +180,32 @@ def _get_plugin_toolset_keys() -> set:
         return {ts_key for ts_key, _, _ in get_plugin_toolsets()}
     except Exception:
         return set()
+
+
+def get_effective_web_toolset_keys(config: dict) -> list:
+    """Resolve the effective toolset keys for the web/desktop platform.
+
+    Mirrors the runtime resolution used by the web chat backend:
+      * explicit ``platform_toolsets.web`` → governed ``_get_platform_tools``
+        (so ``hermes tools`` / the in-app toggle take effect);
+      * absent or empty ``.web`` → the rich legacy default from
+        ``chat._load_toolsets_for_web`` (so fresh installs still get a
+        fully-capable agent instead of an empty one).
+
+    Centralling this avoids the "zero-tool web agent" regression and keeps
+    the GET toggle endpoint and the chat backend in sync.
+    """
+    web_cfg = (config.get("platform_toolsets") or {}).get("web")
+    if web_cfg:
+        return list(_get_platform_tools(config, "web"))
+    try:
+        from hermes_cli.blueprints.chat import _load_toolsets_for_web
+        # Honor the governed default-off set even on the legacy fallback path,
+        # so freshly-installed web agents don't auto-enable niche/paid or
+        # extra modules (e.g. the bolt-on scholarforge paper suite).
+        return [t for t in _load_toolsets_for_web() if t not in _DEFAULT_OFF_TOOLSETS]
+    except Exception:
+        return list(_get_platform_tools(config, "web"))
 
 # Platform display config — derived from the canonical registry so every
 # module shares the same data.  Kept as dict-of-dicts for backward
