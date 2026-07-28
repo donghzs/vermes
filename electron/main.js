@@ -103,7 +103,27 @@ function startBackend() {
         if (resp.ok) {
           clearInterval(checkReady);
           console.log('[Vermes] 后端就绪 ✅');
-          resolve(true);
+          try {
+            const body = await resp.json();
+            const integrity = (body && body.integrity) || {};
+            const verdict = integrity.state_db;
+            // G4 分流（docs/design-startup-integrity-guards-final.md §G4）
+            if (verdict === 'corrupt' || verdict === 'missing_with_profile') {
+              // 方案 a lockdown：账本已坏/缺失 → 阻断进主界面，splash 硬报错
+              resolve({
+                ok: false,
+                reason: verdict === 'corrupt' ? 'db_corrupt' : 'db_missing_with_profile',
+                integrity,
+              });
+              return;
+            }
+            resolve({ ok: true, integrity });
+            return;
+          } catch (_) {
+            // /health 返回非 JSON（极端情况）→ 视为就绪，交给后续链路
+            resolve({ ok: true, integrity: {} });
+            return;
+          }
         }
       } catch (_) {
         // 还没就绪
@@ -111,7 +131,7 @@ function startBackend() {
       if (Date.now() - startTime > 15000) {
         clearInterval(checkReady);
         console.warn('[Vermes] 后端启动超时，可能已在外部运行');
-        resolve(false);
+        resolve({ ok: false, reason: 'timeout' });
       }
     }, 500);
   });
@@ -134,7 +154,10 @@ async function runInitialization() {
   sendSplash({ type: 'progress', label: '正在启动后端服务…', percent: 10 });
   const started = await startBackend();
 
-  if (started) {
+  if (started && started.ok) {
+    // G5：profile 错配仅横幅提醒，不阻断（数据本身未坏）。
+    // 横幅由前端主窗口拉 /health 自行判定（update.js 已有 /health 拉取），
+    // 无需主进程经 preload 中转——main.js 处于主进程，无 bridge 概念。
     sendSplash({ type: 'progress', label: '后端已就绪', percent: 90 });
     // 短暂展现 100% 状态再跳转
     await new Promise(r => setTimeout(r, 400));
@@ -148,10 +171,33 @@ async function runInitialization() {
       });
     }
   } else {
-    // 后端启动失败 / 超时
+    // 后端启动失败 / 超时 / 账本损坏或缺失
+    const reason = (started && started.reason) || 'unknown';
+    let detail;
+    let dataProtect = false;
+    let diagnostic = null;
+    if (reason === 'db_corrupt' || reason === 'db_missing_with_profile') {
+      // G4 方案 a：splash 硬报错 + UX 三件套
+      const integ = (started && started.integrity) || {};
+      const dbPath = integ.db_path || '（未知路径）';
+      const verdictText = reason === 'db_corrupt' ? '损坏' : '缺失（但检测到历史数据痕迹）';
+      detail =
+        `检测到历史数据账本${verdictText}，为保护您的资料已停止启动。\n` +
+        `受影响文件：${dbPath}\n\n` +
+        `您的聊天记录、记忆与自学习素材未被修改，可安全恢复。\n` +
+        `建议：从备份恢复该文件，或用 sqlite3 修复后重试；如无需恢复，重命名/移走该文件可让应用以空账本启动（将丢失旧数据）。`;
+      dataProtect = true;
+      diagnostic = integ;
+    } else if (reason === 'timeout') {
+      detail = '后端服务启动超时，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。';
+    } else {
+      detail = '后端服务启动失败，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。';
+    }
     sendSplash({
       type: 'error',
-      detail: '后端服务启动失败，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。',
+      detail,
+      dataProtect,
+      diagnostic,
     });
   }
   _initializing = false
@@ -570,6 +616,27 @@ ipcMain.on('splash:retry', () => {
 // IPC: 后端状态查询
 ipcMain.handle('backend:status', () => {
   return { running: !!backendProcess, pid: backendProcess?.pid || null };
+});
+
+// IPC: G4 诊断信息打包（splash 数据保护错误页「复制诊断」按钮）
+// 把 /health 的 integrity 字段 + 版本 + 平台拼成可粘贴文本。
+ipcMain.handle('copyDiagnostic', async (event, diagnostic) => {
+  try {
+    const { app, os } = require('electron');
+    const lines = [
+      `Vermes ${app.getVersion()}`,
+      `Platform: ${process.platform} ${require('os').release()}`,
+      `Time: ${new Date().toISOString()}`,
+      `Diagnostic: ${JSON.stringify(diagnostic || {}, null, 2)}`,
+    ];
+    const text = lines.join('\n');
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+      await mainWindow.webContents.executeJavaScript(`navigator.clipboard.writeText(${JSON.stringify(text)})`).catch(() => {});
+    }
+    return { ok: true, text };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
 });
 
 // ── 单实例锁 ──

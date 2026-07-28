@@ -78,4 +78,6 @@ contextBridge.exposeInMainWorld('vermes', {
   },
   // splash.html 触发重试
   retryInit: () => ipcRenderer.send('splash:retry'),
+  // splash.html 「复制诊断信息」按钮（G4 数据保护错误页三件套之一）
+  copyDiagnostic: (diagnostic) => ipcRenderer.invoke('copyDiagnostic', diagnostic),
 });

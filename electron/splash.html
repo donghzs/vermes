@@ -252,7 +252,7 @@
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <div class="error-title">初始化失败</div>
+      <div class="error-title" id="errorTitle">初始化失败</div>
       <div class="error-detail" id="errorDetail">
         后端服务启动超时，请关闭应用后重新打开。
         <br>如果问题持续，请检查系统日志。
@@ -263,6 +263,9 @@
           <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
         </svg>
         重新初始化
+      </button>
+      <button class="retry-btn" id="diagBtn" style="display:none; margin-left:8px;">
+        复制诊断信息
       </button>
     </div>
   </div>
@@ -281,7 +284,26 @@
     const errEl = document.getElementById('errorState');
     errEl.style.display = 'block';
     errEl.classList.add('fade-in');
-    if (msg) document.getElementById('errorDetail').textContent = msg;
+    if (!msg) return;
+    // 支持字符串（向后兼容）或结构化对象 { detail, title, dataProtect, diagnostic }
+    const detail = typeof msg === 'string' ? msg : (msg.detail || '');
+    const title = (typeof msg === 'object' && msg.title) ? msg.title : '初始化失败';
+    document.getElementById('errorDetail').textContent = detail;
+    document.getElementById('errorTitle').textContent = title;
+    // G4 UX 三件套之一：数据保护型错误显示「复制诊断信息」按钮
+    const diagBtn = document.getElementById('diagBtn');
+    if (typeof msg === 'object' && msg.dataProtect && msg.diagnostic) {
+      diagBtn.style.display = 'inline-flex';
+      diagBtn.onclick = function() {
+        if (bridge.copyDiagnostic) {
+          bridge.copyDiagnostic(msg.diagnostic).then(function(r) {
+            diagBtn.textContent = r && r.ok ? '已复制 ✓' : '复制失败，请手动记录';
+          }).catch(function() { diagBtn.textContent = '复制失败，请手动记录'; });
+        }
+      };
+    } else {
+      diagBtn.style.display = 'none';
+    }
   }
 
   function updateProgress(label, percent) {
