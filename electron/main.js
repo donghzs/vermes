@@ -622,7 +622,10 @@ ipcMain.handle('backend:status', () => {
 // 把 /health 的 integrity 字段 + 版本 + 平台拼成可粘贴文本。
 ipcMain.handle('copyDiagnostic', async (event, diagnostic) => {
   try {
-    const { app, os } = require('electron');
+    // 主进程 clipboard 模块：不依赖任何窗口/聚焦状态，splash 硬阻断场景
+    // （此时 mainWindow 停在 splash 页、navigator.clipboard 在 file:// 下可能
+    // 静默失败）也 100% 可靠。谎报「已复制 ✓」在数据保护错误页不可接受。
+    const { clipboard } = require('electron');
     const lines = [
       `Vermes ${app.getVersion()}`,
       `Platform: ${process.platform} ${require('os').release()}`,
@@ -630,10 +633,10 @@ ipcMain.handle('copyDiagnostic', async (event, diagnostic) => {
       `Diagnostic: ${JSON.stringify(diagnostic || {}, null, 2)}`,
     ];
     const text = lines.join('\n');
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
-      await mainWindow.webContents.executeJavaScript(`navigator.clipboard.writeText(${JSON.stringify(text)})`).catch(() => {});
-    }
-    return { ok: true, text };
+    clipboard.writeText(text);
+    // 写后读回校验，确保按钮文案「已复制 ✓」与剪贴板实际状态一致
+    const ok = clipboard.readText() === text;
+    return { ok, text };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
