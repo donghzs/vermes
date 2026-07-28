@@ -189,7 +189,7 @@ def get_effective_web_toolset_keys(config: dict) -> list:
       * explicit ``platform_toolsets.web`` → governed ``_get_platform_tools``
         (so ``hermes tools`` / the in-app toggle take effect);
       * absent or empty ``.web`` → the rich legacy default from
-        ``chat._load_toolsets_for_web`` (so fresh installs still get a
+        ``tools_config._load_toolsets_for_web`` (so fresh installs still get a
         fully-capable agent instead of an empty one).
 
     Centralling this avoids the "zero-tool web agent" regression and keeps
@@ -199,13 +199,68 @@ def get_effective_web_toolset_keys(config: dict) -> list:
     if web_cfg:
         return list(_get_platform_tools(config, "web"))
     try:
-        from hermes_cli.blueprints.chat import _load_toolsets_for_web
         # Honor the governed default-off set even on the legacy fallback path,
         # so freshly-installed web agents don't auto-enable niche/paid or
         # extra modules (e.g. the bolt-on scholarforge paper suite).
+        # `_load_toolsets_for_web` now lives in THIS module (see definition
+        # below), so no deferred import of blueprints.chat is needed — that
+        # import was the latent circular-import risk this refactor removes.
         return [t for t in _load_toolsets_for_web() if t not in _DEFAULT_OFF_TOOLSETS]
     except Exception:
         return list(_get_platform_tools(config, "web"))
+
+def _load_toolsets_for_web() -> list[str]:
+    """Load enabled toolsets for the web/desktop UI agent (legacy default).
+
+    This is the *fallback* used by ``get_effective_web_toolset_keys`` only
+    when ``platform_toolsets.web`` is absent/empty (fresh installs). Once the
+    user — or the in-app toolset toggle — writes an explicit ``.web`` list,
+    the governed resolver (``_get_platform_tools``) takes over instead.
+
+    Kept here (not in ``blueprints.chat``) so the resolver and its loader
+    share one module. Previously the resolver deferred-imported
+    ``chat._load_toolsets_for_web``, which was a latent circular-import risk
+    (chat → tools_config → chat). Co-locating both functions removes it.
+    """
+    import os
+    # Check environment variable first
+    env_toolsets = os.environ.get("HERMES_TUI_TOOLSETS", "")
+    if env_toolsets:
+        return [t.strip() for t in env_toolsets.split(",") if t.strip()]
+    # Fall back to config — platform_toolsets.web > toolsets > default
+    try:
+        from hermes_constants import get_hermes_home
+        import yaml
+        cfg_path = os.path.join(get_hermes_home(), "config.yaml")
+        if os.path.exists(cfg_path):
+            with open(cfg_path) as f:
+                cfg = yaml.safe_load(f) or {}
+            # platform-specific toolsets take priority
+            platform_ts = cfg.get("platform_toolsets", {})
+            if isinstance(platform_ts, dict) and "web" in platform_ts:
+                return platform_ts["web"]
+            # fallback: Web UI always gets a rich toolset. If the user has
+            # configured a custom toolsets list that's more substantial than
+            # the bare hermes-cli default, honour it; otherwise use Web defaults.
+            toolsets = cfg.get("toolsets")
+            if toolsets:
+                ts_list = toolsets if isinstance(toolsets, list) else [toolsets]
+                if len(ts_list) == 1 and ts_list[0] == "hermes-cli":
+                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+                return ts_list
+    except Exception:
+        pass
+    base = ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+    # 动态加入已安装生态模块的 toolset
+    try:
+        from agent.module_loader import discover_modules
+        for m in discover_modules():
+            if m.tools_entry:
+                base.append(m.name)
+    except Exception:
+        pass
+    return base
+
 
 # Platform display config — derived from the canonical registry so every
 # module shares the same data.  Kept as dict-of-dicts for backward

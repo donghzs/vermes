@@ -113,8 +113,21 @@ async def toggle_toolset(name: str, body: ToolsetToggle):
     from hermes_cli.tools_config import (
         get_effective_web_toolset_keys,
         _save_platform_tools,
+        _get_effective_configurable_toolsets,
     )
     from hermes_cli.config import load_config
+    from fastapi import HTTPException
+
+    # Validate the toolset name *before* mutating config. Only real,
+    # UI-toggleable toolsets (built-in + plugin) may be toggled — this stops
+    # garbage keys (typos, injected names) from being persisted into
+    # platform_toolsets.web, which previously would silently pollute config.
+    valid_keys = {ts_key for ts_key, _, _ in _get_effective_configurable_toolsets()}
+    if name not in valid_keys:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown or non-toggleable toolset: {name!r}",
+        )
 
     config = load_config()
     raw_web = (config.get("platform_toolsets") or {}).get("web")
