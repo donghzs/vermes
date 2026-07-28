@@ -739,6 +739,34 @@ def _report_quota(wechat_openid: str, total_tokens: int, mode: str = ""):
 
 # ── Route handlers ───────────────────────────────────────────────────
 
+def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_response: str) -> None:
+    """Step 2: best-effort mirror of a web/desktop turn into ``state.db``.
+
+    Makes web/desktop conversations appear in the unified cross-channel view
+    (``/api/sessions``) even when they were created in a different client than
+    the one reading the list. Fail-open: a broken/missing state.db must never
+    block the user from seeing their reply.
+
+    Idempotent-by-design: ``create_session`` is INSERT OR IGNORE, and each
+    HTTP request corresponds to exactly one user turn, so a single user + one
+    assistant append per call is correct (no double-write within state.db —
+    the only other web writer is ``save_gui_messages``, which targets
+    ``~/.vermes/messages/*.json``, not state.db).
+    """
+    if not session_id:
+        return
+    try:
+        from hermes_state import SessionDB
+        db = SessionDB()
+        db.create_session(session_id, source="web")
+        if user_message:
+            db.append_message(session_id, "user", user_message)
+        if final_response:
+            db.append_message(session_id, "assistant", final_response)
+    except Exception as exc:  # pragma: no cover - best-effort
+        _log.debug(f"[web→state.db] persist skipped for {session_id}: {exc}")
+
+
 async def chat_completions(req: ChatRequest):
     """Agent-powered chat: uses AIAgent with tool calling capabilities."""
     from run_agent import AIAgent
@@ -1289,6 +1317,15 @@ async def chat_completions(req: ChatRequest):
                     conversation_history=conversation_history[:-1] if len(conversation_history) > 1 else None,
                     stream_callback=None,
                 )
+                # ── Step 2: mirror web/desktop turn into state.db (unified view) ──
+                try:
+                    _persist_web_turn_to_state_db(
+                        _session_id,
+                        user_message,
+                        (result or {}).get("final_response") or "",
+                    )
+                except Exception as _web_db_exc:  # pragma: no cover - best-effort
+                    _log.debug(f"[web→state.db] persist failed: {_web_db_exc}")
                 _log.info(f"[Stream] Agent done, result keys={list(result.keys()) if result else 'None'}")
                 # ── 流式衔接兜底（空回复修复）─────────────────────────
                 # SSE 生成器只转发流式 delta；当最终回答未经过
@@ -1470,6 +1507,11 @@ async def chat_completions(req: ChatRequest):
             )
 
         final_response = result.get("final_response", "") if result else ""
+        # ── Step 2: mirror web/desktop turn into state.db (unified view) ──
+        try:
+            _persist_web_turn_to_state_db(_session_id, user_message, final_response)
+        except Exception as _web_db_exc:  # pragma: no cover - best-effort
+            _log.debug(f"[web→state.db] persist failed: {_web_db_exc}")
         if not final_response and result and result.get("error"):
             final_response = f"Error: {result['error']}"
         _input_chars = sum(len(str(m.get("content", ""))) for m in conversation_history)
