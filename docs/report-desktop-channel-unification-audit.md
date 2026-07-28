@@ -14,7 +14,7 @@
 | 1 | 前端双源合并统一视图（读闭环） | ✅ | `frontend/src/stores/chat-storage.js`、`chat.js`、`Sidebar.vue` |
 | 2 | web/桌面会话落 `state.db`（承重项） | ✅ | `hermes_cli/blueprints/chat.py` |
 | 3 | `send-from-desktop` 桥（写闭环）+ §3.5 渠道还原元数据 | ✅ | `hermes_cli/blueprints/session.py`、`gateway/{message_handler_mixin,watcher_mixin,session}.py`、`hermes_state.py` |
-| 4 | 记忆 scope 治理（按渠道记 + 跨渠道加权） | ✅（核心机制 + 契约，激活待续） | `agent/memory_fabric.py`、`run_agent.py`、`agent/{memory_manager,memory_provider,rag_provider}.py` |
+| 4 | 记忆 scope 治理（按渠道记 + 跨渠道加权） | ✅（机制+契约落地，单 agent 下休眠、多 agent 前置储备） | `agent/memory_fabric.py`、`run_agent.py`、`agent/{memory_manager,memory_provider,rag_provider}.py` |
 | — | 存量回填脚本（§3.5） | ✅ | `scripts/backfill_session_origin.py`、`tests/test_session_origin_columns.py` |
 
 ---
@@ -152,4 +152,4 @@
 | gateway 未运行 → 死信 | `relay_expire_at` 超时 + 前端失败态 |
 | web 双写不一致 | 端点只写 relay 信号，绝不 append_message；state.db 写者唯一 |
 | §3.5 急切改写旧库 schema | **已修正为惰性创建**，通过 `test_topic_mode_schema_is_not_auto_migrated_on_open` |
-| 步骤 4 激活不足 | (A)+(C) 落地，激活面（memory tool 渠道透传 / recall 调用方传 scope）记为独立 PR |
+| 步骤 4 休眠（非缺陷） | (A)+(C) 落地为无害休眠契约；单 agent 架构下加权为空操作，激活前置=多 agent 实例架构上线，不记为漏做 follow-up |
