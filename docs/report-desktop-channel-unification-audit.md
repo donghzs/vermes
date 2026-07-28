@@ -95,12 +95,16 @@
 - **(A) 跨渠道加权召回**（`memory_fabric.recall`）：当传入 `scope` 时，**不再硬过滤为该 scope**，而是 `(m.scope = ?) DESC` 把当前渠道记忆**加权前置**，同时仍聚合其他渠道 + 渠道无关（`scope=""`）记忆保涌现（路径 A 主、兜底 fallback 同步修正）。`scope=None/""` 行为完全不变。
 - **(C) scope 契约透传**：`run_agent._sync_external_memory_for_turn` 推导 `scope = self.platform or "web"` → `MemoryManager.sync_all(scope=...)` → `provider.sync_turn(scope=...)`（base + RAG 签名均加 `scope` 参数）。为任何未来/替代型记忆后端提供渠道标签能力。
 
-### 4.3 未做（已记录为 follow-up，低风险）
+### 4.3 未激活（单 agent 架构下为过度设计，保留为休眠契约 + 多 agent 前置储备）
 
-- **(B) 真实 L1 写路径 scope 注入**：`tools/memory_tool._sync_rag_index` 调用 `index_note` 时未传 `scope`，因为该工具类 `__init__` 仅含 char-limit 参数、无渠道/platform 上下文。要给精选记忆打渠道标签，需把 `platform` 透传到 memory tool——涉及记忆工具重构，且当前 fabric 记忆非 per-turn 自动捕获，优先级低。
-- **recall 调用方激活**：`memory_recall.recall_context` / `continuity_facade` 未传 `scope`，故 (A) 的加权目前是「休眠的正确机制」——一旦有调用方传 scope 即生效。`recall_context` 走 `recall_hierarchical` 而非直接 `memory_fabric.recall`，透传需改 `recall_context`/`recall_hierarchical`，属更深改动，留作独立 PR。
+- **(B) 真实 L1 写路径 scope 注入**：`tools/memory_tool._sync_rag_index` 调用 `index_note` 时未传 `scope`，因为该工具类 `__init__` 仅含 char-limit 参数、无渠道/platform 上下文。要给精选记忆打渠道标签，需把 `platform` 透传到 memory tool——涉及记忆工具重构。
+- **recall 调用方激活**：`memory_recall.recall_context` / `continuity_facade` 未传 `scope`，故 (A) 的加权目前是「休眠的正确机制」——一旦有调用方传 scope 即生效。`recall_context` 走 `recall_hierarchical` 而非直接 `memory_fabric.recall`，透传需改 `recall_context`/`recall_hierarchical`，属更深改动。
 
-> 结论：步骤 4 在「机制 + 契约」层完整落地，激活面（memory tool 渠道透传、recall 调用方传 scope）作为后续独立 PR，不阻塞本次统一视图/代发闭环。
+> **架构判定（产品稳定性视角，覆盖原 plan 的 follow-up 表述）**：当前 Vermes 是**单 agent 实例**——桌面多会话、TG/飞书/web 会话全部跑在同一个 agent 进程内，靠 `session_id` 隔离，**未上多 agent 实例**。因此「跨渠道记忆污染」在**会话级已天然隔离**（不同 `session_id` 上下文互不可见）+ **记忆层 FTS5 相关性召回已过滤**（不相关话题根本不召回）。scope 加权解决的「同 agent 内跨 session 长期记忆检索优先级」命题，在单 agent 下权重极低、且本仓 fabric 仅 2 条 `scope=''` 的 skill 记忆（per-turn 捕获关闭），加权对当前数据是**空操作**。
+>
+> 故步骤 4 在当前架构下**不应激活**——它不是「漏做的 follow-up」，而是**多 agent 实例架构的前置储备**。届时 scope 语义需扩展为「agent 身份 + 渠道 + 用户」三元组（而非当前 `platform`），现有 `scope=platform` 契约应随多 agent 架构一并重设计。现在不接线、不激活，避免给单 agent 架构引入「为多 agent 设计的隔离复杂度」。**发版仍走手动出包**（`build-vermes.yml` 历史上 v2.3.0/v2.3.1/v2.3.7 均 failure，CI 出包不可用）。
+
+> 结论：步骤 4 在「机制 + 契约」层完整落地且无害休眠；激活前置 = 多 agent 实例架构上线，而非记忆数据量增长或 per-turn 捕获开启。
 
 ---
 
