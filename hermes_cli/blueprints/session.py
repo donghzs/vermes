@@ -165,6 +165,8 @@ async def send_from_desktop(session_id: str, request: Request):
                 status_code=400,
                 detail="web sessions cannot be relayed (use normal chat)",
             )
+        # token 仅作 provenance 留痕落库（desktop_token 列）；真正的防伪造
+        # 护栏是 auth_middleware 的 401（gateway 跨进程无 _SESSION_TOKEN 可验）。
         token = request.headers.get("X-Hermes-Session-Token", "")
         if not db.request_desktop_relay(sid, text, token, ttl=300.0):
             raise HTTPException(
