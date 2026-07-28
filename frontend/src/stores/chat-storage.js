@@ -264,3 +264,79 @@ export async function listSessionsFromAPI() {
     return []
   }
 }
+
+// ── state.db 渠道会话数据源（步骤1：桌面端全渠道统一视图） ──
+// /api/sessions* 非公开路径，必须带会话 token（web_server auth_middleware）
+
+function stateDBHeaders() {
+  const h = {}
+  const t = (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) || ''
+  if (t) h['X-Hermes-Session-Token'] = t
+  return h
+}
+
+/** 列出 state.db 会话（telegram/discord/cli 等全渠道；步骤2后含 web） */
+export async function listChannelSessionsFromAPI(limit = 200) {
+  try {
+    const resp = await fetch(`/api/sessions?limit=${limit}`, { headers: stateDBHeaders() })
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return data.sessions || []
+  } catch (e) {
+    logger.warn('[Vermes] state.db 会话列表加载失败:', e)
+    return []
+  }
+}
+
+/** 读取 state.db 某会话的消息（渠道会话续看） */
+export async function loadChannelMessagesFromAPI(sessionId) {
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { headers: stateDBHeaders() })
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return data.messages || []
+  } catch (e) {
+    logger.warn('[Vermes] state.db 消息加载失败:', e)
+    return []
+  }
+}
+
+/** 步骤3：桌面代发渠道消息（写 relay 信号，gateway 消费后回复回渠道+state.db） */
+export async function sendFromDesktopAPI(sessionId, text) {
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send-from-desktop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...stateDBHeaders() },
+      body: JSON.stringify({ text }),
+    })
+    const data = await resp.json().catch(() => ({}))
+    return { ok: resp.ok, status: resp.status, ...data }
+  } catch (e) {
+    return { ok: false, status: 0, detail: String(e) }
+  }
+}
+
+/** 步骤3：轮询 relay 状态（pending/running/completed/failed） */
+export async function getRelayStateAPI(sessionId) {
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/relay-state`, { headers: stateDBHeaders() })
+    if (!resp.ok) return null
+    const data = await resp.json()
+    return data.relay || null
+  } catch (e) {
+    return null
+  }
+}
+
+/** 删除 state.db 会话（带 token，修复此前裸 fetch 吃 401 的问题） */
+export async function deleteChannelSessionFromAPI(sessionId) {
+  try {
+    const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers: stateDBHeaders(),
+    })
+    return resp.ok
+  } catch (e) {
+    return false
+  }
+}

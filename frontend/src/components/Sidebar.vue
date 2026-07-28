@@ -59,12 +59,30 @@ function getDateGroup(ts) {
   return '更早'
 }
 
+// 本地 web 会话 + state.db 渠道会话（统一视图，双源合并，按 id 去重、本地优先）
+const mergedSessions = computed(() => {
+  const localIds = new Set(chat.sessions.map(s => s.id))
+  return [...chat.sessions, ...chat.channelSessions.filter(s => !localIds.has(s.id))]
+})
+
 // 按搜索过滤后的会话列表
 const filteredSessions = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return chat.sessions
-  return chat.sessions.filter(s => (s.name || '新 Agent').toLowerCase().includes(q))
+  if (!q) return mergedSessions.value
+  return mergedSessions.value.filter(s =>
+    (s.name || '新 Agent').toLowerCase().includes(q) || (s.source || '').toLowerCase().includes(q)
+  )
 })
+
+// 渠道来源徽标
+const SOURCE_ICONS = {
+  telegram: '✈️', discord: '🎮', slack: '💼', whatsapp: '💬',
+  cli: '⌨️', email: '📧', matrix: '🔷', signal: '🔵', wechat: '🟢',
+}
+function sourceBadge(s) {
+  if (!s || !s.channel) return ''
+  return `${SOURCE_ICONS[s.source] || '📡'} ${s.source}`
+}
 
 // 置顶 + 分组
 const groupedSessions = computed(() => {
@@ -164,6 +182,9 @@ async function loadAllSessionMeta() {
 }
 
 function getMessageCount(sessionId) {
+  // 渠道会话：直接用 state.db 返回的 message_count
+  const ch = chat.channelSessions.find(s => s.id === sessionId)
+  if (ch) return ch.messageCount || 0
   const meta = sessionMeta.value.get(sessionId)
   if (meta) return meta.count
   // 同步降级（旧数据）
@@ -171,6 +192,9 @@ function getMessageCount(sessionId) {
 }
 
 function getFirstMessagePreview(sessionId) {
+  // 渠道会话：直接用 state.db 返回的 preview
+  const ch = chat.channelSessions.find(s => s.id === sessionId)
+  if (ch) return ch.preview || ''
   const meta = sessionMeta.value.get(sessionId)
   if (meta) return meta.firstMsg
   // 同步降级
@@ -182,9 +206,10 @@ watch(() => chat.sessions.length, async () => {
   await loadAllSessionMeta()
 })
 
-// 组件挂载时加载元数据
+// 组件挂载时加载元数据 + 刷新渠道会话列表
 onMounted(async () => {
   await loadAllSessionMeta()
+  chat.loadChannelSessions().catch(() => {})
 })
 
 // ── 右键菜单 ──
@@ -442,6 +467,7 @@ async function handleImportFile(e) {
             <template v-else>
               <div class="flex items-center gap-1">
                 <span class="truncate font-medium flex-1">{{ item.data.name || '新 Agent' }}</span>
+                <span v-if="item.data.channel" class="shrink-0 text-[9px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300" :title="'来自渠道: ' + item.data.source">{{ sourceBadge(item.data) }}</span>
                 <span v-if="chat.sessionLoading[item.data.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
                 <span v-if="getMessageCount(item.data.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(item.data.id) }}</span>
               </div>

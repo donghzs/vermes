@@ -25,7 +25,7 @@ import {
   getFirstMessage as _getFirstMessage,
   evictOldSessions as _evictOldSessions,
 } from './chat-session'
-import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64 } from './chat-storage'
+import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI } from './chat-storage'
 import { uid, persistMessages } from './chat-session'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
@@ -86,6 +86,10 @@ export function applyPlanStepUpdate(curItems, step) {
 
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref(loadFromStorage(SESSIONS_KEY))
+  // ── 步骤1：state.db 渠道会话（telegram/discord/cli 等，统一视图只读+续聊桥）──
+  // 与本地 web 会话（sessions）分离存放：channelSessions 永不写入 localStorage，
+  // 避免 persistSessions 把渠道会话持久化造成双源污染。
+  const channelSessions = ref([])
   const currentSessionId = ref(null)
   const messages = ref([])
   const sessionLoading = ref({})
@@ -212,7 +216,57 @@ export const useChatStore = defineStore('chat', () => {
 
   const currentSession = computed(() =>
     sessions.value.find(s => s.id === currentSessionId.value)
+      || channelSessions.value.find(s => s.id === currentSessionId.value)
   )
+
+  // ── 步骤1：渠道会话（state.db）加载与判定 ──
+  // 本地会话优先：同 id 同时存在于本地与 state.db（步骤2 之后 web 会话双写）时视为本地会话
+  function isChannelSession(id) {
+    if (!id) return false
+    if (sessions.value.find(s => s.id === id)) return false
+    return !!channelSessions.value.find(s => s.id === id)
+  }
+
+  async function loadChannelSessions() {
+    const rows = await listChannelSessionsFromAPI(200)
+    const localIds = new Set(sessions.value.map(s => s.id))
+    channelSessions.value = rows
+      .filter(r => r && r.id && !localIds.has(r.id) && (r.message_count || 0) > 0)
+      .map(r => ({
+        id: r.id,
+        name: r.title || (r.preview ? String(r.preview).slice(0, 40) : `${r.source || '渠道'} 会话`),
+        createdAt: new Date((r.started_at || 0) * 1000).toISOString(),
+        lastActive: new Date((r.last_active || r.started_at || 0) * 1000).toISOString(),
+        channel: true,
+        source: r.source || 'unknown',
+        model: r.model || '',
+        messageCount: r.message_count || 0,
+        preview: r.preview || '',
+      }))
+  }
+
+  // state.db 消息行 → 前端消息格式（只呈现可读对话，跳过 tool/system 底噪）
+  function _mapChannelMessages(sessionId, rows) {
+    const out = []
+    for (const r of rows || []) {
+      if (!r) continue
+      if (r.role !== 'user' && r.role !== 'assistant') continue
+      const content = (r.content || '').trim()
+      if (!content) continue
+      out.push({
+        id: `${sessionId}-db-${r.id}`,
+        role: r.role,
+        content,
+        sessionId,
+        timestamp: Math.round((r.timestamp || 0) * 1000),
+        streaming: false,
+        toolInvocations: [],
+        reasoning: r.reasoning || r.reasoning_content || '',
+        _fromStateDB: true,
+      })
+    }
+    return out
+  }
 
   const filteredMessages = computed(() => {
     if (!currentSessionId.value) return []
@@ -278,6 +332,8 @@ export const useChatStore = defineStore('chat', () => {
       }
       // 注入进化简报（非阻塞）
       await injectEvolutionBriefing()
+      // 步骤1：加载 state.db 渠道会话（非阻塞，失败不影响本地会话）
+      loadChannelSessions().catch(() => {})
     } catch (e) {
       console.error('❌ init failed:', e)
       if (sessions.value.length === 0) {
@@ -340,14 +396,17 @@ export const useChatStore = defineStore('chat', () => {
           m.streaming = false
         }
       })
-      await persistMessages(oldSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+      // 渠道会话（state.db）只读呈现，不回写 GUI 存储（避免双源复制）
+      if (!isChannelSession(oldSessionId)) {
+        await persistMessages(oldSessionId, messages.value, currentSessionId.value, SESSIONS_KEY, MESSAGES_KEY_PREFIX)
+      }
     }
 
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
 
     // 恢复新会话的模型选择
-    const newSession = sessions.value.find(s => s.id === id)
+    const newSession = sessions.value.find(s => s.id === id) || channelSessions.value.find(s => s.id === id)
     if (newSession && newSession.model) {
       currentModel.value = newSession.model
       currentProvider.value = newSession.provider || ''
@@ -357,7 +416,9 @@ export const useChatStore = defineStore('chat', () => {
 
     // 加载新会话消息 — 合并到全局消息池（不替换）
     try {
-      const loaded = await loadMessagesFromIDB(id)
+      const loaded = isChannelSession(id)
+        ? _mapChannelMessages(id, await loadChannelMessagesFromAPI(id))
+        : await loadMessagesFromIDB(id)
       if (loaded && loaded.length > 0) {
         // 去重合并: 已在池中的跳过
         const existingIds = new Set(messages.value.map(m => m.id))
@@ -376,7 +437,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function deleteSession(id) {
-    try { await fetch('/api/sessions/' + id, { method: 'DELETE' }) } catch {}
+    // 带 token 删除 state.db 侧记录（修复此前裸 fetch 吃 401）；纯本地会话 404 无害
+    await deleteChannelSessionFromAPI(id)
+    // 渠道会话：仅从 state.db + 内存列表移除，不走本地 IDB/localStorage 清理
+    if (isChannelSession(id)) {
+      channelSessions.value = channelSessions.value.filter(s => s.id !== id)
+      messages.value = messages.value.filter(m => m.sessionId !== id)
+      if (currentSessionId.value === id) {
+        if (sessions.value.length > 0) await switchSession(sessions.value[0].id)
+        else await createSession('新 Agent')
+      }
+      return
+    }
     // 清理被删会话的 streaming 定时器
     messages.value.filter(m => m.sessionId === id).forEach(m => {
       if (m._streamBufTimer) { clearInterval(m._streamBufTimer); m._streamBufTimer = null }
@@ -409,6 +481,65 @@ export const useChatStore = defineStore('chat', () => {
   async function exportSession(id, format) { return _exportSession(sessions.value, id, format) }
   async function importSession(jsonText) { return _importSession(sessions.value, messages.value, jsonText, SESSIONS_KEY, MESSAGES_KEY_PREFIX) }
 
+  // ── 步骤3：渠道会话续聊（send-from-desktop 桥） ──
+  // 写 relay 信号 → gateway 进程消费（agent 运行 + adapter.send 回原渠道 +
+  // user/assistant 落 state.db + 记忆摄入）→ 桌面轮询 state.db 显示回复。
+  async function sendToChannelSession(sid, text) {
+    // 本地立即显示用户消息（gateway 落库的同文本 user 行轮询时去重跳过）
+    messages.value.push({
+      id: uid(), role: 'user', content: text,
+      sessionId: sid, timestamp: Date.now(), _fromDesktopRelay: true,
+    })
+    scheduleScroll()
+    sessionLoading.value[sid] = true
+    try {
+      const res = await sendFromDesktopAPI(sid, text)
+      if (!res.ok) {
+        showToast(`渠道代发失败: ${res.detail || 'HTTP ' + res.status}`, 'error')
+        messages.value.push({
+          id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
+          content: `❌ 渠道代发失败: ${res.detail || 'HTTP ' + res.status}`,
+        })
+        return
+      }
+      const sentAtMs = Date.now()
+      const knownIds = new Set(
+        messages.value.filter(m => m.sessionId === sid && m._fromStateDB).map(m => m.id)
+      )
+      const deadline = Date.now() + 300000  // 5 分钟超时护栏（与后端 ttl 对齐）
+      let gotAssistant = false
+      while (Date.now() < deadline && !gotAssistant) {
+        await new Promise(r => setTimeout(r, 2000))
+        const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
+        for (const m of mapped) {
+          if (knownIds.has(m.id)) continue
+          knownIds.add(m.id)
+          // gateway 落库的 user 行若与刚发文本相同则跳过（本地已显示）
+          if (m.role === 'user' && m.content.trim() === text.trim()) continue
+          messages.value.push(m)
+          if (m.role === 'assistant' && m.timestamp >= sentAtMs - 10000) gotAssistant = true
+        }
+        if (gotAssistant) { scheduleScroll(); break }
+        const relay = await getRelayStateAPI(sid)
+        if (relay && relay.state === 'failed') {
+          messages.value.push({
+            id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
+            content: `❌ 渠道代发失败: ${relay.error || '未知错误'}（gateway 未运行或该渠道未连接）`,
+          })
+          return
+        }
+      }
+      if (!gotAssistant) {
+        messages.value.push({
+          id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
+          content: '⏱ 渠道回复超时（5 分钟）。消息可能仍在处理，稍后重新打开本会话查看。',
+        })
+      }
+    } finally {
+      sessionLoading.value[sid] = false
+    }
+  }
+
   // ── 发送消息 ──
 
   async function sendMessage(content, attachments, _model_, _provider_, _isRegenerate_) {
@@ -422,6 +553,17 @@ export const useChatStore = defineStore('chat', () => {
     }
     if (!currentSessionId.value) {
       showToast('会话未初始化，请刷新页面重试', 'error')
+      return
+    }
+
+    // 步骤3：渠道会话续聊 → send-from-desktop 桥（gateway 消费，绝不走 chat.py）
+    if (isChannelSession(currentSessionId.value)) {
+      if (attachments && attachments.length > 0) {
+        showToast('渠道代发暂不支持附件，仅发送文本', 'info')
+      }
+      if (content && content.trim()) {
+        await sendToChannelSession(currentSessionId.value, content.trim())
+      }
       return
     }
 
@@ -981,7 +1123,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   return {
-    sessions, currentSessionId, currentSession, messages, loading, filteredMessages,
+    sessions, channelSessions, loadChannelSessions, isChannelSession,
+    currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
     reasoningEffort, searchEnabled, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
