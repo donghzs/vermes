@@ -202,9 +202,34 @@ async function createWindow() {
   // 只缓存运行时数据，不缓存静态资源（后端无 Cache-Control 头）
   ses.setSpellCheckerEnabled(false)
 
+  // 强制清除持久化分区的运行时存储（IndexedDB/LocalStorage/SessionStorage）
+  // 防止旧版本前端在 Electron 分区里残留的脏数据（如不兼容的 IndexedDB schema）
+  // 导致新版本前端初始化时读取到损坏数据而白屏/黑屏。
+  // 注意：这仅清除 Electron 渲染进程的缓存，不影响 ~/.<app> 下的用户业务数据。
+  Promise.all([
+    ses.clearStorageData({ storages: ['indexdb', 'localstorage', 'shadercache', 'serviceworkers', 'cachestorage'] }).catch(() => {}),
+    (async () => {
+      try {
+        const reg = await ses.getServiceWorkers?.()
+        if (reg?.getAll?.()) {
+          for (const sw of reg.getAll()) { await reg.unregister(sw.scope) }
+        }
+      } catch (_) {}
+    })(),
+  ]).catch(() => {})
+
   // 先加载启动欢迎页（立即显示，不等后端）
-  const splashPath = path.join(__dirname, 'splash.html');
-  if (fs.existsSync(splashPath)) {
+  // splash.html 在打包后位于 app.asar 根目录，dev 模式位于项目根目录；
+  // __dirname 在打包后为 app.asar/electron，需向上一级查找，保证两种布局都能命中。
+  const candidateSplashPaths = [
+    path.join(__dirname, 'splash.html'),            // dev: electron/splash.html（若放此处）
+    path.join(__dirname, '..', 'splash.html'),      // 打包: app.asar/splash.html
+    path.join(getAppDir(), 'splash.html'),          // dev: 项目根/splash.html
+    process.resourcesPath ? path.join(process.resourcesPath, 'app.asar', 'splash.html') : '',  // 打包兜底
+    process.resourcesPath ? path.join(process.resourcesPath, 'app', 'splash.html') : '',        // 解包兜底
+  ].filter(Boolean);
+  const splashPath = candidateSplashPaths.find(p => fs.existsSync(p));
+  if (splashPath) {
     mainWindow.loadFile(splashPath);
   } else {
     // fallback: 直接加载后端（开发环境 splash 不存在时）
