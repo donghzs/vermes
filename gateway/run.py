@@ -1484,11 +1484,41 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         except Exception:
             pass  # Non-fatal — fail-open at scan time if unavailable
         
+        # ── G1 启动完整性哨兵（docs/design-startup-integrity-guards-final.md）──
+        # 必须在任何 SessionDB() 之前跑（审计修正 C：SessionDB.__init__ 缺库即静默建
+        # 空库，会把 missing_with_profile 洗白成 0 字节新库）。与 web_server 进程一致：
+        # probe 用 mode=ro 只读、零磁盘写入；判坏 → hermes_state 进入 lockdown（方案 a：
+        # 下方 SessionDB() raise 而非新建），gateway 不会把渠道新消息写进空库分叉。
+        # 各处懒加载的 SessionDB()（session/mirror/api_server/slash）都已 try/except
+        # 包裹，lockdown raise 会被优雅降级（回退 JSONL / 返回 None），不炸渠道处理。
+        try:
+            import hermes_state as _hermes_state_probe
+            _startup_integrity = _hermes_state_probe.startup_integrity_probe()
+            _v = _startup_integrity.get("state_db")
+            if _v in ("corrupt", "missing_with_profile"):
+                logger.error(
+                    "[G1] state.db integrity verdict=%s path=%s detail=%s — "
+                    "gateway write path LOCKED DOWN (plan a); channel messages fall "
+                    "back to JSONL, no state.db write occurs",
+                    _v, _startup_integrity.get("db_path"), _startup_integrity.get("detail"),
+                )
+            else:
+                logger.info(
+                    "[G1] state.db integrity verdict=%s path=%s",
+                    _v, _startup_integrity.get("db_path"),
+                )
+        except Exception as _probe_exc:  # 探测自身失败绝不阻断启动（仅限探测本身 fail-open）
+            logger.warning("[G1] integrity probe failed (non-fatal): %s", _probe_exc)
+
         # Initialize session database for session_search tool support
         self._session_db = None
         try:
-            from hermes_state import SessionDB
+            from hermes_state import SessionDB, IntegrityLockdownError
             self._session_db = SessionDB()
+        except IntegrityLockdownError as e:
+            # G1 plan-a 主动熔断：启动 probe 已判定账本损坏/缺失，绝不打开或新建它。
+            # 渠道消息回退 JSONL；桌面端经 web /health 在 splash 向用户报错。
+            logger.error("[G1] session DB LOCKED DOWN by startup probe (plan a): %s", e)
         except Exception as e:
             # WARNING (not DEBUG) so the failure appears in errors.log — matches
             # cli.py's handling of the same init path.  Users hitting NFS-mounted
