@@ -16,37 +16,15 @@ contextBridge.exposeInMainWorld('vermes', {
   openExternalBrowser: (url) => ipcRenderer.invoke('shell:openExternal', url),
   version: appVersion,
 
-  // 自动更新 (electron-updater)
-  checkForUpdates: () => ipcRenderer.invoke('update:check'),
-  downloadUpdate: () => ipcRenderer.invoke('update:download'),
-  installUpdate: () => ipcRenderer.invoke('update:install'),
-
-  // 更新事件监听
-  onUpdateAvailable: (cb) => {
-    const handler = (_e, info) => cb(info);
-    ipcRenderer.on('update:available', handler);
-    return () => ipcRenderer.removeListener('update:available', handler);
-  },
-  onUpdateNotAvailable: (cb) => {
-    const handler = () => cb();
-    ipcRenderer.on('update:not-available', handler);
-    return () => ipcRenderer.removeListener('update:not-available', handler);
-  },
-  onUpdateProgress: (cb) => {
-    const handler = (_e, progress) => cb(progress);
-    ipcRenderer.on('update:download-progress', handler);
-    return () => ipcRenderer.removeListener('update:download-progress', handler);
-  },
-  onUpdateDownloaded: (cb) => {
-    const handler = (_e, info) => cb(info);
-    ipcRenderer.on('update:downloaded', handler);
-    return () => ipcRenderer.removeListener('update:downloaded', handler);
-  },
-  onUpdateError: (cb) => {
-    const handler = (_e, err) => cb(err);
-    ipcRenderer.on('update:error', handler);
-    return () => ipcRenderer.removeListener('update:error', handler);
-  },
+  // 壳更新（shell update）：
+  // electron-updater 已于 4c2cbcbc6 从 main.js 摘除（打包缺依赖导致启动崩溃），
+  // 主进程不存在 update:check/download/install 任何 handler。
+  // 此处曾暴露的 6 个孤儿 API 使 update.js:74 的存在性判断
+  // `isDesktop && window.vermes?.checkForUpdates` 永真 → 桌面端卡死在
+  // 注定失败的 electron 分支、永不降级 web 轮询（更新断路 P1）。
+  // 删除后判断自然转假，桌面端零改动滑入 web 分支：
+  // 检查=vbit.top version.json 轮询，下载/安装=后端 /api/update/* SSE。
+  // 若未来重接 autoUpdater，须先在 electron/package.json 真正声明依赖。
 
   // Agent 框架更新 (IPC)
   checkAgentUpdate: () => ipcRenderer.invoke('agent:check'),
