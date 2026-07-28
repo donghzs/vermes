@@ -1,8 +1,20 @@
 import { logger } from '@/utils/logger'
 
-// ── IndexedDB 图片存储（无大小限制） ──
+// ── IndexedDB 图片存储（G6 隐形老化淘汰：无大小限制→有上限，详见 docs/design-c5-g6-image-server-persist.md）──
 const IMAGE_DB = 'vermes-images'
 const IMAGE_STORE = 'attachments'
+// G6 老化淘汰双条件：写入 ≥90 天 或 总量 ≥500MB（base64 比原图大约 1/3，重度用户一年轻松过 GB）
+const IMAGE_EVICT_MAX_BYTES = 500 * 1024 * 1024
+const IMAGE_EVICT_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
+// 启动后空闲单次清扫（非 per-save，避免每次粘贴开游标卡输入路径）
+let _evictScheduled = false
+function scheduleImageEviction() {
+  if (_evictScheduled) return
+  _evictScheduled = true
+  const run = () => { _evictScheduled = false; evictStaleImages().catch(() => {}) }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 5000 })
+  else setTimeout(run, 3000)
+}
 
 // ── IndexedDB 消息存储（突破 localStorage 5MB 限制） ──
 const MSG_DB = 'vermes-messages'
@@ -65,8 +77,12 @@ export async function saveImage(key, base64Data) {
   try {
     const db = await openImageDB()
     const tx = db.transaction(IMAGE_STORE, 'readwrite')
-    tx.objectStore(IMAGE_STORE).put(base64Data, key)
+    // G6 前置：value 从裸字符串升级为 { d: base64, t: 写入时间 }，
+    // 供老化淘汰按时间删最旧（key=${uuid}-${idx} 无时间戳，必须存 t）。
+    tx.objectStore(IMAGE_STORE).put({ d: base64Data, t: Date.now() }, key)
     await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej })
+    // 启动后空闲单次清扫（saveImage 自身零开销，不查体积）
+    scheduleImageEviction()
   } catch(e) { logger.warn('[Vermes] 图片存储失败:', e) }
 }
 
@@ -75,8 +91,62 @@ export async function loadImage(key) {
     const db = await openImageDB()
     const tx = db.transaction(IMAGE_STORE, 'readonly')
     const req = tx.objectStore(IMAGE_STORE).get(key)
-    return new Promise((res) => { req.onsuccess = () => res(req.result); req.onerror = () => res(null) })
+    return new Promise((res) => { req.onsuccess = () => {
+      const r = req.result
+      // G6 兼容旧格式：历史裸字符串直接返回；新格式取 .d
+      res(typeof r === 'string' ? r : (r && r.d) || null)
+    }; req.onerror = () => res(null) })
   } catch { return null }
+}
+
+// ── G6 老化淘汰（age-based FIFO，非 LRU）──
+// 单次游标遍历：累计字节 + 删最旧（≥90天 或 总量≥500MB）。
+// best-effort，失败仅 warn，不阻断读写。
+export async function evictStaleImages() {
+  try {
+    const db = await openImageDB()
+    const tx = db.transaction(IMAGE_STORE, 'readwrite')
+    const store = tx.objectStore(IMAGE_STORE)
+    const now = Date.now()
+    let byteSum = 0
+    const toDelete = []
+    const keysInOrder = []  // 游标天然按 key 升序（≈写入序），用于超量时删最旧
+    await new Promise((res, rej) => {
+      const req = store.openCursor()
+      req.onsuccess = () => {
+        const cursor = req.result
+        if (!cursor) { res(); return }
+        const v = cursor.value
+        const d = typeof v === 'string' ? v : (v && v.d) || ''
+        const t = typeof v === 'string' ? 0 : (v && v.t) || 0
+        byteSum += d.length
+        keysInOrder.push(cursor.key)
+        if (t && now - t >= IMAGE_EVICT_MAX_AGE_MS) toDelete.push(cursor.key)
+        cursor.continue()
+      }
+      req.onerror = rej
+    })
+    // 总量超 500MB：按 keysInOrder（最旧在前）删直到达标
+    if (byteSum > IMAGE_EVICT_MAX_BYTES) {
+      let freed = 0
+      for (const k of keysInOrder) {
+        if (byteSum - freed <= IMAGE_EVICT_MAX_BYTES) break
+        toDelete.push(k)
+        // freed 估算：无法精确反查单条体积，用均值近似（保守多删，不欠删）
+        freed += byteSum / Math.max(1, keysInOrder.length)
+      }
+    }
+    if (toDelete.length) {
+      await new Promise((res) => {
+        const delTx = db.transaction(IMAGE_STORE, 'readwrite')
+        toDelete.forEach(k => delTx.objectStore(IMAGE_STORE).delete(k))
+        delTx.oncomplete = res; delTx.onerror = res
+      })
+      logger.info(`[Vermes] 图片老化淘汰：${toDelete.length} 张（总量 ${Math.round(byteSum/1024/1024)}MB）`)
+    }
+  } catch (e) {
+    logger.warn('[Vermes] 图片老化淘汰失败（可忽略）:', e)
+  }
 }
 
 export async function deleteImages(keys) {

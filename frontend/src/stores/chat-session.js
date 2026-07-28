@@ -346,7 +346,9 @@ async function exportSession(sessions, sessionId, format) {
       let content = m.content || ''
       for (const key of m._imageKeys) {
         const base64 = await loadImage(key)
-        if (base64) content = content.replace('🖼️ 图片', base64)
+        // G6 惰性降级：图片已被老化淘汰 / IDB miss → 占位（不报错、不断裂消息流）
+        const placeholder = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="100%" height="100%" fill="#eee"/><text x="50%" y="50%" font-size="12" text-anchor="middle" fill="#999">图片不可用</text></svg>')
+        content = content.replace('🖼️ 图片', base64 || placeholder)
       }
       restored.content = content
       delete restored._imageKeys
