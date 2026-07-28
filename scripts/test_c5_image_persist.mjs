@@ -140,6 +140,24 @@ async function main() {
   assert('超量时删最旧（big-0 被删）', !(await api.loadImage('big-0')));
   assert('超量时保留其余（剩 5 条）', remaining === 5);
 
+  // 场景4b（杀手场景）：key 字典序与写入序【相反】时仍按 t 删最旧。
+  // 真实 key = `${crypto.randomUUID()}-${idx}`，字典序是随机序——
+  // 若实现按 key 序删除，本场景会删掉最新的 'a-newest' 而留下最旧的 'z-oldest'。
+  mockIDB.store.clear();
+  mockIDB.store.set('a-newest', { d: BIG, t: Date.now() });            // key 最小，但最新
+  for (let i = 1; i <= 4; i++) mockIDB.store.set(`m-mid-${i}`, { d: BIG, t: Date.now() - i * 1000 });
+  mockIDB.store.set('z-oldest', { d: BIG, t: Date.now() - 99 * 1000 }); // key 最大，但最旧
+  await api.evictStaleImages(); // 6 条 ~600MB > 500MB，应删 1 条 = t 最旧的 z-oldest
+  assert('超量+key乱序：按 t 删最旧（z-oldest 被删）', !(await api.loadImage('z-oldest')));
+  assert('超量+key乱序：key 最小但最新的保留（a-newest 幸存）', (await api.loadImage('a-newest')) === BIG);
+
+  // 场景4c：旧格式裸字符串（无 t=视为最旧）在超量时最先被删
+  mockIDB.store.clear();
+  mockIDB.store.set('zz-legacy', BIG); // 裸字符串，t=0
+  for (let i = 0; i < 5; i++) mockIDB.store.set(`n-${i}`, { d: BIG, t: Date.now() });
+  await api.evictStaleImages(); // 600MB 超量删 1 条，应删 t=0 的 legacy
+  assert('超量时旧格式（无 t）视为最旧先删', !(await api.loadImage('zz-legacy')));
+
   // 场景5：saveImage 自身零开销（不触发游标删除），且登记了 idle 淘汰回调
   mockIDB.store.clear();
   for (let i = 0; i < 6; i++) mockIDB.store.set(`b${i}`, { d: BIG, t: Date.now() });
@@ -152,6 +170,11 @@ async function main() {
   // idle 回调触发后执行淘汰：直接验证 evict 逻辑（与场景4 同函数，零时序依赖）
   await api.evictStaleImages();
   assert('idle 淘汰触发后删最旧（b0 被删）', !(await api.loadImage('b0')));
+
+  // 静态断言：降级占位图不得用 btoa（Latin1-only，SVG 含中文必抛 DOMException）
+  const sessSrc = readFileSync(path.join(ROOT, 'frontend', 'src', 'stores', 'chat-session.js'), 'utf8');
+  assert('占位图不用 btoa（中文 SVG 必抛）', !/btoa\(/.test(sessSrc));
+  assert('占位图用 encodeURIComponent utf8 编码', /svg\+xml;utf8,.*encodeURIComponent|encodeURIComponent\(\s*\n?\s*'<svg/s.test(sessSrc));
 
   console.log(`\n${fail === 0 ? '✅' : '❌'} c5 图片老化淘汰：${pass} 通过 / ${fail} 失败`);
   process.exit(fail === 0 ? 0 : 1);

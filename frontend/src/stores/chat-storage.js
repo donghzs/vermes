@@ -110,7 +110,7 @@ export async function evictStaleImages() {
     const now = Date.now()
     let byteSum = 0
     const toDelete = []
-    const keysInOrder = []  // 游标天然按 key 升序（≈写入序），用于超量时删最旧
+    const entries = []  // { key, bytes, t } —— key 是 ${uuid}-${idx}，字典序≠写入序，必须按 value.t 排
     await new Promise((res, rej) => {
       const req = store.openCursor()
       req.onsuccess = () => {
@@ -118,22 +118,24 @@ export async function evictStaleImages() {
         if (!cursor) { res(); return }
         const v = cursor.value
         const d = typeof v === 'string' ? v : (v && v.d) || ''
-        const t = typeof v === 'string' ? 0 : (v && v.t) || 0
+        const t = typeof v === 'string' ? 0 : (v && v.t) || 0  // 旧格式无 t → 0 = 视为最旧
         byteSum += d.length
-        keysInOrder.push(cursor.key)
+        entries.push({ key: cursor.key, bytes: d.length, t })
         if (t && now - t >= IMAGE_EVICT_MAX_AGE_MS) toDelete.push(cursor.key)
         cursor.continue()
       }
       req.onerror = rej
     })
-    // 总量超 500MB：按 keysInOrder（最旧在前）删直到达标
+    // 总量超 500MB：按写入时间 t 升序（最旧在前）删直到达标，逐条真实字节数（游标已拿到，零额外成本）
     if (byteSum > IMAGE_EVICT_MAX_BYTES) {
+      const marked = new Set(toDelete)
+      entries.sort((a, b) => a.t - b.t)
       let freed = 0
-      for (const k of keysInOrder) {
+      for (const e of entries) {
         if (byteSum - freed <= IMAGE_EVICT_MAX_BYTES) break
-        toDelete.push(k)
-        // freed 估算：无法精确反查单条体积，用均值近似（保守多删，不欠删）
-        freed += byteSum / Math.max(1, keysInOrder.length)
+        if (marked.has(e.key)) { freed += e.bytes; continue }  // 超龄条目已在删除队列，计入 freed 不重复入队
+        toDelete.push(e.key)
+        freed += e.bytes
       }
     }
     if (toDelete.length) {

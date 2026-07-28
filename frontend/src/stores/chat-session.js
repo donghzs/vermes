@@ -12,6 +12,13 @@ const MAX_SESSIONS = 30  // localStorage 约 5MB，中等会话 ~100-200KB，30 
 
 const QUOTA_NEED_LOGIN = 'need_login'
 
+// G6 惰性降级占位图（图片被老化淘汰 / IDB miss 时用）。
+// 注意：SVG 含中文，btoa 是 Latin1-only 会抛 DOMException("Invalid character")，
+// 必须用 utf8 + encodeURIComponent 编码 data URI。模块级求值一次，导出循环零开销。
+const EVICTED_IMAGE_PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="100%" height="100%" fill="#eee"/><text x="50%" y="50%" font-size="12" text-anchor="middle" fill="#999">图片不可用</text></svg>'
+)
+
 // ── 会话模板 ──
 export const SESSION_TEMPLATES = [
   { id: 'blank', name: '空白会话', icon: '💬', systemPrompt: '' },
@@ -347,8 +354,7 @@ async function exportSession(sessions, sessionId, format) {
       for (const key of m._imageKeys) {
         const base64 = await loadImage(key)
         // G6 惰性降级：图片已被老化淘汰 / IDB miss → 占位（不报错、不断裂消息流）
-        const placeholder = 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="100%" height="100%" fill="#eee"/><text x="50%" y="50%" font-size="12" text-anchor="middle" fill="#999">图片不可用</text></svg>')
-        content = content.replace('🖼️ 图片', base64 || placeholder)
+        content = content.replace('🖼️ 图片', base64 || EVICTED_IMAGE_PLACEHOLDER)
       }
       restored.content = content
       delete restored._imageKeys
