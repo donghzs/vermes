@@ -9,34 +9,56 @@ const MSG_DB = 'vermes-messages'
 const MSG_STORE = 'sessions'
 const MSG_DB_VERSION = 1
 
+// ── G0/G2 · IDB 单库粒度自愈（docs/design-startup-integrity-guards-final.md §G0/G2）──
+// 背景：Electron 主进程已不再无条件清 indexdb（那会每次启动删光历史图片，G0 活 bug）。
+// 脏/不兼容 IDB schema 的防护改到这里：open 失败 → 只删**那一个**坏库 → 重开一次。
+// 坏哪个删哪个——消息库坏了绝不动图片库，反之亦然。重开仍失败则如实 reject（调用方已有 try/catch 降级）。
+function _openIDB(dbName, version, onUpgrade) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, version)
+    req.onupgradeneeded = () => onUpgrade(req)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function _openIDBWithSelfHeal(dbName, version, onUpgrade) {
+  try {
+    return await _openIDB(dbName, version, onUpgrade)
+  } catch (e) {
+    logger.warn(`[Vermes] IndexedDB 打开失败（${dbName}），单库自愈：删除后重建`, e)
+    await new Promise((res) => {
+      const del = indexedDB.deleteDatabase(dbName)
+      del.onsuccess = del.onerror = del.onblocked = () => res()
+    })
+    return await _openIDB(dbName, version, onUpgrade) // 二次失败则向上抛，调用方降级
+  }
+}
+
 // 连接缓存：避免每次操作都 open
 let _imageDBPromise = null
 function openImageDB() {
-  return _imageDBPromise || (_imageDBPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(IMAGE_DB, 1)
-    req.onupgradeneeded = () => req.result.createObjectStore(IMAGE_STORE)
-    req.onsuccess = () => {
-      req.result.onclose = () => { _imageDBPromise = null }
-      resolve(req.result)
-    }
-    req.onerror = () => { _imageDBPromise = null; reject(req.error) }
-  }))
+  return _imageDBPromise || (_imageDBPromise = (async () => {
+    try {
+      const db = await _openIDBWithSelfHeal(IMAGE_DB, 1, (req) => req.result.createObjectStore(IMAGE_STORE))
+      db.onclose = () => { _imageDBPromise = null }
+      return db
+    } catch (e) { _imageDBPromise = null; throw e }
+  })())
 }
 
 let _msgDBPromise = null
 function openMsgDB() {
-  return _msgDBPromise || (_msgDBPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(MSG_DB, MSG_DB_VERSION)
-    req.onupgradeneeded = () => {
-      const store = req.result.createObjectStore(MSG_STORE)
-      store.createIndex('sessionId', 'sessionId', { unique: false })
-    }
-    req.onsuccess = () => {
-      req.result.onclose = () => { _msgDBPromise = null }
-      resolve(req.result)
-    }
-    req.onerror = () => { _msgDBPromise = null; reject(req.error) }
-  }))
+  return _msgDBPromise || (_msgDBPromise = (async () => {
+    try {
+      const db = await _openIDBWithSelfHeal(MSG_DB, MSG_DB_VERSION, (req) => {
+        const store = req.result.createObjectStore(MSG_STORE)
+        store.createIndex('sessionId', 'sessionId', { unique: false })
+      })
+      db.onclose = () => { _msgDBPromise = null }
+      return db
+    } catch (e) { _msgDBPromise = null; throw e }
+  })())
 }
 
 export async function saveImage(key, base64Data) {

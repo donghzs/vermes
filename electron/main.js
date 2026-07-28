@@ -175,6 +175,58 @@ function stopBackend() {
   }
 }
 
+// ── G0/G2 · 分区清理版本戳门控 ──
+// 仅在应用版本变更后的首次启动清理 Electron 分区脏数据（localstorage/serviceworkers 等，
+// 防旧版残留导致白屏/黑屏）；同版本启动零清理。任何情况下都不清 indexdb——
+// 图片/消息 IDB 库的 schema 自愈由前端 chat-storage.js 按单库粒度处理。
+const CLEAN_STAMP_FILE = 'last-clean-version';
+
+function readCleanStamp() {
+  try {
+    return fs.readFileSync(path.join(app.getPath('userData'), CLEAN_STAMP_FILE), 'utf8').trim();
+  } catch (_) {
+    return null; // 读失败（不存在/权限）→ 视为版本变更（保守：多清一次 localstorage，不丢 IDB）
+  }
+}
+
+function writeCleanStamp(version) {
+  try {
+    fs.writeFileSync(path.join(app.getPath('userData'), CLEAN_STAMP_FILE), version, 'utf8');
+    return true;
+  } catch (_) {
+    return false; // 写失败 → 下次启动仍视为版本变更，行为保守但无害
+  }
+}
+
+function maybeCleanPartitionStorage(ses) {
+  const currentVersion = app.getVersion();
+  const lastCleanVersion = readCleanStamp();
+  if (lastCleanVersion === currentVersion) {
+    console.log(`[Vermes] 分区存储清理跳过（版本未变: ${currentVersion}）`);
+    return;
+  }
+  console.log(`[Vermes] 版本变更（${lastCleanVersion || '无版本戳'} -> ${currentVersion}），清理分区脏数据（不含 indexdb）`);
+  Promise.all([
+    // G0 修复：storages 永不包含 'indexdb'——历史图片/消息只存 IDB，清了即真丢失。
+    // 注意：此处刻意不 .catch 吞错——清理失败必须让 Promise.all 拒绝，
+    // 从而跳过写版本戳，下次启动重清（"清理成功后才写戳"的设计不变量）。
+    ses.clearStorageData({ storages: ['localstorage', 'shadercache', 'serviceworkers', 'cachestorage'] }),
+    (async () => {
+      try {
+        const reg = await ses.getServiceWorkers?.()
+        if (reg?.getAll?.()) {
+          for (const sw of reg.getAll()) { await reg.unregister(sw.scope) }
+        }
+      } catch (_) {} // SW 注销保持 best-effort，不阻塞戳写入
+    })(),
+  ]).then(() => {
+    // 清理成功后才写版本戳；写失败则下次启动重清一次（幂等，无数据损失面）
+    writeCleanStamp(currentVersion);
+  }).catch(() => {
+    console.log('[Vermes] 分区清理未完全成功，版本戳未写入（下次启动将重试清理）');
+  })
+}
+
 // ── 创建窗口 ──
 async function createWindow() {
   const iconPath = fs.existsSync(getIconPath()) ? getIconPath() : undefined;
@@ -202,21 +254,16 @@ async function createWindow() {
   // 只缓存运行时数据，不缓存静态资源（后端无 Cache-Control 头）
   ses.setSpellCheckerEnabled(false)
 
-  // 强制清除持久化分区的运行时存储（IndexedDB/LocalStorage/SessionStorage）
-  // 防止旧版本前端在 Electron 分区里残留的脏数据（如不兼容的 IndexedDB schema）
-  // 导致新版本前端初始化时读取到损坏数据而白屏/黑屏。
-  // 注意：这仅清除 Electron 渲染进程的缓存，不影响 ~/.<app> 下的用户业务数据。
-  Promise.all([
-    ses.clearStorageData({ storages: ['indexdb', 'localstorage', 'shadercache', 'serviceworkers', 'cachestorage'] }).catch(() => {}),
-    (async () => {
-      try {
-        const reg = await ses.getServiceWorkers?.()
-        if (reg?.getAll?.()) {
-          for (const sw of reg.getAll()) { await reg.unregister(sw.scope) }
-        }
-      } catch (_) {}
-    })(),
-  ]).catch(() => {})
+  // ── G0/G2 分区清理版本戳门控（docs/design-startup-integrity-guards-final.md §G0/G2）──
+  // 历史 bug（G0）：此处曾无条件 clearStorageData(['indexdb', ...])，而聊天图片仅存
+  // IndexedDB（vermes-images，服务端 JSON 只存 _imageKeys 引用无图片字节），导致
+  // 每次冷启动静默清空全部历史图片。
+  // 现行为：
+  //   1. 版本戳（userData/last-clean-version）与 app.getVersion() 一致 → 零清理；
+  //   2. 版本变更（或版本戳读写失败，保守视为变更）→ 清 localstorage/sw 等脏数据源，
+  //      但 **永不清 indexdb**——IDB schema 问题交前端单库粒度自愈（chat-storage.js）；
+  //   3. clearCache() 保留每次执行（上方 L201），保底热修静态资源缓存，无数据副作用。
+  maybeCleanPartitionStorage(ses)
 
   // 先加载启动欢迎页（立即显示，不等后端）
   // splash.html 在打包后位于 app.asar 根目录，dev 模式位于项目根目录；
