@@ -260,10 +260,12 @@ jobs:
         run: bash scripts/verify-build.sh
 
   # ── L0: 启动守卫 / 更新断路契约（每次 PR/push，硬阻断，<10min）──
-  # 守护 P1-① 修复：preload.js 不得暴露孤儿 update:* API，否则桌面更新卡死在 electron 死路。
-  # CI 此前完全不覆盖 electron/preload，此 job 把"手工追链验证"固化为机器护栏。
-  preload-contract:
-    name: Preload Update-Path Contract (L0)
+  # 守护 P1-① 修复 + c1-c5 启动守卫 harness：从磁盘抽真实函数体执行（非逻辑副本），
+  # 防止"存在性判断永真"断路、splash 错误渲染、字段契约错位、图片老化、资源路径容错
+  # 等结构性 bug 在 electron/frontend 侧悄悄复活。CI 此前完全不覆盖这些桌面契约。
+  # 跑 scripts/ 下全部 test_*.mjs（纯磁盘、node 执行、失败 process.exit(1)），新增 harness 自动纳入。
+  verify-desktop-contracts:
+    name: Desktop Contracts (L0, c1-c5 + update-path)
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -272,8 +274,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Run preload update-path contract test
-        run: node scripts/test_update_orphan_removal.mjs
+      - name: Run desktop contract harnesses (c1-c5 + update-path)
+        run: |
+          fail=0
+          for f in scripts/test_*.mjs; do
+            echo "── $f ──"
+            node "$f" || fail=1
+          done
+          exit $fail
 
   # ── L2: 全量门（nightly，报告不阻断）──
   # 唤醒 tests/ 中 75% 的"死资产"测试（当前 test-baseline 只跑 tests/gateway/ ~25%）。

@@ -119,7 +119,7 @@
 ### P3（出海 / 体验前置）
 5. **i18n**：前端零 i18n，locales 11+ 种 yaml 已服务 CLI。出海前需把前端硬编码中文抽到 i18n（现在动手成本最低，越晚越贵）。
 6. **无障碍 + 桌面增强**：托盘/全局快捷键/deep-link/对话分支，按用户增长节奏排。
-7. **启动守卫 harness 进 L0**（scripts/test_*.mjs 那批 c1-c5）：从磁盘抽真实函数体的范式，天然适合快门；现已接 `preload-contract` job 守护 P1-① 修复，其余 c1-c5 harness 逐步接入。
+7. **启动守卫 harness 进 L0**（scripts/test_*.mjs 那批 c1-c5）：从磁盘抽真实函数体的范式，天然适合快门；现已接 `verify-desktop-contracts` (L0) job，跑 `scripts/test_*.mjs` 全部 harness（含 P1-① 更新断路契约 + c1-c5 启动守卫），桌面契约验证已闭环。
 
 ---
 
@@ -151,7 +151,7 @@
 
 - **P1（最低垂，已落地）**：修配置债 + 加 L2 nightly——`ci-quality-gate.yml` 新增 `nightly-full` job：`python -m pytest tests/ --tb=short -q --timeout=120`，`if: schedule`，失败只进 summary 不阻断。零风险，~15 行，唤醒死资产。
 - **P2**：分目录接入 L1 影响域路由（先接 `tests/agent/` 自进化核心 + `tests/hermes_cli/` 启动链路）；接前先清偿 QUARANTINE 103 项（"只许缩短"做趋势管理）。
-- **P3**：把 `scripts/test_*.mjs` 启动守卫 harness 正式接进 L0（已接 `preload-contract` 守 P1-①）。
+- **P3**：把 `scripts/test_*.mjs` 启动守卫 harness 正式接进 L0（已接 `verify-desktop-contracts` 跑全部 c1-c5 + P1-① 更新断路契约）。
 
 ## 7. 一句话总结（修正版）
 
