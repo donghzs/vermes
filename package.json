@@ -32,7 +32,9 @@
     },
     "files": [
       "electron/main.js",
+      "electron/assets/**/*",
       "splash.html",
+      "assets/**/*",
       "package.json"
     ],
     "mac": {
@@ -40,7 +42,7 @@
       "target": [
         "dmg"
       ],
-      "icon": "assets/icon.icns",
+      "icon": "electron/assets/vermes.icns",
       "hardenedRuntime": true
     },
     "win": {
