@@ -493,8 +493,14 @@ class MemoryManager:
         *,
         session_id: str = "",
         messages: Optional[List[Dict[str, Any]]] = None,
+        scope: str = "",
     ) -> None:
-        """Sync a completed turn to all providers."""
+        """Sync a completed turn to all providers.
+
+        ``scope`` (Step 4) is the originating channel (telegram/feishu/.../web).
+        It is forwarded to every provider's ``sync_turn`` so a provider that
+        persists memories can tag them by channel and later weight recall.
+        """
         for provider in self._providers:
             try:
                 if messages is not None and self._provider_sync_accepts_messages(provider):
@@ -503,12 +509,14 @@ class MemoryManager:
                         assistant_content,
                         session_id=session_id,
                         messages=messages,
+                        scope=scope,
                     )
                 else:
                     provider.sync_turn(
                         user_content,
                         assistant_content,
                         session_id=session_id,
+                        scope=scope,
                     )
             except Exception as e:
                 logger.warning(

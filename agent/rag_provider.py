@@ -515,7 +515,7 @@ class RAGProvider(MemoryProvider):
         pass  # Synchronous prefetch is fast enough
 
     def sync_turn(self, user_content: str, assistant_content: str, *,
-                  session_id: str = "", messages=None) -> None:
+                  session_id: str = "", messages=None, scope: str = "") -> None:
         pass  # RAG doesn't store turns — that's the session DB's job
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:

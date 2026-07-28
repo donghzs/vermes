@@ -121,6 +121,7 @@ class MemoryProvider(ABC):
         *,
         session_id: str = "",
         messages: Optional[List[Dict[str, Any]]] = None,
+        scope: str = "",
     ) -> None:
         """Persist a completed turn to the backend.
 
@@ -130,6 +131,10 @@ class MemoryProvider(ABC):
         ``messages`` is the OpenAI-style conversation message list as of the
         completed turn, including any assistant tool calls and tool results.
         Providers that do not need raw turn context can ignore it.
+
+        ``scope`` (Step 4) is the originating channel; providers that persist
+        memories should tag them by scope so recall can weight the current
+        channel while aggregating others.
         """
 
     @abstractmethod

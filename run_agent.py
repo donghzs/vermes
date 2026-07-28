@@ -2682,6 +2682,11 @@ class AIAgent:
             sync_kwargs = {"session_id": self.session_id or ""}
             if messages is not None:
                 sync_kwargs["messages"] = messages
+            # Step 4: tag external memory with the originating channel so recall
+            # can weight the current channel while still aggregating others.
+            _scope = getattr(self, "platform", None) or ""
+            if _scope:
+                sync_kwargs["scope"] = _scope
             self._memory_manager.sync_all(
                 original_user_message,
                 final_response,

@@ -358,9 +358,12 @@ def recall(
     if layer:
         sql += " AND m.layer=?"
         params.append(layer)
-    if scope:
-        sql += " AND m.scope=?"
-        params.append(scope)
+    # ── Step 4: channel-scoped weighted recall ──────────────────────────
+    # When a ``scope`` is supplied we do NOT hard-restrict to it (that would
+    # hide cross-channel emergence). Instead we boost scope-matched rows to the
+    # front while still aggregating other channels + the channel-agnostic
+    # (scope="") memories. ``scope=None/""`` keeps the original global behaviour.
+    _scope_boost = bool(scope)
     if tag_filter:
         placeholders = ",".join("?" for _ in tag_filter)
         sql += f" AND m.lifecycle_tag IN ({placeholders})"
@@ -369,9 +372,12 @@ def recall(
     if skip_cold:
         sql += " AND m.access_count > ?"
         params.append(_COLD_ACCESS_THRESHOLD)
-    # 涌现式自适应：FTS 相关性(rank) 主排序；同相关性档内，被召回次数
-    # (access_count) 高者靠前。边界由真实使用分布自然涌现，不预设阈值。
-    sql += " ORDER BY rank, m.access_count DESC LIMIT ?"
+    # 涌现式自适应：当前渠道加权靠前，其余按 FTS 相关性(rank) + 被召回次数。
+    if _scope_boost:
+        sql += " ORDER BY (m.scope = ?) DESC, rank, m.access_count DESC LIMIT ?"
+        params.append(scope)
+    else:
+        sql += " ORDER BY rank, m.access_count DESC LIMIT ?"
     params.append(effective_limit)
     try:
         with _LOCK:
@@ -393,13 +399,15 @@ def recall(
                     if layer:
                         _fb_sql += " AND m.layer=?"
                         _fb_params.append(layer)
-                    if scope:
-                        _fb_sql += " AND m.scope=?"
-                        _fb_params.append(scope)
                     if skip_cold:
                         _fb_sql += " AND m.access_count > ?"
                         _fb_params.append(_COLD_ACCESS_THRESHOLD)
-                    _fb_sql += " ORDER BY m.access_count DESC LIMIT ?"
+                    # Step 4: mirror the weighted boost (no hard scope filter).
+                    if _scope_boost:
+                        _fb_sql += " ORDER BY (m.scope = ?) DESC, m.access_count DESC LIMIT ?"
+                        _fb_params.append(scope)
+                    else:
+                        _fb_sql += " ORDER BY m.access_count DESC LIMIT ?"
                     _fb_params.append(effective_limit)
                     c.execute(_fb_sql, _fb_params)
                     rows = c.fetchall()
