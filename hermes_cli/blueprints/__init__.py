@@ -12,6 +12,7 @@ from . import update
 from . import skills_tools
 from . import analytics
 from . import status
+from . import gateway_channels
 from . import profiles
 from . import oauth
 from . import storage
@@ -21,6 +22,6 @@ __all__ = [
     "dashboard_bp", "session_bp",
     "chat", "config", "providers",
     "cron_jobs", "update", "skills_tools",
-    "analytics", "status", "profiles",
+    "analytics", "status", "gateway_channels", "profiles",
     "oauth", "storage",
 ]

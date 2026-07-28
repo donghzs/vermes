@@ -2731,6 +2731,7 @@ blueprints.analytics.register_to(app)
 blueprints.skills_tools.register_to(app)
 blueprints.update.register_to(app)
 blueprints.status.register_to(app)
+blueprints.gateway_channels.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 

@@ -520,6 +520,31 @@ const api = {
     return this.get(`/usage/recommend?kind=${encodeURIComponent(kind)}&limit=${limit}`)
   },
 
+  // ── Gateway 渠道接入 ──
+  listGatewayChannels() {
+    return this.get('/gateway/channels')
+  },
+  getGatewayChannel(key) {
+    return this.get(`/gateway/channels/${encodeURIComponent(key)}`)
+  },
+  saveGatewayChannel(key, fields, enabled = true) {
+    return request(`/gateway/channels/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields, enabled })
+    }).then(r => r.json())
+  },
+  clearGatewayChannel(key) {
+    return request(`/gateway/channels/${encodeURIComponent(key)}`, {
+      method: 'DELETE'
+    }).then(r => r.json())
+  },
+  toggleGatewayChannel(key) {
+    return request(`/gateway/channels/${encodeURIComponent(key)}/toggle`, {
+      method: 'POST'
+    }).then(r => r.json())
+  },
+
   // 设置 token（桌面模式用）
   setToken(t) { token.value = t },
 }
