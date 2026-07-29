@@ -862,19 +862,19 @@ def test_rebrand_text_replaces_openclaw_variants():
     assert mod.rebrand_text("I told Open Claw to use dark mode") == "I told Vermes to use dark mode"
     assert mod.rebrand_text("Open-Claw config is great") == "Vermes config is great"
     assert mod.rebrand_text("OPENCLAW uses tools well") == "Vermes uses tools well"
-    # All-lowercase matches → lowercase ``Vermes``; this preserves the
-    # real filesystem path ``~/.Vermes`` (Vermes home) when rebranding
+    # All-lowercase matches → lowercase ``vermes``; this preserves the
+    # real filesystem path ``~/.vermes`` (Vermes home) when rebranding
     # memory entries that reference ``~/.openclaw`` or ``openclaw`` prose.
-    assert mod.rebrand_text("openclaw should always respond concisely") == "Vermes should always respond concisely"
+    assert mod.rebrand_text("openclaw should always respond concisely") == "vermes should always respond concisely"
 
 
 def test_rebrand_text_replaces_legacy_bot_names():
     mod = load_module()
     # Same case-preservation rule as above.
     assert mod.rebrand_text("ClawdBot remembers my timezone") == "Vermes remembers my timezone"
-    assert mod.rebrand_text("clawdbot prefers tabs") == "Vermes prefers tabs"
+    assert mod.rebrand_text("clawdbot prefers tabs") == "vermes prefers tabs"
     assert mod.rebrand_text("MoltBot was configured for Spanish") == "Vermes was configured for Spanish"
-    assert mod.rebrand_text("moltbot uses Python") == "Vermes uses Python"
+    assert mod.rebrand_text("moltbot uses Python") == "vermes uses Python"
 
 
 def test_rebrand_text_preserves_unrelated_content():

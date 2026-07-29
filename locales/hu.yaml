@@ -1,6 +1,16 @@
 # Vermes statikus üzenetkatalógus -- Magyar
 # See locales/en.yaml for the source of truth; keep keys in sync.
 
+
+vermes:
+  welcome: "🚀 Vermes — Your AI, set sail"
+  setup_start: "Starting Vermes setup..."
+  setup_done: "✅ Vermes configured! Run vermes to start"
+  skill_store: "🏪 Skill Store"
+  skill_install: "Install skill: {name}"
+  model_ready: "✅ Model ready: {model} ({provider})"
+  no_model: "⚠️ No model configured yet — run vermes setup first"
+
 approval:
   dangerous_header: "⚠️  VESZÉLYES PARANCS: {description}"
   choose_long:     "      [o]egyszer  |  [s]munkamenet  |  [a]mindig  |  [d]elutasít"

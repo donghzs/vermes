@@ -3004,7 +3004,7 @@ def main() -> int:
     # When --json is set, print the redacted report to stdout and skip the
     # human-readable terminal recap.  Useful for CI and scripted wrappers.
     if getattr(args, "json_output", False):
-        logger.info(json.dumps(redact_migration_value(report), indent=2, ensure_ascii=False))
+        print(json.dumps(redact_migration_value(report), indent=2, ensure_ascii=False))
         return 0
 
     # ── Human-readable terminal recap ─────────────────────────

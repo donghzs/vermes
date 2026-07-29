@@ -1,6 +1,16 @@
 # Vermes 静的メッセージカタログ -- 日本語
 # See locales/en.yaml for the source of truth; keep keys in sync.
 
+
+vermes:
+  welcome: "🚀 Vermes — Your AI, set sail"
+  setup_start: "Starting Vermes setup..."
+  setup_done: "✅ Vermes configured! Run vermes to start"
+  skill_store: "🏪 Skill Store"
+  skill_install: "Install skill: {name}"
+  model_ready: "✅ Model ready: {model} ({provider})"
+  no_model: "⚠️ No model configured yet — run vermes setup first"
+
 approval:
   dangerous_header: "⚠️  危険なコマンド: {description}"
   choose_long:     "      [o]今回のみ  |  [s]セッション中  |  [a]常に許可  |  [d]拒否"

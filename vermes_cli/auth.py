@@ -2743,17 +2743,17 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     """
     from vermes_cli.config import save_env_value
 
-    logger.info()
+    logger.info("")
     logger.info("=" * 70)
     logger.info("Spotify first-time setup")
     logger.info("=" * 70)
-    logger.info()
+    logger.info("")
     logger.info("Spotify requires every user to register their own lightweight")
     logger.info("developer app. This takes about two minutes and only has to be")
     logger.info("done once per machine.")
-    logger.info()
+    logger.info("")
     logger.info(f"Full guide: {SPOTIFY_DOCS_URL}")
-    logger.info()
+    logger.info("")
     logger.info("Steps:")
     logger.info(f"  1. Opening {SPOTIFY_DASHBOARD_URL} in your browser...")
     logger.info("  2. Click 'Create app' and fill in:")
@@ -2764,7 +2764,7 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     logger.info("  3. Agree to the terms, click Save.")
     logger.info("  4. Open the app's Settings page and copy the Client ID.")
     logger.info("  5. Paste it below.")
-    logger.info()
+    logger.info("")
 
     if not _is_remote_session():
         try:
@@ -2775,11 +2775,11 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     try:
         raw = input("Spotify Client ID: ").strip()
     except (EOFError, KeyboardInterrupt):
-        logger.info()
+        logger.info("")
         raise SystemExit("Spotify setup cancelled.")
 
     if not raw:
-        logger.info()
+        logger.info("")
         logger.info(f"No Client ID entered. See {SPOTIFY_DOCS_URL} for the full guide.")
         raise SystemExit("Spotify setup cancelled: empty Client ID.")
 
@@ -2790,9 +2790,9 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     if redirect_uri_hint and redirect_uri_hint != DEFAULT_SPOTIFY_REDIRECT_URI:
         save_env_value("VERMES_SPOTIFY_REDIRECT_URI", redirect_uri_hint)
 
-    logger.info()
+    logger.info("")
     logger.info("Saved VERMES_SPOTIFY_CLIENT_ID to ~/.vermes/.env")
-    logger.info()
+    logger.info("")
     return raw
 
 
@@ -2834,12 +2834,12 @@ def login_spotify_command(args) -> None:
     logger.info(f"Client ID: {client_id}")
     logger.info(f"Redirect URI: {redirect_uri}")
     logger.info("Make sure this redirect URI is allow-listed in your Spotify app settings.")
-    logger.info()
+    logger.info("")
     logger.info("Open this URL to authorize Vermes:")
     logger.info(authorize_url)
-    logger.info()
+    logger.info("")
     logger.info(f"Full setup guide: {SPOTIFY_DOCS_URL}")
-    logger.info()
+    logger.info("")
 
     _print_loopback_ssh_hint(redirect_uri, docs_url=SPOTIFY_DOCS_URL)
 
@@ -2982,7 +2982,7 @@ def _prompt_manual_callback_paste(redirect_uri: str) -> dict:
     HTTP handler output) so the existing state / error validation in
     the caller works unchanged.  See #26923.
     """
-    logger.info()
+    logger.info("")
     logger.info("─── Manual callback paste ─────────────────────────────────────")
     logger.info("After approving in your browser, your browser will try to load")
     logger.info(f"  {redirect_uri}")
@@ -3037,18 +3037,18 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
     if host not in {"127.0.0.1", "::1", "localhost"} or not port:
         return
     divider = "-" * 60
-    logger.info()
+    logger.info("")
     logger.info(divider)
     logger.info("Remote session detected — SSH tunnel required")
     logger.info(divider)
     logger.info(f"Vermes is waiting for the OAuth callback on {redirect_uri}")
     logger.info("but your browser is on a different machine. Run this command")
     logger.info("in a NEW terminal on your local machine BEFORE opening the URL:")
-    logger.info()
+    logger.info("")
     logger.info(f"  ssh -N -L {port}:127.0.0.1:{port} {_ssh_user_at_host()}")
-    logger.info()
+    logger.info("")
     logger.info("Then open the authorize URL above in your local browser.")
-    logger.info()
+    logger.info("")
     logger.info("No SSH client (Cloud Shell / Codespaces / web IDE)?  Re-run with")
     logger.info("`--manual-paste` to skip the loopback listener and paste the failed")
     logger.info("callback URL directly.")
@@ -3056,7 +3056,7 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
         logger.info(f"Provider docs:      {docs_url}")
     logger.info(f"SSH/jump-box guide: {OAUTH_OVER_SSH_DOCS_URL}")
     logger.info(divider)
-    logger.info()
+    logger.info("")
 
 
 # =============================================================================
@@ -6022,12 +6022,12 @@ def _prompt_model_selection(
         _upgrade_url = (portal_url or DEFAULT_NOUS_PORTAL_URL).rstrip("/")
         if _unavailable:
             logger.info(menu_title)
-            logger.info()
+            logger.info("")
             for mid in _unavailable:
                 logger.info(f"{_DIM}     {_label(mid)}{_RESET}")
-            logger.info()
+            logger.info("")
             logger.info(f"{_DIM}  ── Upgrade at {_upgrade_url} for paid models ──{_RESET}")
-            logger.info()
+            logger.info("")
             effective_title = "Available free models:"
         else:
             effective_title = menu_title
@@ -6047,7 +6047,7 @@ def _prompt_model_selection(
         flush_stdin()
         if idx is None:
             return None
-        logger.info()
+        logger.info("")
         if idx < len(ordered):
             return ordered[idx]
         elif idx == len(ordered):
@@ -6068,11 +6068,11 @@ def _prompt_model_selection(
 
     if _unavailable:
         _upgrade_url = (portal_url or DEFAULT_NOUS_PORTAL_URL).rstrip("/")
-        logger.info()
+        logger.info("")
         logger.info(f"  {_DIM}── Unavailable models (requires paid tier — upgrade at {_upgrade_url}) ──{_RESET}")
         for mid in _unavailable:
             logger.info(f"  {'':>{num_width}}  {_DIM}{_label(mid)}{_RESET}")
-    logger.info()
+    logger.info("")
 
     while True:
         try:
@@ -6146,7 +6146,7 @@ def _login_openai_codex(
                     reuse = "y"
                 if reuse in {"", "y", "yes"}:
                     config_path = _update_config_for_provider("openai-codex", existing.get("base_url", DEFAULT_CODEX_BASE_URL))
-                    logger.info()
+                    logger.info("")
                     logger.info("Login successful!")
                     logger.info(f"  Config updated: {config_path} (model.provider=openai-codex)")
                     return
@@ -6169,24 +6169,24 @@ def _login_openai_codex(
                 _save_codex_tokens(cli_tokens)
                 base_url = os.getenv("VERMES_CODEX_BASE_URL", "").strip().rstrip("/") or DEFAULT_CODEX_BASE_URL
                 config_path = _update_config_for_provider("openai-codex", base_url)
-                logger.info()
+                logger.info("")
                 logger.info("Credentials imported. Note: if Codex CLI refreshes its token,")
                 logger.info("Vermes will keep working independently with its own session.")
                 logger.info(f"  Config updated: {config_path} (model.provider=openai-codex)")
                 return
 
     # Run a fresh device code flow — Vermes gets its own OAuth session
-    logger.info()
+    logger.info("")
     logger.info("Signing in to OpenAI Codex...")
     logger.info("(Vermes creates its own session — won't affect Codex CLI or VS Code)")
-    logger.info()
+    logger.info("")
 
     creds = _codex_device_code_login()
 
     # Save tokens to Vermes auth store
     _save_codex_tokens(creds["tokens"], creds.get("last_refresh"))
     config_path = _update_config_for_provider("openai-codex", creds.get("base_url", DEFAULT_CODEX_BASE_URL))
-    logger.info()
+    logger.info("")
     logger.info("Login successful!")
     from vermes_constants import display_vermes_home as _dhh
     logger.info(f"  Auth state: {_dhh()}/auth.json")
@@ -6216,17 +6216,17 @@ def _login_xai_oauth(
                         "xai-oauth",
                         existing.get("base_url", DEFAULT_XAI_OAUTH_BASE_URL),
                     )
-                    logger.info()
+                    logger.info("")
                     logger.info("Login successful!")
                     logger.info(f"  Config updated: {config_path} (model.provider=xai-oauth)")
                     return
         except AuthError:
             pass
 
-    logger.info()
+    logger.info("")
     logger.info("Signing in to xAI Grok OAuth (SuperGrok Subscription)...")
     logger.info("(Vermes creates its own local OAuth session)")
-    logger.info()
+    logger.info("")
 
     timeout_seconds = float(getattr(args, "timeout", None) or 20.0)
     open_browser = not getattr(args, "no_browser", False)
@@ -6246,7 +6246,7 @@ def _login_xai_oauth(
         last_refresh=creds.get("last_refresh"),
     )
     config_path = _update_config_for_provider("xai-oauth", creds.get("base_url", DEFAULT_XAI_OAUTH_BASE_URL))
-    logger.info()
+    logger.info("")
     logger.info("Login successful!")
     from vermes_constants import display_vermes_home as _dhh
     logger.info(f"  Auth state: {_dhh()}/auth.json")
@@ -6466,7 +6466,7 @@ def _xai_oauth_loopback_login(
 
             logger.info("Open this URL to authorize Vermes with xAI:")
             logger.info(authorize_url)
-            logger.info()
+            logger.info("")
             logger.info(f"Waiting for callback on {redirect_uri}")
 
             _print_loopback_ssh_hint(redirect_uri, docs_url=XAI_OAUTH_DOCS_URL)
@@ -6879,7 +6879,7 @@ def _minimax_oauth_login(
         verification_url = str(code_data["verification_uri"])
         user_code = str(code_data["user_code"])
 
-        logger.info()
+        logger.info("")
         logger.info("To continue:")
         logger.info(f"  1. Open: {verification_url}")
         logger.info(f"  2. If prompted, enter code: {user_code}")
@@ -7126,7 +7126,7 @@ def _nous_device_code_login(
         expires_in = int(device_data["expires_in"])
         interval = int(device_data["interval"])
 
-        logger.info()
+        logger.info("")
         logger.info("To continue:")
         logger.info(f"  1. Open: {verification_url}")
         logger.info(f"  2. If prompted, enter code: {user_code}")
@@ -7195,10 +7195,10 @@ def _nous_device_code_login(
             portal_url = auth_state.get(
                 "portal_base_url", DEFAULT_NOUS_PORTAL_URL
             ).rstrip("/")
-            logger.info()
+            logger.info("")
             logger.info("Your Nous Portal account does not have an active subscription.")
             logger.info(f"  Subscribe here: {portal_url}/billing")
-            logger.info()
+            logger.info("")
             logger.info("After subscribing, run `vermes model` again to finish setup.")
             raise SystemExit(1)
         raise
@@ -7226,7 +7226,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 shared_path = _nous_shared_store_path()
             except RuntimeError:
                 shared_path = None
-            logger.info()
+            logger.info("")
             if shared_path:
                 logger.info(f"Found existing Nous OAuth credentials at {shared_path}")
             else:
@@ -7278,7 +7278,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
         _write_shared_nous_state(auth_state)
         _sync_nous_pool_from_auth_store()
 
-        logger.info()
+        logger.info("")
         logger.info("Login successful!")
         logger.info(f"  Auth state: {saved_to}")
 
@@ -7304,7 +7304,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
             )
             model_ids = get_curated_nous_model_ids()
 
-            logger.info()
+            logger.info("")
             unavailable_models: list = []
             if model_ids:
                 pricing = get_pricing_for_provider("nous")
@@ -7346,7 +7346,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 logger.info("No curated models available for Nous Portal.")
         except Exception as exc:
             message = format_auth_error(exc) if isinstance(exc, AuthError) else str(exc)
-            logger.info()
+            logger.info("")
             logger.info(f"Login succeeded, but could not fetch available models. Reason: {message}")
 
         # Write provider + model atomically so config is never mismatched.
@@ -7366,7 +7366,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 else:
                     auth_store.pop("active_provider", None)
                 _save_auth_store(auth_store)
-            logger.info()
+            logger.info("")
             logger.info("No provider change. Nous credentials saved for future use.")
             logger.info("  Run `vermes model` again to switch to Nous Portal.")
             return

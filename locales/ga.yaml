@@ -5,6 +5,16 @@
 # without good native equivalents (e.g. "session", "tokens", "API").
 # Where Irish has a settled term we use it; otherwise we keep the English.
 
+
+vermes:
+  welcome: "🚀 Vermes — Your AI, set sail"
+  setup_start: "Starting Vermes setup..."
+  setup_done: "✅ Vermes configured! Run vermes to start"
+  skill_store: "🏪 Skill Store"
+  skill_install: "Install skill: {name}"
+  model_ready: "✅ Model ready: {model} ({provider})"
+  no_model: "⚠️ No model configured yet — run vermes setup first"
+
 approval:
   dangerous_header: "⚠️  ORDÚ CONTÚIRTEACH: {description}"
   choose_long:     "      [o]uair amháin  |  [s]eisiún  |  [a]i gcónaí  |  [d]iúltaigh"

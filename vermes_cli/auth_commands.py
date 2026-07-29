@@ -262,7 +262,7 @@ def auth_add_command(args) -> None:
                 path = auth_mod._nous_shared_store_path()
             except RuntimeError:
                 path = None
-            logger.info()
+            logger.info("")
             if path:
                 logger.info(f"Found existing Nous OAuth credentials at {path}")
             else:
@@ -456,7 +456,7 @@ def auth_list_command(args) -> None:
             status = _format_exhausted_status(entry)
             source = _display_source(entry.source)
             logger.info(f"  #{idx}  {entry.label:<20} {entry.auth_type:<7} {source}{status} {marker}".rstrip())
-        logger.info()
+        logger.info("")
 
 
 def auth_remove_command(args) -> None:
@@ -567,7 +567,7 @@ def _interactive_auth() -> None:
                 logger.info(f"  Identity: {arn}")
             except Exception:
                 logger.info(f"  Identity: (could not resolve — boto3 STS call failed)")
-            logger.info()
+            logger.info("")
     except ImportError:
         pass  # boto3 or bedrock_adapter not available
 
@@ -615,10 +615,10 @@ def _interactive_auth() -> None:
                         _hint = _info.get("hint")
                         if _hint:
                             logger.info(f"  Hint: {_hint}")
-                logger.info()
+                logger.info("")
     except Exception:
         pass
-    logger.info()
+    logger.info("")
 
     # Main menu
     choices = [
@@ -737,7 +737,7 @@ def _interactive_strategy() -> None:
     strategies = [STRATEGY_FILL_FIRST, STRATEGY_ROUND_ROBIN, STRATEGY_LEAST_USED, STRATEGY_RANDOM]
 
     logger.info(f"\nCurrent strategy for {provider}: {current}")
-    logger.info()
+    logger.info("")
     descriptions = {
         STRATEGY_FILL_FIRST: "Use first key until exhausted, then next",
         STRATEGY_ROUND_ROBIN: "Cycle through keys evenly",
