@@ -70,7 +70,7 @@ from agent.prompt_caching import apply_anthropic_cache_control
 from agent.retry_utils import jittered_backoff
 from agent.trajectory import has_incomplete_scratchpad
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
-from vermes_constants import display_hermes_home as _dhh_fn
+from vermes_constants import display_vermes_home as _dhh_fn
 from vermes_logging import set_session_context
 from tools.schema_sanitizer import strip_pattern_and_format
 from tools.skill_provenance import set_current_write_origin
@@ -306,7 +306,7 @@ def _get_continuation_prompt(is_partial_stub: bool, dropped_tools: Optional[List
 # share one trailer to keep the guidance from drifting between the two sites.
 _CONTENT_POLICY_RECOVERY_HINT = (
     "可以尝试换一种表述、缩小上下文范围，或"
-    "使用 `hermes fallback add` 添加一个备用服务商。"
+    "使用 `Vermes fallback add` 添加一个备用服务商。"
 )
 
 
@@ -974,7 +974,7 @@ def _initialize_turn(
         logger.warning("[harness] H1.1 task pre-check failed (non-fatal, skipped): %s", e)
 
     # Tag all log records on this thread with the session ID so
-    # ``hermes logs --session <id>`` can filter a single conversation.
+    # ``Vermes logs --session <id>`` can filter a single conversation.
     from vermes_logging import set_session_context
     set_session_context(agent.session_id)
 
@@ -1226,7 +1226,7 @@ def _finalize_turn(
         # protocol violation).  The agent loop strips tools before calling
         # _handle_max_iterations, so the model cannot call kanban_block
         # itself - we must do it on its behalf.
-        _kanban_task = os.environ.get("HERMES_KANBAN_TASK")
+        _kanban_task = os.environ.get("VERMES_KANBAN_TASK")
         if _kanban_task:
             try:
                 _ra().handle_function_call(
@@ -1873,7 +1873,7 @@ def run_conversation(
                 except Exception as e:
                     logger.debug("conversation_loop.py: run conversation failed: %s", e)
 
-                if env_var_enabled("HERMES_DUMP_REQUESTS"):
+                if env_var_enabled("VERMES_DUMP_REQUESTS"):
                     agent._dump_api_request_debug(api_kwargs, reason="preflight")
 
                 # Always prefer the streaming path - even without stream
@@ -3023,7 +3023,7 @@ def run_conversation(
                     # Credential refresh didn't help - show diagnostic info.
                     # Most common causes: Portal OAuth expired/revoked,
                     # account out of credits, or agent key blocked.
-                    from vermes_constants import display_hermes_home as _dhh_fn
+                    from vermes_constants import display_vermes_home as _dhh_fn
                     _dhh = _dhh_fn()
                     _body_text = ""
                     try:
@@ -3037,8 +3037,8 @@ def run_conversation(
                         logger.info(f"{agent.log_prefix}   Response: {_body_text}")
                     logger.info(f"{agent.log_prefix}   Most likely: Portal OAuth expired, account out of credits, or agent key revoked.")
                     logger.info(f"{agent.log_prefix}   Troubleshooting:")
-                    logger.info(f"{agent.log_prefix}     • Re-authenticate: hermes login --provider nous")
-                    logger.info(f"{agent.log_prefix}     • Check credits / billing: https://portal.nousresearch.com")
+                    logger.info(f"{agent.log_prefix}     • Re-authenticate: Vermes login --provider nous")
+                    logger.info(f"{agent.log_prefix}     • Check credits / billing: https://portal.donghzs.com")
                     logger.info(f"{agent.log_prefix}     • Verify stored credentials: {_dhh}/auth.json")
                     logger.info(f"{agent.log_prefix}     • Switch providers temporarily: /model <model> --provider openrouter")
                 if (
@@ -3079,7 +3079,7 @@ def run_conversation(
                         logger.info(f"{agent.log_prefix}   Auth method: {auth_method}")
                         logger.info(f"{agent.log_prefix}   Token prefix: {key[:12]}..." if isinstance(key, str) and len(key) > 12 else f"{agent.log_prefix}   Token: (empty or short)")
                     logger.info(f"{agent.log_prefix}   Troubleshooting:")
-                    from vermes_constants import display_hermes_home as _dhh_fn
+                    from vermes_constants import display_vermes_home as _dhh_fn
                     _dhh = _dhh_fn()
                     logger.info(f"{agent.log_prefix}     • Check ANTHROPIC_TOKEN in {_dhh}/.env for Vermes-managed OAuth/setup tokens")
                     logger.info(f"{agent.log_prefix}     • Check ANTHROPIC_API_KEY in {_dhh}/.env for API keys or legacy token values")
@@ -3448,7 +3448,7 @@ def run_conversation(
                         force=True,
                     )
                     agent._vprint(
-                        f"{agent.log_prefix}      Use the `copilot` provider with a Copilot subscription token (`hermes",
+                        f"{agent.log_prefix}      Use the `copilot` provider with a Copilot subscription token (`Vermes",
                         force=True,
                     )
                     agent._vprint(

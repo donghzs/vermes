@@ -31,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Set
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from tools import skill_usage
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ DEFAULT_ARCHIVE_AFTER_DAYS = 90
 # ---------------------------------------------------------------------------
 
 def _state_file() -> Path:
-    return get_hermes_home() / "skills" / ".curator_state"
+    return get_vermes_home() / "skills" / ".curator_state"
 
 
 def _default_state() -> Dict[str, Any]:
@@ -210,7 +210,7 @@ def should_run_now(now: Optional[datetime] = None) -> bool:
     default) of skill activity, not on the first background tick after
     ``vermes update``. On first observation we seed ``last_run_at`` to "now"
     and defer the first real pass by one full interval. Users who want to
-    run it sooner can always invoke ``hermes curator run`` (with or without
+    run it sooner can always invoke ``Vermes curator run`` (with or without
     ``--dry-run``) explicitly — that path bypasses this gate.
 
     The idle check (min_idle_hours) is applied at the call site where we know
@@ -234,7 +234,7 @@ def should_run_now(now: Optional[datetime] = None) -> bool:
             state["last_run_at"] = now.isoformat()
             state["last_run_summary"] = (
                 "deferred first run — curator seeded, will run after one "
-                "interval; use `hermes curator run --dry-run` to preview now"
+                "interval; use `Vermes curator run --dry-run` to preview now"
             )
             save_state(state)
         except Exception as e:  # pragma: no cover — best-effort persistence
@@ -319,7 +319,7 @@ CURATOR_DRY_RUN_BANNER = (
     "produce on a live run — but describe the actions you WOULD take, "
     "not actions you took. A downstream reviewer will read the report "
     "and decide whether to approve a live run with "
-    "`hermes curator run` (no flag).\n"
+    "`Vermes curator run` (no flag).\n"
     "\n"
     "If you accidentally take a mutating action, say so explicitly in "
     "the summary so the reviewer can revert it.\n"
@@ -360,7 +360,7 @@ CURATOR_REVIEW_PROMPT = (
     "How to work — not optional:\n"
     "1. Scan the full candidate list. Identify PREFIX CLUSTERS (skills "
     "sharing a first word or domain keyword). Examples you are likely "
-    "to find: hermes-config-*, hermes-dashboard-*, gateway-*, codex-*, "
+    "to find: Vermes-config-*, Vermes-dashboard-*, gateway-*, codex-*, "
     "ollama-*, anthropic-*, gemini-*, mcp-*, salvage-*, pr-*, "
     "competitor-*, python-*, security-*, etc. Expect 10-25 clusters.\n"
     "2. For each cluster with 2+ members, do NOT ask 'are these pairs "
@@ -476,13 +476,13 @@ def _reports_root() -> Path:
     looking for operational telemetry, not mixed in with the user's
     authored skill data in ``~/.vermes/skills/``.
 
-    ``ensure_hermes_home()`` pre-creates this dir on every CLI launch and
+    ``ensure_vermes_home()`` pre-creates this dir on every CLI launch and
     the v22→v23 migration backfills it for existing profiles, but we
     still mkdir here as a belt-and-suspenders so the curator works even
     from an odd entry path (e.g. gateway-only install, bare library use)
     that bypasses both.
     """
-    root = get_hermes_home() / "logs" / "curator"
+    root = get_vermes_home() / "logs" / "curator"
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError as e:
@@ -664,7 +664,7 @@ def _parse_structured_summary(
 
     body = match.group(1)
 
-    # Prefer PyYAML when available — every hermes install already has it
+    # Prefer PyYAML when available — every Vermes install already has it
     # (config.yaml loader). Fall back to a hand parser for paranoia.
     try:
         import yaml  # type: ignore
@@ -917,8 +917,8 @@ def _build_rename_summary(
           • docx-extraction → document-tools
           • flaky-thing — pruned (stale)
           • old-utility → spreadsheet-ops
-        full report: hermes curator status
-        keep an umbrella stable: hermes curator pin document-tools
+        full report: Vermes curator status
+        keep an umbrella stable: Vermes curator pin document-tools
 
     Cap is 10 entries so a 50-skill consolidation doesn't blow up
     agent.log; the full list is always in REPORT.md. The pin hint only
@@ -971,7 +971,7 @@ def _build_rename_summary(
         shown += 1
     if total > SHOW:
         lines.append(f"  … and {total - SHOW} more")
-    lines.append("full report: hermes curator status")
+    lines.append("full report: Vermes curator status")
     # Pin hint — only surface it when there's actually a destination skill
     # worth pinning. The umbrella skills that absorbed content are the natural
     # candidates: pinning one tells future curator runs to leave it alone.
@@ -981,7 +981,7 @@ def _build_rename_summary(
         if umbrellas:
             example = umbrellas[0]
             lines.append(
-                f"keep an umbrella stable: hermes curator pin {example}"
+                f"keep an umbrella stable: Vermes curator pin {example}"
             )
     return "\n".join(lines)
 
@@ -1232,7 +1232,7 @@ def _render_report_markdown(p: Dict[str, Any]) -> str:
             "_These skills were **absorbed into another skill** during this run — "
             "their content still lives, just under a different name. "
             "The original directory was moved to `~/.vermes/skills/.archive/` for "
-            "safety and can be restored via `hermes curator restore <name>` if the "
+            "safety and can be restored via `Vermes curator restore <name>` if the "
             "consolidation was wrong._\n"
         )
         SHOW = 50
@@ -1268,7 +1268,7 @@ def _render_report_markdown(p: Dict[str, Any]) -> str:
             "_These skills were archived without being merged into an umbrella "
             "(e.g. stale, unused, or judged irrelevant). "
             "Directories live under `~/.vermes/skills/.archive/`. "
-            "Restore any via `hermes curator restore <name>`._\n"
+            "Restore any via `Vermes curator restore <name>`._\n"
         )
         SHOW = 50
         for entry in pruned[:SHOW]:
@@ -1353,7 +1353,7 @@ def _render_report_markdown(p: Dict[str, Any]) -> str:
 
     # Recovery footer
     lines.append("## Recovery\n")
-    lines.append("- Restore an archived skill: `hermes curator restore <name>`")
+    lines.append("- Restore an archived skill: `Vermes curator restore <name>`")
     lines.append("- All archives live under `~/.vermes/skills/.archive/` and are recoverable by `mv`")
     lines.append("- See `run.json` in this directory for the full machine-readable record.")
     lines.append("")
@@ -1451,7 +1451,7 @@ def run_curator_review(
     # Persist state before the LLM pass so a crash mid-review still records
     # the run and doesn't immediately re-trigger. In dry-run we do NOT bump
     # last_run_at or run_count — a preview shouldn't push the next scheduled
-    # real pass out. We still record a summary so `hermes curator status`
+    # real pass out. We still record a summary so `Vermes curator status`
     # shows that a preview ran.
     state = load_state()
     if not dry_run:
@@ -1531,7 +1531,7 @@ def run_curator_review(
 
         # Write the per-run report. Runs in a best-effort try so a
         # reporting bug never breaks the curator itself. Report path is
-        # recorded in state so `hermes curator status` can point at it.
+        # recorded in state so `Vermes curator status` can point at it.
         try:
             after_report = skill_usage.agent_created_report()
         except Exception:

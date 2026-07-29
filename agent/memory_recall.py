@@ -125,25 +125,25 @@ def _sigmoid(x: float, ref: float) -> float:
     return round(ratio / (ratio + 0.2), 3)
 
 
-def _get_hermes_home() -> Path:
-    return Path(os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes"))
+def _get_vermes_home() -> Path:
+    return Path(os.environ.get("VERMES_HOME") or os.path.expanduser("~/.Vermes"))
 
 
 def _get_self_model_db() -> Optional[Path]:
     """Resolve the self-model DB path."""
-    db = _get_hermes_home() / "evolution" / "self-model.db"
+    db = _get_vermes_home() / "evolution" / "self-model.db"
     return db if db.exists() else None
 
 
 def _get_fusion_db() -> Optional[Path]:
     """Resolve the fusion-state DB path."""
-    db = _get_hermes_home() / "evolution" / "fusion-state.db"
+    db = _get_vermes_home() / "evolution" / "fusion-state.db"
     return db if db.exists() else None
 
 
 def _get_handoff_db() -> Optional[Path]:
     """Resolve the session handoff DB path."""
-    db = _get_hermes_home() / "session_handoffs.db"
+    db = _get_vermes_home() / "session_handoffs.db"
     return db if db.exists() else None
 
 

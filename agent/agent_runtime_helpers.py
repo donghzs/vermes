@@ -1120,7 +1120,7 @@ def dump_api_request_debug(
 
         agent._vprint(f"{agent.log_prefix}🧾 Request debug dump written to: {dump_file}")
 
-        if env_var_enabled("HERMES_DUMP_REQUEST_STDOUT"):
+        if env_var_enabled("VERMES_DUMP_REQUEST_STDOUT"):
             logger.info(json.dumps(dump_payload, ensure_ascii=False, indent=2, default=str))
 
         return dump_file
@@ -1175,7 +1175,7 @@ def anthropic_prompt_cache_policy(
     # Nous Portal proxies to OpenRouter behind the scenes — identical
     # OpenAI-wire envelope cache_control semantics. Treat it as an
     # OpenRouter-equivalent endpoint for caching layout purposes.
-    is_nous_portal = "nousresearch" in eff_base_url.lower()
+    is_nous_portal = "donghzs" in eff_base_url.lower()
     is_anthropic_wire = eff_api_mode == "anthropic_messages"
     is_native_anthropic = (
         is_anthropic_wire

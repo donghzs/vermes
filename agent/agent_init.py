@@ -49,7 +49,7 @@ from agent.tool_guardrails import (
 )
 from vermes_cli.config import cfg_get
 from vermes_cli.timeouts import get_provider_request_timeout
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from utils import base_url_host_matches
 
 # Use the same logger name as run_agent so tests patching ``run_agent.logger``
@@ -517,7 +517,7 @@ def init_agent(
     # both live under ~/.vermes/logs/.  Idempotent, so gateway mode
     # (which creates a new AIAgent per message) won't duplicate handlers.
     from vermes_logging import setup_logging, setup_verbose_logging
-    setup_logging(hermes_home=_ra()._hermes_home)
+    setup_logging(VERMES_home=_ra()._vermes_home)
 
     if agent.verbose_logging:
         setup_verbose_logging()
@@ -933,7 +933,7 @@ def init_agent(
 
     # Kanban worker/orchestrator lifecycle guidance is session-static:
     # the dispatcher decides at spawn time whether this process is a kanban
-    # worker (kanban_show tool is present iff HERMES_KANBAN_TASK is set).
+    # worker (kanban_show tool is present iff VERMES_KANBAN_TASK is set).
     # Resolving the ~835-token block once here avoids re-running the
     # membership test + reference on every system-prompt rebuild
     # (init + each context compression).
@@ -988,11 +988,11 @@ def init_agent(
 
         set_current_session_id(agent.session_id)
     except Exception:
-        os.environ["HERMES_SESSION_ID"] = agent.session_id
+        os.environ["VERMES_SESSION_ID"] = agent.session_id
 
     # Session logs go into ~/.vermes/sessions/ alongside gateway sessions
-    hermes_home = get_hermes_home()
-    agent.logs_dir = hermes_home / "sessions"
+    VERMES_home = get_vermes_home()
+    agent.logs_dir = VERMES_home / "sessions"
     agent.logs_dir.mkdir(parents=True, exist_ok=True)
     # Per-session JSON snapshot writer (~/.vermes/sessions/session_{sid}.json)
     # is opt-in via sessions.write_json_snapshots (default False).  state.db
@@ -1116,7 +1116,7 @@ def init_agent(
                     _init_kwargs = {
                         "session_id": agent.session_id,
                         "platform": platform or "cli",
-                        "hermes_home": str(get_hermes_home()),
+                        "VERMES_home": str(get_vermes_home()),
                         "agent_context": "primary",
                     }
                     # Thread session title for memory provider scoping
@@ -1151,7 +1151,7 @@ def init_agent(
                         from vermes_cli.profiles import get_active_profile_name
                         _profile = get_active_profile_name()
                         _init_kwargs["agent_identity"] = _profile
-                        _init_kwargs["agent_workspace"] = "hermes"
+                        _init_kwargs["agent_workspace"] = "Vermes"
                     except Exception as e:
                         logger.debug("agent_init.py: init agent failed: %s", e)
                     agent._memory_manager.initialize_all(**_init_kwargs)
@@ -1175,7 +1175,7 @@ def init_agent(
                 agent._memory_manager.add_provider(_rag)
                 _rag.initialize(session_id=agent.session_id,
                                 platform=platform or "cli",
-                                hermes_home=str(get_hermes_home()),
+                                VERMES_home=str(get_vermes_home()),
                                 agent_context="primary")
                 _ra().logger.info("RAG provider activated (SQLite+FTS5)")
         except Exception as _rage:
@@ -1600,7 +1600,7 @@ def init_agent(
         try:
             agent.context_compressor.on_session_start(
                 agent.session_id,
-                hermes_home=str(get_hermes_home()),
+                VERMES_home=str(get_vermes_home()),
                 platform=agent.platform or "cli",
                 model=agent.model,
                 context_length=getattr(agent.context_compressor, "context_length", 0),

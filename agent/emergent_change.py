@@ -117,11 +117,11 @@ class EmergentChangePipeline:
     # Maximum backups to keep per target file (oldest auto-deleted)
     MAX_BACKUPS_PER_FILE = 5
 
-    def __init__(self, hermes_home: str = "") -> None:
-        self.hermes_home = hermes_home or os.environ.get(
-            "HERMES_HOME", os.path.expanduser("~/.hermes")
+    def __init__(self, VERMES_home: str = "") -> None:
+        self.VERMES_home = VERMES_home or os.environ.get(
+            "VERMES_HOME", os.path.expanduser("~/.Vermes")
         )
-        self.staging_dir = Path(self.hermes_home) / "staging"
+        self.staging_dir = Path(self.VERMES_home) / "staging"
         self.staging_dir.mkdir(parents=True, exist_ok=True)
         # Clean up stale staging files from previous crashes
         self._cleanup_stale_staging()

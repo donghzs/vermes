@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from typing import Any, Dict, List, Optional, Tuple
 from utils import base_url_host_matches, normalize_proxy_env_vars
 
@@ -433,7 +433,7 @@ def _is_kimi_family_endpoint(base_url: str | None, model: str | None = None) -> 
 
     Used to decide whether to drop Anthropic's ``thinking`` kwarg and to
     preserve unsigned reasoning_content-derived thinking blocks on replay.
-    See hermes-agent#13848, #17057.
+    See Vermes-agent#13848, #17057.
     """
     if _is_kimi_coding_endpoint(base_url):
         return True
@@ -462,7 +462,7 @@ def _is_deepseek_anthropic_endpoint(base_url: str | None) -> bool:
     policy used for Kimi's ``/coding`` endpoint.  The match is pinned to
     the ``/anthropic`` path so the OpenAI-compatible ``api.deepseek.com``
     base URL (which never reaches this adapter) is not misclassified.
-    See hermes-agent#16748.
+    See Vermes-agent#16748.
     """
     if not base_url_host_matches(base_url or "", "api.deepseek.com"):
         return False
@@ -1191,7 +1191,7 @@ _OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 _OAUTH_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
 _OAUTH_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
 _OAUTH_SCOPES = "org:create_api_key user:profile user:inference"
-_HERMES_OAUTH_FILE = get_hermes_home() / ".anthropic_oauth.json"
+_vermes_OAUTH_FILE = get_vermes_home() / ".anthropic_oauth.json"
 
 
 def _generate_pkce() -> tuple:
@@ -1207,7 +1207,7 @@ def _generate_pkce() -> tuple:
     return verifier, challenge
 
 
-def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
+def run_vermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     """Run Vermes-native OAuth PKCE flow and return credential state."""
     import secrets
     import time
@@ -1251,7 +1251,7 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
             webbrowser.open(auth_url)
             logger.info("  (Browser opened automatically)")
         except Exception as e:
-            logger.debug("anthropic_adapter.py: run hermes oauth login pure failed: %s", e)
+            logger.debug("anthropic_adapter.py: run Vermes oauth login pure failed: %s", e)
 
     logger.info()
     logger.info("After authorizing, you'll see a code. Paste it below.")
@@ -1318,11 +1318,11 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     }
 
 
-def read_hermes_oauth_credentials() -> Optional[Dict[str, Any]]:
+def read_vermes_oauth_credentials() -> Optional[Dict[str, Any]]:
     """Read Vermes-managed OAuth credentials from ~/.vermes/.anthropic_oauth.json."""
-    if _HERMES_OAUTH_FILE.exists():
+    if _vermes_OAUTH_FILE.exists():
         try:
-            data = json.loads(_HERMES_OAUTH_FILE.read_text(encoding="utf-8"))
+            data = json.loads(_vermes_OAUTH_FILE.read_text(encoding="utf-8"))
             if data.get("accessToken"):
                 return data
         except (json.JSONDecodeError, OSError, IOError) as e:
@@ -1658,7 +1658,7 @@ def _convert_assistant_message(m: Dict[str, Any]) -> Dict[str, Any]:
     # Kimi's /coding endpoint (Anthropic protocol) requires assistant
     # tool-call messages to carry reasoning_content when thinking is
     # enabled server-side.  Preserve it as a thinking block so Kimi
-    # can validate the message history.  See hermes-agent#13848.
+    # can validate the message history.  See Vermes-agent#13848.
     #
     # Accept empty string "" — _copy_reasoning_content_for_api()
     # injects "" as a tier-3 fallback for Kimi tool-call messages
@@ -1872,8 +1872,8 @@ def _manage_thinking_signatures(
     and will reject them outright.  Kimi's /coding and DeepSeek's /anthropic
     endpoints speak the Anthropic protocol upstream but require unsigned
     thinking blocks (synthesised from ``reasoning_content``) to round-trip on
-    replayed assistant tool-call messages.  See hermes-agent#13848 (Kimi) and
-    hermes-agent#16748 (DeepSeek).
+    replayed assistant tool-call messages.  See Vermes-agent#13848 (Kimi) and
+    Vermes-agent#16748 (DeepSeek).
 
     Mutates ``result`` in place.
     """
@@ -2136,7 +2136,7 @@ def build_anthropic_kwargs(
                 text = block.get("text", "")
                 text = text.replace("Vermes Agent", "Claude Code")
                 text = text.replace("Vermes agent", "Claude Code")
-                text = text.replace("hermes-agent", "claude-code")
+                text = text.replace("Vermes-agent", "claude-code")
                 text = text.replace("Nous Research", "Anthropic")
                 block["text"] = text
 

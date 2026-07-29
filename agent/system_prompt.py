@@ -2,7 +2,7 @@
 
 The agent's system prompt is built once per session and reused across all
 turns — only context compression triggers a rebuild.  This keeps the
-upstream prefix cache warm.  See ``hermes-agent-dev``'s
+upstream prefix cache warm.  See ``Vermes-agent-dev``'s
 ``references/system-prompt-invariant.md`` for the invariants and
 ``references/self-improvement-loop.md`` for how the background-review
 fork inherits the cached prompt verbatim.
@@ -134,7 +134,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     stable_parts: List[str] = []
 
     # Try SOUL.md as primary identity unless the caller explicitly skipped it.
-    # Some execution modes (cron) still want HERMES_HOME persona while keeping
+    # Some execution modes (cron) still want VERMES_HOME persona while keeping
     # cwd project instructions disabled.
     _soul_loaded = False
     if agent.load_soul_identity or not agent.skip_context_files:
@@ -173,7 +173,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         tool_guidance.append(ACADEMIC_SEARCH_GUIDANCE)
     # Kanban worker/orchestrator lifecycle — only present when the
     # dispatcher spawned this process (kanban_show check_fn gates on
-    # HERMES_KANBAN_TASK env var). Normal chat sessions never see
+    # VERMES_KANBAN_TASK env var). Normal chat sessions never see
     # this block. Resolved once at __init__ (see _kanban_worker_guidance).
     _kanban_guidance = getattr(agent, "_kanban_worker_guidance", None)
     if _kanban_guidance:
@@ -353,7 +353,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
 
     if not agent.skip_context_files:
         # Use TERMINAL_CWD for context file discovery when set (gateway
-        # mode).  The gateway process runs from the hermes-agent install
+        # mode).  The gateway process runs from the Vermes-agent install
         # dir, so os.getcwd() would pick up the repo's AGENTS.md and
         # other dev files — inflating token usage by ~10k for no benefit.
         _context_cwd = os.getenv("TERMINAL_CWD") or None
@@ -448,7 +448,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     try:
         from agent.skill_extractor import get_active_skills_prompt, get_pending_skills_prompt
         from pathlib import Path
-        _db = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))) / "evolution" / "self-model.db"
+        _db = Path(os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))) / "evolution" / "self-model.db"
         if _db.exists():
             _active_skills = get_active_skills_prompt(str(_db))
             if _active_skills:
@@ -459,8 +459,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     except Exception as e:
         logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
-    from vermes_time import now as _hermes_now
-    now = _hermes_now()
+    from vermes_time import now as _vermes_now
+    now = _vermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable
     # for the full day.  Minute-precision changes invalidate prefix-cache KV
     # on every rebuild path (compression boundary, fresh-agent gateway turns,

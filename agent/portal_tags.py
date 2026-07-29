@@ -8,8 +8,8 @@ Nous can attribute usage to Vermes Agent and bucket it by client release.
 Tag shape (sent in OpenAI-compatible ``extra_body['tags']``):
 
     [
-        "product=hermes-agent",
-        "client=hermes-client-v<__version__>",
+        "product=Vermes-agent",
+        "client=Vermes-client-v<__version__>",
     ]
 
 The version is sourced live from ``vermes_cli.__version__`` so it auto-aligns
@@ -34,7 +34,7 @@ from __future__ import annotations
 from typing import List
 
 
-def _hermes_version() -> str:
+def _vermes_version() -> str:
     """Return the current Vermes release version, e.g. ``"0.13.0"``.
 
     Falls back to ``"unknown"`` if ``vermes_cli`` cannot be imported (should
@@ -50,9 +50,9 @@ def _hermes_version() -> str:
 def vermes_client_tag() -> str:
     """Return the ``client=...`` tag for Nous Portal requests.
 
-    Format: ``client=hermes-client-v<MAJOR>.<MINOR>.<PATCH>``.
+    Format: ``client=Vermes-client-v<MAJOR>.<MINOR>.<PATCH>``.
     """
-    return f"client=hermes-client-v{_hermes_version()}"
+    return f"client=Vermes-client-v{_vermes_version()}"
 
 
 def nous_portal_tags() -> List[str]:
@@ -61,4 +61,4 @@ def nous_portal_tags() -> List[str]:
     Always returns a fresh list so callers can mutate it freely
     (e.g. ``merged_extra.setdefault("tags", []).extend(nous_portal_tags())``).
     """
-    return ["product=hermes-agent", vermes_client_tag()]
+    return ["product=Vermes-agent", vermes_client_tag()]

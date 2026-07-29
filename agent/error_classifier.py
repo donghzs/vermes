@@ -184,7 +184,7 @@ _IMAGE_TOO_LARGE_PATTERNS = [
 # messages in-place, record the (provider, model) for the rest of the
 # session so we don't waste another call learning the same lesson, retry.
 #
-# See: https://github.com/NousResearch/hermes-agent/issues/27344
+# See: https://github.com/donghzs/vermes/issues/27344
 _MULTIMODAL_TOOL_CONTENT_PATTERNS = [
     # Xiaomi MiMo: {"error":{"code":"400","message":"Param Incorrect","param":"text is not set"}}
     "text is not set",

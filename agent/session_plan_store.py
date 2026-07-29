@@ -28,14 +28,14 @@ _lock = threading.Lock()
 
 
 def _get_db_path() -> Path:
-    """Lazily resolve the session-plans database path under HERMES_HOME."""
+    """Lazily resolve the session-plans database path under VERMES_HOME."""
     global _DB_PATH
     if _DB_PATH is not None:
         return _DB_PATH
     import os
 
-    hermes_home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
-    _db_dir = Path(hermes_home)
+    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.Vermes")
+    _db_dir = Path(VERMES_home)
     _db_dir.mkdir(parents=True, exist_ok=True)
     _DB_PATH = _db_dir / "session_plans.db"
     return _DB_PATH

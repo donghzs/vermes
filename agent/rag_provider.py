@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ if _VEC_BACKEND == "sqlite-vec":
 
 def _get_rag_db() -> Path:
     """Get the RAG database path."""
-    return get_hermes_home() / "rag" / "documents.db"
+    return get_vermes_home() / "rag" / "documents.db"
 
 
 def _get_conn(db_path: str) -> sqlite3.Connection:

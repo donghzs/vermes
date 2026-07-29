@@ -17,7 +17,7 @@ Design notes:
     error logs and continues, it never aborts the whole migration.
   * Dependency-light: reads sibling stores via ``sqlite3`` / plain file I/O
     and imports heavy discovery helpers (``skills_tool``) lazily, so this
-    module can be unit-tested with a throwaway ``HERMES_HOME`` and no agent
+    module can be unit-tested with a throwaway ``VERMES_HOME`` and no agent
     runtime.
 
 Run once (or whenever you want to refresh the index):
@@ -30,7 +30,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 from agent.memory_fabric import (
     L3_EPISODIC,
@@ -254,18 +254,18 @@ def _migrate_rag(home: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def migrate_memories_to_fabric(
-    hermes_home: Optional[str] = None,
+    VERMES_home: Optional[str] = None,
     skills: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, int]:
     """Backfill every physical memory store into the unified index.
 
     Args:
-        hermes_home: override (tests); defaults to ``get_hermes_home()``.
+        VERMES_home: override (tests); defaults to ``get_vermes_home()``.
         skills: pre-discovered skill list (tests); defaults to lazy discovery.
 
     Returns a per-layer count summary.
     """
-    home = Path(hermes_home) if hermes_home else Path(get_hermes_home())
+    home = Path(VERMES_home) if VERMES_home else Path(get_vermes_home())
     summary = {
         "L1_note": _migrate_notes(home),
         "L2_procedural": _migrate_skills(home, skills),

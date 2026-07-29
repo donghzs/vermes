@@ -21,7 +21,7 @@ Usage::
 
 Language resolution order:
     1. Explicit ``lang=`` argument passed to :func:`t`
-    2. ``HERMES_LANGUAGE`` environment variable (for tests / quick override)
+    2. ``VERMES_LANGUAGE`` environment variable (for tests / quick override)
     3. ``display.language`` from config.yaml
     4. ``"en"`` (baseline)
 
@@ -137,7 +137,7 @@ def _load_catalog(lang: str) -> dict[str, str]:
         return {}
 
     try:
-        import yaml  # PyYAML is already a hermes dependency
+        import yaml  # PyYAML is already a Vermes dependency
         with path.open("r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except Exception as exc:
@@ -196,7 +196,7 @@ def reset_language_cache() -> None:
 
 def get_language() -> str:
     """Resolve the active language using env > config > default order."""
-    env_lang = os.environ.get("HERMES_LANGUAGE")
+    env_lang = os.environ.get("VERMES_LANGUAGE")
     if env_lang:
         return _normalize_lang(env_lang)
     cfg_lang = _config_language_cached()

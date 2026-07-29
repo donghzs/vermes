@@ -10,28 +10,28 @@ from pathlib import Path
 from typing import Optional
 
 
-def _hermes_home_path() -> Path:
-    """Resolve the active HERMES_HOME (profile-aware) without circular imports."""
+def _vermes_home_path() -> Path:
+    """Resolve the active VERMES_HOME (profile-aware) without circular imports."""
     try:
-        from vermes_constants import get_hermes_home  # local import to avoid cycles
-        return get_hermes_home()
+        from vermes_constants import get_vermes_home  # local import to avoid cycles
+        return get_vermes_home()
     except Exception:
-        return Path(os.path.expanduser("~/.hermes"))
+        return Path(os.path.expanduser("~/.Vermes"))
 
 
-def _hermes_root_path() -> Path:
+def _vermes_root_path() -> Path:
     """Resolve the Vermes root dir (always the parent of any profile, never per-profile)."""
     try:
-        from vermes_constants import get_default_hermes_root  # local import to avoid cycles
-        return get_default_hermes_root()
+        from vermes_constants import get_default_vermes_root  # local import to avoid cycles
+        return get_default_vermes_root()
     except Exception:
-        return Path(os.path.expanduser("~/.hermes"))
+        return Path(os.path.expanduser("~/.Vermes"))
 
 
 def build_write_denied_paths(home: str) -> set[str]:
     """Return exact sensitive paths that must never be written."""
-    hermes_home = _hermes_home_path()
-    hermes_root = _hermes_root_path()
+    VERMES_home = _vermes_home_path()
+    VERMES_root = _vermes_root_path()
     return {
         os.path.realpath(p)
         for p in [
@@ -40,15 +40,15 @@ def build_write_denied_paths(home: str) -> set[str]:
             os.path.join(home, ".ssh", "id_ed25519"),
             os.path.join(home, ".ssh", "config"),
             # Active profile .env (or top-level .env when not in profile mode).
-            str(hermes_home / ".env"),
+            str(VERMES_home / ".env"),
             # Top-level .env, even when running under a profile — overwriting it
             # leaks credentials across every profile that inherits from root (#15981).
-            str(hermes_root / ".env"),
+            str(VERMES_root / ".env"),
             # Active profile Anthropic PKCE credential store.
-            str(hermes_home / ".anthropic_oauth.json"),
+            str(VERMES_home / ".anthropic_oauth.json"),
             # Top-level Anthropic PKCE credential store remains sensitive even
             # when a profile is active; default/non-profile sessions still read it.
-            str(hermes_root / ".anthropic_oauth.json"),
+            str(VERMES_root / ".anthropic_oauth.json"),
             os.path.join(home, ".bashrc"),
             os.path.join(home, ".zshrc"),
             os.path.join(home, ".profile"),
@@ -86,8 +86,8 @@ def build_write_denied_prefixes(home: str) -> list[str]:
 
 
 def get_safe_write_root() -> Optional[str]:
-    """Return the resolved HERMES_WRITE_SAFE_ROOT path, or None if unset."""
-    root = os.getenv("HERMES_WRITE_SAFE_ROOT", "")
+    """Return the resolved VERMES_WRITE_SAFE_ROOT path, or None if unset."""
+    root = os.getenv("VERMES_WRITE_SAFE_ROOT", "")
     if not root:
         return None
     try:
@@ -108,23 +108,23 @@ def is_write_denied(path: str) -> bool:
             return True
 
     # Vermes control-plane files: block both the ACTIVE profile's view
-    # (hermes_home) AND the global root view. Without the root pass, a
+    # (VERMES_home) AND the global root view. Without the root pass, a
     # profile-mode session leaves <root>/auth.json + <root>/config.yaml
     # writable — letting a prompt-injected write_file overwrite the global
     # files that every profile inherits from (same shape as #15981).
     control_file_names = ("auth.json", "config.yaml", "webhook_subscriptions.json")
     mcp_tokens_dir_name = "mcp-tokens"
 
-    hermes_dirs = []
-    for base in (_hermes_home_path(), _hermes_root_path()):
+    VERMES_dirs = []
+    for base in (_vermes_home_path(), _vermes_root_path()):
         try:
             real = os.path.realpath(base)
-            if real not in hermes_dirs:
-                hermes_dirs.append(real)
+            if real not in VERMES_dirs:
+                VERMES_dirs.append(real)
         except Exception:
             continue
 
-    for base_real in hermes_dirs:
+    for base_real in VERMES_dirs:
         for name in control_file_names:
             try:
                 if resolved == os.path.realpath(os.path.join(base_real, name)):
@@ -170,10 +170,10 @@ def get_read_block_error(path: str) -> Optional[str]:
 
     Three categories are blocked:
 
-      * Internal Hermes cache files under ``HERMES_HOME/skills/.hub`` —
+      * Internal Vermes cache files under ``VERMES_HOME/skills/.hub`` —
         readable metadata that an attacker could use as a prompt-injection
         carrier.
-      * Credential / secret stores under HERMES_HOME and the global Hermes
+      * Credential / secret stores under VERMES_HOME and the global Vermes
         root: ``auth.json``, ``auth.lock``, ``.anthropic_oauth.json``,
         ``.env``, ``webhook_subscriptions.json``, ``auth/google_oauth.json``,
         and anything under ``mcp-tokens/``. These hold plaintext provider keys,
@@ -212,22 +212,22 @@ def get_read_block_error(path: str) -> Optional[str]:
     """
     resolved = Path(path).expanduser().resolve()
 
-    # Resolve BOTH the active HERMES_HOME (profile-aware) AND the global
+    # Resolve BOTH the active VERMES_HOME (profile-aware) AND the global
     # Vermes root so credential stores at <root>/auth.json etc. are also
-    # blocked when running under a profile (HERMES_HOME points at
+    # blocked when running under a profile (VERMES_HOME points at
     # <root>/profiles/<name> in profile mode). Same shape as the write
     # deny widening (#15981, #14157).
-    hermes_dirs: list[Path] = []
-    for base in (_hermes_home_path(), _hermes_root_path()):
+    VERMES_dirs: list[Path] = []
+    for base in (_vermes_home_path(), _vermes_root_path()):
         try:
             real = base.resolve()
-            if real not in hermes_dirs:
-                hermes_dirs.append(real)
+            if real not in VERMES_dirs:
+                VERMES_dirs.append(real)
         except Exception:
             continue
 
     # Skills .hub: prompt-injection carriers.
-    for hd in hermes_dirs:
+    for hd in VERMES_dirs:
         blocked_dirs = [
             hd / "skills" / ".hub" / "index-cache",
             hd / "skills" / ".hub",
@@ -244,7 +244,7 @@ def get_read_block_error(path: str) -> Optional[str]:
             )
 
     # Credential / secret stores. Exact-file matches under either
-    # HERMES_HOME or <root>.
+    # VERMES_HOME or <root>.
     credential_file_names = (
         "auth.json",
         "auth.lock",
@@ -257,7 +257,7 @@ def get_read_block_error(path: str) -> Optional[str]:
         # was introduced by #31968 but not added to this guard.
         os.path.join("cache", "bws_cache.json"),
     )
-    for hd in hermes_dirs:
+    for hd in VERMES_dirs:
         for name in credential_file_names:
             try:
                 blocked = (hd / name).resolve()
@@ -274,7 +274,7 @@ def get_read_block_error(path: str) -> Optional[str]:
 
     # mcp-tokens/: directory prefix match — anything inside is OAuth
     # token material.
-    for hd in hermes_dirs:
+    for hd in VERMES_dirs:
         try:
             mcp_tokens = (hd / "mcp-tokens").resolve()
         except Exception:
@@ -314,7 +314,7 @@ def get_read_block_error(path: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Cross-profile write guard (#TBD)
 #
-# Hermes profiles are separate HERMES_HOME dirs under
+# Vermes profiles are separate VERMES_HOME dirs under
 # ``<root>/profiles/<name>/``. Each profile has its own skills/, plugins/,
 # cron/, memories/. When an agent runs under one profile, writing into
 # ANOTHER profile's directories is almost always wrong — those skills /
@@ -327,30 +327,30 @@ def get_read_block_error(path: str) -> Optional[str]:
 # as the dangerous-command approval flow — the agent is told the boundary
 # exists, and explicit user direction is required to cross it.
 #
-# Reference: May 2026 incident where a hermes-security profile session
-# edited skills under both ``~/.vermes/profiles/hermes-security/skills/``
+# Reference: May 2026 incident where a Vermes-security profile session
+# edited skills under both ``~/.vermes/profiles/Vermes-security/skills/``
 # AND ``~/.vermes/skills/`` (the default profile's skills) without realizing
 # the second path belonged to a different profile.
 # ---------------------------------------------------------------------------
 
-# Profile-scoped directories under HERMES_HOME / <root> / <root>/profiles/<X>/
+# Profile-scoped directories under VERMES_HOME / <root> / <root>/profiles/<X>/
 # that should be guarded. Adding a new area here extends the guard with no
 # other code change.
 PROFILE_SCOPED_AREAS = ("skills", "plugins", "cron", "memories")
 
 
 def _resolve_active_profile_name() -> str:
-    """Return the active profile name derived from HERMES_HOME.
+    """Return the active profile name derived from VERMES_HOME.
 
-    ``~/.hermes``              -> ``"default"``
+    ``~/.Vermes``              -> ``"default"``
     ``~/.vermes/profiles/X``  -> ``"X"``
 
     Falls back to ``"default"`` on any resolution failure so the guard
     never raises into the tool path.
     """
     try:
-        home_real = _hermes_home_path().resolve()
-        root_real = _hermes_root_path().resolve()
+        home_real = _vermes_home_path().resolve()
+        root_real = _vermes_root_path().resolve()
     except (OSError, RuntimeError):
         return "default"
     profiles_dir = root_real / "profiles"
@@ -383,7 +383,7 @@ def classify_cross_profile_target(path: str) -> Optional[dict]:
     """
     try:
         target = Path(os.path.expanduser(str(path))).resolve()
-        root_real = _hermes_root_path().resolve()
+        root_real = _vermes_root_path().resolve()
     except (OSError, RuntimeError):
         return None
 

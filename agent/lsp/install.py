@@ -2,7 +2,7 @@
 
 Tries to install missing servers using whatever package manager is
 appropriate.  All installs go to a Vermes-owned bin staging dir,
-``<HERMES_HOME>/lsp/bin/``, so we don't pollute the user's global
+``<VERMES_HOME>/lsp/bin/``, so we don't pollute the user's global
 toolchain.
 
 Strategies:
@@ -10,7 +10,7 @@ Strategies:
 - ``auto`` — attempt to install with the best available package
   manager.  This is the default.
 - ``manual`` — never install; if a binary is missing, the server is
-  silently skipped and the user is told about it via ``hermes lsp
+  silently skipped and the user is told about it via ``Vermes lsp
   status``.
 - ``off`` — same as ``manual`` for now (kept distinct so we can
   evolve behavior later, e.g. logging differently).
@@ -40,7 +40,7 @@ logger = logging.getLogger("agent.lsp.install")
 # Package-name → install-strategy hint registry.  Each entry is a
 # tuple of strategy name + package name + executable name.  When the
 # install completes, we look for the executable in
-# ``<HERMES_HOME>/lsp/bin/`` first, then on PATH.
+# ``<VERMES_HOME>/lsp/bin/`` first, then on PATH.
 #
 # Optional fields:
 #   - ``extra_pkgs``: list of sibling packages to install alongside
@@ -110,11 +110,11 @@ _install_results: Dict[str, Optional[str]] = {}
 _install_lock_meta = threading.Lock()
 
 
-def hermes_lsp_bin_dir() -> Path:
+def VERMES_lsp_bin_dir() -> Path:
     """Return the Vermes-owned bin staging dir for LSP servers."""
-    home = os.environ.get("HERMES_HOME")
+    home = os.environ.get("VERMES_HOME")
     if home is None:
-        home = os.path.join(os.path.expanduser("~"), ".hermes")
+        home = os.path.join(os.path.expanduser("~"), ".vermes")
     p = Path(home) / "lsp" / "bin"
     p.mkdir(parents=True, exist_ok=True)
     return p
@@ -122,7 +122,7 @@ def hermes_lsp_bin_dir() -> Path:
 
 def _existing_binary(name: str) -> Optional[str]:
     """Probe the staging dir + PATH for a binary named ``name``."""
-    staged = hermes_lsp_bin_dir() / name
+    staged = VERMES_lsp_bin_dir() / name
     if staged.exists() and os.access(staged, os.X_OK):
         return str(staged)
     on_path = shutil.which(name)
@@ -224,7 +224,7 @@ def _install_npm(
     if npm is None:
         logger.info("[install] cannot install %s: npm not on PATH", pkg)
         return None
-    staging = hermes_lsp_bin_dir().parent  # <HERMES_HOME>/lsp/
+    staging = VERMES_lsp_bin_dir().parent  # <VERMES_HOME>/lsp/
     install_targets = [pkg] + list(extra_pkgs or [])
     try:
         logger.info(
@@ -258,7 +258,7 @@ def _install_npm(
     for c in candidates:
         if c.exists():
             # Symlink into our `lsp/bin/` for stable PATH access.
-            link = hermes_lsp_bin_dir() / c.name
+            link = VERMES_lsp_bin_dir() / c.name
             if not link.exists():
                 try:
                     link.symlink_to(c)
@@ -279,7 +279,7 @@ def _install_go(pkg: str, bin_name: str) -> Optional[str]:
     if go is None:
         logger.info("[install] cannot install %s: go not on PATH", pkg)
         return None
-    staging = hermes_lsp_bin_dir()
+    staging = VERMES_lsp_bin_dir()
     env = dict(os.environ)
     env["GOBIN"] = str(staging)
     try:
@@ -310,7 +310,7 @@ def _install_go(pkg: str, bin_name: str) -> Optional[str]:
 
 
 def _install_pip(pkg: str, bin_name: str) -> Optional[str]:
-    """Install a Python package into a hermes-owned target dir.
+    """Install a Python package into a Vermes-owned target dir.
 
     We avoid polluting the user's site-packages by using
     ``pip install --target``.  Bins go into
@@ -318,7 +318,7 @@ def _install_pip(pkg: str, bin_name: str) -> Optional[str]:
     ``<staging>/bin``.  Note: this only works for packages that ship a
     console script.
     """
-    pip_target = hermes_lsp_bin_dir().parent / "python-packages"
+    pip_target = VERMES_lsp_bin_dir().parent / "python-packages"
     pip_target.mkdir(parents=True, exist_ok=True)
     try:
         logger.info("[install] pip install --target %s %s", pip_target, pkg)
@@ -340,7 +340,7 @@ def _install_pip(pkg: str, bin_name: str) -> Optional[str]:
     # Look for the script
     bin_path = pip_target / "bin" / bin_name
     if bin_path.exists():
-        link = hermes_lsp_bin_dir() / bin_name
+        link = VERMES_lsp_bin_dir() / bin_name
         if not link.exists():
             try:
                 link.symlink_to(bin_path)
@@ -356,7 +356,7 @@ def _install_pip(pkg: str, bin_name: str) -> Optional[str]:
 def detect_status(pkg: str) -> str:
     """Return ``installed``, ``missing``, or ``manual-only`` for a package.
 
-    Used by the ``hermes lsp status`` CLI to give users a quick
+    Used by the ``Vermes lsp status`` CLI to give users a quick
     overview of what's available without spawning anything.
     """
     recipe = INSTALL_RECIPES.get(pkg)
@@ -372,5 +372,5 @@ __all__ = [
     "INSTALL_RECIPES",
     "try_install",
     "detect_status",
-    "hermes_lsp_bin_dir",
+    "VERMES_lsp_bin_dir",
 ]

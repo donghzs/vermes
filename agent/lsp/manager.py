@@ -83,7 +83,7 @@ class _BackgroundLoop:
             return
         self._thread = threading.Thread(
             target=self._run_forever,
-            name="hermes-lsp-loop",
+            name="Vermes-lsp-loop",
             daemon=True,
         )
         self._thread.start()
@@ -260,7 +260,7 @@ class LSPService:
 
         Files in already-broken pairs return False so the file_operations
         layer skips the LSP path entirely — no spawn attempts, no
-        timeout cost — until the service is restarted (``hermes lsp
+        timeout cost — until the service is restarted (``Vermes lsp
         restart``) or the process exits.
         """
         if not self._enabled:
@@ -583,7 +583,7 @@ class LSPService:
         )
 
     # ------------------------------------------------------------------
-    # status / introspection (used by ``hermes lsp status``)
+    # status / introspection (used by ``Vermes lsp status``)
     # ------------------------------------------------------------------
 
     def get_status(self) -> Dict[str, Any]:

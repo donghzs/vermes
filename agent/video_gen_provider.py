@@ -202,10 +202,10 @@ class VideoGenProvider(abc.ABC):
 
 
 def _videos_cache_dir() -> Path:
-    """Return ``$HERMES_HOME/cache/videos/``, creating parents as needed."""
-    from vermes_constants import get_hermes_home
+    """Return ``$VERMES_HOME/cache/videos/``, creating parents as needed."""
+    from vermes_constants import get_vermes_home
 
-    path = get_hermes_home() / "cache" / "videos"
+    path = get_vermes_home() / "cache" / "videos"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -216,7 +216,7 @@ def save_b64_video(
     prefix: str = "video",
     extension: str = "mp4",
 ) -> Path:
-    """Decode base64 video data and write under ``$HERMES_HOME/cache/videos/``.
+    """Decode base64 video data and write under ``$VERMES_HOME/cache/videos/``.
 
     Returns the absolute :class:`Path` to the saved file.
 

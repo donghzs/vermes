@@ -233,7 +233,7 @@ def emit_stream_drop(
     The user-visible status line is intentionally compact: provider,
     error class, attempt N/M, plus ``after Xs`` when the stream dropped
     mid-flight.  Full diagnostic detail goes to ``agent.log`` only —
-    ``hermes logs --level WARNING | grep "Stream drop"`` to inspect.
+    ``Vermes logs --level WARNING | grep "Stream drop"`` to inspect.
     """
     kind = "drop mid tool-call" if mid_tool_call else "drop"
     log_stream_retry(

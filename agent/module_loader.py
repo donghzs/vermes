@@ -43,15 +43,15 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# 模块安装目录 — 延迟初始化，因为 get_hermes_home() 可能在配置加载后才可用
+# 模块安装目录 — 延迟初始化，因为 get_vermes_home() 可能在配置加载后才可用
 _MODULES_DIR_CACHE = None
 
 def get_modules_dir() -> Path:
     """返回模块安装目录 (~/.vermes/modules/)"""
     global _MODULES_DIR_CACHE
     if _MODULES_DIR_CACHE is None:
-        from vermes_constants import get_hermes_home
-        _MODULES_DIR_CACHE = get_hermes_home() / "modules"
+        from vermes_constants import get_vermes_home
+        _MODULES_DIR_CACHE = get_vermes_home() / "modules"
     return _MODULES_DIR_CACHE
 
 # 向后兼容别名
@@ -128,13 +128,13 @@ class HostAPI:
             _get_chat_credentials,
             _resolve_model_provider,
         )
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
         from tools.registry import registry
 
         self.PROVIDERS = PROVIDERS
         self.get_chat_credentials = _get_chat_credentials
         self.resolve_model_provider = _resolve_model_provider
-        self.get_hermes_home = get_hermes_home
+        self.get_vermes_home = get_vermes_home
         self.registry = registry
 
     def resolve_model_provider(self, *args, **kwargs):
@@ -298,8 +298,8 @@ def register_modules(app, host_api: HostAPI):
         # 不再硬编码 ~/.vermes/modules，彻底消除双路径/三副本陷阱。
         _mod_dir = manifest.module_root
         if _mod_dir is None:
-            from vermes_constants import get_hermes_home
-            _mod_dir = get_hermes_home() / "modules" / manifest.name
+            from vermes_constants import get_vermes_home
+            _mod_dir = get_vermes_home() / "modules" / manifest.name
         logger.info(
             "Module %s: loading from %s (%s)",
             manifest.name, _mod_dir,

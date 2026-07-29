@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from vermes_constants import display_hermes_home
+from vermes_constants import display_vermes_home
 from agent.skill_preprocessing import (
     expand_inline_shell as _expand_inline_shell,
     load_skills_config as _load_skills_config,
@@ -34,8 +34,8 @@ def _resolve_skill_commands_platform() -> Optional[str]:
     :func:`get_skill_commands` can drop a stale cache that was populated
     for a different platform's ``skills.platform_disabled`` view (#14536).
 
-    Resolves from (in order) ``HERMES_PLATFORM`` env var and
-    ``HERMES_SESSION_PLATFORM`` from the gateway session context. Returns
+    Resolves from (in order) ``VERMES_PLATFORM`` env var and
+    ``VERMES_SESSION_PLATFORM`` from the gateway session context. Returns
     ``None`` when no platform scope is active (e.g. classic CLI, RL
     rollouts, standalone scripts).
     """
@@ -43,11 +43,11 @@ def _resolve_skill_commands_platform() -> Optional[str]:
         from gateway.session_context import get_session_env
 
         resolved_platform = (
-            os.getenv("HERMES_PLATFORM")
-            or get_session_env("HERMES_SESSION_PLATFORM")
+            os.getenv("VERMES_PLATFORM")
+            or get_session_env("VERMES_SESSION_PLATFORM")
         )
     except Exception:
-        resolved_platform = os.getenv("HERMES_PLATFORM")
+        resolved_platform = os.getenv("VERMES_PLATFORM")
     return resolved_platform or None
 
 def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tuple[dict[str, Any], Path | None, str] | None:
@@ -121,7 +121,7 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
 def _inject_skill_config(loaded_skill: dict[str, Any], parts: list[str]) -> None:
     """Resolve and inject skill-declared config values into the message parts.
 
-    If the loaded skill's frontmatter declares ``metadata.hermes.config``
+    If the loaded skill's frontmatter declares ``metadata.Vermes.config``
     entries, their current values (from config.yaml or defaults) are appended
     as a ``[Skill config: ...]`` block so the agent knows the configured values
     without needing to read config.yaml itself.
@@ -147,7 +147,7 @@ def _inject_skill_config(loaded_skill: dict[str, Any], parts: list[str]) -> None
         if not resolved:
             return
 
-        lines = ["", f"[Skill config (from {display_hermes_home()}/config.yaml):"]
+        lines = ["", f"[Skill config (from {display_vermes_home()}/config.yaml):"]
         for key, value in resolved.items():
             display_val = str(value) if value else "(not set)"
             lines.append(f"  {key} = {display_val}")

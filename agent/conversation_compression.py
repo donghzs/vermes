@@ -609,7 +609,7 @@ def compress_context(
 
                     set_current_session_id(agent.session_id)
                 except Exception:
-                    os.environ["HERMES_SESSION_ID"] = agent.session_id
+                    os.environ["VERMES_SESSION_ID"] = agent.session_id
                 # The gateway/tools session context (ContextVar + env) and the
                 # logging session context are SEPARATE mechanisms. The call above
                 # moves the former; the ``[session_id]`` tag on log lines comes
@@ -629,7 +629,7 @@ def compress_context(
                 try:
                     agent._session_db.create_session(
                         session_id=agent.session_id,
-                        source=agent.platform or os.environ.get("HERMES_SESSION_SOURCE", "cli"),
+                        source=agent.platform or os.environ.get("VERMES_SESSION_SOURCE", "cli"),
                         model=agent.model,
                         model_config=agent._session_init_model_config,
                         parent_session_id=old_session_id,
@@ -654,7 +654,7 @@ def compress_context(
                         from gateway.session_context import set_current_session_id
                         set_current_session_id(agent.session_id)
                     except Exception:
-                        os.environ["HERMES_SESSION_ID"] = agent.session_id
+                        os.environ["VERMES_SESSION_ID"] = agent.session_id
                     try:
                         from vermes_logging import set_session_context
                         set_session_context(agent.session_id)
@@ -719,9 +719,9 @@ def compress_context(
     _boundary_parent = _old_sid or agent.session_id or ""
 
     # Notify the context engine that a compaction boundary occurred. Plugin
-    # engines (e.g. hermes-lcm) use boundary_reason="compression" to preserve
+    # engines (e.g. Vermes-lcm) use boundary_reason="compression" to preserve
     # DAG lineage / checkpoint per-session state across the boundary instead of
-    # re-initializing fresh. See hermes-lcm#68. Built-in ContextCompressor
+    # re-initializing fresh. See Vermes-lcm#68. Built-in ContextCompressor
     # ignores kwargs. Fires in BOTH modes: rotation passes old→new ids; in-place
     # passes the SAME id (the boundary is real even though the id didn't move).
     try:
@@ -1173,7 +1173,7 @@ def try_shrink_image_parts_in_messages(
                 "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/bmp": ".bmp",
             }.get(mime, ".jpg")
             tmp = tempfile.NamedTemporaryFile(
-                prefix="hermes_shrink_", suffix=suffix, delete=False,
+                prefix="VERMES_shrink_", suffix=suffix, delete=False,
             )
             try:
                 tmp.write(raw)

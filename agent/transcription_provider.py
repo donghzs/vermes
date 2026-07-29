@@ -17,7 +17,7 @@ Two coexisting STT extension surfaces — in resolution order:
    for the 6 backends shipped today (faster-whisper, local_command,
    Groq, OpenAI, Mistral, xAI). **Always win** — plugins cannot
    shadow them. The single-env-var shell escape hatch
-   ``HERMES_LOCAL_STT_COMMAND`` is preserved via the built-in
+   ``VERMES_LOCAL_STT_COMMAND`` is preserved via the built-in
    ``local_command`` path.
 2. **Plugin-registered providers** (this ABC). For new STT backends —
    OpenRouter, SenseAudio, Gemini-STT, custom proprietary engines —

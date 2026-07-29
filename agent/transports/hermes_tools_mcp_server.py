@@ -1,4 +1,4 @@
-"""Hermes-tools-as-MCP server for the codex_app_server runtime.
+"""Vermes-tools-as-MCP server for the codex_app_server runtime.
 
 When the user runs `openai/*` turns through the codex app-server, codex
 owns the loop and builds its own tool list. By default, that means
@@ -8,7 +8,7 @@ cross-session search, image generation, TTS — is unreachable.
 
 This module exposes a curated subset of those Vermes tools to the
 spawned codex subprocess via stdio MCP. Codex registers it as a normal
-MCP server (per `~/.codex/config.toml [mcp_servers.hermes-tools]`) and
+MCP server (per `~/.codex/config.toml [mcp_servers.Vermes-tools]`) and
 the user gets full Vermes capability inside a Codex turn.
 
 Scope (what we expose):
@@ -37,7 +37,7 @@ What we DO NOT expose:
                                            drive them. See the inline
                                            comment on EXPOSED_TOOLS below.
 
-Run with: python -m agent.transports.hermes_tools_mcp_server
+Run with: python -m agent.transports.VERMES_tools_mcp_server
 Spawned by: CodexAppServerSession.ensure_started() when the runtime is
             active and config opts in.
 """
@@ -83,7 +83,7 @@ EXPOSED_TOOLS: tuple[str, ...] = (
     "skill_view",
     "skills_list",
     "text_to_speech",
-    # Kanban worker handoff tools — gated on HERMES_KANBAN_TASK env var
+    # Kanban worker handoff tools — gated on VERMES_KANBAN_TASK env var
     # (set by the kanban dispatcher when spawning a worker). Without these
     # in the callback, a worker spawned with openai_runtime=codex_app_server
     # could do the work but couldn't report completion back to the kernel,
@@ -96,7 +96,7 @@ EXPOSED_TOOLS: tuple[str, ...] = (
     "kanban_show",
     "kanban_list",
     # NOTE: kanban_create / kanban_unblock / kanban_link are orchestrator-
-    # only — the kanban tool gates them on HERMES_KANBAN_TASK being unset.
+    # only — the kanban tool gates them on VERMES_KANBAN_TASK being unset.
     # They're exposed here for orchestrator agents running on the codex
     # runtime that need to dispatch new tasks.
     "kanban_create",
@@ -113,7 +113,7 @@ def _build_server() -> Any:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:  # pragma: no cover - install hint
         raise ImportError(
-            f"hermes-tools MCP server requires the 'mcp' package: {exc}"
+            f"Vermes-tools MCP server requires the 'mcp' package: {exc}"
         ) from exc
 
     # Discover Vermes tools so dispatch works.
@@ -123,7 +123,7 @@ def _build_server() -> Any:
     )
 
     mcp = FastMCP(
-        "hermes-tools",
+        "Vermes-tools",
         instructions=(
             "Vermes's tool surface, exposed for use inside a Codex "
             "session. Use these for capabilities Codex's built-in toolset "
@@ -187,7 +187,7 @@ def _build_server() -> Any:
         exposed_count += 1
 
     logger.info(
-        "hermes-tools MCP server registered %d/%d tools",
+        "Vermes-tools MCP server registered %d/%d tools",
         exposed_count,
         len(EXPOSED_TOOLS),
     )
@@ -195,7 +195,7 @@ def _build_server() -> Any:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """Entry point for `python -m agent.transports.hermes_tools_mcp_server`."""
+    """Entry point for `python -m agent.transports.VERMES_tools_mcp_server`."""
     argv = argv or sys.argv[1:]
     verbose = "--verbose" in argv or "-v" in argv
 
@@ -207,13 +207,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
 
     # Quiet mode: keep Vermes' own banners off stdout (which is the MCP wire).
-    os.environ.setdefault("HERMES_QUIET", "1")
-    os.environ.setdefault("HERMES_REDACT_SECRETS", "true")
+    os.environ.setdefault("VERMES_QUIET", "1")
+    os.environ.setdefault("VERMES_REDACT_SECRETS", "true")
 
     try:
         server = _build_server()
     except ImportError as exc:
-        sys.stderr.write(f"hermes-tools MCP server cannot start: {exc}\n")
+        sys.stderr.write(f"Vermes-tools MCP server cannot start: {exc}\n")
         return 2
 
     # FastMCP runs with stdio transport by default when launched as a
@@ -223,8 +223,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
-        logger.exception("hermes-tools MCP server crashed")
-        sys.stderr.write(f"hermes-tools MCP server error: {exc}\n")
+        logger.exception("Vermes-tools MCP server crashed")
+        sys.stderr.write(f"Vermes-tools MCP server error: {exc}\n")
         return 1
     return 0
 

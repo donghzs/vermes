@@ -38,9 +38,9 @@ _EMBEDDING_DIMS = 1536  # text-embedding-ada-002 默认维度
 
 
 def _get_index_dir() -> Path:
-    """Get or create the index directory under HERMES_HOME."""
-    from vermes_constants import get_hermes_home
-    index_dir = get_hermes_home() / "index"
+    """Get or create the index directory under VERMES_HOME."""
+    from vermes_constants import get_vermes_home
+    index_dir = get_vermes_home() / "index"
     index_dir.mkdir(parents=True, exist_ok=True)
     return index_dir
 

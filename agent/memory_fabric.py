@@ -38,7 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from harness.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ _last_capacity_warn_count = 0    # 上次警告时的行数
 
 
 def _get_index_db() -> Path:
-    return Path(get_hermes_home()) / "memory_index.db"
+    return Path(get_vermes_home()) / "memory_index.db"
 
 
 def index_db_path() -> Path:

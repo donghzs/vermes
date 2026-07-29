@@ -69,7 +69,7 @@ def get_service() -> Optional[LSPService]:
             # be reaped by the kernel along with their parent.  We
             # care about clean exits where Python flushes stdio
             # before terminating; without this hook every
-            # ``hermes chat`` exit would leak pyright processes that
+            # ``Vermes chat`` exit would leak pyright processes that
             # outlive the parent for a few seconds while their
             # stdout buffers drain.
             atexit.register(_atexit_shutdown)

@@ -354,7 +354,7 @@ def _strip_historical_media(messages: List[Dict[str, Any]]) -> List[Dict[str, An
 
     Shallow copies of touched messages only; input is never mutated.
     Port of Kilo-Org/kilocode#9434 (adapted for the OpenAI-style message
-    shape the hermes compressor emits).
+    shape the Vermes compressor emits).
     """
     if not messages:
         return messages

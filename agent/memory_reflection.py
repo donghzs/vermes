@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def _reflection_state_path() -> Path:
     """镜像 curator .curator_state"""
-    return get_hermes_home() / ".reflection_state"
+    return get_vermes_home() / ".reflection_state"
 
 
 def _load_state() -> Dict:
@@ -48,8 +48,8 @@ def get_reflection_min_idle_hours() -> float:
     # 直接复制 curator 逻辑，避免循环 import
     DEFAULT_MIN_IDLE_HOURS = 0.5
     try:
-        from vermes_constants import get_hermes_home
-        cfg_path = get_hermes_home() / "curator_config.json"
+        from vermes_constants import get_vermes_home
+        cfg_path = get_vermes_home() / "curator_config.json"
         if cfg_path.exists():
             import json as _json
             cfg = _json.loads(cfg_path.read_text())

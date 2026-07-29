@@ -59,9 +59,9 @@ def _resolve_store_path() -> Path:
     global _store_path
     if _store_path is None:
         try:
-            from vermes_cli.config import get_hermes_home
+            from vermes_cli.config import get_vermes_home
 
-            base = Path(get_hermes_home())
+            base = Path(get_vermes_home())
         except Exception:  # noqa: BLE001
             base = Path.home() / ".vermes"
         _store_path = base / "literature_custom_sources.json"

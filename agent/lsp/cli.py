@@ -1,4 +1,4 @@
-"""``hermes lsp`` CLI subcommand.
+"""``Vermes lsp`` CLI subcommand.
 
 Subcommands:
 
@@ -20,7 +20,7 @@ from typing import Optional
 
 
 def register_subparser(subparsers: argparse._SubParsersAction) -> None:
-    """Wire the ``hermes lsp`` subcommand tree into the main argparse."""
+    """Wire the ``Vermes lsp`` subcommand tree into the main argparse."""
     parser = subparsers.add_parser(
         "lsp",
         help="Language Server Protocol management",
@@ -68,7 +68,7 @@ def register_subparser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def run_lsp_command(args: argparse.Namespace) -> int:
-    """Top-level dispatcher for ``hermes lsp <subcommand>``."""
+    """Top-level dispatcher for ``Vermes lsp <subcommand>``."""
     sub = getattr(args, "lsp_command", None) or "status"
     try:
         if sub == "status":
@@ -248,13 +248,13 @@ def _cmd_restart() -> int:
 
 
 def _cmd_which(server_id: str) -> int:
-    from agent.lsp.install import INSTALL_RECIPES, hermes_lsp_bin_dir
+    from agent.lsp.install import INSTALL_RECIPES, VERMES_lsp_bin_dir
     import os
     import shutil as _shutil
 
     recipe = INSTALL_RECIPES.get(server_id)
     bin_name = (recipe or {}).get("bin", server_id)
-    staged = hermes_lsp_bin_dir() / bin_name
+    staged = VERMES_lsp_bin_dir() / bin_name
     if staged.exists():
         sys.stdout.write(str(staged) + "\n")
         return 0
@@ -294,10 +294,10 @@ def _backend_warnings() -> list:
     suggestion across common platforms.
     """
     import shutil as _shutil
-    from agent.lsp.install import hermes_lsp_bin_dir
+    from agent.lsp.install import VERMES_lsp_bin_dir
     notes: list = []
     bash_installed = _shutil.which("bash-language-server") is not None or (
-        (hermes_lsp_bin_dir() / "bash-language-server").exists()
+        (VERMES_lsp_bin_dir() / "bash-language-server").exists()
     )
     if bash_installed and _shutil.which("shellcheck") is None:
         notes.append(
