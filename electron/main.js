@@ -8,7 +8,7 @@ app.commandLine.appendSwitch('host-resolver-rules', 'MAP localhost.weixin.qq.com
 
 let mainWindow = null;
 let backendProcess = null;
-let gatewayProcess = null;  // Vermes 专属 gateway（com.vermes.gateway 命名空间，HERMES_HOME=~/.vermes）
+let gatewayProcess = null;  // Vermes 专属 gateway（com.vermes.gateway 命名空间，VERMES_HOME=~/.vermes）
 const BACKEND_URL = 'http://127.0.0.1:9119';
 const BACKEND_PORT = 9119;
 
@@ -95,7 +95,7 @@ function startBackend() {
     // 打包模式下设置 PYTHONPATH
     if (app.isPackaged) {
       env.PYTHONPATH = path.join(process.resourcesPath, 'app');
-      env.HERMES_HOME = path.join(require('os').homedir(), '.vermes');
+      env.VERMES_HOME = path.join(require('os').homedir(), '.vermes');
     }
 
     backendProcess = spawn(backendExe, backendArgs, {
@@ -168,7 +168,7 @@ function startBackend() {
 }
 
 // ── 渠道网关管理（Vermes 专属 gateway，独立于官方 Vermes / QClaw 的 gateway）──
-// 关键设计：注入 HERMES_HOME=~/.vermes，使 gateway 与桌面后端共享同一份配置与 state.db，
+// 关键设计：注入 VERMES_HOME=~/.vermes，使 gateway 与桌面后端共享同一份配置与 state.db，
 // 从而飞书/TG 等渠道消息可由桌面端「全渠道统一控制」。命名空间隔离避免多 agent 共存冲突。
 function getGatewayExe() {
   // 打包后用 Vermes 自带的 python 运行 vermes_cli.main；开发模式直接用系统 vermes CLI
@@ -192,8 +192,8 @@ function startGateway() {
   const gatewayArgs = getGatewayArgs();
 
   const env = { ...process.env };
-  // 与桌面后端一致：HERMES_HOME=~/.vermes + PYTHONPATH（保证用 Vermes 自带 vermes_cli）
-  env.HERMES_HOME = path.join(require('os').homedir(), '.vermes');
+  // 与桌面后端一致：VERMES_HOME=~/.vermes + PYTHONPATH（保证用 Vermes 自带 vermes_cli）
+  env.VERMES_HOME = path.join(require('os').homedir(), '.vermes');
   if (app.isPackaged) {
     env.PYTHONPATH = path.join(process.resourcesPath, 'app');
   }
@@ -268,7 +268,7 @@ async function runInitialization() {
     // 横幅由前端主窗口拉 /health 自行判定（update.js 已有 /health 拉取），
     // 无需主进程经 preload 中转——main.js 处于主进程，无 bridge 概念。
     sendSplash({ type: 'progress', label: '后端已就绪', percent: 90 });
-    // 渠道网关（飞书/TG 等）随桌面端生命周期启动，注入 HERMES_HOME=~/.vermes 与后端共享配置
+    // 渠道网关（飞书/TG 等）随桌面端生命周期启动，注入 VERMES_HOME=~/.vermes 与后端共享配置
     startGateway();
     // 短暂展现 100% 状态再跳转
     await new Promise(r => setTimeout(r, 400));
