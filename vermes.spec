@@ -16,11 +16,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-# Collect all data files from hermes_cli (web_dist, locales, etc.)
+# Collect all data files from vermes_cli (web_dist, locales, etc.)
 datas = [
-    ('hermes_cli/web_dist', 'hermes_cli/web_dist'),
-    ('hermes_cli/blueprints', 'hermes_cli/blueprints'),
-    ('hermes_cli/update_manager.py', 'hermes_cli'),
+    ('vermes_cli/web_dist', 'vermes_cli/web_dist'),
+    ('vermes_cli/blueprints', 'vermes_cli/blueprints'),
+    ('vermes_cli/update_manager.py', 'vermes_cli'),
     ('migrations', 'migrations'),
     ('locales', 'locales'),
     ('skills', 'skills'),
@@ -28,7 +28,7 @@ datas = [
     ('tools', 'tools'),
     ('gateway', 'gateway'),
     ('agent', 'agent'),
-    ('hermes_constants.py', '.'),
+    ('vermes_constants.py', '.'),
     ('model_tools.py', '.'),
     ('run_agent.py', '.'),
     ('README.md', '.'),
@@ -40,7 +40,7 @@ datas = [
 hiddenimports = [
     # run_agent and its dependencies
     'run_agent',
-    'hermes_constants',
+    'vermes_constants',
     'model_tools',
     'agent',
     'agent.process_bootstrap',
@@ -147,15 +147,15 @@ hiddenimports = [
     'jinja2',
 
     # Blueprints
-    'hermes_cli.blueprints',
-    'hermes_cli.blueprints.chat',
-    'hermes_cli.blueprints.quota',
-    'hermes_cli.blueprints.wechat',
-    'hermes_cli.blueprints.models',
-    'hermes_cli.blueprints.config',
-    'hermes_cli.blueprints.providers',
-    'hermes_cli.blueprints.dashboard',
-    'hermes_cli.blueprints.session',
+    'vermes_cli.blueprints',
+    'vermes_cli.blueprints.chat',
+    'vermes_cli.blueprints.quota',
+    'vermes_cli.blueprints.wechat',
+    'vermes_cli.blueprints.models',
+    'vermes_cli.blueprints.config',
+    'vermes_cli.blueprints.providers',
+    'vermes_cli.blueprints.dashboard',
+    'vermes_cli.blueprints.session',
 
     # Web server
     'multipart',
@@ -198,7 +198,7 @@ elif sys.platform == 'darwin':
 
 # Main entry point
 a = Analysis(
-    ['hermes_cli/main.py'],
+    ['vermes_cli/main.py'],
     pathex=['.'],
     binaries=[],
     datas=datas,
