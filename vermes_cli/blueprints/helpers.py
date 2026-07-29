@@ -20,9 +20,9 @@ import yaml
 
 def _get_chat_credentials() -> Tuple[str, str, str]:
     """Return (base_url, api_key, default_model) from config.yaml + .env."""
-    from vermes_cli.config import get_hermes_home
+    from vermes_cli.config import get_vermes_home
 
-    home = get_hermes_home()
+    home = get_vermes_home()
     cfg_path = home / "config.yaml"
     env_path = home / ".env"
 
@@ -242,7 +242,7 @@ def _fallback_profile_dicts(profiles_mod) -> List[Dict[str, Any]]:
             return default
 
     profiles: List[Dict[str, Any]] = []
-    default_home = profiles_mod._get_default_hermes_home()
+    default_home = profiles_mod._get_default_vermes_home()
     if default_home.is_dir():
         model, provider = _safe(lambda: profiles_mod._read_config_model(default_home), (None, None))
         profiles.append({

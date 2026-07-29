@@ -287,8 +287,8 @@ def _extract_file_text(name: str, mime: str, b64_data: str) -> str | None:
 def _resolve_max_tokens(model: str) -> int | None:
     """返回 max_tokens 上限，优先用户配置。未配置则返回 None。"""
     try:
-        from vermes_constants import get_hermes_home
-        home = get_hermes_home()
+        from vermes_constants import get_vermes_home
+        home = get_vermes_home()
         cfg_path = home / "config.yaml"
         if cfg_path.exists():
             with open(cfg_path, encoding="utf-8") as f:
@@ -537,9 +537,9 @@ def _validate_attachments(attachments: list[AttachmentData] | None) -> tuple[lis
 
 def _get_chat_credentials() -> tuple[str, str, str]:
     """Return (base_url, api_key, default_model) from config.yaml + .env."""
-    from vermes_constants import get_hermes_home
+    from vermes_constants import get_vermes_home
 
-    home = get_hermes_home()
+    home = get_vermes_home()
     cfg_path = home / "config.yaml"
     env_path = home / ".env"
 
@@ -627,8 +627,8 @@ PROVIDERS = {
 
 def _resolve_model_provider(model: str, explicit_provider: str | None = None) -> tuple:
     """Resolve model name to (provider, base_url, api_key, actual_model)."""
-    from vermes_constants import get_hermes_home
-    home = get_hermes_home()
+    from vermes_constants import get_vermes_home
+    home = get_vermes_home()
     env_path = home / ".env"
 
     provider = explicit_provider or ""
@@ -791,8 +791,8 @@ async def chat_completions(req: ChatRequest):
         env_hint = (PROVIDERS.get(provider) or {}).get("env_key", "API_KEY")
         if provider in ("vbit", "agnes"):
             try:
-                from vermes_constants import get_hermes_home
-                env_path = get_hermes_home() / ".env"
+                from vermes_constants import get_vermes_home
+                env_path = get_vermes_home() / ".env"
                 if env_path.exists():
                     for line in env_path.read_text(encoding="utf-8").splitlines():
                         line = line.strip()

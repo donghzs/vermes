@@ -102,7 +102,7 @@ ADVISORIES: tuple[Advisory, ...] = (
             "environment variables and credential files (~/.npmrc, ~/.pypirc, "
             "~/.aws/credentials, GitHub PATs, cloud SDK tokens) and exfils "
             "them to a hardcoded webhook. If you ran any Python process that "
-            "imported mistralai 2.4.6 — including hermes when configured "
+            "imported mistralai 2.4.6 — including Vermes when configured "
             "with provider=mistral for TTS or STT — assume those credentials "
             "are exposed."
         ),
@@ -324,8 +324,8 @@ _BANNER_REPEAT_HOURS = 24
 
 def _banner_cache_path() -> Optional[Path]:
     try:
-        from vermes_constants import get_hermes_home
-        cache_dir = Path(get_hermes_home()) / "cache"
+        from vermes_constants import get_vermes_home
+        cache_dir = Path(get_vermes_home()) / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / _BANNER_CACHE_FILE
     except Exception:

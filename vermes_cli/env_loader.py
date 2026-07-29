@@ -20,7 +20,7 @@ from utils import atomic_replace
 _CREDENTIAL_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_KEY")
 
 # Names we've already warned about during this process, so repeated
-# load_hermes_dotenv() calls (user env + project env, gateway hot-reload,
+# load_vermes_dotenv() calls (user env + project env, gateway hot-reload,
 # tests) don't spam the same warning multiple times.
 _WARNED_KEYS: set[str] = set()
 
@@ -144,9 +144,9 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
         pass  # best-effort — don't block gateway startup
 
 
-def load_hermes_dotenv(
+def load_vermes_dotenv(
     *,
-    hermes_home: str | os.PathLike | None = None,
+    VERMES_home: str | os.PathLike | None = None,
     project_env: str | os.PathLike | None = None,
 ) -> list[Path]:
     """Load Vermes environment files with user config taking precedence.
@@ -159,7 +159,7 @@ def load_hermes_dotenv(
     """
     loaded: list[Path] = []
 
-    home_path = Path(hermes_home or os.getenv("VERMES_HOME") or os.getenv("HERMES_HOME") or Path.home() / ".vermes")
+    home_path = Path(VERMES_home or os.getenv("VERMES_HOME") or os.getenv("VERMES_HOME") or Path.home() / ".vermes")
     user_env = home_path / ".env"
     project_env_path = Path(project_env) if project_env else None
 

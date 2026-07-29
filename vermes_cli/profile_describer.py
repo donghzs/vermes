@@ -1,6 +1,6 @@
 """Profile describer — auto-generate ``description`` for a profile.
 
-Used by ``hermes profile describe <name> --auto`` and the dashboard's
+Used by ``Vermes profile describe <name> --auto`` and the dashboard's
 "auto-generate description" button. Reads the profile's installed
 skills, model+provider, name, and optionally a small slice of memory,
 then asks the auxiliary LLM to produce a 1-2 sentence description of
@@ -180,8 +180,8 @@ def describe_profile(
 
     try:
         if canon == "default":
-            from vermes_constants import get_hermes_home  # type: ignore
-            profile_dir = Path(get_hermes_home())
+            from vermes_constants import get_vermes_home  # type: ignore
+            profile_dir = Path(get_vermes_home())
         else:
             profile_dir = profiles_mod.get_profile_dir(canon)
     except Exception as exc:

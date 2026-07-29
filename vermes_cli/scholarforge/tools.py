@@ -198,9 +198,9 @@ def _resolve_credentials():
         from vermes_cli.blueprints.chat import _get_chat_credentials
         base_url, api_key, default_model = _get_chat_credentials()
         if api_key and base_url:
-            from vermes_constants import get_hermes_home
+            from vermes_constants import get_vermes_home
             import yaml as _yaml
-            cfg_path = get_hermes_home() / "config.yaml"
+            cfg_path = get_vermes_home() / "config.yaml"
             provider = ""
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as f:
@@ -216,9 +216,9 @@ def _resolve_credentials():
 
     # 回退：直接读 config.yaml + .env（PyInstaller 兼容场景）
     import yaml
-    from vermes_constants import get_hermes_home
+    from vermes_constants import get_vermes_home
 
-    home = get_hermes_home()
+    home = get_vermes_home()
     cfg_path = home / "config.yaml"
 
     try:

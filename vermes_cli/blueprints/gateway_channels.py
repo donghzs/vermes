@@ -32,15 +32,16 @@ class SaveChannelRequest(BaseModel):
 
 # ── 辅助函数 ──
 
-def _get_hermes_home() -> Path:
-    """Get the hermes home directory."""
-    return Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
+def _get_vermes_home() -> Path:
+    """Get the Vermes home directory."""
+    # VERMES_HOME takes precedence; fall back to the canonical ~/.vermes home.
+    return Path(os.environ.get("VERMES_HOME") or os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes"))
 
 
 def _load_config_yaml() -> dict:
     """Load config.yaml as a dict."""
     import yaml
-    cfg_path = _get_hermes_home() / "config.yaml"
+    cfg_path = _get_vermes_home() / "config.yaml"
     if not cfg_path.exists():
         return {}
     try:
@@ -54,7 +55,7 @@ def _load_config_yaml() -> dict:
 def _save_config_yaml(data: dict) -> None:
     """Save dict to config.yaml."""
     import yaml
-    cfg_path = _get_hermes_home() / "config.yaml"
+    cfg_path = _get_vermes_home() / "config.yaml"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
@@ -62,7 +63,7 @@ def _save_config_yaml(data: dict) -> None:
 
 def _load_env() -> dict:
     """Load .env file as a dict."""
-    env_path = _get_hermes_home() / ".env"
+    env_path = _get_vermes_home() / ".env"
     if not env_path.exists():
         return {}
     result = {}
@@ -82,7 +83,7 @@ def _load_env() -> dict:
 
 def _append_env(key: str, value: str) -> None:
     """Append or update a key in .env file."""
-    env_path = _get_hermes_home() / ".env"
+    env_path = _get_vermes_home() / ".env"
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = []
@@ -107,7 +108,7 @@ def _append_env(key: str, value: str) -> None:
 
 def _remove_env_key(key: str) -> None:
     """Remove a key from .env file."""
-    env_path = _get_hermes_home() / ".env"
+    env_path = _get_vermes_home() / ".env"
     if not env_path.exists():
         return
 

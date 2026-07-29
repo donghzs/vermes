@@ -181,15 +181,15 @@ def _launch_elevated_install(
     start_on_login: bool | None = None,
 ) -> bool:
     """Launch an elevated gateway install via UAC and return True on handoff."""
-    old_start_now = os.environ.get("HERMES_GATEWAY_INSTALL_START_NOW")
-    old_start_on_login = os.environ.get("HERMES_GATEWAY_INSTALL_START_ON_LOGIN")
-    old_handoff = os.environ.get("HERMES_GATEWAY_ELEVATED_HANDOFF")
+    old_start_now = os.environ.get("VERMES_GATEWAY_INSTALL_START_NOW")
+    old_start_on_login = os.environ.get("VERMES_GATEWAY_INSTALL_START_ON_LOGIN")
+    old_handoff = os.environ.get("VERMES_GATEWAY_ELEVATED_HANDOFF")
     try:
         if start_now is not None:
-            os.environ["HERMES_GATEWAY_INSTALL_START_NOW"] = "1" if start_now else "0"
+            os.environ["VERMES_GATEWAY_INSTALL_START_NOW"] = "1" if start_now else "0"
         if start_on_login is not None:
-            os.environ["HERMES_GATEWAY_INSTALL_START_ON_LOGIN"] = "1" if start_on_login else "0"
-        os.environ["HERMES_GATEWAY_ELEVATED_HANDOFF"] = "1"
+            os.environ["VERMES_GATEWAY_INSTALL_START_ON_LOGIN"] = "1" if start_on_login else "0"
+        os.environ["VERMES_GATEWAY_ELEVATED_HANDOFF"] = "1"
         extra_args = ["--elevated-handoff"]
         if force:
             extra_args.append("--force")
@@ -200,9 +200,9 @@ def _launch_elevated_install(
         return _launch_elevated_gateway_command("install", extra_args)
     finally:
         for key, old in (
-            ("HERMES_GATEWAY_INSTALL_START_NOW", old_start_now),
-            ("HERMES_GATEWAY_INSTALL_START_ON_LOGIN", old_start_on_login),
-            ("HERMES_GATEWAY_ELEVATED_HANDOFF", old_handoff),
+            ("VERMES_GATEWAY_INSTALL_START_NOW", old_start_now),
+            ("VERMES_GATEWAY_INSTALL_START_ON_LOGIN", old_start_on_login),
+            ("VERMES_GATEWAY_ELEVATED_HANDOFF", old_handoff),
         ):
             if old is None:
                 os.environ.pop(key, None)
@@ -239,14 +239,14 @@ def _sanitize_filename(value: str) -> str:
 def get_task_script_path() -> Path:
     """The generated ``gateway.cmd`` wrapper that the schtasks entry invokes.
 
-    Lives under ``%LOCALAPPDATA%\\hermes\\gateway-service\\<task_name>.cmd``
-    (or ``<HERMES_HOME>/gateway-service/<task_name>.cmd`` so per-profile
+    Lives under ``%LOCALAPPDATA%\\Vermes\\gateway-service\\<task_name>.cmd``
+    (or ``<VERMES_HOME>/gateway-service/<task_name>.cmd`` so per-profile
     Vermes installs stay self-contained).
     """
     _assert_windows()
-    from vermes_cli.config import get_hermes_home
+    from vermes_cli.config import get_vermes_home
 
-    script_dir = Path(get_hermes_home()) / "gateway-service"
+    script_dir = Path(get_vermes_home()) / "gateway-service"
     script_dir.mkdir(parents=True, exist_ok=True)
     return script_dir / f"{_sanitize_filename(get_task_name())}.cmd"
 
@@ -279,14 +279,14 @@ def get_startup_entry_path() -> Path:
 def _build_gateway_cmd_script(
     python_path: str,
     working_dir: str,
-    hermes_home: str,
+    VERMES_home: str,
     profile_arg: str,
 ) -> str:
     """Build the ``gateway.cmd`` wrapper content (CRLF-terminated).
 
     The script:
       - cd's into the project directory
-      - exports HERMES_HOME, PYTHONIOENCODING, VIRTUAL_ENV
+      - exports VERMES_HOME, PYTHONIOENCODING, VIRTUAL_ENV
       - invokes ``pythonw -m vermes_cli.main [--profile X] gateway run``
         directly so the wrapper cmd.exe exits without a visible gateway console
 
@@ -296,9 +296,9 @@ def _build_gateway_cmd_script(
     """
     lines = ["@echo off", f"rem {_TASK_DESCRIPTION}"]
     lines.append(f"cd /d {_quote_cmd_script_arg(working_dir)}")
-    lines.append(f'set "HERMES_HOME={hermes_home}"')
+    lines.append(f'set "VERMES_HOME={VERMES_home}"')
     lines.append('set "PYTHONIOENCODING=utf-8"')
-    lines.append('set "HERMES_GATEWAY_DETACHED=1"')
+    lines.append('set "VERMES_GATEWAY_DETACHED=1"')
     # VIRTUAL_ENV lets the gateway's own python detection find the venv
     # if someone imports vermes_constants-based logic during startup.
     venv_dir = str(Path(python_path).resolve().parent.parent)
@@ -334,7 +334,7 @@ def _write_task_script() -> Path:
     """Generate and write the gateway.cmd wrapper. Return its absolute path."""
     _assert_windows()
     # Local imports to avoid circular-init at module load time.
-    from vermes_cli.config import get_hermes_home
+    from vermes_cli.config import get_vermes_home
     from vermes_cli.gateway import (
         PROJECT_ROOT,
         _profile_arg,
@@ -343,10 +343,10 @@ def _write_task_script() -> Path:
 
     python_path = get_python_path()
     working_dir = str(PROJECT_ROOT)
-    hermes_home = str(Path(get_hermes_home()).resolve())
-    profile_arg = _profile_arg(hermes_home)
+    VERMES_home = str(Path(get_vermes_home()).resolve())
+    profile_arg = _profile_arg(VERMES_home)
 
-    content = _build_gateway_cmd_script(python_path, working_dir, hermes_home, profile_arg)
+    content = _build_gateway_cmd_script(python_path, working_dir, VERMES_home, profile_arg)
     script_path = get_task_script_path()
     script_path.write_text(content, encoding="utf-8", newline="")
     return script_path
@@ -489,7 +489,7 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     layer in between.
     """
     _assert_windows()
-    from vermes_cli.config import get_hermes_home
+    from vermes_cli.config import get_vermes_home
     from vermes_cli.gateway import (
         PROJECT_ROOT,
         _profile_arg,
@@ -498,8 +498,8 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
 
     python_exe, venv_dir, extra_pythonpath = _resolve_detached_python(get_python_path())
     working_dir = str(PROJECT_ROOT)
-    hermes_home = str(Path(get_hermes_home()).resolve())
-    profile_arg = _profile_arg(hermes_home)
+    VERMES_home = str(Path(get_vermes_home()).resolve())
+    profile_arg = _profile_arg(VERMES_home)
 
     argv = [python_exe, "-m", "vermes_cli.main"]
     if profile_arg:
@@ -507,9 +507,9 @@ def _build_gateway_argv() -> tuple[list[str], str, dict[str, str]]:
     argv.extend(["gateway", "run"])
 
     env_overlay = {
-        "HERMES_HOME": hermes_home,
+        "VERMES_HOME": VERMES_home,
         "PYTHONIOENCODING": "utf-8",
-        "HERMES_GATEWAY_DETACHED": "1",
+        "VERMES_GATEWAY_DETACHED": "1",
         "VIRTUAL_ENV": str(venv_dir),
     }
     _prepend_pythonpath(env_overlay, [working_dir, *extra_pythonpath] if extra_pythonpath else [])
@@ -553,9 +553,9 @@ def _spawn_detached(script_path: Path | None = None) -> int:
     # logging module writes to gateway.log through a FileHandler, so the
     # real gateway logs still land there — this just captures anything
     # that goes to print() or native stderr.
-    from vermes_cli.config import get_hermes_home
+    from vermes_cli.config import get_vermes_home
 
-    log_dir = Path(get_hermes_home()) / "logs"
+    log_dir = Path(get_vermes_home()) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     stray_log = log_dir / "gateway-stdio.log"
 
@@ -606,8 +606,8 @@ def _prompt_install_choices(
     start_on_login: bool | None = None,
 ) -> tuple[bool, bool]:
     """Return (start_now, start_on_login), asking before any UAC escalation."""
-    env_start_now = _install_choice_from_env("HERMES_GATEWAY_INSTALL_START_NOW")
-    env_start_on_login = _install_choice_from_env("HERMES_GATEWAY_INSTALL_START_ON_LOGIN")
+    env_start_now = _install_choice_from_env("VERMES_GATEWAY_INSTALL_START_NOW")
+    env_start_on_login = _install_choice_from_env("VERMES_GATEWAY_INSTALL_START_ON_LOGIN")
     if start_now is None:
         start_now = env_start_now
     if start_on_login is None:
@@ -633,7 +633,7 @@ def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -
     logger.info(f"✓ Installed Windows login item: {entry}")
     logger.info(f"  Task script: {script_path}")
 
-    # Re-running `hermes -p <profile> gateway install` must be safe.
+    # Re-running `Vermes -p <profile> gateway install` must be safe.
     # Startup-folder fallback only installs login persistence. Starting is
     # controlled by the pre-UAC start_now answer so all user decisions happen
     # before any elevation prompt.
@@ -647,7 +647,7 @@ def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -
         _report_gateway_start(f"direct spawn (PID {pid})")
     else:
         profile_arg = _profile_arg()
-        start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "vermes gateway start"
+        start_cmd = f"Vermes {profile_arg} gateway start" if profile_arg else "vermes gateway start"
         logger.info("ℹ Startup fallback installed; gateway not started now.")
         logger.info(f"  Start manually with: {start_cmd}")
     _print_next_steps()
@@ -754,7 +754,7 @@ def install(
         logger.info(f"✓ Installed Windows login item: {entry}")
         logger.info(f"  Task script: {script_path}")
 
-        # Re-running `hermes -p <profile> gateway install` must be safe.
+        # Re-running `Vermes -p <profile> gateway install` must be safe.
         # Startup-folder fallback only installs login persistence. Starting is
         # controlled by the pre-UAC start_now answer so all user decisions happen
         # before any elevation prompt.
@@ -768,7 +768,7 @@ def install(
             _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             profile_arg = _profile_arg()
-            start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "vermes gateway start"
+            start_cmd = f"Vermes {profile_arg} gateway start" if profile_arg else "vermes gateway start"
             logger.info("ℹ Startup fallback installed; gateway not started now.")
             logger.info(f"  Start manually with: {start_cmd}")
         _print_next_steps()
@@ -800,18 +800,18 @@ def _report_gateway_start(via: str) -> None:
     else:
         logger.info(f"⚠ Launched gateway via {via}, but no process detected after 6s.")
         logger.info("  Check the log for startup errors:")
-        from vermes_cli.config import get_hermes_home
-        logger.info(f"    type {Path(get_hermes_home()).resolve()}\\logs\\gateway.log")
-        logger.info(f"    type {Path(get_hermes_home()).resolve()}\\logs\\gateway-stdio.log")
+        from vermes_cli.config import get_vermes_home
+        logger.info(f"    type {Path(get_vermes_home()).resolve()}\\logs\\gateway.log")
+        logger.info(f"    type {Path(get_vermes_home()).resolve()}\\logs\\gateway-stdio.log")
 
 def _print_next_steps() -> None:
-    from vermes_cli.config import get_hermes_home
+    from vermes_cli.config import get_vermes_home
 
-    hermes_home = Path(get_hermes_home()).resolve()
+    VERMES_home = Path(get_vermes_home()).resolve()
     logger.info()
     logger.info("Next steps:")
     logger.info("  vermes gateway status                      # Check status")
-    logger.info(f"  type {hermes_home}\\logs\\gateway.log       # View logs")
+    logger.info(f"  type {VERMES_home}\\logs\\gateway.log       # View logs")
 
 def uninstall() -> None:
     """Remove both the Scheduled Task and the Startup-folder fallback, if present."""

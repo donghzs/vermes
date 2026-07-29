@@ -2,10 +2,10 @@
 Backup and import commands for vermes CLI.
 
 `vermes backup` creates a zip archive of the entire ~/.vermes/ directory
-(excluding the hermes-agent repo and transient files).
+(excluding the Vermes-agent repo and transient files).
 
 `vermes import` restores from a backup zip, overlaying onto the current
-HERMES_HOME root.
+VERMES_HOME root.
 """
 
 import json
@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from vermes_constants import get_default_hermes_root, get_hermes_home, display_hermes_home
+from vermes_constants import get_default_vermes_root, get_vermes_home, display_vermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Directory names to skip entirely (matched against each path component)
 _EXCLUDED_DIRS = {
-    "hermes-agent", "vermes",     # the codebase repo(s) — re-clone instead
+    "Vermes-agent", "vermes",     # the codebase repo(s) — re-clone instead
     "__pycache__",      # bytecode caches — regenerated on import
     ".git",             # nested git dirs (profiles shouldn't have these, but safety)
     "node_modules",     # js deps if website/ somehow leaks in
@@ -64,7 +64,7 @@ _EXCLUDED_NAMES = {
 # zipfile.open() drops Unix mode bits on extract; restore tightens these to 0600.
 _SECRET_FILE_NAMES = {".env", "auth.json", "state.db"}
 
-# Reserved archive subtree for provider state that lives OUTSIDE HERMES_HOME
+# Reserved archive subtree for provider state that lives OUTSIDE VERMES_HOME
 # (e.g. ~/.honcho, ~/.hindsight). The active memory provider declares these via
 # MemoryProvider.backup_paths(); they're stored under this prefix encoded
 # relative to the user's home directory, and restored to their original
@@ -74,7 +74,7 @@ _EXTERNAL_PREFIX = "_external/"
 
 def _collect_memory_provider_external_paths() -> List[Path]:
     """Return existing absolute paths the active memory provider stores
-    outside HERMES_HOME, resolved from config only (no network, no init).
+    outside VERMES_HOME, resolved from config only (no network, no init).
 
     Reads ``memory.provider`` from config, loads just that provider, and asks
     it for ``backup_paths()``. Returns an empty list when no external provider
@@ -210,10 +210,10 @@ def _format_size(nbytes: int) -> str:
 
 def run_backup(args) -> None:
     """Create a zip backup of the Vermes home directory."""
-    hermes_root = get_default_hermes_root()
+    VERMES_root = get_default_vermes_root()
 
-    if not hermes_root.is_dir():
-        logger.info(f"Error: Vermes home directory not found at {hermes_root}")
+    if not VERMES_root.is_dir():
+        logger.info(f"Error: Vermes home directory not found at {VERMES_root}")
         sys.exit(1)
 
     # Determine output path
@@ -235,13 +235,13 @@ def run_backup(args) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Collect files
-    logger.info(f"Scanning {display_hermes_home()} ...")
+    logger.info(f"Scanning {display_vermes_home()} ...")
     files_to_add: list[tuple[Path, Path]] = []  # (absolute, relative)
     skipped_dirs = set()
 
-    for dirpath, dirnames, filenames in os.walk(hermes_root, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(VERMES_root, followlinks=False):
         dp = Path(dirpath)
-        rel_dir = dp.relative_to(hermes_root)
+        rel_dir = dp.relative_to(VERMES_root)
 
         # Prune excluded directories in-place so os.walk doesn't descend
         orig_dirnames = dirnames[:]
@@ -254,7 +254,7 @@ def run_backup(args) -> None:
 
         for fname in filenames:
             fpath = dp / fname
-            rel = fpath.relative_to(hermes_root)
+            rel = fpath.relative_to(VERMES_root)
 
             if _should_exclude(rel):
                 continue
@@ -269,7 +269,7 @@ def run_backup(args) -> None:
             files_to_add.append((fpath, rel))
 
     # External memory-provider state (e.g. ~/.honcho, ~/.hindsight) lives
-    # outside HERMES_HOME, so the walk above never sees it. Ask the active
+    # outside VERMES_HOME, so the walk above never sees it. Ask the active
     # provider for its declared paths and stage them under the reserved
     # ``_external/`` arc prefix, encoded relative to the user's home dir.
     home_dir = Path.home().resolve()
@@ -353,7 +353,7 @@ def run_backup(args) -> None:
     if external_to_add:
         print(
             f"\n  Included {len(external_to_add)} memory-provider file(s) "
-            f"stored outside {display_hermes_home()}."
+            f"stored outside {display_vermes_home()}."
         )
 
     if skipped_external:
@@ -413,7 +413,7 @@ def _validate_backup_zip(zf: zipfile.ZipFile) -> tuple[bool, str]:
 def _detect_prefix(zf: zipfile.ZipFile) -> str:
     """Detect if the zip has a common directory prefix wrapping all entries.
 
-    Some tools zip as `.hermes/config.yaml` instead of `config.yaml`.
+    Some tools zip as `.vermes/config.yaml` instead of `config.yaml`.
     Returns the prefix to strip (empty string if none).
     """
     names = [n for n in zf.namelist() if not n.endswith("/")]
@@ -427,8 +427,8 @@ def _detect_prefix(zf: zipfile.ZipFile) -> str:
     first_parts = {p[0] for p in parts_list if len(p) > 1}
     if len(first_parts) == 1:
         prefix = first_parts.pop()
-        # Only strip if it looks like a hermes dir name
-        if prefix in {".hermes", "hermes"}:
+        # Only strip if it looks like a Vermes dir name
+        if prefix in {".vermes", "Vermes"}:
             return prefix + "/"
 
     return ""
@@ -446,7 +446,7 @@ def run_import(args) -> None:
         logger.info(f"Error: Not a valid zip file: {zip_path}")
         sys.exit(1)
 
-    hermes_root = get_default_hermes_root()
+    VERMES_root = get_default_vermes_root()
 
     with zipfile.ZipFile(zip_path, "r") as zf:
         # Validate
@@ -460,14 +460,14 @@ def run_import(args) -> None:
         file_count = len(members)
 
         logger.info(f"Backup contains {file_count} files")
-        logger.info(f"Target: {display_hermes_home()}")
+        logger.info(f"Target: {display_vermes_home()}")
 
         if prefix:
             logger.info(f"Detected archive prefix: {prefix!r} (will be stripped)")
 
         # Check for existing installation
-        has_config = (hermes_root / "config.yaml").exists()
-        has_env = (hermes_root / ".env").exists()
+        has_config = (VERMES_root / "config.yaml").exists()
+        has_env = (VERMES_root / ".env").exists()
 
         if (has_config or has_env) and not args.force:
             logger.info("")
@@ -485,7 +485,7 @@ def run_import(args) -> None:
 
         # Extract
         logger.info(f"\nImporting {file_count} files ...")
-        hermes_root.mkdir(parents=True, exist_ok=True)
+        VERMES_root.mkdir(parents=True, exist_ok=True)
 
         errors = []
         restored = 0
@@ -497,7 +497,7 @@ def run_import(args) -> None:
         for member in members:
             # External memory-provider state captured under the reserved
             # ``_external/`` arc prefix restores to its original home-relative
-            # location (e.g. ~/.honcho/config.json), NOT under HERMES_HOME.
+            # location (e.g. ~/.honcho/config.json), NOT under VERMES_HOME.
             if member.startswith(_EXTERNAL_PREFIX):
                 ext_rel = member[len(_EXTERNAL_PREFIX):]
                 if not ext_rel:
@@ -536,11 +536,11 @@ def run_import(args) -> None:
             if not rel:
                 continue
 
-            target = hermes_root / rel
+            target = VERMES_root / rel
 
             # Security: reject absolute paths and traversals
             try:
-                target.resolve().relative_to(hermes_root.resolve())
+                target.resolve().relative_to(VERMES_root.resolve())
             except ValueError:
                 errors.append(f"  {rel}: path traversal blocked")
                 continue
@@ -563,12 +563,12 @@ def run_import(args) -> None:
         # Summary
         logger.info("")
         logger.info(f"Import complete: {restored} files restored in {elapsed:.1f}s")
-        logger.info(f"  Target: {display_hermes_home()}")
+        logger.info(f"  Target: {display_vermes_home()}")
 
         if restored_external:
             print(
                 f"\n  Restored {restored_external} memory-provider file(s) to "
-                f"their original location(s) outside {display_hermes_home()}."
+                f"their original location(s) outside {display_vermes_home()}."
             )
 
         if errors:
@@ -579,7 +579,7 @@ def run_import(args) -> None:
                 logger.info(f"  ... and {len(errors) - 10} more")
 
         # Post-import: restore profile wrapper scripts
-        profiles_dir = hermes_root / "profiles"
+        profiles_dir = VERMES_root / "profiles"
         restored_profiles = []
         if profiles_dir.is_dir():
             try:
@@ -621,7 +621,7 @@ def run_import(args) -> None:
 
         # Guidance
         logger.info("")
-        if not (hermes_root / "vermes").is_dir() and not (hermes_root / "hermes-agent").is_dir():
+        if not (VERMES_root / "vermes").is_dir() and not (VERMES_root / "Vermes-agent").is_dir():
             logger.info("Note: The Vermes/Vermes codebase was not included in the backup.")
             logger.info("  If this is a fresh install, run: vermes update")
 
@@ -638,7 +638,7 @@ def run_import(args) -> None:
 # Quick state snapshots (used by /snapshot slash command and vermes backup --quick)
 # ---------------------------------------------------------------------------
 
-# Critical state files to include in quick snapshots (relative to HERMES_HOME).
+# Critical state files to include in quick snapshots (relative to VERMES_HOME).
 # Everything else is either regeneratable (logs, cache) or managed separately
 # (skills, repo, sessions/).
 #
@@ -666,14 +666,14 @@ _QUICK_SNAPSHOTS_DIR = "state-snapshots"
 _QUICK_DEFAULT_KEEP = 20
 
 
-def _quick_snapshot_root(hermes_home: Optional[Path] = None) -> Path:
-    home = hermes_home or get_hermes_home()
+def _quick_snapshot_root(VERMES_home: Optional[Path] = None) -> Path:
+    home = VERMES_home or get_vermes_home()
     return home / _QUICK_SNAPSHOTS_DIR
 
 
 def create_quick_snapshot(
     label: Optional[str] = None,
-    hermes_home: Optional[Path] = None,
+    VERMES_home: Optional[Path] = None,
 ) -> Optional[str]:
     """Create a quick state snapshot of critical files.
 
@@ -683,7 +683,7 @@ def create_quick_snapshot(
     Returns:
         Snapshot ID (timestamp-based), or None if no files found.
     """
-    home = hermes_home or get_hermes_home()
+    home = VERMES_home or get_vermes_home()
     root = _quick_snapshot_root(home)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -756,10 +756,10 @@ def create_quick_snapshot(
 
 def list_quick_snapshots(
     limit: int = 20,
-    hermes_home: Optional[Path] = None,
+    VERMES_home: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """List existing quick state snapshots, most recent first."""
-    root = _quick_snapshot_root(hermes_home)
+    root = _quick_snapshot_root(VERMES_home)
     if not root.exists():
         return []
 
@@ -782,14 +782,14 @@ def list_quick_snapshots(
 
 def restore_quick_snapshot(
     snapshot_id: str,
-    hermes_home: Optional[Path] = None,
+    VERMES_home: Optional[Path] = None,
 ) -> bool:
     """Restore state from a quick snapshot.
 
     Overwrites current state files with the snapshot's copies.
     Returns True if at least one file was restored.
     """
-    home = hermes_home or get_hermes_home()
+    home = VERMES_home or get_vermes_home()
     root = _quick_snapshot_root(home)
 
     # Security: reject snapshot_id values that contain path separators or
@@ -880,10 +880,10 @@ def _prune_quick_snapshots(root: Path, keep: int = _QUICK_DEFAULT_KEEP) -> int:
 
 def prune_quick_snapshots(
     keep: int = _QUICK_DEFAULT_KEEP,
-    hermes_home: Optional[Path] = None,
+    VERMES_home: Optional[Path] = None,
 ) -> int:
     """Manually prune quick snapshots. Returns count deleted."""
-    return _prune_quick_snapshots(_quick_snapshot_root(hermes_home), keep=keep)
+    return _prune_quick_snapshots(_quick_snapshot_root(VERMES_home), keep=keep)
 
 
 def run_quick_backup(args) -> None:
@@ -893,7 +893,7 @@ def run_quick_backup(args) -> None:
     if snap_id:
         logger.info(f"State snapshot created: {snap_id}")
         snaps = list_quick_snapshots()
-        logger.info(f"  {len(snaps)} snapshot(s) stored in {display_hermes_home()}/state-snapshots/")
+        logger.info(f"  {len(snaps)} snapshot(s) stored in {display_vermes_home()}/state-snapshots/")
         logger.info(f"  Restore with: /snapshot restore {snap_id}")
     else:
         logger.info("No state files found to snapshot.")
@@ -903,8 +903,8 @@ def run_quick_backup(args) -> None:
 # Shared full-zip backup helper
 # ---------------------------------------------------------------------------
 
-def _write_full_zip_backup(out_path: Path, hermes_root: Path) -> Optional[Path]:
-    """Write a full zip snapshot of ``hermes_root`` to ``out_path``.
+def _write_full_zip_backup(out_path: Path, VERMES_root: Path) -> Optional[Path]:
+    """Write a full zip snapshot of ``VERMES_root`` to ``out_path``.
 
     Uses the same exclusion rules and SQLite safe-copy as :func:`run_backup`.
     Returns the output path on success, None on failure (nothing to back up,
@@ -912,7 +912,7 @@ def _write_full_zip_backup(out_path: Path, hermes_root: Path) -> Optional[Path]:
     """
     files_to_add: list[tuple[Path, Path]] = []
     try:
-        for dirpath, dirnames, filenames in os.walk(hermes_root, followlinks=False):
+        for dirpath, dirnames, filenames in os.walk(VERMES_root, followlinks=False):
             dp = Path(dirpath)
             # Prune excluded directories in-place so os.walk doesn't descend
             dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
@@ -920,7 +920,7 @@ def _write_full_zip_backup(out_path: Path, hermes_root: Path) -> Optional[Path]:
             for fname in filenames:
                 fpath = dp / fname
                 try:
-                    rel = fpath.relative_to(hermes_root)
+                    rel = fpath.relative_to(VERMES_root)
                 except ValueError:
                     continue
 
@@ -980,8 +980,8 @@ _PRE_UPDATE_PREFIX = "pre-update-"
 _PRE_UPDATE_DEFAULT_KEEP = 5
 
 
-def _pre_update_backup_dir(hermes_home: Optional[Path] = None) -> Path:
-    home = hermes_home or get_hermes_home()
+def _pre_update_backup_dir(VERMES_home: Optional[Path] = None) -> Path:
+    home = VERMES_home or get_vermes_home()
     return home / _PRE_UPDATE_BACKUPS_DIR
 
 
@@ -1023,24 +1023,24 @@ def _prune_pre_update_backups(backup_dir: Path, keep: int) -> int:
 
 
 def create_pre_update_backup(
-    hermes_home: Optional[Path] = None,
+    VERMES_home: Optional[Path] = None,
     keep: int = _PRE_UPDATE_DEFAULT_KEEP,
 ) -> Optional[Path]:
-    """Create a full zip backup of HERMES_HOME under ``backups/``.
+    """Create a full zip backup of VERMES_HOME under ``backups/``.
 
     Mirrors :func:`run_backup` (same exclusion rules, same SQLite safe-copy)
-    but writes to ``<HERMES_HOME>/backups/pre-update-<timestamp>.zip`` and
+    but writes to ``<VERMES_HOME>/backups/pre-update-<timestamp>.zip`` and
     auto-prunes old pre-update backups.
 
     Returns the path to the created zip, or ``None`` if no files were
     found or the backup could not be created.  Never raises — the caller
     (``vermes update``) should continue even if the backup fails.
     """
-    hermes_root = hermes_home or get_default_hermes_root()
-    if not hermes_root.is_dir():
+    VERMES_root = VERMES_home or get_default_vermes_root()
+    if not VERMES_root.is_dir():
         return None
 
-    backup_dir = _pre_update_backup_dir(hermes_root)
+    backup_dir = _pre_update_backup_dir(VERMES_root)
     try:
         backup_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -1050,7 +1050,7 @@ def create_pre_update_backup(
     stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
     out_path = backup_dir / f"{_PRE_UPDATE_PREFIX}{stamp}.zip"
 
-    result = _write_full_zip_backup(out_path, hermes_root)
+    result = _write_full_zip_backup(out_path, VERMES_root)
     if result is None:
         return None
 
@@ -1095,29 +1095,29 @@ def _prune_pre_migration_backups(backup_dir: Path, keep: int) -> int:
 
 
 def create_pre_migration_backup(
-    hermes_home: Optional[Path] = None,
+    VERMES_home: Optional[Path] = None,
     keep: int = _PRE_MIGRATION_DEFAULT_KEEP,
 ) -> Optional[Path]:
-    """Create a full zip backup of HERMES_HOME under ``backups/`` before a
+    """Create a full zip backup of VERMES_HOME under ``backups/`` before a
     ``vermes claw migrate`` apply.
 
     Shares implementation with :func:`create_pre_update_backup` via
     ``_write_full_zip_backup`` — same exclusions, same SQLite safe-copy,
     restorable with ``vermes import <archive>``.  Writes to
-    ``<HERMES_HOME>/backups/pre-migration-<timestamp>.zip`` and auto-prunes
+    ``<VERMES_HOME>/backups/pre-migration-<timestamp>.zip`` and auto-prunes
     old pre-migration backups.
 
     Returns the path to the created zip, or ``None`` if nothing was found
     to back up (fresh install) or the write failed.  Never raises — the
     caller decides whether to abort or proceed.
     """
-    hermes_root = hermes_home or get_default_hermes_root()
-    if not hermes_root.is_dir():
+    VERMES_root = VERMES_home or get_default_vermes_root()
+    if not VERMES_root.is_dir():
         return None
 
     # Reuses the shared backups/ directory so `vermes import` and the
     # update-backup listing pick up pre-migration archives too.
-    backup_dir = _pre_update_backup_dir(hermes_root)
+    backup_dir = _pre_update_backup_dir(VERMES_root)
     try:
         backup_dir.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -1127,7 +1127,7 @@ def create_pre_migration_backup(
     stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
     out_path = backup_dir / f"{_PRE_MIGRATION_PREFIX}{stamp}.zip"
 
-    result = _write_full_zip_backup(out_path, hermes_root)
+    result = _write_full_zip_backup(out_path, VERMES_root)
     if result is None:
         return None
 

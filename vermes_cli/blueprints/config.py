@@ -28,7 +28,7 @@ from vermes_cli.config import (
     DEFAULT_CONFIG,
     OPTIONAL_ENV_VARS,
     get_config_path,
-    get_hermes_home,
+    get_vermes_home,
     load_config,
     load_env,
     save_config,
@@ -54,7 +54,7 @@ def _resolve_max_tokens(model: str) -> int | None:
     """
     # 优先级 1: 从 config.yaml 读取用户配置
     try:
-        from vermes_constants import get_hermes_home as _ghh
+        from vermes_constants import get_vermes_home as _ghh
         home = _ghh()
         cfg_path = home / "config.yaml"
         if cfg_path.exists():

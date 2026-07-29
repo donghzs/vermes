@@ -200,7 +200,7 @@ class TestCredentialResolution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             # 主链路返回空 + 本地 home 无 config.yaml/.env → 两路皆空 → None
             with patch("vermes_cli.blueprints.chat._get_chat_credentials", return_value=("", "", "")):
-                with patch("vermes_constants.get_hermes_home", return_value=Path(tmp)):
+                with patch("vermes_constants.get_vermes_home", return_value=Path(tmp)):
                     result = _resolve_credentials()
             self.assertIsNone(result)
 
@@ -210,7 +210,7 @@ class TestCredentialResolution(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch("vermes_cli.blueprints.chat._get_chat_credentials", side_effect=Exception("mock")):
-                with patch("vermes_constants.get_hermes_home", return_value=Path(tmp)):
+                with patch("vermes_constants.get_vermes_home", return_value=Path(tmp)):
                     try:
                         result = _resolve_credentials()
                     except Exception:

@@ -1,4 +1,4 @@
-"""PTY bridge for `hermes dashboard` chat tab.
+"""PTY bridge for `Vermes dashboard` chat tab.
 
 Wraps a child process behind a pseudo-terminal so its ANSI output can be
 streamed to a browser-side terminal emulator (xterm.js) and typed
@@ -17,7 +17,7 @@ Design constraints:
   dashboard (sessions, jobs, metrics, config editor) works natively.
 * **Zero Node dependency on the server side.**  We use :mod:`ptyprocess`,
   which is a pure-Python wrapper around the OS calls.  The browser talks
-  to the same ``hermes --tui`` binary it would launch from the CLI, so
+  to the same ``Vermes --tui`` binary it would launch from the CLI, so
   every TUI feature (slash popover, model picker, tool rows, markdown,
   skin engine, clarify/sudo/approval prompts) ships automatically.
 * **Byte-safe I/O.**  Reads and writes go through the PTY master fd

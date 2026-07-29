@@ -1,4 +1,4 @@
-"""``hermes logs`` — view and filter Vermes log files.
+"""``Vermes logs`` — view and filter Vermes log files.
 
 Supports tailing, following, session filtering, level filtering,
 component filtering, and relative time ranges.  All log files live
@@ -6,15 +6,15 @@ under ``~/.vermes/logs/``.
 
 Usage examples::
 
-    hermes logs                    # last 50 lines of agent.log
-    hermes logs -f                 # follow agent.log in real time
-    hermes logs errors             # last 50 lines of errors.log
-    hermes logs gateway -n 100    # last 100 lines of gateway.log
-    hermes logs --level WARNING    # only WARNING+ lines
-    hermes logs --session abc123   # filter by session ID substring
-    hermes logs --component tools  # only tool-related lines
-    hermes logs --since 1h         # lines from the last hour
-    hermes logs --since 30m -f     # follow, starting 30 min ago
+    Vermes logs                    # last 50 lines of agent.log
+    Vermes logs -f                 # follow agent.log in real time
+    Vermes logs errors             # last 50 lines of errors.log
+    Vermes logs gateway -n 100    # last 100 lines of gateway.log
+    Vermes logs --level WARNING    # only WARNING+ lines
+    Vermes logs --session abc123   # filter by session ID substring
+    Vermes logs --component tools  # only tool-related lines
+    Vermes logs --since 1h         # lines from the last hour
+    Vermes logs --since 30m -f     # follow, starting 30 min ago
 """
 
 import logging
@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Sequence
 
-from vermes_constants import get_hermes_home, display_hermes_home
+from vermes_constants import get_vermes_home, display_vermes_home
 
 # Known log files (name → filename)
 LOG_FILES = {
@@ -172,10 +172,10 @@ def tail_log(
         logger.info(f"Unknown log: {log_name!r}. Available: {', '.join(sorted(LOG_FILES))}")
         sys.exit(1)
 
-    log_path = get_hermes_home() / "logs" / filename
+    log_path = get_vermes_home() / "logs" / filename
     if not log_path.exists():
         logger.info(f"Log file not found: {log_path}")
-        logger.info(f"(Logs are created when Vermes runs — try 'hermes chat' first)")
+        logger.info(f"(Logs are created when Vermes runs — try 'Vermes chat' first)")
         sys.exit(1)
 
     # Parse --since into a datetime cutoff
@@ -233,9 +233,9 @@ def tail_log(
     filter_desc = f" [{', '.join(filter_parts)}]" if filter_parts else ""
 
     if follow:
-        logger.info(f"--- {display_hermes_home()}/logs/{filename}{filter_desc} (Ctrl+C to stop) ---")
+        logger.info(f"--- {display_vermes_home()}/logs/{filename}{filter_desc} (Ctrl+C to stop) ---")
     else:
-        logger.info(f"--- {display_hermes_home()}/logs/{filename}{filter_desc} (last {num_lines}) ---")
+        logger.info(f"--- {display_vermes_home()}/logs/{filename}{filter_desc} (last {num_lines}) ---")
 
     for line in lines:
         print(line, end="")
@@ -362,12 +362,12 @@ def _follow_log(
 
 def list_logs() -> None:
     """Print available log files with sizes."""
-    log_dir = get_hermes_home() / "logs"
+    log_dir = get_vermes_home() / "logs"
     if not log_dir.exists():
-        logger.info(f"No logs directory at {display_hermes_home()}/logs/")
+        logger.info(f"No logs directory at {display_vermes_home()}/logs/")
         return
 
-    logger.info(f"Log files in {display_hermes_home()}/logs/:\n")
+    logger.info(f"Log files in {display_vermes_home()}/logs/:\n")
     found = False
     for entry in sorted(log_dir.iterdir()):
         if entry.is_file() and entry.suffix == ".log":
@@ -392,4 +392,4 @@ def list_logs() -> None:
             found = True
 
     if not found:
-        logger.info("  (no log files yet — run 'hermes chat' to generate logs)")
+        logger.info("  (no log files yet — run 'Vermes chat' to generate logs)")

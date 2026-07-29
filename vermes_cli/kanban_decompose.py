@@ -163,7 +163,7 @@ def _extract_json_blob(raw: str) -> Optional[dict]:
 def _profile_author() -> str:
     """Mirror of ``vermes_cli.kanban._profile_author``."""
     return (
-        os.environ.get("HERMES_PROFILE")
+        os.environ.get("VERMES_PROFILE")
         or os.environ.get("USER")
         or "decomposer"
     )

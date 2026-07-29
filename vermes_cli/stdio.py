@@ -87,7 +87,7 @@ def configure_windows_stdio() -> bool:
     Returns ``True`` if anything was actually changed, ``False`` on
     non-Windows or on a repeat call.
 
-    Set ``HERMES_DISABLE_WINDOWS_UTF8=1`` in the environment to opt out
+    Set ``VERMES_DISABLE_WINDOWS_UTF8=1`` in the environment to opt out
     (for diagnosing encoding-related bugs by forcing the old cp1252 path).
 
     Also sets a sensible default ``EDITOR`` on Windows if none is already
@@ -102,7 +102,7 @@ def configure_windows_stdio() -> bool:
         _CONFIGURED = True
         return False
 
-    if os.environ.get("HERMES_DISABLE_WINDOWS_UTF8") in {"1", "true", "True", "yes"}:
+    if os.environ.get("VERMES_DISABLE_WINDOWS_UTF8") in {"1", "true", "True", "yes"}:
         _CONFIGURED = True
         return False
 
@@ -128,7 +128,7 @@ def configure_windows_stdio() -> bool:
     # subprocess calls (bash, rg, grep, etc.) resolve even in sessions
     # that started before the User PATH broadcast reached them.  When
     # install.ps1 adds these to User PATH via SetEnvironmentVariable,
-    # already-running shells don't see the change — which means hermes
+    # already-running shells don't see the change — which means Vermes
     # launched from the install session won't find rg / bash / grep
     # even though they're "installed".  Prepending the known paths here
     # closes that gap.  No-op when the paths don't exist (e.g. system-Git
@@ -191,10 +191,10 @@ def _augment_path_with_known_tools() -> None:
 
     Fixes the "User PATH was just updated but my process can't see it" gap on
     Windows.  When install.ps1 runs, it adds entries like
-    ``%LOCALAPPDATA%\\hermes\\git\\bin`` to the User PATH via
+    ``%LOCALAPPDATA%\\Vermes\\git\\bin`` to the User PATH via
     ``SetEnvironmentVariable(..., "User")``.  That write propagates to newly
     *spawned* processes only — already-running shells (including the one the
-    user invokes ``hermes`` from right after install) retain their old PATH.
+    user invokes ``Vermes`` from right after install) retain their old PATH.
 
     Any subprocess Vermes spawns — bash, ``rg``, ``grep``, ``npm`` — inherits
     that stale PATH and reports commands as missing even though they're on
@@ -221,13 +221,13 @@ def _augment_path_with_known_tools() -> None:
     # should match so this prefill fully mirrors what a fresh shell would
     # see on next launch.
     candidate_dirs = [
-        os.path.join(local_appdata, "hermes", "git", "cmd"),
-        os.path.join(local_appdata, "hermes", "git", "bin"),
-        os.path.join(local_appdata, "hermes", "git", "usr", "bin"),
-        # Vermes venv Scripts directory — host of the hermes.exe shim itself,
+        os.path.join(local_appdata, "Vermes", "git", "cmd"),
+        os.path.join(local_appdata, "Vermes", "git", "bin"),
+        os.path.join(local_appdata, "Vermes", "git", "usr", "bin"),
+        # Vermes venv Scripts directory — host of the Vermes.exe shim itself,
         # also where any pip-installed console scripts land.  Usually already
-        # on PATH when the user invokes hermes, but harmless to include.
-        os.path.join(local_appdata, "hermes", "hermes-agent", "venv", "Scripts"),
+        # on PATH when the user invokes Vermes, but harmless to include.
+        os.path.join(local_appdata, "Vermes", "Vermes-agent", "venv", "Scripts"),
         # WinGet packages directory — where ``winget install`` drops CLI
         # shims by default (ripgrep lands here as rg.exe).  Covers the case
         # of a system-Git install + ripgrep-via-winget that isn't yet on

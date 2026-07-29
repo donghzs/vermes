@@ -1,5 +1,5 @@
 """
-Cron subcommand for hermes CLI.
+Cron subcommand for Vermes CLI.
 
 Handles standalone cron management commands like list, create, edit,
 pause/resume/run/remove, status, and tick.
@@ -49,7 +49,7 @@ def cron_list(show_all: bool = False):
 
     if not jobs:
         logger.info(color("No scheduled jobs.", Colors.DIM))
-        logger.info(color("Create one with 'hermes cron create ...' or the /cron command in chat.", Colors.DIM))
+        logger.info(color("Create one with 'Vermes cron create ...' or the /cron command in chat.", Colors.DIM))
         return
 
     logger.info()
@@ -323,5 +323,5 @@ def cron_command(args):
         return _job_action("remove", args.job_id, "Removed")
 
     logger.info(f"Unknown cron command: {subcmd}")
-    logger.info("Usage: hermes cron [list|create|edit|pause|resume|run|remove|status|tick]")
+    logger.info("Usage: Vermes cron [list|create|edit|pause|resume|run|remove|status|tick]")
     sys.exit(1)

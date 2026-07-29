@@ -1,4 +1,4 @@
-"""CLI subcommand: ``hermes send`` — pipe text from shell scripts to any
+"""CLI subcommand: ``Vermes send`` — pipe text from shell scripts to any
 configured messaging platform (Telegram, Discord, Slack, Signal, SMS, etc.).
 
 This is a thin wrapper around ``tools.send_message_tool.send_message_tool``
@@ -62,7 +62,7 @@ def _read_message_body(
         try:
             return Path(file_path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
-            logger.warning(f"hermes send: cannot read {file_path}: {exc}")
+            logger.warning(f"Vermes send: cannot read {file_path}: {exc}")
             sys.exit(_USAGE_EXIT)
 
     # Piped input: only consume stdin when it is not a TTY. Reading from a
@@ -105,7 +105,7 @@ def _emit_result(
         pass
     else:
         if payload.get("error"):
-            logger.warning(f"hermes send: {payload['error']}")
+            logger.warning(f"Vermes send: {payload['error']}")
         elif payload.get("success"):
             note = payload.get("note")
             if note:
@@ -139,13 +139,13 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
             load_directory,
         )
     except Exception as exc:
-        logger.warning(f"hermes send: failed to load channel directory: {exc}")
+        logger.warning(f"Vermes send: failed to load channel directory: {exc}")
         return _FAILURE_EXIT
 
     try:
         raw = load_directory()
     except Exception as exc:
-        logger.warning(f"hermes send: failed to read channel directory: {exc}")
+        logger.warning(f"Vermes send: failed to read channel directory: {exc}")
         return _FAILURE_EXIT
 
     platforms = dict(raw.get("platforms") or {})
@@ -155,7 +155,7 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
         filtered = {k: v for k, v in platforms.items() if k.lower() == key}
         if not filtered:
             logger.info(
-                f"hermes send: no targets found for platform '{platform_filter}'. "
+                f"Vermes send: no targets found for platform '{platform_filter}'. "
                 f"Configured: {', '.join(sorted(platforms)) or '(none)'}",
                 file=sys.stderr,
             )
@@ -193,14 +193,14 @@ def _list_targets(platform_filter: Optional[str], *, json_mode: bool) -> int:
 
     return _SUCCESS_EXIT
 
-def _load_hermes_env() -> None:
+def _load_vermes_env() -> None:
     """Populate ``os.environ`` from ``~/.vermes/.env`` AND bridge top-level
     ``config.yaml`` keys into the environment so the underlying gateway
     config loader sees platform credentials and home channel IDs.
 
     ``send_message_tool`` reads tokens and home-channel IDs via
     ``os.getenv(...)`` on each call. The gateway process does two things at
-    startup that ``hermes send`` must replicate when invoked standalone:
+    startup that ``Vermes send`` must replicate when invoked standalone:
 
     1. ``load_dotenv(~/.vermes/.env)`` — brings bot tokens into the env.
     2. Bridge top-level simple values from ``~/.vermes/config.yaml`` into
@@ -209,7 +209,7 @@ def _load_hermes_env() -> None:
        via ``vermes config set``.
 
     See ``gateway/run.py`` for the canonical version of this bridge — we
-    intentionally reimplement the minimum needed here so ``hermes send``
+    intentionally reimplement the minimum needed here so ``Vermes send``
     doesn't pull in the full gateway module just to resolve a home channel.
     """
     # Step 1: dotenv
@@ -219,8 +219,8 @@ def _load_hermes_env() -> None:
         load_dotenv = None  # type: ignore[assignment]
 
     try:
-        from vermes_cli.config import get_hermes_home
-        home = get_hermes_home()
+        from vermes_cli.config import get_vermes_home
+        home = get_vermes_home()
     except Exception:
         return
 
@@ -277,7 +277,7 @@ def cmd_send(args: argparse.Namespace) -> None:
     # Bridge ~/.vermes/.env and ~/.vermes/config.yaml into os.environ so the
     # gateway config loader (invoked downstream by send_message_tool and by
     # the channel directory) can see platform credentials and home channels.
-    _load_hermes_env()
+    _load_vermes_env()
 
     # --list short-circuits everything else.
     if getattr(args, "list_targets", False):
@@ -290,11 +290,11 @@ def cmd_send(args: argparse.Namespace) -> None:
     target = _resolve_target(getattr(args, "to", None))
     if not target:
         logger.info(
-            "hermes send: --to PLATFORM[:channel[:thread]] is required\n"
+            "Vermes send: --to PLATFORM[:channel[:thread]] is required\n"
             "Examples:\n"
-            "  hermes send --to telegram \"hello\"\n"
-            "  hermes send --to discord:#ops --file report.md\n"
-            "  hermes send --list      # list available targets",
+            "  Vermes send --to telegram \"hello\"\n"
+            "  Vermes send --to discord:#ops --file report.md\n"
+            "  Vermes send --list      # list available targets",
             file=sys.stderr,
         )
         sys.exit(_USAGE_EXIT)
@@ -305,7 +305,7 @@ def cmd_send(args: argparse.Namespace) -> None:
     )
     if message is None or not message.strip():
         logger.info(
-            "hermes send: no message provided. Pass text as a positional "
+            "Vermes send: no message provided. Pass text as a positional "
             "argument, use --file PATH, or pipe data via stdin.",
             file=sys.stderr,
         )
@@ -317,7 +317,7 @@ def cmd_send(args: argparse.Namespace) -> None:
     if subject:
         message = f"{subject}\n\n{message.lstrip()}"
 
-    # Import lazily so `hermes send --help` stays fast and does not pull in
+    # Import lazily so `Vermes send --help` stays fast and does not pull in
     # the full tool registry / gateway config stack.
     from tools.send_message_tool import send_message_tool
 
@@ -359,12 +359,12 @@ def register_send_subparser(subparsers) -> argparse.ArgumentParser:
         ),
         epilog=(
             "Examples:\n"
-            "  hermes send --to telegram \"deploy finished\"\n"
-            "  echo \"RAM 92%\" | hermes send --to telegram:-1001234567890\n"
-            "  hermes send --to discord:#ops --file /tmp/report.md\n"
-            "  hermes send --to slack:#eng --subject \"[CI]\" --file build.log\n"
-            "  hermes send --list                  # all platforms\n"
-            "  hermes send --list telegram         # filter by platform\n"
+            "  Vermes send --to telegram \"deploy finished\"\n"
+            "  echo \"RAM 92%\" | Vermes send --to telegram:-1001234567890\n"
+            "  Vermes send --to discord:#ops --file /tmp/report.md\n"
+            "  Vermes send --to slack:#eng --subject \"[CI]\" --file build.log\n"
+            "  Vermes send --list                  # all platforms\n"
+            "  Vermes send --list telegram         # filter by platform\n"
             "\n"
             "Exit codes: 0 ok, 1 delivery/backend error, 2 usage error."
         ),
@@ -416,7 +416,7 @@ def register_send_subparser(subparsers) -> argparse.ArgumentParser:
         dest="list_targets",
         action="store_true",
         default=False,
-        help="List available targets. Optional positional filter: `hermes send --list telegram`.",
+        help="List available targets. Optional positional filter: `Vermes send --list telegram`.",
     )
 
     parser.add_argument(

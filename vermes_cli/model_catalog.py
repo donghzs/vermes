@@ -52,7 +52,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from vermes_cli import __version__ as _HERMES_VERSION
+from vermes_cli import __version__ as _vermes_VERSION
 from utils import atomic_replace
 
 logger = logging.getLogger(__name__)
@@ -62,13 +62,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_CATALOG_URL = (
-    "https://hermes-agent.nousresearch.com/docs/api/model-catalog.json"
+    "https://Vermes-agent.donghzs.com/docs/api/model-catalog.json"
 )
 DEFAULT_TTL_HOURS = 24
 DEFAULT_FETCH_TIMEOUT = 8.0
 SUPPORTED_SCHEMA_VERSION = 1
 
-_HERMES_USER_AGENT = f"hermes-cli/{_HERMES_VERSION}"
+_vermes_USER_AGENT = f"Vermes-cli/{_vermes_VERSION}"
 
 # In-process cache to avoid repeated disk + parse work across multiple
 # calls within the same session. Invalidated by TTL against the disk file's
@@ -104,8 +104,8 @@ def _load_catalog_config() -> dict[str, Any]:
 
 def _cache_path() -> Path:
     """Return the disk cache path. Import lazily so tests can monkeypatch home."""
-    from vermes_constants import get_hermes_home
-    return get_hermes_home() / "cache" / "model_catalog.json"
+    from vermes_constants import get_vermes_home
+    return get_vermes_home() / "cache" / "model_catalog.json"
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ def _fetch_manifest(url: str, timeout: float) -> dict[str, Any] | None:
             url,
             headers={
                 "Accept": "application/json",
-                "User-Agent": _HERMES_USER_AGENT,
+                "User-Agent": _vermes_USER_AGENT,
             },
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:

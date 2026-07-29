@@ -9,17 +9,17 @@ from typing import Any, Optional
 _resolve_model_provider = None
 _get_chat_credentials = None
 PROVIDERS = None
-_get_hermes_home = None
+_get_vermes_home = None
 _registry = None
 
 
 def _inject(host_module):
     """由 module_loader 调用，注入宿主函数"""
-    global _resolve_model_provider, _get_chat_credentials, PROVIDERS, _get_hermes_home, _registry
+    global _resolve_model_provider, _get_chat_credentials, PROVIDERS, _get_vermes_home, _registry
     _resolve_model_provider = getattr(host_module, 'resolve_model_provider', None)
     _get_chat_credentials = getattr(host_module, 'get_chat_credentials', None)
     PROVIDERS = getattr(host_module, 'PROVIDERS', None)
-    _get_hermes_home = getattr(host_module, 'get_hermes_home', None)
+    _get_vermes_home = getattr(host_module, 'get_vermes_home', None)
     _registry = getattr(host_module, 'registry', None)
 
 
@@ -44,14 +44,14 @@ def get_providers():
     return {}
 
 
-def get_hermes_home():
-    """返回 hermes home 目录 Path（与 vermes_constants.get_hermes_home 保持一致）"""
-    if _get_hermes_home:
-        return _get_hermes_home()
+def get_vermes_home():
+    """返回 Vermes home 目录 Path（与 vermes_constants.get_vermes_home 保持一致）"""
+    if _get_vermes_home:
+        return _get_vermes_home()
     import os
     from pathlib import Path
-    # VERMES_HOME 优先，HERMES_HOME 兼容，默认 ~/.vermes（避免误落到 ~/.hermes）
-    _val = os.environ.get("VERMES_HOME") or os.environ.get("HERMES_HOME") or "~/.vermes"
+    # VERMES_HOME 优先，VERMES_HOME 兼容，默认 ~/.vermes（避免误落到 ~/.Vermes）
+    _val = os.environ.get("VERMES_HOME") or os.environ.get("VERMES_HOME") or "~/.vermes"
     return Path(_val).expanduser()
 
 

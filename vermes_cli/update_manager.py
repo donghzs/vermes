@@ -31,11 +31,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 # ── 常量 ────────────────────────────────────────────────────────────────
 
-HERMES_HOME = Path(os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes")))
-UPDATE_DIR = HERMES_HOME / "update"
+VERMES_HOME = Path(os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes")))
+UPDATE_DIR = VERMES_HOME / "update"
 STAGING_DIR = UPDATE_DIR / "staging"
 PENDING_FILE = UPDATE_DIR / "pending.json"
-BACKUP_DIR = HERMES_HOME / "backup"
+BACKUP_DIR = VERMES_HOME / "backup"
 USER_DATA_BACKUP = BACKUP_DIR / "user-data-backup.tar.gz"
 MAX_BACKUPS = 3  # 保留最近 3 个版本
 
@@ -267,13 +267,13 @@ def backup_user_data() -> Optional[str]:
         with tarfile.open(str(USER_DATA_BACKUP), "w:gz") as tar:
             # 备份目录
             for dir_name in USER_DATA_DIRS:
-                dir_path = HERMES_HOME / dir_name
+                dir_path = VERMES_HOME / dir_name
                 if dir_path.exists():
                     tar.add(str(dir_path), arcname=dir_name)
 
             # 备份文件
             for file_name in USER_DATA_FILES:
-                file_path = HERMES_HOME / file_name
+                file_path = VERMES_HOME / file_name
                 if file_path.exists():
                     tar.add(str(file_path), arcname=file_name)
 
@@ -574,7 +574,7 @@ def atomic_replace_windows(staging_dir: Path, target_dir: Path) -> bool:
 
 def get_data_version() -> str:
     """获取当前数据版本（存储在 state.db 或 config.yaml 中）"""
-    version_file = HERMES_HOME / "data_version.json"
+    version_file = VERMES_HOME / "data_version.json"
     if version_file.exists():
         try:
             data = json.loads(version_file.read_text(encoding="utf-8"))
@@ -586,7 +586,7 @@ def get_data_version() -> str:
 
 def set_data_version(version: str):
     """设置当前数据版本"""
-    version_file = HERMES_HOME / "data_version.json"
+    version_file = VERMES_HOME / "data_version.json"
     version_file.write_text(
         json.dumps({"version": version, "updated_at": time.time()}, indent=2),
         encoding="utf-8",
@@ -651,7 +651,7 @@ async def run_migrations(from_version: str, to_version: str):
         spec.loader.exec_module(module)
 
         if hasattr(module, "migrate"):
-            module.migrate(str(HERMES_HOME))
+            module.migrate(str(VERMES_HOME))
             _log.info(f"[Update] 数据迁移完成: {from_version} → {to_version}")
     except Exception as e:
         _log.error(f"[Update] 数据迁移失败: {e}")
@@ -825,7 +825,7 @@ def _cleanup_after_apply():
 # 启动时 backend_main.py 将 ~/.vermes/agent/ 插入 sys.path 前面，
 # 优先加载用户目录的框架代码，回退到 bundle 内置代码。
 
-AGENT_DIR = HERMES_HOME / "agent"          # ~/.vermes/agent/
+AGENT_DIR = VERMES_HOME / "agent"          # ~/.vermes/agent/
 AGENT_VERSION_FILE = AGENT_DIR / ".version"  # 当前框架版本
 AGENT_UPDATE_DIR = UPDATE_DIR / "agent"     # 下载暂存
 

@@ -3,7 +3,7 @@
 Endpoints:
 - GET  /api/status              — 服务器状态概览
 - POST /api/gateway/restart     — 重启 Gateway
-- POST /api/hermes/update       — 触发 Vermes 自更新
+- POST /api/Vermes/update       — 触发 Vermes 自更新
 - GET  /api/actions/{name}/status — 查询后台任务状态
 - POST /api/shutdown            — 关闭后端服务器
 - POST /api/stop-generation     — 停止正在生成的流
@@ -29,7 +29,7 @@ from vermes_cli.config import (
     check_config_version,
     get_config_path,
     get_env_path,
-    get_hermes_home,
+    get_vermes_home,
 )
 
 _log = logging.getLogger(__name__)
@@ -97,18 +97,18 @@ def _probe_gateway_health() -> tuple[bool, dict | None]:
 # Action spawning (gateway restart, vermes update)
 # ---------------------------------------------------------------------------
 
-_ACTION_LOG_DIR: Path = get_hermes_home() / "logs"
+_ACTION_LOG_DIR: Path = get_vermes_home() / "logs"
 
 _ACTION_LOG_FILES: Dict[str, str] = {
     "gateway-restart": "gateway-restart.log",
-    "hermes-update": "hermes-update.log",
+    "Vermes-update": "Vermes-update.log",
 }
 
 _ACTION_PROCS: Dict[str, subprocess.Popen] = {}
 
 
 def _spawn_vermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
-    """Spawn ``hermes <subcommand>`` detached and record the Popen handle."""
+    """Spawn ``Vermes <subcommand>`` detached and record the Popen handle."""
     log_file_name = _ACTION_LOG_FILES[name]
     _ACTION_LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = _ACTION_LOG_DIR / log_file_name
@@ -124,7 +124,7 @@ def _spawn_vermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
         "stdin": subprocess.DEVNULL,
         "stdout": log_file,
         "stderr": subprocess.STDOUT,
-        "env": {**os.environ, "HERMES_NONINTERACTIVE": "1"},
+        "env": {**os.environ, "VERMES_NONINTERACTIVE": "1"},
     }
     if sys.platform == "win32":
         popen_kwargs["creationflags"] = (
@@ -232,7 +232,7 @@ async def get_status():
     return {
         "version": __version__,
         "release_date": __release_date__,
-        "hermes_home": str(get_hermes_home()),
+        "VERMES_home": str(get_vermes_home()),
         "config_path": str(get_config_path()),
         "env_path": str(get_env_path()),
         "config_version": current_ver,
@@ -262,7 +262,7 @@ async def restart_gateway():
     }
 
 
-async def update_hermes():
+async def update_vermes():
     """Kick off ``vermes update`` in the background."""
     try:
         proc = _spawn_vermes_action(["update"], "vermes-update")
@@ -272,7 +272,7 @@ async def update_hermes():
     return {
         "ok": True,
         "pid": proc.pid,
-        "name": "hermes-update",
+        "name": "Vermes-update",
     }
 
 
@@ -344,7 +344,7 @@ async def get_logs(
     log_name = LOG_FILES.get(file)
     if not log_name:
         raise HTTPException(status_code=400, detail=f"Unknown log file: {file}")
-    log_path = get_hermes_home() / "logs" / log_name
+    log_path = get_vermes_home() / "logs" / log_name
     if not log_path.exists():
         return {"file": file, "lines": []}
 
@@ -392,10 +392,10 @@ def register_to(app):
         name="restart_gateway",
     )
     app.add_api_route(
-        "/api/hermes/update",
-        update_hermes,
+        "/api/Vermes/update",
+        update_vermes,
         methods=["POST"],
-        name="update_hermes",
+        name="update_vermes",
     )
     app.add_api_route(
         "/api/actions/{name}/status",

@@ -34,7 +34,7 @@ _DEP_CHECKS = {
     "browser": lambda: (
         shutil.which("agent-browser") is not None
         or _has_system_browser()
-        or _has_hermes_agent_browser()
+        or _has_vermes_agent_browser()
     ),
     "ripgrep": lambda: shutil.which("rg") is not None,
     "ffmpeg": lambda: shutil.which("ffmpeg") is not None,
@@ -57,13 +57,13 @@ def _has_system_browser() -> bool:
             return True
     return False
 
-def _has_hermes_agent_browser() -> bool:
-    from vermes_constants import get_hermes_home
-    home = get_hermes_home()
+def _has_vermes_agent_browser() -> bool:
+    from vermes_constants import get_vermes_home
+    home = get_vermes_home()
     if _IS_WINDOWS:
         # npm -g --prefix puts .cmd shims directly in the prefix dir on Windows
         return (home / "node" / "agent-browser.cmd").is_file()
-    # install.sh installs globally into $HERMES_HOME/node/bin/ via npm -g --prefix
+    # install.sh installs globally into $VERMES_HOME/node/bin/ via npm -g --prefix
     # Also check legacy node_modules/.bin/ path for git-clone installs.
     return (
         (home / "node" / "bin" / "agent-browser").is_file()
@@ -131,7 +131,7 @@ def ensure_dependency(
             return False
 
     if shell == "powershell":
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
 
         ps_bin = shutil.which("powershell") or shutil.which("pwsh")
         if not ps_bin:
@@ -143,7 +143,7 @@ def ensure_dependency(
             "-ExecutionPolicy", "Bypass",
             "-File", str(script),
             "-Ensure", dep,
-            "-HermesHome", str(get_hermes_home()),
+            "-vermesHome", str(get_vermes_home()),
         ]
     else:
         cmd = ["bash", str(script), "--ensure", dep]

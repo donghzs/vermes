@@ -2,7 +2,7 @@
 import os
 import pathlib
 
-from vermes_cli.config import get_hermes_home
+from vermes_cli.config import get_vermes_home
 
 
 def _dir_size_mb(path: str) -> float:
@@ -18,11 +18,11 @@ def _dir_size_mb(path: str) -> float:
 
 
 async def get_storage_usage():
-    hermes_home = str(get_hermes_home())
+    VERMES_home = str(get_vermes_home())
 
-    sessions_db = os.path.join(hermes_home, "state.db")
-    memories_dir = os.path.join(hermes_home, "memories")
-    skills_dir = os.path.join(hermes_home, "skills")
+    sessions_db = os.path.join(VERMES_home, "state.db")
+    memories_dir = os.path.join(VERMES_home, "memories")
+    skills_dir = os.path.join(VERMES_home, "skills")
 
     sessions_mb = (
         round(os.path.getsize(sessions_db) / (1024 * 1024), 1)

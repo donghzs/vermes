@@ -80,7 +80,7 @@ def _add_accept_hooks_flag(parser) -> None:
         default=argparse.SUPPRESS,
         help=(
             "Auto-approve unseen shell hooks without a TTY prompt "
-            "(equivalent to HERMES_ACCEPT_HOOKS=1 / hooks_auto_accept: true)."
+            "(equivalent to VERMES_ACCEPT_HOOKS=1 / hooks_auto_accept: true)."
         ),
     )
 
@@ -110,14 +110,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ---------------------------------------------------------------------------
 # Profile override — MUST happen before any vermes module import.
 #
-# Many modules cache HERMES_HOME at import time (module-level constants).
+# Many modules cache VERMES_HOME at import time (module-level constants).
 # We intercept --profile/-p from sys.argv here and set the env var so that
-# every subsequent ``os.getenv("HERMES_HOME", ...)`` resolves correctly.
+# every subsequent ``os.getenv("VERMES_HOME", ...)`` resolves correctly.
 # The flag is stripped from sys.argv so argparse never sees it.
 # Falls back to ~/.vermes/active_profile for sticky default.
 # ---------------------------------------------------------------------------
 def _apply_profile_override() -> None:
-    """Pre-parse --profile/-p and set HERMES_HOME before module imports."""
+    """Pre-parse --profile/-p and set VERMES_HOME before module imports."""
     argv = sys.argv[1:]
     profile_name = None
     consume = 0
@@ -144,26 +144,26 @@ def _apply_profile_override() -> None:
             profile_name = None
             consume = 0
 
-    # 1.5 If HERMES_HOME is already set and no explicit flag was given, trust it
+    # 1.5 If VERMES_HOME is already set and no explicit flag was given, trust it
     # only when it already points to a specific profile directory.  The
     # distinguishing heuristic: a profile path has "profiles" as its immediate
     # parent directory name (e.g. ~/.vermes/profiles/coder or
-    # /opt/data/profiles/coder).  If HERMES_HOME points to the vermes root
-    # instead (e.g. systemd hardcodes HERMES_HOME=/root/.hermes), we must
+    # /opt/data/profiles/coder).  If VERMES_HOME points to the vermes root
+    # instead (e.g. systemd hardcodes VERMES_HOME=/root/.Vermes), we must
     # still read active_profile — the user may have switched profiles via
     # `vermes profile use` and the gateway should honour that choice.
     # See issue #22502.
-    hermes_home_env = os.environ.get("HERMES_HOME", "")
-    if profile_name is None and hermes_home_env:
-        if Path(hermes_home_env).parent.name == "profiles":
+    VERMES_home_env = os.environ.get("VERMES_HOME", "")
+    if profile_name is None and VERMES_home_env:
+        if Path(VERMES_home_env).parent.name == "profiles":
             return
 
     # 2. If no flag, check active_profile in the vermes root
     if profile_name is None:
         try:
-            from vermes_constants import get_default_hermes_root
+            from vermes_constants import get_default_vermes_root
 
-            active_path = get_default_hermes_root() / "active_profile"
+            active_path = get_default_vermes_root() / "active_profile"
             if active_path.exists():
                 name = active_path.read_text().strip()
                 if name and name != "default":
@@ -172,12 +172,12 @@ def _apply_profile_override() -> None:
         except (UnicodeDecodeError, OSError):
             pass  # corrupted file, skip
 
-    # 3. If we found a profile, resolve and set HERMES_HOME
+    # 3. If we found a profile, resolve and set VERMES_HOME
     if profile_name is not None:
         try:
             from vermes_cli.profiles import resolve_profile_env
 
-            hermes_home = resolve_profile_env(profile_name)
+            VERMES_home = resolve_profile_env(profile_name)
         except (ValueError, FileNotFoundError) as exc:
             logger.warning(f"Error: {exc}")
             sys.exit(1)
@@ -188,7 +188,7 @@ def _apply_profile_override() -> None:
                 file=sys.stderr,
             )
             return
-        os.environ["HERMES_HOME"] = hermes_home
+        os.environ["VERMES_HOME"] = VERMES_home
         # Strip the flag from argv so argparse doesn't choke
         if consume > 0:
             for i, arg in enumerate(argv):
@@ -206,28 +206,28 @@ _apply_profile_override()
 
 # Load .env from ~/.vermes/.env first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
-from vermes_cli.config import get_hermes_home
-from vermes_cli.env_loader import load_hermes_dotenv
+from vermes_cli.config import get_vermes_home
+from vermes_cli.env_loader import load_vermes_dotenv
 
-load_hermes_dotenv(project_env=PROJECT_ROOT / ".env")
+load_vermes_dotenv(project_env=PROJECT_ROOT / ".env")
 
-# Bridge security.redact_secrets from config.yaml → HERMES_REDACT_SECRETS env
+# Bridge security.redact_secrets from config.yaml → VERMES_REDACT_SECRETS env
 # var BEFORE vermes_logging imports agent.redact (which snapshots the flag at
 # module-import time). Without this, config.yaml's toggle is ignored because
 # the setup_logging() call below imports agent.redact, which reads the env var
 # exactly once. Env var in .env still wins — this is config.yaml fallback only.
 try:
-    if "HERMES_REDACT_SECRETS" not in os.environ:
+    if "VERMES_REDACT_SECRETS" not in os.environ:
         import yaml as _yaml_early
 
-        _cfg_path = get_hermes_home() / "config.yaml"
+        _cfg_path = get_vermes_home() / "config.yaml"
         if _cfg_path.exists():
             with open(_cfg_path, encoding="utf-8") as _f:
                 _early_sec_cfg = (_yaml_early.safe_load(_f) or {}).get("security", {})
             if isinstance(_early_sec_cfg, dict):
                 _early_redact = _early_sec_cfg.get("redact_secrets")
                 if _early_redact is not None:
-                    os.environ["HERMES_REDACT_SECRETS"] = str(_early_redact).lower()
+                    os.environ["VERMES_REDACT_SECRETS"] = str(_early_redact).lower()
             del _early_sec_cfg
         del _cfg_path
 except Exception:
@@ -286,7 +286,7 @@ def _relative_time(ts) -> str:
 
 def _has_any_provider_configured() -> bool:
     """Check if at least one inference provider is usable."""
-    from vermes_cli.config import get_env_path, get_hermes_home, load_config
+    from vermes_cli.config import get_env_path, get_vermes_home, load_config
     from vermes_cli.auth import get_auth_status
 
     # Determine whether Vermes itself has been explicitly configured (model
@@ -304,7 +304,7 @@ def _has_any_provider_configured() -> bool:
         _model_name = model_cfg.strip()
     else:
         _model_name = ""
-    _has_hermes_config = _model_name and _model_name != _DEFAULT_MODEL
+    _has_vermes_config = _model_name and _model_name != _DEFAULT_MODEL
 
     # Check env vars (may be set by .env or shell).
     # OPENAI_BASE_URL alone counts — local models (vLLM, llama.cpp, etc.)
@@ -352,7 +352,7 @@ def _has_any_provider_configured() -> bool:
         pass
 
     # Check for Nous Portal OAuth credentials
-    auth_file = get_hermes_home() / "auth.json"
+    auth_file = get_vermes_home() / "auth.json"
     if auth_file.exists():
         try:
             import json
@@ -380,7 +380,7 @@ def _has_any_provider_configured() -> bool:
     # Check for Claude Code OAuth credentials (~/.claude/.credentials.json)
     # Only count these if Vermes has been explicitly configured — Claude Code
     # being installed doesn't mean the user wants Vermes to use their tokens.
-    if _has_hermes_config:
+    if _has_vermes_config:
         try:
             from agent.anthropic_adapter import (
                 read_claude_code_credentials,
@@ -686,14 +686,14 @@ def _exec_in_container(container_info: dict, cli_args: list):
     On failure, OSError propagates naturally.
 
     Args:
-        container_info: dict with backend, container_name, exec_user, hermes_bin
+        container_info: dict with backend, container_name, exec_user, VERMES_bin
         cli_args: the original CLI arguments (everything after 'vermes')
     """
 
     backend = container_info["backend"]
     container_name = container_info["container_name"]
     exec_user = container_info["exec_user"]
-    hermes_bin = container_info["hermes_bin"]
+    VERMES_bin = container_info["VERMES_bin"]
 
     runtime = shutil.which(backend)
     if not runtime:
@@ -763,7 +763,7 @@ def _exec_in_container(container_info: dict, cli_args: list):
         + tty_flags
         + ["-u", exec_user]
         + env_flags
-        + [container_name, hermes_bin]
+        + [container_name, VERMES_bin]
         + cli_args
     )
 
@@ -895,7 +895,7 @@ to avoid false-positive reinstalls on every launch.
 
 
 def _tui_need_npm_install(root: Path) -> bool:
-    """True when @hermes/ink is missing or node_modules is behind package-lock.json.
+    """True when @Vermes/ink is missing or node_modules is behind package-lock.json.
 
     Prebuilt bundle mode: when ``dist/entry.js`` exists and there is no
     ``package-lock.json`` (nix install layout only ships ``dist/`` +
@@ -926,7 +926,7 @@ def _tui_need_npm_install(root: Path) -> bool:
     if entry.is_file() and not lock.is_file():
         return False
 
-    ink = root / "node_modules" / "@hermes" / "ink" / "package.json"
+    ink = root / "node_modules" / "@Vermes" / "ink" / "package.json"
     if not ink.is_file():
         return True
     if not lock.is_file():
@@ -978,18 +978,18 @@ def _ensure_tui_node() -> None:
     was used (nvm, fnm, proto, brew, or the bundled fallback).
 
     Idempotent no-op when node+npm are already discoverable. Set
-    ``HERMES_SKIP_NODE_BOOTSTRAP=1`` to disable auto-install.
+    ``VERMES_SKIP_NODE_BOOTSTRAP=1`` to disable auto-install.
     """
     if shutil.which("node") and shutil.which("npm"):
         return
-    if os.environ.get("HERMES_SKIP_NODE_BOOTSTRAP"):
+    if os.environ.get("VERMES_SKIP_NODE_BOOTSTRAP"):
         return
 
     helper = PROJECT_ROOT / "scripts" / "lib" / "node-bootstrap.sh"
     if not helper.is_file():
         return
 
-    hermes_home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+    VERMES_home = os.environ.get("VERMES_HOME") or str(Path.home() / ".vermes")
     try:
         # Helper writes logs to stderr; we ask bash to print `command -v node`
         # on stdout once ensure_node succeeds. Subshell PATH edits don't leak
@@ -1000,7 +1000,7 @@ def _ensure_tui_node() -> None:
                 "-c",
                 f'source "{helper}" >&2 && ensure_node >&2 && command -v node',
             ],
-            env={**os.environ, "HERMES_HOME": hermes_home},
+            env={**os.environ, "VERMES_HOME": VERMES_home},
             capture_output=True,
             text=True,
             check=False,
@@ -1015,7 +1015,7 @@ def _ensure_tui_node() -> None:
     if resolved:
         extras.append(Path(resolved).resolve().parent)
 
-    extras.extend([Path(hermes_home) / "node" / "bin", Path.home() / ".local" / "bin"])
+    extras.extend([Path(VERMES_home) / "node" / "bin", Path.home() / ".local" / "bin"])
 
     for extra in extras:
         s = str(extra)
@@ -1033,12 +1033,12 @@ def _find_bundled_tui(vermes_cli_dir: Path | None = None) -> Path | None:
 
 
 def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
-    """TUI: --dev → tsx src; else node dist (HERMES_TUI_DIR prebuilt or esbuild)."""
+    """TUI: --dev → tsx src; else node dist (VERMES_TUI_DIR prebuilt or esbuild)."""
     _ensure_tui_node()
 
     def _node_bin(bin: str) -> str:
         if bin == "node":
-            env_node = os.environ.get("HERMES_NODE")
+            env_node = os.environ.get("VERMES_NODE")
             if env_node and os.path.isfile(env_node) and os.access(env_node, os.X_OK):
                 return env_node
         path = shutil.which(bin)
@@ -1055,12 +1055,12 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
         return path
 
     # Footgun: --dev against a prebuilt bundle that has no source/node_modules.
-    ext_dir = os.environ.get("HERMES_TUI_DIR")
+    ext_dir = os.environ.get("VERMES_TUI_DIR")
     if tui_dev and ext_dir:
         logger.info(
-            f"Error: --dev is incompatible with HERMES_TUI_DIR={ext_dir}\n"
+            f"Error: --dev is incompatible with VERMES_TUI_DIR={ext_dir}\n"
             f"The prebuilt TUI has no source code to hot-reload.\n"
-            f"Unset HERMES_TUI_DIR (e.g. `unset HERMES_TUI_DIR`) to use --dev from a checkout.",
+            f"Unset VERMES_TUI_DIR (e.g. `unset VERMES_TUI_DIR`) to use --dev from a checkout.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -1083,7 +1083,7 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
     #    --dev flow: npm install if needed, then tsx src/entry.tsx.
     if _tui_need_npm_install(tui_dir):
         npm = _node_bin("npm")
-        if not os.environ.get("HERMES_QUIET"):
+        if not os.environ.get("VERMES_QUIET"):
             logger.info("Installing TUI dependencies…")
         result = subprocess.run(
             [npm, "install", "--silent", "--no-fund", "--no-audit", "--progress=false"],
@@ -1102,13 +1102,13 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
             sys.exit(1)
 
     if tui_dev:
-        # Keep the local @hermes/ink package exports in sync with source.
-        # --dev runs src/entry.tsx directly, but @hermes/ink resolves through
-        # packages/hermes-ink/dist/entry-exports.js. If that dist bundle is
+        # Keep the local @Vermes/ink package exports in sync with source.
+        # --dev runs src/entry.tsx directly, but @Vermes/ink resolves through
+        # packages/Vermes-ink/dist/entry-exports.js. If that dist bundle is
         # stale after a pull, newer hooks/components can exist in src while
         # being missing at runtime (e.g. useCursorAdvance). Prebuild it here.
         npm = _node_bin("npm")
-        ink_dir = tui_dir / "packages" / "hermes-ink"
+        ink_dir = tui_dir / "packages" / "Vermes-ink"
         result = subprocess.run(
             [npm, "run", "build"],
             cwd=str(ink_dir),
@@ -1196,15 +1196,15 @@ def _launch_tui(
 
     env = os.environ.copy()
     active_session_fd, active_session_file = tempfile.mkstemp(
-        prefix="hermes-tui-active-session-", suffix=".json"
+        prefix="Vermes-tui-active-session-", suffix=".json"
     )
     os.close(active_session_fd)
-    env["HERMES_TUI_ACTIVE_SESSION_FILE"] = active_session_file
-    env["HERMES_PYTHON_SRC_ROOT"] = os.environ.get(
-        "HERMES_PYTHON_SRC_ROOT", str(PROJECT_ROOT)
+    env["VERMES_TUI_ACTIVE_SESSION_FILE"] = active_session_file
+    env["VERMES_PYTHON_SRC_ROOT"] = os.environ.get(
+        "VERMES_PYTHON_SRC_ROOT", str(PROJECT_ROOT)
     )
-    env.setdefault("HERMES_PYTHON", sys.executable)
-    env.setdefault("HERMES_CWD", os.getcwd())
+    env.setdefault("VERMES_PYTHON", sys.executable)
+    env.setdefault("VERMES_CWD", os.getcwd())
     env.setdefault("NODE_ENV", "development" if tui_dev else "production")
 
     wt_info = None
@@ -1226,18 +1226,18 @@ def _launch_tui(
             wt_info = None
         if not wt_info:
             sys.exit(1)
-        env["HERMES_CWD"] = wt_info["path"]
+        env["VERMES_CWD"] = wt_info["path"]
         env["TERMINAL_CWD"] = wt_info["path"]
 
     if model:
-        env["HERMES_MODEL"] = model
-        env["HERMES_INFERENCE_MODEL"] = model
+        env["VERMES_MODEL"] = model
+        env["VERMES_INFERENCE_MODEL"] = model
     if provider:
-        env["HERMES_TUI_PROVIDER"] = provider
-        env["HERMES_INFERENCE_PROVIDER"] = provider
+        env["VERMES_TUI_PROVIDER"] = provider
+        env["VERMES_INFERENCE_PROVIDER"] = provider
     tui_toolsets = _normalize_tui_toolsets(toolsets)
     if tui_toolsets:
-        env["HERMES_TUI_TOOLSETS"] = ",".join(tui_toolsets)
+        env["VERMES_TUI_TOOLSETS"] = ",".join(tui_toolsets)
     if skills:
         if isinstance(skills, (list, tuple)):
             flattened = []
@@ -1246,27 +1246,27 @@ def _launch_tui(
                     part.strip() for part in str(item).split(",") if part.strip()
                 )
             if flattened:
-                env["HERMES_TUI_SKILLS"] = ",".join(flattened)
+                env["VERMES_TUI_SKILLS"] = ",".join(flattened)
         else:
             value = str(skills).strip()
             if value:
-                env["HERMES_TUI_SKILLS"] = value
+                env["VERMES_TUI_SKILLS"] = value
     if query:
-        env["HERMES_TUI_QUERY"] = query
+        env["VERMES_TUI_QUERY"] = query
     if image:
-        env["HERMES_TUI_IMAGE"] = image
+        env["VERMES_TUI_IMAGE"] = image
     if checkpoints:
-        env["HERMES_TUI_CHECKPOINTS"] = "1"
+        env["VERMES_TUI_CHECKPOINTS"] = "1"
     if pass_session_id:
-        env["HERMES_TUI_PASS_SESSION_ID"] = "1"
+        env["VERMES_TUI_PASS_SESSION_ID"] = "1"
     if max_turns is not None:
-        env["HERMES_TUI_MAX_TURNS"] = str(max_turns)
+        env["VERMES_TUI_MAX_TURNS"] = str(max_turns)
     if verbose:
-        env["HERMES_TUI_TOOL_PROGRESS"] = "verbose"
+        env["VERMES_TUI_TOOL_PROGRESS"] = "verbose"
     elif quiet:
-        env["HERMES_TUI_TOOL_PROGRESS"] = "off"
+        env["VERMES_TUI_TOOL_PROGRESS"] = "off"
     if accept_hooks:
-        env["HERMES_ACCEPT_HOOKS"] = "1"
+        env["VERMES_ACCEPT_HOOKS"] = "1"
     # Guarantee an 8GB V8 heap + exposed GC for the TUI. Default node cap is
     # ~1.5–4GB depending on version and can fatal-OOM on long sessions with
     # large transcripts / reasoning blobs. Token-level merge: respect any
@@ -1278,16 +1278,16 @@ def _launch_tui(
     if "--expose-gc" not in _tokens:
         _tokens.append("--expose-gc")
     env["NODE_OPTIONS"] = " ".join(_tokens)
-    # HERMES_TUI_RESUME is an internal hand-off from the Python wrapper to the
+    # VERMES_TUI_RESUME is an internal hand-off from the Python wrapper to the
     # Ink app.  Because we start from os.environ.copy(), an exported/stale value
     # in the user's shell would otherwise make a plain `vermes --tui` try to
     # resume a non-existent session and leave the UI at "error: session not
     # found" with no live session.  Only forward a resume id that argparse
     # resolved for this invocation; direct `node ui-tui/dist/entry.js` users can
-    # still set HERMES_TUI_RESUME themselves.
-    env.pop("HERMES_TUI_RESUME", None)
+    # still set VERMES_TUI_RESUME themselves.
+    env.pop("VERMES_TUI_RESUME", None)
     if resume_session_id:
-        env["HERMES_TUI_RESUME"] = resume_session_id
+        env["VERMES_TUI_RESUME"] = resume_session_id
 
     argv, cwd = _make_tui_argv(tui_dir, tui_dev)
     code: Optional[int] = None
@@ -1326,7 +1326,7 @@ def _launch_tui(
 
 
 def _pin_kanban_board_env() -> None:
-    """Pin the active kanban board into ``HERMES_KANBAN_BOARD`` for the chat session.
+    """Pin the active kanban board into ``VERMES_KANBAN_BOARD`` for the chat session.
 
     Without this, in-process tools (``kanban_*``) and shelled-out CLI calls
     (``vermes kanban …``) resolve the board on different paths: the env-pin if
@@ -1336,19 +1336,19 @@ def _pin_kanban_board_env() -> None:
     calls hit board B (#20074). Pinning at chat boot mirrors what the
     dispatcher already does for spawned workers.
     """
-    if os.environ.get("HERMES_KANBAN_BOARD"):
+    if os.environ.get("VERMES_KANBAN_BOARD"):
         return
     try:
         from vermes_cli.kanban_db import get_current_board
 
-        os.environ["HERMES_KANBAN_BOARD"] = get_current_board()
+        os.environ["VERMES_KANBAN_BOARD"] = get_current_board()
     except Exception:
         pass
 
 
 def cmd_chat(args):
     """Run interactive chat CLI."""
-    use_tui = getattr(args, "tui", False) or os.environ.get("HERMES_TUI") == "1"
+    use_tui = getattr(args, "tui", False) or os.environ.get("VERMES_TUI") == "1"
 
     # Resolve --continue into --resume with the latest session or by name
     continue_val = getattr(args, "continue_last", None)
@@ -1434,7 +1434,7 @@ def cmd_chat(args):
 
     # --yolo: bypass all dangerous command approvals
     if getattr(args, "yolo", False):
-        os.environ["HERMES_YOLO_MODE"] = "1"
+        os.environ["VERMES_YOLO_MODE"] = "1"
 
     # --ignore-user-config: make load_cli_config() / load_config() skip the
     # user's ~/.vermes/config.yaml and return built-in defaults. Set BEFORE
@@ -1442,17 +1442,17 @@ def cmd_chat(args):
     # import time). Credentials in .env are still loaded — this flag only
     # ignores behavioral/config settings.
     if getattr(args, "ignore_user_config", False):
-        os.environ["HERMES_IGNORE_USER_CONFIG"] = "1"
+        os.environ["VERMES_IGNORE_USER_CONFIG"] = "1"
 
     # --ignore-rules: skip auto-injection of AGENTS.md/SOUL.md/.cursorrules
     # (rules), memory entries, and any preloaded skills coming from user config.
     # Maps to AIAgent(skip_context_files=True, skip_memory=True).
     if getattr(args, "ignore_rules", False):
-        os.environ["HERMES_IGNORE_RULES"] = "1"
+        os.environ["VERMES_IGNORE_RULES"] = "1"
 
     # --source: tag session source for filtering (e.g. 'tool' for third-party integrations)
     if getattr(args, "source", None):
-        os.environ["HERMES_SESSION_SOURCE"] = args.source
+        os.environ["VERMES_SESSION_SOURCE"] = args.source
 
     _pin_kanban_board_env()
 
@@ -1668,7 +1668,7 @@ def cmd_whatsapp(args):
         logger.info("✓ Bridge dependencies already installed")
 
     # ── Step 5: Check for existing session ───────────────────────────────
-    session_dir = get_hermes_home() / "whatsapp" / "session"
+    session_dir = get_vermes_home() / "whatsapp" / "session"
     session_dir.mkdir(parents=True, exist_ok=True)
 
     if (session_dir / "creds.json").exists():
@@ -1829,7 +1829,7 @@ def select_provider_and_model(args=None):
         config_provider = model_cfg.get("provider")
 
     effective_provider = (
-        config_provider or os.getenv("HERMES_INFERENCE_PROVIDER") or "auto"
+        config_provider or os.getenv("VERMES_INFERENCE_PROVIDER") or "auto"
     )
     compatible_custom_providers = get_compatible_custom_providers(config)
     active = None
@@ -4503,7 +4503,7 @@ def _model_flow_copilot_acp(config, current_model=""):
     except Exception as exc:
         logger.info(f"  ⚠ {exc}")
         logger.info(
-            "  Set HERMES_COPILOT_ACP_COMMAND or COPILOT_CLI_PATH if Copilot CLI is installed elsewhere."
+            "  Set VERMES_COPILOT_ACP_COMMAND or COPILOT_CLI_PATH if Copilot CLI is installed elsewhere."
         )
         return
 
@@ -5458,7 +5458,7 @@ def _run_anthropic_oauth_flow(save_env_value):
         ):
             use_anthropic_claude_code_credentials(save_fn=save_env_value)
             logger.info("  ✓ Claude Code credentials linked.")
-            from vermes_constants import display_hermes_home as _dhh_fn
+            from vermes_constants import display_vermes_home as _dhh_fn
 
             logger.info(
                 f"    Vermes will use Claude's credential store directly instead of copying a setup-token into {_dhh_fn()}/.env."
@@ -5949,9 +5949,9 @@ def _gateway_prompt(prompt_text: str, default: str = "", timeout: float = 300.0)
     """
     import json as _json
     import uuid as _uuid
-    from vermes_constants import get_hermes_home
+    from vermes_constants import get_vermes_home
 
-    home = get_hermes_home()
+    home = get_vermes_home()
     prompt_path = home / ".update_prompt.json"
     response_path = home / ".update_response"
 
@@ -6308,7 +6308,7 @@ def _print_curator_first_run_notice() -> None:
     logger.info("  Preview now:  vermes curator run --dry-run")
     logger.info("  Pause it:     vermes curator pause")
     logger.info(
-        "  Docs:         https://hermes-agent.nousresearch.com/docs/user-guide/features/curator"
+        "  Docs:         https://Vermes-agent.donghzs.com/docs/user-guide/features/curator"
     )
 
 
@@ -6514,13 +6514,13 @@ def _update_via_zip(args):
 
     branch = "main"
     zip_url = (
-        f"https://github.com/NousResearch/hermes-agent/archive/refs/heads/{branch}.zip"
+        f"https://github.com/donghzs/vermes/archive/refs/heads/{branch}.zip"
     )
 
     logger.info("→ Downloading latest version...")
     try:
-        tmp_dir = tempfile.mkdtemp(prefix="hermes-update-")
-        zip_path = os.path.join(tmp_dir, f"hermes-agent-{branch}.zip")
+        tmp_dir = tempfile.mkdtemp(prefix="Vermes-update-")
+        zip_path = os.path.join(tmp_dir, f"Vermes-agent-{branch}.zip")
         urlretrieve(zip_url, zip_path)
 
         logger.info("→ Extracting...")
@@ -6538,8 +6538,8 @@ def _update_via_zip(args):
                     )
             zf.extractall(tmp_dir)
 
-        # GitHub ZIPs extract to hermes-agent-<branch>/
-        extracted = os.path.join(tmp_dir, f"hermes-agent-{branch}")
+        # GitHub ZIPs extract to Vermes-agent-<branch>/
+        extracted = os.path.join(tmp_dir, f"Vermes-agent-{branch}")
         if not os.path.isdir(extracted):
             # Try to find it
             for d in os.listdir(tmp_dir):
@@ -6678,7 +6678,7 @@ def _stash_local_changes_if_needed(git_cmd: list[str], cwd: Path) -> Optional[st
     from datetime import datetime, timezone
 
     stash_name = datetime.now(timezone.utc).strftime(
-        "hermes-update-autostash-%Y%m%d-%H%M%S"
+        "Vermes-update-autostash-%Y%m%d-%H%M%S"
     )
     logger.info("→ Local changes detected — stashing before update...")
     subprocess.run(
@@ -6841,12 +6841,12 @@ def _restore_stashed_changes(
 # =========================================================================
 
 OFFICIAL_REPO_URLS = {
-    "https://github.com/NousResearch/hermes-agent.git",
-    "git@github.com:NousResearch/hermes-agent.git",
-    "https://github.com/NousResearch/hermes-agent",
-    "git@github.com:NousResearch/hermes-agent",
+    "https://github.com/donghzs/vermes.git",
+    "git@github.com:donghzs/vermes.git",
+    "https://github.com/donghzs/vermes",
+    "git@github.com:donghzs/vermes",
 }
-OFFICIAL_REPO_URL = "https://github.com/NousResearch/hermes-agent.git"
+OFFICIAL_REPO_URL = "https://github.com/donghzs/vermes.git"
 SKIP_UPSTREAM_PROMPT_FILE = ".skip_upstream_prompt"
 
 
@@ -6929,17 +6929,17 @@ def _count_commits_between(git_cmd: list[str], cwd: Path, base: str, head: str) 
 
 def _should_skip_upstream_prompt() -> bool:
     """Check if user previously declined to add upstream."""
-    from vermes_constants import get_hermes_home
+    from vermes_constants import get_vermes_home
 
-    return (get_hermes_home() / SKIP_UPSTREAM_PROMPT_FILE).exists()
+    return (get_vermes_home() / SKIP_UPSTREAM_PROMPT_FILE).exists()
 
 
 def _mark_skip_upstream_prompt():
     """Create marker file to skip future upstream prompts."""
     try:
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
 
-        (get_hermes_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
+        (get_vermes_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
     except Exception:
         pass
 
@@ -6980,7 +6980,7 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
         # Ask user if they want to add upstream
         logger.info()
         logger.info("ℹ Your fork is not tracking the official Vermes repository.")
-        logger.info("  This means you may miss updates from NousResearch/hermes-agent.")
+        logger.info("  This means you may miss updates from donghzs/vermes.")
         logger.info()
         try:
             response = (
@@ -6994,7 +6994,7 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
             logger.info("→ Adding upstream remote...")
             if _add_upstream_remote(git_cmd, cwd):
                 logger.info(
-                    "  ✓ Added upstream: https://github.com/NousResearch/hermes-agent.git"
+                    "  ✓ Added upstream: https://github.com/donghzs/vermes.git"
                 )
                 has_upstream = True
             else:
@@ -7002,7 +7002,7 @@ def _sync_with_upstream_if_needed(git_cmd: list[str], cwd: Path) -> None:
                 return
         else:
             logger.info(
-                "  Skipped. Run 'git remote add upstream https://github.com/NousResearch/hermes-agent.git' to add later."
+                "  Skipped. Run 'git remote add upstream https://github.com/donghzs/vermes.git' to add later."
             )
             _mark_skip_upstream_prompt()
             return
@@ -7084,9 +7084,9 @@ def _invalidate_update_cache():
     """
     homes = []
     # Default profile home (Docker-aware — uses /opt/data in Docker)
-    from vermes_constants import get_default_hermes_root
+    from vermes_constants import get_default_vermes_root
 
-    default_home = get_default_hermes_root()
+    default_home = get_default_vermes_root()
     homes.append(default_home)
     # Named profiles under <root>/profiles/
     profiles_root = default_home / "profiles"
@@ -7183,7 +7183,7 @@ def _venv_scripts_dir() -> Path | None:
     return scripts if scripts.is_dir() else None
 
 
-def _hermes_exe_shims(scripts_dir: Path) -> list[Path]:
+def _vermes_exe_shims(scripts_dir: Path) -> list[Path]:
     """Entry-point shims that uv may try to rewrite during ``pip install -e .``.
 
     On Windows these are .exe launchers generated by setuptools/uv. On POSIX
@@ -7194,11 +7194,11 @@ def _hermes_exe_shims(scripts_dir: Path) -> list[Path]:
         return []
     return [
         scripts_dir / "vermes.exe",
-        scripts_dir / "hermes-gateway.exe",
+        scripts_dir / "Vermes-gateway.exe",
     ]
 
 
-def _detect_concurrent_hermes_instances(
+def _detect_concurrent_vermes_instances(
     scripts_dir: Path, *, exclude_pid: int | None = None
 ) -> list[tuple[int, str]]:
     """Find other live processes whose .exe is one of our entry-point shims.
@@ -7211,7 +7211,7 @@ def _detect_concurrent_hermes_instances(
     ``[WinError 32]`` and uv inherits the lock.
 
     This helper enumerates processes whose ``exe`` matches one of the venv's
-    shims (``vermes.exe`` / ``hermes-gateway.exe``) and returns ``(pid,
+    shims (``vermes.exe`` / ``Vermes-gateway.exe``) and returns ``(pid,
     process_name)`` pairs. The caller's own PID is excluded so the running
     ``vermes update`` invocation never reports itself.
 
@@ -7231,7 +7231,7 @@ def _detect_concurrent_hermes_instances(
 
     # Resolve every shim path to its canonical form once for cheap comparison.
     shim_paths: set[str] = set()
-    for shim in _hermes_exe_shims(scripts_dir):
+    for shim in _vermes_exe_shims(scripts_dir):
         try:
             shim_paths.add(str(shim.resolve()).lower())
         except OSError:
@@ -7284,7 +7284,7 @@ def _format_concurrent_instances_message(
     return "\n".join(lines)
 
 
-def _quarantine_running_hermes_exe(
+def _quarantine_running_vermes_exe(
     scripts_dir: Path, *, max_attempts: int = 4
 ) -> list[tuple[Path, Path]]:
     """Pre-empt Windows file lock on the running ``vermes.exe``.
@@ -7332,7 +7332,7 @@ def _quarantine_running_hermes_exe(
     backoff_ms = [0, 100, 250, 500, 1000]
     attempts = max(1, min(max_attempts, len(backoff_ms)))
 
-    for shim in _hermes_exe_shims(scripts_dir):
+    for shim in _vermes_exe_shims(scripts_dir):
         if not shim.exists():
             continue
         target = shim.with_suffix(shim.suffix + f".old.{stamp}")
@@ -7423,7 +7423,7 @@ def _schedule_replace_on_reboot(shim: Path, quarantine_target: Path) -> bool:
 
 
 def _restore_quarantined_exes(moved: list[tuple[Path, Path]]) -> None:
-    """Roll back ``_quarantine_running_hermes_exe`` if uv didn't write replacements."""
+    """Roll back ``_quarantine_running_vermes_exe`` if uv didn't write replacements."""
     for original, quarantined in moved:
         try:
             if not original.exists() and quarantined.exists():
@@ -7534,17 +7534,17 @@ def _install_python_dependencies_with_optional_fallback(
     By default this targets ``.[all]``; Termux callers can pass
     ``group='termux-all'`` to use the curated Android-compatible profile.
 
-    On Windows, pre-renames live ``vermes.exe`` / ``hermes-gateway.exe`` shims
+    On Windows, pre-renames live ``vermes.exe`` / ``Vermes-gateway.exe`` shims
     in the venv Scripts dir before each install attempt so uv can write fresh
     copies (Windows blocks REPLACE on a running .exe but allows RENAME). See
-    ``_quarantine_running_hermes_exe`` for the rationale.
+    ``_quarantine_running_vermes_exe`` for the rationale.
     """
     scripts_dir = _venv_scripts_dir() if _is_windows() else None
 
     def _install(args: list[str]) -> None:
         moved: list[tuple[Path, Path]] = []
         if scripts_dir is not None:
-            moved = _quarantine_running_hermes_exe(scripts_dir)
+            moved = _quarantine_running_vermes_exe(scripts_dir)
         try:
             _run_install_with_heartbeat(install_cmd_prefix + args, env=env)
         except BaseException:
@@ -7827,10 +7827,10 @@ def _install_hangup_protection(gateway_mode: bool = False):
     # tolerance.  Any failure here is non-fatal; we just skip the wrap.
     try:
         # Late-bound import so tests can monkeypatch
-        # vermes_cli.config.get_hermes_home to simulate setup failure.
-        from vermes_cli.config import get_hermes_home as _get_hermes_home
+        # vermes_cli.config.get_vermes_home to simulate setup failure.
+        from vermes_cli.config import get_vermes_home as _get_vermes_home
 
-        logs_dir = _get_hermes_home() / "logs"
+        logs_dir = _get_vermes_home() / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         log_path = logs_dir / "update.log"
         log_file = open(log_path, "a", buffering=1, encoding="utf-8")
@@ -7968,7 +7968,7 @@ def _ensure_fhs_path_guard() -> None:
     (su, sudo -s, tmux panes, some web terminals): /etc/bashrc doesn't
     add /usr/local/bin and /root/.bash_profile doesn't either.  Symptom:
     ``vermes`` prints ``command not found`` even though the symlink lives
-    at /usr/local/bin/hermes.
+    at /usr/local/bin/Vermes.
 
     Silent no-op on: non-Linux, non-root, non-FHS installs, and any system
     where ``bash -i -c 'command -v vermes'`` already resolves.  Idempotent.
@@ -7981,8 +7981,8 @@ def _ensure_fhs_path_guard() -> None:
     except AttributeError:
         return
     # Only act when this is actually an FHS-layout install (command link at
-    # /usr/local/bin/hermes, code at /usr/local/lib/hermes-agent).
-    fhs_link = Path("/usr/local/bin/hermes")
+    # /usr/local/bin/Vermes, code at /usr/local/lib/Vermes-agent).
+    fhs_link = Path("/usr/local/bin/Vermes")
     if not fhs_link.is_symlink() and not fhs_link.exists():
         return
 
@@ -8047,11 +8047,11 @@ def _ensure_fhs_path_guard() -> None:
 
 
 def _run_pre_update_backup(args) -> None:
-    """Create a full zip backup of HERMES_HOME before running the update.
+    """Create a full zip backup of VERMES_HOME before running the update.
 
     Gated on ``updates.pre_update_backup`` in config (default false).  Off
     by default because the zip can add minutes to every update on large
-    HERMES_HOME directories.  The ``--backup`` flag on ``vermes update``
+    VERMES_HOME directories.  The ``--backup`` flag on ``vermes update``
     opts in for a single run; ``--no-backup`` forces it off when config
     has it enabled.  Never raises — a backup failure should not block the
     update itself.
@@ -8123,13 +8123,13 @@ def _run_pre_update_backup(args) -> None:
         size_bytes /= 1024
         size_str = f"{size_bytes:.1f} {unit}"
 
-    # Render path using display_hermes_home so the user sees ~/.vermes/...
+    # Render path using display_vermes_home so the user sees ~/.vermes/...
     try:
-        from vermes_constants import get_hermes_home, display_hermes_home
+        from vermes_constants import get_vermes_home, display_vermes_home
 
-        home = get_hermes_home()
+        home = get_vermes_home()
         try:
-            display_path = f"{display_hermes_home()}/{out_path.relative_to(home)}"
+            display_path = f"{display_vermes_home()}/{out_path.relative_to(home)}"
         except ValueError:
             display_path = str(out_path)
     except Exception:
@@ -8180,9 +8180,9 @@ def _cmd_update_pip(args):
 
     uv = shutil.which("uv")
     if uv:
-        cmd = [uv, "pip", "install", "--upgrade", "hermes-agent"]
+        cmd = [uv, "pip", "install", "--upgrade", "Vermes-agent"]
     else:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "hermes-agent"]
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "Vermes-agent"]
 
     logger.info(f"→ Running: {' '.join(cmd)}")
     result = subprocess.run(cmd)
@@ -8214,7 +8214,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
     if _is_windows() and not getattr(args, "force", False):
         scripts_dir = _venv_scripts_dir()
         if scripts_dir is not None:
-            concurrent = _detect_concurrent_hermes_instances(scripts_dir)
+            concurrent = _detect_concurrent_vermes_instances(scripts_dir)
             if concurrent:
                 logger.info(_format_concurrent_instances_message(concurrent, scripts_dir))
                 sys.exit(2)
@@ -8239,7 +8239,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 return
             logger.info("✗ Not a git repository. Please reinstall:")
             logger.info(
-                "  curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"
+                "  curl -fsSL https://raw.githubusercontent.com/donghzs/vermes/main/scripts/install.sh | bash"
             )
             sys.exit(1)
 
@@ -8382,7 +8382,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # Snapshot critical state (state.db, config, pairing JSONs, etc.)
         # before pulling so a user can recover if something goes wrong.
         # Issue #15733 reported missing pairing data after an update; even
-        # though `git pull` can't touch $HERMES_HOME, this is cheap
+        # though `git pull` can't touch $VERMES_HOME, this is cheap
         # belt-and-suspenders insurance and gives the user something to
         # restore from via `/snapshot list` / `/snapshot restore <id>`.
         try:
@@ -8496,7 +8496,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
         # Clear stale .pyc bytecode cache — prevents ImportError on gateway
         # restart when updated source references names that didn't exist in
-        # the old bytecode (e.g. get_hermes_home added to vermes_constants).
+        # the old bytecode (e.g. get_vermes_home added to vermes_constants).
         removed = _clear_bytecode_cache(PROJECT_ROOT)
         if removed:
             logger.info(
@@ -8566,7 +8566,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # After git pull, source files on disk are newer than cached Python
         # modules in this process.  Reload vermes_constants so that any lazy
         # import executed below (skills sync, gateway restart) sees new
-        # attributes like display_hermes_home() added since the last release.
+        # attributes like display_vermes_home() added since the last release.
         try:
             import importlib
             import vermes_constants as _hc
@@ -8598,10 +8598,10 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("Skills sync during update failed: %s", e)
 
         # Sync bundled skills to all profiles (including the active one).
-        # seed_profile_skills() uses subprocess with an explicit HERMES_HOME so
-        # it is not affected by sync_skills()'s module-level HERMES_HOME cache,
+        # seed_profile_skills() uses subprocess with an explicit VERMES_HOME so
+        # it is not affected by sync_skills()'s module-level VERMES_HOME cache,
         # which means the active profile is reliably synced regardless of whether
-        # the caller's HERMES_HOME env var points at the default or a named profile.
+        # the caller's VERMES_HOME env var points at the default or a named profile.
         try:
             from vermes_cli.profiles import (
                 list_profiles,
@@ -8785,7 +8785,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # before we attempt the restart — ensures the new gateway sees it
         # regardless of how we die.
         if gateway_mode:
-            _exit_code_path = get_hermes_home() / ".update_exit_code"
+            _exit_code_path = get_vermes_home() / ".update_exit_code"
             try:
                 _exit_code_path.write_text("0")
             except OSError:
@@ -8925,7 +8925,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             relaunched_profiles = []
 
             # --- Systemd services (Linux) ---
-            # Discover all hermes-gateway* units (default + profiles)
+            # Discover all Vermes-gateway* units (default + profiles)
             if supports_systemd_services():
                 try:
                     _ensure_user_systemd_env()
@@ -8941,7 +8941,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                             scope_cmd
                             + [
                                 "list-units",
-                                "hermes-gateway*",
+                                "Vermes-gateway*",
                                 "--plain",
                                 "--no-legend",
                                 "--no-pager",
@@ -8956,7 +8956,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                                 continue
                             unit = parts[
                                 0
-                            ]  # e.g. hermes-gateway.service or hermes-gateway-coder.service
+                            ]  # e.g. Vermes-gateway.service or Vermes-gateway-coder.service
                             if not unit.endswith(".service"):
                                 continue
                             svc_name = unit.removesuffix(".service")
@@ -9316,26 +9316,26 @@ def _cmd_update_impl(args, gateway_mode: bool):
             logger.debug("Gateway restart during update failed: %s", e)
 
         # Warn if legacy Vermes gateway unit files are still installed.
-        # When both hermes.service (from a pre-rename install) and the
-        # current hermes-gateway.service are enabled, they SIGTERM-fight
+        # When both Vermes.service (from a pre-rename install) and the
+        # current Vermes-gateway.service are enabled, they SIGTERM-fight
         # for the same bot token (see PR #11909). Flagging here means
         # every `vermes update` surfaces the issue until the user migrates.
         try:
             from vermes_cli.gateway import (
-                has_legacy_hermes_units,
-                _find_legacy_hermes_units,
+                has_legacy_vermes_units,
+                _find_legacy_vermes_units,
                 supports_systemd_services,
             )
 
-            if supports_systemd_services() and has_legacy_hermes_units():
+            if supports_systemd_services() and has_legacy_vermes_units():
                 logger.info()
                 logger.info("⚠ Legacy Vermes gateway unit(s) detected:")
-                for name, path, is_sys in _find_legacy_hermes_units():
+                for name, path, is_sys in _find_legacy_vermes_units():
                     scope = "system" if is_sys else "user"
                     logger.info(f"    {path}  ({scope} scope)")
                 logger.info()
-                logger.info("  These pre-rename units (hermes.service) fight the current")
-                logger.info("  hermes-gateway.service for the bot token and cause SIGTERM")
+                logger.info("  These pre-rename units (Vermes.service) fight the current")
+                logger.info("  Vermes-gateway.service for the bot token and cause SIGTERM")
                 logger.info("  flap loops. Remove them with:")
                 logger.info()
                 logger.info("    vermes gateway migrate-legacy")
@@ -9455,14 +9455,14 @@ def cmd_profile(args):
         _is_wrapper_dir_in_path,
         _get_wrapper_dir,
     )
-    from vermes_constants import display_hermes_home
+    from vermes_constants import display_vermes_home
 
     action = getattr(args, "profile_action", None)
 
     if action is None:
         # Bare `vermes profile` — show current profile status
         profile_name = get_active_profile_name()
-        dhh = display_hermes_home()
+        dhh = display_vermes_home()
         logger.info(f"\nActive profile: {profile_name}")
         logger.info(f"Path:           {dhh}")
 
@@ -9527,7 +9527,7 @@ def cmd_profile(args):
         try:
             set_active_profile(name)
             if name == "default":
-                logger.info(f"Switched to: default (~/.hermes)")
+                logger.info(f"Switched to: default (~/.Vermes)")
             else:
                 logger.info(f"Switched to: {name}")
         except (ValueError, FileNotFoundError) as e:
@@ -9686,7 +9686,7 @@ def cmd_profile(args):
         if name and not text_value and not auto_flag:
             try:
                 if _profiles_mod.normalize_profile_name(name) == "default":
-                    from vermes_constants import get_hermes_home as _hh
+                    from vermes_constants import get_vermes_home as _hh
                     profile_dir = Path(_hh())
                 else:
                     profile_dir = _profiles_mod.get_profile_dir(name)
@@ -9709,7 +9709,7 @@ def cmd_profile(args):
         if text_value:
             try:
                 if _profiles_mod.normalize_profile_name(name) == "default":
-                    from vermes_constants import get_hermes_home as _hh
+                    from vermes_constants import get_vermes_home as _hh
                     profile_dir = Path(_hh())
                 else:
                     profile_dir = _profiles_mod.get_profile_dir(name)
@@ -9882,7 +9882,7 @@ def cmd_profile(args):
             # Preview: stage the distribution into a scratch dir, show the
             # manifest, then do the real install.  The double-stage avoids
             # any side-effects if the user declines.
-            with tempfile.TemporaryDirectory(prefix="hermes_dist_preview_") as tmp:
+            with tempfile.TemporaryDirectory(prefix="VERMES_dist_preview_") as tmp:
                 plan = plan_install(
                     args.source,
                     Path(tmp),
@@ -9991,8 +9991,8 @@ def cmd_profile(args):
             logger.info(f"Author:       {data['author']}")
         if data.get("license"):
             logger.info(f"License:      {data['license']}")
-        if data.get("hermes_requires"):
-            logger.info(f"Requires:     Hermes {data['hermes_requires']}")
+        if data.get("VERMES_requires"):
+            logger.info(f"Requires:     Vermes {data['VERMES_requires']}")
         if data.get("source"):
             logger.info(f"Source:       {data['source']}")
         if data.get("installed_at"):
@@ -10020,8 +10020,8 @@ def _render_distribution_plan(plan) -> None:
         logger.info(f"  {mf.description}")
     if mf.author:
         logger.info(f"  Author:   {mf.author}")
-    if mf.hermes_requires:
-        logger.info(f"  Requires: Hermes {mf.hermes_requires}")
+    if mf.VERMES_requires:
+        logger.info(f"  Requires: Vermes {mf.VERMES_requires}")
     logger.info(f"  Source:   {plan.provenance}")
     logger.info(f"  Target:   {plan.target_dir}")
     if plan.existing:
@@ -10144,7 +10144,7 @@ def cmd_dashboard(args):
         logger.info(f"Import error: {e}")
         sys.exit(1)
 
-    if "HERMES_WEB_DIST" not in os.environ and not getattr(args, "skip_build", False):
+    if "VERMES_WEB_DIST" not in os.environ and not getattr(args, "skip_build", False):
         if not _build_web_ui(PROJECT_ROOT / "web", fatal=True):
             sys.exit(1)
     elif getattr(args, "skip_build", False):
@@ -10152,8 +10152,8 @@ def cmd_dashboard(args):
         # Verify the dist actually exists; otherwise the server will start
         # and serve 404s with no obvious cause (issue #23817).
         _dist_root = (
-            Path(os.environ["HERMES_WEB_DIST"])
-            if "HERMES_WEB_DIST" in os.environ
+            Path(os.environ["VERMES_WEB_DIST"])
+            if "VERMES_WEB_DIST" in os.environ
             else PROJECT_ROOT / "vermes_cli" / "web_dist"
         )
         if not (_dist_root / "index.html").exists():
@@ -10165,7 +10165,7 @@ def cmd_dashboard(args):
 
     from vermes_cli.web_server import start_server
 
-    embedded_chat = args.tui or os.environ.get("HERMES_DASHBOARD_TUI") == "1"
+    embedded_chat = args.tui or os.environ.get("VERMES_DASHBOARD_TUI") == "1"
     start_server(
         host=args.host,
         port=args.port,
@@ -10355,7 +10355,7 @@ def main():
 
     # Sweep stale ``vermes.exe.old.*`` quarantine files left by previous
     # ``vermes update`` runs on Windows. Silent no-op on non-Windows or when
-    # there's nothing to clean. See ``_quarantine_running_hermes_exe``.
+    # there's nothing to clean. See ``_quarantine_running_vermes_exe``.
     try:
         _cleanup_quarantined_exes()
     except Exception:
@@ -10385,7 +10385,7 @@ def main():
     model_parser.add_argument(
         "--client-id",
         default=None,
-        help="OAuth client id to use for Nous login (default: hermes-cli)",
+        help="OAuth client id to use for Nous login (default: Vermes-cli)",
     )
     model_parser.add_argument(
         "--scope", default=None, help="OAuth scope to request for Nous login"
@@ -10433,7 +10433,7 @@ def main():
             "Manage the fallback provider chain.  Fallback providers are tried "
             "in order when the primary model fails with rate-limit, overload, or "
             "connection errors.  See: "
-            "https://hermes-agent.nousresearch.com/docs/user-guide/features/fallback-providers"
+            "https://Vermes-agent.donghzs.com/docs/user-guide/features/fallback-providers"
         ),
     )
     fallback_subparsers = fallback_parser.add_subparsers(dest="fallback_command")
@@ -10614,11 +10614,11 @@ def main():
     # gateway migrate-legacy
     gateway_migrate_legacy = gateway_subparsers.add_parser(
         "migrate-legacy",
-        help="Remove legacy hermes.service units from pre-rename installs",
+        help="Remove legacy Vermes.service units from pre-rename installs",
         description=(
             "Stop, disable, and remove legacy Vermes gateway unit files "
-            "(e.g. hermes.service) left over from older installs. Profile "
-            "units (hermes-gateway-<profile>.service) and unrelated "
+            "(e.g. Vermes.service) left over from older installs. Profile "
+            "units (Vermes-gateway-<profile>.service) and unrelated "
             "third-party services are never touched."
         ),
     )
@@ -10782,7 +10782,7 @@ def main():
         default=None,
         metavar="PATH",
         help="Write manifest to a file instead of stdout. With no PATH "
-        "writes to $HERMES_HOME/slack-manifest.json.",
+        "writes to $VERMES_HOME/slack-manifest.json.",
     )
     slack_manifest.add_argument(
         "--name",
@@ -10830,7 +10830,7 @@ def main():
         help="Inference API base URL (default: production inference API)",
     )
     login_parser.add_argument(
-        "--client-id", default=None, help="OAuth client id to use (default: hermes-cli)"
+        "--client-id", default=None, help="OAuth client id to use (default: Vermes-cli)"
     )
     login_parser.add_argument("--scope", default=None, help="OAuth scope to request")
     login_parser.add_argument(
@@ -10950,7 +10950,7 @@ def main():
         default="login",
     )
     auth_spotify.add_argument(
-        "--client-id", help="Spotify app client_id (or set HERMES_SPOTIFY_CLIENT_ID)"
+        "--client-id", help="Spotify app client_id (or set VERMES_SPOTIFY_CLIENT_ID)"
     )
     auth_spotify.add_argument(
         "--redirect-uri",
@@ -11391,7 +11391,7 @@ Examples:
         "backup",
         help="Back up Vermes home directory to a zip file",
         description="Create a zip archive of your entire Vermes configuration, "
-        "skills, sessions, and data (excludes the hermes-agent codebase). "
+        "skills, sessions, and data (excludes the Vermes-agent codebase). "
         "Use --quick for a fast snapshot of just critical state files.",
     )
     backup_parser.add_argument(
@@ -11745,7 +11745,7 @@ Examples:
     )
     plugins_install.add_argument(
         "identifier",
-        help="Git URL or owner/repo shorthand (e.g. anpicasso/hermes-plugin-chrome-profiles)",
+        help="Git URL or owner/repo shorthand (e.g. anpicasso/Vermes-plugin-chrome-profiles)",
     )
     plugins_install.add_argument(
         "--force",
@@ -11910,9 +11910,9 @@ Examples:
             logger.info("\n  ✓ Memory provider: built-in only")
             logger.info("  Saved to config.yaml\n")
         elif sub == "reset":
-            from vermes_constants import get_hermes_home, display_hermes_home
+            from vermes_constants import get_vermes_home, display_vermes_home
 
-            mem_dir = get_hermes_home() / "memories"
+            mem_dir = get_vermes_home() / "memories"
             target = getattr(args, "target", "all")
             files_to_reset = []
             if target in {"all", "memory"}:
@@ -11926,7 +11926,7 @@ Examples:
             ]
             if not existing:
                 logger.info(
-                    f"\n  Nothing to reset — no memory files found in {display_hermes_home()}/memories/\n"
+                    f"\n  Nothing to reset — no memory files found in {display_vermes_home()}/memories/\n"
                 )
                 return
 
@@ -11953,7 +11953,7 @@ Examples:
             logger.info(
                 f"\n  Memory reset complete. New sessions will start with a blank slate."
             )
-            logger.info(f"  Files were in: {display_hermes_home()}/memories/\n")
+            logger.info(f"  Files were in: {display_vermes_home()}/memories/\n")
         else:
             from vermes_cli.memory_setup import memory_command
 
@@ -12355,7 +12355,7 @@ Examples:
                 ):
                     logger.info("Cancelled.")
                     return
-            sessions_dir = get_hermes_home() / "sessions"
+            sessions_dir = get_vermes_home() / "sessions"
             if db.delete_session(resolved_session_id, sessions_dir=sessions_dir):
                 logger.info(f"Deleted session '{resolved_session_id}'.")
             else:
@@ -12370,7 +12370,7 @@ Examples:
                 ):
                     logger.info("Cancelled.")
                     return
-            sessions_dir = get_hermes_home() / "sessions"
+            sessions_dir = get_vermes_home() / "sessions"
             count = db.prune_sessions(
                 older_than_days=days, source=args.source, sessions_dir=sessions_dir
             )
@@ -12923,7 +12923,7 @@ Examples:
         action="store_true",
         help=(
             "Expose the in-browser Chat tab (embedded `vermes --tui` via PTY/WebSocket). "
-            "Alternatively set HERMES_DASHBOARD_TUI=1."
+            "Alternatively set VERMES_DASHBOARD_TUI=1."
         ),
     )
     dashboard_parser.add_argument(

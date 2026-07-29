@@ -2,13 +2,13 @@
 Vermes CLI - AI Agent powered by Vermes.
 
 Provides subcommands for:
-- hermes chat          - Interactive chat (same as ./hermes)
+- Vermes chat          - Interactive chat (same as ./Vermes)
 - vermes gateway       - Run gateway in foreground
 - vermes gateway start - Start gateway service
 - vermes gateway stop  - Stop gateway service
 - vermes setup         - Interactive setup wizard
 - vermes status        - Show status of all components
-- hermes cron          - Manage cron jobs
+- Vermes cron          - Manage cron jobs
 """
 
 import os

@@ -688,7 +688,7 @@ def save_provider(req: StudioProviderRequest):
     """
     try:
         from vermes_cli.config import load_config, save_config
-        from vermes_cli.config import get_env_path, ensure_hermes_home
+        from vermes_cli.config import get_env_path, ensure_vermes_home
 
         cfg = load_config() or {}
 
@@ -722,7 +722,7 @@ def save_provider(req: StudioProviderRequest):
             env_key = f"STUDIO_{req.name.upper()}_API_KEY"
             provider_entry["keyEnv"] = env_key
             # 写入 .env
-            ensure_hermes_home()
+            ensure_vermes_home()
             env_path = get_env_path()
             _upsert_env_var(env_path, env_key, req.apiKey)
 

@@ -43,7 +43,7 @@ class VermesOverlay:
     base_url_env_var: str = ""            # env var for user-custom base URL
 
 
-HERMES_OVERLAYS: Dict[str, VermesOverlay] = {
+VERMES_OVERLAYS: Dict[str, VermesOverlay] = {
     "openrouter": VermesOverlay(
         transport="openai_chat",
         is_aggregator=True,
@@ -70,7 +70,7 @@ HERMES_OVERLAYS: Dict[str, VermesOverlay] = {
         transport="openai_chat",
         auth_type="oauth_external",
         base_url_override="https://portal.qwen.ai/v1",
-        base_url_env_var="HERMES_QWEN_BASE_URL",
+        base_url_env_var="VERMES_QWEN_BASE_URL",
     ),
     "google-gemini-cli": VermesOverlay(
         transport="openai_chat",
@@ -236,7 +236,7 @@ class ProviderDef:
     is_aggregator: bool = False
     auth_type: str = "api_key"
     doc: str = ""
-    source: str = ""                      # "models.dev", "hermes", "user-config"
+    source: str = ""                      # "models.dev", "Vermes", "user-config"
 
 
 # -- Aliases ------------------------------------------------------------------
@@ -438,7 +438,7 @@ def get_provider(name: str) -> Optional[ProviderDef]:
     except Exception:
         mdev_info = None
 
-    overlay = HERMES_OVERLAYS.get(canonical)
+    overlay = VERMES_OVERLAYS.get(canonical)
 
     if mdev_info is not None:
         # Merge models.dev + overlay
@@ -448,7 +448,7 @@ def get_provider(name: str) -> Optional[ProviderDef]:
         base_url_env = overlay.base_url_env_var if overlay else ""
         base_url_override = overlay.base_url_override if overlay else ""
 
-        # Combine env vars: models.dev env + hermes extra
+        # Combine env vars: models.dev env + Vermes extra
         env_vars = list(mdev_info.env)
         if overlay and overlay.extra_env_vars:
             for ev in overlay.extra_env_vars:
@@ -479,7 +479,7 @@ def get_provider(name: str) -> Optional[ProviderDef]:
             base_url_env_var=overlay.base_url_env_var,
             is_aggregator=overlay.is_aggregator,
             auth_type=overlay.auth_type,
-            source="hermes",
+            source="Vermes",
         )
 
     return None
@@ -531,7 +531,7 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
                 return "codex_responses"
         return TRANSPORT_TO_API_MODE.get(pdef.transport, "chat_completions")
 
-    # Direct provider checks for providers not in HERMES_OVERLAYS
+    # Direct provider checks for providers not in VERMES_OVERLAYS
     if provider == "bedrock":
         return "bedrock_converse"
 

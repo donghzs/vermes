@@ -1,5 +1,5 @@
 """
-Status command for hermes CLI.
+Status command for Vermes CLI.
 
 Shows the status of all Vermes components.
 """
@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
 from vermes_cli.auth import AuthError, resolve_provider
 from vermes_cli.colors import Colors, color
-from vermes_cli.config import get_env_path, get_env_value, get_hermes_home, load_config
+from vermes_cli.config import get_env_path, get_env_value, get_vermes_home, load_config
 from vermes_cli.models import provider_label
 from vermes_cli.nous_subscription import get_nous_subscription_features
 from vermes_cli.runtime_provider import resolve_requested_provider
@@ -392,7 +392,7 @@ def show_status(args):
             persist_enabled = persist.lower() in {"1", "true", "yes", "on"}
         auth_status = describe_vercel_auth()
         sdk_ok = importlib.util.find_spec("vercel") is not None
-        sdk_label = "installed" if sdk_ok else "missing (install: pip install 'hermes-agent[vercel]')"
+        sdk_label = "installed" if sdk_ok else "missing (install: pip install 'Vermes-agent[vercel]')"
         logger.info(f"  Runtime:      {runtime}")
         logger.info(f"  SDK:          {check_mark(sdk_ok)} {sdk_label}")
         logger.info(f"  Auth:         {check_mark(auth_status.ok)} {auth_status.label}")
@@ -498,7 +498,7 @@ def show_status(args):
     logger.info()
     logger.info(color("◆ Scheduled Jobs", Colors.CYAN, Colors.BOLD))
 
-    jobs_file = get_hermes_home() / "cron" / "jobs.json"
+    jobs_file = get_vermes_home() / "cron" / "jobs.json"
     if jobs_file.exists():
         import json
         try:
@@ -518,7 +518,7 @@ def show_status(args):
     logger.info()
     logger.info(color("◆ Sessions", Colors.CYAN, Colors.BOLD))
 
-    sessions_file = get_hermes_home() / "sessions" / "sessions.json"
+    sessions_file = get_vermes_home() / "sessions" / "sessions.json"
     if sessions_file.exists():
         import json
         try:

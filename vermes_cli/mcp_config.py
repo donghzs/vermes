@@ -1,7 +1,7 @@
 """
-MCP Server Management CLI — ``hermes mcp`` subcommand.
+MCP Server Management CLI — ``Vermes mcp`` subcommand.
 
-Implements ``hermes mcp add/remove/list/test/configure`` for interactive
+Implements ``Vermes mcp add/remove/list/test/configure`` for interactive
 MCP server lifecycle management (issue #690 Phase 2).
 
 Relies on tools/mcp_tool.py for connection/discovery and keeps
@@ -21,10 +21,10 @@ from vermes_cli.config import (
     save_config,
     get_env_value,
     save_env_value,
-    get_hermes_home,  # noqa: F401 — used by test mocks
+    get_vermes_home,  # noqa: F401 — used by test mocks
 )
 from vermes_cli.colors import Colors, color
-from vermes_constants import display_hermes_home
+from vermes_constants import display_vermes_home
 from tools.mcp_tool import _ENV_VAR_PATTERN
 
 logger = logging.getLogger(__name__)
@@ -221,7 +221,7 @@ def _unwrap_exception_group(exc: BaseException) -> Exception:
     return RuntimeError(str(exc))
 
 
-# ─── hermes mcp add ──────────────────────────────────────────────────────────
+# ─── Vermes mcp add ──────────────────────────────────────────────────────────
 
 def cmd_mcp_add(args):
     """Add a new MCP server with discovery-first tool selection."""
@@ -259,9 +259,9 @@ def cmd_mcp_add(args):
     if not url and not command:
         _error("Must specify --url <endpoint>, --command <cmd>, or --preset <name>")
         _info("Examples:")
-        _info('  hermes mcp add ink --url "https://mcp.ml.ink/mcp"')
-        _info('  hermes mcp add github --command npx --args @modelcontextprotocol/server-github')
-        _info('  hermes mcp add myserver --preset mypreset')
+        _info('  Vermes mcp add ink --url "https://mcp.ml.ink/mcp"')
+        _info('  Vermes mcp add github --command npx --args @modelcontextprotocol/server-github')
+        _info('  Vermes mcp add myserver --preset mypreset')
         return
 
     # Check if server already exists
@@ -325,7 +325,7 @@ def cmd_mcp_add(args):
                     api_key = _prompt("API key / Bearer token", password=True)
                     if api_key:
                         save_env_value(env_key, api_key)
-                        _success(f"Saved to {display_hermes_home()}/.env as {env_key}")
+                        _success(f"Saved to {display_vermes_home()}/.env as {env_key}")
 
                 # Set header with env var interpolation
                 if api_key or existing_key:
@@ -346,7 +346,7 @@ def cmd_mcp_add(args):
             server_config["enabled"] = False
             _save_mcp_server(name, server_config)
             _success(f"Saved '{name}' to config (disabled)")
-            _info("Fix the issue, then: hermes mcp test " + name)
+            _info("Fix the issue, then: Vermes mcp test " + name)
         return
 
     if not tools:
@@ -413,11 +413,11 @@ def cmd_mcp_add(args):
     _save_mcp_server(name, server_config)
 
     logger.info()
-    _success(f"Saved '{name}' to {display_hermes_home()}/config.yaml ({tool_count}/{total} tools enabled)")
+    _success(f"Saved '{name}' to {display_vermes_home()}/config.yaml ({tool_count}/{total} tools enabled)")
     _info("Start a new session to use these tools.")
 
 
-# ─── hermes mcp remove ───────────────────────────────────────────────────────
+# ─── Vermes mcp remove ───────────────────────────────────────────────────────
 
 def cmd_mcp_remove(args):
     """Remove an MCP server from config."""
@@ -440,7 +440,7 @@ def cmd_mcp_remove(args):
 
     # Clean up OAuth tokens if they exist — route through MCPOAuthManager so
     # any provider instance cached in the current process (e.g. from an
-    # earlier `hermes mcp test` in the same session) is evicted too.
+    # earlier `Vermes mcp test` in the same session) is evicted too.
     try:
         from tools.mcp_oauth_manager import get_manager
         get_manager().remove(name)
@@ -449,7 +449,7 @@ def cmd_mcp_remove(args):
         pass
 
 
-# ─── hermes mcp list ──────────────────────────────────────────────────────────
+# ─── Vermes mcp list ──────────────────────────────────────────────────────────
 
 def cmd_mcp_list(args=None):
     """List all configured MCP servers."""
@@ -460,8 +460,8 @@ def cmd_mcp_list(args=None):
         _info("No MCP servers configured.")
         logger.info()
         _info("Add one with:")
-        _info('  hermes mcp add <name> --url <endpoint>')
-        _info('  hermes mcp add <name> --command <cmd> --args <args...>')
+        _info('  Vermes mcp add <name> --url <endpoint>')
+        _info('  Vermes mcp add <name> --command <cmd> --args <args...>')
         logger.info()
         return
 
@@ -518,7 +518,7 @@ def cmd_mcp_list(args=None):
     logger.info()
 
 
-# ─── hermes mcp test ──────────────────────────────────────────────────────────
+# ─── Vermes mcp test ──────────────────────────────────────────────────────────
 
 def cmd_mcp_test(args):
     """Test connection to an MCP server."""
@@ -582,7 +582,7 @@ def cmd_mcp_test(args):
     logger.info()
 
 
-# ─── hermes mcp login ────────────────────────────────────────────────────────
+# ─── Vermes mcp login ────────────────────────────────────────────────────────
 
 def cmd_mcp_login(args):
     """Force re-authentication for an OAuth-based MCP server.
@@ -613,7 +613,7 @@ def cmd_mcp_login(args):
         return
     if server_config.get("auth") != "oauth":
         _error(f"Server '{name}' is not configured for OAuth (auth={server_config.get('auth')})")
-        _info("Use `hermes mcp remove` + `hermes mcp add` to reconfigure auth.")
+        _info("Use `Vermes mcp remove` + `Vermes mcp add` to reconfigure auth.")
         return
 
     # Wipe both disk and in-memory cache so the next probe forces a fresh
@@ -639,13 +639,13 @@ def cmd_mcp_login(args):
         _error(f"Authentication failed: {exc}")
 
 
-# ─── hermes mcp configure ────────────────────────────────────────────────────
+# ─── Vermes mcp configure ────────────────────────────────────────────────────
 
 def cmd_mcp_configure(args):
     """Reconfigure which tools are enabled for an existing MCP server."""
     import sys as _sys
     if not _sys.stdin.isatty():
-        logger.warning("Error: 'hermes mcp configure' requires an interactive terminal.")
+        logger.warning("Error: 'Vermes mcp configure' requires an interactive terminal.")
         _sys.exit(1)
     name = args.name
     servers = _get_mcp_servers()
@@ -741,7 +741,7 @@ def cmd_mcp_configure(args):
 # ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 def mcp_command(args):
-    """Main dispatcher for ``hermes mcp`` subcommands."""
+    """Main dispatcher for ``Vermes mcp`` subcommands."""
     action = getattr(args, "mcp_action", None)
 
     if action == "serve":
@@ -769,19 +769,19 @@ def mcp_command(args):
         # No subcommand — show list
         cmd_mcp_list()
         logger.info(color("  Commands:", Colors.CYAN))
-        _info("hermes mcp serve                              Run as MCP server")
-        _info("hermes mcp add <name> --url <endpoint>        Add an MCP server")
-        _info("hermes mcp add <name> --command <cmd>         Add a stdio server")
-        _info("hermes mcp add <name> --preset <preset>       Add from a known preset")
-        _info("hermes mcp remove <name>                      Remove a server")
-        _info("hermes mcp list                               List servers")
-        _info("hermes mcp test <name>                        Test connection")
-        _info("hermes mcp configure <name>                   Toggle tools")
-        _info("hermes mcp login <name>                       Re-authenticate OAuth")
-        _info('hermes mcp run <name>                          Run a built-in MCP server (short-drama)')
+        _info("Vermes mcp serve                              Run as MCP server")
+        _info("Vermes mcp add <name> --url <endpoint>        Add an MCP server")
+        _info("Vermes mcp add <name> --command <cmd>         Add a stdio server")
+        _info("Vermes mcp add <name> --preset <preset>       Add from a known preset")
+        _info("Vermes mcp remove <name>                      Remove a server")
+        _info("Vermes mcp list                               List servers")
+        _info("Vermes mcp test <name>                        Test connection")
+        _info("Vermes mcp configure <name>                   Toggle tools")
+        _info("Vermes mcp login <name>                       Re-authenticate OAuth")
+        _info('Vermes mcp run <name>                          Run a built-in MCP server (short-drama)')
         logger.info()
 
-# ─── hermes mcp run ──────────────────────────────────────────────────────────
+# ─── Vermes mcp run ──────────────────────────────────────────────────────────
 
 def cmd_mcp_run(args):
     """Run a built-in MCP server by name.

@@ -105,9 +105,9 @@ async def toggle_toolset(name: str, body: ToolsetToggle):
     without a restart.
 
     Crucially we toggle against the user's *explicit* ``.web`` list, not the
-    governed resolver output: the resolver drops the ``hermes-cli`` composite
+    governed resolver output: the resolver drops the ``Vermes-cli`` composite
     (a platform default carrying terminal/skills/vision) and re-expands it
-    lazily. Saving the resolver's output would strip ``hermes-cli`` and silently
+    lazily. Saving the resolver's output would strip ``Vermes-cli`` and silently
     amputate the agent's core tools. Toggling the raw list preserves it.
     """
     from vermes_cli.tools_config import (

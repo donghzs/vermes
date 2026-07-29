@@ -83,7 +83,7 @@ CONFIGURABLE_TOOLSETS = [
 ]
 
 # Toolsets that are OFF by default for new installs.
-# They're still in _HERMES_CORE_TOOLS (available at runtime if enabled),
+# They're still in _vermes_CORE_TOOLS (available at runtime if enabled),
 # but the setup checklist won't pre-select them for first-time users.
 #
 # Video gen is off by default — it's a niche, paid, slow feature. Users
@@ -224,14 +224,14 @@ def _load_toolsets_for_web() -> list[str]:
     """
     import os
     # Check environment variable first
-    env_toolsets = os.environ.get("HERMES_TUI_TOOLSETS", "")
+    env_toolsets = os.environ.get("VERMES_TUI_TOOLSETS", "")
     if env_toolsets:
         return [t.strip() for t in env_toolsets.split(",") if t.strip()]
     # Fall back to config — platform_toolsets.web > toolsets > default
     try:
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
         import yaml
-        cfg_path = os.path.join(get_hermes_home(), "config.yaml")
+        cfg_path = os.path.join(get_vermes_home(), "config.yaml")
         if os.path.exists(cfg_path):
             with open(cfg_path) as f:
                 cfg = yaml.safe_load(f) or {}
@@ -241,16 +241,16 @@ def _load_toolsets_for_web() -> list[str]:
                 return platform_ts["web"]
             # fallback: Web UI always gets a rich toolset. If the user has
             # configured a custom toolsets list that's more substantial than
-            # the bare hermes-cli default, honour it; otherwise use Web defaults.
+            # the bare Vermes-cli default, honour it; otherwise use Web defaults.
             toolsets = cfg.get("toolsets")
             if toolsets:
                 ts_list = toolsets if isinstance(toolsets, list) else [toolsets]
-                if len(ts_list) == 1 and ts_list[0] == "hermes-cli":
-                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+                if len(ts_list) == 1 and ts_list[0] == "Vermes-cli":
+                    return ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "Vermes-cli"]
                 return ts_list
     except Exception:
         pass
-    base = ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "hermes-cli"]
+    base = ["file", "code_execution", "browser", "web", "memory", "todo", "image_gen", "session_search", "Vermes-cli"]
     # 动态加入已安装生态模块的 toolset
     try:
         from agent.module_loader import discover_modules
@@ -545,7 +545,7 @@ TOOL_CATEGORIES = {
                 ),
                 "env_vars": [
                     # cua-driver reads HOME/TMPDIR from the process env, no
-                    # extra keys required. HERMES_CUA_DRIVER_VERSION is an
+                    # extra keys required. VERMES_CUA_DRIVER_VERSION is an
                     # optional pin for reproducibility across macOS updates.
                 ],
                 "post_setup": "cua_driver",
@@ -644,7 +644,7 @@ def install_cua_driver(upgrade: bool = False) -> bool:
       we don't want to surprise the user with a network fetch.
     * ``upgrade=True`` — always re-run the installer (or call ``cua-driver
       update`` if the binary supports it). Used by ``vermes update`` and
-      by ``hermes computer-use install --upgrade``.
+      by ``Vermes computer-use install --upgrade``.
 
     Returns True iff cua-driver is installed (or successfully refreshed)
     when the function returns. macOS-only — silently returns False on
@@ -781,12 +781,12 @@ def _run_post_setup(post_setup_key: str):
             if result.returncode == 0:
                 _print_success("    Node.js dependencies installed")
             else:
-                from vermes_constants import display_hermes_home
-                _print_warning(f"    npm install failed - run manually: cd {display_hermes_home()}/hermes-agent && npm install")
+                from vermes_constants import display_vermes_home
+                _print_warning(f"    npm install failed - run manually: cd {display_vermes_home()}/Vermes-agent && npm install")
                 if result.stderr:
                     _print_info(f"      {result.stderr.strip()[:200]}")
         elif not node_modules.exists():
-            _print_warning("    Node.js not found - browser tools require: npm install (in hermes-agent directory)")
+            _print_warning("    Node.js not found - browser tools require: npm install (in Vermes-agent directory)")
             return
 
         # Step 2: only the local browser provider actually needs Chromium on
@@ -823,7 +823,7 @@ def _run_post_setup(post_setup_key: str):
                 "    Pull the latest image to get the bundled Chromium:"
             )
             _print_info(
-                "      docker pull ghcr.io/nousresearch/hermes-agent:latest"
+                "      docker pull ghcr.io/donghzs/vermes:latest"
             )
             return
 
@@ -1150,7 +1150,7 @@ def _get_platform_tools(
             default_ts = plat_info["default_toolset"]
         else:
             # Plugin platform — derive toolset name from platform key
-            default_ts = f"hermes-{platform}"
+            default_ts = f"Vermes-{platform}"
         toolset_names = [default_ts]
 
     # YAML may parse bare numeric names (e.g. ``12306:``) as int.
@@ -1164,7 +1164,7 @@ def _get_platform_tools(
     # If the saved list contains any configurable keys directly, the user
     # has explicitly configured this platform — use direct membership.
     # This avoids the subset-inference bug where composite toolsets like
-    # "hermes-cli" (which include all _HERMES_CORE_TOOLS) cause disabled
+    # "Vermes-cli" (which include all _vermes_CORE_TOOLS) cause disabled
     # toolsets to re-appear as enabled.
     has_explicit_config = any(ts in configurable_keys for ts in toolset_names)
 
@@ -1174,7 +1174,7 @@ def _get_platform_tools(
             if ts in configurable_keys and _toolset_allowed_for_platform(ts, platform)
         }
         # Mixed config: composite toolset alongside configurables (e.g.
-        # ``[hermes-cli, spotify]`` after enabling Spotify via ``hermes
+        # ``[Vermes-cli, spotify]`` after enabling Spotify via ``Vermes
         # tools``). Without expansion the composite name is silently dropped,
         # leaving sessions with only the configurable opt-ins and no native
         # tools. Mirror the else-branch's subset inference, but apply
@@ -1207,7 +1207,7 @@ def _get_platform_tools(
             enabled_toolsets |= expanded
     else:
         # No explicit config — fall back to resolving composite toolset names
-        # (e.g. "hermes-cli") to individual tool names and reverse-mapping.
+        # (e.g. "Vermes-cli") to individual tool names and reverse-mapping.
         all_tool_names = set()
         for ts_name in toolset_names:
             all_tool_names.update(resolve_toolset(ts_name))
@@ -1268,7 +1268,7 @@ def _get_platform_tools(
     # otherwise saving via `vermes tools` (which flips has_explicit_config
     # to True) silently drops them.
     _plat_info = PLATFORMS.get(platform)
-    _default_ts = _plat_info["default_toolset"] if _plat_info else f"hermes-{platform}"
+    _default_ts = _plat_info["default_toolset"] if _plat_info else f"Vermes-{platform}"
     platform_tool_universe = set(resolve_toolset(_default_ts))
     configurable_tool_universe = set()
     for ck in configurable_keys:
@@ -1277,7 +1277,7 @@ def _get_platform_tools(
     for ts_key in enabled_toolsets:
         claimed.update(resolve_toolset(ts_key))
     skip = configurable_keys | plugin_ts_keys | platform_default_keys
-    skip |= {k for k in TOOLSETS if k.startswith("hermes-")}
+    skip |= {k for k in TOOLSETS if k.startswith("Vermes-")}
     skip |= set(_DEFAULT_OFF_TOOLSETS) - {platform}
     for ts_key, ts_def in TOOLSETS.items():
         if ts_key in skip:
@@ -1385,7 +1385,7 @@ def _save_platform_tools(config: dict, platform: str, enabled_toolset_keys: Set[
     plugin_keys = _get_plugin_toolset_keys()
     configurable_keys |= plugin_keys
 
-    # Also exclude platform default toolsets (hermes-cli, hermes-telegram, etc.)
+    # Also exclude platform default toolsets (Vermes-cli, Vermes-telegram, etc.)
     # These are "super" toolsets that resolve to ALL tools, so preserving them
     # would silently override the user's unchecked selections on the next read.
     platform_default_keys = {p["default_toolset"] for p in PLATFORMS.values()}
@@ -2815,7 +2815,7 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
     logger.info(color("⚕ Vermes Tool Configuration", Colors.CYAN, Colors.BOLD))
     logger.info(color("  Enable or disable tools per platform.", Colors.DIM))
     logger.info(color("  Tools that need API keys will be configured when enabled.", Colors.DIM))
-    logger.info(color("  Guide: https://hermes-agent.nousresearch.com/docs/user-guide/features/tools", Colors.DIM))
+    logger.info(color("  Guide: https://Vermes-agent.donghzs.com/docs/user-guide/features/tools", Colors.DIM))
     logger.info("")
 
     # ── First-time install: linear flow, no platform menu ──
@@ -2908,7 +2908,7 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
     _done_idx = _reconfig_idx + (2 if _has_mcp else 1)
 
     while True:
-        # Default to "Configure all platforms (global)" so a plain `hermes
+        # Default to "Configure all platforms (global)" so a plain `Vermes
         # tools` run writes every platform (including web/desktop), not just
         # the CLI platform. Single-platform installs keep default=0.
         idx = _prompt_choice(
@@ -3014,9 +3014,9 @@ def tools_command(args=None, first_install: bool = False, config: dict = None):
         platform_choices[idx] = f"Configure {pinfo['label']}  ({new_count}/{total} enabled)"
 
     logger.info("")
-    from vermes_constants import display_hermes_home
-    logger.info(color(f"  Tool configuration saved to {display_hermes_home()}/config.yaml", Colors.DIM))
-    logger.info(color("  Changes take effect on next 'hermes' or gateway restart.", Colors.DIM))
+    from vermes_constants import display_vermes_home
+    logger.info(color(f"  Tool configuration saved to {display_vermes_home()}/config.yaml", Colors.DIM))
+    logger.info(color("  Changes take effect on next 'Vermes' or gateway restart.", Colors.DIM))
     logger.info("")
 
 

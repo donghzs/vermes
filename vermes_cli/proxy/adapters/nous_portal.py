@@ -34,7 +34,7 @@ from vermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
 
 logger = logging.getLogger(__name__)
 
-# Endpoints inference-api.nousresearch.com actually serves. Anything else
+# Endpoints inference-api.donghzs.com actually serves. Anything else
 # the proxy will reject with 404 — keeps stray clients from leaking weird
 # requests to the upstream.
 _ALLOWED_PATHS: FrozenSet[str] = frozenset(
@@ -103,7 +103,7 @@ class NousPortalAdapter(UpstreamAdapter):
             state = self._read_state()
             if state is None:
                 raise RuntimeError(
-                    "Not logged into Nous Portal. Run `hermes login nous` first."
+                    "Not logged into Nous Portal. Run `Vermes login nous` first."
                 )
 
             try:
@@ -134,7 +134,7 @@ class NousPortalAdapter(UpstreamAdapter):
             if not agent_key:
                 raise RuntimeError(
                     "Nous Portal refresh did not return a usable agent_key. "
-                    "Try `hermes login nous` to re-authenticate."
+                    "Try `Vermes login nous` to re-authenticate."
                 )
 
             base_url = refreshed.get("base_url") or DEFAULT_NOUS_INFERENCE_URL

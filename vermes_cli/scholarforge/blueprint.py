@@ -1314,9 +1314,9 @@ def register_to(app, host_api=None):
     async def list_available_providers():
         """列出 Vermes 已配置的所有厂商（供 Agent 模型分配使用）— 复用聊天链路凭证"""
         from vermes_cli.blueprints.chat import PROVIDERS
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
         available = []
-        env_path = get_hermes_home() / ".env"
+        env_path = get_vermes_home() / ".env"
         env_lines = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
         for key, info in PROVIDERS.items():
             env_key_name = info.get("env_key", "")

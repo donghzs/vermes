@@ -1,4 +1,4 @@
-"""``hermes plugins`` CLI subcommand — install, update, remove, and list plugins.
+"""``Vermes plugins`` CLI subcommand — install, update, remove, and list plugins.
 
 Plugins are installed from Git repositories into ``~/.vermes/plugins/``.
 Supports full URLs and ``owner/repo`` shorthand (resolves to GitHub).
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from vermes_cli.config import cfg_get
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ _SUPPORTED_MANIFEST_VERSION = 1
 
 def _plugins_dir() -> Path:
     """Return the user plugins directory, creating it if needed."""
-    plugins = get_hermes_home() / "plugins"
+    plugins = get_vermes_home() / "plugins"
     plugins.mkdir(parents=True, exist_ok=True)
     return plugins
 
@@ -234,7 +234,7 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
         return
 
     from vermes_cli.config import get_env_value, save_env_value  # noqa: F811
-    from vermes_constants import display_hermes_home
+    from vermes_constants import display_vermes_home
 
     # Normalise to list-of-dicts
     env_specs: list[dict] = []
@@ -272,15 +272,15 @@ def _prompt_plugin_env_vars(manifest: dict, console) -> None:
             else:
                 value = input(f"  {name}: ").strip()
         except (EOFError, KeyboardInterrupt):
-            console.logger.info(f"\n[dim]  Skipped (you can set these later in {display_hermes_home()}/.env)[/dim]")
+            console.logger.info(f"\n[dim]  Skipped (you can set these later in {display_vermes_home()}/.env)[/dim]")
             return
 
         if value:
             save_env_value(name, value)
             os.environ[name] = value
-            console.logger.info(f"  [green]✓[/green] Saved to {display_hermes_home()}/.env")
+            console.logger.info(f"  [green]✓[/green] Saved to {display_vermes_home()}/.env")
         else:
-            console.logger.info(f"  [dim]  Skipped (set {name} in {display_hermes_home()}/.env later)[/dim]")
+            console.logger.info(f"  [dim]  Skipped (set {name} in {display_vermes_home()}/.env later)[/dim]")
 
     console.logger.info()
 
@@ -414,7 +414,7 @@ def _install_plugin_core(identifier: str, *, force: bool) -> tuple[Path, dict, s
             if not force:
                 raise PluginOperationError(
                     f"Plugin '{plugin_name}' already exists. Use force reinstall "
-                    f"or run `hermes plugins update {plugin_name}`.",
+                    f"or run `Vermes plugins update {plugin_name}`.",
                 )
             shutil.rmtree(target)
 
@@ -510,7 +510,7 @@ def cmd_install(
     else:
         console.logger.info(
             f"[dim]Plugin installed but not enabled. "
-            f"Run `hermes plugins enable {installed_name}` to activate.[/dim]",
+            f"Run `Vermes plugins enable {installed_name}` to activate.[/dim]",
         )
 
     console.logger.info("[dim]Restart the gateway for the plugin to take effect:[/dim]")
@@ -694,7 +694,7 @@ def _plugin_exists(name: str) -> bool:
             manifest = _read_manifest(child)
             if manifest.get("name") == name:
                 return True
-    # Bundled: <repo>/plugins/<name>/ (or HERMES_BUNDLED_PLUGINS on Nix).
+    # Bundled: <repo>/plugins/<name>/ (or VERMES_BUNDLED_PLUGINS on Nix).
     from vermes_cli.plugins import get_bundled_plugins_dir
     repo_plugins = get_bundled_plugins_dir()
     if repo_plugins.is_dir():
@@ -718,7 +718,7 @@ def _discover_all_plugins() -> list:
     one level deeper (depth capped at 2, same as the loader).
 
     The returned ``key`` is the path-derived registry key — the value the
-    user types into ``hermes plugins enable <key>``. For category-namespaced
+    user types into ``Vermes plugins enable <key>``. For category-namespaced
     plugins that's ``<category>/<dirname>``; for flat plugins it's the
     manifest's ``name`` (or the directory name if the manifest omits it).
 
@@ -799,7 +799,7 @@ def cmd_list() -> None:
     entries = _discover_all_plugins()
     if not entries:
         console.logger.info("[dim]No plugins installed.[/dim]")
-        console.logger.info("[dim]Install with:[/dim] hermes plugins install owner/repo")
+        console.logger.info("[dim]Install with:[/dim] Vermes plugins install owner/repo")
         return
 
     enabled = _get_enabled_set()
@@ -824,8 +824,8 @@ def cmd_list() -> None:
     console.logger.info()
     console.logger.info(table)
     console.logger.info()
-    console.logger.info("[dim]Interactive toggle:[/dim] hermes plugins")
-    console.logger.info("[dim]Enable/disable:[/dim] hermes plugins enable/disable <name>")
+    console.logger.info("[dim]Interactive toggle:[/dim] Vermes plugins")
+    console.logger.info("[dim]Enable/disable:[/dim] Vermes plugins enable/disable <name>")
     console.logger.info("[dim]Plugins are opt-in by default — only 'enabled' plugins load.[/dim]")
 
 
@@ -1011,7 +1011,7 @@ def cmd_toggle() -> None:
 
     if not has_plugins and not has_categories:
         console.logger.info("[dim]No plugins installed and no provider categories available.[/dim]")
-        console.logger.info("[dim]Install with:[/dim] hermes plugins install owner/repo")
+        console.logger.info("[dim]Install with:[/dim] Vermes plugins install owner/repo")
         return
 
     # Non-TTY fallback
@@ -1582,7 +1582,7 @@ def dashboard_remove_user_plugin(name: str) -> dict[str, Any]:
 
 
 def plugins_command(args) -> None:
-    """Dispatch hermes plugins subcommands."""
+    """Dispatch Vermes plugins subcommands."""
     action = getattr(args, "plugins_action", None)
 
     if action == "install":

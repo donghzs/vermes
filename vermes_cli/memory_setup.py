@@ -1,4 +1,4 @@
-"""hermes memory setup|status — configure memory provider plugins.
+"""Vermes memory setup|status — configure memory provider plugins.
 
 Auto-detects installed memory providers via the plugin system.
 Interactive curses-based UI for provider selection, then walks through
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 import shlex
 from pathlib import Path
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 # ---------------------------------------------------------------------------
 # Curses-based interactive picker (same pattern as vermes tools)
@@ -107,7 +107,7 @@ def _install_dependencies(provider_name: str) -> None:
     if not uv_path:
         logger.info(f"  ⚠ uv not found — cannot install dependencies")
         logger.info(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
-        logger.info(f"  Then re-run: hermes memory setup")
+        logger.info(f"  Then re-run: Vermes memory setup")
         return
 
     try:
@@ -195,7 +195,7 @@ def cmd_setup_provider(provider_name: str) -> None:
 
     if not match:
         logger.info(f"\n  Memory provider '{provider_name}' not found.")
-        logger.info("  Run 'hermes memory setup' to see available providers.\n")
+        logger.info("  Run 'Vermes memory setup' to see available providers.\n")
         return
 
     name, _, provider = match
@@ -207,8 +207,8 @@ def cmd_setup_provider(provider_name: str) -> None:
         config["memory"] = {}
 
     if hasattr(provider, "post_setup"):
-        hermes_home = str(get_hermes_home())
-        provider.post_setup(hermes_home, config)
+        VERMES_home = str(get_vermes_home())
+        provider.post_setup(VERMES_home, config)
         return
 
     # Fallback: generic schema-based setup (same as cmd_setup)
@@ -257,8 +257,8 @@ def cmd_setup(args) -> None:
     # If the provider has a post_setup hook, delegate entirely to it.
     # The hook handles its own config, connection test, and activation.
     if hasattr(provider, "post_setup"):
-        hermes_home = str(get_hermes_home())
-        provider.post_setup(hermes_home, config)
+        VERMES_home = str(get_vermes_home())
+        provider.post_setup(VERMES_home, config)
         return
 
     schema = provider.get_config_schema() if hasattr(provider, "get_config_schema") else []
@@ -267,7 +267,7 @@ def cmd_setup(args) -> None:
     if not isinstance(provider_config, dict):
         provider_config = {}
 
-    env_path = get_hermes_home() / ".env"
+    env_path = get_vermes_home() / ".env"
     env_writes = {}
 
     if schema:
@@ -334,10 +334,10 @@ def cmd_setup(args) -> None:
     save_config(config)
 
     # Write non-secret config to provider's native location
-    hermes_home = str(get_hermes_home())
+    VERMES_home = str(get_vermes_home())
     if provider_config and hasattr(provider, "save_config"):
         try:
-            provider.save_config(provider_config, hermes_home)
+            provider.save_config(provider_config, VERMES_home)
         except Exception as e:
             logger.info(f"  Failed to write provider config: {e}")
 

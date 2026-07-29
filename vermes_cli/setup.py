@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-_DOCS_BASE = "https://hermes-agent.nousresearch.com/docs"
+_DOCS_BASE = "https://Vermes-agent.donghzs.com/docs"
 
 
 def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,7 +134,7 @@ def _set_reasoning_effort(config: Dict[str, Any], effort: str) -> None:
 from vermes_cli.config import (
     cfg_get,
     DEFAULT_CONFIG,
-    get_hermes_home,
+    get_vermes_home,
     get_config_path,
     get_env_path,
     load_config,
@@ -142,9 +142,9 @@ from vermes_cli.config import (
     save_env_value,
     remove_env_value,
     get_env_value,
-    ensure_hermes_home,
+    ensure_vermes_home,
 )
-# display_hermes_home imported lazily at call sites (stale-module safety during vermes update)
+# display_vermes_home imported lazily at call sites (stale-module safety during vermes update)
 
 from vermes_cli.colors import Colors, color
 
@@ -356,7 +356,7 @@ def _prompt_api_key(var: dict):
         print_warning("  Skipped (configure later with 'vermes setup')")
 
 
-def _print_setup_summary(config: dict, hermes_home):
+def _print_setup_summary(config: dict, VERMES_home):
     """Print the setup completion summary."""
     # Tool availability summary
     logger.info()
@@ -572,7 +572,7 @@ def _print_setup_summary(config: dict, hermes_home):
         print_warning(
             "Some tools are disabled. Run 'vermes setup tools' to configure them,"
         )
-        from vermes_constants import display_hermes_home as _dhh
+        from vermes_constants import display_vermes_home as _dhh
         print_warning(f"or edit {_dhh()}/.env directly to add the missing API keys.")
         logger.info()
 
@@ -596,13 +596,13 @@ def _print_setup_summary(config: dict, hermes_home):
     logger.info()
 
     # Show file locations prominently
-    from vermes_constants import display_hermes_home as _dhh
+    from vermes_constants import display_vermes_home as _dhh
     logger.info(color(f"📁 All your files are in {_dhh()}/:", Colors.CYAN, Colors.BOLD))
     logger.info()
     logger.info(f"   {color('Settings:', Colors.YELLOW)}  {get_config_path()}")
     logger.info(f"   {color('API Keys:', Colors.YELLOW)}  {get_env_path()}")
     logger.info(
-        f"   {color('Data:', Colors.YELLOW)}      {hermes_home}/cron/, sessions/, logs/"
+        f"   {color('Data:', Colors.YELLOW)}      {VERMES_home}/cron/, sessions/, logs/"
     )
     logger.info()
 
@@ -632,7 +632,7 @@ def _print_setup_summary(config: dict, hermes_home):
     logger.info()
     logger.info(color("🚀 Ready to go!", Colors.CYAN, Colors.BOLD))
     logger.info()
-    logger.info(f"   {color('hermes', Colors.GREEN)}              Start chatting")
+    logger.info(f"   {color('Vermes', Colors.GREEN)}              Start chatting")
     logger.info(f"   {color('vermes gateway', Colors.GREEN)}      Start messaging gateway")
     logger.info(f"   {color('vermes doctor', Colors.GREEN)}       Check for issues")
     logger.info()
@@ -1292,7 +1292,7 @@ def _setup_tts_provider(config: dict):
                     save_env_value("XAI_API_KEY", api_key)
                     print_success("xAI TTS API key saved")
                 else:
-                    from vermes_constants import display_hermes_home as _dhh
+                    from vermes_constants import display_vermes_home as _dhh
                     print_warning(
                         "No xAI API key provided for TTS. Configure XAI_API_KEY "
                         f"via vermes setup model or {_dhh()}/.env to use xAI TTS. "
@@ -1662,7 +1662,7 @@ def setup_terminal_backend(config: dict):
     elif selected_backend == "vercel_sandbox":
         print_success("Terminal backend: Vercel Sandbox")
         print_info("Cloud microVM sandboxes with snapshot-backed filesystem persistence.")
-        print_info("Requires the optional SDK: pip install 'hermes-agent[vercel]'")
+        print_info("Requires the optional SDK: pip install 'Vermes-agent[vercel]'")
 
         try:
             __import__("vercel")
@@ -1686,7 +1686,7 @@ def setup_terminal_backend(config: dict):
             if result.returncode == 0:
                 print_success("vercel SDK installed")
             else:
-                print_warning("Install failed — run manually: pip install 'hermes-agent[vercel]'")
+                print_warning("Install failed — run manually: pip install 'Vermes-agent[vercel]'")
                 if result.stderr:
                     print_info(f"  Error: {result.stderr.strip().splitlines()[-1]}")
 
@@ -1761,10 +1761,10 @@ def _apply_default_agent_settings(config: dict):
     """Apply recommended defaults for all agent settings without prompting."""
     config.setdefault("agent", {})["max_turns"] = 90
     # config.yaml is the authoritative source for max_turns; the gateway
-    # bridges it into HERMES_MAX_ITERATIONS at startup. We no longer write
+    # bridges it into VERMES_MAX_ITERATIONS at startup. We no longer write
     # to .env to avoid the dual-source inconsistency that caused the
     # 60-vs-500 bug (stale .env entry silently shadowing config.yaml).
-    remove_env_value("HERMES_MAX_ITERATIONS")
+    remove_env_value("VERMES_MAX_ITERATIONS")
 
     config.setdefault("display", {})["tool_progress"] = "all"
 
@@ -1811,10 +1811,10 @@ def setup_agent_settings(config: dict):
             # Write to config.yaml (authoritative) only. Also clean up any
             # stale .env entry from earlier setup runs — the gateway's
             # bridge in gateway/run.py now unconditionally derives
-            # HERMES_MAX_ITERATIONS from agent.max_turns at startup.
+            # VERMES_MAX_ITERATIONS from agent.max_turns at startup.
             config.setdefault("agent", {})["max_turns"] = max_iter
             config.pop("max_turns", None)
-            remove_env_value("HERMES_MAX_ITERATIONS")
+            remove_env_value("VERMES_MAX_ITERATIONS")
             print_success(f"Max iterations set to {max_iter}")
     except ValueError:
         print_warning("Invalid number, keeping current value")
@@ -2127,7 +2127,7 @@ def _setup_slack():
     print_info("   3. Install to Workspace: Settings → Install App")
     print_info("   4. After installing, invite the bot to channels: /invite @YourBot")
     logger.info()
-    print_info("   Full guide: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/slack/")
+    print_info("   Full guide: https://Vermes-agent.donghzs.com/docs/user-guide/messaging/slack/")
     logger.info()
 
     # Generate and write manifest up-front so the user can paste it into
@@ -2171,7 +2171,7 @@ def _setup_slack():
 
 
 def _write_slack_manifest_and_instruct():
-    """Generate the Slack manifest, write it under HERMES_HOME, and print
+    """Generate the Slack manifest, write it under VERMES_HOME, and print
     paste-into-Slack instructions.
 
     Exposed as its own helper so both the initial setup flow and the
@@ -2182,13 +2182,13 @@ def _write_slack_manifest_and_instruct():
     """
     try:
         from vermes_cli.slack_cli import _build_full_manifest
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
 
         manifest = _build_full_manifest(
             bot_name="Vermes",
             bot_description="Your Vermes agent on Slack",
         )
-        target = Path(get_hermes_home()) / "slack-manifest.json"
+        target = Path(get_vermes_home()) / "slack-manifest.json"
         target.parent.mkdir(parents=True, exist_ok=True)
         import json as _json
         target.write_text(
@@ -2428,7 +2428,7 @@ def _setup_webhooks():
     print_warning("   internet. For security, run the gateway in a sandboxed environment")
     print_warning("   (Docker, VM, etc.) to limit blast radius from prompt injection.")
     logger.info()
-    print_info("   Full guide: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/webhooks/")
+    print_info("   Full guide: https://Vermes-agent.donghzs.com/docs/user-guide/messaging/webhooks/")
     logger.info()
 
     port = prompt("Webhook port (default 8644)")
@@ -2449,13 +2449,13 @@ def _setup_webhooks():
     save_env_value("WEBHOOK_ENABLED", "true")
     logger.info()
     print_success("Webhooks enabled! Next steps:")
-    from vermes_constants import display_hermes_home as _dhh
+    from vermes_constants import display_vermes_home as _dhh
     print_info(f"   1. Define webhook routes in {_dhh()}/config.yaml")
     print_info("   2. Point your service (GitHub, GitLab, etc.) at:")
     print_info("      http://your-server:8644/webhooks/<route-name>")
     logger.info()
     print_info("   Route configuration guide:")
-    print_info("   https://hermes-agent.nousresearch.com/docs/user-guide/messaging/webhooks/#configuring-routes")
+    print_info("   https://Vermes-agent.donghzs.com/docs/user-guide/messaging/webhooks/#configuring-routes")
     logger.info()
     print_info("   Open config in your editor:  vermes config edit")
     print_info("   Open config in your editor:  vermes config edit")
@@ -2552,7 +2552,7 @@ def setup_gateway(config: dict):
             _is_service_running,
             supports_systemd_services,
             has_conflicting_systemd_units,
-            has_legacy_hermes_units,
+            has_legacy_vermes_units,
             install_linux_gateway_from_setup,
             print_systemd_scope_conflict_warning,
             print_legacy_unit_warning,
@@ -2577,7 +2577,7 @@ def setup_gateway(config: dict):
             print_systemd_scope_conflict_warning()
             logger.info()
 
-        if supports_systemd and has_legacy_hermes_units():
+        if supports_systemd and has_legacy_vermes_units():
             print_legacy_unit_warning()
             logger.info()
 
@@ -2869,12 +2869,12 @@ _OPENCLAW_SCRIPT = (
     / "migration"
     / "openclaw-migration"
     / "scripts"
-    / "openclaw_to_hermes.py"
+    / "openclaw_to_vermes.py"
 )
 
 
 def _load_openclaw_migration_module():
-    """Load the openclaw_to_hermes migration script as a module.
+    """Load the openclaw_to_vermes migration script as a module.
 
     Returns the loaded module, or None if the script can't be loaded.
     """
@@ -2882,7 +2882,7 @@ def _load_openclaw_migration_module():
         return None
 
     spec = importlib.util.spec_from_file_location(
-        "openclaw_to_hermes", _OPENCLAW_SCRIPT
+        "openclaw_to_vermes", _OPENCLAW_SCRIPT
     )
     if spec is None or spec.loader is None:
         return None
@@ -2981,7 +2981,7 @@ def _print_migration_preview(report: dict):
         logger.info()
 
 
-def _offer_openclaw_migration(hermes_home: Path) -> bool:
+def _offer_openclaw_migration(VERMES_home: Path) -> bool:
     """Detect ~/.openclaw and offer to migrate during first-time setup.
 
     Runs a dry-run first to show the user exactly what would be imported,
@@ -3004,7 +3004,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
 
     if not prompt_yes_no("Would you like to see what can be imported?", default=True):
         print_info(
-            "Skipping migration. You can run it later with: hermes claw migrate --dry-run"
+            "Skipping migration. You can run it later with: Vermes claw migrate --dry-run"
         )
         return False
 
@@ -3029,7 +3029,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
         selected = mod.resolve_selected_options(None, None, preset="full")
         dry_migrator = mod.Migrator(
             source_root=openclaw_dir.resolve(),
-            target_root=hermes_home.resolve(),
+            target_root=VERMES_home.resolve(),
             execute=False,  # dry-run — no files modified
             workspace_target=None,
             overwrite=True,  # show everything including conflicts
@@ -3062,7 +3062,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
     # ── Phase 2: Confirm and execute ──
     if not prompt_yes_no("Proceed with migration?", default=False):
         print_info(
-            "Migration cancelled. You can run it later with: hermes claw migrate"
+            "Migration cancelled. You can run it later with: Vermes claw migrate"
         )
         print_info(
             "Use --dry-run to preview again, or --preset minimal for a lighter import."
@@ -3074,7 +3074,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
     try:
         migrator = mod.Migrator(
             source_root=openclaw_dir.resolve(),
-            target_root=hermes_home.resolve(),
+            target_root=VERMES_home.resolve(),
             execute=True,
             workspace_target=None,
             overwrite=False,  # preserve existing Vermes config
@@ -3100,7 +3100,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
     if migrated:
         print_success(f"Imported {migrated} item(s) from OpenClaw.")
     if conflicts:
-        print_info(f"Skipped {conflicts} item(s) that already exist in Vermes (use hermes claw migrate --overwrite to force).")
+        print_info(f"Skipped {conflicts} item(s) that already exist in Vermes (use Vermes claw migrate --overwrite to force).")
     if skipped:
         print_info(f"Skipped {skipped} item(s) (not found or unchanged).")
     if errors:
@@ -3144,7 +3144,7 @@ def run_setup_wizard(args):
     if is_managed():
         managed_error("run setup wizard")
         return
-    ensure_hermes_home()
+    ensure_vermes_home()
 
     reset_requested = bool(getattr(args, "reset", False))
     if reset_requested:
@@ -3155,7 +3155,7 @@ def run_setup_wizard(args):
     quick_requested = bool(getattr(args, "quick", False))
 
     config = load_config()
-    hermes_home = get_hermes_home()
+    VERMES_home = get_vermes_home()
 
     # Back up existing config before setup modifies it (#3522)
     config_path = get_config_path()
@@ -3266,7 +3266,7 @@ def run_setup_wizard(args):
         # missing items" flow (useful after a partial OpenClaw migration
         # or when a required API key got cleared).
         if quick_requested:
-            _run_quick_setup(config, hermes_home)
+            _run_quick_setup(config, VERMES_home)
             return
 
         logger.info()
@@ -3291,7 +3291,7 @@ def run_setup_wizard(args):
             logger.info()
 
         # Offer OpenClaw migration before configuration begins
-        migration_ran = _offer_openclaw_migration(hermes_home)
+        migration_ran = _offer_openclaw_migration(VERMES_home)
         if migration_ran:
             config = load_config()
 
@@ -3301,14 +3301,14 @@ def run_setup_wizard(args):
         ], 0)
 
         if setup_mode == 0:
-            _run_first_time_quick_setup(config, hermes_home, is_existing)
+            _run_first_time_quick_setup(config, VERMES_home, is_existing)
             return
 
     # ── Full Setup — run all sections ──
     print_header("Configuration Location")
     print_info(f"Config file:  {get_config_path()}")
     print_info(f"Secrets file: {get_env_path()}")
-    print_info(f"Data folder:  {hermes_home}")
+    print_info(f"Data folder:  {VERMES_home}")
     print_info(f"Install dir:  {PROJECT_ROOT}")
     logger.info()
     print_info("You can edit these files directly or use 'vermes config edit'")
@@ -3345,10 +3345,10 @@ def run_setup_wizard(args):
         print_info(f"Previous config backed up to: {_backup_path}")
         print_info("If setup changed a value you customized, restore it with:")
         print_info(f"  cp {_backup_path} {config_path}")
-    _print_setup_summary(config, hermes_home)
+    _print_setup_summary(config, VERMES_home)
 
 
-def _run_first_time_quick_setup(config: dict, hermes_home, is_existing: bool):
+def _run_first_time_quick_setup(config: dict, VERMES_home, is_existing: bool):
     """Streamlined first-time setup: provider, model, terminal & messaging.
 
     Applies sensible defaults for TTS (Edge), agent settings, and tools —
@@ -3388,10 +3388,10 @@ def _run_first_time_quick_setup(config: dict, hermes_home, is_existing: bool):
         print_info("  Connect Telegram/Discord:  vermes setup gateway")
     logger.info()
 
-    _print_setup_summary(config, hermes_home)
+    _print_setup_summary(config, VERMES_home)
 
 
-def _run_quick_setup(config: dict, hermes_home):
+def _run_quick_setup(config: dict, VERMES_home):
     """Quick setup — only configure items that are missing."""
     from vermes_cli.config import (
         get_missing_env_vars,
@@ -3554,4 +3554,4 @@ def _run_quick_setup(config: dict, hermes_home):
         save_config(config)
 
     # Jump to summary
-    _print_setup_summary(config, hermes_home)
+    _print_setup_summary(config, VERMES_home)
