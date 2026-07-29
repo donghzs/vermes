@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from plugins.google_meet.node import protocol as _proto
 
 

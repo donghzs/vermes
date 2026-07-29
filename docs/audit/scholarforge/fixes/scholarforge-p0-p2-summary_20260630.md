@@ -75,7 +75,7 @@ Writer.vue 提取 ProjectList.vue，组件解耦
 ## 四、最终产物结构
 
 ```
-hermes_cli/scholarforge/           # 后端核心（16 个 .py 文件）
+vermes_cli/scholarforge/           # 后端核心（16 个 .py 文件）
 ├── __init__.py                    # _load_vermes_config() + Agent 工具注册入口
 ├── database.py                    # SQLite 6 表 + 12 种论文模板 + CRUD
 ├── blueprint.py                   # FastAPI /api/scholar/* 路由（~25 端点）

@@ -95,7 +95,7 @@ All notable changes to Vermes will be documented in this file.
 - **会话 lastActive**: 新增字段，侧边栏按最后活跃时间排序分组
 - **Settings 添加自定义提供商**: 底部"+ 添加自定义提供商"按钮
 - **blueprints/__init__.py**: 补充 `storage` 模块导入
-- **blueprints/storage.py**: `utils.config` → `hermes_cli.config`
+- **blueprints/storage.py**: `utils.config` → `vermes_cli.config`
 
 ### 启动欢迎页（Splash Screen）
 

@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-import hermes_cli.gateway as gateway
+import vermes_cli.gateway as gateway
 
 
 class TestEnsureLingerEnabled:

@@ -128,7 +128,7 @@ async def test_handle_fast_command_persists_config(monkeypatch, tmp_path):
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     monkeypatch.setattr("gateway.slash_handlers.config_handlers._load_gateway_config", lambda: {})
     monkeypatch.setattr("gateway.slash_handlers.config_handlers._resolve_gateway_model", lambda config=None: "gpt-5.4")
-    monkeypatch.setattr("hermes_cli.models.model_supports_fast_mode", lambda model: True)
+    monkeypatch.setattr("vermes_cli.models.model_supports_fast_mode", lambda model: True)
 
     response = await runner._handle_fast_command(_make_event("/fast fast"))
 
@@ -165,7 +165,7 @@ async def test_run_agent_passes_priority_processing_to_gateway_agent(monkeypatch
         },
     )
 
-    import hermes_cli.tools_config as tools_config
+    import vermes_cli.tools_config as tools_config
     monkeypatch.setattr(tools_config, "_get_platform_tools", lambda user_config, platform_key: {"core"})
 
     _CapturingAgent.last_init = None

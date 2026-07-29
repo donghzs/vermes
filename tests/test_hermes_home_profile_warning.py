@@ -20,13 +20,13 @@ import pytest
 
 @pytest.fixture
 def fresh_constants(monkeypatch, tmp_path):
-    """Import hermes_constants fresh and reset the one-shot warn flag."""
+    """Import vermes_constants fresh and reset the one-shot warn flag."""
     import importlib
-    import hermes_constants
-    importlib.reload(hermes_constants)
+    import vermes_constants
+    importlib.reload(vermes_constants)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.delenv("HERMES_HOME", raising=False)
-    return hermes_constants
+    return vermes_constants
 
 
 class TestGetHermesHomeProfileWarning:

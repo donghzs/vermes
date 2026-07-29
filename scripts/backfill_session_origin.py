@@ -14,7 +14,7 @@ state.db alone (path A), independent of the gateway process's in-memory
 session_store.
 
 Self-contained: uses only the stdlib (sqlite3) so it can run anywhere without
-pulling the heavier framework import chain (hermes_state -> harness).
+pulling the heavier framework import chain (vermes_state -> harness).
 
 Safe to re-run: COALESCE means only NULL columns are filled.
 

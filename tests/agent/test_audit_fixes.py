@@ -164,7 +164,7 @@ class TestPlanJsonSchemaValidation:
     """验证 _find_first_plan_json 的最小 schema 校验。"""
 
     def test_valid_plan_json(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         text = json.dumps({
             "plan": "测试计划",
             "steps": [{"id": "s1", "title": "步骤1", "status": "pending"}]
@@ -175,38 +175,38 @@ class TestPlanJsonSchemaValidation:
         assert len(result["steps"]) == 1
 
     def test_reject_missing_plan_key(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         text = json.dumps({"title": "not a plan", "steps": []})
         result = _find_first_plan_json(text)
         assert result is None
 
     def test_reject_plan_not_string_or_dict(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         text = json.dumps({"plan": 123, "steps": [{"id": "s1"}]})
         result = _find_first_plan_json(text)
         assert result is None
 
     def test_reject_steps_not_list(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         text = json.dumps({"plan": "ok", "steps": "not a list"})
         result = _find_first_plan_json(text)
         assert result is None
 
     def test_reject_empty_steps(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         text = json.dumps({"plan": "ok", "steps": []})
         result = _find_first_plan_json(text)
         assert result is None
 
     def test_reject_no_steps_key(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         # plan 是 dict 但不含 steps
         text = json.dumps({"plan": {"title": "ok"}})
         result = _find_first_plan_json(text)
         assert result is None
 
     def test_accept_plan_as_string_with_steps(self):
-        from hermes_cli.blueprints.chat import _find_first_plan_json
+        from vermes_cli.blueprints.chat import _find_first_plan_json
         # plan 是标题字符串，steps 在顶层
         text = json.dumps({"plan": "my plan", "steps": [{"id": "s1"}]})
         result = _find_first_plan_json(text)

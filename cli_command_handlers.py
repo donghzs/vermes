@@ -20,8 +20,8 @@ import time
 
 from urllib.parse import urlparse
 
-# hermes_cli.browser_connect constants — needed by handle_browser_command
-from hermes_cli.browser_connect import (
+# vermes_cli.browser_connect constants — needed by handle_browser_command
+from vermes_cli.browser_connect import (
     DEFAULT_BROWSER_CDP_URL,
     manual_chrome_debug_command,
 )
@@ -519,7 +519,7 @@ def handle_handoff_command(self, cmd_original: str) -> bool:
         False to signal CLI exit, True to keep going.
     """
     from cli import _cprint
-    from hermes_state import format_session_db_unavailable
+    from vermes_state import format_session_db_unavailable
 
     parts = cmd_original.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
@@ -569,7 +569,7 @@ def handle_handoff_command(self, cmd_original: str) -> bool:
     # Make sure we have a SessionDB handle.
     if not self._session_db:
         try:
-            from hermes_state import SessionDB
+            from vermes_state import SessionDB
             self._session_db = SessionDB()
         except Exception:
             pass

@@ -23,7 +23,7 @@ def test_clamp_collision_emits_warning_naming_both_skills(
     tmp_path: Path, caplog
 ) -> None:
     """Two skills with identical first 32 chars — warning names both."""
-    from hermes_cli.commands import discord_skill_commands_by_category
+    from vermes_cli.commands import discord_skill_commands_by_category
 
     # Craft cmd_keys that share the first 32 chars.
     # 40-char prefix 'skill-collision-prefix-identical-first-32'
@@ -52,7 +52,7 @@ def test_clamp_collision_emits_warning_naming_both_skills(
         },
     }
 
-    with caplog.at_level(logging.WARNING, logger="hermes_cli.commands"), (
+    with caplog.at_level(logging.WARNING, logger="vermes_cli.commands"), (
         patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds)
     ), patch("tools.skills_tool.SKILLS_DIR", skills_dir):
         categories, uncategorized, hidden = discord_skill_commands_by_category(
@@ -90,7 +90,7 @@ def test_clamp_collision_with_reserved_name_emits_distinct_warning(
     still "rename the skill," but there's no second skill to also
     rename. The warning should say so explicitly.
     """
-    from hermes_cli.commands import discord_skill_commands_by_category
+    from vermes_cli.commands import discord_skill_commands_by_category
 
     # Reserved name 'help' is 4 chars — make a skill whose slug
     # clamps to 'help' (so, exactly 'help').
@@ -108,7 +108,7 @@ def test_clamp_collision_with_reserved_name_emits_distinct_warning(
         },
     }
 
-    with caplog.at_level(logging.WARNING, logger="hermes_cli.commands"), (
+    with caplog.at_level(logging.WARNING, logger="vermes_cli.commands"), (
         patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds)
     ), patch("tools.skills_tool.SKILLS_DIR", skills_dir):
         categories, uncategorized, hidden = discord_skill_commands_by_category(
@@ -135,7 +135,7 @@ def test_clamp_collision_with_reserved_name_emits_distinct_warning(
 
 def test_no_collision_no_warning(tmp_path: Path, caplog) -> None:
     """Sanity: two distinct-prefix skills produce zero warnings."""
-    from hermes_cli.commands import discord_skill_commands_by_category
+    from vermes_cli.commands import discord_skill_commands_by_category
 
     skills_dir = tmp_path / "skills"
     for nm in ("alpha", "bravo"):
@@ -154,7 +154,7 @@ def test_no_collision_no_warning(tmp_path: Path, caplog) -> None:
         },
     }
 
-    with caplog.at_level(logging.WARNING, logger="hermes_cli.commands"), (
+    with caplog.at_level(logging.WARNING, logger="vermes_cli.commands"), (
         patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds)
     ), patch("tools.skills_tool.SKILLS_DIR", skills_dir):
         categories, uncategorized, hidden = discord_skill_commands_by_category(
@@ -184,7 +184,7 @@ def test_long_skill_name_preserves_cmd_key_through_by_category(
     This is the actual runtime path used by the Discord adapter via
     ``_refresh_skill_catalog_state``.
     """
-    from hermes_cli.commands import discord_skill_commands_by_category
+    from vermes_cli.commands import discord_skill_commands_by_category
 
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()

@@ -30,10 +30,10 @@ if not defined HERMES_HOME (
 echo Config: %HERMES_HOME%
 echo.
 
-REM Check if hermes_cli is installed
-%PYTHON% -c "import hermes_cli" >nul 2>&1
+REM Check if vermes_cli is installed
+%PYTHON% -c "import vermes_cli" >nul 2>&1
 if errorlevel 1 (
-    echo [WARN] hermes_cli not installed, trying pip install...
+    echo [WARN] vermes_cli not installed, trying pip install...
     %PYTHON% -m pip install hermes-cli 2>nul
 )
 
@@ -41,6 +41,6 @@ REM Start backend
 echo Starting backend on port 9119...
 echo Close this window to stop Vermes.
 echo.
-%PYTHON% -m hermes_cli.web_server --port 9119 & start http://127.0.0.1:9119
+%PYTHON% -m vermes_cli.web_server --port 9119 & start http://127.0.0.1:9119
 
 pause

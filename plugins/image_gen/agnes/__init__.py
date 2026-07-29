@@ -103,7 +103,7 @@ def _resolve_verify() -> Any:
 
 def _load_config() -> Dict[str, Any]:
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         cfg = load_config()
         section = cfg.get("image_gen") if isinstance(cfg, dict) else None
         return section if isinstance(section, dict) else {}

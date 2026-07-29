@@ -98,7 +98,7 @@ def _fake_registry():
 
 
 def test_get_schema_includes_extra_fields_and_literature_category(monkeypatch):
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
     import agent.service_credentials as sc2
 
     monkeypatch.setattr(sc2, "get_registered_services", _fake_registry)
@@ -116,7 +116,7 @@ def test_get_schema_includes_extra_fields_and_literature_category(monkeypatch):
 
 
 def test_allowed_env_keys_include_extra_fields(monkeypatch):
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
     import agent.service_credentials as sc2
 
     monkeypatch.setattr(sc2, "get_registered_services", _fake_registry)
@@ -126,7 +126,7 @@ def test_allowed_env_keys_include_extra_fields(monkeypatch):
 
 
 def test_registered_services_endpoint(monkeypatch):
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
     import agent.service_credentials as sc2
 
     monkeypatch.setattr(sc2, "get_registered_services", _fake_registry)
@@ -141,7 +141,7 @@ def test_real_registry_exposes_literature_credential_fields():
     from agent.literature_registry import bootstrap_builtin_providers
 
     bootstrap_builtin_providers()
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
 
     keys = cfg._allowed_env_keys()
     for k in (

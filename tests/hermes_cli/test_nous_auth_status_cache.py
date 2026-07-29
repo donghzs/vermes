@@ -30,7 +30,7 @@ def test_get_nous_auth_status_caches_consecutive_calls(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_auth_file(tmp_path)
 
-    from hermes_cli import auth as auth_mod
+    from vermes_cli import auth as auth_mod
 
     auth_mod.invalidate_nous_auth_status_cache()
 
@@ -62,7 +62,7 @@ def test_get_nous_auth_status_invalidates_on_auth_file_mtime(tmp_path, monkeypat
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     auth_path = _seed_auth_file(tmp_path)
 
-    from hermes_cli import auth as auth_mod
+    from vermes_cli import auth as auth_mod
 
     auth_mod.invalidate_nous_auth_status_cache()
 
@@ -93,7 +93,7 @@ def test_invalidate_nous_auth_status_cache_forces_recompute(tmp_path, monkeypatc
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_auth_file(tmp_path)
 
-    from hermes_cli import auth as auth_mod
+    from vermes_cli import auth as auth_mod
 
     auth_mod.invalidate_nous_auth_status_cache()
 
@@ -123,7 +123,7 @@ def test_get_nous_auth_status_caches_failure_path(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _seed_auth_file(tmp_path)
 
-    from hermes_cli import auth as auth_mod
+    from vermes_cli import auth as auth_mod
 
     auth_mod.invalidate_nous_auth_status_cache()
 

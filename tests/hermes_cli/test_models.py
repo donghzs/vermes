@@ -1,15 +1,15 @@
-"""Tests for the hermes_cli models module."""
+"""Tests for the vermes_cli models module."""
 
 from unittest.mock import patch, MagicMock
 
-from hermes_cli.models import (
+from vermes_cli.models import (
     OPENROUTER_MODELS, fetch_openrouter_models, model_ids, detect_provider_for_model,
     is_nous_free_tier, partition_nous_models_by_tier,
     check_nous_free_tier, _FREE_TIER_CACHE_TTL,
     union_with_portal_free_recommendations,
     union_with_portal_paid_recommendations,
 )
-import hermes_cli.models as _models_mod
+import vermes_cli.models as _models_mod
 
 LIVE_OPENROUTER_MODELS = [
     ("anthropic/claude-opus-4.6", "recommended"),
@@ -21,25 +21,25 @@ LIVE_OPENROUTER_MODELS = [
 
 class TestModelIds:
     def test_returns_non_empty_list(self):
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             ids = model_ids()
         assert isinstance(ids, list)
         assert len(ids) > 0
 
     def test_ids_match_fetched_catalog(self):
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             ids = model_ids()
         expected = [mid for mid, _ in LIVE_OPENROUTER_MODELS]
         assert ids == expected
 
     def test_all_ids_contain_provider_slash(self):
         """Model IDs should follow the provider/model format."""
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             for mid in model_ids():
                 assert "/" in mid, f"Model ID '{mid}' missing provider/ prefix"
 
     def test_no_duplicate_ids(self):
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             ids = model_ids()
         assert len(ids) == len(set(ids)), "Duplicate model IDs found"
 
@@ -73,7 +73,7 @@ class TestFetchOpenRouterModels:
                 return b'{"data":[{"id":"anthropic/claude-opus-4.6","pricing":{"prompt":"0.000015","completion":"0.000075"}},{"id":"qwen/qwen3.6-plus","pricing":{"prompt":"0.000000325","completion":"0.00000195"}},{"id":"nvidia/nemotron-3-super-120b-a12b:free","pricing":{"prompt":"0","completion":"0"}}]}'
 
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
-        with patch("hermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
+        with patch("vermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
             models = fetch_openrouter_models(force_refresh=True)
 
         assert models == [
@@ -84,7 +84,7 @@ class TestFetchOpenRouterModels:
 
     def test_falls_back_to_static_snapshot_on_fetch_failure(self, monkeypatch):
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
-        with patch("hermes_cli.models.urllib.request.urlopen", side_effect=OSError("boom")):
+        with patch("vermes_cli.models.urllib.request.urlopen", side_effect=OSError("boom")):
             models = fetch_openrouter_models(force_refresh=True)
 
         assert models == OPENROUTER_MODELS
@@ -129,7 +129,7 @@ class TestFetchOpenRouterModels:
             ],
         )
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
-        with patch("hermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
+        with patch("vermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
             models = fetch_openrouter_models(force_refresh=True)
 
         ids = [mid for mid, _ in models]
@@ -163,7 +163,7 @@ class TestFetchOpenRouterModels:
                 )
 
         monkeypatch.setattr(_models_mod, "_openrouter_catalog_cache", None)
-        with patch("hermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
+        with patch("vermes_cli.models.urllib.request.urlopen", return_value=_Resp()):
             models = fetch_openrouter_models(force_refresh=True)
 
         ids = [mid for mid, _ in models]
@@ -175,41 +175,41 @@ class TestOpenRouterToolSupportHelper:
     """Unit tests for _openrouter_model_supports_tools (Kilo port #9068)."""
 
     def test_tools_in_supported_parameters(self):
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools(
             {"id": "x", "supported_parameters": ["temperature", "tools"]}
         ) is True
 
     def test_tools_missing_from_supported_parameters(self):
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools(
             {"id": "x", "supported_parameters": ["temperature", "response_format"]}
         ) is False
 
     def test_supported_parameters_absent_is_permissive(self):
         """Missing field → allow (so older / non-OR gateways still work)."""
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools({"id": "x"}) is True
 
     def test_supported_parameters_none_is_permissive(self):
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools({"id": "x", "supported_parameters": None}) is True
 
     def test_supported_parameters_malformed_is_permissive(self):
         """Malformed (non-list) value → allow rather than silently drop."""
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools(
             {"id": "x", "supported_parameters": "tools,temperature"}
         ) is True
 
     def test_non_dict_item_is_permissive(self):
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools(None) is True
         assert _openrouter_model_supports_tools("anthropic/claude-opus-4.6") is True
 
     def test_empty_supported_parameters_list_drops_model(self):
         """Explicit empty list → no tools → drop."""
-        from hermes_cli.models import _openrouter_model_supports_tools
+        from vermes_cli.models import _openrouter_model_supports_tools
         assert _openrouter_model_supports_tools(
             {"id": "x", "supported_parameters": []}
         ) is False
@@ -217,32 +217,32 @@ class TestOpenRouterToolSupportHelper:
 
 class TestFindOpenrouterSlug:
     def test_exact_match(self):
-        from hermes_cli.models import _find_openrouter_slug
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        from vermes_cli.models import _find_openrouter_slug
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             assert _find_openrouter_slug("anthropic/claude-opus-4.6") == "anthropic/claude-opus-4.6"
 
     def test_bare_name_match(self):
-        from hermes_cli.models import _find_openrouter_slug
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        from vermes_cli.models import _find_openrouter_slug
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = _find_openrouter_slug("claude-opus-4.6")
         assert result == "anthropic/claude-opus-4.6"
 
     def test_case_insensitive(self):
-        from hermes_cli.models import _find_openrouter_slug
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        from vermes_cli.models import _find_openrouter_slug
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = _find_openrouter_slug("Anthropic/Claude-Opus-4.6")
         assert result is not None
 
     def test_unknown_returns_none(self):
-        from hermes_cli.models import _find_openrouter_slug
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        from vermes_cli.models import _find_openrouter_slug
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             assert _find_openrouter_slug("totally-fake-model-xyz") is None
 
 
 class TestDetectProviderForModel:
     def test_anthropic_model_detected(self):
         """claude-opus-4-6 should resolve to anthropic provider."""
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = detect_provider_for_model("claude-opus-4-6", "openai-codex")
         assert result is not None
         assert result[0] == "anthropic"
@@ -261,7 +261,7 @@ class TestDetectProviderForModel:
     def test_short_alias_resolves_to_static_model(self):
         """Short aliases (e.g. sonnet) should resolve without network lookups."""
         with patch(
-            "hermes_cli.models.fetch_openrouter_models",
+            "vermes_cli.models.fetch_openrouter_models",
             side_effect=AssertionError("network lookup should not run"),
         ):
             result = detect_provider_for_model("sonnet", "auto")
@@ -271,7 +271,7 @@ class TestDetectProviderForModel:
 
     def test_openrouter_slug_match(self):
         """Models in the OpenRouter catalog should be found."""
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = detect_provider_for_model("anthropic/claude-opus-4.6", "openai-codex")
         assert result is not None
         assert result[0] == "openrouter"
@@ -286,7 +286,7 @@ class TestDetectProviderForModel:
         ):
             monkeypatch.delenv(env_var, raising=False)
         """Bare model names should get mapped to full OpenRouter slugs."""
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = detect_provider_for_model("claude-opus-4.6", "openai-codex")
         assert result is not None
         # Should find it on OpenRouter with full slug
@@ -294,12 +294,12 @@ class TestDetectProviderForModel:
 
     def test_unknown_model_returns_none(self):
         """Completely unknown model names should return None."""
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             assert detect_provider_for_model("nonexistent-model-xyz", "openai-codex") is None
 
     def test_aggregator_not_suggested(self):
         """nous/openrouter should never be auto-suggested as target provider."""
-        with patch("hermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
+        with patch("vermes_cli.models.fetch_openrouter_models", return_value=LIVE_OPENROUTER_MODELS):
             result = detect_provider_for_model("claude-opus-4-6", "openai-codex")
         assert result is not None
         assert result[0] not in {"nous",}  # nous has claude models but shouldn't be suggested
@@ -409,7 +409,7 @@ class TestUnionWithPortalFreeRecommendations:
         curated = ["anthropic/claude-opus-4.6"]
         pricing = {"anthropic/claude-opus-4.6": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["qwen/qwen3.6-plus"]),
         ):
             ids, p = union_with_portal_free_recommendations(curated, pricing, "")
@@ -429,7 +429,7 @@ class TestUnionWithPortalFreeRecommendations:
             "anthropic/claude-opus-4.6": self._PAID,
         }
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["qwen/qwen3.6-plus"]),
         ):
             ids, p = union_with_portal_free_recommendations(curated, pricing, "")
@@ -446,7 +446,7 @@ class TestUnionWithPortalFreeRecommendations:
         curated = ["qwen/qwen3.6-plus", "anthropic/claude-opus-4.6"]
         pricing = {"anthropic/claude-opus-4.6": self._PAID}  # qwen missing!
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["qwen/qwen3.6-plus"]),
         ):
             ids, p = union_with_portal_free_recommendations(curated, pricing, "")
@@ -458,7 +458,7 @@ class TestUnionWithPortalFreeRecommendations:
         """Empty Portal response leaves curated + pricing untouched."""
         curated = ["a", "b"]
         pricing = {"a": self._PAID}
-        with patch("hermes_cli.models.fetch_nous_recommended_models", return_value={}):
+        with patch("vermes_cli.models.fetch_nous_recommended_models", return_value={}):
             ids, p = union_with_portal_free_recommendations(curated, pricing, "")
         assert ids == curated
         assert p == pricing
@@ -468,7 +468,7 @@ class TestUnionWithPortalFreeRecommendations:
         curated = ["a"]
         pricing = {"a": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value={"paidRecommendedModels": [{"modelName": "x"}]},
         ):
             ids, p = union_with_portal_free_recommendations(curated, pricing, "")
@@ -480,7 +480,7 @@ class TestUnionWithPortalFreeRecommendations:
         curated = ["a"]
         pricing = {"a": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             side_effect=RuntimeError("network down"),
         ):
             ids, p = union_with_portal_free_recommendations(curated, pricing, "")
@@ -492,7 +492,7 @@ class TestUnionWithPortalFreeRecommendations:
         curated = ["a"]
         pricing = {"a": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value={
                 "freeRecommendedModels": [
                     "not-a-dict",
@@ -533,7 +533,7 @@ class TestUnionWithPortalPaidRecommendations:
         curated = ["anthropic/claude-opus-4.6"]
         pricing = {"anthropic/claude-opus-4.6": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["openai/gpt-5.4"]),
         ):
             ids, p = union_with_portal_paid_recommendations(curated, pricing, "")
@@ -555,7 +555,7 @@ class TestUnionWithPortalPaidRecommendations:
         curated = ["anthropic/claude-opus-4.6"]
         pricing = {"anthropic/claude-opus-4.6": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["openai/gpt-5.4"]),
         ):
             _, p = union_with_portal_paid_recommendations(curated, pricing, "")
@@ -571,7 +571,7 @@ class TestUnionWithPortalPaidRecommendations:
             "anthropic/claude-opus-4.6": self._PAID,
         }
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["openai/gpt-5.4"]),
         ):
             ids, p = union_with_portal_paid_recommendations(curated, pricing, "")
@@ -583,7 +583,7 @@ class TestUnionWithPortalPaidRecommendations:
         """Empty Portal response leaves curated + pricing untouched."""
         curated = ["a", "b"]
         pricing = {"a": self._PAID}
-        with patch("hermes_cli.models.fetch_nous_recommended_models", return_value={}):
+        with patch("vermes_cli.models.fetch_nous_recommended_models", return_value={}):
             ids, p = union_with_portal_paid_recommendations(curated, pricing, "")
         assert ids == curated
         assert p == pricing
@@ -593,7 +593,7 @@ class TestUnionWithPortalPaidRecommendations:
         curated = ["a"]
         pricing = {"a": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value={"freeRecommendedModels": [{"modelName": "x"}]},
         ):
             ids, p = union_with_portal_paid_recommendations(curated, pricing, "")
@@ -605,7 +605,7 @@ class TestUnionWithPortalPaidRecommendations:
         curated = ["a"]
         pricing = {"a": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             side_effect=RuntimeError("network down"),
         ):
             ids, p = union_with_portal_paid_recommendations(curated, pricing, "")
@@ -617,7 +617,7 @@ class TestUnionWithPortalPaidRecommendations:
         curated = ["a"]
         pricing = {"a": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value={
                 "paidRecommendedModels": [
                     "not-a-dict",
@@ -637,7 +637,7 @@ class TestUnionWithPortalPaidRecommendations:
         curated = ["anthropic/claude-opus-4.6"]
         pricing = {"anthropic/claude-opus-4.6": self._PAID}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._payload(["openai/gpt-5.4", "openai/gpt-5.5"]),
         ):
             ids, _ = union_with_portal_paid_recommendations(curated, pricing, "")
@@ -657,13 +657,13 @@ class TestCheckNousFreeTierCache:
     def teardown_method(self):
         _models_mod._free_tier_cache = None
 
-    @patch("hermes_cli.models.fetch_nous_account_tier")
-    @patch("hermes_cli.models.is_nous_free_tier", return_value=True)
+    @patch("vermes_cli.models.fetch_nous_account_tier")
+    @patch("vermes_cli.models.is_nous_free_tier", return_value=True)
     def test_result_is_cached(self, mock_is_free, mock_fetch):
         """Second call within TTL returns cached result without API call."""
         mock_fetch.return_value = {"subscription": {"monthly_charge": 0}}
-        with patch("hermes_cli.auth.get_provider_auth_state", return_value={"access_token": "tok"}), \
-             patch("hermes_cli.auth.resolve_nous_runtime_credentials"):
+        with patch("vermes_cli.auth.get_provider_auth_state", return_value={"access_token": "tok"}), \
+             patch("vermes_cli.auth.resolve_nous_runtime_credentials"):
             result1 = check_nous_free_tier()
             result2 = check_nous_free_tier()
 
@@ -671,13 +671,13 @@ class TestCheckNousFreeTierCache:
         assert result2 is True
         assert mock_fetch.call_count == 1
 
-    @patch("hermes_cli.models.fetch_nous_account_tier")
-    @patch("hermes_cli.models.is_nous_free_tier", return_value=False)
+    @patch("vermes_cli.models.fetch_nous_account_tier")
+    @patch("vermes_cli.models.is_nous_free_tier", return_value=False)
     def test_cache_expires_after_ttl(self, mock_is_free, mock_fetch):
         """After TTL expires, the API is called again."""
         mock_fetch.return_value = {"subscription": {"monthly_charge": 20}}
-        with patch("hermes_cli.auth.get_provider_auth_state", return_value={"access_token": "tok"}), \
-             patch("hermes_cli.auth.resolve_nous_runtime_credentials"):
+        with patch("vermes_cli.auth.get_provider_auth_state", return_value={"access_token": "tok"}), \
+             patch("vermes_cli.auth.resolve_nous_runtime_credentials"):
             result1 = check_nous_free_tier()
             assert mock_fetch.call_count == 1
 
@@ -730,7 +730,7 @@ class TestNousRecommendedModels:
         return cm
 
     def test_fetch_caches_per_portal_url(self):
-        from hermes_cli.models import fetch_nous_recommended_models
+        from vermes_cli.models import fetch_nous_recommended_models
         mock_cm = self._mock_urlopen(self._SAMPLE_PAYLOAD)
         with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen:
             a = fetch_nous_recommended_models("https://portal.example.com")
@@ -740,7 +740,7 @@ class TestNousRecommendedModels:
         assert mock_urlopen.call_count == 1  # second call served from cache
 
     def test_fetch_cache_is_keyed_per_portal(self):
-        from hermes_cli.models import fetch_nous_recommended_models
+        from vermes_cli.models import fetch_nous_recommended_models
         mock_cm = self._mock_urlopen(self._SAMPLE_PAYLOAD)
         with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen:
             fetch_nous_recommended_models("https://portal.example.com")
@@ -748,13 +748,13 @@ class TestNousRecommendedModels:
         assert mock_urlopen.call_count == 2  # different portals → separate fetches
 
     def test_fetch_returns_empty_on_network_failure(self):
-        from hermes_cli.models import fetch_nous_recommended_models
+        from vermes_cli.models import fetch_nous_recommended_models
         with patch("urllib.request.urlopen", side_effect=OSError("boom")):
             result = fetch_nous_recommended_models("https://portal.example.com")
         assert result == {}
 
     def test_fetch_force_refresh_bypasses_cache(self):
-        from hermes_cli.models import fetch_nous_recommended_models
+        from vermes_cli.models import fetch_nous_recommended_models
         mock_cm = self._mock_urlopen(self._SAMPLE_PAYLOAD)
         with patch("urllib.request.urlopen", return_value=mock_cm) as mock_urlopen:
             fetch_nous_recommended_models("https://portal.example.com")
@@ -762,9 +762,9 @@ class TestNousRecommendedModels:
         assert mock_urlopen.call_count == 2
 
     def test_get_aux_model_returns_vision_recommendation(self):
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=self._SAMPLE_PAYLOAD,
         ):
             # Free tier → free vision recommendation.
@@ -772,52 +772,52 @@ class TestNousRecommendedModels:
         assert model == "google/gemini-3-flash-preview"
 
     def test_get_aux_model_returns_compaction_recommendation(self):
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = dict(self._SAMPLE_PAYLOAD)
         payload["freeRecommendedCompactionModel"] = {"modelName": "minimax/minimax-m2.7"}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=payload,
         ):
             model = get_nous_recommended_aux_model(vision=False, free_tier=True)
         assert model == "minimax/minimax-m2.7"
 
     def test_get_aux_model_returns_none_when_field_null(self):
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = dict(self._SAMPLE_PAYLOAD)
         payload["freeRecommendedCompactionModel"] = None
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=payload,
         ):
             model = get_nous_recommended_aux_model(vision=False, free_tier=True)
         assert model is None
 
     def test_get_aux_model_returns_none_on_empty_payload(self):
-        from hermes_cli.models import get_nous_recommended_aux_model
-        with patch("hermes_cli.models.fetch_nous_recommended_models", return_value={}):
+        from vermes_cli.models import get_nous_recommended_aux_model
+        with patch("vermes_cli.models.fetch_nous_recommended_models", return_value={}):
             assert get_nous_recommended_aux_model(vision=False, free_tier=True) is None
             assert get_nous_recommended_aux_model(vision=True, free_tier=False) is None
 
     def test_get_aux_model_returns_none_when_modelname_blank(self):
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = {"freeRecommendedCompactionModel": {"modelName": "  "}}
         with patch(
-            "hermes_cli.models.fetch_nous_recommended_models",
+            "vermes_cli.models.fetch_nous_recommended_models",
             return_value=payload,
         ):
             assert get_nous_recommended_aux_model(vision=False, free_tier=True) is None
 
     def test_paid_tier_prefers_paid_recommendation(self):
         """Paid-tier users should get the paid model when it's populated."""
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = {
             "paidRecommendedCompactionModel": {"modelName": "anthropic/claude-opus-4.7"},
             "freeRecommendedCompactionModel": {"modelName": "google/gemini-3-flash-preview"},
             "paidRecommendedVisionModel": {"modelName": "openai/gpt-5.4"},
             "freeRecommendedVisionModel": {"modelName": "google/gemini-3-flash-preview"},
         }
-        with patch("hermes_cli.models.fetch_nous_recommended_models", return_value=payload):
+        with patch("vermes_cli.models.fetch_nous_recommended_models", return_value=payload):
             text = get_nous_recommended_aux_model(vision=False, free_tier=False)
             vision = get_nous_recommended_aux_model(vision=True, free_tier=False)
         assert text == "anthropic/claude-opus-4.7"
@@ -825,14 +825,14 @@ class TestNousRecommendedModels:
 
     def test_paid_tier_falls_back_to_free_when_paid_is_null(self):
         """If the Portal returns null for the paid field, fall back to free."""
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = {
             "paidRecommendedCompactionModel": None,
             "freeRecommendedCompactionModel": {"modelName": "google/gemini-3-flash-preview"},
             "paidRecommendedVisionModel": None,
             "freeRecommendedVisionModel": {"modelName": "google/gemini-3-flash-preview"},
         }
-        with patch("hermes_cli.models.fetch_nous_recommended_models", return_value=payload):
+        with patch("vermes_cli.models.fetch_nous_recommended_models", return_value=payload):
             text = get_nous_recommended_aux_model(vision=False, free_tier=False)
             vision = get_nous_recommended_aux_model(vision=True, free_tier=False)
         assert text == "google/gemini-3-flash-preview"
@@ -840,43 +840,43 @@ class TestNousRecommendedModels:
 
     def test_free_tier_never_uses_paid_recommendation(self):
         """Free-tier users must not get paid-only recommendations."""
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = {
             "paidRecommendedCompactionModel": {"modelName": "anthropic/claude-opus-4.7"},
             "freeRecommendedCompactionModel": None,  # no free recommendation
         }
-        with patch("hermes_cli.models.fetch_nous_recommended_models", return_value=payload):
+        with patch("vermes_cli.models.fetch_nous_recommended_models", return_value=payload):
             model = get_nous_recommended_aux_model(vision=False, free_tier=True)
         # Free tier must return None — never leak the paid model.
         assert model is None
 
     def test_auto_detects_tier_when_not_supplied(self):
         """Default behaviour: call check_nous_free_tier() to pick the tier."""
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = {
             "paidRecommendedCompactionModel": {"modelName": "paid-model"},
             "freeRecommendedCompactionModel": {"modelName": "free-model"},
         }
         with (
-            patch("hermes_cli.models.fetch_nous_recommended_models", return_value=payload),
-            patch("hermes_cli.models.check_nous_free_tier", return_value=True),
+            patch("vermes_cli.models.fetch_nous_recommended_models", return_value=payload),
+            patch("vermes_cli.models.check_nous_free_tier", return_value=True),
         ):
             assert get_nous_recommended_aux_model(vision=False) == "free-model"
         with (
-            patch("hermes_cli.models.fetch_nous_recommended_models", return_value=payload),
-            patch("hermes_cli.models.check_nous_free_tier", return_value=False),
+            patch("vermes_cli.models.fetch_nous_recommended_models", return_value=payload),
+            patch("vermes_cli.models.check_nous_free_tier", return_value=False),
         ):
             assert get_nous_recommended_aux_model(vision=False) == "paid-model"
 
     def test_tier_detection_error_defaults_to_paid(self):
         """If tier detection raises, assume paid so we don't downgrade silently."""
-        from hermes_cli.models import get_nous_recommended_aux_model
+        from vermes_cli.models import get_nous_recommended_aux_model
         payload = {
             "paidRecommendedCompactionModel": {"modelName": "paid-model"},
             "freeRecommendedCompactionModel": {"modelName": "free-model"},
         }
         with (
-            patch("hermes_cli.models.fetch_nous_recommended_models", return_value=payload),
-            patch("hermes_cli.models.check_nous_free_tier", side_effect=RuntimeError("boom")),
+            patch("vermes_cli.models.fetch_nous_recommended_models", return_value=payload),
+            patch("vermes_cli.models.check_nous_free_tier", side_effect=RuntimeError("boom")),
         ):
             assert get_nous_recommended_aux_model(vision=False) == "paid-model"

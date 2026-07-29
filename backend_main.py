@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 #   2) subprocess text=True 默认 GBK 解码 → 工具输出丢失 → "无响应"
 # import 即生效（模块底部自动调用 apply_windows_utf8_bootstrap）。POSIX 无副作用。
 try:
-    import hermes_bootstrap  # noqa: F401 — side-effect: reconfigure stdio to UTF-8
+    import vermes_bootstrap  # noqa: F401 — side-effect: reconfigure stdio to UTF-8
 except Exception:
     pass
 
@@ -36,7 +36,7 @@ except Exception:
     pass
 
 import uvicorn
-from hermes_cli.web_server import app
+from vermes_cli.web_server import app
 import signal as _signal
 
 # Gateway server 实例（用于 restart 时优雅关闭）
@@ -47,7 +47,7 @@ def _handle_sigterm(signum, frame):
     """SIGTERM 处理器：设置 shutdown_event 让主循环退出"""
     logger.info("[Vermes] 收到 SIGTERM，准备关闭...")
     try:
-        from hermes_cli.shutdown_signal import shutdown_event
+        from vermes_cli.shutdown_signal import shutdown_event
         shutdown_event.set()
     except Exception:
         os._exit(0)
@@ -66,10 +66,10 @@ def main():
 
 # ── 启动预检：关键文件语法检查 ────────────────────────────────
     _KEY_FILES = [
-        "hermes_cli/web_server.py",
+        "vermes_cli/web_server.py",
         "backend_main.py",
-        "hermes_cli/blueprints/chat.py",
-        "hermes_cli/blueprints/update.py",
+        "vermes_cli/blueprints/chat.py",
+        "vermes_cli/blueprints/update.py",
     ]
     for _f in _KEY_FILES:
         _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), _f)
@@ -91,7 +91,7 @@ def main():
         logger.info("[Vermes] ⚠️ 检测到上次启动异常退出")
         # 尝试回滚到上一个备份版本
         try:
-            from hermes_cli.update_manager import list_backups, rollback_to_version
+            from vermes_cli.update_manager import list_backups, rollback_to_version
             _backups = list_backups()
             if _backups:
                 _last = _backups[-1]
@@ -117,7 +117,7 @@ def main():
     threading.Thread(target=_clear_marker, daemon=True).start()
 
     # 强制启用 agent 模式（WebSocket 聊天端点）
-    from hermes_cli import web_server
+    from vermes_cli import web_server
     web_server._DASHBOARD_EMBEDDED_CHAT_ENABLED = True
 
     # 启动时即注册所有文献源 + 工具服务（Settings UI 依赖此数据）
@@ -136,7 +136,7 @@ def main():
     except Exception as _e:
         logger.warning(f"[Vermes Backend] ⚠️ 工具服务注册失败: {_e}")
 
-    # ScholarForge 等内置模块现在直接从打包内 hermes_cli/scholarforge/ 加载
+    # ScholarForge 等内置模块现在直接从打包内 vermes_cli/scholarforge/ 加载
     # （agent/module_loader.discover_builtin_modules），无需部署到 ~/.vermes/modules/。
     # 第三方插件仍可热加载到 ~/.vermes/modules/。
 
@@ -146,7 +146,7 @@ def main():
     _signal.signal(_signal.SIGTERM, _handle_sigterm)
 
     # ── 启动 uvicorn 并进入 restart 循环 ──
-    from hermes_cli.shutdown_signal import shutdown_event, restart_event
+    from vermes_cli.shutdown_signal import shutdown_event, restart_event
 
     # 初始启动：在子线程中运行 uvicorn，主线程监听信号
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", lifespan="off")

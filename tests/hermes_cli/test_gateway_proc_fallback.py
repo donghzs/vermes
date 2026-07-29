@@ -9,14 +9,14 @@ See: NousResearch/hermes-agent#7622
 import os
 from unittest.mock import MagicMock, patch
 
-import hermes_cli.gateway as gateway_mod
+import vermes_cli.gateway as gateway_mod
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_GATEWAY_CMD = "python -m hermes_cli.main gateway run"
+_GATEWAY_CMD = "python -m vermes_cli.main gateway run"
 _OTHER_CMD = "python -m some_other_thing"
 
 
@@ -57,18 +57,18 @@ class TestProcFallback:
     def test_detects_gateway_pid_via_proc(self):
         my_pid = os.getpid()
         entries = {
-            my_pid: "python -m hermes_cli.main",   # own process — excluded
+            my_pid: "python -m vermes_cli.main",   # own process — excluded
             12345: _GATEWAY_CMD,
             99999: _OTHER_CMD,
         }
         _isdir, _listdir, _open = _fake_proc_dir(entries)
 
         with (
-            patch("hermes_cli.gateway.is_windows", return_value=False),
+            patch("vermes_cli.gateway.is_windows", return_value=False),
             patch("os.path.isdir", side_effect=_isdir),
             patch("os.listdir", side_effect=_listdir),
             patch("builtins.open", side_effect=_open),
-            patch("hermes_cli.gateway._get_ancestor_pids", return_value=set()),
+            patch("vermes_cli.gateway._get_ancestor_pids", return_value=set()),
             patch("subprocess.run") as mock_ps,
         ):
             pids = gateway_mod._scan_gateway_pids(set(), all_profiles=True)
@@ -83,11 +83,11 @@ class TestProcFallback:
         _isdir, _listdir, _open = _fake_proc_dir(entries)
 
         with (
-            patch("hermes_cli.gateway.is_windows", return_value=False),
+            patch("vermes_cli.gateway.is_windows", return_value=False),
             patch("os.path.isdir", side_effect=_isdir),
             patch("os.listdir", side_effect=_listdir),
             patch("builtins.open", side_effect=_open),
-            patch("hermes_cli.gateway._get_ancestor_pids", return_value=set()),
+            patch("vermes_cli.gateway._get_ancestor_pids", return_value=set()),
             patch("subprocess.run"),
         ):
             pids = gateway_mod._scan_gateway_pids(set(), all_profiles=True)
@@ -101,9 +101,9 @@ class TestProcFallback:
         mock_result.stdout = ps_output
 
         with (
-            patch("hermes_cli.gateway.is_windows", return_value=False),
+            patch("vermes_cli.gateway.is_windows", return_value=False),
             patch("os.path.isdir", return_value=False),
-            patch("hermes_cli.gateway._get_ancestor_pids", return_value=set()),
+            patch("vermes_cli.gateway._get_ancestor_pids", return_value=set()),
             patch("subprocess.run", return_value=mock_result) as mock_ps,
         ):
             pids = gateway_mod._scan_gateway_pids(set(), all_profiles=True)
@@ -124,11 +124,11 @@ class TestProcFallback:
             raise PermissionError("no access")
 
         with (
-            patch("hermes_cli.gateway.is_windows", return_value=False),
+            patch("vermes_cli.gateway.is_windows", return_value=False),
             patch("os.path.isdir", side_effect=_isdir),
             patch("os.listdir", side_effect=_listdir),
             patch("builtins.open", side_effect=_open),
-            patch("hermes_cli.gateway._get_ancestor_pids", return_value=set()),
+            patch("vermes_cli.gateway._get_ancestor_pids", return_value=set()),
             patch("subprocess.run") as mock_ps,
         ):
             pids = gateway_mod._scan_gateway_pids(set(), all_profiles=True)

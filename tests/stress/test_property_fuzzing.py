@@ -241,9 +241,9 @@ def main():
 
         # Fresh module state per sequence to avoid cached init paths.
         for m in list(sys.modules.keys()):
-            if m.startswith("hermes_cli"):
+            if m.startswith("vermes_cli"):
                 del sys.modules[m]
-        from hermes_cli import kanban_db as kb
+        from vermes_cli import kanban_db as kb
 
         kb.init_db()
         conn = kb.connect()

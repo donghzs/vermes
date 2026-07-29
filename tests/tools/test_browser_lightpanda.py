@@ -38,28 +38,28 @@ class TestGetBrowserEngine:
         from tools.browser_tool import _get_browser_engine
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("AGENT_BROWSER_ENGINE", None)
-            with patch("hermes_cli.config.read_raw_config", return_value={}):
+            with patch("vermes_cli.config.read_raw_config", return_value={}):
                 assert _get_browser_engine() == "auto"
 
     def test_config_lightpanda(self):
         """Config browser.engine = 'lightpanda' is respected."""
         from tools.browser_tool import _get_browser_engine
         cfg = {"browser": {"engine": "lightpanda"}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_browser_engine() == "lightpanda"
 
     def test_config_chrome(self):
         """Config browser.engine = 'chrome' is respected."""
         from tools.browser_tool import _get_browser_engine
         cfg = {"browser": {"engine": "chrome"}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_browser_engine() == "chrome"
 
     def test_env_var_fallback(self):
         """AGENT_BROWSER_ENGINE env var is used when config has no engine key."""
         from tools.browser_tool import _get_browser_engine
         with patch.dict(os.environ, {"AGENT_BROWSER_ENGINE": "lightpanda"}):
-            with patch("hermes_cli.config.read_raw_config", return_value={}):
+            with patch("vermes_cli.config.read_raw_config", return_value={}):
                 assert _get_browser_engine() == "lightpanda"
 
     def test_config_takes_priority_over_env(self):
@@ -67,28 +67,28 @@ class TestGetBrowserEngine:
         from tools.browser_tool import _get_browser_engine
         cfg = {"browser": {"engine": "chrome"}}
         with patch.dict(os.environ, {"AGENT_BROWSER_ENGINE": "lightpanda"}):
-            with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+            with patch("vermes_cli.config.read_raw_config", return_value=cfg):
                 assert _get_browser_engine() == "chrome"
 
     def test_value_is_lowercased(self):
         """Engine value is normalized to lowercase."""
         from tools.browser_tool import _get_browser_engine
         cfg = {"browser": {"engine": "Lightpanda"}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_browser_engine() == "lightpanda"
 
     def test_invalid_engine_falls_back_to_auto(self):
         """Unknown engine values are rejected and fall back to 'auto'."""
         from tools.browser_tool import _get_browser_engine
         cfg = {"browser": {"engine": "firefox"}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_browser_engine() == "auto"
 
     def test_caching(self):
         """Result is cached — second call doesn't re-read config."""
         from tools.browser_tool import _get_browser_engine
         mock_read = MagicMock(return_value={"browser": {"engine": "lightpanda"}})
-        with patch("hermes_cli.config.read_raw_config", mock_read):
+        with patch("vermes_cli.config.read_raw_config", mock_read):
             assert _get_browser_engine() == "lightpanda"
             assert _get_browser_engine() == "lightpanda"
             mock_read.assert_called_once()
@@ -238,12 +238,12 @@ class TestConfigIntegration:
     """Verify engine config is in DEFAULT_CONFIG."""
 
     def test_engine_in_default_config(self):
-        from hermes_cli.config import DEFAULT_CONFIG
+        from vermes_cli.config import DEFAULT_CONFIG
         assert "engine" in DEFAULT_CONFIG["browser"]
         assert DEFAULT_CONFIG["browser"]["engine"] == "auto"
 
     def test_env_var_registered(self):
-        from hermes_cli.config import OPTIONAL_ENV_VARS
+        from vermes_cli.config import OPTIONAL_ENV_VARS
         assert "AGENT_BROWSER_ENGINE" in OPTIONAL_ENV_VARS
         entry = OPTIONAL_ENV_VARS["AGENT_BROWSER_ENGINE"]
         assert entry["category"] == "tool"
@@ -417,7 +417,7 @@ class TestLightpandaFallbackWarning:
              patch("tools.browser_tool._chrome_fallback_screenshot", return_value={
                  "success": True, "data": {"path": str(chrome_shot)}
              }), \
-             patch("hermes_constants.get_hermes_dir", return_value=tmp_path), \
+             patch("vermes_constants.get_hermes_dir", return_value=tmp_path), \
              patch("tools.vision_tools.vision_analyze_tool", fake_vision):
             response = json.loads(bt.browser_vision("what is this?", task_id="vision-test"))
 
@@ -465,7 +465,7 @@ class TestLightpandaFallbackWarning:
              patch("tools.browser_tool._chrome_fallback_screenshot", return_value={
                  "success": True, "data": {"path": str(chrome_shot)}
              }), \
-             patch("hermes_constants.get_hermes_dir", return_value=tmp_path), \
+             patch("vermes_constants.get_hermes_dir", return_value=tmp_path), \
              patch("tools.vision_tools.vision_analyze_tool", fake_vision):
             response = json.loads(bt.browser_vision("what is this?", task_id="vision-structured"))
 

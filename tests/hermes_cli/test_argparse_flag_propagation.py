@@ -119,7 +119,7 @@ class TestAcceptHooksOnAgentSubparsers:
         failing with `unrecognized arguments`."""
         import subprocess
         result = subprocess.run(
-            [sys.executable, "-m", "hermes_cli.main", *argv],
+            [sys.executable, "-m", "vermes_cli.main", *argv],
             capture_output=True,
             text=True,
             timeout=15,

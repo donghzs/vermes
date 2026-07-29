@@ -54,7 +54,7 @@ def test_gatewayrunner_mro_mixins_contract():
 
 # ── ScholarForge（首个热插拔模块，契约锁 15 工具）──
 def test_scholarforge_registered_in_global_registry():
-    import hermes_cli.scholarforge  # 副作用：注册 15 个工具到全局 registry
+    import vermes_cli.scholarforge  # 副作用：注册 15 个工具到全局 registry
     from tools.registry import registry
 
     names = set(registry.get_all_tool_names())

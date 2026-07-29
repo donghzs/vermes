@@ -10,8 +10,8 @@ cd frontend && npm run build && cd ..
 
 echo "▶ 2/5 同步 web_dist..."
 # 清理旧文件（防止堆积多个版本）
-rm -rf hermes_cli/web_dist/assets
-cp -R frontend/dist/* hermes_cli/web_dist/
+rm -rf vermes_cli/web_dist/assets
+cp -R frontend/dist/* vermes_cli/web_dist/
 
 echo "▶ 3/5 PyInstaller 打包后端 (vermes-backend.spec)..."
 .venv/bin/python -m PyInstaller vermes-backend.spec --noconfirm

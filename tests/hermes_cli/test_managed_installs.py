@@ -1,12 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from hermes_cli.config import (
+from vermes_cli.config import (
     format_managed_message,
     get_managed_system,
     recommended_update_command,
 )
-from hermes_cli.main import cmd_update
+from vermes_cli.main import cmd_update
 from tools.skills_hub import OptionalSkillSource
 
 
@@ -34,15 +34,15 @@ def test_recommended_update_command_defaults_to_hermes_update(monkeypatch):
     # somewhere with that marker, which would make get_managed_update_command()
     # return "Update your Nix flake input ..." instead of falling through to
     # detect_install_method().
-    with patch("hermes_cli.config.get_managed_update_command", return_value=None), \
-         patch("hermes_cli.config.detect_install_method", return_value="git"):
+    with patch("vermes_cli.config.get_managed_update_command", return_value=None), \
+         patch("vermes_cli.config.detect_install_method", return_value="git"):
         assert recommended_update_command() == "hermes update"
 
 
 def test_cmd_update_blocks_managed_homebrew(monkeypatch, capsys):
     monkeypatch.setenv("HERMES_MANAGED", "homebrew")
 
-    with patch("hermes_cli.main.subprocess.run") as mock_run:
+    with patch("vermes_cli.main.subprocess.run") as mock_run:
         cmd_update(SimpleNamespace())
 
     assert not mock_run.called

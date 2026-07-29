@@ -23,7 +23,7 @@ import pytest
 def isolated_db(tmp_path, monkeypatch):
     """隔离 DB"""
     db_path = str(tmp_path / "quality_gate.db")
-    import hermes_cli.scholarforge.database as sfdb
+    import vermes_cli.scholarforge.database as sfdb
     monkeypatch.setattr(sfdb, "DB_PATH", db_path)
     sfdb.init_db()
     return sfdb
@@ -32,7 +32,7 @@ def isolated_db(tmp_path, monkeypatch):
 @pytest.fixture
 def sample_project(isolated_db):
     """创建测试项目"""
-    from hermes_cli.scholarforge.database import create_project, save_section_content
+    from vermes_cli.scholarforge.database import create_project, save_section_content
     result = create_project("测试论文", "本科论文", "对比学习")
     # create_project 可能返回 dict 或 int
     pid = result["id"] if isinstance(result, dict) else result
@@ -45,8 +45,8 @@ class TestRunQualityGate:
 
     def test_flag_mode_writes_back_and_saves_report(self, isolated_db, sample_project):
         """flag 模式：写回成功 + section_quality 入库"""
-        from hermes_cli.scholarforge.quality_gate import run_quality_gate, get_quality_report
-        from hermes_cli.scholarforge.database import get_section_content
+        from vermes_cli.scholarforge.quality_gate import run_quality_gate, get_quality_report
+        from vermes_cli.scholarforge.database import get_section_content
 
         content = "这是一段正常的学术文本，包含研究背景和方法描述。" * 5
         result_content, report, blocked = run_quality_gate(
@@ -60,7 +60,7 @@ class TestRunQualityGate:
 
     def test_block_mode_with_p0_flaw_rejects_writeback(self, isolated_db, sample_project):
         """block 模式 + P0 设计缺陷：拒绝写回"""
-        from hermes_cli.scholarforge.quality_gate import run_quality_gate
+        from vermes_cli.scholarforge.quality_gate import run_quality_gate
 
         # 构造会触发 P0 设计缺陷的文本
         # detect_design_flaws 检测多要素未分离、评估者偏差等
@@ -83,7 +83,7 @@ class TestRunQualityGate:
 
     def test_aigc_purification_db_return_consistency(self, isolated_db, sample_project):
         """AIGC 净化：返回的 content 是净化后的（修旧 BUG 回归）"""
-        from hermes_cli.scholarforge.quality_gate import run_quality_gate
+        from vermes_cli.scholarforge.quality_gate import run_quality_gate
 
         # 高 AI 痕迹文本（重复结构、模板化用语）
         ai_text = (
@@ -105,7 +105,7 @@ class TestRunQualityGate:
 
     def test_high_similarity_triggers_warning(self, isolated_db, sample_project):
         """查重高相似：报告含警告"""
-        from hermes_cli.scholarforge.quality_gate import run_quality_gate
+        from vermes_cli.scholarforge.quality_gate import run_quality_gate
 
         # 高重复文本
         content = "复制粘贴的内容" * 100
@@ -120,10 +120,10 @@ class TestRunQualityGate:
 
     def test_fail_open_on_exception(self, isolated_db, sample_project):
         """fail-open：任一校验异常不阻断写回"""
-        from hermes_cli.scholarforge.quality_gate import run_quality_gate
+        from vermes_cli.scholarforge.quality_gate import run_quality_gate
 
         with patch(
-            "hermes_cli.scholarforge.plagcheck.check_aigc",
+            "vermes_cli.scholarforge.plagcheck.check_aigc",
             side_effect=RuntimeError("模拟崩溃"),
         ):
             content = "正常学术文本" * 10
@@ -142,7 +142,7 @@ class TestCitationGate:
     @pytest.mark.asyncio
     async def test_citation_gate_with_fake_papers(self, isolated_db):
         """假引用 flag 报告"""
-        from hermes_cli.scholarforge.quality_gate import run_citation_gate
+        from vermes_cli.scholarforge.quality_gate import run_citation_gate
 
         fake_papers = [
             {"title": "完全不存在的论文标题abcdef", "authors": "Fake Author", "year": "2024", "doi": ""},
@@ -158,7 +158,7 @@ class TestCitationGate:
     @pytest.mark.asyncio
     async def test_citation_gate_block_mode(self, isolated_db):
         """block 模式假引用拒绝写回"""
-        from hermes_cli.scholarforge.quality_gate import run_citation_gate
+        from vermes_cli.scholarforge.quality_gate import run_citation_gate
 
         fake_papers = [
             {"title": "Another Fake Paper xyz123", "authors": "Nobody", "year": "2025", "doi": ""},
@@ -178,7 +178,7 @@ class TestExplicitQualityGate:
     @pytest.mark.asyncio
     async def test_explicit_gate_returns_report(self, isolated_db, sample_project):
         """显式工具返回综合报告"""
-        from hermes_cli.scholarforge.quality_gate import run_full_quality_gate
+        from vermes_cli.scholarforge.quality_gate import run_full_quality_gate
 
         report = await run_full_quality_gate(
             project_id=sample_project,
@@ -192,7 +192,7 @@ class TestExplicitQualityGate:
     @pytest.mark.asyncio
     async def test_explicit_gate_no_data(self, isolated_db):
         """无数据时不崩溃"""
-        from hermes_cli.scholarforge.quality_gate import run_full_quality_gate
+        from vermes_cli.scholarforge.quality_gate import run_full_quality_gate
 
         report = await run_full_quality_gate(
             project_id=99999,  # 不存在的项目
@@ -206,7 +206,7 @@ class TestQualityReportPersistence:
 
     def test_save_and_list_reports(self, isolated_db, sample_project):
         """保存报告后可按项目列出，倒序排列，空 section_key 归入 __full__。"""
-        from hermes_cli.scholarforge.quality_gate import (
+        from vermes_cli.scholarforge.quality_gate import (
             save_quality_report,
             list_quality_reports,
         )
@@ -229,13 +229,13 @@ class TestQualityReportPersistence:
 
     def test_list_empty_for_unknown_project(self, isolated_db):
         """未知项目返回空列表，不抛异常。"""
-        from hermes_cli.scholarforge.quality_gate import list_quality_reports
+        from vermes_cli.scholarforge.quality_gate import list_quality_reports
 
         assert list_quality_reports(999999) == []
 
     def test_upsert_overwrites_same_section(self, isolated_db, sample_project):
         """同 project+section_key 保存两次，列表仍只 1 条（upsert）。"""
-        from hermes_cli.scholarforge.quality_gate import (
+        from vermes_cli.scholarforge.quality_gate import (
             save_quality_report,
             list_quality_reports,
         )
@@ -253,13 +253,13 @@ class TestQualityGateIntegration:
     @pytest.mark.asyncio
     async def test_write_with_quality_gate_flag(self, isolated_db, sample_project):
         """write 工具 flag 模式：写回成功 + 报告附加"""
-        from hermes_cli.scholarforge.tools import _handle_scholarforge_write
+        from vermes_cli.scholarforge.tools import _handle_scholarforge_write
 
         # mock LLM
         async def mock_llm(prompt, system_prompt=""):
             return "## 摘要\n\n本文提出一种方法，用于解决该问题。实验表明方法有效。"
 
-        with patch("hermes_cli.scholarforge.tools._call_llm", mock_llm):
+        with patch("vermes_cli.scholarforge.tools._call_llm", mock_llm):
             result = await _handle_scholarforge_write({
                 "topic": "测试主题",
                 "section_type": "abstract",
@@ -273,7 +273,7 @@ class TestQualityGateIntegration:
     @pytest.mark.asyncio
     async def test_write_with_quality_gate_block(self, isolated_db, sample_project):
         """write 工具 block 模式：P0 缺陷时拒绝写回"""
-        from hermes_cli.scholarforge.tools import _handle_scholarforge_write
+        from vermes_cli.scholarforge.tools import _handle_scholarforge_write
 
         # mock LLM 生成有设计缺陷的文本
         async def mock_llm(prompt, system_prompt=""):
@@ -283,7 +283,7 @@ class TestQualityGateIntegration:
                 "由任课教师自评效果，样本为某班 10 名学生。"
             ) * 5
 
-        with patch("hermes_cli.scholarforge.tools._call_llm", mock_llm):
+        with patch("vermes_cli.scholarforge.tools._call_llm", mock_llm):
             result = await _handle_scholarforge_write({
                 "topic": "测试",
                 "section_type": "method",

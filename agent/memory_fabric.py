@@ -38,7 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from harness.metrics import get_metrics
 
 logger = logging.getLogger(__name__)

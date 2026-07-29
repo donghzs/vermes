@@ -1,4 +1,4 @@
-"""Tests for hermes_cli.gateway."""
+"""Tests for vermes_cli.gateway."""
 
 import sys
 from types import ModuleType, SimpleNamespace
@@ -6,7 +6,7 @@ from unittest.mock import patch, call
 
 import pytest
 
-import hermes_cli.gateway as gateway
+import vermes_cli.gateway as gateway
 
 
 def _install_fake_gateway_run(monkeypatch, start_gateway):
@@ -285,7 +285,7 @@ def test_gateway_restart_on_windows_without_service_uses_detached_backend(monkey
     down. The Windows backend restarts via detached pythonw.exe even when no
     Scheduled Task / Startup item is installed.
     """
-    import hermes_cli.gateway_windows as gateway_windows
+    import vermes_cli.gateway_windows as gateway_windows
 
     calls = []
 
@@ -313,7 +313,7 @@ def test_gateway_restart_on_windows_without_service_uses_detached_backend(monkey
 
 def test_gateway_restart_on_windows_preserves_failure_fallback(monkeypatch):
     """If the Windows backend cannot launch, keep the existing fallback."""
-    import hermes_cli.gateway_windows as gateway_windows
+    import vermes_cli.gateway_windows as gateway_windows
 
     calls = []
 
@@ -702,4 +702,4 @@ class TestStopProfileGateway:
 def test_module_has_logger():
     """Verify module has a logger instance (regression guard for #27154)."""
     assert hasattr(gateway, "logger")
-    assert gateway.logger.name == "hermes_cli.gateway"
+    assert gateway.logger.name == "vermes_cli.gateway"

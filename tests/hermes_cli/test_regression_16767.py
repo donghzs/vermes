@@ -3,9 +3,9 @@ import sys
 from unittest.mock import patch
 from pathlib import Path
 
-import hermes_cli.model_switch as ms
-from hermes_cli.model_switch import DirectAlias
-from hermes_cli.runtime_provider import _resolve_named_custom_runtime
+import vermes_cli.model_switch as ms
+from vermes_cli.model_switch import DirectAlias
+from vermes_cli.runtime_provider import _resolve_named_custom_runtime
 
 def test_ensure_direct_aliases_mutates_in_place(monkeypatch):
     """_ensure_direct_aliases mutates DIRECT_ALIASES in place (guards against rebinding regression)."""
@@ -32,10 +32,10 @@ def test_chat_provider_argparse_acceptance(monkeypatch):
     def mock_cmd_chat(args):
         recorded["provider"] = args.provider
 
-    monkeypatch.setattr("hermes_cli.main.cmd_chat", mock_cmd_chat)
+    monkeypatch.setattr("vermes_cli.main.cmd_chat", mock_cmd_chat)
     monkeypatch.setattr(sys, "argv", ["hermes", "chat", "--provider", "my-custom-key"])
 
-    from hermes_cli.main import main
+    from vermes_cli.main import main
     main()
 
     assert recorded["provider"] == "my-custom-key"
@@ -43,7 +43,7 @@ def test_chat_provider_argparse_acceptance(monkeypatch):
 def test_resolve_named_custom_runtime_honors_explicit_base_url(monkeypatch):
     """_resolve_named_custom_runtime honors (provider='custom', explicit_base_url=...)."""
     # Mock has_usable_secret to recognize our test key
-    monkeypatch.setattr("hermes_cli.runtime_provider.has_usable_secret", lambda x: x == "test-api-key")
+    monkeypatch.setattr("vermes_cli.runtime_provider.has_usable_secret", lambda x: x == "test-api-key")
     
     result = _resolve_named_custom_runtime(
         requested_provider="custom",

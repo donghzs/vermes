@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from hermes_state import SessionDB
+from vermes_state import SessionDB
 
 
 class TestFTS5TrigramDegradation:
@@ -56,7 +56,7 @@ class TestFTS5TrigramDegradation:
     def test_db_functional_when_fts5_completely_unavailable(self, tmp_path):
         """If FTS5 is entirely unavailable, DB still works for non-search ops."""
         # Patch the FTS_SQL execution to simulate FTS5 missing
-        with patch("hermes_state.FTS_SQL", "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content);"):
+        with patch("vermes_state.FTS_SQL", "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content);"):
             with patch("sqlite3.connect") as mock_connect:
                 # This is complex to mock fully; instead verify the real DB
                 # works for basic operations regardless of FTS5 state

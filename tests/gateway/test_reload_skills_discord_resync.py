@@ -69,7 +69,7 @@ class TestRefreshSkillGroup:
             )
 
         monkeypatch.setattr(
-            "hermes_cli.commands.discord_skill_commands_by_category",
+            "vermes_cli.commands.discord_skill_commands_by_category",
             fake_collector,
         )
 
@@ -100,7 +100,7 @@ class TestRefreshSkillGroup:
             )
 
         monkeypatch.setattr(
-            "hermes_cli.commands.discord_skill_commands_by_category",
+            "vermes_cli.commands.discord_skill_commands_by_category",
             fake_collector,
         )
 
@@ -123,7 +123,7 @@ class TestRefreshSkillGroup:
             raise RuntimeError("simulated collector failure")
 
         monkeypatch.setattr(
-            "hermes_cli.commands.discord_skill_commands_by_category",
+            "vermes_cli.commands.discord_skill_commands_by_category",
             boom,
         )
 
@@ -164,7 +164,7 @@ class TestRegisterSkillGroupUsesInstanceState:
                 0,
             )
         monkeypatch.setattr(
-            "hermes_cli.commands.discord_skill_commands_by_category",
+            "vermes_cli.commands.discord_skill_commands_by_category",
             fake_collector,
         )
 

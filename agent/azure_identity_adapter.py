@@ -128,7 +128,7 @@ class EntraIdentityConfig:
     (tenant ID, service principal secret, federated token file, sovereign
     cloud authority, etc.) flows through azure-identity's standard
     ``AZURE_*`` env vars — see the Bedrock pattern in
-    ``hermes_cli/runtime_provider.py:1310-1377`` for the analogous
+    ``vermes_cli/runtime_provider.py:1310-1377`` for the analogous
     "let the SDK read env" approach.
 
     ``scope`` is Microsoft's documented Foundry inference audience. Almost
@@ -434,7 +434,7 @@ def materialize_bearer_for_http(value: Any) -> str:
     """Return a fresh Bearer JWT for a manual HTTP request.
 
     Only call this at sites that must construct an ``Authorization``
-    header outside the OpenAI SDK (e.g. ``hermes_cli/azure_detect.py``).
+    header outside the OpenAI SDK (e.g. ``vermes_cli/azure_detect.py``).
     Calls the callable exactly once and returns the resulting token.
 
     **Anthropic SDK integration:** the Anthropic Python SDK does not

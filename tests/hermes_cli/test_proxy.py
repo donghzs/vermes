@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hermes_cli.proxy.adapters import ADAPTERS, get_adapter
-from hermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
-from hermes_cli.proxy.adapters.nous_portal import NousPortalAdapter
-from hermes_cli.proxy.adapters.xai import XAIGrokAdapter
+from vermes_cli.proxy.adapters import ADAPTERS, get_adapter
+from vermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
+from vermes_cli.proxy.adapters.nous_portal import NousPortalAdapter
+from vermes_cli.proxy.adapters.xai import XAIGrokAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ def test_nous_adapter_get_credential_uses_runtime_resolver(tmp_path, monkeypatch
     }
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
         return_value=refreshed_state,
     ) as mock_resolve:
         adapter = NousPortalAdapter()
@@ -163,7 +163,7 @@ def test_nous_adapter_retry_credential_forces_legacy_mint(tmp_path, monkeypatch)
     }
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
         return_value=refreshed_state,
     ) as mock_resolve:
         adapter = NousPortalAdapter()
@@ -189,7 +189,7 @@ def test_nous_adapter_retry_credential_skips_opaque_bearer(tmp_path, monkeypatch
     })
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
     ) as mock_resolve:
         adapter = NousPortalAdapter()
         cred = adapter.get_retry_credential(
@@ -219,7 +219,7 @@ def test_nous_adapter_get_credential_raises_on_refresh_failure(tmp_path, monkeyp
     })
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
         side_effect=RuntimeError("Refresh session has been revoked"),
     ):
         adapter = NousPortalAdapter()
@@ -228,7 +228,7 @@ def test_nous_adapter_get_credential_raises_on_refresh_failure(tmp_path, monkeyp
 
 
 def test_nous_adapter_quarantines_terminal_refresh_failure(tmp_path, monkeypatch):
-    from hermes_cli.auth import AuthError
+    from vermes_cli.auth import AuthError
     from agent.credential_pool import load_pool
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -240,7 +240,7 @@ def test_nous_adapter_quarantines_terminal_refresh_failure(tmp_path, monkeypatch
     assert load_pool("nous").select() is not None
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
         side_effect=AuthError(
             "Refresh session has been revoked",
             provider="nous",
@@ -270,7 +270,7 @@ def test_nous_adapter_get_credential_raises_when_no_agent_key_returned(tmp_path,
     })
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
         return_value={"access_token": "a", "refresh_token": "r"},
     ):
         adapter = NousPortalAdapter()
@@ -323,7 +323,7 @@ def test_nous_adapter_concurrent_refresh_serialized(tmp_path, monkeypatch):
             errors.append(exc)
 
     with patch(
-        "hermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
+        "vermes_cli.proxy.adapters.nous_portal.resolve_nous_runtime_credentials",
         side_effect=serializing_refresh,
     ):
         threads = [threading.Thread(target=worker) for _ in range(3)]
@@ -437,7 +437,7 @@ def test_xai_adapter_retry_refreshes_current_pool_entry(tmp_path, monkeypatch):
             "last_refresh": "2026-05-19T00:00:00Z",
         }
 
-    monkeypatch.setattr("hermes_cli.auth.refresh_xai_oauth_pure", fake_refresh)
+    monkeypatch.setattr("vermes_cli.auth.refresh_xai_oauth_pure", fake_refresh)
 
     adapter = XAIGrokAdapter()
     failed = adapter.get_credential()
@@ -460,7 +460,7 @@ def test_xai_adapter_retry_refreshes_current_pool_entry(tmp_path, monkeypatch):
 aiohttp = pytest.importorskip("aiohttp")
 from aiohttp import web  # noqa: E402
 
-from hermes_cli.proxy.server import create_app  # noqa: E402
+from vermes_cli.proxy.server import create_app  # noqa: E402
 
 
 class FakeAdapter(UpstreamAdapter):
@@ -738,7 +738,7 @@ def test_server_strips_client_auth_header():
 
 def test_cmd_proxy_status_runs(capsys, tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    from hermes_cli.proxy.cli import cmd_proxy_status
+    from vermes_cli.proxy.cli import cmd_proxy_status
 
     args = MagicMock()
     rc = cmd_proxy_status(args)
@@ -750,7 +750,7 @@ def test_cmd_proxy_status_runs(capsys, tmp_path, monkeypatch):
 
 
 def test_cmd_proxy_providers_runs(capsys):
-    from hermes_cli.proxy.cli import cmd_proxy_list_providers
+    from vermes_cli.proxy.cli import cmd_proxy_list_providers
 
     args = MagicMock()
     rc = cmd_proxy_list_providers(args)
@@ -761,7 +761,7 @@ def test_cmd_proxy_providers_runs(capsys):
 
 
 def test_cmd_proxy_start_refuses_unknown_provider(capsys):
-    from hermes_cli.proxy.cli import cmd_proxy_start
+    from vermes_cli.proxy.cli import cmd_proxy_start
 
     args = MagicMock()
     args.provider = "no-such-provider"
@@ -775,7 +775,7 @@ def test_cmd_proxy_start_refuses_unknown_provider(capsys):
 
 def test_cmd_proxy_start_refuses_when_unauthenticated(capsys, tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    from hermes_cli.proxy.cli import cmd_proxy_start
+    from vermes_cli.proxy.cli import cmd_proxy_start
 
     args = MagicMock()
     args.provider = "nous"

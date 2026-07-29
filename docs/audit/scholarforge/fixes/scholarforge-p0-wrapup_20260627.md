@@ -4,7 +4,7 @@
 
 ## P0-1: 引用真实性验证 ✅
 
-`hermes_cli/scholarforge/agents/__init__.py` 新增:
+`vermes_cli/scholarforge/agents/__init__.py` 新增:
 - `_validate_citation_refs(text, papers)` — 扫描 [n] 引用，逐条对文献池验证
 - `_fuzzy_match_title()` — rapidfuzz 模糊匹配
 - LiteratureAgent + WritingAgent 生成后自动调用
@@ -13,7 +13,7 @@
 
 ## P0-2: 导出模块 ✅
 
-`hermes_cli/scholarforge/export/__init__.py` (174 行):
+`vermes_cli/scholarforge/export/__init__.py` (174 行):
 - `format_export_markdown()` — Markdown 论文
 - `format_export_bibtex()` — BibTeX 格式
 - `extract_references()` — 从正文提取参考文献列表
@@ -22,7 +22,7 @@
 
 ## P0-3: 付费源可插拔 ✅
 
-`hermes_cli/scholarforge/search/__init__.py`:
+`vermes_cli/scholarforge/search/__init__.py`:
 - 4 付费源定义: Scopus / Web of Science / CORE / Google Scholar(SerpAPI)
 - `get_paid_source_configs()` + `activate_paid_source()`
 - 端点: `GET /api/scholar/sources` + `POST /api/scholar/sources/activate`

@@ -48,7 +48,7 @@ def test_camofox_is_not_in_root_dependencies() -> None:
     assert "@askjo/camofox-browser" not in deps, (
         "Camofox is a ~300MB binary-postinstall backend that must stay "
         "out of root package.json dependencies. It belongs in the "
-        "Camofox post_setup handler in hermes_cli/tools_config.py so it "
+        "Camofox post_setup handler in vermes_cli/tools_config.py so it "
         "only installs when the user explicitly selects Camofox via "
         "`hermes tools` → Browser Automation → Camofox."
     )

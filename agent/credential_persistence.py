@@ -2,7 +2,7 @@
 
 These helpers define which credential-pool entries are references to borrowed
 runtime secrets and strip raw values before those entries are written to
-``auth.json``.  They intentionally have no dependency on ``hermes_cli.auth`` so
+``auth.json``.  They intentionally have no dependency on ``vermes_cli.auth`` so
 both the pool model and the final auth-store write boundary can share the same
 policy without import cycles.
 """

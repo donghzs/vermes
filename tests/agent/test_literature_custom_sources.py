@@ -238,13 +238,13 @@ def test_bootstrap_custom_and_resolve_by_label(store):
 
 
 def _auth_ok(monkeypatch):
-    import hermes_cli.web_server as ws
+    import vermes_cli.web_server as ws
 
     monkeypatch.setattr(ws, "_require_token", lambda request: None)
 
 
 def test_endpoint_list_returns_sources(store):
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
 
     add_custom_source({"label": "Portal", "field_types": ["api_key"]})
     resp = _run_sync(cfg.list_literature_custom_sources())
@@ -252,7 +252,7 @@ def test_endpoint_list_returns_sources(store):
 
 
 def test_endpoint_create_update_delete(store, monkeypatch):
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
 
     _auth_ok(monkeypatch)
     fake_req = object()
@@ -278,7 +278,7 @@ def test_endpoint_create_update_delete(store, monkeypatch):
 
 
 def test_endpoint_create_rejects_empty_label(store, monkeypatch):
-    import hermes_cli.blueprints.config as cfg
+    import vermes_cli.blueprints.config as cfg
 
     _auth_ok(monkeypatch)
     with pytest.raises(Exception):  # HTTPException 400

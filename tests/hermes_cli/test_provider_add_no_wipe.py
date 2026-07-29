@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
-from hermes_cli.blueprints.providers import ProviderAddRequest, add_provider
+from vermes_cli.blueprints.providers import ProviderAddRequest, add_provider
 
 
 def _run(coro):
@@ -21,11 +21,11 @@ def _run(coro):
 def test_empty_api_key_does_not_touch_existing_key(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "hermes_cli.blueprints.providers.save_env_value",
+        "vermes_cli.blueprints.providers.save_env_value",
         lambda k, v: calls.append((k, v)),
     )
-    monkeypatch.setattr("hermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
-    monkeypatch.setattr("hermes_cli.blueprints.providers.save_config", lambda cfg: None)
+    monkeypatch.setattr("vermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
+    monkeypatch.setattr("vermes_cli.blueprints.providers.save_config", lambda cfg: None)
 
     # Provider A already has a key in .env (masked in the UI) and is saved with
     # an empty api_key + base_url — exactly what the desktop UI sends.
@@ -40,11 +40,11 @@ def test_empty_api_key_does_not_touch_existing_key(monkeypatch):
 def test_omitted_api_key_is_noop(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "hermes_cli.blueprints.providers.save_env_value",
+        "vermes_cli.blueprints.providers.save_env_value",
         lambda k, v: calls.append((k, v)),
     )
-    monkeypatch.setattr("hermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
-    monkeypatch.setattr("hermes_cli.blueprints.providers.save_config", lambda cfg: None)
+    monkeypatch.setattr("vermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
+    monkeypatch.setattr("vermes_cli.blueprints.providers.save_config", lambda cfg: None)
 
     # api_key omitted entirely (Optional default None).
     _run(add_provider(ProviderAddRequest(
@@ -56,11 +56,11 @@ def test_omitted_api_key_is_noop(monkeypatch):
 def test_real_api_key_is_written(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "hermes_cli.blueprints.providers.save_env_value",
+        "vermes_cli.blueprints.providers.save_env_value",
         lambda k, v: calls.append((k, v)),
     )
-    monkeypatch.setattr("hermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
-    monkeypatch.setattr("hermes_cli.blueprints.providers.save_config", lambda cfg: None)
+    monkeypatch.setattr("vermes_cli.blueprints.providers.load_config", lambda: {"providers": {}})
+    monkeypatch.setattr("vermes_cli.blueprints.providers.save_config", lambda cfg: None)
 
     _run(add_provider(ProviderAddRequest(
         provider_id="openai", api_key="sk-real-123", base_url="https://api.openai.com/v1")))

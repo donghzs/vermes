@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from typing import Any, Dict, List, Optional, Tuple
 from utils import base_url_host_matches, normalize_proxy_env_vars
 
@@ -1242,7 +1242,7 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     logger.info()
 
     try:
-        from hermes_cli.auth import _can_open_graphical_browser as _can_open_gui
+        from vermes_cli.auth import _can_open_graphical_browser as _can_open_gui
     except Exception:
         _can_open_gui = lambda: True  # noqa: E731 — degrade to prior behavior
 

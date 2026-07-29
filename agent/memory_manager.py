@@ -601,7 +601,7 @@ class MemoryManager:
 
         elif name == "view_memory_status":
             try:
-                from hermes_cli.blueprints.chat import memory_status as _ms
+                from vermes_cli.blueprints.chat import memory_status as _ms
                 import asyncio
                 result = asyncio.run(_ms(""))
                 return json.dumps(result)
@@ -819,7 +819,7 @@ class MemoryManager:
         ``get_hermes_home()`` themselves.
         """
         if "hermes_home" not in kwargs:
-            from hermes_constants import get_hermes_home
+            from vermes_constants import get_hermes_home
             kwargs["hermes_home"] = str(get_hermes_home())
         for provider in self._providers:
             try:

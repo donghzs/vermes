@@ -154,11 +154,11 @@ class TestNormalizeMainRuntimePreservesCallable:
 
 
 class TestTruncateTokenCallable:
-    @pytest.mark.skip(reason="Vermes fork: _truncate_token not available in hermes_cli.web_server")
+    @pytest.mark.skip(reason="Vermes fork: _truncate_token not available in vermes_cli.web_server")
     def test_callable_returns_placeholder(self):
         """Dashboard preview must render the Entra placeholder, NOT
         ``"<function ...>"``."""
-        from hermes_cli.web_server import _truncate_token
+        from vermes_cli.web_server import _truncate_token
 
         invoked = {"count": 0}
 
@@ -171,16 +171,16 @@ class TestTruncateTokenCallable:
         assert rendered == "<entra-id-bearer>"
         assert invoked["count"] == 0
 
-    @pytest.mark.skip(reason="Vermes fork: _truncate_token not available in hermes_cli.web_server")
+    @pytest.mark.skip(reason="Vermes fork: _truncate_token not available in vermes_cli.web_server")
     def test_string_jwt_still_truncated_to_signature_tail(self):
-        from hermes_cli.web_server import _truncate_token
+        from vermes_cli.web_server import _truncate_token
         # JWT shape: header.payload.signature → only signature tail shown.
         out = _truncate_token("aaaa.bbbb.cccccccsig", visible=4)
         assert out == "…csig"
 
-    @pytest.mark.skip(reason="Vermes fork: _truncate_token not available in hermes_cli.web_server")
+    @pytest.mark.skip(reason="Vermes fork: _truncate_token not available in vermes_cli.web_server")
     def test_empty_returns_empty(self):
-        from hermes_cli.web_server import _truncate_token
+        from vermes_cli.web_server import _truncate_token
         assert _truncate_token(None) == ""
         assert _truncate_token("") == ""
 

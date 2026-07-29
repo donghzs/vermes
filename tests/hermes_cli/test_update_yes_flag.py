@@ -12,7 +12,7 @@ import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from hermes_cli.main import cmd_update
+from vermes_cli.main import cmd_update
 
 
 def _make_run_side_effect(
@@ -35,7 +35,7 @@ def _make_run_side_effect(
             )
         # `git status --porcelain` for dirty-tree detection during autostash.
         if "status" in joined and "--porcelain" in joined:
-            out = " M hermes_cli/main.py\n" if dirty else ""
+            out = " M vermes_cli/main.py\n" if dirty else ""
             return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
         # `git stash list` — return a stash ref when dirty (so _stash_local_changes
         # gets something to return). _stash_local_changes_if_needed is what we
@@ -50,10 +50,10 @@ def _make_run_side_effect(
 class TestUpdateYesConfigMigration:
     """--yes auto-answers the config-migration prompt and skips API-key prompts."""
 
-    @patch("hermes_cli.config.migrate_config")
-    @patch("hermes_cli.config.check_config_version", return_value=(1, 2))
-    @patch("hermes_cli.config.get_missing_config_fields", return_value=[])
-    @patch("hermes_cli.config.get_missing_env_vars", return_value=["NEW_KEY"])
+    @patch("vermes_cli.config.migrate_config")
+    @patch("vermes_cli.config.check_config_version", return_value=(1, 2))
+    @patch("vermes_cli.config.get_missing_config_fields", return_value=[])
+    @patch("vermes_cli.config.get_missing_env_vars", return_value=["NEW_KEY"])
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
     def test_yes_auto_migrates_without_input(
@@ -89,10 +89,10 @@ class TestUpdateYesConfigMigration:
         # The "Would you like to configure them now?" prompt text never appears.
         assert "Would you like to configure them now?" not in out
 
-    @patch("hermes_cli.config.migrate_config")
-    @patch("hermes_cli.config.check_config_version", return_value=(1, 2))
-    @patch("hermes_cli.config.get_missing_config_fields", return_value=[])
-    @patch("hermes_cli.config.get_missing_env_vars", return_value=["NEW_KEY"])
+    @patch("vermes_cli.config.migrate_config")
+    @patch("vermes_cli.config.check_config_version", return_value=(1, 2))
+    @patch("vermes_cli.config.get_missing_config_fields", return_value=[])
+    @patch("vermes_cli.config.get_missing_env_vars", return_value=["NEW_KEY"])
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
     def test_no_yes_flag_still_prompts_in_tty(
@@ -114,9 +114,9 @@ class TestUpdateYesConfigMigration:
         args = SimpleNamespace(yes=False)
 
         # Patch ``sys.stdin.isatty`` and ``sys.stdout.isatty`` directly on the
-        # real ``sys`` module instead of replacing ``hermes_cli.main.sys`` with
+        # real ``sys`` module instead of replacing ``vermes_cli.main.sys`` with
         # a MagicMock. The MagicMock approach was flaky under ``pytest-xdist``
-        # — a sibling test that imported ``hermes_cli.main`` first could leave
+        # — a sibling test that imported ``vermes_cli.main`` first could leave
         # a different ``sys`` reference resolved inside the function and the
         # mock would never be consulted, with CI then taking the
         # "Non-interactive session" branch instead of prompting.

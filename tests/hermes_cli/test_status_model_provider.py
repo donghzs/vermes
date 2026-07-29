@@ -1,12 +1,12 @@
-"""Tests for hermes_cli.status model/provider display."""
+"""Tests for vermes_cli.status model/provider display."""
 
 from types import SimpleNamespace
 
-from hermes_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
+from vermes_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
 
 
 def _patch_common_status_deps(monkeypatch, status_mod, tmp_path, *, openai_base_url=""):
-    import hermes_cli.auth as auth_mod
+    import vermes_cli.auth as auth_mod
 
     monkeypatch.setattr(status_mod, "get_env_path", lambda: tmp_path / ".env", raising=False)
     monkeypatch.setattr(status_mod, "get_hermes_home", lambda: tmp_path, raising=False)
@@ -27,7 +27,7 @@ def _patch_common_status_deps(monkeypatch, status_mod, tmp_path, *, openai_base_
 
 
 def test_show_status_displays_configured_dict_model_and_provider_label(monkeypatch, capsys, tmp_path):
-    from hermes_cli import status as status_mod
+    from vermes_cli import status as status_mod
 
     _patch_common_status_deps(monkeypatch, status_mod, tmp_path)
     monkeypatch.setattr(
@@ -48,7 +48,7 @@ def test_show_status_displays_configured_dict_model_and_provider_label(monkeypat
 
 
 def test_show_status_displays_legacy_string_model_and_custom_endpoint(monkeypatch, capsys, tmp_path):
-    from hermes_cli import status as status_mod
+    from vermes_cli import status as status_mod
 
     _patch_common_status_deps(monkeypatch, status_mod, tmp_path, openai_base_url="http://localhost:8080/v1")
     monkeypatch.setattr(status_mod, "load_config", lambda: {"model": "qwen3:latest"}, raising=False)
@@ -64,8 +64,8 @@ def test_show_status_displays_legacy_string_model_and_custom_endpoint(monkeypatc
 
 
 def test_show_status_reports_managed_nous_features(monkeypatch, capsys, tmp_path):
-    monkeypatch.setattr("hermes_cli.status.managed_nous_tools_enabled", lambda: True)
-    from hermes_cli import status as status_mod
+    monkeypatch.setattr("vermes_cli.status.managed_nous_tools_enabled", lambda: True)
+    from vermes_cli import status as status_mod
 
     _patch_common_status_deps(monkeypatch, status_mod, tmp_path)
     monkeypatch.setattr(
@@ -104,8 +104,8 @@ def test_show_status_reports_managed_nous_features(monkeypatch, capsys, tmp_path
 
 
 def test_show_status_hides_nous_subscription_section_when_feature_flag_is_off(monkeypatch, capsys, tmp_path):
-    monkeypatch.setattr("hermes_cli.status.managed_nous_tools_enabled", lambda: False)
-    from hermes_cli import status as status_mod
+    monkeypatch.setattr("vermes_cli.status.managed_nous_tools_enabled", lambda: False)
+    from vermes_cli import status as status_mod
 
     _patch_common_status_deps(monkeypatch, status_mod, tmp_path)
     monkeypatch.setattr(
@@ -125,7 +125,7 @@ def test_show_status_hides_nous_subscription_section_when_feature_flag_is_off(mo
 
 
 def test_show_status_reports_empty_lmstudio_listing_as_reachable(monkeypatch, capsys, tmp_path):
-    from hermes_cli import status as status_mod
+    from vermes_cli import status as status_mod
 
     _patch_common_status_deps(monkeypatch, status_mod, tmp_path)
     monkeypatch.setattr(
@@ -144,7 +144,7 @@ def test_show_status_reports_empty_lmstudio_listing_as_reachable(monkeypatch, ca
     monkeypatch.setattr(status_mod, "resolve_provider", lambda requested=None, **kwargs: "lmstudio", raising=False)
     monkeypatch.setattr(status_mod, "provider_label", lambda provider: "LM Studio", raising=False)
     monkeypatch.setattr(
-        "hermes_cli.models.probe_lmstudio_models",
+        "vermes_cli.models.probe_lmstudio_models",
         lambda api_key=None, base_url=None, timeout=5.0: [],
     )
 

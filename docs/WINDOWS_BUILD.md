@@ -79,8 +79,8 @@ cmd /c "npm run build"   # 产出 frontend/dist/
 
 ### Step 3 — 同步前端到后端 web_dist
 ```
-Copy-Item -Force frontend\dist\* hermes_cli\web_dist\ -Recurse
-# 校验 hermes_cli/web_dist/assets/index-*.js 存在
+Copy-Item -Force frontend\dist\* vermes_cli\web_dist\ -Recurse
+# 校验 vermes_cli/web_dist/assets/index-*.js 存在
 ```
 
 ### Step 4 — Python 依赖 + PyInstaller 后端
@@ -109,7 +109,7 @@ cmd /c ".\node_modules\.bin\electron-builder.cmd --win --x64"
 dist-electron\Vermes Setup 2.3.5.exe   # 应 ~208MB（含后端）
 # 校验内部：resources/backend/vermes-backend.exe
 #           resources/backend/_internal/sqlite_vec/vec0.dll  ← Windows 向量检索
-#           resources/backend/_internal/hermes_cli/web_dist/index.html
+#           resources/backend/_internal/vermes_cli/web_dist/index.html
 ```
 
 ---

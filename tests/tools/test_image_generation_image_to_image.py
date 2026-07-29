@@ -46,7 +46,7 @@ def test_handler_forwards_image_url_to_plugin():
     with patch("tools.image_generation_tool._read_configured_image_provider", return_value="fake"):
         with patch("tools.image_generation_tool._read_configured_image_model", return_value=None):
             with patch("agent.image_gen_registry.get_provider", return_value=FakeProvider()):
-                with patch("hermes_cli.plugins._ensure_plugins_discovered"):
+                with patch("vermes_cli.plugins._ensure_plugins_discovered"):
                     result = _handle_image_generate({
                         "prompt": "make it blue",
                         "image_url": "http://example.com/source.png",
@@ -74,7 +74,7 @@ def test_handler_forwards_reference_images_to_plugin():
     with patch("tools.image_generation_tool._read_configured_image_provider", return_value="fake"):
         with patch("tools.image_generation_tool._read_configured_image_model", return_value=None):
             with patch("agent.image_gen_registry.get_provider", return_value=FakeProvider()):
-                with patch("hermes_cli.plugins._ensure_plugins_discovered"):
+                with patch("vermes_cli.plugins._ensure_plugins_discovered"):
                     result = _handle_image_generate({
                         "prompt": "in this style",
                         "reference_image_urls": refs,

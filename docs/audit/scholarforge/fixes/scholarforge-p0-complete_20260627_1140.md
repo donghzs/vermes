@@ -6,7 +6,7 @@
 
 ## P0-1: 引用真实性验证 ✅
 
-**文件**: `hermes_cli/scholarforge/agents/__init__.py`
+**文件**: `vermes_cli/scholarforge/agents/__init__.py`
 
 新增两个函数：
 - `_validate_citation_refs(text, papers)` — 扫描正文 [n] 引用，逐条验证是否对应真实文献池
@@ -24,7 +24,7 @@
 
 ## P0-2: 导出模块 ✅
 
-**文件**: `hermes_cli/scholarforge/export/__init__.py` (新建, 186 行)
+**文件**: `vermes_cli/scholarforge/export/__init__.py` (新建, 186 行)
 
 导出端点（挂载在 blueprint）：
 - `GET /api/scholar/export?format=markdown` — Markdown 论文（含参考文献列表）
@@ -42,7 +42,7 @@
 
 ## P0-3: 付费文献源可插拔接口 ✅
 
-**文件**: `hermes_cli/scholarforge/search/__init__.py`
+**文件**: `vermes_cli/scholarforge/search/__init__.py`
 
 新增：
 - `_PAID_SOURCE_DEFINITIONS` — 4 个付费源定义（Scopus/WoS/CORE/Google Scholar）

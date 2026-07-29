@@ -21,14 +21,14 @@ pyinstaller --onedir --windowed --name Vermes --noconfirm ^
   --distpath "C:\Users\administrator\Desktop\Vermes\dist3" ^
   --workpath "C:\Users\administrator\Desktop\Vermes\build3" ^
   --paths "C:\Users\administrator\Desktop\Vermes\backend" ^
-  --add-data "C:\Users\administrator\Desktop\Vermes\backend\hermes_cli\web_dist;hermes_cli\web_dist" ^
+  --add-data "C:\Users\administrator\Desktop\Vermes\backend\vermes_cli\web_dist;vermes_cli\web_dist" ^
   --add-data "C:\Users\administrator\Desktop\Vermes\backend\locales;locales" ^
-  --collect-all hermes_cli ^
+  --collect-all vermes_cli ^
   --collect-all agent ^
-  --hidden-import hermes_constants ^
+  --hidden-import vermes_constants ^
   --hidden-import hermes_logging ^
   --hidden-import hermes_state ^
-  --hidden-import hermes_cli.web_server ^
+  --hidden-import vermes_cli.web_server ^
   --hidden-import run_agent ^
   --hidden-import webview ^
   --hidden-import webview.window ^
@@ -48,7 +48,7 @@ pyinstaller --onedir --windowed --name Vermes --noconfirm ^
   --exclude-module matplotlib ^
   --exclude-module scipy ^
   --exclude-module numba ^
-  "C:\Users\administrator\Desktop\Vermes\backend\hermes_cli\gui_app.py"
+  "C:\Users\administrator\Desktop\Vermes\backend\vermes_cli\gui_app.py"
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] 打包失败！
@@ -58,7 +58,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo [3/4] 打包成功！验证文件...
 dir "C:\Users\administrator\Desktop\Vermes\dist3\Vermes\Vermes.exe" | findstr File
-dir /s "C:\Users\administrator\Desktop\Vermes\dist3\Vermes\_internal\hermes_cli\*.py" 2>nul | findstr /c:".py"
+dir /s "C:\Users\administrator\Desktop\Vermes\dist3\Vermes\_internal\vermes_cli\*.py" 2>nul | findstr /c:".py"
 
 echo.
 echo [4/4] 创建 ZIP 安装包...

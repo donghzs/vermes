@@ -1720,9 +1720,9 @@ run_setup_wizard() {
     # Run hermes setup using the venv Python directly (no activation needed).
     # Redirect stdin from /dev/tty so interactive prompts work when piped from curl.
     if [ "$USE_VENV" = true ]; then
-        "$INSTALL_DIR/venv/bin/python" -m hermes_cli.main setup < /dev/tty
+        "$INSTALL_DIR/venv/bin/python" -m vermes_cli.main setup < /dev/tty
     else
-        python -m hermes_cli.main setup < /dev/tty
+        python -m vermes_cli.main setup < /dev/tty
     fi
 }
 
@@ -2028,7 +2028,7 @@ postinstall_mode() {
         "$HERMES_CMD" setup
     else
         log_warn "hermes command not found on PATH"
-        log_info "Try: python -m hermes_cli.main setup"
+        log_info "Try: python -m vermes_cli.main setup"
     fi
 }
 

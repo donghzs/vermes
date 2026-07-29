@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-import hermes_state
-from hermes_state import (
+import vermes_state
+from vermes_state import (
     IntegrityLockdownError,
     SessionDB,
     startup_integrity_probe,
@@ -25,11 +25,11 @@ from hermes_state import (
 @pytest.fixture(autouse=True)
 def _clean_integrity_state():
     """Every test starts and ends with the sentinel disarmed."""
-    hermes_state._reset_integrity_state()
-    hermes_state._set_last_init_error(None)
+    vermes_state._reset_integrity_state()
+    vermes_state._set_last_init_error(None)
     yield
-    hermes_state._reset_integrity_state()
-    hermes_state._set_last_init_error(None)
+    vermes_state._reset_integrity_state()
+    vermes_state._set_last_init_error(None)
 
 
 def _make_valid_db(path: Path) -> None:
@@ -47,21 +47,21 @@ def _make_valid_db(path: Path) -> None:
 def test_fresh_install_on_pristine_home(tmp_path):
     status = startup_integrity_probe(home=tmp_path)
     assert status["state_db"] == "fresh_install"
-    assert not hermes_state.is_integrity_lockdown()
+    assert not vermes_state.is_integrity_lockdown()
 
 
 def test_ok_on_valid_ledger(tmp_path):
     _make_valid_db(tmp_path / "state.db")
     status = startup_integrity_probe(home=tmp_path)
     assert status["state_db"] == "ok"
-    assert not hermes_state.is_integrity_lockdown()
+    assert not vermes_state.is_integrity_lockdown()
 
 
 def test_corrupt_on_garbage_file(tmp_path):
     (tmp_path / "state.db").write_bytes(b"this is definitely not sqlite" * 64)
     status = startup_integrity_probe(home=tmp_path)
     assert status["state_db"] == "corrupt"
-    assert hermes_state.is_integrity_lockdown()
+    assert vermes_state.is_integrity_lockdown()
 
 
 @pytest.mark.parametrize(
@@ -85,7 +85,7 @@ def test_missing_with_profile_on_each_trace_signal(tmp_path, trace_setup):
     status = startup_integrity_probe(home=tmp_path)
     assert status["state_db"] == "missing_with_profile"
     assert status["traces"], "trace list must name the signals found"
-    assert hermes_state.is_integrity_lockdown()
+    assert vermes_state.is_integrity_lockdown()
 
 
 def test_zero_byte_ledger_with_traces_is_not_whitewashed(tmp_path):
@@ -95,7 +95,7 @@ def test_zero_byte_ledger_with_traces_is_not_whitewashed(tmp_path):
     (tmp_path / "config.yaml").write_text("model: x\n")
     status = startup_integrity_probe(home=tmp_path)
     assert status["state_db"] == "missing_with_profile"
-    assert hermes_state.is_integrity_lockdown()
+    assert vermes_state.is_integrity_lockdown()
 
 
 # ---------------------------------------------------------------------------
@@ -115,14 +115,14 @@ def test_lockdown_sessiondb_raises_and_leaves_zero_bytes(tmp_path):
     # THE core promise: "your data was not modified" — no empty DB created.
     assert not guarded.exists(), "lockdown must never create the ledger file"
     # Cause is surfaced for degradation paths (/resume-style messages).
-    err = hermes_state.get_last_init_error()
+    err = vermes_state.get_last_init_error()
     assert err and "lockdown" in err
 
 
 def test_lockdown_does_not_affect_custom_db_paths(tmp_path):
     (tmp_path / "config.yaml").write_text("x: 1\n")
     startup_integrity_probe(home=tmp_path)
-    assert hermes_state.is_integrity_lockdown()
+    assert vermes_state.is_integrity_lockdown()
 
     other = tmp_path / "elsewhere" / "other.db"
     db = SessionDB(db_path=other)  # must NOT raise
@@ -132,7 +132,7 @@ def test_lockdown_does_not_affect_custom_db_paths(tmp_path):
 
 def test_no_lockdown_on_fresh_install_sessiondb_creates_normally(tmp_path):
     startup_integrity_probe(home=tmp_path)
-    assert not hermes_state.is_integrity_lockdown()
+    assert not vermes_state.is_integrity_lockdown()
     db = SessionDB(db_path=tmp_path / "state.db")
     assert (tmp_path / "state.db").exists()
     db._conn.close()
@@ -174,6 +174,6 @@ def test_large_ledger_uses_header_check_only(tmp_path, monkeypatch):
     valid ledger (header/schema_version path)."""
     db = tmp_path / "state.db"
     _make_valid_db(db)
-    monkeypatch.setattr(hermes_state, "_INTEGRITY_QUICK_CHECK_MAX_BYTES", 0)
+    monkeypatch.setattr(vermes_state, "_INTEGRITY_QUICK_CHECK_MAX_BYTES", 0)
     status = startup_integrity_probe(home=tmp_path)
     assert status["state_db"] == "ok"

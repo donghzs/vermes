@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from hermes_cli.config import _expand_env_vars, load_config
+from vermes_cli.config import _expand_env_vars, load_config
 from unittest.mock import patch as mock_patch
 
 
@@ -73,7 +73,7 @@ class TestLoadConfigExpansion:
         monkeypatch.setenv("GOOGLE_API_KEY", "gsk-test-key")
         monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "1234567:ABC-token")
         # Patch the imported function's own globals. Other tests may reload
-        # hermes_cli.config, making string-target monkeypatches hit a different
+        # vermes_cli.config, making string-target monkeypatches hit a different
         # module object than this collection-time imported load_config().
         monkeypatch.setitem(load_config.__globals__, "get_config_path", lambda: config_file)
 

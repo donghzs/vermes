@@ -50,7 +50,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 

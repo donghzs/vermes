@@ -1,6 +1,6 @@
 """Guards for CLI startup performance regression.
 
-``hermes_cli.main`` skips eager plugin discovery at argparse-setup time
+``vermes_cli.main`` skips eager plugin discovery at argparse-setup time
 when the invocation is clearly targeting a known built-in subcommand.
 This saves 500-650ms on ``hermes --help``, ``hermes version``,
 ``hermes logs``, etc., by not importing ``google.cloud.pubsub_v1``,
@@ -28,7 +28,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hermes_cli.main import (
+from vermes_cli.main import (
     _BUILTIN_SUBCOMMANDS,
     _first_positional_argv,
     _plugin_cli_discovery_needed,
@@ -45,7 +45,7 @@ def _live_subcommand_names() -> set[str]:
     plugin-registered commands aren't included — we're validating the
     built-in-only set.
     """
-    from hermes_cli import main as _main
+    from vermes_cli import main as _main
 
     argv_backup = sys.argv[:]
     sys.argv = ["hermes", "--help"]
@@ -159,7 +159,7 @@ def test_builtin_set_covers_every_registered_subcommand():
     assert not missing_from_declaration, (
         f"_BUILTIN_SUBCOMMANDS is missing these live subcommands: "
         f"{sorted(missing_from_declaration)}. Add them to "
-        f"hermes_cli/main.py::_BUILTIN_SUBCOMMANDS so plugin discovery "
+        f"vermes_cli/main.py::_BUILTIN_SUBCOMMANDS so plugin discovery "
         f"can be skipped when the user targets them."
     )
 

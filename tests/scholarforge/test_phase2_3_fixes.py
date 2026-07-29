@@ -17,7 +17,7 @@ import pytest
 @pytest.fixture()
 def temp_db(monkeypatch):
     """隔离的 scholarforge DB。"""
-    import hermes_cli.scholarforge.database as db
+    import vermes_cli.scholarforge.database as db
 
     tmpdir = tempfile.mkdtemp()
     monkeypatch.setattr(db, "DB_PATH", os.path.join(tmpdir, "test_scholar.db"))
@@ -31,7 +31,7 @@ def temp_db(monkeypatch):
 class TestReplaceCitationsLoop:
     def test_schema_describes_real_loop(self):
         """schema 描述与实现一致：claim 检索式 + 本地库优先 + 写回去重。"""
-        from hermes_cli.scholarforge.tools import SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA as S
+        from vermes_cli.scholarforge.tools import SCHOLARFORGE_REPLACE_CITATIONS_SCHEMA as S
         desc = S["description"]
         assert "claim" in desc
         assert "本地文献库" in desc
@@ -40,8 +40,8 @@ class TestReplaceCitationsLoop:
 
     def test_local_literature_becomes_candidate(self, temp_db, monkeypatch):
         """项目本地文献应参与匹配并被选中（无需联网）。"""
-        import hermes_cli.scholarforge.tools as tools_mod
-        from hermes_cli.scholarforge import search as search_mod
+        import vermes_cli.scholarforge.tools as tools_mod
+        from vermes_cli.scholarforge import search as search_mod
 
         pid = temp_db.create_project(title="测试项目", paper_type="期刊论文")["id"]
         temp_db.add_literature(
@@ -82,9 +82,9 @@ class TestReplaceCitationsLoop:
 
     def test_writeback_dedup(self, temp_db, monkeypatch):
         """在线检索命中的新文献写回项目库，且按标题去重不重复入库。"""
-        import hermes_cli.scholarforge.tools as tools_mod
-        from hermes_cli.scholarforge import search as search_mod
-        from hermes_cli.scholarforge.search import PaperResult
+        import vermes_cli.scholarforge.tools as tools_mod
+        from vermes_cli.scholarforge import search as search_mod
+        from vermes_cli.scholarforge.search import PaperResult
 
         pid = temp_db.create_project(title="写回测试", paper_type="期刊论文")["id"]
 
@@ -139,7 +139,7 @@ class TestReplaceCitationsLoop:
 
 class TestCitationStyles:
     def test_schema_enum_is_four_styles(self):
-        from hermes_cli.scholarforge.tools import SCHOLARFORGE_FORMAT_REFS_SCHEMA as S
+        from vermes_cli.scholarforge.tools import SCHOLARFORGE_FORMAT_REFS_SCHEMA as S
         enum = S["parameters"]["properties"]["style"]["enum"]
         assert set(enum) == {"gbt7714", "apa", "ieee", "mla"}
 
@@ -149,7 +149,7 @@ class TestCitationStyles:
         ("mla", '"'),
     ])
     def test_new_styles_format(self, style, expect):
-        import hermes_cli.scholarforge.tools as tools_mod
+        import vermes_cli.scholarforge.tools as tools_mod
         papers = '[{"title": "Attention Is All You Need", "authors": ["Ashish Vaswani"], "year": "2017", "venue": "NeurIPS", "doi": ""}]'
         result = asyncio.run(
             tools_mod._handle_scholarforge_format_refs({"papers": papers, "style": style})
@@ -159,7 +159,7 @@ class TestCitationStyles:
 
     def test_apa7_backward_compat(self):
         """旧枚举值 apa7 仍可用（映射到 apa）。"""
-        import hermes_cli.scholarforge.tools as tools_mod
+        import vermes_cli.scholarforge.tools as tools_mod
         papers = '[{"title": "T", "authors": ["A B"], "year": "2020", "venue": "V", "doi": ""}]'
         result = asyncio.run(
             tools_mod._handle_scholarforge_format_refs({"papers": papers, "style": "apa7"})
@@ -168,7 +168,7 @@ class TestCitationStyles:
         assert "APA 7th" in result
 
     def test_gbt7714_still_works(self):
-        import hermes_cli.scholarforge.tools as tools_mod
+        import vermes_cli.scholarforge.tools as tools_mod
         papers = '[{"title": "深度学习研究", "authors": ["张三"], "year": "2021", "venue": "计算机学报", "doi": ""}]'
         result = asyncio.run(
             tools_mod._handle_scholarforge_format_refs({"papers": papers})
@@ -177,7 +177,7 @@ class TestCitationStyles:
         assert "GB/T 7714" in result
 
     def test_unknown_style_rejected(self):
-        import hermes_cli.scholarforge.tools as tools_mod
+        import vermes_cli.scholarforge.tools as tools_mod
         papers = '[{"title": "T", "authors": [], "year": "", "venue": "", "doi": ""}]'
         result = asyncio.run(
             tools_mod._handle_scholarforge_format_refs({"papers": papers, "style": "chicago"})
@@ -191,7 +191,7 @@ class TestCitationStyles:
 
 class TestDeaigcHonesty:
     def test_schema_disclaims_detector(self):
-        from hermes_cli.scholarforge.tools import SCHOLARFORGE_DEAIGC_SCHEMA as S
+        from vermes_cli.scholarforge.tools import SCHOLARFORGE_DEAIGC_SCHEMA as S
         desc = S["description"]
         assert "不是" in desc and "AI 检测器" in desc
         assert "不保证" in desc
@@ -200,7 +200,7 @@ class TestDeaigcHonesty:
 
     def test_report_no_ai_probability_claim(self, monkeypatch):
         """报告用「机械化特征指数」而非「AI 评分」，并带免责声明。"""
-        import hermes_cli.scholarforge.tools as tools_mod
+        import vermes_cli.scholarforge.tools as tools_mod
 
         async def fake_llm(prompt, system=""):
             return "改写后的文本"
@@ -238,7 +238,7 @@ class TestUsageTracking:
         assert by_name["scholarforge_search"]["calls"] == 1
 
     def test_with_usage_wrapper_records(self, temp_db):
-        from hermes_cli.scholarforge.tools import _with_usage
+        from vermes_cli.scholarforge.tools import _with_usage
 
         async def dummy_handler(args, **kw):
             return "✅ ok"
@@ -252,7 +252,7 @@ class TestUsageTracking:
         assert "scholarforge_dummy" in names
 
     def test_wrapper_marks_error_result(self, temp_db):
-        from hermes_cli.scholarforge.tools import _with_usage
+        from vermes_cli.scholarforge.tools import _with_usage
 
         async def failing_handler(args, **kw):
             return "❌ 出错了"
@@ -265,8 +265,8 @@ class TestUsageTracking:
 
     def test_wrapper_never_breaks_tool(self, temp_db, monkeypatch):
         """埋点自身故障不影响工具返回。"""
-        import hermes_cli.scholarforge.database as db
-        from hermes_cli.scholarforge.tools import _with_usage
+        import vermes_cli.scholarforge.database as db
+        from vermes_cli.scholarforge.tools import _with_usage
 
         def boom(*a, **kw):
             raise RuntimeError("db down")
@@ -282,7 +282,7 @@ class TestUsageTracking:
     def test_all_22_tools_wrapped(self):
         """register_tools 中 22 个工具全部经过 _with_usage 包装。"""
         import inspect
-        import hermes_cli.scholarforge.tools as tools_mod
+        import vermes_cli.scholarforge.tools as tools_mod
 
         src = inspect.getsource(tools_mod.register_tools)
         assert src.count("_with_usage(") == 26

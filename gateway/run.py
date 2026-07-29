@@ -13,12 +13,12 @@ Usage:
     python cli.py --gateway
 """
 
-# IMPORTANT: hermes_bootstrap must be the very first import — UTF-8 stdio
-# on Windows.  No-op on POSIX.  See hermes_bootstrap.py for full rationale.
+# IMPORTANT: vermes_bootstrap must be the very first import — UTF-8 stdio
+# on Windows.  No-op on POSIX.  See vermes_bootstrap.py for full rationale.
 try:
-    import hermes_bootstrap  # noqa: F401
+    import vermes_bootstrap  # noqa: F401
 except ModuleNotFoundError:
-    # Graceful fallback when hermes_bootstrap isn't registered in the venv
+    # Graceful fallback when vermes_bootstrap isn't registered in the venv
     # yet — happens during partial ``hermes update`` where git-reset landed
     # new code but ``uv pip install -e .`` didn't finish.  Missing bootstrap
     # means UTF-8 stdio setup is skipped on Windows; POSIX is unaffected.
@@ -56,7 +56,7 @@ from typing import Dict, Optional, Any, List, Union
 # handler path which imports it directly where needed.
 from agent.async_utils import safe_schedule_threadsafe
 from agent.i18n import t
-from hermes_cli.config import cfg_get
+from vermes_cli.config import cfg_get
 
 # --- Agent cache tuning ---------------------------------------------------
 # Bounds the per-session AIAgent cache to prevent unbounded growth in
@@ -265,7 +265,7 @@ def _prepare_gateway_status_message(platform: Any, event_type: str, message: str
 # after a gateway restart when the user's next message starts new work.
 #
 # The freshness signal is the timestamp of the last transcript row, which
-# ``hermes_state.get_messages`` carries on every persisted message.  This
+# ``vermes_state.get_messages`` carries on every persisted message.  This
 # handles the two auto-continue cases uniformly:
 #   * resume_pending (gateway restart/shutdown watchdog marked the session)
 #   * tool-tail     (last persisted message is a tool result the agent
@@ -534,14 +534,14 @@ _ensure_ssl_certs()
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Resolve Hermes home directory (respects HERMES_HOME override)
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from utils import atomic_json_write, atomic_yaml_write, base_url_host_matches, is_truthy_value
 _hermes_home = get_hermes_home()
 
 # Load environment variables from ~/.hermes/.env first.
 # User-managed env files should override stale shell exports on restart.
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
-from hermes_cli.env_loader import load_hermes_dotenv
+from vermes_cli.env_loader import load_hermes_dotenv
 _env_path = _hermes_home / '.env'
 load_hermes_dotenv(hermes_home=_hermes_home, project_env=Path(__file__).resolve().parents[1] / '.env')
 
@@ -566,7 +566,7 @@ def _reload_runtime_env_preserving_config_authority() -> None:
         import yaml as _yaml
         with open(config_path, encoding="utf-8") as f:
             cfg = _yaml.safe_load(f) or {}
-        from hermes_cli.config import _expand_env_vars
+        from vermes_cli.config import _expand_env_vars
         cfg = _expand_env_vars(cfg)
     except Exception:
         return
@@ -588,7 +588,7 @@ if _config_path.exists():
         with open(_config_path, encoding="utf-8") as _f:
             _cfg = _yaml.safe_load(_f) or {}
         # Expand ${ENV_VAR} references before bridging to env vars.
-        from hermes_cli.config import _expand_env_vars
+        from vermes_cli.config import _expand_env_vars
         _cfg = _expand_env_vars(_cfg)
         # Top-level simple values (fallback only — don't override .env)
         for _key, _val in _cfg.items():
@@ -742,7 +742,7 @@ if _config_path.exists():
 
 # Apply IPv4 preference if configured (before any HTTP clients are created).
 try:
-    from hermes_constants import apply_ipv4_preference
+    from vermes_constants import apply_ipv4_preference
     _network_cfg = (_cfg if '_cfg' in dir() else {}).get("network", {})
     if isinstance(_network_cfg, dict) and _network_cfg.get("force_ipv4"):
         apply_ipv4_preference(force=True)
@@ -751,14 +751,14 @@ except Exception as _bootstrap_exc:
 
 # Validate config structure early — log warnings so gateway operators see problems
 try:
-    from hermes_cli.config import print_config_warnings
+    from vermes_cli.config import print_config_warnings
     print_config_warnings()
 except Exception as _bootstrap_exc:
     logger.warning(f"  Warning: config validation failed: {_bootstrap_exc}")
 
 # Warn if user has deprecated MESSAGING_CWD / TERMINAL_CWD in .env
 try:
-    from hermes_cli.config import warn_deprecated_cwd_env_vars
+    from vermes_cli.config import warn_deprecated_cwd_env_vars
     warn_deprecated_cwd_env_vars()
 except Exception as _bootstrap_exc:
     logger.warning(f"  Warning: deprecation check failed: {_bootstrap_exc}")
@@ -845,11 +845,11 @@ def _resolve_runtime_agent_kwargs() -> dict:
     resolve credentials using the fallback provider chain from config.yaml
     before giving up.
     """
-    from hermes_cli.runtime_provider import (
+    from vermes_cli.runtime_provider import (
         resolve_runtime_provider,
         format_runtime_provider_error,
     )
-    from hermes_cli.auth import AuthError
+    from vermes_cli.auth import AuthError
 
     try:
         runtime = resolve_runtime_provider(
@@ -879,7 +879,7 @@ def _resolve_runtime_agent_kwargs() -> dict:
 
 def _try_resolve_fallback_provider() -> dict | None:
     """Attempt to resolve credentials from the fallback_model/fallback_providers config."""
-    from hermes_cli.runtime_provider import resolve_runtime_provider
+    from vermes_cli.runtime_provider import resolve_runtime_provider
     try:
         import yaml as _y
         cfg_path = _hermes_home / "config.yaml"
@@ -1126,7 +1126,7 @@ def _check_unavailable_skill(command_name: str) -> str | None:
                     )
 
         # Check optional skills (shipped with repo but not installed)
-        from hermes_constants import get_optional_skills_dir
+        from vermes_constants import get_optional_skills_dir
         repo_root = Path(__file__).resolve().parent.parent
         optional_dir = get_optional_skills_dir(repo_root / "optional-skills")
         if optional_dir.exists():
@@ -1487,13 +1487,13 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         # ── G1 启动完整性哨兵（docs/design-startup-integrity-guards-final.md）──
         # 必须在任何 SessionDB() 之前跑（审计修正 C：SessionDB.__init__ 缺库即静默建
         # 空库，会把 missing_with_profile 洗白成 0 字节新库）。与 web_server 进程一致：
-        # probe 用 mode=ro 只读、零磁盘写入；判坏 → hermes_state 进入 lockdown（方案 a：
+        # probe 用 mode=ro 只读、零磁盘写入；判坏 → vermes_state 进入 lockdown（方案 a：
         # 下方 SessionDB() raise 而非新建），gateway 不会把渠道新消息写进空库分叉。
         # 各处懒加载的 SessionDB()（session/mirror/api_server/slash）都已 try/except
         # 包裹，lockdown raise 会被优雅降级（回退 JSONL / 返回 None），不炸渠道处理。
         try:
-            import hermes_state as _hermes_state_probe
-            _startup_integrity = _hermes_state_probe.startup_integrity_probe()
+            import vermes_state as _vermes_state_probe
+            _startup_integrity = _vermes_state_probe.startup_integrity_probe()
             _v = _startup_integrity.get("state_db")
             if _v in ("corrupt", "missing_with_profile"):
                 logger.error(
@@ -1513,7 +1513,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         # Initialize session database for session_search tool support
         self._session_db = None
         try:
-            from hermes_state import SessionDB, IntegrityLockdownError
+            from vermes_state import SessionDB, IntegrityLockdownError
             self._session_db = SessionDB()
         except IntegrityLockdownError as e:
             # G1 plan-a 主动熔断：启动 probe 已判定账本损坏/缺失，绝不打开或新建它。
@@ -1525,7 +1525,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
             # HERMES_HOME silently lost /resume, /title, /history, /branch, and
             # session search without this.  The underlying cause (usually
             # "locking protocol" from NFS) is now also captured by
-            # hermes_state.get_last_init_error() for slash-command error strings.
+            # vermes_state.get_last_init_error() for slash-command error strings.
             logger.warning("SQLite session store not available: %s", e)
 
         # Opportunistic state.db maintenance: prune ended sessions older
@@ -1536,7 +1536,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         # but never raised.
         if self._session_db is not None:
             try:
-                from hermes_cli.config import load_config as _load_full_config
+                from vermes_cli.config import load_config as _load_full_config
                 _sess_cfg = (_load_full_config().get("sessions") or {})
                 if _sess_cfg.get("auto_prune", False):
                     self._session_db.maybe_auto_prune_and_vacuum(
@@ -1552,7 +1552,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         # checkpoint repos under ~/.hermes/checkpoints/.  Opt-in via
         # checkpoints.auto_prune, idempotent via .last_prune marker.
         try:
-            from hermes_cli.config import load_config as _load_full_config
+            from vermes_cli.config import load_config as _load_full_config
             _ckpt_cfg = (_load_full_config().get("checkpoints") or {})
             if _ckpt_cfg.get("auto_prune", False):
                 from tools.checkpoint_manager import maybe_auto_prune_checkpoints
@@ -1798,7 +1798,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         mode, attach `request_overrides` so the API call is marked
         accordingly.
         """
-        from hermes_cli.models import resolve_fast_mode_overrides
+        from vermes_cli.models import resolve_fast_mode_overrides
 
         runtime = {
             "api_key": runtime_kwargs.get("api_key"),
@@ -2179,7 +2179,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
     def _finalize_shutdown_agents(self, active_agents: Dict[str, Any]) -> None:
         for agent in active_agents.values():
             try:
-                from hermes_cli.plugins import invoke_hook as _invoke_hook
+                from vermes_cli.plugins import invoke_hook as _invoke_hook
                 _invoke_hook(
                     "on_session_finalize",
                     session_id=getattr(agent, "session_id", None),
@@ -2321,7 +2321,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         # that triggered the /restart command closing its console.
         if sys.platform == "win32":
             import textwrap
-            from hermes_cli._subprocess_compat import windows_detach_popen_kwargs
+            from vermes_cli._subprocess_compat import windows_detach_popen_kwargs
 
             cmd_argv = [*hermes_cmd, "gateway", "restart"]
             watcher = textwrap.dedent(
@@ -2711,7 +2711,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         (e.g. a prior "Always Approve" click) without a gateway restart.
         """
         try:
-            from hermes_cli.config import load_config
+            from vermes_cli.config import load_config
             cfg = load_config()
             return cfg if isinstance(cfg, dict) else {}
         except Exception:
@@ -2920,7 +2920,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         try:
             from agent.image_routing import decide_image_input_mode
             from agent.auxiliary_client import _read_main_model, _read_main_provider
-            from hermes_cli.config import load_config
+            from vermes_cli.config import load_config
 
             cfg = load_config()
             provider = _read_main_provider()
@@ -3545,7 +3545,7 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     """
     from cron.scheduler import tick as cron_tick
     from gateway.platforms.base import cleanup_image_cache, cleanup_document_cache
-    from hermes_cli.debug import _sweep_expired_pastes
+    from vermes_cli.debug import _sweep_expired_pastes
 
     IMAGE_CACHE_EVERY = 60   # ticks — once per hour at default 60s interval
     CHANNEL_DIR_EVERY = 5    # ticks — every 5 minutes
@@ -3771,7 +3771,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # Centralized logging — agent.log (INFO+), errors.log (WARNING+),
     # and gateway.log (INFO+, gateway-component records only).
     # Idempotent, so repeated calls from AIAgent.__init__ won't duplicate.
-    from hermes_logging import setup_logging
+    from vermes_logging import setup_logging
     setup_logging(hermes_home=_hermes_home, mode="gateway")
 
     # Periodic process memory usage logging (gateway only) — emits a
@@ -3787,7 +3787,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             # config is loaded a few lines up; re-read the logging section
             # here so we pick up user overrides without coupling to local
             # variable names inside the start_gateway body.
-            from hermes_cli.config import load_config as _load_cli_config
+            from vermes_cli.config import load_config as _load_cli_config
 
             _mm_cfg = (_load_cli_config() or {}).get("logging", {}).get("memory_monitor", {}) or {}
         except Exception:
@@ -3831,7 +3831,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # fan-out when explicitly configured.
     try:
         from agent import llm_concurrency as _llm_conc
-        from hermes_cli.config import load_config as _load_cli_config2
+        from vermes_cli.config import load_config as _load_cli_config2
 
         _lc_cfg = (
             (_load_cli_config2() or {}).get("agent", {}).get("llm_concurrency", {})
@@ -4115,7 +4115,7 @@ def main():
     # Force UTF-8 stdio on Windows — gateway logs and startup banner would
     # otherwise UnicodeEncodeError on cp1252 consoles.  No-op on POSIX.
     try:
-        from hermes_cli.stdio import configure_windows_stdio
+        from vermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
     except Exception:
         pass

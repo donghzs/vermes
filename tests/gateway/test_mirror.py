@@ -280,7 +280,7 @@ class TestAppendToSqlite:
         from gateway.mirror import _append_to_sqlite
         mock_db = MagicMock()
 
-        with patch("hermes_state.SessionDB", return_value=mock_db):
+        with patch("vermes_state.SessionDB", return_value=mock_db):
             _append_to_sqlite("sess_1", {"role": "assistant", "content": "hello"})
 
         mock_db.append_message.assert_called_once()
@@ -292,7 +292,7 @@ class TestAppendToSqlite:
         mock_db = MagicMock()
         mock_db.append_message.side_effect = Exception("db error")
 
-        with patch("hermes_state.SessionDB", return_value=mock_db):
+        with patch("vermes_state.SessionDB", return_value=mock_db):
             _append_to_sqlite("sess_1", {"role": "assistant", "content": "hello"})
 
         mock_db.close.assert_called_once()

@@ -1282,7 +1282,7 @@ class LineAdapter(BasePlatformAdapter):
             return web.Response(status=404, text="not found")
 
         try:
-            from hermes_constants import get_hermes_home
+            from vermes_constants import get_hermes_home
             hermes_home = Path(get_hermes_home()).resolve()
         except Exception:
             hermes_home = Path.home().joinpath(".hermes").resolve()
@@ -1565,7 +1565,7 @@ def interactive_setup() -> None:
     """Minimal stdin wizard for ``hermes setup line``.
 
     Mirrors the irc/teams style: prompts for the two required vars, plus
-    one optional public URL. Writes to ``~/.hermes/.env`` via ``hermes_cli.config``.
+    one optional public URL. Writes to ``~/.hermes/.env`` via ``vermes_cli.config``.
     """
     logger.info()
     logger.info("LINE Messaging API setup")
@@ -1575,9 +1575,9 @@ def interactive_setup() -> None:
     logger.info()
 
     try:
-        from hermes_cli.config import get_env_var, set_env_var
+        from vermes_cli.config import get_env_var, set_env_var
     except ImportError:
-        logger.info("hermes_cli.config not available; set LINE_* vars manually in ~/.hermes/.env")
+        logger.info("vermes_cli.config not available; set LINE_* vars manually in ~/.hermes/.env")
         return
 
     def _prompt(var: str, prompt: str, *, secret: bool = False) -> None:

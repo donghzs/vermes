@@ -1,4 +1,4 @@
-"""Tests for hermes_cli/completion.py — shell completion script generation."""
+"""Tests for vermes_cli/completion.py — shell completion script generation."""
 
 import argparse
 import os
@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from hermes_cli.completion import _walk, generate_bash, generate_zsh, generate_fish
+from vermes_cli.completion import _walk, generate_bash, generate_zsh, generate_fish
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +232,7 @@ class TestSubcommandDrift:
         multi-word session names after -c/-r are never accidentally split.
         """
         import inspect
-        from hermes_cli.main import _coalesce_session_name_args
+        from vermes_cli.main import _coalesce_session_name_args
 
         source = inspect.getsource(_coalesce_session_name_args)
         match = re.search(r'_SUBCOMMANDS\s*=\s*\{([^}]+)\}', source, re.DOTALL)

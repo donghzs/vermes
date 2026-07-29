@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_cli.codex_runtime_plugin_migration import (
+from vermes_cli.codex_runtime_plugin_migration import (
     MIGRATION_MARKER,
     MIGRATION_END_MARKER,
     MigrationReport,
@@ -346,7 +346,7 @@ class TestMigrate:
     def test_plugin_discovery_writes_plugin_blocks(self, tmp_path, monkeypatch):
         """Discovered curated plugins land as [plugins."<name>@<marketplace>"]
         blocks. This is what OpenClaw calls 'migrate native codex plugins.'"""
-        from hermes_cli import codex_runtime_plugin_migration as crpm
+        from vermes_cli import codex_runtime_plugin_migration as crpm
 
         def fake_query(codex_home=None, timeout=8.0):
             return [
@@ -370,7 +370,7 @@ class TestMigrate:
         be skipped — they're broken/uninstallable on codex's side, so
         migrating them would write config that fails at activation
         time. Cf. openclaw#80815."""
-        from hermes_cli.codex_runtime_plugin_migration import _query_codex_plugins
+        from vermes_cli.codex_runtime_plugin_migration import _query_codex_plugins
         from unittest.mock import patch
 
         # Fake a plugin/list response where one plugin is unavailable
@@ -416,7 +416,7 @@ class TestMigrate:
     def test_plugin_discovery_failure_non_fatal(self, tmp_path, monkeypatch):
         """If codex isn't installed or RPC fails, MCP migration still
         completes. The error surfaces in the report but doesn't abort."""
-        from hermes_cli import codex_runtime_plugin_migration as crpm
+        from vermes_cli import codex_runtime_plugin_migration as crpm
 
         def fake_query_fails(codex_home=None, timeout=8.0):
             return [], "codex CLI not available"
@@ -432,7 +432,7 @@ class TestMigrate:
     def test_discover_plugins_false_skips_query(self, tmp_path, monkeypatch):
         """Tests and restricted environments can opt out of the subprocess
         spawn entirely."""
-        from hermes_cli import codex_runtime_plugin_migration as crpm
+        from vermes_cli import codex_runtime_plugin_migration as crpm
 
         called = {"yes": False}
         def boom(*a, **kw):
@@ -447,7 +447,7 @@ class TestMigrate:
     def test_dry_run_skips_plugin_query(self, tmp_path, monkeypatch):
         """Dry run should never spawn codex. Even with discover_plugins=True
         the query is skipped because dry_run takes precedence."""
-        from hermes_cli import codex_runtime_plugin_migration as crpm
+        from vermes_cli import codex_runtime_plugin_migration as crpm
 
         called = {"yes": False}
         def boom(*a, **kw):
@@ -462,7 +462,7 @@ class TestMigrate:
     def test_re_run_replaces_plugin_block(self, tmp_path, monkeypatch):
         """Plugin blocks are managed and re-runs should replace them
         cleanly — same idempotency contract as MCP servers."""
-        from hermes_cli import codex_runtime_plugin_migration as crpm
+        from vermes_cli import codex_runtime_plugin_migration as crpm
 
         # First run: only github
         monkeypatch.setattr(crpm, "_query_codex_plugins",
@@ -754,7 +754,7 @@ class TestStripUnmanagedPluginTables:
             )
 
         monkeypatch.setattr(
-            "hermes_cli.codex_runtime_plugin_migration._query_codex_plugins",
+            "vermes_cli.codex_runtime_plugin_migration._query_codex_plugins",
             fake_query,
         )
         migrate({}, codex_home=tmp_path, discover_plugins=True, expose_hermes_tools=False)
@@ -785,7 +785,7 @@ class TestStripUnmanagedPluginTables:
             return ([], "plugin/list query failed: codex not installed")
 
         monkeypatch.setattr(
-            "hermes_cli.codex_runtime_plugin_migration._query_codex_plugins",
+            "vermes_cli.codex_runtime_plugin_migration._query_codex_plugins",
             fake_query,
         )
         migrate({}, codex_home=tmp_path, discover_plugins=True, expose_hermes_tools=False)

@@ -14,9 +14,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hermes_cli import kanban as kanban_cli
-from hermes_cli import kanban_db as kb
-from hermes_cli import kanban_decompose as decomp
+from vermes_cli import kanban as kanban_cli
+from vermes_cli import kanban_db as kb
+from vermes_cli import kanban_decompose as decomp
 
 
 @pytest.fixture
@@ -70,9 +70,9 @@ def _patch_list_profiles(names: list[str]):
         for i, n in enumerate(names)
     ]
     return [
-        patch("hermes_cli.profiles.list_profiles", return_value=fake_profiles),
-        patch("hermes_cli.profiles.profile_exists", side_effect=lambda x: x in names),
-        patch("hermes_cli.profiles.get_active_profile_name", return_value=names[0] if names else "default"),
+        patch("vermes_cli.profiles.list_profiles", return_value=fake_profiles),
+        patch("vermes_cli.profiles.profile_exists", side_effect=lambda x: x in names),
+        patch("vermes_cli.profiles.get_active_profile_name", return_value=names[0] if names else "default"),
     ]
 
 
@@ -130,7 +130,7 @@ def test_decompose_fanout_false_assigns_default_when_unassigned(kanban_home):
         p.start()
     try:
         with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
-            "hermes_cli.kanban_decompose._load_config",
+            "vermes_cli.kanban_decompose._load_config",
             return_value={"kanban": {"default_assignee": "fallback"}},
         ):
             outcome = decomp.decompose_task(tid, author="me")
@@ -172,7 +172,7 @@ def test_decompose_fanout_false_preserves_existing_assignee(kanban_home):
         p.start()
     try:
         with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
-            "hermes_cli.kanban_decompose._load_config",
+            "vermes_cli.kanban_decompose._load_config",
             return_value={"kanban": {"default_assignee": "fallback"}},
         ):
             outcome = decomp.decompose_task(tid, author="me")
@@ -205,7 +205,7 @@ def test_decompose_fanout_false_uses_valid_llm_assignee(kanban_home):
         p.start()
     try:
         with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
-            "hermes_cli.kanban_decompose._load_config",
+            "vermes_cli.kanban_decompose._load_config",
             return_value={"kanban": {"default_assignee": "fallback"}},
         ):
             outcome = decomp.decompose_task(tid, author="me")
@@ -237,7 +237,7 @@ def test_decompose_fanout_false_invalid_llm_assignee_uses_default(kanban_home):
         p.start()
     try:
         with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
-            "hermes_cli.kanban_decompose._load_config",
+            "vermes_cli.kanban_decompose._load_config",
             return_value={"kanban": {"default_assignee": "fallback"}},
         ):
             outcome = decomp.decompose_task(tid, author="me")
@@ -273,7 +273,7 @@ def test_decompose_unknown_assignee_falls_back_to_default(kanban_home):
             "os.environ", {}, clear=False,
         ), _patch_aux_client(llm_payload), _patch_extra_body(), \
             patch(
-                "hermes_cli.kanban_decompose._load_config",
+                "vermes_cli.kanban_decompose._load_config",
                 return_value={
                     "kanban": {
                         "orchestrator_profile": "orchestrator",

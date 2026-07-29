@@ -38,7 +38,7 @@ from gateway.platforms.base import (
     merge_pending_message_event,
 )
 from gateway.session import SessionSource, build_session_key
-from hermes_cli.config import cfg_get
+from vermes_cli.config import cfg_get
 from utils import is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -388,7 +388,7 @@ class AgentRunnerMixin:
         user_config = _get_run_attr("_load_gateway_config")()
         platform_key = _platform_config_key(source.platform)
 
-        from hermes_cli.tools_config import _get_platform_tools
+        from vermes_cli.tools_config import _get_platform_tools
         enabled_toolsets = sorted(_get_platform_tools(user_config, platform_key))
         agent_cfg_local = user_config.get("agent") or {}
         disabled_toolsets = agent_cfg_local.get("disabled_toolsets") or None
@@ -2303,7 +2303,7 @@ class AgentRunnerMixin:
                 _pending_cmd_word = _pending_parts[0][1:].lower() if _pending_parts else ""
                 if _pending_cmd_word:
                     try:
-                        from hermes_cli.commands import resolve_command as _rc_pending
+                        from vermes_cli.commands import resolve_command as _rc_pending
                         if _rc_pending(_pending_cmd_word):
                             logger.info(
                                 "Discarding command '/%s' from pending queue — "

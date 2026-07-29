@@ -14,7 +14,7 @@
 ## 修改的四刀
 
 ### 1️⃣ 后端：打通 SSE 生命周期通道
-**文件**: `hermes_cli/blueprints/chat.py` +749  
+**文件**: `vermes_cli/blueprints/chat.py` +749  
 **改动**: +19 行
 
 ```python

@@ -37,8 +37,8 @@
         ]
       },
       {
-        "from": "../hermes_cli/web_dist",
-        "to": "app/hermes_cli/web_dist",
+        "from": "../vermes_cli/web_dist",
+        "to": "app/vermes_cli/web_dist",
         "filter": [
           "**/*"
         ]

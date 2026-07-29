@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from tools.registry import registry
-import hermes_cli.scholarforge.blueprint as bp
-import hermes_cli.scholarforge.tools as _sf_tools
+import vermes_cli.scholarforge.blueprint as bp
+import vermes_cli.scholarforge.tools as _sf_tools
 
 # 运行时由 module_loader 调 register_tools() 填充全局 registry；
 # 隔离测试进程需手动触发一次（handler 不依赖 host_api，传 None 即可）。
@@ -75,13 +75,13 @@ def test_api_save_section_runs_quality_gate(monkeypatch):
         pass
 
     monkeypatch.setattr(
-        "hermes_cli.scholarforge.quality_gate.run_quality_gate", fake_gate
+        "vermes_cli.scholarforge.quality_gate.run_quality_gate", fake_gate
     )
     monkeypatch.setattr(
-        "hermes_cli.scholarforge.database.save_section_content", fake_save
+        "vermes_cli.scholarforge.database.save_section_content", fake_save
     )
     monkeypatch.setattr(
-        "hermes_cli.scholarforge.database.update_project", fake_update
+        "vermes_cli.scholarforge.database.update_project", fake_update
     )
 
     client = TestClient(_make_app())

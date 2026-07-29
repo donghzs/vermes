@@ -1,4 +1,4 @@
-"""Host-specific gating in ``hermes_cli.gateway._all_platforms()``.
+"""Host-specific gating in ``vermes_cli.gateway._all_platforms()``.
 
 Some messaging platforms can't function on every host. The gate lives
 in one place — ``_all_platforms()`` — so the setup wizard, the curses
@@ -18,7 +18,7 @@ import sys
 class TestMatrixHiddenOnWindows:
     def test_matrix_present_on_linux(self, monkeypatch):
         """Sanity: matrix is still in the picker on Linux/macOS."""
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
 
         monkeypatch.setattr(gateway_mod.sys, "platform", "linux")
         platforms = gateway_mod._all_platforms()
@@ -26,7 +26,7 @@ class TestMatrixHiddenOnWindows:
         assert "matrix" in keys, "matrix must be available on Linux"
 
     def test_matrix_present_on_macos(self, monkeypatch):
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
 
         monkeypatch.setattr(gateway_mod.sys, "platform", "darwin")
         platforms = gateway_mod._all_platforms()
@@ -35,7 +35,7 @@ class TestMatrixHiddenOnWindows:
 
     def test_matrix_hidden_on_windows(self, monkeypatch):
         """The actual gate: matrix must NOT appear on Windows."""
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
 
         monkeypatch.setattr(gateway_mod.sys, "platform", "win32")
         platforms = gateway_mod._all_platforms()
@@ -47,7 +47,7 @@ class TestMatrixHiddenOnWindows:
 
     def test_other_platforms_unaffected_on_windows(self, monkeypatch):
         """Gating must only drop matrix, not collateral damage."""
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
 
         monkeypatch.setattr(gateway_mod.sys, "platform", "win32")
         platforms = gateway_mod._all_platforms()

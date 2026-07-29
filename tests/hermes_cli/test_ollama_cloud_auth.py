@@ -36,11 +36,11 @@ class TestOllamaCloudCredentials:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.runtime_provider._get_model_config",
+            "vermes_cli.runtime_provider._get_model_config",
             lambda: mock_config.get("model", {}),
         )
 
-        from hermes_cli.runtime_provider import resolve_runtime_provider
+        from vermes_cli.runtime_provider import resolve_runtime_provider
         runtime = resolve_runtime_provider(requested="custom")
 
         assert runtime["base_url"] == "https://ollama.com/v1"
@@ -60,11 +60,11 @@ class TestOllamaCloudCredentials:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.runtime_provider._get_model_config",
+            "vermes_cli.runtime_provider._get_model_config",
             lambda: mock_config.get("model", {}),
         )
 
-        from hermes_cli.runtime_provider import resolve_runtime_provider
+        from vermes_cli.runtime_provider import resolve_runtime_provider
         runtime = resolve_runtime_provider(requested="custom")
 
         # Should fall through to no-key-required for local endpoints
@@ -90,11 +90,11 @@ class TestDirectAliases:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
 
         assert "mymodel" in aliases
@@ -104,8 +104,8 @@ class TestDirectAliases:
 
     def test_direct_alias_resolved_before_catalog(self, monkeypatch):
         """Direct aliases take priority over models.dev catalog lookup."""
-        from hermes_cli.model_switch import DirectAlias, resolve_alias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias, resolve_alias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "glm": DirectAlias("glm-4.7", "custom", "https://ollama.com/v1"),
@@ -121,8 +121,8 @@ class TestDirectAliases:
 
     def test_reverse_lookup_by_model_id(self, monkeypatch):
         """Full model names (e.g. 'kimi-k2.5') match via reverse lookup."""
-        from hermes_cli.model_switch import DirectAlias, resolve_alias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias, resolve_alias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "kimi": DirectAlias("kimi-k2.5", "custom", "https://ollama.com/v1"),
@@ -139,8 +139,8 @@ class TestDirectAliases:
 
     def test_reverse_lookup_case_insensitive(self, monkeypatch):
         """Reverse lookup is case-insensitive."""
-        from hermes_cli.model_switch import DirectAlias, resolve_alias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias, resolve_alias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "glm": DirectAlias("GLM-4.7", "custom", "https://ollama.com/v1"),
@@ -161,7 +161,7 @@ class TestModelSwitchPersistence:
 
     def test_model_switch_result_fields(self):
         """ModelSwitchResult has all required fields for CLI state update."""
-        from hermes_cli.model_switch import ModelSwitchResult
+        from vermes_cli.model_switch import ModelSwitchResult
 
         result = ModelSwitchResult(
             success=True,
@@ -189,9 +189,9 @@ class TestModelTabCompletion:
 
     def test_model_completions_yields_direct_aliases(self, monkeypatch):
         """_model_completions yields direct aliases with model and provider info."""
-        from hermes_cli.commands import SlashCommandCompleter
-        from hermes_cli.model_switch import DirectAlias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.commands import SlashCommandCompleter
+        from vermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "opus": DirectAlias("claude-opus-4-6", "anthropic", ""),
@@ -208,9 +208,9 @@ class TestModelTabCompletion:
 
     def test_model_completions_filters_by_prefix(self, monkeypatch):
         """Completions filter by typed prefix."""
-        from hermes_cli.commands import SlashCommandCompleter
-        from hermes_cli.model_switch import DirectAlias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.commands import SlashCommandCompleter
+        from vermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "opus": DirectAlias("claude-opus-4-6", "anthropic", ""),
@@ -227,9 +227,9 @@ class TestModelTabCompletion:
 
     def test_model_completions_shows_metadata(self, monkeypatch):
         """Completions include model name and provider in display_meta."""
-        from hermes_cli.commands import SlashCommandCompleter
-        from hermes_cli.model_switch import DirectAlias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.commands import SlashCommandCompleter
+        from vermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "glm": DirectAlias("glm-4.7", "custom", "https://ollama.com/v1"),
@@ -294,11 +294,11 @@ class TestLoadDirectAliasesEdgeCases:
         """Empty model_aliases dict returns only builtins (if any)."""
         mock_config = {"model_aliases": {}}
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert isinstance(aliases, dict)
 
@@ -306,11 +306,11 @@ class TestLoadDirectAliasesEdgeCases:
         """Non-dict model_aliases value is gracefully ignored."""
         mock_config = {"model_aliases": "bad-string-value"}
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert isinstance(aliases, dict)
 
@@ -318,11 +318,11 @@ class TestLoadDirectAliasesEdgeCases:
         """model_aliases: null in config is handled gracefully."""
         mock_config = {"model_aliases": None}
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert isinstance(aliases, dict)
 
@@ -341,11 +341,11 @@ class TestLoadDirectAliasesEdgeCases:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert "bad_entry" not in aliases
         assert "good_entry" in aliases
@@ -361,11 +361,11 @@ class TestLoadDirectAliasesEdgeCases:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert "string_entry" not in aliases
         assert "none_entry" not in aliases
@@ -375,11 +375,11 @@ class TestLoadDirectAliasesEdgeCases:
     def test_load_config_exception_returns_builtins(self, monkeypatch):
         """If load_config raises, _load_direct_aliases returns builtins only."""
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: (_ for _ in ()).throw(RuntimeError("config broken")),
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert isinstance(aliases, dict)
 
@@ -394,11 +394,11 @@ class TestLoadDirectAliasesEdgeCases:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert "mymodel" in aliases
         assert "  MyModel  " not in aliases
@@ -412,11 +412,11 @@ class TestLoadDirectAliasesEdgeCases:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
 
-        from hermes_cli.model_switch import _load_direct_aliases
+        from vermes_cli.model_switch import _load_direct_aliases
         aliases = _load_direct_aliases()
         assert "empty" not in aliases
         assert "good" in aliases
@@ -431,7 +431,7 @@ class TestEnsureDirectAliases:
 
     def test_ensure_populates_on_first_call(self, monkeypatch):
         """DIRECT_ALIASES is populated after _ensure_direct_aliases."""
-        import hermes_cli.model_switch as ms
+        import vermes_cli.model_switch as ms
 
         mock_config = {
             "model_aliases": {
@@ -439,7 +439,7 @@ class TestEnsureDirectAliases:
             }
         }
         monkeypatch.setattr(
-            "hermes_cli.config.load_config",
+            "vermes_cli.config.load_config",
             lambda: mock_config,
         )
         monkeypatch.setattr(ms, "DIRECT_ALIASES", {})
@@ -448,8 +448,8 @@ class TestEnsureDirectAliases:
 
     def test_ensure_no_reload_when_populated(self, monkeypatch):
         """_ensure_direct_aliases does not reload if already populated."""
-        import hermes_cli.model_switch as ms
-        from hermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias
 
         existing = {"pre": DirectAlias("pre-model", "custom", "")}
         monkeypatch.setattr(ms, "DIRECT_ALIASES", existing)
@@ -475,7 +475,7 @@ class TestResolveAliasEdgeCases:
 
     def test_unknown_alias_returns_none(self, monkeypatch):
         """Unknown alias not in direct or catalog returns None."""
-        import hermes_cli.model_switch as ms
+        import vermes_cli.model_switch as ms
         monkeypatch.setattr(ms, "DIRECT_ALIASES", {})
 
         result = ms.resolve_alias("nonexistent_model_xyz", "openrouter")
@@ -483,8 +483,8 @@ class TestResolveAliasEdgeCases:
 
     def test_whitespace_input_handled(self, monkeypatch):
         """Input with whitespace is stripped before lookup."""
-        from hermes_cli.model_switch import DirectAlias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "myalias": DirectAlias("my-model", "custom", "https://example.com"),
@@ -505,8 +505,8 @@ class TestSwitchModelDirectAliasOverride:
 
     def test_switch_model_uses_alias_base_url(self, monkeypatch):
         """When resolved alias has base_url, switch_model should use it."""
-        from hermes_cli.model_switch import DirectAlias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "qwen": DirectAlias("qwen3.5:397b", "custom", "https://ollama.com/v1"),
@@ -517,13 +517,13 @@ class TestSwitchModelDirectAliasOverride:
             lambda raw, prov: ("custom", "qwen3.5:397b", "qwen"))
 
         monkeypatch.setattr(
-            "hermes_cli.runtime_provider.resolve_runtime_provider",
+            "vermes_cli.runtime_provider.resolve_runtime_provider",
             lambda **kwargs: {"api_key": "", "base_url": "", "api_mode": "openai_compat", "provider": "custom"},
         )
 
-        monkeypatch.setattr("hermes_cli.models.validate_requested_model",
+        monkeypatch.setattr("vermes_cli.models.validate_requested_model",
             lambda *a, **kw: {"accepted": True, "persist": True, "recognized": True, "message": None})
-        monkeypatch.setattr("hermes_cli.models.opencode_model_api_mode",
+        monkeypatch.setattr("vermes_cli.models.opencode_model_api_mode",
             lambda *a, **kw: "openai_compat")
 
         result = ms.switch_model("qwen", "openrouter", "old-model")
@@ -533,8 +533,8 @@ class TestSwitchModelDirectAliasOverride:
 
     def test_switch_model_alias_no_api_key_gets_default(self, monkeypatch):
         """When alias has base_url but no api_key, 'no-key-required' is set."""
-        from hermes_cli.model_switch import DirectAlias
-        import hermes_cli.model_switch as ms
+        from vermes_cli.model_switch import DirectAlias
+        import vermes_cli.model_switch as ms
 
         test_aliases = {
             "local": DirectAlias("local-model", "custom", "http://localhost:11434/v1"),
@@ -543,12 +543,12 @@ class TestSwitchModelDirectAliasOverride:
         monkeypatch.setattr(ms, "resolve_alias",
             lambda raw, prov: ("custom", "local-model", "local"))
         monkeypatch.setattr(
-            "hermes_cli.runtime_provider.resolve_runtime_provider",
+            "vermes_cli.runtime_provider.resolve_runtime_provider",
             lambda **kwargs: {"api_key": "", "base_url": "", "api_mode": "openai_compat", "provider": "custom"},
         )
-        monkeypatch.setattr("hermes_cli.models.validate_requested_model",
+        monkeypatch.setattr("vermes_cli.models.validate_requested_model",
             lambda *a, **kw: {"accepted": True, "persist": True, "recognized": True, "message": None})
-        monkeypatch.setattr("hermes_cli.models.opencode_model_api_mode",
+        monkeypatch.setattr("vermes_cli.models.opencode_model_api_mode",
             lambda *a, **kw: "openai_compat")
 
         result = ms.switch_model("local", "openrouter", "old-model")
@@ -566,7 +566,7 @@ class TestCLIStateUpdate:
 
     def test_model_switch_result_has_provider_label(self):
         """ModelSwitchResult supports provider_label for display."""
-        from hermes_cli.model_switch import ModelSwitchResult
+        from vermes_cli.model_switch import ModelSwitchResult
 
         result = ModelSwitchResult(
             success=True,
@@ -582,7 +582,7 @@ class TestCLIStateUpdate:
 
     def test_model_switch_result_defaults(self):
         """ModelSwitchResult has sensible defaults."""
-        from hermes_cli.model_switch import ModelSwitchResult
+        from vermes_cli.model_switch import ModelSwitchResult
 
         result = ModelSwitchResult(
             success=False,

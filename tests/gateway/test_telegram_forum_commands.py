@@ -52,7 +52,7 @@ async def test_ensure_forum_commands_registers_once():
     adapter = _make_test_adapter()
     msg = _forum_message(chat_id=-123, is_forum=True)
 
-    with patch("hermes_cli.commands.telegram_menu_commands") as mock_menu:
+    with patch("vermes_cli.commands.telegram_menu_commands") as mock_menu:
         mock_menu.return_value = ([("new", "Start new session"), ("help", "Show help")], 0)
         with patch("telegram.BotCommand") as MockBotCommand:
             instances = []
@@ -90,7 +90,7 @@ async def test_ensure_forum_commands_handles_set_failure():
     msg = _forum_message(chat_id=-456, is_forum=True)
     adapter._bot.set_my_commands.side_effect = Exception("Telegram API error")
 
-    with patch("hermes_cli.commands.telegram_menu_commands") as mock_menu:
+    with patch("vermes_cli.commands.telegram_menu_commands") as mock_menu:
         mock_menu.return_value = ([("new", "Start new session")], 0)
         # Should NOT raise despite the API error
         await adapter._ensure_forum_commands(msg)
@@ -106,7 +106,7 @@ async def test_ensure_forum_commands_race_safety():
     adapter = _make_test_adapter()
     msg = _forum_message(chat_id=-789, is_forum=True)
 
-    with patch("hermes_cli.commands.telegram_menu_commands") as mock_menu:
+    with patch("vermes_cli.commands.telegram_menu_commands") as mock_menu:
         mock_menu.return_value = ([("new", "Start new session")], 0)
         with patch("telegram.BotCommand"):
             with patch("telegram.BotCommandScopeChat"):

@@ -1,4 +1,4 @@
-"""Tests for hermes_cli/goals.py — persistent cross-turn goals."""
+"""Tests for vermes_cli/goals.py — persistent cross-turn goals."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def hermes_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(home))
 
     # Bust the goal-module's DB cache for each test so it re-resolves HERMES_HOME.
-    from hermes_cli import goals
+    from vermes_cli import goals
 
     goals._DB_CACHE.clear()
     yield home
@@ -38,21 +38,21 @@ def hermes_home(tmp_path, monkeypatch):
 
 class TestParseJudgeResponse:
     def test_clean_json_done(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, reason, _ = _parse_judge_response('{"done": true, "reason": "all good"}')
         assert done is True
         assert reason == "all good"
 
     def test_clean_json_continue(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, reason, _ = _parse_judge_response('{"done": false, "reason": "more work needed"}')
         assert done is False
         assert reason == "more work needed"
 
     def test_json_in_markdown_fence(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         raw = '```json\n{"done": true, "reason": "done"}\n```'
         done, reason, _ = _parse_judge_response(raw)
@@ -61,7 +61,7 @@ class TestParseJudgeResponse:
 
     def test_json_embedded_in_prose(self):
         """Some models prefix reasoning before emitting JSON — we extract it."""
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         raw = 'Looking at this... the agent says X. Verdict: {"done": false, "reason": "partial"}'
         done, reason, _ = _parse_judge_response(raw)
@@ -69,7 +69,7 @@ class TestParseJudgeResponse:
         assert reason == "partial"
 
     def test_string_done_values(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         for s in ("true", "yes", "done", "1"):
             done, _, _ = _parse_judge_response(f'{{"done": "{s}", "reason": "r"}}')
@@ -80,14 +80,14 @@ class TestParseJudgeResponse:
 
     def test_malformed_json_fails_open(self):
         """Non-JSON → not done, with error-ish reason (so judge_goal can map to continue)."""
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, reason, _ = _parse_judge_response("this is not json at all")
         assert done is False
         assert reason  # non-empty
 
     def test_empty_response(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, reason, _ = _parse_judge_response("")
         assert done is False
@@ -101,20 +101,20 @@ class TestParseJudgeResponse:
 
 class TestJudgeGoal:
     def test_empty_goal_skipped(self):
-        from hermes_cli.goals import judge_goal
+        from vermes_cli.goals import judge_goal
 
         verdict, _, _ = judge_goal("", "some response")
         assert verdict == "skipped"
 
     def test_empty_response_continues(self):
-        from hermes_cli.goals import judge_goal
+        from vermes_cli.goals import judge_goal
 
         verdict, _, _ = judge_goal("ship the thing", "")
         assert verdict == "continue"
 
     def test_no_aux_client_continues(self):
         """Fail-open: if no aux client, we must return continue, not skipped/done."""
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         with patch(
             "agent.auxiliary_client.get_text_auxiliary_client",
@@ -125,7 +125,7 @@ class TestJudgeGoal:
 
     def test_api_error_continues(self):
         """Judge exception → fail-open continue (don't wedge progress on judge bugs)."""
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.side_effect = RuntimeError("boom")
@@ -138,7 +138,7 @@ class TestJudgeGoal:
         assert "judge error" in reason.lower()
 
     def test_judge_says_done(self):
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = MagicMock(
@@ -157,7 +157,7 @@ class TestJudgeGoal:
         assert reason == "achieved"
 
     def test_judge_says_continue(self):
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = MagicMock(
@@ -183,7 +183,7 @@ class TestJudgeGoal:
 
 class TestGoalManager:
     def test_no_goal_initial(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="test-sid-1")
         assert mgr.state is None
@@ -192,7 +192,7 @@ class TestGoalManager:
         assert "No active goal" in mgr.status_line()
 
     def test_set_then_status(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="test-sid-2", default_max_turns=5)
         state = mgr.set("port the thing")
@@ -205,7 +205,7 @@ class TestGoalManager:
         assert "port the thing" in mgr.status_line()
 
     def test_set_rejects_empty(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="test-sid-3")
         with pytest.raises(ValueError):
@@ -214,7 +214,7 @@ class TestGoalManager:
             mgr.set("   ")
 
     def test_pause_and_resume(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="test-sid-4")
         mgr.set("goal text")
@@ -228,7 +228,7 @@ class TestGoalManager:
         assert mgr.is_active()
 
     def test_clear(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="test-sid-5")
         mgr.set("goal")
@@ -242,7 +242,7 @@ class TestGoalManager:
         This is what makes /resume work — each session rebinds its
         GoalManager and picks up the saved state.
         """
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr1 = GoalManager(session_id="persist-sid")
         mgr1.set("do the thing")
@@ -254,8 +254,8 @@ class TestGoalManager:
 
     def test_evaluate_after_turn_done(self, hermes_home):
         """Judge says done → status=done, no continuation."""
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="eval-sid-1")
         mgr.set("ship it")
@@ -270,8 +270,8 @@ class TestGoalManager:
         assert mgr.state.turns_used == 1
 
     def test_evaluate_after_turn_continue_under_budget(self, hermes_home):
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="eval-sid-2", default_max_turns=5)
         mgr.set("a long goal")
@@ -288,8 +288,8 @@ class TestGoalManager:
 
     def test_evaluate_after_turn_budget_exhausted(self, hermes_home):
         """When turn budget hits ceiling, auto-pause instead of continuing."""
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="eval-sid-3", default_max_turns=2)
         mgr.set("hard goal")
@@ -309,7 +309,7 @@ class TestGoalManager:
 
     def test_evaluate_after_turn_inactive(self, hermes_home):
         """evaluate_after_turn is a no-op when goal isn't active."""
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="eval-sid-4")
         d = mgr.evaluate_after_turn("anything")
@@ -326,7 +326,7 @@ class TestGoalManager:
         """The continuation prompt must include the goal text verbatim —
         and must be safe to inject as a user-role message (prompt-cache
         invariants: no system-prompt mutation)."""
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="cont-sid")
         mgr.set("port goal command to hermes")
@@ -342,7 +342,7 @@ class TestGoalManager:
 
 
 def test_goal_command_in_registry():
-    from hermes_cli.commands import resolve_command
+    from vermes_cli.commands import resolve_command
 
     cmd = resolve_command("goal")
     assert cmd is not None
@@ -351,7 +351,7 @@ def test_goal_command_in_registry():
 
 def test_goal_command_dispatches_in_cli_registry_helpers():
     """goal shows up in autocomplete / help categories alongside other Session cmds."""
-    from hermes_cli.commands import COMMANDS, COMMANDS_BY_CATEGORY
+    from vermes_cli.commands import COMMANDS, COMMANDS_BY_CATEGORY
 
     assert "/goal" in COMMANDS
     session_cmds = COMMANDS_BY_CATEGORY.get("Session", {})
@@ -369,7 +369,7 @@ class TestJudgeParseFailureAutoPause:
     instead of burning the whole turn budget."""
 
     def test_parse_response_flags_empty_as_parse_failure(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, reason, parse_failed = _parse_judge_response("")
         assert done is False
@@ -377,7 +377,7 @@ class TestJudgeParseFailureAutoPause:
         assert "empty" in reason.lower()
 
     def test_parse_response_flags_non_json_as_parse_failure(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, reason, parse_failed = _parse_judge_response(
             "Let me analyze whether the goal is fully satisfied based on the agent's response..."
@@ -387,7 +387,7 @@ class TestJudgeParseFailureAutoPause:
         assert "not json" in reason.lower()
 
     def test_parse_response_clean_json_is_not_parse_failure(self):
-        from hermes_cli.goals import _parse_judge_response
+        from vermes_cli.goals import _parse_judge_response
 
         done, _, parse_failed = _parse_judge_response(
             '{"done": false, "reason": "more work"}'
@@ -397,7 +397,7 @@ class TestJudgeParseFailureAutoPause:
 
     def test_api_error_does_not_count_as_parse_failure(self):
         """Transient network/API errors must not trip the auto-pause guard."""
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.side_effect = RuntimeError("connection reset")
@@ -411,7 +411,7 @@ class TestJudgeParseFailureAutoPause:
 
     def test_empty_judge_reply_flagged_as_parse_failure(self):
         """End-to-end: judge returns empty content → parse_failed=True."""
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = MagicMock(
@@ -427,8 +427,8 @@ class TestJudgeParseFailureAutoPause:
 
     def test_auto_pause_after_three_consecutive_parse_failures(self, hermes_home):
         """N=3 consecutive parse failures → auto-pause with config pointer."""
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager, DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager, DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES
 
         assert DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES == 3
         mgr = GoalManager(session_id="parse-fail-sid-1", default_max_turns=20)
@@ -456,8 +456,8 @@ class TestJudgeParseFailureAutoPause:
 
     def test_parse_failure_counter_resets_on_good_reply(self, hermes_home):
         """A single good judge reply resets the counter — transient flakes don't pause."""
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="parse-fail-sid-2", default_max_turns=20)
         mgr.set("another goal")
@@ -480,8 +480,8 @@ class TestJudgeParseFailureAutoPause:
 
     def test_parse_failure_counter_not_incremented_by_api_errors(self, hermes_home):
         """API/transport errors must NOT count toward the auto-pause threshold."""
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager
 
         mgr = GoalManager(session_id="parse-fail-sid-3", default_max_turns=20)
         mgr.set("goal")
@@ -499,8 +499,8 @@ class TestJudgeParseFailureAutoPause:
         self, hermes_home
     ):
         """The counter must be durable so cross-session resumes see it."""
-        from hermes_cli import goals
-        from hermes_cli.goals import GoalManager, load_goal
+        from vermes_cli import goals
+        from vermes_cli.goals import GoalManager, load_goal
 
         mgr = GoalManager(session_id="parse-fail-sid-4", default_max_turns=20)
         mgr.set("persistent goal")
@@ -526,7 +526,7 @@ class TestGoalStateSubgoalsBackcompat:
         """A goal serialized BEFORE the subgoals field existed must
         round-trip with an empty list, not crash."""
         import json
-        from hermes_cli.goals import GoalState
+        from vermes_cli.goals import GoalState
 
         legacy = json.dumps({
             "goal": "do a thing",
@@ -542,7 +542,7 @@ class TestGoalStateSubgoalsBackcompat:
         assert state.subgoals == []
 
     def test_subgoals_round_trip(self):
-        from hermes_cli.goals import GoalState
+        from vermes_cli.goals import GoalState
         state = GoalState(goal="g", subgoals=["a", "b", "c"])
         rt = GoalState.from_json(state.to_json())
         assert rt.subgoals == ["a", "b", "c"]
@@ -555,7 +555,7 @@ class TestMigrateGoalToSession:
     goal silently dies when compression rotates session_id."""
 
     def test_migrates_active_goal_to_child(self, hermes_home):
-        from hermes_cli.goals import save_goal, load_goal, migrate_goal_to_session, GoalState
+        from vermes_cli.goals import save_goal, load_goal, migrate_goal_to_session, GoalState
         save_goal("parent-sid", GoalState(goal="ship the feature"))
         assert migrate_goal_to_session("parent-sid", "child-sid", reason="compression") is True
         child = load_goal("child-sid")
@@ -565,24 +565,24 @@ class TestMigrateGoalToSession:
         assert parent is not None and parent.status == "cleared"
 
     def test_no_goal_to_migrate_returns_false(self, hermes_home):
-        from hermes_cli.goals import migrate_goal_to_session, load_goal
+        from vermes_cli.goals import migrate_goal_to_session, load_goal
         assert migrate_goal_to_session("empty-parent", "child2") is False
         assert load_goal("child2") is None
 
     def test_does_not_clobber_existing_child_goal(self, hermes_home):
-        from hermes_cli.goals import save_goal, load_goal, migrate_goal_to_session, GoalState
+        from vermes_cli.goals import save_goal, load_goal, migrate_goal_to_session, GoalState
         save_goal("p3", GoalState(goal="parent goal"))
         save_goal("c3", GoalState(goal="child already has one"))
         assert migrate_goal_to_session("p3", "c3") is False
         assert load_goal("c3").goal == "child already has one"
 
     def test_same_id_is_noop(self, hermes_home):
-        from hermes_cli.goals import save_goal, migrate_goal_to_session, GoalState
+        from vermes_cli.goals import save_goal, migrate_goal_to_session, GoalState
         save_goal("same", GoalState(goal="g"))
         assert migrate_goal_to_session("same", "same") is False
 
     def test_cleared_goal_not_migrated(self, hermes_home):
-        from hermes_cli.goals import save_goal, clear_goal, migrate_goal_to_session, load_goal, GoalState
+        from vermes_cli.goals import save_goal, clear_goal, migrate_goal_to_session, load_goal, GoalState
         save_goal("p4", GoalState(goal="done already"))
         clear_goal("p4")
         assert migrate_goal_to_session("p4", "c4") is False
@@ -591,7 +591,7 @@ class TestMigrateGoalToSession:
 
 class TestGoalManagerSubgoals:
     def test_add_subgoal(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-add")
         mgr.set("main goal")
         text = mgr.add_subgoal("  use bullet points  ")
@@ -600,21 +600,21 @@ class TestGoalManagerSubgoals:
 
     def test_add_subgoal_requires_active_goal(self, hermes_home):
         import pytest
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-noactive")
         with pytest.raises(RuntimeError):
             mgr.add_subgoal("oops")
 
     def test_add_empty_subgoal_rejected(self, hermes_home):
         import pytest
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-empty")
         mgr.set("g")
         with pytest.raises(ValueError):
             mgr.add_subgoal("   ")
 
     def test_remove_subgoal(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-remove")
         mgr.set("g")
         mgr.add_subgoal("first")
@@ -626,7 +626,7 @@ class TestGoalManagerSubgoals:
 
     def test_remove_subgoal_out_of_range(self, hermes_home):
         import pytest
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-oob")
         mgr.set("g")
         mgr.add_subgoal("only")
@@ -636,7 +636,7 @@ class TestGoalManagerSubgoals:
             mgr.remove_subgoal(0)
 
     def test_clear_subgoals(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-clear")
         mgr.set("g")
         mgr.add_subgoal("a")
@@ -647,7 +647,7 @@ class TestGoalManagerSubgoals:
 
     def test_subgoals_persist_across_reloads(self, hermes_home):
         """Subgoals stored in SessionDB survive a fresh GoalManager."""
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sub-persist")
         mgr.set("g")
         mgr.add_subgoal("first")
@@ -659,7 +659,7 @@ class TestGoalManagerSubgoals:
 
 class TestContinuationPromptWithSubgoals:
     def test_empty_subgoals_uses_original_template(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="cp-empty")
         mgr.set("ship the feature")
         prompt = mgr.next_continuation_prompt()
@@ -668,7 +668,7 @@ class TestContinuationPromptWithSubgoals:
         assert "Additional criteria" not in prompt
 
     def test_with_subgoals_includes_them(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="cp-with")
         mgr.set("ship the feature")
         mgr.add_subgoal("write tests")
@@ -689,7 +689,7 @@ class TestJudgeGoalWithSubgoals:
         capture the prompt that would be sent.
         """
         from unittest.mock import patch, MagicMock
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         captured = {}
 
@@ -732,7 +732,7 @@ class TestJudgeGoalWithSubgoals:
 
     def test_judge_uses_original_template_when_no_subgoals(self, hermes_home):
         from unittest.mock import patch
-        from hermes_cli import goals
+        from vermes_cli import goals
 
         captured = {}
 
@@ -764,7 +764,7 @@ class TestJudgeGoalWithSubgoals:
 
 class TestStatusLineSubgoalCount:
     def test_status_line_no_subgoals(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sl-empty")
         mgr.set("ship it")
         line = mgr.status_line()
@@ -772,7 +772,7 @@ class TestStatusLineSubgoalCount:
         assert "subgoal" not in line.lower()
 
     def test_status_line_with_subgoals(self, hermes_home):
-        from hermes_cli.goals import GoalManager
+        from vermes_cli.goals import GoalManager
         mgr = GoalManager(session_id="sl-with")
         mgr.set("ship it")
         mgr.add_subgoal("a")

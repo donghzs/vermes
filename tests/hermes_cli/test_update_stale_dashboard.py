@@ -20,7 +20,7 @@ from unittest.mock import patch, MagicMock, call
 
 import pytest
 
-from hermes_cli.main import (
+from vermes_cli.main import (
     _find_stale_dashboard_pids,
     _kill_stale_dashboard_processes,
     _warn_stale_dashboard_processes,  # back-compat alias
@@ -29,13 +29,13 @@ from hermes_cli.main import (
 
 @pytest.fixture(autouse=True)
 def _refresh_bindings_against_live_module():
-    """Rebind module-level names to the *current* ``hermes_cli.main``.
+    """Rebind module-level names to the *current* ``vermes_cli.main``.
 
     Other tests in the suite (notably ``test_env_loader.py`` and
-    ``test_skills_subparser.py``) reload or delete ``hermes_cli.main`` from
+    ``test_skills_subparser.py``) reload or delete ``vermes_cli.main`` from
     ``sys.modules``.  When that happens on the same xdist worker before we
-    run, our top-of-file ``from hermes_cli.main import ...`` bindings end
-    up pointing at the *old* module object.  ``patch(\"hermes_cli.main.X\")``
+    run, our top-of-file ``from vermes_cli.main import ...`` bindings end
+    up pointing at the *old* module object.  ``patch(\"vermes_cli.main.X\")``
     then patches the *new* module, but the function we call still resolves
     ``_find_stale_dashboard_pids`` via its stale ``__globals__``, so every
     patch becomes a no-op and the kill path silently returns early.
@@ -49,9 +49,9 @@ def _refresh_bindings_against_live_module():
     global _kill_stale_dashboard_processes
     global _warn_stale_dashboard_processes
 
-    live = sys.modules.get("hermes_cli.main")
+    live = sys.modules.get("vermes_cli.main")
     if live is None:
-        live = importlib.import_module("hermes_cli.main")
+        live = importlib.import_module("vermes_cli.main")
 
     _find_stale_dashboard_pids = live._find_stale_dashboard_pids
     _kill_stale_dashboard_processes = live._kill_stale_dashboard_processes
@@ -99,7 +99,7 @@ class TestFindStaleDashboardPids:
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout=_ps_line(12345, "python3 -m hermes_cli.main dashboard --port 9119") + "\n",
+                stdout=_ps_line(12345, "python3 -m vermes_cli.main dashboard --port 9119") + "\n",
                 stderr="",
             )
             assert _find_stale_dashboard_pids() == [12345]
@@ -109,9 +109,9 @@ class TestFindStaleDashboardPids:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="\n".join([
-                    _ps_line(12345, "python3 -m hermes_cli.main dashboard --port 9119"),
+                    _ps_line(12345, "python3 -m vermes_cli.main dashboard --port 9119"),
                     _ps_line(12346, "hermes dashboard --port 9120 --no-open"),
-                    _ps_line(12347, "python /home/x/hermes_cli/main.py dashboard"),
+                    _ps_line(12347, "python /home/x/vermes_cli/main.py dashboard"),
                 ]) + "\n",
                 stderr="",
             )
@@ -122,7 +122,7 @@ class TestFindStaleDashboardPids:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="\n".join([
-                    _ps_line(os.getpid(), "python3 -m hermes_cli.main dashboard"),
+                    _ps_line(os.getpid(), "python3 -m vermes_cli.main dashboard"),
                     _ps_line(12345, "hermes dashboard --port 9119"),
                 ]) + "\n",
                 stderr="",
@@ -148,8 +148,8 @@ class TestFindStaleDashboardPids:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="\n".join([
-                    _ps_line(12345, "python3 -m hermes_cli.main dashboard --port 9119"),
-                    _ps_line(22222, "python3 -m hermes_cli.main chat -q 'rewrite my dashboard'"),
+                    _ps_line(12345, "python3 -m vermes_cli.main dashboard --port 9119"),
+                    _ps_line(22222, "python3 -m vermes_cli.main chat -q 'rewrite my dashboard'"),
                     _ps_line(33333, "node /opt/grafana/dashboard-server.js"),
                 ]) + "\n",
                 stderr="",
@@ -191,7 +191,7 @@ class TestKillStaleDashboardPosix:
     """Kill path on Linux / macOS: SIGTERM then SIGKILL any survivors."""
 
     def test_no_stale_processes_is_a_noop(self, capsys):
-        with patch("hermes_cli.main._find_stale_dashboard_pids", return_value=[]):
+        with patch("vermes_cli.main._find_stale_dashboard_pids", return_value=[]):
             _kill_stale_dashboard_processes()
         assert capsys.readouterr().out == ""
 
@@ -209,7 +209,7 @@ class TestKillStaleDashboardPosix:
                 raise ProcessLookupError
             # SIGTERM itself: succeed silently.
 
-        with patch("hermes_cli.main._find_stale_dashboard_pids",
+        with patch("vermes_cli.main._find_stale_dashboard_pids",
                    return_value=[12345, 12346]), \
              patch("os.kill", side_effect=fake_kill), \
              patch("time.sleep"):
@@ -241,7 +241,7 @@ class TestKillStaleDashboardPosix:
                 return
             # Any other signal — also fine.
 
-        with patch("hermes_cli.main._find_stale_dashboard_pids",
+        with patch("vermes_cli.main._find_stale_dashboard_pids",
                    return_value=[99999]), \
              patch("os.kill", side_effect=fake_kill), \
              patch("time.sleep"), \
@@ -264,7 +264,7 @@ class TestKillStaleDashboardPosix:
         def fake_kill(pid, sig):
             raise PermissionError("Operation not permitted")
 
-        with patch("hermes_cli.main._find_stale_dashboard_pids",
+        with patch("vermes_cli.main._find_stale_dashboard_pids",
                    return_value=[12345]), \
              patch("os.kill", side_effect=fake_kill), \
              patch("time.sleep"):
@@ -280,7 +280,7 @@ class TestKillStaleDashboardPosix:
         def fake_kill(pid, sig):
             raise ProcessLookupError
 
-        with patch("hermes_cli.main._find_stale_dashboard_pids",
+        with patch("vermes_cli.main._find_stale_dashboard_pids",
                    return_value=[12345]), \
              patch("os.kill", side_effect=fake_kill), \
              patch("time.sleep"):
@@ -301,7 +301,7 @@ class TestKillStaleDashboardWindows:
             # taskkill returns 0 on success
             return MagicMock(returncode=0, stdout="", stderr="")
 
-        with patch("hermes_cli.main._find_stale_dashboard_pids",
+        with patch("vermes_cli.main._find_stale_dashboard_pids",
                    return_value=[12345, 12346]), \
              patch("subprocess.run", side_effect=fake_run) as mock_run:
             _kill_stale_dashboard_processes()
@@ -326,7 +326,7 @@ class TestKillStaleDashboardWindows:
             return MagicMock(returncode=128, stdout="",
                              stderr="ERROR: Access is denied.")
 
-        with patch("hermes_cli.main._find_stale_dashboard_pids",
+        with patch("vermes_cli.main._find_stale_dashboard_pids",
                    return_value=[12345]), \
              patch("subprocess.run", side_effect=fake_run):
             _kill_stale_dashboard_processes()  # must not raise
@@ -358,7 +358,7 @@ class TestWindowsWmicEncoding:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout=(
-                    "CommandLine=python -m hermes_cli.main dashboard\n"
+                    "CommandLine=python -m vermes_cli.main dashboard\n"
                     "ProcessId=12345\n"
                 ),
                 stderr="",

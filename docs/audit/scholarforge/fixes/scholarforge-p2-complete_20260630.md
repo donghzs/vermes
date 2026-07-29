@@ -31,8 +31,8 @@
 - 实测生成 26KB PDF ✅
 
 ## 改动文件
-- `hermes_cli/scholarforge/__init__.py` — 新增 _load_vermes_config()
-- `hermes_cli/scholarforge/search/__init__.py` — 429 冷却全覆盖
-- `hermes_cli/scholarforge/blueprint.py` — 凭证解析去重
-- `hermes_cli/scholarforge/tools.py` — 凭证解析去重
-- `hermes_cli/scholarforge/export/full.py` — PDF 导出修复 (新文件)
+- `vermes_cli/scholarforge/__init__.py` — 新增 _load_vermes_config()
+- `vermes_cli/scholarforge/search/__init__.py` — 429 冷却全覆盖
+- `vermes_cli/scholarforge/blueprint.py` — 凭证解析去重
+- `vermes_cli/scholarforge/tools.py` — 凭证解析去重
+- `vermes_cli/scholarforge/export/full.py` — PDF 导出修复 (新文件)

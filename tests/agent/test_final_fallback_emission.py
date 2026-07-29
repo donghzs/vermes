@@ -9,7 +9,7 @@ recovery 等路径），前端收到 0 个 content delta → "⚠ 回复为空"�
 本测试锁定兜底判定的边界行为。
 """
 
-from hermes_cli.blueprints.chat import _should_emit_final_fallback
+from vermes_cli.blueprints.chat import _should_emit_final_fallback
 
 
 class TestShouldEmitFinalFallback:

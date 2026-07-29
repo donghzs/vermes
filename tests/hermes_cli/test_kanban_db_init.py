@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from hermes_cli import kanban_db as kb
+from vermes_cli import kanban_db as kb
 
 
 def test_connect_initialization_is_thread_safe(tmp_path, monkeypatch):

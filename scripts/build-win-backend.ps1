@@ -126,7 +126,7 @@ if (-not $SKIP_NPM) {
 
     # 同步到 web_dist
     $FRONTEND_DIST = Join-Path $VERMES_DIR "frontend\dist"
-    $WEB_DIST = Join-Path $VERMES_DIR "hermes_cli\web_dist"
+    $WEB_DIST = Join-Path $VERMES_DIR "vermes_cli\web_dist"
     if (Test-Path $FRONTEND_DIST) {
         if (Test-Path $WEB_DIST) {
             Remove-Item -Recurse -Force $WEB_DIST

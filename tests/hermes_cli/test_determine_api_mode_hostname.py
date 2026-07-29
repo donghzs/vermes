@@ -1,6 +1,6 @@
 """Regression tests for ``determine_api_mode`` hostname handling.
 
-Companion to tests/hermes_cli/test_detect_api_mode_for_url.py — the same
+Companion to tests/vermes_cli/test_detect_api_mode_for_url.py — the same
 false-positive class (custom URLs containing ``api.openai.com`` /
 ``api.anthropic.com`` as a path segment or host suffix) must be rejected
 by ``determine_api_mode`` as well, since it's the code path used by
@@ -9,7 +9,7 @@ custom/unknown providers in ``resolve_custom_provider``.
 
 from __future__ import annotations
 
-from hermes_cli.providers import determine_api_mode
+from vermes_cli.providers import determine_api_mode
 
 
 class TestOpenAIHostHardening:

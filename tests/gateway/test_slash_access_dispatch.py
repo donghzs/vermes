@@ -288,7 +288,7 @@ async def test_plugin_registered_command_is_gated(monkeypatch):
         }
     )
 
-    from hermes_cli import commands as cmd_mod
+    from vermes_cli import commands as cmd_mod
 
     real_resolve = cmd_mod.resolve_command
     real_is_known = cmd_mod.is_gateway_known_command
@@ -412,7 +412,7 @@ async def test_gate_uses_canonical_name_not_alias():
         }
     )
     # Find a real alias in the registry to use.
-    from hermes_cli.commands import COMMAND_REGISTRY
+    from vermes_cli.commands import COMMAND_REGISTRY
     history_def = next(c for c in COMMAND_REGISTRY if c.name == "history")
     # If /history has aliases, use one. Otherwise just use /history.
     alias = history_def.aliases[0] if history_def.aliases else "history"

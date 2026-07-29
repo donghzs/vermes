@@ -1,13 +1,13 @@
 """Tests for the post-pull syntax guard in ``hermes update``.
 
 When a bad commit lands on ``main`` with a syntax error in a critical file
-(e.g. orphan merge-conflict markers in ``hermes_cli/config.py``), the CLI
+(e.g. orphan merge-conflict markers in ``vermes_cli/config.py``), the CLI
 becomes unbootable — every ``hermes`` invocation imports those files at
 startup. The guard validates them after ``git pull`` and rolls back to the
 pre-pull SHA on failure so the user's install stays runnable.
 
 Reference incident: PR #28452 (May 18, 2026) shipped unresolved conflict
-markers in ``hermes_cli/config.py``; users who ran ``hermes update`` in
+markers in ``vermes_cli/config.py``; users who ran ``hermes update`` in
 the 7-minute window before #28458 landed could not run any ``hermes``
 command afterward.
 """
@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from hermes_cli import main as hermes_main
+from vermes_cli import main as hermes_main
 
 
 # ---------------------------------------------------------------------------
@@ -95,12 +95,12 @@ def test_validate_critical_files_syntax_ok_when_all_files_parse(tmp_path):
 
 def test_validate_critical_files_syntax_detects_conflict_markers(tmp_path):
     """The exact PR #28452 failure mode: orphan ``<<<<<<<`` in config.py."""
-    _populate_critical_tree(tmp_path, broken_file="hermes_cli/config.py")
+    _populate_critical_tree(tmp_path, broken_file="vermes_cli/config.py")
 
     ok, failing_path, error = hermes_main._validate_critical_files_syntax(tmp_path)
 
     assert ok is False
-    assert failing_path is not None and failing_path.endswith("hermes_cli/config.py")
+    assert failing_path is not None and failing_path.endswith("vermes_cli/config.py")
     assert error is not None
     # The error mentions either the syntax error itself or the file path —
     # either is enough proof we caught the bad commit.
@@ -108,20 +108,20 @@ def test_validate_critical_files_syntax_detects_conflict_markers(tmp_path):
 
 
 def test_validate_critical_files_syntax_detects_break_in_main_py(tmp_path):
-    _populate_critical_tree(tmp_path, broken_file="hermes_cli/main.py")
+    _populate_critical_tree(tmp_path, broken_file="vermes_cli/main.py")
 
     ok, failing_path, _ = hermes_main._validate_critical_files_syntax(tmp_path)
 
     assert ok is False
-    assert failing_path is not None and failing_path.endswith("hermes_cli/main.py")
+    assert failing_path is not None and failing_path.endswith("vermes_cli/main.py")
 
 
 def test_validate_critical_files_syntax_tolerates_missing_files(tmp_path):
     """A refactor may legitimately remove one of the critical files — the
     guard should skip missing files, not falsely flag the install as broken."""
-    # Populate everything except hermes_constants.py
+    # Populate everything except vermes_constants.py
     for relpath in hermes_main._UPDATE_CRITICAL_FILES:
-        if relpath == "hermes_constants.py":
+        if relpath == "vermes_constants.py":
             continue
         path = tmp_path / relpath
         path.parent.mkdir(parents=True, exist_ok=True)

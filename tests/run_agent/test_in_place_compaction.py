@@ -61,7 +61,7 @@ def _seed(db, sid, title, n=8):
 class TestInPlaceCompaction:
     def test_in_place_keeps_same_session_id(self):
         """In-place mode: id unchanged, no child row, no rename, history kept."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
         from agent.conversation_compression import compress_context
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,7 +126,7 @@ class TestInPlaceCompaction:
 
     def test_in_place_alternation_preserved(self):
         """The compacted list must not introduce consecutive same-role messages."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
         from agent.conversation_compression import compress_context
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,7 +146,7 @@ class TestInPlaceCompaction:
         rewrites the whole row, so a flush would INSERT rows it immediately
         deletes (wasted writes). The current-turn tail survives via the
         compressor's `compressed` output, not the flush."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
         from agent.conversation_compression import compress_context
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -166,7 +166,7 @@ class TestInPlaceCompaction:
     def test_rotation_still_preflushes(self):
         """Rotation MUST pre-flush so current-turn messages survive in the
         preserved old (parent) session before it is ended (#47202)."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
         from agent.conversation_compression import compress_context
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -187,7 +187,7 @@ class TestInPlaceCompaction:
 class TestRotationStillDefault:
     def test_rotation_when_flag_off(self):
         """Regression guard: flag off => legacy rotation is unchanged."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
         from agent.conversation_compression import compress_context
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,7 +222,7 @@ class TestInPlaceSignalForGateway:
     read (instead of an id-change diff) to re-baseline transcript handling."""
 
     def test_signal_set_on_in_place_unset_on_rotation(self):
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
         from agent.conversation_compression import compress_context
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -248,7 +248,7 @@ class TestInPlaceSignalForGateway:
 
 class TestInPlaceConfigDefault:
     def test_flag_defaults_off(self):
-        from hermes_cli.config import DEFAULT_CONFIG
+        from vermes_cli.config import DEFAULT_CONFIG
 
         assert DEFAULT_CONFIG["compression"].get("in_place") is False
 
@@ -261,7 +261,7 @@ class TestCompactedTurnsStaySearchable:
     the active flag but are distinguished by the compacted flag."""
 
     def test_compacted_turns_found_by_default_search(self):
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         with tempfile.TemporaryDirectory() as tmp:
             db = SessionDB(db_path=Path(tmp) / "t.db")
@@ -299,7 +299,7 @@ class TestCompactedTurnsStaySearchable:
     def test_rewound_turns_stay_hidden(self):
         """Rewind/undo (active=0, compacted=0) must NOT leak into default
         search — the distinction the compacted flag preserves."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         with tempfile.TemporaryDirectory() as tmp:
             db = SessionDB(db_path=Path(tmp) / "t.db")

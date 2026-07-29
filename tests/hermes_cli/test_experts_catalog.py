@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-CATALOG = Path(__file__).parent.parent.parent / "hermes_cli" / "experts_catalog.json"
+CATALOG = Path(__file__).parent.parent.parent / "vermes_cli" / "experts_catalog.json"
 
 
 def _load():

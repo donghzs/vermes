@@ -1,11 +1,11 @@
-"""Unit tests for hermes_cli.session_recap."""
+"""Unit tests for vermes_cli.session_recap."""
 from __future__ import annotations
 
 import json
 
 import pytest
 
-from hermes_cli.session_recap import build_recap
+from vermes_cli.session_recap import build_recap
 
 
 def _user(text):

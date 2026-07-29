@@ -15,7 +15,7 @@ These tests pin the fixed behavior:
   :func:`agent.skill_commands.scan_skill_commands`), so the slug differs
   from the directory name when the declared name is multi-word.
 * ``disabled`` membership is checked by the declared name, because that
-  is what :func:`hermes_cli.skills_config.save_disabled_skills` stores.
+  is what :func:`vermes_cli.skills_config.save_disabled_skills` stores.
 """
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ def test_optional_skill_uses_frontmatter_slug(
     # ``get_optional_skills_dir(repo_root / "optional-skills")`` — we
     # can't easily retarget ``repo_root``, so patch the resolver.
     monkeypatch.setattr(
-        "hermes_constants.get_optional_skills_dir",
+        "vermes_constants.get_optional_skills_dir",
         lambda _default: optional,
         raising=False,
     )

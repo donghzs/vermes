@@ -10,7 +10,7 @@ import os
 os.environ["HERMES_HOME"] = os.path.expanduser("~/.hermes")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from hermes_cli.scholarforge.tools import (
+from vermes_cli.scholarforge.tools import (
     _handle_scholarforge_list_projects,
     _handle_scholarforge_set_active_project,
     _handle_scholarforge_read_section,
@@ -18,7 +18,7 @@ from hermes_cli.scholarforge.tools import (
     _handle_scholarforge_export,
     _handle_scholarforge_check_stats,
 )
-from hermes_cli.scholarforge.database import get_outline, get_section_content, get_all_sections
+from vermes_cli.scholarforge.database import get_outline, get_section_content, get_all_sections
 
 
 async def main():

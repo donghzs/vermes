@@ -5,7 +5,7 @@ import re
 
 # ── 从生产代码 import 纯函数 ──────────────────────────────────────
 
-from hermes_cli.blueprints.chat import _find_first_plan_json
+from vermes_cli.blueprints.chat import _find_first_plan_json
 
 # ── 平衡括号解析器（直接测试生产代码）────────────────────────────
 

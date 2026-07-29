@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync-version.sh — 从 hermes_cli/__init__.py 提取版本号，同步到所有需要的位置
+# sync-version.sh — 从 vermes_cli/__init__.py 提取版本号，同步到所有需要的位置
 # 用法: bash scripts/sync-version.sh
 set -euo pipefail
 
@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 从 Python __init__.py 读取版本号
-INIT_PY="$ROOT_DIR/hermes_cli/__init__.py"
+INIT_PY="$ROOT_DIR/vermes_cli/__init__.py"
 if [ ! -f "$INIT_PY" ]; then
   echo "ERROR: $INIT_PY not found" >&2
   exit 1

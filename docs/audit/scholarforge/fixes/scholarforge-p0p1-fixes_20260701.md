@@ -63,11 +63,11 @@
 
 | 文件 | 改动 |
 |------|------|
-| `hermes_cli/scholarforge/export/full.py` | P0-3: PDF 字体改为系统内置 |
-| `hermes_cli/scholarforge/blueprint.py` | P0-1: 删除 storm 死代码; P1-2: 引用验证端点 |
-| `hermes_cli/scholarforge/database.py` | P1-2: citation_verifications 表 + CRUD |
-| `hermes_cli/scholarforge/agents/__init__.py` | P1-2: 持久化; P1-4: RAG 透明; P1-5: 编号修正 |
-| `hermes_cli/scholarforge/scoring.py` | P1-3: fallback 评分保守化 |
+| `vermes_cli/scholarforge/export/full.py` | P0-3: PDF 字体改为系统内置 |
+| `vermes_cli/scholarforge/blueprint.py` | P0-1: 删除 storm 死代码; P1-2: 引用验证端点 |
+| `vermes_cli/scholarforge/database.py` | P1-2: citation_verifications 表 + CRUD |
+| `vermes_cli/scholarforge/agents/__init__.py` | P1-2: 持久化; P1-4: RAG 透明; P1-5: 编号修正 |
+| `vermes_cli/scholarforge/scoring.py` | P1-3: fallback 评分保守化 |
 | `frontend/src/components/Writer.vue` | P0-1: STORM→全链路; P1-1: 空结果提示; P1-2: 加载持久化; P1-3: fallback 警告; P1-5: 引用编号全局化 |
 
 ## 构建状态

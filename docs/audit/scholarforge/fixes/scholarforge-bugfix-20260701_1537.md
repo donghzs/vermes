@@ -4,7 +4,7 @@
 
 **根因**: `_clean_citation_format()` 只在部分 Agent 输出路径调用，遗漏了多处 `yield {"type": "content", ...}`
 
-**修复**: `hermes_cli/scholarforge/agents/__init__.py`
+**修复**: `vermes_cli/scholarforge/agents/__init__.py`
 - Line 434: 第1轮领域概览输出
 - Line 519: 第3轮研究空白识别输出  
 - Line 919: WritingAgent 逐节输出

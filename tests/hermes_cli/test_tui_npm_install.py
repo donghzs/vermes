@@ -8,7 +8,7 @@ import pytest
 
 @pytest.fixture
 def main_mod():
-    import hermes_cli.main as m
+    import vermes_cli.main as m
 
     return m
 

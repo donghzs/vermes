@@ -1,4 +1,4 @@
-"""Tests for Qwen OAuth provider authentication (hermes_cli/auth.py).
+"""Tests for Qwen OAuth provider authentication (vermes_cli/auth.py).
 
 Covers: _qwen_cli_auth_path, _read_qwen_cli_tokens, _save_qwen_cli_tokens,
 _qwen_access_token_is_expiring, _refresh_qwen_cli_tokens,
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hermes_cli.auth import (
+from vermes_cli.auth import (
     AuthError,
     DEFAULT_QWEN_BASE_URL,
     QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
@@ -69,7 +69,7 @@ def qwen_env(tmp_path, monkeypatch):
     """Redirect _qwen_cli_auth_path to tmp_path/.qwen/oauth_creds.json."""
     creds_path = tmp_path / ".qwen" / "oauth_creds.json"
     monkeypatch.setattr(
-        "hermes_cli.auth._qwen_cli_auth_path", lambda: creds_path
+        "vermes_cli.auth._qwen_cli_auth_path", lambda: creds_path
     )
     return tmp_path
 
@@ -192,7 +192,7 @@ def test_refresh_qwen_cli_tokens_success(qwen_env):
         "expires_in": 7200,
     }
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         result = _refresh_qwen_cli_tokens(tokens)
 
@@ -212,7 +212,7 @@ def test_refresh_qwen_cli_tokens_preserves_old_refresh_if_not_in_response(qwen_e
         "expires_in": 3600,
     }
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         result = _refresh_qwen_cli_tokens(tokens)
 
@@ -233,7 +233,7 @@ def test_refresh_qwen_cli_tokens_http_error(qwen_env):
     resp.status_code = 401
     resp.text = "unauthorized"
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         with pytest.raises(AuthError) as exc:
             _refresh_qwen_cli_tokens(tokens)
@@ -243,7 +243,7 @@ def test_refresh_qwen_cli_tokens_http_error(qwen_env):
 def test_refresh_qwen_cli_tokens_network_error(qwen_env):
     tokens = _make_qwen_tokens()
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.side_effect = ConnectionError("timeout")
         with pytest.raises(AuthError) as exc:
             _refresh_qwen_cli_tokens(tokens)
@@ -257,7 +257,7 @@ def test_refresh_qwen_cli_tokens_invalid_json_response(qwen_env):
     resp.status_code = 200
     resp.json.side_effect = ValueError("bad json")
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         with pytest.raises(AuthError) as exc:
             _refresh_qwen_cli_tokens(tokens)
@@ -271,7 +271,7 @@ def test_refresh_qwen_cli_tokens_missing_access_token_in_response(qwen_env):
     resp.status_code = 200
     resp.json.return_value = {"something": "but no access_token"}
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         with pytest.raises(AuthError) as exc:
             _refresh_qwen_cli_tokens(tokens)
@@ -286,7 +286,7 @@ def test_refresh_qwen_cli_tokens_default_expires_in(qwen_env):
     resp.status_code = 200
     resp.json.return_value = {"access_token": "new"}
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         result = _refresh_qwen_cli_tokens(tokens)
 
@@ -305,7 +305,7 @@ def test_refresh_qwen_cli_tokens_saves_to_disk(qwen_env):
         "expires_in": 3600,
     }
 
-    with patch("hermes_cli.auth.httpx") as mock_httpx:
+    with patch("vermes_cli.auth.httpx") as mock_httpx:
         mock_httpx.post.return_value = resp
         _refresh_qwen_cli_tokens(tokens)
 
@@ -340,7 +340,7 @@ def test_resolve_qwen_runtime_credentials_triggers_refresh(qwen_env):
     refreshed = _make_qwen_tokens(access_token="refreshed-at")
 
     with patch(
-        "hermes_cli.auth._refresh_qwen_cli_tokens", return_value=refreshed
+        "vermes_cli.auth._refresh_qwen_cli_tokens", return_value=refreshed
     ) as mock_refresh:
         creds = resolve_qwen_runtime_credentials()
     mock_refresh.assert_called_once()
@@ -354,7 +354,7 @@ def test_resolve_qwen_runtime_credentials_force_refresh(qwen_env):
     refreshed = _make_qwen_tokens(access_token="force-refreshed")
 
     with patch(
-        "hermes_cli.auth._refresh_qwen_cli_tokens", return_value=refreshed
+        "vermes_cli.auth._refresh_qwen_cli_tokens", return_value=refreshed
     ) as mock_refresh:
         creds = resolve_qwen_runtime_credentials(force_refresh=True)
     mock_refresh.assert_called_once()

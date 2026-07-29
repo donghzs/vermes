@@ -25,8 +25,8 @@ def curator_env(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     import importlib
-    import hermes_constants
-    importlib.reload(hermes_constants)
+    import vermes_constants
+    importlib.reload(vermes_constants)
     from agent import curator
     importlib.reload(curator)
     from tools import skill_usage

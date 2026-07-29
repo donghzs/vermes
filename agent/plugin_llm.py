@@ -15,7 +15,7 @@ plugin's job is to make its own model call. This module is the
 supported lane for that case.
 
 The plugin gets ``ctx.llm`` exposed on its
-:class:`~hermes_cli.plugins.PluginContext`:
+:class:`~vermes_cli.plugins.PluginContext`:
 
 * ``complete(messages, ...)`` — chat completion against the user's
   active model + auth.
@@ -210,7 +210,7 @@ def _resolve_trust_policy(plugin_id: str) -> _TrustPolicy:
         return _TrustPolicy(plugin_id="")
 
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         config = load_config() or {}
     except Exception:  # pragma: no cover — config IO failure
         return _TrustPolicy(plugin_id=plugin_id)
@@ -598,7 +598,7 @@ def _resolve_attribution(
 class PluginLlm:
     """Host-owned LLM access for one trusted plugin.
 
-    Instances are constructed by :class:`hermes_cli.plugins.PluginContext`
+    Instances are constructed by :class:`vermes_cli.plugins.PluginContext`
     and exposed as ``ctx.llm``. Plugins should not instantiate this
     directly — the constructor binds plugin identity for trust-gate
     enforcement.

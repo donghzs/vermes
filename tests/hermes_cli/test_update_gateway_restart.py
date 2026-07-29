@@ -13,9 +13,9 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-import hermes_cli.gateway as gateway_cli
-import hermes_cli.main as cli_main
-from hermes_cli.main import cmd_update
+import vermes_cli.gateway as gateway_cli
+import vermes_cli.main as cli_main
+from vermes_cli.main import cmd_update
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ from hermes_cli.main import cmd_update
 
 @pytest.fixture(autouse=True)
 def _no_restart_verify_sleep(monkeypatch):
-    """hermes_cli/main.py uses time.sleep(3) after systemctl restart to
+    """vermes_cli/main.py uses time.sleep(3) after systemctl restart to
     verify the service survived. Tests mock subprocess.run — nothing
     actually restarts — so the 3s wait is dead time.
 
@@ -103,10 +103,10 @@ def _make_run_side_effect(
                 return subprocess.CompletedProcess(cmd, system_restart_rc, stdout="", stderr=stderr)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        # launchctl list ai.hermes.gateway
+        # launchctl list ai.vermes.gateway
         if "launchctl" in joined and "list" in joined:
             if launchctl_loaded:
-                return subprocess.CompletedProcess(cmd, 0, stdout="PID\tStatus\tLabel\n123\t0\tai.hermes.gateway\n", stderr="")
+                return subprocess.CompletedProcess(cmd, 0, stdout="PID\tStatus\tLabel\n123\t0\tai.vermes.gateway\n", stderr="")
             return subprocess.CompletedProcess(cmd, 113, stdout="", stderr="Could not find service")
 
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -217,7 +217,7 @@ class TestLaunchdPlistPath:
 
 class TestLaunchdPlistCurrentness:
     def test_launchd_plist_is_current_ignores_path_drift(self, tmp_path, monkeypatch):
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
 
         monkeypatch.setenv("PATH", "/custom/bin:/usr/bin:/bin")
@@ -238,7 +238,7 @@ class TestLaunchdPlistRefresh:
     refresh_systemd_unit_if_needed)."""
 
     def test_refresh_rewrites_stale_plist(self, tmp_path, monkeypatch):
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         plist_path.write_text("<plist>old content</plist>")
 
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
@@ -260,7 +260,7 @@ class TestLaunchdPlistRefresh:
         assert any("bootstrap" in str(c) for c in calls)
 
     def test_refresh_skips_when_current(self, tmp_path, monkeypatch):
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
 
         # Write the current expected content
@@ -286,7 +286,7 @@ class TestLaunchdPlistRefresh:
 
     def test_launchd_start_calls_refresh(self, tmp_path, monkeypatch):
         """launchd_start refreshes the plist before starting."""
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         plist_path.write_text("<plist>old</plist>")
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
 
@@ -306,7 +306,7 @@ class TestLaunchdPlistRefresh:
 
     def test_launchd_start_recreates_missing_plist_and_loads_service(self, tmp_path, monkeypatch):
         """launchd_start self-heals when the plist file is missing entirely."""
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         assert not plist_path.exists()
 
         monkeypatch.setattr(gateway_cli, "get_launchd_plist_path", lambda: plist_path)
@@ -343,7 +343,7 @@ class TestCmdUpdateLaunchdRestart:
         """When launchd is running the gateway, update should print
         'auto-restart via launchd' instead of 'Restart it with: hermes gateway run'."""
         # Create a fake launchd plist so is_macos + plist.exists() passes
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         plist_path.write_text("<plist/>")
 
         monkeypatch.setattr(
@@ -377,7 +377,7 @@ class TestCmdUpdateLaunchdRestart:
         monkeypatch.setattr(
             gateway_cli, "is_macos", lambda: True,
         )
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         # plist does NOT exist — no launchd service
         monkeypatch.setattr(
             gateway_cli, "get_launchd_plist_path", lambda: plist_path,
@@ -406,7 +406,7 @@ class TestCmdUpdateLaunchdRestart:
         monkeypatch.setattr(
             gateway_cli,
             "get_launchd_plist_path",
-            lambda: tmp_path / "ai.hermes.gateway.plist",
+            lambda: tmp_path / "ai.vermes.gateway.plist",
         )
 
         mock_run.side_effect = _make_run_side_effect(
@@ -450,7 +450,7 @@ class TestCmdUpdateLaunchdRestart:
         monkeypatch.setattr(
             gateway_cli,
             "get_launchd_plist_path",
-            lambda: tmp_path / "ai.hermes.gateway.plist",
+            lambda: tmp_path / "ai.vermes.gateway.plist",
         )
 
         mock_run.side_effect = _make_run_side_effect(
@@ -640,7 +640,7 @@ class TestCmdUpdateLaunchdRestart:
         # because the gateway ignored SIGUSR1 or the drain budget was
         # exceeded.  cmd_update() should detect this and escalate.
         monkeypatch.setattr(
-            "hermes_cli.gateway._graceful_restart_via_sigusr1",
+            "vermes_cli.gateway._graceful_restart_via_sigusr1",
             lambda pid, drain_timeout: False,
         )
 
@@ -699,7 +699,7 @@ class TestCmdUpdateLaunchdRestart:
         # Simulate a successful graceful drain so cmd_update reaches the
         # post-drain restart bypass.
         monkeypatch.setattr(
-            "hermes_cli.gateway._graceful_restart_via_sigusr1",
+            "vermes_cli.gateway._graceful_restart_via_sigusr1",
             lambda pid, drain_timeout: True,
         )
 
@@ -854,7 +854,7 @@ class TestServicePidExclusion:
         self, mock_run, _mock_which, mock_args, capsys, monkeypatch, tmp_path,
     ):
         """After launchd restart, the sweep must exclude the service PID."""
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         plist_path.write_text("<plist/>")
 
         monkeypatch.setattr(gateway_cli, "is_macos", lambda: True)
@@ -942,7 +942,7 @@ class TestServicePidExclusion:
     ):
         """When both a service PID and a manual PID exist, only the manual one
         is killed."""
-        plist_path = tmp_path / "ai.hermes.gateway.plist"
+        plist_path = tmp_path / "ai.vermes.gateway.plist"
         plist_path.write_text("<plist/>")
 
         monkeypatch.setattr(gateway_cli, "is_macos", lambda: True)
@@ -1018,14 +1018,14 @@ class TestGetServicePids:
     def test_returns_launchd_pid(self, monkeypatch):
         monkeypatch.setattr(gateway_cli, "is_linux", lambda: False)
         monkeypatch.setattr(gateway_cli, "is_macos", lambda: True)
-        monkeypatch.setattr(gateway_cli, "get_launchd_label", lambda: "ai.hermes.gateway")
+        monkeypatch.setattr(gateway_cli, "get_launchd_label", lambda: "ai.vermes.gateway")
 
         def fake_run(cmd, **kwargs):
             joined = " ".join(str(c) for c in cmd)
             if "launchctl" in joined and "list" in joined:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="PID\tStatus\tLabel\n67890\t0\tai.hermes.gateway\n",
+                    stdout="PID\tStatus\tLabel\n67890\t0\tai.vermes.gateway\n",
                     stderr="",
                 )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -1134,8 +1134,8 @@ class TestFindGatewayPidsExclude:
             return subprocess.CompletedProcess(
                 cmd, 0,
                 stdout=(
-                    "100 /Users/dgrieco/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main --profile orcha gateway run --replace\n"
-                    "200 /Users/dgrieco/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main --profile other gateway run --replace\n"
+                    "100 /Users/dgrieco/.hermes/hermes-agent/venv/bin/python -m vermes_cli.main --profile orcha gateway run --replace\n"
+                    "200 /Users/dgrieco/.hermes/hermes-agent/venv/bin/python -m vermes_cli.main --profile other gateway run --replace\n"
                 ),
                 stderr="",
             )
@@ -1177,10 +1177,10 @@ class TestGatewayModeWritesExitCodeEarly:
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        import hermes_cli.config as _cfg
+        import vermes_cli.config as _cfg
         monkeypatch.setattr(_cfg, "get_hermes_home", lambda: hermes_home)
         # Also patch the module-level ref used by cmd_update
-        import hermes_cli.main as _main_mod
+        import vermes_cli.main as _main_mod
         monkeypatch.setattr(_main_mod, "get_hermes_home", lambda: hermes_home)
 
         mock_run.side_effect = _make_run_side_effect(commit_count="1")
@@ -1207,9 +1207,9 @@ class TestGatewayModeWritesExitCodeEarly:
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        import hermes_cli.config as _cfg
+        import vermes_cli.config as _cfg
         monkeypatch.setattr(_cfg, "get_hermes_home", lambda: hermes_home)
-        import hermes_cli.main as _main_mod
+        import vermes_cli.main as _main_mod
         monkeypatch.setattr(_main_mod, "get_hermes_home", lambda: hermes_home)
 
         mock_run.side_effect = _make_run_side_effect(commit_count="1")
@@ -1235,9 +1235,9 @@ class TestGatewayModeWritesExitCodeEarly:
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        import hermes_cli.config as _cfg
+        import vermes_cli.config as _cfg
         monkeypatch.setattr(_cfg, "get_hermes_home", lambda: hermes_home)
-        import hermes_cli.main as _main_mod
+        import vermes_cli.main as _main_mod
         monkeypatch.setattr(_main_mod, "get_hermes_home", lambda: hermes_home)
 
         exit_code_path = hermes_home / ".update_exit_code"
@@ -1279,7 +1279,7 @@ class TestCmdUpdateLegacyGatewayWarning:
 
     _OUR_UNIT_TEXT = (
         "[Unit]\nDescription=Hermes Gateway\n[Service]\n"
-        "ExecStart=/usr/bin/python -m hermes_cli.main gateway run --replace\n"
+        "ExecStart=/usr/bin/python -m vermes_cli.main gateway run --replace\n"
     )
 
     @patch("shutil.which", return_value=None)
@@ -1500,7 +1500,7 @@ class TestCmdUpdateResetFailedBeforeRestart:
             return orig(cmd, **kwargs)
         mock_run.side_effect = wrapped
         monkeypatch.setattr(
-            "hermes_cli.gateway._graceful_restart_via_sigusr1",
+            "vermes_cli.gateway._graceful_restart_via_sigusr1",
             lambda pid, drain_timeout: False,
         )
 
@@ -1587,7 +1587,7 @@ class TestCmdUpdateResetFailedBeforeRestart:
 
         # Force graceful SIGUSR1 to fail → fallback restart path.
         monkeypatch.setattr(
-            "hermes_cli.gateway._graceful_restart_via_sigusr1",
+            "vermes_cli.gateway._graceful_restart_via_sigusr1",
             lambda pid, drain_timeout: False,
         )
 
@@ -1656,7 +1656,7 @@ class TestCmdUpdateResetFailedBeforeRestart:
 
         mock_run.side_effect = side_effect
         monkeypatch.setattr(
-            "hermes_cli.gateway._graceful_restart_via_sigusr1",
+            "vermes_cli.gateway._graceful_restart_via_sigusr1",
             lambda pid, drain_timeout: False,
         )
 

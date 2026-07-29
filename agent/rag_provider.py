@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 

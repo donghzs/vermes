@@ -10,8 +10,8 @@ def test_blank_memory_provider_does_not_auto_enable_honcho():
     honcho_cfg = SimpleNamespace(enabled=True, api_key="stale-key", base_url=None)
 
     with (
-        patch("hermes_cli.config.load_config", return_value=cfg),
-        patch("hermes_cli.config.save_config") as save_config,
+        patch("vermes_cli.config.load_config", return_value=cfg),
+        patch("vermes_cli.config.save_config") as save_config,
         patch(
             "plugins.memory.honcho.client.HonchoClientConfig.from_global_config",
             return_value=honcho_cfg,

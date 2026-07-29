@@ -203,7 +203,7 @@ def _supports_vision_override(
 
     # 2. Per-provider, per-model. Named custom providers (e.g. "my-vllm")
     # get rewritten to provider="custom" at runtime
-    # (hermes_cli/runtime_provider.py:_resolve_named_custom_runtime), so the
+    # (vermes_cli/runtime_provider.py:_resolve_named_custom_runtime), so the
     # config still holds the user-declared name under model.provider. Try
     # both as candidate provider keys.
     config_provider = str(model_cfg.get("provider") or "").strip()

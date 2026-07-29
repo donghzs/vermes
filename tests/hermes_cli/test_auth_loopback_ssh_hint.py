@@ -1,4 +1,4 @@
-"""Unit tests for _print_loopback_ssh_hint() in hermes_cli/auth.py.
+"""Unit tests for _print_loopback_ssh_hint() in vermes_cli/auth.py.
 
 The helper exists to warn users that loopback OAuth flows (xAI Grok OAuth,
 Spotify) don't work over SSH unless they set up an `ssh -L` port forward
@@ -13,7 +13,7 @@ import socket
 
 import pytest
 
-from hermes_cli import auth as auth_mod
+from vermes_cli import auth as auth_mod
 
 
 def _cap(fn):

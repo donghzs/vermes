@@ -18,7 +18,7 @@ class TestPostSetupGate:
     def test_cua_driver_missing_forces_setup(self, monkeypatch, tmp_path):
         """When cua-driver isn't on PATH, the gate must return True so the
         provider-setup flow runs and triggers `_run_post_setup`."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         monkeypatch.setattr(tools_config.shutil, "which", lambda name: None)
@@ -30,7 +30,7 @@ class TestPostSetupGate:
     def test_cua_driver_installed_skips_setup(self, monkeypatch, tmp_path):
         """When cua-driver is already on PATH, the gate must return False
         so a re-save through `hermes tools` doesn't re-prompt the user."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         monkeypatch.setattr(
@@ -46,7 +46,7 @@ class TestPostSetupGate:
     def test_post_setup_predicate_exception_does_not_block(self, monkeypatch):
         """A predicate that raises must be treated as 'satisfied' so a
         broken check can't strand the user in an infinite setup loop."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         def _boom():
             raise RuntimeError("predicate broken")
@@ -58,7 +58,7 @@ class TestPostSetupGate:
         """post_setup keys without a registered predicate must default to
         'satisfied' so we don't change behaviour for hooks we haven't
         explicitly opted in (kittentts, piper, agent_browser, etc.)."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         assert tools_config._post_setup_already_installed("does_not_exist") is True
 
@@ -66,6 +66,6 @@ class TestPostSetupGate:
         """Keep an explicit pin on the cua_driver entry so accidental
         deletion of the registry row would fail this test rather than
         silently restore the original silent-no-op bug."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         assert "cua_driver" in tools_config._POST_SETUP_INSTALLED

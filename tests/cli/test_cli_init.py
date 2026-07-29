@@ -479,7 +479,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_root_model_keys_moves_to_model(self):
         """_normalize_root_model_keys migrates root keys into model section."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "provider": "opencode-go",
@@ -498,7 +498,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_root_model_keys_does_not_override_existing(self):
         """Existing model.provider is never overridden by root-level key."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "provider": "stale-provider",
@@ -513,7 +513,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_model_api_base_aliases_to_base_url(self):
         """model.api_base is migrated to model.base_url (issue #8919)."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "model": {
@@ -529,7 +529,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_api_base_does_not_override_base_url(self):
         """An explicit model.base_url is never overridden by api_base."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "model": {
@@ -545,7 +545,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_root_context_length_migrates_to_model(self):
         """Root-level context_length is migrated into the model section."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "context_length": 128000,
@@ -559,7 +559,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_root_context_length_does_not_override_existing(self):
         """Existing model.context_length is not overridden by root-level key."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "context_length": 256000,
@@ -574,7 +574,7 @@ class TestRootLevelProviderOverride:
 
     def test_normalize_root_context_length_with_string_model(self):
         """Root-level context_length is migrated even when model is a string."""
-        from hermes_cli.config import _normalize_root_model_keys
+        from vermes_cli.config import _normalize_root_model_keys
 
         config = {
             "context_length": 128000,

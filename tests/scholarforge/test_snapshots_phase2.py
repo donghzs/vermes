@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 def tmp_db(tmp_path, monkeypatch):
     """使用临时 DB 路径。"""
     db_path = str(tmp_path / "test_snapshots.db")
-    import hermes_cli.scholarforge.database as db
+    import vermes_cli.scholarforge.database as db
     monkeypatch.setattr(db, "DB_PATH", db_path)
     db.init_db()
     yield db
@@ -150,7 +150,7 @@ class TestDeleteSnapshot:
 class TestMaxSnapshots:
     def test_max_snapshots_eviction(self, tmp_db, sample_project, monkeypatch):
         """超出 MAX_SNAPSHOTS_PER_PROJECT 时应淘汰最旧。"""
-        monkeypatch.setattr("hermes_cli.scholarforge.database.MAX_SNAPSHOTS_PER_PROJECT", 3)
+        monkeypatch.setattr("vermes_cli.scholarforge.database.MAX_SNAPSHOTS_PER_PROJECT", 3)
         ids = []
         for i in range(5):
             sid = tmp_db.create_project_snapshot(sample_project, label=f"v{i}")
@@ -171,13 +171,13 @@ class TestMaxSnapshots:
 class TestProjectContextSnapshot:
     def test_auto_snapshot_wrapper(self, sample_project):
         """project_context.auto_snapshot 应创建快照。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         sid = auto_snapshot(sample_project, label="test_auto", note="自动快照测试")
         assert sid > 0
 
     def test_auto_snapshot_invalid_project(self):
         """auto_snapshot 对无效项目返回 0。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         sid = auto_snapshot(0, label="invalid")
         assert sid == 0
 
@@ -186,27 +186,27 @@ class TestProjectContextSnapshot:
 
     def test_restore_snapshot_wrapper(self, sample_project):
         """project_context.restore_snapshot 包装正常工作。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot, restore_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot, restore_snapshot
         sid = auto_snapshot(sample_project, label="test_restore")
         result = restore_snapshot(sid)
         assert result.get("restored") is True
 
     def test_list_snapshots_wrapper(self, sample_project):
         """project_context.list_snapshots 包装正常工作。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot, list_snapshots
+        from vermes_cli.scholarforge.project_context import auto_snapshot, list_snapshots
         auto_snapshot(sample_project, label="test_list")
         snaps = list_snapshots(sample_project)
         assert len(snaps) >= 1
 
     def test_delete_snapshot_wrapper(self, sample_project):
         """project_context.delete_snapshot 包装正常工作。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot, delete_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot, delete_snapshot
         sid = auto_snapshot(sample_project, label="test_delete")
         assert delete_snapshot(sid) is True
 
     def test_get_snapshot_detail_wrapper(self, sample_project):
         """project_context.get_snapshot_detail 包装正常工作。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot, get_snapshot_detail
+        from vermes_cli.scholarforge.project_context import auto_snapshot, get_snapshot_detail
         sid = auto_snapshot(sample_project, label="test_get")
         snap = get_snapshot_detail(sid)
         assert snap.get("label") == "test_get"

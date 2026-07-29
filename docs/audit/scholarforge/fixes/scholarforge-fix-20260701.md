@@ -30,7 +30,7 @@
 
 ## 验证方法
 ```python
-from hermes_cli.scholarforge.agents import _clean_citation_format
+from vermes_cli.scholarforge.agents import _clean_citation_format
 test = "[@金旭杨2025] 提出了方法。"
 assert _clean_citation_format(test) == "提出了方法。"
 ```

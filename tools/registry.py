@@ -424,7 +424,7 @@ class ToolRegistry:
 
         Single source of truth for tool dispatch precedence. Mirrors the
         agent loop (``agent/tool_executor.py``) and the plugin API
-        (``hermes_cli/plugins.py``). Keeping the order here prevents the two
+        (``vermes_cli/plugins.py``). Keeping the order here prevents the two
         entry points from drifting apart (the fork-risk called out in the
         system audit).
 

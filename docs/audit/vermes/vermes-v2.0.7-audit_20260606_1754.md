@@ -187,7 +187,7 @@ Web 模式:
 ### 版本号
 | 文件 | 版本 | 状态 |
 |------|------|------|
-| hermes_cli/__init__.py | 2.0.7 | ✅ |
+| vermes_cli/__init__.py | 2.0.7 | ✅ |
 | electron/package.json | 2.0.7 | ✅ |
 | version.json | 2.0.7 | ✅ |
 
@@ -224,7 +224,7 @@ b3bb759 fix: 修复 main.js 正则双反斜杠导致 token 匹配失败
 |------|------|------|
 | electron/installer.nsh | 修改 | 低 |
 | electron/package.json | 修改 | 低 |
-| hermes_cli/update_manager.py | 修改 | 低 |
+| vermes_cli/update_manager.py | 修改 | 低 |
 | vermes-backend.spec | 修改 | 低 |
 | 前端构建产物 | 新增 | 低 |
 

@@ -9,14 +9,14 @@
 | 维度 | 策略 |
 |------|------|
 | **端点隔离** | 全部端点 `/api/scholar/*`，不与其他路由冲突 |
-| **代码隔离** | 新增 4 个文件在 `hermes_cli/scholarforge/` 目录 |
+| **代码隔离** | 新增 4 个文件在 `vermes_cli/scholarforge/` 目录 |
 | **注册隔离** | web_server.py 仅 +9 行 try/except 注册，启动失败不影响主链路 |
 | **LLM 复用** | 零侵入调用 `_get_chat_credentials()` + `_resolve_model_provider()` |
 
 ## 新增文件 (4)
 
 ```
-hermes_cli/scholarforge/
+vermes_cli/scholarforge/
 ├── __init__.py              (  2 行) 包声明
 ├── agents/__init__.py       (345 行) 5 Agent + STORM Pipeline + ProjectContext
 ├── search/__init__.py       (279 行) 多源文献搜索 (arXiv/Crossref/Semantic Scholar)
@@ -26,7 +26,7 @@ hermes_cli/scholarforge/
 ## 修改文件 (1)
 
 ```
-hermes_cli/web_server.py     (+9 行) try/except 注册 ScholarForge blueprint
+vermes_cli/web_server.py     (+9 行) try/except 注册 ScholarForge blueprint
 ```
 
 ## API 端点

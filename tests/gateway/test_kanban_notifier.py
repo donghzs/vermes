@@ -5,7 +5,7 @@ import pytest
 
 from gateway.config import Platform
 from gateway.run import GatewayRunner
-from hermes_cli import kanban_db as kb
+from vermes_cli import kanban_db as kb
 
 
 class RecordingAdapter:

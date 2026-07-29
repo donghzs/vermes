@@ -24,7 +24,7 @@ Tasks where the agent does one turn and stops don't need `/goal`. Tasks where *y
 ## Quick start
 
 ```
-/goal Fix every failing test in tests/hermes_cli/ and make sure scripts/run_tests.sh passes for that directory
+/goal Fix every failing test in tests/vermes_cli/ and make sure scripts/run_tests.sh passes for that directory
 ```
 
 What you'll see:

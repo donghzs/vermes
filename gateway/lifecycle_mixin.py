@@ -42,7 +42,7 @@ from gateway.platforms.base import (
 )
 from gateway.restart import GATEWAY_SERVICE_RESTART_EXIT_CODE
 from gateway.session import SessionSource, build_session_key
-from hermes_cli.config import cfg_get
+from vermes_cli.config import cfg_get
 from utils import is_truthy_value
 
 logger = logging.getLogger(__name__)
@@ -127,7 +127,7 @@ class LifecycleMixin:
         except Exception:
             pass
         try:
-            from hermes_cli.profiles import get_active_profile_name
+            from vermes_cli.profiles import get_active_profile_name
             _profile = get_active_profile_name()
             if _profile and _profile != "default":
                 logger.info("Active profile: %s", _profile)
@@ -143,9 +143,9 @@ class LifecycleMixin:
         # in gateway.log and `hermes status` surfaces it; we do NOT block
         # startup or surface it inline to user messages, since the gateway
         # operator is the one who can act on it (uninstall the package,
-        # rotate credentials).  See hermes_cli/security_advisories.py.
+        # rotate credentials).  See vermes_cli/security_advisories.py.
         try:
-            from hermes_cli.security_advisories import (
+            from vermes_cli.security_advisories import (
                 detect_compromised,
                 gateway_log_message,
             )
@@ -229,12 +229,12 @@ class LifecycleMixin:
         
         # Discover Python plugins before shell hooks so plugin block
         # decisions take precedence in tie cases.  The CLI startup path
-        # does this via an explicit call in hermes_cli/main.py; the
+        # does this via an explicit call in vermes_cli/main.py; the
         # gateway lazily imports run_agent inside per-request handlers,
         # so the discover_plugins() side-effect in model_tools.py is NOT
         # guaranteed to have run by the time we reach this point.
         try:
-            from hermes_cli.plugins import discover_plugins
+            from vermes_cli.plugins import discover_plugins
             discover_plugins()
         except Exception:
             logger.warning(
@@ -251,7 +251,7 @@ class LifecycleMixin:
         # hooks_auto_accept here would just duplicate that lookup.
         # Failures are logged but must never block gateway startup.
         try:
-            from hermes_cli.config import load_config
+            from vermes_cli.config import load_config
             from agent.shell_hooks import register_from_config
             register_from_config(load_config(), accept_hooks=False)
         except Exception:
@@ -767,7 +767,7 @@ class LifecycleMixin:
     def _active_profile_name(self) -> str:
         """Return the profile name this gateway represents."""
         try:
-            from hermes_cli.profiles import get_active_profile_name
+            from vermes_cli.profiles import get_active_profile_name
             return get_active_profile_name() or "default"
         except Exception:
             return "default"
@@ -1693,7 +1693,7 @@ class LifecycleMixin:
 
             platform_key = _platform_config_key(source.platform)
 
-            from hermes_cli.tools_config import _get_platform_tools
+            from vermes_cli.tools_config import _get_platform_tools
             enabled_toolsets = sorted(_get_platform_tools(user_config, platform_key))
             agent_cfg = user_config.get("agent") or {}
             disabled_toolsets = agent_cfg.get("disabled_toolsets") or None

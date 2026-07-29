@@ -50,7 +50,7 @@ Vermes 使用两个 SQLite 数据库：
 | 数据库 | 文件 | 行数 | 用途 |
 |---|---|---|---|
 | `state.db` | `hermes_state.py` | 3,563 | 会话存储、消息历史、FTS5 搜索 |
-| `kanban.db` | `hermes_cli/kanban_db.py` | 6,179 | 任务队列、调度、工单系统 |
+| `kanban.db` | `vermes_cli/kanban_db.py` | 6,179 | 任务队列、调度、工单系统 |
 
 两个数据库都使用标准 `sqlite3` 模块（**同步 API**）。核心写路径 `SessionDB._execute_write()`（`hermes_state.py:420-475`）持有 `threading.Lock`，执行 `BEGIN IMMEDIATE` + 带 jitter 退避的重试循环：
 
@@ -113,7 +113,7 @@ class AsyncSessionDB:
 #### 涉及文件
 
 - `hermes_state.py` — SessionDB 核心
-- `hermes_cli/kanban_db.py` — 连接管理 + CRUD
+- `vermes_cli/kanban_db.py` — 连接管理 + CRUD
 - `gateway/run.py` — 主要消费者
 - `agent/async_utils.py` — `safe_schedule_threadsafe` 工具函数
 - `cron/scheduler.py` — 次要消费者
@@ -171,7 +171,7 @@ gateway/
 **cli.py（14,515 行 → 约 10 × 1.5k 行）：**
 
 ```
-hermes_cli/
+vermes_cli/
 ├── main.py                   →  入口 + 命令注册
 └── commands/
     ├── session.py            →  /new, /resume, /title, /branch, /save
@@ -185,7 +185,7 @@ hermes_cli/
     └── model.py              →  模型管理子命令
 ```
 
-**注意：** Python 没有 Go 的 flat namespace 限制，导入路径的变更需要更新所有 `from cli import X` 的引用。建议用 `hermes_cli/__init__.py` 做兼容性重导出。
+**注意：** Python 没有 Go 的 flat namespace 限制，导入路径的变更需要更新所有 `from cli import X` 的引用。建议用 `vermes_cli/__init__.py` 做兼容性重导出。
 
 #### 预期收益
 
@@ -207,7 +207,7 @@ hermes_cli/
 - `tools/` 目录（6.4 MB，85 个 `.py` 文件）
 - `mcp_tool.py` 中的 `discover_mcp_tools()` — 扫描 MCP 工具配置
 
-以 `hermes_cli/plugins.py` 为例，`invoke_hook()` 需要遍历所有插件目录来加载 hook 实现。这个扫描**没有缓存**，每次启动都走完整的 `os.walk` 或 `Path.iterdir`。
+以 `vermes_cli/plugins.py` 为例，`invoke_hook()` 需要遍历所有插件目录来加载 hook 实现。这个扫描**没有缓存**，每次启动都走完整的 `os.walk` 或 `Path.iterdir`。
 
 在 Electron 打包环境中（PyInstaller 单文件），文件系统扫描的开销更大——PyInstaller 需要解压内部归档来响应 `os.listdir`/`open` 调用。
 
@@ -599,7 +599,7 @@ END;
 
 #### 问题描述
 
-配置通过 `hermes_cli.config.load_config()` 加载为 raw dict，类型安全靠注释保证。各消费方手动做类型转换：
+配置通过 `vermes_cli.config.load_config()` 加载为 raw dict，类型安全靠注释保证。各消费方手动做类型转换：
 
 ```python
 # 散布在 20+ 处的手动转换
@@ -613,7 +613,7 @@ min_interval_hours = int(cfg.get("min_interval_hours", 24))
 #### 优化方案
 
 ```python
-# hermes_cli/config_models.py
+# vermes_cli/config_models.py
 from pydantic import BaseModel, Field
 
 class SessionConfig(BaseModel):

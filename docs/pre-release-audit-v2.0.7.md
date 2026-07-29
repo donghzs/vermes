@@ -102,7 +102,7 @@
 
 | 文件 | 行号 | 风险 |
 |------|------|------|
-| `hermes_cli/web_server.py` | ~162-175 | 全局 HTTPException handler 直接 `str(exc)` 可能包含 API key / 敏感数据 |
+| `vermes_cli/web_server.py` | ~162-175 | 全局 HTTPException handler 直接 `str(exc)` 可能包含 API key / 敏感数据 |
 
 **修复建议**: 使用 `redact_message(str(exc))` 包装，或只返回通用错误码和摘要。
 
@@ -110,7 +110,7 @@
 
 | 文件 | 行号 | 风险 |
 |------|------|------|
-| `hermes_cli/web_server.py` | 1577-1583 | Session token 明文注入 `<script>` 标签，浏览器扩展 / XSS 可读取 |
+| `vermes_cli/web_server.py` | 1577-1583 | Session token 明文注入 `<script>` 标签，浏览器扩展 / XSS 可读取 |
 
 **修复建议**: 使用一次性短期 token（5 分钟有效）替代永久 session token 注入 HTML。
 
@@ -118,7 +118,7 @@
 
 | 文件 | 行号 | 风险 |
 |------|------|------|
-| `hermes_cli/blueprints/session.py` | 187-214 | 三个方法（GET/POST/DELETE）在公开白名单中，`session_id` 无校验直接拼接文件路径 |
+| `vermes_cli/blueprints/session.py` | 187-214 | 三个方法（GET/POST/DELETE）在公开白名单中，`session_id` 无校验直接拼接文件路径 |
 
 **攻击向量**: `session_id=../../tmp/evil` → 可读写任意 `.json` 后缀文件
 

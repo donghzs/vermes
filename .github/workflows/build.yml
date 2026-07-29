@@ -39,23 +39,23 @@ jobs:
 
       - name: Sync to web_dist
         run: |
-          mkdir -p hermes_cli/web_dist/assets
-          cp frontend/dist/index.html hermes_cli/web_dist/
-          cp frontend/dist/assets/* hermes_cli/web_dist/assets/
+          mkdir -p vermes_cli/web_dist/assets
+          cp frontend/dist/index.html vermes_cli/web_dist/
+          cp frontend/dist/assets/* vermes_cli/web_dist/assets/
 
       - name: Verify web_dist integrity
         run: |
-          JS_REF=$(grep -o 'src="/assets/[^"]*"' hermes_cli/web_dist/index.html | sed 's|src="/assets/||;s|"||g')
-          CSS_REF=$(grep -o 'href="/assets/[^"]*"' hermes_cli/web_dist/index.html | sed 's|href="/assets/||;s|"||g')
-          test -f "hermes_cli/web_dist/assets/$JS_REF" || { echo "❌ JS missing: $JS_REF"; exit 1; }
-          test -f "hermes_cli/web_dist/assets/$CSS_REF" || { echo "❌ CSS missing: $CSS_REF"; exit 1; }
+          JS_REF=$(grep -o 'src="/assets/[^"]*"' vermes_cli/web_dist/index.html | sed 's|src="/assets/||;s|"||g')
+          CSS_REF=$(grep -o 'href="/assets/[^"]*"' vermes_cli/web_dist/index.html | sed 's|href="/assets/||;s|"||g')
+          test -f "vermes_cli/web_dist/assets/$JS_REF" || { echo "❌ JS missing: $JS_REF"; exit 1; }
+          test -f "vermes_cli/web_dist/assets/$CSS_REF" || { echo "❌ CSS missing: $CSS_REF"; exit 1; }
           echo "✅ web_dist integrity OK"
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
         with:
           name: web-dist
-          path: hermes_cli/web_dist/
+          path: vermes_cli/web_dist/
 
   # ── macOS 构建 ──
   build-mac:
@@ -79,7 +79,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: hermes_cli/web_dist/
+          path: vermes_cli/web_dist/
 
       - name: Install Python deps
         run: |
@@ -142,7 +142,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: hermes_cli/web_dist/
+          path: vermes_cli/web_dist/
 
       - name: Install Python deps
         run: |

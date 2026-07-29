@@ -459,7 +459,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     except Exception as e:
         logger.debug("system_prompt.py: build system prompt parts failed: %s", e)
 
-    from hermes_time import now as _hermes_now
+    from vermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable
     # for the full day.  Minute-precision changes invalidate prefix-cache KV

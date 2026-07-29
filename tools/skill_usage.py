@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 

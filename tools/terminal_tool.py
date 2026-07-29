@@ -375,7 +375,7 @@ def _handle_sudo_failure(output: str, env_type: str) -> str:
     
     for failure in sudo_failures:
         if failure in output:
-            from hermes_constants import display_hermes_home as _dhh
+            from vermes_constants import display_hermes_home as _dhh
             return output + f"\n\n💡 Tip: To enable sudo over messaging, add SUDO_PASSWORD to {_dhh()}/.env on the agent machine."
     
     return output
@@ -853,9 +853,10 @@ def _transform_sudo_command(command: str | None) -> tuple[str | None, str | None
     if not has_real_sudo:
         return command, None
 
-    has_configured_password = "SUDO_PASSWORD" in os.environ
+    sudo_env_var = "SUDO_PASSWORD"
+    has_configured_password = sudo_env_var in os.environ
     sudo_password = (
-        os.environ.get("SUDO_PASSWORD", "")
+        os.environ.get(sudo_env_var, "")
         if has_configured_password
         else _get_cached_sudo_password()
     )
@@ -2080,7 +2081,7 @@ def terminal_tool(
             # replace it by returning a string from transform_terminal_output.
             # The hook is fail-open, and the first valid string return wins.
             try:
-                from hermes_cli.plugins import invoke_hook
+                from vermes_cli.plugins import invoke_hook
                 hook_results = invoke_hook(
                     "transform_terminal_output",
                     command=command,
@@ -2296,7 +2297,7 @@ if __name__ == "__main__":
     logger.info(f"  TERMINAL_MODAL_IMAGE: {os.getenv('TERMINAL_MODAL_IMAGE', default_img)}")
     logger.info(f"  TERMINAL_DAYTONA_IMAGE: {os.getenv('TERMINAL_DAYTONA_IMAGE', default_img)}")
     logger.info(f"  TERMINAL_CWD: {os.getenv('TERMINAL_CWD', os.getcwd())}")
-    from hermes_constants import display_hermes_home as _dhh
+    from vermes_constants import display_hermes_home as _dhh
     logger.info(f"  TERMINAL_SANDBOX_DIR: {os.getenv('TERMINAL_SANDBOX_DIR', f'{_dhh()}/sandboxes')}")
     logger.info(f"  TERMINAL_TIMEOUT: {os.getenv('TERMINAL_TIMEOUT', '60')}")
     logger.info(f"  TERMINAL_LIFETIME_SECONDS: {os.getenv('TERMINAL_LIFETIME_SECONDS', '300')}")

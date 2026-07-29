@@ -7,7 +7,7 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const mainJs = readFileSync(path.join(ROOT, 'electron', 'main.js'), 'utf8');
-const webServer = readFileSync(path.join(ROOT, 'hermes_cli', 'web_server.py'), 'utf8');
+const webServer = readFileSync(path.join(ROOT, 'vermes_cli', 'web_server.py'), 'utf8');
 const splash = readFileSync(path.join(ROOT, 'electron', 'splash.html'), 'utf8');
 
 let pass = 0, fail = 0;

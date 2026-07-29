@@ -31,7 +31,7 @@
 
 1. **persist:vermes 分区脏数据 → 黑屏**（修复方式=无条件清分区，引出上面的 G0）；
 2. **splash 路径错位 → 测试模式**（已修：五候选路径探测，`main.js:224-231`）；
-3. **HERMES_HOME 回退错 profile → 数据写错库**（现状=一次性 stderr 警告，`hermes_constants.py:72-104`，但 stderr 在打包桌面端用户不可见）。
+3. **HERMES_HOME 回退错 profile → 数据写错库**（现状=一次性 stderr 警告，`vermes_constants.py:72-104`，但 stderr 在打包桌面端用户不可见）。
 
 OpenSquilla 借鉴点 #2 的核心思想："探测到旧 profile 存在但打不开 → **报错等待人工**，而非新建空库继续跑"。本设计将其扩展为覆盖 Electron 层、Python 后端层、前端层的完整守卫体系。
 
@@ -47,7 +47,7 @@ Electron main (main.js)
       ├─ /health 轮询 15s (L98-116)
       └─ 失败分支：单一泛化文案"后端服务启动失败…" (L152-155) ← G4
 Python 后端 (web_server / hermes_state)
- ├─ get_hermes_home()：profile 错配仅 stderr 一次性警告 (hermes_constants.py:72-104) ← G5b
+ ├─ get_hermes_home()：profile 错配仅 stderr 一次性警告 (vermes_constants.py:72-104) ← G5b
  ├─ SessionDB.__init__：mkdir + connect + _init_schema (hermes_state.py:472-511)
  │    · 文件不存在 → 静默新建空库（sqlite 语义）                ← G5a
  │    · 打开失败 → _set_last_init_error + raise，调用方各自降级
@@ -128,7 +128,7 @@ splash 的五候选探测（`main.js:224-231`）抽成 `resolveResource(relPath)
 
 ### G5 · profile 错配升级为可见告警
 
-`hermes_constants.py:72-104` 的一次性 stderr 警告，桌面端用户永远看不到。设计：警告触发时**同时**把标志写入模块级 `_profile_fallback_active = True`（import-safe，零 IO），web_server 的 /health 把它并进 `integrity.profile_mismatch`。UI 横幅文案："当前激活 profile 为 X，但进程正在使用默认 profile——数据可能写错位置"。不改变回退行为本身（30+ module-level caller 约束不变，与上游 #18594 注释一致）。
+`vermes_constants.py:72-104` 的一次性 stderr 警告，桌面端用户永远看不到。设计：警告触发时**同时**把标志写入模块级 `_profile_fallback_active = True`（import-safe，零 IO），web_server 的 /health 把它并进 `integrity.profile_mismatch`。UI 横幅文案："当前激活 profile 为 X，但进程正在使用默认 profile——数据可能写错位置"。不改变回退行为本身（30+ module-level caller 约束不变，与上游 #18594 注释一致）。
 
 ### G6 · 图片服务端落盘（中期，消除单点）
 

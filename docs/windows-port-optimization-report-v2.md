@@ -5,10 +5,10 @@
 ## 总体评估
 
 Vermes 对 Windows 的移植工作已经非常深入，大量关键路径已有完善的 `_IS_WINDOWS` 或 `sys.platform == "win32"` 守卫。已识别的基础设施包括：
-- `hermes_cli/win_adapter.py` — DPI 感知、系统托盘、单例聚焦
-- `hermes_cli/_subprocess_compat.py` — `windows_hide_flags()`、UTF-8 Popen 补丁
-- `hermes_cli/gateway_windows.py` — schtasks + Startup 文件夹
-- `hermes_cli/stdio.py` — ConsoleCP/ConsoleOutputCP 设为 65001
+- `vermes_cli/win_adapter.py` — DPI 感知、系统托盘、单例聚焦
+- `vermes_cli/_subprocess_compat.py` — `windows_hide_flags()`、UTF-8 Popen 补丁
+- `vermes_cli/gateway_windows.py` — schtasks + Startup 文件夹
+- `vermes_cli/stdio.py` — ConsoleCP/ConsoleOutputCP 设为 65001
 - `hermes_bootstrap.py` — `PYTHONUTF8=1` + subprocess Popen 猴子补丁
 - `tools/environments/local.py` — Git Bash 多源查找
 
@@ -21,7 +21,7 @@ Vermes 对 Windows 的移植工作已经非常深入，大量关键路径已有�
 ### ✅ 1. signal.SIGHUP / signal.SIGPIPE — 已防护
 所有关键文件中的 SIGHUP/SIGPIPE 设置都使用 `hasattr(signal, 'SIGHUP')` 守卫：
 - `tui_gateway/entry.py:151-156` — `if hasattr(signal, "SIGPIPE")` / `if hasattr(signal, "SIGHUP")`
-- `hermes_cli/main.py:7819` — `if hasattr(_signal, "SIGHUP")`
+- `vermes_cli/main.py:7819` — `if hasattr(_signal, "SIGHUP")`
 - `cli.py:13988,14416` — `if hasattr(_signal, 'SIGHUP')`
 
 ### ✅ 2. os.killpg / os.setsid — 已防护
@@ -47,17 +47,17 @@ Vermes 对 Windows 的移植工作已经非常深入，大量关键路径已有�
 - `tools/memory_tool.py` — `try: import fcntl except ImportError: fcntl = None` ✅
 - `tools/skill_usage.py` — 同上 ✅
 - `tools/environments/file_sync.py` — 同上 ✅
-- `hermes_cli/auth.py` — 同上 ✅
+- `vermes_cli/auth.py` — 同上 ✅
 
 ### ✅ 7. import pty / termios — 已隔离
-- `hermes_cli/pty_bridge.py:10-11` — 文档明确标注 POSIX-only
+- `vermes_cli/pty_bridge.py:10-11` — 文档明确标注 POSIX-only
 - `tools/terminal_tool.py:428-433` — `import termios` 在 `os.open("/dev/tty")` 之后，仅在 Linux 可用路径
 
 ### ✅ 8. pwd / grp — 局部问题
-**文件**: `hermes_cli/gateway.py:1788-1808` (`_system_service_identity`)
+**文件**: `vermes_cli/gateway.py:1788-1808` (`_system_service_identity`)
 - 直接 `import pwd` / `import grp` 无防护
 - **但** 此函数只被 systemd 服务安装路径调用（`supports_systemd_services()` 先检查 `is_linux()`）
-- `hermes_cli/gateway.py:1941` 同样 — 仅在 Linux 路径下调用
+- `vermes_cli/gateway.py:1941` 同样 — 仅在 Linux 路径下调用
 
 ### ⚠️ 9. resource.getrusage — 潜在崩溃
 **文件**: `gateway/memory_monitor.py:63-65`
@@ -156,7 +156,7 @@ elif system == "Windows":
 **文件**: `agent/display.py` 全文件
 - 硬编码 ANSI 转义码 `"\033[0m"`、`"\033[31m"` 等
 - Windows 10 以上 + VT 模式可以渲染，但 Windows 7/旧版 PowerShell 不行
-- 现有 `hermes_cli/stdio.py` 已设置 `SetConsoleCP(65001)`，但未启用 VT 模式
+- 现有 `vermes_cli/stdio.py` 已设置 `SetConsoleCP(65001)`，但未启用 VT 模式
 
 **建议**: 集成 colorama 或调用 `SetConsoleMode` 启用 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`。
 
@@ -181,14 +181,14 @@ if sys.platform == "win32":
 ```
 需确认 Windows 分支（行 3519）是否覆盖完整。
 
-### 6. hermes_cli/gateway.py — _system_service_identity 直接 import pwd/grp
-**文件**: `hermes_cli/gateway.py:1788-1808`
+### 6. vermes_cli/gateway.py — _system_service_identity 直接 import pwd/grp
+**文件**: `vermes_cli/gateway.py:1788-1808`
 - `import grp` / `import pwd` 无防护
 - 虽然被 `is_linux()` 守卫，但代码层面不够健壮
 - 建议添加 `try/except ImportError`
 
-### 7. hermes_cli/profiles.py — 仅 Linux/macOS 服务管理
-**文件**: `hermes_cli/profiles.py:934-962`
+### 7. vermes_cli/profiles.py — 仅 Linux/macOS 服务管理
+**文件**: `vermes_cli/profiles.py:934-962`
 - 仅处理 Linux (systemd) 和 macOS (launchd)
 - **缺少 Windows (schtasks/Startup) 分支**
 - 在 Windows 上运行 profile 切换时不执行 Windows 服务清理
@@ -216,7 +216,7 @@ if sys.platform == "win32":
 ## P2 —  polish 和低影响问题
 
 ### 1. PATH 分隔符使用 `:` 硬编码
-**文件**: `hermes_cli/gateway.py:2807`
+**文件**: `vermes_cli/gateway.py:2807`
 ```python
 [p for p in os.environ.get("PATH", "").split(":") if p]
 ```
@@ -248,26 +248,26 @@ Windows PATH 分隔符是 `;`，应用 `os.pathsep`。
 - **结论**: 可以安全忽略
 
 ### 5. browser_connect.py — start_new_session
-**文件**: `hermes_cli/browser_connect.py:115`
+**文件**: `vermes_cli/browser_connect.py:115`
 - 返回 `{"start_new_session": True}` 给调用者
 - 调用者 `browser_tool.py` 是否处理了 Windows？需确认。
 
-### 6. hermes_cli/kanban_db.py — /proc 路径
-**文件**: `hermes_cli/kanban_db.py:3711`
+### 6. vermes_cli/kanban_db.py — /proc 路径
+**文件**: `vermes_cli/kanban_db.py:3711`
 ```python
 with open(f"/proc/{int(pid)}/status", "r", encoding="utf-8") as f:
 ```
 - 仅 `sys.platform == "linux"` 分支内 → ✅ 已防护
 
-### 7. hermes_cli/gateway.py — /proc 路径
-**文件**: `hermes_cli/gateway.py:412`
+### 7. vermes_cli/gateway.py — /proc 路径
+**文件**: `vermes_cli/gateway.py:412`
 ```python
 cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
 ```
 需确认是否在任何 Windows 路径下被调用。
 
 ### 8. gateway.py — /etc/systemd 路径
-**文件**: `hermes_cli/gateway.py:1333, 1602`
+**文件**: `vermes_cli/gateway.py:1333, 1602`
 - 仅 `is_linux()` 分支 → ✅ 已防护
 
 ### 9. 构建/打包
@@ -281,7 +281,7 @@ cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
 
 ### 1. 统一平台检查
 代码中混用 `platform.system() == "Windows"`, `sys.platform == "win32"`, `os.name == "nt"`, `_IS_WINDOWS`, `is_windows()`。
-**建议**: 建立统一的 `_IS_WINDOWS` 常量在 `hermes_constants.py` 或 `hermes_cli/_subprocess_compat.py` 中，全项目引用。
+**建议**: 建立统一的 `_IS_WINDOWS` 常量在 `vermes_constants.py` 或 `vermes_cli/_subprocess_compat.py` 中，全项目引用。
 
 ### 2. PowerShell 脚本执行策略
 `shell_hooks.py` 支持 `.ps1` 时，PowerShell 的 ExecutionPolicy 默认阻止脚本执行。

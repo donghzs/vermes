@@ -33,14 +33,14 @@ Write-Host "[1/6] 安装 Python 依赖 (Python 3.12 + extras)..." -ForegroundCol
 if ($LASTEXITCODE -ne 0) { Write-Error "pip install 失败"; exit 1 }
 
 # ── 2. 前端构建 + 同步到 web_dist ──────────────────────────────
-Write-Host "[2/6] 构建前端并同步到 hermes_cli/web_dist..." -ForegroundColor Yellow
+Write-Host "[2/6] 构建前端并同步到 vermes_cli/web_dist..." -ForegroundColor Yellow
 Push-Location frontend
 & npm install
 & npm run build
 Pop-Location
-if (Test-Path hermes_cli/web_dist) { Remove-Item -Recurse -Force hermes_cli/web_dist }
-Copy-Item -Recurse frontend/dist hermes_cli/web_dist
-Write-Host "  web_dist 同步完成 ($( (Get-ChildItem hermes_cli/web_dist -Recurse | Measure-Object).Count ) 个文件)"
+if (Test-Path vermes_cli/web_dist) { Remove-Item -Recurse -Force vermes_cli/web_dist }
+Copy-Item -Recurse frontend/dist vermes_cli/web_dist
+Write-Host "  web_dist 同步完成 ($( (Get-ChildItem vermes_cli/web_dist -Recurse | Measure-Object).Count ) 个文件)"
 
 # ── 3. PyInstaller 打包后端 ───────────────────────────────────
 Write-Host "[3/6] PyInstaller 打包后端 (vermes-backend.spec)..." -ForegroundColor Yellow

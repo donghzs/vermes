@@ -225,7 +225,7 @@ self._fts_db.execute(
 
 ### 3.1 现状源码分析
 
-**后端 `hermes_cli/blueprints/studio.py` (551行)**
+**后端 `vermes_cli/blueprints/studio.py` (551行)**
 - ✅ 已有 4 种生成模式：text / image / image2image / video
 - ✅ 已有 Provider 适配：通过 `base_url` + `api_key` 直连任意 OpenAI 兼容 API
 - ✅ 已有图片上传（data URI → base64）

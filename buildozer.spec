@@ -13,7 +13,7 @@ source.include_exts = py,png,jpg,jpeg,gif,svg,html,css,js,json,yaml,yml,txt,md,x
 # 版本
 version = 2.0.4
 version.regex = __version__ = ["'](.*)["']
-version.filename = hermes_cli/__init__.py
+version.filename = vermes_cli/__init__.py
 
 # 最低 SDK 版本
 android.api = 34

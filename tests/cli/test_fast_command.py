@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 
 def _import_cli():
-    import hermes_cli.config as config_mod
+    import vermes_cli.config as config_mod
 
     if not hasattr(config_mod, "save_env_value_secure"):
         config_mod.save_env_value_secure = lambda key, value: {
@@ -112,7 +112,7 @@ class TestPriorityProcessingModels(unittest.TestCase):
     """Verify the expanded Priority Processing model registry."""
 
     def test_all_documented_models_supported(self):
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         # All OpenAI flagship models support Priority Processing — including
         # future releases (gpt-5.5, 5.6...) via pattern matching.
@@ -134,7 +134,7 @@ class TestPriorityProcessingModels(unittest.TestCase):
         Pre-fix this test asserted all Claude variants supported fast mode,
         which mirrored the bug rather than the API contract.
         """
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         # Supported: Opus 4.6 in any form
         supported = [
@@ -158,20 +158,20 @@ class TestPriorityProcessingModels(unittest.TestCase):
 
     def test_codex_models_excluded(self):
         """Codex models route through Responses API and don't accept service_tier."""
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         for model in ["gpt-5-codex", "gpt-5.2-codex", "gpt-5.3-codex", "gpt-5.1-codex-max"]:
             assert not model_supports_fast_mode(model), f"{model} is codex — should not expose /fast"
 
     def test_vendor_prefix_stripped(self):
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         assert model_supports_fast_mode("openai/gpt-5.4") is True
         assert model_supports_fast_mode("openai/gpt-4.1") is True
         assert model_supports_fast_mode("openai/o3") is True
 
     def test_non_priority_models_rejected(self):
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         # Codex-series models route through the Codex Responses API and
         # don't accept service_tier, so they're excluded.
@@ -186,7 +186,7 @@ class TestPriorityProcessingModels(unittest.TestCase):
         assert model_supports_fast_mode(None) is False
 
     def test_resolve_overrides_returns_service_tier(self):
-        from hermes_cli.models import resolve_fast_mode_overrides
+        from vermes_cli.models import resolve_fast_mode_overrides
 
         result = resolve_fast_mode_overrides("gpt-5.4")
         assert result == {"service_tier": "priority"}
@@ -195,7 +195,7 @@ class TestPriorityProcessingModels(unittest.TestCase):
         assert result == {"service_tier": "priority"}
 
     def test_resolve_overrides_none_for_unsupported(self):
-        from hermes_cli.models import resolve_fast_mode_overrides
+        from vermes_cli.models import resolve_fast_mode_overrides
 
         assert resolve_fast_mode_overrides("gpt-5.3-codex") is None
         assert resolve_fast_mode_overrides("gemini-3-pro-preview") is None
@@ -264,7 +264,7 @@ class TestAnthropicFastMode(unittest.TestCase):
     """Verify Anthropic Fast Mode model support and override resolution."""
 
     def test_anthropic_opus_supported(self):
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         # Native Anthropic format (hyphens)
         assert model_supports_fast_mode("claude-opus-4-6") is True
@@ -280,7 +280,7 @@ class TestAnthropicFastMode(unittest.TestCase):
         Per https://platform.claude.com/docs/en/build-with-claude/fast-mode,
         sending speed=fast to Opus 4.7, Sonnet, or Haiku returns HTTP 400.
         """
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         assert model_supports_fast_mode("claude-sonnet-4-6") is False
         assert model_supports_fast_mode("claude-sonnet-4.6") is False
@@ -291,21 +291,21 @@ class TestAnthropicFastMode(unittest.TestCase):
 
     def test_non_claude_models_not_anthropic_fast(self):
         """Non-Claude models should not be treated as Anthropic fast-mode."""
-        from hermes_cli.models import _is_anthropic_fast_model
+        from vermes_cli.models import _is_anthropic_fast_model
 
         assert _is_anthropic_fast_model("gpt-5.4") is False
         assert _is_anthropic_fast_model("gemini-3-pro") is False
         assert _is_anthropic_fast_model("kimi-k2-thinking") is False
 
     def test_anthropic_variant_tags_stripped(self):
-        from hermes_cli.models import model_supports_fast_mode
+        from vermes_cli.models import model_supports_fast_mode
 
         # OpenRouter variant tags after colon should be stripped
         assert model_supports_fast_mode("claude-opus-4.6:fast") is True
         assert model_supports_fast_mode("claude-opus-4.6:beta") is True
 
     def test_resolve_overrides_returns_speed_for_anthropic(self):
-        from hermes_cli.models import resolve_fast_mode_overrides
+        from vermes_cli.models import resolve_fast_mode_overrides
 
         result = resolve_fast_mode_overrides("claude-opus-4-6")
         assert result == {"speed": "fast"}
@@ -318,7 +318,7 @@ class TestAnthropicFastMode(unittest.TestCase):
 
         Per Anthropic docs, fast mode is currently Opus 4.6 only.
         """
-        from hermes_cli.models import resolve_fast_mode_overrides
+        from vermes_cli.models import resolve_fast_mode_overrides
 
         assert resolve_fast_mode_overrides("claude-opus-4-7") is None
         assert resolve_fast_mode_overrides("claude-sonnet-4-6") is None
@@ -326,14 +326,14 @@ class TestAnthropicFastMode(unittest.TestCase):
 
     def test_resolve_overrides_returns_service_tier_for_openai(self):
         """OpenAI models should still get service_tier, not speed."""
-        from hermes_cli.models import resolve_fast_mode_overrides
+        from vermes_cli.models import resolve_fast_mode_overrides
 
         result = resolve_fast_mode_overrides("gpt-5.4")
         assert result == {"service_tier": "priority"}
 
     def test_is_anthropic_fast_model(self):
         """Fast mode is currently Opus 4.6 only — other Claude variants must be excluded."""
-        from hermes_cli.models import _is_anthropic_fast_model
+        from vermes_cli.models import _is_anthropic_fast_model
 
         # Supported: Opus 4.6 in any form
         assert _is_anthropic_fast_model("claude-opus-4-6") is True
@@ -474,7 +474,7 @@ class TestAnthropicFastModeAdapter(unittest.TestCase):
 
 class TestConfigDefault(unittest.TestCase):
     def test_default_config_has_service_tier(self):
-        from hermes_cli.config import DEFAULT_CONFIG
+        from vermes_cli.config import DEFAULT_CONFIG
 
         agent = DEFAULT_CONFIG.get("agent", {})
         self.assertIn("service_tier", agent)

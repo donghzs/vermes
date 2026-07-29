@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import hermes_cli.plugins as plugins_mod
+import vermes_cli.plugins as plugins_mod
 import model_tools
 
 
@@ -37,7 +37,7 @@ def _run_handle_function_call(
 
     if invoke_hook is not _UNSET:
         # Patch the symbol actually imported inside handle_function_call.
-        monkeypatch.setattr("hermes_cli.plugins.invoke_hook", invoke_hook)
+        monkeypatch.setattr("vermes_cli.plugins.invoke_hook", invoke_hook)
 
     return model_tools.handle_function_call(
         tool_name,

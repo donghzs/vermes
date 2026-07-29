@@ -4,7 +4,7 @@ from argparse import Namespace
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
-from hermes_cli import setup as setup_mod
+from vermes_cli import setup as setup_mod
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ class TestOfferOpenclawMigration:
 
     def test_skips_when_no_openclaw_dir(self, tmp_path):
         """Should return False immediately when ~/.openclaw does not exist."""
-        with patch("hermes_cli.setup.Path.home", return_value=tmp_path):
+        with patch("vermes_cli.setup.Path.home", return_value=tmp_path):
             assert setup_mod._offer_openclaw_migration(tmp_path / ".hermes") is False
 
     def test_skips_when_migration_script_missing(self, tmp_path):
@@ -25,7 +25,7 @@ class TestOfferOpenclawMigration:
         openclaw_dir = tmp_path / ".openclaw"
         openclaw_dir.mkdir()
         with (
-            patch("hermes_cli.setup.Path.home", return_value=tmp_path),
+            patch("vermes_cli.setup.Path.home", return_value=tmp_path),
             patch.object(setup_mod, "_OPENCLAW_SCRIPT", tmp_path / "nonexistent.py"),
         ):
             assert setup_mod._offer_openclaw_migration(tmp_path / ".hermes") is False
@@ -37,7 +37,7 @@ class TestOfferOpenclawMigration:
         script = tmp_path / "openclaw_to_hermes.py"
         script.write_text("# placeholder")
         with (
-            patch("hermes_cli.setup.Path.home", return_value=tmp_path),
+            patch("vermes_cli.setup.Path.home", return_value=tmp_path),
             patch.object(setup_mod, "_OPENCLAW_SCRIPT", script),
             patch.object(setup_mod, "prompt_yes_no", return_value=False),
         ):
@@ -69,7 +69,7 @@ class TestOfferOpenclawMigration:
         script.write_text("# placeholder")
 
         with (
-            patch("hermes_cli.setup.Path.home", return_value=tmp_path),
+            patch("vermes_cli.setup.Path.home", return_value=tmp_path),
             patch.object(setup_mod, "_OPENCLAW_SCRIPT", script),
             # Both prompts answered Yes: preview offer + proceed confirmation
             patch.object(setup_mod, "prompt_yes_no", return_value=True),
@@ -139,7 +139,7 @@ class TestOfferOpenclawMigration:
         prompt_responses = iter([True, False])
 
         with (
-            patch("hermes_cli.setup.Path.home", return_value=tmp_path),
+            patch("vermes_cli.setup.Path.home", return_value=tmp_path),
             patch.object(setup_mod, "_OPENCLAW_SCRIPT", script),
             patch.object(setup_mod, "prompt_yes_no", side_effect=prompt_responses),
             patch.object(setup_mod, "get_config_path", return_value=config_path),
@@ -176,7 +176,7 @@ class TestOfferOpenclawMigration:
         script.write_text("# placeholder")
 
         with (
-            patch("hermes_cli.setup.Path.home", return_value=tmp_path),
+            patch("vermes_cli.setup.Path.home", return_value=tmp_path),
             patch.object(setup_mod, "_OPENCLAW_SCRIPT", script),
             patch.object(setup_mod, "prompt_yes_no", return_value=True),
             patch.object(setup_mod, "get_config_path", return_value=config_path),
@@ -202,7 +202,7 @@ class TestOfferOpenclawMigration:
         script.write_text("# placeholder")
 
         with (
-            patch("hermes_cli.setup.Path.home", return_value=tmp_path),
+            patch("vermes_cli.setup.Path.home", return_value=tmp_path),
             patch.object(setup_mod, "_OPENCLAW_SCRIPT", script),
             patch.object(setup_mod, "prompt_yes_no", return_value=True),
             patch.object(setup_mod, "get_config_path", return_value=config_path),
@@ -245,7 +245,7 @@ class TestSetupWizardOpenclawIntegration:
             patch.object(setup_mod, "get_hermes_home", return_value=tmp_path),
             patch.object(setup_mod, "get_env_value", return_value=""),
             patch.object(setup_mod, "is_interactive_stdin", return_value=True),
-            patch("hermes_cli.auth.get_active_provider", return_value=None),
+            patch("vermes_cli.auth.get_active_provider", return_value=None),
             # User presses Enter to start
             patch("builtins.input", return_value=""),
             # Select "Full setup" (index 1) so we exercise the full path
@@ -282,7 +282,7 @@ class TestSetupWizardOpenclawIntegration:
             patch.object(setup_mod, "get_hermes_home", return_value=tmp_path),
             patch.object(setup_mod, "get_env_value", return_value=""),
             patch.object(setup_mod, "is_interactive_stdin", return_value=True),
-            patch("hermes_cli.auth.get_active_provider", return_value=None),
+            patch("vermes_cli.auth.get_active_provider", return_value=None),
             patch("builtins.input", return_value=""),
             patch.object(setup_mod, "prompt_choice", return_value=1),
             patch.object(setup_mod, "_offer_openclaw_migration", return_value=True),
@@ -314,7 +314,7 @@ class TestSetupWizardOpenclawIntegration:
             patch.object(setup_mod, "get_hermes_home", return_value=tmp_path),
             patch.object(setup_mod, "get_env_value", return_value=""),
             patch.object(setup_mod, "is_interactive_stdin", return_value=True),
-            patch("hermes_cli.auth.get_active_provider", return_value=None),
+            patch("vermes_cli.auth.get_active_provider", return_value=None),
             patch("builtins.input", return_value=""),
             patch.object(setup_mod, "prompt_choice", return_value=1),
             patch.object(setup_mod, "_offer_openclaw_migration", return_value=True),
@@ -343,7 +343,7 @@ class TestSetupWizardOpenclawIntegration:
                 "get_env_value",
                 side_effect=lambda k: "sk-xxx" if k == "OPENROUTER_API_KEY" else "",
             ),
-            patch("hermes_cli.auth.get_active_provider", return_value=None),
+            patch("vermes_cli.auth.get_active_provider", return_value=None),
             # Returning user picks "Exit"
             patch.object(setup_mod, "prompt_choice", return_value=9),
             patch.object(
@@ -404,12 +404,12 @@ class TestGetSectionConfigSummary:
         assert result == "max turns: 120"
 
     def test_gateway_returns_none_without_tokens(self):
-        # _platform_status reads via hermes_cli.gateway.get_env_value, not
+        # _platform_status reads via vermes_cli.gateway.get_env_value, not
         # setup_mod.get_env_value, so patch BOTH. Without the second patch,
         # any environment-variable token (or one leaked in by a sibling
         # test on the same xdist worker) makes the gateway section report
         # platforms-configured and the test sees a non-None summary.
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
         with patch.object(setup_mod, "get_env_value", return_value=""), \
              patch.object(gateway_mod, "get_env_value", return_value=""):
             result = setup_mod._get_section_config_summary({}, "gateway")
@@ -424,9 +424,9 @@ class TestGetSectionConfigSummary:
             return ""
 
         # Also patch gateway module's binding since _platform_status()
-        # reads from hermes_cli.gateway.get_env_value after the setup
+        # reads from vermes_cli.gateway.get_env_value after the setup
         # flows were unified via platform_registry.
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
         with patch.object(setup_mod, "get_env_value", side_effect=env_side), \
              patch.object(gateway_mod, "get_env_value", side_effect=env_side):
             result = setup_mod._get_section_config_summary({}, "gateway")
@@ -480,7 +480,7 @@ class TestGetSectionConfigSummary:
         def env_side(key):
             return "true" if key == "WHATSAPP_ENABLED" else ""
 
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
         with patch.object(setup_mod, "get_env_value", side_effect=env_side), \
              patch.object(gateway_mod, "get_env_value", side_effect=env_side):
             result = setup_mod._get_section_config_summary({}, "gateway")
@@ -492,7 +492,7 @@ class TestGetSectionConfigSummary:
         def env_side(key):
             return "http://signal.local" if key == "SIGNAL_HTTP_URL" else ""
 
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
         with patch.object(setup_mod, "get_env_value", side_effect=env_side), \
              patch.object(gateway_mod, "get_env_value", side_effect=env_side):
             result = setup_mod._get_section_config_summary({}, "gateway")
@@ -545,7 +545,7 @@ class TestGetSectionConfigSummary:
         """Every built-in platform should be recognised by its primary
         env-var sentinel — i.e. the summary must not drift from the
         registry used by the setup checklist."""
-        from hermes_cli.gateway import _PLATFORMS
+        from vermes_cli.gateway import _PLATFORMS
 
         for plat in _PLATFORMS:
             label = plat["label"]
@@ -561,7 +561,7 @@ class TestGetSectionConfigSummary:
                 if _target == "WHATSAPP_ENABLED":
                     return "true"
                 return "x"
-            import hermes_cli.gateway as gateway_mod
+            import vermes_cli.gateway as gateway_mod
             with patch.object(setup_mod, "get_env_value", side_effect=env_side), \
                  patch.object(gateway_mod, "get_env_value", side_effect=env_side):
                 result = setup_mod._get_section_config_summary({}, "gateway")
@@ -633,11 +633,11 @@ class TestSetupWizardSkipsConfiguredSections:
         reloaded_config = {"model": "openai/gpt-4"}
 
         # _platform_status (called by the gateway summary path) reads env
-        # vars via hermes_cli.gateway.get_env_value, NOT setup_mod's. Patch
+        # vars via vermes_cli.gateway.get_env_value, NOT setup_mod's. Patch
         # both so xdist sibling tests can't leak a TELEGRAM_BOT_TOKEN /
         # WHATSAPP_* / etc. through and trick the wizard into thinking the
         # gateway section is already configured (which would skip it).
-        import hermes_cli.gateway as gateway_mod
+        import vermes_cli.gateway as gateway_mod
 
         with (
             patch.object(setup_mod, "ensure_hermes_home"),
@@ -649,7 +649,7 @@ class TestSetupWizardSkipsConfiguredSections:
             patch.object(setup_mod, "get_env_value", side_effect=env_side),
             patch.object(gateway_mod, "get_env_value", side_effect=env_side),
             patch.object(setup_mod, "is_interactive_stdin", return_value=True),
-            patch("hermes_cli.auth.get_active_provider", return_value=None),
+            patch("vermes_cli.auth.get_active_provider", return_value=None),
             patch("builtins.input", return_value=""),
             patch.object(setup_mod, "prompt_choice", return_value=1),
             # Migration succeeds and flips the env_side flag

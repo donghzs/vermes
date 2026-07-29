@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 def tmp_db(tmp_path, monkeypatch):
     """临时 ScholarForge DB。"""
     db_path = str(tmp_path / "test_handoff.db")
-    import hermes_cli.scholarforge.database as db
+    import vermes_cli.scholarforge.database as db
     monkeypatch.setattr(db, "DB_PATH", db_path)
     db.init_db()
     yield db
@@ -31,7 +31,7 @@ class TestProjectHandoff:
         )
         pid = result["id"]
 
-        from hermes_cli.scholarforge.project_context import format_active_projects_prompt
+        from vermes_cli.scholarforge.project_context import format_active_projects_prompt
         prompt = format_active_projects_prompt()
         assert prompt != ""
         assert "手风琴演奏对大脑认知的影响" in prompt
@@ -39,7 +39,7 @@ class TestProjectHandoff:
 
     def test_handoff_no_projects(self, tmp_db):
         """无项目时返回空字符串。"""
-        from hermes_cli.scholarforge.project_context import format_active_projects_prompt
+        from vermes_cli.scholarforge.project_context import format_active_projects_prompt
         prompt = format_active_projects_prompt()
         assert prompt == ""
 
@@ -48,7 +48,7 @@ class TestProjectHandoff:
         tmp_db.create_project(title="论文A", paper_type="本科论文")
         tmp_db.create_project(title="论文B", paper_type="硕士论文")
 
-        from hermes_cli.scholarforge.project_context import format_active_projects_prompt
+        from vermes_cli.scholarforge.project_context import format_active_projects_prompt
         prompt = format_active_projects_prompt()
         assert "论文A" in prompt
         assert "论文B" in prompt
@@ -58,7 +58,7 @@ class TestProjectHandoff:
         # Phase 5: facade 读 agent/project_handoffs 表，不再直读 ScholarForge
         import agent.project_handoff as ph
         # 用临时 DB
-        import hermes_cli.scholarforge.database as sfdb
+        import vermes_cli.scholarforge.database as sfdb
         tmp_db_path = str(sfdb.DB_PATH).replace("scholarforge", "test_handoff_memory")
         from pathlib import Path
         monkeypatch.setattr(ph, "_db_path", lambda: Path(tmp_db_path))

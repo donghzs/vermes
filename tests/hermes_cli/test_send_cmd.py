@@ -1,7 +1,7 @@
 """Tests for the ``hermes send`` CLI subcommand.
 
 Covers the argument parsing / stdin / file / list behavior of
-``hermes_cli.send_cmd``. The underlying ``send_message_tool`` is stubbed so
+``vermes_cli.send_cmd``. The underlying ``send_message_tool`` is stubbed so
 no network I/O or gateway is required.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_cli import send_cmd
+from vermes_cli import send_cmd
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +357,7 @@ def test_load_hermes_env_bridges_config_yaml_scalars(tmp_path, monkeypatch):
     # Force get_hermes_home() to re-resolve under the patched env.
     from importlib import reload
 
-    import hermes_cli.config as _hc_config
+    import vermes_cli.config as _hc_config
     reload(_hc_config)
 
     send_cmd._load_hermes_env()
@@ -378,7 +378,7 @@ def test_load_hermes_env_does_not_override_existing(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_HOME_CHANNEL", "env_value")
 
     from importlib import reload
-    import hermes_cli.config as _hc_config
+    import vermes_cli.config as _hc_config
     reload(_hc_config)
 
     send_cmd._load_hermes_env()
@@ -393,7 +393,7 @@ def test_load_hermes_env_handles_missing_files(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
     from importlib import reload
-    import hermes_cli.config as _hc_config
+    import vermes_cli.config as _hc_config
     reload(_hc_config)
 
     # Should not raise.

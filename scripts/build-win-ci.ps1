@@ -101,10 +101,10 @@ if (-not $SkipFrontend) {
 }
 
 # ── 4. 同步 web_dist ──
-Write-Step 4 "同步前端到 hermes_cli/web_dist"
+Write-Step 4 "同步前端到 vermes_cli/web_dist"
 if (-not (Test-Path "$Root\frontend\dist")) { throw "frontend/dist 不存在，不能 SkipFrontend" }
-Copy-Item -Force "$Root\frontend\dist\*" "$Root\hermes_cli\web_dist\" -Recurse
-$js = Get-ChildItem "$Root\hermes_cli\web_dist\assets\index-*.js" -ErrorAction SilentlyContinue | Select-Object -First 1
+Copy-Item -Force "$Root\frontend\dist\*" "$Root\vermes_cli\web_dist\" -Recurse
+$js = Get-ChildItem "$Root\vermes_cli\web_dist\assets\index-*.js" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $js) { throw "web_dist 缺少 index-*.js，前端构建可能失败" }
 Write-Host "  JS: $($js.Name)"
 
@@ -155,7 +155,7 @@ $unpacked = "$Root\dist-electron\win-unpacked"
 $checks = @{
     "后端 exe"        = "$unpacked\resources\backend\vermes-backend.exe"
     "vec0.dll"        = "$unpacked\resources\backend\_internal\sqlite_vec\vec0.dll"
-    "前端 index.html" = "$unpacked\resources\backend\_internal\hermes_cli\web_dist\index.html"
+    "前端 index.html" = "$unpacked\resources\backend\_internal\vermes_cli\web_dist\index.html"
     "memory_reflection" = "$unpacked\resources\backend\_internal\agent\memory_reflection.py"
 }
 foreach ($k in $checks.Keys) {

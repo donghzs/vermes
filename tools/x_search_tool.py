@@ -50,7 +50,7 @@ MAX_HANDLES = 10
 
 def _load_x_search_config() -> Dict[str, Any]:
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
 
         return load_config().get("x_search", {}) or {}
     except Exception:
@@ -110,7 +110,7 @@ def check_x_search_requirements() -> bool:
     """Return True when xAI credentials are available AND valid.
 
     ``resolve_xai_http_credentials`` calls
-    :func:`hermes_cli.auth.resolve_xai_oauth_runtime_credentials` which
+    :func:`vermes_cli.auth.resolve_xai_oauth_runtime_credentials` which
     auto-refreshes the OAuth access token if it's expiring; a successful
     return therefore implies a usable bearer.
     """

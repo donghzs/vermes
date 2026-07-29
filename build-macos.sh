@@ -37,8 +37,8 @@ if [[ ! -f "packaging/vermes.icns" ]]; then
     mkdir -p packaging
     # Create a simple icon using sips (macOS built-in)
     # For production, replace with proper .icns file
-    if [[ -f "hermes_cli/web_dist/logo-256.png" ]]; then
-        sips -s format icns hermes_cli/web_dist/logo-256.png --out packaging/vermes.icns 2>/dev/null || true
+    if [[ -f "vermes_cli/web_dist/logo-256.png" ]]; then
+        sips -s format icns vermes_cli/web_dist/logo-256.png --out packaging/vermes.icns 2>/dev/null || true
     fi
 fi
 

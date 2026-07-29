@@ -23,8 +23,8 @@ Two bugs this exercises:
 
 from unittest.mock import patch
 
-from hermes_cli.model_normalize import normalize_model_for_provider
-from hermes_cli.model_switch import switch_model
+from vermes_cli.model_normalize import normalize_model_for_provider
+from vermes_cli.model_switch import switch_model
 
 
 # Live catalog opencode-go currently returns from /v1/models (snapshot).
@@ -127,7 +127,7 @@ def _run_switch(raw_input: str, **extra):
         return []
 
     with patch(
-        "hermes_cli.model_switch.list_provider_models",
+        "vermes_cli.model_switch.list_provider_models",
         side_effect=fake_list_provider_models,
     ):
         return switch_model(raw_input=raw_input, **defaults)

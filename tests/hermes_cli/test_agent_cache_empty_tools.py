@@ -7,7 +7,7 @@ LLM replies until a new session. The cache now refuses to store such agents
 and self-heals if one is already present.
 """
 
-from hermes_cli.blueprints.agent_cache import _AgentCache, _agent_has_tools
+from vermes_cli.blueprints.agent_cache import _AgentCache, _agent_has_tools
 
 
 class _FakeAgent:

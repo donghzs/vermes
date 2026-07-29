@@ -129,7 +129,7 @@ def _has_env(name: str) -> bool:
 def _load_web_config() -> dict:
     """Load the ``web:`` section from ~/.hermes/config.yaml."""
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         return load_config().get("web", {})
     except (ImportError, Exception):
         return {}

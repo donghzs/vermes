@@ -165,7 +165,7 @@ def get_service_fields(service_id: str) -> List[Dict[str, Any]]:
 def _load_user_services() -> Dict[str, Any]:
     """Best-effort load of the user's central ``services`` config namespace."""
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
 
         cfg = load_config() or {}
         services = cfg.get(_SERVICES_CONFIG_KEY)

@@ -117,7 +117,7 @@ def get_provider_by_ref(ref: str) -> Optional[LiteratureProvider]:
 def _read_config_key(*path: str) -> Optional[str]:
     """Resolve a dotted config key from ``config.yaml``. Returns None on miss."""
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
 
         cfg = load_config()
         cur = cfg

@@ -13,7 +13,7 @@ import pytest
 @pytest.fixture
 def plan_env(tmp_path, monkeypatch):
     import agent.session_plan_store as sps
-    import hermes_cli.blueprints.chat as chat
+    import vermes_cli.blueprints.chat as chat
 
     db = tmp_path / "session_plans.db"
     monkeypatch.setattr(sps, "_DB_PATH", db)

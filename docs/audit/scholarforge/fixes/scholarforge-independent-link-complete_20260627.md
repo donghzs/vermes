@@ -40,7 +40,7 @@ f8c25d930 feat: ScholarForge 论文写作模块 - 完全隔离集成
 ## 隔离策略
 
 - 端点前缀 `/api/scholar/*` — 不与其他 17 个 Vermes blueprint 冲突
-- 代码目录 `hermes_cli/scholarforge/` — 完全独立
+- 代码目录 `vermes_cli/scholarforge/` — 完全独立
 - 注册 try/except — 启动失败不影响 Vermes 主链路
 - 前端懒加载 — 不阻塞 ChatView 首屏
 

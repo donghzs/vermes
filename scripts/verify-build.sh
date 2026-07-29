@@ -40,7 +40,7 @@ INTERNAL="$APP_PATH/Contents/Resources/backend/_internal"
 # ── 1. 前端产物 ──
 echo ""
 echo "=== 1. 前端产物 ==="
-WEB_DIST="$APP_PATH/Contents/Resources/app/hermes_cli/web_dist"
+WEB_DIST="$APP_PATH/Contents/Resources/app/vermes_cli/web_dist"
 if [ -f "$WEB_DIST/index.html" ] && [ -s "$WEB_DIST/index.html" ]; then
   ok "web_dist/index.html 存在且非空"
 else
@@ -87,7 +87,7 @@ fi
 # ── 3. ScholarForge 工具 ──
 echo ""
 echo "=== 3. ScholarForge ==="
-SF_DIR="$INTERNAL/hermes_cli/scholarforge"
+SF_DIR="$INTERNAL/vermes_cli/scholarforge"
 if [ -d "$SF_DIR" ]; then
   ok "scholarforge/ 目录存在"
   SF_FILES=$(find "$SF_DIR" -name "*.py" -o -name "*.pyc" 2>/dev/null | wc -l | tr -d ' ')
@@ -148,7 +148,7 @@ fi
 # ── 6. 版本号一致性 ──
 echo ""
 echo "=== 6. 版本号 ==="
-INIT_VER=$(grep '__version__' hermes_cli/__init__.py | grep -o '"[^"]*"' | tr -d '"')
+INIT_VER=$(grep '__version__' vermes_cli/__init__.py | grep -o '"[^"]*"' | tr -d '"')
 DMG_VER=$(echo "$DMG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 if [ "$INIT_VER" = "$DMG_VER" ]; then
   ok "版本号一致: $INIT_VER"

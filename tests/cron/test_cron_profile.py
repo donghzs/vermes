@@ -166,7 +166,7 @@ class TestRunJobProfileContext:
 
         class FakeAgent:
             def __init__(self, **kwargs):
-                from hermes_constants import get_hermes_home
+                from vermes_constants import get_hermes_home
 
                 observed["env_home_during_init"] = os.environ.get("HERMES_HOME")
                 observed["profile_env_only_during_init"] = os.environ.get(
@@ -180,7 +180,7 @@ class TestRunJobProfileContext:
                 observed["skip_context_files"] = kwargs.get("skip_context_files")
 
             def run_conversation(self, *_a, **_kw):
-                from hermes_constants import get_hermes_home
+                from vermes_constants import get_hermes_home
 
                 observed["env_home_during_run"] = os.environ.get("HERMES_HOME")
                 observed["profile_env_only_during_run"] = os.environ.get(
@@ -203,7 +203,7 @@ class TestRunJobProfileContext:
         fake_mod.AIAgent = FakeAgent
         monkeypatch.setitem(sys.modules, "run_agent", fake_mod)
 
-        from hermes_cli import runtime_provider as runtime_provider
+        from vermes_cli import runtime_provider as runtime_provider
 
         monkeypatch.setattr(
             runtime_provider,

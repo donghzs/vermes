@@ -2,7 +2,7 @@
 # prebuild-check.sh — 构建前完整性检查
 # 确保前端构建产物已同步到 web_dist，版本号一致，关键文件非空
 # 用法: bash scripts/prebuild-check.sh [--fix]
-#   --fix  自动同步 frontend/dist → hermes_cli/web_dist（构建前修复）
+#   --fix  自动同步 frontend/dist → vermes_cli/web_dist（构建前修复）
 
 set -euo pipefail
 
@@ -22,7 +22,7 @@ ok() { echo "✅ $1"; }
 
 # ── 1. 前端构建产物检查 ──
 FRONTEND_DIST="$ROOT_DIR/frontend/dist"
-WEB_DIST="$ROOT_DIR/hermes_cli/web_dist"
+WEB_DIST="$ROOT_DIR/vermes_cli/web_dist"
 
 echo ""
 echo "=== 1. 前端构建产物 ==="
@@ -66,10 +66,10 @@ NEED_SYNC=false
 
 # 2a. web_dist 必须存在
 if [[ ! -d "$WEB_DIST" ]]; then
-  err "hermes_cli/web_dist 不存在"
+  err "vermes_cli/web_dist 不存在"
   NEED_SYNC=true
 else
-  ok "hermes_cli/web_dist 存在"
+  ok "vermes_cli/web_dist 存在"
 fi
 
 # 2b. 对比 frontend/dist 和 web_dist 的 JS 文件
@@ -116,12 +116,12 @@ fi
 echo ""
 echo "=== 3. 版本号一致性 ==="
 
-INIT_PY="$ROOT_DIR/hermes_cli/__init__.py"
+INIT_PY="$ROOT_DIR/vermes_cli/__init__.py"
 if [[ -f "$INIT_PY" ]]; then
   VERSION=$(grep -o '__version__\s*=\s*"[^"]*"' "$INIT_PY" | grep -o '"[^"]*"' | tr -d '"')
   ok "__init__.py 版本: $VERSION"
 else
-  err "hermes_cli/__init__.py 不存在"
+  err "vermes_cli/__init__.py 不存在"
   VERSION=""
 fi
 
@@ -187,12 +187,12 @@ fi
 echo ""
 if $NEED_SYNC; then
   if $FIX_MODE; then
-    echo "=== 自动同步 frontend/dist → hermes_cli/web_dist ==="
+    echo "=== 自动同步 frontend/dist → vermes_cli/web_dist ==="
     # 删除旧 web_dist
     rm -rf "$WEB_DIST" 2>/dev/null || true
     # 拷贝 frontend/dist → web_dist
     cp -R "$FRONTEND_DIST" "$WEB_DIST"
-    ok "已同步 frontend/dist → hermes_cli/web_dist"
+    ok "已同步 frontend/dist → vermes_cli/web_dist"
     # 重新验证
     JS_AFTER=$(find "$WEB_DIST/assets" -name "*.js" -type f 2>/dev/null | wc -l | tr -d ' ')
     CSS_AFTER=$(find "$WEB_DIST/assets" -name "*.css" -type f 2>/dev/null | wc -l | tr -d ' ')
@@ -202,7 +202,7 @@ if $NEED_SYNC; then
     ERRORS=0
   else
     warn "web_dist 未同步！使用 --fix 自动修复，或手动执行:"
-    echo "   rm -rf hermes_cli/web_dist && cp -R frontend/dist hermes_cli/web_dist"
+    echo "   rm -rf vermes_cli/web_dist && cp -R frontend/dist vermes_cli/web_dist"
   fi
 fi
 

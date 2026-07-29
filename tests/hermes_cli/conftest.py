@@ -1,4 +1,4 @@
-"""Fixtures shared across hermes_cli kanban tests."""
+"""Fixtures shared across vermes_cli kanban tests."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def all_assignees_spawnable(monkeypatch):
     those tasks into ``skipped_nonspawnable`` instead of spawning, which
     would break tests that assert spawn behavior.
     """
-    from hermes_cli import profiles
+    from vermes_cli import profiles
     monkeypatch.setattr(profiles, "profile_exists", lambda name: True)
 
 
@@ -38,7 +38,7 @@ def _suppress_concurrent_hermes_gate(request, monkeypatch):
     if request.node.get_closest_marker("real_concurrent_gate"):
         return
     try:
-        from hermes_cli import main as _cli_main
+        from vermes_cli import main as _cli_main
     except Exception:
         return
     monkeypatch.setattr(

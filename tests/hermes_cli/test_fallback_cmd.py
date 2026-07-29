@@ -39,11 +39,11 @@ def _read_config(home: Path) -> dict:
 
 class TestReadChain:
     def test_returns_empty_list_when_unset(self):
-        from hermes_cli.fallback_cmd import _read_chain
+        from vermes_cli.fallback_cmd import _read_chain
         assert _read_chain({}) == []
 
     def test_reads_new_list_format(self):
-        from hermes_cli.fallback_cmd import _read_chain
+        from vermes_cli.fallback_cmd import _read_chain
         cfg = {
             "fallback_providers": [
                 {"provider": "openrouter", "model": "anthropic/claude-sonnet-4.6"},
@@ -56,12 +56,12 @@ class TestReadChain:
         ]
 
     def test_migrates_legacy_single_dict(self):
-        from hermes_cli.fallback_cmd import _read_chain
+        from vermes_cli.fallback_cmd import _read_chain
         cfg = {"fallback_model": {"provider": "openrouter", "model": "gpt-5.4"}}
         assert _read_chain(cfg) == [{"provider": "openrouter", "model": "gpt-5.4"}]
 
     def test_skips_incomplete_entries(self):
-        from hermes_cli.fallback_cmd import _read_chain
+        from vermes_cli.fallback_cmd import _read_chain
         cfg = {
             "fallback_providers": [
                 {"provider": "openrouter"},            # missing model
@@ -73,7 +73,7 @@ class TestReadChain:
         assert _read_chain(cfg) == [{"provider": "nous", "model": "foo"}]
 
     def test_returns_copies_not_aliases(self):
-        from hermes_cli.fallback_cmd import _read_chain
+        from vermes_cli.fallback_cmd import _read_chain
         cfg = {"fallback_providers": [{"provider": "nous", "model": "foo"}]}
         result = _read_chain(cfg)
         result[0]["provider"] = "mutated"
@@ -86,7 +86,7 @@ class TestReadChain:
 
 class TestExtractFallback:
     def test_extracts_from_default_field(self):
-        from hermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
+        from vermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
         model_cfg = {"provider": "openrouter", "default": "anthropic/claude-sonnet-4.6"}
         assert _extract_fallback_from_model_cfg(model_cfg) == {
             "provider": "openrouter",
@@ -94,7 +94,7 @@ class TestExtractFallback:
         }
 
     def test_extracts_optional_base_url_and_api_mode(self):
-        from hermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
+        from vermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
         model_cfg = {
             "provider": "custom",
             "default": "local-model",
@@ -109,15 +109,15 @@ class TestExtractFallback:
         }
 
     def test_returns_none_without_provider(self):
-        from hermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
+        from vermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
         assert _extract_fallback_from_model_cfg({"default": "foo"}) is None
 
     def test_returns_none_without_model(self):
-        from hermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
+        from vermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
         assert _extract_fallback_from_model_cfg({"provider": "openrouter"}) is None
 
     def test_returns_none_for_non_dict(self):
-        from hermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
+        from vermes_cli.fallback_cmd import _extract_fallback_from_model_cfg
         assert _extract_fallback_from_model_cfg("plain-string") is None
         assert _extract_fallback_from_model_cfg(None) is None
 
@@ -129,7 +129,7 @@ class TestExtractFallback:
 class TestListCommand:
     def test_list_empty(self, isolated_home, capsys):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback_list
+        from vermes_cli.fallback_cmd import cmd_fallback_list
         cmd_fallback_list(types.SimpleNamespace())
         out = capsys.readouterr().out
         assert "No fallback providers configured" in out
@@ -143,7 +143,7 @@ class TestListCommand:
                 {"provider": "nous", "model": "Hermes-4"},
             ],
         })
-        from hermes_cli.fallback_cmd import cmd_fallback_list
+        from vermes_cli.fallback_cmd import cmd_fallback_list
         cmd_fallback_list(types.SimpleNamespace())
         out = capsys.readouterr().out
         assert "Fallback chain (2 entries)" in out
@@ -156,7 +156,7 @@ class TestListCommand:
         _write_config(isolated_home, {
             "fallback_model": {"provider": "openrouter", "model": "gpt-5.4"},
         })
-        from hermes_cli.fallback_cmd import cmd_fallback_list
+        from vermes_cli.fallback_cmd import cmd_fallback_list
         cmd_fallback_list(types.SimpleNamespace())
         out = capsys.readouterr().out
         assert "1 entry" in out
@@ -175,7 +175,7 @@ class TestAddCommand:
 
         def fake_picker(args=None):
             # Simulate what the real picker does: writes the selection to config["model"]
-            from hermes_cli.config import load_config, save_config
+            from vermes_cli.config import load_config, save_config
             cfg = load_config()
             cfg["model"] = {
                 "provider": "openrouter",
@@ -185,9 +185,9 @@ class TestAddCommand:
             }
             save_config(cfg)
 
-        with patch("hermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
-                patch("hermes_cli.main._require_tty"):
-            from hermes_cli.fallback_cmd import cmd_fallback_add
+        with patch("vermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
+                patch("vermes_cli.main._require_tty"):
+            from vermes_cli.fallback_cmd import cmd_fallback_add
             cmd_fallback_add(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -215,14 +215,14 @@ class TestAddCommand:
         })
 
         def fake_picker(args=None):
-            from hermes_cli.config import load_config, save_config
+            from vermes_cli.config import load_config, save_config
             cfg = load_config()
             cfg["model"] = {"provider": "openrouter", "default": "gpt-5.4"}
             save_config(cfg)
 
-        with patch("hermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
-                patch("hermes_cli.main._require_tty"):
-            from hermes_cli.fallback_cmd import cmd_fallback_add
+        with patch("vermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
+                patch("vermes_cli.main._require_tty"):
+            from vermes_cli.fallback_cmd import cmd_fallback_add
             cmd_fallback_add(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -238,14 +238,14 @@ class TestAddCommand:
 
         def fake_picker(args=None):
             # User picks the same thing that's already the primary
-            from hermes_cli.config import load_config, save_config
+            from vermes_cli.config import load_config, save_config
             cfg = load_config()
             cfg["model"] = {"provider": "openrouter", "default": "gpt-5.4"}
             save_config(cfg)
 
-        with patch("hermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
-                patch("hermes_cli.main._require_tty"):
-            from hermes_cli.fallback_cmd import cmd_fallback_add
+        with patch("vermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
+                patch("vermes_cli.main._require_tty"):
+            from vermes_cli.fallback_cmd import cmd_fallback_add
             cmd_fallback_add(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -265,7 +265,7 @@ class TestAddCommand:
         })
 
         def fake_picker(args=None):
-            from hermes_cli.config import load_config, save_config
+            from vermes_cli.config import load_config, save_config
             cfg = load_config()
             cfg["model"] = {
                 "provider": "openrouter",
@@ -275,9 +275,9 @@ class TestAddCommand:
             }
             save_config(cfg)
 
-        with patch("hermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
-                patch("hermes_cli.main._require_tty"):
-            from hermes_cli.fallback_cmd import cmd_fallback_add
+        with patch("vermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
+                patch("vermes_cli.main._require_tty"):
+            from vermes_cli.fallback_cmd import cmd_fallback_add
             cmd_fallback_add(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -299,9 +299,9 @@ class TestAddCommand:
             # User cancelled — no change to config
             pass
 
-        with patch("hermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
-                patch("hermes_cli.main._require_tty"):
-            from hermes_cli.fallback_cmd import cmd_fallback_add
+        with patch("vermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
+                patch("vermes_cli.main._require_tty"):
+            from vermes_cli.fallback_cmd import cmd_fallback_add
             cmd_fallback_add(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -318,14 +318,14 @@ class TestAddCommand:
         })
 
         def fake_picker(args=None):
-            from hermes_cli.config import load_config, save_config
+            from vermes_cli.config import load_config, save_config
             cfg = load_config()
             cfg["model"] = {"provider": "", "default": ""}
             save_config(cfg)
 
-        with patch("hermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
-                patch("hermes_cli.main._require_tty"):
-            from hermes_cli.fallback_cmd import cmd_fallback_add
+        with patch("vermes_cli.main.select_provider_and_model", side_effect=fake_picker), \
+                patch("vermes_cli.main._require_tty"):
+            from vermes_cli.fallback_cmd import cmd_fallback_add
             cmd_fallback_add(types.SimpleNamespace())
 
         out = capsys.readouterr().out
@@ -339,7 +339,7 @@ class TestAddCommand:
 class TestRemoveCommand:
     def test_remove_empty_chain(self, isolated_home, capsys):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback_remove
+        from vermes_cli.fallback_cmd import cmd_fallback_remove
         cmd_fallback_remove(types.SimpleNamespace())
         out = capsys.readouterr().out
         assert "nothing to remove" in out
@@ -354,8 +354,8 @@ class TestRemoveCommand:
         })
 
         # Picker returns index 1 (the middle entry, "nous / Hermes-4")
-        with patch("hermes_cli.setup._curses_prompt_choice", return_value=1):
-            from hermes_cli.fallback_cmd import cmd_fallback_remove
+        with patch("vermes_cli.setup._curses_prompt_choice", return_value=1):
+            from vermes_cli.fallback_cmd import cmd_fallback_remove
             cmd_fallback_remove(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -375,8 +375,8 @@ class TestRemoveCommand:
         })
 
         # Cancel = last item (index == len(chain) == 1 in our menu)
-        with patch("hermes_cli.setup._curses_prompt_choice", return_value=1):
-            from hermes_cli.fallback_cmd import cmd_fallback_remove
+        with patch("vermes_cli.setup._curses_prompt_choice", return_value=1):
+            from vermes_cli.fallback_cmd import cmd_fallback_remove
             cmd_fallback_remove(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -390,7 +390,7 @@ class TestRemoveCommand:
 class TestClearCommand:
     def test_clear_empty_chain(self, isolated_home, capsys):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback_clear
+        from vermes_cli.fallback_cmd import cmd_fallback_clear
         cmd_fallback_clear(types.SimpleNamespace())
         out = capsys.readouterr().out
         assert "nothing to clear" in out
@@ -403,7 +403,7 @@ class TestClearCommand:
             ],
         })
         monkeypatch.setattr("builtins.input", lambda *a, **kw: "y")
-        from hermes_cli.fallback_cmd import cmd_fallback_clear
+        from vermes_cli.fallback_cmd import cmd_fallback_clear
         cmd_fallback_clear(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -416,7 +416,7 @@ class TestClearCommand:
             "fallback_providers": [{"provider": "openrouter", "model": "gpt-5.4"}],
         })
         monkeypatch.setattr("builtins.input", lambda *a, **kw: "n")
-        from hermes_cli.fallback_cmd import cmd_fallback_clear
+        from vermes_cli.fallback_cmd import cmd_fallback_clear
         cmd_fallback_clear(types.SimpleNamespace())
 
         cfg = _read_config(isolated_home)
@@ -430,28 +430,28 @@ class TestClearCommand:
 class TestDispatcher:
     def test_no_subcommand_lists(self, isolated_home, capsys):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback
+        from vermes_cli.fallback_cmd import cmd_fallback
         cmd_fallback(types.SimpleNamespace(fallback_command=None))
         out = capsys.readouterr().out
         assert "No fallback providers configured" in out
 
     def test_list_alias(self, isolated_home, capsys):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback
+        from vermes_cli.fallback_cmd import cmd_fallback
         cmd_fallback(types.SimpleNamespace(fallback_command="ls"))
         out = capsys.readouterr().out
         assert "No fallback providers configured" in out
 
     def test_remove_alias(self, isolated_home, capsys):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback
+        from vermes_cli.fallback_cmd import cmd_fallback
         cmd_fallback(types.SimpleNamespace(fallback_command="rm"))
         out = capsys.readouterr().out
         assert "nothing to remove" in out
 
     def test_unknown_subcommand_exits(self, isolated_home):
         _write_config(isolated_home, {})
-        from hermes_cli.fallback_cmd import cmd_fallback
+        from vermes_cli.fallback_cmd import cmd_fallback
         with pytest.raises(SystemExit):
             cmd_fallback(types.SimpleNamespace(fallback_command="nope"))
 
@@ -471,7 +471,7 @@ class TestArgparseWiring:
         import subprocess
         import sys
         result = subprocess.run(
-            [sys.executable, "-m", "hermes_cli.main", "fallback", "--help"],
+            [sys.executable, "-m", "vermes_cli.main", "fallback", "--help"],
             capture_output=True,
             text=True,
             timeout=30,

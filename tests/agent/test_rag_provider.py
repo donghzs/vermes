@@ -25,8 +25,8 @@ def rag_provider(tmp_path, monkeypatch):
     monkeypatch.delenv("VERMES_RAG_BACKEND", raising=False)
     # Force reimport so module-level config picks up the new env
     import importlib
-    import hermes_constants
-    importlib.reload(hermes_constants)
+    import vermes_constants
+    importlib.reload(vermes_constants)
     import agent.rag_provider
     importlib.reload(agent.rag_provider)
     from agent.rag_provider import RAGProvider
@@ -41,8 +41,8 @@ def rag_provider_vec(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.setenv("VERMES_RAG_BACKEND", "sqlite-vec")
     import importlib
-    import hermes_constants
-    importlib.reload(hermes_constants)
+    import vermes_constants
+    importlib.reload(vermes_constants)
     import agent.rag_provider
     importlib.reload(agent.rag_provider)
     from agent.rag_provider import RAGProvider

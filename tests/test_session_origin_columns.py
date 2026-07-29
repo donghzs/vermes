@@ -2,7 +2,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from hermes_state import SessionDB
+from vermes_state import SessionDB
 
 
 def test_lazy_origin_columns_created_on_channel_write():

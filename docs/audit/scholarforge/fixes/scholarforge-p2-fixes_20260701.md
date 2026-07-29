@@ -38,7 +38,7 @@
 
 ## P2-18: 正文 @image#n 占位符未清除 ✅
 
-**改动文件**: `hermes_cli/scholarforge/agents/__init__.py`
+**改动文件**: `vermes_cli/scholarforge/agents/__init__.py`
 
 - `_clean_citation_format()` 末尾新增正则清理: `@(image|figure|table|chart)#\d+` → 空字符串
 - 对所有 Agent 产出生效 (WritingAgent/LiteratureAgent/OutlineAgent 四调用点)

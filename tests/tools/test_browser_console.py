@@ -215,13 +215,13 @@ class TestBrowserVisionConfig:
             return json.dumps({"success": True, "analysis": "Annotated screenshot analysis"})
 
         # Regression guard: we intentionally do NOT patch call_llm,
-        # _get_vision_model, or hermes_cli.config.load_config. The old
+        # _get_vision_model, or vermes_cli.config.load_config. The old
         # browser_vision read auxiliary.vision.{temperature,timeout} from config
         # and called call_llm directly with a hardcoded/env vision model --
         # bypassing capability detection and the built-in fallback. The fixed
         # browser_vision must delegate to the unified resolver (vision_analyze_tool).
         with (
-            patch("hermes_constants.get_hermes_dir", return_value=shots_dir),
+            patch("vermes_constants.get_hermes_dir", return_value=shots_dir),
             patch("tools.browser_tool._cleanup_old_screenshots"),
             patch("tools.browser_tool._run_browser_command", return_value={"success": True, "data": {"path": str(screenshot)}}),
             patch("tools.vision_tools.vision_analyze_tool", fake_vision),
@@ -244,7 +244,7 @@ class TestBrowserVisionConfig:
             return json.dumps({"success": False, "error": "no vision model available"})
 
         with (
-            patch("hermes_constants.get_hermes_dir", return_value=shots_dir),
+            patch("vermes_constants.get_hermes_dir", return_value=shots_dir),
             patch("tools.browser_tool._cleanup_old_screenshots"),
             patch("tools.browser_tool._run_browser_command", return_value={"success": True, "data": {"path": str(screenshot)}}),
             patch("tools.vision_tools.vision_analyze_tool", fake_vision),
@@ -263,7 +263,7 @@ class TestRecordSessionsConfig:
     """browser.record_sessions config option."""
 
     def test_default_config_has_record_sessions(self):
-        from hermes_cli.config import DEFAULT_CONFIG
+        from vermes_cli.config import DEFAULT_CONFIG
 
         browser_cfg = DEFAULT_CONFIG.get("browser", {})
         assert "record_sessions" in browser_cfg

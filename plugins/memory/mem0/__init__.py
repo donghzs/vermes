@@ -44,7 +44,7 @@ def _load_config() -> dict:
     individual keys.  This avoids a silent failure when the JSON file exists
     but is missing fields like ``api_key`` that the user set in ``.env``.
     """
-    from hermes_constants import get_hermes_home
+    from vermes_constants import get_hermes_home
 
     config = {
         "api_key": (get_api_key("mem0") or ""),

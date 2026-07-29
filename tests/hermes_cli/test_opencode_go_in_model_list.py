@@ -3,12 +3,12 @@
 import os
 from unittest.mock import patch
 
-from hermes_cli.model_switch import list_authenticated_providers
+from vermes_cli.model_switch import list_authenticated_providers
 
 
 # Minimum set of models that must be present for opencode-go no matter
 # whether the picker sourced its list from curated-only or curated+models.dev.
-# The curated list in hermes_cli/models.py defines the floor; models.dev only
+# The curated list in vermes_cli/models.py defines the floor; models.dev only
 # ever adds names on top of it via _merge_with_models_dev.
 _OPENCODE_GO_REQUIRED = {
     "kimi-k2.6",

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test_phase1.db")
-    import hermes_cli.scholarforge.database as db
+    import vermes_cli.scholarforge.database as db
     monkeypatch.setattr(db, "DB_PATH", db_path)
     db.init_db()
     yield db
@@ -45,7 +45,7 @@ class TestLearnStylePersistence:
     @pytest.mark.asyncio
     async def test_learn_style_persists_to_db(self, tmp_db, sample_project):
         """learn_style 传 project_id 后应写入 projects.style_prompt。"""
-        from hermes_cli.scholarforge.tools import _handle_scholarforge_learn_style
+        from vermes_cli.scholarforge.tools import _handle_scholarforge_learn_style
         out = await _handle_scholarforge_learn_style(
             {"sample_text": SAMPLE_STYLE_TEXT, "project_id": sample_project}
         )
@@ -58,16 +58,16 @@ class TestLearnStylePersistence:
     @pytest.mark.asyncio
     async def test_learn_style_no_project_id_not_persisted(self, tmp_db):
         """未传 project_id 时不落库，提示用户。"""
-        from hermes_cli.scholarforge.tools import _handle_scholarforge_learn_style
+        from vermes_cli.scholarforge.tools import _handle_scholarforge_learn_style
         out = await _handle_scholarforge_learn_style({"sample_text": SAMPLE_STYLE_TEXT})
         assert "无法确定 project_id" in out or "project_id" in out
 
     @pytest.mark.asyncio
     async def test_write_injects_learned_style(self, tmp_db, sample_project, monkeypatch):
         """write 应读取项目已落库的风格并注入 LLM prompt。"""
-        import hermes_cli.scholarforge.tools as tools
+        import vermes_cli.scholarforge.tools as tools
         # 先落库风格
-        from hermes_cli.scholarforge.project_context import save_style_profile
+        from vermes_cli.scholarforge.project_context import save_style_profile
         save_style_profile(sample_project, "# 写作风格指令\n请用短句、少用被动语态。")
 
         captured = {}
@@ -92,7 +92,7 @@ class TestLearnStylePersistence:
 class TestDesignFlawsLlm:
     @pytest.mark.asyncio
     async def test_llm_parses_flaws(self):
-        from hermes_cli.scholarforge.validators import detect_design_flaws_llm
+        from vermes_cli.scholarforge.validators import detect_design_flaws_llm
 
         async def fake_llm(prompt, system="", **kwargs):
             return (
@@ -108,7 +108,7 @@ class TestDesignFlawsLlm:
 
     @pytest.mark.asyncio
     async def test_llm_fenced_json(self):
-        from hermes_cli.scholarforge.validators import detect_design_flaws_llm
+        from vermes_cli.scholarforge.validators import detect_design_flaws_llm
 
         async def fake_llm(prompt, system="", **kwargs):
             return '```json\n{"flaws": [{"severity": "P1", "category": "样本量不足"}]}\n```'
@@ -119,7 +119,7 @@ class TestDesignFlawsLlm:
 
     @pytest.mark.asyncio
     async def test_llm_malformed_fail_open(self):
-        from hermes_cli.scholarforge.validators import detect_design_flaws_llm
+        from vermes_cli.scholarforge.validators import detect_design_flaws_llm
 
         async def fake_llm(prompt, system="", **kwargs):
             return "这不是 JSON"
@@ -129,12 +129,12 @@ class TestDesignFlawsLlm:
 
     @pytest.mark.asyncio
     async def test_llm_none_callable(self):
-        from hermes_cli.scholarforge.validators import detect_design_flaws_llm
+        from vermes_cli.scholarforge.validators import detect_design_flaws_llm
         flaws = await detect_design_flaws_llm("论文", None, call_llm=None)
         assert flaws == []
 
     def test_dedup_flaws(self):
-        from hermes_cli.scholarforge.validators import DesignFlaw, _dedup_flaws
+        from vermes_cli.scholarforge.validators import DesignFlaw, _dedup_flaws
         # 前 40 字完全相同 → 视为重复（按 (category, description[:40]) 去重）
         long_desc = "无对照组导致结论不可信，因为缺乏基线比较且样本来源单一未做随机分配所以" + "A" * 20
         f1 = DesignFlaw("P0", "缺对照", long_desc, "", "")
@@ -150,14 +150,14 @@ class TestDesignFlawsLlm:
 
 class TestPlagiarismHonesty:
     def test_schema_description_honest(self):
-        from hermes_cli.scholarforge.tools import SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA
+        from vermes_cli.scholarforge.tools import SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA
         desc = SCHOLARFORGE_PLAGIARISM_CHECK_SCHEMA["description"]
         assert "文档内部" in desc
         assert "不" in desc and "知网" in desc  # 明确不连外部库
 
     @pytest.mark.asyncio
     async def test_report_states_internal_only(self):
-        from hermes_cli.scholarforge.tools import _handle_scholarforge_plagiarism_check
+        from vermes_cli.scholarforge.tools import _handle_scholarforge_plagiarism_check
         text = "这是一段用于自相似检测的测试文本。" * 30
         out = await _handle_scholarforge_plagiarism_check({"text": text})
         assert "文档内部" in out
@@ -171,7 +171,7 @@ class TestPlagiarismHonesty:
 class TestCallLlmRetry:
     @pytest.mark.asyncio
     async def test_retry_then_success(self, monkeypatch):
-        import hermes_cli.scholarforge.tools as tools
+        import vermes_cli.scholarforge.tools as tools
 
         monkeypatch.setattr(tools, "_resolve_credentials", lambda: {
             "api_key": "k", "base_url": "http://x", "model": "m", "provider": "p",
@@ -192,7 +192,7 @@ class TestCallLlmRetry:
 
     @pytest.mark.asyncio
     async def test_4xx_no_retry(self, monkeypatch):
-        import hermes_cli.scholarforge.tools as tools
+        import vermes_cli.scholarforge.tools as tools
 
         monkeypatch.setattr(tools, "_resolve_credentials", lambda: {
             "api_key": "k", "base_url": "http://x", "model": "m", "provider": "p",
@@ -220,7 +220,7 @@ async def _noop_sleep(_s):
 class TestReviewNoCrash:
     @pytest.mark.asyncio
     async def test_review_with_project_id(self, tmp_db, sample_project, monkeypatch):
-        import hermes_cli.scholarforge.tools as tools
+        import vermes_cli.scholarforge.tools as tools
 
         async def fake_llm(prompt, system="", **kwargs):
             return "评审意见：结构清晰。"

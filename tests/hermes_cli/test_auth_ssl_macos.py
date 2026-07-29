@@ -1,4 +1,4 @@
-"""Tests for hermes_cli.auth._default_verify platform-aware fallback.
+"""Tests for vermes_cli.auth._default_verify platform-aware fallback.
 
 On macOS with Homebrew Python, the system OpenSSL cannot locate the
 system trust store, so we explicitly load certifi's bundle. On other
@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from hermes_cli.auth import _default_verify, _resolve_verify
+from vermes_cli.auth import _default_verify, _resolve_verify
 
 
 @pytest.fixture

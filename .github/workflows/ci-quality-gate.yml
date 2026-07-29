@@ -205,8 +205,8 @@ jobs:
 
       - name: Sync frontend to web_dist
         run: |
-          rm -rf hermes_cli/web_dist
-          cp -R frontend/dist hermes_cli/web_dist
+          rm -rf vermes_cli/web_dist
+          cp -R frontend/dist vermes_cli/web_dist
 
       - name: Sync version
         run: |

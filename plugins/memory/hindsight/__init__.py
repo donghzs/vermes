@@ -41,9 +41,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from agent.memory_provider import MemoryProvider
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from tools.registry import tool_error
-from hermes_cli.config import cfg_get
+from vermes_cli.config import cfg_get
 
 logger = logging.getLogger(__name__)
 
@@ -645,9 +645,9 @@ class HindsightMemoryProvider(MemoryProvider):
         import sys
         from pathlib import Path
 
-        from hermes_cli.config import save_config
+        from vermes_cli.config import save_config
 
-        from hermes_cli.memory_setup import _curses_select
+        from vermes_cli.memory_setup import _curses_select
 
         logger.info("\n  Configuring Hindsight memory:\n")
 

@@ -11,7 +11,7 @@ cli.py::_confirm_destructive_slash for the runtime gate.
 
 from __future__ import annotations
 
-from hermes_cli.config import DEFAULT_CONFIG
+from vermes_cli.config import DEFAULT_CONFIG
 
 
 class TestDestructiveSlashConfirmDefault:
@@ -50,7 +50,7 @@ class TestUserConfigMerge:
 
         monkeypatch.setenv("HERMES_HOME", str(home))
         import importlib
-        import hermes_cli.config as cfg_mod
+        import vermes_cli.config as cfg_mod
         importlib.reload(cfg_mod)
 
         cfg = cfg_mod.load_config()
@@ -79,7 +79,7 @@ class TestUserConfigMerge:
 
         monkeypatch.setenv("HERMES_HOME", str(home))
         import importlib
-        import hermes_cli.config as cfg_mod
+        import vermes_cli.config as cfg_mod
         importlib.reload(cfg_mod)
 
         cfg = cfg_mod.load_config()

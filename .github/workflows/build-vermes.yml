@@ -58,18 +58,18 @@ jobs:
 
       - name: Sync frontend to web_dist
         run: |
-          if (Test-Path "hermes_cli/web_dist") {
-            Remove-Item -Recurse -Force "hermes_cli/web_dist"
+          if (Test-Path "vermes_cli/web_dist") {
+            Remove-Item -Recurse -Force "vermes_cli/web_dist"
           }
-          Copy-Item -Recurse "frontend/dist" "hermes_cli/web_dist"
+          Copy-Item -Recurse "frontend/dist" "vermes_cli/web_dist"
           Write-Host "web_dist synced:"
-          Get-ChildItem "hermes_cli/web_dist" -Recurse | Select-Object Mode, Length, Name
+          Get-ChildItem "vermes_cli/web_dist" -Recurse | Select-Object Mode, Length, Name
 
       - name: Sync version
         shell: pwsh
         run: |
-          # 从 hermes_cli/__init__.py 读取版本号
-          $initPy = Get-Content -Path "hermes_cli/__init__.py" -Raw
+          # 从 vermes_cli/__init__.py 读取版本号
+          $initPy = Get-Content -Path "vermes_cli/__init__.py" -Raw
           if ($initPy -match '__version__\s*=\s*"([^"]+)"') {
             $ver = $matches[1]
             Set-Content -Path "electron/version.txt" -Value $ver
@@ -199,10 +199,10 @@ jobs:
 
       - name: Sync frontend to web_dist
         run: |
-          rm -rf hermes_cli/web_dist
-          cp -R frontend/dist hermes_cli/web_dist
+          rm -rf vermes_cli/web_dist
+          cp -R frontend/dist vermes_cli/web_dist
           echo "web_dist synced:"
-          ls -la hermes_cli/web_dist/assets/
+          ls -la vermes_cli/web_dist/assets/
 
       - name: Build macOS .app (PyInstaller)
         run: |
@@ -289,12 +289,12 @@ jobs:
       - name: Sync frontend to web_dist
         shell: pwsh
         run: |
-          if (Test-Path "hermes_cli/web_dist") {
-            Remove-Item -Recurse -Force "hermes_cli/web_dist"
+          if (Test-Path "vermes_cli/web_dist") {
+            Remove-Item -Recurse -Force "vermes_cli/web_dist"
           }
-          Copy-Item -Recurse "frontend/dist" "hermes_cli/web_dist"
+          Copy-Item -Recurse "frontend/dist" "vermes_cli/web_dist"
           Write-Host "web_dist synced:"
-          Get-ChildItem "hermes_cli/web_dist" -Recurse | Select-Object Mode, Length, Name
+          Get-ChildItem "vermes_cli/web_dist" -Recurse | Select-Object Mode, Length, Name
 
       - name: Install NSIS
         run: |
@@ -399,10 +399,10 @@ jobs:
 
       - name: Sync frontend to web_dist
         run: |
-          rm -rf hermes_cli/web_dist
-          cp -R frontend/dist hermes_cli/web_dist
+          rm -rf vermes_cli/web_dist
+          cp -R frontend/dist vermes_cli/web_dist
           echo "web_dist synced:"
-          ls -la hermes_cli/web_dist/assets/
+          ls -la vermes_cli/web_dist/assets/
 
       - name: Install system dependencies (WebView2 equivalent)
         run: |

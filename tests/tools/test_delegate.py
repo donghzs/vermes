@@ -980,7 +980,7 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         self.assertEqual(creds["provider"], "custom")
 
 
-    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    @patch("vermes_cli.runtime_provider.resolve_runtime_provider")
     def test_provider_resolution_failure_raises_valueerror(self, mock_resolve):
         """When provider resolution fails, ValueError is raised with helpful message."""
         mock_resolve.side_effect = RuntimeError("OPENROUTER_API_KEY not set")
@@ -991,7 +991,7 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         self.assertIn("openrouter", str(ctx.exception).lower())
         self.assertIn("Cannot resolve", str(ctx.exception))
 
-    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    @patch("vermes_cli.runtime_provider.resolve_runtime_provider")
     def test_provider_resolves_but_no_api_key_raises(self, mock_resolve):
         """When provider resolves but has no API key, ValueError is raised."""
         mock_resolve.return_value = {
@@ -1014,7 +1014,7 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         self.assertIsNone(creds["model"])
         self.assertIsNone(creds["provider"])
 
-    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    @patch("vermes_cli.runtime_provider.resolve_runtime_provider")
     def test_named_custom_provider_preserves_provider_name(self, mock_resolve):
         """Named custom provider (e.g. crof.ai) resolves to 'custom' at runtime level
         but the subagent must retain the original provider identity so that
@@ -1041,7 +1041,7 @@ class TestDelegationCredentialResolution(unittest.TestCase):
             requested="crof.ai", target_model="deepseek-v4-pro-CEER"
         )
 
-    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    @patch("vermes_cli.runtime_provider.resolve_runtime_provider")
     def test_standard_provider_not_overwritten_by_configured_name(self, mock_resolve):
         """Standard (non-custom) providers must still return runtime identity,
         not the configured name, to preserve existing behaviour for openrouter,
@@ -1060,7 +1060,7 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         # Standard provider returns its own name, not "custom"
         self.assertEqual(creds["provider"], "openrouter")
 
-    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    @patch("vermes_cli.runtime_provider.resolve_runtime_provider")
     def test_custom_provider_with_empty_configured_provider_falls_back_to_runtime(self, mock_resolve):
         """When configured_provider is empty/None, the early return kicks in and
         we return provider=None regardless of what runtime resolved. The runtime
@@ -1079,7 +1079,7 @@ class TestDelegationCredentialResolution(unittest.TestCase):
         # Empty provider → early return with None (child inherits parent)
         self.assertIsNone(creds["provider"])
 
-    @patch("hermes_cli.runtime_provider.resolve_runtime_provider")
+    @patch("vermes_cli.runtime_provider.resolve_runtime_provider")
     def test_runtime_missing_provider_key_returns_none(self, mock_resolve):
         """When resolve_runtime_provider returns a dict without 'provider' key,
         the result must be None regardless of configured_provider.

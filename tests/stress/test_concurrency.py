@@ -45,7 +45,7 @@ def worker_loop(worker_id: int, hermes_home: str, result_file: str) -> None:
     os.environ["HOME"] = hermes_home
     sys.path.insert(0, WT)
 
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
 
     events = []
     empty_polls = 0
@@ -125,7 +125,7 @@ def main():
     os.environ["HERMES_HOME"] = home
     os.environ["HOME"] = home
     sys.path.insert(0, WT)
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
 
     kb.init_db()
     conn = kb.connect()

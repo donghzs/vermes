@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from tools.environments.base import (
     BaseEnvironment,
     _load_json_store,

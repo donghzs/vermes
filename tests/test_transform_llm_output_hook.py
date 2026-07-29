@@ -19,8 +19,8 @@ from pathlib import Path
 
 import yaml
 
-import hermes_cli.plugins as plugins_mod
-from hermes_cli.plugins import PluginManager, VALID_HOOKS
+import vermes_cli.plugins as plugins_mod
+from vermes_cli.plugins import PluginManager, VALID_HOOKS
 
 
 def _make_enabled_plugin(hermes_home: Path, name: str, register_body: str) -> Path:

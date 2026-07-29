@@ -50,7 +50,7 @@ def get_modules_dir() -> Path:
     """返回模块安装目录 (~/.hermes/modules/)"""
     global _MODULES_DIR_CACHE
     if _MODULES_DIR_CACHE is None:
-        from hermes_constants import get_hermes_home
+        from vermes_constants import get_hermes_home
         _MODULES_DIR_CACHE = get_hermes_home() / "modules"
     return _MODULES_DIR_CACHE
 
@@ -123,12 +123,12 @@ class HostAPI:
 
     def __init__(self):
         # 延迟导入避免循环
-        from hermes_cli.blueprints.chat import (
+        from vermes_cli.blueprints.chat import (
             PROVIDERS,
             _get_chat_credentials,
             _resolve_model_provider,
         )
-        from hermes_constants import get_hermes_home
+        from vermes_constants import get_hermes_home
         from tools.registry import registry
 
         self.PROVIDERS = PROVIDERS
@@ -189,7 +189,7 @@ def load_module_pyd(module_dir: Path, manifest: ModuleManifest) -> Optional[Any]
 
 
 def _get_bundle_root() -> Optional[Path]:
-    """返回打包根目录（含 hermes_cli/），源码/打包两种安装均适用。
+    """返回打包根目录（含 vermes_cli/），源码/打包两种安装均适用。
 
     - PyInstaller 打包：sys._MEIPASS
     - 源码运行：本文件上两级（agent/ 的父目录 = 仓库根）
@@ -203,7 +203,7 @@ def _get_bundle_root() -> Optional[Path]:
 # 内置模块注册表：名称 -> 打包内后端包子目录（相对 bundle 根）。
 # 这些是自家功能，代码已编译进桁面应用，直接从 bundle 加载，零拷贝。
 _BUILTIN_MODULES: Dict[str, str] = {
-    "scholarforge": "hermes_cli/scholarforge",
+    "scholarforge": "vermes_cli/scholarforge",
 }
 
 
@@ -293,12 +293,12 @@ def register_modules(app, host_api: HostAPI):
     registered = []
     for manifest in manifests:
         # module_root 已在 discover 阶段确定：
-        #   内置模块 -> bundle 内 hermes_cli/<name>
+        #   内置模块 -> bundle 内 vermes_cli/<name>
         #   第三方插件 -> ~/.vermes/modules/<name>
         # 不再硬编码 ~/.vermes/modules，彻底消除双路径/三副本陷阱。
         _mod_dir = manifest.module_root
         if _mod_dir is None:
-            from hermes_constants import get_hermes_home
+            from vermes_constants import get_hermes_home
             _mod_dir = get_hermes_home() / "modules" / manifest.name
         logger.info(
             "Module %s: loading from %s (%s)",
@@ -377,7 +377,7 @@ def register_module_api(app, host_api: HostAPI):
     async def serve_module_frontend(module_name: str, file_path: str):
         """返回模块前端静态文件。
 
-        内置模块：从 bundle 内 hermes_cli/web_dist/modules/<name>/ 提供（构建时打入）。
+        内置模块：从 bundle 内 vermes_cli/web_dist/modules/<name>/ 提供（构建时打入）。
         第三方插件：从 ~/.vermes/modules/<name>/frontend/dist/ 提供（热加载）。
         """
         from fastapi.responses import Response
@@ -389,7 +389,7 @@ def register_module_api(app, host_api: HostAPI):
             bundle = _get_bundle_root()
             if bundle is not None:
                 # 构建时 ScholarForge 前端打入 web_dist/modules/<name>/
-                _cand = bundle / "hermes_cli" / "web_dist" / "modules" / module_name
+                _cand = bundle / "vermes_cli" / "web_dist" / "modules" / module_name
                 if _cand.is_dir():
                     base = _cand
         if base is None:

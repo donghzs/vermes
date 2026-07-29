@@ -59,7 +59,7 @@ def _resolve_store_path() -> Path:
     global _store_path
     if _store_path is None:
         try:
-            from hermes_cli.config import get_hermes_home
+            from vermes_cli.config import get_hermes_home
 
             base = Path(get_hermes_home())
         except Exception:  # noqa: BLE001
@@ -243,10 +243,10 @@ def delete_custom_source(source_id: str) -> bool:
     _write_all(kept)
     # purge orphaned credentials so no secrets linger in .env
     try:
-        from hermes_cli.env import remove_env_value
+        from vermes_cli.env import remove_env_value
     except Exception:  # noqa: BLE001
         try:
-            from hermes_cli.config import remove_env_value  # type: ignore
+            from vermes_cli.config import remove_env_value  # type: ignore
         except Exception:  # noqa: BLE001
             remove_env_value = None  # type: ignore
     if remove_env_value:
@@ -562,7 +562,7 @@ def register_source_from_credential_block(
     if persist_credentials and (parsed.get("user") or parsed.get("password")
                                 or parsed.get("api_key") or url):
         try:
-            from hermes_cli.config import save_env_value
+            from vermes_cli.config import save_env_value
 
             prefix = f"{ENV_PREFIX}{source_id.upper()}_"
             if parsed.get("api_key"):

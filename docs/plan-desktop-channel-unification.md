@@ -14,7 +14,7 @@
 | Web/桌面对话早已进记忆库（记忆与 `state.db` 正交） | ✅ 证实 | `chat.py:1287/1450/1665` 跑 `run_conversation` → `_sync_external_memory_for_turn`（`run_agent.py:2643`）写 `memory_index.db` |
 | 续聊写闭环必须走 gateway 进程（`adapter.send` 回渠道） | ✅ 证实，不能用 `chat.py` | `chat.py` 对 `state.db`/渠道零引用；`_handle_message` 在 gateway 进程（`message_handler_mixin.py:1200/1498`） |
 | 桌面 web 进程 ≠ gateway 进程（跨进程，共享 `state.db` 中转） | ✅ 必须 | 两进程仅经共享 `state.db` 通信 |
-| **web 会话已在 `state.db`（无需补落库“承重项”）** | ❌ **误判，已推翻** | `hermes_cli` 全仓无 `db.append_message/create_session`；`session.py` 仅读；web 消息落 `~/.vermes/messages/*.json` + IndexedDB |
+| **web 会话已在 `state.db`（无需补落库“承重项”）** | ❌ **误判，已推翻** | `vermes_cli` 全仓无 `db.append_message/create_session`；`session.py` 仅读；web 消息落 `~/.vermes/messages/*.json` + IndexedDB |
 | scope 污染是既有债，治理动机“防污染保涌现” | ✅ 修正 | per-turn sync 走全局 `''`（`memory_fabric.py:145`），与 `state.db` 无关 |
 
 > ⚠️ 你速览中第 5 行“web 会话已在 state.db”**不成立**——这是把“web 已进 `memory_index.db`（记忆层）”与“web 已进 `state.db`（会话层）”混淆。**顺序坑（步骤 2）仍然成立，是承重项。**

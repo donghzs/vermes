@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from hermes_cli.plugins import PluginContext, PluginManager, PluginManifest
+from vermes_cli.plugins import PluginContext, PluginManager, PluginManifest
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from plugins.teams_pipeline import register
 from plugins.teams_pipeline.pipeline import TeamsMeetingPipeline

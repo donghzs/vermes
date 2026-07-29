@@ -43,9 +43,9 @@ Electron main (electron/main.js)
  ├─ L224-231 splash 五候选路径探测（已部分完成）             ← G3
  └─ runInitialization → startBackend → /health 轮询 15s(L102) ← G4
 Python 后端
- ├─ hermes_constants.py:72-104 get_hermes_home：profile 错配仅 stderr 一次性警告（桌面不可见）← G5b
+ ├─ vermes_constants.py:72-104 get_hermes_home：profile 错配仅 stderr 一次性警告（桌面不可见）← G5b
  ├─ hermes_state.py SessionDB.__init__：文件不存在→静默新建空库；打开失败→_set_last_init_error+raise ← G1/G5a
- └─ /health 端点【审计修正 A】真身在 hermes_cli/web_server.py:2753（@app.get("/health")），
+ └─ /health 端点【审计修正 A】真身在 vermes_cli/web_server.py:2753（@app.get("/health")），
     不在 status.py——status.py 是 /api/status 富状态端点（其 L218 会实例化 SessionDB()）。
     G4 的 integrity 字段应加在 web_server.py:2753 的 /health 上（main.js L102 轮询的就是它）。← G4/G5 输出口
 前端 (frontend/src/stores/chat-storage.js)
@@ -172,11 +172,11 @@ db_corrupt / missing_with_profile 发生后，系统还剩什么能力？三方�
 | `timeout` | 纯超时 | splash 报错 + 重试按钮 |
 | **`db_corrupt` / `db_missing_with_profile`** | **/health 透传 integrity：明确告知"检测到历史数据但账本无法读取，已停止写入，未创建新库"+ 恢复命令** | **⛔ 留在 splash 硬报错，阻断进主界面（用户零容忍裁定）** |
 
-`/health`（**hermes_cli/web_server.py:2753**，【审计修正 A】非 status.py）响应体扩展：`{status:"ok", app:"vermes", integrity:{state_db:"ok|corrupt|missing_with_profile|fresh_install", profile_mismatch:bool, detail:str}}`。main.js 轮询处（L102）现只判 `resp.ok`——需改为解析 body 后分流（integrity 异常时 splash 转报错而非 resolve(true) 进主界面）。
+`/health`（**vermes_cli/web_server.py:2753**，【审计修正 A】非 status.py）响应体扩展：`{status:"ok", app:"vermes", integrity:{state_db:"ok|corrupt|missing_with_profile|fresh_install", profile_mismatch:bool, detail:str}}`。main.js 轮询处（L102）现只判 `resp.ok`——需改为解析 body 后分流（integrity 异常时 splash 转报错而非 resolve(true) 进主界面）。
 
 ### G5 · profile 错配升级为可见告警（P1，横幅不阻断）
 
-`hermes_constants.py:72-104` 的一次性 stderr 警告 → 同时写模块级 `_profile_fallback_active=True`（import-safe，零 IO）；web_server /health 并入 `integrity.profile_mismatch`；**UI 顶部持久横幅**（非 splash 阻断）："当前激活 profile 为 X，但进程正在使用默认 profile——数据可能写错位置"。不改变回退行为本身（30+ module-level caller 约束不变）。
+`vermes_constants.py:72-104` 的一次性 stderr 警告 → 同时写模块级 `_profile_fallback_active=True`（import-safe，零 IO）；web_server /health 并入 `integrity.profile_mismatch`；**UI 顶部持久横幅**（非 splash 阻断）："当前激活 profile 为 X，但进程正在使用默认 profile——数据可能写错位置"。不改变回退行为本身（30+ module-level caller 约束不变）。
 
 ### G6 · 图片服务端落盘（P1，**独立 PR**）
 
@@ -214,10 +214,10 @@ db_corrupt / missing_with_profile 发生后，系统还剩什么能力？三方�
 | Commit | 内容 | 量级 | 文件 |
 |---|---|---|---|
 | **c1 (P0)** | G0/G2 版本戳门控 + IDB 单库自愈（修活 bug） | main.js ~30 + chat-storage ~20 | `electron/main.js:210`、`frontend/src/stores/chat-storage.js` |
-| **c2 (P0)** | G1 哨兵（含修正 B/C/D：get_hermes_home 同源 + probe 先行 + lockdown）+ /health integrity 字段 + G5 标志 | hermes_state ~80 + web_server ~15 | `hermes_state.py`、`hermes_cli/web_server.py:2753`、`hermes_constants.py` |
+| **c2 (P0)** | G1 哨兵（含修正 B/C/D：get_hermes_home 同源 + probe 先行 + lockdown）+ /health integrity 字段 + G5 标志 | hermes_state ~80 + web_server ~15 | `hermes_state.py`、`vermes_cli/web_server.py:2753`、`vermes_constants.py` |
 | **c3 (P1)** | G4 splash 诊断分级 + db_corrupt 留 splash + G5 横幅 | main.js/splash ~40 + 前端组件 | `electron/main.js:102,146`、`splash.html`、前端横幅组件 |
 | **c4 (P2)** | G3 resolveResource 重构 | 纯重构 | `electron/main.js` |
-| **c5 (P1, 独立 PR)** | G6 图片服务端落盘 | 前后端各 ~40 | `hermes_cli/web_server.py` + `chat-storage.js` |
+| **c5 (P1, 独立 PR)** | G6 图片服务端落盘 | 前后端各 ~40 | `vermes_cli/web_server.py` + `chat-storage.js` |
 
 **测试要点**：
 - G1：pytest 构造坏库/空目录/带痕迹目录三态断言 probe 返回；**必须**跑 `test_topic_mode_schema_is_not_auto_migrated_on_open` 证明哨兵只读；新增断言：①probe 自身（mode=ro）不落任何新文件；②lockdown 下 `SessionDB()` raise 且磁盘无 0 字节新库（修正 C/D 回归）；③HERMES_HOME 指向自定义目录时 probe 探测同一目录（修正 B 回归）。

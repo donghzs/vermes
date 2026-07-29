@@ -38,7 +38,7 @@ REM Start Gateway as persistent daemon
 echo  Starting Gateway on port 9119...
 echo  DO NOT CLOSE THIS WINDOW - Gateway runs here.
 echo.
-"%PYTHON%" -m hermes_cli.web_server --port 9119
+"%PYTHON%" -m vermes_cli.web_server --port 9119
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.

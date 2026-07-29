@@ -37,7 +37,7 @@ _TITLE_PROMPT_PINNED_LANGUAGE = (
 def _title_language() -> str:
     """Return configured title language, or empty string to match the user."""
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
 
         return str(
             ((load_config() or {}).get("auxiliary") or {})

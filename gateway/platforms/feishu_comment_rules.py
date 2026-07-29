@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +351,7 @@ def _main() -> int:
     import sys
 
     try:
-        from hermes_cli.env_loader import load_hermes_dotenv
+        from vermes_cli.env_loader import load_hermes_dotenv
         load_hermes_dotenv()
     except Exception:
         pass

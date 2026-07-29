@@ -85,7 +85,7 @@ class TestReconfigureWritesProvider:
     ):
         """Env vars present and user accepts current value → still writes
         video_gen.provider via the post-env-vars branch."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         video_gen_registry.register_provider(_FakeVideoProvider("xai_fake"))
@@ -120,7 +120,7 @@ class TestReconfigureWritesProvider:
     ):
         """No env vars at all (managed-style plugin) → writes
         video_gen.provider via the no-env-vars early-return branch."""
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         video_gen_registry.register_provider(_FakeVideoProvider(
@@ -152,7 +152,7 @@ class TestPluginVideoProvidersRow:
     """Tests for _plugin_video_gen_providers row contents."""
 
     def test_post_setup_propagated_when_declared(self, monkeypatch):
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         video_gen_registry.register_provider(_FakeVideoProvider(
             "xai_video",
@@ -170,7 +170,7 @@ class TestPluginVideoProvidersRow:
         assert match["post_setup"] == "xai_grok"
 
     def test_post_setup_omitted_when_not_declared(self, monkeypatch):
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         video_gen_registry.register_provider(_FakeVideoProvider("plain_video"))
 
@@ -183,7 +183,7 @@ class TestVideoPluginProviderActive:
     """Tests for _is_provider_active recognizing video_gen_plugin_name."""
 
     def test_active_when_video_gen_provider_matches(self):
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         config = {"video_gen": {"provider": "xai"}}
         row = {"name": "xAI Grok Imagine", "video_gen_plugin_name": "xai"}
@@ -191,7 +191,7 @@ class TestVideoPluginProviderActive:
         assert tools_config._is_provider_active(row, config) is True
 
     def test_inactive_when_video_gen_provider_differs(self):
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         config = {"video_gen": {"provider": "fal"}}
         row = {"name": "xAI Grok Imagine", "video_gen_plugin_name": "xai"}
@@ -199,7 +199,7 @@ class TestVideoPluginProviderActive:
         assert tools_config._is_provider_active(row, config) is False
 
     def test_inactive_when_video_gen_section_missing(self):
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         row = {"name": "xAI Grok Imagine", "video_gen_plugin_name": "xai"}
         assert tools_config._is_provider_active(row, {}) is False
@@ -216,7 +216,7 @@ class TestVideoPluginProviderActive:
         because authentication is handled via xAI Grok OAuth (post_setup
         hook).
         """
-        from hermes_cli import tools_config
+        from vermes_cli import tools_config
 
         monkeypatch.setattr(
             tools_config,

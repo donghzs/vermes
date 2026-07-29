@@ -3,7 +3,7 @@
 Mounted at /api/plugins/kanban/ by the dashboard plugin system.
 
 This layer is intentionally thin: every handler is a small wrapper around
-``hermes_cli.kanban_db`` or a direct SQL query. Writes use the same code
+``vermes_cli.kanban_db`` or a direct SQL query. Writes use the same code
 paths the CLI and gateway ``/kanban`` command use, so the three surfaces
 cannot drift.
 
@@ -24,7 +24,7 @@ browsers don't have to handle it manually.
 For the ``/events`` WebSocket we still require the session token as a
 ``?token=`` query parameter (browsers cannot set the ``Authorization``
 header on an upgrade request), matching the established pattern used by
-the in-browser PTY bridge in ``hermes_cli/web_server.py``.
+the in-browser PTY bridge in ``vermes_cli/web_server.py``.
 
 This means ``hermes dashboard --host 0.0.0.0`` is safe to run on a LAN:
 plugin routes are no longer an unauthenticated exception. The auth still
@@ -48,8 +48,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status as http_status
 from pydantic import BaseModel, Field
 
-from hermes_cli import kanban_db
-from hermes_cli import kanban_diagnostics as kd
+from vermes_cli import kanban_db
+from vermes_cli import kanban_diagnostics as kd
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def _check_ws_token(provided: Optional[str]) -> bool:
     if not provided:
         return False
     try:
-        from hermes_cli import web_server as _ws
+        from vermes_cli import web_server as _ws
     except Exception:
         # No dashboard context (tests). Accept so the tail loop is still
         # testable; in production the dashboard module always imports
@@ -227,11 +227,11 @@ def _compute_task_diagnostics(
     and return ``{task_id: [diagnostic_dict, ...]}``.
 
     Tasks with no active diagnostics are omitted from the result.
-    Uses ``hermes_cli.kanban_diagnostics`` — see that module for the
+    Uses ``vermes_cli.kanban_diagnostics`` — see that module for the
     rule definitions.
     """
-    from hermes_cli import kanban_diagnostics as kd
-    from hermes_cli.config import load_config
+    from vermes_cli import kanban_diagnostics as kd
+    from vermes_cli.config import load_config
 
     diag_config = kd.config_from_runtime_config(load_config())
 
@@ -299,7 +299,7 @@ def _warnings_summary_from_diagnostics(
     """
     if not diagnostics:
         return None
-    from hermes_cli.kanban_diagnostics import SEVERITY_ORDER
+    from vermes_cli.kanban_diagnostics import SEVERITY_ORDER
 
     kinds: dict[str, int] = {}
     latest = 0
@@ -595,7 +595,7 @@ def create_task(payload: CreateTaskBody, board: Optional[str] = Query(None)):
         # and unassigned tasks can't be dispatched regardless.
         if task and task.status == "ready" and task.assignee:
             try:
-                from hermes_cli.kanban import _check_dispatcher_presence
+                from vermes_cli.kanban import _check_dispatcher_presence
                 running, message = _check_dispatcher_presence()
                 if not running and message:
                     body["warning"] = message
@@ -1067,7 +1067,7 @@ def bulk_update(payload: BulkTaskBody, board: Optional[str] = Query(None)):
 
 # ---------------------------------------------------------------------------
 # Diagnostics — fleet-wide distress signals (hallucinations, crashes,
-# spawn failures, stuck-blocked). See hermes_cli.kanban_diagnostics for
+# spawn failures, stuck-blocked). See vermes_cli.kanban_diagnostics for
 # the rule engine.
 # ---------------------------------------------------------------------------
 
@@ -1130,7 +1130,7 @@ def list_diagnostics(
                 "diagnostics": dl,
             })
         # Sort: highest severity first, then most recent.
-        from hermes_cli.kanban_diagnostics import SEVERITY_ORDER
+        from vermes_cli.kanban_diagnostics import SEVERITY_ORDER
         sev_idx = {s: i for i, s in enumerate(SEVERITY_ORDER)}
         def _sort_key(row):
             top = row["diagnostics"][0]
@@ -1383,7 +1383,7 @@ def specify_task_endpoint(
         os.environ["HERMES_KANBAN_BOARD"] = board or kanban_db.DEFAULT_BOARD
         # Import lazily so a missing auxiliary client at import time
         # doesn't break plugin load.
-        from hermes_cli import kanban_specify  # noqa: WPS433 (intentional)
+        from vermes_cli import kanban_specify  # noqa: WPS433 (intentional)
 
         outcome = kanban_specify.specify_task(
             task_id,
@@ -1457,7 +1457,7 @@ def get_config():
     or set column-width preferences without a round-trip per page load.
     """
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         cfg = load_config() or {}
     except Exception:
         cfg = {}
@@ -1522,7 +1522,7 @@ def _configured_home_channels() -> list[dict]:
 def _active_profile_name() -> str:
     """Return the current Hermes profile name for notify-sub ownership."""
     try:
-        from hermes_cli.profiles import get_active_profile_name
+        from vermes_cli.profiles import get_active_profile_name
         return get_active_profile_name() or "default"
     except Exception:
         return "default"
@@ -1883,7 +1883,7 @@ def list_profile_roster():
     just less precisely.
     """
     try:
-        from hermes_cli import profiles as profiles_mod
+        from vermes_cli import profiles as profiles_mod
         profiles = profiles_mod.list_profiles()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"failed to list profiles: {exc}")
@@ -1913,10 +1913,10 @@ def update_profile_description(profile_name: str, payload: DescribeBody):
     ``--overwrite``.
     """
     try:
-        from hermes_cli import profiles as profiles_mod
+        from vermes_cli import profiles as profiles_mod
         canon = profiles_mod.normalize_profile_name(profile_name)
         if canon == "default":
-            from hermes_constants import get_hermes_home  # type: ignore
+            from vermes_constants import get_hermes_home  # type: ignore
             from pathlib import Path as _Path
             profile_dir = _Path(get_hermes_home())
         else:
@@ -1949,7 +1949,7 @@ def auto_describe_profile(profile_name: str, payload: DescribeAutoBody):
     config and retry without a page reload.
     """
     try:
-        from hermes_cli import profile_describer  # noqa: WPS433 (intentional)
+        from vermes_cli import profile_describer  # noqa: WPS433 (intentional)
         outcome = profile_describer.describe_profile(
             profile_name,
             overwrite=bool(payload.overwrite),
@@ -1993,7 +1993,7 @@ def decompose_task_endpoint(
     prev_env = os.environ.get("HERMES_KANBAN_BOARD")
     try:
         os.environ["HERMES_KANBAN_BOARD"] = board or kanban_db.DEFAULT_BOARD
-        from hermes_cli import kanban_decompose  # noqa: WPS433 (intentional)
+        from vermes_cli import kanban_decompose  # noqa: WPS433 (intentional)
         outcome = kanban_decompose.decompose_task(
             task_id,
             author=(payload.author or None),
@@ -2031,7 +2031,7 @@ def get_orchestration_settings():
     """Return the current kanban orchestration knobs from config.yaml
     plus the resolved effective values (filling in fallbacks)."""
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         cfg = load_config() or {}
     except Exception:
         cfg = {}
@@ -2045,7 +2045,7 @@ def get_orchestration_settings():
     resolved_orch = explicit_orch
     resolved_default = explicit_default
     try:
-        from hermes_cli import profiles as profiles_mod
+        from vermes_cli import profiles as profiles_mod
         active_default = profiles_mod.get_active_profile_name() or "default"
         if not resolved_orch or not profiles_mod.profile_exists(resolved_orch):
             resolved_orch = active_default
@@ -2079,7 +2079,7 @@ def set_orchestration_settings(payload: OrchestrationSettingsBody):
     profile.
     """
     try:
-        from hermes_cli.config import load_config, save_config
+        from vermes_cli.config import load_config, save_config
         cfg = load_config() or {}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"failed to load config: {exc}")
@@ -2091,7 +2091,7 @@ def set_orchestration_settings(payload: OrchestrationSettingsBody):
 
     # Validate any non-empty profile names exist before saving.
     try:
-        from hermes_cli import profiles as profiles_mod
+        from vermes_cli import profiles as profiles_mod
     except Exception:
         profiles_mod = None  # type: ignore
 
@@ -2144,7 +2144,7 @@ def set_orchestration_settings(payload: OrchestrationSettingsBody):
 async def stream_events(ws: WebSocket):
     # Enforce the dashboard session token as a query param — browsers can't
     # set Authorization on a WS upgrade. This matches how the PTY bridge
-    # authenticates in hermes_cli/web_server.py.
+    # authenticates in vermes_cli/web_server.py.
     token = ws.query_params.get("token")
     if not _check_ws_token(token):
         await ws.close(code=http_status.WS_1008_POLICY_VIOLATION)

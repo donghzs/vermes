@@ -54,7 +54,7 @@ def step(n, msg):
 def main():
     # ── Step 1: 验证 import ──
     step(1, "验证 Python 环境和 import 链")
-    if not run(f'"{sys.executable}" -c "from hermes_cli.web_server import app; print(\'IMPORT OK\')"'):
+    if not run(f'"{sys.executable}" -c "from vermes_cli.web_server import app; print(\'IMPORT OK\')"'):
         print("\n❌ Import 失败！先修复依赖再构建。")
         print("   pip install -e .")
         sys.exit(1)
@@ -73,7 +73,7 @@ def main():
     # 同步 web_dist（仅在真正跑 npm build 时执行；
     # SKIP_NPM=1 时仓库中的 web_dist 已是权威源，不碰）
     src_dist = os.path.join(frontend_dir, "dist") if os.path.exists(frontend_dir) else None
-    dst_dist = os.path.join(VERMES_DIR, "hermes_cli", "web_dist")
+    dst_dist = os.path.join(VERMES_DIR, "vermes_cli", "web_dist")
     if SKIP_NPM:
         print("  VERMES_SKIP_NPM=1: 跳过 web_dist 同步（使用仓库内的 web_dist）")
     elif src_dist and os.path.exists(src_dist):

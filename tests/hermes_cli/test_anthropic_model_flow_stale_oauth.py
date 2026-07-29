@@ -10,7 +10,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 
-from hermes_cli.config import load_env, save_env_value
+from vermes_cli.config import load_env, save_env_value
 
 
 class TestStaleOAuthTokenDetection:
@@ -56,7 +56,7 @@ class TestStaleOAuthTokenDetection:
         monkeypatch.setattr("builtins.input", lambda _: "3")
         monkeypatch.setattr("getpass.getpass", lambda _: "")
 
-        from hermes_cli.main import _model_flow_anthropic
+        from vermes_cli.main import _model_flow_anthropic
         cfg = {}
 
         _model_flow_anthropic(cfg)
@@ -95,7 +95,7 @@ class TestStaleOAuthTokenDetection:
         # Simulate user picks "1" (use existing)
         monkeypatch.setattr("builtins.input", lambda _: "1")
 
-        from hermes_cli.main import _model_flow_anthropic
+        from vermes_cli.main import _model_flow_anthropic
         cfg = {}
 
         _model_flow_anthropic(cfg)
@@ -139,7 +139,7 @@ class TestStaleOAuthTokenDetection:
         # Simulate user picks "1" (use existing)
         monkeypatch.setattr("builtins.input", lambda _: "1")
 
-        from hermes_cli.main import _model_flow_anthropic
+        from vermes_cli.main import _model_flow_anthropic
         cfg = {}
 
         _model_flow_anthropic(cfg)

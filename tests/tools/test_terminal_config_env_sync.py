@@ -7,7 +7,7 @@ at startup, by THREE separate code paths:
   1. cli.py            -> ``env_mappings`` dict (CLI / TUI startup)
   2. gateway/run.py    -> ``_terminal_env_map`` dict (gateway / messaging
                           platforms)
-  3. hermes_cli/config.py:save_config_value
+  3. vermes_cli/config.py:save_config_value
                        -> ``_config_to_env_sync`` dict (one-shot when the
                           user runs ``hermes config set …``)
 
@@ -20,7 +20,7 @@ This test guards against future drift by extracting all three maps via source
 inspection and asserting they all bridge the same set of writable
 ``terminal.*`` keys.  Source inspection (rather than importing the live
 dicts) keeps the test independent of the user's ~/.hermes/config.yaml and
-mirrors the pattern used in tests/hermes_cli/test_config_drift.py.
+mirrors the pattern used in tests/vermes_cli/test_config_drift.py.
 """
 
 import ast
@@ -88,7 +88,7 @@ def _gateway_env_map_keys() -> set[str]:
 
 def _save_config_env_sync_keys() -> set[str]:
     """terminal config keys bridged by ``hermes config set foo bar``."""
-    from hermes_cli import config as hc_config
+    from vermes_cli import config as hc_config
     source = inspect.getsource(hc_config.set_config_value)
     keys = _extract_dict_keys(source, "_config_to_env_sync")
     # set_config_value uses fully-qualified ``terminal.foo`` keys; strip the
@@ -180,7 +180,7 @@ def test_save_config_set_supports_critical_bridged_keys():
     assert not missing, (
         f"`hermes config set terminal.X` doesn't sync these load-bearing "
         f"keys to .env: {sorted(missing)}.  Add them to _config_to_env_sync "
-        f"in hermes_cli/config.py:set_config_value."
+        f"in vermes_cli/config.py:set_config_value."
     )
 
 

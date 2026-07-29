@@ -1,4 +1,4 @@
-"""Tests for hermes_cli.logs — log viewing and filtering."""
+"""Tests for vermes_cli.logs — log viewing and filtering."""
 
 import os
 from datetime import datetime, timedelta
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_cli.logs import (
+from vermes_cli.logs import (
     LOG_FILES,
     _extract_level,
     _extract_logger_name,

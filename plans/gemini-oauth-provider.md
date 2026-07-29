@@ -49,11 +49,11 @@ Add a first-class `gemini` provider that authenticates via Google OAuth, using t
    - ~200 lines
 
 ### Existing files to modify
-2. `hermes_cli/auth.py` — Add ProviderConfig for "gemini" with auth_type="oauth_google"
-3. `hermes_cli/models.py` — Add Gemini model catalog
-4. `hermes_cli/runtime_provider.py` — Add gemini branch (read OAuth token, build OpenAI client)
-5. `hermes_cli/main.py` — Add `_model_flow_gemini()`, add to provider choices
-6. `hermes_cli/setup.py` — Add gemini auth flow (trigger browser OAuth)
+2. `vermes_cli/auth.py` — Add ProviderConfig for "gemini" with auth_type="oauth_google"
+3. `vermes_cli/models.py` — Add Gemini model catalog
+4. `vermes_cli/runtime_provider.py` — Add gemini branch (read OAuth token, build OpenAI client)
+5. `vermes_cli/main.py` — Add `_model_flow_gemini()`, add to provider choices
+6. `vermes_cli/setup.py` — Add gemini auth flow (trigger browser OAuth)
 7. `run_agent.py` — Token refresh before API calls (like Copilot pattern)
 8. `agent/auxiliary_client.py` — Add gemini to aux resolution chain
 9. `agent/model_metadata.py` — Add Gemini model context lengths
@@ -77,4 +77,4 @@ Add a first-class `gemini` provider that authenticates via Google OAuth, using t
 ## Reference implementations
 - clawdbot: `extensions/google/oauth.flow.ts` (PKCE + localhost server)
 - pi-mono: `packages/ai/src/utils/oauth/google-gemini-cli.ts` (same flow)
-- hermes-agent Copilot OAuth: `hermes_cli/main.py` `_copilot_device_flow()` (different flow type but same lifecycle pattern)
+- hermes-agent Copilot OAuth: `vermes_cli/main.py` `_copilot_device_flow()` (different flow type but same lifecycle pattern)

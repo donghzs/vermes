@@ -42,7 +42,7 @@ logger = logging.getLogger("vermes.entropy_gardener")
 # ---------------------------------------------------------------------------
 
 # Directories to scan (relative to project root)
-SCAN_DIRS = ["agent", "hermes_cli", "tools"]
+SCAN_DIRS = ["agent", "vermes_cli", "tools"]
 
 # Directories to exclude
 EXCLUDE_DIRS = {"__pycache__", ".git", "node_modules", ".venv", "venv", "build", "dist"}

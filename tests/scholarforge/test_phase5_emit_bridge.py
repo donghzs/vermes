@@ -19,7 +19,7 @@ def isolated_env(tmp_path, monkeypatch):
     mem_db = str(tmp_path / "memory_index.db")
 
     # mock ScholarForge DB_PATH
-    import hermes_cli.scholarforge.database as sfdb
+    import vermes_cli.scholarforge.database as sfdb
     monkeypatch.setattr(sfdb, "DB_PATH", sf_db)
     sfdb.init_db()
 
@@ -55,7 +55,7 @@ class TestEmitBridge:
         pid = _create_project(sfdb, title="发射桥测试论文", paper_type="本科论文", target_words=10000)
         assert pid > 0
 
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         sid = auto_snapshot(pid, label="write:method")
 
         assert sid > 0
@@ -76,7 +76,7 @@ class TestEmitBridge:
         pid = _create_project(sfdb, title="进度测试", paper_type="硕士论文", target_words=30000)
         # create_project 自带大纲模板（本科论文 8 章节），改大纲需要 save_outline
         # 验证 create_project 自带的章节数
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         auto_snapshot(pid, label="write:method")
 
         handoffs = ph.get_active_handoffs()
@@ -95,7 +95,7 @@ class TestEmitBridge:
         # citation_style 需通过 update_project 设置
         sfdb.update_project(pid, citation_style="gbt7714")
 
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         auto_snapshot(pid, label="outline")
 
         handoffs = ph.get_active_handoffs()
@@ -107,7 +107,7 @@ class TestEmitBridge:
 
     def test_emit_failopen_on_missing_project(self, isolated_env):
         """项目不存在时发射桥 fail-open，不报错。"""
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         sid = auto_snapshot(99999, label="test")
         assert sid == 0
 
@@ -117,7 +117,7 @@ class TestEmitBridge:
         ph = isolated_env["ph"]
 
         pid = _create_project(sfdb, title="重复发射", paper_type="本科论文")
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
 
         auto_snapshot(pid, label="write:ch1")
         auto_snapshot(pid, label="write:ch2")
@@ -136,7 +136,7 @@ class TestEndToEndInjection:
 
         pid = _create_project(sfdb, title="端到端论文", paper_type="本科论文", target_words=10000)
 
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         auto_snapshot(pid, label="write:intro")
 
         from agent.continuity_facade import load_continuity_context
@@ -166,7 +166,7 @@ class TestMarkDone:
 
         pid = _create_project(sfdb, title="已完成的论文", paper_type="本科论文")
 
-        from hermes_cli.scholarforge.project_context import auto_snapshot, mark_project_done
+        from vermes_cli.scholarforge.project_context import auto_snapshot, mark_project_done
         auto_snapshot(pid, label="write:conclusion")
         assert len(ph.get_active_handoffs()) == 1
 
@@ -183,12 +183,12 @@ class TestMarkDone:
 
         pid = _create_project(sfdb, title="导出测试论文", paper_type="本科论文")
 
-        from hermes_cli.scholarforge.project_context import auto_snapshot
+        from vermes_cli.scholarforge.project_context import auto_snapshot
         auto_snapshot(pid, label="write:final")
         assert len(ph.get_active_handoffs()) == 1
 
         # 模拟导出 handler 调用 mark_project_done
-        from hermes_cli.scholarforge.project_context import mark_project_done
+        from vermes_cli.scholarforge.project_context import mark_project_done
         mark_project_done(pid)
 
         # 导出后不在活跃列表

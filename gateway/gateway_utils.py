@@ -30,7 +30,7 @@ def _telegramize_command_mentions(text: str, platform: Any) -> str:
     if platform_value != "telegram":
         return text
 
-    from hermes_cli.commands import _sanitize_telegram_name
+    from vermes_cli.commands import _sanitize_telegram_name
 
     _TELEGRAM_COMMAND_MENTION_RE = re.compile(r"(?<![\w:/])/([A-Za-z0-9][A-Za-z0-9_-]*)")
 
@@ -66,7 +66,7 @@ def _load_gateway_config() -> dict:
     _hermes_home = _get_hermes_home()
     config_path = _hermes_home / 'config.yaml'
     try:
-        from hermes_cli.config import get_config_path, read_raw_config
+        from vermes_cli.config import get_config_path, read_raw_config
         if config_path == get_config_path():
             return read_raw_config()
     except Exception:
@@ -104,8 +104,8 @@ def _resolve_hermes_bin() -> Optional[list[str]]:
     try:
         import importlib.util
 
-        if importlib.util.find_spec("hermes_cli") is not None:
-            return [sys.executable, "-m", "hermes_cli.main"]
+        if importlib.util.find_spec("vermes_cli") is not None:
+            return [sys.executable, "-m", "vermes_cli.main"]
     except Exception:
         pass
 

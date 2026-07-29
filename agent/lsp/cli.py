@@ -10,7 +10,7 @@ Subcommands:
 - ``list`` — print the registry of supported servers.
 
 The handlers are kept here (rather than in
-``hermes_cli/main.py``) so the LSP module ships self-contained.
+``vermes_cli/main.py``) so the LSP module ships self-contained.
 """
 from __future__ import annotations
 

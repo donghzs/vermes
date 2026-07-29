@@ -120,14 +120,14 @@ class TestSkinConfigHook:
     """
 
     def test_hook_installed(self, cli_mod):
-        from hermes_cli.skin_engine import SkinConfig
+        from vermes_cli.skin_engine import SkinConfig
 
         assert getattr(SkinConfig, "_hermes_light_mode_hook_installed", False) is True
 
     def test_hook_is_idempotent(self, cli_mod):
         # Calling the installer twice must not double-wrap (the marker
         # attribute is the guard).
-        from hermes_cli.skin_engine import SkinConfig
+        from vermes_cli.skin_engine import SkinConfig
 
         before = SkinConfig.get_color
         cli_mod._install_skin_light_mode_hook()
@@ -135,7 +135,7 @@ class TestSkinConfigHook:
         assert before is after
 
     def test_skin_color_remaps_through_wrapper_in_light_mode(self, cli_mod, monkeypatch):
-        from hermes_cli.skin_engine import SkinConfig
+        from vermes_cli.skin_engine import SkinConfig
 
         cli_mod._LIGHT_MODE_CACHE = True
         skin = SkinConfig(
@@ -147,7 +147,7 @@ class TestSkinConfigHook:
         assert skin.get_color("response_border") == "#9A6B00"
 
     def test_skin_color_passthrough_in_dark_mode(self, cli_mod, monkeypatch):
-        from hermes_cli.skin_engine import SkinConfig
+        from vermes_cli.skin_engine import SkinConfig
 
         cli_mod._LIGHT_MODE_CACHE = False
         skin = SkinConfig(name="test", colors={"banner_text": "#FFF8DC"})

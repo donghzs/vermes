@@ -1,4 +1,4 @@
-"""Tests for ``hermes_cli.voice`` — the TUI gateway's voice wrapper.
+"""Tests for ``vermes_cli.voice`` — the TUI gateway's voice wrapper.
 
 The module is imported *lazily* by ``tui_gateway/server.py`` so that a
 box with missing audio deps fails at call time (returning a clean RPC
@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 class TestPublicAPI:
     def test_gateway_symbols_importable(self):
         """Match the exact import shape tui_gateway/server.py uses."""
-        from hermes_cli.voice import (
+        from vermes_cli.voice import (
             speak_text,
             start_recording,
             stop_and_transcribe,
@@ -42,26 +42,26 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
     """
 
     def test_ctrl_and_alt_map_to_prompt_toolkit_form(self):
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+b") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("alt+r") == "a-r"
 
     def test_control_option_opt_aliases_match_tui_parser(self):
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("control+o") == "c-o"
         assert normalize_voice_record_key_for_prompt_toolkit("option+space") == "a-space"
         assert normalize_voice_record_key_for_prompt_toolkit("opt+enter") == "a-enter"
 
     def test_case_insensitive(self):
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("Ctrl+B") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("CONTROL+O") == "c-o"
 
     def test_non_string_falls_back_to_default(self):
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit(None) == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit(1) == "c-b"
@@ -69,7 +69,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
         assert normalize_voice_record_key_for_prompt_toolkit({}) == "c-b"
 
     def test_empty_string_falls_back(self):
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("") == "c-b"
 
@@ -79,7 +79,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
         back to the documented default; the CLI binding site is
         expected to warn so users know the shortcut is TUI-only
         (Copilot round-11 on #19835)."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("super+b") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("win+o") == "c-b"
@@ -90,7 +90,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
         """``ctrl + b`` / ``  option + space  `` are accepted by the TUI
         parser; the CLI normalizer must mirror that or the same config
         binds different shortcuts across runtimes."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl + b") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("  option + space  ") == "a-space"
@@ -99,7 +99,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
         """TUI accepts ``return`` / ``esc`` / ``bs`` / ``del`` etc.;
         CLI must collapse to prompt_toolkit's canonical spelling
         (``enter`` / ``escape`` / ``backspace`` / ``delete``)."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+return") == "c-enter"
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+esc") == "c-escape"
@@ -109,7 +109,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
     def test_typoed_named_keys_fall_back_to_default(self):
         """``ctrl+spcae`` would otherwise pass through as ``c-spcae`` and
         prompt_toolkit would reject it at startup — fall back instead."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+spcae") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+f5") == "c-b"
@@ -117,7 +117,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
     def test_bare_char_and_multi_modifier_fall_back(self):
         """TUI parser rejects bare-char (``o``) and multi-modifier
         (``ctrl+alt+r``) configs; the CLI normalizer must match."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("o") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("b") == "c-b"
@@ -127,7 +127,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
         """``ctrl+c`` / ``ctrl+d`` / ``ctrl+l`` are always claimed by
         the CLI's prompt_toolkit input layer or terminal driver; match
         the TUI parser's rejection to keep /voice status honest."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+c") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("ctrl+d") == "c-b"
@@ -136,7 +136,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
     def test_unknown_modifier_falls_back(self):
         """``meta+b`` is ambiguous on the wire (Alt on xterm, Cmd on
         legacy macOS), same class as the TUI parser's rejection."""
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("meta+b") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("shift+b") == "c-b"
@@ -150,7 +150,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
     def test_alt_cdl_rejected_on_macos(self, monkeypatch):
         monkeypatch.setattr("sys.platform", "darwin")
 
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("alt+c") == "c-b"
         assert normalize_voice_record_key_for_prompt_toolkit("alt+d") == "c-b"
@@ -164,7 +164,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
     def test_alt_cdl_allowed_on_non_macos(self, monkeypatch):
         monkeypatch.setattr("sys.platform", "linux")
 
-        from hermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
+        from vermes_cli.voice import normalize_voice_record_key_for_prompt_toolkit
 
         assert normalize_voice_record_key_for_prompt_toolkit("alt+c") == "a-c"
         assert normalize_voice_record_key_for_prompt_toolkit("alt+d") == "a-d"
@@ -183,24 +183,24 @@ class TestVoiceRecordKeyFromConfig:
     """
 
     def test_dict_voice_with_string_record_key(self):
-        from hermes_cli.voice import voice_record_key_from_config
+        from vermes_cli.voice import voice_record_key_from_config
 
         assert voice_record_key_from_config({"voice": {"record_key": "ctrl+o"}}) == "ctrl+o"
 
     def test_non_dict_config_root(self):
-        from hermes_cli.voice import voice_record_key_from_config
+        from vermes_cli.voice import voice_record_key_from_config
 
         for bad_root in (None, True, 1, "ctrl+b", [], ["ctrl+b"]):
             assert voice_record_key_from_config(bad_root) is None, bad_root
 
     def test_non_dict_voice_entry(self):
-        from hermes_cli.voice import voice_record_key_from_config
+        from vermes_cli.voice import voice_record_key_from_config
 
         for bad_voice in (None, True, "cmd+b", 42, ["ctrl+b"]):
             assert voice_record_key_from_config({"voice": bad_voice}) is None, bad_voice
 
     def test_missing_record_key_returns_none(self):
-        from hermes_cli.voice import voice_record_key_from_config
+        from vermes_cli.voice import voice_record_key_from_config
 
         assert voice_record_key_from_config({"voice": {"beep_enabled": True}}) is None
         assert voice_record_key_from_config({}) is None
@@ -208,7 +208,7 @@ class TestVoiceRecordKeyFromConfig:
     def test_normalizer_accepts_extractor_output_directly(self):
         """voice_record_key_from_config + normalize_… must compose —
         None / non-string scalars all fall back to c-b."""
-        from hermes_cli.voice import (
+        from vermes_cli.voice import (
             normalize_voice_record_key_for_prompt_toolkit,
             voice_record_key_from_config,
         )
@@ -228,28 +228,28 @@ class TestFormatVoiceRecordKeyForStatus:
     """
 
     def test_ctrl_and_alt_letter_keys_render_canonically(self):
-        from hermes_cli.voice import format_voice_record_key_for_status
+        from vermes_cli.voice import format_voice_record_key_for_status
 
         assert format_voice_record_key_for_status("ctrl+b") == "Ctrl+B"
         assert format_voice_record_key_for_status("ctrl+o") == "Ctrl+O"
         assert format_voice_record_key_for_status("alt+r") == "Alt+R"
 
     def test_named_keys_render_in_title_case(self):
-        from hermes_cli.voice import format_voice_record_key_for_status
+        from vermes_cli.voice import format_voice_record_key_for_status
 
         assert format_voice_record_key_for_status("ctrl+space") == "Ctrl+Space"
         assert format_voice_record_key_for_status("alt+enter") == "Alt+Enter"
         assert format_voice_record_key_for_status("ctrl+esc") == "Ctrl+Escape"
 
     def test_aliases_render_via_normalized_form(self):
-        from hermes_cli.voice import format_voice_record_key_for_status
+        from vermes_cli.voice import format_voice_record_key_for_status
 
         assert format_voice_record_key_for_status("control+o") == "Ctrl+O"
         assert format_voice_record_key_for_status("option+space") == "Alt+Space"
         assert format_voice_record_key_for_status("opt+enter") == "Alt+Enter"
 
     def test_non_string_scalar_falls_back_to_ctrl_b_label(self):
-        from hermes_cli.voice import format_voice_record_key_for_status
+        from vermes_cli.voice import format_voice_record_key_for_status
 
         # Copilot round-10 regression: previously /voice status printed
         # the raw scalar ("True" / "1") even though the actual binding
@@ -260,7 +260,7 @@ class TestFormatVoiceRecordKeyForStatus:
         assert format_voice_record_key_for_status({}) == "Ctrl+B"
 
     def test_malformed_configs_fall_back_to_ctrl_b(self):
-        from hermes_cli.voice import format_voice_record_key_for_status
+        from vermes_cli.voice import format_voice_record_key_for_status
 
         assert format_voice_record_key_for_status("ctrl+spcae") == "Ctrl+B"
         assert format_voice_record_key_for_status("ctrl+alt+r") == "Ctrl+B"
@@ -271,7 +271,7 @@ class TestFormatVoiceRecordKeyForStatus:
 class TestStopWithoutStart:
     def test_returns_none_when_no_recording_active(self, monkeypatch):
         """Idempotent no-op: stop before start must not raise or touch state."""
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(voice, "_recorder", None)
 
@@ -284,7 +284,7 @@ class TestSpeakTextGuards:
         """Empty / whitespace-only text must return without importing tts_tool
         (the gateway spawns a thread per call, so a no-op on empty input
         keeps the thread pool from churning on trivial inputs)."""
-        from hermes_cli.voice import speak_text
+        from vermes_cli.voice import speak_text
 
         # Should simply return None without raising.
         assert speak_text(text) is None
@@ -294,7 +294,7 @@ class TestContinuousAPI:
     """Continuous (VAD) mode API — CLI-parity loop entry points."""
 
     def test_continuous_exports(self):
-        from hermes_cli.voice import (
+        from vermes_cli.voice import (
             is_continuous_active,
             start_continuous,
             stop_continuous,
@@ -305,7 +305,7 @@ class TestContinuousAPI:
         assert callable(is_continuous_active)
 
     def test_not_active_by_default(self, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         # Isolate from any state left behind by other tests in the session.
         monkeypatch.setattr(voice, "_continuous_active", False)
@@ -317,7 +317,7 @@ class TestContinuousAPI:
     def test_stop_continuous_idempotent_when_inactive(self, monkeypatch):
         """stop_continuous must not raise when no loop is active — the
         gateway's voice.toggle off path calls it unconditionally."""
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(voice, "_continuous_active", False)
         monkeypatch.setattr(voice, "_continuous_recorder", None)
@@ -330,7 +330,7 @@ class TestContinuousAPI:
         """A second start_continuous while already active is a no-op — prevents
         two overlapping capture threads fighting over the microphone when the
         UI double-fires (e.g. both /voice on and Ctrl+B within the same tick)."""
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(voice, "_continuous_active", True)
         called = {"n": 0}
@@ -351,7 +351,7 @@ class TestContinuousAPI:
         assert called["n"] == 0
 
     def test_start_returns_false_while_stopping(self, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(voice, "_continuous_active", False)
         monkeypatch.setattr(voice, "_continuous_stopping", True, raising=False)
@@ -369,7 +369,7 @@ class TestContinuousLoopSimulation:
 
     @pytest.fixture
     def fake_recorder(self, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         # Reset module state between tests.
         monkeypatch.setattr(voice, "_continuous_active", False)
@@ -422,7 +422,7 @@ class TestContinuousLoopSimulation:
         return rec
 
     def test_loop_auto_restarts_after_transcript(self, fake_recorder, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(
             voice,
@@ -453,7 +453,7 @@ class TestContinuousLoopSimulation:
         voice.stop_continuous()
 
     def test_auto_restart_false_stops_after_first_transcript(self, fake_recorder, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(
             voice,
@@ -480,7 +480,7 @@ class TestContinuousLoopSimulation:
     def test_auto_restart_false_retains_silent_strikes_across_starts(
         self, fake_recorder, monkeypatch
     ):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(
             voice,
@@ -504,7 +504,7 @@ class TestContinuousLoopSimulation:
         assert fake_recorder.start_calls == 3
 
     def test_force_transcribe_stop_delivers_current_buffer(self, fake_recorder, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         class ImmediateThread:
             def __init__(self, target, daemon=False):
@@ -538,7 +538,7 @@ class TestContinuousLoopSimulation:
     def test_force_transcribe_empty_single_shots_hit_silent_limit(
         self, fake_recorder, monkeypatch
     ):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         class ImmediateThread:
             def __init__(self, target, daemon=False):
@@ -572,7 +572,7 @@ class TestContinuousLoopSimulation:
     def test_force_transcribe_valid_single_shot_resets_silent_strikes(
         self, fake_recorder, monkeypatch
     ):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         class ImmediateThread:
             def __init__(self, target, daemon=False):
@@ -607,7 +607,7 @@ class TestContinuousLoopSimulation:
     def test_force_transcribe_stop_failure_cancels_and_clears_stopping(
         self, fake_recorder, monkeypatch
     ):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         class ImmediateThread:
             def __init__(self, target, daemon=False):
@@ -632,7 +632,7 @@ class TestContinuousLoopSimulation:
         assert voice._continuous_stopping is False
 
     def test_restart_failure_reports_idle(self, fake_recorder, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         monkeypatch.setattr(
             voice,
@@ -651,7 +651,7 @@ class TestContinuousLoopSimulation:
         assert voice.is_continuous_active() is False
 
     def test_silent_limit_halts_loop_after_three_strikes(self, fake_recorder, monkeypatch):
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         # Transcription returns no speech — fake_recorder.stop() returns the
         # path, but transcribe returns empty text, counting as silence.
@@ -682,7 +682,7 @@ class TestContinuousLoopSimulation:
     def test_stop_during_transcription_discards_restart(self, fake_recorder, monkeypatch):
         """User hits Ctrl+B mid-transcription: the in-flight transcript must
         still fire (it's a real utterance), but the loop must NOT restart."""
-        import hermes_cli.voice as voice
+        import vermes_cli.voice as voice
 
         stop_triggered = {"flag": False}
 

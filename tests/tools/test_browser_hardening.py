@@ -98,19 +98,19 @@ class TestCommandTimeoutCache:
 
     def test_default_is_30(self):
         from tools.browser_tool import _get_command_timeout
-        with patch("hermes_cli.config.read_raw_config", return_value={}):
+        with patch("vermes_cli.config.read_raw_config", return_value={}):
             assert _get_command_timeout() == 30
 
     def test_reads_from_config(self):
         from tools.browser_tool import _get_command_timeout
         cfg = {"browser": {"command_timeout": 60}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_command_timeout() == 60
 
     def test_cached_after_first_call(self):
         from tools.browser_tool import _get_command_timeout
         mock_read = MagicMock(return_value={"browser": {"command_timeout": 45}})
-        with patch("hermes_cli.config.read_raw_config", mock_read):
+        with patch("vermes_cli.config.read_raw_config", mock_read):
             _get_command_timeout()
             _get_command_timeout()
         mock_read.assert_called_once()
@@ -121,21 +121,21 @@ class TestSessionInactivityTimeout:
     def test_default_is_300(self, monkeypatch):
         from tools.browser_tool import _get_session_inactivity_timeout
         monkeypatch.delenv("BROWSER_INACTIVITY_TIMEOUT", raising=False)
-        with patch("hermes_cli.config.read_raw_config", return_value={}):
+        with patch("vermes_cli.config.read_raw_config", return_value={}):
             assert _get_session_inactivity_timeout() == 300
 
     def test_reads_from_config_over_env(self, monkeypatch):
         from tools.browser_tool import _get_session_inactivity_timeout
         monkeypatch.setenv("BROWSER_INACTIVITY_TIMEOUT", "120")
         cfg = {"browser": {"inactivity_timeout": 900}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_session_inactivity_timeout() == 900
 
     def test_floor_at_30_seconds(self, monkeypatch):
         from tools.browser_tool import _get_session_inactivity_timeout
         monkeypatch.setenv("BROWSER_INACTIVITY_TIMEOUT", "120")
         cfg = {"browser": {"inactivity_timeout": 1}}
-        with patch("hermes_cli.config.read_raw_config", return_value=cfg):
+        with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _get_session_inactivity_timeout() == 30
 
 

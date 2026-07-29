@@ -82,7 +82,7 @@ def matrix_env(tmp_path, monkeypatch):
     fal_plugin._fal_client = None
 
     # Force discovery
-    from hermes_cli.plugins import _ensure_plugins_discovered
+    from vermes_cli.plugins import _ensure_plugins_discovered
     _ensure_plugins_discovered(force=True)
 
     return tmp_path, fal_calls, xai_calls
@@ -91,7 +91,7 @@ def matrix_env(tmp_path, monkeypatch):
 def _invoke_tool(home, cfg: dict, args: dict) -> dict:
     """Write config, invoke the registered tool handler, return parsed JSON."""
     (home / "config.yaml").write_text(yaml.safe_dump(cfg))
-    import hermes_cli.config as cfg_mod
+    import vermes_cli.config as cfg_mod
     if hasattr(cfg_mod, "_invalidate_load_config_cache"):
         cfg_mod._invalidate_load_config_cache()
 

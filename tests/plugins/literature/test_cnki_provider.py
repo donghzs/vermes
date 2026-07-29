@@ -10,7 +10,7 @@ import pytest
 
 from agent.literature_provider import LiteratureProvider
 from agent.literature_registry import _reset_for_tests, get_provider, register_provider
-from hermes_cli.plugins import PluginContext
+from vermes_cli.plugins import PluginContext
 
 
 class _StubManifest:

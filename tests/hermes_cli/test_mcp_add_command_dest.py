@@ -2,7 +2,7 @@
 top-level ``args.command`` subparser dest.
 
 The top-level argparse parser uses ``dest="command"`` for its subparsers
-(``hermes_cli/_parser.py``).  The dispatcher in ``hermes_cli/main.py``
+(``vermes_cli/_parser.py``).  The dispatcher in ``vermes_cli/main.py``
 reads ``args.command`` to decide which command to run; if it is ``None``
 it falls through to interactive chat.
 

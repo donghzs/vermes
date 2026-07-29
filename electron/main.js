@@ -40,7 +40,7 @@ function getBackendArgs() {
     return ['--port', String(BACKEND_PORT)];
   }
   // 开发模式：用 uvicorn
-  return ['-m', 'uvicorn', 'hermes_cli.web_server:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--log-level', 'warning'];
+  return ['-m', 'uvicorn', 'vermes_cli.web_server:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--log-level', 'warning'];
 }
 
 // ── G3 · 资源路径容错泛化（docs/design-startup-integrity-guards-final.md §G3）──
@@ -171,16 +171,16 @@ function startBackend() {
 // 关键设计：注入 HERMES_HOME=~/.vermes，使 gateway 与桌面后端共享同一份配置与 state.db，
 // 从而飞书/TG 等渠道消息可由桌面端「全渠道统一控制」。命名空间隔离避免多 agent 共存冲突。
 function getGatewayExe() {
-  // 打包后用 Vermes 自带的 python 运行 hermes_cli.main；开发模式直接用系统 hermes CLI
+  // 打包后用 Vermes 自带的 python 运行 vermes_cli.main；开发模式直接用系统 vermes CLI
   if (app.isPackaged) {
     return getBackendExe();  // 同一 python，靠 -m 指定模块
   }
-  return 'hermes';
+  return 'vermes';
 }
 
 function getGatewayArgs() {
   if (app.isPackaged) {
-    return ['-m', 'hermes_cli.main', 'gateway', 'run', '--replace'];
+    return ['-m', 'vermes_cli.main', 'gateway', 'run', '--replace'];
   }
   return ['gateway', 'run', '--replace'];
 }
@@ -192,7 +192,7 @@ function startGateway() {
   const gatewayArgs = getGatewayArgs();
 
   const env = { ...process.env };
-  // 与桌面后端一致：HERMES_HOME=~/.vermes + PYTHONPATH（保证用 Vermes 自带 hermes_cli）
+  // 与桌面后端一致：HERMES_HOME=~/.vermes + PYTHONPATH（保证用 Vermes 自带 vermes_cli）
   env.HERMES_HOME = path.join(require('os').homedir(), '.vermes');
   if (app.isPackaged) {
     env.PYTHONPATH = path.join(process.resourcesPath, 'app');

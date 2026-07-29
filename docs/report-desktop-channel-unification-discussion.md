@@ -42,8 +42,8 @@
 
 为给步骤 3 定稿，独立查证“web 会话是否已在 state.db”：
 
-- 全仓 `create_session(` / `append_message(` 调用点：`cli.py`、`gateway/*`、`tui_gateway`、`acp_adapter`、`conversation_compression` —— **无一个在 web/桌面进程（hermes_cli）**。
-- `hermes_cli/blueprints/session.py` 仅对 `state.db` **只读**（list/get_messages/search/delete），无 POST 创建。
+- 全仓 `create_session(` / `append_message(` 调用点：`cli.py`、`gateway/*`、`tui_gateway`、`acp_adapter`、`conversation_compression` —— **无一个在 web/桌面进程（vermes_cli）**。
+- `vermes_cli/blueprints/session.py` 仅对 `state.db` **只读**（list/get_messages/search/delete），无 POST 创建。
 - `chat.py` 对 `state.db` **零引用**。
 
 > ⚠️ **本步得出“web 已在 state.db、顺序坑被推翻”是错误结论**（把“web 已进 `memory_index.db`（记忆层，真）”与“web 已进 `state.db`（会话层，假）”混淆）。真实结论见 §6。
@@ -80,7 +80,7 @@
 | # | 原认知 | 修正后（查证结论） | 性质 |
 |---|---|---|---|
 | 1 | Web 会话是记忆盲区，统一到 `state.db` 素材翻倍 | 记忆摄入在 agent 循环层，web 早已进 `memory_index.db`，与 `state.db` 无关；统一不增加记忆源 | **推翻** |
-| 2 | web 会话已在 `state.db`，顺序坑被推翻 | web/桌面会话**不在** `state.db`（hermes_cli 零写路径）；顺序坑**仍然成立**，需步骤 2 补落库 | **推翻（反向修正）** |
+| 2 | web 会话已在 `state.db`，顺序坑被推翻 | web/桌面会话**不在** `state.db`（vermes_cli 零写路径）；顺序坑**仍然成立**，需步骤 2 补落库 | **推翻（反向修正）** |
 | 3 | 带 telegram session_id 发 `/api/chat/completions` 即可续聊 | web 与 gateway 是不同进程，`chat.py` 不桥接渠道；必须走 gateway `_handle_message` | **推翻** |
 | 4 | 复用 `handoff` 机制做桌面控渠道 | `handoff` 是 CLI→渠道迁移、注入合成消息；需新增 `_process_desktop_relay` 分支，携带真实文本 | **推翻** |
 | 5 | 统一后 scope 污染放大，需按渠道隔离 | 污染是既有债、与 `state.db` 无关；治理动机改“防污染保涌现”，scope 轴从 session 改 channel | **修正** |

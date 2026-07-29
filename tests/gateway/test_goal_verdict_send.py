@@ -27,7 +27,7 @@ def hermes_home(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("HERMES_HOME", str(home))
 
-    from hermes_cli import goals
+    from vermes_cli import goals
 
     goals._DB_CACHE.clear()
     yield home
@@ -102,12 +102,12 @@ async def test_goal_verdict_done_sent_via_adapter_send(hermes_home):
     the user through the adapter's ``send()`` method."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
-    from hermes_cli.goals import GoalManager
+    from vermes_cli.goals import GoalManager
 
     mgr = GoalManager(session_entry.session_id)
     mgr.set("ship the feature")
 
-    with patch("hermes_cli.goals.judge_goal", return_value=("done", "the feature shipped", False)):
+    with patch("vermes_cli.goals.judge_goal", return_value=("done", "the feature shipped", False)):
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,
             source=src,
@@ -131,12 +131,12 @@ async def test_goal_verdict_continue_enqueues_continuation(hermes_home):
     proceeds on the next turn."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
-    from hermes_cli.goals import GoalManager
+    from vermes_cli.goals import GoalManager
 
     mgr = GoalManager(session_entry.session_id)
     mgr.set("polish the docs")
 
-    with patch("hermes_cli.goals.judge_goal", return_value=("continue", "still needs work", False)):
+    with patch("vermes_cli.goals.judge_goal", return_value=("continue", "still needs work", False)):
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,
             source=src,
@@ -157,14 +157,14 @@ async def test_goal_verdict_budget_exhausted_sends_pause(hermes_home):
     and no further continuation enqueued."""
     runner, adapter, session_entry, src = _make_runner_with_adapter()
 
-    from hermes_cli.goals import GoalManager, save_goal
+    from vermes_cli.goals import GoalManager, save_goal
 
     mgr = GoalManager(session_entry.session_id, default_max_turns=2)
     state = mgr.set("tiny goal", max_turns=2)
     state.turns_used = 2
     save_goal(session_entry.session_id, state)
 
-    with patch("hermes_cli.goals.judge_goal", return_value=("continue", "keep going", False)):
+    with patch("vermes_cli.goals.judge_goal", return_value=("continue", "keep going", False)):
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,
             source=src,
@@ -201,7 +201,7 @@ async def test_goal_verdict_survives_adapter_without_send(hermes_home):
     """Bad adapter (no ``send`` attribute) must not crash the judge hook."""
     runner, _adapter, session_entry, src = _make_runner_with_adapter()
 
-    from hermes_cli.goals import GoalManager
+    from vermes_cli.goals import GoalManager
 
     GoalManager(session_entry.session_id).set("survive missing send")
 
@@ -211,7 +211,7 @@ async def test_goal_verdict_survives_adapter_without_send(hermes_home):
 
     runner.adapters[Platform.TELEGRAM] = _NoSendAdapter()
 
-    with patch("hermes_cli.goals.judge_goal", return_value=("done", "ok", False)):
+    with patch("vermes_cli.goals.judge_goal", return_value=("done", "ok", False)):
         # must not raise
         await runner._post_turn_goal_continuation(
             session_entry=session_entry,

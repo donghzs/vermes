@@ -21,9 +21,9 @@ class TestPlanSnapshotEndpoint:
 
     def test_empty_session_returns_default(self):
         """空 session 返回默认值"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         _session_plan_store.clear()
-        from hermes_cli.blueprints.chat import plan_snapshot
+        from vermes_cli.blueprints.chat import plan_snapshot
         import asyncio
         result = asyncio.get_event_loop().run_until_complete(plan_snapshot("nonexistent"))
         assert result["ok"] is True
@@ -33,13 +33,13 @@ class TestPlanSnapshotEndpoint:
 
     def test_session_with_plan_returns_snapshot(self):
         """有 plan 的 session 返回快照"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         _session_plan_store["test-snap-1"] = {
             "plan": {"id": "abc12345", "title": "Test Plan", "steps": [{"id": "s1", "status": "completed"}]},
             "todo_states": {"s1": "completed"},
             "plan_emitted": True,
         }
-        from hermes_cli.blueprints.chat import plan_snapshot
+        from vermes_cli.blueprints.chat import plan_snapshot
         import asyncio
         result = asyncio.get_event_loop().run_until_complete(plan_snapshot("test-snap-1"))
         assert result["ok"] is True
@@ -50,13 +50,13 @@ class TestPlanSnapshotEndpoint:
 
     def test_session_with_interrupted_state(self):
         """中断状态的 session 返回 interrupted 快照"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         _session_plan_store["test-snap-2"] = {
             "plan": {"id": "xyz98765", "title": "Interrupted Plan", "steps": [{"id": "s1", "status": "in_progress"}]},
             "todo_states": {"s1": "interrupted"},
             "plan_emitted": True,
         }
-        from hermes_cli.blueprints.chat import plan_snapshot
+        from vermes_cli.blueprints.chat import plan_snapshot
         import asyncio
         result = asyncio.get_event_loop().run_until_complete(plan_snapshot("test-snap-2"))
         assert result["todo_states"]["s1"] == "interrupted"
@@ -68,7 +68,7 @@ class TestSessionPlanStoreWrite:
 
     def test_plan_created_writes_to_store(self):
         """plan_created 事件写入 store"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         _session_plan_store.clear()
         # 模拟 plan_created 写入
         plan_data = {
@@ -94,7 +94,7 @@ class TestSessionPlanStoreWrite:
 
     def test_todo_update_syncs_to_store(self):
         """todo_update 事件同步到 store"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         # 初始化 session
         _session_plan_store["test-write-2"] = {
             "plan": {"id": "p1", "title": "Plan", "steps": [{"id": "s1", "status": "pending"}]},
@@ -113,7 +113,7 @@ class TestSessionPlanStoreWrite:
 
     def test_finally_interrupted_syncs_to_store(self):
         """finally 块中 interrupted 状态同步到 store"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         _session_plan_store["test-write-3"] = {
             "plan": {"id": "p2", "title": "Plan", "steps": [{"id": "s1", "status": "in_progress"}]},
             "todo_states": {"s1": "in_progress"},
@@ -134,7 +134,7 @@ class TestSnapshotRouteRegistered:
 
     def test_snapshot_route_registered(self):
         """验证 /api/session/{session_id}/plan_snapshot 路由已注册"""
-        from hermes_cli.blueprints.chat import register_to
+        from vermes_cli.blueprints.chat import register_to
         mock_app = MagicMock()
         register_to(mock_app)
         registered_paths = [call.args[0] for call in mock_app.add_api_route.call_args_list]
@@ -168,9 +168,9 @@ class TestSnapshotMergeLogic:
 
     def test_snapshot_with_no_plan_returns_none(self):
         """无 plan 的快照返回 None"""
-        from hermes_cli.blueprints.chat import _session_plan_store
+        from vermes_cli.blueprints.chat import _session_plan_store
         _session_plan_store.clear()
-        from hermes_cli.blueprints.chat import plan_snapshot
+        from vermes_cli.blueprints.chat import plan_snapshot
         import asyncio
         result = asyncio.get_event_loop().run_until_complete(plan_snapshot("empty-session"))
         assert result["plan"] is None

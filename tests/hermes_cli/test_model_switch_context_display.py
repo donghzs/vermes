@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from hermes_cli.model_switch import resolve_display_context_length
+from vermes_cli.model_switch import resolve_display_context_length
 
 
 class _FakeModelInfo:

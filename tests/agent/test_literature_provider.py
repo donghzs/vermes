@@ -115,7 +115,7 @@ def test_cnki_search_converts_cnkifetcher(monkeypatch):
         doi = "10.1000/x"
         keywords = ["主题A"]
 
-    import hermes_cli.scholarforge.cnki_fetcher as cf
+    import vermes_cli.scholarforge.cnki_fetcher as cf
 
     async def _fake_search(query, limit):
         return [FakePaper()]
@@ -146,7 +146,7 @@ def test_wanfang_search_converts_cnkifetcher(monkeypatch):
         doi = "10.2000/y"
         keywords = ["K"]
 
-    import hermes_cli.scholarforge.cnki_fetcher as cf
+    import vermes_cli.scholarforge.cnki_fetcher as cf
 
     async def _fake_wf(query, limit):
         return [FakePaper()]

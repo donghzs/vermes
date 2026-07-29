@@ -8,10 +8,10 @@ import pytest
 
 
 def _reload_constants():
-    """Reload hermes_constants to get a fresh apply_ipv4_preference."""
-    import hermes_constants
-    importlib.reload(hermes_constants)
-    return hermes_constants
+    """Reload vermes_constants to get a fresh apply_ipv4_preference."""
+    import vermes_constants
+    importlib.reload(vermes_constants)
+    return vermes_constants
 
 
 class TestApplyIPv4Preference:
@@ -27,14 +27,14 @@ class TestApplyIPv4Preference:
 
     def test_noop_when_force_false(self):
         """No patch when force=False."""
-        from hermes_constants import apply_ipv4_preference
+        from vermes_constants import apply_ipv4_preference
         original = socket.getaddrinfo
         apply_ipv4_preference(force=False)
         assert socket.getaddrinfo is original
 
     def test_patches_getaddrinfo_when_forced(self):
         """Patches socket.getaddrinfo when force=True."""
-        from hermes_constants import apply_ipv4_preference
+        from vermes_constants import apply_ipv4_preference
         original = socket.getaddrinfo
         apply_ipv4_preference(force=True)
         assert socket.getaddrinfo is not original
@@ -42,7 +42,7 @@ class TestApplyIPv4Preference:
 
     def test_double_patch_is_safe(self):
         """Calling apply twice doesn't double-wrap."""
-        from hermes_constants import apply_ipv4_preference
+        from vermes_constants import apply_ipv4_preference
         apply_ipv4_preference(force=True)
         first_patch = socket.getaddrinfo
         apply_ipv4_preference(force=True)
@@ -50,7 +50,7 @@ class TestApplyIPv4Preference:
 
     def test_af_unspec_becomes_af_inet(self):
         """AF_UNSPEC (default) calls get rewritten to AF_INET."""
-        from hermes_constants import apply_ipv4_preference
+        from vermes_constants import apply_ipv4_preference
 
         calls = []
         original = socket.getaddrinfo
@@ -68,7 +68,7 @@ class TestApplyIPv4Preference:
 
     def test_explicit_family_preserved(self):
         """Explicit AF_INET6 requests are not intercepted."""
-        from hermes_constants import apply_ipv4_preference
+        from vermes_constants import apply_ipv4_preference
 
         calls = []
         original = socket.getaddrinfo
@@ -85,7 +85,7 @@ class TestApplyIPv4Preference:
 
     def test_fallback_on_gaierror(self):
         """Falls back to AF_UNSPEC if AF_INET resolution fails."""
-        from hermes_constants import apply_ipv4_preference
+        from vermes_constants import apply_ipv4_preference
 
         call_families = []
 
@@ -109,6 +109,6 @@ class TestConfigDefault:
     """Verify network section exists in DEFAULT_CONFIG."""
 
     def test_network_section_in_default_config(self):
-        from hermes_cli.config import DEFAULT_CONFIG
+        from vermes_cli.config import DEFAULT_CONFIG
         assert "network" in DEFAULT_CONFIG
         assert DEFAULT_CONFIG["network"]["force_ipv4"] is False

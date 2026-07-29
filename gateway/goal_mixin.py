@@ -71,7 +71,7 @@ class GoalMixin:
         if not session_id:
             return False
         try:
-            from hermes_cli.goals import GoalManager
+            from vermes_cli.goals import GoalManager
             return GoalManager(session_id=session_id).is_active()
         except Exception as exc:
             logger.debug("goal continuation: active-state recheck failed: %s", exc)
@@ -82,7 +82,7 @@ class GoalMixin:
 
         GatewayRunner.config is a GatewayConfig dataclass, not the full
         user config mapping. Top-level config blocks such as ``goals`` are
-        therefore only available through hermes_cli.config.load_config().
+        therefore only available through vermes_cli.config.load_config().
         """
         try:
             goals_cfg = (
@@ -91,7 +91,7 @@ class GoalMixin:
                 else getattr(self.config, "goals", {}) or {}
             )
             if not goals_cfg:
-                from hermes_cli.config import load_config
+                from vermes_cli.config import load_config
 
                 goals_cfg = (load_config() or {}).get("goals") or {}
             return int(goals_cfg.get("max_turns", 20) or 20)
@@ -105,7 +105,7 @@ class GoalMixin:
         goals module can't be loaded.
         """
         try:
-            from hermes_cli.goals import GoalManager
+            from vermes_cli.goals import GoalManager
         except Exception as exc:
             logger.debug("goal manager unavailable: %s", exc)
             return None, None
@@ -328,7 +328,7 @@ class GoalMixin:
         queue and takes priority naturally.
         """
         try:
-            from hermes_cli.goals import GoalManager
+            from vermes_cli.goals import GoalManager
         except Exception as exc:
             logger.debug("goal continuation: goals module unavailable: %s", exc)
             return

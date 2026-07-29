@@ -1,4 +1,4 @@
-"""Tests for the update check mechanism in hermes_cli.banner."""
+"""Tests for the update check mechanism in vermes_cli.banner."""
 
 import json
 import os
@@ -12,13 +12,13 @@ import pytest
 
 def test_version_string_no_v_prefix():
     """__version__ should be bare semver without a 'v' prefix."""
-    from hermes_cli import __version__
+    from vermes_cli import __version__
     assert not __version__.startswith("v"), f"__version__ should not start with 'v', got {__version__!r}"
 
 
 def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
     """When cache is fresh, check_for_updates should return cached value without calling git."""
-    from hermes_cli.banner import check_for_updates
+    from vermes_cli.banner import check_for_updates
 
     # Create a fake git repo and fresh cache
     repo_dir = tmp_path / "hermes-agent"
@@ -29,7 +29,7 @@ def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
     cache_file.write_text(json.dumps({"ts": time.time(), "behind": 3}))
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    with patch("hermes_cli.banner.subprocess.run") as mock_run:
+    with patch("vermes_cli.banner.subprocess.run") as mock_run:
         result = check_for_updates()
 
     assert result == 3
@@ -38,7 +38,7 @@ def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
 
 def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
     """When cache is expired, check_for_updates should call git fetch."""
-    from hermes_cli.banner import check_for_updates
+    from vermes_cli.banner import check_for_updates
 
     repo_dir = tmp_path / "hermes-agent"
     repo_dir.mkdir()
@@ -51,7 +51,7 @@ def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
     mock_result = MagicMock(returncode=0, stdout="5\n")
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    with patch("hermes_cli.banner.subprocess.run", return_value=mock_result) as mock_run:
+    with patch("vermes_cli.banner.subprocess.run", return_value=mock_result) as mock_run:
         result = check_for_updates()
 
     assert result == 5
@@ -60,17 +60,17 @@ def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
 
 def test_check_for_updates_no_git_dir(tmp_path, monkeypatch):
     """Falls back to PyPI check when .git directory doesn't exist anywhere."""
-    import hermes_cli.banner as banner
+    import vermes_cli.banner as banner
 
     # Create a fake banner.py so the fallback path also has no .git
-    fake_banner = tmp_path / "hermes_cli" / "banner.py"
+    fake_banner = tmp_path / "vermes_cli" / "banner.py"
     fake_banner.parent.mkdir(parents=True, exist_ok=True)
     fake_banner.touch()
 
     monkeypatch.setattr(banner, "__file__", str(fake_banner))
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    with patch("hermes_cli.banner.subprocess.run") as mock_run:
-        with patch("hermes_cli.banner.check_via_pypi", return_value=0):
+    with patch("vermes_cli.banner.subprocess.run") as mock_run:
+        with patch("vermes_cli.banner.check_via_pypi", return_value=0):
             result = banner.check_for_updates()
     assert result == 0
     mock_run.assert_not_called()
@@ -78,7 +78,7 @@ def test_check_for_updates_no_git_dir(tmp_path, monkeypatch):
 
 def test_check_for_updates_fallback_to_project_root(tmp_path, monkeypatch):
     """Dev install: falls back to Path(__file__).parent.parent when HERMES_HOME has no git repo."""
-    import hermes_cli.banner as banner
+    import vermes_cli.banner as banner
 
     project_root = Path(banner.__file__).parent.parent.resolve()
     if not (project_root / ".git").exists():
@@ -86,7 +86,7 @@ def test_check_for_updates_fallback_to_project_root(tmp_path, monkeypatch):
 
     # Point HERMES_HOME at a temp dir with no hermes-agent/.git
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    with patch("hermes_cli.banner.subprocess.run") as mock_run:
+    with patch("vermes_cli.banner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="0\n")
         result = banner.check_for_updates()
     # Should have fallen back to project root and run git commands
@@ -95,7 +95,7 @@ def test_check_for_updates_fallback_to_project_root(tmp_path, monkeypatch):
 
 def test_prefetch_non_blocking():
     """prefetch_update_check() should return immediately without blocking."""
-    import hermes_cli.banner as banner
+    import vermes_cli.banner as banner
 
     # Reset module state
     banner._update_result = None
@@ -116,7 +116,7 @@ def test_prefetch_non_blocking():
 
 def test_invalidate_update_cache_clears_all_profiles(tmp_path):
     """_invalidate_update_cache() should delete .update_check from ALL profiles."""
-    from hermes_cli.main import _invalidate_update_cache
+    from vermes_cli.main import _invalidate_update_cache
 
     # Build a fake ~/.hermes with default + two named profiles
     default_home = tmp_path / ".hermes"
@@ -141,7 +141,7 @@ def test_invalidate_update_cache_clears_all_profiles(tmp_path):
 
 def test_invalidate_update_cache_no_profiles_dir(tmp_path):
     """Works fine when no profiles directory exists (single-profile setup)."""
-    from hermes_cli.main import _invalidate_update_cache
+    from vermes_cli.main import _invalidate_update_cache
 
     default_home = tmp_path / ".hermes"
     default_home.mkdir()

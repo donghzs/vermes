@@ -18,7 +18,7 @@ from typing import Any, Awaitable, Callable, Optional
 import httpx
 
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 from plugins.teams_pipeline.meetings import (
     TeamsMeetingArtifactNotFoundError,
     download_recording_artifact,

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from hermes_cli.model_switch import ModelSwitchResult
+from vermes_cli.model_switch import ModelSwitchResult
 
 
 class _FakeModelInfo:

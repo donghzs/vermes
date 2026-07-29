@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from hermes_cli.auth import (
+from vermes_cli.auth import (
     PROVIDER_REGISTRY,
     resolve_provider,
     get_api_key_provider_status,
@@ -71,14 +71,14 @@ class TestTencentTokenhubAliases:
         assert resolve_provider(alias) == "tencent-tokenhub"
 
     def test_normalize_provider_models_py(self):
-        from hermes_cli.models import normalize_provider
+        from vermes_cli.models import normalize_provider
         assert normalize_provider("tencent") == "tencent-tokenhub"
         assert normalize_provider("tokenhub") == "tencent-tokenhub"
         assert normalize_provider("tencent-cloud") == "tencent-tokenhub"
         assert normalize_provider("tencentmaas") == "tencent-tokenhub"
 
     def test_normalize_provider_providers_py(self):
-        from hermes_cli.providers import normalize_provider
+        from vermes_cli.providers import normalize_provider
         assert normalize_provider("tencent") == "tencent-tokenhub"
         assert normalize_provider("tokenhub") == "tencent-tokenhub"
         assert normalize_provider("tencent-cloud") == "tencent-tokenhub"
@@ -149,16 +149,16 @@ class TestTencentTokenhubModelCatalog:
     """Tencent TokenHub static model list."""
 
     def test_static_model_list_exists(self):
-        from hermes_cli.models import _PROVIDER_MODELS
+        from vermes_cli.models import _PROVIDER_MODELS
         assert "tencent-tokenhub" in _PROVIDER_MODELS
         assert len(_PROVIDER_MODELS["tencent-tokenhub"]) >= 1
 
     def test_hy3_preview_in_model_list(self):
-        from hermes_cli.models import _PROVIDER_MODELS
+        from vermes_cli.models import _PROVIDER_MODELS
         assert "hy3-preview" in _PROVIDER_MODELS["tencent-tokenhub"]
 
     def test_default_model(self):
-        from hermes_cli.models import get_default_model_for_provider
+        from vermes_cli.models import get_default_model_for_provider
         assert get_default_model_for_provider("tencent-tokenhub") == "hy3-preview"
 
 
@@ -171,17 +171,17 @@ class TestTencentTokenhubCanonicalProvider:
     """Tencent TokenHub appears in the interactive model picker."""
 
     def test_in_canonical_providers(self):
-        from hermes_cli.models import CANONICAL_PROVIDERS
+        from vermes_cli.models import CANONICAL_PROVIDERS
         slugs = [p.slug for p in CANONICAL_PROVIDERS]
         assert "tencent-tokenhub" in slugs
 
     def test_label(self):
-        from hermes_cli.models import CANONICAL_PROVIDERS
+        from vermes_cli.models import CANONICAL_PROVIDERS
         entry = next(p for p in CANONICAL_PROVIDERS if p.slug == "tencent-tokenhub")
         assert entry.label == "Tencent TokenHub"
 
     def test_description_contains_hy3(self):
-        from hermes_cli.models import CANONICAL_PROVIDERS
+        from vermes_cli.models import CANONICAL_PROVIDERS
         entry = next(p for p in CANONICAL_PROVIDERS if p.slug == "tencent-tokenhub")
         assert "Hy3 Preview" in entry.tui_desc
 
@@ -195,18 +195,18 @@ class TestTencentInOpenRouterAndNous:
     """tencent/hy3-preview:free and tencent/hy3-preview should appear in OpenRouter and Nous curated lists."""
 
     def test_in_openrouter_fallback(self):
-        from hermes_cli.models import OPENROUTER_MODELS
+        from vermes_cli.models import OPENROUTER_MODELS
         ids = [mid for mid, _ in OPENROUTER_MODELS]
         assert "tencent/hy3-preview:free" in ids
 
     def test_paid_in_openrouter_fallback(self):
         """tencent/hy3-preview (paid, no :free suffix) should also be in OpenRouter list."""
-        from hermes_cli.models import OPENROUTER_MODELS
+        from vermes_cli.models import OPENROUTER_MODELS
         ids = [mid for mid, _ in OPENROUTER_MODELS]
         assert "tencent/hy3-preview" in ids
 
     def test_in_nous_provider_models(self):
-        from hermes_cli.models import _PROVIDER_MODELS
+        from vermes_cli.models import _PROVIDER_MODELS
         assert "tencent/hy3-preview" in _PROVIDER_MODELS["nous"]
 
 
@@ -222,14 +222,14 @@ class TestTencentTokenhubNormalization:
 
     def test_bare_name_passthrough(self):
         """hy3-preview should remain unchanged when targeting tencent-tokenhub."""
-        from hermes_cli.model_normalize import normalize_model_for_provider
+        from vermes_cli.model_normalize import normalize_model_for_provider
         result = normalize_model_for_provider("hy3-preview", "tencent-tokenhub")
         assert result == "hy3-preview"
 
     def test_vendor_prefixed_passthrough(self):
         """tencent/hy3-preview is not stripped since tencent-tokenhub is not in
         _MATCHING_PREFIX_STRIP_PROVIDERS — the slash survives."""
-        from hermes_cli.model_normalize import normalize_model_for_provider
+        from vermes_cli.model_normalize import normalize_model_for_provider
         result = normalize_model_for_provider("tencent/hy3-preview", "tencent-tokenhub")
         # Direct providers not in any special set → passthrough
         assert result == "tencent/hy3-preview"
@@ -237,18 +237,18 @@ class TestTencentTokenhubNormalization:
     def test_not_in_matching_prefix_strip_set(self):
         """tencent-tokenhub does NOT need prefix stripping — it only has
         one model (hy3-preview) and users won't copy vendor/ form."""
-        from hermes_cli.model_normalize import _MATCHING_PREFIX_STRIP_PROVIDERS
+        from vermes_cli.model_normalize import _MATCHING_PREFIX_STRIP_PROVIDERS
         assert "tencent-tokenhub" not in _MATCHING_PREFIX_STRIP_PROVIDERS
 
     def test_not_in_lowercase_providers(self):
         """tencent-tokenhub does not require lowercase normalization."""
-        from hermes_cli.model_normalize import _LOWERCASE_MODEL_PROVIDERS
+        from vermes_cli.model_normalize import _LOWERCASE_MODEL_PROVIDERS
         assert "tencent-tokenhub" not in _LOWERCASE_MODEL_PROVIDERS
 
     @pytest.mark.parametrize("empty_input", ["", None, "   "])
     def test_normalize_empty_and_none(self, empty_input):
         """None, empty, and whitespace-only inputs return empty string."""
-        from hermes_cli.model_normalize import normalize_model_for_provider
+        from vermes_cli.model_normalize import normalize_model_for_provider
         result = normalize_model_for_provider(empty_input, "tencent-tokenhub")
         assert result == "" or result.strip() == ""
 
@@ -262,15 +262,15 @@ class TestTencentTokenhubProviderLabel:
     """Test provider_label() from models.py for tencent-tokenhub."""
 
     def test_label_from_provider_labels_dict(self):
-        from hermes_cli.models import _PROVIDER_LABELS
+        from vermes_cli.models import _PROVIDER_LABELS
         assert _PROVIDER_LABELS["tencent-tokenhub"] == "Tencent TokenHub"
 
     def test_provider_label_function(self):
-        from hermes_cli.models import provider_label
+        from vermes_cli.models import provider_label
         assert provider_label("tencent-tokenhub") == "Tencent TokenHub"
 
     def test_provider_label_via_alias(self):
-        from hermes_cli.models import provider_label
+        from vermes_cli.models import provider_label
         assert provider_label("tencent") == "Tencent TokenHub"
         assert provider_label("tokenhub") == "Tencent TokenHub"
 
@@ -329,7 +329,7 @@ class TestTencentTokenhubProvidersModule:
     """Test Tencent TokenHub in the unified providers module."""
 
     def test_overlay_exists(self):
-        from hermes_cli.providers import HERMES_OVERLAYS
+        from vermes_cli.providers import HERMES_OVERLAYS
         assert "tencent-tokenhub" in HERMES_OVERLAYS
         overlay = HERMES_OVERLAYS["tencent-tokenhub"]
         assert overlay.transport == "openai_chat"
@@ -337,18 +337,18 @@ class TestTencentTokenhubProvidersModule:
         assert not overlay.is_aggregator
 
     def test_alias_resolves(self):
-        from hermes_cli.providers import normalize_provider
+        from vermes_cli.providers import normalize_provider
         assert normalize_provider("tencent") == "tencent-tokenhub"
         assert normalize_provider("tokenhub") == "tencent-tokenhub"
 
     def test_label(self):
-        from hermes_cli.providers import get_label
+        from vermes_cli.providers import get_label
         assert get_label("tencent-tokenhub") == "Tencent TokenHub"
 
     def test_get_provider(self):
         pdef = None
         try:
-            from hermes_cli.providers import get_provider
+            from vermes_cli.providers import get_provider
             pdef = get_provider("tencent-tokenhub")
         except Exception:
             pass
@@ -385,7 +385,7 @@ class TestTencentTokenhubDoctor:
     """Verify hermes doctor recognizes Tencent TokenHub env vars."""
 
     def test_provider_env_hints(self):
-        from hermes_cli.doctor import _PROVIDER_ENV_HINTS
+        from vermes_cli.doctor import _PROVIDER_ENV_HINTS
         assert "TOKENHUB_API_KEY" in _PROVIDER_ENV_HINTS
 
 
@@ -403,7 +403,7 @@ class TestTencentTokenhubAgentInit:
         importlib.import_module("run_agent")
 
     def test_api_mode_is_chat_completions(self):
-        from hermes_cli.providers import HERMES_OVERLAYS, TRANSPORT_TO_API_MODE
+        from vermes_cli.providers import HERMES_OVERLAYS, TRANSPORT_TO_API_MODE
         overlay = HERMES_OVERLAYS["tencent-tokenhub"]
         api_mode = TRANSPORT_TO_API_MODE[overlay.transport]
         assert api_mode == "chat_completions"
@@ -422,7 +422,7 @@ class TestTencentTokenhubCLIDispatch:
         so ``hermes model`` routes it through the generic api_key_provider flow.
         """
         import inspect
-        from hermes_cli import main as main_mod
+        from vermes_cli import main as main_mod
         source = inspect.getsource(main_mod)
         # The source should contain tencent-tokenhub in the dispatch block
         assert '"tencent-tokenhub"' in source or "'tencent-tokenhub'" in source
@@ -471,17 +471,17 @@ class TestTencentTokenhubApiMode:
     """Verify determine_api_mode routes tencent-tokenhub correctly."""
 
     def test_determine_api_mode_direct(self):
-        from hermes_cli.providers import determine_api_mode
+        from vermes_cli.providers import determine_api_mode
         mode = determine_api_mode("tencent-tokenhub")
         assert mode == "chat_completions"
 
     def test_determine_api_mode_with_base_url(self):
-        from hermes_cli.providers import determine_api_mode
+        from vermes_cli.providers import determine_api_mode
         mode = determine_api_mode("tencent-tokenhub", "https://tokenhub.tencentmaas.com/v1")
         assert mode == "chat_completions"
 
     def test_determine_api_mode_via_alias(self):
-        from hermes_cli.providers import determine_api_mode
+        from vermes_cli.providers import determine_api_mode
         mode = determine_api_mode("tencent")
         assert mode == "chat_completions"
 
@@ -497,13 +497,13 @@ class TestTencentTokenhubKnownProviderNames:
     """
 
     def test_canonical_id_known(self):
-        from hermes_cli.models import _KNOWN_PROVIDER_NAMES
+        from vermes_cli.models import _KNOWN_PROVIDER_NAMES
         assert "tencent-tokenhub" in _KNOWN_PROVIDER_NAMES
 
     @pytest.mark.parametrize("alias", [
         "tencent", "tokenhub", "tencent-cloud", "tencentmaas",
     ])
     def test_alias_known(self, alias):
-        from hermes_cli.models import _KNOWN_PROVIDER_NAMES
+        from vermes_cli.models import _KNOWN_PROVIDER_NAMES
         assert alias in _KNOWN_PROVIDER_NAMES
 

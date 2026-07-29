@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 def isolated_db(tmp_path, monkeypatch):
     """隔离 DB,不污染真实数据。"""
     db_path = str(tmp_path / "e2e_real.db")
-    import hermes_cli.scholarforge.database as sfdb
+    import vermes_cli.scholarforge.database as sfdb
     monkeypatch.setattr(sfdb, "DB_PATH", db_path)
     sfdb.init_db()
     return sfdb
@@ -47,7 +47,7 @@ def llm_creds(monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(real_home))
     monkeypatch.setenv("VERMES_HOME", str(real_home))
 
-    from hermes_cli.scholarforge.tools import _resolve_credentials
+    from vermes_cli.scholarforge.tools import _resolve_credentials
     creds = _resolve_credentials()
     if not creds:
         pytest.skip(f"无可用 LLM 凭证 (home={real_home})")
@@ -60,7 +60,7 @@ class TestRealSearch:
     @pytest.mark.asyncio
     async def test_search_returns_real_papers(self):
         """搜索真实关键词,验证返回结构完整性。"""
-        from hermes_cli.scholarforge.search import search_papers
+        from vermes_cli.scholarforge.search import search_papers
 
         papers = []
         async for p in search_papers("transformer attention", limit=5):
@@ -77,7 +77,7 @@ class TestRealSearch:
     @pytest.mark.asyncio
     async def test_search_chinese_keyword(self):
         """中文关键词搜索。"""
-        from hermes_cli.scholarforge.search import search_papers
+        from vermes_cli.scholarforge.search import search_papers
 
         papers = []
         async for p in search_papers("大语言模型", limit=5):
@@ -95,7 +95,7 @@ class TestRealWrite:
     @pytest.mark.asyncio
     async def test_write_abstract(self, llm_creds):
         """验证 LLM 能写出合格的摘要。"""
-        from hermes_cli.scholarforge.tools import _call_llm
+        from vermes_cli.scholarforge.tools import _call_llm
 
         prompt = """撰写以下学术论文章节:
 
@@ -120,7 +120,7 @@ class TestRealWrite:
     @pytest.mark.asyncio
     async def test_write_introduction(self, llm_creds):
         """验证 LLM 能写出合格的引言。"""
-        from hermes_cli.scholarforge.tools import _call_llm
+        from vermes_cli.scholarforge.tools import _call_llm
 
         prompt = """撰写学术论文引言章节，主题"基于对比学习的文本表示方法"，本科论文。包含研究背景和问题陈述，约 400 字。直接输出。"""
 
@@ -132,9 +132,9 @@ class TestRealWrite:
     @pytest.mark.asyncio
     async def test_write_with_project_context(self, isolated_db, llm_creds):
         """验证带项目上下文的写作链路。"""
-        from hermes_cli.scholarforge.database import create_project, save_section_content, get_section_content
-        from hermes_cli.scholarforge.project_context import format_project_context_prompt
-        from hermes_cli.scholarforge.tools import _call_llm
+        from vermes_cli.scholarforge.database import create_project, save_section_content, get_section_content
+        from vermes_cli.scholarforge.project_context import format_project_context_prompt
+        from vermes_cli.scholarforge.tools import _call_llm
 
         # 创建项目并写入已有章节
         proj = create_project(title="基于对比学习的文本表示方法", paper_type="本科论文")
@@ -169,7 +169,7 @@ class TestRealPlagCheck:
 
     def test_aigc_detection_on_ai_text(self):
         """验证 AIGC 检测能识别 AI 生成文本。"""
-        from hermes_cli.scholarforge.plagcheck import check_aigc
+        from vermes_cli.scholarforge.plagcheck import check_aigc
 
         # 典型 AI 生成文本特征:过度规范、模板化
         ai_like_text = """
@@ -186,7 +186,7 @@ class TestRealPlagCheck:
 
     def test_aigc_detection_on_human_text(self):
         """验证 AIGC 检测对人类文本评分较低。"""
-        from hermes_cli.scholarforge.plagcheck import check_aigc
+        from vermes_cli.scholarforge.plagcheck import check_aigc
 
         # 人类写作特征:口语化、不规范、长短不一
         human_text = """
@@ -200,7 +200,7 @@ class TestRealPlagCheck:
 
     def test_simhash_similarity(self):
         """验证 SimHash 相似度计算。"""
-        from hermes_cli.scholarforge.plagcheck import simhash_similarity
+        from vermes_cli.scholarforge.plagcheck import simhash_similarity
 
         text1 = "深度学习在图像识别中取得了显著成果"
         text2 = "深度学习在图像识别中取得了显著的成果"
@@ -211,7 +211,7 @@ class TestRealPlagCheck:
 
     def test_internal_plagiarism_detection(self):
         """验证内部查重能发现重复段落。"""
-        from hermes_cli.scholarforge.plagcheck import check_internal_plagiarism
+        from vermes_cli.scholarforge.plagcheck import check_internal_plagiarism
 
         text = """
         ## 第一节
@@ -235,7 +235,7 @@ class TestRealScoring:
     @pytest.mark.asyncio
     async def test_score_real_paper(self, llm_creds):
         """验证评分系统对真实论文输出合理分数。"""
-        from hermes_cli.scholarforge.scoring import score_paper
+        from vermes_cli.scholarforge.scoring import score_paper
         
         # 模拟一篇结构完整的短论文
         content = """
@@ -274,7 +274,7 @@ class TestRealScoring:
     @pytest.mark.asyncio
     async def test_score_fallback_no_llm(self):
         """验证无 LLM 时的 fallback 评分。"""
-        from hermes_cli.scholarforge.scoring import score_paper, _fallback_score
+        from vermes_cli.scholarforge.scoring import score_paper, _fallback_score
 
         content = "这是一篇关于深度学习的论文。本文提出了新方法。实验结果良好。"
         papers = []
@@ -292,7 +292,7 @@ class TestRealExport:
 
     def test_export_docx_real_content(self, tmp_path):
         """验证导出包含真实学术内容的 DOCX。"""
-        from hermes_cli.scholarforge.export.full import export_docx
+        from vermes_cli.scholarforge.export.full import export_docx
 
         title = "基于对比学习的文本表示方法"
         content = """## 摘要
@@ -319,7 +319,7 @@ class TestRealExport:
 
     def test_export_pdf_real_content(self, tmp_path):
         """验证导出 PDF(或 HTML fallback)。"""
-        from hermes_cli.scholarforge.export.full import export_pdf
+        from vermes_cli.scholarforge.export.full import export_pdf
 
         title = "基于对比学习的文本表示方法"
         content = """## 摘要
@@ -344,7 +344,7 @@ class TestRealExport:
 
     def test_export_markdown_with_chinese(self):
         """验证中文内容的 Markdown 导出。"""
-        from hermes_cli.scholarforge.export.full import export_markdown
+        from vermes_cli.scholarforge.export.full import export_markdown
 
         title = "注意力增强 U-Net 在医学影像分割中的应用"
         content = "## 引言\n\n深度学习在医学影像分析中取得了革命性进展 [1]。"
@@ -364,9 +364,9 @@ class TestFullUserJourneyReal:
     @pytest.mark.asyncio
     async def test_search_then_write_flow(self, isolated_db, llm_creds):
         """搜索 → 写作 → 保存 → 读回 一致性验证。"""
-        from hermes_cli.scholarforge.database import create_project, save_section_content, get_section_content, get_project
-        from hermes_cli.scholarforge.project_context import auto_snapshot, mark_project_done
-        from hermes_cli.scholarforge.tools import _call_llm
+        from vermes_cli.scholarforge.database import create_project, save_section_content, get_section_content, get_project
+        from vermes_cli.scholarforge.project_context import auto_snapshot, mark_project_done
+        from vermes_cli.scholarforge.tools import _call_llm
 
         # Step 1: 创建项目
         proj = create_project(title="Transformer 在文本分类中的应用", paper_type="本科论文")
@@ -408,5 +408,5 @@ class TestFullUserJourneyReal:
             # 这里只验证不崩溃
 
         finally:
-            from hermes_cli.scholarforge.database import delete_project
+            from vermes_cli.scholarforge.database import delete_project
             delete_project(pid)

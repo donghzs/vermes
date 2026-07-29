@@ -8,7 +8,7 @@
 
 ## 1. 问题定义
 
-桌面控制台（Electron Web UI，由 `hermes_cli` 后端服务）要能**代用户**向某个**已存在于 state.db 的渠道会话**（telegram / feishu / …）发一条**真实用户消息**，并由该渠道的 bot **真正回复**，且回复**同时**回到：
+桌面控制台（Electron Web UI，由 `vermes_cli` 后端服务）要能**代用户**向某个**已存在于 state.db 的渠道会话**（telegram / feishu / …）发一条**真实用户消息**，并由该渠道的 bot **真正回复**，且回复**同时**回到：
 
 1. 原渠道用户（TG / 飞书里那个人能收到）；
 2. 桌面控制台（轮询显示）。
@@ -25,12 +25,12 @@
 
 | 事实 | 证据 |
 |---|---|
-| 桌面 web 进程 ≠ gateway 进程 | `hermes_cli/blueprints/chat.py:1287/1450/1665` 在 web 进程跑 `run_conversation`；gateway 各渠道在 gateway 进程跑 `_handle_message`（`gateway/message_handler_mixin.py:1200/1498`）。两进程**只通过共享 `state.db` 通信**，非内存。 |
+| 桌面 web 进程 ≠ gateway 进程 | `vermes_cli/blueprints/chat.py:1287/1450/1665` 在 web 进程跑 `run_conversation`；gateway 各渠道在 gateway 进程跑 `_handle_message`（`gateway/message_handler_mixin.py:1200/1498`）。两进程**只通过共享 `state.db` 通信**，非内存。 |
 | 渠道会话写入 state.db | `gateway/session.py:982/1207` `create_session`，`:1298` `append_message`；`gateway/slash_handlers/session_handlers.py:295/447` `create_session`，`:460` `append_message`。 |
 | handoff 跨进程信号机制现成 | `hermes_state.py` 提供 `list_pending_handoffs` / `claim_handoff` / `complete_handoff`；`gateway/watcher_mixin._handoff_watcher` 轮询 pending。可白嫖为桌面→gateway 的信号通道。 |
-| **web/桌面会话当前不在 state.db（关键）** | `hermes_cli` 全仓**无任何** `db.append_message` / `db.create_session` 调用；`blueprints/session.py` 仅对 state.db **只读**；`chat.py` 对 state.db **零引用**。web 消息落在 `~/.vermes/messages/*.json` + 浏览器 IndexedDB，**不是** state.db。→ 本桥**只覆盖已在 state.db 的渠道会话**（TG/飞书等）；要让桌面也能 relay web 会话，需先做步骤 2（web 落 state.db）。 |
+| **web/桌面会话当前不在 state.db（关键）** | `vermes_cli` 全仓**无任何** `db.append_message` / `db.create_session` 调用；`blueprints/session.py` 仅对 state.db **只读**；`chat.py` 对 state.db **零引用**。web 消息落在 `~/.vermes/messages/*.json` + 浏览器 IndexedDB，**不是** state.db。→ 本桥**只覆盖已在 state.db 的渠道会话**（TG/飞书等）；要让桌面也能 relay web 会话，需先做步骤 2（web 落 state.db）。 |
 | 记忆摄入与 state.db 解耦 | `_sync_external_memory_for_turn`（`run_agent.py:2643` ← `conversation_loop.py:875`）逐轮写 `memory_index.db`，与 state.db 无关。只要消息走 gateway `run_conversation`，记忆**自动摄入**。 |
-| 桌面 session token 已存在 | `hermes_cli/web_server.py:122` `_load_or_create_session_token()`、`web_server.py:143` `_SESSION_TOKEN` —— 可复用为 relay 端点的防伪造凭证。 |
+| 桌面 session token 已存在 | `vermes_cli/web_server.py:122` `_load_or_create_session_token()`、`web_server.py:143` `_SESSION_TOKEN` —— 可复用为 relay 端点的防伪造凭证。 |
 
 ---
 
@@ -186,8 +186,8 @@ def _find_source_by_session_id(self, session_id: str):
 | 模块 | 改动 |
 |---|---|
 | `hermes_state.py` | `handoff_state` 扩列（`relay_text`/`relay_source`/`desktop_token`/`claimed_at`/`expire_at`）；或新建 `desktop_outbox` 表 + 对应 `list/claim/complete` 函数。 |
-| `hermes_cli/blueprints/session.py`（或新 blueprint） | 新增 `POST /api/sessions/{id}/send-from-desktop`。 |
-| `hermes_cli/web_server.py` | 复用 `_SESSION_TOKEN` 做 `X-Desktop-Token` 校验（端点装饰器）。 |
+| `vermes_cli/blueprints/session.py`（或新 blueprint） | 新增 `POST /api/sessions/{id}/send-from-desktop`。 |
+| `vermes_cli/web_server.py` | 复用 `_SESSION_TOKEN` 做 `X-Desktop-Token` 校验（端点装饰器）。 |
 | `gateway/watcher_mixin.py` | `_handoff_watcher` 增加 `_process_desktop_relay` 分支。 |
 | `gateway/message_handler_mixin.py` | 新增 `_find_source_by_session_id()` 辅助函数（§3.3.1，遍历 `session_store._entries` 按 session_id 取 source）。`_handle_message` **无需改签名**（已支持 `internal=True` + `event.source`）。 |
 | `gateway/slash_handlers/session_handlers.py` | （家底审计修复，可选）`create_session` 调用补传 `chat_id`/`chat_type`/`thread_id`（§3.5）。 |

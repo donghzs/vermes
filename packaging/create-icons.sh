@@ -5,7 +5,7 @@
 set -e
 
 cd "$(dirname "$0")"
-SOURCE="../hermes_cli/web_dist/logo-256.png"
+SOURCE="../vermes_cli/web_dist/logo-256.png"
 
 mkdir -p icons
 

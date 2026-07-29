@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hermes_cli.main import cmd_update, PROJECT_ROOT
+from vermes_cli.main import cmd_update, PROJECT_ROOT
 
 
 def _make_run_side_effect(branch="main", verify_ok=True, commit_count="0"):
@@ -111,7 +111,7 @@ class TestCmdUpdateBranchFallback:
     def test_update_refreshes_repo_and_tui_node_dependencies(
         self, mock_run, mock_which, mock_args
     ):
-        from hermes_cli import main as hm
+        from vermes_cli import main as hm
 
         mock_which.side_effect = {"uv": "/usr/bin/uv", "npm": "/usr/bin/npm"}.get
         mock_run.side_effect = _make_run_side_effect(
@@ -176,14 +176,14 @@ class TestCmdUpdateBranchFallback:
         with patch("shutil.which", return_value=None), patch(
             "subprocess.run"
         ) as mock_run, patch("builtins.input") as mock_input, patch(
-            "hermes_cli.config.get_missing_env_vars", return_value=["MISSING_KEY"]
+            "vermes_cli.config.get_missing_env_vars", return_value=["MISSING_KEY"]
         ), patch(
-            "hermes_cli.config.get_missing_config_fields",
+            "vermes_cli.config.get_missing_config_fields",
             return_value=[{"key": "new.option", "default": True}],
-        ), patch("hermes_cli.config.check_config_version", return_value=(1, 2)), patch(
-            "hermes_cli.config.migrate_config",
+        ), patch("vermes_cli.config.check_config_version", return_value=(1, 2)), patch(
+            "vermes_cli.config.migrate_config",
             return_value={"env_added": [], "config_added": ["new.option"]},
-        ), patch("hermes_cli.main.sys") as mock_sys:
+        ), patch("vermes_cli.main.sys") as mock_sys:
             mock_sys.stdin.isatty.return_value = False
             mock_sys.stdout.isatty.return_value = False
             mock_run.side_effect = _make_run_side_effect(
@@ -193,7 +193,7 @@ class TestCmdUpdateBranchFallback:
             cmd_update(mock_args)
 
             mock_input.assert_not_called()
-            from hermes_cli.config import migrate_config
+            from vermes_cli.config import migrate_config
 
             migrate_config.assert_called_once_with(interactive=False, quiet=False)
             captured = capsys.readouterr()
@@ -233,8 +233,8 @@ class TestCmdUpdateProfileSkillSync:
         empty_sync = {"copied": [], "updated": [], "user_modified": [], "cleaned": []}
 
         with (
-            patch("hermes_cli.profiles.list_profiles", return_value=all_profiles),
-            patch("hermes_cli.profiles.seed_profile_skills", side_effect=fake_seed),
+            patch("vermes_cli.profiles.list_profiles", return_value=all_profiles),
+            patch("vermes_cli.profiles.seed_profile_skills", side_effect=fake_seed),
             patch("tools.skills_sync.sync_skills", return_value=empty_sync),
         ):
             cmd_update(mock_args)
@@ -267,8 +267,8 @@ class TestCmdUpdateProfileSkillSync:
         empty_sync = {"copied": [], "updated": [], "user_modified": [], "cleaned": []}
 
         with (
-            patch("hermes_cli.profiles.list_profiles", return_value=[default_p]),
-            patch("hermes_cli.profiles.seed_profile_skills", side_effect=fake_seed),
+            patch("vermes_cli.profiles.list_profiles", return_value=[default_p]),
+            patch("vermes_cli.profiles.seed_profile_skills", side_effect=fake_seed),
             patch("tools.skills_sync.sync_skills", return_value=empty_sync),
         ):
             cmd_update(mock_args)
@@ -277,19 +277,19 @@ class TestCmdUpdateProfileSkillSync:
 
 
 def test_is_termux_env_true_for_termux_prefix():
-    from hermes_cli import main as hm
+    from vermes_cli import main as hm
 
     assert hm._is_termux_env({"PREFIX": "/data/data/com.termux/files/usr"}) is True
 
 
 def test_is_termux_env_false_for_non_termux_prefix():
-    from hermes_cli import main as hm
+    from vermes_cli import main as hm
 
     assert hm._is_termux_env({"PREFIX": "/usr/local"}) is False
 
 
 def test_load_installable_optional_extras_supports_termux_group(tmp_path, monkeypatch):
-    from hermes_cli import main as hm
+    from vermes_cli import main as hm
 
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(

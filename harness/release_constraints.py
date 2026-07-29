@@ -94,7 +94,7 @@ class ScholarForgeToolsConstraint(Constraint):
 
     async def check(self, ctx: Any = None) -> ConstraintResult:
         try:
-            from hermes_cli.scholarforge import tools as sf_tools
+            from vermes_cli.scholarforge import tools as sf_tools
             # Count SCHOLARFORGE_*_SCHEMA constants
             schemas = [
                 a for a in dir(sf_tools)
@@ -105,7 +105,7 @@ class ScholarForgeToolsConstraint(Constraint):
                     name=self.name,
                     passed=False,
                     detail=f"只有 {len(schemas)} 个 SCHOLARFORGE_*_SCHEMA 常量，期望 >=10",
-                    suggestion="检查 hermes_cli/scholarforge/tools.py 的 schema 定义",
+                    suggestion="检查 vermes_cli/scholarforge/tools.py 的 schema 定义",
                 )
             # Verify _PROVIDER_FALLBACK_MODELS exists
             if not hasattr(sf_tools, "_PROVIDER_FALLBACK_MODELS"):
@@ -125,7 +125,7 @@ class ScholarForgeToolsConstraint(Constraint):
                 name=self.name,
                 passed=False,
                 detail=f"ScholarForge 导入失败: {exc}",
-                suggestion="检查 hermes_cli/scholarforge/ 模块完整性",
+                suggestion="检查 vermes_cli/scholarforge/ 模块完整性",
             )
 
 

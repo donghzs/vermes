@@ -6,7 +6,7 @@ browser-side authorize step but fails at the token endpoint with
 re-validates PKCE at the token step instead of relying purely on
 state captured during the authorize redirect.
 
-The fix in ``hermes_cli/auth.py`` extracts the token POST into
+The fix in ``vermes_cli/auth.py`` extracts the token POST into
 :func:`_xai_oauth_exchange_code_for_tokens` and:
 
 * Sends ``code_verifier`` (RFC 7636 §4.5 requirement).
@@ -31,7 +31,7 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from hermes_cli.auth import (
+from vermes_cli.auth import (
     AuthError,
     XAI_OAUTH_CLIENT_ID,
     _xai_oauth_exchange_code_for_tokens,
@@ -80,7 +80,7 @@ def post_recorder(monkeypatch):
             }
         )
     )
-    monkeypatch.setattr("hermes_cli.auth.httpx.post", recorder)
+    monkeypatch.setattr("vermes_cli.auth.httpx.post", recorder)
     return recorder
 
 
@@ -241,7 +241,7 @@ def test_non_200_response_surfaces_status_and_body(monkeypatch):
     recorder = _PostRecorder(
         _err_response(400, '{"error":"invalid_grant","error_description":"code_challenge is required"}')
     )
-    monkeypatch.setattr("hermes_cli.auth.httpx.post", recorder)
+    monkeypatch.setattr("vermes_cli.auth.httpx.post", recorder)
     with pytest.raises(AuthError) as exc_info:
         _xai_oauth_exchange_code_for_tokens(
             token_endpoint="https://auth.x.ai/oauth2/token",
@@ -267,7 +267,7 @@ def test_transport_error_wraps_as_auth_error(monkeypatch):
     def _boom(*args, **kwargs):
         raise httpx.ConnectError("dns failure")
 
-    monkeypatch.setattr("hermes_cli.auth.httpx.post", _boom)
+    monkeypatch.setattr("vermes_cli.auth.httpx.post", _boom)
     with pytest.raises(AuthError) as exc_info:
         _xai_oauth_exchange_code_for_tokens(
             token_endpoint="https://auth.x.ai/oauth2/token",
@@ -284,7 +284,7 @@ def test_non_dict_payload_raises_invalid_json(monkeypatch):
     """xAI returning ``[]`` or a string at 200 is a server bug — fail
     with a precise error rather than crashing later in token storage."""
     recorder = _PostRecorder(_ok_response([1, 2, 3]))  # type: ignore[arg-type]
-    monkeypatch.setattr("hermes_cli.auth.httpx.post", recorder)
+    monkeypatch.setattr("vermes_cli.auth.httpx.post", recorder)
     with pytest.raises(AuthError) as exc_info:
         _xai_oauth_exchange_code_for_tokens(
             token_endpoint="https://auth.x.ai/oauth2/token",
@@ -338,7 +338,7 @@ def test_wire_format_is_form_urlencoded_with_all_pkce_fields(monkeypatch):
         with httpx.Client(transport=_Transport()) as c:
             return c.post(*args, **kwargs)
 
-    monkeypatch.setattr("hermes_cli.auth.httpx.post", _post)
+    monkeypatch.setattr("vermes_cli.auth.httpx.post", _post)
 
     _xai_oauth_exchange_code_for_tokens(
         token_endpoint="https://auth.x.ai/oauth2/token",

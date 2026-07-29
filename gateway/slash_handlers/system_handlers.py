@@ -10,8 +10,8 @@ class SystemCommandsMixin:
 
     async def _handle_profile_command(self, event: MessageEvent) -> str:
         """Handle /profile — show active profile name and home directory."""
-        from hermes_constants import display_hermes_home
-        from hermes_cli.profiles import get_active_profile_name
+        from vermes_constants import display_hermes_home
+        from vermes_cli.profiles import get_active_profile_name
 
         display = display_hermes_home()
         profile_name = get_active_profile_name()
@@ -140,7 +140,7 @@ class SystemCommandsMixin:
         # gateway sessions and you want a one-glance reminder of where this
         # one left off. Inspired by Claude Code 2.1.114's /recap.
         try:
-            from hermes_cli.session_recap import build_recap
+            from vermes_cli.session_recap import build_recap
             history = self.session_store.load_transcript(session_entry.session_id)
             recap = build_recap(
                 history,
@@ -461,7 +461,7 @@ class SystemCommandsMixin:
 
     async def _handle_help_command(self, event: MessageEvent) -> str:
         """Handle /help command - list available commands."""
-        from hermes_cli.commands import gateway_help_lines
+        from vermes_cli.commands import gateway_help_lines
         lines = [
             t("gateway.help.header"),
             *gateway_help_lines(),
@@ -485,7 +485,7 @@ class SystemCommandsMixin:
         )
 
     async def _handle_commands_command(self, event: MessageEvent) -> str:
-        from hermes_cli.commands import gateway_help_lines
+        from vermes_cli.commands import gateway_help_lines
 
         raw_args = event.get_command_args().strip()
         if raw_args:
@@ -547,7 +547,7 @@ class SystemCommandsMixin:
         full log uploads should use ``hermes debug share`` from the CLI.
         """
         import asyncio
-        from hermes_cli.debug import (
+        from vermes_cli.debug import (
             _capture_dump, collect_debug_report,
             upload_to_pastebin, _schedule_auto_delete,
             _GATEWAY_PRIVACY_NOTICE, _best_effort_sweep_expired_pastes,
@@ -595,7 +595,7 @@ class SystemCommandsMixin:
         import shutil
         import subprocess
         from datetime import datetime
-        from hermes_cli.config import is_managed, format_managed_message
+        from vermes_cli.config import is_managed, format_managed_message
 
         # Block non-messaging platforms (API server, webhooks, ACP)
         platform = event.source.platform
@@ -671,7 +671,7 @@ class SystemCommandsMixin:
         try:
             if sys.platform == "win32":
                 import textwrap
-                from hermes_cli._subprocess_compat import windows_detach_popen_kwargs
+                from vermes_cli._subprocess_compat import windows_detach_popen_kwargs
 
                 # hermes_cmd is a list of argv parts we can pass directly
                 # (no shell-quoting needed).
@@ -904,7 +904,7 @@ class SystemCommandsMixin:
                     i += 1
 
         try:
-            from hermes_state import SessionDB
+            from vermes_state import SessionDB
             from agent.insights import InsightsEngine
 
             loop = asyncio.get_running_loop()

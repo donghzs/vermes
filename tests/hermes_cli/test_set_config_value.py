@@ -7,7 +7,7 @@ from unittest.mock import patch, call
 
 import pytest
 
-from hermes_cli.config import set_config_value, config_command
+from vermes_cli.config import set_config_value, config_command
 
 
 @pytest.fixture(autouse=True)
@@ -265,7 +265,7 @@ class TestSecretRedactionInDisplay:
     """`config set`/`config show` must not echo credential values in plaintext."""
 
     def test_redact_config_value_masks_nested_api_key(self):
-        from hermes_cli.config import redact_config_value
+        from vermes_cli.config import redact_config_value
         secret = "cfut_SUPERSECRETTOKEN1234567890abcdef"
         model = {"default": "@cf/foo", "provider": "custom", "api_key": secret}
 
@@ -278,7 +278,7 @@ class TestSecretRedactionInDisplay:
         assert out["provider"] == "custom"
 
     def test_redact_config_value_walks_lists(self):
-        from hermes_cli.config import redact_config_value
+        from vermes_cli.config import redact_config_value
         secret = "test-secret-placeholder-value"
         cfg = {"custom_providers": [{"name": "p", "api_key": secret}]}
 
@@ -288,7 +288,7 @@ class TestSecretRedactionInDisplay:
         assert out["custom_providers"][0]["name"] == "p"
 
     def test_redact_config_value_ignores_benign_keys(self):
-        from hermes_cli.config import redact_config_value
+        from vermes_cli.config import redact_config_value
         cfg = {"token_count": 1234, "secret_santa": "alice", "max_turns": 90}
 
         out = redact_config_value(cfg)

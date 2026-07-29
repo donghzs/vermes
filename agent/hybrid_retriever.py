@@ -39,7 +39,7 @@ _EMBEDDING_DIMS = 1536  # text-embedding-ada-002 默认维度
 
 def _get_index_dir() -> Path:
     """Get or create the index directory under HERMES_HOME."""
-    from hermes_constants import get_hermes_home
+    from vermes_constants import get_hermes_home
     index_dir = get_hermes_home() / "index"
     index_dir.mkdir(parents=True, exist_ok=True)
     return index_dir
@@ -121,7 +121,7 @@ def _resolve_embedding_api() -> tuple[str, str, str]:
     """
     try:
         import sys as _sys
-        _sys.path.insert(0, str(Path(__file__).parent.parent / "hermes_cli"))
+        _sys.path.insert(0, str(Path(__file__).parent.parent / "vermes_cli"))
         from config import load_config, load_env
 
         cfg = load_config()
@@ -146,7 +146,7 @@ def _resolve_embedding_api() -> tuple[str, str, str]:
             if not base_url:
                 # Try provider template from blueprints
                 try:
-                    from hermes_cli.blueprints.providers import PROVIDER_TEMPLATES
+                    from vermes_cli.blueprints.providers import PROVIDER_TEMPLATES
                     tmpl = PROVIDER_TEMPLATES.get(default_provider, {})
                     base_url = tmpl.get("base_url", "").rstrip("/")
                     if not api_key:
@@ -179,7 +179,7 @@ def _resolve_embedding_api() -> tuple[str, str, str]:
                 continue
             # Derive base_url from provider templates
             try:
-                from hermes_cli.blueprints.providers import PROVIDER_TEMPLATES
+                from vermes_cli.blueprints.providers import PROVIDER_TEMPLATES
                 pid = env_key.replace("_API_KEY", "").lower().replace("_", "-")
                 tmpl = PROVIDER_TEMPLATES.get(pid, {})
                 burl = tmpl.get("base_url", "").rstrip("/")

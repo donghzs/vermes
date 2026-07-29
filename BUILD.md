@@ -9,10 +9,10 @@ Vermes 采用 **Electron 壳 + Python 后端** 架构，前端为 Vue 3 SPA。
 │         Chromium → 127.0.0.1:9119        │
 ├──────────────────────────────────────────┤
 │        FastAPI 后端 (uvicorn)             │
-│  hermes_cli/web_server.py                │
+│  vermes_cli/web_server.py                │
 ├──────────────────────────────────────────┤
 │        Vue 3 前端 (SPA)                   │
-│  frontend/ → hermes_cli/web_dist/        │
+│  frontend/ → vermes_cli/web_dist/        │
 └──────────────────────────────────────────┘
 ```
 
@@ -54,7 +54,7 @@ cd electron && npm run dist:win
 ```
 
 构建脚本自动执行：
-1. **`prebuild`** — 从 `hermes_cli/__init__.py` 同步版本号到 `electron/version.txt` 和 `electron/package.json`
+1. **`prebuild`** — 从 `vermes_cli/__init__.py` 同步版本号到 `electron/version.txt` 和 `electron/package.json`
 2. **PyInstaller** — 用 `vermes-backend.spec` 打包 Python 后端为独立可执行文件 → `dist/vermes-backend/`
 3. **electron-builder** — 将 Electron 壳 + 后端 + 前端打包为 `.dmg` (macOS) 或 `.exe` 安装包 (Windows)
 
@@ -68,12 +68,12 @@ cd electron && npm run pack    # 输出到 dist-electron/mac/ 或 dist-electron/
 
 ```bash
 cd frontend && npx vite build      # 输出到 frontend/dist/
-cp -r frontend/dist hermes_cli/web_dist  # 同步给 Electron
+cp -r frontend/dist vermes_cli/web_dist  # 同步给 Electron
 ```
 
 ## 4. 版本号管理
 
-版本号的唯一来源是 `hermes_cli/__init__.py` 中的 `__version__` 字段。
+版本号的唯一来源是 `vermes_cli/__init__.py` 中的 `__version__` 字段。
 
 ```bash
 # 同步版本号到所有位置
@@ -106,7 +106,7 @@ vermes-electron/
 │   │   └── config/defaults.js   # 默认配置
 │   ├── vite.config.js           # Vite 配置
 │   └── package.json
-├── hermes_cli/                  # Python 后端
+├── vermes_cli/                  # Python 后端
 │   ├── web_server.py            # FastAPI 应用
 │   ├── web_dist/                # 前端构建产物（由 frontend/dist 复制）
 │   └── __init__.py              # 版本号来源
@@ -138,7 +138,7 @@ PyInstaller 打包配置，关键区别：
 ## 7. 常见问题
 
 ### 构建后打开空白页
-确认 `hermes_cli/web_dist/` 存在且包含 `index.html`。前端构建后必须复制到此目录。
+确认 `vermes_cli/web_dist/` 存在且包含 `index.html`。前端构建后必须复制到此目录。
 
 ### electron-builder 报 Python 路径错误
 确认 `.venv` 在项目根目录且 `pyinstaller` 已安装：

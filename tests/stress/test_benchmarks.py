@@ -58,7 +58,7 @@ def main():
     os.environ["HERMES_HOME"] = home
     os.environ["HOME"] = home
     sys.path.insert(0, WT)
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
 
     kb.init_db()
 

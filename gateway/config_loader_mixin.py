@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-from hermes_cli.config import cfg_get
+from vermes_cli.config import cfg_get
 from gateway.restart import parse_restart_drain_timeout, DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT
 from utils import is_truthy_value
 
@@ -109,7 +109,7 @@ class ConfigLoaderMixin:
         "minimal", "low", "medium", "high", "xhigh". Returns None to use
         default (medium).
         """
-        from hermes_constants import parse_reasoning_effort
+        from vermes_constants import parse_reasoning_effort
         effort = ""
         try:
             import yaml as _y

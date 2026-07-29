@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from hermes_state import SessionDB
+from vermes_state import SessionDB
 
 
 @pytest.fixture

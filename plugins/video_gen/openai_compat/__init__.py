@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 def _load_video_gen_config() -> Dict[str, Any]:
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         cfg = load_config()
         section = cfg.get("video_gen") if isinstance(cfg, dict) else None
         return section if isinstance(section, dict) else {}

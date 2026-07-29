@@ -664,7 +664,7 @@ def interactive_setup() -> None:
     """Minimal stdin wizard for ``hermes setup gateway`` → SimpleX.
 
     Prompts for the WebSocket URL and the optional allowlist / home channel.
-    Writes to ``~/.hermes/.env`` via ``hermes_cli.config``.
+    Writes to ``~/.hermes/.env`` via ``vermes_cli.config``.
     """
     logger.info()
     logger.info("SimpleX Chat setup")
@@ -675,9 +675,9 @@ def interactive_setup() -> None:
     logger.info()
 
     try:
-        from hermes_cli.config import get_env_value, save_env_value
+        from vermes_cli.config import get_env_value, save_env_value
     except ImportError:
-        logger.info("hermes_cli.config not available; set SIMPLEX_* vars manually in ~/.hermes/.env")
+        logger.info("vermes_cli.config not available; set SIMPLEX_* vars manually in ~/.hermes/.env")
         return
 
     def _prompt(var: str, prompt: str, *, secret: bool = False) -> None:

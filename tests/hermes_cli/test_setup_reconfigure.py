@@ -55,15 +55,15 @@ def _enter_existing_install_patches(stack, **extra):
     """
     # Unconditional mocks (no return values to assert against).
     for target, kwargs in [
-        ("hermes_cli.setup.ensure_hermes_home", {}),
-        ("hermes_cli.setup.is_interactive_stdin", {"return_value": True}),
-        ("hermes_cli.config.is_managed", {"return_value": False}),
-        ("hermes_cli.setup.load_config", {"return_value": {}}),
-        ("hermes_cli.setup.save_config", {}),
-        ("hermes_cli.setup.get_env_value", {"return_value": None}),
-        ("hermes_cli.auth.get_active_provider", {"return_value": "openrouter"}),
-        ("hermes_cli.setup._print_setup_summary", {}),
-        ("hermes_cli.setup._offer_openclaw_migration", {"return_value": False}),
+        ("vermes_cli.setup.ensure_hermes_home", {}),
+        ("vermes_cli.setup.is_interactive_stdin", {"return_value": True}),
+        ("vermes_cli.config.is_managed", {"return_value": False}),
+        ("vermes_cli.setup.load_config", {"return_value": {}}),
+        ("vermes_cli.setup.save_config", {}),
+        ("vermes_cli.setup.get_env_value", {"return_value": None}),
+        ("vermes_cli.auth.get_active_provider", {"return_value": "openrouter"}),
+        ("vermes_cli.setup._print_setup_summary", {}),
+        ("vermes_cli.setup._offer_openclaw_migration", {"return_value": False}),
     ]:
         stack.enter_context(patch(target, **kwargs))
 
@@ -76,14 +76,14 @@ def _enter_existing_install_patches(stack, **extra):
 
 def _enter_fresh_install_patches(stack, **extra):
     for target, kwargs in [
-        ("hermes_cli.setup.ensure_hermes_home", {}),
-        ("hermes_cli.setup.is_interactive_stdin", {"return_value": True}),
-        ("hermes_cli.config.is_managed", {"return_value": False}),
-        ("hermes_cli.setup.load_config", {"return_value": {}}),
-        ("hermes_cli.setup.save_config", {}),
-        ("hermes_cli.auth.get_active_provider", {"return_value": None}),
-        ("hermes_cli.setup.get_env_value", {"return_value": None}),
-        ("hermes_cli.setup._offer_openclaw_migration", {"return_value": False}),
+        ("vermes_cli.setup.ensure_hermes_home", {}),
+        ("vermes_cli.setup.is_interactive_stdin", {"return_value": True}),
+        ("vermes_cli.config.is_managed", {"return_value": False}),
+        ("vermes_cli.setup.load_config", {"return_value": {}}),
+        ("vermes_cli.setup.save_config", {}),
+        ("vermes_cli.auth.get_active_provider", {"return_value": None}),
+        ("vermes_cli.setup.get_env_value", {"return_value": None}),
+        ("vermes_cli.setup._offer_openclaw_migration", {"return_value": False}),
     ]:
         stack.enter_context(patch(target, **kwargs))
 
@@ -107,15 +107,15 @@ class TestExistingInstallDefault:
         with ExitStack() as stack:
             m = _enter_existing_install_patches(
                 stack,
-                prompt_choice="hermes_cli.setup.prompt_choice",
-                quick="hermes_cli.setup._run_quick_setup",
-                model="hermes_cli.setup.setup_model_provider",
-                terminal="hermes_cli.setup.setup_terminal_backend",
-                agent="hermes_cli.setup.setup_agent_settings",
-                gateway="hermes_cli.setup.setup_gateway",
-                tools="hermes_cli.setup.setup_tools",
+                prompt_choice="vermes_cli.setup.prompt_choice",
+                quick="vermes_cli.setup._run_quick_setup",
+                model="vermes_cli.setup.setup_model_provider",
+                terminal="vermes_cli.setup.setup_terminal_backend",
+                agent="vermes_cli.setup.setup_agent_settings",
+                gateway="vermes_cli.setup.setup_gateway",
+                tools="vermes_cli.setup.setup_tools",
             )
-            from hermes_cli.setup import run_setup_wizard
+            from vermes_cli.setup import run_setup_wizard
             run_setup_wizard(args)
 
         # No menu shown.
@@ -136,14 +136,14 @@ class TestExistingInstallDefault:
         with ExitStack() as stack:
             m = _enter_existing_install_patches(
                 stack,
-                prompt_choice="hermes_cli.setup.prompt_choice",
-                model="hermes_cli.setup.setup_model_provider",
-                terminal="hermes_cli.setup.setup_terminal_backend",
-                agent="hermes_cli.setup.setup_agent_settings",
-                gateway="hermes_cli.setup.setup_gateway",
-                tools="hermes_cli.setup.setup_tools",
+                prompt_choice="vermes_cli.setup.prompt_choice",
+                model="vermes_cli.setup.setup_model_provider",
+                terminal="vermes_cli.setup.setup_terminal_backend",
+                agent="vermes_cli.setup.setup_agent_settings",
+                gateway="vermes_cli.setup.setup_gateway",
+                tools="vermes_cli.setup.setup_tools",
             )
-            from hermes_cli.setup import run_setup_wizard
+            from vermes_cli.setup import run_setup_wizard
             run_setup_wizard(args)
 
         m["prompt_choice"].assert_not_called()
@@ -163,14 +163,14 @@ class TestQuickFlag:
         with ExitStack() as stack:
             m = _enter_existing_install_patches(
                 stack,
-                quick="hermes_cli.setup._run_quick_setup",
-                model="hermes_cli.setup.setup_model_provider",
-                terminal="hermes_cli.setup.setup_terminal_backend",
-                agent="hermes_cli.setup.setup_agent_settings",
-                gateway="hermes_cli.setup.setup_gateway",
-                tools="hermes_cli.setup.setup_tools",
+                quick="vermes_cli.setup._run_quick_setup",
+                model="vermes_cli.setup.setup_model_provider",
+                terminal="vermes_cli.setup.setup_terminal_backend",
+                agent="vermes_cli.setup.setup_agent_settings",
+                gateway="vermes_cli.setup.setup_gateway",
+                tools="vermes_cli.setup.setup_tools",
             )
-            from hermes_cli.setup import run_setup_wizard
+            from vermes_cli.setup import run_setup_wizard
             run_setup_wizard(args)
 
         m["quick"].assert_called_once()
@@ -191,10 +191,10 @@ class TestFreshInstall:
         with ExitStack() as stack:
             m = _enter_fresh_install_patches(
                 stack,
-                prompt=("hermes_cli.setup.prompt_choice", {"return_value": 0}),
-                first="hermes_cli.setup._run_first_time_quick_setup",
+                prompt=("vermes_cli.setup.prompt_choice", {"return_value": 0}),
+                first="vermes_cli.setup._run_first_time_quick_setup",
             )
-            from hermes_cli.setup import run_setup_wizard
+            from vermes_cli.setup import run_setup_wizard
             run_setup_wizard(args)
 
         m["prompt"].assert_called_once()  # quick-vs-full prompt
@@ -206,10 +206,10 @@ class TestFreshInstall:
         with ExitStack() as stack:
             m = _enter_fresh_install_patches(
                 stack,
-                prompt=("hermes_cli.setup.prompt_choice", {"return_value": 0}),
-                first="hermes_cli.setup._run_first_time_quick_setup",
+                prompt=("vermes_cli.setup.prompt_choice", {"return_value": 0}),
+                first="vermes_cli.setup._run_first_time_quick_setup",
             )
-            from hermes_cli.setup import run_setup_wizard
+            from vermes_cli.setup import run_setup_wizard
             run_setup_wizard(args)
 
         m["prompt"].assert_called_once()
@@ -221,10 +221,10 @@ class TestFreshInstall:
         with ExitStack() as stack:
             m = _enter_fresh_install_patches(
                 stack,
-                prompt=("hermes_cli.setup.prompt_choice", {"return_value": 0}),
-                first="hermes_cli.setup._run_first_time_quick_setup",
+                prompt=("vermes_cli.setup.prompt_choice", {"return_value": 0}),
+                first="vermes_cli.setup._run_first_time_quick_setup",
             )
-            from hermes_cli.setup import run_setup_wizard
+            from vermes_cli.setup import run_setup_wizard
             run_setup_wizard(args)
 
         m["prompt"].assert_called_once()
@@ -236,11 +236,11 @@ class TestArgparse:
 
     def test_reconfigure_flag_reaches_cmd_setup(self, monkeypatch):
         import sys
-        from hermes_cli.main import main
+        from vermes_cli.main import main
 
         captured = {}
         monkeypatch.setattr(
-            "hermes_cli.setup.run_setup_wizard",
+            "vermes_cli.setup.run_setup_wizard",
             lambda args: captured.setdefault("args", args),
         )
         monkeypatch.setattr(sys, "argv", ["hermes", "setup", "--reconfigure"])
@@ -253,11 +253,11 @@ class TestArgparse:
 
     def test_quick_flag_reaches_cmd_setup(self, monkeypatch):
         import sys
-        from hermes_cli.main import main
+        from vermes_cli.main import main
 
         captured = {}
         monkeypatch.setattr(
-            "hermes_cli.setup.run_setup_wizard",
+            "vermes_cli.setup.run_setup_wizard",
             lambda args: captured.setdefault("args", args),
         )
         monkeypatch.setattr(sys, "argv", ["hermes", "setup", "--quick"])
@@ -270,11 +270,11 @@ class TestArgparse:
 
     def test_bare_setup_has_both_flags_false(self, monkeypatch):
         import sys
-        from hermes_cli.main import main
+        from vermes_cli.main import main
 
         captured = {}
         monkeypatch.setattr(
-            "hermes_cli.setup.run_setup_wizard",
+            "vermes_cli.setup.run_setup_wizard",
             lambda args: captured.setdefault("args", args),
         )
         monkeypatch.setattr(sys, "argv", ["hermes", "setup"])

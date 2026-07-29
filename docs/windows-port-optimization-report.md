@@ -1,7 +1,7 @@
 # Vermes Windows 版优化建议报告
 
 **审计日期**: 2025-06-02  
-**审计范围**: ~/Projects/vermes/ 全部源码（86 个 agent/ 文件 + 89 个 hermes_cli/ 文件 + 47 个 tools/ 文件 + 构建/打包系统）  
+**审计范围**: ~/Projects/vermes/ 全部源码（86 个 agent/ 文件 + 89 个 vermes_cli/ 文件 + 47 个 tools/ 文件 + 构建/打包系统）  
 **审计焦点**: Windows 原生兼容性（不依赖 WSL）
 
 ---
@@ -10,12 +10,12 @@
 
 | 模块 | 行数 | 说明 |
 |------|------|------|
-| `hermes_cli/win_adapter.py` | 411 | 完整的 Win32 API 适配层：WebView2 检测、DPI 感知、单例聚焦、系统托盘、窗口位置持久化 |
-| `hermes_cli/_subprocess_compat.py` | 175 | `windows_detach_flags()` / `resolve_node_command()` / 跨平台 Popen 参数统一 |
+| `vermes_cli/win_adapter.py` | 411 | 完整的 Win32 API 适配层：WebView2 检测、DPI 感知、单例聚焦、系统托盘、窗口位置持久化 |
+| `vermes_cli/_subprocess_compat.py` | 175 | `windows_detach_flags()` / `resolve_node_command()` / 跨平台 Popen 参数统一 |
 | `hermes_bootstrap.py` | 154 | UTF-8 引导修复：`PYTHONUTF8=1` + `subprocess.Popen` 猴子补丁，解决中文 Windows GBK 解码问题 |
-| `hermes_cli/gateway_windows.py` | 1043 | 完整的 Windows gateway 服务管理：schtasks + Startup 文件夹双重降级 |
-| `hermes_cli/clipboard.py` | 494 | PowerShell WinForms 剪贴板图片提取，原生 Windows + WSL 双模式 |
-| `hermes_cli/gui_app.py` | 516 | pywebview 原生窗口，Windows edgechromium GUI 后端，日志重定向 |
+| `vermes_cli/gateway_windows.py` | 1043 | 完整的 Windows gateway 服务管理：schtasks + Startup 文件夹双重降级 |
+| `vermes_cli/clipboard.py` | 494 | PowerShell WinForms 剪贴板图片提取，原生 Windows + WSL 双模式 |
+| `vermes_cli/gui_app.py` | 516 | pywebview 原生窗口，Windows edgechromium GUI 后端，日志重定向 |
 | `packaging/` | — | 完整的 NSIS、Inno Setup、build_windows.bat、build-windows-installer.py |
 | `scripts/check-windows-footguns.py` | — | AST 级静态分析脚本，检查 `preexec_fn` 和 `os.killpg` |
 | `pyproject.toml` | — | 平台条件依赖：`tzdata; win32`、`ptyprocess; !win32`、`pywinpty; win32` |
@@ -34,7 +34,7 @@
 |------|------|------|
 | `tui_gateway/entry.py` | 152, 156 | `signal.SIGPIPE` / `signal.SIGHUP` |
 | `cli.py` | 13989, 14417 | `signal.SIGHUP` |
-| `hermes_cli/main.py` | 7821 | `signal.SIGHUP` |
+| `vermes_cli/main.py` | 7821 | `signal.SIGHUP` |
 
 **修复方案**: 替换为 `getattr(signal, 'SIGHUP', signal.SIGTERM)` 或加 `if hasattr(signal, 'SIGHUP'):` 守卫。
 
@@ -71,9 +71,9 @@
 | 文件 | 行号 |
 |------|------|
 | `tools/tts_tool.py` | 610 |
-| `hermes_cli/blueprints/status.py` | 135 |
+| `vermes_cli/blueprints/status.py` | 135 |
 
-**修复方案**: 用 `**hermes_cli._subprocess_compat.windows_detach_popen_kwargs()` 替代。
+**修复方案**: 用 `**vermes_cli._subprocess_compat.windows_detach_popen_kwargs()` 替代。
 
 **风险**: TTS 后台进程/状态监控守护进程无法在后台存活。
 
@@ -130,7 +130,7 @@
 
 **修复方案**: 添加 Windows 分支，使用 `os.environ.get("COMSPEC", "cmd.exe")` 找 shell。
 
-### 3.6 `hermes_cli/profiles.py` — 缺少 win32 分支
+### 3.6 `vermes_cli/profiles.py` — 缺少 win32 分支
 
 行 934-953 只有 Linux/Darwin 分支，无 Windows 路径。
 
@@ -144,7 +144,7 @@
 
 42+ 处使用了 `os.chmod(path, 0o700)`，Windows 上通过 ACL 控制权限，`chmod` 功能有限。不会崩溃但权限保护效果不足。
 
-**关键文件**: `hermes_constants.py:277`, `hermes_logging.py:336`, `utils.py:56`, `hermes_cli/config.py:404/447/4833/4889`, `tools/tirith_security.py:426`, `tools/mcp_oauth.py:179`
+**关键文件**: `vermes_constants.py:277`, `hermes_logging.py:336`, `utils.py:56`, `vermes_cli/config.py:404/447/4833/4889`, `tools/tirith_security.py:426`, `tools/mcp_oauth.py:179`
 
 **修复**: 对凭据/敏感文件使用 `icacls` 命令或 `win32security` API 设置 DACL。
 

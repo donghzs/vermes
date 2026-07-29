@@ -1,6 +1,6 @@
 """Tests for the defensive subparser routing workaround (bpo-9338).
 
-The main() function in hermes_cli/main.py sets subparsers.required=True
+The main() function in vermes_cli/main.py sets subparsers.required=True
 when argv contains a known subcommand name.  This forces deterministic
 routing on Python versions where argparse fails to match subcommand tokens
 when the parent parser has nargs='?' optional arguments (--continue).

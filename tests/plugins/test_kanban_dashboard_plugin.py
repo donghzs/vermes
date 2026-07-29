@@ -17,7 +17,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from hermes_cli import kanban_db as kb
+from vermes_cli import kanban_db as kb
 
 
 # ---------------------------------------------------------------------------
@@ -757,11 +757,11 @@ def test_ws_events_rejects_when_token_required(tmp_path, monkeypatch):
     kb.init_db()
 
     # Stub web_server so _check_ws_token has a token to compare against.
-    import hermes_cli
+    import vermes_cli
     import types
     stub = types.SimpleNamespace(_SESSION_TOKEN="secret-xyz")
-    monkeypatch.setitem(sys.modules, "hermes_cli.web_server", stub)
-    monkeypatch.setattr(hermes_cli, "web_server", stub, raising=False)
+    monkeypatch.setitem(sys.modules, "vermes_cli.web_server", stub)
+    monkeypatch.setattr(vermes_cli, "web_server", stub, raising=False)
 
     app = FastAPI()
     app.include_router(_load_plugin_router(), prefix="/api/plugins/kanban")
@@ -816,12 +816,12 @@ def test_ws_events_board_query_param_default_overrides_current_board_pointer(tmp
 
     kb.set_current_board("other")
 
-    import hermes_cli
+    import vermes_cli
     import types
 
     stub = types.SimpleNamespace(_SESSION_TOKEN="secret-xyz")
-    monkeypatch.setitem(sys.modules, "hermes_cli.web_server", stub)
-    monkeypatch.setattr(hermes_cli, "web_server", stub, raising=False)
+    monkeypatch.setitem(sys.modules, "vermes_cli.web_server", stub)
+    monkeypatch.setattr(vermes_cli, "web_server", stub, raising=False)
 
     app = FastAPI()
     app.include_router(_load_plugin_router(), prefix="/api/plugins/kanban")
@@ -1156,7 +1156,7 @@ def test_task_detail_includes_runs(client):
     # Drive status running to force a run creation: PATCH to running
     # doesn't call claim_task (the PATCH path uses _set_status_direct),
     # so use the bulk/claim indirection via the kernel.
-    import hermes_cli.kanban_db as _kb
+    import vermes_cli.kanban_db as _kb
     conn = _kb.connect()
     try:
         _kb.claim_task(conn, tid)
@@ -1194,7 +1194,7 @@ def test_patch_status_done_with_summary_and_metadata(client):
     # Create + claim.
     r = client.post("/api/plugins/kanban/tasks", json={"title": "x", "assignee": "worker"})
     tid = r.json()["task"]["id"]
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     conn = kb.connect()
     try:
         kb.claim_task(conn, tid)
@@ -1226,7 +1226,7 @@ def test_patch_status_done_without_summary_still_works(client):
     """Back-compat: PATCH without the new fields still completes."""
     r = client.post("/api/plugins/kanban/tasks", json={"title": "y", "assignee": "worker"})
     tid = r.json()["task"]["id"]
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     conn = kb.connect()
     try:
         kb.claim_task(conn, tid)
@@ -1250,7 +1250,7 @@ def test_patch_status_archive_closes_running_run(client):
     """PATCH to archived while running must close the in-flight run."""
     r = client.post("/api/plugins/kanban/tasks", json={"title": "z", "assignee": "worker"})
     tid = r.json()["task"]["id"]
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     conn = kb.connect()
     try:
         kb.claim_task(conn, tid)
@@ -1277,7 +1277,7 @@ def test_event_dict_includes_run_id(client):
     """GET /tasks/:id returns events with run_id populated."""
     r = client.post("/api/plugins/kanban/tasks", json={"title": "e", "assignee": "worker"})
     tid = r.json()["task"]["id"]
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     conn = kb.connect()
     try:
         kb.claim_task(conn, tid)
@@ -1360,7 +1360,7 @@ def test_create_task_includes_warning_when_no_dispatcher(client, monkeypatch):
     so the dashboard UI can surface a banner."""
     # Force the dispatcher probe to report "not running".
     monkeypatch.setattr(
-        "hermes_cli.kanban._check_dispatcher_presence",
+        "vermes_cli.kanban._check_dispatcher_presence",
         lambda: (False, "No gateway is running — start `hermes gateway start`."),
     )
     r = client.post(
@@ -1376,7 +1376,7 @@ def test_create_task_includes_warning_when_no_dispatcher(client, monkeypatch):
 def test_create_task_no_warning_when_dispatcher_up(client, monkeypatch):
     """Dispatcher running -> no `warning` field in the response."""
     monkeypatch.setattr(
-        "hermes_cli.kanban._check_dispatcher_presence",
+        "vermes_cli.kanban._check_dispatcher_presence",
         lambda: (True, ""),
     )
     r = client.post(
@@ -1391,7 +1391,7 @@ def test_create_task_no_warning_on_triage(client, monkeypatch):
     """Triage tasks never get the warning (they can't be dispatched
     anyway until promoted)."""
     monkeypatch.setattr(
-        "hermes_cli.kanban._check_dispatcher_presence",
+        "vermes_cli.kanban._check_dispatcher_presence",
         lambda: (False, "oh no"),
     )
     r = client.post(
@@ -1412,7 +1412,7 @@ def test_create_task_no_warning_on_triage(client, monkeypatch):
 # instead of 500'ing GET /board for the entire org.
 #
 # kanban_db._safe_int / task_age corruption paths are covered in
-# tests/hermes_cli/test_kanban_db.py. The OUTER fallback here is not, which
+# tests/vermes_cli/test_kanban_db.py. The OUTER fallback here is not, which
 # means a refactor that drops the try/except would not be caught by CI. The
 # tests below pin that contract.
 # ---------------------------------------------------------------------------
@@ -1445,7 +1445,7 @@ def test_board_endpoint_survives_task_age_exception(client, monkeypatch):
     # contract this test pins.
     def _boom(_task):
         raise RuntimeError("simulated future task_age bug")
-    monkeypatch.setattr("hermes_cli.kanban_db.task_age", _boom)
+    monkeypatch.setattr("vermes_cli.kanban_db.task_age", _boom)
 
     r = client.get("/api/plugins/kanban/board")
     assert r.status_code == 200, r.text
@@ -1476,7 +1476,7 @@ def test_single_task_endpoint_survives_task_age_exception(client, monkeypatch):
 
     def _boom(_task):
         raise RuntimeError("simulated future task_age bug")
-    monkeypatch.setattr("hermes_cli.kanban_db.task_age", _boom)
+    monkeypatch.setattr("vermes_cli.kanban_db.task_age", _boom)
 
     r = client.get(f"/api/plugins/kanban/tasks/{task_id}")
     assert r.status_code == 200, r.text
@@ -1488,7 +1488,7 @@ def test_create_task_probe_error_does_not_break_create(client, monkeypatch):
     def _raise():
         raise RuntimeError("probe crashed")
     monkeypatch.setattr(
-        "hermes_cli.kanban._check_dispatcher_presence", _raise,
+        "vermes_cli.kanban._check_dispatcher_presence", _raise,
     )
     r = client.post(
         "/api/plugins/kanban/tasks",
@@ -1546,7 +1546,7 @@ def test_home_channels_no_task_id_all_unsubscribed(client, with_home_channels):
 def test_home_subscribe_creates_notify_sub_row(client, with_home_channels):
     """POST .../home-subscribe/telegram writes a kanban_notify_subs row
     keyed to the telegram home's (chat_id, thread_id)."""
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
 
     r = client.post(f"/api/plugins/kanban/tasks/{t['id']}/home-subscribe/telegram")
@@ -1578,7 +1578,7 @@ def test_home_subscribe_flips_subscribed_flag_in_subsequent_get(client, with_hom
 
 def test_home_subscribe_is_idempotent(client, with_home_channels):
     """Re-subscribing keeps a single row at the DB layer."""
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
     client.post(f"/api/plugins/kanban/tasks/{t['id']}/home-subscribe/telegram")
     client.post(f"/api/plugins/kanban/tasks/{t['id']}/home-subscribe/telegram")
@@ -1592,7 +1592,7 @@ def test_home_subscribe_is_idempotent(client, with_home_channels):
 
 def test_home_subscribe_backfills_owner_on_legacy_row(client, with_home_channels):
     """Re-subscribing should backfill notifier ownership on ownerless rows."""
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
 
     conn = kb.connect()
@@ -1635,7 +1635,7 @@ def test_home_subscribe_unknown_task_returns_404(client, with_home_channels):
 
 def test_home_unsubscribe_removes_notify_sub_row(client, with_home_channels):
     """DELETE .../home-subscribe/telegram removes the matching row."""
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
     client.post(f"/api/plugins/kanban/tasks/{t['id']}/home-subscribe/telegram")
     r = client.delete(f"/api/plugins/kanban/tasks/{t['id']}/home-subscribe/telegram")
@@ -1650,7 +1650,7 @@ def test_home_unsubscribe_removes_notify_sub_row(client, with_home_channels):
 
 def test_home_subscribe_multiple_platforms_independent(client, with_home_channels):
     """Subscribing on telegram does not affect discord and vice versa."""
-    from hermes_cli import kanban_db as kb
+    from vermes_cli import kanban_db as kb
     t = client.post("/api/plugins/kanban/tasks", json={"title": "x"}).json()["task"]
 
     client.post(f"/api/plugins/kanban/tasks/{t['id']}/home-subscribe/telegram")
@@ -1696,7 +1696,7 @@ def test_board_surfaces_warnings_field_for_hallucinated_completions(client):
     a ``warnings`` object on the /board payload so the UI can badge
     them without fetching per-task events. The warnings summary is
     keyed by diagnostic kind (``hallucinated_cards``) rather than the
-    raw event kind — see hermes_cli.kanban_diagnostics for the rule
+    raw event kind — see vermes_cli.kanban_diagnostics for the rule
     that produces it.
     """
     conn = kb.connect()

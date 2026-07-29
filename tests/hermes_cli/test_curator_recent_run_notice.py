@@ -27,11 +27,11 @@ def curator_env(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-    import hermes_constants
-    importlib.reload(hermes_constants)
+    import vermes_constants
+    importlib.reload(vermes_constants)
     from agent import curator
     importlib.reload(curator)
-    from hermes_cli import main as hermes_main
+    from vermes_cli import main as hermes_main
     importlib.reload(hermes_main)
 
     yield {

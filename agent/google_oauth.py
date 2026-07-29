@@ -59,7 +59,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from hermes_constants import get_hermes_home, secure_parent_dir
+from vermes_constants import get_hermes_home, secure_parent_dir
 
 logger = logging.getLogger(__name__)
 
@@ -900,7 +900,7 @@ def start_oauth_flow(
             import webbrowser
 
             try:
-                from hermes_cli.auth import (
+                from vermes_cli.auth import (
                     _can_open_graphical_browser as _can_open_gui,
                 )
             except Exception:

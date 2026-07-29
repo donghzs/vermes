@@ -12,7 +12,7 @@ from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
 from prompt_toolkit.input.vt100_parser import Vt100Parser
 from prompt_toolkit.keys import Keys
 
-from hermes_cli.pt_input_extras import install_shift_enter_alias
+from vermes_cli.pt_input_extras import install_shift_enter_alias
 
 
 SHIFT_ENTER_SEQUENCES = (

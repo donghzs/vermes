@@ -49,7 +49,7 @@ def _audio_available() -> bool:
         return False
 
 
-from hermes_constants import is_termux as _is_termux_environment
+from vermes_constants import is_termux as _is_termux_environment
 
 
 def _voice_capture_install_hint() -> str:
@@ -102,7 +102,7 @@ def detect_audio_environment() -> dict:
         warnings.append("Running over SSH -- no audio devices available")
 
     # Docker/Podman container detection
-    from hermes_constants import is_container
+    from vermes_constants import is_container
     if is_container():
         warnings.append("Running inside Docker container -- no audio devices")
 

@@ -1,7 +1,7 @@
 """CNKI 知网 literature provider — credential-driven (pluggable).
 
 Reuses the battle-tested multi-strategy fetcher in
-:mod:`hermes_cli.scholarforge.cnki_fetcher` (user gateway → Wanfang API →
+:mod:`vermes_cli.scholarforge.cnki_fetcher` (user gateway → Wanfang API →
 OpenAlex-CN fallback). A user activates this provider by supplying *either*:
 
 * ``CNKI_GATEWAY_URL`` + ``CNKI_API_KEY`` (self-hosted gateway), or
@@ -103,7 +103,7 @@ class CnkiProvider(LiteratureProvider):
 
     def search(self, query: str, limit: int = 10) -> Dict[str, Any]:
         try:
-            from hermes_cli.scholarforge.cnki_fetcher import search_cnki
+            from vermes_cli.scholarforge.cnki_fetcher import search_cnki
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "error": f"无法加载 CNKI fetcher: {exc}"}
 

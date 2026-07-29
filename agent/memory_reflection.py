@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from hermes_constants import get_hermes_home
+from vermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def get_reflection_min_idle_hours() -> float:
     # 直接复制 curator 逻辑，避免循环 import
     DEFAULT_MIN_IDLE_HOURS = 0.5
     try:
-        from hermes_constants import get_hermes_home
+        from vermes_constants import get_hermes_home
         cfg_path = get_hermes_home() / "curator_config.json"
         if cfg_path.exists():
             import json as _json

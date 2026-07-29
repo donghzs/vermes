@@ -215,7 +215,7 @@ async def test_auto_registers_plugin_commands_for_discord(adapter):
     adapter._run_simple_slash = AsyncMock()
 
     with patch(
-        "hermes_cli.plugins.get_plugin_commands",
+        "vermes_cli.plugins.get_plugin_commands",
         return_value={
             "metricas": {
                 "handler": lambda _a: "ok",
@@ -244,7 +244,7 @@ async def test_auto_registered_plugin_command_without_args_hint(adapter):
     adapter._run_simple_slash = AsyncMock()
 
     with patch(
-        "hermes_cli.plugins.get_plugin_commands",
+        "vermes_cli.plugins.get_plugin_commands",
         return_value={
             "ping": {
                 "handler": lambda _a: "pong",
@@ -269,7 +269,7 @@ async def test_plugin_command_name_conflict_skipped(adapter):
     adapter._run_simple_slash = AsyncMock()
 
     with patch(
-        "hermes_cli.plugins.get_plugin_commands",
+        "vermes_cli.plugins.get_plugin_commands",
         return_value={
             "status": {
                 "handler": lambda _a: "plugin-status",
@@ -807,7 +807,7 @@ def test_register_skill_command_is_flat_not_nested(adapter):
     ]
 
     with patch(
-        "hermes_cli.commands.discord_skill_commands_by_category",
+        "vermes_cli.commands.discord_skill_commands_by_category",
         return_value=(mock_categories, mock_uncategorized, 0),
     ):
         adapter._register_slash_commands()
@@ -825,7 +825,7 @@ def test_register_skill_command_is_flat_not_nested(adapter):
 def test_register_skill_command_empty_skills_no_command(adapter):
     """No /skill command should be registered when there are zero skills."""
     with patch(
-        "hermes_cli.commands.discord_skill_commands_by_category",
+        "vermes_cli.commands.discord_skill_commands_by_category",
         return_value=({}, [], 0),
     ):
         adapter._register_slash_commands()
@@ -848,7 +848,7 @@ def test_register_skill_command_callback_dispatches_by_name(adapter):
     ]
 
     with patch(
-        "hermes_cli.commands.discord_skill_commands_by_category",
+        "vermes_cli.commands.discord_skill_commands_by_category",
         return_value=(mock_categories, mock_uncategorized, 0),
     ):
         adapter._register_slash_commands()
@@ -880,7 +880,7 @@ def test_register_skill_command_handles_unknown_skill_gracefully(adapter):
     an ephemeral error message, NOT crash the callback.
     """
     with patch(
-        "hermes_cli.commands.discord_skill_commands_by_category",
+        "vermes_cli.commands.discord_skill_commands_by_category",
         return_value=({"media": [("gif-search", "GIFs", "/gif-search")]}, [], 0),
     ):
         adapter._register_slash_commands()
@@ -928,7 +928,7 @@ def test_register_skill_command_payload_fits_discord_8kb_limit(adapter):
         ]
 
     with patch(
-        "hermes_cli.commands.discord_skill_commands_by_category",
+        "vermes_cli.commands.discord_skill_commands_by_category",
         return_value=(large_categories, [], 0),
     ):
         adapter._register_slash_commands()
@@ -964,7 +964,7 @@ def test_register_skill_command_autocomplete_filters_by_name_and_description(ada
     }
 
     with patch(
-        "hermes_cli.commands.discord_skill_commands_by_category",
+        "vermes_cli.commands.discord_skill_commands_by_category",
         return_value=(mock_categories, [], 0),
     ):
         adapter._register_slash_commands()

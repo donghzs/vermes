@@ -3,7 +3,7 @@
 
 Keep package import side effects minimal. Importing ``tools`` should not
 eagerly import the full tool stack, because several subsystems load tools while
-``hermes_cli.config`` is still initializing.
+``vermes_cli.config`` is still initializing.
 
 Callers should import concrete submodules directly, for example:
 

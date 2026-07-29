@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hermes_cli import codex_runtime_switch as crs
+from vermes_cli import codex_runtime_switch as crs
 
 
 class TestParseArgs:
@@ -122,7 +122,7 @@ class TestApply:
         # codex config.
         with patch.object(crs, "check_codex_binary_ok",
                           return_value=(True, "0.130.0")), \
-             patch("hermes_cli.codex_runtime_plugin_migration.migrate"):
+             patch("vermes_cli.codex_runtime_plugin_migration.migrate"):
             r = crs.apply(cfg, "codex_app_server", persist_callback=persist)
         assert r.success
         assert r.new_value == "codex_app_server"
@@ -166,7 +166,7 @@ class TestApply:
 
         with patch.object(crs, "check_codex_binary_ok",
                           return_value=(True, "0.130.0")), \
-             patch("hermes_cli.codex_runtime_plugin_migration.migrate") as mig:
+             patch("vermes_cli.codex_runtime_plugin_migration.migrate") as mig:
             mig.return_value.migrated = ["filesystem", "hermes-tools"]
             mig.return_value.migrated_plugins = []
             mig.return_value.plugin_query_error = None
@@ -190,7 +190,7 @@ class TestApply:
             "model": {"openai_runtime": "codex_app_server"},
             "mcp_servers": {"x": {"command": "y"}},
         }
-        with patch("hermes_cli.codex_runtime_plugin_migration.migrate") as mig:
+        with patch("vermes_cli.codex_runtime_plugin_migration.migrate") as mig:
             r = crs.apply(cfg, "auto")
         assert r.success
         assert not mig.called  # disabling does not migrate
@@ -201,7 +201,7 @@ class TestApply:
         cfg = {"mcp_servers": {"x": {"command": "y"}}}
         with patch.object(crs, "check_codex_binary_ok",
                           return_value=(True, "0.130.0")), \
-             patch("hermes_cli.codex_runtime_plugin_migration.migrate",
+             patch("vermes_cli.codex_runtime_plugin_migration.migrate",
                    side_effect=RuntimeError("disk full")):
             r = crs.apply(cfg, "codex_app_server")
         assert r.success  # change still applied
@@ -220,7 +220,7 @@ class TestApply:
         cfg = {}
         with patch.object(crs, "check_codex_binary_ok",
                           return_value=(True, "0.130.0")) as bin_check, \
-             patch("hermes_cli.codex_runtime_plugin_migration.migrate"):
+             patch("vermes_cli.codex_runtime_plugin_migration.migrate"):
             r = crs.apply(cfg, "codex_app_server")
         assert r.success
         assert bin_check.call_count == 1, (

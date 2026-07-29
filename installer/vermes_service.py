@@ -75,7 +75,7 @@ class VermesGatewayService:
 
         try:
             import uvicorn
-            from hermes_cli.web_server import app
+            from vermes_cli.web_server import app
 
             config = uvicorn.Config(
                 app,

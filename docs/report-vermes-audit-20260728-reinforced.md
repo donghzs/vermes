@@ -17,17 +17,17 @@
 
 | 指标 | 初稿声称 | 实测（代码取证） | 备注 |
 |---|---|---|---|
-| 生产源码 Python 总行数 | ~42 万（hermes_cli/agent/gateway/tools 四目录） | **544,006 行**（861 个 .py，纯源码树，排除 tests/dist/依赖） | 初稿口径漏算 `cli.py`(13.7k)、`run_agent.py`(5k)、`tui_gateway`(6.6k) 等顶层/旁支；若含 tests 则总 ~100 万行 |
+| 生产源码 Python 总行数 | ~42 万（vermes_cli/agent/gateway/tools 四目录） | **544,006 行**（861 个 .py，纯源码树，排除 tests/dist/依赖） | 初稿口径漏算 `cli.py`(13.7k)、`run_agent.py`(5k)、`tui_gateway`(6.6k) 等顶层/旁支；若含 tests 则总 ~100 万行 |
 | 测试总量 | 46 万行 / 1309 文件 | **458,563 行 / 1309 文件**（仅 `tests/`） | 精确吻合 |
 | 测试:生产比 | ≈1:1 | **≈0.85:1**（45.9万 / 54.4万） | 仍极罕见，但非严格 1:1 |
 | commit 总数 | 889 | **890**（本地含 1 个 c5 提交） | 吻合 |
 | 7 月 commit 数 | 401 | **402** | 吻合 |
 | 渠道 adapter | 35 个 | **25 个** `BasePlatformAdapter` 子类 | 初稿高估 10 个 |
-| 上帝文件(>3000行) | 20 个 | **纯源码树 25+ 个**（含 cli.py 13681 / hermes_cli/main.py 13193） | 初稿低估 |
+| 上帝文件(>3000行) | 20 个 | **纯源码树 25+ 个**（含 cli.py 13681 / vermes_cli/main.py 13193） | 初稿低估 |
 | except Exception | 5456 处 | **5301 处**（纯源码） | 吻合 |
 | 静默吞(except:pass) | 247 处 | **8 处**（裸 `except:` 6 + `except X: pass` 2） | **初稿严重高估**；"247"应为把 `except: logger.warn(...)` 等"记日志但吞异常"也算入，需分两级（见 §3） |
 | 前端 i18n | 零，locales 16 种只服务 CLI | frontend 下 vue-i18n/`$t(`/locales 引用 **0 处**；根 `locales/` 含 11+ yaml（af/de/en/es/fr/ga/hu/it/ja/ko…）服务 CLI | 精确吻合 |
-| migrations 机制 | 缺位（靠内联 ALTER） | **`migrations/` 目录存在**（`2.0.3_to_2.0.5.py` 5336行 + README），`hermes_cli/update_manager.py:620 run_migrations()` 驱动，`claw.py` 有 `cmd_migrate` 入口；但 `hermes_state.py: SCHEMA_VERSION=14` 仍内联 ALTER 兜底 | **初稿"缺位"论断错误**；实为"双轨并存、正式迁移文件稀疏" |
+| migrations 机制 | 缺位（靠内联 ALTER） | **`migrations/` 目录存在**（`2.0.3_to_2.0.5.py` 5336行 + README），`vermes_cli/update_manager.py:620 run_migrations()` 驱动，`claw.py` 有 `cmd_migrate` 入口；但 `hermes_state.py: SCHEMA_VERSION=14` 仍内联 ALTER 兜底 | **初稿"缺位"论断错误**；实为"双轨并存、正式迁移文件稀疏" |
 
 ---
 
@@ -48,7 +48,7 @@
 - 误报修正：静默吞非 247 处，真实硬静默仅个位数（见 §3）。
 
 ### 架构 — 7.3（原 7.4 微调）
-- 分层意图清晰，但债务具体：**25+ 个 >3000 行上帝文件**（cli.py 13681 / hermes_cli/main.py 13193 / auth.py 7419 / tui_gateway/server.py 6651 / kanban_db.py 6179 / conversation_loop.py 4902 等）。
+- 分层意图清晰，但债务具体：**25+ 个 >3000 行上帝文件**（cli.py 13681 / vermes_cli/main.py 13193 / auth.py 7419 / tui_gateway/server.py 6651 / kanban_db.py 6179 / conversation_loop.py 4902 等）。
 - `SessionDB` 85 方法职责过重；agent→gateway 反向依赖 7 处。
 - **migrations 并非缺位**：机制存在但稀疏（仅 1 个迁移文件），`SCHEMA_VERSION=14` 仍靠内联 ALTER 演进。优化方向是"把内联 ALTER 追缴成正式迁移文件"，而非从零建机制。
 
@@ -114,7 +114,7 @@
 ### P2（中期：CI 覆盖扩展 + 架构债）
 2. **CI 测试覆盖扩展（原 P1-② 降级重定义）**：gateway 门禁已硬，真正缺口是覆盖仅 25%。按 §6 三层守门模型落地——P1 最低垂动作"加 nightly 全量 job"已落地（`ci-quality-gate.yml` 的 `nightly-full`），其余（分目录 L1 路由、清偿 QUARANTINE 103、启动守卫 harness 进 L0）逐步推进。
 3. **migrations 追缴**：把 `hermes_state.py` 内联 ALTER（SCHEMA_VERSION 14）逐步抽成 `migrations/` 下的正式文件，统一由 `update_manager.run_migrations` 驱动。机制已存在，只需补文件。
-4. **上帝文件分治**：先拆 `cli.py`(13681) / `hermes_cli/main.py`(13193) 两个 1.3 万行巨物（按职责抽 commands / lifecycle / config 子模块）。
+4. **上帝文件分治**：先拆 `cli.py`(13681) / `vermes_cli/main.py`(13193) 两个 1.3 万行巨物（按职责抽 commands / lifecycle / config 子模块）。
 
 ### P3（出海 / 体验前置）
 5. **i18n**：前端零 i18n，locales 11+ 种 yaml 已服务 CLI。出海前需把前端硬编码中文抽到 i18n（现在动手成本最低，越晚越贵）。
@@ -136,7 +136,7 @@
 | 层 | 触发 | 跑什么 | 阻断？ | 预算 |
 |---|---|---|---|---|
 | **L0 快门** | 每次 PR/push | 核心链路 + 启动守卫 harness（`scripts/test_*.mjs` c1-c5）+ `tests/gateway/` | 硬阻断 | <10min |
-| **L1 影响域门** | PR 合并前 | 按改动目录路由：动 `agent/` 跑 `tests/agent/`、动 `frontend/` 跑 playwright、动 `hermes_cli/` 跑对应 | 硬阻断 | <15min |
+| **L1 影响域门** | PR 合并前 | 按改动目录路由：动 `agent/` 跑 `tests/agent/`、动 `frontend/` 跑 playwright、动 `vermes_cli/` 跑对应 | 硬阻断 | <15min |
 | **L2 全量门** | 定时/手动 | `tests/` 全量（含 stress/integration/e2e） | 报告不阻断 | 不限时 |
 
 **关键认知**：75% 长尾测试不该每次 PR 阻断，但也不能睡死——放进 L2 nightly，既保住资产价值又不挡迭代。这正是"适应开发进度"的解法：快门永远快，重活放到夜里。
@@ -150,7 +150,7 @@
 **落地优先级（已按性价比排序）**：
 
 - **P1（最低垂，已落地）**：修配置债 + 加 L2 nightly——`ci-quality-gate.yml` 新增 `nightly-full` job：`python -m pytest tests/ --tb=short -q --timeout=120`，`if: schedule`，失败只进 summary 不阻断。零风险，~15 行，唤醒死资产。
-- **P2**：分目录接入 L1 影响域路由（先接 `tests/agent/` 自进化核心 + `tests/hermes_cli/` 启动链路）；接前先清偿 QUARANTINE 103 项（"只许缩短"做趋势管理）。
+- **P2**：分目录接入 L1 影响域路由（先接 `tests/agent/` 自进化核心 + `tests/vermes_cli/` 启动链路）；接前先清偿 QUARANTINE 103 项（"只许缩短"做趋势管理）。
 - **P3**：把 `scripts/test_*.mjs` 启动守卫 harness 正式接进 L0（已接 `verify-desktop-contracts` 跑全部 c1-c5 + P1-① 更新断路契约）。
 
 ## 7. 一句话总结（修正版）
@@ -164,5 +164,5 @@
 - 上帝文件：`... | awk '$1>3000'`
 - 更新断路：`git show 4c2cbcbc6`、`grep -n "ipcMain.handle(" electron/main.js`、`sed -n '60,160p' frontend/src/stores/update.js`
 - 静默吞：`grep -nE "except[ A-Za-z_]*:\s*pass\s*$" --include="*.py"`
-- migrations：`ls migrations/`、`grep -n "run_migrations" hermes_cli/update_manager.py`
+- migrations：`ls migrations/`、`grep -n "run_migrations" vermes_cli/update_manager.py`
 - 渠道 adapter：`grep -rhn "^class .*Platform" gateway/platforms/*.py`

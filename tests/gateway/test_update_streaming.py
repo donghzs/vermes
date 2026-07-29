@@ -79,7 +79,7 @@ class TestGatewayPrompt:
         thread.start()
 
         with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
-            from hermes_cli.main import _gateway_prompt
+            from vermes_cli.main import _gateway_prompt
             result = _gateway_prompt("Restore? [Y/n]", "y", timeout=5.0)
 
         thread.join()
@@ -110,7 +110,7 @@ class TestGatewayPrompt:
         thread.start()
 
         with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
-            from hermes_cli.main import _gateway_prompt
+            from vermes_cli.main import _gateway_prompt
             _gateway_prompt("Configure now? [Y/n]", "n", timeout=5.0)
 
         thread.join()
@@ -125,7 +125,7 @@ class TestGatewayPrompt:
         hermes_home.mkdir()
 
         with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
-            from hermes_cli.main import _gateway_prompt
+            from vermes_cli.main import _gateway_prompt
             result = _gateway_prompt("test?", "default_val", timeout=0.5)
 
         assert result == "default_val"
@@ -138,7 +138,7 @@ class TestGatewayPrompt:
 
         # Write prompt file so the function starts polling
         with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
-            from hermes_cli.main import _gateway_prompt
+            from vermes_cli.main import _gateway_prompt
             # Pre-create the response
             result = _gateway_prompt("test?", "default_val", timeout=2.0)
 
@@ -155,7 +155,7 @@ class TestRestoreStashWithInputFn:
 
     def test_uses_input_fn_when_provided(self, tmp_path):
         """When input_fn is provided, it's called instead of input()."""
-        from hermes_cli.main import _restore_stashed_changes
+        from vermes_cli.main import _restore_stashed_changes
 
         captured_args = []
 
@@ -179,7 +179,7 @@ class TestRestoreStashWithInputFn:
 
     def test_input_fn_yes_proceeds_with_restore(self, tmp_path):
         """When input_fn returns 'y', stash apply is attempted."""
-        from hermes_cli.main import _restore_stashed_changes
+        from vermes_cli.main import _restore_stashed_changes
 
         call_count = [0]
 
@@ -712,7 +712,7 @@ class TestCmdUpdateGatewayMode:
 
     def test_gateway_flag_enables_gateway_prompt_for_stash(self, tmp_path):
         """With --gateway, stash restore uses _gateway_prompt instead of input()."""
-        from hermes_cli.main import _restore_stashed_changes
+        from vermes_cli.main import _restore_stashed_changes
 
         # Use input_fn to verify the gateway path is taken
         calls = []

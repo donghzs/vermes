@@ -1,7 +1,7 @@
 """Wanfang 万方 literature provider — credential-driven (pluggable).
 
 Uses the Wanfang Open API strategy from
-:mod:`hermes_cli.scholarforge.cnki_fetcher` (reused verbatim — the private
+:mod:`vermes_cli.scholarforge.cnki_fetcher` (reused verbatim — the private
 ``_fetch_via_wanfang`` helper is the canonical Wanfang implementation in-tree).
 A user activates this provider by supplying *either* ``WANFANG_API_KEY`` or a
 ``WANFANG_USER`` / ``WANFANG_PASSWORD`` pair. Credential metadata is declared
@@ -56,7 +56,7 @@ class WanfangProvider(LiteratureProvider):
         try:
             # Reuse the in-tree Wanfang strategy (private helper, stable within
             # the same repo/package).
-            from hermes_cli.scholarforge.cnki_fetcher import _fetch_via_wanfang
+            from vermes_cli.scholarforge.cnki_fetcher import _fetch_via_wanfang
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "error": f"无法加载 Wanfang fetcher: {exc}"}
 

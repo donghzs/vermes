@@ -90,7 +90,7 @@ def test_update_version_files_bumps_manifest_alongside_pyproject(
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "hermes-agent"\nversion = "0.13.0"\n', encoding="utf-8"
     )
-    version_dir = tmp_path / "hermes_cli"
+    version_dir = tmp_path / "vermes_cli"
     version_dir.mkdir()
     (version_dir / "__init__.py").write_text(
         '__version__ = "0.13.0"\n__release_date__ = "2026-05-14"\n',

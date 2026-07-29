@@ -25,7 +25,7 @@ Design notes (parity with the Cline port):
     the monitor rather than crashing the gateway.
 
 Config: ``logging.memory_monitor`` in ``config.yaml`` — see
-``hermes_cli/config.py`` for the defaults block.
+``vermes_cli/config.py`` for the defaults block.
 """
 
 from __future__ import annotations

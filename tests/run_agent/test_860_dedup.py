@@ -44,7 +44,7 @@ class TestFlushDeduplication:
 
     def test_flush_writes_only_new_messages(self):
         """First flush writes all new messages, second flush writes none."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"
@@ -74,7 +74,7 @@ class TestFlushDeduplication:
 
     def test_flush_writes_incrementally(self):
         """Messages added between flushes are written exactly once."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"
@@ -103,7 +103,7 @@ class TestFlushDeduplication:
 
     def test_persist_session_multiple_calls_no_duplication(self):
         """Multiple _persist_session calls don't duplicate DB entries."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"
@@ -130,7 +130,7 @@ class TestFlushDeduplication:
 
     def test_flush_reset_after_compression(self):
         """After compression creates a new session, flush index resets."""
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test.db"
@@ -204,7 +204,7 @@ class TestAppendToTranscriptSkipDb:
         """With skip_db=True and a real DB, message does NOT appear in SQLite."""
         from gateway.config import GatewayConfig
         from gateway.session import SessionStore
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         db_path = tmp_path / "test_skip.db"
         db = SessionDB(db_path=db_path)
@@ -235,7 +235,7 @@ class TestAppendToTranscriptSkipDb:
         """Without skip_db, message appears in both JSONL and SQLite."""
         from gateway.config import GatewayConfig
         from gateway.session import SessionStore
-        from hermes_state import SessionDB
+        from vermes_state import SessionDB
 
         db_path = tmp_path / "test_both.db"
         db = SessionDB(db_path=db_path)

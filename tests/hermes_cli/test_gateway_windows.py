@@ -1,12 +1,12 @@
-"""Tests for hermes_cli.gateway_windows."""
+"""Tests for vermes_cli.gateway_windows."""
 
 from pathlib import Path
 
 import pytest
 
-import hermes_cli.gateway as gateway
-import hermes_cli.gateway_windows as gateway_windows
-import hermes_cli.setup as setup
+import vermes_cli.gateway as gateway
+import vermes_cli.gateway_windows as gateway_windows
+import vermes_cli.setup as setup
 
 
 @pytest.mark.parametrize(
@@ -50,17 +50,17 @@ def test_build_gateway_argv_uses_base_pythonw_for_uv_venv_launcher(monkeypatch, 
         encoding="utf-8",
     )
 
-    import hermes_cli.gateway as gateway
+    import vermes_cli.gateway as gateway
 
     monkeypatch.setattr(gateway_windows.sys, "platform", "win32")
     monkeypatch.setattr(gateway, "PROJECT_ROOT", project)
     monkeypatch.setattr(gateway, "get_python_path", lambda: str(venv_python))
     monkeypatch.setattr(gateway, "_profile_arg", lambda hermes_home: "")
-    monkeypatch.setattr("hermes_cli.config.get_hermes_home", lambda: str(tmp_path / "hermes-home"))
+    monkeypatch.setattr("vermes_cli.config.get_hermes_home", lambda: str(tmp_path / "hermes-home"))
 
     argv, cwd, env_overlay = gateway_windows._build_gateway_argv()
 
-    assert argv[:3] == [str(base_pythonw), "-m", "hermes_cli.main"]
+    assert argv[:3] == [str(base_pythonw), "-m", "vermes_cli.main"]
     assert cwd == str(project)
     assert env_overlay["VIRTUAL_ENV"] == str(project / "venv")
     assert str(project) in env_overlay["PYTHONPATH"].split(gateway_windows.os.pathsep)

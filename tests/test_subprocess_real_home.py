@@ -26,13 +26,13 @@ class TestGetRealHome:
 
     def test_returns_home_env(self):
         """When HOME is set, get_real_home returns it."""
-        from hermes_constants import get_real_home
+        from vermes_constants import get_real_home
         with mock.patch.dict(os.environ, {"HOME": "/home/testuser"}, clear=False):
             assert get_real_home() == "/home/testuser"
 
     def test_prefers_hermes_real_home(self):
         """HERMES_REAL_HOME takes priority over HOME."""
-        from hermes_constants import get_real_home
+        from vermes_constants import get_real_home
         with mock.patch.dict(os.environ, {
             "HERMES_REAL_HOME": "/home/real",
             "HOME": "/home/fake",
@@ -41,7 +41,7 @@ class TestGetRealHome:
 
     def test_fallback_expanduser(self):
         """When HOME is empty, falls back to expanduser."""
-        from hermes_constants import get_real_home
+        from vermes_constants import get_real_home
         with mock.patch.dict(os.environ, {"HOME": ""}, clear=False):
             result = get_real_home()
             assert result  # not empty
@@ -49,7 +49,7 @@ class TestGetRealHome:
 
     def test_fallback_tmp(self):
         """Last resort is /tmp."""
-        from hermes_constants import get_real_home
+        from vermes_constants import get_real_home
         with mock.patch.dict(os.environ, {}, clear=True):
             # Remove HOME and HERMES_REAL_HOME
             env = {k: v for k, v in os.environ.items()
@@ -78,7 +78,7 @@ class TestSubprocessEnvRealHome:
             "HOME": "/home/testuser",
             "HERMES_HOME": str(profile_home),
         }, clear=False):
-            from hermes_constants import get_subprocess_home, get_real_home
+            from vermes_constants import get_subprocess_home, get_real_home
             
             profile_home_val = get_subprocess_home()
             assert profile_home_val == str(home_dir)
@@ -103,7 +103,7 @@ class TestSubprocessEnvRealHome:
             importlib.reload(local_mod)
             
             # The function should add HERMES_REAL_HOME when profile home is active
-            from hermes_constants import get_real_home
+            from vermes_constants import get_real_home
             assert get_real_home() == "/home/testuser"
 
     def test_no_real_home_when_not_isolated(self):
@@ -112,7 +112,7 @@ class TestSubprocessEnvRealHome:
             "HOME": "/home/testuser",
             "HERMES_HOME": "/home/testuser/.hermes",
         }, clear=False):
-            from hermes_constants import get_subprocess_home
+            from vermes_constants import get_subprocess_home
             result = get_subprocess_home()
             assert result is None  # No profile home dir
 

@@ -171,7 +171,7 @@ async def test_reasoning_rejected_mid_run():
 async def test_btw_dispatches_mid_run():
     """/btw mid-run must dispatch to /background's handler, not hit the catch-all.
 
-    /btw is an alias of /background (see hermes_cli/commands.py). Typing
+    /btw is an alias of /background (see vermes_cli/commands.py). Typing
     /btw mid-turn must spawn a parallel background task — that's the whole
     point of the command. Before the mid-turn bypass was added for
     /background, /btw fell through to the "Agent is running — wait or

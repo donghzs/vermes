@@ -7,7 +7,7 @@ from fastapi import HTTPException
 @pytest.fixture()
 def isolated_profiles(tmp_path, monkeypatch):
     """Give profile discovery an isolated default home with one named profile."""
-    from hermes_cli import profiles
+    from vermes_cli import profiles
 
     default_home = tmp_path / ".hermes"
     profiles_root = default_home / "profiles"
@@ -24,7 +24,7 @@ def isolated_profiles(tmp_path, monkeypatch):
 
 def test_call_cron_for_profile_routes_storage_and_restores_globals(isolated_profiles):
     from cron import jobs as cron_jobs
-    from hermes_cli import web_server
+    from vermes_cli import web_server
 
     old_cron_dir = cron_jobs.CRON_DIR
     old_jobs_file = cron_jobs.JOBS_FILE
@@ -52,7 +52,7 @@ def test_call_cron_for_profile_routes_storage_and_restores_globals(isolated_prof
 
 @pytest.mark.asyncio
 async def test_list_cron_jobs_all_includes_default_and_named_profiles(isolated_profiles):
-    from hermes_cli import web_server
+    from vermes_cli import web_server
 
     default_job = web_server._call_cron_for_profile(
         "default",
@@ -83,7 +83,7 @@ async def test_list_cron_jobs_all_includes_default_and_named_profiles(isolated_p
 
 @pytest.mark.asyncio
 async def test_list_cron_jobs_specific_profile_filters_results(isolated_profiles):
-    from hermes_cli import web_server
+    from vermes_cli import web_server
 
     web_server._call_cron_for_profile(
         "default",
@@ -108,7 +108,7 @@ async def test_list_cron_jobs_specific_profile_filters_results(isolated_profiles
 
 @pytest.mark.asyncio
 async def test_cron_mutation_without_profile_finds_named_profile_job(isolated_profiles):
-    from hermes_cli import web_server
+    from vermes_cli import web_server
 
     worker_job = web_server._call_cron_for_profile(
         "worker_alpha",
@@ -133,7 +133,7 @@ async def test_cron_mutation_without_profile_finds_named_profile_job(isolated_pr
 
 @pytest.mark.asyncio
 async def test_cron_delete_with_profile_deletes_only_target_profile(isolated_profiles):
-    from hermes_cli import web_server
+    from vermes_cli import web_server
 
     default_job = web_server._call_cron_for_profile(
         "default",
@@ -161,7 +161,7 @@ async def test_cron_delete_with_profile_deletes_only_target_profile(isolated_pro
 
 @pytest.mark.asyncio
 async def test_cron_profile_validation_errors(isolated_profiles):
-    from hermes_cli import web_server
+    from vermes_cli import web_server
 
     with pytest.raises(HTTPException) as bad_name:
         await web_server.list_cron_jobs(profile="../bad")

@@ -12,8 +12,8 @@
 | 步骤 | 内容 | 状态 | 关键文件 |
 |---|---|---|---|
 | 1 | 前端双源合并统一视图（读闭环） | ✅ | `frontend/src/stores/chat-storage.js`、`chat.js`、`Sidebar.vue` |
-| 2 | web/桌面会话落 `state.db`（承重项） | ✅ | `hermes_cli/blueprints/chat.py` |
-| 3 | `send-from-desktop` 桥（写闭环）+ §3.5 渠道还原元数据 | ✅ | `hermes_cli/blueprints/session.py`、`gateway/{message_handler_mixin,watcher_mixin,session}.py`、`hermes_state.py` |
+| 2 | web/桌面会话落 `state.db`（承重项） | ✅ | `vermes_cli/blueprints/chat.py` |
+| 3 | `send-from-desktop` 桥（写闭环）+ §3.5 渠道还原元数据 | ✅ | `vermes_cli/blueprints/session.py`、`gateway/{message_handler_mixin,watcher_mixin,session}.py`、`hermes_state.py` |
 | 4 | 记忆 scope 治理（按渠道记 + 跨渠道加权） | ✅（机制+契约落地，单 agent 下休眠、多 agent 前置储备） | `agent/memory_fabric.py`、`run_agent.py`、`agent/{memory_manager,memory_provider,rag_provider}.py` |
 | — | 存量回填脚本（§3.5） | ✅ | `scripts/backfill_session_origin.py`、`tests/test_session_origin_columns.py` |
 
@@ -34,7 +34,7 @@
 
 ## 2. 步骤 2 — web/桌面会话落 `state.db`（承重项）
 
-`hermes_cli/blueprints/chat.py` 的 `chat_completions` → `agent.run_conversation` 路径，每轮追加写 `state.db`：
+`vermes_cli/blueprints/chat.py` 的 `chat_completions` → `agent.run_conversation` 路径，每轮追加写 `state.db`：
 
 - 新增 `_persist_web_turn_to_state_db(session_id, user_message, final_response)`：`SessionDB().create_session(session_id, source="web")`（INSERT OR IGNORE 幂等）+ `append_message(user)` + `append_message(assistant)`。
 - **双写写点**：流式（`run_sync` 内 `run_conversation` 返回后）与非流式（`final_response` 算出后）两处各调用一次。**失败 open**：整个写入包在 `try/except` 内，state.db 异常绝不阻塞用户看到回复。
@@ -47,7 +47,7 @@
 
 ### 3.1 写闭环（桌面代发 → 原渠道）
 
-- **端点**（`hermes_cli/blueprints/session.py`）：`POST /api/sessions/{id}/send-from-desktop` 只做「校验 + 写 pending relay 信号 + 立即返回」。**不跑 agent、不 append_message**（gateway 管线统一落库）。拒绝 `source='web'`（防环路）。`GET /api/sessions/{id}/relay-state` 供前端轮询。
+- **端点**（`vermes_cli/blueprints/session.py`）：`POST /api/sessions/{id}/send-from-desktop` 只做「校验 + 写 pending relay 信号 + 立即返回」。**不跑 agent、不 append_message**（gateway 管线统一落库）。拒绝 `source='web'`（防环路）。`GET /api/sessions/{id}/relay-state` 供前端轮询。
 - **消费**（`gateway/watcher_mixin.py`）：`_handoff_watcher` 轮询 state.db，识别 `relay_source='desktop'` 记录 → 过期标 `failed` + `clear_desktop_relay` → `claim_handoff` 后走 `_process_desktop_relay` → `_find_source_by_session_id` 还原 `SessionSource` → 构造 `internal MessageEvent` → `_handle_message(event)`（agent 运行、回复经 `adapter.send` 回原渠道、管线落库、记忆逐轮摄入）。
 - **护栏三件套**：`X-Hermes-Session-Token` 防伪造（web_server auth_middleware 强制校验，**缺失/伪造 → 401**）；300s 超时回退（前端 5min + 后端 `relay_expire_at` 过期标 failed）；`claim_handoff` 幂等防重放（重复 relay → **409**）；拒绝 `source='web'` 防环路（端点层 → **400**）。
 - **状态码口径（统一）**：token 护栏 = **401**（中间件层，非 403——设计稿 §2 曾写「`X-Desktop-Token` → 403」，实现改为复用全站 `X-Hermes-Session-Token` auth_middleware，返回 401，以设计稿附录勘误为准）；`source='web'` 拒绝 = **400**（端点层）；relay 防重放 = **409**（端点层）。
@@ -112,7 +112,7 @@
 
 - `uv run pytest tests/test_hermes_state.py tests/test_session_handoff.py tests/test_memory_recall.py tests/test_memory_budget.py tests/gateway/test_session.py tests/gateway/test_session_list_allowed_sources.py tests/gateway/test_session_store_prune.py tests/gateway/test_active_session_text_merge.py` → **400 passed**。
 - 新增 `tests/test_session_origin_columns.py`：断言「打开旧库不加 §3.5 列（回滚安全）+ 写渠道会话惰性补齐并持久化 chat_id/origin_json + relay 路径可用」→ **1 passed**。
-- 全量改模块导入冒烟（`run_agent` / `agent.memory_*` / `hermes_cli.blueprints.*` / `gateway.*`）→ 通过。
+- 全量改模块导入冒烟（`run_agent` / `agent.memory_*` / `vermes_cli.blueprints.*` / `gateway.*`）→ 通过。
 - `scripts/backfill_session_origin.py --dry-run` 在当前 state.db 实测：scanned=233, backfilled=0, skipped=233（与 §3.4 发现一致）。
 - 已知前置失败：`tests/agent/test_emergent_change.py` 有 15 个与本次无关的预存在失败（冷启动门），未触碰。
 
@@ -131,8 +131,8 @@
 
 |c1| `fix: splash path lookup (dev+packaged) + clear stale Electron partition storage` | `electron/main.js`, `package.json`（与本次规划无关，但为防丢失单独提交）|
 |c2| `feat(step1): unified cross-channel session view (dual-source merge)` | 前端三文件 |
-|c3| `feat(step2): mirror web/desktop turns into state.db` | `hermes_cli/blueprints/chat.py` |
-|c4| `feat(step3): send-from-desktop bridge + §3.5 origin_json (lazy columns)` | `hermes_state.py`, `hermes_cli/blueprints/session.py`, `gateway/{message_handler_mixin,watcher_mixin,session}.py` + `tests/test_session_origin_columns.py` |
+|c3| `feat(step2): mirror web/desktop turns into state.db` | `vermes_cli/blueprints/chat.py` |
+|c4| `feat(step3): send-from-desktop bridge + §3.5 origin_json (lazy columns)` | `hermes_state.py`, `vermes_cli/blueprints/session.py`, `gateway/{message_handler_mixin,watcher_mixin,session}.py` + `tests/test_session_origin_columns.py` |
 |c5| `feat(step4): channel-scoped weighted memory recall` | `agent/{memory_fabric,run_agent,memory_manager,memory_provider,rag_provider}.py` |
 |c6| `chore: origin_json backfill script` | `scripts/backfill_session_origin.py` |
 |c7| `docs: desktop channel unification design/plan/report` | `docs/{design,plan,report}*` |

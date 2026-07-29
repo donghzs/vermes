@@ -26,7 +26,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from hermes_constants import get_bundled_skills_dir, get_hermes_home
+from vermes_constants import get_bundled_skills_dir, get_hermes_home
 from typing import Dict, List, Tuple
 from utils import atomic_replace
 

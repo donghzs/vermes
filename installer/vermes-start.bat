@@ -21,7 +21,7 @@ timeout /t 1 /nobreak >nul
 
 REM Start Gateway as independent persistent process
 echo  Starting Gateway on port 9119...
-start "Vermes Gateway" /MIN "%PYTHON%" -m hermes_cli.web_server --port 9119
+start "Vermes Gateway" /MIN "%PYTHON%" -m vermes_cli.web_server --port 9119
 
 REM Wait for Gateway ready
 :wait
@@ -33,7 +33,7 @@ echo  Gateway ready. Opening native window...
 echo.
 
 REM Open native window (pywebview) - connects to Gateway
-"%PYTHON%" -m hermes_cli.gui_app --no-server --port 9119
+"%PYTHON%" -m vermes_cli.gui_app --no-server --port 9119
 
 echo.
 echo  Vermes closed. Gateway still running in background.

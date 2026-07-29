@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 def _load_image_gen_config() -> Dict[str, Any]:
     """Load the image_gen section from config.yaml."""
     try:
-        from hermes_cli.config import load_config
+        from vermes_cli.config import load_config
         cfg = load_config()
         section = cfg.get("image_gen") if isinstance(cfg, dict) else None
         return section if isinstance(section, dict) else {}

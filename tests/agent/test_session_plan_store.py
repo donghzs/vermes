@@ -59,7 +59,7 @@ def test_restore_after_restart_simulation(plan_db):
     """模拟跨重启：内存 store 清空后，plan_snapshot 端点从 SQLite 恢复。"""
     plan_db.save_plan_state("sess-x", {"title": "Plan X"}, {"a": "completed", "b": "in_progress"}, True)
 
-    from hermes_cli.blueprints.chat import _session_plan_store, plan_snapshot
+    from vermes_cli.blueprints.chat import _session_plan_store, plan_snapshot
 
     _session_plan_store.clear()
     assert "sess-x" not in _session_plan_store

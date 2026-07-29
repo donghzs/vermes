@@ -1,7 +1,7 @@
 """Harness: generic constraint / validation base.
 
 Generalized from ScholarForge validators
-(``hermes_cli/scholarforge/validators.py``), whose pattern is:
+(``vermes_cli/scholarforge/validators.py``), whose pattern is:
 "``async check(...)`` -> typed result dataclass -> ``run_all``". This module
 gives every domain (ScholarForge, tool inputs, config, output schema) one
 uniform contract so constraints compose and report identically — harness

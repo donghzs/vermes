@@ -35,7 +35,7 @@ npm run dev
 npm run build
 ```
 
-构建产物在 `dist/` 目录，可以复制到 `~/Projects/vermes/hermes_cli/web_dist/` 替换旧前端。
+构建产物在 `dist/` 目录，可以复制到 `~/Projects/vermes/vermes_cli/web_dist/` 替换旧前端。
 
 ## 项目结构
 
@@ -84,4 +84,4 @@ A: 确保 Vermes 后端在跑：`ps aux | grep python | grep dashboard`
 A: 检查 `markdown-it` 是否正确安装：`npm list markdown-it`
 
 **Q: 如何部署到生产环境？**
-A: 运行 `npm run build`，然后将 `dist/` 目录内容复制到 `~/Projects/vermes/hermes_cli/web_dist/`
+A: 运行 `npm run build`，然后将 `dist/` 目录内容复制到 `~/Projects/vermes/vermes_cli/web_dist/`
