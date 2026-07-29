@@ -76,14 +76,14 @@ def _send_imap_id(imap: "imaplib.IMAP4") -> None:
     """
     try:
         try:
-            from vermes_cli import __version__ as _hermes_version
+            from vermes_cli import __version__ as _vermes_version
         except Exception:  # noqa: BLE001 — keep ID best-effort if import fails
-            _hermes_version = "0"
+            _vermes_version = "0"
         imap.xatom(
             "ID",
-            f'("name" "hermes-agent" "version" "{_hermes_version}" '
-            '"vendor" "NousResearch" '
-            '"support-email" "noreply@nousresearch.com")',
+            f'("name" "Vermes-agent" "version" "{_vermes_version}" '
+            '"vendor" "donghzs" '
+            '"support-email" "noreply@donghzs.com")',
         )
     except Exception as e:  # noqa: BLE001 — best-effort, never fatal
         logger.debug("[Email] IMAP ID command not accepted: %s", e)
@@ -544,7 +544,7 @@ class EmailAdapter(BasePlatformAdapter):
             msg["References"] = original_msg_id
 
         msg["Date"] = formatdate(localtime=True)
-        msg_id = f"<hermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
+        msg_id = f"<Vermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
         msg["Message-ID"] = msg_id
 
         msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -653,7 +653,7 @@ class EmailAdapter(BasePlatformAdapter):
             msg["References"] = original_msg_id
 
         msg["Date"] = formatdate(localtime=True)
-        msg_id = f"<hermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
+        msg_id = f"<Vermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
         msg["Message-ID"] = msg_id
 
         if body:
@@ -734,7 +734,7 @@ class EmailAdapter(BasePlatformAdapter):
             msg["References"] = original_msg_id
 
         msg["Date"] = formatdate(localtime=True)
-        msg_id = f"<hermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
+        msg_id = f"<Vermes-{uuid.uuid4().hex[:12]}@{self._address.split('@')[1]}>"
         msg["Message-ID"] = msg_id
 
         if body:

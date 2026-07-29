@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 
-from vermes_cli.config import get_hermes_home
+from vermes_cli.config import get_vermes_home
 from utils import env_int, is_truthy_value
 from gateway.behavior_config import BehaviorConfig
 
@@ -491,7 +491,7 @@ class GatewayConfig:
     quick_commands: Dict[str, Any] = field(default_factory=dict)
     
     # Storage paths
-    sessions_dir: Path = field(default_factory=lambda: get_hermes_home() / "sessions")
+    sessions_dir: Path = field(default_factory=lambda: get_vermes_home() / "sessions")
     
     # Delivery settings
     always_log_local: bool = True  # Always save cron outputs to local files
@@ -644,7 +644,7 @@ class GatewayConfig:
         if "default_reset_policy" in data:
             default_policy = SessionResetPolicy.from_dict(data["default_reset_policy"])
         
-        sessions_dir = get_hermes_home() / "sessions"
+        sessions_dir = get_vermes_home() / "sessions"
         if "sessions_dir" in data:
             sessions_dir = Path(data["sessions_dir"])
         
@@ -720,7 +720,7 @@ def load_gateway_config() -> GatewayConfig:
     3. ~/.vermes/gateway.json (legacy — provides defaults under config.yaml)
     4. Built-in defaults
     """
-    _home = get_hermes_home()
+    _home = get_vermes_home()
     gw_data: dict = {}
     yaml_cfg: Optional[dict] = None
 

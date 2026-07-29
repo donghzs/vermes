@@ -6,7 +6,7 @@ Exposes an HTTP server with endpoints:
 - POST /v1/responses               — OpenAI Responses API format (stateful via previous_response_id; X-Vermes-Session-Key supported)
 - GET  /v1/responses/{response_id} — Retrieve a stored response
 - DELETE /v1/responses/{response_id} — Delete a stored response
-- GET  /v1/models                  — lists hermes-agent as an available model
+- GET  /v1/models                  — lists vermes-agent as an available model
 - GET  /v1/capabilities            — machine-readable API capabilities for external UIs
 - POST /v1/runs                    — start a run, returns run_id immediately (202)
 - GET  /v1/runs/{run_id}           — retrieve current run status
@@ -17,7 +17,7 @@ Exposes an HTTP server with endpoints:
 - GET  /health/detailed            — rich status for cross-container dashboard probing
 
 Any OpenAI-compatible frontend (Open WebUI, LobeChat, LibreChat,
-AnythingLLM, NextChat, ChatBox, etc.) can connect to hermes-agent
+AnythingLLM, NextChat, ChatBox, etc.) can connect to vermes-agent
 through this adapter by pointing at http://localhost:8642/v1.
 
 Requires:
@@ -333,8 +333,8 @@ class ResponseStore:
         self._max_size = max_size
         if db_path is None:
             try:
-                from vermes_cli.config import get_hermes_home
-                db_path = str(get_hermes_home() / "response_store.db")
+                from vermes_cli.config import get_vermes_home
+                db_path = str(get_vermes_home() / "response_store.db")
             except Exception:
                 db_path = ":memory:"
         try:
@@ -342,7 +342,7 @@ class ResponseStore:
         except Exception:
             self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         # Use shared WAL-fallback helper so response_store.db degrades
-        # gracefully on NFS/SMB/FUSE-mounted HERMES_HOME (same filesystem
+        # gracefully on NFS/SMB/FUSE-mounted VERMES_HOME (same filesystem
         # issue addressed for state.db/kanban.db — see
         # vermes_state._WAL_INCOMPAT_MARKERS).
         from vermes_state import apply_wal_with_fallback
@@ -633,7 +633,7 @@ class APIServerAdapter(BasePlatformAdapter):
     OpenAI-compatible HTTP API server adapter.
 
     Runs an aiohttp web server that accepts OpenAI-format requests
-    and routes them through hermes-agent's AIAgent.
+    and routes them through vermes-agent's AIAgent.
     """
 
     def __init__(self, config: PlatformConfig):
@@ -692,7 +692,7 @@ class APIServerAdapter(BasePlatformAdapter):
         Priority:
         1. Explicit override (config extra or API_SERVER_MODEL_NAME env var)
         2. Active profile name (so each profile advertises a distinct model)
-        3. Fallback: "hermes-agent"
+        3. Fallback: "vermes-agent"
         """
         if explicit and explicit.strip():
             return explicit.strip()
@@ -703,7 +703,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return profile
         except Exception:
             pass
-        return "hermes-agent"
+        return "vermes-agent"
 
     def _cors_headers_for_origin(self, origin: str) -> Optional[Dict[str, str]]:
         """Return CORS headers for an allowed browser origin."""
@@ -833,7 +833,7 @@ class APIServerAdapter(BasePlatformAdapter):
     def _ensure_session_db(self):
         """Lazily initialise and return the shared SessionDB instance.
 
-        Sessions are persisted to ``state.db`` so that ``hermes sessions list``
+        Sessions are persisted to ``state.db`` so that ``Vermes sessions list``
         shows API-server conversations alongside CLI and gateway ones.
         """
         if self._session_db is None:
@@ -864,7 +864,7 @@ class APIServerAdapter(BasePlatformAdapter):
         Uses _resolve_runtime_agent_kwargs() to pick up model, api_key,
         base_url, etc. from config.yaml / env vars.  Toolsets are resolved
         from config.yaml platform_toolsets.api_server (same as all other
-        gateway platforms), falling back to the hermes-api-server default.
+        gateway platforms), falling back to the Vermes-api-server default.
 
         ``gateway_session_key`` is a stable per-channel identifier supplied
         by the client (via ``X-Vermes-Session-Key``).  Unlike ``session_id``
@@ -884,7 +884,7 @@ class APIServerAdapter(BasePlatformAdapter):
         user_config = _load_gateway_config()
         enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
 
-        max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
+        max_iterations = int(os.getenv("VERMES_MAX_ITERATIONS", "90"))
 
         # Load fallback provider chain so the API server platform has the
         # same fallback behaviour as Telegram/Discord/Slack (fixes #4954).
@@ -917,7 +917,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
     async def _handle_health(self, request: "web.Request") -> "web.Response":
         """GET /health — simple health check."""
-        return web.json_response({"status": "ok", "platform": "hermes-agent"})
+        return web.json_response({"status": "ok", "platform": "Vermes-agent"})
 
     async def _handle_health_detailed(self, request: "web.Request") -> "web.Response":
         """GET /health/detailed — rich status for cross-container dashboard probing.
@@ -931,7 +931,7 @@ class APIServerAdapter(BasePlatformAdapter):
         runtime = read_runtime_status() or {}
         return web.json_response({
             "status": "ok",
-            "platform": "hermes-agent",
+            "platform": "vermes-agent",
             "gateway_state": runtime.get("gateway_state"),
             "platforms": runtime.get("platforms", {}),
             "active_agents": runtime.get("active_agents", 0),
@@ -941,7 +941,7 @@ class APIServerAdapter(BasePlatformAdapter):
         })
 
     async def _handle_models(self, request: "web.Request") -> "web.Response":
-        """GET /v1/models — return hermes-agent as an available model."""
+        """GET /v1/models — return vermes-agent as an available model."""
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
@@ -973,8 +973,8 @@ class APIServerAdapter(BasePlatformAdapter):
             return auth_err
 
         return web.json_response({
-            "object": "hermes.api_server.capabilities",
-            "platform": "hermes-agent",
+            "object": "Vermes.api_server.capabilities",
+            "platform": "vermes-agent",
             "model": self._model_name,
             "auth": {
                 "type": "bearer",
@@ -1160,7 +1160,7 @@ class APIServerAdapter(BasePlatformAdapter):
             _started_tool_call_ids: set[str] = set()
 
             def _on_tool_start(tool_call_id, function_name, function_args):
-                """Emit ``hermes.tool.progress`` with ``status: running``.
+                """Emit ``Vermes.tool.progress`` with ``status: running``.
 
                 Replaces the old ``tool_progress_callback("tool.started",
                 ...)`` emit so SSE consumers receive a single event per
@@ -1293,7 +1293,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 err_type="server_error",
                 code="agent_incomplete",
             )
-            err_body["error"]["hermes"] = {
+            err_body["error"]["Vermes"] = {
                 "completed": completed,
                 "partial": is_partial,
                 "failed": is_failed,
@@ -1327,7 +1327,7 @@ class APIServerAdapter(BasePlatformAdapter):
             },
         }
         if is_partial or is_failed or not completed:
-            response_data["hermes"] = {
+            response_data["Vermes"] = {
                 "completed": completed,
                 "partial": is_partial,
                 "failed": is_failed,
@@ -1390,7 +1390,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
                 Plain strings are sent as normal ``delta.content`` chunks.
                 Tagged tuples ``("__tool_progress__", payload)`` are sent
-                as a custom ``event: hermes.tool.progress`` SSE event so
+                as a custom ``event: Vermes.tool.progress`` SSE event so
                 frontends can display them without storing the markers in
                 conversation history.  See #6972 for the original event,
                 #16588 for the ``toolCallId``/``status`` lifecycle fields.
@@ -1398,7 +1398,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 if isinstance(item, tuple) and len(item) == 2 and item[0] == "__tool_progress__":
                     event_data = json.dumps(item[1])
                     await response.write(
-                        f"event: hermes.tool.progress\ndata: {event_data}\n\n".encode()
+                        f"event: Vermes.tool.progress\ndata: {event_data}\n\n".encode()
                     )
                 else:
                     content_chunk = {
@@ -2803,7 +2803,7 @@ class APIServerAdapter(BasePlatformAdapter):
         now = time.time()
         current = self._run_statuses.get(run_id, {})
         current.update({
-            "object": "hermes.run",
+            "object": "Vermes.run",
             "run_id": run_id,
             "status": status,
             "updated_at": now,
@@ -3302,7 +3302,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 pass
 
         return web.json_response({
-            "object": "hermes.run.approval_response",
+            "object": "Vermes.run.approval_response",
             "run_id": run_id,
             "choice": choice,
             "resolved": resolved,
@@ -3441,7 +3441,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
             # Refuse to start network-accessible with a placeholder or weak key.
             # Ported from openclaw/openclaw#64586; entropy floor raised to 16 in
-            # the June 2026 hermes-0day hardening (an 8-char key dispatching
+            # the June 2026 Vermes-0day hardening (an 8-char key dispatching
             # terminal-capable agent work on a public bind is brute-forceable).
             if is_network_accessible(self._host) and self._api_key:
                 try:
@@ -3464,7 +3464,7 @@ class APIServerAdapter(BasePlatformAdapter):
             # Loud warning when a network-accessible API server runs against an
             # unsandboxed local terminal backend. The API server can drive the
             # agent's terminal/file tools as the host user; on a public bind
-            # that is the exact surface the hermes-0day campaign abused to write
+            # that is the exact surface the Vermes-0day campaign abused to write
             # ~/.vermes/config.yaml and plant persistence. Sandboxing (Docker /
             # remote backend) contains the blast radius. Warn, don't refuse —
             # the operator may have an external firewall / strong key.

@@ -189,7 +189,7 @@ class CapabilityCommandsMixin:
             return (
                 "No skill bundles installed.\n"
                 "Create one on the host with:\n"
-                "  `hermes bundles create <name> --skill <s1> --skill <s2>`\n"
+                "  `Vermes bundles create <name> --skill <s1> --skill <s2>`\n"
                 f"Directory: `{_bundles_dir()}`"
             )
 

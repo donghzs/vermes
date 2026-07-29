@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # full-width digits / Unicode word chars can't sneak through.
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9@.+\-]+$")
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 
 def normalize_whatsapp_identifier(value: str) -> str:
@@ -71,7 +71,7 @@ def expand_whatsapp_aliases(identifier: str) -> Set[str]:
     """Resolve WhatsApp phone/LID aliases via bridge session mapping files.
 
     Returns the set of all identifiers transitively reachable through the
-    bridge's ``$HERMES_HOME/whatsapp/session/lid-mapping-*.json`` files,
+    bridge's ``$VERMES_HOME/whatsapp/session/lid-mapping-*.json`` files,
     starting from ``identifier``. The result always includes the
     normalized input itself, so callers can safely ``in`` check against
     the return value without a separate fallback branch.
@@ -82,7 +82,7 @@ def expand_whatsapp_aliases(identifier: str) -> Set[str]:
     if not normalized:
         return set()
 
-    session_dir = get_hermes_home() / "whatsapp" / "session"
+    session_dir = get_vermes_home() / "whatsapp" / "session"
     resolved: Set[str] = set()
     queue = [normalized]
 

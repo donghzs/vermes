@@ -318,14 +318,14 @@ def _coerce_gateway_timestamp(value: Any) -> Optional[float]:
 def _auto_continue_freshness_window() -> float:
     """Return the configured auto-continue freshness window in seconds.
 
-    Reads ``HERMES_AUTO_CONTINUE_FRESHNESS`` (bridged from
+    Reads ``VERMES_AUTO_CONTINUE_FRESHNESS`` (bridged from
     ``config.yaml`` ``agent.gateway_auto_continue_freshness`` at gateway
-    startup, same pattern as ``HERMES_AGENT_TIMEOUT``).  Falls back to the
+    startup, same pattern as ``VERMES_AGENT_TIMEOUT``).  Falls back to the
     module default when unset or malformed.  Non-positive values disable
     the freshness gate (restores the pre-fix "always fresh" behaviour for
     users who want to opt out).
     """
-    raw = os.environ.get("HERMES_AUTO_CONTINUE_FRESHNESS")
+    raw = os.environ.get("VERMES_AUTO_CONTINUE_FRESHNESS")
     if raw is None or raw == "":
         return float(_AUTO_CONTINUE_FRESHNESS_SECS_DEFAULT)
     try:
@@ -337,7 +337,7 @@ def _auto_continue_freshness_window() -> float:
 def _float_env(name: str, default: float) -> float:
     """Read an env var as float, falling back to ``default`` on typos/empty.
 
-    A misconfigured env var (e.g. ``HERMES_AGENT_TIMEOUT=abc``) must not
+    A misconfigured env var (e.g. ``VERMES_AGENT_TIMEOUT=abc``) must not
     crash the gateway or an agent turn.  Unset/empty also falls back.
     """
     raw = os.environ.get(name)
@@ -521,29 +521,29 @@ def _ensure_ssl_certs() -> None:
 
 def _restart_notification_pending() -> bool:
     """Return True when a /restart completion marker is waiting to be delivered."""
-    return (_hermes_home / ".restart_notify.json").exists()
+    return (_vermes_home / ".restart_notify.json").exists()
 
 
 # Mark this process as a gateway so cli.py's module-level load_cli_config()
 # knows not to clobber TERMINAL_CWD if lazily imported.
-os.environ["_HERMES_GATEWAY"] = "1"
+os.environ["_vermes_GATEWAY"] = "1"
 
 _ensure_ssl_certs()
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Resolve Hermes home directory (respects HERMES_HOME override)
-from vermes_constants import get_hermes_home
+# Resolve Vermes home directory (respects VERMES_HOME override)
+from vermes_constants import get_vermes_home
 from utils import atomic_json_write, atomic_yaml_write, base_url_host_matches, is_truthy_value
-_hermes_home = get_hermes_home()
+_vermes_home = get_vermes_home()
 
 # Load environment variables from ~/.vermes/.env first.
 # User-managed env files should override stale shell exports on restart.
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
-from vermes_cli.env_loader import load_hermes_dotenv
-_env_path = _hermes_home / '.env'
-load_hermes_dotenv(hermes_home=_hermes_home, project_env=Path(__file__).resolve().parents[1] / '.env')
+from vermes_cli.env_loader import load_vermes_dotenv
+_env_path = _vermes_home / '.env'
+load_vermes_dotenv(VERMES_home=_vermes_home, project_env=Path(__file__).resolve().parents[1] / '.env')
 
 
 def _reload_runtime_env_preserving_config_authority() -> None:
@@ -551,15 +551,15 @@ def _reload_runtime_env_preserving_config_authority() -> None:
 
     Gateway processes are long-lived, so per-turn code reloads ~/.vermes/.env to
     pick up rotated API keys. config.yaml remains authoritative for agent budget
-    settings such as agent.max_turns; otherwise a stale HERMES_MAX_ITERATIONS in
+    settings such as agent.max_turns; otherwise a stale VERMES_MAX_ITERATIONS in
     .env can replace the startup bridge on later turns.
     """
-    load_hermes_dotenv(
-        hermes_home=_hermes_home,
+    load_vermes_dotenv(
+        VERMES_home=_vermes_home,
         project_env=Path(__file__).resolve().parents[1] / '.env',
     )
 
-    config_path = _hermes_home / 'config.yaml'
+    config_path = _vermes_home / 'config.yaml'
     if not config_path.exists():
         return
     try:
@@ -573,7 +573,7 @@ def _reload_runtime_env_preserving_config_authority() -> None:
 
     agent_cfg = cfg.get("agent", {})
     if isinstance(agent_cfg, dict) and "max_turns" in agent_cfg:
-        os.environ["HERMES_MAX_ITERATIONS"] = str(agent_cfg["max_turns"])
+        os.environ["VERMES_MAX_ITERATIONS"] = str(agent_cfg["max_turns"])
 
 
 _DOCKER_VOLUME_SPEC_RE = re.compile(r"^(?P<host>.+):(?P<container>/[^:]+?)(?::(?P<options>[^:]+))?$")
@@ -581,7 +581,7 @@ _DOCKER_MEDIA_OUTPUT_CONTAINER_PATHS = {"/output", "/outputs"}
 
 # Bridge config.yaml values into the environment so os.getenv() picks them up.
 # config.yaml is authoritative for terminal settings — overrides .env.
-_config_path = _hermes_home / 'config.yaml'
+_config_path = _vermes_home / 'config.yaml'
 if _config_path.exists():
     try:
         import yaml as _yaml
@@ -686,41 +686,41 @@ if _config_path.exists():
         # config.yaml is the documented, authoritative source for these
         # settings — it unconditionally wins over .env values. Previously
         # the guards below read `if X not in os.environ` and let stale
-        # .env entries (e.g. HERMES_MAX_ITERATIONS=60 written by an old
+        # .env entries (e.g. VERMES_MAX_ITERATIONS=60 written by an old
         # `vermes setup` run) silently shadow the user's current config.
         # See PR #18413 / the 60-vs-500 max_turns incident.
         _agent_cfg = _cfg.get("agent", {})
         if _agent_cfg and isinstance(_agent_cfg, dict):
             if "max_turns" in _agent_cfg:
-                os.environ["HERMES_MAX_ITERATIONS"] = str(_agent_cfg["max_turns"])
+                os.environ["VERMES_MAX_ITERATIONS"] = str(_agent_cfg["max_turns"])
             if "gateway_timeout" in _agent_cfg:
-                os.environ["HERMES_AGENT_TIMEOUT"] = str(_agent_cfg["gateway_timeout"])
+                os.environ["VERMES_AGENT_TIMEOUT"] = str(_agent_cfg["gateway_timeout"])
             if "gateway_timeout_warning" in _agent_cfg:
-                os.environ["HERMES_AGENT_TIMEOUT_WARNING"] = str(_agent_cfg["gateway_timeout_warning"])
+                os.environ["VERMES_AGENT_TIMEOUT_WARNING"] = str(_agent_cfg["gateway_timeout_warning"])
             if "gateway_notify_interval" in _agent_cfg:
-                os.environ["HERMES_AGENT_NOTIFY_INTERVAL"] = str(_agent_cfg["gateway_notify_interval"])
+                os.environ["VERMES_AGENT_NOTIFY_INTERVAL"] = str(_agent_cfg["gateway_notify_interval"])
             if "restart_drain_timeout" in _agent_cfg:
-                os.environ["HERMES_RESTART_DRAIN_TIMEOUT"] = str(_agent_cfg["restart_drain_timeout"])
+                os.environ["VERMES_RESTART_DRAIN_TIMEOUT"] = str(_agent_cfg["restart_drain_timeout"])
             if "gateway_auto_continue_freshness" in _agent_cfg:
-                os.environ["HERMES_AUTO_CONTINUE_FRESHNESS"] = str(
+                os.environ["VERMES_AUTO_CONTINUE_FRESHNESS"] = str(
                     _agent_cfg["gateway_auto_continue_freshness"]
                 )
         _display_cfg = _cfg.get("display", {})
         if _display_cfg and isinstance(_display_cfg, dict):
             if "busy_input_mode" in _display_cfg:
-                os.environ["HERMES_GATEWAY_BUSY_INPUT_MODE"] = str(_display_cfg["busy_input_mode"])
+                os.environ["VERMES_GATEWAY_BUSY_INPUT_MODE"] = str(_display_cfg["busy_input_mode"])
             if "busy_ack_enabled" in _display_cfg:
-                os.environ["HERMES_GATEWAY_BUSY_ACK_ENABLED"] = str(_display_cfg["busy_ack_enabled"])
-        # Timezone: bridge config.yaml → HERMES_TIMEZONE env var.
+                os.environ["VERMES_GATEWAY_BUSY_ACK_ENABLED"] = str(_display_cfg["busy_ack_enabled"])
+        # Timezone: bridge config.yaml → VERMES_TIMEZONE env var.
         _tz_cfg = _cfg.get("timezone", "")
         if _tz_cfg and isinstance(_tz_cfg, str):
-            os.environ["HERMES_TIMEZONE"] = _tz_cfg.strip()
+            os.environ["VERMES_TIMEZONE"] = _tz_cfg.strip()
         # Security settings
         _security_cfg = _cfg.get("security", {})
         if isinstance(_security_cfg, dict):
             _redact = _security_cfg.get("redact_secrets")
             if _redact is not None:
-                os.environ["HERMES_REDACT_SECRETS"] = str(_redact).lower()
+                os.environ["VERMES_REDACT_SECRETS"] = str(_redact).lower()
     except Exception as _bridge_err:
         # Previously this was silent (`except Exception: pass`), which
         # hid partial bridge failures and let .env defaults shadow
@@ -764,10 +764,10 @@ except Exception as _bootstrap_exc:
     logger.warning(f"  Warning: deprecation check failed: {_bootstrap_exc}")
 
 # Gateway runs in quiet mode - suppress debug output and use cwd directly (no temp dirs)
-os.environ["HERMES_QUIET"] = "1"
+os.environ["VERMES_QUIET"] = "1"
 
 # Enable interactive exec approval for dangerous commands on messaging platforms
-os.environ["HERMES_EXEC_ASK"] = "1"
+os.environ["VERMES_EXEC_ASK"] = "1"
 
 # Set terminal working directory for messaging platforms.
 # config.yaml terminal.cwd is the canonical source (bridged to TERMINAL_CWD
@@ -853,7 +853,7 @@ def _resolve_runtime_agent_kwargs() -> dict:
 
     try:
         runtime = resolve_runtime_provider(
-            requested=os.getenv("HERMES_INFERENCE_PROVIDER"),
+            requested=os.getenv("VERMES_INFERENCE_PROVIDER"),
         )
     except AuthError as auth_exc:
         # Primary provider auth failed (expired token, revoked key, etc.).
@@ -882,7 +882,7 @@ def _try_resolve_fallback_provider() -> dict | None:
     from vermes_cli.runtime_provider import resolve_runtime_provider
     try:
         import yaml as _y
-        cfg_path = _hermes_home / "config.yaml"
+        cfg_path = _vermes_home / "config.yaml"
         if not cfg_path.exists():
             return None
         with open(cfg_path, encoding="utf-8") as _f:
@@ -1522,7 +1522,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         except Exception as e:
             # WARNING (not DEBUG) so the failure appears in errors.log — matches
             # cli.py's handling of the same init path.  Users hitting NFS-mounted
-            # HERMES_HOME silently lost /resume, /title, /history, /branch, and
+            # VERMES_HOME silently lost /resume, /title, /history, /branch, and
             # session search without this.  The underlying cause (usually
             # "locking protocol" from NFS) is now also captured by
             # vermes_state.get_last_init_error() for slash-command error strings.
@@ -1657,7 +1657,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
 
         logger.warning(
             "Docker backend is enabled for the messaging gateway but no explicit host-visible "
-            "output mount (for example '/home/user/.hermes/cache/documents:/output') is configured. "
+            "output mount (for example '/home/user/.vermes/cache/documents:/output') is configured. "
             "This is fine if the model already emits host-visible paths, but MEDIA file delivery can fail "
             "for container-local paths like '/workspace/...' or '/output/...'."
         )
@@ -1667,16 +1667,16 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
     # -- Setup skill availability ----------------------------------------
 
     def _has_setup_skill(self) -> bool:
-        """Check if the hermes-agent-setup skill is installed."""
+        """Check if the Vermes-agent-setup skill is installed."""
         try:
             from tools.skill_manager_tool import _find_skill
-            return _find_skill("hermes-agent-setup") is not None
+            return _find_skill("Vermes-agent-setup") is not None
         except Exception:
             return False
 
     # -- Voice mode persistence ------------------------------------------
 
-    _VOICE_MODE_PATH = _hermes_home / "gateway_voice_mode.json"
+    _VOICE_MODE_PATH = _vermes_home / "gateway_voice_mode.json"
 
 
 
@@ -1716,13 +1716,13 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
 
     def _adapter_disconnect_timeout_secs(self) -> float:
         """Return the per-adapter disconnect timeout used during shutdown."""
-        raw = os.getenv("HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT", "").strip()
+        raw = os.getenv("VERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT", "").strip()
         if raw:
             try:
                 timeout = float(raw)
             except ValueError:
                 logger.warning(
-                    "Ignoring invalid HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT=%r",
+                    "Ignoring invalid VERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT=%r",
                     raw,
                 )
             else:
@@ -1731,13 +1731,13 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
 
     def _platform_connect_timeout_secs(self) -> float:
         """Return the per-platform connect timeout used during startup/retry."""
-        raw = os.getenv("HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT", "").strip()
+        raw = os.getenv("VERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT", "").strip()
         if raw:
             try:
                 timeout = float(raw)
             except ValueError:
                 logger.warning(
-                    "Ignoring invalid HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=%r",
+                    "Ignoring invalid VERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=%r",
                     raw,
                 )
             else:
@@ -1889,7 +1889,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
             #   • cron jobs still run
             #   • the reconnect watcher can recover platforms when the
             #     underlying problem clears (proxy comes back, user runs
-            #     `hermes whatsapp`, etc.)
+            #     `Vermes whatsapp`, etc.)
             # We used to exit-with-failure here to trigger systemd restart,
             # but that converted a transient outage into a restart loop and
             # killed in-process state every time. The reconnect watcher
@@ -2263,7 +2263,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         """
         import json
 
-        path = _hermes_home / self._STUCK_LOOP_FILE
+        path = _vermes_home / self._STUCK_LOOP_FILE
         try:
             counts = json.loads(path.read_text()) if path.exists() else {}
         except Exception:
@@ -2289,7 +2289,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         """
         import json
 
-        path = _hermes_home / self._STUCK_LOOP_FILE
+        path = _vermes_home / self._STUCK_LOOP_FILE
         if not path.exists():
             return
         try:
@@ -2307,9 +2307,9 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         import shutil
         import subprocess
 
-        hermes_cmd = _resolve_vermes_bin()
-        if not hermes_cmd:
-            logger.error("Could not locate hermes binary for detached /restart")
+        VERMES_cmd = _resolve_vermes_bin()
+        if not VERMES_cmd:
+            logger.error("Could not locate Vermes binary for detached /restart")
             return
 
         current_pid = os.getpid()
@@ -2323,7 +2323,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
             import textwrap
             from vermes_cli._subprocess_compat import windows_detach_popen_kwargs
 
-            cmd_argv = [*hermes_cmd, "gateway", "restart"]
+            cmd_argv = [*VERMES_cmd, "gateway", "restart"]
             watcher = textwrap.dedent(
                 """
                 import os, subprocess, sys, time
@@ -2381,7 +2381,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
             )
             return
 
-        cmd = " ".join(shlex.quote(part) for part in hermes_cmd)
+        cmd = " ".join(shlex.quote(part) for part in VERMES_cmd)
         shell_cmd = (
             f"while kill -0 {current_pid} 2>/dev/null; do sleep 0.2; done; "
             f"{cmd} gateway restart"
@@ -2775,7 +2775,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
 
     async def _send_restart_notification(self) -> Optional[tuple[str, str, Optional[str]]]:
         """Notify the chat that initiated /restart that the gateway is back."""
-        notify_path = _hermes_home / ".restart_notify.json"
+        notify_path = _vermes_home / ".restart_notify.json"
         if not notify_path.exists():
             return None
 
@@ -3063,7 +3063,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
                         )
                         if self._has_setup_skill():
                             _no_stt_note += (
-                                " You have a skill called hermes-agent-setup "
+                                " You have a skill called Vermes-agent-setup "
                                 "that can help users configure Vermes features "
                                 "including voice, tools, and more."
                             )
@@ -3329,7 +3329,7 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
         try:
             interrupt_event = getattr(adapter, "_active_sessions", {}).get(session_key)
             if interrupt_event is not None:
-                setattr(interrupt_event, "_hermes_run_generation", int(generation))
+                setattr(interrupt_event, "_vermes_run_generation", int(generation))
         except Exception:
             pass
 
@@ -3534,13 +3534,13 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
     Background thread that ticks the cron scheduler at a regular interval.
     
     Runs inside the gateway process so cronjobs fire automatically without
-    needing a separate `hermes cron daemon` or system cron entry.
+    needing a separate `Vermes cron daemon` or system cron entry.
 
     When ``adapters`` and ``loop`` are provided, passes them through to the
     cron delivery path so live adapters can be used for E2EE rooms.
 
     Also refreshes the channel directory every 5 minutes and prunes the
-    image/audio/document cache + expired ``hermes debug share`` pastes
+    image/audio/document cache + expired ``Vermes debug share`` pastes
     once per hour.
     """
     from cron.scheduler import tick as cron_tick
@@ -3653,9 +3653,9 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
                  when the previous process hasn't fully exited yet.
     """
     # ── Duplicate-instance guard ──────────────────────────────────────
-    # Prevent two gateways from running under the same HERMES_HOME.
-    # The PID file is scoped to HERMES_HOME, so future multi-profile
-    # setups (each profile using a distinct HERMES_HOME) will naturally
+    # Prevent two gateways from running under the same VERMES_HOME.
+    # The PID file is scoped to VERMES_HOME, so future multi-profile
+    # setups (each profile using a distinct VERMES_HOME) will naturally
     # allow concurrent instances without tripping this guard.
     from gateway.status import (
         acquire_gateway_runtime_lock,
@@ -3723,7 +3723,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             # remove_pid_file() is a no-op when the PID doesn't match.
             # Force-unlink to cover the old-process-crashed case.
             try:
-                (get_hermes_home() / "gateway.pid").unlink(missing_ok=True)
+                (get_vermes_home() / "gateway.pid").unlink(missing_ok=True)
             except Exception:
                 pass
             # Clean up any takeover marker the old process didn't consume
@@ -3747,11 +3747,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             except Exception:
                 pass
         else:
-            hermes_home = str(get_hermes_home())
+            VERMES_home = str(get_vermes_home())
             logger.error(
-                "Another gateway instance is already running (PID %d, HERMES_HOME=%s). "
+                "Another gateway instance is already running (PID %d, VERMES_HOME=%s). "
                 "Use 'vermes gateway restart' to replace it, or 'vermes gateway stop' first.",
-                existing_pid, hermes_home,
+                existing_pid, VERMES_home,
             )
             logger.info(
                 f"\n❌ Gateway already running (PID {existing_pid}).\n"
@@ -3772,7 +3772,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     # and gateway.log (INFO+, gateway-component records only).
     # Idempotent, so repeated calls from AIAgent.__init__ won't duplicate.
     from vermes_logging import setup_logging
-    setup_logging(hermes_home=_hermes_home, mode="gateway")
+    setup_logging(VERMES_home=_vermes_home, mode="gateway")
 
     # Periodic process memory usage logging (gateway only) — emits a
     # grep-friendly "[MEMORY] rss=...MB ..." line every N minutes so
@@ -3883,7 +3883,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         # before sending SIGTERM. If present, treat the signal as a
         # planned shutdown and exit 0 so systemd's Restart=on-failure
         # doesn't revive us (which would flap-fight the replacer when
-        # both services are enabled, e.g. hermes.service + hermes-
+        # both services are enabled, e.g. Vermes.service + Vermes-
         # gateway.service from pre-rename installs).
         planned_takeover = False
         try:
@@ -3956,7 +3956,7 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             # if our cgroup is being torn down.  Bounded by an internal
             # timeout; never blocks the event loop here.
             try:
-                _diag_log = _hermes_home / "logs" / "gateway-shutdown-diag.log"
+                _diag_log = _vermes_home / "logs" / "gateway-shutdown-diag.log"
                 spawn_async_diagnostic(
                     _diag_log, _shutdown_ctx["signal"], timeout_seconds=5.0
                 )

@@ -29,10 +29,10 @@ from agent.account_usage import fetch_account_usage, render_account_usage_lines
 from agent.async_utils import safe_schedule_threadsafe
 from agent.i18n import t
 from vermes_cli.config import cfg_get
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from utils import atomic_json_write, atomic_yaml_write, base_url_host_matches, is_truthy_value
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
-from vermes_cli.env_loader import load_hermes_dotenv
+from vermes_cli.env_loader import load_vermes_dotenv
 from gateway.config import (
     Platform,
     _BUILTIN_PLATFORM_VALUES,
@@ -97,10 +97,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _get_hermes_home():
-    """Dynamically resolve _hermes_home from gateway.run (monkeypatchable)."""
+def _get_vermes_home():
+    """Dynamically resolve _vermes_home from gateway.run (monkeypatchable)."""
     from gateway import run as _run
-    return _run._hermes_home
+    return _run._vermes_home
 
 
 from gateway._run_attr import _get_run_attr  # W2: shared, was duplicated in 4 mixins

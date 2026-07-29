@@ -298,7 +298,7 @@ class GoalMixin:
                 generation = None
                 active = getattr(adapter, "_active_sessions", {}).get(session_key)
                 if active is not None:
-                    generation = getattr(active, "_hermes_run_generation", None)
+                    generation = getattr(active, "_vermes_run_generation", None)
                 adapter.register_post_delivery_callback(
                     session_key,
                     _deliver,

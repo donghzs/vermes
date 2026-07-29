@@ -134,7 +134,7 @@ class AgentRunnerMixin:
             headers["X-Vermes-Session-Id"] = session_id
 
         body = {
-            "model": "hermes-agent",
+            "model": "Vermes-agent",
             "messages": api_messages,
             "stream": True,
         }
@@ -412,7 +412,7 @@ class AgentRunnerMixin:
 
         # Tool progress mode — resolved per-platform with env var fallback
         _resolved_tp = resolve_display_setting(user_config, platform_key, "tool_progress")
-        _env_tp = os.getenv("HERMES_TOOL_PROGRESS_MODE")
+        _env_tp = os.getenv("VERMES_TOOL_PROGRESS_MODE")
         _display_cfg = display_config if isinstance(display_config, dict) else {}
         _platforms_cfg = _display_cfg.get("platforms") or {}
         _platform_cfg = _platforms_cfg.get(platform_key) or {}
@@ -505,7 +505,7 @@ class AgentRunnerMixin:
                         if gate_on and not is_seen(_cfg, TOOL_PROGRESS_FLAG):
                             long_tool_hint_fired[0] = True
                             progress_queue.put(tool_progress_hint_gateway())
-                            mark_seen(_get_run_attr("_hermes_home") / "config.yaml", TOOL_PROGRESS_FLAG)
+                            mark_seen(_get_run_attr("_vermes_home") / "config.yaml", TOOL_PROGRESS_FLAG)
                 except Exception as _hint_err:
                     logger.debug("tool-progress onboarding hint failed: %s", _hint_err)
                 return
@@ -1041,10 +1041,10 @@ class AgentRunnerMixin:
 
             # session_key is now set via contextvars in _set_session_env()
             # (concurrency-safe). Keep os.environ as fallback for CLI/cron.
-            os.environ["HERMES_SESSION_KEY"] = session_key or ""
+            os.environ["VERMES_SESSION_KEY"] = session_key or ""
 
             # Read from env var or use default (same as CLI)
-            max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
+            max_iterations = int(os.getenv("VERMES_MAX_ITERATIONS", "90"))
             
             # Map platform enum to the platform hint key the agent understands.
             # Platform.LOCAL ("local") maps to "cli"; others pass through as-is.
@@ -1999,9 +1999,9 @@ class AgentRunnerMixin:
         # Periodic "still working" notifications for long-running tasks.
         # Fires every N seconds so the user knows the agent hasn't died.
         # Config: agent.gateway_notify_interval in config.yaml, or
-        # HERMES_AGENT_NOTIFY_INTERVAL env var.  Default 180s (3 min).
+        # VERMES_AGENT_NOTIFY_INTERVAL env var.  Default 180s (3 min).
         # 0 = disable notifications.
-        _NOTIFY_INTERVAL_RAW = _get_run_attr("_float_env")("HERMES_AGENT_NOTIFY_INTERVAL", 180)
+        _NOTIFY_INTERVAL_RAW = _get_run_attr("_float_env")("VERMES_AGENT_NOTIFY_INTERVAL", 180)
         _NOTIFY_INTERVAL = _NOTIFY_INTERVAL_RAW if _NOTIFY_INTERVAL_RAW > 0 else None
         _notify_start = time.time()
 
@@ -2067,11 +2067,11 @@ class AgentRunnerMixin:
             # configured duration is caught and killed.  (#4815)
             #
             # Config: agent.gateway_timeout in config.yaml, or
-            # HERMES_AGENT_TIMEOUT env var (env var takes precedence).
+            # VERMES_AGENT_TIMEOUT env var (env var takes precedence).
             # Default 1800s (30 min inactivity).  0 = unlimited.
-            _agent_timeout_raw = _get_run_attr("_float_env")("HERMES_AGENT_TIMEOUT", 1800)
+            _agent_timeout_raw = _get_run_attr("_float_env")("VERMES_AGENT_TIMEOUT", 1800)
             _agent_timeout = _agent_timeout_raw if _agent_timeout_raw > 0 else None
-            _agent_warning_raw = _get_run_attr("_float_env")("HERMES_AGENT_TIMEOUT_WARNING", 900)
+            _agent_warning_raw = _get_run_attr("_float_env")("VERMES_AGENT_TIMEOUT_WARNING", 900)
             _agent_warning = _agent_warning_raw if _agent_warning_raw > 0 else None
             _warning_fired = False
             _executor_task = asyncio.ensure_future(

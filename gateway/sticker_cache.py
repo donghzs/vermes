@@ -14,10 +14,10 @@ import tempfile
 import time
 from typing import Optional
 
-from vermes_cli.config import get_hermes_home
+from vermes_cli.config import get_vermes_home
 
 
-CACHE_PATH = get_hermes_home() / "sticker_cache.json"
+CACHE_PATH = get_vermes_home() / "sticker_cache.json"
 
 # Vision prompt for describing stickers -- kept concise to save tokens
 STICKER_VISION_PROMPT = (

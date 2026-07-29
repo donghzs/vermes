@@ -31,15 +31,15 @@ class ConfigLoaderMixin:
     def _load_prefill_messages() -> List[Dict[str, Any]]:
         """Load ephemeral prefill messages from config or env var.
     
-        Checks HERMES_PREFILL_MESSAGES_FILE env var first, then falls back to
+        Checks VERMES_PREFILL_MESSAGES_FILE env var first, then falls back to
         the prefill_messages_file key in ~/.vermes/config.yaml.
         Relative paths are resolved from ~/.vermes/.
         """
-        file_path = os.getenv("HERMES_PREFILL_MESSAGES_FILE", "")
+        file_path = os.getenv("VERMES_PREFILL_MESSAGES_FILE", "")
         if not file_path:
             try:
                 import yaml as _y
-                cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+                cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
                 if cfg_path.exists():
                     with open(cfg_path, encoding="utf-8") as _f:
                         cfg = _y.safe_load(_f) or {}
@@ -50,7 +50,7 @@ class ConfigLoaderMixin:
             return []
         path = Path(file_path).expanduser()
         if not path.is_absolute():
-            path = _get_run_attr("_hermes_home") / path
+            path = _get_run_attr("_vermes_home") / path
         if not path.exists():
             logger.warning("Prefill messages file not found: %s", path)
             return []
@@ -69,18 +69,18 @@ class ConfigLoaderMixin:
     def _load_ephemeral_system_prompt() -> str:
         """Load ephemeral system prompt from config or env var.
     
-        Checks HERMES_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
+        Checks VERMES_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
         agent.system_prompt in ~/.vermes/config.yaml.
     
         Also appends evolution system context (self-model.db stats, anti-patterns,
         emotional state) so gateway channels get the same behavioral guidance
         as CLI and desktop web UI.
         """
-        prompt = os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "")
+        prompt = os.getenv("VERMES_EPHEMERAL_SYSTEM_PROMPT", "")
         if not prompt:
             try:
                 import yaml as _y
-                cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+                cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
                 if cfg_path.exists():
                     with open(cfg_path, encoding="utf-8") as _f:
                         cfg = _y.safe_load(_f) or {}
@@ -113,7 +113,7 @@ class ConfigLoaderMixin:
         effort = ""
         try:
             import yaml as _y
-            cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+            cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
@@ -136,7 +136,7 @@ class ConfigLoaderMixin:
         raw = ""
         try:
             import yaml as _y
-            cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+            cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
@@ -157,7 +157,7 @@ class ConfigLoaderMixin:
         """Load show_reasoning toggle from config.yaml display section."""
         try:
             import yaml as _y
-            cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+            cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
@@ -172,11 +172,11 @@ class ConfigLoaderMixin:
     @staticmethod
     def _load_busy_input_mode() -> str:
         """Load gateway drain-time busy-input behavior from config/env."""
-        mode = os.getenv("HERMES_GATEWAY_BUSY_INPUT_MODE", "").strip().lower()
+        mode = os.getenv("VERMES_GATEWAY_BUSY_INPUT_MODE", "").strip().lower()
         if not mode:
             try:
                 import yaml as _y
-                cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+                cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
                 if cfg_path.exists():
                     with open(cfg_path, encoding="utf-8") as _f:
                         cfg = _y.safe_load(_f) or {}
@@ -192,11 +192,11 @@ class ConfigLoaderMixin:
     @staticmethod
     def _load_restart_drain_timeout() -> float:
         """Load graceful gateway restart/stop drain timeout in seconds."""
-        raw = os.getenv("HERMES_RESTART_DRAIN_TIMEOUT", "").strip()
+        raw = os.getenv("VERMES_RESTART_DRAIN_TIMEOUT", "").strip()
         if not raw:
             try:
                 import yaml as _y
-                cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+                cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
                 if cfg_path.exists():
                     with open(cfg_path, encoding="utf-8") as _f:
                         cfg = _y.safe_load(_f) or {}
@@ -225,11 +225,11 @@ class ConfigLoaderMixin:
           - ``error``  — only the final message when exit code is non-zero
           - ``off``    — no watcher messages at all
         """
-        mode = os.getenv("HERMES_BACKGROUND_NOTIFICATIONS", "")
+        mode = os.getenv("VERMES_BACKGROUND_NOTIFICATIONS", "")
         if not mode:
             try:
                 import yaml as _y
-                cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+                cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
                 if cfg_path.exists():
                     with open(cfg_path, encoding="utf-8") as _f:
                         cfg = _y.safe_load(_f) or {}
@@ -255,7 +255,7 @@ class ConfigLoaderMixin:
         """Load OpenRouter provider routing preferences from config.yaml."""
         try:
             import yaml as _y
-            cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+            cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
@@ -274,7 +274,7 @@ class ConfigLoaderMixin:
         """
         try:
             import yaml as _y
-            cfg_path = _get_run_attr("_hermes_home") / "config.yaml"
+            cfg_path = _get_run_attr("_vermes_home") / "config.yaml"
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}

@@ -71,7 +71,7 @@ class LifecycleMixin:
         logger.info("Session storage: %s", self.config.sessions_dir)
 
         # Sanity-check that systemd's TimeoutStopSec covers our drain
-        # window.  When the user upgraded hermes-agent without re-running
+        # window.  When the user upgraded Vermes-agent without re-running
         # ``vermes setup``, their unit file may still encode the old
         # default — in which case SIGKILL hits mid-drain and looks like
         # a phantom kill in the journal.  Best-effort, never raises.
@@ -95,10 +95,10 @@ class LifecycleMixin:
         # config.yaml → env bridge did the right thing at a glance (instead
         # of silently running at a stale .env value for weeks).
         try:
-            _effective_max_iter = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
+            _effective_max_iter = int(os.getenv("VERMES_MAX_ITERATIONS", "90"))
             logger.info(
                 "Agent budget: max_iterations=%d (agent.max_turns from config.yaml, "
-                "or HERMES_MAX_ITERATIONS from .env, or default 90)",
+                "or VERMES_MAX_ITERATIONS from .env, or default 90)",
                 _effective_max_iter,
             )
         except Exception:
@@ -109,7 +109,7 @@ class LifecycleMixin:
         # state at import time, so this log line is the source of truth
         # for this process's lifetime.
         try:
-            _redact_raw = os.getenv("HERMES_REDACT_SECRETS", "true")
+            _redact_raw = os.getenv("VERMES_REDACT_SECRETS", "true")
             _redact_on = _redact_raw.lower() in {"1", "true", "yes", "on"}
             if _redact_on:
                 logger.info(
@@ -118,7 +118,7 @@ class LifecycleMixin:
                 )
             else:
                 logger.warning(
-                    "Secret redaction: DISABLED (HERMES_REDACT_SECRETS=%s). "
+                    "Secret redaction: DISABLED (VERMES_REDACT_SECRETS=%s). "
                     "API keys and tokens may appear verbatim in chat output, "
                     "session JSONs, and logs. Set security.redact_secrets: true "
                     "in config.yaml to re-enable.",
@@ -243,7 +243,7 @@ class LifecycleMixin:
 
         # Register declarative shell hooks from cli-config.yaml.  Gateway
         # has no TTY, so consent has to come from one of the three opt-in
-        # channels (--accept-hooks on launch, HERMES_ACCEPT_HOOKS env var,
+        # channels (--accept-hooks on launch, VERMES_ACCEPT_HOOKS env var,
         # or hooks_auto_accept: true in config.yaml).  We pass
         # accept_hooks=False here and let register_from_config resolve
         # the effective value from env + config itself — the CLI-side
@@ -282,7 +282,7 @@ class LifecycleMixin:
         # process already drained active agents, so sessions aren't stuck.
         # This prevents unwanted auto-resets after `vermes update`,
         # `vermes gateway restart`, or `/restart`.
-        _clean_marker = _get_run_attr("_hermes_home") / ".clean_shutdown"
+        _clean_marker = _get_run_attr("_vermes_home") / ".clean_shutdown"
         if _clean_marker.exists():
             logger.info("Previous gateway exited cleanly — skipping session suspension")
             try:
@@ -449,7 +449,7 @@ class LifecycleMixin:
                     #   • cron jobs still run
                     #   • the reconnect watcher gets a chance to recover the
                     #     failing platforms once the underlying problem is
-                    #     fixed (e.g. user runs `hermes whatsapp`, fixes
+                    #     fixed (e.g. user runs `Vermes whatsapp`, fixes
                     #     proxy, etc.)
                     # Exiting here used to convert a single misconfigured
                     # platform into an infinite systemd restart loop.
@@ -516,8 +516,8 @@ class LifecycleMixin:
         if not notified and any(
             path.exists()
             for path in (
-                _get_run_attr("_hermes_home") / ".update_pending.json",
-                _get_run_attr("_hermes_home") / ".update_pending.claimed.json",
+                _get_run_attr("_vermes_home") / ".update_pending.json",
+                _get_run_attr("_vermes_home") / ".update_pending.claimed.json",
             )
         ):
             self._schedule_update_notification_watch()
@@ -1093,7 +1093,7 @@ class LifecycleMixin:
             # of resuming a half-finished tool loop.
             if not timed_out:
                 try:
-                    (_get_run_attr("_hermes_home") / ".clean_shutdown").touch()
+                    (_get_run_attr("_vermes_home") / ".clean_shutdown").touch()
                 except Exception:
                     pass
             else:
@@ -1174,7 +1174,7 @@ class LifecycleMixin:
             # Apply Telegram notification mode from config.  Controls whether
             # intermediate messages (tool progress, streaming, status) trigger
             # push notifications.  Supports ENV override for quick testing.
-            _notify_mode = os.getenv("HERMES_TELEGRAM_NOTIFICATIONS", "")
+            _notify_mode = os.getenv("VERMES_TELEGRAM_NOTIFICATIONS", "")
             if not _notify_mode:
                 try:
                     _gw_cfg = _get_run_attr("_load_gateway_config")()
@@ -1213,7 +1213,7 @@ class LifecycleMixin:
         elif platform == Platform.SLACK:
             from gateway.platforms.slack import SlackAdapter, check_slack_requirements
             if not check_slack_requirements():
-                logger.warning("Slack: slack-bolt not installed. Run: pip install 'hermes-agent[slack]'")
+                logger.warning("Slack: slack-bolt not installed. Run: pip install 'Vermes-agent[slack]'")
                 return None
             return SlackAdapter(config)
 
@@ -1479,7 +1479,7 @@ class LifecycleMixin:
             return False
 
         try:
-            marker_path = _get_run_attr("_hermes_home") / ".restart_last_processed.json"
+            marker_path = _get_run_attr("_vermes_home") / ".restart_last_processed.json"
             if not marker_path.exists():
                 return False
             data = json.loads(marker_path.read_text())
@@ -1699,7 +1699,7 @@ class LifecycleMixin:
             disabled_toolsets = agent_cfg.get("disabled_toolsets") or None
 
             pr = self._provider_routing
-            max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
+            max_iterations = int(os.getenv("VERMES_MAX_ITERATIONS", "90"))
             reasoning_config = self._resolve_session_reasoning_config(source=source)
             self._reasoning_config = reasoning_config
             self._service_tier = self._load_service_tier()

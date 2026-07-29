@@ -309,11 +309,11 @@ class WatcherMixin:
         the messenger.  The user's next message is intercepted by
         ``_handle_message`` and written to ``.update_response``.
         """
-        pending_path = _get_run_attr("_hermes_home") / ".update_pending.json"
-        claimed_path = _get_run_attr("_hermes_home") / ".update_pending.claimed.json"
-        output_path = _get_run_attr("_hermes_home") / ".update_output.txt"
-        exit_code_path = _get_run_attr("_hermes_home") / ".update_exit_code"
-        prompt_path = _get_run_attr("_hermes_home") / ".update_prompt.json"
+        pending_path = _get_run_attr("_vermes_home") / ".update_pending.json"
+        claimed_path = _get_run_attr("_vermes_home") / ".update_pending.claimed.json"
+        output_path = _get_run_attr("_vermes_home") / ".update_output.txt"
+        exit_code_path = _get_run_attr("_vermes_home") / ".update_exit_code"
+        prompt_path = _get_run_attr("_vermes_home") / ".update_prompt.json"
 
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -417,7 +417,7 @@ class WatcherMixin:
                 for p in (pending_path, claimed_path, output_path,
                           exit_code_path, prompt_path):
                     p.unlink(missing_ok=True)
-                (_get_run_attr("_hermes_home") / ".update_response").unlink(missing_ok=True)
+                (_get_run_attr("_vermes_home") / ".update_response").unlink(missing_ok=True)
                 self._update_prompt_pending.pop(session_key, None)
                 return
 
@@ -502,7 +502,7 @@ class WatcherMixin:
             for p in (pending_path, claimed_path, output_path,
                       exit_code_path, prompt_path):
                 p.unlink(missing_ok=True)
-            (_get_run_attr("_hermes_home") / ".update_response").unlink(missing_ok=True)
+            (_get_run_attr("_vermes_home") / ".update_response").unlink(missing_ok=True)
             self._update_prompt_pending.pop(session_key, None)
 
     async def _send_update_notification(self) -> bool:
@@ -515,10 +515,10 @@ class WatcherMixin:
         cannot resolve the adapter (e.g. after a gateway restart where the
         platform hasn't reconnected yet).
         """
-        pending_path = _get_run_attr("_hermes_home") / ".update_pending.json"
-        claimed_path = _get_run_attr("_hermes_home") / ".update_pending.claimed.json"
-        output_path = _get_run_attr("_hermes_home") / ".update_output.txt"
-        exit_code_path = _get_run_attr("_hermes_home") / ".update_exit_code"
+        pending_path = _get_run_attr("_vermes_home") / ".update_pending.json"
+        claimed_path = _get_run_attr("_vermes_home") / ".update_pending.claimed.json"
+        output_path = _get_run_attr("_vermes_home") / ".update_output.txt"
+        exit_code_path = _get_run_attr("_vermes_home") / ".update_exit_code"
 
         if not pending_path.exists() and not claimed_path.exists():
             return False

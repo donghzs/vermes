@@ -399,7 +399,7 @@ class TelegramAdapter(BasePlatformAdapter):
         self._disable_link_previews: bool = self._coerce_bool_extra("disable_link_previews", False)
         # Buffer rapid/album photo updates so Telegram image bursts are handled
         # as a single MessageEvent instead of self-interrupting multiple turns.
-        self._media_batch_delay_seconds = env_float("HERMES_TELEGRAM_MEDIA_BATCH_DELAY_SECONDS", 0.8)
+        self._media_batch_delay_seconds = env_float("VERMES_TELEGRAM_MEDIA_BATCH_DELAY_SECONDS", 0.8)
         self._pending_photo_batches: Dict[str, MessageEvent] = {}
         self._pending_photo_batch_tasks: Dict[str, asyncio.Task] = {}
         self._media_group_events: Dict[str, MessageEvent] = {}
@@ -412,13 +412,13 @@ class TelegramAdapter(BasePlatformAdapter):
         # in ~180ms.  All bounds are conservative for Telegram's
         # ~1 edit/s flood envelope.
         self._text_batch_delay_seconds = self._env_float_clamped(
-            "HERMES_TELEGRAM_TEXT_BATCH_DELAY_SECONDS",
+            "VERMES_TELEGRAM_TEXT_BATCH_DELAY_SECONDS",
             0.3,
             min_value=0.08,
             max_value=2.0,
         )
         self._text_batch_split_delay_seconds = self._env_float_clamped(
-            "HERMES_TELEGRAM_TEXT_BATCH_SPLIT_DELAY_SECONDS",
+            "VERMES_TELEGRAM_TEXT_BATCH_SPLIT_DELAY_SECONDS",
             1.0,
             min_value=self._text_batch_delay_seconds,
             max_value=4.0,
@@ -1179,8 +1179,8 @@ class TelegramAdapter(BasePlatformAdapter):
     def _persist_dm_topic_thread_id(self, chat_id: int, topic_name: str, thread_id: int) -> None:
         """Save a newly created thread_id back into config.yaml so it persists across restarts."""
         try:
-            from vermes_constants import get_hermes_home
-            config_path = get_hermes_home() / "config.yaml"
+            from vermes_constants import get_vermes_home
+            config_path = get_vermes_home() / "config.yaml"
             if not config_path.exists():
                 logger.warning("[%s] Config file not found at %s, cannot persist thread_id", self.name, config_path)
                 return
@@ -1384,14 +1384,14 @@ class TelegramAdapter(BasePlatformAdapter):
                     return default
 
             request_kwargs = {
-                "connection_pool_size": _env_int("HERMES_TELEGRAM_HTTP_POOL_SIZE", 512),
-                "pool_timeout": _env_float("HERMES_TELEGRAM_HTTP_POOL_TIMEOUT", 8.0),
-                "connect_timeout": _env_float("HERMES_TELEGRAM_HTTP_CONNECT_TIMEOUT", 10.0),
-                "read_timeout": _env_float("HERMES_TELEGRAM_HTTP_READ_TIMEOUT", 20.0),
-                "write_timeout": _env_float("HERMES_TELEGRAM_HTTP_WRITE_TIMEOUT", 20.0),
+                "connection_pool_size": _env_int("VERMES_TELEGRAM_HTTP_POOL_SIZE", 512),
+                "pool_timeout": _env_float("VERMES_TELEGRAM_HTTP_POOL_TIMEOUT", 8.0),
+                "connect_timeout": _env_float("VERMES_TELEGRAM_HTTP_CONNECT_TIMEOUT", 10.0),
+                "read_timeout": _env_float("VERMES_TELEGRAM_HTTP_READ_TIMEOUT", 20.0),
+                "write_timeout": _env_float("VERMES_TELEGRAM_HTTP_WRITE_TIMEOUT", 20.0),
             }
 
-            disable_fallback = (os.getenv("HERMES_TELEGRAM_DISABLE_FALLBACK_IPS", "").strip().lower() in {"1", "true", "yes", "on"})
+            disable_fallback = (os.getenv("VERMES_TELEGRAM_DISABLE_FALLBACK_IPS", "").strip().lower() in {"1", "true", "yes", "on"})
             fallback_ips = self._fallback_ips()
             if not fallback_ips:
                 fallback_ips = await discover_fallback_ips()
@@ -1498,7 +1498,7 @@ class TelegramAdapter(BasePlatformAdapter):
                         "TELEGRAM_WEBHOOK_URL is set. Without it, the "
                         "webhook endpoint accepts forged updates from "
                         "anyone who can reach it — see "
-                        "https://github.com/NousResearch/hermes-agent/"
+                        "https://github.com/donghzs/vermes/"
                         "security/advisories/GHSA-3vpc-7q5r-276h.\n\n"
                         "Generate a secret and set it in your .env:\n"
                         "  export TELEGRAM_WEBHOOK_SECRET=\"$(openssl rand -hex 32)\"\n\n"
@@ -3234,8 +3234,8 @@ class TelegramAdapter(BasePlatformAdapter):
             pass  # non-fatal if edit fails
         # Write the response file
         try:
-            from vermes_constants import get_hermes_home
-            home = get_hermes_home()
+            from vermes_constants import get_vermes_home
+            home = get_vermes_home()
             response_path = home / ".update_response"
             tmp = response_path.with_suffix(".tmp")
             tmp.write_text(answer)
@@ -3299,7 +3299,7 @@ class TelegramAdapter(BasePlatformAdapter):
             return
         script_name, extra_args, success_label, is_state_verb = entry
 
-        script_path = _Path.home() / ".hermes" / "scripts" / "gmail-triage" / script_name
+        script_path = _Path.home() / ".vermes" / "scripts" / "gmail-triage" / script_name
         if not script_path.exists():
             await query.answer(text=f"❌ {script_name} missing")
             logger.error("[%s] gmail-triage script missing: %s", self.name, script_path)
@@ -4400,7 +4400,7 @@ class TelegramAdapter(BasePlatformAdapter):
         # Telegram parses mentions server-side and emits MessageEntity objects
         # (type=mention for @username, type=text_mention for @FirstName targeting
         # a user without a public username). Those entities are authoritative:
-        # raw substring matches like "foo@hermes_bot.example" are not mentions
+        # raw substring matches like "foo@VERMES_bot.example" are not mentions
         # (bug #12545). Entities also correctly handle @handles inside URLs, code
         # blocks, and quoted text, where a regex scan would over-match.
         for source_text, entities in _iter_sources():
@@ -5167,8 +5167,8 @@ class TelegramAdapter(BasePlatformAdapter):
         recognized without a gateway restart.
         """
         try:
-            from vermes_constants import get_hermes_home
-            config_path = get_hermes_home() / "config.yaml"
+            from vermes_constants import get_vermes_home
+            config_path = get_vermes_home() / "config.yaml"
             if not config_path.exists():
                 return
 

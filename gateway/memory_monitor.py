@@ -53,7 +53,7 @@ def _get_rss_mb() -> Optional[int]:
     """Return current process resident set size in MB, or None if unavailable.
 
     Tries ``resource.getrusage`` first (Linux/macOS, no extra deps), then
-    falls back to ``psutil`` which is an optional hermes-agent dep.
+    falls back to ``psutil`` which is an optional Vermes-agent dep.
     """
     # Linux / macOS — resource is stdlib.  On Linux ru_maxrss is in KB,
     # on macOS it is in bytes (yes, really).  We use it as a cheap

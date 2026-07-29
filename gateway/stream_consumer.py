@@ -1011,7 +1011,7 @@ class GatewayStreamConsumer:
             # Commentary messages are interim status updates (e.g. "Using browser
             # tool..."), not the final response. Setting already_sent would cause
             # the final response to be incorrectly suppressed when there are
-            # multiple tool calls. See: https://github.com/NousResearch/hermes-agent/issues/10454
+            # multiple tool calls. See: https://github.com/donghzs/vermes/issues/10454
             if result.success:
                 # Commentary counts as fresh content — close off any
                 # stale tool bubble above it so the next tool starts a

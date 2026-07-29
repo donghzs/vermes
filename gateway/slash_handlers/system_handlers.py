@@ -10,10 +10,10 @@ class SystemCommandsMixin:
 
     async def _handle_profile_command(self, event: MessageEvent) -> str:
         """Handle /profile — show active profile name and home directory."""
-        from vermes_constants import display_hermes_home
+        from vermes_constants import display_vermes_home
         from vermes_cli.profiles import get_active_profile_name
 
-        display = display_hermes_home()
+        display = display_vermes_home()
         profile_name = get_active_profile_name()
 
         lines = [
@@ -415,7 +415,7 @@ class SystemCommandsMixin:
             if event.source.thread_id:
                 notify_data["thread_id"] = event.source.thread_id
             atomic_json_write(
-                _get_hermes_home() / ".restart_notify.json",
+                _get_vermes_home() / ".restart_notify.json",
                 notify_data,
                 indent=None,
             )
@@ -435,7 +435,7 @@ class SystemCommandsMixin:
             if event.platform_update_id is not None:
                 dedup_data["update_id"] = event.platform_update_id
             atomic_json_write(
-                _get_hermes_home() / ".restart_last_processed.json",
+                _get_vermes_home() / ".restart_last_processed.json",
                 dedup_data,
                 indent=None,
             )
@@ -544,7 +544,7 @@ class SystemCommandsMixin:
 
         Gateway uploads ONLY the summary report (system info + log tails),
         NOT full log files, to protect conversation privacy.  Users who need
-        full log uploads should use ``hermes debug share`` from the CLI.
+        full log uploads should use ``Vermes debug share`` from the CLI.
         """
         import asyncio
         from vermes_cli.debug import (
@@ -622,13 +622,13 @@ class SystemCommandsMixin:
         if not git_dir.exists():
             return t("gateway.update.not_git_repo")
 
-        hermes_cmd = _resolve_vermes_bin()
-        if not hermes_cmd:
+        VERMES_cmd = _resolve_vermes_bin()
+        if not VERMES_cmd:
             return t("gateway.update.vermes_cmd_not_found")
 
-        pending_path = _get_hermes_home() / ".update_pending.json"
-        output_path = _get_hermes_home() / ".update_output.txt"
-        exit_code_path = _get_hermes_home() / ".update_exit_code"
+        pending_path = _get_vermes_home() / ".update_pending.json"
+        output_path = _get_vermes_home() / ".update_output.txt"
+        exit_code_path = _get_vermes_home() / ".update_exit_code"
         session_key = self._session_key_for_source(event.source)
         pending = {
             "platform": event.source.platform.value,
@@ -673,7 +673,7 @@ class SystemCommandsMixin:
                 import textwrap
                 from vermes_cli._subprocess_compat import windows_detach_popen_kwargs
 
-                # hermes_cmd is a list of argv parts we can pass directly
+                # VERMES_cmd is a list of argv parts we can pass directly
                 # (no shell-quoting needed).
                 helper = textwrap.dedent(
                     """
@@ -694,16 +694,16 @@ class SystemCommandsMixin:
                     [
                         sys.executable, "-c", helper,
                         str(output_path), str(exit_code_path),
-                        *hermes_cmd, "update", "--gateway",
+                        *VERMES_cmd, "update", "--gateway",
                     ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     **windows_detach_popen_kwargs(),
                 )
             else:
-                hermes_cmd_str = " ".join(shlex.quote(part) for part in hermes_cmd)
+                VERMES_cmd_str = " ".join(shlex.quote(part) for part in VERMES_cmd)
                 update_cmd = (
-                    f"PYTHONUNBUFFERED=1 {hermes_cmd_str} update --gateway"
+                    f"PYTHONUNBUFFERED=1 {VERMES_cmd_str} update --gateway"
                     f" > {shlex.quote(str(output_path))} 2>&1; "
                     # Avoid `status=$?`: `status` is a read-only special parameter
                     # in zsh, and this command string is copied/reused in macOS/zsh

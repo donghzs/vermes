@@ -38,7 +38,7 @@ class ConfigCommandsMixin:
         current_api_key = ""
         user_provs = None
         custom_provs = None
-        config_path = _get_hermes_home() / "config.yaml"
+        config_path = _get_vermes_home() / "config.yaml"
         try:
             cfg = _load_gateway_config()
             if cfg:
@@ -415,10 +415,10 @@ class ConfigCommandsMixin:
 
     async def _handle_personality_command(self, event: MessageEvent) -> str:
         """Handle /personality command - list or set a personality."""
-        from vermes_constants import display_hermes_home
+        from vermes_constants import display_vermes_home
 
         args = event.get_command_args().strip().lower()
-        config_path = _get_hermes_home() / 'config.yaml'
+        config_path = _get_vermes_home() / 'config.yaml'
 
         try:
             config = _load_gateway_config()
@@ -428,7 +428,7 @@ class ConfigCommandsMixin:
             personalities = {}
 
         if not personalities:
-            return t("gateway.personality.none_configured", path=display_hermes_home())
+            return t("gateway.personality.none_configured", path=display_vermes_home())
 
         if not args:
             lines = [t("gateway.personality.header")]
@@ -497,7 +497,7 @@ class ConfigCommandsMixin:
 
         raw_args = event.get_command_args().strip()
         args, persist_global = self._parse_reasoning_command_args(raw_args)
-        config_path = _get_hermes_home() / "config.yaml"
+        config_path = _get_vermes_home() / "config.yaml"
         session_key = self._session_key_for_source(event.source)
         self._show_reasoning = self._load_show_reasoning()
         self._reasoning_config = self._resolve_session_reasoning_config(
@@ -603,7 +603,7 @@ class ConfigCommandsMixin:
         from vermes_cli.models import model_supports_fast_mode
 
         args = event.get_command_args().strip().lower()
-        config_path = _get_hermes_home() / "config.yaml"
+        config_path = _get_vermes_home() / "config.yaml"
         self._service_tier = self._load_service_tier()
 
         user_config = _load_gateway_config()
@@ -714,7 +714,7 @@ class ConfigCommandsMixin:
         have its own verbosity level independently.
         """
 
-        config_path = _get_hermes_home() / "config.yaml"
+        config_path = _get_vermes_home() / "config.yaml"
         platform_key = _platform_config_key(event.source.platform)
 
         # --- check config gate ------------------------------------------------
@@ -782,7 +782,7 @@ class ConfigCommandsMixin:
         """
         from gateway.runtime_footer import resolve_footer_config
 
-        config_path = _get_hermes_home() / "config.yaml"
+        config_path = _get_vermes_home() / "config.yaml"
         platform_key = _platform_config_key(event.source.platform)
 
         # --- parse argument -------------------------------------------------

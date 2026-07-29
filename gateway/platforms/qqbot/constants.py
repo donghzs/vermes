@@ -27,7 +27,7 @@ ONBOARD_CREATE_PATH = "/lite/create_bind_task"
 ONBOARD_POLL_PATH = "/lite/poll_bind_result"
 QR_URL_TEMPLATE = (
     "https://q.qq.com/qqbot/openclaw/connect.html"
-    "?task_id={task_id}&_wv=2&source=hermes"
+    "?task_id={task_id}&_wv=2&source=Vermes"
 )
 
 # ---------------------------------------------------------------------------

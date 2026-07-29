@@ -95,7 +95,7 @@ class KanbanMixin:
 
                     # Enumerate every board on disk, but poll each resolved DB
                     # path once. Multiple slugs can point at the same DB when
-                    # HERMES_KANBAN_DB pins the board path; without this guard
+                    # VERMES_KANBAN_DB pins the board path; without this guard
                     # one gateway could collect the same subscription/event
                     # more than once before advancing the cursor.
                     try:
@@ -539,16 +539,16 @@ class KanbanMixin:
         """
         # Read config once at boot. If the user flips the flag later, they
         # restart the gateway; same pattern as every other background
-        # watcher here. Honours HERMES_KANBAN_DISPATCH_IN_GATEWAY env var
+        # watcher here. Honours VERMES_KANBAN_DISPATCH_IN_GATEWAY env var
         # as an escape hatch (false-y value disables without editing YAML).
         try:
             from vermes_cli.config import load_config as _load_config
         except Exception:
             logger.warning("kanban dispatcher: config loader unavailable; disabled")
             return
-        env_override = os.environ.get("HERMES_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
+        env_override = os.environ.get("VERMES_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
         if env_override in {"0", "false", "no", "off"}:
-            logger.info("kanban dispatcher: disabled via HERMES_KANBAN_DISPATCH_IN_GATEWAY env")
+            logger.info("kanban dispatcher: disabled via VERMES_KANBAN_DISPATCH_IN_GATEWAY env")
             return
 
         try:
@@ -821,9 +821,9 @@ class KanbanMixin:
                 # pattern as the dashboard specify endpoint. The
                 # decomposer module connects with no board kwarg and
                 # relies on the env var.
-                prev_env = os.environ.get("HERMES_KANBAN_BOARD")
+                prev_env = os.environ.get("VERMES_KANBAN_BOARD")
                 try:
-                    os.environ["HERMES_KANBAN_BOARD"] = slug
+                    os.environ["VERMES_KANBAN_BOARD"] = slug
                     try:
                         triage_ids = _decomp.list_triage_ids()
                     except Exception as exc:
@@ -867,9 +867,9 @@ class KanbanMixin:
                             )
                 finally:
                     if prev_env is None:
-                        os.environ.pop("HERMES_KANBAN_BOARD", None)
+                        os.environ.pop("VERMES_KANBAN_BOARD", None)
                     else:
-                        os.environ["HERMES_KANBAN_BOARD"] = prev_env
+                        os.environ["VERMES_KANBAN_BOARD"] = prev_env
             return successes
 
         logger.info(

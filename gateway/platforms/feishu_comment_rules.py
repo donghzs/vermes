@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,13 @@ logger = logging.getLogger(__name__)
 # Paths
 # ---------------------------------------------------------------------------
 #
-# Uses the canonical ``get_hermes_home()`` helper (HERMES_HOME-aware and
+# Uses the canonical ``get_vermes_home()`` helper (VERMES_HOME-aware and
 # profile-safe). Resolved at import time; this module is lazy-imported by
 # the Feishu comment event handler, which runs long after profile overrides
 # have been applied, so freezing paths here is safe.
 
-RULES_FILE = get_hermes_home() / "feishu_comment_rules.json"
-PAIRING_FILE = get_hermes_home() / "feishu_comment_pairing.json"
+RULES_FILE = get_vermes_home() / "feishu_comment_rules.json"
+PAIRING_FILE = get_vermes_home() / "feishu_comment_pairing.json"
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -351,8 +351,8 @@ def _main() -> int:
     import sys
 
     try:
-        from vermes_cli.env_loader import load_hermes_dotenv
-        load_hermes_dotenv()
+        from vermes_cli.env_loader import load_vermes_dotenv
+        load_vermes_dotenv()
     except Exception:
         pass
 

@@ -29,7 +29,7 @@ _IS_WINDOWS = platform.system() == "Windows"
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-from vermes_constants import get_hermes_dir
+from vermes_constants import get_vermes_dir
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
     MAX_MESSAGE_LENGTH = 4096
     DEFAULT_REPLY_PREFIX = "⚕ *Vermes*\n────────────\n"
     
-    # Default bridge location relative to the hermes-agent install
+    # Default bridge location relative to the Vermes-agent install
     _DEFAULT_BRIDGE_DIR = Path(__file__).resolve().parents[2] / "scripts" / "whatsapp-bridge"
 
     def __init__(self, config: PlatformConfig, behavior: Optional[WhatsAppBehaviorConfig] = None):
@@ -260,7 +260,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
         )
         self._session_path: Path = Path(config.extra.get(
             "session_path",
-            get_hermes_dir("platforms/whatsapp/session", "whatsapp/session")
+            get_vermes_dir("platforms/whatsapp/session", "whatsapp/session")
         ))
         self._reply_prefix: Optional[str] = config.extra.get("reply_prefix")
         self._dm_policy = str(config.extra.get("dm_policy") or self._get_dm_policy()).strip().lower()
@@ -548,19 +548,19 @@ class WhatsAppAdapter(BasePlatformAdapter):
         # QR codes to its log file and never reaches status:connected,
         # so every gateway restart paid the 30s timeout + queued WhatsApp
         # for indefinite retries.  Mark non-retryable so the user gets a
-        # clear "run hermes whatsapp" message instead of the watcher
+        # clear "run Vermes whatsapp" message instead of the watcher
         # silently hammering an unconfigured platform.
         creds_path = self._session_path / "creds.json"
         if not creds_path.exists():
             logger.warning(
                 "[%s] WhatsApp is enabled but not paired (no creds.json at %s). "
-                "Run `hermes whatsapp` to pair, or remove WHATSAPP_ENABLED from "
+                "Run `Vermes whatsapp` to pair, or remove WHATSAPP_ENABLED from "
                 "your .env to disable.",
                 self.name, creds_path,
             )
             self._set_fatal_error(
                 "whatsapp_not_paired",
-                "WhatsApp enabled but not paired — run `hermes whatsapp` to pair.",
+                "WhatsApp enabled but not paired — run `Vermes whatsapp` to pair.",
                 retryable=False,
             )
             return False
@@ -728,7 +728,7 @@ class WhatsAppAdapter(BasePlatformAdapter):
                     # auto-reconnect later, e.g. after a code 515 restart).
                     logger.info(f"[{self.name}] ⚠ WhatsApp not connected after 30s")
                     logger.info(f"[{self.name}]   Bridge log: {self._bridge_log}")
-                    logger.info(f"[{self.name}]   If session expired, re-pair: hermes whatsapp")
+                    logger.info(f"[{self.name}]   If session expired, re-pair: Vermes whatsapp")
             
             # Create a persistent HTTP session for all bridge communication
             self._http_session = aiohttp.ClientSession()

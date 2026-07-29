@@ -1,7 +1,7 @@
 """Gateway utility functions extracted from run.py.
 
 Module-level helper functions shared between GatewayRunner and mixins.
-Module-level variables (_hermes_home, _AGENT_PENDING_SENTINEL, etc.)
+Module-level variables (_vermes_home, _AGENT_PENDING_SENTINEL, etc.)
 remain in gateway/run.py for backward-compatible monkeypatching.
 """
 
@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 # These are resolved at call time to support test monkeypatching.
 
 
-def _get_hermes_home():
-    """Return the current _hermes_home from gateway.run (monkeypatchable)."""
-    from gateway.run import _hermes_home
-    return _hermes_home
+def _get_vermes_home():
+    """Return the current _vermes_home from gateway.run (monkeypatchable)."""
+    from gateway.run import _vermes_home
+    return _vermes_home
 
 
 def _telegramize_command_mentions(text: str, platform: Any) -> str:
@@ -63,8 +63,8 @@ def _platform_config_key(platform: "Platform") -> str:
 
 def _load_gateway_config() -> dict:
     """Load and parse ~/.vermes/config.yaml, returning {} on any error."""
-    _hermes_home = _get_hermes_home()
-    config_path = _hermes_home / 'config.yaml'
+    _vermes_home = _get_vermes_home()
+    config_path = _vermes_home / 'config.yaml'
     try:
         from vermes_cli.config import get_config_path, read_raw_config
         if config_path == get_config_path():
@@ -97,9 +97,9 @@ def _resolve_vermes_bin() -> Optional[list[str]]:
     """Resolve the Vermes update command as argv parts."""
     import shutil
 
-    hermes_bin = shutil.which("hermes")
-    if hermes_bin:
-        return [hermes_bin]
+    VERMES_bin = shutil.which("Vermes")
+    if VERMES_bin:
+        return [VERMES_bin]
 
     try:
         import importlib.util

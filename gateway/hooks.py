@@ -26,7 +26,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
-from vermes_cli.config import get_hermes_home
+from vermes_cli.config import get_vermes_home
 
 import logging
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 
-HOOKS_DIR = get_hermes_home() / "hooks"
+HOOKS_DIR = get_vermes_home() / "hooks"
 
 
 class HookRegistry:
@@ -110,7 +110,7 @@ class HookRegistry:
                 # in the handler). Without this, a handler that declares a
                 # Pydantic BaseModel for webhook/event payloads fails at first
                 # dispatch with "TypeAdapter ... is not fully defined".
-                module_name = f"hermes_hook_{hook_name}"
+                module_name = f"VERMES_hook_{hook_name}"
                 spec = importlib.util.spec_from_file_location(
                     module_name, handler_path
                 )

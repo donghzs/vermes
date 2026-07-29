@@ -231,7 +231,7 @@ class MessageHandlerMixin:
                             f"Hi~ I don't recognize you yet!\n\n"
                             f"Here's your pairing code: `{code}`\n\n"
                             f"Ask the bot owner to run:\n"
-                            f"`hermes pairing approve {platform_name} {code}`"
+                            f"`Vermes pairing approve {platform_name} {code}`"
                         )
                 else:
                     adapter = self.adapters.get(source.platform)
@@ -281,8 +281,8 @@ class MessageHandlerMixin:
                 else:
                     response_text = raw
             if response_text:
-                response_path = _get_run_attr("_hermes_home") / ".update_response"
-                prompt_path = _get_run_attr("_hermes_home") / ".update_prompt.json"
+                response_path = _get_run_attr("_vermes_home") / ".update_response"
+                prompt_path = _get_run_attr("_vermes_home") / ".update_prompt.json"
                 try:
                     tmp = response_path.with_suffix(".tmp")
                     tmp.write_text(response_text)
@@ -301,8 +301,8 @@ class MessageHandlerMixin:
             # blocking on stdin until the 30-minute watcher timeout.
             # The slash command then falls through to normal dispatch.
             if _recognized_cmd:
-                response_path = _get_run_attr("_hermes_home") / ".update_response"
-                prompt_path = _get_run_attr("_hermes_home") / ".update_prompt.json"
+                response_path = _get_run_attr("_vermes_home") / ".update_response"
+                prompt_path = _get_run_attr("_vermes_home") / ".update_prompt.json"
                 try:
                     tmp = response_path.with_suffix(".tmp")
                     tmp.write_text("")
@@ -409,7 +409,7 @@ class MessageHandlerMixin:
         # wall-clock age alone isn't sufficient.  Evict only when the agent
         # has been *idle* beyond the inactivity threshold (or when the agent
         # object has no activity tracker and wall-clock age is extreme).
-        _raw_stale_timeout = _get_run_attr("_float_env")("HERMES_AGENT_TIMEOUT", 1800)
+        _raw_stale_timeout = _get_run_attr("_float_env")("VERMES_AGENT_TIMEOUT", 1800)
         _stale_ts = self._running_agents_ts.get(_quick_key, 0)
         if _quick_key in self._running_agents and _stale_ts:
             _stale_age = time.time() - _stale_ts
@@ -691,7 +691,7 @@ class MessageHandlerMixin:
                 return None
 
             _telegram_followup_grace = float(
-                os.getenv("HERMES_TELEGRAM_FOLLOWUP_GRACE_SECONDS", "3.0")
+                os.getenv("VERMES_TELEGRAM_FOLLOWUP_GRACE_SECONDS", "3.0")
             )
             _started_at = self._running_agents_ts.get(_quick_key, 0)
             if (
@@ -1387,7 +1387,7 @@ class MessageHandlerMixin:
                                 "then /restart the gateway."
                             )
                             if self._has_setup_skill():
-                                _stt_msg += "\n\nFor full setup instructions, type: `/skill hermes-agent-setup`"
+                                _stt_msg += "\n\nFor full setup instructions, type: `/skill Vermes-agent-setup`"
                             await _stt_adapter.send(
                                 source.chat_id,
                                 _stt_msg,
@@ -1436,7 +1436,7 @@ class MessageHandlerMixin:
 
                 # Translate host cache path to in-container path if running under Docker backend.
                 # This ensures the agent receives a path it can open inside its sandbox, as the
-                # cache directories are auto-mounted at /root/.hermes/cache/* by get_cache_directory_mounts().
+                # cache directories are auto-mounted at /root/.Vermes/cache/* by get_cache_directory_mounts().
                 agent_path = to_agent_visible_cache_path(path)
 
                 if mtype.startswith("text/"):
@@ -2083,10 +2083,10 @@ class MessageHandlerMixin:
             env_key = _home_target_env_var(platform_name)
             if not os.getenv(env_key):
                 # Slack dispatches all Vermes commands through a single
-                # parent slash command `/hermes`; bare `/sethome` is not
+                # parent slash command `/Vermes`; bare `/sethome` is not
                 # registered and would fail with "app did not respond".
                 sethome_cmd = (
-                    "/hermes sethome"
+                    "/Vermes sethome"
                     if source.platform == Platform.SLACK
                     else "/sethome"
                 )

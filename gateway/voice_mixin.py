@@ -482,7 +482,7 @@ class VoiceMixin:
             # Use .mp3 extension so edge-tts conversion to opus works correctly.
             # The TTS tool may convert to .ogg — use file_path from result.
             audio_path = os.path.join(
-                tempfile.gettempdir(), "hermes_voice",
+                tempfile.gettempdir(), "VERMES_voice",
                 f"tts_reply_{_uuid.uuid4().hex[:12]}.mp3",
             )
             os.makedirs(os.path.dirname(audio_path), exist_ok=True)

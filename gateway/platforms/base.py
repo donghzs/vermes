@@ -472,7 +472,7 @@ sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 
 from gateway.config import Platform, PlatformConfig
 from gateway.session import SessionSource, build_session_key
-from vermes_constants import get_hermes_dir
+from vermes_constants import get_vermes_dir
 
 
 GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE = (
@@ -544,8 +544,8 @@ async def _ssrf_redirect_guard(response):
 # (e.g. Telegram file URLs expire after ~1 hour).
 # ---------------------------------------------------------------------------
 
-# Default location: {HERMES_HOME}/cache/images/ (legacy: image_cache/)
-IMAGE_CACHE_DIR = get_hermes_dir("cache/images", "image_cache")
+# Default location: {VERMES_HOME}/cache/images/ (legacy: image_cache/)
+IMAGE_CACHE_DIR = get_vermes_dir("cache/images", "image_cache")
 
 
 def get_image_cache_dir() -> Path:
@@ -686,7 +686,7 @@ def cleanup_image_cache(max_age_hours: int = 24) -> int:
 # here so the STT tool (OpenAI Whisper) can transcribe them from local files.
 # ---------------------------------------------------------------------------
 
-AUDIO_CACHE_DIR = get_hermes_dir("cache/audio", "audio_cache")
+AUDIO_CACHE_DIR = get_vermes_dir("cache/audio", "audio_cache")
 
 
 def get_audio_cache_dir() -> Path:
@@ -779,7 +779,7 @@ async def cache_audio_from_url(url: str, ext: str = ".ogg", retries: int = 2) ->
 # here so the agent can reference them by local file path.
 # ---------------------------------------------------------------------------
 
-VIDEO_CACHE_DIR = get_hermes_dir("cache/videos", "video_cache")
+VIDEO_CACHE_DIR = get_vermes_dir("cache/videos", "video_cache")
 
 SUPPORTED_VIDEO_TYPES = {
     ".mp4": "video/mp4",
@@ -812,7 +812,7 @@ def cache_video_from_bytes(data: bytes, ext: str = ".mp4") -> str:
 # here so the agent can reference them by local file path.
 # ---------------------------------------------------------------------------
 
-DOCUMENT_CACHE_DIR = get_hermes_dir("cache/documents", "document_cache")
+DOCUMENT_CACHE_DIR = get_vermes_dir("cache/documents", "document_cache")
 
 SUPPORTED_DOCUMENT_TYPES = {
     ".pdf": "application/pdf",
@@ -1025,8 +1025,8 @@ class MessageEvent:
 
 _PLAINTEXT_GATEWAY_RESTART_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^(?:please\s+)?restart\s+(?:the\s+)?gateway[.!?\s]*$", re.IGNORECASE),
-    re.compile(r"^(?:please\s+)?restart\s+(?:the\s+)?hermes\s+gateway[.!?\s]*$", re.IGNORECASE),
-    re.compile(r"^(?:please\s+)?restart\s+hermes[.!?\s]*$", re.IGNORECASE),
+    re.compile(r"^(?:please\s+)?restart\s+(?:the\s+)?Vermes\s+gateway[.!?\s]*$", re.IGNORECASE),
+    re.compile(r"^(?:please\s+)?restart\s+Vermes[.!?\s]*$", re.IGNORECASE),
 )
 
 
@@ -3081,11 +3081,11 @@ class BasePlatformAdapter(ABC):
         Return a random delay in seconds for human-like response pacing.
 
         Reads from env vars:
-          HERMES_HUMAN_DELAY_MODE: "off" (default) | "natural" | "custom"
-          HERMES_HUMAN_DELAY_MIN_MS: minimum delay in ms (default 800, custom mode)
-          HERMES_HUMAN_DELAY_MAX_MS: maximum delay in ms (default 2500, custom mode)
+          VERMES_HUMAN_DELAY_MODE: "off" (default) | "natural" | "custom"
+          VERMES_HUMAN_DELAY_MIN_MS: minimum delay in ms (default 800, custom mode)
+          VERMES_HUMAN_DELAY_MAX_MS: maximum delay in ms (default 2500, custom mode)
         """
-        mode = os.getenv("HERMES_HUMAN_DELAY_MODE", "off").lower()
+        mode = os.getenv("VERMES_HUMAN_DELAY_MODE", "off").lower()
         if mode == "off":
             return 0.0
         if mode == "natural":
@@ -3093,11 +3093,11 @@ class BasePlatformAdapter(ABC):
             return random.uniform(min_ms / 1000.0, max_ms / 1000.0)
         # custom mode — tolerate malformed env vars instead of crashing.
         try:
-            min_ms = int(os.getenv("HERMES_HUMAN_DELAY_MIN_MS", "800"))
+            min_ms = int(os.getenv("VERMES_HUMAN_DELAY_MIN_MS", "800"))
         except (TypeError, ValueError):
             min_ms = 800
         try:
-            max_ms = int(os.getenv("HERMES_HUMAN_DELAY_MAX_MS", "2500"))
+            max_ms = int(os.getenv("VERMES_HUMAN_DELAY_MAX_MS", "2500"))
         except (TypeError, ValueError):
             max_ms = 2500
         return random.uniform(min_ms / 1000.0, max_ms / 1000.0)
@@ -3485,7 +3485,7 @@ class BasePlatformAdapter(ABC):
             # session (e.g. deferred background-review notifications).
             #
             # Snapshot the callback generation HERE (after the agent has run),
-            # not at the top of this task.  _hermes_run_generation is set on
+            # not at the top of this task.  _vermes_run_generation is set on
             # the interrupt event by GatewayRunner._bind_adapter_run_generation
             # during _handle_message_with_agent — which happens DURING the
             # self._message_handler(event) await above.  Snapshotting earlier
@@ -3494,7 +3494,7 @@ class BasePlatformAdapter(ABC):
             # fresher run's callbacks.
             _callback_generation = getattr(
                 interrupt_event,
-                "_hermes_run_generation",
+                "_vermes_run_generation",
                 None,
             )
             if hasattr(self, "pop_post_delivery_callback"):

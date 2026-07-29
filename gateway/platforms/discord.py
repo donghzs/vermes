@@ -564,8 +564,8 @@ class DiscordAdapter(BasePlatformAdapter):
         self._voice_clients: Dict[int, Any] = {}  # guild_id -> VoiceClient
         self._voice_locks: Dict[int, asyncio.Lock] = {}  # guild_id -> serialize join/leave
         # Text batching: merge rapid successive messages (Telegram-style)
-        self._text_batch_delay_seconds = float(os.getenv("HERMES_DISCORD_TEXT_BATCH_DELAY_SECONDS", "0.6"))
-        self._text_batch_split_delay_seconds = float(os.getenv("HERMES_DISCORD_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0"))
+        self._text_batch_delay_seconds = float(os.getenv("VERMES_DISCORD_TEXT_BATCH_DELAY_SECONDS", "0.6"))
+        self._text_batch_split_delay_seconds = float(os.getenv("VERMES_DISCORD_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0"))
         self._pending_text_batches: Dict[str, MessageEvent] = {}
         self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
         self._voice_text_channels: Dict[int, int] = {}  # guild_id -> text_channel_id
@@ -981,9 +981,9 @@ class DiscordAdapter(BasePlatformAdapter):
         logger.info("[%s] Disconnected", self.name)
 
     def _command_sync_state_path(self) -> _Path:
-        from vermes_constants import get_hermes_home
+        from vermes_constants import get_vermes_home
 
-        directory = get_hermes_home() / _DISCORD_COMMAND_SYNC_STATE_SUBDIR
+        directory = get_vermes_home() / _DISCORD_COMMAND_SYNC_STATE_SUBDIR
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -5317,8 +5317,8 @@ def _define_discord_view_classes() -> None:
 
             # Write response file
             try:
-                from vermes_constants import get_hermes_home
-                home = get_hermes_home()
+                from vermes_constants import get_vermes_home
+                home = get_vermes_home()
                 response_path = home / ".update_response"
                 tmp = response_path.with_suffix(".tmp")
                 tmp.write_text(answer)

@@ -225,7 +225,7 @@ class SessionCommandsMixin:
         cp_cfg = {}
         try:
             import yaml as _y
-            _cfg_path = _get_hermes_home() / "config.yaml"
+            _cfg_path = _get_vermes_home() / "config.yaml"
             if _cfg_path.exists():
                 with open(_cfg_path, encoding="utf-8") as _f:
                     _data = _y.safe_load(_f) or {}

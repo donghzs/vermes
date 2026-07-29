@@ -30,10 +30,10 @@ from agent.account_usage import fetch_account_usage, render_account_usage_lines
 from agent.async_utils import safe_schedule_threadsafe
 from agent.i18n import t
 from vermes_cli.config import cfg_get
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from utils import atomic_json_write, atomic_yaml_write, base_url_host_matches, is_truthy_value
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
-from vermes_cli.env_loader import load_hermes_dotenv
+from vermes_cli.env_loader import load_vermes_dotenv
 from gateway.config import (
     Platform,
     _BUILTIN_PLATFORM_VALUES,
@@ -330,7 +330,7 @@ class SessionMixin:
         # Check if busy ack is disabled — skip sending but still process the input.
         # Placed before debounce so we don't stamp a "last ack" timestamp that was
         # never actually delivered.
-        busy_ack_enabled = os.environ.get("HERMES_GATEWAY_BUSY_ACK_ENABLED", "true").lower() == "true"
+        busy_ack_enabled = os.environ.get("VERMES_GATEWAY_BUSY_ACK_ENABLED", "true").lower() == "true"
         if not busy_ack_enabled:
             logger.debug("Busy ack suppressed for session %s", session_key)
             return True  # input still processed, just no ack sent
@@ -405,7 +405,7 @@ class SessionMixin:
                     f"{message}\n\n"
                     f"{busy_input_hint_gateway(_hint_mode)}"
                 )
-                mark_seen(_get_run_attr("_hermes_home") / "config.yaml", BUSY_INPUT_FLAG)
+                mark_seen(_get_run_attr("_vermes_home") / "config.yaml", BUSY_INPUT_FLAG)
         except Exception as _onb_err:
             logger.debug("Failed to apply busy-input onboarding hint: %s", _onb_err)
 
@@ -585,7 +585,7 @@ class SessionMixin:
         """
         import json
 
-        path = _get_run_attr("_hermes_home") / self._STUCK_LOOP_FILE
+        path = _get_run_attr("_vermes_home") / self._STUCK_LOOP_FILE
         if not path.exists():
             return 0
 
