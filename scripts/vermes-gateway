@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
-Hermes Gateway - Standalone messaging platform integration.
+Vermes Gateway - Standalone messaging platform integration.
 
 This is the proper entry point for running the gateway as a service.
 NOT tied to the CLI - runs independently.
 
 Usage:
     # Run in foreground (for testing)
-    ./scripts/hermes-gateway
+    ./scripts/vermes-gateway
     
     # Install as systemd service
-    ./scripts/hermes-gateway install
+    ./scripts/vermes-gateway install
     
     # Manage the service
-    ./scripts/hermes-gateway start
-    ./scripts/hermes-gateway stop
-    ./scripts/hermes-gateway restart
-    ./scripts/hermes-gateway status
+    ./scripts/vermes-gateway start
+    ./scripts/vermes-gateway stop
+    ./scripts/vermes-gateway restart
+    ./scripts/vermes-gateway status
     
     # Uninstall
-    ./scripts/hermes-gateway uninstall
+    ./scripts/vermes-gateway uninstall
 """
 
 import argparse
@@ -45,8 +45,8 @@ if env_path.exists():
 # Service Configuration
 # =============================================================================
 
-SERVICE_NAME = "hermes-gateway"
-SERVICE_DESCRIPTION = "Hermes Agent Gateway - Messaging Platform Integration"
+SERVICE_NAME = "vermes-gateway"
+SERVICE_DESCRIPTION = "Vermes Gateway - Messaging Platform Integration"
 
 def get_systemd_unit_path() -> Path:
     """Get the path for the systemd user service file."""
@@ -54,7 +54,7 @@ def get_systemd_unit_path() -> Path:
 
 def get_launchd_plist_path() -> Path:
     """Get the path for the launchd plist file (macOS)."""
-    return Path.home() / "Library" / "LaunchAgents" / f"ai.hermes.gateway.plist"
+    return Path.home() / "Library" / "LaunchAgents" / f"ai.vermes.gateway.plist"
 
 def get_python_path() -> str:
     """Get the path to the Python interpreter."""
@@ -173,14 +173,14 @@ def generate_launchd_plist() -> str:
     python_path = get_python_path()
     script_path = get_gateway_script_path()
     working_dir = str(PROJECT_DIR)
-    log_dir = Path.home() / ".hermes" / "logs"
+    log_dir = Path.home() / ".vermes" / "logs"
     
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>ai.hermes.gateway</string>
+    <string>ai.vermes.gateway</string>
     
     <key>ProgramArguments</key>
     <array>
@@ -222,7 +222,7 @@ def install_launchd():
     plist_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Ensure log directory exists
-    log_dir = Path.home() / ".hermes" / "logs"
+    log_dir = Path.home() / ".vermes" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Installing launchd service to: {plist_path}")
@@ -234,11 +234,11 @@ def install_launchd():
     print(f"✓ Service installed and loaded")
     print(f"")
     print(f"To view logs:")
-    print(f"  tail -f ~/.hermes/logs/gateway.log")
+    print(f"  tail -f ~/.vermes/logs/gateway.log")
     print(f"")
     print(f"To manage the service:")
-    print(f"  launchctl start ai.hermes.gateway")
-    print(f"  launchctl stop ai.hermes.gateway")
+    print(f"  launchctl start ai.vermes.gateway")
+    print(f"  launchctl stop ai.vermes.gateway")
 
 def uninstall_launchd():
     """Uninstall the launchd service (macOS)."""
@@ -256,16 +256,16 @@ def uninstall_launchd():
 
 def launchd_status():
     """Show launchd service status."""
-    subprocess.run(["launchctl", "list", "ai.hermes.gateway"])
+    subprocess.run(["launchctl", "list", "ai.vermes.gateway"])
 
 def launchd_start():
     """Start the launchd service."""
-    subprocess.run(["launchctl", "start", "ai.hermes.gateway"], check=True)
+    subprocess.run(["launchctl", "start", "ai.vermes.gateway"], check=True)
     print(f"✓ Service started")
 
 def launchd_stop():
     """Stop the launchd service."""
-    subprocess.run(["launchctl", "stop", "ai.hermes.gateway"], check=True)
+    subprocess.run(["launchctl", "stop", "ai.vermes.gateway"], check=True)
     print(f"✓ Service stopped")
 
 def launchd_restart():
@@ -295,7 +295,7 @@ def is_windows() -> bool:
 def run_gateway():
     """Run the gateway in foreground."""
     from gateway.run import start_gateway
-    print("Starting Hermes Gateway...")
+    print("Starting Vermes Gateway...")
     print("Press Ctrl+C to stop.")
     print()
     asyncio.run(start_gateway())
@@ -307,24 +307,24 @@ def run_gateway():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Hermes Gateway - Messaging Platform Integration",
+        description="Vermes Gateway - Messaging Platform Integration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
     # Run in foreground (for testing)
-    ./scripts/hermes-gateway run
+    ./scripts/vermes-gateway run
     
     # Install as system service
-    ./scripts/hermes-gateway install
+    ./scripts/vermes-gateway install
     
     # Manage the service
-    ./scripts/hermes-gateway start
-    ./scripts/hermes-gateway stop
-    ./scripts/hermes-gateway restart
-    ./scripts/hermes-gateway status
+    ./scripts/vermes-gateway start
+    ./scripts/vermes-gateway stop
+    ./scripts/vermes-gateway restart
+    ./scripts/vermes-gateway status
     
     # Uninstall
-    ./scripts/hermes-gateway uninstall
+    ./scripts/vermes-gateway uninstall
 
 Configuration:
     Set environment variables in .env file or system environment:
@@ -332,7 +332,7 @@ Configuration:
     - DISCORD_BOT_TOKEN
     - WHATSAPP_ENABLED
     
-    Or create ~/.hermes/gateway.json for advanced configuration.
+    Or create ~/.vermes/gateway.json for advanced configuration.
 """
     )
     
@@ -363,7 +363,7 @@ Configuration:
             install_launchd()
         else:
             print("Service installation not supported on this platform.")
-            print("Please run manually: ./scripts/hermes-gateway run")
+            print("Please run manually: ./scripts/vermes-gateway run")
             sys.exit(1)
     
     elif args.command == "uninstall":
