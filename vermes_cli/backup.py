@@ -343,7 +343,7 @@ def run_backup(args) -> None:
     zip_size = out_path.stat().st_size
 
     # Summary
-    logger.info()
+    logger.info("")
     logger.info(f"Backup complete: {out_path}")
     logger.info(f"  Files:       {file_count}")
     logger.info(f"  Original:    {_format_size(total_bytes)}")
@@ -470,10 +470,10 @@ def run_import(args) -> None:
         has_env = (hermes_root / ".env").exists()
 
         if (has_config or has_env) and not args.force:
-            logger.info()
+            logger.info("")
             logger.info("Warning: Target directory already has Vermes configuration.")
             logger.info("Importing will overwrite existing files with backup contents.")
-            logger.info()
+            logger.info("")
             try:
                 answer = input("Continue? [y/N] ").strip().lower()
             except (EOFError, KeyboardInterrupt):
@@ -561,7 +561,7 @@ def run_import(args) -> None:
         elapsed = time.monotonic() - t0
 
         # Summary
-        logger.info()
+        logger.info("")
         logger.info(f"Import complete: {restored} files restored in {elapsed:.1f}s")
         logger.info(f"  Target: {display_hermes_home()}")
 
@@ -620,7 +620,7 @@ def run_import(args) -> None:
                     logger.info(f"  Run: vermes profile list  (after installing vermes)")
 
         # Guidance
-        logger.info()
+        logger.info("")
         if not (hermes_root / "vermes").is_dir() and not (hermes_root / "hermes-agent").is_dir():
             logger.info("Note: The Vermes/Vermes codebase was not included in the backup.")
             logger.info("  If this is a fresh install, run: vermes update")

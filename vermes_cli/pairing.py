@@ -2,17 +2,17 @@
 CLI commands for the DM pairing system.
 
 Usage:
-    hermes pairing list              # Show all pending + approved users
-    hermes pairing approve <platform> <code>  # Approve a pairing code
-    hermes pairing revoke <platform> <user_id> # Revoke user access
-    hermes pairing clear-pending     # Clear all expired/pending codes
+    vermes pairing list              # Show all pending + approved users
+    vermes pairing approve <platform> <code>  # Approve a pairing code
+    vermes pairing revoke <platform> <user_id> # Revoke user access
+    vermes pairing clear-pending     # Clear all expired/pending codes
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 def pairing_command(args):
-    """Handle hermes pairing subcommands."""
+    """Handle vermes pairing subcommands."""
     from gateway.pairing import PairingStore
 
     store = PairingStore()
@@ -27,8 +27,8 @@ def pairing_command(args):
     elif action == "clear-pending":
         _cmd_clear_pending(store)
     else:
-        logger.info("Usage: hermes pairing {list|approve|revoke|clear-pending}")
-        logger.info("Run 'hermes pairing --help' for details.")
+        logger.info("Usage: vermes pairing {list|approve|revoke|clear-pending}")
+        logger.info("Run 'vermes pairing --help' for details.")
 
 
 def _cmd_list(store):
@@ -98,7 +98,7 @@ def _cmd_approve(store, platform: str, code: str):
         )
     else:
         logger.info(f"\n  Code '{code}' not found or expired for platform '{platform}'.")
-        logger.info("  Run 'hermes pairing list' to see pending codes.\n")
+        logger.info("  Run 'vermes pairing list' to see pending codes.\n")
 
 
 def _cmd_revoke(store, platform: str, user_id: str):

@@ -1,13 +1,13 @@
-"""hermes claw — OpenClaw migration commands.
+"""vermes claw — OpenClaw migration commands.
 
 Usage:
-    hermes claw migrate              # Preview then migrate (always shows preview first)
-    hermes claw migrate --dry-run    # Preview only, no changes
-    hermes claw migrate --yes        # Skip confirmation prompt
-    hermes claw migrate --preset full --overwrite --migrate-secrets  # Full run w/ secrets
-    hermes claw migrate --no-backup  # Skip pre-migration snapshot
-    hermes claw cleanup              # Archive leftover OpenClaw directories
-    hermes claw cleanup --dry-run    # Preview what would be archived
+    vermes claw migrate              # Preview then migrate (always shows preview first)
+    vermes claw migrate --dry-run    # Preview only, no changes
+    vermes claw migrate --yes        # Skip confirmation prompt
+    vermes claw migrate --preset full --overwrite --migrate-secrets  # Full run w/ secrets
+    vermes claw migrate --no-backup  # Skip pre-migration snapshot
+    vermes claw cleanup              # Archive leftover OpenClaw directories
+    vermes claw cleanup --dry-run    # Preview what would be archived
 """
 
 import importlib.util
@@ -177,7 +177,7 @@ def _warn_if_gateway_running(auto_yes: bool) -> None:
         "conflicts (Telegram, Discord, and Slack only allow one active "
         "session per token)."
     )
-    print_info("Recommendation: stop the gateway first with 'hermes stop'.")
+    print_info("Recommendation: stop the gateway first with 'vermes stop'.")
     logger.info()
     if not auto_yes and not prompt_yes_no("Continue anyway?", default=False):
         print_info("Migration cancelled. Stop the gateway and try again.")
@@ -293,7 +293,7 @@ def _archive_directory(source_dir: Path, dry_run: bool = False) -> Path:
 
 
 def claw_command(args):
-    """Route hermes claw subcommands."""
+    """Route vermes claw subcommands."""
     action = getattr(args, "claw_action", None)
 
     if action == "migrate":
@@ -301,13 +301,13 @@ def claw_command(args):
     elif action in {"cleanup", "clean"}:
         _cmd_cleanup(args)
     else:
-        logger.info("Usage: hermes claw <command> [options]")
+        logger.info("Usage: vermes claw <command> [options]")
         logger.info()
         logger.info("Commands:")
         logger.info("  migrate          Migrate settings from OpenClaw to Vermes")
         logger.info("  cleanup          Archive leftover OpenClaw directories after migration")
         logger.info()
-        logger.info("Run 'hermes claw <command> --help' for options.")
+        logger.info("Run 'vermes claw <command> --help' for options.")
 
 
 def _cmd_migrate(args):
@@ -364,7 +364,7 @@ def _cmd_migrate(args):
         logger.info()
         print_error(f"OpenClaw directory not found: {source_dir}")
         print_info("Make sure your OpenClaw installation is at the expected path.")
-        print_info("You can specify a custom path: hermes claw migrate --source /path/to/.openclaw")
+        print_info("You can specify a custom path: vermes claw migrate --source /path/to/.openclaw")
         return
 
     # Find the migration script
@@ -492,7 +492,7 @@ def _cmd_migrate(args):
     if not auto_yes:
         if not sys.stdin.isatty():
             print_info("Non-interactive session — preview only.")
-            print_info("To execute, re-run with: hermes claw migrate --yes")
+            print_info("To execute, re-run with: vermes claw migrate --yes")
             return
         if not prompt_yes_no("Proceed with migration?", default=True):
             print_info("Migration cancelled.")
@@ -502,7 +502,7 @@ def _cmd_migrate(args):
     # Delegates to vermes_cli.backup.create_pre_migration_backup(), which
     # shares implementation with the pre-update backup (same exclusion
     # rules, same SQLite safe-copy, zip format) so the archive is
-    # restorable with `hermes import`.  Mirrors OpenClaw's
+    # restorable with `vermes import`.  Mirrors OpenClaw's
     # createPreMigrationBackup posture — one atomic restore point before
     # any mutation, auto-pruned to the last 5 pre-migration zips.
     backup_archive: Optional[Path] = None
@@ -514,7 +514,7 @@ def _cmd_migrate(args):
                 size_str = _format_size(backup_archive.stat().st_size)
                 logger.info()
                 print_success(f"Pre-migration backup: {backup_archive} ({size_str})")
-                print_info(f"Restore with: hermes import {backup_archive.name}")
+                print_info(f"Restore with: vermes import {backup_archive.name}")
         except Exception as e:
             logger.info()
             print_error(f"Could not create pre-migration backup: {e}")
@@ -544,7 +544,7 @@ def _cmd_migrate(args):
         logger.debug("OpenClaw migration error", exc_info=True)
         if backup_archive:
             print_info(f"A pre-migration backup is available at: {backup_archive}")
-            print_info(f"Restore with: hermes import {backup_archive.name}")
+            print_info(f"Restore with: vermes import {backup_archive.name}")
         return
 
     # Print results
@@ -552,7 +552,7 @@ def _cmd_migrate(args):
 
     # Source directory is left untouched — archiving is not the migration
     # tool's responsibility.  Users who want to clean up can run
-    # 'hermes claw cleanup' separately.
+    # 'vermes claw cleanup' separately.
 
 
 def _cmd_cleanup(args):
@@ -615,7 +615,7 @@ def _cmd_cleanup(args):
                 print_info("Non-interactive session — aborting. Stop OpenClaw and re-run.")
                 return
             if not prompt_yes_no("Proceed anyway?", default=False):
-                print_info("Aborted. Stop OpenClaw first, then re-run: hermes claw cleanup")
+                print_info("Aborted. Stop OpenClaw first, then re-run: vermes claw cleanup")
                 return
 
     total_archived = 0
@@ -669,7 +669,7 @@ def _cmd_cleanup(args):
             print_info(f"Would archive: {source_dir} → {archive_path}")
         elif not auto_yes and not sys.stdin.isatty():
             print_info(f"Non-interactive session — would archive: {source_dir}")
-            print_info("To execute, re-run with: hermes claw cleanup --yes")
+            print_info("To execute, re-run with: vermes claw cleanup --yes")
         elif auto_yes or prompt_yes_no(f"Archive {source_dir}?", default=True):
             try:
                 archive_path = _archive_directory(source_dir)
@@ -788,7 +788,7 @@ def _print_migration_report(report: dict, dry_run: bool):
     if dry_run:
         logger.info()
         print_info("To execute the migration, run without --dry-run:")
-        print_info(f"  hermes claw migrate --preset {report.get('preset', 'full')}")
+        print_info(f"  vermes claw migrate --preset {report.get('preset', 'full')}")
     elif migrated:
         logger.info()
         print_success("Migration complete!")
@@ -803,7 +803,7 @@ def _print_migration_report(report: dict, dry_run: bool):
             logger.info(color("  Your OPENROUTER_API_KEY and other provider keys must be added manually.", Colors.YELLOW))
             logger.info()
             print_info("To migrate API keys, re-run with:")
-            print_info("  hermes claw migrate --migrate-secrets")
+            print_info("  vermes claw migrate --migrate-secrets")
             logger.info()
             print_info("Or add your key manually:")
             print_info("  vermes config set OPENROUTER_API_KEY sk-or-v1-...")

@@ -3,8 +3,8 @@
 Vermes CLI - Main entry point.
 
 Usage:
-    hermes                     # Interactive chat (default)
-    hermes chat                # Interactive chat
+    vermes                     # Interactive chat (default)
+    vermes chat                # Interactive chat
     vermes gateway             # Run gateway in foreground
     vermes gateway start       # Start gateway as service
     vermes gateway stop        # Stop gateway service
@@ -12,35 +12,35 @@ Usage:
     vermes gateway install     # Install gateway service
     vermes gateway uninstall   # Uninstall gateway service
     vermes setup               # Interactive setup wizard
-    hermes logout              # Clear stored authentication
+    vermes logout              # Clear stored authentication
     vermes status              # Show status of all components
-    hermes cron                # Manage cron jobs
-    hermes cron list           # List cron jobs
-    hermes cron status         # Check if cron scheduler is running
+    vermes cron                # Manage cron jobs
+    vermes cron list           # List cron jobs
+    vermes cron status         # Check if cron scheduler is running
     vermes doctor              # Check configuration and dependencies
-    hermes honcho setup                    # Configure Honcho AI memory integration
-    hermes honcho status                   # Show Honcho config and connection status
-    hermes honcho sessions                 # List directory → session name mappings
-    hermes honcho map <name>               # Map current directory to a session name
-    hermes honcho peer                     # Show peer names and dialectic settings
-    hermes honcho peer --user NAME         # Set user peer name
-    hermes honcho peer --ai NAME           # Set AI peer name
-    hermes honcho peer --reasoning LEVEL   # Set dialectic reasoning level
-    hermes honcho mode                     # Show current memory mode
-    hermes honcho mode [hybrid|honcho|local]  # Set memory mode
-    hermes honcho tokens                   # Show token budget settings
-    hermes honcho tokens --context N       # Set session.context() token cap
-    hermes honcho tokens --dialectic N     # Set dialectic result char cap
-    hermes honcho identity                 # Show AI peer identity representation
-    hermes honcho identity <file>          # Seed AI peer identity from a file (SOUL.md etc.)
-    hermes honcho migrate                  # Step-by-step migration guide: OpenClaw native → Vermes + Honcho
-    hermes version             Show version
+    vermes honcho setup                    # Configure Honcho AI memory integration
+    vermes honcho status                   # Show Honcho config and connection status
+    vermes honcho sessions                 # List directory → session name mappings
+    vermes honcho map <name>               # Map current directory to a session name
+    vermes honcho peer                     # Show peer names and dialectic settings
+    vermes honcho peer --user NAME         # Set user peer name
+    vermes honcho peer --ai NAME           # Set AI peer name
+    vermes honcho peer --reasoning LEVEL   # Set dialectic reasoning level
+    vermes honcho mode                     # Show current memory mode
+    vermes honcho mode [hybrid|honcho|local]  # Set memory mode
+    vermes honcho tokens                   # Show token budget settings
+    vermes honcho tokens --context N       # Set session.context() token cap
+    vermes honcho tokens --dialectic N     # Set dialectic result char cap
+    vermes honcho identity                 # Show AI peer identity representation
+    vermes honcho identity <file>          # Seed AI peer identity from a file (SOUL.md etc.)
+    vermes honcho migrate                  # Step-by-step migration guide: OpenClaw native → Vermes + Honcho
+    vermes version             Show version
     vermes update              Update to latest version
-    hermes uninstall           Uninstall Vermes
+    vermes uninstall           Uninstall Vermes
     vermes acp                 Run as an ACP server for editor integration
-    hermes sessions browse     Interactive session picker with search
+    vermes sessions browse     Interactive session picker with search
 
-    hermes claw migrate --dry-run  # Preview migration without changes
+    vermes claw migrate --dry-run  # Preview migration without changes
 """
 
 # IMPORTANT: vermes_bootstrap must be the very first import — it sets up
@@ -53,7 +53,7 @@ Usage:
 # crashes between ``git reset --hard`` and ``uv pip install -e .``), the
 # new code references ``vermes_bootstrap`` but the editable install's
 # ``.pth`` file still points at the old set of top-level modules.  Without
-# this guard, hermes crashes on import and the user can't run
+# this guard, vermes crashes on import and the user can't run
 # ``vermes update`` to recover.  Missing the bootstrap means UTF-8 stdio
 # setup is skipped on Windows — degraded, not broken.  POSIX is unaffected.
 try:
@@ -94,7 +94,7 @@ def _require_tty(command_name: str) -> None:
     """
     if not sys.stdin.isatty():
         logger.info(
-            f"Error: 'hermes {command_name}' requires an interactive terminal.\n"
+            f"Error: 'vermes {command_name}' requires an interactive terminal.\n"
             f"It cannot be run through a pipe or non-interactive subprocess.\n"
             f"Run it directly in your terminal instead.",
             file=sys.stderr,
@@ -108,7 +108,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 
 # ---------------------------------------------------------------------------
-# Profile override — MUST happen before any hermes module import.
+# Profile override — MUST happen before any vermes module import.
 #
 # Many modules cache HERMES_HOME at import time (module-level constants).
 # We intercept --profile/-p from sys.argv here and set the env var so that
@@ -148,17 +148,17 @@ def _apply_profile_override() -> None:
     # only when it already points to a specific profile directory.  The
     # distinguishing heuristic: a profile path has "profiles" as its immediate
     # parent directory name (e.g. ~/.vermes/profiles/coder or
-    # /opt/data/profiles/coder).  If HERMES_HOME points to the hermes root
+    # /opt/data/profiles/coder).  If HERMES_HOME points to the vermes root
     # instead (e.g. systemd hardcodes HERMES_HOME=/root/.hermes), we must
     # still read active_profile — the user may have switched profiles via
-    # `hermes profile use` and the gateway should honour that choice.
+    # `vermes profile use` and the gateway should honour that choice.
     # See issue #22502.
     hermes_home_env = os.environ.get("HERMES_HOME", "")
     if profile_name is None and hermes_home_env:
         if Path(hermes_home_env).parent.name == "profiles":
             return
 
-    # 2. If no flag, check active_profile in the hermes root
+    # 2. If no flag, check active_profile in the vermes root
     if profile_name is None:
         try:
             from vermes_constants import get_default_hermes_root
@@ -182,7 +182,7 @@ def _apply_profile_override() -> None:
             logger.warning(f"Error: {exc}")
             sys.exit(1)
         except Exception as exc:
-            # A bug in profiles.py must NEVER prevent hermes from starting
+            # A bug in profiles.py must NEVER prevent vermes from starting
             logger.info(
                 f"Warning: profile override failed ({exc}), using default",
                 file=sys.stderr,
@@ -233,7 +233,7 @@ try:
 except Exception:
     pass  # best-effort — redaction stays at default (enabled) on config errors
 
-# Initialize centralized file logging early — all `hermes` subcommands
+# Initialize centralized file logging early — all `vermes` subcommands
 # (chat, setup, gateway, config, etc.) write to agent.log + errors.log.
 try:
     from vermes_logging import setup_logging as _setup_logging
@@ -687,7 +687,7 @@ def _exec_in_container(container_info: dict, cli_args: list):
 
     Args:
         container_info: dict with backend, container_name, exec_user, hermes_bin
-        cli_args: the original CLI arguments (everything after 'hermes')
+        cli_args: the original CLI arguments (everything after 'vermes')
     """
 
     backend = container_info["backend"]
@@ -735,14 +735,14 @@ def _exec_in_container(container_info: dict, cli_args: list):
                     f'    commands = [{{ command = "{runtime}"; options = [ "NOPASSWD" ]; }}];\n'
                     f"  }}];\n"
                     f"\n"
-                    f"Or run: sudo hermes {' '.join(cli_args)}",
+                    f"Or run: sudo vermes {' '.join(cli_args)}",
                     file=sys.stderr,
                 )
                 sys.exit(1)
         else:
             logger.info(
                 f"Error: container '{container_name}' not found via {backend}.\n"
-                f"The container may be running under root. Try: sudo hermes {' '.join(cli_args)}",
+                f"The container may be running under root. Try: sudo vermes {' '.join(cli_args)}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -866,9 +866,9 @@ def _print_tui_exit_summary(
 
     logger.info()
     logger.info("Resume this session with:")
-    logger.info(f"  hermes --tui --resume {target}")
+    logger.info(f"  vermes --tui --resume {target}")
     if title:
-        logger.info(f'  hermes --tui -c "{title}"')
+        logger.info(f'  vermes --tui -c "{title}"')
     logger.info()
     logger.info(f"Session:        {target}")
     if title:
@@ -1280,7 +1280,7 @@ def _launch_tui(
     env["NODE_OPTIONS"] = " ".join(_tokens)
     # HERMES_TUI_RESUME is an internal hand-off from the Python wrapper to the
     # Ink app.  Because we start from os.environ.copy(), an exported/stale value
-    # in the user's shell would otherwise make a plain `hermes --tui` try to
+    # in the user's shell would otherwise make a plain `vermes --tui` try to
     # resume a non-existent session and leave the UI at "error: session not
     # found" with no live session.  Only forward a resume id that argparse
     # resolved for this invocation; direct `node ui-tui/dist/entry.js` users can
@@ -1360,7 +1360,7 @@ def cmd_chat(args):
                 args.resume = resolved
             else:
                 logger.info(f"No session found matching '{continue_val}'.")
-                logger.info("Use 'hermes sessions list' to see available sessions.")
+                logger.info("Use 'vermes sessions list' to see available sessions.")
                 sys.exit(1)
         else:
             # -c with no argument — continue the most recent session
@@ -1743,7 +1743,7 @@ def cmd_whatsapp(args):
         logger.info()
         logger.info("  Or install as a service: vermes gateway install")
     else:
-        logger.info("⚠ Pairing may not have completed. Run 'hermes whatsapp' to try again.")
+        logger.info("⚠ Pairing may not have completed. Run 'vermes whatsapp' to try again.")
 
 
 def cmd_setup(args):
@@ -4956,7 +4956,7 @@ def _model_flow_bedrock_api_key(config, region, current_model=""):
         bedrock_cfg["region"] = region
         cfg["bedrock"] = bedrock_cfg
 
-        # Save the API key env var name so hermes knows where to find it
+        # Save the API key env var name so vermes knows where to find it
         save_env_value("OPENAI_API_KEY", existing_key)
         save_env_value("OPENAI_BASE_URL", mantle_base_url)
 
@@ -5712,7 +5712,7 @@ def cmd_webhook(args):
 def cmd_slack(args):
     """Slack integration helpers.
 
-    Dispatches ``hermes slack <subcommand>``. Currently supports:
+    Dispatches ``vermes slack <subcommand>``. Currently supports:
       manifest — print or write a Slack app manifest with every gateway
                  command registered as a first-class slash.
     """
@@ -5720,13 +5720,13 @@ def cmd_slack(args):
     if sub in {None, ""}:
         # No subcommand — print usage hint.
         logger.info(
-            "usage: hermes slack <subcommand>\n"
+            "usage: vermes slack <subcommand>\n"
             "\n"
             "subcommands:\n"
             "  manifest   Generate a Slack app manifest with every gateway\n"
             "             command registered as a native slash\n"
             "\n"
-            "Run `hermes slack manifest -h` for details.",
+            "Run `vermes slack manifest -h` for details.",
             file=sys.stderr,
         )
         return 1
@@ -5876,7 +5876,7 @@ def _clear_bytecode_cache(root: Path) -> int:
     return removed
 
 
-# Critical files that every ``hermes`` invocation imports at startup. If any
+# Critical files that every ``vermes`` invocation imports at startup. If any
 # of these fail to parse after a pull, the CLI is bricked — the user can't
 # even run ``vermes update`` again to roll forward. The post-pull syntax
 # guard validates these and auto-rolls-back on failure.
@@ -5910,7 +5910,7 @@ def _capture_head_sha(git_cmd, cwd) -> str | None:
 def _validate_critical_files_syntax(root) -> tuple[bool, str | None, str | None]:
     """Compile each file in ``_UPDATE_CRITICAL_FILES`` to catch SyntaxErrors.
 
-    These are the files imported on every ``hermes`` startup; if any of them
+    These are the files imported on every ``vermes`` startup; if any of them
     has a syntax error (orphan merge-conflict markers, bad ref to a name
     that no longer exists, etc.) the CLI can't bootstrap at all. We validate
     them after a successful ``git pull`` so we can auto-roll-back instead of
@@ -6073,7 +6073,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     Args:
         web_dir: Path to the ``web/`` source directory.
         fatal: If True, print error guidance and return False on failure
-               instead of a soft warning (used by ``hermes web``).
+               instead of a soft warning (used by ``vermes web``).
 
     Returns True if the build succeeded or was skipped (no package.json).
     """
@@ -6122,7 +6122,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     if r1.returncode != 0:
         _say(
             f"  {'✗' if fatal else '⚠'} Web UI npm install failed"
-            + ("" if fatal else " (hermes web will not be available)")
+            + ("" if fatal else " (vermes web will not be available)")
         )
         _relay(r1)
         if fatal:
@@ -6168,7 +6168,7 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
 
         _say(
             f"  {'✗' if fatal else '⚠'} Web UI build failed"
-            + ("" if fatal else " (hermes web will not be available)")
+            + ("" if fatal else " (vermes web will not be available)")
         )
         _relay(r2)
         if fatal:
@@ -6179,9 +6179,9 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
 
 
 def _find_stale_dashboard_pids() -> list[int]:
-    """Return PIDs of ``hermes dashboard`` processes other than ourselves.
+    """Return PIDs of ``vermes dashboard`` processes other than ourselves.
 
-    ``hermes dashboard`` is a long-lived server process commonly started and
+    ``vermes dashboard`` is a long-lived server process commonly started and
     forgotten.  When ``vermes update`` replaces files on disk, the running
     process keeps the old Python backend in memory while the JS bundle on
     disk is updated, causing a silent frontend/backend mismatch (e.g. new
@@ -6196,7 +6196,7 @@ def _find_stale_dashboard_pids() -> list[int]:
     Returns an empty list on any scan error (missing ps/wmic, timeout, etc.).
     """
     patterns = [
-        "hermes dashboard",
+        "vermes dashboard",
         "vermes_cli.main dashboard",
         "vermes_cli/main.py dashboard",
     ]
@@ -6240,7 +6240,7 @@ def _find_stale_dashboard_pids() -> list[int]:
         else:
             # Linux / macOS: scan the process table via ps and match against
             # the same explicit patterns list used on Windows.  Using ps
-            # (rather than `pgrep -f "hermes.*dashboard"`) keeps us consistent
+            # (rather than `pgrep -f "vermes.*dashboard"`) keeps us consistent
             # with `vermes_cli.gateway._scan_gateway_pids` and avoids the
             # greedy regex matching unrelated cmdlines that merely contain
             # both words (e.g. a chat session discussing "dashboard").
@@ -6305,8 +6305,8 @@ def _print_curator_first_run_notice() -> None:
         f"~{days}d after installation; only agent-created skills are in "
         f"scope and nothing is ever auto-deleted (archive is recoverable)."
     )
-    logger.info("  Preview now:  hermes curator run --dry-run")
-    logger.info("  Pause it:     hermes curator pause")
+    logger.info("  Preview now:  vermes curator run --dry-run")
+    logger.info("  Pause it:     vermes curator pause")
     logger.info(
         "  Docs:         https://hermes-agent.nousresearch.com/docs/user-guide/features/curator"
     )
@@ -6367,7 +6367,7 @@ def _print_curator_recent_run_notice() -> None:
         logger.info(f"  {line}")
     logger.info(
         "  (This message shows once per curator run. "
-        "View anytime: hermes curator status)"
+        "View anytime: vermes curator status)"
     )
 
     # Stamp shown so we don't repeat on the next update.
@@ -6401,10 +6401,10 @@ def _format_time_ago(iso_ts: str) -> str:
 def _kill_stale_dashboard_processes(
     reason: str = "the running backend no longer matches the updated frontend",
 ) -> None:
-    """Kill running ``hermes dashboard`` processes.
+    """Kill running ``vermes dashboard`` processes.
 
     Called at the end of ``vermes update`` (default ``reason``) and also
-    from ``hermes dashboard --stop`` (which overrides ``reason``).  The
+    from ``vermes dashboard --stop`` (which overrides ``reason``).  The
     dashboard has no service manager, so after a code update the running
     process is guaranteed to be serving stale Python against a
     freshly-updated JS bundle.  Leaving it alive produces silent
@@ -6494,7 +6494,7 @@ def _kill_stale_dashboard_processes(
 
     if killed:
         logger.info("  Restart the dashboard when you're ready:")
-        logger.info("    hermes dashboard --port <port>")
+        logger.info("    vermes dashboard --port <port>")
 
 
 # Back-compat alias: some tests and any external callers may import the old
@@ -6788,7 +6788,7 @@ def _restore_stashed_changes(
         logger.info(f"  Stash ref: {stash_ref}")
 
         # Always reset to clean state — leaving conflict markers in source
-        # files makes hermes completely unrunnable (SyntaxError on import).
+        # files makes vermes completely unrunnable (SyntaxError on import).
         # The user's changes are safe in the stash for manual recovery.
         subprocess.run(
             git_cmd + ["reset", "--hard", "HEAD"],
@@ -7193,7 +7193,7 @@ def _hermes_exe_shims(scripts_dir: Path) -> list[Path]:
     if not _is_windows():
         return []
     return [
-        scripts_dir / "hermes.exe",
+        scripts_dir / "vermes.exe",
         scripts_dir / "hermes-gateway.exe",
     ]
 
@@ -7205,13 +7205,13 @@ def _detect_concurrent_hermes_instances(
 
     Windows blocks DELETE/REPLACE on a running .exe — and even RENAME on the
     same .exe when another process opened it without ``FILE_SHARE_DELETE``.
-    The Vermes Desktop Electron app spawns ``hermes.EXE`` as a backend child,
+    The Vermes Desktop Electron app spawns ``vermes.EXE`` as a backend child,
     so during ``vermes update`` the user-invoked process and the desktop's
     child both hold the same file. The quarantine rename then fails with
     ``[WinError 32]`` and uv inherits the lock.
 
     This helper enumerates processes whose ``exe`` matches one of the venv's
-    shims (``hermes.exe`` / ``hermes-gateway.exe``) and returns ``(pid,
+    shims (``vermes.exe`` / ``hermes-gateway.exe``) and returns ``(pid,
     process_name)`` pairs. The caller's own PID is excluded so the running
     ``vermes update`` invocation never reports itself.
 
@@ -7269,15 +7269,15 @@ def _format_concurrent_instances_message(
     matches: list[tuple[int, str]], scripts_dir: Path
 ) -> str:
     """Build a human-readable explanation + remediation hint for the user."""
-    shim = scripts_dir / "hermes.exe"
-    lines = ["✗ Another hermes.exe is running:"]
+    shim = scripts_dir / "vermes.exe"
+    lines = ["✗ Another vermes.exe is running:"]
     for pid, name in matches:
         lines.append(f"    PID {pid}  {name}")
     lines.append("")
     lines.append(f"  Updating now would fail to overwrite {shim} because")
     lines.append("  Windows blocks REPLACE on a running executable.")
     lines.append("")
-    lines.append("  Close Vermes Desktop, exit any open `hermes` REPLs, and")
+    lines.append("  Close Vermes Desktop, exit any open `vermes` REPLs, and")
     lines.append("  stop the gateway (`vermes gateway stop`) before retrying.")
     lines.append("  Override with `vermes update --force` if you've already")
     lines.append("  confirmed those processes will not write to the venv.")
@@ -7287,17 +7287,17 @@ def _format_concurrent_instances_message(
 def _quarantine_running_hermes_exe(
     scripts_dir: Path, *, max_attempts: int = 4
 ) -> list[tuple[Path, Path]]:
-    """Pre-empt Windows file lock on the running ``hermes.exe``.
+    """Pre-empt Windows file lock on the running ``vermes.exe``.
 
     Windows allows RENAMING a mapped/running executable (the kernel tracks the
     file by handle, not path), but blocks DELETE/REPLACE while it's loaded. uv
     needs to overwrite the entry-point shims during ``pip install -e .``;
-    when ``vermes update`` runs, ``hermes.exe`` IS the live process, and uv
+    when ``vermes update`` runs, ``vermes.exe`` IS the live process, and uv
     fails with ``Access is denied. (os error 5)``.
 
-    We rename live shims to ``hermes.exe.old.<unix-ms>`` first. uv then writes
+    We rename live shims to ``vermes.exe.old.<unix-ms>`` first. uv then writes
     fresh shims at the original paths. The ``.old`` files are cleaned up on
-    the next hermes invocation by ``_cleanup_quarantined_exes``.
+    the next vermes invocation by ``_cleanup_quarantined_exes``.
 
     Rename can still fail when *another* process has opened the .exe without
     ``FILE_SHARE_DELETE`` — typically AV real-time scanners with transient
@@ -7380,7 +7380,7 @@ def _quarantine_running_hermes_exe(
             f"another process is holding it open)."
         )
         logger.info(
-            "    Close Vermes Desktop, exit other `hermes` REPLs, stop the "
+            "    Close Vermes Desktop, exit other `vermes` REPLs, stop the "
             "gateway, or pause AV scanning, then re-run `vermes update`."
         )
 
@@ -7433,9 +7433,9 @@ def _restore_quarantined_exes(moved: list[tuple[Path, Path]]) -> None:
 
 
 def _cleanup_quarantined_exes(scripts_dir: Path | None = None) -> None:
-    """Sweep ``hermes.exe.old.*`` left by prior updates.
+    """Sweep ``vermes.exe.old.*`` left by prior updates.
 
-    Called early on every hermes invocation. The .old files are unlocked once
+    Called early on every vermes invocation. The .old files are unlocked once
     their owning process exited, so deletion succeeds the next run. Silent
     no-op when nothing's there or on file-locked / permission errors.
     """
@@ -7534,7 +7534,7 @@ def _install_python_dependencies_with_optional_fallback(
     By default this targets ``.[all]``; Termux callers can pass
     ``group='termux-all'`` to use the curated Android-compatible profile.
 
-    On Windows, pre-renames live ``hermes.exe`` / ``hermes-gateway.exe`` shims
+    On Windows, pre-renames live ``vermes.exe`` / ``hermes-gateway.exe`` shims
     in the venv Scripts dir before each install attempt so uv can write fresh
     copies (Windows blocks REPLACE on a running .exe but allows RENAME). See
     ``_quarantine_running_hermes_exe`` for the rationale.
@@ -7967,11 +7967,11 @@ def _ensure_fhs_path_guard() -> None:
     standard shell breaks on those distros in non-login interactive shells
     (su, sudo -s, tmux panes, some web terminals): /etc/bashrc doesn't
     add /usr/local/bin and /root/.bash_profile doesn't either.  Symptom:
-    ``hermes`` prints ``command not found`` even though the symlink lives
+    ``vermes`` prints ``command not found`` even though the symlink lives
     at /usr/local/bin/hermes.
 
     Silent no-op on: non-Linux, non-root, non-FHS installs, and any system
-    where ``bash -i -c 'command -v hermes'`` already resolves.  Idempotent.
+    where ``bash -i -c 'command -v vermes'`` already resolves.  Idempotent.
     """
     if sys.platform != "linux":
         return
@@ -8000,7 +8000,7 @@ def _ensure_fhs_path_guard() -> None:
                 "bash",
                 "-i",
                 "-c",
-                "command -v hermes",
+                "command -v vermes",
             ],
             capture_output=True,
             text=True,
@@ -8051,7 +8051,7 @@ def _run_pre_update_backup(args) -> None:
 
     Gated on ``updates.pre_update_backup`` in config (default false).  Off
     by default because the zip can add minutes to every update on large
-    HERMES_HOME directories.  The ``--backup`` flag on ``hermes update``
+    HERMES_HOME directories.  The ``--backup`` flag on ``vermes update``
     opts in for a single run; ``--no-backup`` forces it off when config
     has it enabled.  Never raises — a backup failure should not block the
     update itself.
@@ -8136,7 +8136,7 @@ def _run_pre_update_backup(args) -> None:
         display_path = str(out_path)
 
     logger.info(f"  Saved:    {display_path} ({size_str}, {elapsed:.1f}s)")
-    logger.info(f"  Restore:  hermes import {out_path}")
+    logger.info(f"  Restore:  vermes import {out_path}")
     logger.info(f"  Disable:  omit --backup (backups are off by default)")
     logger.info(f"            set updates.pre_update_backup: false in config.yaml")
     logger.info()
@@ -8190,7 +8190,7 @@ def _cmd_update_pip(args):
         logger.info("✗ Update failed")
         sys.exit(1)
 
-    logger.info("✓ Update complete! Restart hermes to use the new version.")
+    logger.info("✓ Update complete! Restart vermes to use the new version.")
 
 
 def _cmd_update_impl(args, gateway_mode: bool):
@@ -8207,7 +8207,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
     logger.info("✦ Updating Vermes...")
     logger.info()
 
-    # On Windows, abort early if another hermes.exe is holding the venv shim
+    # On Windows, abort early if another vermes.exe is holding the venv shim
     # open. Continuing would result in a string of WinError 32 warnings and
     # then either a deferred-rename leftover or a failed git-pull fast path
     # that silently falls back to the slower ZIP route. See issue #26670.
@@ -8436,7 +8436,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
             # parse before declaring the update successful. If a bad commit
             # made it through CI (e.g. admin-merge bypass of a failing
             # ruff check), this catches it on the user side and rolls back
-            # so the CLI stays bootable. The user can then retry ``hermes
+            # so the CLI stays bootable. The user can then retry ``vermes
             # update`` later once a fix lands upstream.
             syntax_ok, failing_path, syntax_error = _validate_critical_files_syntax(
                 PROJECT_ROOT
@@ -8738,7 +8738,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         # Most-recent curator run notice — show-once per run. Surfaces the
         # rename map (`old-name → umbrella`) on the high-attention update
         # surface so users learn about consolidations without having to
-        # check `hermes curator status`. Self-stamps after printing so it
+        # check `vermes curator status`. Self-stamps after printing so it
         # never repeats for the same run.
         try:
             _print_curator_recent_run_notice()
@@ -9263,7 +9263,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
                     logger.info("    Restart manually: vermes gateway run")
                     if unmapped_count > 1:
                         logger.info(
-                            "    (or: hermes -p <profile> gateway run  for each profile)"
+                            "    (or: vermes -p <profile> gateway run  for each profile)"
                         )
 
             if not restarted_services and not killed_pids:
@@ -9369,7 +9369,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
 def _coalesce_session_name_args(argv: list) -> list:
     """Join unquoted multi-word session names after -c/--continue and -r/--resume.
 
-    When a user types ``hermes -c Pokemon Agent Dev`` without quoting the
+    When a user types ``vermes -c Pokemon Agent Dev`` without quoting the
     session name, argparse sees three separate tokens.  This function merges
     them into a single argument so argparse receives
     ``['-c', 'Pokemon Agent Dev']`` instead.
@@ -9460,7 +9460,7 @@ def cmd_profile(args):
     action = getattr(args, "profile_action", None)
 
     if action is None:
-        # Bare `hermes profile` — show current profile status
+        # Bare `vermes profile` — show current profile status
         profile_name = get_active_profile_name()
         dhh = display_hermes_home()
         logger.info(f"\nActive profile: {profile_name}")
@@ -9479,7 +9479,7 @@ def cmd_profile(args):
                 )
                 logger.info(f"Skills:         {p.skill_count} installed")
                 if p.alias_path:
-                    logger.info(f"Alias:          {p.name} → hermes -p {p.name}")
+                    logger.info(f"Alias:          {p.name} → vermes -p {p.name}")
                 break
         logger.info()
         return
@@ -9602,9 +9602,9 @@ def cmd_profile(args):
                 if collision:
                     logger.info(f"\n⚠ Cannot create alias '{name}' — {collision}")
                     logger.info(
-                        f"  Choose a custom alias:  hermes profile alias {name} --name <custom>"
+                        f"  Choose a custom alias:  vermes profile alias {name} --name <custom>"
                     )
-                    logger.info(f"  Or access via flag:     hermes -p {name} chat")
+                    logger.info(f"  Or access via flag:     vermes -p {name} chat")
                 else:
                     wrapper_path = create_wrapper_script(name)
                     if wrapper_path:
@@ -9789,7 +9789,7 @@ def cmd_profile(args):
             logger.info(f"Distribution: {dist_name}@{dist_version or '?'}")
             if dist_source:
                 logger.info(f"Installed from: {dist_source}")
-            logger.info(f"  (run `hermes profile info {name}` for full manifest)")
+            logger.info(f"  (run `vermes profile info {name}` for full manifest)")
         if wrapper.exists():
             logger.info(f"Alias:   {wrapper}")
         logger.info()
@@ -9821,7 +9821,7 @@ def cmd_profile(args):
             if wrapper_path:
                 # If custom name, write the profile name into the wrapper
                 if custom_name:
-                    wrapper_path.write_text(f'#!/bin/sh\nexec hermes -p {name} "$@"\n')
+                    wrapper_path.write_text(f'#!/bin/sh\nexec vermes -p {name} "$@"\n')
                 logger.info(f"✓ Alias created: {wrapper_path}")
                 if not _is_wrapper_dir_in_path():
                     logger.info(f"⚠ {_get_wrapper_dir()} is not in your PATH.")
@@ -9915,9 +9915,9 @@ def cmd_profile(args):
             if plan.has_cron:
                 logger.info(
                     "  Cron jobs were included but are NOT scheduled automatically.\n"
-                    f"  Review them with:  hermes -p {plan.manifest.name} cron list"
+                    f"  Review them with:  vermes -p {plan.manifest.name} cron list"
                 )
-            logger.info(f"\n  Use with:      hermes -p {plan.manifest.name} chat")
+            logger.info(f"\n  Use with:      vermes -p {plan.manifest.name} chat")
         except (DistributionError, ValueError) as e:
             logger.info(f"Error: {e}")
             sys.exit(1)
@@ -9937,7 +9937,7 @@ def cmd_profile(args):
             if current is None:
                 logger.info(
                     f"Error: Profile '{canon}' is not a distribution (no distribution.yaml). "
-                    "Only profiles installed via `hermes profile install` can be updated."
+                    "Only profiles installed via `vermes profile install` can be updated."
                 )
                 sys.exit(1)
 
@@ -9963,7 +9963,7 @@ def cmd_profile(args):
             if plan.has_cron:
                 logger.info(
                     "  Cron files were refreshed.  Review with:  "
-                    f"hermes -p {plan.manifest.name} cron list"
+                    f"vermes -p {plan.manifest.name} cron list"
                 )
         except (DistributionError, ValueError) as e:
             logger.info(f"Error: {e}")
@@ -10074,19 +10074,19 @@ def _render_distribution_plan(plan) -> None:
 
 
 def _report_dashboard_status() -> int:
-    """Print ``hermes dashboard`` PIDs and return the count.
+    """Print ``vermes dashboard`` PIDs and return the count.
 
     Uses the same detection logic as ``_find_stale_dashboard_pids`` (the
-    current process is excluded, but since ``hermes dashboard --status``
+    current process is excluded, but since ``vermes dashboard --status``
     runs in a short-lived CLI process that never matches the pattern,
     the exclusion is irrelevant here).
     """
     pids = _find_stale_dashboard_pids()
     if not pids:
-        logger.info("No hermes dashboard processes running.")
+        logger.info("No vermes dashboard processes running.")
         return 0
 
-    logger.info(f"{len(pids)} hermes dashboard process(es) running:")
+    logger.info(f"{len(pids)} vermes dashboard process(es) running:")
     for pid in pids:
         # Best-effort: show the full cmdline so users can tell profiles apart.
         cmdline = ""
@@ -10121,7 +10121,7 @@ def cmd_dashboard(args):
     if getattr(args, "stop", False):
         pids = _find_stale_dashboard_pids()
         if not pids:
-            logger.info("No hermes dashboard processes running.")
+            logger.info("No vermes dashboard processes running.")
             sys.exit(0)
         # Reuse the same SIGTERM-grace-SIGKILL path used after `vermes update`.
         _kill_stale_dashboard_processes(reason="requested via --stop")
@@ -10254,7 +10254,7 @@ _BUILTIN_SUBCOMMANDS = frozenset(
 
 
 # Top-level flags that take a value. Needed by ``_first_positional_argv``
-# so that in ``hermes -m gpt5 chat``, ``gpt5`` is correctly skipped as a
+# so that in ``vermes -m gpt5 chat``, ``gpt5`` is correctly skipped as a
 # flag value rather than misclassified as a subcommand. Kept in sync with
 # the top-level flags declared in ``vermes_cli/_parser.py``.
 #
@@ -10283,7 +10283,7 @@ def _first_positional_argv() -> str | None:
 
     Used by ``main()`` to decide whether plugin discovery has to run at
     argparse-setup time. Handles common invocations like
-    ``hermes -m gpt5 --provider openai chat "msg"`` by skipping the
+    ``vermes -m gpt5 --provider openai chat "msg"`` by skipping the
     values attached to known top-level flags.
 
     Does NOT fully simulate argparse — unknown ``--foo=bar`` / ``--foo
@@ -10322,7 +10322,7 @@ def _plugin_cli_discovery_needed() -> bool:
     """
     first = _first_positional_argv()
     if first is None:
-        # Bare ``hermes`` or only flags → defaults to ``chat``.
+        # Bare ``vermes`` or only flags → defaults to ``chat``.
         return False
     if first in _BUILTIN_SUBCOMMANDS:
         return False
@@ -10335,7 +10335,7 @@ def _plugin_cli_discovery_needed() -> bool:
 
 
 def main():
-    """Main entry point for hermes CLI."""
+    """Main entry point for vermes CLI."""
     # ── GUI auto-detect: when launched as macOS .app with no args, run GUI mode ──
     import sys as _sys
     if getattr(_sys, 'frozen', False) and len(_sys.argv) <= 1:
@@ -10353,7 +10353,7 @@ def main():
     except Exception:
         pass
 
-    # Sweep stale ``hermes.exe.old.*`` quarantine files left by previous
+    # Sweep stale ``vermes.exe.old.*`` quarantine files left by previous
     # ``vermes update`` runs on Windows. Silent no-op on non-Windows or when
     # there's nothing to clean. See ``_quarantine_running_hermes_exe``.
     try:
@@ -10660,7 +10660,7 @@ def main():
     proxy_start.add_argument(
         "--provider",
         default="nous",
-        help="Upstream provider: nous or xai (default: nous). See `hermes proxy providers`.",
+        help="Upstream provider: nous or xai (default: nous). See `vermes proxy providers`.",
     )
     proxy_start.add_argument(
         "--host",
@@ -11298,7 +11298,7 @@ def main():
         default=None,
         help=(
             "Acknowledge a security advisory by ID and exit. After ack, the "
-            "advisory will no longer trigger startup banners. Run `hermes "
+            "advisory will no longer trigger startup banners. Run `vermes "
             "doctor` first to see active advisories and their IDs."
         ),
     )
@@ -11326,18 +11326,18 @@ def main():
     debug_parser = subparsers.add_parser(
         "debug",
         help="Debug tools — upload logs and system info for support",
-        description="Debug utilities for Vermes. Use 'hermes debug share' to "
+        description="Debug utilities for Vermes. Use 'vermes debug share' to "
         "upload a debug report (system info + recent logs) to a paste "
         "service and get a shareable URL.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
-    hermes debug share              Upload debug report and print URL
-    hermes debug share --lines 500  Include more log lines
-    hermes debug share --expire 30  Keep paste for 30 days
-    hermes debug share --local      Print report locally (no upload)
-    hermes debug share --no-redact  Disable upload-time secret redaction
-    hermes debug delete <url>       Delete a previously uploaded paste
+    vermes debug share              Upload debug report and print URL
+    vermes debug share --lines 500  Include more log lines
+    vermes debug share --expire 30  Keep paste for 30 days
+    vermes debug share --local      Print report locally (no upload)
+    vermes debug share --no-redact  Disable upload-time secret redaction
+    vermes debug delete <url>       Delete a previously uploaded paste
 """,
     )
     debug_sub = debug_parser.add_subparsers(dest="debug_command")
@@ -11374,7 +11374,7 @@ Examples:
     )
     delete_parser = debug_sub.add_parser(
         "delete",
-        help="Delete a paste uploaded by 'hermes debug share'",
+        help="Delete a paste uploaded by 'vermes debug share'",
     )
     delete_parser.add_argument(
         "urls",
@@ -11397,7 +11397,7 @@ Examples:
     backup_parser.add_argument(
         "-o",
         "--output",
-        help="Output path for the zip file (default: ~/hermes-backup-<timestamp>.zip)",
+        help="Output path for the zip file (default: ~/vermes-backup-<timestamp>.zip)",
     )
     backup_parser.add_argument(
         "-q",
@@ -11417,7 +11417,7 @@ Examples:
         "checkpoints",
         help="Inspect / prune / clear ~/.vermes/checkpoints/",
         description="Manage the filesystem checkpoint store — the shadow git "
-        "repo hermes uses to snapshot working directories before "
+        "repo vermes uses to snapshot working directories before "
         "write_file/patch/terminal calls. Lets you see how much "
         "space checkpoints occupy, force a prune, or wipe the base.",
     )
@@ -11762,7 +11762,7 @@ Examples:
     _install_enable_group.add_argument(
         "--no-enable",
         action="store_true",
-        help="Install disabled (skip confirmation prompt); enable later with `hermes plugins enable <name>`",
+        help="Install disabled (skip confirmation prompt); enable later with `vermes plugins enable <name>`",
     )
 
     plugins_update = plugins_subparsers.add_parser(
@@ -11800,7 +11800,7 @@ Examples:
     # own argparse tree.  No hardcoded plugin commands in main.py.
     #
     # Skipped when the invocation is already targeting a known built-in
-    # subcommand — ``hermes --help``, ``hermes version``, ``hermes logs``,
+    # subcommand — ``vermes --help``, ``vermes version``, ``vermes logs``,
     # etc.  This avoids eagerly importing every bundled plugin module
     # (google.cloud.pubsub_v1, aiohttp, grpc, PIL …) which costs
     # 500-650ms on typical installs.
@@ -12049,7 +12049,7 @@ Examples:
         description=(
             "Install or check the cua-driver binary used by the\n"
             "`computer_use` toolset. macOS-only.\n\n"
-            "Use `hermes computer-use install` to fetch and run the\n"
+            "Use `vermes computer-use install` to fetch and run the\n"
             "upstream cua-driver installer. This is equivalent to the\n"
             "post-setup hook that `vermes tools` runs when you first\n"
             "enable the Computer Use toolset, and is a stable target\n"
@@ -12100,10 +12100,10 @@ Examples:
                     logger.info(f"cua-driver: installed at {path} ({version})")
                 else:
                     logger.info(f"cua-driver: installed at {path}")
-                logger.info("  Refresh to latest: hermes computer-use install --upgrade")
+                logger.info("  Refresh to latest: vermes computer-use install --upgrade")
                 return
             logger.info("cua-driver: not installed")
-            logger.info("  Run: hermes computer-use install")
+            logger.info("  Run: vermes computer-use install")
             return
         # No subcommand → show help
         computer_use_parser.print_help()
@@ -12118,8 +12118,8 @@ Examples:
         description=(
             "Manage MCP server connections and run Vermes as an MCP server.\n\n"
             "MCP servers provide additional tools via the Model Context Protocol.\n"
-            "Use 'hermes mcp add' to connect to a new server, or\n"
-            "'hermes mcp serve' to expose Vermes conversations over MCP."
+            "Use 'vermes mcp add' to connect to a new server, or\n"
+            "'vermes mcp serve' to expose Vermes conversations over MCP."
         ),
     )
     mcp_sub = mcp_parser.add_subparsers(dest="mcp_action")
@@ -12145,7 +12145,7 @@ Examples:
     # subparser's args.command attribute, which the dispatcher reads to
     # route to cmd_mcp.  Without an explicit dest, argparse derives
     # dest="command" from the flag name and sets it to None when the
-    # flag is omitted, causing `hermes mcp add ...` to fall through to
+    # flag is omitted, causing `vermes mcp add ...` to fall through to
     # interactive chat.
     mcp_add_p.add_argument(
         "--command", dest="mcp_command", help="Stdio command (e.g. npx)"
@@ -12407,7 +12407,7 @@ Examples:
                 logger.info("Cancelled.")
                 return
 
-            # Launch hermes --resume <id> by replacing the current process
+            # Launch vermes --resume <id> by replacing the current process
             logger.info(f"Resuming session: {selected_id}")
             from vermes_cli.relaunch import relaunch
 
@@ -12513,7 +12513,7 @@ Examples:
         action="store_true",
         help="Skip the pre-migration zip snapshot of ~/.vermes/ (by default a "
         "single restore-point archive is written to ~/.vermes/backups/ "
-        "before apply; restorable with 'hermes import').",
+        "before apply; restorable with 'vermes import').",
     )
     claw_migrate.add_argument(
         "--workspace-target", help="Absolute path to copy workspace instructions into"
@@ -12603,7 +12603,7 @@ Examples:
         "--force",
         action="store_true",
         default=False,
-        help="Windows: proceed with the update even when another hermes.exe is detected. The concurrent process will likely cause WinError 32 warnings and may leave a reboot-deferred .exe replacement.",
+        help="Windows: proceed with the update even when another vermes.exe is detected. The concurrent process will likely cause WinError 32 warnings and may leave a reboot-deferred .exe replacement.",
     )
     update_parser.set_defaults(func=cmd_update)
 
@@ -12738,7 +12738,7 @@ Examples:
         default=None,
         help="One- or two-sentence description of what this profile is good at. "
              "Used by the kanban decomposer to route tasks based on role instead "
-             "of profile name alone. Skip and add later via `hermes profile describe`.",
+             "of profile name alone. Skip and add later via `vermes profile describe`.",
     )
 
     profile_delete = profile_subparsers.add_parser("delete", help="Delete a profile")
@@ -12922,7 +12922,7 @@ Examples:
         "--tui",
         action="store_true",
         help=(
-            "Expose the in-browser Chat tab (embedded `hermes --tui` via PTY/WebSocket). "
+            "Expose the in-browser Chat tab (embedded `vermes --tui` via PTY/WebSocket). "
             "Alternatively set HERMES_DASHBOARD_TUI=1."
         ),
     )
@@ -12939,17 +12939,17 @@ Examples:
     # start-a-server flags above (if both are passed, --stop / --status win
     # because they exit before the server is started).  The dashboard has
     # no service manager and no PID file, so these scan the process table
-    # for `hermes dashboard` cmdlines and SIGTERM them directly — the same
+    # for `vermes dashboard` cmdlines and SIGTERM them directly — the same
     # path `vermes update` uses to clean up stale dashboards.
     dashboard_parser.add_argument(
         "--stop",
         action="store_true",
-        help="Stop all running hermes dashboard processes and exit",
+        help="Stop all running vermes dashboard processes and exit",
     )
     dashboard_parser.add_argument(
         "--status",
         action="store_true",
-        help="List running hermes dashboard processes and exit",
+        help="List running vermes dashboard processes and exit",
     )
     dashboard_parser.set_defaults(func=cmd_dashboard)
 
@@ -12963,16 +12963,16 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
-    hermes logs                    Show last 50 lines of agent.log
-    hermes logs -f                 Follow agent.log in real time
-    hermes logs errors             Show last 50 lines of errors.log
-    hermes logs gateway -n 100     Show last 100 lines of gateway.log
-    hermes logs --level WARNING    Only show WARNING and above
-    hermes logs --session abc123   Filter by session ID
-    hermes logs --component tools  Only show tool-related lines
-    hermes logs --since 1h         Lines from the last hour
-    hermes logs --since 30m -f     Follow, starting from 30 min ago
-    hermes logs list               List available log files with sizes
+    vermes logs                    Show last 50 lines of agent.log
+    vermes logs -f                 Follow agent.log in real time
+    vermes logs errors             Show last 50 lines of errors.log
+    vermes logs gateway -n 100     Show last 100 lines of gateway.log
+    vermes logs --level WARNING    Only show WARNING and above
+    vermes logs --session abc123   Filter by session ID
+    vermes logs --component tools  Only show tool-related lines
+    vermes logs --since 1h         Lines from the last hour
+    vermes logs --since 30m -f     Follow, starting from 30 min ago
+    vermes logs list               List available log files with sizes
 """,
     )
     logs_parser.add_argument(
@@ -13021,7 +13021,7 @@ Examples:
     # =========================================================================
     # Pre-process argv so unquoted multi-word session names after -c / -r
     # are merged into a single token before argparse sees them.
-    # e.g. ``hermes -c Pokemon Agent Dev`` → ``hermes -c 'Pokemon Agent Dev'``
+    # e.g. ``vermes -c Pokemon Agent Dev`` → ``vermes -c 'Pokemon Agent Dev'``
     # ── Container-aware routing ────────────────────────────────────────
     # When NixOS container mode is active, route ALL subcommands into
     # the managed container.  This MUST run before parse_args() so that
@@ -13046,7 +13046,7 @@ Examples:
     #
     # Fix: when argv contains a token matching a known subcommand, set
     # subparsers.required=True to force deterministic routing.  If that
-    # fails (e.g. 'hermes -c model' where 'model' is consumed as the
+    # fails (e.g. 'vermes -c model' where 'model' is consumed as the
     # session name for --continue), fall back to the default behaviour.
     import io as _io
 
@@ -13086,7 +13086,7 @@ Examples:
 
     # Discover Python plugins and register shell hooks once, before any
     # command that can fire lifecycle hooks.  Both are idempotent; gated
-    # so introspection/management commands (hermes hooks list, cron
+    # so introspection/management commands (vermes hooks list, cron
     # list, gateway status, mcp add, ...) don't pay discovery cost or
     # trigger consent prompts for hooks the user is still inspecting.
     # Groups with mixed admin/CRUD vs. agent-running entries narrow via

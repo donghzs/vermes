@@ -1578,7 +1578,7 @@ def has_conflicting_systemd_units() -> bool:
 # Legacy service names from older Vermes installs that predate the
 # hermes-gateway rename. Kept as an explicit allowlist (NOT a glob) so
 # profile units (hermes-gateway-*.service) and unrelated third-party
-# "hermes" units are never matched.
+# "vermes" units are never matched.
 _LEGACY_SERVICE_NAMES: tuple[str, ...] = ("hermes.service",)
 
 # ExecStart content markers that identify a unit as running our gateway.
@@ -3131,7 +3131,7 @@ def _guard_official_docker_root_gateway() -> None:
         "Refusing to run the Vermes gateway as root inside the official Docker image."
     )
     logger.info(
-        "  The image entrypoint normally drops privileges to the 'hermes' user. "
+        "  The image entrypoint normally drops privileges to the 'vermes' user. "
         "If you override entrypoint in Docker Compose, include "
         "/opt/hermes/docker/entrypoint.sh before the Vermes command."
     )
@@ -3429,7 +3429,7 @@ _PLATFORMS = [
         "setup_instructions": [
             "1. In Mattermost: Integrations → Bot Accounts → Add Bot Account",
             "   (System Console → Integrations → Bot Accounts must be enabled)",
-            "2. Give it a username (e.g. hermes) and copy the bot token",
+            "2. Give it a username (e.g. vermes) and copy the bot token",
             "3. Works with any self-hosted Mattermost instance — enter your server URL",
             "4. To find your user ID: click your avatar (top-left) → Profile",
             "   Your user ID is displayed there — click it to copy.",
@@ -3476,7 +3476,7 @@ _PLATFORMS = [
         ],
         "vars": [
             {"name": "EMAIL_ADDRESS", "prompt": "Email address", "password": False,
-             "help": "The email address Vermes will use (e.g., hermes@gmail.com)."},
+             "help": "The email address Vermes will use (e.g., vermes@gmail.com)."},
             {"name": "EMAIL_PASSWORD", "prompt": "Email password (or app password)", "password": True,
              "help": "For Gmail, use an App Password (not your regular password)."},
             {"name": "EMAIL_IMAP_HOST", "prompt": "IMAP host", "password": False,
@@ -4292,7 +4292,7 @@ def _setup_weixin():
         save_env_value("WEIXIN_ALLOW_ALL_USERS", "false")
         save_env_value("WEIXIN_ALLOWED_USERS", "")
         print_success("  DM pairing enabled.")
-        print_info("  Unknown DM users can request access and you approve them with `hermes pairing approve`.")
+        print_info("  Unknown DM users can request access and you approve them with `vermes pairing approve`.")
     elif access_idx == 1:
         save_env_value("WEIXIN_DM_POLICY", "open")
         save_env_value("WEIXIN_ALLOW_ALL_USERS", "true")
@@ -4482,7 +4482,7 @@ def _setup_feishu():
         save_env_value("FEISHU_ALLOW_ALL_USERS", "false")
         save_env_value("FEISHU_ALLOWED_USERS", "")
         print_success("  DM pairing enabled.")
-        print_info("  Unknown users can request access; approve with `hermes pairing approve`.")
+        print_info("  Unknown users can request access; approve with `vermes pairing approve`.")
     elif access_idx == 1:
         save_env_value("FEISHU_ALLOW_ALL_USERS", "true")
         save_env_value("FEISHU_ALLOWED_USERS", "")
@@ -4600,7 +4600,7 @@ def _setup_qqbot():
         else:
             save_env_value("QQ_ALLOWED_USERS", "")
         print_success("  DM pairing enabled.")
-        print_info("  Unknown users can request access; approve with `hermes pairing approve`.")
+        print_info("  Unknown users can request access; approve with `vermes pairing approve`.")
     elif access_idx == 1:
         save_env_value("QQ_ALLOW_ALL_USERS", "true")
         save_env_value("QQ_ALLOWED_USERS", "")
@@ -5010,7 +5010,7 @@ def gateway_setup():
             elif is_wsl():
                 print_info("  WSL detected but systemd is not running.")
                 print_info("  Run in foreground: vermes gateway run")
-                print_info("  For persistence:   tmux new -s hermes 'vermes gateway run'")
+                print_info("  For persistence:   tmux new -s vermes 'vermes gateway run'")
                 print_info("  To enable systemd: add systemd=true to /etc/wsl.conf, then 'wsl --shutdown'")
             elif is_termux():
                 from vermes_constants import display_hermes_home as _dhh
@@ -5083,7 +5083,7 @@ def _gateway_command_inner(args):
             if is_wsl():
                 print_warning("WSL detected — systemd services may not survive WSL restarts.")
                 print_info("  Consider running in foreground instead: vermes gateway run")
-                print_info("  Or use tmux/screen for persistence: tmux new -s hermes 'vermes gateway run'")
+                print_info("  Or use tmux/screen for persistence: tmux new -s vermes 'vermes gateway run'")
                 logger.info()
             start_now = prompt_yes_no("Start the gateway now after installing the service?", True)
             start_on_login = prompt_yes_no("Start the gateway automatically on login/boot with systemd?", True)
@@ -5111,7 +5111,7 @@ def _gateway_command_inner(args):
             logger.info("or run the gateway in foreground mode:")
             logger.info()
             logger.info("  vermes gateway run                              # direct foreground")
-            logger.info("  tmux new -s hermes 'vermes gateway run'         # persistent via tmux")
+            logger.info("  tmux new -s vermes 'vermes gateway run'         # persistent via tmux")
             logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # background")
             sys.exit(1)
         elif is_container():
@@ -5182,7 +5182,7 @@ def _gateway_command_inner(args):
             logger.info("Run the gateway in foreground mode instead:")
             logger.info()
             logger.info("  vermes gateway run                              # direct foreground")
-            logger.info("  tmux new -s hermes 'vermes gateway run'         # persistent via tmux")
+            logger.info("  tmux new -s vermes 'vermes gateway run'         # persistent via tmux")
             logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # background")
             logger.info()
             logger.info("To enable systemd: add systemd=true to /etc/wsl.conf and run 'wsl --shutdown' from PowerShell.")
@@ -5447,7 +5447,7 @@ def _gateway_command_inner(args):
                 if is_termux():
                     logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # Best-effort background start")
                 elif is_wsl():
-                    logger.info("  tmux new -s hermes 'vermes gateway run'         # persistent via tmux")
+                    logger.info("  tmux new -s vermes 'vermes gateway run'         # persistent via tmux")
                     logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # background")
                 elif is_windows():
                     logger.info("  vermes gateway install  # Install as Windows Scheduled Task (auto-start on login)")
