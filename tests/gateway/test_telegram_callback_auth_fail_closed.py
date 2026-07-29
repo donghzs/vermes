@@ -55,12 +55,14 @@ def _inject_fake_telegram(monkeypatch):
 
 
 def _make_adapter():
+    from gateway.behavior_config import TelegramBehaviorConfig
     from gateway.platforms.telegram import TelegramAdapter
 
     config = PlatformConfig(enabled=True, token="fake-token")
     adapter = object.__new__(TelegramAdapter)
     adapter.config = config
     adapter._config = config
+    adapter._behavior = TelegramBehaviorConfig()
     adapter._platform = Platform.TELEGRAM
     adapter._connected = True
     return adapter

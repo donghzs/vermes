@@ -1570,9 +1570,15 @@ class FeishuAdapter(BasePlatformAdapter):
             group_rules=group_rules,
             allow_bots=allow_bots,
             require_mention=_to_boolean(
-                extra.get("require_mention")
-                or (behavior.require_mention if behavior is not None and behavior.require_mention is not None else None)
-                or os.getenv("FEISHU_REQUIRE_MENTION", "true")
+                (
+                    extra.get("require_mention")
+                    if extra.get("require_mention") is not None
+                    else (
+                        behavior.require_mention
+                        if behavior is not None and behavior.require_mention is not None
+                        else os.getenv("FEISHU_REQUIRE_MENTION", "true")
+                    )
+                )
             ),
         )
 

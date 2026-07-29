@@ -21,6 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from gateway.platforms.discord import DiscordAdapter
+from gateway.behavior_config import DiscordBehaviorConfig
 
 
 def _set_dm_role_auth_guild(monkeypatch, guild_id=None):
@@ -39,6 +40,7 @@ def _make_adapter(allowed_users=None, allowed_roles=None, guilds=None):
     adapter = object.__new__(DiscordAdapter)
     adapter._allowed_user_ids = set(allowed_users or [])
     adapter._allowed_role_ids = set(allowed_roles or [])
+    adapter._behavior = DiscordBehaviorConfig()
 
     client = MagicMock()
     client.guilds = guilds or []

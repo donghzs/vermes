@@ -53,6 +53,7 @@ class TelegramBehaviorConfig:
     proxy: Optional[str] = None
     reply_to_mode: Optional[str] = None
     allowed_users: List[str] = field(default_factory=list)
+    group_allowed_users: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -169,21 +170,30 @@ class BehaviorConfig:
 
         # Telegram
         telegram_cfg = yaml_cfg.get("telegram", {})
-        if isinstance(telegram_cfg, dict):
-            bc.telegram = TelegramBehaviorConfig(
-                require_mention=_opt_bool(telegram_cfg.get("require_mention")),
-                mention_patterns=telegram_cfg.get("mention_patterns"),
-                exclusive_bot_mentions=_opt_bool(telegram_cfg.get("exclusive_bot_mentions")),
-                guest_mode=_opt_bool(telegram_cfg.get("guest_mode")),
-                free_response_chats=_str_to_list(telegram_cfg.get("free_response_chats")),
-                allowed_chats=_str_to_list(telegram_cfg.get("allowed_chats")),
-                allowed_topics=_str_to_list(telegram_cfg.get("allowed_topics")),
-                ignored_threads=_str_to_list(telegram_cfg.get("ignored_threads")),
-                reactions=_opt_bool(telegram_cfg.get("reactions")),
-                proxy=telegram_cfg.get("proxy_url"),
-                reply_to_mode=_coerce_reply_to_mode(telegram_cfg.get("reply_to_mode")),
-                allowed_users=_str_to_list(telegram_cfg.get("allow_from")),
-            )
+        if not isinstance(telegram_cfg, dict):
+            telegram_cfg = {}
+        # Legacy top-level require_mention bridges into telegram when the
+        # telegram section does not already provide one (#3979). Same rule as
+        # load_gateway_config().
+        _top_require_mention = yaml_cfg.get("require_mention")
+        if _top_require_mention is not None and "require_mention" not in telegram_cfg:
+            telegram_cfg = dict(telegram_cfg)
+            telegram_cfg["require_mention"] = _top_require_mention
+        bc.telegram = TelegramBehaviorConfig(
+            require_mention=_opt_bool(telegram_cfg.get("require_mention")),
+            mention_patterns=telegram_cfg.get("mention_patterns"),
+            exclusive_bot_mentions=_opt_bool(telegram_cfg.get("exclusive_bot_mentions")),
+            guest_mode=_opt_bool(telegram_cfg.get("guest_mode")),
+            free_response_chats=_str_to_list(telegram_cfg.get("free_response_chats")),
+            allowed_chats=_str_to_list(telegram_cfg.get("allowed_chats")),
+            allowed_topics=_str_to_list(telegram_cfg.get("allowed_topics")),
+            ignored_threads=_str_to_list(telegram_cfg.get("ignored_threads")),
+            reactions=_opt_bool(telegram_cfg.get("reactions")),
+            proxy=telegram_cfg.get("proxy_url"),
+            reply_to_mode=_coerce_reply_to_mode(telegram_cfg.get("reply_to_mode")),
+            allowed_users=_str_to_list(telegram_cfg.get("allow_from")),
+            group_allowed_users=_str_to_list(telegram_cfg.get("group_allow_from")),
+        )
 
         # WhatsApp
         whatsapp_cfg = yaml_cfg.get("whatsapp", {})
@@ -406,7 +416,8 @@ def _str_to_list(v) -> List[str]:
         return [str(x) for x in v]
     if isinstance(v, str):
         return [x.strip() for x in v.split(",") if x.strip()]
-    return []
+    # YAML 1.1 parses bare numbers (e.g. -100) as ints; coerce scalars to str.
+    return [x.strip() for x in str(v).split(",") if x.strip()]
 
 
 def _coerce_reply_to_mode(v) -> Optional[str]:

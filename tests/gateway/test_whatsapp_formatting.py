@@ -21,8 +21,10 @@ from gateway.config import Platform, PlatformConfig
 def _make_adapter():
     """Create a WhatsAppAdapter with test attributes (bypass __init__)."""
     from gateway.platforms.whatsapp import WhatsAppAdapter
+    from gateway.behavior_config import WhatsAppBehaviorConfig
 
     adapter = WhatsAppAdapter.__new__(WhatsAppAdapter)
+    adapter._behavior = WhatsAppBehaviorConfig()
     adapter.platform = Platform.WHATSAPP
     adapter.config = MagicMock()
     adapter.config.extra = {}

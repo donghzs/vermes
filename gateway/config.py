@@ -1852,3 +1852,24 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                     )
     except Exception as e:
         logger.debug("Plugin platform enable pass failed: %s", e)
+
+    # ── BehaviorConfig env overrides ──────────────────────────────────
+    # BehaviorConfig is built from YAML by BehaviorConfig.from_yaml().
+    # Env vars must still take precedence (same precedence rule as
+    # PlatformConfig above).  Only override when the env var is explicitly
+    # set so that absent env vars don't clobber YAML values.
+
+    # Telegram reactions
+    _tg_reactions = os.getenv("TELEGRAM_REACTIONS")
+    if _tg_reactions is not None:
+        config.behavior.telegram.reactions = _tg_reactions.lower() in {"true", "1", "yes", "on"}
+
+    # Slack reactions
+    _slack_reactions = os.getenv("SLACK_REACTIONS")
+    if _slack_reactions is not None:
+        config.behavior.slack.reactions = _slack_reactions.lower() in {"true", "1", "yes", "on"}
+
+    # Discord reactions
+    _discord_reactions = os.getenv("DISCORD_REACTIONS")
+    if _discord_reactions is not None:
+        config.behavior.discord.reactions = _discord_reactions.lower() in {"true", "1", "yes", "on"}

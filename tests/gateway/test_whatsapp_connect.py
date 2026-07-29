@@ -41,8 +41,10 @@ class _AsyncCM:
 def _make_adapter():
     """Create a WhatsAppAdapter with test attributes (bypass __init__)."""
     from gateway.platforms.whatsapp import WhatsAppAdapter
+    from gateway.behavior_config import WhatsAppBehaviorConfig
 
     adapter = WhatsAppAdapter.__new__(WhatsAppAdapter)
+    adapter._behavior = WhatsAppBehaviorConfig()
     adapter.platform = Platform.WHATSAPP
     adapter.config = MagicMock()
     adapter._bridge_port = 19876
@@ -113,7 +115,9 @@ class TestCloseBridgeLog:
     @staticmethod
     def _bare_adapter():
         from gateway.platforms.whatsapp import WhatsAppAdapter
+        from gateway.behavior_config import WhatsAppBehaviorConfig
         a = WhatsAppAdapter.__new__(WhatsAppAdapter)
+        a._behavior = WhatsAppBehaviorConfig()
         a._bridge_log_fh = None
         return a
 
@@ -635,8 +639,10 @@ class TestNoCredsPreflight:
     @pytest.mark.asyncio
     async def test_connect_returns_false_when_no_creds(self, tmp_path):
         from gateway.platforms.whatsapp import WhatsAppAdapter
+        from gateway.behavior_config import WhatsAppBehaviorConfig
 
         adapter = WhatsAppAdapter.__new__(WhatsAppAdapter)
+        adapter._behavior = WhatsAppBehaviorConfig()
         adapter.platform = Platform.WHATSAPP
         adapter.config = MagicMock()
         adapter._bridge_port = 19876
@@ -671,8 +677,10 @@ class TestNoCredsPreflight:
         simulate the bridge here — we just verify no fast-fail occurs.
         """
         from gateway.platforms.whatsapp import WhatsAppAdapter
+        from gateway.behavior_config import WhatsAppBehaviorConfig
 
         adapter = WhatsAppAdapter.__new__(WhatsAppAdapter)
+        adapter._behavior = WhatsAppBehaviorConfig()
         adapter.platform = Platform.WHATSAPP
         adapter.config = MagicMock()
         adapter._bridge_port = 19877

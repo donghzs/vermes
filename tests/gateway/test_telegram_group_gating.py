@@ -18,6 +18,7 @@ def _make_adapter(
     guest_mode=None,
     bot_username="VERMES_bot",
 ):
+    from gateway.behavior_config import TelegramBehaviorConfig
     from gateway.platforms.telegram import TelegramAdapter
 
     extra = {}
@@ -55,6 +56,7 @@ def _make_adapter(
     adapter = object.__new__(TelegramAdapter)
     adapter.platform = Platform.TELEGRAM
     adapter.config = PlatformConfig(enabled=True, token="***", extra=extra)
+    adapter._behavior = TelegramBehaviorConfig()
     adapter._bot = SimpleNamespace(id=999, username=bot_username)
     adapter._message_handler = AsyncMock()
     adapter._pending_text_batches = {}
@@ -372,13 +374,14 @@ def test_config_bridges_telegram_group_settings(monkeypatch, tmp_path):
     config = load_gateway_config()
 
     assert config is not None
-    assert __import__("os").environ["TELEGRAM_REQUIRE_MENTION"] == "true"
-    assert __import__("os").environ["TELEGRAM_GUEST_MODE"] == "true"
-    assert __import__("os").environ["TELEGRAM_EXCLUSIVE_BOT_MENTIONS"] == "true"
-    assert json.loads(__import__("os").environ["TELEGRAM_MENTION_PATTERNS"]) == [r"^\s*chompy\b"]
-    assert __import__("os").environ["TELEGRAM_FREE_RESPONSE_CHATS"] == "-123"
-    assert __import__("os").environ["TELEGRAM_ALLOWED_CHATS"] == "-100"
-    assert __import__("os").environ["TELEGRAM_ALLOWED_TOPICS"] == "8"
+    # YAML values reach BehaviorConfig (D2b-s3 no longer writes them to env).
+    assert config.behavior.telegram.require_mention is True
+    assert config.behavior.telegram.guest_mode is True
+    assert config.behavior.telegram.exclusive_bot_mentions is True
+    assert config.behavior.telegram.mention_patterns == [r"^\s*chompy\b"]
+    assert config.behavior.telegram.free_response_chats == ["-123"]
+    assert config.behavior.telegram.allowed_chats == ["-100"]
+    assert config.behavior.telegram.allowed_topics == ["8"]
     tg_cfg = config.platforms.get(Platform.TELEGRAM)
     assert tg_cfg is not None
     assert tg_cfg.extra.get("guest_mode") is True
@@ -410,9 +413,8 @@ def test_config_bridges_telegram_user_allowlists(monkeypatch, tmp_path):
     config = load_gateway_config()
 
     assert config is not None
-    assert __import__("os").environ["TELEGRAM_ALLOWED_USERS"] == "111,222"
-    assert __import__("os").environ["TELEGRAM_GROUP_ALLOWED_USERS"] == "333"
-    assert __import__("os").environ["TELEGRAM_GROUP_ALLOWED_CHATS"] == "-100"
+    assert config.behavior.telegram.allowed_users == ["111", "222"]
+    assert config.behavior.telegram.group_allowed_users == ["333"]
 
 
 def test_config_env_overrides_telegram_user_allowlists(monkeypatch, tmp_path):
@@ -468,7 +470,8 @@ def test_top_level_require_mention_bridges_to_telegram(monkeypatch, tmp_path):
     config = load_gateway_config()
 
     assert config is not None
-    assert __import__("os").environ.get("TELEGRAM_REQUIRE_MENTION") == "true"
+    # YAML value reaches BehaviorConfig.
+    assert config.behavior.telegram.require_mention is True
 
     # The adapter's extra dict must also carry the setting so that
     # _telegram_require_mention() works even without the env var.
@@ -497,7 +500,7 @@ def test_top_level_require_mention_does_not_override_telegram_section(monkeypatc
 
     assert config is not None
     # The telegram-specific "false" must win over the top-level "true".
-    assert __import__("os").environ.get("TELEGRAM_REQUIRE_MENTION") == "false"
+    assert config.behavior.telegram.require_mention is False
 
 
 def test_config_bridges_telegram_ignored_threads(monkeypatch, tmp_path):
@@ -517,4 +520,4 @@ def test_config_bridges_telegram_ignored_threads(monkeypatch, tmp_path):
     config = load_gateway_config()
 
     assert config is not None
-    assert __import__("os").environ["TELEGRAM_IGNORED_THREADS"] == "31,42"
+    assert config.behavior.telegram.ignored_threads == ["31", "42"]

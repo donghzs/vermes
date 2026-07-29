@@ -307,7 +307,7 @@ class TestLoadGatewayConfig:
         assert config.thread_sessions_per_user is False
 
     def test_bridges_discord_thread_require_mention_from_config_yaml(self, tmp_path, monkeypatch):
-        """discord.thread_require_mention in config.yaml should reach the runtime env var."""
+        """discord.thread_require_mention in config.yaml should reach behavior config."""
         VERMES_home = tmp_path / ".vermes"
         VERMES_home.mkdir()
         config_path = VERMES_home / "config.yaml"
@@ -320,28 +320,25 @@ class TestLoadGatewayConfig:
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.delenv("DISCORD_THREAD_REQUIRE_MENTION", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        assert os.environ.get("DISCORD_THREAD_REQUIRE_MENTION") == "true"
+        assert config.behavior.discord.thread_require_mention is True
 
-    def test_thread_require_mention_yaml_does_not_overwrite_env(self, tmp_path, monkeypatch):
-        """Explicit env var should win over config.yaml (env > yaml precedence)."""
+    def test_thread_require_mention_env_fallback_when_yaml_missing(self, tmp_path, monkeypatch):
+        """Env var is consulted only when config.yaml does not set the value."""
         VERMES_home = tmp_path / ".vermes"
         VERMES_home.mkdir()
         config_path = VERMES_home / "config.yaml"
-        config_path.write_text(
-            "discord:\n"
-            "  thread_require_mention: false\n",
-            encoding="utf-8",
-        )
+        config_path.write_text("{}", encoding="utf-8")
 
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
-        monkeypatch.setenv("DISCORD_THREAD_REQUIRE_MENTION", "true")  # user override
+        monkeypatch.setenv("DISCORD_THREAD_REQUIRE_MENTION", "true")
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        # Env value preserved, not clobbered by yaml.
-        assert os.environ.get("DISCORD_THREAD_REQUIRE_MENTION") == "true"
+        # When yaml is silent, behavior defaults remain None and the adapter
+        # falls back to the env var.
+        assert config.behavior.discord.thread_require_mention is None
 
     def test_bridges_quoted_false_platform_enabled_from_config_yaml(self, tmp_path, monkeypatch):
         VERMES_home = tmp_path / ".vermes"
@@ -428,10 +425,10 @@ class TestLoadGatewayConfig:
         monkeypatch.delenv("DISCORD_HISTORY_BACKFILL", raising=False)
         monkeypatch.delenv("DISCORD_HISTORY_BACKFILL_LIMIT", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        assert os.getenv("DISCORD_HISTORY_BACKFILL") == "true"
-        assert os.getenv("DISCORD_HISTORY_BACKFILL_LIMIT") == "17"
+        assert config.behavior.discord.history_backfill is True
+        assert config.behavior.discord.history_backfill_limit == 17
 
     def test_bridges_telegram_channel_prompts_from_config_yaml(self, tmp_path, monkeypatch):
         VERMES_home = tmp_path / ".vermes"
@@ -473,7 +470,7 @@ class TestLoadGatewayConfig:
             "C01ABC": "Code review mode",
         }
 
-    def test_bridges_feishu_allow_bots_from_config_yaml_to_env(self, tmp_path, monkeypatch):
+    def test_bridges_feishu_allow_bots_from_config_yaml_to_behavior(self, tmp_path, monkeypatch):
         VERMES_home = tmp_path / ".vermes"
         VERMES_home.mkdir()
         config_path = VERMES_home / "config.yaml"
@@ -485,11 +482,11 @@ class TestLoadGatewayConfig:
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.delenv("FEISHU_ALLOW_BOTS", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        assert os.environ.get("FEISHU_ALLOW_BOTS") == "mentions"
+        assert config.behavior.feishu.allow_bots == "mentions"
 
-    def test_feishu_allow_bots_env_takes_precedence_over_config_yaml(self, tmp_path, monkeypatch):
+    def test_feishu_allow_bots_from_config_yaml_reaches_behavior(self, tmp_path, monkeypatch):
         VERMES_home = tmp_path / ".vermes"
         VERMES_home.mkdir()
         config_path = VERMES_home / "config.yaml"
@@ -501,9 +498,12 @@ class TestLoadGatewayConfig:
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.setenv("FEISHU_ALLOW_BOTS", "none")
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        assert os.environ.get("FEISHU_ALLOW_BOTS") == "none"
+        # yaml value is captured in BehaviorConfig; env is not written back and
+        # does not override BehaviorConfig at load time (adapter consults env
+        # when BehaviorConfig is unset).
+        assert config.behavior.feishu.allow_bots == "all"
 
     def test_invalid_quick_commands_in_config_yaml_are_ignored(self, tmp_path, monkeypatch):
         VERMES_home = tmp_path / ".vermes"

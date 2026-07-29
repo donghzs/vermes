@@ -56,6 +56,8 @@ OTHER_CHANNEL_ID = "C9999999999"
 
 
 def _make_adapter(require_mention=None, strict_mention=None, free_response_channels=None, allowed_channels=None):
+    from gateway.behavior_config import SlackBehaviorConfig
+
     extra = {}
     if require_mention is not None:
         extra["require_mention"] = require_mention
@@ -69,6 +71,7 @@ def _make_adapter(require_mention=None, strict_mention=None, free_response_chann
     adapter = object.__new__(SlackAdapter)
     adapter.platform = Platform.SLACK
     adapter.config = PlatformConfig(enabled=True, extra=extra)
+    adapter._behavior = SlackBehaviorConfig()
     adapter._bot_user_id = BOT_USER_ID
     adapter._team_bot_user_ids = {}
     return adapter
@@ -374,10 +377,9 @@ def test_config_bridges_slack_free_response_channels(monkeypatch, tmp_path):
     slack_extra = config.platforms[Platform.SLACK].extra
     assert slack_extra.get("require_mention") is False
     assert slack_extra.get("free_response_channels") == ["C0AQWDLHY9M", "C9999999999"]
-    # Verify env vars were set by config bridging
-    import os as _os
-    assert _os.environ["SLACK_REQUIRE_MENTION"] == "false"
-    assert _os.environ["SLACK_FREE_RESPONSE_CHANNELS"] == "C0AQWDLHY9M,C9999999999"
+    # YAML values reach BehaviorConfig (D2b-s3 no longer writes them to env).
+    assert config.behavior.slack.require_mention is False
+    assert config.behavior.slack.free_response_channels == ["C0AQWDLHY9M", "C9999999999"]
 
 
 def test_top_level_slack_settings_do_not_disable_env_token_setup(monkeypatch, tmp_path):
@@ -512,8 +514,7 @@ def test_config_bridges_slack_strict_mention(monkeypatch, tmp_path):
     config = load_gateway_config()
 
     assert config is not None
-    import os as _os
-    assert _os.environ["SLACK_STRICT_MENTION"] == "true"
+    assert config.behavior.slack.strict_mention is True
 
 
 # ---------------------------------------------------------------------------
@@ -661,10 +662,9 @@ def test_config_bridges_slack_allowed_channels(monkeypatch, tmp_path):
     monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
     monkeypatch.delenv("SLACK_ALLOWED_CHANNELS", raising=False)
 
-    load_gateway_config()
+    config = load_gateway_config()
 
-    import os as _os
-    assert _os.environ["SLACK_ALLOWED_CHANNELS"] == f"{CHANNEL_ID},{OTHER_CHANNEL_ID}"
+    assert config.behavior.slack.allowed_channels == [CHANNEL_ID, OTHER_CHANNEL_ID]
 
 
 def test_config_bridges_slack_allowed_channels_env_takes_precedence(monkeypatch, tmp_path):

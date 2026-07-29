@@ -285,7 +285,7 @@ async def test_no_thread_with_auto_thread_disabled_is_noop(adapter, monkeypatch)
 
 
 def test_config_bridges_ignored_channels(monkeypatch, tmp_path):
-    """gateway/config.py bridges discord.ignored_channels to env var."""
+    """discord.ignored_channels from YAML is accessible via BehaviorConfig."""
     import yaml
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml.dump({
@@ -294,19 +294,16 @@ def test_config_bridges_ignored_channels(monkeypatch, tmp_path):
         },
     }))
     monkeypatch.setenv("VERMES_HOME", str(tmp_path))
-    # Use setenv (not delenv) so monkeypatch registers cleanup even when
-    # the var doesn't exist yet — load_gateway_config will overwrite it.
     monkeypatch.setenv("DISCORD_IGNORED_CHANNELS", "")
 
     from gateway.config import load_gateway_config
-    load_gateway_config()
+    config = load_gateway_config()
 
-    import os
-    assert os.getenv("DISCORD_IGNORED_CHANNELS") == "111,222"
+    assert config.behavior.discord.ignored_channels == ["111", "222"]
 
 
 def test_config_bridges_no_thread_channels(monkeypatch, tmp_path):
-    """gateway/config.py bridges discord.no_thread_channels to env var."""
+    """discord.no_thread_channels from YAML is accessible via BehaviorConfig."""
     import yaml
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml.dump({
@@ -318,10 +315,9 @@ def test_config_bridges_no_thread_channels(monkeypatch, tmp_path):
     monkeypatch.setenv("DISCORD_NO_THREAD_CHANNELS", "")
 
     from gateway.config import load_gateway_config
-    load_gateway_config()
+    config = load_gateway_config()
 
-    import os
-    assert os.getenv("DISCORD_NO_THREAD_CHANNELS") == "333"
+    assert config.behavior.discord.no_thread_channels == ["333"]
 
 
 def test_config_env_var_takes_precedence(monkeypatch, tmp_path):

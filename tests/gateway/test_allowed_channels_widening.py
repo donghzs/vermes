@@ -24,6 +24,7 @@ from gateway.config import Platform, PlatformConfig
 # ---------------------------------------------------------------------------
 
 def _make_telegram_adapter(*, allowed_chats=None, require_mention=None, guest_mode=False):
+    from gateway.behavior_config import TelegramBehaviorConfig
     from gateway.platforms.telegram import TelegramAdapter
 
     extra = {"guest_mode": guest_mode}
@@ -35,6 +36,7 @@ def _make_telegram_adapter(*, allowed_chats=None, require_mention=None, guest_mo
     adapter = object.__new__(TelegramAdapter)
     adapter.platform = Platform.TELEGRAM
     adapter.config = PlatformConfig(enabled=True, token="***", extra=extra)
+    adapter._behavior = TelegramBehaviorConfig()
     adapter._bot = SimpleNamespace(id=999, username="VERMES_bot")
     adapter._message_handler = AsyncMock()
     adapter._mention_patterns = adapter._compile_mention_patterns()
@@ -116,7 +118,7 @@ class TestTelegramAllowedChats:
         assert adapter._should_process_message(_tg_dm_message()) is True
 
     def test_config_bridge(self, monkeypatch, tmp_path):
-        """slack-style config.yaml → env var bridge works."""
+        """config.yaml allowed_chats reaches BehaviorConfig."""
         from gateway.config import load_gateway_config
 
         VERMES_home = tmp_path / ".vermes"
@@ -129,15 +131,15 @@ class TestTelegramAllowedChats:
             encoding="utf-8",
         )
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
-        monkeypatch.setenv("TELEGRAM_ALLOWED_CHATS", "__sentinel__")
-        monkeypatch.delenv("TELEGRAM_ALLOWED_CHATS")
+        monkeypatch.delenv("TELEGRAM_ALLOWED_CHATS", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        import os as _os
-        assert _os.environ["TELEGRAM_ALLOWED_CHATS"] == "-100,-200"
+        assert config.behavior.telegram.allowed_chats == ["-100", "-200"]
 
     def test_config_bridge_env_takes_precedence(self, monkeypatch, tmp_path):
+        """Env var override is preserved in os.environ; yaml value is captured
+        separately in BehaviorConfig (D2b-s3 no longer writes yaml back to env)."""
         from gateway.config import load_gateway_config
 
         VERMES_home = tmp_path / ".vermes"
@@ -150,10 +152,11 @@ class TestTelegramAllowedChats:
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.setenv("TELEGRAM_ALLOWED_CHATS", "-999")
 
-        load_gateway_config()
+        config = load_gateway_config()
 
         import os as _os
         assert _os.environ["TELEGRAM_ALLOWED_CHATS"] == "-999"
+        assert config.behavior.telegram.allowed_chats == ["-100"]
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +166,7 @@ class TestTelegramAllowedChats:
 def _make_dingtalk_adapter(*, allowed_chats=None, require_mention=None):
     # Import lazily — DingTalk SDK may not be installed.
     pytest.importorskip("gateway.platforms.dingtalk", reason="DingTalk adapter not importable")
+    from gateway.behavior_config import DingTalkBehaviorConfig
     from gateway.platforms.dingtalk import DingTalkAdapter
 
     extra = {}
@@ -174,6 +178,7 @@ def _make_dingtalk_adapter(*, allowed_chats=None, require_mention=None):
     adapter = object.__new__(DingTalkAdapter)
     adapter.platform = Platform.DINGTALK
     adapter.config = PlatformConfig(enabled=True, extra=extra)
+    adapter._behavior = DingTalkBehaviorConfig()
     return adapter
 
 
@@ -222,13 +227,11 @@ class TestDingTalkAllowedChats:
             encoding="utf-8",
         )
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
-        monkeypatch.setenv("DINGTALK_ALLOWED_CHATS", "__sentinel__")
-        monkeypatch.delenv("DINGTALK_ALLOWED_CHATS")
+        monkeypatch.delenv("DINGTALK_ALLOWED_CHATS", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        import os as _os
-        assert _os.environ["DINGTALK_ALLOWED_CHATS"] == "cidABC,cidDEF"
+        assert config.behavior.dingtalk.allowed_chats == ["cidABC", "cidDEF"]
 
 
 # ---------------------------------------------------------------------------
@@ -294,17 +297,11 @@ class TestMattermostAllowedChannels:
             encoding="utf-8",
         )
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
-        # Pre-register the key with monkeypatch so teardown cleans it up
-        # even though load_gateway_config mutates os.environ directly
-        # (monkeypatch only restores keys it's touched via setenv/delenv;
-        # delenv on an absent key is a no-op for teardown purposes).
-        monkeypatch.setenv("MATTERMOST_ALLOWED_CHANNELS", "__sentinel__")
-        monkeypatch.delenv("MATTERMOST_ALLOWED_CHANNELS")
+        monkeypatch.delenv("MATTERMOST_ALLOWED_CHANNELS", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        import os as _os
-        assert _os.environ["MATTERMOST_ALLOWED_CHANNELS"] == "chanABC,chanDEF"
+        assert config.behavior.mattermost.allowed_channels == ["chanABC", "chanDEF"]
 
 
 # ---------------------------------------------------------------------------
@@ -359,10 +356,8 @@ class TestMatrixAllowedRooms:
             encoding="utf-8",
         )
         monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
-        monkeypatch.setenv("MATRIX_ALLOWED_ROOMS", "__sentinel__")
-        monkeypatch.delenv("MATRIX_ALLOWED_ROOMS")
+        monkeypatch.delenv("MATRIX_ALLOWED_ROOMS", raising=False)
 
-        load_gateway_config()
+        config = load_gateway_config()
 
-        import os as _os
-        assert _os.environ["MATRIX_ALLOWED_ROOMS"] == "!room1:srv,!room2:srv"
+        assert config.behavior.matrix.allowed_rooms == ["!room1:srv", "!room2:srv"]

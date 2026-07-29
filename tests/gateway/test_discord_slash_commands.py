@@ -773,10 +773,9 @@ def test_discord_auto_thread_config_bridge(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     from gateway.config import load_gateway_config
-    load_gateway_config()
+    config = load_gateway_config()
 
-    import os
-    assert os.getenv("DISCORD_AUTO_THREAD") == "true"
+    assert config.behavior.discord.auto_thread is True
 
 
 # ------------------------------------------------------------------

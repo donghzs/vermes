@@ -11,11 +11,13 @@ from gateway.session import SessionSource
 
 
 def _make_adapter(**extra_env):
+    from gateway.behavior_config import TelegramBehaviorConfig
     from gateway.platforms.telegram import TelegramAdapter
 
     adapter = object.__new__(TelegramAdapter)
     adapter.platform = Platform.TELEGRAM
     adapter.config = PlatformConfig(enabled=True, token="fake-token")
+    adapter._behavior = TelegramBehaviorConfig()
     adapter._bot = AsyncMock()
     adapter._bot.set_message_reaction = AsyncMock()
     return adapter
@@ -278,7 +280,7 @@ async def test_clear_reactions_returns_false_without_bot(monkeypatch):
 
 
 def test_config_bridges_telegram_reactions(monkeypatch, tmp_path):
-    """gateway/config.py bridges telegram.reactions to TELEGRAM_REACTIONS env var."""
+    """telegram.reactions reaches BehaviorConfig (D2b-s3 no longer writes to env)."""
     import yaml
     config_file = tmp_path / "config.yaml"
     config_file.write_text(yaml.dump({
@@ -287,15 +289,11 @@ def test_config_bridges_telegram_reactions(monkeypatch, tmp_path):
         },
     }))
     monkeypatch.setenv("VERMES_HOME", str(tmp_path))
-    # Use setenv (not delenv) so monkeypatch registers cleanup even when
-    # the var doesn't exist yet — load_gateway_config will overwrite it.
-    monkeypatch.setenv("TELEGRAM_REACTIONS", "")
 
     from gateway.config import load_gateway_config
-    load_gateway_config()
+    config = load_gateway_config()
 
-    import os
-    assert os.getenv("TELEGRAM_REACTIONS") == "true"
+    assert config.behavior.telegram.reactions is True
 
 
 def test_config_reactions_env_takes_precedence(monkeypatch, tmp_path):
@@ -311,7 +309,6 @@ def test_config_reactions_env_takes_precedence(monkeypatch, tmp_path):
     monkeypatch.setenv("TELEGRAM_REACTIONS", "false")
 
     from gateway.config import load_gateway_config
-    load_gateway_config()
+    config = load_gateway_config()
 
-    import os
-    assert os.getenv("TELEGRAM_REACTIONS") == "false"
+    assert config.behavior.telegram.reactions is False
