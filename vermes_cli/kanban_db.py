@@ -5087,7 +5087,7 @@ def _resolve_vermes_argv() -> list[str]:
         return _module_vermes_argv()
 
     vermes_bin = _safe_which_no_cwd("vermes") if _IS_WINDOWS else shutil.which("vermes")
-    if VERMES_bin:
+    if vermes_bin:
         return _vermes_path_argv(vermes_bin)
     return _module_vermes_argv()
 
