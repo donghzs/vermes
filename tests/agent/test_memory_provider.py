@@ -52,7 +52,7 @@ class FakeMemoryProvider(MemoryProvider):
     def queue_prefetch(self, query, *, session_id=""):
         self.queued_prefetches.append(query)
 
-    def sync_turn(self, user_content, assistant_content, *, session_id=""):
+    def sync_turn(self, user_content, assistant_content, *, session_id="", **kwargs):
         self.synced_turns.append((user_content, assistant_content))
 
     def get_tool_schemas(self):
@@ -124,7 +124,8 @@ class TestMemoryManager:
         mgr = MemoryManager()
         assert mgr.providers == []
         assert [p.name for p in mgr.providers] == []
-        assert mgr.get_all_tool_schemas() == []
+        schemas = mgr.get_all_tool_schemas()
+        assert {s["name"] for s in schemas} == {"forget_session", "view_memory_status"}
         assert mgr.build_system_prompt() == ""
         assert mgr.prefetch_all("test") == ""
 
@@ -264,7 +265,7 @@ class TestMemoryManager:
 
         schemas = mgr.get_all_tool_schemas()
         names = {s["name"] for s in schemas}
-        assert names == {"recall_builtin", "recall_ext"}
+        assert names == {"recall_builtin", "recall_ext", "view_memory_status", "forget_session"}
 
     def test_tool_name_conflict_first_wins(self):
         mgr = MemoryManager()
@@ -607,7 +608,7 @@ class TestSequentialDispatchRouting:
         mgr.add_provider(external)
 
         names = mgr.get_all_tool_names()
-        assert names == {"builtin_tool", "ext_recall", "ext_retain"}
+        assert names == {"builtin_tool", "ext_recall", "ext_retain", "view_memory_status", "forget_session"}
 
 
 # ---------------------------------------------------------------------------
@@ -973,11 +974,14 @@ class TestOnMemoryWriteBridge:
                 _existing_names.add(_tname)
 
         # ext_recall should NOT be duplicated; ext_remember should be added
+        # Built-in memory tools (forget_session, view_memory_status) are always present.
         tool_names = [t["function"]["name"] for t in existing_tools]
         assert tool_names.count("ext_recall") == 1, f"ext_recall duplicated: {tool_names}"
         assert tool_names.count("ext_remember") == 1
         assert tool_names.count("web_search") == 1
-        assert len(existing_tools) == 3  # web_search + ext_recall + ext_remember
+        assert tool_names.count("forget_session") == 1
+        assert tool_names.count("view_memory_status") == 1
+        assert len(existing_tools) == 5  # web_search + ext_recall + ext_remember + 2 built-ins
 
     def test_on_memory_write_tolerates_provider_failure(self):
         """If a provider's on_memory_write raises, others still get notified."""
