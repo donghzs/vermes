@@ -4,7 +4,7 @@ Lazy dependency installer for opt-in Vermes backends.
 Many Vermes features (Mistral TTS, ElevenLabs TTS, Honcho memory, Bedrock,
 Slack, Matrix, etc.) require Python packages that not every user needs. The
 historical approach was to bundle them all under ``pyproject.toml`` extras
-(``hermes-agent[all]``) and install them eagerly at setup time. That has
+(``Vermes-agent[all]``) and install them eagerly at setup time. That has
 two problems:
 
 1. **Fragility.** When one extra's transitive dependency becomes
@@ -165,7 +165,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # ─── Tools ─────────────────────────────────────────────────────────────
     # ACP adapter (VS Code / Zed / JetBrains integration)
     "tool.acp": ("agent-client-protocol==0.9.0",),
-    # Dashboard (`hermes dashboard`)
+    # Dashboard (`Vermes dashboard`)
     "tool.dashboard": (
         "fastapi==0.133.1",
         "uvicorn[standard]==0.41.0",
@@ -225,7 +225,7 @@ def _allow_lazy_installs() -> bool:
     refusing to install would lock people out of their own backends; the
     decision to block is an explicit user opt-in.
     """
-    if os.environ.get("HERMES_DISABLE_LAZY_INSTALLS") == "1":
+    if os.environ.get("VERMES_DISABLE_LAZY_INSTALLS") == "1":
         return False
     try:
         from vermes_cli.config import load_config

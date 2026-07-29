@@ -39,7 +39,7 @@ from typing import Any, Awaitable, Dict, Optional
 from urllib.parse import urlparse
 import httpx
 from agent.auxiliary_client import async_call_llm, extract_content_or_reasoning
-from vermes_constants import get_hermes_dir
+from vermes_constants import get_vermes_dir
 from tools.debug_helpers import DebugSession
 from tools.website_policy import check_website_access
 import sys
@@ -52,7 +52,7 @@ _debug = DebugSession("vision_tools", env_var="VISION_TOOLS_DEBUG")
 # Separate from auxiliary.vision.timeout which governs the LLM API call.
 # Resolution: config.yaml auxiliary.vision.download_timeout → env var → 30s default.
 def _resolve_download_timeout() -> float:
-    env_val = os.getenv("HERMES_VISION_DOWNLOAD_TIMEOUT", "").strip()
+    env_val = os.getenv("VERMES_VISION_DOWNLOAD_TIMEOUT", "").strip()
     if env_val:
         try:
             return float(env_val)
@@ -632,7 +632,7 @@ async def _vision_analyze_native(
             # Data URL (base64-encoded image) -- decode and save to temp file
             try:
                 data, ext = _decode_data_url(image_url)
-                temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+                temp_dir = get_vermes_dir("cache/vision", "temp_vision_images")
                 temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.{ext}"
                 temp_image_path.write_bytes(data)
                 should_cleanup = True
@@ -642,7 +642,7 @@ async def _vision_analyze_native(
             blocked = check_website_access(image_url)
             if blocked:
                 return tool_error(blocked["message"], success=False)
-            temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+            temp_dir = get_vermes_dir("cache/vision", "temp_vision_images")
             temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.jpg"
             await _download_image(image_url, temp_image_path)
             should_cleanup = True
@@ -748,7 +748,7 @@ async def vision_analyze_tool(
         Exception: If download fails, analysis fails, or API key is not set
         
     Note:
-        - For URLs, temporary images are stored under $HERMES_HOME/cache/vision/ and cleaned up
+        - For URLs, temporary images are stored under $VERMES_HOME/cache/vision/ and cleaned up
         - For local file paths, the file is used directly and NOT deleted
         - Supports common image formats (JPEG, PNG, GIF, WebP, etc.)
     """
@@ -797,7 +797,7 @@ async def vision_analyze_tool(
             logger.info("Decoding data URL...")
             try:
                 data, ext = _decode_data_url(image_url)
-                temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+                temp_dir = get_vermes_dir("cache/vision", "temp_vision_images")
                 temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.{ext}"
                 temp_image_path.write_bytes(data)
                 should_cleanup = True
@@ -810,7 +810,7 @@ async def vision_analyze_tool(
             if blocked:
                 raise PermissionError(blocked["message"])
             logger.info("Downloading image from URL...")
-            temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+            temp_dir = get_vermes_dir("cache/vision", "temp_vision_images")
             temp_image_path = temp_dir / f"temp_image_{uuid.uuid4()}.jpg"
             await _download_image(image_url, temp_image_path)
             should_cleanup = True
@@ -1224,7 +1224,7 @@ def _ocr_extract_text(image_source: str) -> str:
     # Resolve image to local path
     try:
         if image_source.startswith(("http://", "https://")):
-            temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+            temp_dir = get_vermes_dir("cache/vision", "temp_vision_images")
             temp_path = temp_dir / f"ocr_temp_{uuid.uuid4()}.jpg"
             # Use synchronous download
             import urllib.request
@@ -1234,7 +1234,7 @@ def _ocr_extract_text(image_source: str) -> str:
             # Decode data URL
             _, encoded = image_source.split(",", 1)
             data = base64.b64decode(encoded)
-            temp_dir = get_hermes_dir("cache/vision", "temp_vision_images")
+            temp_dir = get_vermes_dir("cache/vision", "temp_vision_images")
             temp_path = temp_dir / f"ocr_temp_{uuid.uuid4()}.jpg"
             temp_path.write_bytes(data)
             should_cleanup = True
@@ -1722,7 +1722,7 @@ async def video_analyze_tool(
                 data, ext = _decode_data_url(video_url)
                 # Video files typically use mp4, but respect the declared type
                 video_ext = ext if ext in ("mp4", "webm", "mov", "mkv") else "mp4"
-                temp_dir = get_hermes_dir("cache/video", "temp_video_files")
+                temp_dir = get_vermes_dir("cache/video", "temp_video_files")
                 temp_video_path = temp_dir / f"temp_video_{uuid.uuid4()}.{video_ext}"
                 temp_video_path.write_bytes(data)
                 should_cleanup = True
@@ -1733,7 +1733,7 @@ async def video_analyze_tool(
             blocked = check_website_access(video_url)
             if blocked:
                 raise PermissionError(blocked["message"])
-            temp_dir = get_hermes_dir("cache/video", "temp_video_files")
+            temp_dir = get_vermes_dir("cache/video", "temp_video_files")
             temp_video_path = temp_dir / f"temp_video_{uuid.uuid4()}.mp4"
             await _download_video(video_url, temp_video_path)
             should_cleanup = True

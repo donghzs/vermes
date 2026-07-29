@@ -66,7 +66,7 @@ import requests
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from agent.auxiliary_client import call_llm
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from utils import env_int, is_truthy_value
 from harness.recoverable import recoverable_tool
 from vermes_cli.config import cfg_get
@@ -163,11 +163,11 @@ def _discover_homebrew_node_dirs() -> tuple[str, ...]:
 
 def _browser_candidate_path_dirs() -> list[str]:
     """Return ordered browser CLI PATH candidates shared by discovery and execution."""
-    hermes_home = get_hermes_home()
-    hermes_node_bin = str(hermes_home / "node" / "bin")
-    hermes_node_root = str(hermes_home / "node")
-    hermes_nm_bin = str(hermes_home / "node_modules" / ".bin")
-    return [hermes_node_bin, hermes_node_root, hermes_nm_bin, *list(_discover_homebrew_node_dirs()), *_SANE_PATH_DIRS]
+    VERMES_home = get_vermes_home()
+    VERMES_node_bin = str(VERMES_home / "node" / "bin")
+    VERMES_node_root = str(VERMES_home / "node")
+    VERMES_nm_bin = str(VERMES_home / "node_modules" / ".bin")
+    return [VERMES_node_bin, VERMES_node_root, VERMES_nm_bin, *list(_discover_homebrew_node_dirs()), *_SANE_PATH_DIRS]
 
 
 def _merge_browser_path(existing_path: str = "") -> str:
@@ -854,7 +854,7 @@ def _run_chrome_fallback_command(
             hint = (
                 "Chrome fallback requires Chromium, but it is missing. "
                 "You're running in Docker — pull the latest image: "
-                "docker pull ghcr.io/nousresearch/hermes-agent:latest"
+                "docker pull ghcr.io/donghzs/vermes:latest"
             )
         else:
             hint = (
@@ -1156,7 +1156,7 @@ def _socket_safe_tmpdir() -> str:
     """Return a short temp directory path suitable for Unix domain sockets.
 
     macOS sets ``TMPDIR`` to ``/var/folders/xx/.../T/`` (~51 chars).  When we
-    append ``agent-browser-hermes_…`` the resulting socket path exceeds the
+    append ``agent-browser-VERMES_…`` the resulting socket path exceeds the
     104-byte macOS limit for ``AF_UNIX`` addresses, causing agent-browser to
     fail with "Failed to create socket directory" or silent screenshot failures.
 
@@ -1231,7 +1231,7 @@ def _emergency_cleanup_all_sessions():
     Called on process exit or interrupt to prevent orphaned sessions.
 
     Also runs the orphan reaper to clean up daemons left behind by previously
-    crashed hermes processes — this way every clean hermes exit sweeps
+    crashed Vermes processes — this way every clean Vermes exit sweeps
     accumulated orphans, not just ones that actively used the browser tool.
     """
     global _cleanup_done
@@ -1254,9 +1254,9 @@ def _emergency_cleanup_all_sessions():
                 _session_last_activity.clear()
                 _recording_sessions.clear()
 
-    # Sweep orphans from other crashed hermes processes.  Safe even if we
+    # Sweep orphans from other crashed Vermes processes.  Safe even if we
     # never used the browser — uses owner_pid liveness to avoid reaping
-    # daemons owned by other live hermes processes.
+    # daemons owned by other live Vermes processes.
     try:
         _reap_orphaned_browser_sessions()
     except Exception as e:
@@ -1305,10 +1305,10 @@ def _cleanup_inactive_browser_sessions():
 
 
 def _write_owner_pid(socket_dir: str, session_name: str) -> None:
-    """Record the current hermes PID as the owner of a browser socket dir.
+    """Record the current Vermes PID as the owner of a browser socket dir.
 
     Written atomically to ``<socket_dir>/<session_name>.owner_pid`` so the
-    orphan reaper can distinguish daemons owned by a live hermes process
+    orphan reaper can distinguish daemons owned by a live Vermes process
     (don't reap) from daemons whose owner crashed (reap).  Best-effort —
     an OSError here just falls back to the legacy ``tracked_names``
     heuristic in the reaper.
@@ -1417,13 +1417,13 @@ def _reap_orphaned_browser_sessions():
 
     This function scans the tmp directory for ``agent-browser-*`` socket dirs
     left behind by previous runs, reads the daemon PID files, and kills any
-    daemons whose owning hermes process is no longer alive.
+    daemons whose owning Vermes process is no longer alive.
 
     Ownership detection priority:
       1. ``<session>.owner_pid`` file (written by current code) — if the
-         referenced hermes PID is alive, leave the daemon alone regardless
+         referenced Vermes PID is alive, leave the daemon alone regardless
          of whether it's in *this* process's ``_active_sessions``.  This is
-         cross-process safe: two concurrent hermes instances won't reap each
+         cross-process safe: two concurrent Vermes instances won't reap each
          other's daemons.
       2. Fallback for daemons that predate owner_pid: check
          ``_active_sessions`` in the current process.  If not tracked here,
@@ -1439,7 +1439,7 @@ def _reap_orphaned_browser_sessions():
     # Also pick up CDP sessions
     socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-cdp_*"))
     # Also pick up cloud-provider sessions (browser-use/browserbase/firecrawl)
-    socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-hermes_*"))
+    socket_dirs += glob.glob(os.path.join(tmpdir, "agent-browser-VERMES_*"))
 
     if not socket_dirs:
         return
@@ -1474,7 +1474,7 @@ def _reap_orphaned_browser_sessions():
                 owner_alive = None  # corrupt file — fall through
 
         if owner_alive is True:
-            # Owner is alive — this session belongs to a live hermes process.
+            # Owner is alive — this session belongs to a live Vermes process.
             continue
 
         if owner_alive is None:
@@ -1954,14 +1954,14 @@ def _find_agent_browser() -> str:
             if not recheck and extended_path:
                 recheck = shutil.which("agent-browser", path=extended_path)
             if not recheck:
-                hermes_nm = str(get_hermes_home() / "node_modules" / ".bin")
-                recheck = shutil.which("agent-browser", path=hermes_nm)
+                VERMES_nm = str(get_vermes_home() / "node_modules" / ".bin")
+                recheck = shutil.which("agent-browser", path=VERMES_nm)
             if not recheck:
-                hermes_node_bin = str(get_hermes_home() / "node" / "bin")
-                recheck = shutil.which("agent-browser", path=hermes_node_bin)
+                VERMES_node_bin = str(get_vermes_home() / "node" / "bin")
+                recheck = shutil.which("agent-browser", path=VERMES_node_bin)
             if not recheck:
-                hermes_node_root = str(get_hermes_home() / "node")
-                recheck = shutil.which("agent-browser", path=hermes_node_root)
+                VERMES_node_root = str(get_vermes_home() / "node")
+                recheck = shutil.which("agent-browser", path=VERMES_node_root)
             if recheck:
                 _cached_agent_browser = recheck
                 _agent_browser_resolved = True
@@ -2046,7 +2046,7 @@ def _run_browser_command(
             hint = (
                 "Chromium browser is missing. You're running in Docker — pull "
                 "the latest image to get the bundled Chromium: "
-                "docker pull ghcr.io/nousresearch/hermes-agent:latest"
+                "docker pull ghcr.io/donghzs/vermes:latest"
             )
         else:
             hint = (
@@ -2112,7 +2112,7 @@ def _run_browser_command(
             f"agent-browser-{session_info['session_name']}"
         )
         os.makedirs(task_socket_dir, mode=0o700, exist_ok=True)
-        # Record this hermes PID as the session owner (cross-process safe
+        # Record this Vermes PID as the session owner (cross-process safe
         # orphan detection — see _write_owner_pid).
         _write_owner_pid(task_socket_dir, session_info['session_name'])
         logger.debug("browser cmd=%s task=%s socket_dir=%s (%d chars)",
@@ -3124,14 +3124,14 @@ def _maybe_start_recording(task_id: str):
             return
     try:
         from vermes_cli.config import read_raw_config
-        hermes_home = get_hermes_home()
+        VERMES_home = get_vermes_home()
         cfg = read_raw_config()
         record_enabled = cfg_get(cfg, "browser", "record_sessions", default=False)
 
         if not record_enabled:
             return
 
-        recordings_dir = hermes_home / "browser_recordings"
+        recordings_dir = VERMES_home / "browser_recordings"
         recordings_dir.mkdir(parents=True, exist_ok=True)
         _cleanup_old_recordings(max_age_hours=72)
 
@@ -3262,8 +3262,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
 
     import base64
     import uuid as uuid_mod
-    from vermes_constants import get_hermes_dir
-    screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")
+    from vermes_constants import get_vermes_dir
+    screenshots_dir = get_vermes_dir("cache/screenshots", "browser_screenshots")
     screenshot_path = screenshots_dir / f"browser_screenshot_{uuid_mod.uuid4().hex}.png"
     effective_task_id = _last_session_key(task_id or "default")
 
@@ -3290,8 +3290,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
             _lp_fallback_warning = fb_result.get("fallback_warning")
             fb_path = fb_result.get("data", {}).get("path", "")
             if fb_path and os.path.exists(fb_path):
-                from vermes_constants import get_hermes_dir
-                screenshots_dir = get_hermes_dir("cache/screenshots", "browser_screenshots")
+                from vermes_constants import get_vermes_dir
+                screenshots_dir = get_vermes_dir("cache/screenshots", "browser_screenshots")
                 screenshots_dir.mkdir(parents=True, exist_ok=True)
                 import shutil as _shutil_vision
                 persistent_path = screenshots_dir / f"browser_screenshot_{uuid_mod.uuid4().hex}.png"
@@ -3469,8 +3469,8 @@ def _cleanup_old_screenshots(screenshots_dir, max_age_hours=24):
 def _cleanup_old_recordings(max_age_hours=72):
     """Remove browser recordings older than max_age_hours to prevent disk bloat."""
     try:
-        hermes_home = get_hermes_home()
-        recordings_dir = hermes_home / "browser_recordings"
+        VERMES_home = get_vermes_home()
+        recordings_dir = VERMES_home / "browser_recordings"
         if not recordings_dir.exists():
             return
         cutoff = time.time() - (max_age_hours * 3600)
@@ -3652,7 +3652,7 @@ def _chromium_search_roots() -> List[str]:
     Order mirrors what agent-browser and Playwright actually probe:
 
     1. ``PLAYWRIGHT_BROWSERS_PATH`` when set (Docker image sets this to
-       ``/opt/hermes/.playwright``).
+       ``/opt/Vermes/.playwright``).
     2. ``~/.cache/ms-playwright`` — Playwright's default on Linux/macOS.
     3. ``~/Library/Caches/ms-playwright`` — Playwright's default on macOS.
     4. ``%USERPROFILE%\\AppData\\Local\\ms-playwright`` — Playwright's default
@@ -3839,7 +3839,7 @@ if __name__ == "__main__":
                         "     Docker: pull the latest image — the current one "
                         "predates the bundled Chromium install"
                     )
-                    logger.info("       docker pull ghcr.io/nousresearch/hermes-agent:latest")
+                    logger.info("       docker pull ghcr.io/donghzs/vermes:latest")
                 else:
                     logger.info("     Install it with:")
                     logger.info("       npx agent-browser install --with-deps")

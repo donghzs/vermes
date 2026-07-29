@@ -3,7 +3,7 @@
 MCP (Model Context Protocol) Client Support
 
 Connects to external MCP servers via stdio, HTTP/StreamableHTTP, or SSE
-transport, discovers their tools, and registers them into the hermes-agent
+transport, discovers their tools, and registers them into the Vermes-agent
 tool registry so the agent can call them like any built-in tool.
 
 Configuration is read from ~/.vermes/config.yaml under the ``mcp_servers`` key.
@@ -135,8 +135,8 @@ def _get_mcp_stderr_log() -> Any:
         if _mcp_stderr_log_fh is not None:
             return _mcp_stderr_log_fh
         try:
-            from vermes_constants import get_hermes_home
-            log_dir = get_hermes_home() / "logs"
+            from vermes_constants import get_vermes_home
+            log_dir = get_vermes_home() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             log_path = log_dir / "mcp-stderr.log"
             # Line-buffered so server output lands on disk promptly; errors=
@@ -468,10 +468,10 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
     resolved_env = dict(env or {})
 
     if os.sep not in resolved_command:
-        # For hermes/vermes commands, prefer the one in the same venv as
+        # For Vermes/vermes commands, prefer the one in the same venv as
         # the running Python process — this guarantees the MCP server
         # runs with the same Vermes version that loaded the config.
-        if resolved_command in {"hermes", "vermes"}:
+        if resolved_command in {"Vermes", "vermes"}:
             import sys
             same_venv = os.path.join(os.path.dirname(sys.executable), resolved_command)
             if os.path.isfile(same_venv) and os.access(same_venv, os.X_OK):
@@ -485,13 +485,13 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
         if which_hit:
             resolved_command = which_hit
         elif resolved_command in {"npx", "npm", "node"}:
-            hermes_home = os.path.expanduser(
+            VERMES_home = os.path.expanduser(
                 os.getenv(
-                    "HERMES_HOME", os.path.join(os.path.expanduser("~"), ".hermes")
+                    "VERMES_HOME", os.path.join(os.path.expanduser("~"), ".vermes")
                 )
             )
             candidates = [
-                os.path.join(hermes_home, "node", "bin", resolved_command),
+                os.path.join(VERMES_home, "node", "bin", resolved_command),
                 os.path.join(os.path.expanduser("~"), ".local", "bin", resolved_command),
             ]
             for candidate in candidates:
@@ -2222,7 +2222,7 @@ def _handle_auth_error_and_retry(
     return json.dumps({
         "error": (
             f"MCP server '{server_name}' requires re-authentication. "
-            f"Run `hermes mcp login {server_name}` (or delete the tokens "
+            f"Run `Vermes mcp login {server_name}` (or delete the tokens "
             f"file under ~/.vermes/mcp-tokens/ and restart). Do NOT retry "
             f"this tool — ask the user to re-authenticate."
         ),
@@ -2550,8 +2550,8 @@ def _load_mcp_config() -> Dict[str, dict]:
             return {}
         # Ensure .env vars are available for interpolation
         try:
-            from vermes_cli.env_loader import load_hermes_dotenv
-            load_hermes_dotenv()
+            from vermes_cli.env_loader import load_vermes_dotenv
+            load_vermes_dotenv()
         except Exception:
             pass
         return {name: _interpolate_env_vars(cfg) for name, cfg in servers.items()}
@@ -3996,7 +3996,7 @@ def _kill_orphaned_mcp_children(include_active: bool = False) -> None:
     sessions are not disrupted.
 
     Sends SIGTERM, waits 2 seconds, then escalates to SIGKILL for any
-    survivors, avoiding shared-resource collisions when multiple hermes
+    survivors, avoiding shared-resource collisions when multiple Vermes
     processes run on the same host (each has its own ``_stdio_pids`` dict).
 
     With ``include_active=True`` also kills every PID in ``_stdio_pids`` —

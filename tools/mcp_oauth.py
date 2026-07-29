@@ -101,14 +101,14 @@ _oauth_port: int | None = None
 def _get_token_dir() -> Path:
     """Return the directory for MCP OAuth token files.
 
-    Uses HERMES_HOME so each profile gets its own OAuth tokens.
-    Layout: ``HERMES_HOME/mcp-tokens/``
+    Uses VERMES_HOME so each profile gets its own OAuth tokens.
+    Layout: ``VERMES_HOME/mcp-tokens/``
     """
     try:
-        from vermes_constants import get_hermes_home
-        base = Path(get_hermes_home())
+        from vermes_constants import get_vermes_home
+        base = Path(get_vermes_home())
     except ImportError:
-        base = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+        base = Path(os.environ.get("VERMES_HOME", str(Path.home() / ".vermes")))
     return base / "mcp-tokens"
 
 
@@ -211,9 +211,9 @@ class VermesTokenStorage:
 
     File layout::
 
-        HERMES_HOME/mcp-tokens/<server_name>.json         -- tokens
-        HERMES_HOME/mcp-tokens/<server_name>.client.json   -- client info
-        HERMES_HOME/mcp-tokens/<server_name>.meta.json     -- oauth server metadata
+        VERMES_HOME/mcp-tokens/<server_name>.json         -- tokens
+        VERMES_HOME/mcp-tokens/<server_name>.client.json   -- client info
+        VERMES_HOME/mcp-tokens/<server_name>.meta.json     -- oauth server metadata
     """
 
     def __init__(self, server_name: str):
@@ -414,7 +414,7 @@ async def _redirect_handler(authorization_url: str) -> None:
             f"\n"
             f"    ssh -N -L {_oauth_port}:127.0.0.1:{_oauth_port} <user>@<this-host>\n"
             f"\n"
-            f"  Then open the URL above. See: https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh\n",
+            f"  Then open the URL above. See: https://Vermes-agent.donghzs.com/docs/guides/oauth-over-ssh\n",
             file=sys.stderr,
         )
 

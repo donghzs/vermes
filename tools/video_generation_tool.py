@@ -12,7 +12,7 @@ video generation provider. Mirrors the ``image_generate`` design:
 - Each provider lives under ``plugins/video_gen/<name>/``.
 
 The tool itself is intentionally backend-agnostic and ships **no in-tree
-provider** — turn on a backend by enabling a plugin (``hermes plugins
+provider** — turn on a backend by enabling a plugin (``Vermes plugins
 enable video_gen/<name>``) and selecting it in ``vermes tools`` → Video
 Generation.
 
@@ -65,7 +65,7 @@ VIDEO_GENERATE_SCHEMA: Dict[str, Any] = {
     # actual capabilities (which modalities / resolutions / duration
     # ranges the user's currently-selected model supports).
     # See _build_dynamic_video_schema() below and the dynamic-tool-schemas
-    # skill at github/hermes-agent-dev/references/dynamic-tool-schemas.md.
+    # skill at github/Vermes-agent-dev/references/dynamic-tool-schemas.md.
     "description": "(rebuilt at get_definitions() time — see _build_dynamic_video_schema)",
     "parameters": {
         "type": "object",
@@ -248,7 +248,7 @@ def _missing_provider_error(configured: Optional[str]) -> str:
     if configured:
         msg = (
             f"video_gen.provider='{configured}' is set but no plugin "
-            f"registered that name. Run `hermes plugins list` to see "
+            f"registered that name. Run `Vermes plugins list` to see "
             f"installed video gen backends, or `vermes tools` → Video "
             f"Generation to pick one."
         )

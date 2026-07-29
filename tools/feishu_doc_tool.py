@@ -56,7 +56,7 @@ def _check_feishu():
     # is importable without actually executing its ``__init__``.
     # Executing the real import here costs ~5 seconds (the SDK eagerly
     # loads websockets, dispatcher, every api/v2 model) and this probe
-    # fires at every ``hermes`` startup during tool-availability
+    # fires at every ``Vermes`` startup during tool-availability
     # evaluation.  Correctness is preserved because the actual tool
     # handler still does the real import when invoked.
     import importlib.util

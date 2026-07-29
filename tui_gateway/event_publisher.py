@@ -1,6 +1,6 @@
 """Best-effort WebSocket publisher transport for the PTY-side gateway.
 
-The dashboard's `/api/pty` spawns `hermes --tui` as a child process, which
+The dashboard's `/api/pty` spawns `Vermes --tui` as a child process, which
 spawns its own ``tui_gateway.entry``.  Tool/reasoning/status events fire on
 *that* gateway's transport — three processes removed from the dashboard
 server itself.  To surface them in the dashboard sidebar (`/api/events`),
@@ -64,7 +64,7 @@ class WsPublisherTransport:
 
         self._worker = threading.Thread(
             target=self._drain,
-            name="hermes-ws-pub",
+            name="Vermes-ws-pub",
             daemon=True,
         )
         self._worker.start()

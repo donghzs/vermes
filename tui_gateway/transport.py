@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # those, JSON-RPC frames will accumulate in the buffer and the TUI
 # will hang waiting for ``gateway.ready``.  Default stays off so the
 # existing flush-after-write behaviour is unchanged.
-_DISABLE_FLUSH = (os.environ.get("HERMES_TUI_GATEWAY_NO_FLUSH", "") or "").strip().lower() in {
+_DISABLE_FLUSH = (os.environ.get("VERMES_TUI_GATEWAY_NO_FLUSH", "") or "").strip().lower() in {
     "1",
     "true",
     "yes",
@@ -76,7 +76,7 @@ class Transport(Protocol):
 
 _current_transport: contextvars.ContextVar[Optional[Transport]] = (
     contextvars.ContextVar(
-        "hermes_gateway_transport",
+        "VERMES_gateway_transport",
         default=None,
     )
 )

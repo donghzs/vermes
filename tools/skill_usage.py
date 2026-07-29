@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ _VALID_STATES = {STATE_ACTIVE, STATE_STALE, STATE_ARCHIVED}
 
 
 def _skills_dir() -> Path:
-    return get_hermes_home() / "skills"
+    return get_vermes_home() / "skills"
 
 
 def _usage_file() -> Path:
@@ -257,8 +257,8 @@ def list_archived_skill_names() -> List[str]:
     """Enumerate skills in ``~/.vermes/skills/.archive/``.
 
     Archive layout is flat (``.archive/<skill>/``) as set by ``archive_skill``,
-    so the directory name is the skill name. Used by ``hermes curator
-    list-archived`` to help users pass a name to ``hermes curator restore``.
+    so the directory name is the skill name. Used by ``Vermes curator
+    list-archived`` to help users pass a name to ``Vermes curator restore``.
     """
     archive_root = _archive_dir()
     if not archive_root.exists():

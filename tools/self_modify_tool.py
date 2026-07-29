@@ -119,7 +119,7 @@ def self_modify_tool(args) -> str:
     diff = _build_diff(target_path, content)
 
     # Step 2: real user confirmation via the Gateway (blocks this turn).
-    # YOLO-aware: under HERMES_YOLO_MODE / session /yolo / approvals.mode=off
+    # YOLO-aware: under VERMES_YOLO_MODE / session /yolo / approvals.mode=off
     # this auto-approves without prompting, matching the dangerous-command
     # policy. Otherwise it pops the same desktop / Gateway approval dialog.
     session_key = get_current_session_key(default="")

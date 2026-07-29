@@ -88,7 +88,7 @@ _PATTERNS: List[Tuple[str, str, str]] = [
     (r'never\s+(?:\w+\s+)*(?:create|write)\s+(?:\w+\s+)*(?:script|file)\s+(?:\w+\s+)*disk', "anti_forensic_disk", "context"),
     # Environment-variable unsetting targeting known agent runtimes —
     # this is pure attack behavior (Brainworm sub-session bypass).
-    (r'unset\s+\w*(?:CLAUDE|CODEX|HERMES|AGENT|OPENAI|ANTHROPIC)\w*', "env_var_unset_agent", "context"),
+    (r'unset\s+\w*(?:CLAUDE|CODEX|Vermes|AGENT|OPENAI|ANTHROPIC)\w*', "env_var_unset_agent", "context"),
 
     # ── Known C2 / red-team framework names (near-zero false positive
     #    outside security research; warn-only by default) ─────────────
@@ -106,9 +106,9 @@ _PATTERNS: List[Tuple[str, str, str]] = [
     # ── Persistence / SSH backdoor (strict scope — memory + skills) ──
     (r'authorized_keys', "ssh_backdoor", "strict"),
     (r'\$HOME/\.ssh|\~/\.ssh', "ssh_access", "strict"),
-    (r'\$HOME/\.hermes/\.env|\~/\.hermes/\.env', "hermes_env", "strict"),
+    (r'\$HOME/\.vermes/\.env|\~/\.vermes/\.env', "VERMES_env", "strict"),
     (r'(update|modify|edit|write|change|append|add\s+to)\s+.*(?:AGENTS\.md|CLAUDE\.md|\.cursorrules|\.clinerules)', "agent_config_mod", "strict"),
-    (r'(update|modify|edit|write|change|append|add\s+to)\s+.*\.hermes/(config\.yaml|SOUL\.md)', "hermes_config_mod", "strict"),
+    (r'(update|modify|edit|write|change|append|add\s+to)\s+.*\.vermes/(config\.yaml|SOUL\.md)', "VERMES_config_mod", "strict"),
 
     # ── Hardcoded secrets ────────────────────────────────────────────
     (r'(?:api[_-]?key|token|secret|password)\s*[=:]\s*["\'][A-Za-z0-9+/=_-]{20,}', "hardcoded_secret", "strict"),

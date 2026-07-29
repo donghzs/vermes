@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 CDP_DOCS_URL = "https://chromedevtools.github.io/devtools-protocol/"
 
-# ``websockets`` is a transitive dependency of hermes-agent (via fal_client
+# ``websockets`` is a transitive dependency of Vermes-agent (via fal_client
 # and firecrawl-py) and is already imported by gateway/platforms/feishu.py.
 # Wrap the import so a clean error surfaces if the package is ever absent.
 try:

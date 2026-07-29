@@ -26,22 +26,22 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from vermes_constants import get_bundled_skills_dir, get_hermes_home
+from vermes_constants import get_bundled_skills_dir, get_vermes_home
 from typing import Dict, List, Tuple
 from utils import atomic_replace
 
 logger = logging.getLogger(__name__)
 
 
-HERMES_HOME = get_hermes_home()
-SKILLS_DIR = HERMES_HOME / "skills"
+VERMES_HOME = get_vermes_home()
+SKILLS_DIR = VERMES_HOME / "skills"
 MANIFEST_FILE = SKILLS_DIR / ".bundled_manifest"
 
 
 def _get_bundled_dir() -> Path:
     """Locate the bundled skills/ directory.
 
-    Checks HERMES_BUNDLED_SKILLS env var first (set by Nix wrapper),
+    Checks VERMES_BUNDLED_SKILLS env var first (set by Nix wrapper),
     then a wheel-installed data dir, then falls back to the relative
     path from this source file.
     """
