@@ -93,3 +93,6 @@ dist-electron/
 test_studio_*.py
 UNKNOWN.egg-info/
 vermes.egg-info/
+
+# 前端构建备份产物 (非源码, 含构建 JS, 不进版本库)
+vermes_cli/web_dist.bak.v1/
