@@ -14,7 +14,7 @@ Build fully-integrated 3-statement models (IS, BS, CF) in Excel with working cap
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/finance/3-statement-model` |
+| Source | Optional — install with `vermes skills install official/finance/3-statement-model` |
 | Path | `optional-skills/finance/3-statement-model` |
 | Version | `1.0.0` |
 | Author | Anthropic (adapted by Nous Research) |
@@ -26,7 +26,7 @@ Build fully-integrated 3-statement models (IS, BS, CF) in Excel with working cap
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 ## Environment
@@ -194,7 +194,7 @@ Use a scenario toggle (dropdown) in the Assumptions tab with CHOOSE or INDEX/MAT
 
 ## SEC Filings Data Extraction
 
-If the template specifically requires pulling data from SEC filings (10-K, 10-Q), see [references/sec-filings.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/finance/3-statement-model/references/sec-filings.md) for detailed extraction guidance. This reference is only needed when populating templates with public company data from regulatory filings.
+If the template specifically requires pulling data from SEC filings (10-K, 10-Q), see [references/sec-filings.md](https://github.com/donghzs/vermes/blob/main/optional-skills/finance/3-statement-model/references/sec-filings.md) for detailed extraction guidance. This reference is only needed when populating templates with public company data from regulatory filings.
 
 ## Completing Model Templates
 
@@ -327,7 +327,7 @@ This section consolidates all validation checks and audit procedures for complet
 
 ### Core Linkages (Must Always Hold)
 
-See [references/formulas.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/finance/3-statement-model/references/formulas.md) for all formula details.
+See [references/formulas.md](https://github.com/donghzs/vermes/blob/main/optional-skills/finance/3-statement-model/references/formulas.md) for all formula details.
 
 | Check | Formula | Expected Result |
 |-------|---------|-----------------|
@@ -436,9 +436,9 @@ When Master Status shows errors:
 
 ## Data sources — MCP first, web fallback
 
-Many passages below say "use the S&P Kensho MCP / Daloopa MCP / FactSet MCP". Those are commercial financial-data MCPs from the original Cowork plugin context. In Hermes:
+Many passages below say "use the S&P Kensho MCP / Daloopa MCP / FactSet MCP". Those are commercial financial-data MCPs from the original Cowork plugin context. In Vermes:
 
-- **If you have any structured financial-data MCP configured** (Hermes supports MCP — see `native-mcp` skill), prefer it for point-in-time comps, precedent transactions, and filings.
+- **If you have any structured financial-data MCP configured** (Vermes supports MCP — see `native-mcp` skill), prefer it for point-in-time comps, precedent transactions, and filings.
 - **Otherwise**, fall back to:
   - `web_search` / `web_extract` against SEC EDGAR (`https://www.sec.gov/cgi-bin/browse-edgar`) for US filings
   - Company IR pages for press releases, earnings decks

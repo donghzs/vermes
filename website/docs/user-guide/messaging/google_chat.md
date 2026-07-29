@@ -1,14 +1,14 @@
 ---
 sidebar_position: 12
 title: "Google Chat"
-description: "Set up Hermes Agent as a Google Chat bot using Cloud Pub/Sub"
+description: "Set up Vermes Agent as a Google Chat bot using Cloud Pub/Sub"
 ---
 
 # Google Chat Setup
 
-Connect Hermes Agent to Google Chat as a bot. The integration uses Cloud Pub/Sub
+Connect Vermes Agent to Google Chat as a bot. The integration uses Cloud Pub/Sub
 pull subscriptions for inbound events and the Chat REST API for outbound messages.
-Equivalent ergonomics to Slack Socket Mode or Telegram long-polling: your Hermes
+Equivalent ergonomics to Slack Socket Mode or Telegram long-polling: your Vermes
 process does not need a public URL, a tunnel, or a TLS certificate. It connects,
 authenticates, and listens on a subscription — the same way a Telegram bot listens
 on a token.
@@ -58,13 +58,13 @@ Both are free for the volumes a personal bot generates.
 
 **IAM & Admin → Service Accounts → Create Service Account.**
 
-- Name: `hermes-chat-bot`
+- Name: `vermes-chat-bot`
 - Skip the "Grant this service account access to project" step. IAM on the specific
   subscription is all you need — do **NOT** grant project-level Pub/Sub roles.
 
 After creation, open the SA, go to **Keys → Add Key → Create new key → JSON** and
-download the file. Save it somewhere only Hermes can read (e.g.,
-`~/.hermes/google-chat-sa.json`, `chmod 600`).
+download the file. Save it somewhere only Vermes can read (e.g.,
+`~/.vermes/google-chat-sa.json`, `chmod 600`).
 
 :::caution There is NO "Chat Bot Caller" role
 A common mistake is to search for a Chat-specific IAM role and grant it at the
@@ -79,14 +79,14 @@ the subscription you create in the next step.
 
 **Pub/Sub → Topics → Create topic.**
 
-- Topic ID: `hermes-chat-events`
+- Topic ID: `vermes-chat-events`
 - Leave the defaults for everything else.
 
 After creation, the topic's detail page has a **Subscriptions** tab. Create one:
 
-- Subscription ID: `hermes-chat-events-sub`
+- Subscription ID: `vermes-chat-events-sub`
 - Delivery type: **Pull**
-- Message retention: **7 days** (so backlog survives a hermes restart)
+- Message retention: **7 days** (so backlog survives a vermes restart)
 - Leave the rest default.
 
 ---
@@ -107,10 +107,10 @@ never receive anything.
 
 On the **subscription**, add your own Service Account as a principal:
 
-- Principal: `hermes-chat-bot@<your-project>.iam.gserviceaccount.com`
+- Principal: `vermes-chat-bot@<your-project>.iam.gserviceaccount.com`
 - Role: `Pub/Sub Subscriber`
 
-Also grant `Pub/Sub Viewer` on the same subscription — Hermes calls
+Also grant `Pub/Sub Viewer` on the same subscription — Vermes calls
 `subscription.get()` at startup as a reachability check.
 
 ---
@@ -119,13 +119,13 @@ Also grant `Pub/Sub Viewer` on the same subscription — Hermes calls
 
 Go to **APIs & Services → Google Chat API → Configuration**.
 
-- **App name**: whatever you want users to see ("Hermes" is reasonable).
+- **App name**: whatever you want users to see ("Vermes" is reasonable).
 - **Avatar URL**: any public PNG (Google has some defaults).
 - **Description**: a short sentence shown in the app directory.
 - **Functionality**: enable **Receive 1:1 messages** and **Join spaces and group
   conversations**.
 - **Connection settings**: select **Cloud Pub/Sub**, enter the topic name
-  `projects/<your-project>/topics/hermes-chat-events`.
+  `projects/<your-project>/topics/vermes-chat-events`.
 - **Visibility**: restrict to your workspace (or specific users) — do not publish
   to everyone while you're testing.
 
@@ -137,20 +137,20 @@ Save.
 
 Open Google Chat in a browser. Start a DM with your app by searching for its name
 in the **+ New Chat** menu. The first time you message it, Google sends an
-`ADDED_TO_SPACE` event that Hermes uses to cache the bot's own `users/{id}` for
+`ADDED_TO_SPACE` event that Vermes uses to cache the bot's own `users/{id}` for
 self-message filtering.
 
 ---
 
-## Step 9: Configure Hermes
+## Step 9: Configure Vermes
 
-Add the Google Chat section to `~/.hermes/.env`:
+Add the Google Chat section to `~/.vermes/.env`:
 
 ```bash
 # Required
 GOOGLE_CHAT_PROJECT_ID=my-chat-bot-123
-GOOGLE_CHAT_SUBSCRIPTION_NAME=projects/my-chat-bot-123/subscriptions/hermes-chat-events-sub
-GOOGLE_CHAT_SERVICE_ACCOUNT_JSON=/home/you/.hermes/google-chat-sa.json
+GOOGLE_CHAT_SUBSCRIPTION_NAME=projects/my-chat-bot-123/subscriptions/vermes-chat-events-sub
+GOOGLE_CHAT_SERVICE_ACCOUNT_JSON=/home/you/.vermes/google-chat-sa.json
 
 # Authorization — paste the emails of people allowed to talk to the bot
 GOOGLE_CHAT_ALLOWED_USERS=you@yourdomain.com,coworker@yourdomain.com
@@ -164,7 +164,7 @@ GOOGLE_CHAT_MAX_BYTES=16777216                  # 16 MiB — cap on in-flight me
 The project ID also falls back to `GOOGLE_CLOUD_PROJECT`, and the SA path falls
 back to `GOOGLE_APPLICATION_CREDENTIALS` — use whichever convention you prefer.
 
-Install the dependencies the Google Chat adapter needs (no Hermes extra is currently published — install them directly):
+Install the dependencies the Google Chat adapter needs (no Vermes extra is currently published — install them directly):
 
 ```bash
 pip install google-cloud-pubsub google-api-python-client google-auth google-auth-oauthlib
@@ -173,7 +173,7 @@ pip install google-cloud-pubsub google-api-python-client google-auth google-auth
 Start the gateway:
 
 ```bash
-hermes gateway
+vermes gateway
 ```
 
 You should see a log line like:
@@ -183,7 +183,7 @@ You should see a log line like:
              bot_user_id=users/XXXX, flow_control(msgs=1, bytes=16777216)
 ```
 
-Send "hola" in the test DM. The bot posts a "Hermes is thinking…" marker, then
+Send "hola" in the test DM. The bot posts a "Vermes is thinking…" marker, then
 edits that same message in place with the real response — no "message deleted"
 tombstones.
 
@@ -205,9 +205,9 @@ limits and avoids formatting that won't render.
 Message size limit: 4000 characters per message. Longer agent responses are
 automatically split across multiple messages.
 
-Thread support: when a user replies inside a thread, Hermes detects the
+Thread support: when a user replies inside a thread, Vermes detects the
 `thread.name` and posts its reply in the same thread, so each thread gets a
-separate Hermes session.
+separate Vermes session.
 
 ---
 
@@ -233,15 +233,15 @@ specifically, as the user who asked for the file.
 
 1. Go to **APIs & Services → Credentials** in the same GCP project.
 2. **Create credentials → OAuth client ID → Desktop app**.
-3. Download the JSON. Move it onto the host that runs Hermes.
-4. On the host, register the client with Hermes:
+3. Download the JSON. Move it onto the host that runs Vermes.
+4. On the host, register the client with Vermes:
 
 ```bash
 python -m gateway.platforms.google_chat_user_oauth \
     --client-secret /path/to/client_secret.json
 ```
 
-That writes `~/.hermes/google_chat_user_client_secret.json`. This is shared
+That writes `~/.vermes/google_chat_user_client_secret.json`. This is shared
 infrastructure — it identifies the OAuth *app*, not any individual user. One
 file per host is enough no matter how many users authorize later.
 
@@ -259,7 +259,7 @@ Each user runs the flow once, in their own DM with the bot:
    into chat as `/setup-files <PASTED_URL>`. The bot exchanges it for a
    refresh token.
 
-The token lands at `~/.hermes/google_chat_user_tokens/<sanitized_email>.json`.
+The token lands at `~/.vermes/google_chat_user_tokens/<sanitized_email>.json`.
 Subsequent file requests in that user's DM use *their* token, so the bot
 uploads as them and the message lands in their space.
 
@@ -276,7 +276,7 @@ on purpose.
 ### Multi-user behavior
 
 When the asker has no per-user token yet, the bot falls back to a legacy
-single-user token at `~/.hermes/google_chat_user_token.json` (if present from
+single-user token at `~/.vermes/google_chat_user_token.json` (if present from
 a pre-multi-user install). When neither is available, the bot posts a clear
 text notice telling the asker to run `/setup-files`.
 
@@ -290,12 +290,12 @@ evicts only that user's cache. Users don't disrupt each other.
 **Bot stays silent after sending "hola."**
 
 1. Check the Pub/Sub subscription has undelivered messages in the console.
-   If it does, Hermes isn't authenticated — verify `GOOGLE_CHAT_SERVICE_ACCOUNT_JSON`
+   If it does, Vermes isn't authenticated — verify `GOOGLE_CHAT_SERVICE_ACCOUNT_JSON`
    and that the SA is listed as `Pub/Sub Subscriber` on the subscription.
 2. If the subscription has zero messages, Google Chat isn't publishing.
    Double-check the IAM binding on the **topic**:
    `chat-api-push@system.gserviceaccount.com` must have `Pub/Sub Publisher`.
-3. Check `hermes gateway` logs for `[GoogleChat] Connected`. If you see
+3. Check `vermes gateway` logs for `[GoogleChat] Connected`. If you see
    `[GoogleChat] Config validation failed`, the error message tells you which
    env var to fix.
 
@@ -327,7 +327,7 @@ the next file request uploads natively without a gateway restart.
 **`/setup-files start` says "No client credentials stored on the host."**
 
 The one-time host setup wasn't done. From a terminal on the host that runs
-Hermes:
+Vermes:
 
 ```bash
 python -m gateway.platforms.google_chat_user_oauth \
@@ -349,7 +349,7 @@ The auth code is single-use and short-lived (typically a few minutes). Send
   IAM should be the actual enforcement — grant your SA the minimum
   (`roles/pubsub.subscriber` + `roles/pubsub.viewer` on the subscription), not
   project-level or org-level Pub/Sub roles.
-- **Attachment download protection**: Hermes will only attach the SA bearer
+- **Attachment download protection**: Vermes will only attach the SA bearer
   token to URLs whose host matches a short allowlist of Google-owned domains
   (`googleapis.com`, `drive.google.com`, `lh[3-6].googleusercontent.com`, and
   a few others). Any other host is rejected before the HTTP request, to
@@ -365,6 +365,6 @@ The auth code is single-use and short-lived (typically a few minutes). Send
 - **User OAuth scope**: the per-user attachment flow requests *only*
   `chat.messages.create` — the minimum that covers `media.upload` plus the
   follow-up `messages.create`. Tokens are persisted as plain JSON at
-  `~/.hermes/google_chat_user_tokens/<sanitized_email>.json` (filesystem
+  `~/.vermes/google_chat_user_tokens/<sanitized_email>.json` (filesystem
   permissions are the protection — same model as the SA key file). Each
   token is owned by exactly one user; revoke is scoped to that user.

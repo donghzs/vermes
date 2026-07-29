@@ -1,6 +1,6 @@
-# Contributing to Hermes Agent
+# Contributing to Vermes Agent
 
-Thank you for contributing to Hermes Agent! This guide covers everything you need: setting up your dev environment, understanding the architecture, deciding what to build, and getting your PR merged.
+Thank you for contributing to Vermes Agent! This guide covers everything you need: setting up your dev environment, understanding the architecture, deciding what to build, and getting your PR merged.
 
 ---
 
@@ -9,7 +9,7 @@ Thank you for contributing to Hermes Agent! This guide covers everything you nee
 We value contributions in this order:
 
 1. **Bug fixes** — crashes, incorrect behavior, data loss. Always top priority.
-2. **Cross-platform compatibility** — macOS, different Linux distros, and WSL2 on Windows. We want Hermes to work everywhere.
+2. **Cross-platform compatibility** — macOS, different Linux distros, and WSL2 on Windows. We want Vermes to work everywhere.
 3. **Security hardening** — shell injection, prompt injection, path traversal, privilege escalation. See [Security](#security-considerations).
 4. **Performance and robustness** — retry logic, error handling, graceful degradation.
 5. **New skills** — but only broadly useful ones. See [Should it be a Skill or a Tool?](#should-it-be-a-skill-or-a-tool)
@@ -38,26 +38,26 @@ This is the most common question for new contributors. The answer is almost alwa
 
 ### Should the Skill be bundled?
 
-Bundled skills (in `skills/`) ship with every Hermes install. They should be **broadly useful to most users**:
+Bundled skills (in `skills/`) ship with every Vermes install. They should be **broadly useful to most users**:
 
 - Document handling, web research, common dev workflows, system administration
 - Used regularly by a wide range of people
 
-If your skill is official and useful but not universally needed (e.g., a paid service integration, a heavyweight dependency), put it in **`optional-skills/`** — it ships with the repo but isn't activated by default. Users can discover it via `hermes skills browse` (labeled "official") and install it with `hermes skills install` (no third-party warning, builtin trust).
+If your skill is official and useful but not universally needed (e.g., a paid service integration, a heavyweight dependency), put it in **`optional-skills/`** — it ships with the repo but isn't activated by default. Users can discover it via `vermes skills browse` (labeled "official") and install it with `vermes skills install` (no third-party warning, builtin trust).
 
-If your skill is specialized, community-contributed, or niche, it's better suited for a **Skills Hub** — upload it to a skills registry and share it in the [Nous Research Discord](https://discord.gg/NousResearch). Users can install it with `hermes skills install`.
+If your skill is specialized, community-contributed, or niche, it's better suited for a **Skills Hub** — upload it to a skills registry and share it in the [Nous Research Discord](https://discord.gg/donghzs). Users can install it with `vermes skills install`.
 
 ---
 
 ## Memory Providers: Ship as a Standalone Plugin
 
-**We are no longer accepting new memory providers into this repo.** The set of built-in providers under `plugins/memory/` (honcho, mem0, supermemory, byterover, hindsight, holographic, openviking, retaindb) is closed. If you want to add a new memory backend, publish it as a **standalone plugin repo** that users install into `~/.hermes/plugins/` (or via a pip entry point).
+**We are no longer accepting new memory providers into this repo.** The set of built-in providers under `plugins/memory/` (honcho, mem0, supermemory, byterover, hindsight, holographic, openviking, retaindb) is closed. If you want to add a new memory backend, publish it as a **standalone plugin repo** that users install into `~/.vermes/plugins/` (or via a pip entry point).
 
 Standalone memory plugins:
 
-- Implement the same `MemoryProvider` ABC (`agent/memory_provider.py`) — `sync_turn`, `prefetch`, `shutdown`, and optionally `post_setup(hermes_home, config)` for setup-wizard integration
+- Implement the same `MemoryProvider` ABC (`agent/memory_provider.py`) — `sync_turn`, `prefetch`, `shutdown`, and optionally `post_setup(VERMES_home, config)` for setup-wizard integration
 - Use the same discovery system — `discover_memory_providers()` picks them up from user/project plugin directories and pip entry points
-- Integrate with `hermes memory setup` via `post_setup()` — no need to touch core code
+- Integrate with `vermes memory setup` via `post_setup()` — no need to touch core code
 - Can register their own CLI subcommands via `register_cli(subparser)` in a `cli.py` file
 - Get all the same lifecycle hooks and config plumbing as in-tree providers
 
@@ -81,8 +81,8 @@ This isn't a quality bar — it's a coupling-and-maintenance decision. Memory pr
 ### Clone and install
 
 ```bash
-git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git
-cd hermes-agent
+git clone --recurse-submodules https://github.com/donghzs/vermes.git
+cd vermes-agent
 
 # Create venv with Python 3.11
 uv venv venv --python 3.11
@@ -98,12 +98,12 @@ npm install
 ### Configure for development
 
 ```bash
-mkdir -p ~/.hermes/{cron,sessions,logs,memories,skills}
-cp cli-config.yaml.example ~/.hermes/config.yaml
-touch ~/.hermes/.env
+mkdir -p ~/.vermes/{cron,sessions,logs,memories,skills}
+cp cli-config.yaml.example ~/.vermes/config.yaml
+touch ~/.vermes/.env
 
 # Add at minimum an LLM provider key:
-echo "OPENROUTER_API_KEY=***" >> ~/.hermes/.env
+echo "OPENROUTER_API_KEY=***" >> ~/.vermes/.env
 ```
 
 ### Run
@@ -111,11 +111,11 @@ echo "OPENROUTER_API_KEY=***" >> ~/.hermes/.env
 ```bash
 # Symlink for global access
 mkdir -p ~/.local/bin
-ln -sf "$(pwd)/venv/bin/hermes" ~/.local/bin/hermes
+ln -sf "$(pwd)/venv/bin/vermes" ~/.local/bin/vermes
 
 # Verify
-hermes doctor
-hermes chat -q "Hello"
+vermes doctor
+vermes chat -q "Hello"
 ```
 
 ### Run tests
@@ -134,12 +134,12 @@ pytest tests/ -v
 ## Project Structure
 
 ```
-hermes-agent/
+vermes-agent/
 ├── run_agent.py              # AIAgent class — core conversation loop, tool dispatch, session persistence
-├── cli.py                    # HermesCLI class — interactive TUI, prompt_toolkit integration
+├── cli.py                    # vermesCLI class — interactive TUI, prompt_toolkit integration
 ├── model_tools.py            # Tool orchestration (thin layer over tools/registry.py)
-├── toolsets.py               # Tool groupings and presets (hermes-cli, hermes-telegram, etc.)
-├── hermes_state.py           # SQLite session database with FTS5 full-text search, session titles
+├── toolsets.py               # Tool groupings and presets (vermes-cli, vermes-telegram, etc.)
+├── VERMES_state.py           # SQLite session database with FTS5 full-text search, session titles
 ├── batch_runner.py           # Parallel batch processing for trajectory generation
 │
 ├── agent/                    # Agent internals (extracted modules)
@@ -191,28 +191,28 @@ hermes-agent/
 │   ├── install.ps1               # Windows PowerShell installer
 │   └── whatsapp-bridge/          # Node.js WhatsApp bridge (Baileys)
 │
-├── skills/                   # Bundled skills (copied to ~/.hermes/skills/ on install)
+├── skills/                   # Bundled skills (copied to ~/.vermes/skills/ on install)
 ├── optional-skills/          # Official optional skills (discoverable via hub, not activated by default)
 ├── tests/                    # Test suite
-├── website/                  # Documentation site (hermes-agent.nousresearch.com)
+├── website/                  # Documentation site (vermes-agent.donghzs.com)
 │
-├── cli-config.yaml.example   # Example configuration (copied to ~/.hermes/config.yaml)
+├── cli-config.yaml.example   # Example configuration (copied to ~/.vermes/config.yaml)
 └── AGENTS.md                 # Development guide for AI coding assistants
 ```
 
-### User configuration (stored in `~/.hermes/`)
+### User configuration (stored in `~/.vermes/`)
 
 | Path | Purpose |
 |------|---------|
-| `~/.hermes/config.yaml` | Settings (model, terminal, toolsets, compression, etc.) |
-| `~/.hermes/.env` | API keys and secrets |
-| `~/.hermes/auth.json` | OAuth credentials (Nous Portal) |
-| `~/.hermes/skills/` | All active skills (bundled + hub-installed + agent-created) |
-| `~/.hermes/memories/` | Persistent memory (MEMORY.md, USER.md) |
-| `~/.hermes/state.db` | SQLite session database |
-| `~/.hermes/sessions/` | JSON session logs |
-| `~/.hermes/cron/` | Scheduled job data |
-| `~/.hermes/whatsapp/session/` | WhatsApp bridge credentials |
+| `~/.vermes/config.yaml` | Settings (model, terminal, toolsets, compression, etc.) |
+| `~/.vermes/.env` | API keys and secrets |
+| `~/.vermes/auth.json` | OAuth credentials (Nous Portal) |
+| `~/.vermes/skills/` | All active skills (bundled + hub-installed + agent-created) |
+| `~/.vermes/memories/` | Persistent memory (MEMORY.md, USER.md) |
+| `~/.vermes/state.db` | SQLite session database |
+| `~/.vermes/sessions/` | JSON session logs |
+| `~/.vermes/cron/` | Scheduled job data |
+| `~/.vermes/whatsapp/session/` | WhatsApp bridge credentials |
 
 ---
 
@@ -239,7 +239,7 @@ User message → AIAgent._run_agent_loop()
 
 - **Self-registering tools**: Each tool file calls `registry.register()` at import time. `model_tools.py` triggers discovery by importing all tool modules.
 - **Toolset grouping**: Tools are grouped into toolsets (`web`, `terminal`, `file`, `browser`, etc.) that can be enabled/disabled per platform.
-- **Session persistence**: All conversations are stored in SQLite (`hermes_state.py`) with full-text search and unique session titles. JSON logs go to `~/.hermes/sessions/`.
+- **Session persistence**: All conversations are stored in SQLite (`VERMES_state.py`) with full-text search and unique session titles. JSON logs go to `~/.vermes/sessions/`.
 - **Ephemeral injection**: System prompts and prefill messages are injected at API call time, never persisted to the database or logs.
 - **Provider abstraction**: The agent works with any OpenAI-compatible API. Provider resolution happens at init time (Nous Portal OAuth, OpenRouter API key, or custom endpoint).
 - **Provider routing**: When using OpenRouter, `provider_routing` in config.yaml controls provider selection (sort by throughput/latency/price, allow/ignore specific providers, data retention policies). These are injected as `extra_body.provider` in API requests.
@@ -311,7 +311,7 @@ imported by `discover_builtin_tools()` in `tools/registry.py` when `model_tools`
 loads. There is **no** manual import list in `model_tools.py` to maintain.
 
 You must still add the tool name to the appropriate list in `toolsets.py`
-(for example `_HERMES_CORE_TOOLS` or a dedicated toolset); otherwise the tool
+(for example `_vermes_CORE_TOOLS` or a dedicated toolset); otherwise the tool
 registers but is never exposed to the agent. If you introduce a new toolset,
 add it in `toolsets.py` and wire it into the relevant platform presets.
 
@@ -360,7 +360,7 @@ prerequisites:                     # Optional legacy runtime requirements
   env_vars: [MY_API_KEY]           #   Backward-compatible alias for required env vars
   commands: [curl, jq]             #   Advisory only; does not hide the skill
 metadata:
-  hermes:
+  vermes:
     tags: [Category, Subcategory, Keywords]
     related_skills: [other-skill-name]
     fallback_for_toolsets: [web]       # Optional — show only when toolset is unavailable
@@ -403,11 +403,11 @@ If the field is omitted or empty, the skill loads on all platforms (backward com
 
 Skills can declare conditions that control when they appear in the system prompt, based on which tools and toolsets are available in the current session. This is primarily used for **fallback skills** — alternatives that should only be shown when a primary tool is unavailable.
 
-Four fields are supported under `metadata.hermes`:
+Four fields are supported under `metadata.vermes`:
 
 ```yaml
 metadata:
-  hermes:
+  vermes:
     fallback_for_toolsets: [web]      # Show ONLY when these toolsets are unavailable
     requires_toolsets: [terminal]     # Show ONLY when these toolsets are available
     fallback_for_tools: [web_search]  # Show ONLY when these specific tools are unavailable
@@ -425,17 +425,17 @@ metadata:
 ```yaml
 # DuckDuckGo search — shown when Firecrawl (web toolset) is unavailable
 metadata:
-  hermes:
+  vermes:
     fallback_for_toolsets: [web]
 
 # Smart home skill — only useful when terminal is available
 metadata:
-  hermes:
+  vermes:
     requires_toolsets: [terminal]
 
 # Local browser fallback — shown when Browserbase is unavailable
 metadata:
-  hermes:
+  vermes:
     fallback_for_toolsets: [browser]
 ```
 
@@ -453,7 +453,7 @@ required_environment_variables:
     required_for: full functionality
 ```
 
-The user may skip setup and keep loading the skill. Hermes only exposes metadata (`stored_as`, `skipped`, `validated`) to the model — never the secret value.
+The user may skip setup and keep loading the skill. Vermes only exposes metadata (`stored_as`, `skipped`, `validated`) to the model — never the secret value.
 
 Legacy `prerequisites.env_vars` remains supported and is normalized into the new representation.
 
@@ -463,7 +463,7 @@ prerequisites:
   commands: [curl, jq]            # Advisory CLI checks
 ```
 
-Gateway and messaging sessions never collect secrets in-band; they instruct the user to run `hermes setup` or update `~/.hermes/.env` locally.
+Gateway and messaging sessions never collect secrets in-band; they instruct the user to run `vermes setup` or update `~/.vermes/.env` locally.
 
 **When to declare required environment variables:**
 - The skill uses an API key or token that should be collected securely at load time
@@ -491,7 +491,7 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
    Good: `Search arXiv papers by keyword, author, category, or ID.`
    Bad: `A powerful and comprehensive skill that allows the agent to search arXiv for relevant academic papers using various criteria including keywords, authors, and categories.`
 
-2. **Tools referenced in SKILL.md prose must be native Hermes tools or MCP servers the skill explicitly expects.** When the skill needs a capability, point at the proper tool by name in backticks: `` `terminal` ``, `` `web_extract` ``, `` `web_search` ``, `` `read_file` ``, `` `write_file` ``, `` `patch` ``, `` `search_files` ``, `` `vision_analyze` ``, `` `browser_navigate` ``, `` `delegate_task` ``, `` `image_generate` ``, `` `text_to_speech` ``, `` `cronjob` ``, `` `memory` ``, `` `skill_view` ``, `` `todo` ``, `` `execute_code` ``.
+2. **Tools referenced in SKILL.md prose must be native Vermes tools or MCP servers the skill explicitly expects.** When the skill needs a capability, point at the proper tool by name in backticks: `` `terminal` ``, `` `web_extract` ``, `` `web_search` ``, `` `read_file` ``, `` `write_file` ``, `` `patch` ``, `` `search_files` ``, `` `vision_analyze` ``, `` `browser_navigate` ``, `` `delegate_task` ``, `` `image_generate` ``, `` `text_to_speech` ``, `` `cronjob` ``, `` `memory` ``, `` `skill_view` ``, `` `todo` ``, `` `execute_code` ``.
 
    Do NOT name shell utilities the agent already has wrapped:
 
@@ -508,7 +508,7 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
 
 3. **`platforms:` gating audited against actual script imports.** Skills that use POSIX-only primitives (`fcntl`, `termios`, `os.setsid`, `os.kill(pid, 0)` for liveness, `/proc`, hardcoded `/tmp` paths, `signal.SIGKILL`, bash heredocs, `osascript`, `apt`, `systemctl`) must declare their supported platforms via the `platforms:` frontmatter. Default posture is to fix it cross-platform first — `tempfile.gettempdir()`, `pathlib.Path`, `psutil.pid_exists()`, Python-level filtering instead of `grep`. Gate to a narrower set only when the dependency is genuinely platform-bound (e.g. `osascript` is macOS-only, `/proc` is Linux-only).
 
-4. **`author` credits the human contributor first.** For external contributions, the contributor's real name + GitHub handle goes first (`Jane Doe (jane-doe)`); "Hermes Agent" is the secondary collaborator. If the contributor's commit shows "Hermes Agent" as author because they used Hermes to draft the skill, replace it with their actual name — credit the human, not the tool.
+4. **`author` credits the human contributor first.** For external contributions, the contributor's real name + GitHub handle goes first (`Jane Doe (jane-doe)`); "Vermes Agent" is the secondary collaborator. If the contributor's commit shows "Vermes Agent" as author because they used Vermes to draft the skill, replace it with their actual name — credit the human, not the tool.
 
 5. **SKILL.md body uses the modern section order.** `# <Skill> Skill` title, 2-3 sentence intro stating what it does and what it doesn't do, then:
    - `## When to Use` — trigger conditions
@@ -529,20 +529,20 @@ Every new or modernized skill — bundled, optional, or contributed — must mee
 
 ### Skill guidelines
 
-- **No external dependencies unless absolutely necessary.** Prefer stdlib Python, curl, and existing Hermes tools (`web_extract`, `terminal`, `read_file`).
+- **No external dependencies unless absolutely necessary.** Prefer stdlib Python, curl, and existing Vermes tools (`web_extract`, `terminal`, `read_file`).
 - **Progressive disclosure.** Put the most common workflow first. Edge cases and advanced usage go at the bottom.
 - **Include helper scripts** for XML/JSON parsing or complex logic — don't expect the LLM to write parsers inline every time.
-- **Test it.** Run `hermes --toolsets skills -q "Use the X skill to do Y"` and verify the agent follows the instructions correctly.
+- **Test it.** Run `vermes --toolsets skills -q "Use the X skill to do Y"` and verify the agent follows the instructions correctly.
 
 ---
 
 ## Adding a Skin / Theme
 
-Hermes uses a data-driven skin system — no code changes needed to add a new skin.
+Vermes uses a data-driven skin system — no code changes needed to add a new skin.
 
 **Option A: User skin (YAML file)**
 
-Create `~/.hermes/skins/<name>.yaml`:
+Create `~/.vermes/skins/<name>.yaml`:
 
 ```yaml
 name: mytheme
@@ -588,7 +588,7 @@ See `vermes_cli/skin_engine.py` for the full schema and existing skins as exampl
 
 ## Cross-Platform Compatibility
 
-Hermes runs on Linux, macOS, and native Windows (plus WSL2). When writing code
+Vermes runs on Linux, macOS, and native Windows (plus WSL2). When writing code
 that touches the OS, assume *any* platform can hit your code path.
 
 > **Before you PR:** run `scripts/check-windows-footguns.py` to catch the
@@ -616,7 +616,7 @@ that touches the OS, assume *any* platform can hit your code path.
        ...
    ```
 
-   If you specifically need the hermes wrapper (it has a stdlib fallback
+   If you specifically need the vermes wrapper (it has a stdlib fallback
    for scaffold-phase imports before pip install finishes), use
    `gateway.status._pid_exists(pid)`. It calls `psutil.pid_exists` first
    and falls back to a hand-rolled `OpenProcess + WaitForSingleObject`
@@ -776,7 +776,7 @@ through the wrong branch on a Windows runner.
 
 ## Security Considerations
 
-Hermes has terminal access. Security matters.
+Vermes has terminal access. Security matters.
 
 ### Existing protections
 
@@ -858,7 +858,7 @@ refactor/description   # Code restructuring
 ### Before submitting
 
 1. **Run tests**: `scripts/run_tests.sh` (recommended; same as CI) or `pytest tests/ -v` with the project venv activated
-2. **Test manually**: Run `hermes` and exercise the code path you changed
+2. **Test manually**: Run `vermes` and exercise the code path you changed
 3. **Check cross-platform impact**: If you touch file I/O, process management, or terminal handling, consider macOS, Linux, and WSL2
 4. **Keep PRs focused**: One logical change per PR. Don't mix a bug fix with a refactor with a new feature.
 
@@ -901,8 +901,8 @@ test(tools): add unit tests for file_operations
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/NousResearch/hermes-agent/issues)
-- Include: OS, Python version, Hermes version (`hermes version`), full error traceback
+- Use [GitHub Issues](https://github.com/donghzs/vermes/issues)
+- Include: OS, Python version, Vermes version (`vermes version`), full error traceback
 - Include steps to reproduce
 - Check existing issues before creating duplicates
 - For security vulnerabilities, please report privately
@@ -911,7 +911,7 @@ test(tools): add unit tests for file_operations
 
 ## Community
 
-- **Discord**: [discord.gg/NousResearch](https://discord.gg/NousResearch) — for questions, showcasing projects, and sharing skills
+- **Discord**: [discord.gg/donghzs](https://discord.gg/donghzs) — for questions, showcasing projects, and sharing skills
 - **GitHub Discussions**: For design proposals and architecture discussions
 - **Skills Hub**: Upload specialized skills to a registry and share them with the community
 

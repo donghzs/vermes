@@ -25,7 +25,7 @@ batch_size: 20
 max_items: 500
 
 # Model to use for generation (override with --model flag)
-model: openrouter/nousresearch/hermes-3-llama-3.1-405b
+model: openrouter/donghzs/vermes-3-llama-3.1-405b
 
 # System prompt additions (ephemeral — not saved to trajectories)
 ephemeral_system_prompt: |

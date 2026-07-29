@@ -1,12 +1,12 @@
 ---
 name: kanban-video-orchestrator
-description: Plan, set up, and monitor a multi-agent video production pipeline backed by Hermes Kanban. Use when the user wants to make ANY video — narrative film, product/marketing, music video, explainer, ASCII/terminal art, abstract/generative loop, comic, 3D, real-time/installation — and the work warrants decomposition into specialized profiles (writer, designer, animator, renderer, voice, editor, etc.) coordinated through a kanban board. Performs adaptive discovery to scope the brief, designs an appropriate team for the requested style, generates the setup script that creates Hermes profiles + initial kanban task, then helps monitor execution and intervene when tasks stall or fail. Routes scenes to whichever Hermes rendering / audio / design skill fits each beat (`ascii-video`, `manim-video`, `p5js`, `comfyui`, `touchdesigner-mcp`, `blender-mcp`, `pixel-art`, `baoyu-comic`, `claude-design`, `excalidraw`, `songsee`, `heartmula`, …) plus external APIs for TTS, image-gen, and image-to-video as needed.
+description: Plan, set up, and monitor a multi-agent video production pipeline backed by Vermes Kanban. Use when the user wants to make ANY video — narrative film, product/marketing, music video, explainer, ASCII/terminal art, abstract/generative loop, comic, 3D, real-time/installation — and the work warrants decomposition into specialized profiles (writer, designer, animator, renderer, voice, editor, etc.) coordinated through a kanban board. Performs adaptive discovery to scope the brief, designs an appropriate team for the requested style, generates the setup script that creates Vermes profiles + initial kanban task, then helps monitor execution and intervene when tasks stall or fail. Routes scenes to whichever Vermes rendering / audio / design skill fits each beat (`ascii-video`, `manim-video`, `p5js`, `comfyui`, `touchdesigner-mcp`, `blender-mcp`, `pixel-art`, `baoyu-comic`, `claude-design`, `excalidraw`, `songsee`, `heartmula`, …) plus external APIs for TTS, image-gen, and image-to-video as needed.
 version: 1.0.0
 author: [SHL0MS, alt-glitch]
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  vermes:
     tags: [video, kanban, multi-agent, orchestration, production-pipeline]
     related_skills: [kanban-orchestrator, kanban-worker, ascii-video, manim-video, p5js, comfyui, touchdesigner-mcp, blender-mcp, pixel-art, ascii-art, songwriting-and-ai-music, heartmula, songsee, spotify, youtube-content, claude-design, excalidraw, architecture-diagram, concept-diagrams, baoyu-comic, baoyu-infographic, humanizer, gif-search, meme-generation]
     credits: |
@@ -14,20 +14,20 @@ metadata:
       SOUL.md-per-profile model, TEAM.md task-graph convention, and
       `--workspace dir:<path>` discipline are adapted from alt-glitch's
       original multi-agent video pipeline at
-      https://github.com/NousResearch/kanban-video-pipeline.
+      https://github.com/donghzs/kanban-video-pipeline.
 ---
 
 # Kanban Video Orchestrator
 
 Wrap any video request — from a 15-second product teaser to a 5-minute narrative
-short to a music video to an ASCII loop — in a Hermes Kanban pipeline that
+short to a music video to an ASCII loop — in a Vermes Kanban pipeline that
 decomposes the work to specialized agent profiles.
 
 This skill does **not** render anything itself. It is a meta-pipeline that:
 
 1. **Scopes** the request through targeted discovery
 2. **Designs** an appropriate team (which roles, which tools per role) based on the style
-3. **Generates** a setup script that creates Hermes profiles, project workspace, and the initial kanban task
+3. **Generates** a setup script that creates Vermes profiles, project workspace, and the initial kanban task
 4. **Hands off** to the director profile, which decomposes via the kanban
 5. **Monitors** execution, helps intervene when tasks stall or fail
 
@@ -90,7 +90,7 @@ rest are picked by what the brief actually requires.
 For the role library and per-style team compositions, see
 **[references/role-archetypes.md](references/role-archetypes.md)**.
 
-For mapping role → which Hermes skills + toolsets it loads, see
+For mapping role → which Vermes skills + toolsets it loads, see
 **[references/tool-matrix.md](references/tool-matrix.md)**.
 
 ### Step 4 — Setup
@@ -99,11 +99,11 @@ Generate a setup script (`setup.sh`) and run it. The script:
 
 1. Creates the project workspace (`~/projects/video-pipeline/<slug>/`)
 2. Copies any provided assets into `taste/`, `audio/`, `assets/`
-3. Creates each Hermes profile via `hermes profile create --clone`
+3. Creates each Vermes profile via `vermes profile create --clone`
 4. Writes per-profile `SOUL.md` (personality + role definition)
 5. Configures profile YAML (toolsets, always_load skills, cwd)
 6. Writes `brief.md`, `TEAM.md`, and `taste/` content
-7. Fires the initial `hermes kanban create` task assigned to the director
+7. Fires the initial `vermes kanban create` task assigned to the director
 
 Use `scripts/bootstrap_pipeline.py` to generate setup.sh from a brief +
 team-design JSON. See **[references/kanban-setup.md](references/kanban-setup.md)**
@@ -115,9 +115,9 @@ for the setup script structure, profile config patterns, and the critical
 Run `setup.sh`. Then provide the user with monitoring commands:
 
 ```bash
-hermes kanban watch --tenant <project-tenant>     # live events
-hermes kanban list  --tenant <project-tenant>     # board snapshot
-hermes dashboard                                   # visual board UI
+vermes kanban watch --tenant <project-tenant>     # live events
+vermes kanban list  --tenant <project-tenant>     # board snapshot
+vermes dashboard                                   # visual board UI
 ```
 
 The director profile takes over from here, decomposing the work and routing
@@ -174,7 +174,7 @@ task graphs. See **[references/examples.md](references/examples.md)**.
 6. **The director never executes.** Even with the full `kanban + terminal +
    file` toolset, the director's `SOUL.md` rules forbid it from executing
    work itself. It decomposes and routes only — every concrete task becomes
-   a `hermes kanban create` call to a specialist profile. The
+   a `vermes kanban create` call to a specialist profile. The
    `kanban-orchestrator` skill spells this out further.
 
 7. **Don't over-decompose.** A 30-second product video does NOT need 20 tasks.
@@ -182,7 +182,7 @@ task graphs. See **[references/examples.md](references/examples.md)**.
    right human-review gates.
 
 8. **Verify API keys BEFORE firing.** External APIs (TTS, image-gen,
-   image-to-video) need keys in `~/.hermes/.env` or the user's secret store.
+   image-to-video) need keys in `~/.vermes/.env` or the user's secret store.
    A worker that hits a missing-key error wastes a task slot. The setup
    script's `check_key` helper aborts cleanly if a required key is missing.
 

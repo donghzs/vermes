@@ -1,7 +1,7 @@
 ---
 sidebar_position: 2
 title: "Adding Tools"
-description: "How to add a new tool to Hermes Agent — schemas, handlers, registration, and toolsets"
+description: "How to add a new tool to Vermes Agent — schemas, handlers, registration, and toolsets"
 ---
 
 # Adding Tools
@@ -9,12 +9,12 @@ description: "How to add a new tool to Hermes Agent — schemas, handlers, regis
 Before writing a tool, ask yourself: **should this be a [skill](creating-skills.md) instead?**
 
 :::warning Built-in Core Tools Only
-This page is for adding a **built-in Hermes tool** to the repository itself.
+This page is for adding a **built-in Vermes tool** to the repository itself.
 If you want a personal, project-local, or otherwise custom tool without
-modifying Hermes core, use the plugin route instead:
+modifying Vermes core, use the plugin route instead:
 
 - [Plugins](/docs/user-guide/features/plugins)
-- [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin)
+- [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin)
 
 Default to plugins for most custom tool creation. Only follow this page when
 you explicitly want to ship a new built-in tool in `tools/` and `toolsets.py`.
@@ -29,7 +29,7 @@ Make it a **Tool** when it requires end-to-end integration with API keys, custom
 Adding a tool touches **2 files**:
 
 1. **`tools/your_tool.py`** — handler, schema, check function, `registry.register()` call
-2. **`toolsets.py`** — add tool name to `_HERMES_CORE_TOOLS` (or a specific toolset)
+2. **`toolsets.py`** — add tool name to `_vermes_CORE_TOOLS` (or a specific toolset)
 
 Any `tools/*.py` file with a top-level `registry.register()` call is auto-discovered at startup — no manual import list required.
 
@@ -124,7 +124,7 @@ In `toolsets.py`, add the tool name:
 
 ```python
 # If it should be available on all platforms (CLI + messaging):
-_HERMES_CORE_TOOLS = [
+_vermes_CORE_TOOLS = [
     ...
     "weather",  # <-- add here
 ]
@@ -208,4 +208,4 @@ OPTIONAL_ENV_VARS = {
 - [ ] Handler returns JSON strings, errors returned as `{"error": "..."}`
 - [ ] Optional: API key added to `OPTIONAL_ENV_VARS` in `vermes_cli/config.py`
 - [ ] Optional: Added to `toolset_distributions.py` for batch processing
-- [ ] Tested with `hermes chat -q "Use the weather tool for London"`
+- [ ] Tested with `vermes chat -q "Use the weather tool for London"`

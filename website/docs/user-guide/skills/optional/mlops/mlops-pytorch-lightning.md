@@ -14,7 +14,7 @@ High-level PyTorch framework with Trainer class, automatic distributed training 
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/mlops/pytorch-lightning` |
+| Source | Optional — install with `vermes skills install official/mlops/pytorch-lightning` |
 | Path | `optional-skills/mlops/pytorch-lightning` |
 | Version | `1.0.0` |
 | Author | Orchestra Research |
@@ -26,7 +26,7 @@ High-level PyTorch framework with Trainer class, automatic distributed training 
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # PyTorch Lightning - High-Level Training Framework
@@ -334,11 +334,11 @@ trainer = L.Trainer(accelerator='gpu', devices=1)
 
 ## Advanced topics
 
-**Callbacks**: See [references/callbacks.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/mlops/pytorch-lightning/references/callbacks.md) for EarlyStopping, ModelCheckpoint, custom callbacks, and callback hooks.
+**Callbacks**: See [references/callbacks.md](https://github.com/donghzs/vermes/blob/main/optional-skills/mlops/pytorch-lightning/references/callbacks.md) for EarlyStopping, ModelCheckpoint, custom callbacks, and callback hooks.
 
-**Distributed strategies**: See [references/distributed.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/mlops/pytorch-lightning/references/distributed.md) for DDP, FSDP, DeepSpeed ZeRO integration, multi-node setup.
+**Distributed strategies**: See [references/distributed.md](https://github.com/donghzs/vermes/blob/main/optional-skills/mlops/pytorch-lightning/references/distributed.md) for DDP, FSDP, DeepSpeed ZeRO integration, multi-node setup.
 
-**Hyperparameter tuning**: See [references/hyperparameter-tuning.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/mlops/pytorch-lightning/references/hyperparameter-tuning.md) for integration with Optuna, Ray Tune, and WandB sweeps.
+**Hyperparameter tuning**: See [references/hyperparameter-tuning.md](https://github.com/donghzs/vermes/blob/main/optional-skills/mlops/pytorch-lightning/references/hyperparameter-tuning.md) for integration with Optuna, Ray Tune, and WandB sweeps.
 
 ## Hardware requirements
 

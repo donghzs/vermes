@@ -1,33 +1,33 @@
 ---
 sidebar_position: 4
 title: "MCP (Model Context Protocol)"
-description: "Connect Hermes Agent to external tool servers via MCP — and control exactly which MCP tools Hermes loads"
+description: "Connect Vermes Agent to external tool servers via MCP — and control exactly which MCP tools Vermes loads"
 ---
 
 # MCP (Model Context Protocol)
 
-MCP lets Hermes Agent connect to external tool servers so the agent can use tools that live outside Hermes itself — GitHub, databases, file systems, browser stacks, internal APIs, and more.
+MCP lets Vermes Agent connect to external tool servers so the agent can use tools that live outside Vermes itself — GitHub, databases, file systems, browser stacks, internal APIs, and more.
 
-If you have ever wanted Hermes to use a tool that already exists somewhere else, MCP is usually the cleanest way to do it.
+If you have ever wanted Vermes to use a tool that already exists somewhere else, MCP is usually the cleanest way to do it.
 
 ## What MCP gives you
 
-- Access to external tool ecosystems without writing a native Hermes tool first
+- Access to external tool ecosystems without writing a native Vermes tool first
 - Local stdio servers and remote HTTP MCP servers in the same config
 - Automatic tool discovery and registration at startup
 - Utility wrappers for MCP resources and prompts when supported by the server
-- Per-server filtering so you can expose only the MCP tools you actually want Hermes to see
+- Per-server filtering so you can expose only the MCP tools you actually want Vermes to see
 
 ## Quick start
 
 1. Install MCP support (already included if you used the standard install script):
 
 ```bash
-cd ~/.hermes/hermes-agent
+cd ~/.vermes/vermes-agent
 uv pip install -e ".[mcp]"
 ```
 
-2. Add an MCP server to `~/.hermes/config.yaml`:
+2. Add an MCP server to `~/.vermes/config.yaml`:
 
 ```yaml
 mcp_servers:
@@ -36,13 +36,13 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
 ```
 
-3. Start Hermes:
+3. Start Vermes:
 
 ```bash
-hermes chat
+vermes chat
 ```
 
-4. Ask Hermes to use the MCP-backed capability.
+4. Ask Vermes to use the MCP-backed capability.
 
 For example:
 
@@ -50,7 +50,7 @@ For example:
 List the files in /home/user/projects and summarize the repo structure.
 ```
 
-Hermes will discover the MCP server's tools and use them like any other tool.
+Vermes will discover the MCP server's tools and use them like any other tool.
 
 ## Two kinds of MCP servers
 
@@ -74,7 +74,7 @@ Use stdio servers when:
 
 ### HTTP servers
 
-HTTP MCP servers are remote endpoints Hermes connects to directly.
+HTTP MCP servers are remote endpoints Vermes connects to directly.
 
 ```yaml
 mcp_servers:
@@ -87,11 +87,11 @@ mcp_servers:
 Use HTTP servers when:
 - the MCP server is hosted elsewhere
 - your organization exposes internal MCP endpoints
-- you do not want Hermes spawning a local subprocess for that integration
+- you do not want Vermes spawning a local subprocess for that integration
 
 ## Basic configuration reference
 
-Hermes reads MCP config from `~/.hermes/config.yaml` under `mcp_servers`.
+Vermes reads MCP config from `~/.vermes/config.yaml` under `mcp_servers`.
 
 ### Common keys
 
@@ -104,7 +104,7 @@ Hermes reads MCP config from `~/.hermes/config.yaml` under `mcp_servers`.
 | `headers` | mapping | HTTP headers for remote servers |
 | `timeout` | number | Tool call timeout |
 | `connect_timeout` | number | Initial connection timeout |
-| `enabled` | bool | If `false`, Hermes skips the server entirely |
+| `enabled` | bool | If `false`, Vermes skips the server entirely |
 | `supports_parallel_tool_calls` | bool | If `true`, tools from this server may run concurrently |
 | `tools` | mapping | Per-server tool filtering and utility policy |
 
@@ -129,7 +129,7 @@ mcp_servers:
 
 ## Built-in presets
 
-For well-known MCP servers, `hermes mcp add` accepts a `--preset` flag that fills in the transport details so you don't have to look up the command and args. The preset only supplies defaults — anything else (env vars, headers, filtering) you pass on the same command line still wins.
+For well-known MCP servers, `vermes mcp add` accepts a `--preset` flag that fills in the transport details so you don't have to look up the command and args. The preset only supplies defaults — anything else (env vars, headers, filtering) you pass on the same command line still wins.
 
 | Preset | What it wires up |
 |---|---|
@@ -137,7 +137,7 @@ For well-known MCP servers, `hermes mcp add` accepts a `--preset` flag that fill
 
 ```bash
 # Add Codex CLI as an MCP server in one line
-hermes mcp add codex --preset codex
+vermes mcp add codex --preset codex
 ```
 
 That writes the equivalent of:
@@ -149,11 +149,11 @@ mcp_servers:
     args: ["mcp-server"]
 ```
 
-You can pick any local name (`hermes mcp add my-codex --preset codex` is fine); the preset only provides the `command`/`args` defaults.
+You can pick any local name (`vermes mcp add my-codex --preset codex` is fine); the preset only provides the `command`/`args` defaults.
 
-## How Hermes registers MCP tools
+## How Vermes registers MCP tools
 
-Hermes prefixes MCP tools so they do not collide with built-in names:
+Vermes prefixes MCP tools so they do not collide with built-in names:
 
 ```text
 mcp_<server_name>_<tool_name>
@@ -167,11 +167,11 @@ Examples:
 | `github` | `create-issue` | `mcp_github_create_issue` |
 | `my-api` | `query.data` | `mcp_my_api_query_data` |
 
-In practice, you usually do not need to call the prefixed name manually — Hermes sees the tool and chooses it during normal reasoning.
+In practice, you usually do not need to call the prefixed name manually — Vermes sees the tool and chooses it during normal reasoning.
 
 ## MCP utility tools
 
-When supported, Hermes also registers utility tools around MCP resources and prompts:
+When supported, Vermes also registers utility tools around MCP resources and prompts:
 
 - `list_resources`
 - `read_resource`
@@ -186,14 +186,14 @@ These are registered per server with the same prefix pattern, for example:
 ### Important
 
 These utility tools are now capability-aware:
-- Hermes only registers resource utilities if the MCP session actually supports resource operations
-- Hermes only registers prompt utilities if the MCP session actually supports prompt operations
+- Vermes only registers resource utilities if the MCP session actually supports resource operations
+- Vermes only registers prompt utilities if the MCP session actually supports prompt operations
 
 So a server that exposes callable tools but no resources/prompts will not get those extra wrappers.
 
 ## Per-server filtering
 
-You can control which tools each MCP server contributes to Hermes, allowing fine-grained management of your tool namespace.
+You can control which tools each MCP server contributes to Vermes, allowing fine-grained management of your tool namespace.
 
 ### Disable a server entirely
 
@@ -204,7 +204,7 @@ mcp_servers:
     enabled: false
 ```
 
-If `enabled: false`, Hermes skips the server completely and does not even attempt a connection.
+If `enabled: false`, Vermes skips the server completely and does not even attempt a connection.
 
 ### Whitelist server tools
 
@@ -247,7 +247,7 @@ tools:
 
 ### Filter utility tools too
 
-You can also separately disable Hermes-added utility wrappers:
+You can also separately disable Vermes-added utility wrappers:
 
 ```yaml
 mcp_servers:
@@ -290,7 +290,7 @@ mcp_servers:
 
 ## What happens if everything is filtered out?
 
-If your config filters out all callable tools and disables or omits all supported utilities, Hermes does not create an empty runtime MCP toolset for that server.
+If your config filters out all callable tools and disables or omits all supported utilities, Vermes does not create an empty runtime MCP toolset for that server.
 
 That keeps the tool list clean.
 
@@ -298,11 +298,11 @@ That keeps the tool list clean.
 
 ### Discovery time
 
-Hermes discovers MCP servers at startup and registers their tools into the normal tool registry.
+Vermes discovers MCP servers at startup and registers their tools into the normal tool registry.
 
 ### Dynamic Tool Discovery
 
-MCP servers can notify Hermes when their available tools change at runtime by sending a `notifications/tools/list_changed` notification. When Hermes receives this notification, it automatically re-fetches the server's tool list and updates the registry — no manual `/reload-mcp` required.
+MCP servers can notify Vermes when their available tools change at runtime by sending a `notifications/tools/list_changed` notification. When Vermes receives this notification, it automatically re-fetches the server's tool list and updates the registry — no manual `/reload-mcp` required.
 
 This is useful for MCP servers whose capabilities change dynamically (e.g. a server that adds tools when a new database schema is loaded, or removes tools when a service goes offline).
 
@@ -332,7 +332,7 @@ That makes MCP servers easier to reason about at the toolset level.
 
 ### Stdio env filtering
 
-For stdio servers, Hermes does not blindly pass your full shell environment.
+For stdio servers, Vermes does not blindly pass your full shell environment.
 
 Only explicitly configured `env` plus a safe baseline are passed through. This reduces accidental secret leakage.
 
@@ -407,13 +407,13 @@ Check:
 
 ```bash
 # Verify MCP deps are installed (already included in standard install)
-cd ~/.hermes/hermes-agent && uv pip install -e ".[mcp]"
+cd ~/.vermes/vermes-agent && uv pip install -e ".[mcp]"
 
 node --version
 npx --version
 ```
 
-Then verify your config and restart Hermes.
+Then verify your config and restart Vermes.
 
 ### Tools not appearing
 
@@ -428,7 +428,7 @@ If you are intentionally filtering, this is expected.
 
 ### Why didn't resource or prompt utilities appear?
 
-Because Hermes now only registers those wrappers when both are true:
+Because Vermes now only registers those wrappers when both are true:
 1. your config allows them
 2. the server session actually supports the capability
 
@@ -445,7 +445,7 @@ mcp_servers:
     supports_parallel_tool_calls: true
 ```
 
-When `supports_parallel_tool_calls` is `true`, Hermes may execute multiple tools from that server at the same time within a single tool-call batch, just like it does for built-in read-only tools (web_search, read_file, etc.).
+When `supports_parallel_tool_calls` is `true`, Vermes may execute multiple tools from that server at the same time within a single tool-call batch, just like it does for built-in read-only tools (web_search, read_file, etc.).
 
 :::caution
 Only enable parallel calls for MCP servers whose tools are safe to run at the same time. If tools read and write shared state, files, databases, or external resources, review the read/write race conditions before enabling this setting.
@@ -453,7 +453,7 @@ Only enable parallel calls for MCP servers whose tools are safe to run at the sa
 
 ## MCP Sampling Support
 
-MCP servers can request LLM inference from Hermes via the `sampling/createMessage` protocol. This allows an MCP server to ask Hermes to generate text on its behalf — useful for servers that need LLM capabilities but don't have their own model access.
+MCP servers can request LLM inference from Vermes via the `sampling/createMessage` protocol. This allows an MCP server to ask Vermes to generate text on its behalf — useful for servers that need LLM capabilities but don't have their own model access.
 
 Sampling is **enabled by default** for all MCP servers (when the MCP SDK supports it). Configure it per-server under the `sampling` key:
 
@@ -484,46 +484,46 @@ mcp_servers:
       enabled: false
 ```
 
-## Running Hermes as an MCP server
+## Running Vermes as an MCP server
 
-In addition to connecting **to** MCP servers, Hermes can also **be** an MCP server. This lets other MCP-capable agents (Claude Code, Cursor, Codex, or any MCP client) use Hermes's messaging capabilities — list conversations, read message history, and send messages across all your connected platforms.
+In addition to connecting **to** MCP servers, Vermes can also **be** an MCP server. This lets other MCP-capable agents (Claude Code, Cursor, Codex, or any MCP client) use Vermes's messaging capabilities — list conversations, read message history, and send messages across all your connected platforms.
 
 ### When to use this
 
-- You want Claude Code, Cursor, or another coding agent to send and read Telegram/Discord/Slack messages through Hermes
-- You want a single MCP server that bridges to all of Hermes's connected messaging platforms at once
-- You already have a running Hermes gateway with connected platforms
+- You want Claude Code, Cursor, or another coding agent to send and read Telegram/Discord/Slack messages through Vermes
+- You want a single MCP server that bridges to all of Vermes's connected messaging platforms at once
+- You already have a running Vermes gateway with connected platforms
 
 ### Quick start
 
 ```bash
-hermes mcp serve
+vermes mcp serve
 ```
 
 This starts a stdio MCP server. The MCP client (not you) manages the process lifecycle.
 
 ### MCP client configuration
 
-Add Hermes to your MCP client config. For example, in Claude Code's `~/.claude/claude_desktop_config.json`:
+Add Vermes to your MCP client config. For example, in Claude Code's `~/.claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "hermes": {
-      "command": "hermes",
+    "vermes": {
+      "command": "vermes",
       "args": ["mcp", "serve"]
     }
   }
 }
 ```
 
-Or if you installed Hermes in a specific location:
+Or if you installed Vermes in a specific location:
 
 ```json
 {
   "mcpServers": {
-    "hermes": {
-      "command": "/home/user/.hermes/hermes-agent/venv/bin/hermes",
+    "vermes": {
+      "command": "/home/user/.vermes/vermes-agent/venv/bin/vermes",
       "args": ["mcp", "serve"]
     }
   }
@@ -532,7 +532,7 @@ Or if you installed Hermes in a specific location:
 
 ### Available tools
 
-The MCP server exposes 10 tools, matching OpenClaw's channel bridge surface plus a Hermes-specific channel browser:
+The MCP server exposes 10 tools, matching OpenClaw's channel bridge surface plus a Vermes-specific channel browser:
 
 | Tool | Description |
 |------|-------------|
@@ -549,7 +549,7 @@ The MCP server exposes 10 tools, matching OpenClaw's channel bridge surface plus
 
 ### Event system
 
-The MCP server includes a live event bridge that polls Hermes's session database for new messages. This gives MCP clients near-real-time awareness of incoming conversations:
+The MCP server includes a live event bridge that polls Vermes's session database for new messages. This gives MCP clients near-real-time awareness of incoming conversations:
 
 ```
 # Poll for new events (non-blocking)
@@ -566,26 +566,26 @@ The event queue is in-memory and starts when the bridge connects. Older messages
 ### Options
 
 ```bash
-hermes mcp serve              # Normal mode
-hermes mcp serve --verbose    # Debug logging on stderr
+vermes mcp serve              # Normal mode
+vermes mcp serve --verbose    # Debug logging on stderr
 ```
 
 ### How it works
 
-The MCP server reads conversation data directly from Hermes's session store (`~/.hermes/sessions/sessions.json` and the SQLite database). A background thread polls the database for new messages and maintains an in-memory event queue. For sending messages, it uses the same `send_message` infrastructure as the Hermes agent itself.
+The MCP server reads conversation data directly from Vermes's session store (`~/.vermes/sessions/sessions.json` and the SQLite database). A background thread polls the database for new messages and maintains an in-memory event queue. For sending messages, it uses the same `send_message` infrastructure as the Vermes agent itself.
 
 The gateway does NOT need to be running for read operations (listing conversations, reading history, polling events). It DOES need to be running for send operations, since the platform adapters need active connections.
 
 ### Current limits
 
-- The embedded `hermes mcp serve` exposes a **stdio-only** MCP server today. If you need an HTTP MCP server, run a separate adapter — or, much more commonly, use the MCP **client** side of Hermes, which already speaks both stdio and HTTP (`url` + `headers` in `mcp_servers.yaml` / `config.yaml`; see [HTTP servers](#http-servers) above).
+- The embedded `vermes mcp serve` exposes a **stdio-only** MCP server today. If you need an HTTP MCP server, run a separate adapter — or, much more commonly, use the MCP **client** side of Vermes, which already speaks both stdio and HTTP (`url` + `headers` in `mcp_servers.yaml` / `config.yaml`; see [HTTP servers](#http-servers) above).
 - Event polling at ~200ms intervals via mtime-optimized DB polling (skips work when files are unchanged)
 - No `claude/channel` push notification protocol yet
 - Text-only sends (no media/attachment sending through `messages_send`)
 
 ## Related docs
 
-- [Use MCP with Hermes](/docs/guides/use-mcp-with-hermes)
+- [Use MCP with Vermes](/docs/guides/use-mcp-with-vermes)
 - [CLI Commands](/docs/reference/cli-commands)
 - [Slash Commands](/docs/reference/slash-commands)
 - [FAQ](/docs/reference/faq)

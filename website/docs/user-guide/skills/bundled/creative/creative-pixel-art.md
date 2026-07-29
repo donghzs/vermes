@@ -25,7 +25,7 @@ Pixel art w/ era palettes (NES, Game Boy, PICO-8).
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Pixel Art
@@ -151,7 +151,7 @@ pixel_art("in.png", "out.png", preset="snes", palette="PICO_8", block=6)
 
 ```python
 import sys
-sys.path.insert(0, "/home/teknium/.hermes/skills/creative/pixel-art/scripts")
+sys.path.insert(0, "/home/teknium/.vermes/skills/creative/pixel-art/scripts")
 from pixel_art import pixel_art
 from pixel_art_video import pixel_art_video
 
@@ -173,7 +173,7 @@ pixel_art_video(
 ### CLI
 
 ```bash
-cd /home/teknium/.hermes/skills/creative/pixel-art/scripts
+cd /home/teknium/.vermes/skills/creative/pixel-art/scripts
 
 python pixel_art.py in.jpg out.png --preset gameboy
 python pixel_art.py in.jpg out.png --preset snes --palette PICO_8 --block 6
@@ -204,7 +204,7 @@ Quantizing before would waste error-diffusion on detail that disappears.
 
 - Python 3.9+
 - Pillow (`pip install Pillow`)
-- ffmpeg on PATH (only needed for video — Hermes installs package this)
+- ffmpeg on PATH (only needed for video — Vermes installs package this)
 
 ## Pitfalls
 

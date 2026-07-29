@@ -1,16 +1,16 @@
 ---
 sidebar_position: 17
 title: "OAuth over SSH / Remote Hosts"
-description: "How to complete browser-based OAuth (xAI, Spotify) when Hermes runs on a remote machine, container, or behind a jump box"
+description: "How to complete browser-based OAuth (xAI, Spotify) when Vermes runs on a remote machine, container, or behind a jump box"
 ---
 
 # OAuth over SSH / Remote Hosts
 
-Some Hermes providers — currently **xAI Grok OAuth** and **Spotify** — use a *loopback redirect* OAuth flow. The auth server (xAI, Spotify) redirects your browser to `http://127.0.0.1:<port>/callback` so a tiny HTTP listener started by the `hermes auth ...` command can grab the authorization code.
+Some Vermes providers — currently **xAI Grok OAuth** and **Spotify** — use a *loopback redirect* OAuth flow. The auth server (xAI, Spotify) redirects your browser to `http://127.0.0.1:<port>/callback` so a tiny HTTP listener started by the `vermes auth ...` command can grab the authorization code.
 
-This works perfectly when Hermes and your browser are on the same machine. It breaks the moment they aren't: your laptop's browser tries to reach `127.0.0.1` on **your laptop**, but the listener is bound to `127.0.0.1` on **the remote server**.
+This works perfectly when Vermes and your browser are on the same machine. It breaks the moment they aren't: your laptop's browser tries to reach `127.0.0.1` on **your laptop**, but the listener is bound to `127.0.0.1` on **the remote server**.
 
-The fix is a one-line SSH local-forward — **or**, when you don't have a real SSH client (GCP Cloud Shell, GitHub Codespaces, EC2 Instance Connect, Gitpod, browser-based web IDEs), the new `--manual-paste` flag introduced in [#26923](https://github.com/NousResearch/hermes-agent/issues/26923).
+The fix is a one-line SSH local-forward — **or**, when you don't have a real SSH client (GCP Cloud Shell, GitHub Codespaces, EC2 Instance Connect, Gitpod, browser-based web IDEs), the new `--manual-paste` flag introduced in [#26923](https://github.com/donghzs/vermes/issues/26923).
 
 ## TL;DR
 
@@ -19,37 +19,37 @@ The fix is a one-line SSH local-forward — **or**, when you don't have a real S
 ssh -N -L 56121:127.0.0.1:56121 user@remote-host
 
 # In your existing SSH session on the remote machine:
-hermes auth add xai-oauth --no-browser
-# → Hermes prints an authorize URL. Open it in a browser on your laptop.
+vermes auth add xai-oauth --no-browser
+# → Vermes prints an authorize URL. Open it in a browser on your laptop.
 # → Your browser redirects to 127.0.0.1:56121/callback, the tunnel forwards
 #   the request to the remote listener, login completes.
 ```
 
-Port `56121` is what xAI OAuth uses. For Spotify, replace it with `43827`. Hermes prints the exact port it bound to on the `Waiting for callback on ...` line — copy it from there.
+Port `56121` is what xAI OAuth uses. For Spotify, replace it with `43827`. Vermes prints the exact port it bound to on the `Waiting for callback on ...` line — copy it from there.
 
 ## Browser-only remote (Cloud Shell / Codespaces / EC2 Instance Connect)
 
-If you don't have a regular SSH client — for example because you're running Hermes inside GCP Cloud Shell, GitHub Codespaces, AWS EC2 Instance Connect, Gitpod, or another browser-based console — the SSH tunnel above isn't available. Use `--manual-paste` instead:
+If you don't have a regular SSH client — for example because you're running Vermes inside GCP Cloud Shell, GitHub Codespaces, AWS EC2 Instance Connect, Gitpod, or another browser-based console — the SSH tunnel above isn't available. Use `--manual-paste` instead:
 
 ```bash
-hermes auth add xai-oauth --manual-paste
-# → Hermes prints an authorize URL. Open it in a browser on your laptop.
+vermes auth add xai-oauth --manual-paste
+# → Vermes prints an authorize URL. Open it in a browser on your laptop.
 # → Approve in the browser. The redirect to 127.0.0.1:56121/callback fails
 #   to load — that's expected.
 # → Copy the FULL URL from the failed page's address bar.
 # → Paste it back into the terminal at the "Callback URL:" prompt.
 ```
 
-The same flag works on `hermes model --manual-paste` for the integrated model picker. A bare `?code=...&state=...` query fragment is accepted too if you don't want to paste the whole URL.
+The same flag works on `vermes model --manual-paste` for the integrated model picker. A bare `?code=...&state=...` query fragment is accepted too if you don't want to paste the whole URL.
 
-Hermes uses the **same PKCE verifier, state and nonce** for both paths, so the upstream OAuth flow is byte-identical — `--manual-paste` is purely a transport change for the callback hop and is not a security downgrade.
+Vermes uses the **same PKCE verifier, state and nonce** for both paths, so the upstream OAuth flow is byte-identical — `--manual-paste` is purely a transport change for the callback hop and is not a security downgrade.
 
 ## Which Providers Need This
 
 | Provider | Loopback port | Tunnel needed? |
 |----------|---------------|----------------|
-| `xai-oauth` (Grok SuperGrok) | `56121` | Yes, when Hermes is remote |
-| Spotify | `43827` | Yes, when Hermes is remote |
+| `xai-oauth` (Grok SuperGrok) | `56121` | Yes, when Vermes is remote |
+| Spotify | `43827` | Yes, when Vermes is remote |
 | `anthropic` (Claude Pro/Max) | n/a | No — paste-the-code flow |
 | `openai-codex` (ChatGPT Plus/Pro) | n/a | No — device code flow |
 | `minimax`, `nous-portal` | n/a | No — device code flow |
@@ -78,22 +78,22 @@ ssh -N -L 43827:127.0.0.1:43827 user@remote-host
 
 ```bash
 ssh user@remote-host
-hermes auth add xai-oauth --no-browser
+vermes auth add xai-oauth --no-browser
 # or for Spotify:
-# hermes auth add spotify --no-browser
+# vermes auth add spotify --no-browser
 ```
 
-Hermes detects the SSH session, skips the browser auto-open, and prints an authorize URL plus a `Waiting for callback on http://127.0.0.1:<port>/callback` line.
+Vermes detects the SSH session, skips the browser auto-open, and prints an authorize URL plus a `Waiting for callback on http://127.0.0.1:<port>/callback` line.
 
 ### 3. Open the URL in your local browser
 
-Copy the authorize URL from the remote terminal and paste it into the browser on your laptop. Approve the consent screen. The auth server redirects to `http://127.0.0.1:<port>/callback`. Your browser hits the tunnel, the request is forwarded to the remote listener, and Hermes prints `Login successful!`.
+Copy the authorize URL from the remote terminal and paste it into the browser on your laptop. Approve the consent screen. The auth server redirects to `http://127.0.0.1:<port>/callback`. Your browser hits the tunnel, the request is forwarded to the remote listener, and Vermes prints `Login successful!`.
 
 You can tear down the tunnel (Ctrl+C in the first terminal) once you see the success line.
 
 ## Step-by-step: through a jump box
 
-If you reach Hermes through a bastion / jump host, use SSH's built-in `-J` (ProxyJump):
+If you reach Vermes through a bastion / jump host, use SSH's built-in `-J` (ProxyJump):
 
 ```bash
 ssh -N -L 56121:127.0.0.1:56121 -J jump-user@jump-host user@final-host
@@ -112,7 +112,7 @@ ssh -N \
 
 ## Mosh, tmux, ssh ControlMaster
 
-The tunnel is a property of the underlying SSH connection. If you're running Hermes inside `tmux` over a mosh session, the mosh roaming doesn't carry the `-L` forwarding. Open a *separate* plain SSH session **only** for the `-L` tunnel — that's the connection that has to stay alive during the auth flow. Your interactive mosh/tmux session can keep running Hermes normally.
+The tunnel is a property of the underlying SSH connection. If you're running Vermes inside `tmux` over a mosh session, the mosh roaming doesn't carry the `-L` forwarding. Open a *separate* plain SSH session **only** for the `-L` tunnel — that's the connection that has to stay alive during the auth flow. Your interactive mosh/tmux session can keep running Vermes normally.
 
 If you use `ssh -o ControlMaster=auto`, port forwards on a multiplexed connection share the master's lifetime. Restart the master if the tunnel doesn't come up:
 
@@ -125,7 +125,7 @@ ssh -N -L 56121:127.0.0.1:56121 user@remote-host
 
 ### `bind [127.0.0.1]:56121: Address already in use`
 
-Something on your laptop is already using that port. Either the previous tunnel didn't shut down cleanly, or a local Hermes is also listening on it. Find and kill the offender:
+Something on your laptop is already using that port. Either the previous tunnel didn't shut down cleanly, or a local Vermes is also listening on it. Find and kill the offender:
 
 ```bash
 # macOS / Linux
@@ -137,15 +137,15 @@ Then retry the `ssh -L` command.
 
 ### "Could not establish connection. We couldn't reach your app." (xAI)
 
-xAI's authorize page shows this when its redirect to `127.0.0.1:<port>/callback` doesn't reach a listener. Either the tunnel isn't running, the port is wrong, or you're using the port Hermes printed in a previous run (the port can be auto-bumped if the preferred one is busy — always read the latest `Waiting for callback on ...` line).
+xAI's authorize page shows this when its redirect to `127.0.0.1:<port>/callback` doesn't reach a listener. Either the tunnel isn't running, the port is wrong, or you're using the port Vermes printed in a previous run (the port can be auto-bumped if the preferred one is busy — always read the latest `Waiting for callback on ...` line).
 
 ### `xAI authorization timed out waiting for the local callback`
 
-Same root cause as above — the redirect never made it back. Check the tunnel is still alive (`ssh -N` doesn't show output, so look at the terminal you started it from), restart it if needed, and re-run `hermes auth add xai-oauth --no-browser`.
+Same root cause as above — the redirect never made it back. Check the tunnel is still alive (`ssh -N` doesn't show output, so look at the terminal you started it from), restart it if needed, and re-run `vermes auth add xai-oauth --no-browser`.
 
-### Tokens land in the wrong `~/.hermes`
+### Tokens land in the wrong `~/.vermes`
 
-The tokens are written under the Linux user that ran `hermes auth add ...`. If your gateway / systemd service runs as a different user (e.g. `root` or a dedicated `hermes` user), authenticate as **that** user so the tokens land in their `~/.hermes/auth.json`. `sudo -u hermes -i` or equivalent.
+The tokens are written under the Linux user that ran `vermes auth add ...`. If your gateway / systemd service runs as a different user (e.g. `root` or a dedicated `vermes` user), authenticate as **that** user so the tokens land in their `~/.vermes/auth.json`. `sudo -u vermes -i` or equivalent.
 
 ## See Also
 

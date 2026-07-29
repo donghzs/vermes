@@ -2,7 +2,7 @@
 
 > 你的 AI，即刻启程 — 开箱即用的中文 AI Agent
 
-Vermes 基于官方 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 引擎，
+Vermes 基于官方 [Vermes Agent](https://github.com/donghzs/vermes) 引擎，
 融合 [QClaw](https://skillhub.cn) 技能生态，为中文用户提供开箱即用的 AI Agent 体验。
 
 ## ✨ 特性
@@ -53,7 +53,7 @@ vermes skills install weather  # 安装技能
 
 ## 🙏 致谢
 
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research — 核心引擎
+- [Vermes Agent](https://github.com/donghzs/vermes) by Nous Research — 核心引擎
 - [QClaw / Skillhub](https://skillhub.cn) — 技能生态
 
 ## 📄 许可

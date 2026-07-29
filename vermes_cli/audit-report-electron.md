@@ -22,10 +22,10 @@ content={"error": {"message": f"Internal server error: {type(exc).__name__}: {st
 
 ### P0-2: Session Token 注入 SPA HTML，存在 XSS 窃取风险
 **文件**: `vermes_cli/web_server.py:1577-1583`  
-**风险**: 同一 `_SESSION_TOKEN` 同时用作 `window.__HERMES_SESSION_TOKEN__` 和 `window.__OPENCLAW_SESSION_KEY__`。若 SPA 存在 XSS 漏洞，攻击者可窃取 token，随后通过 `/api/env/reveal` 暴露所有 API key。  
+**风险**: 同一 `_SESSION_TOKEN` 同时用作 `window.__vermes_SESSION_TOKEN__` 和 `window.__OPENCLAW_SESSION_KEY__`。若 SPA 存在 XSS 漏洞，攻击者可窃取 token，随后通过 `/api/env/reveal` 暴露所有 API key。  
 **代码**:
 ```python
-f'window.__HERMES_SESSION_TOKEN__=\"{_SESSION_TOKEN}\";'
+f'window.__vermes_SESSION_TOKEN__=\"{_SESSION_TOKEN}\";'
 f'window.__OPENCLAW_SESSION_KEY__=\"{_SESSION_TOKEN}\";'
 ```
 **修复建议**:
@@ -36,8 +36,8 @@ f'window.__OPENCLAW_SESSION_KEY__=\"{_SESSION_TOKEN}\";'
 ### P0-3: 自定义 Provider 的 API Key 同时存入 config.yaml（明文）
 **文件**: `vermes_cli/blueprints/providers.py:194-199`, `vermes_cli/web_server.py:2668-2673`  
 **风险**: 对于非模板的 provider（自定义），API key 被明文写入两个位置：
-- `~/.hermes/.env`（安全，有 `.gitignore` 保护）
-- `~/.hermes/config.yaml`（明文 API key 在 YAML 中，可能被误提交或备份泄露）
+- `~/.vermes/.env`（安全，有 `.gitignore` 保护）
+- `~/.vermes/config.yaml`（明文 API key 在 YAML 中，可能被误提交或备份泄露）
 **修复建议**: 自定义 provider 的 API key 也应只写入 `.env`，不要写入 `config.yaml`
 
 ### P0-4: `/api/env` 在公开 API 列表中无需 Session Token
@@ -119,7 +119,7 @@ logger.debug("[Feishu] Dropping duplicate card action token: %s", token)
 
 ### P2-5: Session Token 在同一名称下用于两种用途
 **文件**: `vermes_cli/web_server.py:1580`  
-**风险**: `__OPENCLAW_SESSION_KEY__` 与 `__HERMES_SESSION_TOKEN__` 使用同一值，命名暗示了不同的用途，可能导致权限混淆  
+**风险**: `__OPENCLAW_SESSION_KEY__` 与 `__vermes_SESSION_TOKEN__` 使用同一值，命名暗示了不同的用途，可能导致权限混淆  
 **修复建议**: 使用独立的 token 值
 
 ### P2-6: `.gitignore` 中 `export*` 覆盖范围过宽

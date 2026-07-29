@@ -2,11 +2,11 @@
 name: 1password
 description: Set up and use 1Password CLI (op). Use when installing the CLI, enabling desktop app integration, signing in, and reading/injecting secrets for commands.
 version: 1.0.0
-author: arceus77-7, enhanced by Hermes Agent
+author: arceus77-7, enhanced by Vermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  vermes:
     tags: [security, secrets, 1password, op, cli]
     category: security
 setup:
@@ -27,7 +27,7 @@ Use this skill when the user wants secrets managed through 1Password instead of 
 - 1Password account
 - 1Password CLI (`op`) installed
 - One of: desktop app integration, service account token (`OP_SERVICE_ACCOUNT_TOKEN`), or Connect server
-- `tmux` available for stable authenticated sessions during Hermes terminal calls (desktop app flow only)
+- `tmux` available for stable authenticated sessions during Vermes terminal calls (desktop app flow only)
 
 ## When to Use
 
@@ -39,9 +39,9 @@ Use this skill when the user wants secrets managed through 1Password instead of 
 
 ## Authentication Methods
 
-### Service Account (recommended for Hermes)
+### Service Account (recommended for Vermes)
 
-Set `OP_SERVICE_ACCOUNT_TOKEN` in `~/.hermes/.env` (the skill will prompt for this on first load).
+Set `OP_SERVICE_ACCOUNT_TOKEN` in `~/.vermes/.env` (the skill will prompt for this on first load).
 No desktop app needed. Supports `op read`, `op inject`, `op run`.
 
 ```bash
@@ -85,17 +85,17 @@ op --version
 
 3. Choose an auth method above and configure it.
 
-## Hermes Execution Pattern (desktop app flow)
+## Vermes Execution Pattern (desktop app flow)
 
-Hermes terminal commands are non-interactive by default and can lose auth context between calls.
+Vermes terminal commands are non-interactive by default and can lose auth context between calls.
 For reliable `op` use with desktop app integration, run sign-in and secret operations inside a dedicated tmux session.
 
 Note: This is NOT needed when using `OP_SERVICE_ACCOUNT_TOKEN` — the token persists across terminal calls automatically.
 
 ```bash
-SOCKET_DIR="${TMPDIR:-/tmp}/hermes-tmux-sockets"
+SOCKET_DIR="${TMPDIR:-/tmp}/vermes-tmux-sockets"
 mkdir -p "$SOCKET_DIR"
-SOCKET="$SOCKET_DIR/hermes-op.sock"
+SOCKET="$SOCKET_DIR/vermes-op.sock"
 SESSION="op-auth-$(date +%Y%m%d-%H%M%S)"
 
 tmux -S "$SOCKET" new -d -s "$SESSION" -n shell

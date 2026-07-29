@@ -1,7 +1,7 @@
 ---
 sidebar_position: 3
 title: "FAQ & Troubleshooting"
-description: "Frequently asked questions and solutions to common issues with Hermes Agent"
+description: "Frequently asked questions and solutions to common issues with Vermes Agent"
 ---
 
 # FAQ & Troubleshooting
@@ -12,56 +12,56 @@ Quick answers and fixes for the most common questions and issues.
 
 ## Frequently Asked Questions
 
-### What LLM providers work with Hermes?
+### What LLM providers work with Vermes?
 
-Hermes Agent works with any OpenAI-compatible API. Supported providers include:
+Vermes Agent works with any OpenAI-compatible API. Supported providers include:
 
 - **[OpenRouter](https://openrouter.ai/)** — access hundreds of models through one API key (recommended for flexibility)
 - **Nous Portal** — Nous Research's own inference endpoint
 - **OpenAI** — GPT-5.4, GPT-5-codex, GPT-4.1, GPT-4o, etc.
-- **Anthropic** — Claude models (direct API, OAuth via `hermes login anthropic`, OpenRouter, or any compatible proxy)
+- **Anthropic** — Claude models (direct API, OAuth via `vermes login anthropic`, OpenRouter, or any compatible proxy)
 - **Google** — Gemini models (direct API via `gemini` provider, the `google-gemini-cli` OAuth provider, OpenRouter, or compatible proxy)
 - **z.ai / ZhipuAI** — GLM models
 - **Kimi / Moonshot AI** — Kimi models
 - **MiniMax** — global and China endpoints
 - **Local models** — via [Ollama](https://ollama.com/), [vLLM](https://docs.vllm.ai/), [llama.cpp](https://github.com/ggerganov/llama.cpp), [SGLang](https://github.com/sgl-project/sglang), or any OpenAI-compatible server
 
-Set your provider with `hermes model` or by editing `~/.hermes/.env`. See the [Environment Variables](./environment-variables.md) reference for all provider keys.
+Set your provider with `vermes model` or by editing `~/.vermes/.env`. See the [Environment Variables](./environment-variables.md) reference for all provider keys.
 
 ### Does it work on Windows?
 
-**Not natively.** Hermes Agent requires a Unix-like environment. On Windows, install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run Hermes from inside it. The standard install command works perfectly in WSL2:
+**Not natively.** Vermes Agent requires a Unix-like environment. On Windows, install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run Vermes from inside it. The standard install command works perfectly in WSL2:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/donghzs/vermes/main/scripts/install.sh | bash
 ```
 
-### I run Hermes in WSL2. What's the best way to control my normal Windows Chrome?
+### I run Vermes in WSL2. What's the best way to control my normal Windows Chrome?
 
 Prefer an MCP bridge over `/browser connect`.
 
 Recommended pattern:
 
-- run Hermes inside WSL2
+- run Vermes inside WSL2
 - keep using your normal signed-in Chrome on Windows
 - add `chrome-devtools-mcp` as an MCP server through `cmd.exe` or `powershell.exe`
-- let Hermes use the resulting MCP browser tools
+- let Vermes use the resulting MCP browser tools
 
-This is more reliable than trying to force Hermes core browser transport to attach directly across the WSL2/Windows boundary.
+This is more reliable than trying to force Vermes core browser transport to attach directly across the WSL2/Windows boundary.
 
 See:
 
-- [Use MCP with Hermes](../guides/use-mcp-with-hermes.md#wsl2-bridge-hermes-in-wsl-to-windows-chrome)
+- [Use MCP with Vermes](../guides/use-mcp-with-vermes.md#wsl2-bridge-vermes-in-wsl-to-windows-chrome)
 - [Browser Automation](../user-guide/features/browser.md#wsl2--windows-chrome-prefer-mcp-over-browser-connect)
 
 ### Does it work on Android / Termux?
 
-Yes — Hermes now has a tested Termux install path for Android phones.
+Yes — Vermes now has a tested Termux install path for Android phones.
 
 Quick install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/donghzs/vermes/main/scripts/install.sh | bash
 ```
 
 For the fully explicit manual steps, supported extras, and current limitations, see the [Termux guide](../getting-started/termux.md).
@@ -70,14 +70,14 @@ Important caveat: the full `.[all]` extra is not currently available on Android 
 
 ### Is my data sent anywhere?
 
-API calls go **only to the LLM provider you configure** (e.g., OpenRouter, your local Ollama instance). Hermes Agent does not collect telemetry, usage data, or analytics. Your conversations, memory, and skills are stored locally in `~/.hermes/`.
+API calls go **only to the LLM provider you configure** (e.g., OpenRouter, your local Ollama instance). Vermes Agent does not collect telemetry, usage data, or analytics. Your conversations, memory, and skills are stored locally in `~/.vermes/`.
 
 ### Can I use it offline / with local models?
 
-Yes. Run `hermes model`, select **Custom endpoint**, and enter your server's URL:
+Yes. Run `vermes model`, select **Custom endpoint**, and enter your server's URL:
 
 ```bash
-hermes model
+vermes model
 # Select: Custom endpoint (enter URL manually)
 # API base URL: http://localhost:11434/v1
 # API key: ollama
@@ -94,25 +94,25 @@ model:
   base_url: http://localhost:11434/v1
 ```
 
-Hermes persists the endpoint, provider, and base URL in `config.yaml` so it survives restarts. If your local server has exactly one model loaded, `/model custom` auto-detects it. You can also set `provider: custom` in config.yaml — it's a first-class provider, not an alias for anything else.
+Vermes persists the endpoint, provider, and base URL in `config.yaml` so it survives restarts. If your local server has exactly one model loaded, `/model custom` auto-detects it. You can also set `provider: custom` in config.yaml — it's a first-class provider, not an alias for anything else.
 
 This works with Ollama, vLLM, llama.cpp server, SGLang, LocalAI, and others. See the [Configuration guide](../user-guide/configuration.md) for details.
 
 :::tip Ollama users
-If you set a custom `num_ctx` in Ollama (e.g., `ollama run --num_ctx 16384`), make sure to set the matching context length in Hermes — Ollama's `/api/show` reports the model's *maximum* context, not the effective `num_ctx` you configured.
+If you set a custom `num_ctx` in Ollama (e.g., `ollama run --num_ctx 16384`), make sure to set the matching context length in Vermes — Ollama's `/api/show` reports the model's *maximum* context, not the effective `num_ctx` you configured.
 :::
 
 :::tip Timeouts with local models
-Hermes auto-detects local endpoints and relaxes streaming timeouts (read timeout raised from 120s to 1800s, stale stream detection disabled). If you still hit timeouts on very large contexts, set `HERMES_STREAM_READ_TIMEOUT=1800` in your `.env`. See the [Local LLM guide](../guides/local-llm-on-mac.md#timeouts) for details.
+Vermes auto-detects local endpoints and relaxes streaming timeouts (read timeout raised from 120s to 1800s, stale stream detection disabled). If you still hit timeouts on very large contexts, set `VERMES_STREAM_READ_TIMEOUT=1800` in your `.env`. See the [Local LLM guide](../guides/local-llm-on-mac.md#timeouts) for details.
 :::
 
 ### How much does it cost?
 
-Hermes Agent itself is **free and open-source** (MIT license). You pay only for the LLM API usage from your chosen provider. Local models are completely free to run.
+Vermes Agent itself is **free and open-source** (MIT license). You pay only for the LLM API usage from your chosen provider. Local models are completely free to run.
 
 ### Can multiple people use one instance?
 
-Yes. The [messaging gateway](../user-guide/messaging/index.md) lets multiple users interact with the same Hermes Agent instance via Telegram, Discord, Slack, WhatsApp, or Home Assistant. Access is controlled through allowlists (specific user IDs) and DM pairing (first user to message claims access).
+Yes. The [messaging gateway](../user-guide/messaging/index.md) lets multiple users interact with the same Vermes Agent instance via Telegram, Discord, Slack, WhatsApp, or Home Assistant. Access is controlled through allowlists (specific user IDs) and DM pairing (first user to message claims access).
 
 ### What's the difference between memory and skills?
 
@@ -123,7 +123,7 @@ Both persist across sessions. See [Memory](../user-guide/features/memory.md) and
 
 ### Can I use it in my own Python project?
 
-Yes. Import the `AIAgent` class and use Hermes programmatically:
+Yes. Import the `AIAgent` class and use Vermes programmatically:
 
 ```python
 from run_agent import AIAgent
@@ -140,7 +140,7 @@ See the [Python Library guide](../user-guide/features/code-execution.md) for ful
 
 ### Installation Issues
 
-#### `hermes: command not found` after installation
+#### `vermes: command not found` after installation
 
 **Cause:** Your shell hasn't reloaded the updated PATH.
 
@@ -155,8 +155,8 @@ source ~/.zshrc     # zsh
 
 If it still doesn't work, verify the install location:
 ```bash
-which hermes
-ls ~/.local/bin/hermes
+which vermes
+ls ~/.local/bin/vermes
 ```
 
 :::tip
@@ -165,7 +165,7 @@ The installer adds `~/.local/bin` to your PATH. If you use a non-standard shell 
 
 #### Python version too old
 
-**Cause:** Hermes requires Python 3.11 or newer.
+**Cause:** Vermes requires Python 3.11 or newer.
 
 **Solution:**
 ```bash
@@ -180,9 +180,9 @@ The installer handles this automatically — if you see this error during manual
 
 #### Terminal commands say `node: command not found` (or `nvm`, `pyenv`, `asdf`, …)
 
-**Cause:** Hermes builds a per-session environment snapshot by running `bash -l` once at startup. A bash login shell reads `/etc/profile`, `~/.bash_profile`, and `~/.profile`, but **does not source `~/.bashrc`** — so tools that install themselves there (`nvm`, `asdf`, `pyenv`, `cargo`, custom `PATH` exports) stay invisible to the snapshot. This most commonly happens when Hermes runs under systemd or in a minimal shell where nothing has pre-loaded the interactive shell profile.
+**Cause:** Vermes builds a per-session environment snapshot by running `bash -l` once at startup. A bash login shell reads `/etc/profile`, `~/.bash_profile`, and `~/.profile`, but **does not source `~/.bashrc`** — so tools that install themselves there (`nvm`, `asdf`, `pyenv`, `cargo`, custom `PATH` exports) stay invisible to the snapshot. This most commonly happens when Vermes runs under systemd or in a minimal shell where nothing has pre-loaded the interactive shell profile.
 
-**Solution:** Hermes auto-sources `~/.bashrc` by default. If that's not enough — e.g. you're a zsh user whose PATH lives in `~/.zshrc`, or you init `nvm` from a standalone file — list the extra files to source in `~/.hermes/config.yaml`:
+**Solution:** Vermes auto-sources `~/.bashrc` by default. If that's not enough — e.g. you're a zsh user whose PATH lives in `~/.zshrc`, or you init `nvm` from a standalone file — list the extra files to source in `~/.vermes/config.yaml`:
 
 ```yaml
 terminal:
@@ -223,9 +223,9 @@ source ~/.bashrc
 ```bash
 # Don't use sudo with the installer — it installs to ~/.local/bin
 # If you previously installed with sudo, clean up:
-sudo rm /usr/local/bin/hermes
+sudo rm /usr/local/bin/vermes
 # Then re-run the standard installer
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/donghzs/vermes/main/scripts/install.sh | bash
 ```
 
 ---
@@ -236,24 +236,24 @@ curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scri
 
 **Cause:** `/model` (inside a chat session) can only switch between providers you've **already configured**. If you've only set up OpenRouter, that's all `/model` will show.
 
-**Solution:** Exit your session and use `hermes model` from your terminal to add new providers:
+**Solution:** Exit your session and use `vermes model` from your terminal to add new providers:
 
 ```bash
-# Exit the Hermes chat session first (Ctrl+C or /quit)
+# Exit the Vermes chat session first (Ctrl+C or /quit)
 
 # Run the full provider setup wizard
-hermes model
+vermes model
 
 # This lets you: add providers, run OAuth, enter API keys, configure endpoints
 ```
 
-After adding a new provider via `hermes model`, start a new chat session — `/model` will now show all your configured providers.
+After adding a new provider via `vermes model`, start a new chat session — `/model` will now show all your configured providers.
 
 :::tip Quick reference
 | Want to... | Use |
 |-----------|-----|
-| Add a new provider | `hermes model` (from terminal) |
-| Enter/change API keys | `hermes model` (from terminal) |
+| Add a new provider | `vermes model` (from terminal) |
+| Enter/change API keys | `vermes model` (from terminal) |
 | Switch model mid-session | `/model <name>` (inside session) |
 | Switch to different configured provider | `/model provider:model` (inside session) |
 :::
@@ -265,17 +265,17 @@ After adding a new provider via `hermes model`, start a new chat session — `/m
 **Solution:**
 ```bash
 # Check your configuration
-hermes config show
+vermes config show
 
 # Re-configure your provider
-hermes model
+vermes model
 
 # Or set directly
-hermes config set OPENROUTER_API_KEY sk-or-v1-xxxxxxxxxxxx
+vermes config set OPENROUTER_API_KEY sk-or-v1-xxxxxxxxxxxx
 ```
 
 :::warning
-Make sure the key matches the provider. An OpenAI key won't work with OpenRouter and vice versa. Check `~/.hermes/.env` for conflicting entries.
+Make sure the key matches the provider. An OpenAI key won't work with OpenRouter and vice versa. Check `~/.vermes/.env` for conflicting entries.
 :::
 
 #### Model not available / model not found
@@ -285,13 +285,13 @@ Make sure the key matches the provider. An OpenAI key won't work with OpenRouter
 **Solution:**
 ```bash
 # List available models for your provider
-hermes model
+vermes model
 
 # Set a valid model
-hermes config set HERMES_MODEL anthropic/claude-opus-4.7
+vermes config set VERMES_MODEL anthropic/claude-opus-4.7
 
 # Or specify per-session
-hermes chat --model openrouter/meta-llama/llama-3.1-70b-instruct
+vermes chat --model openrouter/meta-llama/llama-3.1-70b-instruct
 ```
 
 #### Rate limiting (429 errors)
@@ -301,11 +301,11 @@ hermes chat --model openrouter/meta-llama/llama-3.1-70b-instruct
 **Solution:** Wait a moment and retry. For sustained usage, consider:
 - Upgrading your provider plan
 - Switching to a different model or provider
-- Using `hermes chat --provider <alternative>` to route to a different backend
+- Using `vermes chat --provider <alternative>` to route to a different backend
 
 #### Context length exceeded
 
-**Cause:** The conversation has grown too long for the model's context window, or Hermes detected the wrong context length for your model.
+**Cause:** The conversation has grown too long for the model's context window, or Vermes detected the wrong context length for your model.
 
 **Solution:**
 ```bash
@@ -313,20 +313,20 @@ hermes chat --model openrouter/meta-llama/llama-3.1-70b-instruct
 /compress
 
 # Or start a fresh session
-hermes chat
+vermes chat
 
 # Use a model with a larger context window
-hermes chat --model openrouter/google/gemini-3-flash-preview
+vermes chat --model openrouter/google/gemini-3-flash-preview
 ```
 
-If this happens on the first long conversation, Hermes may have the wrong context length for your model. Check what it detected:
+If this happens on the first long conversation, Vermes may have the wrong context length for your model. Check what it detected:
 
 Look at the CLI startup line — it shows the detected context length (e.g., `📊 Context limit: 128000 tokens`). You can also check with `/usage` during a session.
 
 To fix context detection, set it explicitly:
 
 ```yaml
-# In ~/.hermes/config.yaml
+# In ~/.vermes/config.yaml
 model:
   default: your-model-name
   context_length: 131072  # your model's actual context window
@@ -351,14 +351,14 @@ See [Context Length Detection](../integrations/providers.md#context-length-detec
 
 #### Command blocked as dangerous
 
-**Cause:** Hermes detected a potentially destructive command (e.g., `rm -rf`, `DROP TABLE`). This is a safety feature.
+**Cause:** Vermes detected a potentially destructive command (e.g., `rm -rf`, `DROP TABLE`). This is a safety feature.
 
 **Solution:** When prompted, review the command and type `y` to approve it. You can also:
 - Ask the agent to use a safer alternative
 - See the full list of dangerous patterns in the [Security docs](../user-guide/security.md)
 
 :::tip
-This is working as intended — Hermes never silently runs destructive commands. The approval prompt shows you exactly what will execute.
+This is working as intended — Vermes never silently runs destructive commands. The approval prompt shows you exactly what will execute.
 :::
 
 #### `sudo` not working via messaging gateway
@@ -368,7 +368,7 @@ This is working as intended — Hermes never silently runs destructive commands.
 **Solution:**
 - Avoid `sudo` in messaging — ask the agent to find alternatives
 - If you must use `sudo`, configure passwordless sudo for specific commands in `/etc/sudoers`
-- Or switch to the terminal interface for administrative tasks: `hermes chat`
+- Or switch to the terminal interface for administrative tasks: `vermes chat`
 
 #### Docker backend not connecting
 
@@ -398,13 +398,13 @@ docker run hello-world
 **Solution:**
 ```bash
 # Check if the gateway is running
-hermes gateway status
+vermes gateway status
 
 # Start the gateway
-hermes gateway start
+vermes gateway start
 
 # Check logs for errors
-cat ~/.hermes/logs/gateway.log | tail -50
+cat ~/.vermes/logs/gateway.log | tail -50
 ```
 
 #### Messages not delivering
@@ -412,8 +412,8 @@ cat ~/.hermes/logs/gateway.log | tail -50
 **Cause:** Network issues, bot token expired, or platform webhook misconfiguration.
 
 **Solution:**
-- Verify your bot token is valid with `hermes gateway setup`
-- Check gateway logs: `cat ~/.hermes/logs/gateway.log | tail -50`
+- Verify your bot token is valid with `vermes gateway setup`
+- Check gateway logs: `cat ~/.vermes/logs/gateway.log | tail -50`
 - For webhook-based platforms (Slack, WhatsApp), ensure your server is publicly accessible
 
 #### Allowlist confusion — who can talk to the bot?
@@ -428,7 +428,7 @@ cat ~/.hermes/logs/gateway.log | tail -50
 | **DM pairing** | First user to message in DM claims exclusive access |
 | **Open** | Anyone can interact (not recommended for production) |
 
-Configure in `~/.hermes/config.yaml` under your gateway's settings. See the [Messaging docs](../user-guide/messaging/index.md).
+Configure in `~/.vermes/config.yaml` under your gateway's settings. See the [Messaging docs](../user-guide/messaging/index.md).
 
 #### Gateway won't start
 
@@ -437,16 +437,16 @@ Configure in `~/.hermes/config.yaml` under your gateway's settings. See the [Mes
 **Solution:**
 ```bash
 # Install core messaging gateway dependencies
-pip install "hermes-agent[messaging]"  # Telegram, Discord, Slack, and shared gateway deps
+pip install "vermes-agent[messaging]"  # Telegram, Discord, Slack, and shared gateway deps
 
 # Check for port conflicts
 lsof -i :8080
 
 # Verify configuration
-hermes config show
+vermes config show
 ```
 
-#### WSL: Gateway keeps disconnecting or `hermes gateway start` fails
+#### WSL: Gateway keeps disconnecting or `vermes gateway start` fails
 
 **Cause:** WSL's systemd support is unreliable. Many WSL2 installations don't have systemd enabled, and even when enabled, services may not survive WSL restarts or Windows idle shutdowns.
 
@@ -454,14 +454,14 @@ hermes config show
 
 ```bash
 # Option 1: Direct foreground (simplest)
-hermes gateway run
+vermes gateway run
 
 # Option 2: Persistent via tmux (survives terminal close)
-tmux new -s hermes 'hermes gateway run'
-# Reattach later: tmux attach -t hermes
+tmux new -s vermes 'vermes gateway run'
+# Reattach later: tmux attach -t vermes
 
 # Option 3: Background via nohup
-nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &
+nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &
 ```
 
 If you want to try systemd anyway, make sure it's enabled:
@@ -478,7 +478,7 @@ If you want to try systemd anyway, make sure it's enabled:
 
 :::tip Auto-start on Windows boot
 For reliable auto-start, use Windows Task Scheduler to launch WSL + the gateway on login:
-1. Create a task that runs `wsl -d Ubuntu -- bash -lc 'hermes gateway run'`
+1. Create a task that runs `wsl -d Ubuntu -- bash -lc 'vermes gateway run'`
 2. Set it to trigger on user logon
 :::
 
@@ -486,17 +486,17 @@ For reliable auto-start, use Windows Task Scheduler to launch WSL + the gateway 
 
 **Cause:** launchd services inherit a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) that doesn't include Homebrew, nvm, cargo, or other user-installed tool directories. This commonly breaks the WhatsApp bridge (`node not found`) or voice transcription (`ffmpeg not found`).
 
-**Solution:** The gateway captures your shell PATH when you run `hermes gateway install`. If you installed tools after setting up the gateway, re-run the install to capture the updated PATH:
+**Solution:** The gateway captures your shell PATH when you run `vermes gateway install`. If you installed tools after setting up the gateway, re-run the install to capture the updated PATH:
 
 ```bash
-hermes gateway install    # Re-snapshots your current PATH
-hermes gateway start      # Detects the updated plist and reloads
+vermes gateway install    # Re-snapshots your current PATH
+vermes gateway start      # Detects the updated plist and reloads
 ```
 
 You can verify the plist has the correct PATH:
 ```bash
 /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:PATH" \
-  ~/Library/LaunchAgents/ai.hermes.gateway.plist
+  ~/Library/LaunchAgents/ai.vermes.gateway.plist
 ```
 
 ---
@@ -508,8 +508,8 @@ You can verify the plist has the correct PATH:
 **Cause:** Large model, distant API server, or heavy system prompt with many tools.
 
 **Solution:**
-- Try a faster/smaller model: `hermes chat --model openrouter/meta-llama/llama-3.1-8b-instruct`
-- Reduce active toolsets: `hermes chat -t "terminal"`
+- Try a faster/smaller model: `vermes chat --model openrouter/meta-llama/llama-3.1-8b-instruct`
+- Reduce active toolsets: `vermes chat -t "terminal"`
 - Check your network latency to the provider
 - For local models, ensure you have enough GPU VRAM
 
@@ -540,10 +540,10 @@ Use `/compress` regularly during long sessions. It summarizes the conversation h
 /compress
 
 # Start a new session with a reference to the old one
-hermes chat
+vermes chat
 
 # Resume a specific session later if needed
-hermes chat --continue
+vermes chat --continue
 ```
 
 ---
@@ -557,7 +557,7 @@ hermes chat --continue
 **Solution:**
 ```bash
 # Ensure MCP dependencies are installed (already included in standard install)
-cd ~/.hermes/hermes-agent && uv pip install -e ".[mcp]"
+cd ~/.vermes/vermes-agent && uv pip install -e ".[mcp]"
 
 # For npm-based servers, ensure Node.js is available
 node --version
@@ -567,7 +567,7 @@ npx --version
 npx -y @modelcontextprotocol/server-filesystem /tmp
 ```
 
-Verify your `~/.hermes/config.yaml` MCP configuration:
+Verify your `~/.vermes/config.yaml` MCP configuration:
 ```yaml
 mcp_servers:
   filesystem:
@@ -588,15 +588,15 @@ mcp_servers:
 
 ```bash
 # Verify MCP servers are configured
-hermes config show | grep -A 12 mcp_servers
+vermes config show | grep -A 12 mcp_servers
 
-# Restart Hermes or reload MCP after config changes
-hermes chat
+# Restart Vermes or reload MCP after config changes
+vermes chat
 ```
 
 See also:
 - [MCP (Model Context Protocol)](/docs/user-guide/features/mcp)
-- [Use MCP with Hermes](/docs/guides/use-mcp-with-hermes)
+- [Use MCP with Vermes](/docs/guides/use-mcp-with-vermes)
 - [MCP Config Reference](/docs/reference/mcp-config-reference)
 
 #### MCP timeout errors
@@ -609,16 +609,16 @@ See also:
 - For remote HTTP MCP servers, check network connectivity
 
 :::warning
-If an MCP server crashes mid-request, Hermes will report a timeout. Check the server's own logs (not just Hermes logs) to diagnose the root cause.
+If an MCP server crashes mid-request, Vermes will report a timeout. Check the server's own logs (not just Vermes logs) to diagnose the root cause.
 :::
 
 ---
 
 ## Profiles
 
-### How do profiles differ from just setting HERMES_HOME?
+### How do profiles differ from just setting VERMES_HOME?
 
-Profiles are a managed layer on top of `HERMES_HOME`. You *could* manually set `HERMES_HOME=/some/path` before every command, but profiles handle all the plumbing for you: creating the directory structure, generating shell aliases (`hermes-work`), tracking the active profile in `~/.hermes/active_profile`, and syncing skill updates across all profiles automatically. They also integrate with tab completion so you don't have to remember paths.
+Profiles are a managed layer on top of `VERMES_HOME`. You *could* manually set `VERMES_HOME=/some/path` before every command, but profiles handle all the plumbing for you: creating the directory structure, generating shell aliases (`vermes-work`), tracking the active profile in `~/.vermes/active_profile`, and syncing skill updates across all profiles automatically. They also integrate with tab completion so you don't have to remember paths.
 
 ### Can two profiles share the same bot token?
 
@@ -626,16 +626,16 @@ No. Each messaging platform (Telegram, Discord, etc.) requires exclusive access 
 
 ### Do profiles share memory or sessions?
 
-No. Each profile has its own memory store, session database, and skills directory. They are completely isolated. If you want to start a new profile with existing memories and sessions, use `hermes profile create newname --clone-all` to copy everything from the current profile.
+No. Each profile has its own memory store, session database, and skills directory. They are completely isolated. If you want to start a new profile with existing memories and sessions, use `vermes profile create newname --clone-all` to copy everything from the current profile.
 
-### What happens when I run `hermes update`?
+### What happens when I run `vermes update`?
 
-`hermes update` pulls the latest code and reinstalls dependencies **once** (not per-profile). It then syncs updated skills to all profiles automatically. You only need to run `hermes update` once — it covers every profile on the machine.
+`vermes update` pulls the latest code and reinstalls dependencies **once** (not per-profile). It then syncs updated skills to all profiles automatically. You only need to run `vermes update` once — it covers every profile on the machine.
 
 
 ### How many profiles can I run?
 
-There is no hard limit. Each profile is just a directory under `~/.hermes/profiles/`. The practical limit depends on your disk space and how many concurrent gateways your system can handle (each gateway is a lightweight Python process). Running dozens of profiles is fine; each idle profile uses no resources.
+There is no hard limit. Each profile is just a directory under `~/.vermes/profiles/`. The practical limit depends on your disk space and how many concurrent gateways your system can handle (each gateway is a lightweight Python process). Running dozens of profiles is fine; each idle profile uses no resources.
 
 ---
 
@@ -645,7 +645,7 @@ There is no hard limit. Each profile is just a directory under `~/.hermes/profil
 
 **Scenario:** You use GPT-5.4 as your daily driver, but Gemini or Grok writes better social media content. Manually switching models every time is tedious.
 
-**Solution: Delegation config.** Hermes can route subagents to a different model automatically. Set this in `~/.hermes/config.yaml`:
+**Solution: Delegation config.** Vermes can route subagents to a different model automatically. Set this in `~/.vermes/config.yaml`:
 
 ```yaml
 delegation:
@@ -653,7 +653,7 @@ delegation:
   provider: "openrouter"                    # provider for subagents
 ```
 
-Now when you tell Hermes "write me a Twitter thread about X" and it spawns a `delegate_task` subagent, that subagent runs on Gemini instead of your main model. Your primary conversation stays on GPT-5.4.
+Now when you tell Vermes "write me a Twitter thread about X" and it spawns a `delegate_task` subagent, that subagent runs on Gemini instead of your main model. Your primary conversation stays on GPT-5.4.
 
 You can also be explicit in your prompt: *"Delegate a task to write social media posts about our product launch. Use your subagent for the actual writing."* The agent will use `delegate_task`, which automatically picks up the delegation config.
 
@@ -669,9 +669,9 @@ See [Subagent Delegation](../user-guide/features/delegation.md) for more on how 
 
 ### Running multiple agents on one WhatsApp number (per-chat binding)
 
-**Scenario:** In OpenClaw, you had multiple independent agents bound to specific WhatsApp chats — one for a family shopping list group, another for your private chat. Can Hermes do this?
+**Scenario:** In OpenClaw, you had multiple independent agents bound to specific WhatsApp chats — one for a family shopping list group, another for your private chat. Can Vermes do this?
 
-**Current limitation:** Hermes profiles each require their own WhatsApp number/session. You cannot bind multiple profiles to different chats on the same WhatsApp number — the WhatsApp bridge (Baileys) uses one authenticated session per number.
+**Current limitation:** Vermes profiles each require their own WhatsApp number/session. You cannot bind multiple profiles to different chats on the same WhatsApp number — the WhatsApp bridge (Baileys) uses one authenticated session per number.
 
 **Workarounds:**
 
@@ -687,7 +687,7 @@ See [Profiles](../user-guide/profiles.md) and [WhatsApp setup](../user-guide/mes
 
 ### Controlling what shows up in Telegram (hiding logs and reasoning)
 
-**Scenario:** You see gateway exec logs, Hermes reasoning, and tool call details in Telegram instead of just the final output.
+**Scenario:** You see gateway exec logs, Vermes reasoning, and tool call details in Telegram instead of just the final output.
 
 **Solution:** The `display.tool_progress` setting in `config.yaml` controls how much tool activity is shown:
 
@@ -712,9 +712,9 @@ display:
 
 ### Managing skills on Telegram (slash command limit)
 
-**Scenario:** Telegram has a 100 slash command limit, and your skills are pushing past it. You want to disable skills you don't need on Telegram, but `hermes skills config` settings don't seem to take effect.
+**Scenario:** Telegram has a 100 slash command limit, and your skills are pushing past it. You want to disable skills you don't need on Telegram, but `vermes skills config` settings don't seem to take effect.
 
-**Solution:** Use `hermes skills config` to disable skills per-platform. This writes to `config.yaml`:
+**Solution:** Use `vermes skills config` to disable skills per-platform. This writes to `config.yaml`:
 
 ```yaml
 skills:
@@ -723,7 +723,7 @@ skills:
     telegram: [skill-a, skill-b]  # disabled only on telegram
 ```
 
-After changing this, **restart the gateway** (`hermes gateway restart` or kill and relaunch). The Telegram bot command menu rebuilds on startup.
+After changing this, **restart the gateway** (`vermes gateway restart` or kill and relaunch). The Telegram bot command menu rebuilds on startup.
 
 :::tip
 Skills with very long descriptions are truncated to 40 characters in the Telegram menu to stay within payload size limits. If skills aren't appearing, it may be a total payload size issue rather than the 100 command count limit — disabling unused skills helps with both.
@@ -733,7 +733,7 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 **Scenario:** You have a Telegram or Discord thread where multiple people mention the bot. You want all mentions in that thread to be part of one shared conversation, not separate per-user sessions.
 
-**Current behavior:** Hermes creates sessions keyed by user ID on most platforms, so each person gets their own conversation context. This is by design for privacy and context isolation.
+**Current behavior:** Vermes creates sessions keyed by user ID on most platforms, so each person gets their own conversation context. This is by design for privacy and context isolation.
 
 **Workarounds:**
 
@@ -743,33 +743,33 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 3. **Use a Discord channel.** Discord sessions are keyed by channel, so all users in the same channel share context. Use a dedicated channel for the shared conversation.
 
-### Exporting Hermes to another machine
+### Exporting Vermes to another machine
 
 **Scenario:** You've built up skills, cron jobs, and memories on one machine and want to move everything to a new dedicated Linux box.
 
 **Solution:**
 
-1. Install Hermes Agent on the new machine:
+1. Install Vermes Agent on the new machine:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/donghzs/vermes/main/scripts/install.sh | bash
    ```
 
 2. On the **source machine**, create a full backup:
    ```bash
-   hermes backup
+   vermes backup
    ```
-   This creates a zip of your entire `~/.hermes/` directory — config, API keys, memories, skills, sessions, and profiles — saved to your home directory as `~/hermes-backup-<timestamp>.zip`.
+   This creates a zip of your entire `~/.vermes/` directory — config, API keys, memories, skills, sessions, and profiles — saved to your home directory as `~/vermes-backup-<timestamp>.zip`.
 
 3. Copy the zip to the new machine and import it:
    ```bash
    # On the source machine
-   scp ~/hermes-backup-<timestamp>.zip newmachine:~/
+   scp ~/vermes-backup-<timestamp>.zip newmachine:~/
 
    # On the new machine
-   hermes import ~/hermes-backup-<timestamp>.zip
+   vermes import ~/vermes-backup-<timestamp>.zip
    ```
 
-4. On the new machine, run `hermes setup` to verify API keys and provider config are working.
+4. On the new machine, run `vermes setup` to verify API keys and provider config are working.
 
 ### Moving a single profile to another machine
 
@@ -777,38 +777,38 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 ```bash
 # On the source machine
-hermes profile export work ./work-backup.tar.gz
+vermes profile export work ./work-backup.tar.gz
 
 # Copy the file to the target machine, then:
-hermes profile import ./work-backup.tar.gz work
+vermes profile import ./work-backup.tar.gz work
 ```
 
 The imported profile will have all config, memories, sessions, and skills from the export. You may need to update paths or re-authenticate with providers if the new machine has a different setup.
 
-### `hermes backup` vs `hermes profile export`
+### `vermes backup` vs `vermes profile export`
 
-| Feature | `hermes backup` | `hermes profile export` |
+| Feature | `vermes backup` | `vermes profile export` |
 | :--- | :--- | :--- |
 | **Use Case** | **Full machine migration** | **Porting/sharing a specific profile** |
-| **Scope** | Global (entire `~/.hermes` directory) | Local (single profile directory) |
+| **Scope** | Global (entire `~/.vermes` directory) | Local (single profile directory) |
 | **Includes** | All profiles, global config, API keys, sessions | Single profile: SOUL.md, memories, sessions, skills |
 | **Credentials** | **Included** (`.env` and `auth.json`) | **Excluded** (stripped for safe sharing) |
 | **Format** | `.zip` | `.tar.gz` |
 
 **Manual fallback (rsync):** If you prefer to copy files directly, exclude the code repo:
 ```bash
-rsync -av --exclude='hermes-agent' ~/.hermes/ newmachine:~/.hermes/
+rsync -av --exclude='vermes-agent' ~/.vermes/ newmachine:~/.vermes/
 ```
 
 :::tip
-`hermes backup` produces a consistent snapshot even while Hermes is actively running. The restored archive excludes machine-local runtime files like `gateway.pid` and `cron.pid`.
+`vermes backup` produces a consistent snapshot even while Vermes is actively running. The restored archive excludes machine-local runtime files like `gateway.pid` and `cron.pid`.
 :::
 
 ### Permission denied when reloading shell after install
 
-**Scenario:** After running the Hermes installer, `source ~/.zshrc` gives a permission denied error.
+**Scenario:** After running the Vermes installer, `source ~/.zshrc` gives a permission denied error.
 
-**Cause:** This usually happens when `~/.zshrc` (or `~/.bashrc`) has incorrect file permissions, or when the installer couldn't write to it cleanly. It's not a Hermes-specific issue — it's a shell config permissions problem.
+**Cause:** This usually happens when `~/.zshrc` (or `~/.bashrc`) has incorrect file permissions, or when the installer couldn't write to it cleanly. It's not a Vermes-specific issue — it's a shell config permissions problem.
 
 **Solution:**
 ```bash
@@ -838,13 +838,13 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 **Solution:**
 ```bash
 # Check what model and provider are configured
-hermes config show | head -20
+vermes config show | head -20
 
 # Re-run model selection
-hermes model
+vermes model
 
 # Or test with a known-good model
-hermes chat -q "hello" --model anthropic/claude-opus-4.7
+vermes chat -q "hello" --model anthropic/claude-opus-4.7
 ```
 
 If using OpenRouter, make sure your API key has credits. A 400 from OpenRouter often means the model requires a paid plan or the model ID has a typo.
@@ -855,6 +855,6 @@ If using OpenRouter, make sure your API key has credits. A 400 from OpenRouter o
 
 If your issue isn't covered here:
 
-1. **Search existing issues:** [GitHub Issues](https://github.com/NousResearch/hermes-agent/issues)
-2. **Ask the community:** [Nous Research Discord](https://discord.gg/nousresearch)
-3. **File a bug report:** Include your OS, Python version (`python3 --version`), Hermes version (`hermes --version`), and the full error message
+1. **Search existing issues:** [GitHub Issues](https://github.com/donghzs/vermes/issues)
+2. **Ask the community:** [Nous Research Discord](https://discord.gg/donghzs)
+3. **File a bug report:** Include your OS, Python version (`python3 --version`), Vermes version (`vermes --version`), and the full error message

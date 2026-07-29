@@ -1,4 +1,4 @@
-import { forceRedraw } from '@hermes/ink'
+import { forceRedraw } from '@vermes/ink'
 
 import { NO_CONFIRM_DESTRUCTIVE } from '../../../config/env.js'
 import { dailyFortune, randomFortune } from '../../../content/fortunes.js'
@@ -87,7 +87,7 @@ export const coreCommands: SlashCommand[] = [
 
   {
     aliases: ['exit', 'q'],
-    help: 'exit hermes',
+    help: 'exit vermes',
     name: 'quit',
     run: (_arg, ctx) => ctx.session.die()
   },
@@ -97,7 +97,7 @@ export const coreCommands: SlashCommand[] = [
     name: 'update',
     run: (_arg, ctx) => {
       ctx.transcript.sys('exiting TUI to run update...')
-      // Exit code 42 signals the Python wrapper to exec `hermes update`.
+      // Exit code 42 signals the Python wrapper to exec `vermes update`.
       // Use dieWithCode for proper cleanup (gateway kill + Ink unmount).
       setTimeout(() => ctx.session.dieWithCode(42), 100)
     }
@@ -345,7 +345,7 @@ export const coreCommands: SlashCommand[] = [
           return sys(`copied ${text.length} characters`)
         } else {
           return sys(
-            'clipboard copy failed — try HERMES_TUI_FORCE_OSC52=1 to force the escape sequence; HERMES_TUI_DEBUG_CLIPBOARD=1 for details'
+            'clipboard copy failed — try VERMES_TUI_FORCE_OSC52=1 to force the escape sequence; VERMES_TUI_DEBUG_CLIPBOARD=1 for details'
           )
         }
       }

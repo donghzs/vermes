@@ -24,7 +24,7 @@ p5.js sketches: gen art, shaders, interactive, 3D.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # p5.js Production Pipeline

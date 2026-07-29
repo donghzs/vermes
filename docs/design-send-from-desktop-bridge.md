@@ -27,7 +27,7 @@
 |---|---|
 | 桌面 web 进程 ≠ gateway 进程 | `vermes_cli/blueprints/chat.py:1287/1450/1665` 在 web 进程跑 `run_conversation`；gateway 各渠道在 gateway 进程跑 `_handle_message`（`gateway/message_handler_mixin.py:1200/1498`）。两进程**只通过共享 `state.db` 通信**，非内存。 |
 | 渠道会话写入 state.db | `gateway/session.py:982/1207` `create_session`，`:1298` `append_message`；`gateway/slash_handlers/session_handlers.py:295/447` `create_session`，`:460` `append_message`。 |
-| handoff 跨进程信号机制现成 | `hermes_state.py` 提供 `list_pending_handoffs` / `claim_handoff` / `complete_handoff`；`gateway/watcher_mixin._handoff_watcher` 轮询 pending。可白嫖为桌面→gateway 的信号通道。 |
+| handoff 跨进程信号机制现成 | `VERMES_state.py` 提供 `list_pending_handoffs` / `claim_handoff` / `complete_handoff`；`gateway/watcher_mixin._handoff_watcher` 轮询 pending。可白嫖为桌面→gateway 的信号通道。 |
 | **web/桌面会话当前不在 state.db（关键）** | `vermes_cli` 全仓**无任何** `db.append_message` / `db.create_session` 调用；`blueprints/session.py` 仅对 state.db **只读**；`chat.py` 对 state.db **零引用**。web 消息落在 `~/.vermes/messages/*.json` + 浏览器 IndexedDB，**不是** state.db。→ 本桥**只覆盖已在 state.db 的渠道会话**（TG/飞书等）；要让桌面也能 relay web 会话，需先做步骤 2（web 落 state.db）。 |
 | 记忆摄入与 state.db 解耦 | `_sync_external_memory_for_turn`（`run_agent.py:2643` ← `conversation_loop.py:875`）逐轮写 `memory_index.db`，与 state.db 无关。只要消息走 gateway `run_conversation`，记忆**自动摄入**。 |
 | 桌面 session token 已存在 | `vermes_cli/web_server.py:122` `_load_or_create_session_token()`、`web_server.py:143` `_SESSION_TOKEN` —— 可复用为 relay 端点的防伪造凭证。 |
@@ -46,7 +46,7 @@
 
 `POST /api/sessions/{session_id}/send-from-desktop`
 
-1. ~~校验请求头 `X-Desktop-Token` 与启动时 `_SESSION_TOKEN` 一致 → 否则 `403`~~ **【实现勘误】**：最终实现复用全站 `X-Hermes-Session-Token` auth_middleware（`/api/sessions/*` 非公开路径强制校验），缺失/伪造返回 **401**（中间件层），未新增独立 `X-Desktop-Token` 头。`source='web'` 拒绝 = **400**（端点层）；relay 防重放 = **409**。
+1. ~~校验请求头 `X-Desktop-Token` 与启动时 `_SESSION_TOKEN` 一致 → 否则 `403`~~ **【实现勘误】**：最终实现复用全站 `X-Vermes-Session-Token` auth_middleware（`/api/sessions/*` 非公开路径强制校验），缺失/伪造返回 **401**（中间件层），未新增独立 `X-Desktop-Token` 头。`source='web'` 拒绝 = **400**（端点层）；relay 防重放 = **409**。
 2. 解析 `session_id`，确认它在 state.db 中存在且 `source ∈ {telegram, feishu, discord, slack, …}`（**拒绝 `source='web'`**，避免绕回 web 进程形成环路）。
 3. 把真实用户消息写入共享 state.db：
    ```python
@@ -93,7 +93,7 @@
 
 | 候选路径 | 结论 |
 |---|---|
-| A. 读 `state.db.sessions.chat_id` 字段 | ❌ **当前不可靠**。gateway **主创建路径 `gateway/session.py:967-971`（get_or_create_session）及 rotate 路径 `:1207` 均只传 session_id/source/user_id**（session_handlers.py:295/:447 只是次要路径）；chat_id/chat_type/thread_id/session_key/origin_json 列是 schema-diff 自动迁移（hermes_state.py:624-669）加的，基础 DDL（:308-340）无。本机实测（2026-07-28）：cli 197/197、web 2/2 全 NULL；feishu 22/23、telegram 10/11 NULL——**各有 1 条非 NULL 且带完整 origin_json**，系跑过含上游 #58899 代码的构建时写入（见 §3.5） |
+| A. 读 `state.db.sessions.chat_id` 字段 | ❌ **当前不可靠**。gateway **主创建路径 `gateway/session.py:967-971`（get_or_create_session）及 rotate 路径 `:1207` 均只传 session_id/source/user_id**（session_handlers.py:295/:447 只是次要路径）；chat_id/chat_type/thread_id/session_key/origin_json 列是 schema-diff 自动迁移（VERMES_state.py:624-669）加的，基础 DDL（:308-340）无。本机实测（2026-07-28）：cli 197/197、web 2/2 全 NULL；feishu 22/23、telegram 10/11 NULL——**各有 1 条非 NULL 且带完整 origin_json**，系跑过含上游 #58899 代码的构建时写入（见 §3.5） |
 | B. 从 gateway `session_store._entries` 反查 | ✅ **最可靠、零改动**。SessionStore 从 `sessions.json` 全量加载（`gateway/session.py:736-744`），`SessionEntry.origin` 为完整 `SessionSource`（`session.py:956`，字段名是 **`origin` 不是 `source`**）。⚠️ 边界：`prune_old_entries`（`session.py:1068`）按 `session_store_max_age_days`（默认 **90 天**，config.py:517）清理——超龄会话不在 `_entries`，必须走兜底 |
 | C. 像 `_process_handoff` 用 `handoff_platform`+config home channel | ❌ 语义不对（home channel ≠ 该会话原本 chat_id），排除 |
 
@@ -145,10 +145,10 @@ def _find_source_by_session_id(self, session_id: str):
 
 ### 3.5 家底审计修复 —— 让 state.db 成为权威真相源（修正：本仓与上游已大幅分叉，不可直接 merge）
 
-**背景（2026-07-28 查证）**：上游 `upstream/main`（`NousResearch/hermes-agent`）的 **#58899 `747386ecf`** 已完整实现“gateway 创建 session 时写 `chat_id`/`chat_type`/`thread_id`/`display_name`/`origin_json` 进 state.db”。本机 DB 里 telegram/feishu 各 1 条带完整 origin_json 的非 NULL 行，即是曾跑过含该代码构建的证据。
+**背景（2026-07-28 查证）**：上游 `upstream/main`（`donghzs/vermes`）的 **#58899 `747386ecf`** 已完整实现“gateway 创建 session 时写 `chat_id`/`chat_type`/`thread_id`/`display_name`/`origin_json` 进 state.db”。本机 DB 里 telegram/feishu 各 1 条带完整 origin_json 的非 NULL 行，即是曾跑过含该代码构建的证据。
 
 **但“merge/cherry-pick 上游”在本仓不可行**，量化证据：
-- 本仓 main `hermes_state.SCHEMA_VERSION = 14`；`upstream/main = 23`（**差 9 个版本**）。
+- 本仓 main `VERMES_state.SCHEMA_VERSION = 14`；`upstream/main = 23`（**差 9 个版本**）。
 - 本仓 main 落后 `upstream/main` **17,726 个 commit**，分叉点已不可查（早已大幅分叉）。
 - 该 commit 改动面 9 文件 +672/-82（含 `gateway/run.py`/`mcp_serve.py`/`mirror.py`/`status.py`），是为**上游自己的架构**写的会话发现重构。本仓这些文件已被 v2.3.x 大量定制，**整体 cherry-pick 会把这些上游重构一并拉入，破坏本仓现有会话发现逻辑**。
 - 故：**禁止 `git merge upstream/main`**（灾难）；整段 cherry-pick 风险极高，不推荐。
@@ -165,7 +165,7 @@ def _find_source_by_session_id(self, session_id: str):
 
 **关键约束（2026-07-28 二次查证修正）**：
 1. **`origin_json` 写法**：与上游逐字相同——`json.dumps(source.to_dict())`（上游 `gateway/session.py:1844`）。直接调本仓 `SessionSource.to_dict()`，**别手拼 JSON**。注意上游 `to_dict()` 已演进出 `scope_id`/`guild_id` 双写（D-Q2.5 迁移），本仓旧版只发 `guild_id`；上游读取端保留 `guild_id` 别名兼容，所以本仓格式天然向前兼容，无需仿造 `scope_id`。
-2. **必须同时补写 `session_key` 列**：上游 `find_session_by_origin`（upstream hermes_state.py:3699）是**纯列匹配**（`LOWER(source)=? AND chat_id=? AND session_key IS NOT NULL` + thread_id/user_id 过滤），**不解析 origin_json**。只补 chat_id 不补 session_key 的行，该函数永远匹配不到。真正解析 origin_json 的消费者是上游 `channel_directory.py:400`（渠道目录还原）和 `gateway/session.py:1637`（Slack workspace 越界防护）。
+2. **必须同时补写 `session_key` 列**：上游 `find_session_by_origin`（upstream VERMES_state.py:3699）是**纯列匹配**（`LOWER(source)=? AND chat_id=? AND session_key IS NOT NULL` + thread_id/user_id 过滤），**不解析 origin_json**。只补 chat_id 不补 session_key 的行，该函数永远匹配不到。真正解析 origin_json 的消费者是上游 `channel_directory.py:400`（渠道目录还原）和 `gateway/session.py:1637`（Slack workspace 越界防护）。
 3. **存量回填同理**：`session_key`（即 `_entries` 的 key 本身）+ `chat_id`/`chat_type`/`thread_id`/`display_name`/`origin_json` 一起回填，缺 session_key 的回填是无效回填。
 
 - **存量回填**：一次性脚本，遍历 `session_store._entries`，把 `entry.origin.to_dict()` 写回 `origin_json` + chat_id 等列（幂等 UPDATE，COALESCE 只补 NULL）。
@@ -185,7 +185,7 @@ def _find_source_by_session_id(self, session_id: str):
 
 | 模块 | 改动 |
 |---|---|
-| `hermes_state.py` | `handoff_state` 扩列（`relay_text`/`relay_source`/`desktop_token`/`claimed_at`/`expire_at`）；或新建 `desktop_outbox` 表 + 对应 `list/claim/complete` 函数。 |
+| `VERMES_state.py` | `handoff_state` 扩列（`relay_text`/`relay_source`/`desktop_token`/`claimed_at`/`expire_at`）；或新建 `desktop_outbox` 表 + 对应 `list/claim/complete` 函数。 |
 | `vermes_cli/blueprints/session.py`（或新 blueprint） | 新增 `POST /api/sessions/{id}/send-from-desktop`。 |
 | `vermes_cli/web_server.py` | 复用 `_SESSION_TOKEN` 做 `X-Desktop-Token` 校验（端点装饰器）。 |
 | `gateway/watcher_mixin.py` | `_handoff_watcher` 增加 `_process_desktop_relay` 分支。 |
@@ -199,7 +199,7 @@ def _find_source_by_session_id(self, session_id: str):
 ## 5. 风险护栏
 
 - **强制 gateway 进程执行**：relay 信号只由 gateway 消费；web 后端只写信号、不跑 agent。gateway 未运行时 relay 永不消费 → 触发超时回退。
-- **桌面 session token 防伪造**：实现复用全站 `X-Hermes-Session-Token` auth_middleware，伪造/缺失请求返回 **401**（见 §3.2 勘误；设计初稿的 `X-Desktop-Token`/403 方案未采用）。
+- **桌面 session token 防伪造**：实现复用全站 `X-Vermes-Session-Token` auth_middleware，伪造/缺失请求返回 **401**（见 §3.2 勘误；设计初稿的 `X-Desktop-Token`/403 方案未采用）。
 - **超时回退**：`expire_at` 过期未被 claim → 端点/前端标记“发送失败，渠道未响应”，可重试；gateway `claim` 后亦校验未过期。
 - **只 relay 渠道会话**：端点拒绝 `source='web'` 的 `session_id`，并校验 `session_id` 存在于 state.db，杜绝双写/环路。
 - **防重放**：`claim_handoff` 幂等，同一 `relay_id` 只处理一次。

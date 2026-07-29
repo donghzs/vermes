@@ -9,10 +9,10 @@ sidebar_position: 2
 
 **One subscription. Every tool built in.**
 
-The Tool Gateway is included with every paid [Nous Portal](https://portal.nousresearch.com) subscription. It routes Hermes' tool calls — web search, image generation, text-to-speech, and cloud browser automation — through infrastructure Nous already runs, so you don't have to sign up with Firecrawl, FAL, OpenAI, Browser Use, or anyone else just to make your agent useful.
+The Tool Gateway is included with every paid [Nous Portal](https://portal.donghzs.com) subscription. It routes Vermes' tool calls — web search, image generation, text-to-speech, and cloud browser automation — through infrastructure Nous already runs, so you don't have to sign up with Firecrawl, FAL, OpenAI, Browser Use, or anyone else just to make your agent useful.
 
 <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap', margin: '1.5rem 0'}}>
-  <a href="https://portal.nousresearch.com/manage-subscription" style={{background: 'var(--ifm-color-primary)', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold'}}>Start or manage subscription →</a>
+  <a href="https://portal.donghzs.com/manage-subscription" style={{background: 'var(--ifm-color-primary)', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold'}}>Start or manage subscription →</a>
 </div>
 
 ## What's included
@@ -20,7 +20,7 @@ The Tool Gateway is included with every paid [Nous Portal](https://portal.nousre
 | | Tool | What you get |
 |---|---|---|
 | 🔍 | **Web search & extract** | Agent-grade web search and full-page extraction via Firecrawl. No rate limits to worry about — the gateway handles scaling. |
-| 🎨 | **Image generation** | Nine models under one endpoint: **FLUX 2 Klein 9B**, **FLUX 2 Pro**, **Z-Image Turbo**, **Nano Banana Pro** (Gemini 3 Pro Image), **GPT Image 1.5**, **GPT Image 2**, **Ideogram V3**, **Recraft V4 Pro**, **Qwen Image**. Pick per-generation with a flag, or let Hermes default to FLUX 2 Klein. |
+| 🎨 | **Image generation** | Nine models under one endpoint: **FLUX 2 Klein 9B**, **FLUX 2 Pro**, **Z-Image Turbo**, **Nano Banana Pro** (Gemini 3 Pro Image), **GPT Image 1.5**, **GPT Image 2**, **Ideogram V3**, **Recraft V4 Pro**, **Qwen Image**. Pick per-generation with a flag, or let Vermes default to FLUX 2 Klein. |
 | 🔊 | **Text-to-speech** | OpenAI TTS voices wired into the `text_to_speech` tool. Drop voice notes into Telegram, generate audio for pipelines, narrate anything. |
 | 🌐 | **Cloud browser automation** | Headless Chromium sessions via Browser Use. `browser_navigate`, `browser_click`, `browser_type`, `browser_vision` — all the agent-driving primitives, no Browserbase account required. |
 
@@ -40,15 +40,15 @@ Bring your own keys anytime — per-tool, whenever you want to. The gateway isn'
 ## Get started
 
 ```bash
-hermes model          # Pick Nous Portal as your provider
+vermes model          # Pick Nous Portal as your provider
 ```
 
-When you select Nous Portal, Hermes offers to turn on the Tool Gateway. Accept, and you're done — every supported tool is live on the next run.
+When you select Nous Portal, Vermes offers to turn on the Tool Gateway. Accept, and you're done — every supported tool is live on the next run.
 
 Check what's active at any time:
 
 ```bash
-hermes status
+vermes status
 ```
 
 You'll see a section like:
@@ -66,7 +66,7 @@ Tools marked "active via Nous subscription" are going through the gateway. Anyth
 
 ## Eligibility
 
-The Tool Gateway is a **paid-subscription** feature. Free-tier Nous accounts can use Portal for inference but don't include managed tools — [upgrade your plan](https://portal.nousresearch.com/manage-subscription) to unlock the gateway.
+The Tool Gateway is a **paid-subscription** feature. Free-tier Nous accounts can use Portal for inference but don't include managed tools — [upgrade your plan](https://portal.donghzs.com/manage-subscription) to unlock the gateway.
 
 ## Mix and match
 
@@ -79,7 +79,7 @@ The gateway is per-tool. Turn it on for just what you want:
 Switch any tool at any time via:
 
 ```bash
-hermes tools          # Interactive picker for each tool category
+vermes tools          # Interactive picker for each tool category
 ```
 
 Select the tool, pick **Nous Subscription** as the provider (or any direct provider you prefer). No config editing required.
@@ -100,13 +100,13 @@ Image generation defaults to FLUX 2 Klein 9B for speed. Override per-call by pas
 | Recraft V4 Pro | `fal-ai/recraft/v4/pro` | Vector-style, graphic design |
 | Qwen Image | `fal-ai/qwen-image` | Alibaba multimodal |
 
-The set evolves — `hermes tools` → Image Generation shows the current live list.
+The set evolves — `vermes tools` → Image Generation shows the current live list.
 
 ---
 
 ## Configuration reference
 
-Most users never need to touch this — `hermes model` and `hermes tools` cover every workflow interactively. This section is for writing config.yaml directly or scripting setups.
+Most users never need to touch this — `vermes model` and `vermes tools` cover every workflow interactively. This section is for writing config.yaml directly or scripting setups.
 
 ### Per-tool `use_gateway` flag
 
@@ -135,14 +135,14 @@ Precedence: `use_gateway: true` routes through Nous regardless of any direct key
 
 ```yaml
 web:
-  use_gateway: false   # Hermes now uses FIRECRAWL_API_KEY from .env
+  use_gateway: false   # Vermes now uses FIRECRAWL_API_KEY from .env
 ```
 
-`hermes tools` automatically clears the flag when you pick a non-gateway provider, so this usually happens for you.
+`vermes tools` automatically clears the flag when you pick a non-gateway provider, so this usually happens for you.
 
 ### Self-hosted gateway (advanced)
 
-Running your own Nous-compatible gateway? Override endpoints in `~/.hermes/.env`:
+Running your own Nous-compatible gateway? Override endpoints in `~/.vermes/.env`:
 
 ```bash
 TOOL_GATEWAY_DOMAIN=your-domain.example.com
@@ -161,16 +161,16 @@ Yes. Tool Gateway operates at the tool-execution layer, not the CLI. Every inter
 
 ### What happens if my subscription expires?
 
-Tools routed through the gateway stop working until you renew or swap in direct API keys via `hermes tools`. Hermes shows a clear error pointing at the portal.
+Tools routed through the gateway stop working until you renew or swap in direct API keys via `vermes tools`. Vermes shows a clear error pointing at the portal.
 
 ### Can I see usage or costs per tool?
 
-Yes — the [Nous Portal dashboard](https://portal.nousresearch.com) breaks usage down by tool so you can see what's driving your bill.
+Yes — the [Nous Portal dashboard](https://portal.donghzs.com) breaks usage down by tool so you can see what's driving your bill.
 
 ### Is Modal (serverless terminal) included?
 
-Modal is available as an **optional add-on** through the Nous subscription, not part of the default Tool Gateway bundle. Configure it via `hermes setup terminal` or directly in `config.yaml` when you want a remote sandbox for shell execution.
+Modal is available as an **optional add-on** through the Nous subscription, not part of the default Tool Gateway bundle. Configure it via `vermes setup terminal` or directly in `config.yaml` when you want a remote sandbox for shell execution.
 
 ### Do I need to delete my existing API keys when I enable the gateway?
 
-No — keep them in `.env`. When `use_gateway: true`, Hermes skips direct keys and uses the gateway. Flip the flag back to `false` and your keys become the source again. The gateway isn't a lock-in.
+No — keep them in `.env`. When `use_gateway: true`, Vermes skips direct keys and uses the gateway. Flip the flag back to `false` and your keys become the source again. The gateway isn't a lock-in.

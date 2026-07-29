@@ -1,12 +1,12 @@
 # ACP Zed Pre-Edit Approval Diffs Implementation Plan
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> **For Vermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** Gate file mutations in ACP/Zed behind explicit pre-edit approval with a structured diff, similar to Codex/Kimi edit review behavior.
 
-**Architecture:** Hermes already renders edit diffs after tools run. This PR adds a pre-mutation permission gate for file mutation tools. Intercept `write_file`, `patch`, and eventually `skill_manage` before they mutate disk; compute proposed old/new content; send ACP `session/request_permission` with `kind="edit"` and diff content; only execute the mutation after approval. Rejections return a clear tool result and leave files unchanged.
+**Architecture:** Vermes already renders edit diffs after tools run. This PR adds a pre-mutation permission gate for file mutation tools. Intercept `write_file`, `patch`, and eventually `skill_manage` before they mutate disk; compute proposed old/new content; send ACP `session/request_permission` with `kind="edit"` and diff content; only execute the mutation after approval. Rejections return a clear tool result and leave files unchanged.
 
-**Tech Stack:** Python, ACP `request_permission`, `FileEditToolCallContent` / `acp.tool_diff_content`, Hermes file tools, pytest with temp files.
+**Tech Stack:** Python, ACP `request_permission`, `FileEditToolCallContent` / `acp.tool_diff_content`, Vermes file tools, pytest with temp files.
 
 ---
 
@@ -15,7 +15,7 @@
 Run:
 
 ```bash
-/home/nour/.hermes/hermes-agent/venv/bin/python - <<'PY'
+/home/nour/.vermes/vermes-agent/venv/bin/python - <<'PY'
 from acp.schema import RequestPermissionRequest, ToolCallUpdate
 import acp, inspect
 print(RequestPermissionRequest.model_fields)
@@ -144,7 +144,7 @@ scripts/run_tests.sh tests/acp/test_edit_approval.py tests/acp/test_events.py te
 
 Then run manual Zed verification:
 
-1. Ask Hermes ACP to edit a small file.
+1. Ask Vermes ACP to edit a small file.
 2. Confirm Zed shows a diff before mutation.
 3. Reject and verify file unchanged.
 4. Approve and verify file changed.

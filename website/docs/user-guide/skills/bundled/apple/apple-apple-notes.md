@@ -17,7 +17,7 @@ Manage Apple Notes via memo CLI: create, search, edit.
 | Source | Bundled (installed by default) |
 | Path | `skills/apple/apple-notes` |
 | Version | `1.0.0` |
-| Author | Hermes Agent |
+| Author | Vermes Agent |
 | License | MIT |
 | Platforms | macos |
 | Tags | `Notes`, `Apple`, `macOS`, `note-taking` |
@@ -26,7 +26,7 @@ Manage Apple Notes via memo CLI: create, search, edit.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Apple Notes

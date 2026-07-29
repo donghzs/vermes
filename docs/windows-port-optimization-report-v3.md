@@ -39,8 +39,8 @@
 **文件**：`vermes_cli/web_server.py` L71-77
 
 ```python
-if "HERMES_WEB_DIST" in os.environ:
-    WEB_DIST = Path(os.environ["HERMES_WEB_DIST"])
+if "VERMES_WEB_DIST" in os.environ:
+    WEB_DIST = Path(os.environ["VERMES_WEB_DIST"])
 elif getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     WEB_DIST = Path(sys._MEIPASS) / "vermes_cli" / "web_dist"
 else:
@@ -51,7 +51,7 @@ else:
 - `vermes-gui.spec` 通过 PyInstaller COLLECT 模式打包，`web_dist` 确实会被放到 `{MEIPASS}/vermes_cli/web_dist`，路径匹配正确。✅ **不需要修。**
 - 但 `vermes-onefile.spec` 的 `datas = []` 是空的——如果将来有人用 onefire spec 打包，`web_dist` 不会被包含，`WEB_DIST.exists()` 返回 False，前端会显示 "Frontend not built" 错误。⚠️ **建议修复**（见下）。
 
-### 3. `vermes_cli/gui_app.py` — `PORT_FILE` 路径使用 `~/.vermes/` 而非 `~/.hermes/`
+### 3. `vermes_cli/gui_app.py` — `PORT_FILE` 路径使用 `~/.vermes/` 而非 `~/.vermes/`
 
 **文件**：`vermes_cli/gui_app.py` L53-54
 
@@ -60,7 +60,7 @@ PORT_FILE     = os.path.expanduser("~/.vermes/gui_port.txt")
 LOCK_FILE     = os.path.expanduser("~/.vermes/gui_app.lock")
 ```
 
-**问题**：Vermes/Hermes CLI 的标准配置目录是 `~/.hermes/`，但 GUI 用了 `~/.vermes/`。这在多 profile 场景下可能导致 confusion。不过这是设计选择（Vermes 独立于 Hermes CLI），**不影响 Windows 功能**。✅ **不需要修。**
+**问题**：Vermes/Vermes CLI 的标准配置目录是 `~/.vermes/`，但 GUI 用了 `~/.vermes/`。这在多 profile 场景下可能导致 confusion。不过这是设计选择（Vermes 独立于 Vermes CLI），**不影响 Windows 功能**。✅ **不需要修。**
 
 ---
 

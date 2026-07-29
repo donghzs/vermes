@@ -6,23 +6,23 @@ sidebar_position: 0
 
 # Integrations
 
-Hermes Agent connects to external systems for AI inference, tool servers, IDE workflows, programmatic access, and more. These integrations extend what Hermes can do and where it can run.
+Vermes Agent connects to external systems for AI inference, tool servers, IDE workflows, programmatic access, and more. These integrations extend what Vermes can do and where it can run.
 
 ## AI Providers & Routing
 
-Hermes supports multiple AI inference providers out of the box. Use `hermes model` to configure interactively, or set them in `config.yaml`.
+Vermes supports multiple AI inference providers out of the box. Use `vermes model` to configure interactively, or set them in `config.yaml`.
 
-- **[AI Providers](/docs/user-guide/features/provider-routing)** — OpenRouter, Anthropic, OpenAI, Google, and any OpenAI-compatible endpoint. Hermes auto-detects capabilities like vision, streaming, and tool use per provider.
+- **[AI Providers](/docs/user-guide/features/provider-routing)** — OpenRouter, Anthropic, OpenAI, Google, and any OpenAI-compatible endpoint. Vermes auto-detects capabilities like vision, streaming, and tool use per provider.
 - **[Provider Routing](/docs/user-guide/features/provider-routing)** — Fine-grained control over which underlying providers handle your OpenRouter requests. Optimize for cost, speed, or quality with sorting, whitelists, blacklists, and explicit priority ordering.
 - **[Fallback Providers](/docs/user-guide/features/fallback-providers)** — Automatic failover to backup LLM providers when your primary model encounters errors. Includes primary model fallback and independent auxiliary task fallback for vision, compression, and web extraction.
 
 ## Tool Servers (MCP)
 
-- **[MCP Servers](/docs/user-guide/features/mcp)** — Connect Hermes to external tool servers via Model Context Protocol. Access tools from GitHub, databases, file systems, browser stacks, internal APIs, and more without writing native Hermes tools. Supports both stdio and SSE transports, per-server tool filtering, and capability-aware resource/prompt registration.
+- **[MCP Servers](/docs/user-guide/features/mcp)** — Connect Vermes to external tool servers via Model Context Protocol. Access tools from GitHub, databases, file systems, browser stacks, internal APIs, and more without writing native Vermes tools. Supports both stdio and SSE transports, per-server tool filtering, and capability-aware resource/prompt registration.
 
 ## Web Search Backends
 
-The `web_search` and `web_extract` tools support four backend providers, configured via `config.yaml` or `hermes tools`:
+The `web_search` and `web_extract` tools support four backend providers, configured via `config.yaml` or `vermes tools`:
 
 | Backend | Env Var | Search | Extract | Crawl |
 |---------|---------|--------|---------|-------|
@@ -42,7 +42,7 @@ If `web.backend` is not set, the backend is auto-detected from whichever API key
 
 ## Browser Automation
 
-Hermes includes full browser automation with multiple backend options for navigating websites, filling forms, and extracting information:
+Vermes includes full browser automation with multiple backend options for navigating websites, filling forms, and extracting information:
 
 - **Browserbase** — Managed cloud browsers with anti-bot tooling, CAPTCHA solving, and residential proxies
 - **Browser Use** — Alternative cloud browser provider
@@ -67,11 +67,11 @@ Speech-to-text supports six providers: local faster-whisper (free, runs on-devic
 
 ## IDE & Editor Integration
 
-- **[IDE Integration (ACP)](/docs/user-guide/features/acp)** — Use Hermes Agent inside ACP-compatible editors such as VS Code, Zed, and JetBrains. Hermes runs as an ACP server, rendering chat messages, tool activity, file diffs, and terminal commands inside your editor.
+- **[IDE Integration (ACP)](/docs/user-guide/features/acp)** — Use Vermes Agent inside ACP-compatible editors such as VS Code, Zed, and JetBrains. Vermes runs as an ACP server, rendering chat messages, tool activity, file diffs, and terminal commands inside your editor.
 
 ## Programmatic Access
 
-- **[API Server](/docs/user-guide/features/api-server)** — Expose Hermes as an OpenAI-compatible HTTP endpoint. Any frontend that speaks the OpenAI format — Open WebUI, LobeChat, LibreChat, NextChat, ChatBox — can connect and use Hermes as a backend with its full toolset.
+- **[API Server](/docs/user-guide/features/api-server)** — Expose Vermes as an OpenAI-compatible HTTP endpoint. Any frontend that speaks the OpenAI format — Open WebUI, LobeChat, LibreChat, NextChat, ChatBox — can connect and use Vermes as a backend with its full toolset.
 
 ## Memory & Personalization
 
@@ -80,7 +80,7 @@ Speech-to-text supports six providers: local faster-whisper (free, runs on-devic
 
 ## Messaging Platforms
 
-Hermes runs as a gateway bot on 19+ messaging platforms, all configured through the same `gateway` subsystem:
+Vermes runs as a gateway bot on 19+ messaging platforms, all configured through the same `gateway` subsystem:
 
 - **[Telegram](/docs/user-guide/messaging/telegram)**, **[Discord](/docs/user-guide/messaging/discord)**, **[Slack](/docs/user-guide/messaging/slack)**, **[WhatsApp](/docs/user-guide/messaging/whatsapp)**, **[Signal](/docs/user-guide/messaging/signal)**, **[Matrix](/docs/user-guide/messaging/matrix)**, **[Mattermost](/docs/user-guide/messaging/mattermost)**, **[Email](/docs/user-guide/messaging/email)**, **[SMS](/docs/user-guide/messaging/sms)**, **[DingTalk](/docs/user-guide/messaging/dingtalk)**, **[Feishu/Lark](/docs/user-guide/messaging/feishu)**, **[WeCom](/docs/user-guide/messaging/wecom)**, **[WeCom Callback](/docs/user-guide/messaging/wecom-callback)**, **[Weixin](/docs/user-guide/messaging/weixin)**, **[BlueBubbles](/docs/user-guide/messaging/bluebubbles)**, **[QQ Bot](/docs/user-guide/messaging/qqbot)**, **[Yuanbao](/docs/user-guide/messaging/yuanbao)**, **[Home Assistant](/docs/user-guide/messaging/homeassistant)**, **[Microsoft Teams](/docs/user-guide/messaging/teams)**, **[Webhooks](/docs/user-guide/messaging/webhooks)**
 
@@ -92,8 +92,8 @@ See the [Messaging Gateway overview](/docs/user-guide/messaging) for the platfor
 
 ## Plugins
 
-- **[Plugin System](/docs/user-guide/features/plugins)** — Extend Hermes with custom tools, lifecycle hooks, and CLI commands without modifying core code. Plugins are discovered from `~/.hermes/plugins/`, project-local `.hermes/plugins/`, and pip-installed entry points.
-- **[Build a Plugin](/docs/guides/build-a-hermes-plugin)** — Step-by-step guide for creating Hermes plugins with tools, hooks, and CLI commands.
+- **[Plugin System](/docs/user-guide/features/plugins)** — Extend Vermes with custom tools, lifecycle hooks, and CLI commands without modifying core code. Plugins are discovered from `~/.vermes/plugins/`, project-local `.vermes/plugins/`, and pip-installed entry points.
+- **[Build a Plugin](/docs/guides/build-a-vermes-plugin)** — Step-by-step guide for creating Vermes plugins with tools, hooks, and CLI commands.
 
 ## Training & Evaluation
 

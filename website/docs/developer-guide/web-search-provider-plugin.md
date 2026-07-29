@@ -1,7 +1,7 @@
 ---
 sidebar_position: 12
 title: "Web Search Provider Plugins"
-description: "How to build a web-search/extract/crawl backend plugin for Hermes Agent"
+description: "How to build a web-search/extract/crawl backend plugin for Vermes Agent"
 ---
 
 # Building a Web Search Provider Plugin
@@ -9,16 +9,16 @@ description: "How to build a web-search/extract/crawl backend plugin for Hermes 
 Web-search provider plugins register a backend that services `web_search`, `web_extract`, and (optionally) deep-crawl tool calls. Built-in providers — Firecrawl, SearXNG, Tavily, Exa, Parallel, Brave Search (free tier), and DDGS — all ship as plugins under `plugins/web/<name>/`. You can add a new one, or override a bundled one, by dropping a directory next to them.
 
 :::tip
-Web search is one of several **backend plugins** Hermes supports. The others (with their own ABCs) are [Image Generation Provider Plugins](/docs/developer-guide/image-gen-provider-plugin), [Video Generation Provider Plugins](/docs/developer-guide/video-gen-provider-plugin), [Memory Provider Plugins](/docs/developer-guide/memory-provider-plugin), [Context Engine Plugins](/docs/developer-guide/context-engine-plugin), and [Model Provider Plugins](/docs/developer-guide/model-provider-plugin). General tool/hook/CLI plugins live in [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin).
+Web search is one of several **backend plugins** Vermes supports. The others (with their own ABCs) are [Image Generation Provider Plugins](/docs/developer-guide/image-gen-provider-plugin), [Video Generation Provider Plugins](/docs/developer-guide/video-gen-provider-plugin), [Memory Provider Plugins](/docs/developer-guide/memory-provider-plugin), [Context Engine Plugins](/docs/developer-guide/context-engine-plugin), and [Model Provider Plugins](/docs/developer-guide/model-provider-plugin). General tool/hook/CLI plugins live in [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin).
 :::
 
 ## How discovery works
 
-Hermes scans for web-search backends in three places:
+Vermes scans for web-search backends in three places:
 
 1. **Bundled** — `<repo>/plugins/web/<name>/` (auto-loaded with `kind: backend`, always available)
-2. **User** — `~/.hermes/plugins/web/<name>/` (opt-in via `plugins.enabled` or `hermes plugins enable <name>`)
-3. **Pip** — packages declaring a `hermes_agent.plugins` entry point
+2. **User** — `~/.vermes/plugins/web/<name>/` (opt-in via `plugins.enabled` or `vermes plugins enable <name>`)
+3. **Pip** — packages declaring a `VERMES_agent.plugins` entry point
 
 Each plugin's `register(ctx)` function calls `ctx.register_web_search_provider(...)` — that puts the instance into the registry in `agent/web_search_registry.py`. The active provider for each capability is picked by config:
 
@@ -28,7 +28,7 @@ Each plugin's `register(ctx)` function calls `ctx.register_web_search_provider(.
 | `web_extract` | `web.extract_backend` | `web.backend` |
 | Deep crawl modes inside `web_extract` | `web.extract_backend` | `web.backend` |
 
-When neither key is set, Hermes auto-detects the backend from whichever API key/URL is present in the environment. `hermes tools` walks users through selection.
+When neither key is set, Vermes auto-detects the backend from whichever API key/URL is present in the environment. `vermes tools` walks users through selection.
 
 ## Directory structure
 
@@ -66,12 +66,12 @@ class MyBackendWebSearchProvider(WebSearchProvider):
 
     @property
     def display_name(self) -> str:
-        # Human label shown in `hermes tools`. Defaults to `name`.
+        # Human label shown in `vermes tools`. Defaults to `name`.
         return "My Backend"
 
     def is_available(self) -> bool:
         # Cheap check — env var present, optional dep importable, etc.
-        # MUST NOT make network calls (runs on every `hermes tools` paint).
+        # MUST NOT make network calls (runs on every `vermes tools` paint).
         return bool(os.getenv("MY_BACKEND_API_KEY", "").strip())
 
     def supports_search(self) -> bool:
@@ -143,8 +143,8 @@ requires_env:
 | Key | Purpose |
 |---|---|
 | `kind: backend` | Routes the plugin through the backend-loading path |
-| `provides_web_providers` | List of provider `name`s this plugin registers — used by the loader to advertise the plugin in `hermes tools` even before `register()` runs |
-| `requires_env` | Interactive credential prompt during `hermes plugins install` (see [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin#gate-on-environment-variables) for the rich format) |
+| `provides_web_providers` | List of provider `name`s this plugin registers — used by the loader to advertise the plugin in `vermes tools` even before `register()` runs |
+| `requires_env` | Interactive credential prompt during `vermes plugins install` (see [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin#gate-on-environment-variables) for the rich format) |
 
 ## ABC reference
 
@@ -153,7 +153,7 @@ Full contract in `agent/web_search_provider.py`. Methods you may override:
 | Member | Required | Default | Purpose |
 |---|---|---|---|
 | `name` | ✅ | — | Stable id used in `web.*_backend` config |
-| `display_name` | — | `name` | Label shown in `hermes tools` |
+| `display_name` | — | `name` | Label shown in `vermes tools` |
 | `is_available()` | ✅ | — | Cheap availability gate — env vars, optional deps |
 | `supports_search()` | — | `True` | Capability flag for `web_search` routing |
 | `supports_extract()` | — | `False` | Capability flag for `web_extract` routing |
@@ -211,20 +211,20 @@ Both `search()` and `extract()` may be `async def` — the dispatcher detects co
 
 ## Capability flags
 
-Hermes routes calls to the right provider based on the `supports_*` flags. A common multi-provider setup:
+Vermes routes calls to the right provider based on the `supports_*` flags. A common multi-provider setup:
 
 ```yaml
-# ~/.hermes/config.yaml
+# ~/.vermes/config.yaml
 web:
   search_backend: "brave-free"     # search-only, fast, free 2k/mo
   extract_backend: "firecrawl"     # extract + crawl, paid quota
 ```
 
-When `web.search_backend` or `web.extract_backend` aren't set, both fall through to `web.backend`. When that's also unset, Hermes picks the first available provider that supports the requested capability based on env-var presence.
+When `web.search_backend` or `web.extract_backend` aren't set, both fall through to `web.backend`. When that's also unset, Vermes picks the first available provider that supports the requested capability based on env-var presence.
 
 If your provider only supports one capability, leave the other flags at their default (`False`) and the registry will skip it for that tool — users won't see misleading "provider X failed" errors when they're using X only for search and asking the agent to extract.
 
-## How Hermes wires it into the tools
+## How Vermes wires it into the tools
 
 The `web_search` and `web_extract` tools live in `tools/web_tools.py`. At call time they:
 
@@ -234,11 +234,11 @@ The `web_search` and `web_extract` tools live in `tools/web_tools.py`. At call t
 4. Dispatch to `search()` / `extract()` / `crawl()`, awaiting if the method is a coroutine
 5. JSON-serialize the response envelope and hand it back to the LLM
 
-Errors surface as the tool result; the LLM decides how to explain them. If no provider is registered (or every available one fails the capability gate), the tool returns a helpful error pointing at `hermes tools`.
+Errors surface as the tool result; the LLM decides how to explain them. If no provider is registered (or every available one fails the capability gate), the tool returns a helpful error pointing at `vermes tools`.
 
 ## Lazy-installing optional dependencies
 
-If your provider wraps a third-party SDK (like DDGS does with the `ddgs` package), don't `import` it at module top level. Use `tools.lazy_deps.ensure(...)` inside `is_available()` or `search()` — Hermes will install the package on first use, gated by `security.allow_lazy_installs`. See [Build a Hermes Plugin → Lazy-install](/docs/guides/build-a-hermes-plugin#lazy-install-optional-python-dependencies) for the security model.
+If your provider wraps a third-party SDK (like DDGS does with the `ddgs` package), don't `import` it at module top level. Use `tools.lazy_deps.ensure(...)` inside `is_available()` or `search()` — Vermes will install the package on first use, gated by `security.allow_lazy_installs`. See [Build a Vermes Plugin → Lazy-install](/docs/guides/build-a-vermes-plugin#lazy-install-optional-python-dependencies) for the security model.
 
 ## Reference implementations
 
@@ -251,14 +251,14 @@ If your provider wraps a third-party SDK (like DDGS does with the `ddgs` package
 
 ```toml
 # pyproject.toml
-[project.entry-points."hermes_agent.plugins"]
+[project.entry-points."VERMES_agent.plugins"]
 my-backend-web = "my_backend_web_package"
 ```
 
-`my_backend_web_package` must expose a top-level `register` function. See [Distribute via pip](/docs/guides/build-a-hermes-plugin#distribute-via-pip) in the general plugin guide for the full setup.
+`my_backend_web_package` must expose a top-level `register` function. See [Distribute via pip](/docs/guides/build-a-vermes-plugin#distribute-via-pip) in the general plugin guide for the full setup.
 
 ## Related pages
 
 - [Web Search](/docs/user-guide/features/web-search) — user-facing feature documentation and per-backend configuration
 - [Plugins overview](/docs/user-guide/features/plugins) — all plugin types at a glance
-- [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin) — general tools/hooks/slash commands guide
+- [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin) — general tools/hooks/slash commands guide

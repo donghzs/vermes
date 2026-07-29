@@ -14,7 +14,7 @@ Provides guidance for LLM post-training with RL using slime, a Megatron+SGLang f
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/mlops/slime` |
+| Source | Optional — install with `vermes skills install official/mlops/slime` |
 | Path | `optional-skills/mlops/slime` |
 | Version | `1.0.0` |
 | Author | Orchestra Research |
@@ -26,7 +26,7 @@ Provides guidance for LLM post-training with RL using slime, a Megatron+SGLang f
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # slime: LLM Post-Training Framework for RL Scaling

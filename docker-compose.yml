@@ -1,12 +1,12 @@
 #
-# docker-compose.yml for Hermes Agent
+# docker-compose.yml for Vermes Agent
 #
 # Usage:
-#   HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d
+#   VERMES_UID=$(id -u) VERMES_GID=$(id -g) docker compose up -d
 #
-# Set HERMES_UID / HERMES_GID to the host user that owns ~/.hermes so
+# Set VERMES_UID / VERMES_GID to the host user that owns ~/.vermes so
 # files created inside the container stay readable/writable on the host.
-# The entrypoint remaps the internal `hermes` user to these values via
+# The entrypoint remaps the internal `vermes` user to these values via
 # usermod/groupmod + gosu.
 #
 # Security notes:
@@ -14,8 +14,8 @@
 #     keys; exposing it on LAN without auth is unsafe. If you want remote
 #     access, use an SSH tunnel or put it behind a reverse proxy that
 #     adds authentication — do NOT pass --insecure --host 0.0.0.0.
-#   - If you override entrypoint, keep /opt/hermes/docker/entrypoint.sh in
-#     the command chain. It drops root to the hermes user before gateway
+#   - If you override entrypoint, keep /opt/vermes/docker/entrypoint.sh in
+#     the command chain. It drops root to the vermes user before gateway
 #     files such as gateway.lock are created.
 #   - The gateway's API server is off unless you uncomment API_SERVER_KEY
 #     and API_SERVER_HOST. See docs/user-guide/api-server.md before doing
@@ -24,15 +24,15 @@
 services:
   gateway:
     build: .
-    image: hermes-agent
-    container_name: hermes
+    image: vermes-agent
+    container_name: vermes
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ~/.hermes:/opt/data
+      - ~/.vermes:/opt/data
     environment:
-      - HERMES_UID=${HERMES_UID:-10000}
-      - HERMES_GID=${HERMES_GID:-10000}
+      - VERMES_UID=${VERMES_UID:-10000}
+      - VERMES_GID=${VERMES_GID:-10000}
       # To expose the OpenAI-compatible API server beyond localhost,
       # uncomment BOTH lines (API_SERVER_KEY is mandatory for auth):
       # - API_SERVER_HOST=0.0.0.0
@@ -47,7 +47,7 @@ services:
       # Google Chat — uncomment and fill in to enable the Google Chat gateway.
       # See website/docs/user-guide/messaging/google_chat.md for the full setup.
       # The SA JSON path must point to a file mounted into the container —
-      # add a volume entry above (e.g. ``- ~/.hermes/google-chat-sa.json:/secrets/google-chat-sa.json:ro``)
+      # add a volume entry above (e.g. ``- ~/.vermes/google-chat-sa.json:/secrets/google-chat-sa.json:ro``)
       # then set GOOGLE_CHAT_SERVICE_ACCOUNT_JSON to that mount path.
       # - GOOGLE_CHAT_PROJECT_ID=${GOOGLE_CHAT_PROJECT_ID}
       # - GOOGLE_CHAT_SUBSCRIPTION_NAME=${GOOGLE_CHAT_SUBSCRIPTION_NAME}
@@ -56,16 +56,16 @@ services:
     command: ["gateway", "run"]
 
   dashboard:
-    image: hermes-agent
-    container_name: hermes-dashboard
+    image: vermes-agent
+    container_name: vermes-dashboard
     restart: unless-stopped
     network_mode: host
     depends_on:
       - gateway
     volumes:
-      - ~/.hermes:/opt/data
+      - ~/.vermes:/opt/data
     environment:
-      - HERMES_UID=${HERMES_UID:-10000}
-      - HERMES_GID=${HERMES_GID:-10000}
+      - VERMES_UID=${VERMES_UID:-10000}
+      - VERMES_GID=${VERMES_GID:-10000}
     # Localhost-only. For remote access, tunnel via `ssh -L 9119:localhost:9119`.
     command: ["dashboard", "--host", "127.0.0.1", "--no-open"]

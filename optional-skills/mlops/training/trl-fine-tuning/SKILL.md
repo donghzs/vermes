@@ -7,7 +7,7 @@ license: MIT
 dependencies: [trl, transformers, datasets, peft, accelerate, torch]
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  vermes:
     tags: [Post-Training, TRL, Reinforcement Learning, Fine-Tuning, SFT, DPO, PPO, GRPO, RLHF, Preference Alignment, HuggingFace]
 
 ---

@@ -14,7 +14,7 @@ Structured decision-making framework for technical proposals and trade-off analy
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/communication/one-three-one-rule` |
+| Source | Optional — install with `vermes skills install official/communication/one-three-one-rule` |
 | Path | `optional-skills/communication/one-three-one-rule` |
 | Version | `1.0.0` |
 | Author | Willard Moore |
@@ -25,7 +25,7 @@ Structured decision-making framework for technical proposals and trade-off analy
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # 1-3-1 Communication Rule

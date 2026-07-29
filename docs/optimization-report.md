@@ -49,10 +49,10 @@ Vermes 使用两个 SQLite 数据库：
 
 | 数据库 | 文件 | 行数 | 用途 |
 |---|---|---|---|
-| `state.db` | `hermes_state.py` | 3,563 | 会话存储、消息历史、FTS5 搜索 |
+| `state.db` | `VERMES_state.py` | 3,563 | 会话存储、消息历史、FTS5 搜索 |
 | `kanban.db` | `vermes_cli/kanban_db.py` | 6,179 | 任务队列、调度、工单系统 |
 
-两个数据库都使用标准 `sqlite3` 模块（**同步 API**）。核心写路径 `SessionDB._execute_write()`（`hermes_state.py:420-475`）持有 `threading.Lock`，执行 `BEGIN IMMEDIATE` + 带 jitter 退避的重试循环：
+两个数据库都使用标准 `sqlite3` 模块（**同步 API**）。核心写路径 `SessionDB._execute_write()`（`VERMES_state.py:420-475`）持有 `threading.Lock`，执行 `BEGIN IMMEDIATE` + 带 jitter 退避的重试循环：
 
 ```python
 def _execute_write(self, fn: Callable[[sqlite3.Connection], T]) -> T:
@@ -112,7 +112,7 @@ class AsyncSessionDB:
 
 #### 涉及文件
 
-- `hermes_state.py` — SessionDB 核心
+- `VERMES_state.py` — SessionDB 核心
 - `vermes_cli/kanban_db.py` — 连接管理 + CRUD
 - `gateway/run.py` — 主要消费者
 - `agent/async_utils.py` — `safe_schedule_threadsafe` 工具函数
@@ -151,7 +151,7 @@ def _hex_to_ansi()                  # 颜色处理
 def _query_osc11_background()       # 终端检测
 class _SkinAwareAnsi:               # UI 组件
 class ChatConsole:                  # 控制台
-class HermesCLI:                    # 主入口 — ~8000 行
+class vermesCLI:                    # 主入口 — ~8000 行
 ```
 
 #### 优化方案
@@ -213,7 +213,7 @@ vermes_cli/
 
 #### 优化方案
 
-在 `hermes_home` 下维护一个 `plugin_index.json` 缓存：
+在 `VERMES_home` 下维护一个 `plugin_index.json` 缓存：
 
 ```json
 {
@@ -384,7 +384,7 @@ async def compress_parallel(messages, max_block=50):
 
 ```
 启动顺序：
-1. HermesCLI.__init__()
+1. vermesCLI.__init__()
 2.    → _run_state_db_auto_maintenance()      # 同步阻塞
 3.        → prune_empty_ghost_sessions()       # 可选的一键操作
 4.        → finalize_orphaned_compression_sessions()  # 可选的一键操作
@@ -398,7 +398,7 @@ async def compress_parallel(messages, max_block=50):
 #### 优化方案
 
 ```python
-class HermesCLI:
+class vermesCLI:
     def __init__(self):
         # ... 快速初始化 ...
         self._schedule_deferred_maintenance()
@@ -531,7 +531,7 @@ class TestToolLatency:
 
 #### 问题描述
 
-`hermes_state.py:298-351` 定义了两张 FTS5 虚拟表：
+`VERMES_state.py:298-351` 定义了两张 FTS5 虚拟表：
 
 | 表 | 分词器 | 用途 |
 |---|---|---|
@@ -637,7 +637,7 @@ class VermesConfig(BaseModel):
 
 ### 3.5 上游合并跟踪
 
-Vermes 基于 NousResearch Hermes Agent，但已有大量定制。建议：
+Vermes 基于 donghzs Vermes Agent，但已有大量定制。建议：
 
 1. 维护一个 `UPSTREAM.md` 或 `scripts/sync-upstream.sh`，记录与上游的差异点
 2. 定期（每 1-2 个月）执行 `git merge upstream/main` 并运行完整测试套件

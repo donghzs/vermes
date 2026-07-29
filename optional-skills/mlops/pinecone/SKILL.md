@@ -7,7 +7,7 @@ license: MIT
 dependencies: [pinecone-client]
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  vermes:
     tags: [RAG, Pinecone, Vector Database, Managed Service, Serverless, Hybrid Search, Production, Auto-Scaling, Low Latency, Recommendations]
 
 ---

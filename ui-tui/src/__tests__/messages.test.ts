@@ -1,4 +1,4 @@
-import { renderSync } from '@hermes/ink'
+import { renderSync } from '@vermes/ink'
 import React from 'react'
 import { PassThrough } from 'stream'
 import { describe, expect, it } from 'vitest'

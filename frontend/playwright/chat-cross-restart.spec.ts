@@ -6,7 +6,7 @@
  * 与 chat-reconnect.spec.ts（纯前端 mock）不同，本用例让前端在断线重连时拉取的
  * plan_snapshot 由**真实后端**提供 —— 而该后端复用生产模块 agent/session_plan_store.py
  * 的 load_plan_state 从 SQLite 读取。流程：
- *   1) seed_session_plan.py（进程 A）把 plan 写入 HERMES_HOME/session_plans.db（真实模块）
+ *   1) seed_session_plan.py（进程 A）把 plan 写入 VERMES_HOME/session_plans.db（真实模块）
  *   2) mock_backend.py（进程 B，独立进程）启动，plan_snapshot 走真实 load_plan_state
  *   3) 前端发送消息 → chat/completions 被 abort（模拟断线）→ 自动重连
  *      → fetchSnapshot → 真实后端从 SQLite 读回 plan（跨进程/重启恢复）
@@ -29,7 +29,7 @@ const MOCK_PORT = 8799
 const SESSION_ID = 'sess-cross-restart'
 const RUN = process.env.RUN_BACKEND_E2E === '1'
 
-let hermesHome = ''
+let vermesHome = ''
 let backend: ChildProcess | undefined
 
 async function waitForBackend(timeoutMs = 15000): Promise<void> {
@@ -48,17 +48,17 @@ async function waitForBackend(timeoutMs = 15000): Promise<void> {
 
 test.beforeAll(async () => {
   if (!RUN) return
-  hermesHome = mkdtempSync(join(tmpdir(), 'vermes-e2e-'))
+  vermesHome = mkdtempSync(join(tmpdir(), 'vermes-e2e-'))
   // 1) 进程 A：写入 SQLite（真实 session_plan_store.save_plan_state）
   const seed = join(__dirname, 'seed_session_plan.py')
   execFileSync('python3', [seed, SESSION_ID], {
-    env: { ...process.env, HERMES_HOME: hermesHome },
+    env: { ...process.env, VERMES_HOME: vermesHome },
     stdio: 'inherit',
   })
   // 2) 进程 B：独立进程读取（真实 session_plan_store.load_plan_state）
   const mb = join(__dirname, 'mock_backend.py')
   backend = spawn('python3', [mb, String(MOCK_PORT)], {
-    env: { ...process.env, HERMES_HOME: hermesHome },
+    env: { ...process.env, VERMES_HOME: vermesHome },
   })
   backend.stdout?.on('data', () => {})
   backend.stderr?.on('data', (d) => process.stderr.write(d))

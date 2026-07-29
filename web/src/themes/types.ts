@@ -176,7 +176,7 @@ export interface ThemeListEntry {
   label: string;
   name: string;
   /** Full theme definition. Present for user-defined themes loaded from
-   *  `~/.hermes/dashboard-themes/*.yaml`; undefined for built-ins (the
+   *  `~/.vermes/dashboard-themes/*.yaml`; undefined for built-ins (the
    *  client already has those in `BUILTIN_THEMES`). */
   definition?: DashboardTheme;
 }

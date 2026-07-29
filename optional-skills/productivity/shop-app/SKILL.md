@@ -8,7 +8,7 @@ platforms: [linux, macos, windows]
 prerequisites:
   commands: [curl]
 metadata:
-  hermes:
+  vermes:
     tags: [Shopping, E-commerce, Shop.app, Products, Orders, Returns]
     related_skills: [shopify, maps]
     homepage: https://shop.app
@@ -320,7 +320,7 @@ Lead with **products**, not narration.
 - Offer follow-ups: "Want tracking details?", "Want to re-order?"
 - Remember: coverage is all stores connected to Shop, not just Shopify.
 
-Hermes's gateway adapters (Telegram, Discord, Slack, iMessage, …) render markdown and image URLs automatically. Write normal markdown with image URLs on their own line — the adapter handles platform-specific layout. Do **not** invent a `message()` tool call (that belongs to Shop.app's own runtime, not Hermes).
+Vermes's gateway adapters (Telegram, Discord, Slack, iMessage, …) render markdown and image URLs automatically. Write normal markdown with image URLs on their own line — the adapter handles platform-specific layout. Do **not** invent a `message()` tool call (that belongs to Shop.app's own runtime, not Vermes).
 
 ---
 

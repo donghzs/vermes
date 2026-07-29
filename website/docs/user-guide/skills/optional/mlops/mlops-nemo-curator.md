@@ -14,7 +14,7 @@ GPU-accelerated data curation for LLM training. Supports text/image/video/audio.
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/mlops/nemo-curator` |
+| Source | Optional — install with `vermes skills install official/mlops/nemo-curator` |
 | Path | `optional-skills/mlops/nemo-curator` |
 | Version | `1.0.0` |
 | Author | Orchestra Research |
@@ -26,7 +26,7 @@ GPU-accelerated data curation for LLM training. Supports text/image/video/audio.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # NeMo Curator - GPU-Accelerated Data Curation
@@ -390,8 +390,8 @@ cluster.close()
 
 ## References
 
-- **[Filtering Guide](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/mlops/nemo-curator/references/filtering.md)** - 30+ quality filters, heuristics
-- **[Deduplication Guide](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/mlops/nemo-curator/references/deduplication.md)** - Exact, fuzzy, semantic methods
+- **[Filtering Guide](https://github.com/donghzs/vermes/blob/main/optional-skills/mlops/nemo-curator/references/filtering.md)** - 30+ quality filters, heuristics
+- **[Deduplication Guide](https://github.com/donghzs/vermes/blob/main/optional-skills/mlops/nemo-curator/references/deduplication.md)** - Exact, fuzzy, semantic methods
 
 ## Resources
 

@@ -1,7 +1,7 @@
 {
-  "name": "hermes-achievements",
+  "name": "vermes-achievements",
   "label": "Achievements",
-  "description": "Steam-style achievements for vibe coding and agentic Hermes workflows.",
+  "description": "Steam-style achievements for vibe coding and agentic Vermes workflows.",
   "icon": "Star",
   "version": "0.4.0",
   "tab": { "path": "/achievements", "position": "after:analytics" },

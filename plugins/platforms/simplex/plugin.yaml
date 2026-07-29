@@ -5,7 +5,7 @@ version: 1.0.0
 description: >
   SimpleX Chat gateway adapter for Vermes.
   Connects to a local simplex-chat daemon via WebSocket and relays
-  messages between SimpleX contacts/groups and the Hermes agent.
+  messages between SimpleX contacts/groups and the Vermes agent.
   SimpleX is decentralised and assigns no persistent user IDs —
   every contact is an opaque internal ID generated at connection
   time, making it one of the most private messengers available.

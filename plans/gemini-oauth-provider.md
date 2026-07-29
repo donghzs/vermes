@@ -24,7 +24,7 @@ Add a first-class `gemini` provider that authenticates via Google OAuth, using t
 - Alternatively: accept user-provided client_id via env vars as override
 
 ## Token Lifecycle
-- Store at `~/.hermes/gemini_oauth.json` (NOT sharing with `~/.gemini/oauth_creds.json`)
+- Store at `~/.vermes/gemini_oauth.json` (NOT sharing with `~/.gemini/oauth_creds.json`)
 - Fields: `client_id`, `client_secret`, `refresh_token`, `access_token`, `expires_at`, `email`
 - File permissions: 0o600
 - Before each API call: check expiry, refresh if within 5 min of expiration
@@ -72,9 +72,9 @@ Add a first-class `gemini` provider that authenticates via Google OAuth, using t
 
 ## Prerequisites
 - Nous Research GCP project with Desktop OAuth client registered
-- OR: accept user-provided client_id via HERMES_GEMINI_CLIENT_ID env var
+- OR: accept user-provided client_id via VERMES_GEMINI_CLIENT_ID env var
 
 ## Reference implementations
 - clawdbot: `extensions/google/oauth.flow.ts` (PKCE + localhost server)
 - pi-mono: `packages/ai/src/utils/oauth/google-gemini-cli.ts` (same flow)
-- hermes-agent Copilot OAuth: `vermes_cli/main.py` `_copilot_device_flow()` (different flow type but same lifecycle pattern)
+- vermes-agent Copilot OAuth: `vermes_cli/main.py` `_copilot_device_flow()` (different flow type but same lifecycle pattern)

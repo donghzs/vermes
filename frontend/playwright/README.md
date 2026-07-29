@@ -59,7 +59,7 @@ npm run test:e2e        # 等价于 npx playwright test
 `chat-cross-restart.spec.ts` 覆盖审计第 6 节遗留的「跨重启恢复」边界（边界 #4），**真正触达
 生产模块 `agent/session_plan_store.py`**，而非纯前端 mock：
 
-- `seed_session_plan.py`（进程 A）用真实 `save_plan_state` 把 plan 写入 `HERMES_HOME/session_plans.db`；
+- `seed_session_plan.py`（进程 A）用真实 `save_plan_state` 把 plan 写入 `VERMES_HOME/session_plans.db`；
 - `mock_backend.py`（进程 B，独立进程）的 `plan_snapshot` 走真实 `load_plan_state` 从 SQLite 读回；
 - 前端 `chat/completions` 被主动 `abort`（模拟断线）→ 触发重连 → 拉 `plan_snapshot` → 从 SQLite 恢复渲染。
 
@@ -71,10 +71,10 @@ npm run test:e2e        # 等价于 npx playwright test
 
 ```bash
 cd frontend
-RUN_BACKEND_E2E=1 HERMES_HOME=/tmp/vermes-e2e npx playwright test chat-cross-restart.spec.ts
+RUN_BACKEND_E2E=1 VERMES_HOME=/tmp/vermes-e2e npx playwright test chat-cross-restart.spec.ts
 ```
 
-`HERMES_HOME` 指向临时目录，避免触碰用户真实的 `session_plans.db`。未置 `RUN_BACKEND_E2E=1`
+`VERMES_HOME` 指向临时目录，避免触碰用户真实的 `session_plans.db`。未置 `RUN_BACKEND_E2E=1`
 时该用例 `test.skip()`，纯前端 mock 用例仍正常跑。
 
 ## CI 接入

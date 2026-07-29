@@ -9,7 +9,7 @@ Vermes 对 Windows 的移植工作已经非常深入，大量关键路径已有�
 - `vermes_cli/_subprocess_compat.py` — `windows_hide_flags()`、UTF-8 Popen 补丁
 - `vermes_cli/gateway_windows.py` — schtasks + Startup 文件夹
 - `vermes_cli/stdio.py` — ConsoleCP/ConsoleOutputCP 设为 65001
-- `hermes_bootstrap.py` — `PYTHONUTF8=1` + subprocess Popen 猴子补丁
+- `VERMES_bootstrap.py` — `PYTHONUTF8=1` + subprocess Popen 猴子补丁
 - `tools/environments/local.py` — Git Bash 多源查找
 
 **结论**: P0 级崩溃问题已基本修复。剩余问题集中在 P1（功能降级）和 P2（ polish）。
@@ -243,7 +243,7 @@ Windows PATH 分隔符是 `;`，应用 `os.pathsep`。
 
 ### 4. docker.py — Docker 相关硬编码
 **文件**: `tools/environments/docker.py`
-- `"/tmp/.hermes_sync.{pid}.tar"` — Docker 容器内使用，不受 Windows 影响
+- `"/tmp/.VERMES_sync.{pid}.tar"` — Docker 容器内使用，不受 Windows 影响
 - Docker 本身只在 WSL/容器上可用
 - **结论**: 可以安全忽略
 

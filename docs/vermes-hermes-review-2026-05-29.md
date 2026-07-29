@@ -1,7 +1,7 @@
 # Vermes v2.0.3 深度代码审查报告
 
 > **审查时间**: 2026-05-29
-> **审查者**: Hermes Agent (MiMo-v2.5-Pro)
+> **审查者**: Vermes Agent (MiMo-v2.5-Pro)
 > **审查角度**: 用户体验、前端UI、聊天交互、流式体验、架构合理性
 > **核心文件**: ChatView.vue, chat.js, api.js, web_server.py
 
@@ -695,5 +695,5 @@ function renderMd(content) {
 ---
 
 > 报告生成时间: 2026-05-29
-> 生成者: Hermes Agent (MiMo-v2.5-Pro)
+> 生成者: Vermes Agent (MiMo-v2.5-Pro)
 > 审查深度: 逐行代码分析

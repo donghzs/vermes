@@ -1,7 +1,7 @@
 # Vermes v2.0.7 发布前审计报告
 
 **审计时间：** 2026-06-06 17:54  
-**审计人：** Hermes (工程师节点)  
+**审计人：** Vermes (工程师节点)  
 **审计范围：** Electron 桌面端 + 后端 Agent 框架 + 更新链路
 
 ---
@@ -25,7 +25,7 @@
 
 ### 1. 正则双反斜杠修复
 - **Commit:** b3bb759
-- **问题:** JS 正则 `\\` 匹配字面反斜杠，但 HTML 中是 `__HERMES_SESSION_TOKEN__`（无反斜杠）
+- **问题:** JS 正则 `\\` 匹配字面反斜杠，但 HTML 中是 `__vermes_SESSION_TOKEN__`（无反斜杠）
 - **影响:** getSessionToken() 永远返回 null → fetchWithAuth() 不带认证头 → 401
 - **状态:** ✅ 已修复（单反斜杠）
 
@@ -33,8 +33,8 @@
 ```
 前端 → window.vermes.checkAgentUpdate() → IPC
 → main.js → fetchWithAuth() → getSessionToken()
-→ 解析 HTML 注入的 __HERMES_SESSION_TOKEN__
-→ X-Hermes-Session-Token header
+→ 解析 HTML 注入的 __vermes_SESSION_TOKEN__
+→ X-Vermes-Session-Token header
 → 后端 auth_middleware 验证
 ```
 - **状态:** ✅ 完整
@@ -128,10 +128,10 @@ async function getSessionToken() {
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
 | Session Token 生成 | ✅ | `secrets.token_urlsafe(32)` |
-| Token 注入 | ✅ | HTML 注入 `__HERMES_SESSION_TOKEN__` |
+| Token 注入 | ✅ | HTML 注入 `__vermes_SESSION_TOKEN__` |
 | Token 验证 | ✅ | `hmac.compare_digest` 防时序攻击 |
 | IPC 认证 | ✅ | fetchWithAuth 自动携带 token |
-| Web 认证 | ✅ | 前端 fetch 带 X-Hermes-Session-Token |
+| Web 认证 | ✅ | 前端 fetch 带 X-Vermes-Session-Token |
 
 ### XSS 防护
 | 检查项 | 状态 | 说明 |
@@ -264,5 +264,5 @@ b3bb759 fix: 修复 main.js 正则双反斜杠导致 token 匹配失败
 
 **审计结论：** ✅ 可以发布
 
-**审计人签名：** Hermes (工程师节点)  
+**审计人签名：** Vermes (工程师节点)  
 **审计时间：** 2026-06-06 17:54

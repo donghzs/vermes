@@ -84,7 +84,7 @@
 ### P1-5: HTML 页面中嵌入的 Session Token 可通过前端 JS 提取
 - **文件:** `src/stores/chat.js`
 - **行号:** 133-143 (`fetchToken()`)
-- **风险描述:** `fetchToken()` 请求首页 HTML 并用正则提取 `window.__HERMES_SESSION_TOKEN__` 或 `window.__OPENCLAW_SESSION_KEY__`。该 token 随后通过 `api.setToken()` 存储并在 `X-Hermes-Session-Token` 请求头中发送。如果攻击者可以读取服务器 HTML（通过 XSS 或 MitM），就可以窃取该 token。
+- **风险描述:** `fetchToken()` 请求首页 HTML 并用正则提取 `window.__vermes_SESSION_TOKEN__` 或 `window.__OPENCLAW_SESSION_KEY__`。该 token 随后通过 `api.setToken()` 存储并在 `X-Vermes-Session-Token` 请求头中发送。如果攻击者可以读取服务器 HTML（通过 XSS 或 MitM），就可以窃取该 token。
 - **修复建议:** 考虑使用更安全的 token 交换机制，如短期 token + refresh token，或通过 `meta` 标签的 `http-equiv` CSP 限制。
 
 ### P1-6: console.error 中输出完整错误对象
@@ -112,7 +112,7 @@
 ### P2-3: stopGeneration 中 token 通过 URL 查询参数发送
 - **文件:** `src/stores/chat.js`
 - **行号:** 571-578
-- **风险描述:** `stopGeneration()` 函数从 localStorage 读取 token 并放在 `X-Hermes-Session-Token` 请求头中发送到 `/api/stop-generation`。尽管是本地环回地址，token 在网络层仍然可见。
+- **风险描述:** `stopGeneration()` 函数从 localStorage 读取 token 并放在 `X-Vermes-Session-Token` 请求头中发送到 `/api/stop-generation`。尽管是本地环回地址，token 在网络层仍然可见。
 - **修复建议:** 安全性可接受（本地网络），但建议使用服务端 session 验证替代每次请求都携带完整 token。
 
 ### P2-4: markdown-it 配置允许链接自动转换为可点击链接

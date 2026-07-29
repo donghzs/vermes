@@ -1,6 +1,6 @@
-# Hermes Agent — Web UI
+# Vermes Agent — Web UI
 
-Browser-based dashboard for managing Hermes Agent configuration, API keys, and monitoring active sessions.
+Browser-based dashboard for managing Vermes Agent configuration, API keys, and monitoring active sessions.
 
 ## Stack
 

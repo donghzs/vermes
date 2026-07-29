@@ -1,40 +1,40 @@
 ---
 sidebar_position: 9
 title: "Personality & SOUL.md"
-description: "Customize Hermes Agent's personality with a global SOUL.md, built-in personalities, and custom persona definitions"
+description: "Customize Vermes Agent's personality with a global SOUL.md, built-in personalities, and custom persona definitions"
 ---
 
 # Personality & SOUL.md
 
-Hermes Agent's personality is fully customizable. `SOUL.md` is the **primary identity** — it's the first thing in the system prompt and defines who the agent is.
+Vermes Agent's personality is fully customizable. `SOUL.md` is the **primary identity** — it's the first thing in the system prompt and defines who the agent is.
 
-- `SOUL.md` — a durable persona file that lives in `HERMES_HOME` and serves as the agent's identity (slot #1 in the system prompt)
+- `SOUL.md` — a durable persona file that lives in `VERMES_HOME` and serves as the agent's identity (slot #1 in the system prompt)
 - built-in or custom `/personality` presets — session-level system-prompt overlays
 
-If you want to change who Hermes is — or replace it with an entirely different agent persona — edit `SOUL.md`.
+If you want to change who Vermes is — or replace it with an entirely different agent persona — edit `SOUL.md`.
 
 ## How SOUL.md works now
 
-Hermes now seeds a default `SOUL.md` automatically in:
+Vermes now seeds a default `SOUL.md` automatically in:
 
 ```text
-~/.hermes/SOUL.md
+~/.vermes/SOUL.md
 ```
 
-More precisely, it uses the current instance's `HERMES_HOME`, so if you run Hermes with a custom home directory, it will use:
+More precisely, it uses the current instance's `VERMES_HOME`, so if you run Vermes with a custom home directory, it will use:
 
 ```text
-$HERMES_HOME/SOUL.md
+$VERMES_HOME/SOUL.md
 ```
 
 ### Important behavior
 
 - **SOUL.md is the agent's primary identity.** It occupies slot #1 in the system prompt, replacing the hardcoded default identity.
-- Hermes creates a starter `SOUL.md` automatically if one does not exist yet
+- Vermes creates a starter `SOUL.md` automatically if one does not exist yet
 - Existing user `SOUL.md` files are never overwritten
-- Hermes loads `SOUL.md` only from `HERMES_HOME`
-- Hermes does not look in the current working directory for `SOUL.md`
-- If `SOUL.md` exists but is empty, or cannot be loaded, Hermes falls back to a built-in default identity
+- Vermes loads `SOUL.md` only from `VERMES_HOME`
+- Vermes does not look in the current working directory for `SOUL.md`
+- If `SOUL.md` exists but is empty, or cannot be loaded, Vermes falls back to a built-in default identity
 - If `SOUL.md` has content, that content is injected verbatim after security scanning and truncation
 - SOUL.md is **not** duplicated in the context files section — it appears only once, as the identity
 
@@ -44,23 +44,23 @@ That makes `SOUL.md` a true per-user or per-instance identity, not just an addit
 
 This keeps personality predictable.
 
-If Hermes loaded `SOUL.md` from whatever directory you happened to launch it in, your personality could change unexpectedly between projects. By loading only from `HERMES_HOME`, the personality belongs to the Hermes instance itself.
+If Vermes loaded `SOUL.md` from whatever directory you happened to launch it in, your personality could change unexpectedly between projects. By loading only from `VERMES_HOME`, the personality belongs to the Vermes instance itself.
 
 That also makes it easier to teach users:
-- "Edit `~/.hermes/SOUL.md` to change Hermes' default personality."
+- "Edit `~/.vermes/SOUL.md` to change Vermes' default personality."
 
 ## Where to edit it
 
 For most users:
 
 ```bash
-~/.hermes/SOUL.md
+~/.vermes/SOUL.md
 ```
 
 If you use a custom home:
 
 ```bash
-$HERMES_HOME/SOUL.md
+$VERMES_HOME/SOUL.md
 ```
 
 ## What should go in SOUL.md?
@@ -71,7 +71,7 @@ Use it for durable voice and personality guidance, such as:
 - level of directness
 - default interaction style
 - what to avoid stylistically
-- how Hermes should handle uncertainty, disagreement, or ambiguity
+- how Vermes should handle uncertainty, disagreement, or ambiguity
 
 Use it less for:
 - one-off project instructions
@@ -116,7 +116,7 @@ You optimize for truth, clarity, and usefulness over politeness theater.
 - Treat edge cases as part of the design, not cleanup
 ```
 
-## What Hermes injects into the prompt
+## What Vermes injects into the prompt
 
 `SOUL.md` content goes directly into slot #1 of the system prompt — the agent identity position. No wrapper language is added around it.
 
@@ -124,7 +124,7 @@ The content goes through:
 - prompt-injection scanning
 - truncation if it is too large
 
-If the file is empty, whitespace-only, or cannot be read, Hermes falls back to a built-in default identity ("You are Hermes Agent, an intelligent AI assistant created by Nous Research..."). This fallback also applies when `skip_context_files` is set (e.g., in subagent/delegation contexts).
+If the file is empty, whitespace-only, or cannot be read, Vermes falls back to a built-in default identity ("You are Vermes Agent, an intelligent AI assistant created by Nous Research..."). This fallback also applies when `skip_context_files` is set (e.g., in subagent/delegation contexts).
 
 ## Security scanning
 
@@ -172,7 +172,7 @@ Examples:
 
 ## Built-in personalities
 
-Hermes ships with built-in personalities you can switch to with `/personality`.
+Vermes ships with built-in personalities you can switch to with `/personality`.
 
 | Name | Description |
 |------|-------------|
@@ -183,7 +183,7 @@ Hermes ships with built-in personalities you can switch to with `/personality`.
 | **teacher** | Patient educator with clear examples |
 | **kawaii** | Cute expressions, sparkles, and enthusiasm ★ |
 | **catgirl** | Neko-chan with cat-like expressions, nya~ |
-| **pirate** | Captain Hermes, tech-savvy buccaneer |
+| **pirate** | Captain Vermes, tech-savvy buccaneer |
 | **shakespeare** | Bardic prose with dramatic flair |
 | **surfer** | Totally chill bro vibes |
 | **noir** | Hard-boiled detective narration |
@@ -207,11 +207,11 @@ Hermes ships with built-in personalities you can switch to with `/personality`.
 /personality teacher
 ```
 
-These are convenient overlays, but your global `SOUL.md` still gives Hermes its persistent default personality unless the overlay meaningfully changes it.
+These are convenient overlays, but your global `SOUL.md` still gives Vermes its persistent default personality unless the overlay meaningfully changes it.
 
 ## Custom personalities in config
 
-You can also define named custom personalities in `~/.hermes/config.yaml` under `agent.personalities`.
+You can also define named custom personalities in `~/.vermes/config.yaml` under `agent.personalities`.
 
 ```yaml
 agent:
@@ -231,7 +231,7 @@ Then switch to it with:
 
 A strong default setup is:
 
-1. Keep a thoughtful global `SOUL.md` in `~/.hermes/SOUL.md`
+1. Keep a thoughtful global `SOUL.md` in `~/.vermes/SOUL.md`
 2. Put project instructions in `AGENTS.md`
 3. Use `/personality` only when you want a temporary mode shift
 
@@ -259,13 +259,13 @@ At a high level, the prompt stack includes:
 - [Context Files](/docs/user-guide/features/context-files)
 - [Configuration](/docs/user-guide/configuration)
 - [Tips & Best Practices](/docs/guides/tips)
-- [SOUL.md Guide](/docs/guides/use-soul-with-hermes)
+- [SOUL.md Guide](/docs/guides/use-soul-with-vermes)
 
 ## CLI appearance vs conversational personality
 
 Conversational personality and CLI appearance are separate:
 
-- `SOUL.md`, `agent.system_prompt`, and `/personality` affect how Hermes speaks
-- `display.skin` and `/skin` affect how Hermes looks in the terminal
+- `SOUL.md`, `agent.system_prompt`, and `/personality` affect how Vermes speaks
+- `display.skin` and `/skin` affect how Vermes looks in the terminal
 
 For terminal appearance, see [Skins & Themes](./skins.md).

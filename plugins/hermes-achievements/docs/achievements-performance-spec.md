@@ -1,7 +1,7 @@
-# Hermes Achievements Performance Spec (Post-Hackathon)
+# Vermes Achievements Performance Spec (Post-Hackathon)
 
 Status: Draft (no code changes yet)
-Owner: hermes-achievements plugin
+Owner: vermes-achievements plugin
 Scope: `dashboard/plugin_api.py` + `dashboard/dist/index.js` request behavior
 Decision: **Drop `/overview` and top-banner slots**; keep only Achievements tab data path.
 
@@ -40,7 +40,7 @@ Non-goals (phase 1):
 
 ## 3) Endpoint Semantics (Target)
 
-### `GET /api/plugins/hermes-achievements/achievements`
+### `GET /api/plugins/vermes-achievements/achievements`
 Single source endpoint for Achievements UI.
 Returns full payload used by the tab:
 - `achievements`
@@ -50,15 +50,15 @@ Returns full payload used by the tab:
 - `total_count`
 - `error`
 
-### `POST /api/plugins/hermes-achievements/rescan` (optional)
+### `POST /api/plugins/vermes-achievements/rescan` (optional)
 Manual refresh trigger.
 Prefer async trigger + immediate status response.
 
-### `GET /api/plugins/hermes-achievements/scan-status` (optional new)
+### `GET /api/plugins/vermes-achievements/scan-status` (optional new)
 Reports scan state for UX/ops.
 
 ### Removed
-- `GET /api/plugins/hermes-achievements/overview`
+- `GET /api/plugins/vermes-achievements/overview`
 
 ---
 
@@ -96,12 +96,12 @@ Rules:
 - TTL: 60–180 seconds (configurable).
 - Single-flight dedupe for scan requests.
 - Persist plugin data under:
-  - `~/.hermes/plugins/hermes-achievements/scan_snapshot.json`
+  - `~/.vermes/plugins/vermes-achievements/scan_snapshot.json`
 
 ### Phase 2
 - Incremental scan checkpoints with per-session fingerprints.
 - Persist checkpoint data under:
-  - `~/.hermes/plugins/hermes-achievements/scan_checkpoint.json`
+  - `~/.vermes/plugins/vermes-achievements/scan_checkpoint.json`
 - Checkpoint stores, per session:
   - `session_id`
   - fingerprint (`updated_at`, message_count, or hash)
@@ -166,7 +166,7 @@ Expose minimal diagnostics in `/scan-status`.
 ## 12) Persistence Files (Explicit)
 
 Plugin state directory:
-- `~/.hermes/plugins/hermes-achievements/`
+- `~/.vermes/plugins/vermes-achievements/`
 
 Files:
 - `state.json` (existing): unlock tracking

@@ -6,7 +6,7 @@ description: "Generate agent trajectories at scale — parallel processing, chec
 
 # Batch Processing
 
-Batch processing lets you run the Hermes agent across hundreds or thousands of prompts in parallel, generating structured trajectory data. This is primarily used for **training data generation** — producing ShareGPT-format trajectories with tool usage statistics that can be used for fine-tuning or evaluation.
+Batch processing lets you run the Vermes agent across hundreds or thousands of prompts in parallel, generating structured trajectory data. This is primarily used for **training data generation** — producing ShareGPT-format trajectories with tool usage statistics that can be used for fine-tuning or evaluation.
 
 ## Overview
 

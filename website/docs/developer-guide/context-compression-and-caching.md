@@ -1,6 +1,6 @@
 # Context Compression and Caching
 
-Hermes Agent uses a dual compression system and Anthropic prompt caching to
+Vermes Agent uses a dual compression system and Anthropic prompt caching to
 manage context window usage efficiently across long conversations.
 
 Source files: `agent/context_engine.py` (ABC), `agent/context_compressor.py` (default engine),
@@ -30,13 +30,13 @@ Selection is config-driven via `context.engine` in `config.yaml`. The resolution
 
 Plugin engines are **never auto-activated** — the user must explicitly set `context.engine` to the plugin's name. The default `"compressor"` always uses the built-in.
 
-Configure via `hermes plugins` → Provider Plugins → Context Engine, or edit `config.yaml` directly.
+Configure via `vermes plugins` → Provider Plugins → Context Engine, or edit `config.yaml` directly.
 
 For building a context engine plugin, see [Context Engine Plugins](/docs/developer-guide/context-engine-plugin).
 
 ## Dual Compression System
 
-Hermes has two separate compression layers that operate independently:
+Vermes has two separate compression layers that operate independently:
 
 ```
                      ┌──────────────────────────┐
@@ -278,7 +278,7 @@ conversation prefix. Uses Anthropic's `cache_control` breakpoints.
 
 ### Strategy: system_and_3
 
-Anthropic allows a maximum of 4 `cache_control` breakpoints per request. Hermes
+Anthropic allows a maximum of 4 `cache_control` breakpoints per request. Vermes
 uses the "system_and_3" strategy:
 
 ```

@@ -17,8 +17,8 @@ The `x_search` tool lets the agent search X (Twitter) posts, profiles, and threa
 
 | Credential | Source | Setup |
 |------------|--------|-------|
-| **SuperGrok OAuth** (preferred) | Browser login at `accounts.x.ai`, refreshed automatically | `hermes auth add xai-oauth` — see [xAI Grok OAuth (SuperGrok Subscription)](../../guides/xai-grok-oauth.md) |
-| **`XAI_API_KEY`** | Paid xAI API key | Set in `~/.hermes/.env` |
+| **SuperGrok OAuth** (preferred) | Browser login at `accounts.x.ai`, refreshed automatically | `vermes auth add xai-oauth` — see [xAI Grok OAuth (SuperGrok Subscription)](../../guides/xai-grok-oauth.md) |
+| **`XAI_API_KEY`** | Paid xAI API key | Set in `~/.vermes/.env` |
 
 Both hit the same endpoint with the same payload — the only difference is the bearer token. **When both are configured, SuperGrok OAuth wins** so x_search runs against your subscription quota instead of paid API spend.
 
@@ -26,10 +26,10 @@ The tool's `check_fn` runs the xAI credential resolver every time the model's to
 
 ## Enabling the tool
 
-Auto-enables when xAI credentials (OAuth token or `XAI_API_KEY`) are present. Disable explicitly via `hermes tools` → Search → x_search if you don't want this.
+Auto-enables when xAI credentials (OAuth token or `XAI_API_KEY`) are present. Disable explicitly via `vermes tools` → Search → x_search if you don't want this.
 
 ```bash
-hermes tools
+vermes tools
 # → 🐦 X (Twitter) Search   (press space to toggle on)
 ```
 
@@ -43,7 +43,7 @@ Either choice satisfies the gating. You can pick whichever credentials you alrea
 ## Configuration
 
 ```yaml
-# ~/.hermes/config.yaml
+# ~/.vermes/config.yaml
 x_search:
   # xAI model used for the Responses call.
   # grok-4.20-reasoning is the recommended default; any Grok model
@@ -97,7 +97,7 @@ The agent will:
 
 ### "No xAI credentials available"
 
-The tool surfaces this when both auth paths fail. Either set `XAI_API_KEY` in `~/.hermes/.env` or run `hermes auth add xai-oauth` and complete the browser login. Then restart your session so the agent re-reads the tool registry.
+The tool surfaces this when both auth paths fail. Either set `XAI_API_KEY` in `~/.vermes/.env` or run `vermes auth add xai-oauth` and complete the browser login. Then restart your session so the agent re-reads the tool registry.
 
 ### "`x_search` is not enabled for this model"
 
@@ -107,8 +107,8 @@ The configured `x_search.model` doesn't have access to the server-side `x_search
 
 Two possible causes:
 
-1. **Toolset not enabled.** Run `hermes tools` and confirm `🐦 X (Twitter) Search` is checked.
-2. **No xAI credentials.** The check_fn returns False, so the schema stays hidden. Run `hermes auth status` to confirm xai-oauth login state, and check that `XAI_API_KEY` is set (if you're using the API-key path).
+1. **Toolset not enabled.** Run `vermes tools` and confirm `🐦 X (Twitter) Search` is checked.
+2. **No xAI credentials.** The check_fn returns False, so the schema stays hidden. Run `vermes auth status` to confirm xai-oauth login state, and check that `XAI_API_KEY` is set (if you're using the API-key path).
 
 ## See Also
 

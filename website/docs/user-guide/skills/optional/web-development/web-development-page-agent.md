@@ -8,16 +8,16 @@ description: "Embed alibaba/page-agent into your own web application — a pure-
 
 # Page Agent
 
-Embed alibaba/page-agent into your own web application — a pure-JavaScript in-page GUI agent that ships as a single &lt;script> tag or npm package and lets end-users of your site drive the UI with natural language ("click login, fill username as John"). No Python, no headless browser, no extension required. Use this skill when the user is a web developer who wants to add an AI copilot to their SaaS / admin panel / B2B tool, make a legacy web app accessible via natural language, or evaluate page-agent against a local (Ollama) or cloud (Qwen / OpenAI / OpenRouter) LLM. NOT for server-side browser automation — point those users to Hermes' built-in browser tool instead.
+Embed alibaba/page-agent into your own web application — a pure-JavaScript in-page GUI agent that ships as a single &lt;script> tag or npm package and lets end-users of your site drive the UI with natural language ("click login, fill username as John"). No Python, no headless browser, no extension required. Use this skill when the user is a web developer who wants to add an AI copilot to their SaaS / admin panel / B2B tool, make a legacy web app accessible via natural language, or evaluate page-agent against a local (Ollama) or cloud (Qwen / OpenAI / OpenRouter) LLM. NOT for server-side browser automation — point those users to Vermes' built-in browser tool instead.
 
 ## Skill metadata
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/web-development/page-agent` |
+| Source | Optional — install with `vermes skills install official/web-development/page-agent` |
 | Path | `optional-skills/web-development/page-agent` |
 | Version | `1.0.0` |
-| Author | Hermes Agent |
+| Author | Vermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `web`, `javascript`, `agent`, `browser`, `gui`, `alibaba`, `embed`, `copilot`, `saas` |
@@ -25,7 +25,7 @@ Embed alibaba/page-agent into your own web application — a pure-JavaScript in-
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # page-agent
@@ -44,7 +44,7 @@ Load this skill when a user wants to:
 
 ## When NOT to use this skill
 
-- User wants **Hermes itself to drive a browser** → use Hermes' built-in browser tool (Browserbase / Camofox). page-agent is the *opposite* direction.
+- User wants **Vermes itself to drive a browser** → use Vermes' built-in browser tool (Browserbase / Camofox). page-agent is the *opposite* direction.
 - User wants **cross-tab automation without embedding** → use Playwright, browser-use, or the page-agent Chrome extension
 - User needs **visual grounding / screenshots** → page-agent is text-DOM only; use a multimodal browser agent instead
 

@@ -14,7 +14,7 @@ Control LLM output with regex and grammars, guarantee valid JSON/XML/code genera
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/mlops/guidance` |
+| Source | Optional — install with `vermes skills install official/mlops/guidance` |
 | Path | `optional-skills/mlops/guidance` |
 | Version | `1.0.0` |
 | Author | Orchestra Research |
@@ -26,7 +26,7 @@ Control LLM output with regex and grammars, guarantee valid JSON/XML/code genera
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Guidance: Constrained LLM Generation

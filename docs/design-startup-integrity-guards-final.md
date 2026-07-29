@@ -43,8 +43,8 @@ Electron main (electron/main.js)
  ├─ L224-231 splash 五候选路径探测（已部分完成）             ← G3
  └─ runInitialization → startBackend → /health 轮询 15s(L102) ← G4
 Python 后端
- ├─ vermes_constants.py:72-104 get_hermes_home：profile 错配仅 stderr 一次性警告（桌面不可见）← G5b
- ├─ hermes_state.py SessionDB.__init__：文件不存在→静默新建空库；打开失败→_set_last_init_error+raise ← G1/G5a
+ ├─ vermes_constants.py:72-104 get_vermes_home：profile 错配仅 stderr 一次性警告（桌面不可见）← G5b
+ ├─ VERMES_state.py SessionDB.__init__：文件不存在→静默新建空库；打开失败→_set_last_init_error+raise ← G1/G5a
  └─ /health 端点【审计修正 A】真身在 vermes_cli/web_server.py:2753（@app.get("/health")），
     不在 status.py——status.py 是 /api/status 富状态端点（其 L218 会实例化 SessionDB()）。
     G4 的 integrity 字段应加在 web_server.py:2753 的 /health 上（main.js L102 轮询的就是它）。← G4/G5 输出口
@@ -88,16 +88,16 @@ Python 后端
 
 **探测时机**：web_server 与 gateway 进程启动早期各跑一次（非 per-request）。
 
-**新函数 `hermes_state.startup_integrity_probe() -> dict`**（hermes_state.py 新增）：
+**新函数 `VERMES_state.startup_integrity_probe() -> dict`**（VERMES_state.py 新增）：
 1. `db_path.exists() & size>0 & 打不开/quick_check≠ok` → **corrupt**；
 2. 文件不存在但 `~/.vermes/` 下有历史痕迹（`messages/*.json`、`sessions/`、`config.yaml`）→ **missing_with_profile**；
 3. 文件不存在且目录近空 → **fresh_install**（合法，静默新建）；
 4. 正常 → **ok**。
 
-**【审计修正 B】目录口径必须动态取自 `get_hermes_home()`，禁止硬编码 `~/.vermes`**：
-本机实测同时存在 `~/.hermes/state.db`（508MB，历史遗留）与 `~/.vermes/state.db`（82MB，现役）。
-`get_hermes_home()` 现默认 `~/.vermes`，但 HERMES_HOME env / profile 模式可改指向。probe 的
-db_path 与"痕迹目录"必须同源于 `get_hermes_home()`，否则 profile/env 用户会被误判 fresh_install
+**【审计修正 B】目录口径必须动态取自 `get_vermes_home()`，禁止硬编码 `~/.vermes`**：
+本机实测同时存在 `~/.vermes/state.db`（508MB，历史遗留）与 `~/.vermes/state.db`（82MB，现役）。
+`get_vermes_home()` 现默认 `~/.vermes`，但 VERMES_HOME env / profile 模式可改指向。probe 的
+db_path 与"痕迹目录"必须同源于 `get_vermes_home()`，否则 profile/env 用户会被误判 fresh_install
 ——这恰是 G1 要防的"探测目标本身错位"事故。痕迹清单同时加 `state.db-wal`/`state.db-shm`
 （主库被删但 WAL 残留 = 强 missing_with_profile 信号）。
 
@@ -214,13 +214,13 @@ db_corrupt / missing_with_profile 发生后，系统还剩什么能力？三方�
 | Commit | 内容 | 量级 | 文件 |
 |---|---|---|---|
 | **c1 (P0)** | G0/G2 版本戳门控 + IDB 单库自愈（修活 bug） | main.js ~30 + chat-storage ~20 | `electron/main.js:210`、`frontend/src/stores/chat-storage.js` |
-| **c2 (P0)** | G1 哨兵（含修正 B/C/D：get_hermes_home 同源 + probe 先行 + lockdown）+ /health integrity 字段 + G5 标志 | hermes_state ~80 + web_server ~15 | `hermes_state.py`、`vermes_cli/web_server.py:2753`、`vermes_constants.py` |
+| **c2 (P0)** | G1 哨兵（含修正 B/C/D：get_vermes_home 同源 + probe 先行 + lockdown）+ /health integrity 字段 + G5 标志 | VERMES_state ~80 + web_server ~15 | `VERMES_state.py`、`vermes_cli/web_server.py:2753`、`vermes_constants.py` |
 | **c3 (P1)** | G4 splash 诊断分级 + db_corrupt 留 splash + G5 横幅 | main.js/splash ~40 + 前端组件 | `electron/main.js:102,146`、`splash.html`、前端横幅组件 |
 | **c4 (P2)** | G3 resolveResource 重构 | 纯重构 | `electron/main.js` |
 | **c5 (P1, 独立 PR)** | G6 图片服务端落盘 | 前后端各 ~40 | `vermes_cli/web_server.py` + `chat-storage.js` |
 
 **测试要点**：
-- G1：pytest 构造坏库/空目录/带痕迹目录三态断言 probe 返回；**必须**跑 `test_topic_mode_schema_is_not_auto_migrated_on_open` 证明哨兵只读；新增断言：①probe 自身（mode=ro）不落任何新文件；②lockdown 下 `SessionDB()` raise 且磁盘无 0 字节新库（修正 C/D 回归）；③HERMES_HOME 指向自定义目录时 probe 探测同一目录（修正 B 回归）。
+- G1：pytest 构造坏库/空目录/带痕迹目录三态断言 probe 返回；**必须**跑 `test_topic_mode_schema_is_not_auto_migrated_on_open` 证明哨兵只读；新增断言：①probe 自身（mode=ro）不落任何新文件；②lockdown 下 `SessionDB()` raise 且磁盘无 0 字节新库（修正 C/D 回归）；③vermes_HOME 指向自定义目录时 probe 探测同一目录（修正 B 回归）。
 - G0/G2：两次启动模拟（版本戳同/异）断言 `clearStorageData` 调用与否 + 图片库不被清。
 - G4：mock /health 四种 integrity 状态，断言 splash 分流正确（corrupt→阻断，mismatch→横幅）。
 - 回归：clearStorageData 自愈、splash 显示、后端健康检查仍正常。
@@ -244,7 +244,7 @@ db_corrupt / missing_with_profile 发生后，系统还剩什么能力？三方�
 |---|---|
 | 升级前验证 active workspace 存在性 | G1（四态 probe） |
 | 防止升级后误建空库覆盖 | G1（missing_with_profile→报错不新建） |
-| 卸载保留 profile | 天然保留（不删 `~/.hermes`） |
+| 卸载保留 profile | 天然保留（不删 `~/.vermes`） |
 | 清理动作明示删什么 | G2（版本戳门控，清什么显式） |
 
 **差异（我们更严）**：G0（正在发生的图片丢失，它没提）、G1 四态（它两态）、G4 db_corrupt 零容忍阻断（它默认进主界面）、G5 profile 错配可见（它未覆盖）、G6 图片单点消除（它未覆盖）。

@@ -70,7 +70,7 @@
 | 检查项 | 结果 | 备注 |
 |--------|------|------|
 | CRUD 全部实现 | ✅ | 后端 session.py + 前端 chat-session.js |
-| state.db 路径 | ✅ | `~/.hermes/state.db` (storage.py:24) |
+| state.db 路径 | ✅ | `~/.vermes/state.db` (storage.py:24) |
 | lastActive 字段 | ✅ | 前端每发消息更新 (chat.js:307-308) |
 | 侧边栏排序分组 | ✅ | 按 lastActive 时间线分组 |
 | FTS5 搜索 | ✅ | 受 session token 保护 |

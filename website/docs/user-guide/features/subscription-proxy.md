@@ -8,7 +8,7 @@ description: "Use your Nous Portal subscription (or other OAuth provider) as an 
 
 The subscription proxy is a local HTTP server that lets external apps —
 OpenViking, Karakeep, Open WebUI, anything that speaks OpenAI-compatible
-chat completions — use your Hermes-managed provider subscription as their
+chat completions — use your Vermes-managed provider subscription as their
 LLM endpoint. The proxy attaches the right credentials (refreshing them
 automatically) so the app never needs a static API key.
 
@@ -17,7 +17,7 @@ This is different from the [API server](./api-server.md):
 | | API server | Subscription proxy |
 |---|---|---|
 | What it serves | Your agent (full toolset, memory, skills) | Raw model inference |
-| Use case | "Use Hermes as a chat backend" | "Use my Portal sub from another app" |
+| Use case | "Use Vermes as a chat backend" | "Use my Portal sub from another app" |
 | Auth | Your `API_SERVER_KEY` | Any bearer (proxy attaches the real one) |
 | Tool calls | Yes — the agent runs tools | No — passthrough only |
 
@@ -29,21 +29,21 @@ proxy when you just want **the model** through your subscription.
 ### 1. Log into your provider (one-time)
 
 ```bash
-hermes login nous
+vermes login nous
 ```
 
-This opens your browser for the Nous Portal OAuth flow. Hermes stores
-the refresh token in `~/.hermes/auth.json` — the same place all Hermes
+This opens your browser for the Nous Portal OAuth flow. Vermes stores
+the refresh token in `~/.vermes/auth.json` — the same place all Vermes
 provider logins live.
 
 ### 2. Start the proxy
 
 ```bash
-hermes proxy start
+vermes proxy start
 ```
 
 ```
-Starting Hermes proxy for Nous Portal
+Starting Vermes proxy for Nous Portal
   Listening on:  http://127.0.0.1:8645/v1
   Forwarding to: (resolved per-request from your subscription)
   Use any bearer token in the client — the proxy attaches your real credential.
@@ -59,7 +59,7 @@ Any OpenAI-compatible app config takes the same triple:
 ```
 Base URL:   http://127.0.0.1:8645/v1
 API key:    anything (e.g. "sk-unused")
-Model:      Hermes-4-70B    # or Hermes-4.3-36B, Hermes-4-405B
+Model:      Vermes-4-70B    # or Vermes-4.3-36B, Vermes-4-405B
 ```
 
 The proxy ignores the `Authorization` header from your app and attaches
@@ -69,7 +69,7 @@ automatically when the bearer approaches expiry.
 ## Available providers
 
 ```bash
-hermes proxy providers
+vermes proxy providers
 ```
 
 Currently shipped: `nous` (Nous Portal). More OAuth providers can be
@@ -79,19 +79,19 @@ added by implementing the `UpstreamAdapter` interface in
 ## Check status
 
 ```bash
-hermes proxy status
+vermes proxy status
 ```
 
 ```
-Hermes proxy upstream adapters
+Vermes proxy upstream adapters
 
   [nous    ] Nous Portal — ready (bearer expires 2026-05-15T06:43:21Z)
 ```
 
-If you see `not logged in`, run `hermes login nous`. If you see
+If you see `not logged in`, run `vermes login nous`. If you see
 `credentials need attention`, your refresh token was revoked (rare —
 happens if you signed out from the Portal web UI) — just re-run
-`hermes login nous`.
+`vermes login nous`.
 
 ## Allowed paths
 
@@ -122,7 +122,7 @@ Edit `~/.openviking/ov.conf`:
 {
   "vlm": {
     "provider": "openai",
-    "model": "Hermes-4-70B",
+    "model": "Vermes-4-70B",
     "api_base": "http://127.0.0.1:8645/v1",
     "api_key": "unused-proxy-attaches-real-creds"
   }
@@ -133,7 +133,7 @@ Then start your proxy in a terminal alongside `openviking-server`:
 
 ```bash
 # Terminal 1
-hermes proxy start
+vermes proxy start
 
 # Terminal 2
 openviking-server
@@ -142,7 +142,7 @@ openviking-server
 OpenViking's VLM calls now flow through your Portal subscription. The
 embedding model side still needs its own provider — Portal does serve
 `/v1/embeddings` but the model selection depends on what your tier
-supports; check `portal.nousresearch.com/models`.
+supports; check `portal.donghzs.com/models`.
 
 ## Configuring Karakeep (or any bookmark/summarizer app)
 
@@ -153,7 +153,7 @@ bookmark summarization. In its config:
 # Karakeep .env
 OPENAI_API_BASE_URL=http://127.0.0.1:8645/v1
 OPENAI_API_KEY=any-non-empty-string
-INFERENCE_TEXT_MODEL=Hermes-4-70B
+INFERENCE_TEXT_MODEL=Vermes-4-70B
 ```
 
 Same pattern works for Open WebUI, LobeChat, NextChat, or any other
@@ -165,7 +165,7 @@ By default the proxy binds `127.0.0.1` (localhost only). To let other
 machines on your network use it:
 
 ```bash
-hermes proxy start --host 0.0.0.0 --port 8645
+vermes proxy start --host 0.0.0.0 --port 8645
 ```
 
 ⚠ **Be aware:** anyone on your network can now use your Portal
@@ -178,7 +178,7 @@ this beyond your trusted network.
 Your Portal tier's RPM/TPM limits apply across the whole proxy. The
 proxy doesn't fan out or pool — it's a single bearer with your full
 subscription quota. Monitor usage at
-[portal.nousresearch.com](https://portal.nousresearch.com).
+[portal.donghzs.com](https://portal.donghzs.com).
 
 ## Architecture
 

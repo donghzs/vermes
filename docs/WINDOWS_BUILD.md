@@ -210,7 +210,7 @@ curl -s https://vbit.top/vermes/version.json | python3 -c "import json,sys;print
 | **5** | Windows 机有系统代理，`WebClient.DownloadFile` 下到 9628 字节（vbit 首页）而非源码 tar | WebClient 即使 `Proxy=$null` 仍走系统代理 | 用 `curl.exe --noproxy *` 直连 Mac HTTP server（已验证 370MB 完整下载） |
 | **6** | 之前从 Mac 上 `electron-builder --win` 交叉打包，产物 583MB（后端被 `files:["dist/**/*"]` 打进 app.asar 又 extraResources 复制一份） | files 配置把 `dist/vermes-backend` 也收进 asar，造成双份 | `files` 只列 `electron/main.js, splash.html, package.json`；后端只走 `extraResources` |
 | **7** | A11 IP 从 192.168.1.6（7/24）漂到 192.168.1.7（7/27，DHCP） | 局域网 DHCP 重分配 | **构建前先 ping/WinRM 探活确认 IP**，脚本参数化传入，不写死 |
-| **8** | Windows 中文路径/日志 GBK 乱码导致 Python 启动失败 | 旧版 bootstrap 未设 UTF-8 | 确保 `hermes_bootstrap.py` 在入口设置 `sys.stdout.reconfigure(encoding='utf-8')`（2.3.5 已含） |
+| **8** | Windows 中文路径/日志 GBK 乱码导致 Python 启动失败 | 旧版 bootstrap 未设 UTF-8 | 确保 `VERMES_bootstrap.py` 在入口设置 `sys.stdout.reconfigure(encoding='utf-8')`（2.3.5 已含） |
 | **9** | `main.js` 启动报 `Cannot find module 'electron-updater'` | autoUpdater 死代码 require 了不在 dependencies 的包 | 已删除 main.js 中 autoUpdater 整块（require + 事件 + IPC handler）；实际更新走前端 version.json 比对 + 后端 /api/update/* |
 | **11** | Mac 端 `trigger-win-build.py` 全自动一条龙反复翻车：端口冲突、WinRM 残留进程叠加、HTTP 小文件传输间歇 0 字节、解压 Move 目录把 A11 搞乱 | WinRM 跨机调用脆弱 + A11 上进程无法被 Mac 端 pkill 干净 | **放弃全自动 trigger，改用 A11 本地 `git pull` + 跑 `build-win-ci.ps1`**（模式 A，见第 3 节）。脚本本身可靠，传输链路不可靠 |
 | **12** | PowerShell `2>NUL` 被当成设备重定向报错；`??` 运算符在 Windows PowerShell 5.1 不支持；emoji(`✅`)在 GBK 下损坏成 `??` 导致脚本语法错误 | Windows PowerShell 5.1 与 PS 7 差异 + GBK 编码 | 脚本一律：文件用 UTF-8 BOM；stderr 用 `2>$null`（PowerShell）或 `2>NUL`（cmd 内）；不用 emoji，用 `[OK]`/`[X]` 文本；外部命令用 `cmd /c` 包裹 |

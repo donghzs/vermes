@@ -1,20 +1,20 @@
 ---
-title: "Blender Mcp — Control Blender directly from Hermes via socket connection to the blender-mcp addon"
+title: "Blender Mcp — Control Blender directly from Vermes via socket connection to the blender-mcp addon"
 sidebar_label: "Blender Mcp"
-description: "Control Blender directly from Hermes via socket connection to the blender-mcp addon"
+description: "Control Blender directly from Vermes via socket connection to the blender-mcp addon"
 ---
 
 {/* This page is auto-generated from the skill's SKILL.md by website/scripts/generate-skill-docs.py. Edit the source SKILL.md, not this page. */}
 
 # Blender Mcp
 
-Control Blender directly from Hermes via socket connection to the blender-mcp addon. Create 3D objects, materials, animations, and run arbitrary Blender Python (bpy) code. Use when user wants to create or modify anything in Blender.
+Control Blender directly from Vermes via socket connection to the blender-mcp addon. Create 3D objects, materials, animations, and run arbitrary Blender Python (bpy) code. Use when user wants to create or modify anything in Blender.
 
 ## Skill metadata
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/creative/blender-mcp` |
+| Source | Optional — install with `vermes skills install official/creative/blender-mcp` |
 | Path | `optional-skills/creative/blender-mcp` |
 | Version | `1.0.0` |
 | Author | alireza78a |
@@ -23,12 +23,12 @@ Control Blender directly from Hermes via socket connection to the blender-mcp ad
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Blender MCP
 
-Control a running Blender instance from Hermes via socket on TCP port 9876.
+Control a running Blender instance from Vermes via socket on TCP port 9876.
 
 ## Setup (one-time)
 

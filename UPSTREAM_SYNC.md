@@ -1,11 +1,11 @@
-# UPSTREAM_SYNC.md — Vermes 与上游 Hermes Agent 同步策略
+# UPSTREAM_SYNC.md — Vermes 与上游 Vermes Agent 同步策略
 
 ## 仓库关系
 
 | 仓库 | remote | 角色 |
 |---|---|---|
 | `origin` | github.com/donghzs/vermes | Vermes 主仓库 |
-| `upstream` | github.com/NousResearch/hermes-agent | 官方 Hermes Agent |
+| `upstream` | github.com/donghzs/vermes | 官方 Vermes Agent |
 
 ## 版本线状态
 

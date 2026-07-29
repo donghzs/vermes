@@ -21,7 +21,7 @@ Play Pokemon via headless emulator + RAM reads.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Pokemon Player
@@ -37,7 +37,7 @@ Play Pokemon games via headless emulation using the `pokemon-agent` package.
 ## Startup Procedure
 
 ### 1. First-time setup (clone, venv, install)
-The repo is NousResearch/pokemon-agent on GitHub. Clone it, then
+The repo is donghzs/pokemon-agent on GitHub. Clone it, then
 set up a Python 3.10+ virtual environment. Use uv (preferred for speed)
 to create the venv and install the package in editable mode with the
 pyboy extra. If uv is not available, fall back to python3 -m venv + pip.

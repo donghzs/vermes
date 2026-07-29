@@ -115,7 +115,7 @@ optional-skills/mcp/fastmcp/templates/file_processor.py
 optional-skills/mcp/mcporter/SKILL.md
 optional-skills/migration/DESCRIPTION.md
 optional-skills/migration/openclaw-migration/SKILL.md
-optional-skills/migration/openclaw-migration/scripts/openclaw_to_hermes.py
+optional-skills/migration/openclaw-migration/scripts/openclaw_to_vermes.py
 optional-skills/mlops/accelerate/SKILL.md
 optional-skills/mlops/accelerate/references/custom-plugins.md
 optional-skills/mlops/accelerate/references/megatron-integration.md
@@ -304,7 +304,7 @@ skills/apple/macos-computer-use/SKILL.md
 skills/autonomous-ai-agents/DESCRIPTION.md
 skills/autonomous-ai-agents/claude-code/SKILL.md
 skills/autonomous-ai-agents/codex/SKILL.md
-skills/autonomous-ai-agents/hermes-agent/SKILL.md
+skills/autonomous-ai-agents/vermes-agent/SKILL.md
 skills/autonomous-ai-agents/kanban-codex-lane/SKILL.md
 skills/autonomous-ai-agents/kanban-codex-lane/templates/pmb-codex-lane-prompt.md
 skills/autonomous-ai-agents/opencode/SKILL.md
@@ -819,7 +819,7 @@ skills/productivity/DESCRIPTION.md
 skills/productivity/airtable/SKILL.md
 skills/productivity/google-workspace/SKILL.md
 skills/productivity/google-workspace/references/gmail-search-syntax.md
-skills/productivity/google-workspace/scripts/_hermes_home.py
+skills/productivity/google-workspace/scripts/_vermes_home.py
 skills/productivity/google-workspace/scripts/google_api.py
 skills/productivity/google-workspace/scripts/gws_bridge.py
 skills/productivity/google-workspace/scripts/setup.py
@@ -969,8 +969,8 @@ skills/smart-home/DESCRIPTION.md
 skills/smart-home/openhue/SKILL.md
 skills/social-media/DESCRIPTION.md
 skills/social-media/xurl/SKILL.md
-skills/software-development/debugging-hermes-tui-commands/SKILL.md
-skills/software-development/hermes-agent-skill-authoring/SKILL.md
+skills/software-development/debugging-vermes-tui-commands/SKILL.md
+skills/software-development/vermes-agent-skill-authoring/SKILL.md
 skills/software-development/node-inspect-debugger/SKILL.md
 skills/software-development/plan/SKILL.md
 skills/software-development/python-debugpy/SKILL.md

@@ -6,7 +6,7 @@ description: "When and how to use subagent delegation — patterns for parallel 
 
 # Delegation & Parallel Work
 
-Hermes can spawn isolated child agents to work on tasks in parallel. Each subagent gets its own conversation, terminal session, and toolset. Only the final summary comes back — intermediate tool calls never enter your context window.
+Vermes can spawn isolated child agents to work on tasks in parallel. Each subagent gets its own conversation, terminal session, and toolset. Only the final summary comes back — intermediate tool calls never enter your context window.
 
 For the full feature reference, see [Subagent Delegation](/docs/user-guide/features/delegation).
 
@@ -42,7 +42,7 @@ Research these three topics in parallel:
 Focus on recent developments and key players.
 ```
 
-Behind the scenes, Hermes uses:
+Behind the scenes, Vermes uses:
 
 ```python
 delegate_task(tasks=[
@@ -166,7 +166,7 @@ Use `execute_code` for mechanical data gathering, then delegate the reasoning-he
 ```python
 # Step 1: Mechanical gathering (execute_code is better here — no reasoning needed)
 execute_code("""
-from hermes_tools import web_search, web_extract
+from VERMES_tools import web_search, web_extract
 
 results = []
 for query in ["AI funding Q1 2026", "AI startup acquisitions 2026", "AI IPOs 2026"]:

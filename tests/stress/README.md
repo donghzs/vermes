@@ -33,7 +33,7 @@ Run manually:
 - **test_atypical_scenarios.py** — 28 scenarios covering atypical
   user inputs: unicode/emoji/RTL, 1 MB strings, SQL injection
   attempts, cycles, self-parents, wide fan-in/out, clock skew,
-  HERMES_HOME with spaces/unicode/symlinks, 1000 runs on one
+  VERMES_HOME with spaces/unicode/symlinks, 1000 runs on one
   task, idempotency-key race across processes, terminal-state
   resurrection attempts, dashboard REST with weird JSON.
 - **test_benchmarks.py** — latency at 100/1k/10k tasks for dispatch,

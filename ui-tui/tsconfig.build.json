@@ -3,7 +3,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@hermes/ink": ["src/types/hermes-ink.d.ts"]
+      "@vermes/ink": ["src/types/vermes-ink.d.ts"]
     }
   }
 }

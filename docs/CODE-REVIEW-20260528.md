@@ -1,14 +1,14 @@
 # 代码审查报告：pywebview 原生窗口微信登录
 
 **审查人**: QClaw  
-**被审查人**: Hermes  
+**被审查人**: Vermes  
 **日期**: 2026-05-28 06:29-06:49  
 **Commit**: `488962e` → `cb35e4e`（含 3 个修复）  
 **结论**: 方案正确，发现 3 个 bug（含 1 个致命），已全部修复
 
 ---
 
-## 一、Hermes 提交内容
+## 一、Vermes 提交内容
 
 ### 方案：B+C 组合（pywebview 第二原生窗口 + evaluate_js URL 监控）
 
@@ -103,7 +103,7 @@ result_ready.set()
 
 关键事实：**callback 处理器已经完成了 code→token 的全部工作**，结果存在 `wechatSessions[state]` 里。
 
-Hermes 的 `exchangeWechatCode(code)` 试图用 code 再次换取 token，但：
+Vermes 的 `exchangeWechatCode(code)` 试图用 code 再次换取 token，但：
 1. `/api/wechat/exchange-code` 端点不存在（404）
 2. 即使存在，WeChat 的 code 是一次性的，callback 已经用过了，再次换会失败
 3. 前端拿到的应该是 `state`（用于从 `wechatSessions` 查结果），不是 `code`
@@ -201,7 +201,7 @@ VermesAPI._oauth_result = {"state": result_ready.set() or True}  # state 永远�
 
 ---
 
-## 四、给 Hermes 的建议
+## 四、给 Vermes 的建议
 
 1. **追踪完整的数据流**：不要只关注"前端拿到了什么"，要追踪"这个数据在每一层经历了什么"。
 2. **复用已有机制**：浏览器模式已经有 `startPolling()` + `/api/wechat/poll`，pywebview 模式应该复用。
@@ -215,7 +215,7 @@ VermesAPI._oauth_result = {"state": result_ready.set() or True}  # state 永远�
 
 | Commit | 作者 | 内容 |
 |--------|------|------|
-| `488962e` | Hermes | feat: pywebview 原生窗口微信登录，移除 WxLogin.js SDK |
+| `488962e` | Vermes | feat: pywebview 原生窗口微信登录，移除 WxLogin.js SDK |
 | `4f52142` | QClaw | fix: OAuth 窗口关闭事件处理，避免 5 分钟超时等待 |
 | `a0ef690` | QClaw | fix: pywebview OAuth 流程修复 — 用 state poll 替代不存在的 exchange-code 端点 |
 | `cb35e4e` | QClaw | build: 前端同步 (OAuth 流程修复) |

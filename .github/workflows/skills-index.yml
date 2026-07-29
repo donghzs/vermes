@@ -17,7 +17,7 @@ permissions:
 jobs:
   build-index:
     # Only run on the upstream repository, not on forks
-    if: github.repository == 'NousResearch/hermes-agent'
+    if: github.repository == 'donghzs/vermes'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -89,7 +89,7 @@ jobs:
           mkdir -p _site/docs
           cp -r landingpage/* _site/
           cp -r website/build/* _site/docs/
-          echo "hermes-agent.nousresearch.com" > _site/CNAME
+          echo "vermes-agent.donghzs.com" > _site/CNAME
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3

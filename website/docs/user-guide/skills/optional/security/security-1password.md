@@ -14,10 +14,10 @@ Set up and use 1Password CLI (op). Use when installing the CLI, enabling desktop
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/security/1password` |
+| Source | Optional — install with `vermes skills install official/security/1password` |
 | Path | `optional-skills/security/1password` |
 | Version | `1.0.0` |
-| Author | arceus77-7, enhanced by Hermes Agent |
+| Author | arceus77-7, enhanced by Vermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `security`, `secrets`, `1password`, `op`, `cli` |
@@ -25,7 +25,7 @@ Set up and use 1Password CLI (op). Use when installing the CLI, enabling desktop
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # 1Password CLI
@@ -37,7 +37,7 @@ Use this skill when the user wants secrets managed through 1Password instead of 
 - 1Password account
 - 1Password CLI (`op`) installed
 - One of: desktop app integration, service account token (`OP_SERVICE_ACCOUNT_TOKEN`), or Connect server
-- `tmux` available for stable authenticated sessions during Hermes terminal calls (desktop app flow only)
+- `tmux` available for stable authenticated sessions during Vermes terminal calls (desktop app flow only)
 
 ## When to Use
 
@@ -49,9 +49,9 @@ Use this skill when the user wants secrets managed through 1Password instead of 
 
 ## Authentication Methods
 
-### Service Account (recommended for Hermes)
+### Service Account (recommended for Vermes)
 
-Set `OP_SERVICE_ACCOUNT_TOKEN` in `~/.hermes/.env` (the skill will prompt for this on first load).
+Set `OP_SERVICE_ACCOUNT_TOKEN` in `~/.vermes/.env` (the skill will prompt for this on first load).
 No desktop app needed. Supports `op read`, `op inject`, `op run`.
 
 ```bash
@@ -95,17 +95,17 @@ op --version
 
 3. Choose an auth method above and configure it.
 
-## Hermes Execution Pattern (desktop app flow)
+## Vermes Execution Pattern (desktop app flow)
 
-Hermes terminal commands are non-interactive by default and can lose auth context between calls.
+Vermes terminal commands are non-interactive by default and can lose auth context between calls.
 For reliable `op` use with desktop app integration, run sign-in and secret operations inside a dedicated tmux session.
 
 Note: This is NOT needed when using `OP_SERVICE_ACCOUNT_TOKEN` — the token persists across terminal calls automatically.
 
 ```bash
-SOCKET_DIR="${TMPDIR:-/tmp}/hermes-tmux-sockets"
+SOCKET_DIR="${TMPDIR:-/tmp}/vermes-tmux-sockets"
 mkdir -p "$SOCKET_DIR"
-SOCKET="$SOCKET_DIR/hermes-op.sock"
+SOCKET="$SOCKET_DIR/vermes-op.sock"
 SESSION="op-auth-$(date +%Y%m%d-%H%M%S)"
 
 tmux -S "$SOCKET" new -d -s "$SESSION" -n shell

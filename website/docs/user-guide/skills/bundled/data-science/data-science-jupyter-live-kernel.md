@@ -17,7 +17,7 @@ Iterative Python via live Jupyter kernel (hamelnb).
 | Source | Bundled (installed by default) |
 | Path | `skills/data-science/jupyter-live-kernel` |
 | Version | `1.0.0` |
-| Author | Hermes Agent |
+| Author | Vermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `jupyter`, `notebook`, `repl`, `data-science`, `exploration`, `iterative` |
@@ -25,7 +25,7 @@ Iterative Python via live Jupyter kernel (hamelnb).
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Jupyter Live Kernel (hamelnb)
@@ -39,7 +39,7 @@ state incrementally, explore APIs, inspect DataFrames, or iterate on complex cod
 | Tool | Use When |
 |------|----------|
 | **This skill** | Iterative exploration, state across steps, data science, ML, "let me try this and check" |
-| `execute_code` | One-shot scripts needing hermes tool access (web_search, file ops). Stateless. |
+| `execute_code` | One-shot scripts needing vermes tool access (web_search, file ops). Stateless. |
 | `terminal` | Shell commands, builds, installs, git, process management |
 
 **Rule of thumb:** If you'd want a Jupyter notebook for the task, use this skill.

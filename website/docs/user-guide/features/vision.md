@@ -1,13 +1,13 @@
 ---
 title: Vision & Image Paste
-description: Paste images from your clipboard into the Hermes CLI for multimodal vision analysis.
+description: Paste images from your clipboard into the Vermes CLI for multimodal vision analysis.
 sidebar_label: Vision & Image Paste
 sidebar_position: 7
 ---
 
 # Vision & Image Paste
 
-Hermes Agent supports **multimodal vision** — you can paste images from your clipboard directly into the CLI and ask the agent to analyze, describe, or work with them. Images are sent to the model as base64-encoded content blocks, so any vision-capable model can process them.
+Vermes Agent supports **multimodal vision** — you can paste images from your clipboard directly into the CLI and ask the agent to analyze, describe, or work with them. Images are sent to the model as base64-encoded content blocks, so any vision-capable model can process them.
 
 ## How It Works
 
@@ -19,7 +19,7 @@ Hermes Agent supports **multimodal vision** — you can paste images from your c
 
 You can attach multiple images before sending — each gets its own badge. Press `Ctrl+C` to clear all attached images.
 
-Images are saved to `~/.hermes/images/` as PNG files with timestamped filenames.
+Images are saved to `~/.vermes/images/` as PNG files with timestamped filenames.
 
 ## Paste Methods
 
@@ -33,11 +33,11 @@ How you attach an image depends on your terminal environment. Not all methods wo
 /paste
 ```
 
-Type `/paste` and press Enter. Hermes checks your clipboard for an image and attaches it. This is the safest option when your terminal rewrites `Cmd+V`/`Ctrl+V`, or when you copied only an image and there is no bracketed-paste text payload to inspect.
+Type `/paste` and press Enter. Vermes checks your clipboard for an image and attaches it. This is the safest option when your terminal rewrites `Cmd+V`/`Ctrl+V`, or when you copied only an image and there is no bracketed-paste text payload to inspect.
 
 ### Ctrl+V / Cmd+V
 
-Hermes now treats paste as a layered flow:
+Vermes now treats paste as a layered flow:
 - normal text paste first
 - native clipboard / OSC52 text fallback if the terminal did not deliver text cleanly
 - image attach when the clipboard or pasted payload resolves to an image or image path
@@ -50,7 +50,7 @@ If your clipboard has **only an image** (no text), terminals still cannot send b
 
 ### `/terminal-setup` for VS Code / Cursor / Windsurf
 
-If you run the TUI inside a local VS Code-family integrated terminal on macOS, Hermes can install the recommended `workbench.action.terminal.sendSequence` bindings for better multiline and undo/redo parity:
+If you run the TUI inside a local VS Code-family integrated terminal on macOS, Vermes can install the recommended `workbench.action.terminal.sendSequence` bindings for better multiline and undo/redo parity:
 
 ```text
 /terminal-setup
@@ -78,7 +78,7 @@ This is especially useful when `Cmd+Enter`, `Cmd+Z`, or `Shift+Cmd+Z` are being 
 
 ### macOS
 
-**No setup required.** Hermes uses `osascript` (built into macOS) to read the clipboard. For faster performance, optionally install `pngpaste`:
+**No setup required.** Vermes uses `osascript` (built into macOS) to read the clipboard. For faster performance, optionally install `pngpaste`:
 
 ```bash
 brew install pngpaste
@@ -123,12 +123,12 @@ echo $XDG_SESSION_TYPE
 
 ### WSL2
 
-**No extra setup required.** Hermes detects WSL2 automatically (via `/proc/version`) and uses `powershell.exe` to access the Windows clipboard through .NET's `System.Windows.Forms.Clipboard`. This is built into WSL2's Windows interop — `powershell.exe` is available by default.
+**No extra setup required.** Vermes detects WSL2 automatically (via `/proc/version`) and uses `powershell.exe` to access the Windows clipboard through .NET's `System.Windows.Forms.Clipboard`. This is built into WSL2's Windows interop — `powershell.exe` is available by default.
 
 The clipboard data is transferred as base64-encoded PNG over stdout, so no file path conversion or temp files are needed.
 
 :::info WSLg Note
-If you're running WSLg (WSL2 with GUI support), Hermes tries the PowerShell path first, then falls back to `wl-paste`. WSLg's clipboard bridge only supports BMP format for images — Hermes auto-converts BMP to PNG using Pillow (if installed) or ImageMagick's `convert` command.
+If you're running WSLg (WSL2 with GUI support), Vermes tries the PowerShell path first, then falls back to `wl-paste`. WSLg's clipboard bridge only supports BMP format for images — Vermes auto-converts BMP to PNG using Pillow (if installed) or ImageMagick's `convert` command.
 :::
 
 #### Verify WSL2 clipboard access
@@ -147,9 +147,9 @@ powershell.exe -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms;
 
 ## SSH & Remote Sessions
 
-**Clipboard image paste does not fully work over SSH.** When you SSH into a remote machine, the Hermes CLI runs on the remote host. Clipboard tools (`xclip`, `wl-paste`, `powershell.exe`, `osascript`) read the clipboard of the machine they run on — which is the remote server, not your local machine. Your local clipboard image is therefore inaccessible from the remote side.
+**Clipboard image paste does not fully work over SSH.** When you SSH into a remote machine, the Vermes CLI runs on the remote host. Clipboard tools (`xclip`, `wl-paste`, `powershell.exe`, `osascript`) read the clipboard of the machine they run on — which is the remote server, not your local machine. Your local clipboard image is therefore inaccessible from the remote side.
 
-Text can sometimes still bridge through terminal paste or OSC52, but image clipboard access and local screenshot temp paths remain tied to the machine running Hermes.
+Text can sometimes still bridge through terminal paste or OSC52, but image clipboard access and local screenshot temp paths remain tied to the machine running Vermes.
 
 ### Workarounds for SSH
 
@@ -159,7 +159,7 @@ Text can sometimes still bridge through terminal paste or OSC52, but image clipb
 
 3. **X11 forwarding** — Connect with `ssh -X` to forward X11. This lets `xclip` on the remote machine access your local X11 clipboard. Requires an X server running locally (XQuartz on macOS, built-in on Linux X11 desktops). Slow for large images.
 
-4. **Use a messaging platform** — Send images to Hermes via Telegram, Discord, Slack, or WhatsApp. These platforms handle image upload natively and are not affected by clipboard/terminal limitations.
+4. **Use a messaging platform** — Send images to Vermes via Telegram, Discord, Slack, or WhatsApp. These platforms handle image upload natively and are not affected by clipboard/terminal limitations.
 
 ## Why Terminals Can't Paste Images
 
@@ -173,7 +173,7 @@ Terminals are **text-based** interfaces. When you press Ctrl+V (or Cmd+V), the t
 
 If the clipboard contains only an image (no text), the terminal has nothing to send. There is no standard terminal escape sequence for binary image data. The terminal simply does nothing.
 
-This is why Hermes uses a separate clipboard check — instead of receiving image data through the terminal paste event, it calls OS-level tools (`osascript`, `powershell.exe`, `xclip`, `wl-paste`) directly via subprocess to read the clipboard independently.
+This is why Vermes uses a separate clipboard check — instead of receiving image data through the terminal paste event, it calls OS-level tools (`osascript`, `powershell.exe`, `xclip`, `wl-paste`) directly via subprocess to read the clipboard independently.
 
 ## Supported Models
 
@@ -192,14 +192,14 @@ Most modern models support this format, including GPT-4 Vision, Claude (with vis
 
 ## Image Routing (Vision-Capable vs Text-Only Models)
 
-When a user attaches an image — from the CLI clipboard, the gateway (Telegram/Discord photo), or any other entry point — Hermes routes it based on whether your current model actually supports vision:
+When a user attaches an image — from the CLI clipboard, the gateway (Telegram/Discord photo), or any other entry point — Vermes routes it based on whether your current model actually supports vision:
 
 | Your model | What happens to the image |
 |---|---|
 | **Vision-capable** (GPT-4V, Claude with vision, Gemini, Qwen-VL, MiMo-VL, etc.) | Sent as **real pixels** using the provider's native image content format above. No text summary layer. |
 | **Text-only** (DeepSeek V3, smaller open-source models, older chat-only endpoints) | Routed through the `vision_analyze` auxiliary tool — an auxiliary vision model describes the image, and the text description is injected into the conversation. |
 
-You don't configure this — Hermes looks up your current model's capability in the provider metadata and picks the right path automatically. The practical effect: you can switch between vision and non-vision models mid-session and image handling "just works" without changing your workflow. Text-only models get coherent context about the image rather than a broken multimodal payload they'd have to reject.
+You don't configure this — Vermes looks up your current model's capability in the provider metadata and picks the right path automatically. The practical effect: you can switch between vision and non-vision models mid-session and image handling "just works" without changing your workflow. Text-only models get coherent context about the image rather than a broken multimodal payload they'd have to reject.
 
 Which auxiliary model handles the text-description path is configurable under `auxiliary.vision` — see [Auxiliary Models](/docs/user-guide/configuration#auxiliary-models).
 

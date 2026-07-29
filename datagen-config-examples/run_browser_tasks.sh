@@ -10,12 +10,12 @@
 # Distribution: browser 97%, web 20%, vision 12%, terminal 15%
 #
 # Prerequisites:
-#   - OPENROUTER_API_KEY in ~/.hermes/.env
-#   - BROWSERBASE_API_KEY in ~/.hermes/.env (for browser tools)
+#   - OPENROUTER_API_KEY in ~/.vermes/.env
+#   - BROWSERBASE_API_KEY in ~/.vermes/.env (for browser tools)
 #   - A dataset JSONL file with one {"prompt": "..."} per line
 #
 # Usage:
-#   cd ~/.hermes/hermes-agent
+#   cd ~/.vermes/vermes-agent
 #   bash datagen-config-examples/run_browser_tasks.sh
 #
 # Output: data/browser_tasks_example/trajectories.jsonl

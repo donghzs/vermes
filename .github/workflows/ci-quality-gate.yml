@@ -143,7 +143,7 @@ jobs:
       - name: Run frontend e2e (real-backend recovery)
         env:
           RUN_BACKEND_E2E: '1'
-          HERMES_HOME: /tmp/vermes-e2e
+          VERMES_HOME: /tmp/vermes-e2e
         run: |
           cd frontend
           npx playwright test chat-cross-restart.spec.ts --retries=1

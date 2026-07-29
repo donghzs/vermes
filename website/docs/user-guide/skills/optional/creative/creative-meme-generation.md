@@ -14,7 +14,7 @@ Generate real meme images by picking a template and overlaying text with Pillow.
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/creative/meme-generation` |
+| Source | Optional — install with `vermes skills install official/creative/meme-generation` |
 | Path | `optional-skills/creative/meme-generation` |
 | Version | `2.0.0` |
 | Author | adanaleycio |
@@ -26,7 +26,7 @@ Generate real meme images by picking a template and overlaying text with Pillow.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Meme Generation
@@ -74,7 +74,7 @@ python "$SKILL_DIR/scripts/generate_meme.py" --search "disaster"
 3. Write short captions for each field (8-12 words max per field, shorter is better).
 4. Find the skill's script directory:
    ```
-   SKILL_DIR=$(dirname "$(find ~/.hermes/skills -path '*/meme-generation/SKILL.md' 2>/dev/null | head -1)")
+   SKILL_DIR=$(dirname "$(find ~/.vermes/skills -path '*/meme-generation/SKILL.md' 2>/dev/null | head -1)")
    ```
 5. Run the generator:
    ```bash

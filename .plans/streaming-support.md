@@ -1,4 +1,4 @@
-# Streaming LLM Response Support for Hermes Agent
+# Streaming LLM Response Support for Vermes Agent
 
 ## Overview
 
@@ -62,7 +62,7 @@ streaming:
 ### Environment variables
 
 ```
-HERMES_STREAMING_ENABLED=true    # Master switch via env
+VERMES_STREAMING_ENABLED=true    # Master switch via env
 ```
 
 ### How the flag is read
@@ -266,7 +266,7 @@ try:
 except Exception:
     pass
 # Env var override
-if os.getenv("HERMES_STREAMING_ENABLED", "").lower() in ("true", "1", "yes"):
+if os.getenv("VERMES_STREAMING_ENABLED", "").lower() in ("true", "1", "yes"):
     _streaming_enabled = True
 ```
 
@@ -701,5 +701,5 @@ streaming:
 
 ```bash
 # Environment variable override
-HERMES_STREAMING_ENABLED=true
+VERMES_STREAMING_ENABLED=true
 ```

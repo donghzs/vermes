@@ -29,7 +29,7 @@ jobs:
         run: curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
 
   deploy-docs:
-    if: github.repository == 'NousResearch/hermes-agent'
+    if: github.repository == 'donghzs/vermes'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -77,7 +77,7 @@ jobs:
           mkdir -p _site/docs
           cp -r website/build/* _site/docs/
           # llms.txt / llms-full.txt are also published at the site root
-          # (https://hermes-agent.nousresearch.com/llms.txt) because some
+          # (https://vermes-agent.donghzs.com/llms.txt) because some
           # agents and IDE plugins probe the classic root-level path rather
           # than /docs/llms.txt. Same file, two URLs, one source of truth.
           if [ -f website/build/llms.txt ]; then

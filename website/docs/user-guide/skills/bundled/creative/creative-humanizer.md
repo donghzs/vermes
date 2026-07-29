@@ -17,7 +17,7 @@ Humanize text: strip AI-isms and add real voice.
 | Source | Bundled (installed by default) |
 | Path | `skills/creative/humanizer` |
 | Version | `2.5.1` |
-| Author | Siqi Chen (@blader, https://github.com/blader/humanizer), ported by Hermes Agent |
+| Author | Siqi Chen (@blader, https://github.com/blader/humanizer), ported by Vermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `writing`, `editing`, `humanize`, `anti-ai-slop`, `voice`, `prose`, `text` |
@@ -26,7 +26,7 @@ Humanize text: strip AI-isms and add real voice.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Humanizer: Remove AI Writing Patterns
@@ -44,9 +44,9 @@ Load this skill whenever the user asks to:
 - match their voice in writing they're producing
 - review text for AI tells before publishing
 
-Also apply this skill to **your own** output when writing user-facing prose — release notes, PR descriptions, documentation, long-form explanations, summaries. Hermes's baseline voice already strips most of these, but a focused pass catches what slips through.
+Also apply this skill to **your own** output when writing user-facing prose — release notes, PR descriptions, documentation, long-form explanations, summaries. Vermes's baseline voice already strips most of these, but a focused pass catches what slips through.
 
-## How to use it in Hermes
+## How to use it in Vermes
 
 The text usually arrives one of three ways:
 1. **Inline** — user pastes the text directly into the message. Work on it in-place, reply with the rewrite.
@@ -589,6 +589,6 @@ Provide:
 
 This skill is ported from [blader/humanizer](https://github.com/blader/humanizer) (MIT licensed), which is itself based on [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing), maintained by WikiProject AI Cleanup. The patterns documented there come from observations of thousands of instances of AI-generated text on Wikipedia.
 
-Original author: Siqi Chen ([@blader](https://github.com/blader)). Original repo: https://github.com/blader/humanizer (version 2.5.1). Ported to Hermes Agent with Hermes-native tool references (`read_file`, `patch`, `write_file`) and guidance for when to load the skill; the 29 patterns, personality/soul section, and full worked example are preserved verbatim from the source. Original MIT license preserved in the `LICENSE` file alongside this `SKILL.md`.
+Original author: Siqi Chen ([@blader](https://github.com/blader)). Original repo: https://github.com/blader/humanizer (version 2.5.1). Ported to Vermes Agent with Vermes-native tool references (`read_file`, `patch`, `write_file`) and guidance for when to load the skill; the 29 patterns, personality/soul section, and full worked example are preserved verbatim from the source. Original MIT license preserved in the `LICENSE` file alongside this `SKILL.md`.
 
 Key insight from Wikipedia: "LLMs use statistical algorithms to guess what should come next. The result tends toward the most statistically likely result that applies to the widest variety of cases."

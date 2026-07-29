@@ -1,12 +1,12 @@
 ---
 sidebar_position: 5
 title: "Microsoft Teams"
-description: "Set up Hermes Agent as a Microsoft Teams bot"
+description: "Set up Vermes Agent as a Microsoft Teams bot"
 ---
 
 # Microsoft Teams Setup
 
-Connect Hermes Agent to Microsoft Teams as a bot. Unlike Slack's Socket Mode, Teams delivers messages by calling a **public HTTPS webhook**, so your instance needs a publicly reachable endpoint — either a dev tunnel (local dev) or a real domain (production).
+Connect Vermes Agent to Microsoft Teams as a bot. Unlike Slack's Socket Mode, Teams delivers messages by calling a **public HTTPS webhook**, so your instance needs a publicly reachable endpoint — either a dev tunnel (local dev) or a real domain (production).
 
 Need meeting summaries from Microsoft Graph events rather than normal bot conversations? Use the dedicated setup page: [Teams Meetings](/docs/user-guide/messaging/teams-meetings).
 
@@ -18,7 +18,7 @@ Need meeting summaries from Microsoft Graph events rather than normal bot conver
 | **Group chat** | Bot only responds when @mentioned. |
 | **Channel** | Bot only responds when @mentioned. |
 
-Teams delivers @mentions as regular messages with `<at>BotName</at>` tags, which Hermes strips automatically before processing.
+Teams delivers @mentions as regular messages with `<at>BotName</at>` tags, which Vermes strips automatically before processing.
 
 ---
 
@@ -45,9 +45,9 @@ Teams cannot deliver messages to `localhost`. For local development, use any tun
 
 ```bash
 # devtunnel (Microsoft)
-devtunnel create hermes-bot --allow-anonymous
-devtunnel port create hermes-bot -p 3978 --protocol https  # replace 3978 with TEAMS_PORT if changed
-devtunnel host hermes-bot
+devtunnel create vermes-bot --allow-anonymous
+devtunnel port create vermes-bot -p 3978 --protocol https  # replace 3978 with TEAMS_PORT if changed
+devtunnel host vermes-bot
 
 # ngrok
 ngrok http 3978  # replace 3978 with TEAMS_PORT if changed
@@ -66,7 +66,7 @@ For production, point your bot's endpoint at your server's public domain instead
 
 ```bash
 teams app create \
-  --name "Hermes" \
+  --name "Vermes" \
   --endpoint "https://<your-tunnel-url>/api/messages"
 ```
 
@@ -76,7 +76,7 @@ The CLI outputs your `CLIENT_ID`, `CLIENT_SECRET`, and `TENANT_ID`, plus an inst
 
 ## Step 4: Configure Environment Variables
 
-Add to `~/.hermes/.env`:
+Add to `~/.vermes/.env`:
 
 ```bash
 # Required
@@ -94,14 +94,14 @@ TEAMS_ALLOWED_USERS=<your-aad-object-id>
 ## Step 5: Start the Gateway
 
 ```bash
-HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d gateway
+VERMES_UID=$(id -u) VERMES_GID=$(id -g) docker compose up -d gateway
 ```
 
 This starts the gateway. The default webhook port is `3978` (override with `TEAMS_PORT`). Check that it's running:
 
 ```bash
 curl http://localhost:3978/health   # should return: ok
-docker logs -f hermes
+docker logs -f vermes
 ```
 
 Look for:
@@ -138,7 +138,7 @@ Open the printed link in your browser — it opens directly in the Teams client.
 
 ### config.yaml
 
-Alternatively, configure via `~/.hermes/config.yaml`:
+Alternatively, configure via `~/.vermes/config.yaml`:
 
 ```yaml
 platforms:
@@ -205,7 +205,7 @@ For a permanent server, skip devtunnel and register your bot with your server's 
 
 ```bash
 teams app create \
-  --name "Hermes" \
+  --name "Vermes" \
   --endpoint "https://your-domain.com/api/messages"
 ```
 
@@ -226,10 +226,10 @@ Make sure your configured port (`TEAMS_PORT`, default `3978`) is reachable from 
 | `health` endpoint works but bot doesn't respond | Check that your tunnel is still running and the bot's messaging endpoint matches the tunnel URL |
 | `KeyError: 'teams'` in logs | Restart the container — this is fixed in the current version |
 | Bot responds with auth errors | Verify `TEAMS_CLIENT_ID`, `TEAMS_CLIENT_SECRET`, and `TEAMS_TENANT_ID` are all set correctly |
-| `No inference provider configured` | Check that `ANTHROPIC_API_KEY` (or another provider key) is set in `~/.hermes/.env` |
+| `No inference provider configured` | Check that `ANTHROPIC_API_KEY` (or another provider key) is set in `~/.vermes/.env` |
 | Bot receives messages but ignores them | Your AAD object ID may not be in `TEAMS_ALLOWED_USERS`. Run `teams status --verbose` to find it |
-| Tunnel URL changes on restart | devtunnel URLs are persistent if you use a named tunnel (`devtunnel create hermes-bot`). ngrok and cloudflared generate a new URL each run unless you have a paid plan — update the bot endpoint with `teams app update` when it changes |
-| Teams shows "This bot is not responding" | The webhook returned an error. Check `docker logs hermes` for tracebacks |
+| Tunnel URL changes on restart | devtunnel URLs are persistent if you use a named tunnel (`devtunnel create vermes-bot`). ngrok and cloudflared generate a new URL each run unless you have a paid plan — update the bot endpoint with `teams app update` when it changes |
+| Teams shows "This bot is not responding" | The webhook returned an error. Check `docker logs vermes` for tracebacks |
 | `[teams] Failed to connect` in logs | The SDK failed to authenticate. Double-check your credentials and that the tenant ID matches the account you used in `teams login` |
 
 ---
@@ -242,7 +242,7 @@ Make sure your configured port (`TEAMS_PORT`, default `3978`) is reachable from 
 Treat `TEAMS_CLIENT_SECRET` like a password — rotate it periodically via the Azure portal or Teams CLI.
 :::
 
-- Store credentials in `~/.hermes/.env` with permissions `600` (`chmod 600 ~/.hermes/.env`)
+- Store credentials in `~/.vermes/.env` with permissions `600` (`chmod 600 ~/.vermes/.env`)
 - The bot only accepts messages from users in `TEAMS_ALLOWED_USERS`; unauthorized messages are silently dropped
 - Your public endpoint (`/api/messages`) is authenticated by the Teams Bot Framework — requests without valid JWTs are rejected
 

@@ -1,18 +1,18 @@
 ---
 sidebar_position: 16
 title: "Persistent Goals"
-description: "Set a standing goal and let Hermes keep working across turns until it's done. Our take on the Ralph loop."
+description: "Set a standing goal and let Vermes keep working across turns until it's done. Our take on the Ralph loop."
 ---
 
 # Persistent Goals (`/goal`)
 
-`/goal` gives Hermes a standing objective that survives across turns. After every turn a lightweight judge model checks whether the goal is satisfied by the assistant's last response. If not, Hermes automatically feeds a continuation prompt back into the same session and keeps working — until the goal is achieved, you pause or clear it, or the turn budget runs out.
+`/goal` gives Vermes a standing objective that survives across turns. After every turn a lightweight judge model checks whether the goal is satisfied by the assistant's last response. If not, Vermes automatically feeds a continuation prompt back into the same session and keeps working — until the goal is achieved, you pause or clear it, or the turn budget runs out.
 
-It's our take on the **Ralph loop**, directly inspired by [Codex CLI 0.128.0's `/goal`](https://github.com/openai/codex) by Eric Traut (OpenAI). The core idea — keep a goal alive across turns and don't stop until it's achieved — is theirs. The implementation here is independent and adapted to Hermes' architecture.
+It's our take on the **Ralph loop**, directly inspired by [Codex CLI 0.128.0's `/goal`](https://github.com/openai/codex) by Eric Traut (OpenAI). The core idea — keep a goal alive across turns and don't stop until it's achieved — is theirs. The implementation here is independent and adapted to Vermes' architecture.
 
 ## When to use it
 
-Use `/goal` for tasks where you want Hermes to iterate on its own without you re-prompting every turn:
+Use `/goal` for tasks where you want Vermes to iterate on its own without you re-prompting every turn:
 
 - "Fix every lint error in `src/` and verify `ruff check` passes"
 - "Port feature X from repo Y, including tests, and get CI green"
@@ -30,9 +30,9 @@ Tasks where the agent does one turn and stops don't need `/goal`. Tasks where *y
 What you'll see:
 
 1. **Goal accepted** — `⊙ Goal set (20-turn budget): <your goal>`
-2. **Turn 1 runs** — Hermes starts working as if you'd sent the goal as a normal message.
+2. **Turn 1 runs** — Vermes starts working as if you'd sent the goal as a normal message.
 3. **Judge runs** — after the turn, the judge model decides `done` or `continue`.
-4. **Loop fires if needed** — if `continue`, you'll see `↻ Continuing toward goal (1/20): <judge's reason>` and Hermes takes the next step automatically.
+4. **Loop fires if needed** — if `continue`, you'll see `↻ Continuing toward goal (1/20): <judge's reason>` and Vermes takes the next step automatically.
 5. **Terminates** — eventually you see either `✓ Goal achieved: <reason>` or `⏸ Goal paused — N/20 turns used`.
 
 ## Commands
@@ -66,7 +66,7 @@ Use this when you start a loop ("fix the failing tests") and notice partway thro
 
 ### The judge
 
-After every turn, Hermes calls an auxiliary model with:
+After every turn, Vermes calls an auxiliary model with:
 
 - The standing goal text
 - The agent's most recent final response (last ~4 KB of text)
@@ -76,11 +76,11 @@ The judge is deliberately conservative: it marks a goal `done` only when the res
 
 ### Fail-open semantics
 
-If the judge errors (network blip, malformed response, unavailable aux client), Hermes treats the verdict as `continue` — a broken judge never wedges progress. The **turn budget** is the real backstop.
+If the judge errors (network blip, malformed response, unavailable aux client), Vermes treats the verdict as `continue` — a broken judge never wedges progress. The **turn budget** is the real backstop.
 
 ### Turn budget
 
-Default is 20 continuation turns (`goals.max_turns` in `config.yaml`). When the budget is hit, Hermes auto-pauses and tells you exactly how to proceed:
+Default is 20 continuation turns (`goals.max_turns` in `config.yaml`). When the budget is hit, Vermes auto-pauses and tells you exactly how to proceed:
 
 ```
 ⏸ Goal paused — 20/20 turns used. Use /goal resume to keep going, or /goal clear to stop.
@@ -102,15 +102,15 @@ Goal state lives in `SessionDB.state_meta` keyed by `goal:<session_id>`. That me
 
 ### Prompt cache
 
-The continuation prompt is a plain user-role message appended to history. It does **not** mutate the system prompt, swap toolsets, or touch the conversation in any way that invalidates Hermes' prompt cache. Running a 20-turn goal costs the same cache-wise as 20 turns of normal conversation.
+The continuation prompt is a plain user-role message appended to history. It does **not** mutate the system prompt, swap toolsets, or touch the conversation in any way that invalidates Vermes' prompt cache. Running a 20-turn goal costs the same cache-wise as 20 turns of normal conversation.
 
 ## Configuration
 
-Add to `~/.hermes/config.yaml`:
+Add to `~/.vermes/config.yaml`:
 
 ```yaml
 goals:
-  # Max continuation turns before Hermes auto-pauses and asks you to
+  # Max continuation turns before Vermes auto-pauses and asks you to
   # /goal resume. Default 20. Lower this if you want tighter loops;
   # raise it for long-running refactors.
   max_turns: 20
@@ -136,25 +136,25 @@ You: /goal Create four files /tmp/note_{1..4}.txt, one per turn, each containing
 
   ⊙ Goal set (20-turn budget): Create four files /tmp/note_{1..4}.txt, one per turn, each containing its number as text
 
-Hermes: Creating /tmp/note_1.txt now.
+Vermes: Creating /tmp/note_1.txt now.
   💻 echo "1" > /tmp/note_1.txt   (0.1s)
   I've created /tmp/note_1.txt with the content "1". I'll continue with the remaining files on the next turn as you specified.
 
   ↻ Continuing toward goal (1/20): Only 1 of 4 files has been created; 3 files remain.
 
-Hermes: [Continuing toward your standing goal]
+Vermes: [Continuing toward your standing goal]
   💻 echo "2" > /tmp/note_2.txt   (0.1s)
   Created /tmp/note_2.txt. Two more to go.
 
   ↻ Continuing toward goal (2/20): 2 of 4 files created; 2 remain.
 
-Hermes: [Continuing toward your standing goal]
+Vermes: [Continuing toward your standing goal]
   💻 echo "3" > /tmp/note_3.txt   (0.1s)
   Created /tmp/note_3.txt.
 
   ↻ Continuing toward goal (3/20): 3 of 4 files created; 1 remains.
 
-Hermes: [Continuing toward your standing goal]
+Vermes: [Continuing toward your standing goal]
   💻 echo "4" > /tmp/note_4.txt   (0.1s)
   All four files have been created: /tmp/note_1.txt through /tmp/note_4.txt, each containing its number.
 
@@ -177,4 +177,4 @@ If you find a judge verdict unconvincing, the reason text in the `↻ Continuing
 
 ## Attribution
 
-`/goal` is Hermes' take on the **Ralph loop** pattern. The user-facing design — keep a goal alive across turns, don't stop until it's achieved, with create/pause/resume/clear controls — was popularised and shipped in [Codex CLI 0.128.0](https://github.com/openai/codex) by Eric Traut on OpenAI's Codex team. Our implementation is independent (central `CommandDef` registry, `SessionDB.state_meta` persistence, auxiliary-client judge, adapter-FIFO continuation on the gateway side) but the idea is theirs. Credit where credit's due.
+`/goal` is Vermes' take on the **Ralph loop** pattern. The user-facing design — keep a goal alive across turns, don't stop until it's achieved, with create/pause/resume/clear controls — was popularised and shipped in [Codex CLI 0.128.0](https://github.com/openai/codex) by Eric Traut on OpenAI's Codex team. Our implementation is independent (central `CommandDef` registry, `SessionDB.state_meta` persistence, auxiliary-client judge, adapter-FIFO continuation on the gateway side) but the idea is theirs. Credit where credit's due.

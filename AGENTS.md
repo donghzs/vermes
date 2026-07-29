@@ -1,6 +1,6 @@
 # Vermes Agent
 
-Vermes 是基于 Hermes Agent 引擎的中文 AI Agent 分发版。
+Vermes 是基于 Vermes Agent 引擎的中文 AI Agent 分发版。
 
 ## 快速开始
 

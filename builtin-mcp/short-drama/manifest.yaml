@@ -10,7 +10,7 @@ triggers:
   - 标题卡
   - 视频生成
   - 短剧创作
-command: hermes
+command: vermes
 args: [mcp, run, short-drama]
 connect: lazy
 tools:

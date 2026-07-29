@@ -1,4 +1,4 @@
-# Hermes Achievements Performance Implementation Plan
+# Vermes Achievements Performance Implementation Plan
 
 Status: Ready for execution after hackathon review window
 Constraint: Plugin remains frozen until judging is complete
@@ -56,7 +56,7 @@ Objective: Single source of truth for Achievements data that survives process re
 Acceptance:
 - One structure contains dataset consumed by `/achievements`.
 - Repeated requests do not recompute when cache is fresh.
-- Snapshot persisted at `~/.hermes/plugins/hermes-achievements/scan_snapshot.json`.
+- Snapshot persisted at `~/.vermes/plugins/vermes-achievements/scan_snapshot.json`.
 
 ### Task 2.2: Single-flight scan coordinator
 Objective: Prevent concurrent recomputes.
@@ -101,7 +101,7 @@ Acceptance:
 Objective: Track session-level changes, not just global scan time.
 
 Acceptance:
-- Checkpoint persisted at `~/.hermes/plugins/hermes-achievements/scan_checkpoint.json`.
+- Checkpoint persisted at `~/.vermes/plugins/vermes-achievements/scan_checkpoint.json`.
 - For each session: `session_id`, fingerprint (`updated_at`/message_count/hash), and cached contribution.
 
 ### Task 4.2: Incremental aggregation

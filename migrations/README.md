@@ -13,16 +13,16 @@
 ## 脚本结构
 
 ```python
-def migrate(hermes_home: str):
+def migrate(VERMES_home: str):
     """迁移入口函数
 
     Args:
-        hermes_home: 用户数据目录路径 (~/.vermes)
+        VERMES_home: 用户数据目录路径 (~/.vermes)
     """
     from pathlib import Path
     import json
 
-    home = Path(hermes_home)
+    home = Path(VERMES_home)
 
     # 示例：升级 config.yaml 格式
     config_file = home / "config.yaml"

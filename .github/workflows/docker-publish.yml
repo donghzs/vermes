@@ -10,7 +10,7 @@ on:
       - 'Dockerfile'
       - 'docker/**'
       - '.github/workflows/docker-publish.yml'
-      - '.github/actions/hermes-smoke-test/**'
+      - '.github/actions/vermes-smoke-test/**'
   pull_request:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ on:
       - 'Dockerfile'
       - 'docker/**'
       - '.github/workflows/docker-publish.yml'
-      - '.github/actions/hermes-smoke-test/**'
+      - '.github/actions/vermes-smoke-test/**'
   release:
     types: [published]
 
@@ -37,7 +37,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE_NAME: nousresearch/hermes-agent
+  IMAGE_NAME: donghzs/vermes
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build-amd64:
     # Only run on the upstream repository, not on forks
-    if: github.repository == 'NousResearch/hermes-agent'
+    if: github.repository == 'donghzs/vermes'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -76,7 +76,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-amd64
 
       - name: Smoke test image
-        uses: ./.github/actions/hermes-smoke-test
+        uses: ./.github/actions/vermes-smoke-test
         with:
           image: ${{ env.IMAGE_NAME }}:test
 
@@ -135,7 +135,7 @@ jobs:
   # smoke test, then on push/release push by digest.
   # ---------------------------------------------------------------------------
   build-arm64:
-    if: github.repository == 'NousResearch/hermes-agent'
+    if: github.repository == 'donghzs/vermes'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     outputs:
@@ -164,7 +164,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-arm64
 
       - name: Smoke test image
-        uses: ./.github/actions/hermes-smoke-test
+        uses: ./.github/actions/vermes-smoke-test
         with:
           image: ${{ env.IMAGE_NAME }}:test
 
@@ -212,7 +212,7 @@ jobs:
   # On releases it produces :<release_tag_name>.
   # ---------------------------------------------------------------------------
   merge:
-    if: github.repository == 'NousResearch/hermes-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
+    if: github.repository == 'donghzs/vermes' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
     runs-on: ubuntu-latest
     needs: [build-amd64, build-arm64]
     timeout-minutes: 10
@@ -312,7 +312,7 @@ jobs:
   # ---------------------------------------------------------------------------
   move-main:
     if: |
-      github.repository == 'NousResearch/hermes-agent'
+      github.repository == 'donghzs/vermes'
       && github.event_name == 'push'
       && github.ref == 'refs/heads/main'
       && needs.merge.outputs.pushed_sha_tag == 'true'
@@ -346,7 +346,7 @@ jobs:
         id: main_check
         run: |
           set -euo pipefail
-          image=nousresearch/hermes-agent
+          image=donghzs/vermes
 
           # Pull the JSON for the linux/amd64 sub-manifest's config and extract
           # the OCI revision label with jq — Go template field access can't
@@ -414,7 +414,7 @@ jobs:
         if: steps.main_check.outputs.push_main == 'true'
         run: |
           set -euo pipefail
-          image=nousresearch/hermes-agent
+          image=donghzs/vermes
           docker buildx imagetools create \
             --tag "${image}:main" \
             "${image}:sha-${GITHUB_SHA}"
@@ -434,7 +434,7 @@ jobs:
   # ---------------------------------------------------------------------------
   move-latest:
     if: |
-      github.repository == 'NousResearch/hermes-agent'
+      github.repository == 'donghzs/vermes'
       && github.event_name == 'release'
       && needs.merge.outputs.pushed_release_tag == 'true'
     needs: merge
@@ -462,7 +462,7 @@ jobs:
         id: latest_check
         run: |
           set -euo pipefail
-          image=nousresearch/hermes-agent
+          image=donghzs/vermes
 
           image_json=$(
             docker buildx imagetools inspect "${image}:latest" \
@@ -528,7 +528,7 @@ jobs:
           RELEASE_TAG: ${{ needs.merge.outputs.release_tag }}
         run: |
           set -euo pipefail
-          image=nousresearch/hermes-agent
+          image=donghzs/vermes
           docker buildx imagetools create \
             --tag "${image}:latest" \
             "${image}:${RELEASE_TAG}"

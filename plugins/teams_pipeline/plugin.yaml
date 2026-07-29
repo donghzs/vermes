@@ -1,7 +1,7 @@
 name: teams_pipeline
 version: 0.1.0
 description: "Microsoft Teams meeting pipeline plugin with durable runtime state and operator CLI flows for Graph-backed transcript-first meeting summaries."
-author: NousResearch
+author: donghzs
 kind: standalone
 platforms:
   - linux

@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/hermes-agent
+      url: https://pypi.org/p/vermes-agent
     permissions:
       id-token: write  # OIDC trusted publishing
 

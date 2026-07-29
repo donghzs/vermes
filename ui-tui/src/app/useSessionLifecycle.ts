@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 
-import type { ScrollBoxHandle } from '@hermes/ink'
-import { evictInkCaches } from '@hermes/ink'
+import type { ScrollBoxHandle } from '@vermes/ink'
+import { evictInkCaches } from '@vermes/ink'
 import { useCallback, type RefObject } from 'react'
 
 import { buildSetupRequiredSections, SETUP_REQUIRED_TITLE } from '../content/setup.js'
@@ -26,7 +26,7 @@ import { getUiState, patchUiState } from './uiStore.js'
 
 const usageFrom = (info: null | SessionInfo): Usage => (info?.usage ? { ...ZERO, ...info.usage } : ZERO)
 
-export const writeActiveSessionFile = (sessionId: null | string, file = process.env.HERMES_TUI_ACTIVE_SESSION_FILE) => {
+export const writeActiveSessionFile = (sessionId: null | string, file = process.env.VERMES_TUI_ACTIVE_SESSION_FILE) => {
   if (!file || !sessionId) {
     return
   }

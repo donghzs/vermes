@@ -3,7 +3,7 @@
  *
  * Plugins can inject components into named locations in the app shell
  * (header-left, sidebar, backdrop, etc.) by calling
- * `window.__HERMES_PLUGINS__.registerSlot(pluginName, slotName, Component)`
+ * `window.__vermes_PLUGINS__.registerSlot(pluginName, slotName, Component)`
  * from their JS bundle. Multiple plugins can populate the same slot — they
  * render stacked in registration order.
  *
@@ -116,7 +116,7 @@ function _notifySlots() {
 }
 
 /** Register a component for a slot. Called by plugin bundles via
- *  `window.__HERMES_PLUGINS__.registerSlot(...)`.
+ *  `window.__vermes_PLUGINS__.registerSlot(...)`.
  *
  *  If the same (plugin, slot) pair is registered twice, the later call
  *  replaces the earlier one — this matches how React HMR expects plugin

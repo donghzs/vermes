@@ -1,16 +1,16 @@
 # Kanban 튜토리얼
 
-브라우저에 dashboard를 띄운 상태에서, Hermes Kanban 시스템이 설계된 4가지 대표 사용 사례를 따라가는 walkthrough입니다. 아직 [Kanban 개요](./kanban)를 읽지 않았다면 먼저 그 문서부터 보세요. 이 튜토리얼은 task, run, assignee, dispatcher의 의미를 이미 안다고 가정합니다.
+브라우저에 dashboard를 띄운 상태에서, Vermes Kanban 시스템이 설계된 4가지 대표 사용 사례를 따라가는 walkthrough입니다. 아직 [Kanban 개요](./kanban)를 읽지 않았다면 먼저 그 문서부터 보세요. 이 튜토리얼은 task, run, assignee, dispatcher의 의미를 이미 안다고 가정합니다.
 
 ## 설정
 
 ```bash
-hermes kanban init           # 선택 사항; 첫 `hermes kanban <anything>` 호출 시 자동 초기화됨
-hermes dashboard             # 브라우저에서 http://127.0.0.1:9119 열기
+vermes kanban init           # 선택 사항; 첫 `vermes kanban <anything>` 호출 시 자동 초기화됨
+vermes dashboard             # 브라우저에서 http://127.0.0.1:9119 열기
 # 왼쪽 네비게이션에서 Kanban 클릭
 ```
 
-dashboard는 시스템을 지켜보는 **사람인 당신**에게 가장 편한 인터페이스입니다. dispatcher가 spawn하는 agent worker는 dashboard나 CLI를 직접 보지 않습니다. 이들은 전용 `kanban_*` [toolset](./kanban#how-workers-interact-with-the-board) (`kanban_show`, `kanban_complete`, `kanban_block`, `kanban_heartbeat`, `kanban_comment`, `kanban_create`, `kanban_link`)으로 보드를 다룹니다. dashboard, CLI, worker tool은 모두 같은 board별 SQLite DB(기본 board는 `~/.hermes/kanban.db`, 이후 만든 board는 `~/.hermes/kanban/boards/<slug>/kanban.db`)를 통하므로, 어느 쪽에서 바꿔도 보드 상태는 일관됩니다.
+dashboard는 시스템을 지켜보는 **사람인 당신**에게 가장 편한 인터페이스입니다. dispatcher가 spawn하는 agent worker는 dashboard나 CLI를 직접 보지 않습니다. 이들은 전용 `kanban_*` [toolset](./kanban#how-workers-interact-with-the-board) (`kanban_show`, `kanban_complete`, `kanban_block`, `kanban_heartbeat`, `kanban_comment`, `kanban_create`, `kanban_link`)으로 보드를 다룹니다. dashboard, CLI, worker tool은 모두 같은 board별 SQLite DB(기본 board는 `~/.vermes/kanban.db`, 이후 만든 board는 `~/.vermes/kanban/boards/<slug>/kanban.db`)를 통하므로, 어느 쪽에서 바꿔도 보드 상태는 일관됩니다.
 
 이 튜토리얼은 계속 `default` board를 사용합니다. 프로젝트/레포/도메인별로 여러 개의 격리된 queue를 원한다면 개요 문서의 [Boards (멀티 프로젝트)](./kanban#boards-multi-project)를 보세요. CLI / dashboard / worker 흐름은 똑같고, worker는 물리적으로 다른 board의 task를 볼 수 없습니다.
 
@@ -42,18 +42,18 @@ profile lane이 너무 복잡하게 느껴지면 `Lanes by profile`을 끄세요
 기능 하나를 만든다고 해봅시다. 전형적인 흐름은 스키마 설계 → API 구현 → 테스트 작성입니다. 부모→자식 dependency를 가진 task 3개로 구성됩니다.
 
 ```bash
-SCHEMA=$(hermes kanban create "Design auth schema" \
+SCHEMA=$(vermes kanban create "Design auth schema" \
     --assignee backend-dev --tenant auth-project --priority 2 \
     --body "Design the user/session/token schema for the auth module." \
     --json | jq -r .id)
 
-API=$(hermes kanban create "Implement auth API endpoints" \
+API=$(vermes kanban create "Implement auth API endpoints" \
     --assignee backend-dev --tenant auth-project --priority 2 \
     --parent $SCHEMA \
     --body "POST /register, POST /login, POST /refresh, POST /logout." \
     --json | jq -r .id)
 
-hermes kanban create "Write auth integration tests" \
+vermes kanban create "Write auth integration tests" \
     --assignee qa-dev --tenant auth-project --priority 2 \
     --parent $API \
     --body "Cover happy path, wrong password, expired token, concurrent refresh."
@@ -61,7 +61,7 @@ hermes kanban create "Write auth integration tests" \
 
 `API`는 `SCHEMA`를 부모로 가지며, `tests`는 `API`를 부모로 가집니다. 그래서 처음에 `ready`로 시작하는 것은 `SCHEMA` 하나뿐입니다. 나머지 두 task는 부모가 끝나기 전까지 `todo`에 머뭅니다. 이것이 dependency promotion engine의 역할입니다. 아직 테스트할 API가 없는데 테스트 작성 worker가 먼저 집어가는 일은 생기지 않습니다.
 
-다음 dispatcher tick(기본 60초, 또는 **Nudge dispatcher** 즉시 실행)에서 `backend-dev` profile이 `HERMES_KANBAN_TASK=$SCHEMA`를 가진 worker로 spawn됩니다. agent 내부에서 이 worker의 tool-call 루프는 대략 다음과 같습니다.
+다음 dispatcher tick(기본 60초, 또는 **Nudge dispatcher** 즉시 실행)에서 `backend-dev` profile이 `VERMES_KANBAN_TASK=$SCHEMA`를 가진 worker로 spawn됩니다. agent 내부에서 이 worker의 tool-call 루프는 대략 다음과 같습니다.
 
 ```python
 # worker tool calls — 직접 실행하는 명령 아님
@@ -84,7 +84,7 @@ kanban_complete(
 )
 ```
 
-`kanban_show`는 기본적으로 `task_id`를 `$HERMES_KANBAN_TASK`에서 가져오므로 worker는 자기 id를 몰라도 됩니다. `kanban_complete`는 summary + metadata를 현재 `task_runs` row에 기록하고, run을 닫고, task를 `done`으로 바꾸는 일을 **한 번의 atomic hop**으로 처리합니다.
+`kanban_show`는 기본적으로 `task_id`를 `$VERMES_KANBAN_TASK`에서 가져오므로 worker는 자기 id를 몰라도 됩니다. `kanban_complete`는 summary + metadata를 현재 `task_runs` row에 기록하고, run을 닫고, task를 `done`으로 바꾸는 일을 **한 번의 atomic hop**으로 처리합니다.
 
 `SCHEMA`가 `done`이 되면 dependency engine이 `API`를 자동으로 `ready`로 승격시킵니다. 이후 API worker가 `kanban_show()`를 호출하면, 부모 handoff에 붙은 `SCHEMA`의 summary와 metadata를 바로 보게 됩니다. 긴 설계 문서를 다시 읽지 않아도 스키마 결정을 이해할 수 있습니다.
 
@@ -97,8 +97,8 @@ kanban_complete(
 같은 데이터는 언제든 터미널에서도 볼 수 있습니다. 아래 명령은 **사람인 당신**이 보드를 들여다보는 행위이지 worker 동작이 아닙니다.
 
 ```bash
-hermes kanban show $SCHEMA
-hermes kanban runs $SCHEMA
+vermes kanban show $SCHEMA
+vermes kanban runs $SCHEMA
 # #  OUTCOME       PROFILE       ELAPSED  STARTED
 # 1  completed     backend-dev        0s  2026-04-27 19:34
 #     → users(id, email, pw_hash), sessions(id, user_id, jti, expires_at); refresh tokens ...
@@ -112,15 +112,15 @@ hermes kanban runs $SCHEMA
 
 ```bash
 for lang in Spanish French German; do
-    hermes kanban create "Translate homepage to $lang" \
+    vermes kanban create "Translate homepage to $lang" \
         --assignee translator --tenant content-ops
 done
 for i in 1 2 3 4 5; do
-    hermes kanban create "Transcribe Q3 customer call #$i" \
+    vermes kanban create "Transcribe Q3 customer call #$i" \
         --assignee transcriber --tenant content-ops
 done
 for sku in 1001 1002 1003 1004; do
-    hermes kanban create "Generate product description: SKU-$sku" \
+    vermes kanban create "Generate product description: SKU-$sku" \
         --assignee copywriter --tenant content-ops
 done
 ```
@@ -128,7 +128,7 @@ done
 gateway를 시작하고 잠시 자리를 떠나도 됩니다. gateway 안의 embedded dispatcher가 세 specialist profile의 task를 같은 `kanban.db`에서 동시에 끌어갑니다.
 
 ```bash
-hermes gateway start
+vermes gateway start
 ```
 
 이제 보드를 `content-ops`로 filter하거나, "Transcribe"로 검색해보면 다음과 같은 화면이 나옵니다.
@@ -181,7 +181,7 @@ kanban_block(
 이제 **사람인 당신**(혹은 별도 reviewer profile)이 block reason을 읽고, 수정 방향이 명확하다고 판단해 dashboard의 "Unblock" 버튼을 누르거나, CLI / slash command로 unblock합니다.
 
 ```bash
-hermes kanban unblock $IMPL
+vermes kanban unblock $IMPL
 # 또는 chat에서: /kanban unblock $IMPL
 ```
 
@@ -236,7 +236,7 @@ kanban_complete(
 예를 들어 `AWS_ACCESS_KEY_ID`가 profile 환경에 없는 deploy task:
 
 ```bash
-hermes kanban create "Deploy to staging (missing creds)" \
+vermes kanban create "Deploy to staging (missing creds)" \
     --assignee deploy-bot --tenant ops
 ```
 
@@ -251,7 +251,7 @@ blocked task를 클릭하면:
 터미널에서는:
 
 ```bash
-hermes kanban runs t_ef5d
+vermes kanban runs t_ef5d
 # #   OUTCOME        PROFILE        ELAPSED  STARTED
 # 1   spawn_failed   deploy-bot          0s  2026-04-27 19:34
 #       ! AWS_ACCESS_KEY_ID not set in deploy-bot env
@@ -292,7 +292,7 @@ task B의 worker가 spawn되어 `kanban_show()`를 호출하면 `worker_context`
 
 이 구조는 flat kanban 시스템에서 흔한 "comment와 결과물을 뒤져서 맥락을 복원하는 일"을 대체합니다. PM이 spec metadata에 acceptance criteria를 쓰면 engineer worker는 부모 handoff에서 이를 구조적으로 읽습니다. engineer가 어떤 테스트를 돌렸고 몇 개가 통과했는지 기록하면, reviewer worker는 diff를 열기 전부터 그 목록을 손에 쥐게 됩니다.
 
-bulk-close guard가 존재하는 이유도 이것이 **run별 데이터**이기 때문입니다. `hermes kanban complete a b c --summary X`는 CLI에서 거부됩니다. 같은 summary를 세 task에 복붙하는 일은 거의 항상 잘못이기 때문입니다. handoff flag 없이 bulk close하는 기능은 "행정성 task 여러 개를 한꺼번에 끝냈다" 같은 일반적인 경우를 위해 여전히 남아 있습니다. 반면 tool 표면에는 bulk variant 자체가 없습니다. 같은 이유로 `kanban_complete`는 언제나 single-task 단위입니다.
+bulk-close guard가 존재하는 이유도 이것이 **run별 데이터**이기 때문입니다. `vermes kanban complete a b c --summary X`는 CLI에서 거부됩니다. 같은 summary를 세 task에 복붙하는 일은 거의 항상 잘못이기 때문입니다. handoff flag 없이 bulk close하는 기능은 "행정성 task 여러 개를 한꺼번에 끝냈다" 같은 일반적인 경우를 위해 여전히 남아 있습니다. 반면 tool 표면에는 bulk variant 자체가 없습니다. 같은 이유로 `kanban_complete`는 언제나 single-task 단위입니다.
 
 ## 현재 실행 중인 task 들여다보기
 
@@ -305,6 +305,6 @@ bulk-close guard가 존재하는 이유도 이것이 **run별 데이터**이기 
 ## 다음 단계
 
 - [Kanban 개요](./kanban) — 전체 데이터 모델, event vocabulary, CLI reference
-- `hermes kanban --help` — 모든 subcommand와 flag
-- `hermes kanban watch --kinds completed,gave_up,timed_out` — 보드 전체 terminal event 실시간 스트림
-- `hermes kanban notify-subscribe <task> --platform telegram --chat-id <id>` — 특정 task가 끝날 때 gateway 알림 받기
+- `vermes kanban --help` — 모든 subcommand와 flag
+- `vermes kanban watch --kinds completed,gave_up,timed_out` — 보드 전체 terminal event 실시간 스트림
+- `vermes kanban notify-subscribe <task> --platform telegram --chat-id <id>` — 특정 task가 끝날 때 gateway 알림 받기

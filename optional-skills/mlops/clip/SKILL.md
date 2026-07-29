@@ -7,7 +7,7 @@ license: MIT
 dependencies: [transformers, torch, pillow]
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  vermes:
     tags: [Multimodal, CLIP, Vision-Language, Zero-Shot, Image Classification, OpenAI, Image Search, Cross-Modal Retrieval, Content Moderation]
 
 ---

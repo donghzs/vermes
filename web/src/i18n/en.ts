@@ -274,7 +274,7 @@ export const en: Translations = {
     enableRuntime: "Enable",
     forceReinstall: "Force reinstall (delete existing folder first)",
     headline:
-      "Discover, install, enable, and update vbit Agent plugins (`hermes plugins` parity).",
+      "Discover, install, enable, and update vbit Agent plugins (`vermes plugins` parity).",
     identifierLabel: "Git URL or owner/repo",
     inactive: "inactive",
     installBtn: "Install from Git",
@@ -291,8 +291,8 @@ export const en: Translations = {
     providersHint:
       "Writes memory.provider (empty = built-in) and context.engine to config.yaml. Takes effect next session.",
     refreshDashboard: "Rescan dashboard extensions",
-    removeConfirm: "Remove this plugin from ~/.hermes/plugins/?",
-    removeHint: "Only user-installed plugins under ~/.hermes/plugins can be removed.",
+    removeConfirm: "Remove this plugin from ~/.vermes/plugins/?",
+    removeHint: "Only user-installed plugins under ~/.vermes/plugins can be removed.",
     rescanHeading: "SPA plugin registry",
     rescanHint: "Rescan after adding files on disk so the dashboard sidebar picks up new manifests.",
     runtimeHeading: "Gateway runtime (YAML plugins)",
@@ -314,7 +314,7 @@ export const en: Translations = {
     all: "All",
     categories: "Categories",
     filters: "Filters",
-    noSkills: "No skills found. Skills are loaded from ~/.hermes/skills/",
+    noSkills: "No skills found. Skills are loaded from ~/.vermes/skills/",
     noSkillsMatch: "No skills match your search or filter.",
     skillCount: "{count} skill{s}",
     resultCount: "{count} result{s}",
@@ -328,7 +328,7 @@ export const en: Translations = {
   },
 
   config: {
-    configPath: "~/.hermes/config.yaml",
+    configPath: "~/.vermes/config.yaml",
     filters: "Filters",
     sections: "Sections",
     exportConfig: "Export config as JSON",

@@ -43,7 +43,7 @@ chat_completions → from run_agent import AIAgent
 旧 vermes 进程不自动退出，新实例启动后端口被占。
 之前移除了单例锁，需要手动 kill 旧进程。
 
-## 需要 Hermes 确认
+## 需要 Vermes 确认
 
 1. `browser_tool.py` 的3个 plugins.* 改为 try/except 是否安全？
    - 它们只是 re-export（BrowserbaseProvider, BrowserUseProvider, FirecrawlProvider）

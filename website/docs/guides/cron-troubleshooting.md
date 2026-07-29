@@ -1,7 +1,7 @@
 ---
 sidebar_position: 12
 title: "Cron Troubleshooting"
-description: "Diagnose and fix common Hermes cron issues — jobs not firing, delivery failures, skill loading errors, and performance problems"
+description: "Diagnose and fix common Vermes cron issues — jobs not firing, delivery failures, skill loading errors, and performance problems"
 ---
 
 # Cron Troubleshooting
@@ -15,7 +15,7 @@ When a cron job isn't behaving as expected, work through these checks in order. 
 ### Check 1: Verify the job exists and is active
 
 ```bash
-hermes cron list
+vermes cron list
 ```
 
 Look for the job and confirm its state is `[active]` (not `[paused]` or `[completed]`). If it shows `[completed]`, the repeat count may be exhausted — edit the job to reset it.
@@ -38,7 +38,7 @@ If the job fires once and then disappears from the list, it's a one-shot schedul
 
 Cron jobs are fired by the gateway's background ticker thread, which ticks every 60 seconds. A regular CLI chat session does **not** automatically fire cron jobs.
 
-If you're expecting jobs to fire automatically, you need a running gateway (`hermes gateway` for foreground, or `hermes gateway start` for the installed service). For one-off debugging, you can manually trigger a tick with `hermes cron tick`.
+If you're expecting jobs to fire automatically, you need a running gateway (`vermes gateway` for foreground, or `vermes gateway start` for the installed service). For one-off debugging, you can manually trigger a tick with `vermes cron tick`.
 
 ### Check 4: Check the system clock and timezone
 
@@ -46,7 +46,7 @@ Jobs use the local timezone. If your machine's clock is wrong or in a different 
 
 ```bash
 date
-hermes cron list   # Compare next_run times with local time
+vermes cron list   # Compare next_run times with local time
 ```
 
 ---
@@ -59,20 +59,20 @@ Delivery targets are case-sensitive and require the correct platform to be confi
 
 | Target | Requires |
 |--------|----------|
-| `telegram` | `TELEGRAM_BOT_TOKEN` in `~/.hermes/.env` |
-| `discord` | `DISCORD_BOT_TOKEN` in `~/.hermes/.env` |
-| `slack` | `SLACK_BOT_TOKEN` in `~/.hermes/.env` |
+| `telegram` | `TELEGRAM_BOT_TOKEN` in `~/.vermes/.env` |
+| `discord` | `DISCORD_BOT_TOKEN` in `~/.vermes/.env` |
+| `slack` | `SLACK_BOT_TOKEN` in `~/.vermes/.env` |
 | `whatsapp` | WhatsApp gateway configured |
 | `signal` | Signal gateway configured |
 | `matrix` | Matrix homeserver configured |
 | `email` | SMTP configured in `config.yaml` |
 | `sms` | SMS provider configured |
-| `local` | Write access to `~/.hermes/cron/output/` |
+| `local` | Write access to `~/.vermes/cron/output/` |
 | `origin` | Delivers to the chat where the job was created |
 
 Other supported platforms include `mattermost`, `homeassistant`, `dingtalk`, `feishu`, `wecom`, `weixin`, `bluebubbles`, `qqbot`, and `webhook`. You can also target a specific chat with `platform:chat_id` syntax (e.g., `telegram:-1001234567890`).
 
-If delivery fails, the job still runs — it just won't send anywhere. Check `hermes cron list` for updated `last_error` field (if available).
+If delivery fails, the job still runs — it just won't send anywhere. Check `vermes cron list` for updated `last_error` field (if available).
 
 ### Check 2: Check `[SILENT]` usage
 
@@ -104,14 +104,14 @@ cron:
 ### Check 1: Verify skills are installed
 
 ```bash
-hermes skills list
+vermes skills list
 ```
 
-Skills must be installed before they can be attached to cron jobs. If a skill is missing, install it first with `hermes skills install <skill-name>` or via `/skills` in the CLI.
+Skills must be installed before they can be attached to cron jobs. If a skill is missing, install it first with `vermes skills install <skill-name>` or via `/skills` in the CLI.
 
 ### Check 2: Check skill name vs. skill folder name
 
-Skill names are case-sensitive and must match the installed skill's folder name. If your job specifies `ai-funding-daily-report` but the skill folder is `ai-funding-daily-report`, confirm the exact name from `hermes skills list`.
+Skill names are case-sensitive and must match the installed skill's folder name. If your job specifies `ai-funding-daily-report` but the skill folder is `ai-funding-daily-report`, confirm the exact name from `vermes skills list`.
 
 ### Check 3: Skills that require interactive tools
 
@@ -138,26 +138,26 @@ In this example, `context-skill` loads before `target-skill`.
 If a job ran and failed, you may see error context in:
 
 1. The chat where the job delivers (if delivery succeeded)
-2. `~/.hermes/logs/agent.log` for scheduler messages (or `errors.log` for warnings)
-3. The job's `last_run` metadata via `hermes cron list`
+2. `~/.vermes/logs/agent.log` for scheduler messages (or `errors.log` for warnings)
+3. The job's `last_run` metadata via `vermes cron list`
 
 ### Check 2: Common error patterns
 
 **"No such file or directory" for scripts**
-The `script` path must be an absolute path (or relative to the Hermes config directory). Verify:
+The `script` path must be an absolute path (or relative to the Vermes config directory). Verify:
 ```bash
-ls ~/.hermes/scripts/your-script.py   # Must exist
-hermes cron edit <job_id> --script ~/.hermes/scripts/your-script.py
+ls ~/.vermes/scripts/your-script.py   # Must exist
+vermes cron edit <job_id> --script ~/.vermes/scripts/your-script.py
 ```
 
 **"Skill not found" at job execution**
-The skill must be installed on the machine running the scheduler. If you move between machines, skills don't automatically sync — reinstall them with `hermes skills install <skill-name>`.
+The skill must be installed on the machine running the scheduler. If you move between machines, skills don't automatically sync — reinstall them with `vermes skills install <skill-name>`.
 
 **Job runs but delivers nothing**
 Likely a delivery target issue (see Delivery Failures above) or a silently suppressed response (`[SILENT]`).
 
 **Job hangs or times out**
-The scheduler uses an inactivity-based timeout (default 600s, configurable via `HERMES_CRON_TIMEOUT` env var, `0` for unlimited). The agent can run as long as it's actively calling tools — the timer only fires after sustained inactivity. Long-running jobs should use scripts to handle data collection and deliver only the result.
+The scheduler uses an inactivity-based timeout (default 600s, configurable via `VERMES_CRON_TIMEOUT` env var, `0` for unlimited). The agent can run as long as it's actively calling tools — the timer only fires after sustained inactivity. Long-running jobs should use scripts to handle data collection and deliver only the result.
 
 ### Check 3: Lock contention
 
@@ -165,17 +165,17 @@ The scheduler uses file-based locking to prevent overlapping ticks. If two gatew
 
 Kill duplicate gateway processes:
 ```bash
-ps aux | grep hermes
+ps aux | grep vermes
 # Kill duplicate processes, keep only one
 ```
 
 ### Check 4: Permissions on jobs.json
 
-Jobs are stored in `~/.hermes/cron/jobs.json`. If this file is not readable/writable by your user, the scheduler will fail silently:
+Jobs are stored in `~/.vermes/cron/jobs.json`. If this file is not readable/writable by your user, the scheduler will fail silently:
 
 ```bash
-ls -la ~/.hermes/cron/jobs.json
-chmod 600 ~/.hermes/cron/jobs.json   # Your user should own it
+ls -la ~/.vermes/cron/jobs.json
+chmod 600 ~/.vermes/cron/jobs.json   # Your user should own it
 ```
 
 ---
@@ -199,11 +199,11 @@ Scripts that dump megabytes of output will slow down the agent and may hit token
 ## Diagnostic Commands
 
 ```bash
-hermes cron list                    # Show all jobs, states, next_run times
-hermes cron run <job_id>            # Schedule for next tick (for testing)
-hermes cron edit <job_id>           # Fix configuration issues
-hermes logs                         # View recent Hermes logs
-hermes skills list                  # Verify installed skills
+vermes cron list                    # Show all jobs, states, next_run times
+vermes cron run <job_id>            # Schedule for next tick (for testing)
+vermes cron edit <job_id>           # Fix configuration issues
+vermes logs                         # View recent Vermes logs
+vermes skills list                  # Verify installed skills
 ```
 
 ---
@@ -212,9 +212,9 @@ hermes skills list                  # Verify installed skills
 
 If you've worked through this guide and the issue persists:
 
-1. Run the job with `hermes cron run <job_id>` (fires on next gateway tick) and watch for errors in the chat output
-2. Check `~/.hermes/logs/agent.log` for scheduler messages and `~/.hermes/logs/errors.log` for warnings
-3. Open an issue at [github.com/NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) with:
+1. Run the job with `vermes cron run <job_id>` (fires on next gateway tick) and watch for errors in the chat output
+2. Check `~/.vermes/logs/agent.log` for scheduler messages and `~/.vermes/logs/errors.log` for warnings
+3. Open an issue at [github.com/donghzs/vermes](https://github.com/donghzs/vermes) with:
    - The job ID and schedule
    - The delivery target
    - What you expected vs. what happened

@@ -44,9 +44,9 @@ Background:  fork agent → patch skill + memory → 下次会话 ✅
 
 ---
 
-## 与官方 Hermes 的差异化
+## 与官方 Vermes 的差异化
 
-Vermes 独有（官方 Hermes 没有）：
+Vermes 独有（官方 Vermes 没有）：
 
 | # | 能力 | 说明 |
 |---|------|------|

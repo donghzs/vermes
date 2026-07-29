@@ -38,7 +38,7 @@
 
 **逻辑**：
 ```
-profileDir = path.join(app.getPath('userData'), '..', '.hermes')  // 或读 HERMES_HOME env
+profileDir = path.join(app.getPath('userData'), '..', '.vermes')  // 或读 VERMES_HOME env
 stateDb    = path.join(profileDir, 'state.db')
 
 if (fs.existsSync(stateDb)):
@@ -67,7 +67,7 @@ else:
 
 **逻辑**：
 ```
-expected = 14  // hermes_state.SCHEMA_VERSION（从源码/常量读，不硬编码魔法数）
+expected = 14  // VERMES_state.SCHEMA_VERSION（从源码/常量读，不硬编码魔法数）
 actual    = PRAGMA user_version
 
 if (actual < expected):
@@ -80,7 +80,7 @@ elif (actual > expected):
     → FAIL VISIBLE: "此数据由更高版本创建，请升级 Vermes"
 ```
 
-**防什么**：我们前面审计知道 `hermes_state.SCHEMA_VERSION=14`，上游已 23。若用户用旧版客户端开新版 DB（或反之），会崩或静默建错。这正好是 OpenSquilla "升级前验证 active workspace" 的等价物。
+**防什么**：我们前面审计知道 `VERMES_state.SCHEMA_VERSION=14`，上游已 23。若用户用旧版客户端开新版 DB（或反之），会崩或静默建错。这正好是 OpenSquilla "升级前验证 active workspace" 的等价物。
 
 **注意**：迁移本身不在这 PR 做（只校验+报错），但**校验失败必须可见**。
 
@@ -152,7 +152,7 @@ if (!fs.existsSync(path.join(__dirname, 'preload.js'))):
 | `electron/main.js` | `app.whenReady()` 后新增 `runStartupGuards()` 调用（切面 A+B+D 入口） | A/B/D |
 | `electron/main.js` | 新增 `verifyProfileReadable()` / `verifySchemaVersion()` / `verifyPreloadPresent()` | A/B/D |
 | `electron/main.js` | 新增 `failVisible(reason, recoverable)` 统一出口（复用 splash 错误页） | 统一 |
-| `electron/main.js` | `SCHEMA_VERSION` 常量从 `hermes_state` 同步（避免硬编码魔法数） | B |
+| `electron/main.js` | `SCHEMA_VERSION` 常量从 `VERMES_state` 同步（避免硬编码魔法数） | B |
 | （不动） | `clearStorageData` / splash 路径兜底 / 后端健康检查 | — 保留 |
 
 **预估代码量**：~80-120 行（纯守卫函数 + 一个统一失败出口），零新依赖，零业务数据写入。
@@ -179,7 +179,7 @@ if (!fs.existsSync(path.join(__dirname, 'preload.js'))):
 |---|---|
 | 升级前验证 active workspace 存在性 | 切面 A（profile 可读性探测） |
 | 防止升级后误建空库覆盖身份/记忆/聊天 | 切面 A（存在但打不开→拦截，不新建） |
-| 卸载保留 profile | 我们卸载走系统，不删 `~/.hermes`，天然保留（无需额外代码） |
+| 卸载保留 profile | 我们卸载走系统，不删 `~/.vermes`，天然保留（无需额外代码） |
 | 清理动作明示删什么 | 切面 C 是"条件清"思路，但本期不做（保留现有无条件清） |
 
 **差异**：我们比它多做了**切面 B（schema 版本校验）**和**切面 D（preload 资源守卫）**——因为我们的实际坑里有"新版读旧 schema 崩"和"preload 漏配隐性退化"两个它没提的特有风险。

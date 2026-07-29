@@ -12,7 +12,7 @@
 |------|------|------|
 | `vermes_cli/win_adapter.py` | 411 | 完整的 Win32 API 适配层：WebView2 检测、DPI 感知、单例聚焦、系统托盘、窗口位置持久化 |
 | `vermes_cli/_subprocess_compat.py` | 175 | `windows_detach_flags()` / `resolve_node_command()` / 跨平台 Popen 参数统一 |
-| `hermes_bootstrap.py` | 154 | UTF-8 引导修复：`PYTHONUTF8=1` + `subprocess.Popen` 猴子补丁，解决中文 Windows GBK 解码问题 |
+| `VERMES_bootstrap.py` | 154 | UTF-8 引导修复：`PYTHONUTF8=1` + `subprocess.Popen` 猴子补丁，解决中文 Windows GBK 解码问题 |
 | `vermes_cli/gateway_windows.py` | 1043 | 完整的 Windows gateway 服务管理：schtasks + Startup 文件夹双重降级 |
 | `vermes_cli/clipboard.py` | 494 | PowerShell WinForms 剪贴板图片提取，原生 Windows + WSL 双模式 |
 | `vermes_cli/gui_app.py` | 516 | pywebview 原生窗口，Windows edgechromium GUI 后端，日志重定向 |
@@ -144,7 +144,7 @@
 
 42+ 处使用了 `os.chmod(path, 0o700)`，Windows 上通过 ACL 控制权限，`chmod` 功能有限。不会崩溃但权限保护效果不足。
 
-**关键文件**: `vermes_constants.py:277`, `hermes_logging.py:336`, `utils.py:56`, `vermes_cli/config.py:404/447/4833/4889`, `tools/tirith_security.py:426`, `tools/mcp_oauth.py:179`
+**关键文件**: `vermes_constants.py:277`, `VERMES_logging.py:336`, `utils.py:56`, `vermes_cli/config.py:404/447/4833/4889`, `tools/tirith_security.py:426`, `tools/mcp_oauth.py:179`
 
 **修复**: 对凭据/敏感文件使用 `icacls` 命令或 `win32security` API 设置 DACL。
 
@@ -180,7 +180,7 @@
 
 **优化**: 实现 `pywinpty` 适配器，使 dashboard chat 在 Windows ConPTY 上可用。
 
-### 5.3 `hermes_logging.py` — inode 日志轮转在 Windows 上不可靠
+### 5.3 `VERMES_logging.py` — inode 日志轮转在 Windows 上不可靠
 
 `_ManagedRotatingFileHandler` 的 `st_dev/st_ino` 检测在 Windows 上可能为 0。
 

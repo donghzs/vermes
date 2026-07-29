@@ -11,8 +11,8 @@ const MAX_GATEWAY_LOG_LINES = 200
 const MAX_LOG_LINE_BYTES = 4096
 const MAX_BUFFERED_EVENTS = 2000
 const MAX_LOG_PREVIEW = 240
-const STARTUP_TIMEOUT_MS = Math.max(5000, parseInt(process.env.HERMES_TUI_STARTUP_TIMEOUT_MS ?? '15000', 10) || 15000)
-const REQUEST_TIMEOUT_MS = Math.max(30000, parseInt(process.env.HERMES_TUI_RPC_TIMEOUT_MS ?? '120000', 10) || 120000)
+const STARTUP_TIMEOUT_MS = Math.max(5000, parseInt(process.env.VERMES_TUI_STARTUP_TIMEOUT_MS ?? '15000', 10) || 15000)
+const REQUEST_TIMEOUT_MS = Math.max(30000, parseInt(process.env.VERMES_TUI_RPC_TIMEOUT_MS ?? '120000', 10) || 120000)
 const WS_CONNECTING = 0
 const WS_OPEN = 1
 const WS_CLOSING = 2
@@ -22,19 +22,19 @@ const truncateLine = (line: string) =>
   line.length > MAX_LOG_LINE_BYTES ? `${line.slice(0, MAX_LOG_LINE_BYTES)}… [truncated ${line.length} bytes]` : line
 
 const resolveGatewayAttachUrl = () => {
-  const raw = process.env.HERMES_TUI_GATEWAY_URL?.trim()
+  const raw = process.env.VERMES_TUI_GATEWAY_URL?.trim()
 
   return raw ? raw : null
 }
 
 const resolveSidecarUrl = () => {
-  const raw = process.env.HERMES_TUI_SIDECAR_URL?.trim()
+  const raw = process.env.VERMES_TUI_SIDECAR_URL?.trim()
 
   return raw ? raw : null
 }
 
 const resolvePython = (root: string) => {
-  const configured = process.env.HERMES_PYTHON?.trim() || process.env.PYTHON?.trim()
+  const configured = process.env.VERMES_PYTHON?.trim() || process.env.PYTHON?.trim()
 
   if (configured) {
     return configured
@@ -317,7 +317,7 @@ export class GatewayClient extends EventEmitter {
 
   private startSpawnedGateway(root: string) {
     const python = resolvePython(root)
-    const cwd = process.env.HERMES_CWD || root
+    const cwd = process.env.VERMES_CWD || root
     const env = { ...process.env }
     const pyPath = env.PYTHONPATH?.trim()
 
@@ -474,7 +474,7 @@ export class GatewayClient extends EventEmitter {
   }
 
   start() {
-    const root = process.env.HERMES_PYTHON_SRC_ROOT ?? resolve(import.meta.dirname, '../../')
+    const root = process.env.VERMES_PYTHON_SRC_ROOT ?? resolve(import.meta.dirname, '../../')
     const attachUrl = resolveGatewayAttachUrl()
     const sidecarUrl = resolveSidecarUrl()
 

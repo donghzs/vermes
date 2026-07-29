@@ -17,7 +17,7 @@ Inspect codebases w/ pygount: LOC, languages, ratios.
 | Source | Bundled (installed by default) |
 | Path | `skills/github/codebase-inspection` |
 | Version | `1.0.0` |
-| Author | Hermes Agent |
+| Author | Vermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `LOC`, `Code Analysis`, `pygount`, `Codebase`, `Metrics`, `Repository` |
@@ -26,7 +26,7 @@ Inspect codebases w/ pygount: LOC, languages, ratios.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Codebase Inspection with pygount

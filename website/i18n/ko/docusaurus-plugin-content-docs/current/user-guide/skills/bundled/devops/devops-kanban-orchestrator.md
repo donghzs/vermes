@@ -23,7 +23,7 @@ Kanban을 통해 작업을 라우팅하는 orchestrator profile을 위한 작업
 ## Reference: full SKILL.md
 
 :::info
-아래 내용은 이 skill이 트리거될 때 Hermes가 실제로 로드하는 **전체 skill 정의**입니다. 즉, skill이 활성화되었을 때 agent가 실제 지침으로 보는 텍스트입니다.
+아래 내용은 이 skill이 트리거될 때 vermes가 실제로 로드하는 **전체 skill 정의**입니다. 즉, skill이 활성화되었을 때 agent가 실제 지침으로 보는 텍스트입니다.
 :::
 
 # Kanban Orchestrator — 작업 분해 playbook
@@ -93,7 +93,7 @@ t1 = kanban_create(
     title="research: Postgres cost vs current",
     assignee="researcher",
     body="Compare estimated infrastructure costs, migration costs, and ongoing ops costs over a 3-year window. Sources: AWS/GCP pricing, team time estimates, current Postgres bills from peers.",
-    tenant=os.environ.get("HERMES_TENANT"),
+    tenant=os.environ.get("VERMES_TENANT"),
 )["task_id"]
 
 t2 = kanban_create(
@@ -147,7 +147,7 @@ kanban_complete(
 > - **T3** (analyst): synthesizes T1 + T2 into a recommendation
 > - **T4** (writer): turns T3 into a CTO memo
 >
-> The dispatcher will pick up T1 and T2 now. T3 starts when both finish. You'll get a gateway ping when T4 completes. Use the dashboard or `hermes kanban tail <id>` to follow along.
+> The dispatcher will pick up T1 and T2 now. T3 starts when both finish. You'll get a gateway ping when T4 completes. Use the dashboard or `vermes kanban tail <id>` to follow along.
 
 ## 흔한 패턴
 
@@ -167,4 +167,4 @@ kanban_complete(
 
 **중간 결과에 따라 graph 모양이 달라질 수 있다면 전체 graph를 미리 만들지 마세요.** T3 구조가 T1/T2 findings에 따라 달라진다면, T3를 "synthesize findings" task로만 두고 그 task의 첫 단계에서 부모 handoff를 읽어 후속 계획을 짜게 하면 됩니다. orchestrator는 또 다른 orchestrator를 spawn할 수 있습니다.
 
-**Tenant 상속.** env에 `HERMES_TENANT`가 설정되어 있다면, 모든 `kanban_create` 호출에 `tenant=os.environ.get("HERMES_TENANT")`를 넣어 child task도 같은 namespace에 머물게 하세요.
+**Tenant 상속.** env에 `VERMES_TENANT`가 설정되어 있다면, 모든 `kanban_create` 호출에 `tenant=os.environ.get("VERMES_TENANT")`를 넣어 child task도 같은 namespace에 머물게 하세요.

@@ -6,7 +6,7 @@ description: How the agent ships generated charts, PDFs, spreadsheets, and other
 
 # Deliverable Mode
 
-When Hermes Agent runs inside a messaging gateway (Slack, Discord, Telegram,
+When Vermes Agent runs inside a messaging gateway (Slack, Discord, Telegram,
 WhatsApp, Signal, etc.), it can deliver generated files directly into the
 chat — not as paths the user has to copy, but as native attachments.
 
@@ -64,7 +64,7 @@ messaging platforms.
 
 **Project-level:** add the bias to `AGENTS.md` / `CLAUDE.md` /
 `.cursorrules` in a project the agent works from, or to your global
-custom instructions in `~/.hermes/config.yaml` under `agent.custom_instructions`.
+custom instructions in `~/.vermes/config.yaml` under `agent.custom_instructions`.
 
 The mechanic the agent has to use is simple: render the file to an
 absolute path (e.g. `/tmp/q3-revenue.png`) and mention that path as
@@ -74,7 +74,7 @@ mutilated.
 
 ## Kanban: artifacts ride completion notifications
 
-If you use Hermes' kanban multi-agent workflow, workers can attach
+If you use Vermes' kanban multi-agent workflow, workers can attach
 deliverable files to their `kanban_complete` call:
 
 ```python
@@ -111,14 +111,14 @@ community servers for most popular tools — install whichever you need:
 | **Snowflake / BigQuery** | SQL against data warehouses |
 | **Google Drive** | File search, contents, share management |
 
-Install MCP servers via `~/.hermes/config.yaml` under the `mcp_servers`
+Install MCP servers via `~/.vermes/config.yaml` under the `mcp_servers`
 section. See [MCP integration](./mcp.md) for the full setup guide.
 
 ## Comparison to Perplexity Computer in Slack
 
 Perplexity Computer's Slack integration is built around the same idea:
 the agent generates a deliverable (chart, PDF, slide deck) and posts it
-back into the thread as a native attachment. Hermes Agent's deliverable
+back into the thread as a native attachment. Vermes Agent's deliverable
 mode provides the same user-facing pattern locally:
 
 - Generation happens in the user's own venv / sandbox (no remote tenant).

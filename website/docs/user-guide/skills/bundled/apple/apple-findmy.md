@@ -17,7 +17,7 @@ Track Apple devices/AirTags via FindMy.app on macOS.
 | Source | Bundled (installed by default) |
 | Path | `skills/apple/findmy` |
 | Version | `1.0.0` |
-| Author | Hermes Agent |
+| Author | Vermes Agent |
 | License | MIT |
 | Platforms | macos |
 | Tags | `FindMy`, `AirTag`, `location`, `tracking`, `macOS`, `Apple` |
@@ -25,7 +25,7 @@ Track Apple devices/AirTags via FindMy.app on macOS.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # Find My (Apple)

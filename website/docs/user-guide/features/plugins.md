@@ -2,39 +2,39 @@
 sidebar_position: 11
 sidebar_label: "Plugins"
 title: "Plugins"
-description: "Extend Hermes with custom tools, hooks, and integrations via the plugin system"
+description: "Extend Vermes with custom tools, hooks, and integrations via the plugin system"
 ---
 
 # Plugins
 
-Hermes has a plugin system for adding custom tools, hooks, and integrations without modifying core code.
+Vermes has a plugin system for adding custom tools, hooks, and integrations without modifying core code.
 
 If you want to create a custom tool for yourself, your team, or one project,
 this is usually the right path. The developer guide's
-[Adding Tools](/docs/developer-guide/adding-tools) page is for built-in Hermes
+[Adding Tools](/docs/developer-guide/adding-tools) page is for built-in Vermes
 core tools that live in `tools/` and `toolsets.py`.
 
-**→ [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin)** — step-by-step guide with a complete working example.
+**→ [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin)** — step-by-step guide with a complete working example.
 
 ## Quick overview
 
-Drop a directory into `~/.hermes/plugins/` with a `plugin.yaml` and Python code:
+Drop a directory into `~/.vermes/plugins/` with a `plugin.yaml` and Python code:
 
 ```
-~/.hermes/plugins/my-plugin/
+~/.vermes/plugins/my-plugin/
 ├── plugin.yaml      # manifest
 ├── __init__.py      # register() — wires schemas to handlers
 ├── schemas.py       # tool schemas (what the LLM sees)
 └── tools.py         # tool handlers (what runs when called)
 ```
 
-Start Hermes — your tools appear alongside built-in tools. The model can call them immediately.
+Start Vermes — your tools appear alongside built-in tools. The model can call them immediately.
 
 ### Minimal working example
 
 Here is a complete plugin that adds a `hello_world` tool and logs every tool call via a hook.
 
-**`~/.hermes/plugins/hello-world/plugin.yaml`**
+**`~/.vermes/plugins/hello-world/plugin.yaml`**
 
 ```yaml
 name: hello-world
@@ -42,10 +42,10 @@ version: "1.0"
 description: A minimal example plugin
 ```
 
-**`~/.hermes/plugins/hello-world/__init__.py`**
+**`~/.vermes/plugins/hello-world/__init__.py`**
 
 ```python
-"""Minimal Hermes plugin — registers a tool and a hook."""
+"""Minimal Vermes plugin — registers a tool and a hook."""
 
 import json
 
@@ -87,9 +87,9 @@ def register(ctx):
     ctx.register_hook("post_tool_call", on_tool_call)
 ```
 
-Drop both files into `~/.hermes/plugins/hello-world/`, restart Hermes, and the model can immediately call `hello_world`. The hook prints a log line after every tool invocation.
+Drop both files into `~/.vermes/plugins/hello-world/`, restart Vermes, and the model can immediately call `hello_world`. The hook prints a log line after every tool invocation.
 
-Project-local plugins under `./.hermes/plugins/` are disabled by default. Enable them only for trusted repositories by setting `HERMES_ENABLE_PROJECT_PLUGINS=true` before starting Hermes.
+Project-local plugins under `./.vermes/plugins/` are disabled by default. Enable them only for trusted repositories by setting `VERMES_ENABLE_PROJECT_PLUGINS=true` before starting Vermes.
 
 ## What plugins can do
 
@@ -101,12 +101,12 @@ Every `ctx.*` API below is available inside a plugin's `register(ctx)` function.
 | Add hooks | `ctx.register_hook("post_tool_call", callback)` |
 | Add slash commands | `ctx.register_command(name, handler, description)` — adds `/name` in CLI and gateway sessions |
 | Dispatch tools from commands | `ctx.dispatch_tool(name, args)` — invokes a registered tool with parent-agent context auto-wired |
-| Add CLI commands | `ctx.register_cli_command(name, help, setup_fn, handler_fn)` — adds `hermes <plugin> <subcommand>` |
+| Add CLI commands | `ctx.register_cli_command(name, help, setup_fn, handler_fn)` — adds `vermes <plugin> <subcommand>` |
 | Inject messages | `ctx.inject_message(content, role="user")` — see [Injecting Messages](#injecting-messages) |
 | Ship data files | `Path(__file__).parent / "data" / "file.yaml"` |
 | Bundle skills | `ctx.register_skill(name, path)` — namespaced as `plugin:skill`, loaded via `skill_view("plugin:skill")` |
-| Gate on env vars | `requires_env: [API_KEY]` in plugin.yaml — prompted during `hermes plugins install` |
-| Distribute via pip | `[project.entry-points."hermes_agent.plugins"]` |
+| Gate on env vars | `requires_env: [API_KEY]` in plugin.yaml — prompted during `vermes plugins install` |
+| Distribute via pip | `[project.entry-points."VERMES_agent.plugins"]` |
 | Register a gateway platform (Discord, Telegram, IRC, …) | `ctx.register_platform(name, label, adapter_factory, check_fn, ...)` — see [Adding Platform Adapters](/docs/developer-guide/adding-platform-adapters) |
 | Register an image-generation backend | `ctx.register_image_gen_provider(provider)` — see [Image Generation Provider Plugins](/docs/developer-guide/image-gen-provider-plugin) |
 | Register a video-generation backend | `ctx.register_video_gen_provider(provider)` — see [Video Generation Provider Plugins](/docs/developer-guide/video-gen-provider-plugin) |
@@ -119,17 +119,17 @@ Every `ctx.*` API below is available inside a plugin's `register(ctx)` function.
 
 | Source | Path | Use case |
 |--------|------|----------|
-| Bundled | `<repo>/plugins/` | Ships with Hermes — see [Built-in Plugins](/docs/user-guide/features/built-in-plugins) |
-| User | `~/.hermes/plugins/` | Personal plugins |
-| Project | `.hermes/plugins/` | Project-specific plugins (requires `HERMES_ENABLE_PROJECT_PLUGINS=true`) |
-| pip | `hermes_agent.plugins` entry_points | Distributed packages |
-| Nix | `services.hermes-agent.extraPlugins` / `extraPythonPackages` | NixOS declarative installs — see [Nix Setup](/docs/getting-started/nix-setup#plugins) |
+| Bundled | `<repo>/plugins/` | Ships with Vermes — see [Built-in Plugins](/docs/user-guide/features/built-in-plugins) |
+| User | `~/.vermes/plugins/` | Personal plugins |
+| Project | `.vermes/plugins/` | Project-specific plugins (requires `VERMES_ENABLE_PROJECT_PLUGINS=true`) |
+| pip | `VERMES_agent.plugins` entry_points | Distributed packages |
+| Nix | `services.vermes-agent.extraPlugins` / `extraPythonPackages` | NixOS declarative installs — see [Nix Setup](/docs/getting-started/nix-setup#plugins) |
 
 Later sources override earlier ones on name collision, so a user plugin with the same name as a bundled plugin replaces it.
 
 ### Plugin sub-categories
 
-Within each source, Hermes also recognizes sub-category directories that route plugins to specialized discovery systems:
+Within each source, Vermes also recognizes sub-category directories that route plugins to specialized discovery systems:
 
 | Sub-directory | What it holds | Discovery system |
 |---|---|---|
@@ -140,13 +140,13 @@ Within each source, Hermes also recognizes sub-category directories that route p
 | `plugins/context_engine/<name>/` | Context-compression engines (`ctx.register_context_engine()`) | **Own loader** in `plugins/context_engine/__init__.py` (one active at a time) |
 | `plugins/model-providers/<name>/` | LLM provider profiles (`register_provider(ProviderProfile(...))`) | **Own loader** in `providers/__init__.py` (lazily scanned on first `get_provider_profile()` call) |
 
-User plugins at `~/.hermes/plugins/model-providers/<name>/` and `~/.hermes/plugins/memory/<name>/` override bundled plugins of the same name — last-writer-wins in `register_provider()` / `register_memory_provider()`. Drop a directory in, and it replaces the built-in without any repo edits.
+User plugins at `~/.vermes/plugins/model-providers/<name>/` and `~/.vermes/plugins/memory/<name>/` override bundled plugins of the same name — last-writer-wins in `register_provider()` / `register_memory_provider()`. Drop a directory in, and it replaces the built-in without any repo edits.
 
-Sub-category plugins surface in `hermes plugins list` and the interactive `hermes plugins` UI under their **path-derived key** — e.g. `observability/langfuse`, `image_gen/openai`, `platforms/teams`. That key (not the bare manifest `name:`) is the value you pass to `hermes plugins enable …` / `disable …` and the string to add under `plugins.enabled` in `config.yaml`.
+Sub-category plugins surface in `vermes plugins list` and the interactive `vermes plugins` UI under their **path-derived key** — e.g. `observability/langfuse`, `image_gen/openai`, `platforms/teams`. That key (not the bare manifest `name:`) is the value you pass to `vermes plugins enable …` / `disable …` and the string to add under `plugins.enabled` in `config.yaml`.
 
 ## Plugins are opt-in (with a few exceptions)
 
-**General plugins and user-installed backends are disabled by default** — discovery finds them (so they show up in `hermes plugins` and `/plugins`), but nothing with hooks or tools loads until you add the plugin's name to `plugins.enabled` in `~/.hermes/config.yaml`. This stops third-party code from running without your explicit consent.
+**General plugins and user-installed backends are disabled by default** — discovery finds them (so they show up in `vermes plugins` and `/plugins`), but nothing with hooks or tools loads until you add the plugin's name to `plugins.enabled` in `~/.vermes/config.yaml`. This stops third-party code from running without your explicit consent.
 
 ```yaml
 plugins:
@@ -160,16 +160,16 @@ plugins:
 Three ways to flip state:
 
 ```bash
-hermes plugins                    # interactive toggle (space to check/uncheck)
-hermes plugins enable <name>      # add to allow-list
-hermes plugins disable <name>     # remove from allow-list + add to disabled
+vermes plugins                    # interactive toggle (space to check/uncheck)
+vermes plugins enable <name>      # add to allow-list
+vermes plugins disable <name>     # remove from allow-list + add to disabled
 ```
 
-After `hermes plugins install owner/repo`, you're asked `Enable 'name' now? [y/N]` — defaults to no. Skip the prompt for scripted installs with `--enable` or `--no-enable`.
+After `vermes plugins install owner/repo`, you're asked `Enable 'name' now? [y/N]` — defaults to no. Skip the prompt for scripted installs with `--enable` or `--no-enable`.
 
 ### What the allow-list does NOT gate
 
-Several categories of plugin bypass `plugins.enabled` — they're part of Hermes' built-in surface and would break basic functionality if gated off by default:
+Several categories of plugin bypass `plugins.enabled` — they're part of Vermes' built-in surface and would break basic functionality if gated off by default:
 
 | Plugin kind | How it's activated instead |
 |---|---|
@@ -179,13 +179,13 @@ Several categories of plugin bypass `plugins.enabled` — they're part of Hermes
 | **Context engines** (`plugins/context_engine/`) | All discovered; one is active, chosen by `context.engine` in `config.yaml`. |
 | **Model providers** (`plugins/model-providers/`) | All bundled providers under `plugins/model-providers/` discover and register at the first `get_provider_profile()` call. The user picks one at a time via `--provider` or `config.yaml`. |
 | **Pip-installed `backend` plugins** | Opt-in via `plugins.enabled` (same as general plugins). |
-| **User-installed platforms** (under `~/.hermes/plugins/platforms/`) | Opt-in via `plugins.enabled` — third-party gateway adapters need explicit consent. |
+| **User-installed platforms** (under `~/.vermes/plugins/platforms/`) | Opt-in via `plugins.enabled` — third-party gateway adapters need explicit consent. |
 
-In short: **bundled "always-works" infrastructure loads automatically; third-party general plugins are opt-in.** The `plugins.enabled` allow-list is the gate specifically for arbitrary code a user drops into `~/.hermes/plugins/`.
+In short: **bundled "always-works" infrastructure loads automatically; third-party general plugins are opt-in.** The `plugins.enabled` allow-list is the gate specifically for arbitrary code a user drops into `~/.vermes/plugins/`.
 
 ### Migration for existing users
 
-When you upgrade to a version of Hermes that has opt-in plugins (config schema v21+), any user plugins already installed under `~/.hermes/plugins/` that weren't already in `plugins.disabled` are **automatically grandfathered** into `plugins.enabled`. Your existing setup keeps working. Bundled standalone plugins are NOT grandfathered — even existing users have to opt in explicitly. (Bundled platform/backend plugins never needed grandfathering because they were never gated.)
+When you upgrade to a version of Vermes that has opt-in plugins (config schema v21+), any user plugins already installed under `~/.vermes/plugins/` that weren't already in `plugins.disabled` are **automatically grandfathered** into `plugins.enabled`. Your existing setup keeps working. Bundled standalone plugins are NOT grandfathered — even existing users have to opt in explicitly. (Bundled platform/backend plugins never needed grandfathering because they were never gated.)
 
 ## Available hooks
 
@@ -206,11 +206,11 @@ Plugins can register callbacks for these lifecycle events. See the **[Event Hook
 
 ## Plugin types
 
-Hermes has four kinds of plugins:
+Vermes has four kinds of plugins:
 
 | Type | What it does | Selection | Location |
 |------|-------------|-----------|----------|
-| **General plugins** | Add tools, hooks, slash commands, CLI commands | Multi-select (enable/disable) | `~/.hermes/plugins/` |
+| **General plugins** | Add tools, hooks, slash commands, CLI commands | Multi-select (enable/disable) | `~/.vermes/plugins/` |
 | **Memory providers** | Replace or augment built-in memory | Single-select (one active) | `plugins/memory/` |
 | **Context engines** | Replace the built-in context compressor | Single-select (one active) | `plugins/context_engine/` |
 | **Model providers** | Declare an inference backend (OpenRouter, Anthropic, …) | Multi-register, picked by `--provider` / `config.yaml` | `plugins/model-providers/` |
@@ -219,14 +219,14 @@ Memory providers and context engines are **provider plugins** — only one of ea
 
 ## Pluggable interfaces — where to go for each
 
-The table above shows the four plugin categories, but within "General plugins" the `PluginContext` exposes several distinct extension points — and Hermes also accepts extensions outside the Python plugin system (config-driven backends, shell-hooked commands, external servers, etc.). Use this table to find the right doc for what you want to build:
+The table above shows the four plugin categories, but within "General plugins" the `PluginContext` exposes several distinct extension points — and Vermes also accepts extensions outside the Python plugin system (config-driven backends, shell-hooked commands, external servers, etc.). Use this table to find the right doc for what you want to build:
 
 | Want to add… | How | Authoring guide |
 |---|---|---|
-| A **tool** the LLM can call | Python plugin — `ctx.register_tool()` | [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin) · [Adding Tools](/docs/developer-guide/adding-tools) |
-| A **lifecycle hook** (pre/post LLM, session start/end, tool filter) | Python plugin — `ctx.register_hook()` | [Hooks reference](/docs/user-guide/features/hooks) · [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin) |
-| A **slash command** for the CLI / gateway | Python plugin — `ctx.register_command()` | [Build a Hermes Plugin](/docs/guides/build-a-hermes-plugin) · [Extending the CLI](/docs/developer-guide/extending-the-cli) |
-| A **subcommand** for `hermes <thing>` | Python plugin — `ctx.register_cli_command()` | [Extending the CLI](/docs/developer-guide/extending-the-cli) |
+| A **tool** the LLM can call | Python plugin — `ctx.register_tool()` | [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin) · [Adding Tools](/docs/developer-guide/adding-tools) |
+| A **lifecycle hook** (pre/post LLM, session start/end, tool filter) | Python plugin — `ctx.register_hook()` | [Hooks reference](/docs/user-guide/features/hooks) · [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin) |
+| A **slash command** for the CLI / gateway | Python plugin — `ctx.register_command()` | [Build a Vermes Plugin](/docs/guides/build-a-vermes-plugin) · [Extending the CLI](/docs/developer-guide/extending-the-cli) |
+| A **subcommand** for `vermes <thing>` | Python plugin — `ctx.register_cli_command()` | [Extending the CLI](/docs/developer-guide/extending-the-cli) |
 | A bundled **skill** that your plugin ships | Python plugin — `ctx.register_skill()` | [Creating Skills](/docs/developer-guide/creating-skills) |
 | An **inference backend** (LLM provider: OpenAI-compat, Codex, Anthropic-Messages, Bedrock) | Provider plugin — `register_provider(ProviderProfile(...))` in `plugins/model-providers/<name>/` | **[Model Provider Plugins](/docs/developer-guide/model-provider-plugin)** · [Adding Providers](/docs/developer-guide/adding-providers) |
 | A **gateway channel** (Discord / Telegram / IRC / Teams / etc.) | Platform plugin — `ctx.register_platform()` in `plugins/platforms/<name>/` | [Adding Platform Adapters](/docs/developer-guide/adding-platform-adapters) |
@@ -235,10 +235,10 @@ The table above shows the four plugin categories, but within "General plugins" t
 | An **image-generation backend** (DALL·E, SDXL, …) | Backend plugin — `ctx.register_image_gen_provider()` | [Image Generation Provider Plugins](/docs/developer-guide/image-gen-provider-plugin) |
 | A **video-generation backend** (Veo, Kling, Pixverse, Grok-Imagine, Runway, …) | Backend plugin — `ctx.register_video_gen_provider()` | [Video Generation Provider Plugins](/docs/developer-guide/video-gen-provider-plugin) |
 | A **TTS backend** (any CLI — Piper, VoxCPM, Kokoro, xtts, voice-cloning scripts, …) | Config-driven — declare under `tts.providers.<name>` with `type: command` in `config.yaml` | [TTS setup](/docs/user-guide/features/tts#custom-command-providers) |
-| An **STT backend** (custom whisper binary, local ASR CLI) | Config-driven — set `HERMES_LOCAL_STT_COMMAND` env var to a shell template | [Voice Message Transcription (STT)](/docs/user-guide/features/tts#voice-message-transcription-stt) |
-| **External tools via MCP** (filesystem, GitHub, Linear, Notion, any MCP server) | Config-driven — declare `mcp_servers.<name>` with `command:` / `url:` in `config.yaml`. Hermes auto-discovers the server's tools and registers them alongside built-ins. | [MCP](/docs/user-guide/features/mcp) |
-| **Additional skill sources** (custom GitHub repos, private skill indexes) | CLI — `hermes skills tap add <repo>` | [Skills Hub](/docs/user-guide/features/skills#skills-hub) · [Publishing a custom tap](/docs/user-guide/features/skills#publishing-a-custom-skill-tap) |
-| **Gateway event hooks** (fire on `gateway:startup`, `session:start`, `agent:end`, `command:*`) | Drop `HOOK.yaml` + `handler.py` into `~/.hermes/hooks/<name>/` | [Event Hooks](/docs/user-guide/features/hooks#gateway-event-hooks) |
+| An **STT backend** (custom whisper binary, local ASR CLI) | Config-driven — set `VERMES_LOCAL_STT_COMMAND` env var to a shell template | [Voice Message Transcription (STT)](/docs/user-guide/features/tts#voice-message-transcription-stt) |
+| **External tools via MCP** (filesystem, GitHub, Linear, Notion, any MCP server) | Config-driven — declare `mcp_servers.<name>` with `command:` / `url:` in `config.yaml`. Vermes auto-discovers the server's tools and registers them alongside built-ins. | [MCP](/docs/user-guide/features/mcp) |
+| **Additional skill sources** (custom GitHub repos, private skill indexes) | CLI — `vermes skills tap add <repo>` | [Skills Hub](/docs/user-guide/features/skills#skills-hub) · [Publishing a custom tap](/docs/user-guide/features/skills#publishing-a-custom-skill-tap) |
+| **Gateway event hooks** (fire on `gateway:startup`, `session:start`, `agent:end`, `command:*`) | Drop `HOOK.yaml` + `handler.py` into `~/.vermes/hooks/<name>/` | [Event Hooks](/docs/user-guide/features/hooks#gateway-event-hooks) |
 | **Shell hooks** (run a shell command on events — notifications, audit logs, desktop alerts) | Config-driven — declare under `hooks:` in `config.yaml` | [Shell Hooks](/docs/user-guide/features/hooks#shell-hooks) |
 
 :::note
@@ -247,10 +247,10 @@ Not everything is a Python plugin. Some extension surfaces intentionally use **c
 
 ## NixOS declarative plugins
 
-On NixOS, plugins can be installed declaratively via the module options — no `hermes plugins install` needed. See the **[Nix Setup guide](/docs/getting-started/nix-setup#plugins)** for full details.
+On NixOS, plugins can be installed declaratively via the module options — no `vermes plugins install` needed. See the **[Nix Setup guide](/docs/getting-started/nix-setup#plugins)** for full details.
 
 ```nix
-services.hermes-agent = {
+services.vermes-agent = {
   # Directory plugin (source tree with plugin.yaml)
   extraPlugins = [ (pkgs.fetchFromGitHub { ... }) ];
   # Entry-point plugin (pip package)
@@ -265,23 +265,23 @@ Declarative plugins are symlinked with a `nix-managed-` prefix — they coexist 
 ## Managing plugins
 
 ```bash
-hermes plugins                                       # unified interactive UI
-hermes plugins list                                  # table: enabled / disabled / not enabled
-hermes plugins install user/repo                     # install from Git, then prompt Enable? [y/N]
-hermes plugins install user/repo --enable            # install AND enable (no prompt)
-hermes plugins install user/repo --no-enable         # install but leave disabled (no prompt)
-hermes plugins update my-plugin                      # pull latest
-hermes plugins remove my-plugin                      # uninstall
-hermes plugins enable my-plugin                      # add to allow-list (flat plugin)
-hermes plugins enable observability/langfuse         # add to allow-list (sub-category plugin)
-hermes plugins disable my-plugin                     # remove from allow-list + add to disabled
+vermes plugins                                       # unified interactive UI
+vermes plugins list                                  # table: enabled / disabled / not enabled
+vermes plugins install user/repo                     # install from Git, then prompt Enable? [y/N]
+vermes plugins install user/repo --enable            # install AND enable (no prompt)
+vermes plugins install user/repo --no-enable         # install but leave disabled (no prompt)
+vermes plugins update my-plugin                      # pull latest
+vermes plugins remove my-plugin                      # uninstall
+vermes plugins enable my-plugin                      # add to allow-list (flat plugin)
+vermes plugins enable observability/langfuse         # add to allow-list (sub-category plugin)
+vermes plugins disable my-plugin                     # remove from allow-list + add to disabled
 ```
 
-For plugins under a sub-category directory (e.g. `plugins/observability/langfuse/`, `plugins/image_gen/openai/`), use the full `<category>/<plugin>` key — that's exactly what `hermes plugins list` shows in the **Name** column.
+For plugins under a sub-category directory (e.g. `plugins/observability/langfuse/`, `plugins/image_gen/openai/`), use the full `<category>/<plugin>` key — that's exactly what `vermes plugins list` shows in the **Name** column.
 
 ### Interactive UI
 
-Running `hermes plugins` with no arguments opens a composite interactive screen:
+Running `vermes plugins` with no arguments opens a composite interactive screen:
 
 ```
 Plugins
@@ -322,7 +322,7 @@ Plugins occupy one of three states:
 | `disabled` | Explicitly off — won't load even if also in `enabled` | (irrelevant) | Yes |
 | `not enabled` | Discovered but never opted in | No | No |
 
-The default for a newly-installed or bundled plugin is `not enabled`. `hermes plugins list` shows all three distinct states so you can tell what's been explicitly turned off vs. what's just waiting to be enabled.
+The default for a newly-installed or bundled plugin is `not enabled`. `vermes plugins list` shows all three distinct states so you can tell what's been explicitly turned off vs. what's just waiting to be enabled.
 
 In a running session, `/plugins` shows which plugins are currently loaded.
 
@@ -349,4 +349,4 @@ This enables plugins like remote control viewers, messaging bridges, or webhook 
 `inject_message` is only available in CLI mode. In gateway mode, there is no CLI reference and the method returns `False`.
 :::
 
-See the **[full guide](/docs/guides/build-a-hermes-plugin)** for handler contracts, schema format, hook behavior, error handling, and common mistakes.
+See the **[full guide](/docs/guides/build-a-vermes-plugin)** for handler contracts, schema format, hook behavior, error handling, and common mistakes.

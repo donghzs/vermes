@@ -2,11 +2,11 @@
 name: pinggy-tunnel
 description: Zero-install localhost tunnels over SSH via Pinggy.
 version: 0.1.0
-author: Teknium (teknium1), Hermes Agent
+author: Teknium (teknium1), Vermes Agent
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
-  hermes:
+  vermes:
     tags: [Pinggy, Tunnel, Networking, SSH, Webhook, Localhost]
     related_skills: [cloudflared-quick-tunnel, webhook-subscriptions]
 ---
@@ -245,7 +245,7 @@ echo "MCP URL: $URL"
 echo "Bearer token: $TOKEN"
 ```
 
-The remote client connects to `$URL` with `Authorization: Bearer $TOKEN`. Hermes' own native MCP client config: `{"transport": "http", "url": "<URL>", "headers": {"Authorization": "Bearer <TOKEN>"}}`.
+The remote client connects to `$URL` with `Authorization: Bearer $TOKEN`. Vermes' own native MCP client config: `{"transport": "http", "url": "<URL>", "headers": {"Authorization": "Bearer <TOKEN>"}}`.
 
 ### Recipe 3 — Expose a local LLM endpoint (Ollama / vLLM / llama.cpp)
 

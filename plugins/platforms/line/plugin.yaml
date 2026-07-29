@@ -6,7 +6,7 @@ description: >
   LINE Messaging API gateway adapter for Vermes.
   Runs an aiohttp webhook server that receives LINE webhook events
   (with HMAC-SHA256 signature verification) and relays messages between
-  LINE chats (1:1, groups, rooms) and the Hermes agent. Outbound replies
+  LINE chats (1:1, groups, rooms) and the Vermes agent. Outbound replies
   prefer the free reply token and fall back to the metered Push API
   when the token has expired or is absent. Slow LLM responses surface a
   Template Buttons postback bubble so the user can fetch the answer with

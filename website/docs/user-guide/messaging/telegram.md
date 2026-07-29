@@ -1,12 +1,12 @@
 ---
 sidebar_position: 1
 title: "Telegram"
-description: "Set up Hermes Agent as a Telegram bot"
+description: "Set up Vermes Agent as a Telegram bot"
 ---
 
 # Telegram Setup
 
-Hermes Agent integrates with Telegram as a full-featured conversational bot. Once connected, you can chat with your agent from any device, send voice memos that get auto-transcribed, receive scheduled task results, and use the agent in group chats. The integration is built on [python-telegram-bot](https://python-telegram-bot.org/) and supports text, voice, images, and file attachments.
+Vermes Agent integrates with Telegram as a full-featured conversational bot. Once connected, you can chat with your agent from any device, send voice memos that get auto-transcribed, receive scheduled task results, and use the agent in group chats. The integration is built on [python-telegram-bot](https://python-telegram-bot.org/) and supports text, voice, images, and file attachments.
 
 ## Step 1: Create a Bot via BotFather
 
@@ -14,8 +14,8 @@ Every Telegram bot requires an API token issued by [@BotFather](https://t.me/Bot
 
 1. Open Telegram and search for **@BotFather**, or visit [t.me/BotFather](https://t.me/BotFather)
 2. Send `/newbot`
-3. Choose a **display name** (e.g., "Hermes Agent") — this can be anything
-4. Choose a **username** — this must be unique and end in `bot` (e.g., `my_hermes_bot`)
+3. Choose a **display name** (e.g., "Vermes Agent") — this can be anything
+4. Choose a **username** — this must be unique and end in `bot` (e.g., `my_vermes_bot`)
 5. BotFather replies with your **API token**. It looks like this:
 
 ```
@@ -77,7 +77,7 @@ An alternative to disabling privacy mode: promote the bot to **group admin**. Ad
 
 ## Step 4: Find Your User ID
 
-Hermes Agent uses numeric Telegram user IDs to control access. Your user ID is **not** your username — it's a number like `123456789`.
+Vermes Agent uses numeric Telegram user IDs to control access. Your user ID is **not** your username — it's a number like `123456789`.
 
 **Method 1 (recommended):** Message [@userinfobot](https://t.me/userinfobot) — it instantly replies with your user ID.
 
@@ -85,19 +85,19 @@ Hermes Agent uses numeric Telegram user IDs to control access. Your user ID is *
 
 Save this number; you'll need it for the next step.
 
-## Step 5: Configure Hermes
+## Step 5: Configure Vermes
 
 ### Option A: Interactive Setup (Recommended)
 
 ```bash
-hermes gateway setup
+vermes gateway setup
 ```
 
 Select **Telegram** when prompted. The wizard asks for your bot token and allowed user IDs, then writes the configuration for you.
 
 ### Option B: Manual Configuration
 
-Add the following to `~/.hermes/.env`:
+Add the following to `~/.vermes/.env`:
 
 ```bash
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
@@ -107,7 +107,7 @@ TELEGRAM_ALLOWED_USERS=123456789    # Comma-separated for multiple users
 ### Start the Gateway
 
 ```bash
-hermes gateway
+vermes gateway
 ```
 
 The bot should come online within seconds. Send it a message on Telegram to verify.
@@ -132,14 +132,14 @@ Recommended pattern:
 terminal:
   backend: docker
   docker_volumes:
-    - "/home/user/.hermes/cache/documents:/output"
+    - "/home/user/.vermes/cache/documents:/output"
 ```
 
 Then:
 
 - write files inside Docker to `/output/...`
 - emit the **host-visible** path in `MEDIA:`, for example:
-  `MEDIA:/home/user/.hermes/cache/documents/report.txt`
+  `MEDIA:/home/user/.vermes/cache/documents/report.txt`
 
 If you already have a `docker_volumes:` section, add the new mount to the same
 list. YAML duplicate keys silently override earlier ones.
@@ -162,7 +162,7 @@ Anything on this list delivered as a native attachment on platforms that support
 
 ## Webhook Mode
 
-By default, Hermes connects to Telegram using **long polling** — the gateway makes outbound requests to Telegram's servers to fetch new updates. This works well for local and always-on deployments.
+By default, Vermes connects to Telegram using **long polling** — the gateway makes outbound requests to Telegram's servers to fetch new updates. This works well for local and always-on deployments.
 
 For **cloud deployments** (Fly.io, Railway, Render, etc.), **webhook mode** is more cost-effective. These platforms can auto-wake suspended machines on inbound HTTP traffic, but not on outbound connections. Since polling is outbound, a polling bot can never sleep. Webhook mode flips the direction — Telegram pushes updates to your bot's HTTPS URL, enabling sleep-when-idle deployments.
 
@@ -175,7 +175,7 @@ For **cloud deployments** (Fly.io, Railway, Render, etc.), **webhook mode** is m
 
 ### Configuration
 
-Add the following to `~/.hermes/.env`:
+Add the following to `~/.vermes/.env`:
 
 ```bash
 TELEGRAM_WEBHOOK_URL=https://my-app.fly.dev/telegram
@@ -186,7 +186,7 @@ TELEGRAM_WEBHOOK_SECRET="$(openssl rand -hex 32)"  # required
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TELEGRAM_WEBHOOK_URL` | Yes | Public HTTPS URL where Telegram will send updates. The URL path is auto-extracted (e.g., `/telegram` from the example above). |
-| `TELEGRAM_WEBHOOK_SECRET` | **Yes** (when `TELEGRAM_WEBHOOK_URL` is set) | Secret token that Telegram echoes in every webhook request for verification. The gateway refuses to start without it — see [GHSA-3vpc-7q5r-276h](https://github.com/NousResearch/hermes-agent/security/advisories/GHSA-3vpc-7q5r-276h). Generate with `openssl rand -hex 32`. |
+| `TELEGRAM_WEBHOOK_SECRET` | **Yes** (when `TELEGRAM_WEBHOOK_URL` is set) | Secret token that Telegram echoes in every webhook request for verification. The gateway refuses to start without it — see [GHSA-3vpc-7q5r-276h](https://github.com/donghzs/vermes/security/advisories/GHSA-3vpc-7q5r-276h). Generate with `openssl rand -hex 32`. |
 | `TELEGRAM_WEBHOOK_PORT` | No | Local port the webhook server listens on (default: `8443`). |
 
 When `TELEGRAM_WEBHOOK_URL` is set, the gateway starts an HTTP webhook server instead of polling. When unset, polling mode is used — no behavior change from previous versions.
@@ -245,7 +245,7 @@ The proxy applies to both the main Telegram connection and the fallback IP trans
 
 Use the `/sethome` command in any Telegram chat (DM or group) to designate it as the **home channel**. Scheduled tasks (cron jobs) deliver their results to this channel.
 
-You can also set it manually in `~/.hermes/.env`:
+You can also set it manually in `~/.vermes/.env`:
 
 ```bash
 TELEGRAM_HOME_CHANNEL=-1001234567890
@@ -270,25 +270,25 @@ TELEGRAM_CRON_THREAD_ID=<topic_thread_id>
 
 ### Incoming Voice (Speech-to-Text)
 
-Voice messages you send on Telegram are automatically transcribed by Hermes's configured STT provider and injected as text into the conversation.
+Voice messages you send on Telegram are automatically transcribed by Vermes's configured STT provider and injected as text into the conversation.
 
-- `local` uses `faster-whisper` on the machine running Hermes — no API key required
+- `local` uses `faster-whisper` on the machine running Vermes — no API key required
 - `groq` uses Groq Whisper and requires `GROQ_API_KEY`
 - `openai` uses OpenAI Whisper and requires `VOICE_TOOLS_OPENAI_KEY`
 
 #### Skipping STT: pass the raw audio file to the agent
 
-If you'd rather have the **agent itself** handle audio — for diarization, a custom transcription tool, or just archiving the recording — set `stt.enabled: false` in `~/.hermes/config.yaml`:
+If you'd rather have the **agent itself** handle audio — for diarization, a custom transcription tool, or just archiving the recording — set `stt.enabled: false` in `~/.vermes/config.yaml`:
 
 ```yaml
 stt:
   enabled: false
 ```
 
-With STT disabled, the gateway still downloads the voice/audio attachment into Hermes's audio cache, but **does not transcribe it**. The agent receives the message with a marker like:
+With STT disabled, the gateway still downloads the voice/audio attachment into Vermes's audio cache, but **does not transcribe it**. The agent receives the message with a marker like:
 
 ```
-[The user sent a voice message: /home/<user>/.hermes/cache/audio/<hash>.ogg]
+[The user sent a voice message: /home/<user>/.vermes/cache/audio/<hash>.ogg]
 ```
 
 Your tools or skills can then read that path directly (e.g., hand it off to a local diarization pipeline, a richer transcription model, or upload it to long-term storage). The file extension reflects the original format Telegram delivered (`.ogg` for voice notes, `.mp3`/`.m4a`/etc. for audio attachments).
@@ -316,7 +316,7 @@ Configure the TTS provider in your `config.yaml` under the `tts.provider` key.
 
 ## Large Files (>20MB) via Local Bot API Server
 
-Telegram's **public** Bot API caps `getFile` downloads at **20 MB**, so any voice note, audio file, video, or document larger than that is silently rejected by Hermes with a "too large" reply. The documented way around this is to run a **local** [telegram-bot-api](https://github.com/tdlib/telegram-bot-api) daemon — the same server software Telegram uses, but running on your network. A local server raises the file ceiling to **2 GB** and Hermes auto-lifts its own internal cap when it sees a custom `base_url` configured.
+Telegram's **public** Bot API caps `getFile` downloads at **20 MB**, so any voice note, audio file, video, or document larger than that is silently rejected by Vermes with a "too large" reply. The documented way around this is to run a **local** [telegram-bot-api](https://github.com/tdlib/telegram-bot-api) daemon — the same server software Telegram uses, but running on your network. A local server raises the file ceiling to **2 GB** and Vermes auto-lifts its own internal cap when it sees a custom `base_url` configured.
 
 This unlocks workflows like:
 
@@ -381,9 +381,9 @@ curl "http://127.0.0.1:8081/bot<YOUR_BOT_TOKEN>/getMe"
 # expected response: {"ok":true,"result":{"id":...,"is_bot":true,...}}
 ```
 
-### Step 4: Point Hermes at the local server
+### Step 4: Point Vermes at the local server
 
-Add the URLs under `platforms.telegram.extra` in `~/.hermes/config.yaml`:
+Add the URLs under `platforms.telegram.extra` in `~/.vermes/config.yaml`:
 
 ```yaml
 platforms:
@@ -392,14 +392,14 @@ platforms:
       base_url: "http://127.0.0.1:8081/bot"
       base_file_url: "http://127.0.0.1:8081/file/bot"
       local_mode: true        # see Step 5 below — only set this if the bot's data
-                              # directory is readable by the Hermes process
+                              # directory is readable by the Vermes process
 ```
 
 :::caution Use `platforms.telegram.extra`, not `telegram.extra`
 At the moment only the `platforms.<name>.extra` form is deep-merged into the platform config. Keys placed directly under a top-level `telegram.extra` block are silently dropped.
 :::
 
-When `base_url` is set, Hermes:
+When `base_url` is set, Vermes:
 
 - Builds the python-telegram-bot client against the local server
 - Auto-lifts its internal document/audio size cap from 20 MB → 2 GB
@@ -408,8 +408,8 @@ When `base_url` is set, Hermes:
 Restart the gateway and look for a confirmation log line:
 
 ```bash
-hermes gateway restart
-grep -E "Using custom Telegram base_url|Using Telegram local_mode" ~/.hermes/logs/gateway.log | tail
+vermes gateway restart
+grep -E "Using custom Telegram base_url|Using Telegram local_mode" ~/.vermes/logs/gateway.log | tail
 ```
 
 ### Step 5: `local_mode` — file access on disk
@@ -417,35 +417,35 @@ grep -E "Using custom Telegram base_url|Using Telegram local_mode" ~/.hermes/log
 The local server has **two ways** to deliver files:
 
 1. **Without `--local`** (the default): files are served over HTTP at `/file/bot<TOKEN>/<path>`, same as the public Bot API. The 20MB ceiling stays in effect. Useful as a network-fix only (e.g. when `api.telegram.org` is unreachable but you can self-host); not what you want for the size lift.
-2. **With `--local`** (set via `TELEGRAM_LOCAL=1` above): files are written to the server's filesystem and the `getFile` response returns an **absolute path** instead of an HTTP URL. The 20MB ceiling is lifted. Hermes must then read the bytes **from disk**, not over HTTP.
+2. **With `--local`** (set via `TELEGRAM_LOCAL=1` above): files are written to the server's filesystem and the `getFile` response returns an **absolute path** instead of an HTTP URL. The 20MB ceiling is lifted. Vermes must then read the bytes **from disk**, not over HTTP.
 
-To make the disk-read path work, set `local_mode: true` in the config above **and** make sure the Hermes process can read the path the server returns. Two scenarios:
+To make the disk-read path work, set `local_mode: true` in the config above **and** make sure the Vermes process can read the path the server returns. Two scenarios:
 
-- **Same machine** — telegram-bot-api and Hermes run on the same host. Bind-mount the data volume to a directory that Hermes can read (e.g., `/var/lib/telegram-bot-api`), and make sure the file ownership matches. The container drops privileges to its internal `telegram-bot-api` user (uid varies by image); the simplest fix is to add `user: "<UID>:<GID>"` to the compose service so files are owned by a uid Hermes already runs as.
-- **Different machines** — the bot server runs on one host (e.g., a NAS, a separate VM) and Hermes on another. The server's data directory must be shared with the Hermes machine at the **same absolute path** the server reports (typically `/var/lib/telegram-bot-api`). NFS works well for this; CIFS/SMB with `uid=` mount remapping is friendlier if you don't want to deal with uid mismatches at the filesystem level.
+- **Same machine** — telegram-bot-api and Vermes run on the same host. Bind-mount the data volume to a directory that Vermes can read (e.g., `/var/lib/telegram-bot-api`), and make sure the file ownership matches. The container drops privileges to its internal `telegram-bot-api` user (uid varies by image); the simplest fix is to add `user: "<UID>:<GID>"` to the compose service so files are owned by a uid Vermes already runs as.
+- **Different machines** — the bot server runs on one host (e.g., a NAS, a separate VM) and Vermes on another. The server's data directory must be shared with the Vermes machine at the **same absolute path** the server reports (typically `/var/lib/telegram-bot-api`). NFS works well for this; CIFS/SMB with `uid=` mount remapping is friendlier if you don't want to deal with uid mismatches at the filesystem level.
 
-If `local_mode: true` is set but Hermes can't `stat` the returned file path (permissions or wrong mount), python-telegram-bot silently falls back to an HTTP `getFile` against the local server — which in `--local` mode responds with `404 Not Found`. The symptom shows up in `gateway.log` as:
+If `local_mode: true` is set but Vermes can't `stat` the returned file path (permissions or wrong mount), python-telegram-bot silently falls back to an HTTP `getFile` against the local server — which in `--local` mode responds with `404 Not Found`. The symptom shows up in `gateway.log` as:
 
 ```
 [Telegram] Failed to cache voice: Not Found
 telegram.error.InvalidToken: Not Found
 ```
 
-If you see that, the cap-lift is working but the file-share isn't. Verify `ls -la /var/lib/telegram-bot-api/<TOKEN>/voice/` from the Hermes host as the user the gateway runs as, and confirm a single file is `cat`-able without a permission error.
+If you see that, the cap-lift is working but the file-share isn't. Verify `ls -la /var/lib/telegram-bot-api/<TOKEN>/voice/` from the Vermes host as the user the gateway runs as, and confirm a single file is `cat`-able without a permission error.
 
 ### Step 6: Test it
 
 Send the bot a voice note or audio file that's bigger than 20 MB. Tail the gateway log:
 
 ```bash
-tail -f ~/.hermes/logs/gateway.log | grep -iE "telegram|cache"
+tail -f ~/.vermes/logs/gateway.log | grep -iE "telegram|cache"
 ```
 
-You should see a `[Telegram] Cached user voice at /home/<user>/.hermes/cache/audio/...` line and **no** "too large" rejection. Combined with `stt.enabled: false` (above), the path to the original audio file then lands in the agent's inbound message for downstream processing.
+You should see a `[Telegram] Cached user voice at /home/<user>/.vermes/cache/audio/...` line and **no** "too large" rejection. Combined with `stt.enabled: false` (above), the path to the original audio file then lands in the agent's inbound message for downstream processing.
 
 ## Group Chat Usage
 
-Hermes Agent works in Telegram group chats with a few considerations:
+Vermes Agent works in Telegram group chats with a few considerations:
 
 - **Privacy mode** determines what messages the bot can see (see [Step 3](#step-3-privacy-mode-critical-for-groups))
 - `TELEGRAM_ALLOWED_USERS` still applies — only authorized users can trigger the bot, even in groups
@@ -455,13 +455,13 @@ Hermes Agent works in Telegram group chats with a few considerations:
   - `@botusername` mentions
   - `/command@botusername` (Telegram's bot-menu command form that includes the bot name)
   - matches for one of your configured regex wake words in `telegram.mention_patterns`
-- In groups with multiple Hermes bots, `telegram.exclusive_bot_mentions` keeps routing deterministic. When a message explicitly mentions one or more Telegram bot usernames, only the mentioned bot profiles process it; other Hermes bots ignore it before reply and wake-word fallbacks run. This is enabled by default.
-- Use `telegram.ignored_threads` to keep Hermes silent in specific Telegram forum topics, even when the group would otherwise allow free responses or mention-triggered replies
-- If `telegram.require_mention` is left unset or false, Hermes keeps the previous open-group behavior and responds to normal group messages it can see
+- In groups with multiple Vermes bots, `telegram.exclusive_bot_mentions` keeps routing deterministic. When a message explicitly mentions one or more Telegram bot usernames, only the mentioned bot profiles process it; other Vermes bots ignore it before reply and wake-word fallbacks run. This is enabled by default.
+- Use `telegram.ignored_threads` to keep Vermes silent in specific Telegram forum topics, even when the group would otherwise allow free responses or mention-triggered replies
+- If `telegram.require_mention` is left unset or false, Vermes keeps the previous open-group behavior and responds to normal group messages it can see
 
-### Multiple Hermes bots in one group
+### Multiple Vermes bots in one group
 
-If you run several Hermes profiles in the same Telegram group, create one Telegram bot token per profile and start one gateway per profile. Do not reuse the same bot token in multiple running gateways; Telegram will reject concurrent polling for the same token.
+If you run several Vermes profiles in the same Telegram group, create one Telegram bot token per profile and start one gateway per profile. Do not reuse the same bot token in multiple running gateways; Telegram will reject concurrent polling for the same token.
 
 Recommended group config:
 
@@ -472,7 +472,7 @@ telegram:
   mention_patterns: []
 ```
 
-With this setup, a group message like `@research_bot @ops_bot summarize this` is processed by `research_bot` and `ops_bot` only. Other Hermes bots in the group stay silent, even if the message is a reply to one of their earlier messages or would otherwise match a shared wake word.
+With this setup, a group message like `@research_bot @ops_bot summarize this` is processed by `research_bot` and `ops_bot` only. Other Vermes bots in the group stay silent, even if the message is a reply to one of their earlier messages or would otherwise match a shared wake word.
 
 Set `exclusive_bot_mentions: false` only for legacy groups where explicit mentions should not override reply and wake-word triggers.
 
@@ -480,17 +480,17 @@ To operate several profiles, run the gateway command once per profile. For examp
 
 ```bash
 # default profile
-hermes gateway start
-hermes gateway status
-hermes gateway stop
+vermes gateway start
+vermes gateway status
+vermes gateway stop
 
 # named profiles
-hermes -p research gateway start
-hermes -p research gateway status
-hermes -p research gateway stop
+vermes -p research gateway start
+vermes -p research gateway status
+vermes -p research gateway stop
 ```
 
-For a small fixed fleet, use a shell loop or script that calls `hermes gateway <action>` for the default profile and `hermes -p <profile> gateway <action>` for each named profile. This is more reliable than assuming a single process-level command controls every named profile on every service manager.
+For a small fixed fleet, use a shell loop or script that calls `vermes gateway <action>` for the default profile and `vermes -p <profile> gateway <action>` for each named profile. This is more reliable than assuming a single process-level command controls every named profile on every service manager.
 
 ### Troubleshooting: works in DMs but not groups
 
@@ -498,19 +498,19 @@ If the bot responds in a private chat but stays silent in a group, check these
 gates in order:
 
 1. **Telegram delivery:** turn off BotFather privacy mode, promote the bot to
-   admin, or mention the bot directly. Hermes cannot respond to group messages
+   admin, or mention the bot directly. Vermes cannot respond to group messages
    that Telegram never delivers to the bot.
 2. **Rejoin after changing privacy:** remove the bot from the group and add it
    again after changing BotFather privacy settings. Telegram may keep the old
    delivery behavior for existing memberships.
-3. **Hermes authorization:** make sure the sender is listed in
+3. **Vermes authorization:** make sure the sender is listed in
    `TELEGRAM_ALLOWED_USERS` or `TELEGRAM_GROUP_ALLOWED_USERS`, or allow the
    group chat with `TELEGRAM_GROUP_ALLOWED_CHATS`.
 4. **Mention filters:** if `telegram.require_mention: true` is set, normal
    group chatter is ignored unless the message is a slash command, reply to the
    bot, `@botusername` mention, or configured `mention_patterns` match.
 5. **Multi-bot routing:** if a group contains several bots, make sure each
-   Hermes profile uses a unique bot token and keep `exclusive_bot_mentions`
+   Vermes profile uses a unique bot token and keep `exclusive_bot_mentions`
    enabled unless you intentionally want legacy shared-trigger behavior.
 
 Negative chat IDs are normal for Telegram groups and supergroups. If you use
@@ -519,7 +519,7 @@ the sender-user allowlist.
 
 ### Example group trigger configuration
 
-Add this to `~/.hermes/config.yaml`:
+Add this to `~/.vermes/config.yaml`:
 
 ```yaml
 telegram:
@@ -545,7 +545,7 @@ Messages in Telegram topics `31` and `42` are always ignored before the mention 
 
 ## Private Chat Topics (Bot API 9.4)
 
-Telegram Bot API 9.4 (February 2026) introduced **Private Chat Topics** — bots can create forum-style topic threads directly in 1-on-1 DM chats, no supergroup needed. This lets you run multiple isolated workspaces within your existing DM with Hermes.
+Telegram Bot API 9.4 (February 2026) introduced **Private Chat Topics** — bots can create forum-style topic threads directly in 1-on-1 DM chats, no supergroup needed. This lets you run multiple isolated workspaces within your existing DM with Vermes.
 
 ### Use case
 
@@ -562,14 +562,14 @@ Each topic gets its own conversation session, history, and context — completel
 :::caution Prerequisites
 Before adding topics to your config, the user must **enable Topics mode** in the DM chat with the bot:
 
-1. Open your private chat with the Hermes bot in Telegram
+1. Open your private chat with the Vermes bot in Telegram
 2. Tap the bot's name at the top to open chat info
 3. Enable **Topics** (the toggle to turn the chat into a forum)
 
-Without this, Hermes will log `The chat is not a forum` on startup and skip topic creation. This is a Telegram client-side setting — the bot cannot enable it programmatically.
+Without this, Vermes will log `The chat is not a forum` on startup and skip topic creation. This is a Telegram client-side setting — the bot cannot enable it programmatically.
 :::
 
-Add topics under `platforms.telegram.extra.dm_topics` in `~/.hermes/config.yaml`:
+Add topics under `platforms.telegram.extra.dm_topics` in `~/.vermes/config.yaml`:
 
 ```yaml
 platforms:
@@ -599,7 +599,7 @@ platforms:
 
 ### How it works
 
-1. On gateway startup, Hermes calls `createForumTopic` for each topic that doesn't have a `thread_id` yet
+1. On gateway startup, Vermes calls `createForumTopic` for each topic that doesn't have a `thread_id` yet
 2. The `thread_id` is saved back to `config.yaml` automatically — subsequent restarts skip the API call
 3. Each topic maps to an isolated session key: `agent:main:telegram:dm:{chat_id}:{thread_id}`
 4. Messages in each topic have their own conversation history, memory flush, and context window
@@ -638,7 +638,7 @@ Topics created outside of the config (e.g., by manually calling the Telegram API
 
 ## Multi-session DM mode (`/topic`)
 
-A ChatGPT-style multi-session DM — one bot, many parallel conversations. Unlike the operator-curated `extra.dm_topics` above, this mode is **user-driven**: no config, no pre-declared topic names. The end user flips it on with `/topic`, then taps the Telegram **+** button to create as many topics as they want, each one a fully independent Hermes session.
+A ChatGPT-style multi-session DM — one bot, many parallel conversations. Unlike the operator-curated `extra.dm_topics` above, this mode is **user-driven**: no config, no pre-declared topic names. The end user flips it on with `/topic`, then taps the Telegram **+** button to create as many topics as they want, each one a fully independent Vermes session.
 
 ### `/topic` subcommands
 
@@ -659,7 +659,7 @@ Only authorized users (allowlist via `TELEGRAM_ALLOWED_USERS` / platform auth co
 |---|---|---|
 | Who activates it | Operator, in `config.yaml` | End user, by sending `/topic` |
 | Topic list | Fixed set declared in config | User creates/deletes topics freely |
-| Topic names | Chosen by operator | Chosen by user; auto-renamed to match Hermes session title |
+| Topic names | Chosen by operator | Chosen by user; auto-renamed to match Vermes session title |
 | Root DM behavior | Normal chat (lobby if `ignore_root_dm: true`) | Becomes a system lobby (non-command messages are rejected) |
 | Primary use case | Permanent workspaces with optional skill binding | Ad-hoc parallel sessions |
 | Persistence | `extra.dm_topics` in config | `telegram_dm_topic_mode` + `telegram_dm_topic_bindings` SQLite tables |
@@ -673,7 +673,7 @@ In **@BotFather**, open your bot → **Bot Settings → Threads Settings**:
 1. Turn on **Threaded Mode** (enables `has_topics_enabled`)
 2. Do **not** disable users creating topics (keeps `allows_users_to_create_topics` on)
 
-When the user first runs `/topic`, Hermes calls `getMe` to verify both flags. If either is off, Hermes sends a screenshot of the BotFather Threads Settings page and explains what to toggle — no activation happens until prerequisites are met.
+When the user first runs `/topic`, Vermes calls `getMe` to verify both flags. If either is off, Vermes sends a screenshot of the BotFather Threads Settings page and explains what to toggle — no activation happens until prerequisites are met.
 
 ### Activation flow
 
@@ -683,7 +683,7 @@ From the root DM, send:
 /topic
 ```
 
-Hermes will:
+Vermes will:
 
 1. Check `getMe().has_topics_enabled` and `allows_users_to_create_topics`
 2. If both are true, enable multi-session topic mode for this DM
@@ -697,13 +697,13 @@ After activation, the **root DM is a lobby**: normal prompts are rejected with g
 1. Open the bot DM in Telegram
 2. Tap **All Messages** at the top of the bot interface, then send any message
 3. Telegram creates a new topic for that message
-4. Hermes responds inside that topic — the topic is now a standalone session
+4. Vermes responds inside that topic — the topic is now a standalone session
 
 Every topic gets its own conversation history, model state, tool execution, and session ID. The isolation key is `agent:main:telegram:dm:{chat_id}:{thread_id}` — identical to the config-driven DM topics isolation.
 
 ### Auto-renamed topics
 
-When Hermes generates a session title for a topic (via the auto-title pipeline, after the first exchange), the Telegram topic itself is renamed to match — e.g. "New Topic" becomes "Database migration plan". The rename is best-effort: failures are logged but don't break the session.
+When Vermes generates a session title for a topic (via the auto-title pipeline, after the first exchange), the Telegram topic itself is renamed to match — e.g. "New Topic" becomes "Database migration plan". The rename is best-effort: failures are logged but don't break the session.
 
 To disable this and keep your manually-chosen topic names untouched, set:
 
@@ -715,11 +715,11 @@ gateway:
         disable_topic_auto_rename: true
 ```
 
-When this flag is on, Hermes still generates an internal session title (used by `hermes sessions`, the TUI, etc.) but never edits the Telegram topic name. Useful when you organise topics by hand under BotFather Threaded Mode and don't want every first reply to overwrite the title.
+When this flag is on, Vermes still generates an internal session title (used by `vermes sessions`, the TUI, etc.) but never edits the Telegram topic name. Useful when you organise topics by hand under BotFather Threaded Mode and don't want every first reply to overwrite the title.
 
 ### `/new` inside a topic
 
-Resets the current topic's session (new session ID, fresh history) without touching other topics. Hermes replies with a reminder that for parallel work, creating another topic (via **All Messages**) is usually what you want.
+Resets the current topic's session (new session ID, fresh history) without touching other topics. Vermes replies with a reminder that for parallel work, creating another topic (via **All Messages**) is usually what you want.
 
 ### Restoring a previous session
 
@@ -729,14 +729,14 @@ Inside a topic, send:
 /topic <session-id>
 ```
 
-This binds the current topic to an existing Hermes session instead of starting fresh. Useful for continuing a conversation that started before topic mode was enabled. Restrictions:
+This binds the current topic to an existing Vermes session instead of starting fresh. Useful for continuing a conversation that started before topic mode was enabled. Restrictions:
 
 - The target session must belong to the same Telegram user
 - The target session must not already be bound to another topic
 
-Hermes confirms with the session title and replays the last assistant message for context.
+Vermes confirms with the session title and replays the last assistant message for context.
 
-To discover session IDs, send `/topic` (no argument) in the root DM — Hermes lists the user's unlinked Telegram sessions.
+To discover session IDs, send `/topic` (no argument) in the root DM — Vermes lists the user's unlinked Telegram sessions.
 
 ### `/topic` inside a topic (no argument)
 
@@ -759,19 +759,19 @@ Shows the current topic's binding: session title, session ID, and hints for `/ne
 
 ### Disabling multi-session mode
 
-Send `/topic off` in the root DM. Hermes flips the row off, clears the chat's `(thread_id → session_id)` bindings, and the root DM reverts to a normal Hermes chat. Existing topics in Telegram aren't deleted — they just stop being gated as independent sessions. Re-run `/topic` later to turn it back on.
+Send `/topic off` in the root DM. Vermes flips the row off, clears the chat's `(thread_id → session_id)` bindings, and the root DM reverts to a normal Vermes chat. Existing topics in Telegram aren't deleted — they just stop being gated as independent sessions. Re-run `/topic` later to turn it back on.
 
 If you need to clean up by hand (e.g. a bulk reset across many chats), remove the rows directly:
 
 ```bash
-sqlite3 ~/.hermes/state.db \
+sqlite3 ~/.vermes/state.db \
   "UPDATE telegram_dm_topic_mode SET enabled = 0 WHERE chat_id = '<your_chat_id>'; \
    DELETE FROM telegram_dm_topic_bindings WHERE chat_id = '<your_chat_id>';"
 ```
 
-### Downgrading Hermes
+### Downgrading Vermes
 
-If you downgrade to a Hermes version that predates `/topic`, the feature simply stops working — the `telegram_dm_topic_mode` and `telegram_dm_topic_bindings` tables remain in `state.db` but are ignored by older code. DMs revert to the native per-thread isolation (each `message_thread_id` still gets its own session via `build_session_key`), so your existing Telegram topics keep working as parallel sessions. The root DM is no longer a lobby — messages there go into the agent like they used to. Re-upgrading reactivates multi-session mode exactly where it was.
+If you downgrade to a Vermes version that predates `/topic`, the feature simply stops working — the `telegram_dm_topic_mode` and `telegram_dm_topic_bindings` tables remain in `state.db` but are ignored by older code. DMs revert to the native per-thread isolation (each `message_thread_id` still gets its own session via `build_session_key`), so your existing Telegram topics keep working as parallel sessions. The root DM is no longer a lobby — messages there go into the agent like they used to. Re-upgrading reactivates multi-session mode exactly where it was.
 
 ## Group Forum Topic Skill Binding
 
@@ -787,7 +787,7 @@ A team supergroup with forum topics for different workstreams:
 
 ### Configuration
 
-Add topic bindings under `platforms.telegram.extra.group_topics` in `~/.hermes/config.yaml`:
+Add topic bindings under `platforms.telegram.extra.group_topics` in `~/.vermes/config.yaml`:
 
 ```yaml
 platforms:
@@ -818,7 +818,7 @@ platforms:
 
 ### How it works
 
-1. When a message arrives in a mapped group topic, Hermes looks up the `chat_id` and `thread_id` in `group_topics` config
+1. When a message arrives in a mapped group topic, Vermes looks up the `chat_id` and `thread_id` in `group_topics` config
 2. If a matching entry has a `skill` field, that skill is auto-loaded for the session — identical to DM topic skill binding
 3. Topics without a `skill` key get session isolation only (existing behavior, unchanged)
 4. Unmapped `thread_id` values or `chat_id` values fall through silently — no error, no skill
@@ -828,7 +828,7 @@ platforms:
 | | DM Topics | Group Topics |
 |---|---|---|
 | Config key | `extra.dm_topics` | `extra.group_topics` |
-| Topic creation | Hermes creates topics via API if `thread_id` is missing | Admin creates topics in Telegram UI |
+| Topic creation | Vermes creates topics via API if `thread_id` is missing | Admin creates topics in Telegram UI |
 | `thread_id` | Auto-populated after creation | Must be set manually |
 | `icon_color` / `icon_custom_emoji_id` | Supported | Not applicable (admin controls appearance) |
 | Skill binding | ✓ | ✓ |
@@ -840,13 +840,13 @@ To find a topic's `thread_id`, open the topic in Telegram Web or Desktop and loo
 
 ## Recent Bot API Features
 
-- **Bot API 9.4 (Feb 2026):** Private Chat Topics — bots can create forum topics in 1-on-1 DM chats via `createForumTopic`. Hermes uses this for two distinct features: operator-curated [Private Chat Topics](#private-chat-topics-bot-api-94) (config-driven, fixed topic list) and user-driven [Multi-session DM mode](#multi-session-dm-mode-topic) (activated by `/topic`, unlimited user-created topics).
+- **Bot API 9.4 (Feb 2026):** Private Chat Topics — bots can create forum topics in 1-on-1 DM chats via `createForumTopic`. Vermes uses this for two distinct features: operator-curated [Private Chat Topics](#private-chat-topics-bot-api-94) (config-driven, fixed topic list) and user-driven [Multi-session DM mode](#multi-session-dm-mode-topic) (activated by `/topic`, unlimited user-created topics).
 - **Privacy policy:** Telegram now requires bots to have a privacy policy. Set one via BotFather with `/setprivacy_policy`, or Telegram may auto-generate a placeholder. This is particularly important if your bot is public-facing.
-- **Bot API 9.5 (Mar 2026): Native streaming via `sendMessageDraft`.** Hermes supports Telegram's native streaming-draft API as an opt-in transport for private chats. The default remains the legacy `editMessageText` path because draft previews can visibly collapse and re-render on some Telegram clients.
+- **Bot API 9.5 (Mar 2026): Native streaming via `sendMessageDraft`.** Vermes supports Telegram's native streaming-draft API as an opt-in transport for private chats. The default remains the legacy `editMessageText` path because draft previews can visibly collapse and re-render on some Telegram clients.
 
 ### Streaming transport (`gateway.streaming.transport`)
 
-When streaming is enabled (`gateway.streaming.enabled: true`), Hermes picks one of four transports:
+When streaming is enabled (`gateway.streaming.enabled: true`), Vermes picks one of four transports:
 
 | Value | Behaviour |
 |---|---|
@@ -855,7 +855,7 @@ When streaming is enabled (`gateway.streaming.enabled: true`), Hermes picks one 
 | `edit` (default) | Legacy progressive `editMessageText` polling for every chat type. |
 | `off` | Disable streaming entirely (final reply only, no progressive updates). |
 
-In `~/.hermes/config.yaml`:
+In `~/.vermes/config.yaml`:
 
 ```yaml
 gateway:
@@ -874,7 +874,7 @@ gateway:
 
 ## Rendering: Tables and Link Previews
 
-Telegram's MarkdownV2 has no native table syntax — pipe tables render as backslash-escaped noise if passed through raw. Hermes normalizes markdown tables automatically:
+Telegram's MarkdownV2 has no native table syntax — pipe tables render as backslash-escaped noise if passed through raw. Vermes normalizes markdown tables automatically:
 
 - **Small tables** are flattened into **row-group bullets** — each row becomes a readable bulleted list under the column headings. Good for 2–4 columns and short cells.
 - **Larger or wider tables** fall back to a **fenced code block** with aligned columns so nothing collapses. A one-line prompt hint is added so the agent knows to prefer prose follow-ups over more tables on Telegram.
@@ -891,7 +891,7 @@ gateway:
         disable_link_previews: true
 ```
 
-When enabled, Hermes attaches Telegram's `LinkPreviewOptions(is_disabled=True)` to every outgoing message and falls back to the legacy `disable_web_page_preview` parameter on older `python-telegram-bot` versions.
+When enabled, Vermes attaches Telegram's `LinkPreviewOptions(is_disabled=True)` to every outgoing message and falls back to the legacy `disable_web_page_preview` parameter on older `python-telegram-bot` versions.
 
 ## Group Allowlisting
 
@@ -1018,7 +1018,7 @@ Use `/whoami` to see the active scope, your tier (admin / user / unrestricted), 
 
 ## Interactive Model Picker
 
-When you send `/model` with no arguments in a Telegram chat, Hermes shows an interactive inline keyboard for switching models:
+When you send `/model` with no arguments in a Telegram chat, Vermes shows an interactive inline keyboard for switching models:
 
 1. **Provider selection** — buttons showing each available provider with model counts (e.g., "OpenAI (15)", "✓ Anthropic (12)" for the current provider).
 2. **Model selection** — paginated model list with **Prev**/**Next** navigation, a **Back** button to return to providers, and **Cancel**.
@@ -1048,7 +1048,7 @@ In some restricted networks, `api.telegram.org` may resolve to an IP that is unr
 TELEGRAM_FALLBACK_IPS=149.154.167.220,149.154.167.221
 ```
 
-Or in `~/.hermes/config.yaml`:
+Or in `~/.vermes/config.yaml`:
 
 ```yaml
 platforms:
@@ -1081,19 +1081,19 @@ Set the proxy in your environment before starting the gateway:
 
 ```bash
 export HTTPS_PROXY=http://proxy.example.com:8080
-hermes gateway
+vermes gateway
 ```
 
-Or add it to `~/.hermes/.env`:
+Or add it to `~/.vermes/.env`:
 
 ```bash
 HTTPS_PROXY=http://proxy.example.com:8080
 ```
 
-The proxy applies to both the primary transport and all fallback IP transports. No additional Hermes configuration is needed — if the environment variable is set, it's used automatically.
+The proxy applies to both the primary transport and all fallback IP transports. No additional Vermes configuration is needed — if the environment variable is set, it's used automatically.
 
 :::note
-This covers the custom fallback transport layer that Hermes uses for Telegram connections. The standard `httpx` client used elsewhere already respects proxy env vars natively.
+This covers the custom fallback transport layer that Vermes uses for Telegram connections. The standard `httpx` client used elsewhere already respects proxy env vars natively.
 :::
 
 ## Message Reactions
@@ -1152,10 +1152,10 @@ Numeric YAML keys are automatically normalized to strings.
 
 | Problem | Solution |
 |---------|----------|
-| Bot not responding at all | Verify `TELEGRAM_BOT_TOKEN` is correct. Check `hermes gateway` logs for errors. |
+| Bot not responding at all | Verify `TELEGRAM_BOT_TOKEN` is correct. Check `vermes gateway` logs for errors. |
 | Bot responds with "unauthorized" | Your user ID is not in `TELEGRAM_ALLOWED_USERS`. Double-check with @userinfobot. |
 | Bot ignores group messages | Privacy mode is likely on. Disable it (Step 3) or make the bot a group admin. **Remember to remove and re-add the bot after changing privacy.** |
-| Voice messages not transcribed | Verify STT is available: install `faster-whisper` for local transcription, or set `GROQ_API_KEY` / `VOICE_TOOLS_OPENAI_KEY` in `~/.hermes/.env`. |
+| Voice messages not transcribed | Verify STT is available: install `faster-whisper` for local transcription, or set `GROQ_API_KEY` / `VOICE_TOOLS_OPENAI_KEY` in `~/.vermes/.env`. |
 | Voice replies are files, not bubbles | Install `ffmpeg` (needed for Edge TTS Opus conversion). |
 | Bot token revoked/invalid | Generate a new token via `/revoke` then `/newbot` or `/token` in BotFather. Update your `.env` file. |
 | Webhook not receiving updates | Verify `TELEGRAM_WEBHOOK_URL` is publicly reachable (test with `curl`). Ensure your platform/reverse proxy routes inbound HTTPS traffic from the URL's port to the local listen port configured by `TELEGRAM_WEBHOOK_PORT` (they do not need to be the same number). Ensure SSL/TLS is active — Telegram only sends to HTTPS URLs. Check firewall rules. |
@@ -1179,7 +1179,7 @@ When the agent calls the `clarify` tool — to ask which approach you prefer, ge
 
 Tap a button to answer, or tap **Other** to type a free-form response (the next message you send becomes the answer). Open-ended `clarify` calls (no preset choices) skip the buttons and just capture your next message.
 
-Configure the response timeout via `agent.clarify_timeout` in `~/.hermes/config.yaml` (default `600` seconds). If you don't respond within the timeout, the agent unblocks with a sentinel message and adapts rather than hanging.
+Configure the response timeout via `agent.clarify_timeout` in `~/.vermes/config.yaml` (default `600` seconds). If you don't respond within the timeout, the agent unblocks with a sentinel message and adapts rather than hanging.
 
 ## Push notification volume
 
@@ -1190,7 +1190,7 @@ Telegram fires a push notification on every message the bot sends. For long agen
 | `important` (default) | Only **final responses**, **approval prompts**, and **slash-command confirmations** ring. Tool progress, streaming chunks, and status messages are delivered with `disable_notification=true`. |
 | `all` | Every outgoing message fires a push notification. Legacy behavior; opt in if you genuinely want to hear about every tool call. |
 
-Configure in `~/.hermes/config.yaml`:
+Configure in `~/.vermes/config.yaml`:
 
 ```yaml
 display:
@@ -1202,7 +1202,7 @@ display:
 Env override (handy for quick A/B testing):
 
 ```bash
-HERMES_TELEGRAM_NOTIFICATIONS=all
+VERMES_TELEGRAM_NOTIFICATIONS=all
 ```
 
 Unknown values log a warning and fall back to `important`.

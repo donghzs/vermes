@@ -1,10 +1,10 @@
 name: langfuse
 version: "1.0.0"
-description: "Optional Langfuse observability for Hermes — traces conversations, LLM calls, and tool usage. Opt-in via `vermes plugins enable observability/langfuse` (or check the box in `vermes plugins`)."
-author: NousResearch
+description: "Optional Langfuse observability for Vermes — traces conversations, LLM calls, and tool usage. Opt-in via `vermes plugins enable observability/langfuse` (or check the box in `vermes plugins`)."
+author: donghzs
 requires_env:
-  - HERMES_LANGFUSE_PUBLIC_KEY
-  - HERMES_LANGFUSE_SECRET_KEY
+  - VERMES_LANGFUSE_PUBLIC_KEY
+  - VERMES_LANGFUSE_SECRET_KEY
 hooks:
   - pre_api_request
   - post_api_request

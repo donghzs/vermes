@@ -1,6 +1,6 @@
 # vbit Agent 使用文档
 
-> 基于 Nous Research 官方 Hermes Agent 构建，由 vbit.top 定制部署。
+> 基于 Nous Research 官方 Vermes Agent 构建，由 vbit.top 定制部署。
 > 版本：v1.0 | 更新：2026-05-20
 
 ---
@@ -57,15 +57,15 @@ vbit Agent 是一个**自进化 AI 助手**，具备以下核心能力：
 curl -fsSL https://vbit.top/install.sh | bash
 
 # 或手动安装
-git clone https://github.com/NousResearch/hermes-agent.git ~/.hermes/hermes-agent
-cd ~/.hermes/hermes-agent
+git clone https://github.com/donghzs/vermes.git ~/.vermes/vermes-agent
+cd ~/.vermes/vermes-agent
 pip install -e ".[all]"
 ```
 
 ### 2.2 初始化配置
 
 ```bash
-hermes setup
+vermes setup
 ```
 
 交互式向导会引导你完成：
@@ -77,7 +77,7 @@ hermes setup
 ### 2.3 启动 Web 界面
 
 ```bash
-hermes gateway start
+vermes gateway start
 ```
 
 打开浏览器访问：`http://localhost:3579`
@@ -92,7 +92,7 @@ hermes gateway start
 |--------|----------|----------|
 | DeepSeek | `DEEPSEEK_API_KEY` | https://platform.deepseek.com |
 | OpenRouter | `OPENROUTER_API_KEY` | https://openrouter.ai/keys |
-| Noui Portal | `PORTAL_API_KEY` | https://portal.nousresearch.com |
+| Noui Portal | `PORTAL_API_KEY` | https://portal.donghzs.com |
 | Ollama 本地 | `OLLAMA_API_KEY`（可选） | 本地 http://localhost:11434 |
 | 智谱 GLM | `GLM_API_KEY` | https://open.bigmodel.cn |
 | Kimi | `KIMI_API_KEY` | https://platform.kimi.ai |
@@ -105,13 +105,13 @@ hermes gateway start
 
 ```bash
 # 设置提供商
-hermes config set model.provider deepseek
+vermes config set model.provider deepseek
 
 # 设置默认模型
-hermes config set model.default deepseek-chat
+vermes config set model.default deepseek-chat
 
 # 查看当前配置
-hermes config get model
+vermes config get model
 ```
 
 **方式二：Web 界面**
@@ -123,10 +123,10 @@ hermes config get model
 
 **方式三：直接编辑文件**
 
-> ⚠️ 注意：直接编辑 `~/.hermes/config.yaml` 可能被 `hermes setup` 覆盖，建议用方式一或二。
+> ⚠️ 注意：直接编辑 `~/.vermes/config.yaml` 可能被 `vermes setup` 覆盖，建议用方式一或二。
 
 ```yaml
-# ~/.hermes/config.yaml
+# ~/.vermes/config.yaml
 model:
   default: deepseek-chat
   provider: deepseek
@@ -206,7 +206,7 @@ model:
 
 ### 5.1 什么是技能
 
-技能是 Hermes 的**过程性记忆**——它从对话中自动学习可复用的工作流程，并在后续对话中自动调用。
+技能是 Vermes 的**过程性记忆**——它从对话中自动学习可复用的工作流程，并在后续对话中自动调用。
 
 ### 5.2 查看已安装技能
 
@@ -214,38 +214,38 @@ model:
 
 **命令行**：
 ```bash
-hermes skills list
+vermes skills list
 ```
 
 ### 5.3 安装新技能
 
 **从 SkillHub 安装：**
 ```bash
-hermes skills install <skill-name>
+vermes skills install <skill-name>
 ```
 
 **示例：**
 ```bash
 # 安装计算器技能
-hermes skills install calculator
+vermes skills install calculator
 
 # 安装网页搜索技能
-hermes skills install duckduckgo-search
+vermes skills install duckduckgo-search
 
 # 安装 PPT 生成技能
-hermes skills install pptx
+vermes skills install pptx
 ```
 
 ### 5.4 调用技能
 
-在对话中直接描述需求，Hermes 会自动识别并调用对应技能：
+在对话中直接描述需求，Vermes 会自动识别并调用对应技能：
 
 ```
-用户：帮我搜索一下 Hermes Agent 的最新文档
-→ Hermes 自动调用 duckduckgo-search 技能
+用户：帮我搜索一下 Vermes Agent 的最新文档
+→ Vermes 自动调用 duckduckgo-search 技能
 
 用户：把这个做成 PPT
-→ Hermes 自动调用 pptx 技能
+→ Vermes 自动调用 pptx 技能
 ```
 
 也可使用斜杠命令直接调用：
@@ -256,10 +256,10 @@ hermes skills install pptx
 
 ### 5.5 自动技能创建
 
-当 Hermes 完成一个复杂任务后，会自动问你是否要将此过程保存为技能：
+当 Vermes 完成一个复杂任务后，会自动问你是否要将此过程保存为技能：
 
 ```
-🤖 Hermes：我刚帮你完成了 XX 任务，要不要把这个过程保存为技能，
+🤖 Vermes：我刚帮你完成了 XX 任务，要不要把这个过程保存为技能，
       下次可以直接调用？
 ```
 
@@ -290,17 +290,17 @@ hermes skills install pptx
 **命令行**：
 ```bash
 # 配置启用的工具集
-hermes tools
+vermes tools
 
 # 查看当前工具配置
-hermes config get toolsets
+vermes config get toolsets
 ```
 
 ### 6.3 安全建议
 
 - 首次使用时，将敏感工具（如 `run_shell`）设为**需要审批**
 - 使用 Docker 后端运行代码工具，实现沙箱隔离
-- 定期审查 `~/.hermes/logs/` 中的执行日志
+- 定期审查 `~/.vermes/logs/` 中的执行日志
 
 ---
 
@@ -310,23 +310,23 @@ hermes config get toolsets
 
 **自然语言方式（推荐）：**
 
-在任意聊天中告诉 Hermes：
+在任意聊天中告诉 Vermes：
 
 ```
 用户：每天早上 9 点提醒我查看邮件
 用户：每周一下午 3 点执行数据备份
 ```
 
-Hermes 会自动创建 cron 任务。
+Vermes 会自动创建 cron 任务。
 
 **命令行方式：**
 
 ```bash
 # 查看所有定时任务
-hermes cron list
+vermes cron list
 
 # 手动创建任务
-hermes cron add "0 9 * * *" "提醒：查看邮件"
+vermes cron add "0 9 * * *" "提醒：查看邮件"
 ```
 
 ### 7.2 管理定时任务
@@ -347,18 +347,18 @@ hermes cron add "0 9 * * *" "提醒：查看邮件"
 
 | 命令 | 说明 |
 |------|------|
-| `hermes` | 启动终端交互界面 |
-| `hermes setup` | 运行配置向导 |
-| `hermes model` | 切换/配置模型 |
-| `hermes tools` | 配置工具权限 |
-| `hermes config set <key> <value>` | 设置配置项 |
-| `hermes config get [key]` | 查看配置 |
-| `hermes gateway start/stop/restart` | 网关服务管理 |
-| `hermes gateway status` | 查看网关状态 |
-| `hermes skills list/install/search` | 技能管理 |
-| `hermes cron list/add/remove` | 定时任务管理 |
-| `hermes update` | 更新到最新版本 |
-| `hermes doctor` | 诊断环境问题 |
+| `vermes` | 启动终端交互界面 |
+| `vermes setup` | 运行配置向导 |
+| `vermes model` | 切换/配置模型 |
+| `vermes tools` | 配置工具权限 |
+| `vermes config set <key> <value>` | 设置配置项 |
+| `vermes config get [key]` | 查看配置 |
+| `vermes gateway start/stop/restart` | 网关服务管理 |
+| `vermes gateway status` | 查看网关状态 |
+| `vermes skills list/install/search` | 技能管理 |
+| `vermes cron list/add/remove` | 定时任务管理 |
+| `vermes update` | 更新到最新版本 |
+| `vermes doctor` | 诊断环境问题 |
 
 ### 8.2 终端界面快捷键
 
@@ -384,7 +384,7 @@ export TELEGRAM_BOT_TOKEN="your-bot-token"
 export TELEGRAM_ALLOWED_USERS="your-telegram-id"
 
 # 3. 启动网关
-hermes gateway start
+vermes gateway start
 ```
 
 ### 9.2 Discord
@@ -396,7 +396,7 @@ export DISCORD_BOT_TOKEN="your-bot-token"
 export DISCORD_ALLOWED_USERS="your-discord-id"
 
 # 3. 启动网关
-hermes gateway start
+vermes gateway start
 ```
 
 ### 9.3 其他平台
@@ -405,7 +405,7 @@ hermes gateway start
 
 配置方式类似，详见各平台向导：
 ```bash
-hermes gateway setup
+vermes gateway setup
 ```
 
 ---
@@ -421,22 +421,22 @@ hermes gateway setup
 **解决**：
 ```bash
 # 1. 检查配置
-hermes config get model
+vermes config get model
 
 # 2. 重新设置
-hermes config set model.provider deepseek
-hermes config set model.default deepseek-chat
+vermes config set model.provider deepseek
+vermes config set model.default deepseek-chat
 
 # 3. 确认 .env 中有对应 Key
-grep DEEPSEEK_API_KEY ~/.hermes/.env
+grep DEEPSEEK_API_KEY ~/.vermes/.env
 
 # 4. 重启网关
-hermes gateway restart
+vermes gateway restart
 ```
 
 ### 10.2 端口被占用
 
-**症状**：`hermes gateway start` 报端口 3579 被占用
+**症状**：`vermes gateway start` 报端口 3579 被占用
 
 **解决**：
 ```bash
@@ -445,12 +445,12 @@ lsof -i :3579
 
 # 杀掉进程后重启
 kill -9 <PID>
-hermes gateway start
+vermes gateway start
 ```
 
 ### 10.3 技能安装失败
 
-**症状**：`hermes skills install` 超时或报错
+**症状**：`vermes skills install` 超时或报错
 
 **原因**：网络问题或 Python 依赖安装失败
 
@@ -460,28 +460,28 @@ hermes gateway start
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 重新安装
-hermes skills install <skill-name>
+vermes skills install <skill-name>
 ```
 
 ### 10.4 日志位置
 
 | 日志类型 | 路径 |
 |----------|------|
-| 网关日志 | `~/.hermes/logs/gateway.log` |
-| 会话轨迹 | `~/.hermes/logs/session_*.json` |
-| 工具执行 | `~/.hermes/logs/tools.log` |
+| 网关日志 | `~/.vermes/logs/gateway.log` |
+| 会话轨迹 | `~/.vermes/logs/session_*.json` |
+| 工具执行 | `~/.vermes/logs/tools.log` |
 
 ---
 
 ## 附录：配置文件说明
 
-### A. `~/.hermes/config.yaml`
+### A. `~/.vermes/config.yaml`
 
 主配置文件，控制模型、工具、网关等行为。
 
-**重要**：修改后需执行 `hermes gateway restart` 生效。
+**重要**：修改后需执行 `vermes gateway restart` 生效。
 
-### B. `~/.hermes/.env`
+### B. `~/.vermes/.env`
 
 API Key 和敏感配置。此文件不提交到 Git。
 

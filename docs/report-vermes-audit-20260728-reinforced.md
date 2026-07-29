@@ -27,7 +27,7 @@
 | except Exception | 5456 处 | **5301 处**（纯源码） | 吻合 |
 | 静默吞(except:pass) | 247 处 | **8 处**（裸 `except:` 6 + `except X: pass` 2） | **初稿严重高估**；"247"应为把 `except: logger.warn(...)` 等"记日志但吞异常"也算入，需分两级（见 §3） |
 | 前端 i18n | 零，locales 16 种只服务 CLI | frontend 下 vue-i18n/`$t(`/locales 引用 **0 处**；根 `locales/` 含 11+ yaml（af/de/en/es/fr/ga/hu/it/ja/ko…）服务 CLI | 精确吻合 |
-| migrations 机制 | 缺位（靠内联 ALTER） | **`migrations/` 目录存在**（`2.0.3_to_2.0.5.py` 5336行 + README），`vermes_cli/update_manager.py:620 run_migrations()` 驱动，`claw.py` 有 `cmd_migrate` 入口；但 `hermes_state.py: SCHEMA_VERSION=14` 仍内联 ALTER 兜底 | **初稿"缺位"论断错误**；实为"双轨并存、正式迁移文件稀疏" |
+| migrations 机制 | 缺位（靠内联 ALTER） | **`migrations/` 目录存在**（`2.0.3_to_2.0.5.py` 5336行 + README），`vermes_cli/update_manager.py:620 run_migrations()` 驱动，`claw.py` 有 `cmd_migrate` 入口；但 `VERMES_state.py: SCHEMA_VERSION=14` 仍内联 ALTER 兜底 | **初稿"缺位"论断错误**；实为"双轨并存、正式迁移文件稀疏" |
 
 ---
 
@@ -113,7 +113,7 @@
 
 ### P2（中期：CI 覆盖扩展 + 架构债）
 2. **CI 测试覆盖扩展（原 P1-② 降级重定义）**：gateway 门禁已硬，真正缺口是覆盖仅 25%。按 §6 三层守门模型落地——P1 最低垂动作"加 nightly 全量 job"已落地（`ci-quality-gate.yml` 的 `nightly-full`），其余（分目录 L1 路由、清偿 QUARANTINE 103、启动守卫 harness 进 L0）逐步推进。
-3. **migrations 追缴**：把 `hermes_state.py` 内联 ALTER（SCHEMA_VERSION 14）逐步抽成 `migrations/` 下的正式文件，统一由 `update_manager.run_migrations` 驱动。机制已存在，只需补文件。
+3. **migrations 追缴**：把 `VERMES_state.py` 内联 ALTER（SCHEMA_VERSION 14）逐步抽成 `migrations/` 下的正式文件，统一由 `update_manager.run_migrations` 驱动。机制已存在，只需补文件。
 4. **上帝文件分治**：先拆 `cli.py`(13681) / `vermes_cli/main.py`(13193) 两个 1.3 万行巨物（按职责抽 commands / lifecycle / config 子模块）。
 
 ### P3（出海 / 体验前置）

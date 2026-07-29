@@ -14,7 +14,7 @@ Create HTML-based video compositions, animated title cards, social overlays, cap
 
 | | |
 |---|---|
-| Source | Optional — install with `hermes skills install official/creative/hyperframes` |
+| Source | Optional — install with `vermes skills install official/creative/hyperframes` |
 | Path | `optional-skills/creative/hyperframes` |
 | Version | `1.0.0` |
 | Author | heygen-com |
@@ -26,7 +26,7 @@ Create HTML-based video compositions, animated title cards, social overlays, cap
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # HyperFrames
@@ -64,12 +64,12 @@ npx hyperframes doctor                      # diagnose environment issues
 
 Render flags: `--quality draft|standard|high` · `--fps 24|30|60` · `--format mp4|webm` · `--docker` (reproducible) · `--strict`.
 
-Full CLI reference: [references/cli.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/cli.md).
+Full CLI reference: [references/cli.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/cli.md).
 
 ## Setup (one-time)
 
 ```bash
-bash "$(dirname "$(find ~/.hermes/skills -path '*/hyperframes/SKILL.md' 2>/dev/null | head -1)")/scripts/setup.sh"
+bash "$(dirname "$(find ~/.vermes/skills -path '*/hyperframes/SKILL.md' 2>/dev/null | head -1)")/scripts/setup.sh"
 ```
 
 The script:
@@ -78,7 +78,7 @@ The script:
 3. Pre-caches `chrome-headless-shell` via Puppeteer — **required** for best-quality rendering via Chrome's `HeadlessExperimental.beginFrame` capture path.
 4. Runs `npx hyperframes doctor` and reports the result.
 
-See [references/troubleshooting.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/troubleshooting.md) if setup fails.
+See [references/troubleshooting.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/troubleshooting.md) if setup fails.
 
 ## Procedure
 
@@ -115,7 +115,7 @@ Write the static HTML+CSS for the **hero frame first** — no GSAP yet. The `.sc
 
 Only after the hero frame looks right, add `gsap.from()` entrances (animate **to** the CSS position) and `gsap.to()` exits (animate **from** it).
 
-See [references/composition.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/composition.md) for the full data-attribute schema and composition rules.
+See [references/composition.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/composition.md) for the full data-attribute schema and composition rules.
 
 ### 4. Animate with GSAP
 
@@ -126,7 +126,7 @@ Every composition must:
 - Be deterministic — no `Math.random()`, `Date.now()`, or wall-clock logic. Use a seeded PRNG if you need pseudo-randomness.
 - Build synchronously — no `async`/`await`, `setTimeout`, or Promises around timeline construction.
 
-See [references/gsap.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/gsap.md) for the core GSAP API (tweens, eases, stagger, timelines).
+See [references/gsap.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/gsap.md) for the core GSAP API (tweens, eases, stagger, timelines).
 
 ### 5. Transitions between scenes
 
@@ -162,11 +162,11 @@ npx hyperframes render --quality high --output final.mp4     # final delivery
 
 ### 8. Website-to-video (if the user gives a URL)
 
-Use the 7-step capture-to-video workflow in [references/website-to-video.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/website-to-video.md): capture → DESIGN.md → SCRIPT.md → storyboard → composition → render → deliver.
+Use the 7-step capture-to-video workflow in [references/website-to-video.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/website-to-video.md): capture → DESIGN.md → SCRIPT.md → storyboard → composition → render → deliver.
 
 ## Pitfalls
 
-- **`HeadlessExperimental.beginFrame' wasn't found`** — Chromium 147+ removed this protocol. Ensure you're on `hyperframes@>=0.4.2` (auto-detects and falls back to screenshot mode). Escape hatch: `export PRODUCER_FORCE_SCREENSHOT=true`. See [hyperframes#294](https://github.com/heygen-com/hyperframes/issues/294) and [references/troubleshooting.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/troubleshooting.md).
+- **`HeadlessExperimental.beginFrame' wasn't found`** — Chromium 147+ removed this protocol. Ensure you're on `hyperframes@>=0.4.2` (auto-detects and falls back to screenshot mode). Escape hatch: `export PRODUCER_FORCE_SCREENSHOT=true`. See [hyperframes#294](https://github.com/heygen-com/hyperframes/issues/294) and [references/troubleshooting.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/troubleshooting.md).
 - **System Chrome (not `chrome-headless-shell`)** — renders hang for 120s then timeout. Run `npx puppeteer browsers install chrome-headless-shell` (setup.sh does this). `hyperframes doctor` reports which binary will be used.
 - **`repeat: -1` anywhere** — breaks the capture engine. Always compute a finite repeat count.
 - **`gsap.set()` on clip elements that enter later** — the element doesn't exist at page load. Use `tl.set(selector, vars, timePosition)` inside the timeline instead, at or after the clip's `data-start`.
@@ -197,9 +197,9 @@ If `hyperframes render` fails, run `npx hyperframes doctor` and attach its outpu
 
 ## References
 
-- [composition.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/composition.md) — data attributes, timeline contract, non-negotiable rules, typography/asset rules
-- [cli.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/cli.md) — every CLI command (init, capture, lint, validate, inspect, preview, render, transcribe, tts, doctor, browser, info, upgrade, benchmark)
-- [gsap.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/gsap.md) — GSAP core API for HyperFrames (tweens, eases, stagger, timelines, matchMedia)
-- [features.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/features.md) — captions, TTS, audio-reactive, marker highlighting, transitions (load on demand)
-- [website-to-video.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/website-to-video.md) — 7-step capture-to-video workflow
-- [troubleshooting.md](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/creative/hyperframes/references/troubleshooting.md) — OpenClaw fix, env vars, common render errors
+- [composition.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/composition.md) — data attributes, timeline contract, non-negotiable rules, typography/asset rules
+- [cli.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/cli.md) — every CLI command (init, capture, lint, validate, inspect, preview, render, transcribe, tts, doctor, browser, info, upgrade, benchmark)
+- [gsap.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/gsap.md) — GSAP core API for HyperFrames (tweens, eases, stagger, timelines, matchMedia)
+- [features.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/features.md) — captions, TTS, audio-reactive, marker highlighting, transitions (load on demand)
+- [website-to-video.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/website-to-video.md) — 7-step capture-to-video workflow
+- [troubleshooting.md](https://github.com/donghzs/vermes/blob/main/optional-skills/creative/hyperframes/references/troubleshooting.md) — OpenClaw fix, env vars, common render errors

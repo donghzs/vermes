@@ -31,7 +31,7 @@
 
 1. **persist:vermes 分区脏数据 → 黑屏**（修复方式=无条件清分区，引出上面的 G0）；
 2. **splash 路径错位 → 测试模式**（已修：五候选路径探测，`main.js:224-231`）；
-3. **HERMES_HOME 回退错 profile → 数据写错库**（现状=一次性 stderr 警告，`vermes_constants.py:72-104`，但 stderr 在打包桌面端用户不可见）。
+3. **VERMES_HOME 回退错 profile → 数据写错库**（现状=一次性 stderr 警告，`vermes_constants.py:72-104`，但 stderr 在打包桌面端用户不可见）。
 
 OpenSquilla 借鉴点 #2 的核心思想："探测到旧 profile 存在但打不开 → **报错等待人工**，而非新建空库继续跑"。本设计将其扩展为覆盖 Electron 层、Python 后端层、前端层的完整守卫体系。
 
@@ -43,12 +43,12 @@ Electron main (main.js)
  ├─ 无条件 clearStorageData indexdb/localstorage/... (L210)   ← G0/G2
  ├─ splash 五候选路径探测，找不到→直接 loadURL 后端 (L224-236) ← G3 已部分完成
  └─ runInitialization → startBackend
-      ├─ spawn python，打包时 env.HERMES_HOME=~/.vermes (L68)
+      ├─ spawn python，打包时 env.VERMES_HOME=~/.vermes (L68)
       ├─ /health 轮询 15s (L98-116)
       └─ 失败分支：单一泛化文案"后端服务启动失败…" (L152-155) ← G4
-Python 后端 (web_server / hermes_state)
- ├─ get_hermes_home()：profile 错配仅 stderr 一次性警告 (vermes_constants.py:72-104) ← G5b
- ├─ SessionDB.__init__：mkdir + connect + _init_schema (hermes_state.py:472-511)
+Python 后端 (web_server / VERMES_state)
+ ├─ get_vermes_home()：profile 错配仅 stderr 一次性警告 (vermes_constants.py:72-104) ← G5b
+ ├─ SessionDB.__init__：mkdir + connect + _init_schema (VERMES_state.py:472-511)
  │    · 文件不存在 → 静默新建空库（sqlite 语义）                ← G5a
  │    · 打开失败 → _set_last_init_error + raise，调用方各自降级
  └─ /health：仅存活探测，不暴露数据面健康 (web_server.py:2754)  ← G4/G5 的输出口
@@ -58,7 +58,7 @@ Python 后端 (web_server / hermes_state)
 ```
 
 关键既有资产（守卫要复用，不重建）：
-- `hermes_state._set_last_init_error / _last_init_error`——DB 打不开的原因已被捕获，只是没有出口到 UI；
+- `VERMES_state._set_last_init_error / _last_init_error`——DB 打不开的原因已被捕获，只是没有出口到 UI；
 - `MSG_DB_VERSION`（chat-storage.js:10）——前端消息库已有 schema 版本机制；
 - splash 的 `splash:message` / `splash:retry` IPC 通道——错误展示与重试 UI 已存在。
 
@@ -70,7 +70,7 @@ Python 后端 (web_server / hermes_state)
 | **G2** 分区清理版本戳门控 | Electron | 清 IDB 从"每次启动"改为"仅版本变更时"，并豁免图片库 | P0（修 G0） |
 | **G3** 资源路径容错泛化 | Electron | splash 五候选模式抽成 `resolveResource()`，覆盖 icon/preload | P2 |
 | **G4** 启动失败诊断分级 | Electron+Python | splash 错误从单一文案改为分类诊断（含 G1/G5 透传） | P1 |
-| **G5** profile 错配升级为可见告警 | Python | HERMES_HOME 回退错 profile：stderr 警告 → /health 字段 + UI 横幅 | P1 |
+| **G5** profile 错配升级为可见告警 | Python | VERMES_HOME 回退错 profile：stderr 警告 → /health 字段 + UI 横幅 | P1 |
 | **G6** 图片服务端落盘 | 前端+后端 | 图片副本上送 `/api/gui/images`，消除"仅 IDB"单点 | P1（中期） |
 
 ## 4. 各守卫详细设计
@@ -79,7 +79,7 @@ Python 后端 (web_server / hermes_state)
 
 **探测时机**：web_server 与 gateway 进程启动早期各跑一次（非每次 `SessionDB()`——blueprints 是 per-request 构造，哨兵必须一次性）。
 
-**探测逻辑**（新函数 `hermes_state.startup_integrity_probe() -> dict`）：
+**探测逻辑**（新函数 `VERMES_state.startup_integrity_probe() -> dict`）：
 1. `db_path.exists()` 且 `size > 0` 且 sqlite3 打不开 / `PRAGMA quick_check` ≠ ok → **corrupt**；
 2. 文件不存在但 `~/.vermes/` 下存在其他历史痕迹（`messages/*.json`、`sessions/`、`config.yaml`）→ **missing_with_profile**（旧 profile 在、账本没了——最接近 OpenSquilla 防的"升级后误新建空库"场景）；
 3. 文件不存在且目录也近空 → **fresh_install**（合法，正常新建）；
@@ -159,7 +159,7 @@ splash 的五候选探测（`main.js:224-231`）抽成 `resolveResource(relPath)
 | Commit | 内容 | 量级 |
 |---|---|---|
 | c1 (P0) | G2 版本戳门控 + IDB 单库自愈（修 G0 活 bug） | main.js ~30 行 + chat-storage ~20 行 |
-| c2 (P0) | G1 哨兵 + /health integrity 字段 + G5 标志 | hermes_state ~60 行 + web_server ~15 行 |
+| c2 (P0) | G1 哨兵 + /health integrity 字段 + G5 标志 | VERMES_state ~60 行 + web_server ~15 行 |
 | c3 (P1) | G4 splash 诊断分级 + 前端横幅 | main.js/splash ~40 行 + 前端组件 |
 | c4 (P1) | G6 图片服务端落盘 | 前后端各 ~40 行 |
 | c5 (P2) | G3 resolveResource 重构 | 纯重构 |

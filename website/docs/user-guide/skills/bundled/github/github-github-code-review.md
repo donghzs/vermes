@@ -17,7 +17,7 @@ Review PRs: diffs, inline comments via gh or REST.
 | Source | Bundled (installed by default) |
 | Path | `skills/github/github-code-review` |
 | Version | `1.1.0` |
-| Author | Hermes Agent |
+| Author | Vermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `GitHub`, `Code-Review`, `Pull-Requests`, `Git`, `Quality` |
@@ -26,7 +26,7 @@ Review PRs: diffs, inline comments via gh or REST.
 ## Reference: full SKILL.md
 
 :::info
-The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+The following is the complete skill definition that Vermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
 :::
 
 # GitHub Code Review
@@ -46,8 +46,8 @@ if command -v gh &>/dev/null && gh auth status &>/dev/null; then
 else
   AUTH="git"
   if [ -z "$GITHUB_TOKEN" ]; then
-    if [ -f ~/.hermes/.env ] && grep -q "^GITHUB_TOKEN=" ~/.hermes/.env; then
-      GITHUB_TOKEN=$(grep "^GITHUB_TOKEN=" ~/.hermes/.env | head -1 | cut -d= -f2 | tr -d '\n\r')
+    if [ -f ~/.vermes/.env ] && grep -q "^GITHUB_TOKEN=" ~/.vermes/.env; then
+      GITHUB_TOKEN=$(grep "^GITHUB_TOKEN=" ~/.vermes/.env | head -1 | cut -d= -f2 | tr -d '\n\r')
     elif grep -q "github.com" ~/.git-credentials 2>/dev/null; then
       GITHUB_TOKEN=$(grep "github.com" ~/.git-credentials 2>/dev/null | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|')
     fi
@@ -280,7 +280,7 @@ curl -s -X POST \
   -d "{
     \"commit_id\": \"$HEAD_SHA\",
     \"event\": \"COMMENT\",
-    \"body\": \"Code review from Hermes Agent\",
+    \"body\": \"Code review from Vermes Agent\",
     \"comments\": [
       {\"path\": \"src/auth.py\", \"line\": 45, \"body\": \"Use parameterized queries to prevent SQL injection.\"},
       {\"path\": \"src/models/user.py\", \"line\": 23, \"body\": \"Hash passwords with bcrypt before storing.\"},
@@ -353,7 +353,7 @@ When the user asks you to "review PR #N", "look at this PR", or gives you a PR U
 ### Step 1: Set up environment
 
 ```bash
-source "${HERMES_HOME:-$HOME/.hermes}/skills/github/github-auth/scripts/gh-env.sh"
+source "${VERMES_HOME:-$HOME/.vermes}/skills/github/github-auth/scripts/gh-env.sh"
 # Or run the inline setup block from the top of this skill
 ```
 
@@ -427,7 +427,7 @@ Collect your findings and submit them as a formal review with inline comments.
 **With gh:**
 ```bash
 # If no issues — approve
-gh pr review $PR_NUMBER --approve --body "Reviewed by Hermes Agent. Code looks clean — good test coverage, no security concerns."
+gh pr review $PR_NUMBER --approve --body "Reviewed by Vermes Agent. Code looks clean — good test coverage, no security concerns."
 
 # If issues found — request changes with inline comments
 gh pr review $PR_NUMBER --request-changes --body "Found a few issues — see inline comments."
@@ -446,7 +446,7 @@ curl -s -X POST \
   -d "{
     \"commit_id\": \"$HEAD_SHA\",
     \"event\": \"REQUEST_CHANGES\",
-    \"body\": \"## Hermes Agent Review\n\nFound 2 issues, 1 suggestion. See inline comments.\",
+    \"body\": \"## Vermes Agent Review\n\nFound 2 issues, 1 suggestion. See inline comments.\",
     \"comments\": [
       {\"path\": \"src/auth.py\", \"line\": 45, \"body\": \"🔴 **Critical:** User input passed directly to SQL query — use parameterized queries.\"},
       {\"path\": \"src/models.py\", \"line\": 23, \"body\": \"⚠️ **Warning:** Password stored without hashing.\"},
@@ -480,7 +480,7 @@ gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
 - Good error handling in the middleware layer
 
 ---
-*Reviewed by Hermes Agent*
+*Reviewed by Vermes Agent*
 EOF
 )"
 ```

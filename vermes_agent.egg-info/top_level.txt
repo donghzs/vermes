@@ -4,12 +4,12 @@ batch_runner
 cli
 cron
 gateway
-hermes_bootstrap
+VERMES_bootstrap
 vermes_cli
 vermes_constants
-hermes_logging
-hermes_state
-hermes_time
+VERMES_logging
+VERMES_state
+VERMES_time
 model_tools
 plugins
 providers

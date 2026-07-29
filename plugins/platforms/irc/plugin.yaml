@@ -5,7 +5,7 @@ version: 1.0.0
 description: >
   IRC gateway adapter for Vermes.
   Connects to an IRC server and relays messages between an IRC channel
-  (or DMs) and the Hermes agent.  No external dependencies — uses
+  (or DMs) and the Vermes agent.  No external dependencies — uses
   Python's stdlib asyncio for the IRC protocol.
 author: Nous Research
 # ``requires_env`` entries are surfaced in ``vermes config`` UI via the
@@ -16,11 +16,11 @@ requires_env:
     prompt: "IRC server"
     password: false
   - name: IRC_CHANNEL
-    description: "Channel to join (e.g. #hermes — comma-separate for multiple)"
+    description: "Channel to join (e.g. #vermes — comma-separate for multiple)"
     prompt: "IRC channel"
     password: false
   - name: IRC_NICKNAME
-    description: "Bot nickname on IRC (default: hermes-bot)"
+    description: "Bot nickname on IRC (default: vermes-bot)"
     prompt: "Bot nickname"
     password: false
 optional_env:
