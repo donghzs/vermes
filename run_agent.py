@@ -4370,6 +4370,8 @@ class AIAgent:
         """
         if base_url_host_matches(self._base_url_lower, "donghzs.com"):
             return True
+        if base_url_host_matches(self._base_url_lower, "nousresearch.com"):
+            return True
         if (
             base_url_host_matches(self._base_url_lower, "models.github.ai")
             or base_url_host_matches(self._base_url_lower, "api.githubcopilot.com")
