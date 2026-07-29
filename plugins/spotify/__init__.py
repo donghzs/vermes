@@ -3,7 +3,7 @@
 Registers 7 tools (playback, devices, queue, search, playlists, albums,
 library) into the ``spotify`` toolset. Each tool's handler is gated by
 ``_check_spotify_available()`` — when the user has not run ``vermes auth
-spotify``, the tools remain registered (so they appear in ``hermes
+spotify``, the tools remain registered (so they appear in ``Vermes
 tools``) but the runtime check prevents dispatch.
 
 Why a plugin instead of a top-level ``tools/`` file?

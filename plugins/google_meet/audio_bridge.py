@@ -34,7 +34,7 @@ class AudioBridge:
     ``teardown()`` when the session ends. ``teardown()`` is idempotent.
     """
 
-    def __init__(self, name_prefix: str = "hermes_meet") -> None:
+    def __init__(self, name_prefix: str = "VERMES_meet") -> None:
         self._name_prefix = name_prefix
         self._platform: Optional[str] = None
         self._device_name: Optional[str] = None

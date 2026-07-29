@@ -1,6 +1,6 @@
 """CLI commands for Honcho integration management.
 
-Handles: hermes honcho setup | status | sessions | map | peer
+Handles: Vermes honcho setup | status | sessions | map | peer
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from plugins.memory.honcho.client import resolve_active_host, resolve_config_path, HOST
 from vermes_cli.config import cfg_get
 
@@ -95,7 +95,7 @@ def cmd_enable(args) -> None:
     """Enable Honcho for the active profile."""
     cfg = _read_config()
     host = _host_key()
-    label = f"[{host}] " if host != "hermes" else ""
+    label = f"[{host}] " if host != "Vermes" else ""
     block = cfg.setdefault("hosts", {}).setdefault(host, {})
 
     if block.get("enabled") is True:
@@ -137,7 +137,7 @@ def cmd_disable(args) -> None:
     """Disable Honcho for the active profile."""
     cfg = _read_config()
     host = _host_key()
-    label = f"[{host}] " if host != "hermes" else ""
+    label = f"[{host}] " if host != "Vermes" else ""
     block = cfg_get(cfg, "hosts", host, default={})
 
     if not block or block.get("enabled") is False:
@@ -164,7 +164,7 @@ def cmd_sync(args) -> None:
 
     cfg = _read_config()
     if not cfg:
-        logger.info("  No Honcho config found. Run 'hermes honcho setup' first.\n")
+        logger.info("  No Honcho config found. Run 'Vermes honcho setup' first.\n")
         return
 
     hosts = cfg.get("hosts", {})
@@ -172,7 +172,7 @@ def cmd_sync(args) -> None:
     has_key = bool(cfg.get("apiKey") or get_api_key("honcho"))
 
     if not default_block and not has_key:
-        logger.info("  Honcho not configured on default profile. Run 'hermes honcho setup' first.\n")
+        logger.info("  Honcho not configured on default profile. Run 'Vermes honcho setup' first.\n")
         return
 
     created = 0
@@ -181,7 +181,7 @@ def cmd_sync(args) -> None:
         if p.name == "default":
             continue
         if clone_honcho_for_profile(p.name):
-            logger.info(f"  + {p.name} -> hermes.{p.name}")
+            logger.info(f"  + {p.name} -> Vermes.{p.name}")
             created += 1
         else:
             skipped += 1
@@ -239,11 +239,11 @@ def _config_path() -> Path:
 def _local_config_path() -> Path:
     """Return the instance-local Honcho config path for writing.
 
-    Always returns $HERMES_HOME/honcho.json so each profile/instance gets
+    Always returns $VERMES_HOME/honcho.json so each profile/instance gets
     its own config file.  The global ~/.honcho/config.json is only used as
     a read fallback (via resolve_config_path) for cross-app interop.
     """
-    return get_hermes_home() / "honcho.json"
+    return get_vermes_home() / "honcho.json"
 
 def _read_config() -> dict:
     path = _config_path()
@@ -357,7 +357,7 @@ def cmd_setup(args) -> None:
         return
 
     hosts = cfg.setdefault("hosts", {})
-    hermes_host = hosts.setdefault(_host_key(), {})
+    VERMES_host = hosts.setdefault(_host_key(), {})
 
     # --- 1. Cloud or local? ---
     logger.info("  Deployment:")
@@ -402,38 +402,38 @@ def cmd_setup(args) -> None:
 
         if not cfg.get("apiKey"):
             logger.info("\n  No API key configured. Get yours at https://app.honcho.dev")
-            logger.info("  Run 'hermes honcho setup' again once you have a key.\n")
+            logger.info("  Run 'Vermes honcho setup' again once you have a key.\n")
             return
 
     # --- 3. Identity ---
-    current_peer = hermes_host.get("peerName") or cfg.get("peerName", "")
+    current_peer = VERMES_host.get("peerName") or cfg.get("peerName", "")
     new_peer = _prompt("Your name (user peer)", default=current_peer or os.getenv("USER", "user"))
     if new_peer:
-        hermes_host["peerName"] = new_peer
+        VERMES_host["peerName"] = new_peer
 
-    current_ai = hermes_host.get("aiPeer") or cfg.get("aiPeer", "hermes")
+    current_ai = VERMES_host.get("aiPeer") or cfg.get("aiPeer", "Vermes")
     new_ai = _prompt("AI peer name", default=current_ai)
     if new_ai:
-        hermes_host["aiPeer"] = new_ai
+        VERMES_host["aiPeer"] = new_ai
 
-    current_workspace = hermes_host.get("workspace") or cfg.get("workspace", "hermes")
+    current_workspace = VERMES_host.get("workspace") or cfg.get("workspace", "Vermes")
     new_workspace = _prompt("Workspace ID", default=current_workspace)
     if new_workspace:
-        hermes_host["workspace"] = new_workspace
+        VERMES_host["workspace"] = new_workspace
 
     # --- 4. Observation mode ---
-    current_obs = hermes_host.get("observationMode") or cfg.get("observationMode", "directional")
+    current_obs = VERMES_host.get("observationMode") or cfg.get("observationMode", "directional")
     logger.info("\n  Observation mode:")
     logger.info("    directional  -- all observations on, each AI peer builds its own view (default)")
     logger.info("    unified      -- shared pool, user observes self, AI observes others only")
     new_obs = _prompt("Observation mode", default=current_obs)
     if new_obs in {"unified", "directional"}:
-        hermes_host["observationMode"] = new_obs
+        VERMES_host["observationMode"] = new_obs
     else:
-        hermes_host["observationMode"] = "directional"
+        VERMES_host["observationMode"] = "directional"
 
     # --- 5. Write frequency ---
-    current_wf = str(hermes_host.get("writeFrequency") or cfg.get("writeFrequency", "async"))
+    current_wf = str(VERMES_host.get("writeFrequency") or cfg.get("writeFrequency", "async"))
     logger.info("\n  Write frequency:")
     logger.info("    async   -- background thread, no token cost (recommended)")
     logger.info("    turn    -- sync write after every turn")
@@ -441,12 +441,12 @@ def cmd_setup(args) -> None:
     logger.info("    N       -- write every N turns (e.g. 5)")
     new_wf = _prompt("Write frequency", default=current_wf)
     try:
-        hermes_host["writeFrequency"] = int(new_wf)
+        VERMES_host["writeFrequency"] = int(new_wf)
     except (ValueError, TypeError):
-        hermes_host["writeFrequency"] = new_wf if new_wf in {"async", "turn", "session"} else "async"
+        VERMES_host["writeFrequency"] = new_wf if new_wf in {"async", "turn", "session"} else "async"
 
     # --- 6. Recall mode ---
-    _raw_recall = hermes_host.get("recallMode") or cfg.get("recallMode", "hybrid")
+    _raw_recall = VERMES_host.get("recallMode") or cfg.get("recallMode", "hybrid")
     current_recall = "hybrid" if _raw_recall not in {"hybrid", "context", "tools"} else _raw_recall
     logger.info("\n  Recall mode:")
     logger.info("    hybrid  -- auto-injected context + Honcho tools available (default)")
@@ -454,29 +454,29 @@ def cmd_setup(args) -> None:
     logger.info("    tools   -- Honcho tools only, no auto-injected context")
     new_recall = _prompt("Recall mode", default=current_recall)
     if new_recall in {"hybrid", "context", "tools"}:
-        hermes_host["recallMode"] = new_recall
+        VERMES_host["recallMode"] = new_recall
 
     # --- 7. Context token budget ---
-    current_ctx_tokens = hermes_host.get("contextTokens") or cfg.get("contextTokens")
+    current_ctx_tokens = VERMES_host.get("contextTokens") or cfg.get("contextTokens")
     current_display = str(current_ctx_tokens) if current_ctx_tokens else "uncapped"
     logger.info("\n  Context injection per turn (hybrid/context recall modes only):")
     logger.info("    uncapped -- no limit (default)")
     logger.info("    N        -- token limit per turn (e.g. 1200)")
     new_ctx_tokens = _prompt("Context tokens", default=current_display)
     if new_ctx_tokens.strip().lower() in {"none", "uncapped", "no limit"}:
-        hermes_host.pop("contextTokens", None)
+        VERMES_host.pop("contextTokens", None)
     elif new_ctx_tokens.strip() == "":
         pass  # keep current
     else:
         try:
             val = int(new_ctx_tokens)
             if val >= 0:
-                hermes_host["contextTokens"] = val
+                VERMES_host["contextTokens"] = val
         except (ValueError, TypeError):
             pass  # keep current
 
     # --- 7b. Dialectic cadence ---
-    current_dialectic = str(hermes_host.get("dialecticCadence") or cfg.get("dialecticCadence") or "2")
+    current_dialectic = str(VERMES_host.get("dialecticCadence") or cfg.get("dialecticCadence") or "2")
     logger.info("\n  Dialectic cadence:")
     logger.info("    How often Honcho rebuilds its user model (LLM call on Honcho backend).")
     logger.info("    1 = every turn, 2 = every other turn, 3+ = sparser.")
@@ -485,13 +485,13 @@ def cmd_setup(args) -> None:
     try:
         val = int(new_dialectic)
         if val >= 1:
-            hermes_host["dialecticCadence"] = val
+            VERMES_host["dialecticCadence"] = val
     except (ValueError, TypeError):
-        hermes_host["dialecticCadence"] = 2
+        VERMES_host["dialecticCadence"] = 2
 
     # --- 7c. Dialectic reasoning level ---
     current_reasoning = (
-        hermes_host.get("dialecticReasoningLevel")
+        VERMES_host.get("dialecticReasoningLevel")
         or cfg.get("dialecticReasoningLevel")
         or "low"
     )
@@ -504,12 +504,12 @@ def cmd_setup(args) -> None:
     logger.info("    max      -- thorough audit-level analysis")
     new_reasoning = _prompt("Reasoning level", default=current_reasoning)
     if new_reasoning in {"minimal", "low", "medium", "high", "max"}:
-        hermes_host["dialecticReasoningLevel"] = new_reasoning
+        VERMES_host["dialecticReasoningLevel"] = new_reasoning
     else:
-        hermes_host["dialecticReasoningLevel"] = "low"
+        VERMES_host["dialecticReasoningLevel"] = "low"
 
     # --- 8. Session strategy ---
-    current_strat = hermes_host.get("sessionStrategy") or cfg.get("sessionStrategy", "per-session")
+    current_strat = VERMES_host.get("sessionStrategy") or cfg.get("sessionStrategy", "per-session")
     logger.info("\n  Session strategy:")
     logger.info("    per-session   -- each run starts clean, Honcho injects context automatically")
     logger.info("    per-directory -- reuses session per dir, prior context auto-injected each run")
@@ -517,10 +517,10 @@ def cmd_setup(args) -> None:
     logger.info("    global        -- single session across all directories")
     new_strat = _prompt("Session strategy", default=current_strat)
     if new_strat in {"per-session", "per-repo", "per-directory", "global"}:
-        hermes_host["sessionStrategy"] = new_strat
+        VERMES_host["sessionStrategy"] = new_strat
 
-    hermes_host["enabled"] = True
-    hermes_host.setdefault("saveMessages", True)
+    VERMES_host["enabled"] = True
+    VERMES_host.setdefault("saveMessages", True)
 
     _write_config(cfg)
     logger.info(f"\n  Config written to {write_path}")
@@ -528,9 +528,9 @@ def cmd_setup(args) -> None:
     # --- Auto-enable Honcho as memory provider in config.yaml ---
     try:
         from vermes_cli.config import load_config, save_config
-        hermes_config = load_config()
-        hermes_config.setdefault("memory", {})["provider"] = "honcho"
-        save_config(hermes_config)
+        VERMES_config = load_config()
+        VERMES_config.setdefault("memory", {})["provider"] = "honcho"
+        save_config(VERMES_config)
         logger.info("  Memory provider set to 'honcho' in config.yaml")
     except Exception as e:
         logger.info(f"  Could not auto-enable in config.yaml: {e}")
@@ -564,11 +564,11 @@ def cmd_setup(args) -> None:
     logger.info("    honcho_reasoning -- ask Honcho a question, synthesized answer")
     logger.info("    honcho_conclude  -- persist a user fact to memory")
     logger.info("\n  Other commands:")
-    logger.info("    hermes honcho status     -- show full config")
-    logger.info("    hermes honcho mode       -- change recall/observation mode")
-    logger.info("    hermes honcho tokens     -- tune context and dialectic budgets")
-    logger.info("    hermes honcho peer       -- update peer names")
-    logger.info("    hermes honcho map <name> -- map this directory to a session name\n")
+    logger.info("    Vermes honcho status     -- show full config")
+    logger.info("    Vermes honcho mode       -- change recall/observation mode")
+    logger.info("    Vermes honcho tokens     -- tune context and dialectic budgets")
+    logger.info("    Vermes honcho peer       -- update peer names")
+    logger.info("    Vermes honcho map <name> -- map this directory to a session name\n")
 
 def _active_profile_name() -> str:
     """Return the active Vermes profile name (respects --target-profile override)."""
@@ -618,7 +618,7 @@ def cmd_status(args) -> None:
     try:
         import honcho  # noqa: F401
     except ImportError:
-        logger.info("  honcho-ai is not installed. Run: hermes honcho setup\n")
+        logger.info("  honcho-ai is not installed. Run: Vermes honcho setup\n")
         return
 
     cfg = _read_config()
@@ -628,7 +628,7 @@ def cmd_status(args) -> None:
 
     if not cfg:
         logger.info(f"  No Honcho config found at {active_path}")
-        logger.info("  Run 'hermes honcho setup' to configure.\n")
+        logger.info("  Run 'Vermes honcho setup' to configure.\n")
         return
 
     try:
@@ -775,7 +775,7 @@ def cmd_sessions(args) -> None:
 
     if not sessions:
         logger.info("  No session mappings configured.\n")
-        logger.info("  Add one with: hermes honcho map <session-name>")
+        logger.info("  Add one with: Vermes honcho map <session-name>")
         logger.info(f"  Or edit {_config_path()} directly.\n")
         return
 
@@ -824,16 +824,16 @@ def cmd_peer(args) -> None:
     if user_name is None and ai_name is None and reasoning is None:
         # Show current values
         hosts = cfg.get("hosts", {})
-        hermes = hosts.get(_host_key(), {})
-        user = hermes.get('peerName') or cfg.get('peerName') or '(not set)'
-        ai = hermes.get('aiPeer') or cfg.get('aiPeer') or _host_key()
-        lvl = hermes.get("dialecticReasoningLevel") or cfg.get("dialecticReasoningLevel") or "low"
-        max_chars = hermes.get("dialecticMaxChars") or cfg.get("dialecticMaxChars") or 600
+        Vermes = hosts.get(_host_key(), {})
+        user = Vermes.get('peerName') or cfg.get('peerName') or '(not set)'
+        ai = Vermes.get('aiPeer') or cfg.get('aiPeer') or _host_key()
+        lvl = Vermes.get("dialecticReasoningLevel") or cfg.get("dialecticReasoningLevel") or "low"
+        max_chars = Vermes.get("dialecticMaxChars") or cfg.get("dialecticMaxChars") or 600
         logger.info("\nHoncho peers\n" + "─" * 40)
         logger.info(f"  User peer:   {user}")
         logger.info("    Your identity in Honcho. Messages you send build this peer's card.")
         logger.info(f"  AI peer:     {ai}")
-        logger.info("    Vermes' identity in Honcho. Seed with 'hermes honcho identity <file>'.")
+        logger.info("    Vermes' identity in Honcho. Seed with 'Vermes honcho identity <file>'.")
         logger.info("    Dialectic calls ask this peer questions to warm session context.")
         logger.info()
         logger.info(f"  Dialectic reasoning:  {lvl}  ({', '.join(REASONING_LEVELS)})")
@@ -841,7 +841,7 @@ def cmd_peer(args) -> None:
         return
 
     host = _host_key()
-    label = f"[{host}] " if host != "hermes" else ""
+    label = f"[{host}] " if host != "Vermes" else ""
 
     if user_name is not None:
         cfg.setdefault("hosts", {}).setdefault(host, {})["peerName"] = user_name.strip()
@@ -885,7 +885,7 @@ def cmd_mode(args) -> None:
         for m, desc in MODES.items():
             marker = " <-" if m == current else ""
             logger.info(f"  {m:<10}  {desc}{marker}")
-        logger.info(f"\n  Set with: hermes honcho mode [hybrid|context|tools]\n")
+        logger.info(f"\n  Set with: Vermes honcho mode [hybrid|context|tools]\n")
         return
 
     if mode_arg not in MODES:
@@ -893,7 +893,7 @@ def cmd_mode(args) -> None:
         return
 
     host = _host_key()
-    label = f"[{host}] " if host != "hermes" else ""
+    label = f"[{host}] " if host != "Vermes" else ""
     cfg.setdefault("hosts", {}).setdefault(host, {})["recallMode"] = mode_arg
     _write_config(cfg)
     logger.info(f"  {label}Recall mode -> {mode_arg}  ({MODES[mode_arg]})\n")
@@ -919,7 +919,7 @@ def cmd_strategy(args) -> None:
         for s, desc in STRATEGIES.items():
             marker = " <-" if s == current else ""
             logger.info(f"  {s:<15}  {desc}{marker}")
-        logger.info(f"\n  Set with: hermes honcho strategy [per-session|per-directory|per-repo|global]\n")
+        logger.info(f"\n  Set with: Vermes honcho strategy [per-session|per-directory|per-repo|global]\n")
         return
 
     if strat_arg not in STRATEGIES:
@@ -927,7 +927,7 @@ def cmd_strategy(args) -> None:
         return
 
     host = _host_key()
-    label = f"[{host}] " if host != "hermes" else ""
+    label = f"[{host}] " if host != "Vermes" else ""
     cfg.setdefault("hosts", {}).setdefault(host, {})["sessionStrategy"] = strat_arg
     _write_config(cfg)
     logger.info(f"  {label}Session strategy -> {strat_arg}  ({STRATEGIES[strat_arg]})\n")
@@ -936,15 +936,15 @@ def cmd_tokens(args) -> None:
     """Show or set token budget settings."""
     cfg = _read_config()
     hosts = cfg.get("hosts", {})
-    hermes = hosts.get(_host_key(), {})
+    Vermes = hosts.get(_host_key(), {})
 
     context = getattr(args, "context", None)
     dialectic = getattr(args, "dialectic", None)
 
     if context is None and dialectic is None:
-        ctx_tokens = hermes.get("contextTokens") or cfg.get("contextTokens") or "(Honcho default)"
-        d_chars = hermes.get("dialecticMaxChars") or cfg.get("dialecticMaxChars") or 600
-        d_level = hermes.get("dialecticReasoningLevel") or cfg.get("dialecticReasoningLevel") or "low"
+        ctx_tokens = Vermes.get("contextTokens") or cfg.get("contextTokens") or "(Honcho default)"
+        d_chars = Vermes.get("dialecticMaxChars") or cfg.get("dialecticMaxChars") or 600
+        d_level = Vermes.get("dialecticReasoningLevel") or cfg.get("dialecticReasoningLevel") or "low"
         logger.info("\nHoncho budgets\n" + "─" * 40)
         logger.info()
         logger.info(f"  Context     {ctx_tokens} tokens")
@@ -956,11 +956,11 @@ def cmd_tokens(args) -> None:
         logger.info("    (e.g. \"what were we working on?\") and Honcho runs its own model")
         logger.info("    to synthesize an answer. Used for first-turn session continuity.")
         logger.info("    Level controls how much reasoning Honcho spends on the answer.")
-        logger.info("\n  Set with: hermes honcho tokens [--context N] [--dialectic N]\n")
+        logger.info("\n  Set with: Vermes honcho tokens [--context N] [--dialectic N]\n")
         return
 
     host = _host_key()
-    label = f"[{host}] " if host != "hermes" else ""
+    label = f"[{host}] " if host != "Vermes" else ""
     changed = False
     if context is not None:
         cfg.setdefault("hosts", {}).setdefault(host, {})["contextTokens"] = context
@@ -979,7 +979,7 @@ def cmd_identity(args) -> None:
     """Seed AI peer identity or show both peer representations."""
     cfg = _read_config()
     if not _resolve_api_key(cfg):
-        logger.info("  No API key configured. Run 'hermes honcho setup' first.\n")
+        logger.info("  No API key configured. Run 'Vermes honcho setup' first.\n")
         return
 
     file_path = getattr(args, "file", None)
@@ -1016,7 +1016,7 @@ def cmd_identity(args) -> None:
             logger.info(ai_rep["card"])
         else:
             logger.info("  No representation built yet.")
-            logger.info("  Run 'hermes honcho identity <file>' to seed one.")
+            logger.info("  Run 'Vermes honcho identity <file>' to seed one.")
         logger.info()
         return
 
@@ -1025,8 +1025,8 @@ def cmd_identity(args) -> None:
         logger.info(f"  User peer: {hcfg.peer_name or 'not set'}")
         logger.info(f"  AI peer:   {hcfg.ai_peer}")
         logger.info()
-        logger.info("    hermes honcho identity --show        — show both peer representations")
-        logger.info("    hermes honcho identity <file>        — seed AI peer from SOUL.md or any .md/.txt\n")
+        logger.info("    Vermes honcho identity --show        — show both peer representations")
+        logger.info("    Vermes honcho identity <file>        — seed AI peer from SOUL.md or any .md/.txt\n")
         return
 
     from pathlib import Path
@@ -1098,17 +1098,17 @@ def cmd_migrate(args) -> None:
         logger.info("  across sessions. You need an API key to use it.")
         logger.info()
         logger.info("  1. Get your API key at https://app.honcho.dev")
-        logger.info("  2. Run:  hermes honcho setup")
+        logger.info("  2. Run:  Vermes honcho setup")
         logger.info("     Paste the key when prompted.")
         logger.info()
-        answer = _prompt("  Run 'hermes honcho setup' now?", default="y")
+        answer = _prompt("  Run 'Vermes honcho setup' now?", default="y")
         if answer.lower() in {"y", "yes"}:
             cmd_setup(args)
             cfg = _read_config()
             has_key = bool(cfg.get("apiKey", ""))
         else:
             logger.info()
-            logger.info("  Run 'hermes honcho setup' when ready, then re-run this walkthrough.")
+            logger.info("  Run 'Vermes honcho setup' when ready, then re-run this walkthrough.")
 
     # ── Step 2: Detected files ────────────────────────────────────────────────
     logger.info()
@@ -1126,7 +1126,7 @@ def cmd_migrate(args) -> None:
     else:
         logger.info("  No OpenClaw native memory files found in cwd or ~/.openclaw/.")
         logger.info("  If your files are elsewhere, copy them here before continuing,")
-        logger.info("  or seed them manually:  hermes honcho identity <path/to/file>")
+        logger.info("  or seed them manually:  Vermes honcho identity <path/to/file>")
 
     # ── Step 3: Migrate user memory ───────────────────────────────────────────
     logger.info()
@@ -1139,13 +1139,13 @@ def cmd_migrate(args) -> None:
     if user_files:
         logger.info(f"  Found: {', '.join(f.name for f in user_files)}")
         logger.info()
-        logger.info("  These are picked up automatically the first time you run 'hermes'")
+        logger.info("  These are picked up automatically the first time you run 'Vermes'")
         logger.info("  with Honcho configured and no prior session history.")
         logger.info("  (Vermes calls migrate_memory_files() on first session init.)")
         logger.info()
         logger.info("  If you want to migrate them now without starting a session:")
         for f in user_files:
-            logger.info("    hermes honcho migrate  — this step handles it interactively")
+            logger.info("    Vermes honcho migrate  — this step handles it interactively")
         if has_key:
             answer = _prompt("  Upload user memory files to Honcho now?", default="y")
             if answer.lower() in {"y", "yes"}:
@@ -1176,7 +1176,7 @@ def cmd_migrate(args) -> None:
                 except Exception as e:
                     logger.info(f"  Failed: {e}")
         else:
-            logger.info("  Run 'hermes honcho setup' first, then re-run this step.")
+            logger.info("  Run 'Vermes honcho setup' first, then re-run this step.")
     else:
         logger.info("  No user memory files detected. Nothing to migrate here.")
 
@@ -1222,12 +1222,12 @@ def cmd_migrate(args) -> None:
                 except Exception as e:
                     logger.info(f"  Failed: {e}")
         else:
-            logger.info("  Run 'hermes honcho setup' first, then seed manually:")
+            logger.info("  Run 'Vermes honcho setup' first, then seed manually:")
             for f in agent_files:
-                logger.info(f"    hermes honcho identity {f}")
+                logger.info(f"    Vermes honcho identity {f}")
     else:
         logger.info("  No agent identity files detected.")
-        logger.info("  To seed manually:  hermes honcho identity <path/to/SOUL.md>")
+        logger.info("  To seed manually:  Vermes honcho identity <path/to/SOUL.md>")
 
     # ── Step 5: What changes ──────────────────────────────────────────────────
     logger.info()
@@ -1258,22 +1258,22 @@ def cmd_migrate(args) -> None:
     logger.info("  Session naming")
     logger.info("    OpenClaw: no persistent session concept — files are global.")
     logger.info("    Vermes:   per-session by default — each run gets its own session")
-    logger.info("              Map a custom name:  hermes honcho map <session-name>")
+    logger.info("              Map a custom name:  Vermes honcho map <session-name>")
 
     # ── Step 6: Next steps ────────────────────────────────────────────────────
     logger.info()
     logger.info("Step 6  Next steps")
     logger.info()
     if not has_key:
-        logger.info("  1. hermes honcho setup              — configure API key (required)")
-        logger.info("  2. hermes honcho migrate            — re-run this walkthrough")
+        logger.info("  1. Vermes honcho setup              — configure API key (required)")
+        logger.info("  2. Vermes honcho migrate            — re-run this walkthrough")
     else:
-        logger.info("  1. hermes honcho status             — verify Honcho connection")
-        logger.info("  2. hermes                           — start a session")
+        logger.info("  1. Vermes honcho status             — verify Honcho connection")
+        logger.info("  2. Vermes                           — start a session")
         logger.info("     (user memory files auto-uploaded on first turn if not done above)")
-        logger.info("  3. hermes honcho identity --show    — verify AI peer representation")
-        logger.info("  4. hermes honcho tokens             — tune context and dialectic budgets")
-        logger.info("  5. hermes honcho mode               — view or change memory mode")
+        logger.info("  3. Vermes honcho identity --show    — verify AI peer representation")
+        logger.info("  4. Vermes honcho tokens             — tune context and dialectic budgets")
+        logger.info("  5. Vermes honcho mode               — view or change memory mode")
     logger.info()
 
 def honcho_command(args) -> None:
@@ -1285,7 +1285,7 @@ def honcho_command(args) -> None:
     if sub == "setup":
         # Redirect to memory setup — honcho setup goes through the unified path
         logger.info("\n  Honcho is configured via the memory provider system.")
-        logger.info("  Running 'hermes memory setup'...\n")
+        logger.info("  Running 'Vermes memory setup'...\n")
         from vermes_cli.memory_setup import cmd_setup_provider
 
         cmd_setup_provider("honcho")
@@ -1323,10 +1323,10 @@ def honcho_command(args) -> None:
         logger.info("  Available: status, sessions, map, peer, mode, strategy, tokens, identity, migrate, enable, disable, sync\n")
 
 def register_cli(subparser) -> None:
-    """Build the ``hermes honcho`` argparse subcommand tree.
+    """Build the ``Vermes honcho`` argparse subcommand tree.
 
     Called by the plugin CLI registration system during argparse setup.
-    The *subparser* is the parser for ``hermes honcho``.
+    The *subparser* is the parser for ``Vermes honcho``.
     """
 
     subparser.add_argument(
@@ -1337,7 +1337,7 @@ def register_cli(subparser) -> None:
 
     subs.add_parser(
         "setup",
-        help="Initial Honcho setup (redirects to hermes memory setup)",
+        help="Initial Honcho setup (redirects to Vermes memory setup)",
     )
 
     status_parser = subs.add_parser(

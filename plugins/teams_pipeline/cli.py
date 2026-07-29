@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from vermes_constants import display_hermes_home
+from vermes_constants import display_vermes_home
 from gateway.config import Platform, load_gateway_config
 from plugins.teams_pipeline.meetings import (
     enrich_meeting_with_call_record,
@@ -98,7 +98,7 @@ def teams_pipeline_command(args: argparse.Namespace) -> int:
     action = getattr(args, "teams_pipeline_action", None)
     if not action:
         logger.info(
-            "Usage: hermes teams-pipeline "
+            "Usage: Vermes teams-pipeline "
             "{list|show|run|fetch|subscriptions|subscribe|renew-subscription|delete-subscription|maintain-subscriptions|token-health|validate}"
         )
         return 2
@@ -145,7 +145,7 @@ def _store_path(path_arg: str | None) -> Path:
 
 def _graph_setup_hint() -> str:
     return f"""
-  Microsoft Graph is not configured. Add these to {display_hermes_home()}/.env:
+  Microsoft Graph is not configured. Add these to {display_vermes_home()}/.env:
 
     MSGRAPH_TENANT_ID=...
     MSGRAPH_CLIENT_ID=...

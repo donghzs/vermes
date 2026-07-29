@@ -1,6 +1,6 @@
 """Vermes Achievements dashboard plugin backend.
 
-Mounted at /api/plugins/hermes-achievements/ by Vermes dashboard.
+Mounted at /api/plugins/Vermes-achievements/ by Vermes dashboard.
 """
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 try:
-    from vermes_constants import get_hermes_home
+    from vermes_constants import get_vermes_home
 except ImportError:
     import os as _os
-    def get_hermes_home() -> Path:  # type: ignore[misc]
-        val = (_os.environ.get("HERMES_HOME") or "").strip()
-        return Path(val) if val else Path.home() / ".hermes"
+    def get_vermes_home() -> Path:  # type: ignore[misc]
+        val = (_os.environ.get("VERMES_HOME") or "").strip()
+        return Path(val) if val else Path.home() / ".vermes"
 
 try:
     from fastapi import APIRouter
@@ -143,15 +143,15 @@ ACHIEVEMENTS: List[Dict[str, Any]] = [
 
 
 def state_path() -> Path:
-    return get_hermes_home() / "plugins" / "hermes-achievements" / "state.json"
+    return get_vermes_home() / "plugins" / "Vermes-achievements" / "state.json"
 
 
 def snapshot_path() -> Path:
-    return get_hermes_home() / "plugins" / "hermes-achievements" / "scan_snapshot.json"
+    return get_vermes_home() / "plugins" / "Vermes-achievements" / "scan_snapshot.json"
 
 
 def checkpoint_path() -> Path:
-    return get_hermes_home() / "plugins" / "hermes-achievements" / "scan_checkpoint.json"
+    return get_vermes_home() / "plugins" / "Vermes-achievements" / "scan_checkpoint.json"
 
 
 def load_state() -> Dict[str, Any]:
@@ -399,7 +399,7 @@ def analyze_messages(session_id: str, title: str, messages: List[Dict[str, Any]]
         "tiny_patch_after_errors_events": 1 if error_count >= 5 and re.search(r"one character|single character|typo", full_text, re.I) else 0,
         "context_events": len(re.findall(r"compress|context window|token|cache", full_text, re.I)),
         "gateway_events": len(re.findall(r"gateway|discord|telegram|slack|api_server", full_text, re.I)),
-        "plugin_events": len(re.findall(r"plugin|dashboard-plugins|__HERMES_PLUGIN|manifest\.json", full_text, re.I)),
+        "plugin_events": len(re.findall(r"plugin|dashboard-plugins|__vermes_PLUGIN|manifest\.json", full_text, re.I)),
         "rollback_events": len(re.findall(r"rollback|checkpoint", full_text, re.I)),
         "docs_activity_events": len(re.findall(r"docs|documentation|docusaurus|README", full_text, re.I)),
         "model_events": len(re.findall(r"model|provider|openrouter|codex|gemini|claude|anthropic|openai|mistral|qwen|deepseek|llama|ollama|vllm|gguf", full_text, re.I)),
@@ -938,7 +938,7 @@ def _start_background_scan() -> None:
         thread = threading.Thread(
             target=_run_scan_and_update_cache,
             kwargs={"publish_partial_snapshots": True},
-            name="hermes-achievements-scan",
+            name="Vermes-achievements-scan",
             daemon=True,
         )
         _BACKGROUND_SCAN_THREAD = thread

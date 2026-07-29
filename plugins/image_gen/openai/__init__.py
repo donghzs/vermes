@@ -11,7 +11,7 @@ three virtual model IDs so the ``vermes tools`` model picker and the
 
 All three hit the same underlying API model (``gpt-image-2``) with a
 different ``quality`` parameter. Output is base64 JSON → saved under
-``$HERMES_HOME/cache/images/``.
+``$VERMES_HOME/cache/images/``.
 
 Selection precedence (first hit wins):
 

@@ -1,6 +1,6 @@
 """CLI commands for the google_meet plugin.
 
-Wires ``hermes meet <subcommand>``:
+Wires ``Vermes meet <subcommand>``:
   setup       — preflight playwright, chromium, auth file, print fixes
   auth        — open a browser to sign into Google, save storage state
   join <url>  — join a Meet URL synchronously (also callable from the agent)
@@ -22,20 +22,20 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 from plugins.google_meet import process_manager as pm
 from plugins.google_meet.meet_bot import _is_safe_meet_url
 
 def _auth_state_path() -> Path:
-    return Path(get_hermes_home()) / "workspace" / "meetings" / "auth.json"
+    return Path(get_vermes_home()) / "workspace" / "meetings" / "auth.json"
 
 # ---------------------------------------------------------------------------
 # argparse wiring
 # ---------------------------------------------------------------------------
 
 def register_cli(subparser: argparse.ArgumentParser) -> None:
-    """Build the ``hermes meet`` argparse tree.
+    """Build the ``Vermes meet`` argparse tree.
 
     Called by :func:`_register_cli_commands` at plugin load time.
     """
@@ -96,7 +96,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
         # missing at import time etc.), leave the subparser present but
         # flag it. The argparse dispatch will surface a clear error.
         def _node_unavailable(args):
-            logger.info(f"hermes meet node: module unavailable ({e})")
+            logger.info(f"Vermes meet node: module unavailable ({e})")
             return 1
         node_p.set_defaults(func=_node_unavailable)
 
@@ -109,7 +109,7 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
 def meet_command(args: argparse.Namespace) -> int:
     sub = getattr(args, "meet_command", None)
     if not sub:
-        logger.info("usage: hermes meet {setup,auth,join,status,transcript,say,stop,node}")
+        logger.info("usage: Vermes meet {setup,auth,join,status,transcript,say,stop,node}")
         return 2
     if sub == "setup":
         return _cmd_setup()
@@ -142,7 +142,7 @@ def meet_command(args: argparse.Namespace) -> int:
         # whatever its subparsers wired.
         fn = getattr(args, "func", None)
         if fn is None or fn is meet_command:
-            logger.info("usage: hermes meet node {run,list,approve,remove,status,ping}")
+            logger.info("usage: Vermes meet node {run,list,approve,remove,status,ping}")
             return 2
         return fn(args)
     logger.info(f"unknown subcommand: {sub}")
@@ -197,7 +197,7 @@ def _cmd_setup() -> int:
     auth_ok = auth_path.is_file()
     logger.info(
         "  google auth    : "
-        + (f"ok ({auth_path})" if auth_ok else "not saved — run: hermes meet auth")
+        + (f"ok ({auth_path})" if auth_ok else "not saved — run: Vermes meet auth")
     )
 
     logger.info()
@@ -205,7 +205,7 @@ def _cmd_setup() -> int:
     if all_ok:
         logger.info(
             "ready. Join a meeting:  "
-            "hermes meet join https://meet.google.com/abc-defg-hij"
+            "Vermes meet join https://meet.google.com/abc-defg-hij"
         )
     else:
         logger.info("not ready yet — fix the items above.")
@@ -324,12 +324,12 @@ def _cmd_install(*, realtime: bool, assume_yes: bool) -> int:
                 "\n  NOTE: macOS does not auto-route audio. Open\n"
                 "    System Settings → Sound → Input\n"
                 "  and select 'BlackHole 2ch' before starting a realtime meeting.\n"
-                "  hermes will not switch your default input for you."
+                "  Vermes will not switch your default input for you."
             )
     else:
         logger.info("\n[3/3] skipped (pass --realtime to install audio tooling too)")
 
-    logger.info("\ndone. verify with: hermes meet setup")
+    logger.info("\ndone. verify with: Vermes meet setup")
     return 0
 
 def _cmd_auth() -> int:
@@ -363,7 +363,7 @@ def _cmd_auth() -> int:
     except Exception as e:
         logger.info(f"auth failed: {e}")
         return 1
-    logger.info("saved. you can now run: hermes meet join <url>")
+    logger.info("saved. you can now run: Vermes meet join <url>")
     return 0
 
 def _cmd_join(
@@ -460,12 +460,12 @@ def _cmd_transcript(last: Optional[int]) -> int:
     return 0
 
 def _cmd_stop() -> int:
-    res = pm.stop(reason="hermes meet stop")
+    res = pm.stop(reason="Vermes meet stop")
     logger.info(json.dumps(res, indent=2))
     return 0 if res.get("ok") else 1
 
 if __name__ == "__main__":  # pragma: no cover
-    parser = argparse.ArgumentParser(prog="hermes meet")
+    parser = argparse.ArgumentParser(prog="Vermes meet")
     register_cli(parser)
     ns = parser.parse_args()
     sys.exit(meet_command(ns))

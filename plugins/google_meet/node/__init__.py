@@ -1,7 +1,7 @@
 """Remote 'node host' primitive for the google_meet plugin.
 
 Lets the Meet bot (Playwright + Chrome) run on a different machine than
-the hermes-agent gateway. The gateway speaks a small JSON-over-WebSocket
+the Vermes-agent gateway. The gateway speaks a small JSON-over-WebSocket
 RPC protocol to the remote node; the node wraps the existing
 ``plugins.google_meet.process_manager`` API.
 

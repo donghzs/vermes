@@ -70,7 +70,7 @@ def _get_exa_client() -> Any:
     from exa_py import Exa  # noqa: WPS433 — deliberately lazy
 
     client = Exa(api_key=api_key)
-    client.headers["x-exa-integration"] = "hermes-agent"
+    client.headers["x-exa-integration"] = "Vermes-agent"
     _wt._exa_client = client
     return client
 

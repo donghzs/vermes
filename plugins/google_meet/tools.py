@@ -65,7 +65,7 @@ def _resolve_node_client(node: Optional[str]):
     if entry is None:
         raise RuntimeError(
             f"no registered meet node matches {node!r} — "
-            "run `hermes meet node approve <name> <url> <token>` first"
+            "run `Vermes meet node approve <name> <url> <token>` first"
         )
     client = NodeClient(url=entry["url"], token=entry["token"])
     return client, entry.get("name")
@@ -133,7 +133,7 @@ MEET_JOIN_SCHEMA: Dict[str, Any] = {
                     "but the user's Chrome with a signed-in Google profile "
                     "lives on their Mac). Pass 'auto' to use the single "
                     "registered node. Default: run locally. Nodes are "
-                    "approved via `hermes meet node approve`."
+                    "approved via `Vermes meet node approve`."
                 ),
             },
         },

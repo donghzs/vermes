@@ -5,15 +5,15 @@ Mac laptop with a signed-in Chrome). Exposes a WebSocket endpoint that
 accepts signed RPC requests and dispatches them to the existing
 ``plugins.google_meet.process_manager`` module.
 
-Launched by ``hermes meet node run``.
+Launched by ``Vermes meet node run``.
 
 Token handling
 --------------
 On first boot we mint 32 hex chars of entropy and persist them at
-``$HERMES_HOME/workspace/meetings/node_token.json``. Subsequent boots
+``$VERMES_HOME/workspace/meetings/node_token.json``. Subsequent boots
 reuse the same token so previously-approved gateways don't need to be
 re-paired. The operator copies this token out-of-band to the gateway
-via ``hermes meet node approve <name> <url> <token>``.
+via ``Vermes meet node approve <name> <url> <token>``.
 
 Dependencies
 ------------
@@ -30,12 +30,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from plugins.google_meet.node import protocol as _proto
 
 
 def _default_token_path() -> Path:
-    return Path(get_hermes_home()) / "workspace" / "meetings" / "node_token.json"
+    return Path(get_vermes_home()) / "workspace" / "meetings" / "node_token.json"
 
 
 class NodeServer:
@@ -46,7 +46,7 @@ class NodeServer:
         host: str = "127.0.0.1",
         port: int = 18789,
         token_path: Optional[Path] = None,
-        display_name: str = "hermes-meet-node",
+        display_name: str = "Vermes-meet-node",
     ) -> None:
         self.host = host
         self.port = port

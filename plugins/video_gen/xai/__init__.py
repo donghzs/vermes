@@ -97,11 +97,11 @@ def _resolve_xai_credentials() -> Tuple[str, str]:
 
 def _xai_user_agent() -> str:
     try:
-        from tools.xai_http import hermes_xai_user_agent
+        from tools.xai_http import VERMES_xai_user_agent
 
-        return hermes_xai_user_agent()
+        return VERMES_xai_user_agent()
     except Exception:
-        return "hermes-agent/video_gen"
+        return "Vermes-agent/video_gen"
 
 
 def _xai_headers(api_key: str) -> Dict[str, str]:

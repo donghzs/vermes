@@ -67,7 +67,7 @@ HEALTH_CHECK_INTERVAL = 30.0
 HEALTH_CHECK_STALE_THRESHOLD = 120.0
 
 # Correlation ID prefix for requests we send so we can ignore our own echoes.
-_CORR_PREFIX = "hermes-"
+_CORR_PREFIX = "Vermes-"
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +618,7 @@ async def _standalone_send(
     """Open an ephemeral WebSocket to the daemon, send, and close.
 
     Used by ``tools/send_message_tool._send_via_adapter`` when the gateway
-    runner is not in this process (e.g. ``hermes cron`` running as a
+    runner is not in this process (e.g. ``Vermes cron`` running as a
     separate process from ``vermes gateway``). Without this hook,
     ``deliver=simplex`` cron jobs fail with "No live adapter for platform".
 
@@ -646,7 +646,7 @@ async def _standalone_send(
             cmd_str = f"@[{chat_id}] {message}"
 
         payload = {
-            "corrId": f"hermes-snd-{int(time.time() * 1000)}",
+            "corrId": f"Vermes-snd-{int(time.time() * 1000)}",
             "cmd": cmd_str,
         }
 
