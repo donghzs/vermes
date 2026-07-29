@@ -4,7 +4,7 @@ The cua-driver upstream installer always pulls the latest release tag, so
 re-running it is the canonical upgrade path. ``install_cua_driver(upgrade=True)``
 must:
 
-* Be macOS-only — no-op silently on Linux/Windows so ``hermes update`` can
+* Be macOS-only — no-op silently on Linux/Windows so ``vermes update`` can
   call it unconditionally without warning every non-macOS user.
 * Re-run the installer even when the binary is already on PATH (this is the
   fix for the "we only pulled cua-driver once on enable" complaint).
@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 class TestInstallCuaDriverUpgrade:
     def test_upgrade_on_non_macos_is_silent_noop(self):
-        """``hermes update`` calls install_cua_driver(upgrade=True) for every
+        """``vermes update`` calls install_cua_driver(upgrade=True) for every
         user. On Linux/Windows it must return False without printing the
         "macOS-only; skipping" warning that the toolset-enable path emits."""
         from vermes_cli import tools_config
@@ -55,7 +55,7 @@ class TestInstallCuaDriverUpgrade:
             assert tools_config.install_cua_driver(upgrade=True) is True
             runner.assert_called_once()
             # Refresh path uses non-verbose mode so we don't re-print the
-            # "grant macOS permissions" block on every `hermes update`.
+            # "grant macOS permissions" block on every `vermes update`.
             kwargs = runner.call_args.kwargs
             assert kwargs.get("verbose") is False
 
@@ -75,7 +75,7 @@ class TestInstallCuaDriverUpgrade:
     def test_non_upgrade_on_macos_with_binary_skips_install(self):
         """Original toolset-enable behaviour: cua-driver already installed
         + upgrade=False → confirm and return without re-running installer.
-        This is the behaviour that ``hermes tools`` (re)enable depends on,
+        This is the behaviour that ``vermes tools`` (re)enable depends on,
         so the new helper must not regress it."""
         from vermes_cli import tools_config
 

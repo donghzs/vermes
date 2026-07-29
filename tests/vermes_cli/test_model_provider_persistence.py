@@ -1,4 +1,4 @@
-"""Tests that provider selection via `hermes model` always persists correctly.
+"""Tests that provider selection via `vermes model` always persists correctly.
 
 Regression tests for the bug where _save_model_choice could save config.model
 as a plain string, causing subsequent provider writes (which check
@@ -341,7 +341,7 @@ class TestBaseUrlValidation:
         # User types a shell command instead of a URL at the base URL prompt
         with patch("vermes_cli.auth._prompt_model_selection", return_value="glm-5"), \
              patch("vermes_cli.auth.deactivate_provider"), \
-             patch("builtins.input", return_value="nano ~/.hermes/.env"):
+             patch("builtins.input", return_value="nano ~/.vermes/.env"):
             _model_flow_api_key_provider(load_config(), "zai", "old-model")
 
         # The garbage value should NOT have been saved

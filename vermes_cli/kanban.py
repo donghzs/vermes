@@ -1,4 +1,4 @@
-"""CLI for the Hermes Kanban board — ``hermes kanban …`` subcommand.
+"""CLI for the Vermes Kanban board — ``vermes kanban …`` subcommand.
 
 Exposes the full Kanban command surface documented in the design spec
 (``docs/hermes-kanban-v1-spec.pdf``).  All DB work is delegated to
@@ -136,7 +136,7 @@ def _check_dispatcher_presence() -> tuple[bool, str]:
       is running but the config flag is off. Message is human guidance
       explaining the next step.
 
-    Used by ``hermes kanban create`` (and callers) to warn when a task
+    Used by ``vermes kanban create`` (and callers) to warn when a task
     will sit in ``ready`` because nothing is there to pick it up.
     Defensive against import failures and config-read errors — if the
     probe itself errors, we return ``(True, "")`` so we don't spam
@@ -167,13 +167,13 @@ def _check_dispatcher_presence() -> tuple[bool, str]:
             "Gateway is running but kanban.dispatch_in_gateway=false in "
             "config.yaml — the task will sit in 'ready' until you flip it "
             "back on and restart the gateway, OR run the legacy "
-            "standalone daemon (`hermes kanban daemon --force`)."
+            "standalone daemon (`vermes kanban daemon --force`)."
         )
     return (
         False,
         "No gateway is running — the task will sit in 'ready' until you "
         "start it. Run:\n"
-        "    hermes gateway start\n"
+        "    vermes gateway start\n"
         "The gateway hosts an embedded dispatcher (tick interval 60s by "
         "default); your task will be picked up on the next tick after "
         "the gateway comes up."
@@ -192,7 +192,7 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
         "kanban",
         help="Multi-profile collaboration board (tasks, links, comments)",
         description=(
-            "Durable SQLite-backed task board shared across Hermes profiles. "
+            "Durable SQLite-backed task board shared across Vermes profiles. "
             "Tasks are claimed atomically, can depend on other tasks, and "
             "are executed by a named profile in an isolated workspace. "
             "See https://hermes-agent.nousresearch.com/docs/user-guide/features/kanban "
@@ -210,7 +210,7 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
         metavar="<slug>",
         help=(
             "Board slug to operate on. Defaults to the current board "
-            "(set via `hermes kanban boards switch <slug>` or the "
+            "(set via `vermes kanban boards switch <slug>` or the "
             "HERMES_KANBAN_BOARD env var). Use `hermes kanban boards list` "
             "to see all boards."
         ),
@@ -579,7 +579,7 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
     # --- daemon (deprecated) ---
     p_daemon = sub.add_parser(
         "daemon",
-        help="DEPRECATED — dispatcher now runs in the gateway. Use `hermes gateway start`.",
+        help="DEPRECATED — dispatcher now runs in the gateway. Use `vermes gateway start`.",
     )
     p_daemon.add_argument("--interval", type=float, default=60.0,
                           help="Seconds between dispatch ticks (default: 60)")
@@ -693,7 +693,7 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
     p_asg = sub.add_parser(
         "assignees",
         help="List known profiles + per-profile task counts "
-             "(union of ~/.hermes/profiles/ and current assignees on the board)",
+             "(union of ~/.vermes/profiles/ and current assignees on the board)",
     )
     p_asg.add_argument("--json", action="store_true")
 
@@ -795,7 +795,7 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
 # ---------------------------------------------------------------------------
 
 def kanban_command(args: argparse.Namespace) -> int:
-    """Entry point from ``hermes kanban …`` argparse dispatch.
+    """Entry point from ``vermes kanban …`` argparse dispatch.
 
     Returns a shell-style exit code (0 on success, non-zero on error).
     """
@@ -807,8 +807,8 @@ def kanban_command(args: argparse.Namespace) -> int:
             parser.print_help()
         else:
             logger.info(
-                "usage: hermes kanban <action> [options]\n"
-                "Run 'hermes kanban --help' for the full list of actions.",
+                "usage: vermes kanban <action> [options]\n"
+                "Run 'vermes kanban --help' for the full list of actions.",
                 file=sys.stderr,
             )
         return 0
@@ -851,7 +851,7 @@ def kanban_command(args: argparse.Namespace) -> int:
         if normed != kb.DEFAULT_BOARD and not kb.board_exists(normed):
             logger.info(
                 f"kanban: board {normed!r} does not exist. "
-                f"Create it with `hermes kanban boards create {normed}`.",
+                f"Create it with `vermes kanban boards create {normed}`.",
                 file=sys.stderr,
             )
             return 1
@@ -942,11 +942,11 @@ def _profile_author() -> str:
         return "user"
 
 # ---------------------------------------------------------------------------
-# Boards management (hermes kanban boards …)
+# Boards management (vermes kanban boards …)
 # ---------------------------------------------------------------------------
 
 def _dispatch_boards(args: argparse.Namespace) -> int:
-    """Handle ``hermes kanban boards <action>``.
+    """Handle ``vermes kanban boards <action>``.
 
     Boards management is deliberately separate from the task-level
     commands: it operates on the filesystem (board directories,
@@ -1000,7 +1000,7 @@ def _cmd_boards_list(args: argparse.Namespace) -> int:
         return 0
     # Human table: marker (•) for current, slug, display name, counts.
     if not boards:
-        logger.info("(no boards — create one with `hermes kanban boards create <slug>`)")
+        logger.info("(no boards — create one with `vermes kanban boards create <slug>`)")
         return 0
     logger.info(f"{'':2s}  {'SLUG':24s}  {'NAME':28s}  COUNTS")
     for b in boards:
@@ -1017,7 +1017,7 @@ def _cmd_boards_list(args: argparse.Namespace) -> int:
     logger.info()
     logger.info(f"Current board: {current}")
     if len(boards) > 1:
-        logger.info("Switch boards with `hermes kanban boards switch <slug>`.")
+        logger.info("Switch boards with `vermes kanban boards switch <slug>`.")
     return 0
 
 def _cmd_boards_create(args: argparse.Namespace) -> int:
@@ -1046,11 +1046,11 @@ def _cmd_boards_create(args: argparse.Namespace) -> int:
         kb.set_current_board(meta["slug"])
         logger.info(f"  Switched to {meta['slug']!r}.")
     else:
-        logger.info(f"  Use `hermes kanban boards switch {meta['slug']}` to make it current.")
+        logger.info(f"  Use `vermes kanban boards switch {meta['slug']}` to make it current.")
     return 0
 
 def _cmd_boards_rm(args: argparse.Namespace) -> int:
-    # When the user runs `hermes kanban boards delete <slug>` (alias), the
+    # When the user runs `vermes kanban boards delete <slug>` (alias), the
     # boards_action is 'delete' but args.delete is never set to True because
     # the --delete flag belongs to the 'rm' subparser only.  Detect the alias
     # and treat it identically to `boards rm --delete` (fixes #23139).
@@ -1080,7 +1080,7 @@ def _cmd_boards_switch(args: argparse.Namespace) -> int:
     if not kb.board_exists(normed):
         logger.info(
             f"kanban boards switch: board {normed!r} does not exist. "
-            f"Create it with `hermes kanban boards create {normed}`.",
+            f"Create it with `vermes kanban boards create {normed}`.",
             file=sys.stderr,
         )
         return 1
@@ -1196,11 +1196,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
         for name in profiles:
             logger.info(f"  {name}")
     else:
-        logger.info("No profiles found under ~/.hermes/profiles/.")
+        logger.info("No profiles found under ~/.vermes/profiles/.")
         logger.info("Create one with `hermes -p <name> setup` before assigning tasks.")
     logger.info()
     logger.info("Next step: start the gateway so ready tasks actually get picked up.")
-    logger.info("  hermes gateway start")
+    logger.info("  vermes gateway start")
     logger.info()
     logger.info(
         "The gateway hosts an embedded dispatcher that ticks every 60 seconds\n"
@@ -1368,7 +1368,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
         logger.info(
             f"Board: {current} "
             f"({other_count} other board{'s' if other_count != 1 else ''} — "
-            f"`hermes kanban boards list`)\n"
+            f"`vermes kanban boards list`)\n"
         )
     if not tasks:
         logger.info("(no matching tasks)")
@@ -1514,7 +1514,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
         logger.info(task.result)
     elif latest_summary:
         # Worker handoff lives on the latest run, not on tasks.result.
-        # Surface it at top-level so a glance at ``hermes kanban show <id>``
+        # Surface it at top-level so a glance at ``vermes kanban show <id>``
         # tells you what the worker did even if tasks.result is empty.
         logger.info()
         logger.info("Latest summary:")
@@ -2027,10 +2027,10 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
     # casually — intentional.
     if not getattr(args, "force", False):
         logger.info(
-            "hermes kanban daemon: DEPRECATED — the dispatcher now runs\n"
+            "vermes kanban daemon: DEPRECATED — the dispatcher now runs\n"
             "inside the gateway. To use kanban:\n"
             "\n"
-            "    hermes gateway start       # starts the gateway + embedded dispatcher\n"
+            "    vermes gateway start       # starts the gateway + embedded dispatcher\n"
             "\n"
             "Ready tasks will be picked up on the next dispatcher tick\n"
             "(default: every 60 seconds). Configure via config.yaml:\n"
@@ -2096,8 +2096,8 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
                     f"ready queue non-empty for {health_state['bad_ticks']} "
                     f"consecutive ticks but 0 workers spawned successfully. "
                     f"Check profile health (venv, PATH, credentials) and "
-                    f"`hermes kanban list --status ready` / "
-                    f"`hermes kanban list --status blocked` for recent "
+                    f"`vermes kanban list --status ready` / "
+                    f"`vermes kanban list --status blocked` for recent "
                     f"spawn_failed tasks.",
                     file=sys.stderr, flush=True,
                 )
@@ -2120,7 +2120,7 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
 
     def _ready_queue_nonempty() -> bool:
         """Cheap probe — is there at least one ready+assigned+unclaimed
-        task whose assignee maps to a real Hermes profile (i.e. one the
+        task whose assignee maps to a real Vermes profile (i.e. one the
         dispatcher would actually try to spawn for)?
 
         Filters out tasks assigned to control-plane lanes

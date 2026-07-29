@@ -967,7 +967,7 @@ async def chat_completions(req: ChatRequest):
 
             from vermes_cli.tools_config import get_effective_web_toolset_keys, _load_toolsets_for_web
             # Route web through the same governed toolset resolver used by the
-            # CLI/TUI so that `hermes tools` choices and the in-app toolset
+            # CLI/TUI so that `vermes tools` choices and the in-app toolset
             # toggle (platform_toolsets.web) actually take effect for the
             # desktop/Web agent.  Falls back to the rich legacy default when
             # platform_toolsets.web is absent/empty (fresh installs) so a

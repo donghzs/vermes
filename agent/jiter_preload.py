@@ -2,7 +2,7 @@
 
 The OpenAI SDK imports ``jiter`` while constructing streaming chat-completion
 responses.  On some Windows installs the native extension can be imported
-directly from the Hermes venv, but the first import fails when it happens later
+directly from the Vermes venv, but the first import fails when it happens later
 inside the threaded streaming request path.  Loading it once during agent
 package import avoids that import-order failure while preserving the normal
 SDK error path for genuinely missing or broken installs.

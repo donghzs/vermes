@@ -1,7 +1,7 @@
 """Post-loop turn finalization for ``run_conversation``.
 
 Extracted from ``agent/conversation_loop.py`` as part of the god-file
-decomposition campaign (``~/.hermes/plans/god-file-decomposition.md``, Phase 1
+decomposition campaign (``~/.vermes/plans/god-file-decomposition.md``, Phase 1
 step 4 — the post-loop ``TurnFinalizer`` seam). ``run_conversation``'s tail
 (everything after the main tool-calling ``while`` loop) is lifted here verbatim:
 budget-exhaustion summary, trajectory save, session persist, turn diagnostics,

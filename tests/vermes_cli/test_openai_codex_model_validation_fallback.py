@@ -11,7 +11,7 @@ Note: gpt-5.3-codex-spark itself is now in the curated catalog (PR #22991),
 so the real-world Spark request takes the `recognized=True` fast path. This
 test still uses Spark as the example slug but explicitly mocks
 ``provider_model_ids`` to omit it, exercising the soft-accept path generically
-for any future entitlement-gated Codex slug that ships before Hermes catalogs
+for any future entitlement-gated Codex slug that ships before Vermes catalogs
 it.
 """
 

@@ -7,7 +7,7 @@ class TestSlackFullManifest:
     """Generated full Slack app manifest used by `hermes slack manifest`."""
 
     def test_app_home_messages_are_writable(self):
-        manifest = _build_full_manifest("Hermes", "Your Hermes agent on Slack")
+        manifest = _build_full_manifest("Vermes", "Your Vermes agent on Slack")
 
         assert manifest["features"]["app_home"] == {
             "home_tab_enabled": False,
@@ -16,13 +16,13 @@ class TestSlackFullManifest:
         }
 
     def test_private_channel_directory_scope_is_included(self):
-        manifest = _build_full_manifest("Hermes", "Your Hermes agent on Slack")
+        manifest = _build_full_manifest("Vermes", "Your Vermes agent on Slack")
 
         bot_scopes = manifest["oauth_config"]["scopes"]["bot"]
         assert "groups:read" in bot_scopes
 
     def test_assistant_features_remain_enabled(self):
-        manifest = _build_full_manifest("Hermes", "Your Hermes agent on Slack")
+        manifest = _build_full_manifest("Vermes", "Your Vermes agent on Slack")
 
         assert "assistant_view" in manifest["features"]
         assert "assistant:write" in manifest["oauth_config"]["scopes"]["bot"]

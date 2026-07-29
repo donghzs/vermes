@@ -47,7 +47,7 @@ from gateway.gateway_utils import (
     _load_gateway_config,
     _platform_config_key,
     _resolve_gateway_model,
-    _resolve_hermes_bin,
+    _resolve_vermes_bin,
     _telegramize_command_mentions,
 )
 from gateway.session import (
@@ -89,7 +89,7 @@ from gateway.gateway_utils import (
     _load_gateway_config,
     _platform_config_key,
     _resolve_gateway_model,
-    _resolve_hermes_bin,
+    _resolve_vermes_bin,
     _telegramize_command_mentions,
 )
 

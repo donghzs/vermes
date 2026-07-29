@@ -3,7 +3,7 @@
 Two concerns live here:
 
 1. **Workspace gate** — the upper-level "is this directory a project?"
-   check.  Hermes only runs LSP when the cwd (or the file being edited)
+   check.  Vermes only runs LSP when the cwd (or the file being edited)
    sits inside a git worktree.  Files outside any git root never
    trigger LSP, even if a server is configured.  This keeps Telegram
    gateway users on user-home cwd's from spawning daemons.

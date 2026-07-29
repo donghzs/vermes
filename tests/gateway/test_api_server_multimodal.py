@@ -168,7 +168,7 @@ class TestChatCompletionsMultimodalHTTP:
                 resp = await cli.post(
                     "/v1/chat/completions",
                     json={
-                        "model": "hermes-agent",
+                        "model": "vermes-agent",
                         "messages": [{"role": "user", "content": image_payload}],
                     },
                 )
@@ -193,7 +193,7 @@ class TestChatCompletionsMultimodalHTTP:
                 resp = await cli.post(
                     "/v1/chat/completions",
                     json={
-                        "model": "hermes-agent",
+                        "model": "vermes-agent",
                         "messages": [
                             {"role": "user", "content": [{"type": "text", "text": "hello"}]},
                         ],
@@ -210,7 +210,7 @@ class TestChatCompletionsMultimodalHTTP:
             resp = await cli.post(
                 "/v1/chat/completions",
                 json={
-                    "model": "hermes-agent",
+                    "model": "vermes-agent",
                     "messages": [
                         {"role": "user", "content": [{"type": "file", "file": {"file_id": "f_1"}}]},
                     ],
@@ -228,7 +228,7 @@ class TestChatCompletionsMultimodalHTTP:
             resp = await cli.post(
                 "/v1/chat/completions",
                 json={
-                    "model": "hermes-agent",
+                    "model": "vermes-agent",
                     "messages": [
                         {
                             "role": "user",
@@ -264,7 +264,7 @@ class TestResponsesMultimodalHTTP:
                 resp = await cli.post(
                     "/v1/responses",
                     json={
-                        "model": "hermes-agent",
+                        "model": "vermes-agent",
                         "input": [
                             {
                                 "role": "user",
@@ -294,7 +294,7 @@ class TestResponsesMultimodalHTTP:
             resp = await cli.post(
                 "/v1/responses",
                 json={
-                    "model": "hermes-agent",
+                    "model": "vermes-agent",
                     "input": [
                         {
                             "role": "user",

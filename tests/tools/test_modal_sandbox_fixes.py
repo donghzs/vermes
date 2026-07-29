@@ -24,7 +24,7 @@ try:
     import tools.terminal_tool  # noqa: F401
     _tt_mod = sys.modules["tools.terminal_tool"]
 except ImportError:
-    pytest.skip("hermes-agent tools not importable (missing deps)", allow_module_level=True)
+    pytest.skip("vermes-agent tools not importable (missing deps)", allow_module_level=True)
 
 
 # =========================================================================
@@ -66,7 +66,7 @@ class TestCwdHandling:
     def test_home_path_replaced_for_modal(self, monkeypatch):
         """TERMINAL_CWD=/home/user/... should be replaced with /root for modal."""
         monkeypatch.setenv("TERMINAL_ENV", "modal")
-        monkeypatch.setenv("TERMINAL_CWD", "/home/dakota/github/hermes-agent")
+        monkeypatch.setenv("TERMINAL_CWD", "/home/dakota/github/vermes-agent")
         config = _tt_mod._get_env_config()
         assert config["cwd"] == "/root", (
             f"Expected /root, got {config['cwd']}. "

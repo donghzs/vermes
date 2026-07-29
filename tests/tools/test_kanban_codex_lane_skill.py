@@ -60,7 +60,7 @@ def test_kanban_codex_lane_documents_required_contracts():
     template = TEMPLATE.read_text(encoding="utf-8")
 
     required_skill_phrases = [
-        "Hermes is always the task owner",
+        "Vermes is always the task owner",
         "Codex is an input lane only",
         "git -C \"$REPO\" worktree add -b \"$BRANCH\" \"$WORKTREE\" \"$BASE\"",
         "codex --version",

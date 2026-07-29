@@ -4,7 +4,7 @@ import os
 import subprocess
 from unittest.mock import patch
 
-from cli import HermesCLI
+from cli import VermesCLI
 from vermes_cli.browser_connect import manual_chrome_debug_command
 
 
@@ -31,7 +31,7 @@ class TestChromeDebugLaunch:
         with patch("vermes_cli.browser_connect.shutil.which", side_effect=lambda name: r"C:\Chrome\chrome.exe" if name == "chrome.exe" else None), \
              patch("vermes_cli.browser_connect.os.path.isfile", side_effect=lambda path: path == r"C:\Chrome\chrome.exe"), \
              patch("subprocess.Popen", side_effect=fake_popen):
-            assert HermesCLI._try_launch_chrome_debug(9333, "Windows") is True
+            assert VermesCLI._try_launch_chrome_debug(9333, "Windows") is True
 
         _assert_chrome_debug_cmd(captured["cmd"], r"C:\Chrome\chrome.exe", 9333)
         # Windows uses creationflags (POSIX-only start_new_session would raise).
@@ -60,7 +60,7 @@ class TestChromeDebugLaunch:
         with patch("vermes_cli.browser_connect.shutil.which", return_value=None), \
              patch("vermes_cli.browser_connect.os.path.isfile", side_effect=lambda path: path == installed), \
              patch("subprocess.Popen", side_effect=fake_popen):
-            assert HermesCLI._try_launch_chrome_debug(9222, "Windows") is True
+            assert VermesCLI._try_launch_chrome_debug(9222, "Windows") is True
 
         _assert_chrome_debug_cmd(captured["cmd"], installed, 9222)
 

@@ -354,7 +354,7 @@ class SystemCommandsMixin:
                 return (
                     f"✓ {platform.value} paused. "
                     f"Resume with `/platform resume {platform.value}` or "
-                    f"`hermes gateway restart` to reset."
+                    f"`vermes gateway restart` to reset."
                 )
             # action == "resume"
             if platform not in failed:
@@ -586,8 +586,8 @@ class SystemCommandsMixin:
     async def _handle_update_command(self, event: MessageEvent) -> str:
         """Handle /update command — update Vermes to the latest version.
 
-        Spawns ``hermes update`` in a detached session (via ``setsid``) so it
-        survives the gateway restart that ``hermes update`` may trigger. Marker
+        Spawns ``vermes update`` in a detached session (via ``setsid``) so it
+        survives the gateway restart that ``vermes update`` may trigger. Marker
         files are written so either the current gateway process or the next one
         can notify the user when the update finishes.
         """
@@ -622,9 +622,9 @@ class SystemCommandsMixin:
         if not git_dir.exists():
             return t("gateway.update.not_git_repo")
 
-        hermes_cmd = _resolve_hermes_bin()
+        hermes_cmd = _resolve_vermes_bin()
         if not hermes_cmd:
-            return t("gateway.update.hermes_cmd_not_found")
+            return t("gateway.update.vermes_cmd_not_found")
 
         pending_path = _get_hermes_home() / ".update_pending.json"
         output_path = _get_hermes_home() / ".update_output.txt"
@@ -644,7 +644,7 @@ class SystemCommandsMixin:
         _tmp_pending.replace(pending_path)
         exit_code_path.unlink(missing_ok=True)
 
-        # Spawn `hermes update --gateway` detached so it survives gateway restart.
+        # Spawn `vermes update --gateway` detached so it survives gateway restart.
         # --gateway enables file-based IPC for interactive prompts (stash
         # restore, config migration) so the gateway can forward them to the
         # user instead of silently skipping them.
@@ -652,7 +652,7 @@ class SystemCommandsMixin:
         # where systemd-run --user fails due to missing D-Bus session).
         # PYTHONUNBUFFERED ensures output is flushed line-by-line so the
         # gateway can stream it to the messenger in near-real-time.
-        # Spawn `hermes update --gateway` detached so it survives gateway restart.
+        # Spawn `vermes update --gateway` detached so it survives gateway restart.
         # --gateway enables file-based IPC for interactive prompts (stash
         # restore, config migration) so the gateway can forward them to the
         # user instead of silently skipping them.
@@ -661,7 +661,7 @@ class SystemCommandsMixin:
         # PYTHONUNBUFFERED ensures output is flushed line-by-line so the
         # gateway can stream it to the messenger in near-real-time.
         #
-        # Windows: no bash/setsid chain.  Run `hermes update --gateway`
+        # Windows: no bash/setsid chain.  Run `vermes update --gateway`
         # directly via sys.executable; redirect stdout/stderr to the same
         # output files via Popen file handles; write the exit code in a
         # follow-up write.  A tiny Python watcher would be cleaner but

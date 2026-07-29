@@ -1,6 +1,6 @@
 """Kanban triage specifier — flesh out a one-liner into a real spec.
 
-Used by ``hermes kanban specify [task_id | --all]``. Takes a task that
+Used by ``vermes kanban specify [task_id | --all]``. Takes a task that
 lives in the Triage column (a rough idea, typically only a title), calls
 the auxiliary LLM to produce:
 

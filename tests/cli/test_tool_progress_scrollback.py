@@ -17,7 +17,7 @@ _cli_mod = None
 
 
 def _make_cli(tool_progress="all"):
-    """Create a HermesCLI instance with minimal mocking."""
+    """Create a VermesCLI instance with minimal mocking."""
     global _cli_mod
     _clean_config = {
         "model": {
@@ -54,7 +54,7 @@ def _make_cli(tool_progress="all"):
         _cli_mod = mod
         with patch.object(mod, "get_tool_definitions", return_value=[]), \
              patch.dict(mod.__dict__, {"CLI_CONFIG": _clean_config}):
-            return mod.HermesCLI()
+            return mod.VermesCLI()
 
 
 class TestToolProgressScrollback:

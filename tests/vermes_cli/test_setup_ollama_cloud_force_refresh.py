@@ -1,4 +1,4 @@
-"""Regression: ``hermes setup`` for the ollama-cloud provider must force-refresh
+"""Regression: ``vermes setup`` for the ollama-cloud provider must force-refresh
 the model cache after the user supplies a key, otherwise the picker keeps
 serving a stale cache (models.dev only, no live API probe) for up to an hour.
 """

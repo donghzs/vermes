@@ -364,7 +364,7 @@ class TestBuildCredential:
         True; we only pass it when the user opts IN to interactive
         browser auth. Tenant / authority / service principal config
         flow through the standard ``AZURE_*`` env vars (read by
-        azure-identity directly), not Hermes config kwargs."""
+        azure-identity directly), not Vermes config kwargs."""
         from agent.azure_identity_adapter import EntraIdentityConfig, build_credential
         cred = build_credential(EntraIdentityConfig())
         kwargs = fake_azure_identity.last_credential_kwargs
@@ -590,7 +590,7 @@ class TestHasAzureIdentityCredentials:
 
 
 # ---------------------------------------------------------------------------
-# describe_active_credential — used by hermes doctor + hermes auth
+# describe_active_credential — used by vermes doctor + vermes auth
 # ---------------------------------------------------------------------------
 
 

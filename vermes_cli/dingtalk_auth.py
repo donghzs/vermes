@@ -163,7 +163,7 @@ def _ensure_qrcode_installed() -> bool:
 
     import subprocess
 
-    # Try uv first (Hermes convention), then pip
+    # Try uv first (Vermes convention), then pip
     for cmd in (
         [sys.executable, "-m", "uv", "pip", "install", "qrcode"],
         [sys.executable, "-m", "pip", "install", "-q", "qrcode"],

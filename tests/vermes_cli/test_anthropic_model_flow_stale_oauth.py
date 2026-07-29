@@ -1,7 +1,7 @@
-"""Tests for Bug #12905 fix — stale OAuth token detection in hermes model flow.
+"""Tests for Bug #12905 fix — stale OAuth token detection in vermes model flow.
 
-Bug 3: `hermes model` with `provider=anthropic` skips OAuth re-authentication
-when a stale ANTHROPIC_TOKEN exists in ~/.hermes/.env but no valid
+Bug 3: `vermes model` with `provider=anthropic` skips OAuth re-authentication
+when a stale ANTHROPIC_TOKEN exists in ~/.vermes/.env but no valid
 Claude Code credentials are available. The fast-path silently proceeds to
 model selection with a broken token instead of offering re-auth.
 """

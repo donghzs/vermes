@@ -1,4 +1,4 @@
-"""Tests for the post-pull syntax guard in ``hermes update``.
+"""Tests for the post-pull syntax guard in ``vermes update``.
 
 When a bad commit lands on ``main`` with a syntax error in a critical file
 (e.g. orphan merge-conflict markers in ``vermes_cli/config.py``), the CLI
@@ -7,7 +7,7 @@ startup. The guard validates them after ``git pull`` and rolls back to the
 pre-pull SHA on failure so the user's install stays runnable.
 
 Reference incident: PR #28452 (May 18, 2026) shipped unresolved conflict
-markers in ``vermes_cli/config.py``; users who ran ``hermes update`` in
+markers in ``vermes_cli/config.py``; users who ran ``vermes update`` in
 the 7-minute window before #28458 landed could not run any ``hermes``
 command afterward.
 """
@@ -137,7 +137,7 @@ def test_validate_critical_files_syntax_tolerates_missing_files(tmp_path):
 # ---------------------------------------------------------------------------
 # Repo invariant — the production tree itself must always pass the guard.
 # This catches the case where ``main`` ships a syntax error before the next
-# release; if a future ``hermes update`` would brick users, this test fails
+# release; if a future ``vermes update`` would brick users, this test fails
 # in CI first.
 # ---------------------------------------------------------------------------
 
@@ -149,5 +149,5 @@ def test_production_tree_passes_syntax_guard():
 
     assert ok is True, (
         f"Critical-path file {failing_path} fails to parse on current main; "
-        f"hermes update would brick users. Error: {error}"
+        f"vermes update would brick users. Error: {error}"
     )

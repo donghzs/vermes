@@ -1,4 +1,4 @@
-"""Tests for xAI Grok OAuth — tokens stored in Hermes auth store (~/.hermes/auth.json)."""
+"""Tests for xAI Grok OAuth — tokens stored in Vermes auth store (~/.vermes/auth.json)."""
 
 import base64
 import json
@@ -44,7 +44,7 @@ def _setup_hermes_auth(
     refresh_token: str = "refresh",
     discovery: dict | None = None,
 ):
-    """Write xAI OAuth tokens into the Hermes auth store at the given root."""
+    """Write xAI OAuth tokens into the Vermes auth store at the given root."""
     hermes_home.mkdir(parents=True, exist_ok=True)
     state = {
         "tokens": {
@@ -234,7 +234,7 @@ def test_xai_oauth_authorize_url_includes_plan_generic():
 
 
 def test_xai_oauth_authorize_url_includes_referrer_hermes_agent():
-    """Attribution: xAI's OAuth server can identify Hermes-originated logins
+    """Attribution: xAI's OAuth server can identify Vermes-originated logins
     via the referrer query param. Must always be present on the authorize URL."""
     url = _xai_oauth_build_authorize_url(
         authorization_endpoint="https://auth.x.ai/oauth2/authorize",
@@ -244,7 +244,7 @@ def test_xai_oauth_authorize_url_includes_referrer_hermes_agent():
         nonce="nonce-def",
     )
     params = _parse_authorize_url(url)
-    assert params["referrer"] == "hermes-agent"
+    assert params["referrer"] == "vermes-agent"
 
 
 def test_xai_oauth_authorize_url_includes_pkce_and_oidc_params():
@@ -359,7 +359,7 @@ def test_xai_callback_handler_returns_400_when_callback_url_lacks_code_and_error
         status, body = _get_callback(redirect_uri)
         assert status == 400
         assert "not received" in body.lower()
-        assert "hermes auth add xai-oauth" in body
+        assert "vermes auth add xai-oauth" in body
         # Wait loop must still see no code/error so it raises a real timeout,
         # rather than treating this empty hit as a successful callback.
         assert result["code"] is None
@@ -485,7 +485,7 @@ def test_resolve_xai_runtime_credentials_returns_singleton_state(tmp_path, monke
     assert creds["provider"] == "xai-oauth"
     assert creds["api_key"] == fresh
     assert creds["base_url"] == DEFAULT_XAI_OAUTH_BASE_URL
-    assert creds["source"] == "hermes-auth-store"
+    assert creds["source"] == "vermes-auth-store"
     assert creds["auth_mode"] == "oauth_pkce"
 
 
@@ -738,7 +738,7 @@ def test_refresh_xai_oauth_pure_403_marked_tier_denied_not_relogin(monkeypatch):
 
     Regression test for #26847 — xAI's backend has been seen to 403
     standard SuperGrok subscribers despite the in-app subscription
-    being active. Re-running ``hermes model`` won't help in that
+    being active. Re-running ``vermes model`` won't help in that
     case, so the AuthError must NOT set ``relogin_required=True``,
     and must carry the dedicated ``xai_oauth_tier_denied`` code so
     ``format_auth_error`` doesn't append the misleading re-auth hint.
@@ -760,7 +760,7 @@ def test_refresh_xai_oauth_pure_403_marked_tier_denied_not_relogin(monkeypatch):
 def test_format_auth_error_tier_denied_does_not_suggest_relogin():
     """``xai_oauth_tier_denied`` must not append the re-authenticate hint.
 
-    Regression for #26847: telling a tier-gated user to ``hermes model``
+    Regression for #26847: telling a tier-gated user to ``vermes model``
     is actively wrong — re-logging in won't change xAI's allowlist
     decision. The full message (with ``XAI_API_KEY`` fallback) is built
     into the error itself.
@@ -776,7 +776,7 @@ def test_format_auth_error_tier_denied_does_not_suggest_relogin():
     )
     rendered = format_auth_error(err)
     assert "re-authenticate" not in rendered.lower()
-    assert "hermes model" not in rendered.lower()
+    assert "vermes model" not in rendered.lower()
     assert "XAI_API_KEY" in rendered
 
 
@@ -911,7 +911,7 @@ def test_xai_oauth_discovery_raises_typed_error_on_non_object_payload(monkeypatc
 
 def test_refresh_xai_oauth_pure_rejects_non_https_token_endpoint(monkeypatch):
     """A poisoned auth.json (from MITM during initial discovery, or an older
-    Hermes that didn't validate) must not be silently honored on the refresh
+    Vermes that didn't validate) must not be silently honored on the refresh
     hot path. A non-HTTPS ``token_endpoint`` would leak the refresh_token in
     cleartext on every refresh; refuse before the POST."""
     # No HTTP stub installed — refresh must fail at validation, not at POST.
@@ -1037,8 +1037,8 @@ def test_xai_oauth_discovery_validates_authorization_endpoint(monkeypatch):
 
 
 def test_credential_pool_seeds_xai_oauth_from_singleton(tmp_path, monkeypatch):
-    """After `hermes model` -> xai-oauth, the singleton holds tokens.  load_pool
-    must surface that as a pool entry so `hermes auth list` reflects truth and
+    """After `vermes model` -> xai-oauth, the singleton holds tokens.  load_pool
+    must surface that as a pool entry so `vermes auth list` reflects truth and
     refreshes route through the pool consistently with codex."""
     from agent.credential_pool import load_pool
 
@@ -1080,7 +1080,7 @@ def test_credential_pool_does_not_seed_when_singleton_missing_access_token(tmp_p
 
 
 def test_credential_pool_seed_respects_suppression(tmp_path, monkeypatch):
-    """`hermes auth remove xai-oauth <N>` for the seeded entry suppresses
+    """`vermes auth remove xai-oauth <N>` for the seeded entry suppresses
     further re-seeding so the removal is stable across load_pool calls."""
     from agent.credential_pool import load_pool
 
@@ -1089,7 +1089,7 @@ def test_credential_pool_seed_respects_suppression(tmp_path, monkeypatch):
     _setup_hermes_auth(hermes_home, access_token=fresh)
     monkeypatch.setenv("HERMES_HOME", str(hermes_home))
 
-    # Suppress the source — mimic `hermes auth remove`.
+    # Suppress the source — mimic `vermes auth remove`.
     from vermes_cli.auth import suppress_credential_source
 
     suppress_credential_source("xai-oauth", "loopback_pkce")
@@ -1099,7 +1099,7 @@ def test_credential_pool_seed_respects_suppression(tmp_path, monkeypatch):
 
 
 def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch):
-    """End-to-end regression: ``hermes auth remove xai-oauth 1`` for a
+    """End-to-end regression: ``vermes auth remove xai-oauth 1`` for a
     singleton-seeded entry must clear auth.json providers.xai-oauth AND
     suppress further re-seeding — otherwise the next ``load_pool`` call
     silently resurrects the entry from the still-present singleton, making
@@ -1127,7 +1127,7 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
     raw = json.loads((hermes_home / "auth.json").read_text())
     assert "xai-oauth" in raw.get("providers", {})
 
-    # Act: the user runs `hermes auth remove xai-oauth 1`.
+    # Act: the user runs `vermes auth remove xai-oauth 1`.
     auth_remove_command(SimpleNamespace(provider="xai-oauth", target="1"))
 
     # Post-state: auth.json singleton must be cleared so a re-seed has
@@ -1144,7 +1144,7 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
     assert not pool_after.has_credentials(), (
         "Removal must stick across load_pool() calls — without the "
         "loopback_pkce RemovalStep, the seed function reads the singleton "
-        "and rebuilds the entry on every Hermes invocation."
+        "and rebuilds the entry on every Vermes invocation."
     )
 
 
@@ -1507,7 +1507,7 @@ def test_pool_seeded_entry_sync_back_after_refresh(tmp_path, monkeypatch):
 
 
 def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, monkeypatch):
-    """Multi-process race: another Hermes process refreshed the singleton
+    """Multi-process race: another Vermes process refreshed the singleton
     (rotating the refresh_token) while this process held a stale in-memory
     pool entry.  ``_refresh_entry`` must adopt the fresher singleton tokens
     BEFORE spending its own (now-consumed) refresh_token, otherwise the
@@ -1516,7 +1516,7 @@ def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, 
 
     Mirrors the proactive sync codex/nous already perform for the same
     reason, and is what makes the pool actually safe to share across
-    profiles + Hermes processes."""
+    profiles + Vermes processes."""
     from agent.credential_pool import load_pool
 
     hermes_home = tmp_path / "hermes"
@@ -1613,7 +1613,7 @@ def test_pool_refresh_recovers_when_other_process_already_refreshed(tmp_path, mo
 
 def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, monkeypatch):
     """When a singleton-seeded entry is parked as STATUS_EXHAUSTED and the
-    user runs ``hermes model`` -> xAI Grok OAuth (or another process
+    user runs ``vermes model`` -> xAI Grok OAuth (or another process
     refreshes), the next ``_available_entries`` pass must adopt the fresh
     auth.json tokens instead of leaving the entry frozen until the
     cooldown elapses.  Mirrors the codex/nous self-heal pattern."""
@@ -1643,7 +1643,7 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
     assert pool.has_credentials()
     assert not pool.has_available()  # cooldown blocks everything
 
-    # Simulate the user re-running `hermes model` -> xAI Grok OAuth: the
+    # Simulate the user re-running `vermes model` -> xAI Grok OAuth: the
     # singleton now has fresh tokens.
     fresh_at = _jwt_with_exp(int(time.time()) + 7200)
     raw = json.loads((hermes_home / "auth.json").read_text())
@@ -1668,9 +1668,9 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
 def test_pool_manual_xai_entry_not_synced_from_singleton(tmp_path, monkeypatch):
     """Sync from the singleton must apply ONLY to the singleton-seeded
     entry (source='loopback_pkce').  Manually added entries (e.g. via
-    ``hermes auth add xai-oauth``) own their own refresh-token lifecycle
+    ``vermes auth add xai-oauth``) own their own refresh-token lifecycle
     and must not be silently overwritten when the user logs in via
-    ``hermes model``."""
+    ``vermes model``."""
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
@@ -1704,7 +1704,7 @@ def test_pool_manual_xai_entry_not_synced_from_singleton(tmp_path, monkeypatch):
 
 
 def test_pool_manual_entry_does_not_sync_back_to_singleton(tmp_path, monkeypatch):
-    """`hermes auth add xai-oauth` entries (source='manual:xai_pkce') are
+    """`vermes auth add xai-oauth` entries (source='manual:xai_pkce') are
     independent credentials and must NOT write to the singleton.  Sync-back
     is restricted to entries seeded from the singleton.  Otherwise adding a
     second pool credential would silently overwrite the user's main login."""
@@ -1845,7 +1845,7 @@ def test_pool_sync_back_preserves_active_provider(tmp_path, monkeypatch):
     picking a provider.  ``_save_provider_state`` flips ``active_provider``;
     using it on the sync-back path means every xAI/Codex/Nous refresh in a
     multi-provider setup silently overrides the user's chosen active
-    provider (visible to ``hermes auth status``, ``hermes setup``, and the
+    provider (visible to ``vermes auth status``, ``vermes setup``, and the
     ``hermes`` no-arg dispatcher).  Pin the ``set_active=False`` contract so
     no future refactor regresses to the legacy semantic."""
     from agent.credential_pool import load_pool

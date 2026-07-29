@@ -688,7 +688,7 @@ def test_triage_aux_unavailable_fires_auto_decompose_off_points_at_specifier():
     assert d.data["primary_slot"] == "auxiliary.triage_specifier"
     # And it should offer the manual specify command as an action
     labels = [a.label for a in d.actions]
-    assert any("hermes kanban specify" in l for l in labels)
+    assert any("vermes kanban specify" in l for l in labels)
 
 
 def test_triage_aux_unavailable_skips_non_triage_tasks():

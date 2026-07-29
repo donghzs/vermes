@@ -263,7 +263,7 @@ class TestDispatchMessage(unittest.TestCase):
         msg_data = {
             "uid": b"1",
             "sender_addr": "hermes@test.com",
-            "sender_name": "Hermes",
+            "sender_name": "Vermes",
             "subject": "Test",
             "message_id": "<msg1@test.com>",
             "in_reply_to": "",
@@ -633,7 +633,7 @@ class TestSendMethods(unittest.TestCase):
             mock_smtp.return_value = mock_server
 
             result = asyncio.run(
-                adapter.send("user@test.com", "Hello from Hermes!")
+                adapter.send("user@test.com", "Hello from Vermes!")
             )
 
             self.assertTrue(result.success)
@@ -1173,7 +1173,7 @@ class TestImapIdExtensionForNetEase(unittest.TestCase):
             "LOGIN so 163/NetEase mailbox does not return 'Unsafe Login'.",
         )
         payload = id_calls[0].args[1]
-        self.assertIn("hermes-agent", payload)
+        self.assertIn("vermes-agent", payload)
 
         names = [c[0] for c in mock_imap.method_calls]
         self.assertIn("login", names)

@@ -1,7 +1,7 @@
-"""Hermes-managed Camofox state helpers.
+"""Vermes-managed Camofox state helpers.
 
 Provides profile-scoped identity and state directory paths for Camofox
-persistent browser profiles.  When managed persistence is enabled, Hermes
+persistent browser profiles.  When managed persistence is enabled, Vermes
 sends a deterministic userId derived from the active profile so that
 Camofox can map it to the same persistent browser profile directory
 across restarts.
@@ -25,9 +25,9 @@ def get_camofox_state_dir() -> Path:
 
 
 def get_camofox_identity(task_id: Optional[str] = None) -> Dict[str, str]:
-    """Return the stable Hermes-managed Camofox identity for this profile.
+    """Return the stable Vermes-managed Camofox identity for this profile.
 
-    The user identity is profile-scoped (same Hermes profile = same userId).
+    The user identity is profile-scoped (same Vermes profile = same userId).
     The session key is scoped to the logical browser task so newly created
     tabs within the same profile reuse the same identity contract.
     """

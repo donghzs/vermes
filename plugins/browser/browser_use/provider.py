@@ -7,7 +7,7 @@ is now the canonical implementation.
 
 Browser Use is the only browser backend with dual auth: a direct
 ``BROWSER_USE_API_KEY`` for self-billed users, or the managed Nous tool
-gateway (which Hermes uses to bill Browser Use sessions to a Nous
+gateway (which Vermes uses to bill Browser Use sessions to a Nous
 subscription). The dispatch order — direct API key first, managed gateway
 second — preserves the pre-migration behaviour in
 ``tools.browser_providers.browser_use.BrowserUseProvider._get_config_or_none``.
@@ -23,7 +23,7 @@ Config keys this provider responds to::
 Auth env vars (one of)::
 
     BROWSER_USE_API_KEY=...           # https://browser-use.com
-    # OR a managed Nous gateway entry (configured via 'hermes setup')
+    # OR a managed Nous gateway entry (configured via 'vermes setup')
 """
 
 from __future__ import annotations
@@ -188,7 +188,7 @@ class BrowserUseBrowserProvider(BrowserProvider):
             headers["X-Idempotency-Key"] = _get_or_create_pending_create_key(task_id)
 
         # Keep gateway-backed sessions short so billing authorization does not
-        # default to a long Browser-Use timeout when Hermes only needs a task-
+        # default to a long Browser-Use timeout when Vermes only needs a task-
         # scoped ephemeral browser.
         payload = (
             {

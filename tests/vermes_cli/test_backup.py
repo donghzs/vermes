@@ -49,11 +49,11 @@ def _make_hermes_tree(root: Path) -> None:
     (root / "profiles" / "coder" / "config.yaml").write_text("model:\n  provider: anthropic\n")
     (root / "profiles" / "coder" / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-123\n")
 
-    # hermes-agent repo (should be EXCLUDED)
-    (root / "hermes-agent").mkdir(exist_ok=True)
-    (root / "hermes-agent" / "run_agent.py").write_text("# big file\n")
-    (root / "hermes-agent" / ".git").mkdir()
-    (root / "hermes-agent" / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    # vermes-agent repo (should be EXCLUDED)
+    (root / "vermes-agent").mkdir(exist_ok=True)
+    (root / "vermes-agent" / "run_agent.py").write_text("# big file\n")
+    (root / "vermes-agent" / ".git").mkdir()
+    (root / "vermes-agent" / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
 
     # __pycache__ (should be EXCLUDED)
     (root / "plugins").mkdir(exist_ok=True)
@@ -82,8 +82,8 @@ def _symlink_file_or_skip(link: Path, target: Path) -> None:
 class TestShouldExclude:
     def test_excludes_hermes_agent(self):
         from vermes_cli.backup import _should_exclude
-        assert _should_exclude(Path("hermes-agent/run_agent.py"))
-        assert _should_exclude(Path("hermes-agent/.git/HEAD"))
+        assert _should_exclude(Path("vermes-agent/run_agent.py"))
+        assert _should_exclude(Path("vermes-agent/.git/HEAD"))
 
     def test_excludes_pycache(self):
         from vermes_cli.backup import _should_exclude
@@ -147,11 +147,11 @@ class TestShouldExclude:
         assert not _should_exclude(Path("logs/agent.log"))
 
     def test_includes_nested_hermes_agent_in_skills(self):
-        """skills/autonomous-ai-agents/hermes-agent/ must NOT be excluded —
-        only the root-level hermes-agent/ repo is skipped."""
+        """skills/autonomous-ai-agents/vermes-agent/ must NOT be excluded —
+        only the root-level vermes-agent/ repo is skipped."""
         from vermes_cli.backup import _should_exclude
-        assert not _should_exclude(Path("skills/autonomous-ai-agents/hermes-agent/SKILL.md"))
-        assert not _should_exclude(Path("skills/autonomous-ai-agents/hermes-agent/sub/item.txt"))
+        assert not _should_exclude(Path("skills/autonomous-ai-agents/vermes-agent/SKILL.md"))
+        assert not _should_exclude(Path("skills/autonomous-ai-agents/vermes-agent/sub/item.txt"))
 
     @pytest.mark.parametrize(
         "rel",
@@ -286,7 +286,7 @@ class TestBackup:
         assert all(d == str(out_zip.parent) for d in staged_dirs), staged_dirs
 
     def test_excludes_hermes_agent(self, tmp_path, monkeypatch):
-        """Backup does NOT include hermes-agent/ directory."""
+        """Backup does NOT include vermes-agent/ directory."""
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         _make_hermes_tree(hermes_home)
@@ -302,8 +302,8 @@ class TestBackup:
 
         with zipfile.ZipFile(out_zip, "r") as zf:
             names = zf.namelist()
-            agent_files = [n for n in names if "hermes-agent" in n]
-            assert agent_files == [], f"hermes-agent files leaked into backup: {agent_files}"
+            agent_files = [n for n in names if "vermes-agent" in n]
+            assert agent_files == [], f"vermes-agent files leaked into backup: {agent_files}"
 
     def test_excludes_dependency_and_cache_trees(self, tmp_path, monkeypatch):
         """A plugin venv / site-packages / pip cache under HERMES_HOME must be
@@ -337,15 +337,15 @@ class TestBackup:
         assert "config.yaml" in names
 
     def test_includes_nested_hermes_agent_in_skills(self, tmp_path, monkeypatch):
-        """Backup includes skills/.../hermes-agent/ but NOT root hermes-agent/."""
+        """Backup includes skills/.../vermes-agent/ but NOT root vermes-agent/."""
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         _make_hermes_tree(hermes_home)
 
-        # Add a nested hermes-agent directory inside skills (like the real layout)
-        nested = hermes_home / "skills" / "autonomous-ai-agents" / "hermes-agent"
+        # Add a nested vermes-agent directory inside skills (like the real layout)
+        nested = hermes_home / "skills" / "autonomous-ai-agents" / "vermes-agent"
         nested.mkdir(parents=True)
-        (nested / "SKILL.md").write_text("# Hermes Agent Skill\n")
+        (nested / "SKILL.md").write_text("# Vermes Agent Skill\n")
         (nested / "sub").mkdir()
         (nested / "sub" / "item.txt").write_text("nested content\n")
 
@@ -360,12 +360,12 @@ class TestBackup:
 
         with zipfile.ZipFile(out_zip, "r") as zf:
             names = zf.namelist()
-            # Root hermes-agent must be excluded
-            root_agent = [n for n in names if n.startswith("hermes-agent/")]
-            assert root_agent == [], f"root hermes-agent leaked: {root_agent}"
-            # Nested skill hermes-agent must be included
-            assert "skills/autonomous-ai-agents/hermes-agent/SKILL.md" in names
-            assert "skills/autonomous-ai-agents/hermes-agent/sub/item.txt" in names
+            # Root vermes-agent must be excluded
+            root_agent = [n for n in names if n.startswith("vermes-agent/")]
+            assert root_agent == [], f"root vermes-agent leaked: {root_agent}"
+            # Nested skill vermes-agent must be included
+            assert "skills/autonomous-ai-agents/vermes-agent/SKILL.md" in names
+            assert "skills/autonomous-ai-agents/vermes-agent/sub/item.txt" in names
 
     def test_excludes_pycache(self, tmp_path, monkeypatch):
         """Backup does NOT include __pycache__ dirs."""
@@ -460,7 +460,7 @@ class TestValidateBackupZip:
                 zf.writestr(name, "dummy")
 
     def test_state_db_passes(self, tmp_path):
-        """A zip containing state.db is accepted as a valid Hermes backup."""
+        """A zip containing state.db is accepted as a valid Vermes backup."""
         from vermes_cli.backup import _validate_backup_zip
         zip_path = tmp_path / "backup.zip"
         self._make_zip(zip_path, ["state.db", "sessions/abc.json"])
@@ -847,8 +847,8 @@ class TestRoundTrip:
         assert (dst_home / "sessions" / "abc123.json").exists()
         assert (dst_home / "logs" / "agent.log").exists()
 
-        # hermes-agent should NOT be present
-        assert not (dst_home / "hermes-agent").exists()
+        # vermes-agent should NOT be present
+        assert not (dst_home / "vermes-agent").exists()
         # __pycache__ should NOT be present
         assert not (dst_home / "plugins" / "__pycache__").exists()
         # PID files should NOT be present
@@ -1590,11 +1590,11 @@ class TestQuickSnapshot:
         assert snap_id is not None
 
 # ---------------------------------------------------------------------------
-# Pre-update backup (hermes update safety net)
+# Pre-update backup (vermes update safety net)
 # ---------------------------------------------------------------------------
 
 class TestPreUpdateBackup:
-    """Tests for create_pre_update_backup — the auto-backup ``hermes update``
+    """Tests for create_pre_update_backup — the auto-backup ``vermes update``
     runs before touching anything."""
 
     @pytest.fixture
@@ -1627,8 +1627,8 @@ class TestPreUpdateBackup:
         assert "sessions/abc123.json" in names
         assert "skills/my-skill/SKILL.md" in names
         assert "profiles/coder/config.yaml" in names
-        # hermes-agent repo excluded
-        assert not any(n.startswith("hermes-agent/") for n in names)
+        # vermes-agent repo excluded
+        assert not any(n.startswith("vermes-agent/") for n in names)
         # __pycache__ excluded
         assert not any("__pycache__" in n for n in names)
         # pid files excluded
@@ -1792,9 +1792,9 @@ class TestRunPreUpdateBackup:
 
     def test_default_enabled_creates_backup(self, hermes_home, capsys):
         """With the new safe default (``pre_update_backup: true``), every
-        ``hermes update`` creates a backup before any destructive step
+        ``vermes update`` creates a backup before any destructive step
         runs — the cost is a few minutes of zip time vs. the alternative
-        of silent total data loss of ``~/.hermes/`` observed in #48200
+        of silent total data loss of ``~/.vermes/`` observed in #48200
         when an update step computes a wrong path and the user had no
         safety net.
         """
@@ -1883,7 +1883,7 @@ class TestRunPreUpdateBackup:
 
 class TestPreMigrationBackup:
     """Tests for create_pre_migration_backup — the auto-backup
-    ``hermes claw migrate`` runs before mutating ~/.hermes/."""
+    ``hermes claw migrate`` runs before mutating ~/.vermes/."""
 
     @pytest.fixture
     def hermes_home(self, tmp_path):
@@ -1916,12 +1916,12 @@ class TestPreMigrationBackup:
         assert ".env" in names
         assert "skills/my-skill/SKILL.md" in names
         # Same exclusions as the shared helper
-        assert not any(n.startswith("hermes-agent/") for n in names)
+        assert not any(n.startswith("vermes-agent/") for n in names)
         assert not any("__pycache__" in n for n in names)
         assert "gateway.pid" not in names
 
     def test_restorable_with_hermes_import(self, hermes_home, tmp_path):
-        """The zip produced by pre-migration backup must be a valid Hermes
+        """The zip produced by pre-migration backup must be a valid Vermes
         backup — `hermes import` should accept it."""
         from vermes_cli.backup import create_pre_migration_backup, _validate_backup_zip
         out = create_pre_migration_backup(hermes_home=hermes_home)
@@ -1982,7 +1982,7 @@ class TestPreMigrationBackup:
 # ---------------------------------------------------------------------------
 
 class TestRestoreCronJobsIfEmptied:
-    """`hermes update` config migration can leave cron/jobs.json valid-but-empty,
+    """`vermes update` config migration can leave cron/jobs.json valid-but-empty,
     silently dropping every scheduled job. `restore_cron_jobs_if_emptied` is the
     post-migration safety net that restores from the pre-update snapshot."""
 

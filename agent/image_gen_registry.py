@@ -15,7 +15,7 @@ If unset, :func:`get_active_provider` applies fallback logic:
 2. Otherwise if a provider named ``fal`` is registered, use it (legacy
    default — matches pre-plugin behavior).
 3. Otherwise return ``None`` (the tool surfaces a helpful error pointing
-   the user at ``hermes tools``).
+   the user at ``vermes tools``).
 """
 
 from __future__ import annotations

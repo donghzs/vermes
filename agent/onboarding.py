@@ -96,7 +96,7 @@ def tool_progress_hint_cli() -> str:
 
 
 def openclaw_residue_hint_cli() -> str:
-    """Banner shown the first time Hermes starts and finds ``~/.openclaw/``.
+    """Banner shown the first time Vermes starts and finds ``~/.openclaw/``.
 
     Points users at ``hermes claw migrate`` (non-destructive port of config,
     memory, and skills) first. ``hermes claw cleanup`` is mentioned as the
@@ -105,7 +105,7 @@ def openclaw_residue_hint_cli() -> str:
     """
     return (
         "A legacy OpenClaw directory was detected at ~/.openclaw/.\n"
-        "To port your config, memory, and skills over to Hermes, run "
+        "To port your config, memory, and skills over to Vermes, run "
         "`hermes claw migrate`.\n"
         "If you've already migrated and want to archive the old directory, "
         "run `hermes claw cleanup` (renames it to ~/.openclaw.pre-migration — "

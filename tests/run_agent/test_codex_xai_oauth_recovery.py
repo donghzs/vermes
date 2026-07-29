@@ -172,7 +172,7 @@ def test_codex_stream_postlude_error_still_falls_back():
 # The original PR #26644 appended a hint that led with "X Premium+ does NOT
 # include xAI API access — only standalone SuperGrok subscribers can use this
 # provider."  xAI announced on 2026-05-16 that X Premium subs now work in
-# Hermes (https://x.ai/news/grok-hermes), making that hint actively wrong:
+# Vermes (https://x.ai/news/grok-hermes), making that hint actively wrong:
 # a Premium+ user hitting a real entitlement issue (no Grok sub, wrong tier,
 # exhausted quota) would be misdirected to switch subscriptions when their
 # Premium sub is in fact valid.  We now surface xAI's own body text verbatim
@@ -182,7 +182,7 @@ def test_codex_stream_postlude_error_still_falls_back():
 
 
 def test_summarize_api_error_surfaces_xai_entitlement_body_verbatim():
-    """xAI's OAuth 403 body must surface as-is, with no Hermes-side hint."""
+    """xAI's OAuth 403 body must surface as-is, with no Vermes-side hint."""
     from run_agent import AIAgent
 
     error = RuntimeError(
@@ -194,7 +194,7 @@ def test_summarize_api_error_surfaces_xai_entitlement_body_verbatim():
     summary = AIAgent._summarize_api_error(error)
     # xAI's own body text must reach the user — they need it to diagnose.
     assert "do not have an active Grok subscription" in summary
-    # No stale claim that X Premium is incompatible with Hermes.
+    # No stale claim that X Premium is incompatible with Vermes.
     assert "X Premium+ does NOT include" not in summary
     assert "standalone SuperGrok subscribers" not in summary
 
@@ -661,7 +661,7 @@ def test_recover_with_credential_pool_still_refreshes_genuine_auth_failure():
 def test_grok_4_3_context_length_is_1m():
     """grok-4.3 ships with 1M context per docs.x.ai/developers/models/grok-4.3.
 
-    Hermes' substring-match fallback used to return 256k (from the
+    Vermes' substring-match fallback used to return 256k (from the
     "grok-4" catch-all) which under-reported the model's real capacity.
     """
     from agent.model_metadata import DEFAULT_CONTEXT_LENGTHS

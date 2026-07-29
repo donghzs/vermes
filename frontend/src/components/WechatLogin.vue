@@ -170,7 +170,7 @@ function handleLoginSuccess(data) {
   // P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
   const envHeaders = {
     'Content-Type': 'application/json',
-    'X-Hermes-Session-Token': (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) || '',
+    'X-Vermes-Session-Token': (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || '',
   }
   fetch('/api/env', {
     method: 'PUT',

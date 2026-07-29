@@ -55,7 +55,7 @@ class TestHandleUpdateCommand:
         result = await runner._handle_update_command(event)
 
         assert "managed by Homebrew" in result
-        assert "brew upgrade hermes-agent" in result
+        assert "brew upgrade vermes-agent" in result
 
     @pytest.mark.asyncio
     async def test_no_git_directory(self, tmp_path):
@@ -81,7 +81,7 @@ class TestHandleUpdateCommand:
             # The handler does Path(__file__).parent.parent.resolve()
             # We need to make project_root / '.git' not exist.
             # Since Path(__file__) resolves to the real gateway/run.py,
-            # project_root will be the real hermes-agent dir (which HAS .git).
+            # project_root will be the real vermes-agent dir (which HAS .git).
             # Patch Path to control this.
             original_path = Path
 
@@ -119,7 +119,7 @@ class TestHandleUpdateCommand:
             result = await runner._handle_update_command(event)
 
         assert "无法找到" in result
-        assert "hermes update" in result
+        assert "vermes update" in result
 
     @pytest.mark.asyncio
     async def test_fallback_to_sys_executable(self, tmp_path):
@@ -146,43 +146,43 @@ class TestHandleUpdateCommand:
              patch("subprocess.Popen", mock_popen):
             result = await runner._handle_update_command(event)
 
-        assert "正在启动 Hermes 更新" in result
+        assert "正在启动 Vermes 更新" in result
         call_args = mock_popen.call_args[0][0]
         # The update_cmd uses sys.executable -m vermes_cli.main
         joined = " ".join(call_args) if isinstance(call_args, list) else call_args
         assert "vermes_cli.main" in joined or "bash" in call_args[0]
 
     @pytest.mark.asyncio
-    async def test_resolve_hermes_bin_prefers_which(self, tmp_path):
-        """_resolve_hermes_bin returns argv parts from shutil.which when available."""
-        from gateway.run import _resolve_hermes_bin
+    async def test_resolve_vermes_bin_prefers_which(self, tmp_path):
+        """_resolve_vermes_bin returns argv parts from shutil.which when available."""
+        from gateway.run import _resolve_vermes_bin
 
-        with patch("shutil.which", return_value="/custom/path/hermes"):
-            result = _resolve_hermes_bin()
+        with patch("shutil.which", return_value="/custom/path/vermes"):
+            result = _resolve_vermes_bin()
 
-        assert result == ["/custom/path/hermes"]
+        assert result == ["/custom/path/vermes"]
 
     @pytest.mark.asyncio
-    async def test_resolve_hermes_bin_fallback(self):
-        """_resolve_hermes_bin falls back to sys.executable argv when which fails."""
+    async def test_resolve_vermes_bin_fallback(self):
+        """_resolve_vermes_bin falls back to sys.executable argv when which fails."""
         import sys
-        from gateway.run import _resolve_hermes_bin
+        from gateway.run import _resolve_vermes_bin
 
         fake_spec = MagicMock()
         with patch("shutil.which", return_value=None), \
              patch("importlib.util.find_spec", return_value=fake_spec):
-            result = _resolve_hermes_bin()
+            result = _resolve_vermes_bin()
 
         assert result == [sys.executable, "-m", "vermes_cli.main"]
 
     @pytest.mark.asyncio
-    async def test_resolve_hermes_bin_returns_none_when_both_fail(self):
-        """_resolve_hermes_bin returns None when both strategies fail."""
-        from gateway.run import _resolve_hermes_bin
+    async def test_resolve_vermes_bin_returns_none_when_both_fail(self):
+        """_resolve_vermes_bin returns None when both strategies fail."""
+        from gateway.run import _resolve_vermes_bin
 
         with patch("shutil.which", return_value=None), \
              patch("importlib.util.find_spec", return_value=None):
-            result = _resolve_hermes_bin()
+            result = _resolve_vermes_bin()
 
         assert result is None
 
@@ -203,7 +203,7 @@ class TestHandleUpdateCommand:
 
         with patch("gateway.run._hermes_home", hermes_home), \
              patch("gateway.run.__file__", fake_file), \
-             patch("shutil.which", side_effect=lambda x: "/usr/bin/hermes" if x == "hermes" else "/usr/bin/setsid"), \
+             patch("shutil.which", side_effect=lambda x: "/usr/bin/vermes" if x == "vermes" else "/usr/bin/setsid"), \
              patch("subprocess.Popen"):
             result = await runner._handle_update_command(event)
 
@@ -236,7 +236,7 @@ class TestHandleUpdateCommand:
 
         with patch("gateway.run._hermes_home", hermes_home), \
              patch("gateway.run.__file__", fake_file), \
-             patch("shutil.which", side_effect=lambda x: "/usr/bin/hermes" if x == "hermes" else "/usr/bin/setsid"), \
+             patch("shutil.which", side_effect=lambda x: "/usr/bin/vermes" if x == "vermes" else "/usr/bin/setsid"), \
              patch("subprocess.Popen"):
             await runner._handle_update_command(event)
 
@@ -270,7 +270,7 @@ class TestHandleUpdateCommand:
         assert call_args[0] == "/usr/bin/setsid"
         assert call_args[1] == "bash"
         assert ".update_exit_code" in call_args[-1]
-        assert "正在启动 Hermes 更新" in result
+        assert "正在启动 Vermes 更新" in result
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_setsid(self, tmp_path):
@@ -291,7 +291,7 @@ class TestHandleUpdateCommand:
 
         def which_no_setsid(x):
             if x == "hermes":
-                return "/usr/bin/hermes"
+                return "/usr/bin/vermes"
             if x == "setsid":
                 return None
             return None
@@ -310,7 +310,7 @@ class TestHandleUpdateCommand:
         # start_new_session=True should be in kwargs
         call_kwargs = mock_popen.call_args[1]
         assert call_kwargs.get("start_new_session") is True
-        assert "正在启动 Hermes 更新" in result
+        assert "正在启动 Vermes 更新" in result
 
     @pytest.mark.asyncio
     async def test_popen_failure_cleans_up(self, tmp_path):

@@ -201,7 +201,7 @@ class TestPromptStabilityInvariant:
         invalidates KV cache on every prefix-cache backend.
         """
         stored = (
-            "You are Hermes Agent.\n"
+            "You are Vermes Agent.\n"
             "\n"
             "Conversation started: Sunday, May 17, 2026\n"
             "Session ID: 20260517_153500_abc123\n"

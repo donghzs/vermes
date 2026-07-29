@@ -1,4 +1,4 @@
-# Catálogo de mensajes estáticos de Hermes -- Español
+# Catálogo de mensajes estáticos de Vermes -- Español
 # See locales/en.yaml for the source of truth; keep keys in sync.
 
 approval:
@@ -98,8 +98,8 @@ gateway:
     upload_failed:         "✗ No se pudo subir el informe de depuración: {error}"
     header:                "**Informe de depuración subido:**"
     auto_delete:           "⏱ Los pastes se eliminarán automáticamente en 6 horas."
-    full_logs_hint:        "Para subir registros completos, usa `hermes debug share` desde la CLI."
-    share_hint:            "Comparte estos enlaces con el equipo de Hermes para obtener soporte."
+    full_logs_hint:        "Para subir registros completos, usa `vermes debug share` desde la CLI."
+    share_hint:            "Comparte estos enlaces con el equipo de Vermes para obtener soporte."
 
   deny:
     stale:                 "❌ Comando denegado (la aprobación había caducado)."
@@ -136,7 +136,7 @@ gateway:
     set:                   "⊙ Objetivo establecido (presupuesto de {budget} turnos): {goal}\nSeguiré trabajando hasta que el objetivo se complete, lo pauses/elimines o se agote el presupuesto.\nControles: /goal status · /goal pause · /goal resume · /goal clear"
 
   help:
-    header:                "📖 **Comandos de Hermes**\n"
+    header:                "📖 **Comandos de Vermes**\n"
     skill_header:          "\n⚡ **Comandos de skill** ({count} activos):"
     more_use_commands:     "\n... y {count} más. Usa `/commands` para la lista paginada completa."
 
@@ -147,7 +147,7 @@ gateway:
   kanban:
     error_prefix:          "⚠ error de kanban: {error}"
     subscribed_suffix:     "(suscrito — recibirás una notificación cuando {task_id} termine o se bloquee)"
-    truncated_suffix:      "… (truncado; usa `hermes kanban …` en tu terminal para la salida completa)"
+    truncated_suffix:      "… (truncado; usa `vermes kanban …` en tu terminal para la salida completa)"
     no_output:             "(sin salida)"
 
   personality:
@@ -215,7 +215,7 @@ gateway:
 
   restart:
     in_progress:           "⏳ El reinicio del gateway ya está en curso..."
-    restarting:            "♻ Reiniciando el gateway. Si no recibes notificación en 60 segundos, reinicia desde la consola con `hermes gateway restart`."
+    restarting:            "♻ Reiniciando el gateway. Si no recibes notificación en 60 segundos, reinicia desde la consola con `vermes gateway restart`."
 
   resume:
     db_unavailable:        "Base de datos de sesiones no disponible."
@@ -247,7 +247,7 @@ gateway:
     success:               "✅ Canal principal establecido en **{name}** (ID: {chat_id}).\nLas tareas cron y los mensajes entre plataformas se entregarán aquí."
 
   status:
-    header:                "📊 **Estado de Hermes Gateway**"
+    header:                "📊 **Estado de Vermes Gateway**"
     session_id:            "**ID de sesión:** `{session_id}`"
     title:                 "**Título:** {title}"
     created:               "**Creado:** {timestamp}"
@@ -282,7 +282,7 @@ gateway:
     topics_user_disallowed:  "Los topics de Telegram están habilitados, pero los usuarios no pueden crearlos.\n\nAbre @BotFather → elige tu bot → Bot Settings → Threads Settings, luego desactiva 'Disallow users to create new threads'.\n\nLuego envía /topic de nuevo."
     enable_failed:           "No se pudo habilitar el modo topic de Telegram: {error}"
     bound_status:            "Este topic está vinculado a:\nSesión: {label}\nID: {session_id}\n\nUsa /new para reemplazar este topic con una sesión nueva.\nPara trabajo paralelo, abre All Messages y envía un mensaje allí para crear otro topic."
-    thread_ready:            "Los topics multisesión de Telegram están habilitados.\n\nEste topic se usará como una sesión independiente de Hermes. Usa /new para reemplazar la sesión actual de este topic. Para trabajo paralelo, abre All Messages y envía un mensaje allí para crear otro topic."
+    thread_ready:            "Los topics multisesión de Telegram están habilitados.\n\nEste topic se usará como una sesión independiente de Vermes. Usa /new para reemplazar la sesión actual de este topic. Para trabajo paralelo, abre All Messages y envía un mensaje allí para crear otro topic."
     untitled_session:        "Sesión sin título"
 
   undo:
@@ -290,11 +290,11 @@ gateway:
     removed:               "↩️ {count} mensaje(s) deshecho(s).\nEliminado: \"{preview}\""
 
   update:
-    platform_not_messaging:  "✗ /update solo está disponible en plataformas de mensajería. Ejecuta `hermes update` desde la terminal."
+    platform_not_messaging:  "✗ /update solo está disponible en plataformas de mensajería. Ejecuta `vermes update` desde la terminal."
     not_git_repo:            "✗ No es un repositorio git — no se puede actualizar."
-    hermes_cmd_not_found:    "✗ No se pudo localizar el comando `hermes`. Hermes está en ejecución, pero el comando de actualización no encontró el ejecutable en PATH ni a través del intérprete de Python actual. Intenta ejecutar `hermes update` manualmente en tu terminal."
+    vermes_cmd_not_found:    "✗ No se pudo localizar el comando `vermes`. Vermes está en ejecución, pero el comando de actualización no encontró el ejecutable en PATH ni a través del intérprete de Python actual. Intenta ejecutar `vermes update` manualmente en tu terminal."
     start_failed:            "✗ No se pudo iniciar la actualización: {error}"
-    starting:                "⚕ Iniciando la actualización de Hermes… Transmitiré el progreso aquí."
+    starting:                "⚕ Iniciando la actualización de Vermes… Transmitiré el progreso aquí."
 
   usage:
     rate_limits:              "⏱️ **Límites de tasa:** {state}"

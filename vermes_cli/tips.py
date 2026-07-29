@@ -56,7 +56,7 @@ TIPS = [
     # --- Keybindings ---
     "Alt+Enter inserts a newline for multi-line input. (Windows Terminal intercepts Alt+Enter — use Ctrl+Enter instead.)",
     "Ctrl+C interrupts the agent. Double-press within 2 seconds to force exit.",
-    "Ctrl+Z suspends Hermes to the background — run fg in your shell to resume.",
+    "Ctrl+Z suspends Vermes to the background — run fg in your shell to resume.",
     "Tab accepts auto-suggestion ghost text or autocompletes slash commands.",
     "Type a new message while the agent is working to interrupt and redirect it.",
     "Alt+V pastes an image from your clipboard into the conversation.",
@@ -76,33 +76,33 @@ TIPS = [
     "hermes -p work chat runs under a specific profile without changing your default.",
 
     # --- CLI Subcommands ---
-    "hermes doctor --fix diagnoses and auto-repairs config and dependency issues.",
+    "vermes doctor --fix diagnoses and auto-repairs config and dependency issues.",
     "hermes dump outputs a compact setup summary — great for bug reports.",
-    "hermes config set KEY VALUE auto-routes secrets to .env and everything else to config.yaml.",
-    "hermes config edit opens config.yaml in your default editor.",
-    "hermes config check scans for missing or stale configuration options.",
+    "vermes config set KEY VALUE auto-routes secrets to .env and everything else to config.yaml.",
+    "vermes config edit opens config.yaml in your default editor.",
+    "vermes config check scans for missing or stale configuration options.",
     "hermes sessions browse opens an interactive session picker with search.",
     "hermes sessions stats shows session counts by platform and database size.",
     "hermes sessions prune --older-than 30 cleans up old sessions.",
-    "hermes skills search react --source skills-sh searches the skills.sh public directory.",
-    "hermes skills check scans installed hub skills for upstream updates.",
-    "hermes skills tap add myorg/skills-repo adds a custom GitHub skill source.",
-    "hermes skills snapshot export setup.json exports your skill configuration for backup or sharing.",
+    "vermes skills search react --source skills-sh searches the skills.sh public directory.",
+    "vermes skills check scans installed hub skills for upstream updates.",
+    "vermes skills tap add myorg/skills-repo adds a custom GitHub skill source.",
+    "vermes skills snapshot export setup.json exports your skill configuration for backup or sharing.",
     "hermes mcp add github --command npx adds MCP servers from the command line.",
-    "hermes mcp serve runs Hermes itself as an MCP server for other agents.",
-    "hermes auth add lets you add multiple API keys for credential pool rotation.",
+    "hermes mcp serve runs Vermes itself as an MCP server for other agents.",
+    "vermes auth add lets you add multiple API keys for credential pool rotation.",
     "hermes completion bash >> ~/.bashrc enables tab completion for all commands and profiles.",
     "hermes logs -f follows agent.log in real time. --level WARNING --since 1h filters output.",
-    "hermes backup creates a zip backup of your entire Hermes home directory.",
+    "hermes backup creates a zip backup of your entire Vermes home directory.",
     "hermes profile create coder creates an isolated profile that becomes its own command.",
     "hermes profile create work --clone copies your current config and keys to a new profile.",
-    "hermes update syncs new bundled skills to ALL profiles automatically.",
-    "hermes gateway install sets up Hermes as a system service (systemd/launchd).",
+    "vermes update syncs new bundled skills to ALL profiles automatically.",
+    "vermes gateway install sets up Vermes as a system service (systemd/launchd).",
     "hermes memory setup lets you configure an external memory provider (Honcho, Mem0, etc.).",
     "hermes webhook subscribe creates event-driven webhook routes with HMAC validation.",
-    "Save money: hermes tools disables unused tools, hermes skills config trims skills down.",
+    "Save money: vermes tools disables unused tools, vermes skills config trims skills down.",
     "/reasoning low or /reasoning minimal cuts thinking depth below the default (medium) — faster, cheaper responses.",
-    "hermes models routes vision, compression, and aux tasks to cheaper models — cuts background token cost 85%+ without downgrading your main chat model.",
+    "vermes models routes vision, compression, and aux tasks to cheaper models — cuts background token cost 85%+ without downgrading your main chat model.",
 
     # --- Configuration ---
     "Set display.bell_on_complete: true in config.yaml to hear a bell when long tasks finish.",
@@ -128,7 +128,7 @@ TIPS = [
     "provider_routing controls OpenRouter provider sorting, whitelisting, and blacklisting.",
 
     # --- Tools & Capabilities ---
-    "execute_code runs Python scripts that call Hermes tools programmatically — results stay out of context.",
+    "execute_code runs Python scripts that call Vermes tools programmatically — results stay out of context.",
     "delegate_task spawns up to 3 concurrent sub-agents by default (delegation.max_concurrent_children) with isolated contexts for parallel work.",
     "web_extract works on PDF URLs — pass any PDF link and it converts to markdown.",
     "search_files is ripgrep-backed and faster than grep — use it instead of terminal grep.",
@@ -158,7 +158,7 @@ TIPS = [
     # --- Sessions ---
     "Sessions auto-generate descriptive titles after the first exchange — no manual naming needed.",
     "Session titles support lineage: \"my project\" → \"my project #2\" → \"my project #3\".",
-    "When exiting, Hermes prints a resume command with session ID and stats.",
+    "When exiting, Vermes prints a resume command with session ID and stats.",
     "hermes sessions export backup.jsonl exports all sessions for backup or analysis.",
     "hermes -r SESSION_ID resumes any specific past session by its ID.",
 
@@ -171,7 +171,7 @@ TIPS = [
     # --- Skills ---
     "Over 80 bundled skills covering github, creative, mlops, productivity, research, and more.",
     "Every installed skill automatically becomes a slash command — type / to see them all.",
-    "hermes skills install official/security/1password installs optional skills from the repo.",
+    "vermes skills install official/security/1password installs optional skills from the repo.",
     "Skills can restrict to specific OS platforms — some only load on macOS or Linux.",
     "skills.external_dirs in config.yaml lets you load skills from custom directories.",
     "The agent can create its own skills as procedural memory using skill_manage.",
@@ -192,10 +192,10 @@ TIPS = [
     "Voice messages on Telegram, Discord, WhatsApp, and Slack are auto-transcribed.",
 
     # --- Gateway & Messaging ---
-    "Hermes runs on 21 messaging platforms: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, IRC, Microsoft Teams, email, and more.",
-    "hermes gateway install sets it up as a system service that starts on boot.",
+    "Vermes runs on 21 messaging platforms: Telegram, Discord, Slack, WhatsApp, Signal, Matrix, IRC, Microsoft Teams, email, and more.",
+    "vermes gateway install sets it up as a system service that starts on boot.",
     "DingTalk uses Stream Mode — no webhooks or public URL needed.",
-    "BlueBubbles brings iMessage to Hermes via a local macOS server.",
+    "BlueBubbles brings iMessage to Vermes via a local macOS server.",
     "Webhook routes support HMAC validation, rate limiting, and event filtering.",
     "The API server exposes an OpenAI-compatible endpoint compatible with Open WebUI and LibreChat.",
     "Discord voice channel mode: the bot joins VC, transcribes speech, and talks back.",
@@ -215,8 +215,8 @@ TIPS = [
     # --- Context & Compression ---
     "Context auto-compresses when it reaches the threshold — memories are flushed and history summarized.",
     "The status bar turns yellow, then orange, then red as context fills up.",
-    "SOUL.md at ~/.hermes/SOUL.md is the agent's primary identity — customize it to shape behavior.",
-    "Hermes loads project context from .hermes.md, AGENTS.md, CLAUDE.md, or .cursorrules (first match).",
+    "SOUL.md at ~/.vermes/SOUL.md is the agent's primary identity — customize it to shape behavior.",
+    "Vermes loads project context from .hermes.md, AGENTS.md, CLAUDE.md, or .cursorrules (first match).",
     "Subdirectory AGENTS.md files are discovered progressively as the agent navigates into folders.",
     "Context files are capped at 20,000 characters with smart head/tail truncation.",
 
@@ -229,14 +229,14 @@ TIPS = [
     # --- MCP ---
     "MCP servers are configured in config.yaml — both stdio and HTTP transports supported.",
     "Per-server tool filtering: tools.include whitelists and tools.exclude blacklists specific tools.",
-    "MCP servers auto-generate toolsets at runtime — hermes tools can toggle them per platform.",
+    "MCP servers auto-generate toolsets at runtime — vermes tools can toggle them per platform.",
     "MCP OAuth support: auth: oauth enables browser-based authorization with PKCE.",
 
     # --- Checkpoints & Rollback ---
     "Checkpoints have zero overhead when no files are modified — enabled by default.",
     "A pre-rollback snapshot is saved automatically so you can undo the undo.",
     "/rollback also undoes the conversation turn, so the agent doesn't remember rolled-back changes.",
-    "Checkpoints use shadow repos in ~/.hermes/checkpoints/ — your project's .git is never touched.",
+    "Checkpoints use shadow repos in ~/.vermes/checkpoints/ — your project's .git is never touched.",
 
     # --- Batch & Data ---
     "batch_runner.py processes hundreds of prompts in parallel for training data generation.",
@@ -256,24 +256,24 @@ TIPS = [
     "Slash commands support prefix matching: /h resolves to /help, /mod to /model.",
     "Dragging a file path into the terminal auto-attaches images or sends as context.",
     ".worktreeinclude in your repo root lists gitignored files to copy into worktrees.",
-    "hermes acp runs Hermes as an ACP server for VS Code, Zed, and JetBrains integration.",
+    "vermes acp runs Vermes as an ACP server for VS Code, Zed, and JetBrains integration.",
     "Custom providers: save named endpoints in config.yaml under custom_providers.",
     "HERMES_EPHEMERAL_SYSTEM_PROMPT injects a system prompt that's never persisted to history.",
     "credential_pool_strategies supports fill_first, round_robin, least_used, and random rotation.",
     "hermes login supports OAuth-based auth for Nous and OpenAI Codex providers.",
     "The API server supports both Chat Completions and Responses API with server-side state.",
     "tool_preview_length: 0 in config shows full file paths in the spinner's activity feed.",
-    "hermes status --deep runs deeper diagnostic checks across all components.",
+    "vermes status --deep runs deeper diagnostic checks across all components.",
 
     # --- Hidden Gems & Power-User Tricks ---
     "Cron jobs can attach a Python script (--script) whose stdout is injected into the prompt as context.",
-    "Cron scripts live in ~/.hermes/scripts/ and run before the agent — perfect for data collection pipelines.",
+    "Cron scripts live in ~/.vermes/scripts/ and run before the agent — perfect for data collection pipelines.",
     "prefill_messages_file in config.yaml injects few-shot examples into every API call, never saved to history.",
-    "SOUL.md completely replaces the agent's default identity — rewrite it to make Hermes your own.",
-    "SOUL.md is auto-seeded with a default personality on first run. Edit ~/.hermes/SOUL.md to customize.",
+    "SOUL.md completely replaces the agent's default identity — rewrite it to make Vermes your own.",
+    "SOUL.md is auto-seeded with a default personality on first run. Edit ~/.vermes/SOUL.md to customize.",
     "/compress <focus topic> allocates 60-70% of the summary budget to your topic and aggressively trims the rest.",
     "On second+ compression, the compressor updates the previous summary instead of starting from scratch.",
-    "Before a gateway session reset, Hermes auto-flushes important facts to memory in the background.",
+    "Before a gateway session reset, Vermes auto-flushes important facts to memory in the background.",
     "network.force_ipv4: true in config.yaml fixes hangs on servers with broken IPv6 — monkey-patches socket.",
     "The terminal tool annotates common exit codes: grep returning 1 = 'No matches found (not an error)'.",
     "Failed foreground terminal commands auto-retry up to 3 times with exponential backoff (2s, 4s, 8s).",
@@ -293,13 +293,13 @@ TIPS = [
     "agent.api_max_retries (default 3) controls how many times the agent retries a failed API call before surfacing the error — lower it for fast fallback.",
     "The gateway caches AIAgent instances per session — destroying this cache breaks Anthropic prompt caching.",
     "Any website can expose skills via /.well-known/skills/index.json — the skills hub discovers them automatically.",
-    "The skills audit log at ~/.hermes/skills/.hub/audit.log tracks every install and removal operation.",
+    "The skills audit log at ~/.vermes/skills/.hub/audit.log tracks every install and removal operation.",
     "Stale git worktrees are auto-cleaned: 24-72h old with no unpushed commits get pruned on startup.",
     "Each profile gets its own subprocess HOME at HERMES_HOME/home/ — isolated git, ssh, npm, gh configs.",
     "HERMES_HOME_MODE env var (octal, e.g. 0701) sets custom directory permissions for web server traversal.",
     "Container mode: place .container-mode in HERMES_HOME and the host CLI auto-execs into the container.",
     "Ctrl+C has 5 priority tiers: cancel recording → cancel prompts → cancel picker → interrupt agent → exit.",
-    "Every interrupt during an agent run is logged to ~/.hermes/interrupt_debug.log with timestamps.",
+    "Every interrupt during an agent run is logged to ~/.vermes/interrupt_debug.log with timestamps.",
     "BROWSER_CDP_URL connects browser tools to any running Chrome — accepts WebSocket, HTTP, or host:port.",
     "BROWSERBASE_ADVANCED_STEALTH=true enables advanced anti-detection with custom Chromium (Scale Plan).",
     "The CLI auto-switches to compact mode in terminals narrower than 80 columns.",
@@ -330,25 +330,25 @@ TIPS = [
     "Slash commands never trigger the large-paste collapse — /command with big arguments works correctly.",
     "In interrupt mode, slash commands typed during agent execution bypass interrupt logic and run immediately.",
     "HERMES_DEV=1 bypasses container mode detection for local development.",
-    "Each MCP server gets its own toolset (mcp-servername) that can be toggled independently via hermes tools.",
-    "MCP ${ENV_VAR} placeholders in config are resolved at server spawn — including vars from ~/.hermes/.env.",
+    "Each MCP server gets its own toolset (mcp-servername) that can be toggled independently via vermes tools.",
+    "MCP ${ENV_VAR} placeholders in config are resolved at server spawn — including vars from ~/.vermes/.env.",
     "Skills from trusted repos (NousResearch) get a 'trusted' security level; community skills get extra scanning.",
-    "The skills quarantine at ~/.hermes/skills/.hub/quarantine/ holds skills pending security review.",
+    "The skills quarantine at ~/.vermes/skills/.hub/quarantine/ holds skills pending security review.",
 
     # --- Advanced Slash Commands ---
     '/steer <prompt> injects a note after the next tool call — nudge direction mid-task without interrupting.',
-    '/goal <text> sets a standing Ralph-loop objective — Hermes auto-continues turn after turn until a judge says done.',
-    '/snapshot create [label] saves a full state snapshot of Hermes config; /snapshot restore <id> reverts later.',
+    '/goal <text> sets a standing Ralph-loop objective — Vermes auto-continues turn after turn until a judge says done.',
+    '/snapshot create [label] saves a full state snapshot of Vermes config; /snapshot restore <id> reverts later.',
     '/copy [N] copies the last assistant response to your clipboard, or the Nth-from-last with a number.',
     '/redraw forces a full UI repaint, fixing terminal drift after tmux resize or mouse selection artifacts.',
     '/agents (alias /tasks) shows active agents and running background tasks across the current session.',
     '/footer toggles the gateway footer on final replies showing model, tool counts, and turn timing.',
-    '/busy queue|steer|interrupt controls what pressing Enter does while Hermes is working.',
+    '/busy queue|steer|interrupt controls what pressing Enter does while Vermes is working.',
     '/topic in Telegram DMs enables user-managed multi-session topic mode — /topic <id> restores past sessions inline.',
     '/approve session|always runs a pending dangerous command with your chosen trust scope; /deny rejects it.',
     '/restart gracefully restarts the gateway after draining active runs, then pings the requester when back up.',
     '/kanban boards switch <slug> changes the active multi-project Kanban board from inside chat.',
-    '/reload reloads ~/.hermes/.env into the running session — pick up new API keys without restarting.',
+    '/reload reloads ~/.vermes/.env into the running session — pick up new API keys without restarting.',
 
     # --- Cron (no-agent & scripts) ---
     'cronjob with no_agent=True runs a script on schedule and sends its stdout directly — zero tokens, zero LLM.',
@@ -356,9 +356,9 @@ TIPS = [
     "HERMES_CRON_MAX_PARALLEL (default 4) caps how many cron jobs run per tick so bursts don't saturate your keys.",
 
     # --- Gateway Hooks ---
-    'Gateway hooks live under ~/.hermes/hooks/<name>/ with HOOK.yaml + handler.py — handler must be named `handle`.',
+    'Gateway hooks live under ~/.vermes/hooks/<name>/ with HOOK.yaml + handler.py — handler must be named `handle`.',
     'Hook events include gateway:startup, session:start, agent:step, and command:* wildcard subscriptions.',
-    'Drop a ~/.hermes/BOOT.md checklist and a gateway:startup hook runs it as a one-shot agent every boot.',
+    'Drop a ~/.vermes/BOOT.md checklist and a gateway:startup hook runs it as a one-shot agent every boot.',
 
     # --- Curator ---
     'hermes curator run --dry-run previews what the curator would archive or consolidate without mutating anything.',
@@ -366,7 +366,7 @@ TIPS = [
     'hermes curator rollback restores skills from a pre-run snapshot — backups live under skills/.curator_backups/.',
 
     # --- Credential Pools & Routing ---
-    'hermes auth reset <provider> clears all cooldowns and exhaustion flags on a credential pool.',
+    'vermes auth reset <provider> clears all cooldowns and exhaustion flags on a credential pool.',
     'credential_pool_strategies.<provider>: round_robin cycles keys evenly instead of the fill_first default.',
     'use_gateway: true per-tool routes web, image, tts, or browser through your Nous subscription — no extra keys.',
     'provider_routing.data_collection: deny excludes data-storing providers on OpenRouter.',
@@ -378,9 +378,9 @@ TIPS = [
     'Ctrl+G or Ctrl+X Ctrl+E in the TUI opens the input buffer in $EDITOR for long multi-line prompts.',
     'The TUI renders LaTeX inline — $E=mc^2$ becomes Unicode math instead of raw TeX.',
     'hermes dashboard launches a local web UI at 127.0.0.1:9119 — zero data leaves localhost.',
-    'hermes dashboard --tui embeds the full Hermes TUI in your browser via xterm.js and a WebSocket PTY.',
-    'Drop a YAML in ~/.hermes/dashboard-themes/ with two palette colors to reskin the entire dashboard.',
-    'Dashboard plugins are drop-in: manifest.json + JS bundle in ~/.hermes/dashboard-plugins/ — no npm build required.',
+    'hermes dashboard --tui embeds the full Vermes TUI in your browser via xterm.js and a WebSocket PTY.',
+    'Drop a YAML in ~/.vermes/dashboard-themes/ with two palette colors to reskin the entire dashboard.',
+    'Dashboard plugins are drop-in: manifest.json + JS bundle in ~/.vermes/dashboard-plugins/ — no npm build required.',
     'layoutVariant: cockpit in a dashboard theme adds a 260px left rail that plugins can populate via the sidebar slot.',
 
     # --- Env Vars & Config Gates ---
@@ -393,7 +393,7 @@ TIPS = [
     'Checkpoints skip directories with more than 50,000 files to avoid slow git operations on massive monorepos.',
 
     # --- TTS ---
-    'tts.provider: piper runs 44-language local TTS on CPU — voices auto-download to ~/.hermes/cache/piper-voices/.',
+    'tts.provider: piper runs 44-language local TTS on CPU — voices auto-download to ~/.vermes/cache/piper-voices/.',
     'tts.providers.<name>.type: command wires any CLI TTS engine with {input_path} and {output_path} placeholders.',
 
     # --- API Server & Proxy ---
@@ -419,7 +419,7 @@ TIPS = [
     '/toolsets lists every available toolset so you know what -t/--toolsets accepts.',
     '/gquota shows Google Gemini Code Assist quota usage with progress bars when that provider is active.',
     '/voice tts toggles TTS-only mode — agent replies out loud but you still type your prompts.',
-    '/reload-skills re-scans ~/.hermes/skills/ so drop-in skills appear without restarting the session.',
+    '/reload-skills re-scans ~/.vermes/skills/ so drop-in skills appear without restarting the session.',
     '/indicator kaomoji|emoji|unicode|ascii picks the TUI busy-indicator style shown during agent runs.',
     '/debug uploads a support bundle (system info + logs) and returns shareable links — works in chat too.',
 
@@ -427,15 +427,15 @@ TIPS = [
     'hermes -z "<prompt>" is the purest one-shot: final answer on stdout, nothing else — ideal for piping in scripts.',
     'hermes chat --pass-session-id injects the session ID into the system prompt so the agent can self-reference it.',
     'hermes chat --image path/to/pic.png attaches a local image to a single -q query without a separate upload step.',
-    'hermes chat --ignore-user-config skips ~/.hermes/config.yaml — reproducible bug reports and CI runs.',
+    'hermes chat --ignore-user-config skips ~/.vermes/config.yaml — reproducible bug reports and CI runs.',
     "hermes chat --source tool tags programmatic chats so they don't clutter hermes sessions list.",
     'hermes dump --show-keys includes redacted API key fingerprints for deeper support debugging.',
     'hermes sessions rename <ID> "new title" renames any past session; hermes sessions delete <ID> removes one.',
     'hermes import restores a session export or profile archive produced by sessions export or profile export.',
     'hermes fallback manages the fallback_model chain interactively — no hand-editing config.yaml.',
     'hermes pairing rotates the DM pairing token — the first messager after rotation claims access to the bot.',
-    'hermes setup walks first-time users through provider, keys, and platform wiring in one interactive flow.',
-    'hermes status --deep runs the full health sweep across every component; plain hermes status is the quick view.',
+    'vermes setup walks first-time users through provider, keys, and platform wiring in one interactive flow.',
+    'vermes status --deep runs the full health sweep across every component; plain vermes status is the quick view.',
 
     # --- Agent Behavior Env Vars ---
     'HERMES_AGENT_TIMEOUT=0 disables the gateway inactivity kill for a running agent — use for long research runs.',
@@ -460,7 +460,7 @@ TIPS = [
     'AUXILIARY_VISION_BASE_URL + AUXILIARY_VISION_API_KEY point vision analysis at any OpenAI-compatible endpoint.',
 
     # --- Security ---
-    'security.tirith_fail_open: false makes Hermes block commands when the tirith scanner itself errors out.',
+    'security.tirith_fail_open: false makes Vermes block commands when the tirith scanner itself errors out.',
     'TIRITH_FAIL_OPEN env var overrides the tirith_fail_open config — a quick toggle without editing config.yaml.',
 
     # --- Sessions & Source Tags ---
@@ -469,7 +469,7 @@ TIPS = [
 
     # --- Misc ---
     'API_SERVER_MODEL_NAME customizes the model name on /v1/models — essential for multi-profile Open WebUI setups.',
-    'Dashboard plugins are served from /dashboard-plugins/<name>/ — drop files into ~/.hermes/dashboard-plugins/.',
+    'Dashboard plugins are served from /dashboard-plugins/<name>/ — drop files into ~/.vermes/dashboard-plugins/.',
 ]
 
 

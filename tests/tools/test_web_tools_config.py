@@ -138,7 +138,7 @@ class TestFirecrawlClientConfig:
                 )
 
     def test_nous_auth_token_respects_hermes_home_override(self, tmp_path):
-        """Auth lookup should read from HERMES_HOME/auth.json, not ~/.hermes/auth.json."""
+        """Auth lookup should read from HERMES_HOME/auth.json, not ~/.vermes/auth.json."""
         real_home = tmp_path / "real-home"
         (real_home / ".hermes").mkdir(parents=True)
 
@@ -245,7 +245,7 @@ class TestBackendSelection:
     """Test suite for _get_backend() backend selection logic.
 
     The backend is configured via config.yaml (web.backend), set by
-    ``hermes tools``.  Falls back to key-based detection for legacy/manual
+    ``vermes tools``.  Falls back to key-based detection for legacy/manual
     setups.
     """
 

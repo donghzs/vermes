@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import cli as cli_module
 import tools.skills_tool as skills_tool_module
-from cli import HermesCLI
+from cli import VermesCLI
 from vermes_cli.callbacks import prompt_for_secret
 from tools.skills_tool import set_secret_capture_callback
 
@@ -28,7 +28,7 @@ class _FakeApp:
 
 
 def _make_cli_stub(with_app=False):
-    cli = HermesCLI.__new__(HermesCLI)
+    cli = VermesCLI.__new__(VermesCLI)
     cli._app = _FakeApp() if with_app else None
     cli._last_invalidate = 0.0
     cli._secret_state = None
@@ -137,7 +137,7 @@ def test_cli_chat_registers_secret_capture_callback():
     with patch("cli.get_tool_definitions", return_value=[]), patch.dict(
         "os.environ", {"LLM_MODEL": "", "HERMES_MAX_ITERATIONS": ""}, clear=False
     ), patch.dict(cli_module.__dict__, {"CLI_CONFIG": clean_config}):
-        cli_obj = HermesCLI()
+        cli_obj = VermesCLI()
         with patch.object(cli_obj, "_ensure_runtime_credentials", return_value=False):
             cli_obj.chat("hello")
 

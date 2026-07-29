@@ -324,10 +324,10 @@ class TestBuildSessionContextPrompt:
         )
         ctx = build_session_context(source, config)
 
-        with patch("vermes_constants.display_hermes_home", return_value="~/.hermes/profiles/coder"):
+        with patch("vermes_constants.display_hermes_home", return_value="~/.vermes/profiles/coder"):
             prompt = build_session_context_prompt(ctx)
 
-        assert "~/.hermes/profiles/coder/cron/output/" in prompt
+        assert "~/.vermes/profiles/coder/cron/output/" in prompt
 
     def test_whatsapp_prompt(self):
         config = GatewayConfig(

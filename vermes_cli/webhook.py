@@ -6,7 +6,7 @@ Usage:
     hermes webhook remove <name>
     hermes webhook test <name> [--payload '{"key": "value"}']
 
-Subscriptions persist to ~/.hermes/webhook_subscriptions.json and are
+Subscriptions persist to ~/.vermes/webhook_subscriptions.json and are
 hot-reloaded by the webhook adapter without a gateway restart.
 """
 
@@ -87,7 +87,7 @@ def _setup_hint() -> str:
   Webhook platform is not enabled. To set it up:
 
   1. Run the gateway setup wizard:
-     hermes gateway setup
+     vermes gateway setup
 
   2. Or manually add to {_dhh}/config.yaml:
      platforms:
@@ -103,7 +103,7 @@ def _setup_hint() -> str:
      WEBHOOK_PORT=8644
      WEBHOOK_SECRET=your-global-secret
 
-  Then start the gateway: hermes gateway run
+  Then start the gateway: vermes gateway run
 """
 
 
@@ -193,7 +193,7 @@ def _cmd_subscribe(args):
         logger.info(f"  {label}: {prompt_preview}")
     logger.info(f"\n  Configure your service to POST to the URL above.")
     logger.info(f"  Use the secret for HMAC-SHA256 signature validation.")
-    logger.info(f"  The gateway must be running to receive events (hermes gateway run).\n")
+    logger.info(f"  The gateway must be running to receive events (vermes gateway run).\n")
 
 
 def _cmd_list(args):
@@ -276,4 +276,4 @@ def _cmd_test(args):
             logger.info(f"  Response ({resp.status}): {body}")
     except Exception as e:
         logger.info(f"  Error: {e}")
-        logger.info("  Is the gateway running? (hermes gateway run)")
+        logger.info("  Is the gateway running? (vermes gateway run)")

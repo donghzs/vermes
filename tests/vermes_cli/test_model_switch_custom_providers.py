@@ -1,6 +1,6 @@
 """Regression tests for /model support of config.yaml custom_providers.
 
-The terminal `hermes model` flow already exposes `custom_providers`, but the
+The terminal `vermes model` flow already exposes `custom_providers`, but the
 shared slash-command pipeline (`/model` in CLI/gateway/Telegram) historically
 only looked at `providers:`.
 """
@@ -162,7 +162,7 @@ def test_list_enumerates_dict_format_models_alongside_default(monkeypatch):
     """custom_providers entry with dict-format ``models:`` plus singular
     ``model:`` should surface the default and every dict key.
 
-    Regression: Hermes's own writer stores configured models as a dict
+    Regression: Vermes's own writer stores configured models as a dict
     keyed by model id, but the /model picker previously only honored the
     singular ``model:`` field, so multi-model custom providers appeared
     to have only the active model.

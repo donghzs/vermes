@@ -4,7 +4,7 @@ Cron job scheduler - executes due jobs.
 Provides tick() which checks for due jobs and runs them. The gateway
 calls this every 60 seconds from a background thread.
 
-Uses a file-based lock (~/.hermes/cron/.tick.lock) so only one tick
+Uses a file-based lock (~/.vermes/cron/.tick.lock) so only one tick
 runs at a time if multiple processes overlap.
 """
 
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import List, Optional
 
 # Add parent directory to path for imports BEFORE repo-level imports.
-# Without this, standalone invocations (e.g. after `hermes update` reloads
+# Without this, standalone invocations (e.g. after `vermes update` reloads
 # the module) fail with ModuleNotFoundError for vermes_time et al.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -63,7 +63,7 @@ def _resolve_cron_enabled_toolsets(job: dict, cfg: dict) -> list[str] | None:
     Precedence:
     1. Per-job ``enabled_toolsets`` (set via ``cronjob`` tool on create/update).
        Keeps the agent's job-scoped toolset override intact — #6130.
-    2. Per-platform ``hermes tools`` config for the ``cron`` platform.
+    2. Per-platform ``vermes tools`` config for the ``cron`` platform.
        Mirrors gateway behavior (``_get_platform_tools(cfg, platform_key)``)
        so users can gate cron toolsets globally without recreating every job.
     3. ``None`` on any lookup failure — AIAgent loads the full default set
@@ -136,7 +136,7 @@ _hermes_home: Path | None = None
 
 
 def _get_hermes_home() -> Path:
-    """Resolve Hermes home dynamically while preserving test monkeypatch hooks."""
+    """Resolve Vermes home dynamically while preserving test monkeypatch hooks."""
     return _hermes_home or get_hermes_home()
 
 
@@ -149,11 +149,11 @@ def _get_lock_paths() -> tuple[Path, Path]:
 
 @contextmanager
 def _job_profile_context(job_id: str, profile: Optional[str]):
-    """Temporarily run a job under a specific Hermes profile.
+    """Temporarily run a job under a specific Vermes profile.
 
     Cron jobs are stored and scheduled by the profile running the scheduler, but
     an individual job can opt into a different runtime profile. While active,
-    the scheduler's test/override hook and a context-local Hermes home override
+    the scheduler's test/override hook and a context-local Vermes home override
     both point at the resolved profile directory so _get_hermes_home(),
     .env/config loading, script resolution, AIAgent construction, and downstream
     get_hermes_home() callers agree on the same home.
@@ -192,7 +192,7 @@ def _job_profile_context(job_id: str, profile: Optional[str]):
         override_token = set_hermes_home_override(profile_home)
         _hermes_home = profile_home
         logger.info(
-            "Job '%s': using Hermes profile '%s' (%s)",
+            "Job '%s': using Vermes profile '%s' (%s)",
             job_id,
             normalized_profile,
             profile_home,

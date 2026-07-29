@@ -15,7 +15,7 @@ import pytest
 
 @pytest.fixture()
 def isolated_cron_profile_home(tmp_path, monkeypatch):
-    """Create an isolated Hermes root with a named profile and temp cron store."""
+    """Create an isolated Vermes root with a named profile and temp cron store."""
     root = tmp_path / "hermes-root"
     profile_home = root / "profiles" / "support"
     profile_home.mkdir(parents=True)

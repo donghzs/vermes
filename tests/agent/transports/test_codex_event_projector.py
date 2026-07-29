@@ -1,4 +1,4 @@
-"""Tests for CodexEventProjector — codex item/* events → Hermes messages list.
+"""Tests for CodexEventProjector — codex item/* events → Vermes messages list.
 
 Drives projection against fixture notifications captured from codex 0.130.0
 plus synthetic ones for item types we couldn't auth-test live."""
@@ -275,7 +275,7 @@ class TestHelpers:
 
 class TestRoleAlternationInvariant:
     """The project must never emit two assistant messages back-to-back from
-    one item — that breaks Hermes' message alternation invariant."""
+    one item — that breaks Vermes' message alternation invariant."""
 
     @pytest.mark.parametrize(
         "item",

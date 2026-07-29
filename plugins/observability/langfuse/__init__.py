@@ -1,14 +1,14 @@
-"""langfuse — Hermes plugin for Langfuse observability.
+"""langfuse — Vermes plugin for Langfuse observability.
 
-Traces Hermes conversations, LLM calls, and tool usage to Langfuse.
+Traces Vermes conversations, LLM calls, and tool usage to Langfuse.
 
-Activation is handled by the Hermes plugin system — standalone plugins only
+Activation is handled by the Vermes plugin system — standalone plugins only
 load when listed in ``plugins.enabled`` (via ``hermes plugins enable
 observability/langfuse``, or by checking the box in the interactive
 ``hermes plugins`` UI). At runtime the plugin also requires the
 ``langfuse`` SDK and credentials; if either is missing the hooks are inert.
 
-Required env vars (set in ~/.hermes/.env):
+Required env vars (set in ~/.vermes/.env):
   HERMES_LANGFUSE_PUBLIC_KEY  - Langfuse project public key (pk-lf-...)
   HERMES_LANGFUSE_SECRET_KEY  - Langfuse project secret key (sk-lf-...)
   HERMES_LANGFUSE_BASE_URL    - Langfuse server URL (default: https://cloud.langfuse.com)
@@ -140,7 +140,7 @@ def _validate_langfuse_key(env_name: str, value: str) -> Optional[str]:
 def _get_langfuse() -> Optional[Langfuse]:
     """Return a cached Langfuse client, or ``None`` if unavailable.
 
-    Activation of this plugin is controlled by the Hermes plugin system —
+    Activation of this plugin is controlled by the Vermes plugin system —
     this function only handles the runtime-availability gate (SDK installed
     + credentials present). The result is cached: on the first call we try
     to construct a client, and every subsequent call returns that client
@@ -561,12 +561,12 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
         try:
             with propagate_attributes(
                 session_id=session_id or task_key,
-                trace_name="Hermes turn",
+                trace_name="Vermes turn",
                 tags=["hermes", "langfuse"],
             ):
                 root_ctx = client.start_as_current_observation(
                     trace_context=trace_ctx,
-                    name="Hermes turn",
+                    name="Vermes turn",
                     as_type="chain",
                     input=trace_input,
                     metadata=metadata,
@@ -576,7 +576,7 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
         except Exception:
             root_ctx = client.start_as_current_observation(
                 trace_context=trace_ctx,
-                name="Hermes turn",
+                name="Vermes turn",
                 as_type="chain",
                 input=trace_input,
                 metadata=metadata,
@@ -586,7 +586,7 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
     else:
         root_ctx = client.start_as_current_observation(
             trace_context=trace_ctx,
-            name="Hermes turn",
+            name="Vermes turn",
             as_type="chain",
             input=trace_input,
             metadata=metadata,
@@ -690,8 +690,8 @@ def on_pre_llm_call(*, task_id: str = "", session_id: str = "", platform: str = 
                     provider: str = "", base_url: str = "", api_mode: str = "",
                     api_call_count: int = 0, messages: Any = None, turn_type: str = "user",
                     conversation_history: Any = None, user_message: Any = None, **_: Any) -> None:
-    # Older Hermes branches used pre_llm_call for request-scoped tracing and
-    # passed the actual API messages. Current Hermes also has a turn-scoped
+    # Older Vermes branches used pre_llm_call for request-scoped tracing and
+    # passed the actual API messages. Current Vermes also has a turn-scoped
     # pre_llm_call used for context injection; tracing that hook creates an
     # extra orphan/root trace before the real request trace. Only trace the
     # legacy request-shaped call here.
@@ -702,8 +702,8 @@ def on_pre_llm_call(*, task_id: str = "", session_id: str = "", platform: str = 
     if client is None:
         return
 
-    # messages is a list only for legacy Hermes branches that fired
-    # pre_llm_call with API messages directly. Current Hermes fires
+    # messages is a list only for legacy Vermes branches that fired
+    # pre_llm_call with API messages directly. Current Vermes fires
     # pre_llm_call for context injection (conversation_history/user_message,
     # no messages list) — tracing that would create orphan traces.
     task_key = _trace_key(task_id, session_id)
@@ -994,7 +994,7 @@ def on_post_tool_call(*, tool_name: str = "", args: Any = None, result: Any = No
 
 def register(ctx) -> None:
     # Register for both hook name variants so the plugin works across
-    # Hermes versions.  pre_api_request / post_api_request fire per API
+    # Vermes versions.  pre_api_request / post_api_request fire per API
     # call (preferred); pre_llm_call / post_llm_call fire once per turn.
     ctx.register_hook("pre_api_request", on_pre_llm_request)
     ctx.register_hook("post_api_request", on_post_llm_call)

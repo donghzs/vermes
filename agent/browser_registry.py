@@ -136,7 +136,7 @@ def _resolve(configured: Optional[str]) -> Optional[BrowserProvider]:
     the *web* extract plugin (``plugins/web/firecrawl/``), so users who set
     ``FIRECRAWL_API_KEY`` for web extract must NOT get silently routed to a
     paid cloud browser on a fresh install. Third-party browser-provider
-    plugins added under ``~/.hermes/plugins/browser/<vendor>/`` are subject
+    plugins added under ``~/.vermes/plugins/browser/<vendor>/`` are subject
     to the same gate — they must be explicitly configured to take effect.
 
     Returns None when no provider is configured AND no available provider

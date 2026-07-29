@@ -729,7 +729,7 @@ class ContextCompressor(ContextEngine):
         """Return True when a high rough preflight estimate is known-noisy.
 
         ``estimate_request_tokens_rough(..., tools=...)`` intentionally
-        overestimates schema-heavy requests so Hermes compresses before a
+        overestimates schema-heavy requests so Vermes compresses before a
         provider rejects the payload. After a successful compressed API call,
         though, provider ``prompt_tokens`` are a better signal than repeating
         compaction from the same rough schema overhead. Defer only while the

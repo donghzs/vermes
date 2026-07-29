@@ -127,8 +127,8 @@ export const af: Translations = {
     starting: "Begin",
     startedInBackground: "Begin in agtergrond — kyk logs vir vordering",
     stopped: "Gestop",
-    updateHermes: "Update vbit Agent",
-    updatingHermes: "Updating vbit Agent…",
+    updateVermes: "Update vbit Agent",
+    updatingVermes: "Updating vbit Agent…",
     waitingForOutput: "Wag vir uitset…",
   },
 

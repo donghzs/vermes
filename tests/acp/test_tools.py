@@ -132,9 +132,9 @@ class TestBuildToolTitle:
     def test_skill_manage_title_includes_action_and_target(self):
         title = build_tool_title(
             "skill_manage",
-            {"action": "patch", "name": "hermes-agent-operations", "file_path": "references/acp.md"},
+            {"action": "patch", "name": "vermes-agent-operations", "file_path": "references/acp.md"},
         )
-        assert title == "skill patch: hermes-agent-operations/references/acp.md"
+        assert title == "skill patch: vermes-agent-operations/references/acp.md"
 
     def test_unknown_tool_uses_name(self):
         title = build_tool_title("some_new_tool", {"foo": "bar"})
@@ -272,16 +272,16 @@ class TestBuildToolStart:
             "skill_manage",
             {
                 "action": "patch",
-                "name": "hermes-agent-operations",
+                "name": "vermes-agent-operations",
                 "file_path": "references/acp.md",
                 "old_string": "old advice",
                 "new_string": "new advice",
             },
         )
         assert result.kind == "edit"
-        assert result.title == "skill patch: hermes-agent-operations/references/acp.md"
+        assert result.title == "skill patch: vermes-agent-operations/references/acp.md"
         assert isinstance(result.content[0], FileEditToolCallContent)
-        assert result.content[0].path == "skills/hermes-agent-operations/references/acp.md"
+        assert result.content[0].path == "skills/vermes-agent-operations/references/acp.md"
         assert result.content[0].old_text == "old advice"
         assert result.content[0].new_text == "new advice"
         assert result.raw_input is None
@@ -402,18 +402,18 @@ class TestBuildToolComplete:
         result = build_tool_complete(
             "tc-skill-manage",
             "skill_manage",
-            '{"success":true,"message":"Patched references/hermes-acp-zed-rendering.md in skill \'hermes-agent-operations\' (1 replacement)."}',
+            '{"success":true,"message":"Patched references/hermes-acp-zed-rendering.md in skill \'vermes-agent-operations\' (1 replacement)."}',
             function_args={
                 "action": "patch",
-                "name": "hermes-agent-operations",
-                "file_path": "references/hermes-acp-zed-rendering.md",
+                "name": "vermes-agent-operations",
+                "file_path": "references/vermes-acp-zed-rendering.md",
             },
         )
         text = result.content[0].content.text
         assert "**✅ Skill updated**" in text
         assert "`patch`" in text
-        assert "`hermes-agent-operations`" in text
-        assert "references/hermes-acp-zed-rendering.md" in text
+        assert "`vermes-agent-operations`" in text
+        assert "references/vermes-acp-zed-rendering.md" in text
         assert "{\"success\"" not in text
         assert result.raw_output is None
 

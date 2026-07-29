@@ -2,7 +2,7 @@
 IRC Platform Adapter for Vermes.
 
 A plugin-based gateway adapter that connects to an IRC server and relays
-messages to/from the Hermes agent.  Zero external dependencies — uses
+messages to/from the Vermes agent.  Zero external dependencies — uses
 Python's stdlib asyncio for the IRC protocol.
 
 Configuration in config.yaml::
@@ -521,7 +521,7 @@ def check_requirements() -> bool:
     channel = os.getenv("IRC_CHANNEL", "")
     # Also accept config.yaml-only configuration (no env vars).
     # The gateway passes PlatformConfig; we just check env for the
-    # hermes setup / requirements check path.
+    # vermes setup / requirements check path.
     return bool(server and channel)
 
 
@@ -534,7 +534,7 @@ def validate_config(config) -> bool:
 
 
 def interactive_setup() -> None:
-    """Interactive `hermes gateway setup` flow for the IRC platform.
+    """Interactive `vermes gateway setup` flow for the IRC platform.
 
     Lazy-imports ``vermes_cli.setup`` helpers so the plugin stays importable
     in non-CLI contexts (gateway runtime, tests).
@@ -557,7 +557,7 @@ def interactive_setup() -> None:
         if not prompt_yes_no("Reconfigure IRC?", False):
             return
 
-    print_info("Connect Hermes to an IRC network. Uses Python stdlib — no extra packages needed.")
+    print_info("Connect Vermes to an IRC network. Uses Python stdlib — no extra packages needed.")
     print_info("   Works with Libera.Chat, OFTC, your own ZNC/InspIRCd, etc.")
     logger.info()
 
@@ -636,8 +636,8 @@ def interactive_setup() -> None:
             print_info("No nicks allowed — the bot will ignore all messages until you add nicks.")
 
     logger.info()
-    print_success("IRC configuration saved to ~/.hermes/.env")
-    print_info("Restart the gateway for changes to take effect: hermes gateway restart")
+    print_success("IRC configuration saved to ~/.vermes/.env")
+    print_info("Restart the gateway for changes to take effect: vermes gateway restart")
 
 
 def is_connected(config) -> bool:
@@ -727,7 +727,7 @@ async def _standalone_send(
 
     Used by ``tools/send_message_tool._send_via_adapter`` when the gateway
     runner is not in this process (e.g. ``hermes cron`` running as a
-    separate process from ``hermes gateway``).  Without this hook,
+    separate process from ``vermes gateway``).  Without this hook,
     ``deliver=irc`` cron jobs fail with ``No live adapter for platform``.
 
     The standalone client uses a distinct nick suffix (``-cron``) so it
@@ -925,7 +925,7 @@ async def _standalone_send(
 
 
 def register(ctx):
-    """Plugin entry point: called by the Hermes plugin system."""
+    """Plugin entry point: called by the Vermes plugin system."""
     ctx.register_platform(
         name="irc",
         label="IRC",

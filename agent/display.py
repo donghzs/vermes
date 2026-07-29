@@ -432,7 +432,7 @@ def _emit_inline_diff(diff_text: str, print_fn) -> bool:
 
 
 def _render_inline_unified_diff(diff: str) -> list[str]:
-    """Render unified diff lines in Hermes' inline transcript style."""
+    """Render unified diff lines in Vermes' inline transcript style."""
     rendered: list[str] = []
     from_file = None
     to_file = None

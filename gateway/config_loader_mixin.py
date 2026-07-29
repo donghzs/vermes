@@ -32,8 +32,8 @@ class ConfigLoaderMixin:
         """Load ephemeral prefill messages from config or env var.
     
         Checks HERMES_PREFILL_MESSAGES_FILE env var first, then falls back to
-        the prefill_messages_file key in ~/.hermes/config.yaml.
-        Relative paths are resolved from ~/.hermes/.
+        the prefill_messages_file key in ~/.vermes/config.yaml.
+        Relative paths are resolved from ~/.vermes/.
         """
         file_path = os.getenv("HERMES_PREFILL_MESSAGES_FILE", "")
         if not file_path:
@@ -70,7 +70,7 @@ class ConfigLoaderMixin:
         """Load ephemeral system prompt from config or env var.
     
         Checks HERMES_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
-        agent.system_prompt in ~/.hermes/config.yaml.
+        agent.system_prompt in ~/.vermes/config.yaml.
     
         Also appends evolution system context (self-model.db stats, anti-patterns,
         emotional state) so gateway channels get the same behavioral guidance

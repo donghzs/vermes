@@ -4,7 +4,7 @@ Bypasses cli.py entirely.  No banner, no spinner, no session_id line,
 no stderr chatter.  Just the agent's final text to stdout.
 
 Toolsets = explicit --toolsets when provided, otherwise whatever the user has
-configured for "cli" in `hermes tools`.
+configured for "cli" in `vermes tools`.
 Rules / memory / AGENTS.md / preloaded skills = same as a normal chat turn.
 Approvals = auto-bypassed (HERMES_YOLO_MODE=1 is set for the call).
 Working directory = the user's CWD (AGENTS.md etc. resolve from there as usual).
@@ -202,7 +202,7 @@ def run_oneshot(
 def _create_session_db_for_oneshot():
     """Best-effort SessionDB for ``hermes -z`` / oneshot mode.
 
-    Oneshot bypasses ``HermesCLI._init_agent()``, so it must wire the SQLite
+    Oneshot bypasses ``VermesCLI._init_agent()``, so it must wire the SQLite
     session store itself. Without this, the ``session_search``/recall tool is
     advertised but every call returns "Session database not available.".
     """

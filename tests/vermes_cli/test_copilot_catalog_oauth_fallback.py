@@ -3,8 +3,8 @@
 Regression for #16708: when the user's only Copilot credential is a
 ``gho_*`` token (typically obtained via device-code login) stored in
 ``auth.json`` under ``credential_pool.copilot[]`` — placed there by
-``hermes auth add copilot`` or by ``_seed_from_env`` when the env var
-is set in ``~/.hermes/.env`` — the picker was silently dropping back to
+``vermes auth add copilot`` or by ``_seed_from_env`` when the env var
+is set in ``~/.vermes/.env`` — the picker was silently dropping back to
 a stale hardcoded list because ``_resolve_copilot_catalog_api_key``
 only consulted env vars / ``gh auth token`` and never read the
 credential pool.

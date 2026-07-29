@@ -127,8 +127,8 @@ export const it: Translations = {
     starting: "Avvio in corso",
     startedInBackground: "Avviato in background — controlla i log per i progressi",
     stopped: "Arrestato",
-    updateHermes: "Update vbit Agent",
-    updatingHermes: "Updating vbit Agent…",
+    updateVermes: "Update vbit Agent",
+    updatingVermes: "Updating vbit Agent…",
     waitingForOutput: "In attesa di output…",
   },
 

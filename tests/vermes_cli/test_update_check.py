@@ -21,7 +21,7 @@ def test_check_for_updates_uses_cache(tmp_path, monkeypatch):
     from vermes_cli.banner import check_for_updates
 
     # Create a fake git repo and fresh cache
-    repo_dir = tmp_path / "hermes-agent"
+    repo_dir = tmp_path / "vermes-agent"
     repo_dir.mkdir()
     (repo_dir / ".git").mkdir()
 
@@ -40,7 +40,7 @@ def test_check_for_updates_expired_cache(tmp_path, monkeypatch):
     """When cache is expired, check_for_updates should call git fetch."""
     from vermes_cli.banner import check_for_updates
 
-    repo_dir = tmp_path / "hermes-agent"
+    repo_dir = tmp_path / "vermes-agent"
     repo_dir.mkdir()
     (repo_dir / ".git").mkdir()
 
@@ -84,7 +84,7 @@ def test_check_for_updates_fallback_to_project_root(tmp_path, monkeypatch):
     if not (project_root / ".git").exists():
         pytest.skip("Not running from a git checkout")
 
-    # Point HERMES_HOME at a temp dir with no hermes-agent/.git
+    # Point HERMES_HOME at a temp dir with no vermes-agent/.git
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     with patch("vermes_cli.banner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="0\n")

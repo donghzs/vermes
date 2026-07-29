@@ -364,8 +364,8 @@ export async function listSessionsFromAPI() {
 
 function stateDBHeaders() {
   const h = {}
-  const t = (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) || ''
-  if (t) h['X-Hermes-Session-Token'] = t
+  const t = (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || ''
+  if (t) h['X-Vermes-Session-Token'] = t
   return h
 }
 

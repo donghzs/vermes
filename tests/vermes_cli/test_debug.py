@@ -869,7 +869,7 @@ class TestScheduleAutoDelete:
     were observed in production.
 
     The new implementation is stateless: it records pending deletions to
-    ``~/.hermes/pastes/pending.json`` and lets ``_sweep_expired_pastes``
+    ``~/.vermes/pastes/pending.json`` and lets ``_sweep_expired_pastes``
     handle the DELETE requests synchronously on the next ``hermes debug``
     invocation.
     """

@@ -127,8 +127,8 @@ export const hu: Translations = {
     starting: "Indul",
     startedInBackground: "Háttérben elindítva — kövesse a naplókat a folyamathoz",
     stopped: "Leállítva",
-    updateHermes: "Update vbit Agent",
-    updatingHermes: "Updating vbit Agent…",
+    updateVermes: "Update vbit Agent",
+    updatingVermes: "Updating vbit Agent…",
     waitingForOutput: "Várakozás a kimenetre…",
   },
 

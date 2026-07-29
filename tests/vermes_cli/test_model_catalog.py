@@ -289,7 +289,7 @@ class TestIntegrationWithModelsModule:
         in-repo _PROVIDER_MODELS["nous"] snapshot. Regression: before this
         fix, list_authenticated_providers() built the curated dict from
         _PROVIDER_MODELS only — so newly-added Portal models never reached
-        the slash-command picker until the next Hermes release.
+        the slash-command picker until the next Vermes release.
         """
         # We deliberately do NOT use the ``isolated_home`` fixture here:
         # that fixture monkeypatches ``Path.home`` to ``tmp_path``, which

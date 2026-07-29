@@ -1,6 +1,6 @@
 """tool_search stub — 消除 agent/tool_executor.py 和 model_tools.py 的 ImportError。
 
-上游 Hermes 的 tool_search 模块提供动态工具搜索功能。
+上游 Vermes 的 tool_search 模块提供动态工具搜索功能。
 Vermes 桌面版不需要此功能（工具列表在启动时静态加载），
 但 agent/tool_executor.py 和 model_tools.py 会 import 它。
 """

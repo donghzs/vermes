@@ -167,7 +167,7 @@ function startBackend() {
   });
 }
 
-// ── 渠道网关管理（Vermes 专属 gateway，独立于官方 Hermes / QClaw 的 gateway）──
+// ── 渠道网关管理（Vermes 专属 gateway，独立于官方 Vermes / QClaw 的 gateway）──
 // 关键设计：注入 HERMES_HOME=~/.vermes，使 gateway 与桌面后端共享同一份配置与 state.db，
 // 从而飞书/TG 等渠道消息可由桌面端「全渠道统一控制」。命名空间隔离避免多 agent 共存冲突。
 function getGatewayExe() {
@@ -791,7 +791,7 @@ async function getSessionToken() {
   try {
     const res = await fetch('http://127.0.0.1:9119/')
     const html = await res.text()
-    const m = html.match(/window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/)
+    const m = html.match(/window\.__VERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/)
             || html.match(/window\.__OPENCLAW_SESSION_KEY__\s*=\s*"([^"]+)"/)
     if (m && m[1]) {
       _cachedToken = m[1]
@@ -806,7 +806,7 @@ async function fetchWithAuth(url, opts = {}) {
   const token = await getSessionToken()
   const headers = { ...opts.headers }
   if (token) {
-    headers['X-Hermes-Session-Token'] = token
+    headers['X-Vermes-Session-Token'] = token
   }
   return fetch(url, { ...opts, headers })
 }

@@ -369,7 +369,7 @@ async def test_non_internal_event_without_user_triggers_pairing(monkeypatch, tmp
     (tmp_path / "config.yaml").write_text("", encoding="utf-8")
 
     # Clear env vars that could let all users through (loaded by
-    # module-level dotenv in gateway/run.py from the real ~/.hermes/.env).
+    # module-level dotenv in gateway/run.py from the real ~/.vermes/.env).
     monkeypatch.delenv("DISCORD_ALLOW_ALL_USERS", raising=False)
     monkeypatch.delenv("DISCORD_ALLOWED_USERS", raising=False)
     monkeypatch.delenv("GATEWAY_ALLOW_ALL_USERS", raising=False)

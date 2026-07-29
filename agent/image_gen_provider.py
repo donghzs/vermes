@@ -8,7 +8,7 @@ instances via ``PluginContext.register_image_gen_provider()``; the active one
 ``image_generate`` tool call.
 
 Providers live in ``<repo>/plugins/image_gen/<name>/`` (built-in, auto-loaded
-as ``kind: backend``) or ``~/.hermes/plugins/image_gen/<name>/`` (user, opt-in
+as ``kind: backend``) or ``~/.vermes/plugins/image_gen/<name>/`` (user, opt-in
 via ``plugins.enabled``).
 
 Response shape
@@ -65,7 +65,7 @@ class ImageGenProvider(abc.ABC):
 
     @property
     def display_name(self) -> str:
-        """Human-readable label shown in ``hermes tools``. Defaults to ``name.title()``."""
+        """Human-readable label shown in ``vermes tools``. Defaults to ``name.title()``."""
         return self.name.title()
 
     def capabilities(self) -> Dict[str, Any]:
@@ -98,7 +98,7 @@ class ImageGenProvider(abc.ABC):
         return True
 
     def list_models(self) -> List[Dict[str, Any]]:
-        """Return catalog entries for ``hermes tools`` model picker.
+        """Return catalog entries for ``vermes tools`` model picker.
 
         Each entry::
 
@@ -115,7 +115,7 @@ class ImageGenProvider(abc.ABC):
         return []
 
     def get_setup_schema(self) -> Dict[str, Any]:
-        """Return provider metadata for the ``hermes tools`` picker.
+        """Return provider metadata for the ``vermes tools`` picker.
 
         Used by ``tools_config.py`` to inject this provider as a row in
         the Image Generation provider list. Shape::

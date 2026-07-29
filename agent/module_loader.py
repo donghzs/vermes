@@ -2,7 +2,7 @@
 Vermes 生态模块加载器
 
 模块目录结构:
-  ~/.hermes/modules/
+  ~/.vermes/modules/
     scholarforge/
       module.yaml
       backend/
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 _MODULES_DIR_CACHE = None
 
 def get_modules_dir() -> Path:
-    """返回模块安装目录 (~/.hermes/modules/)"""
+    """返回模块安装目录 (~/.vermes/modules/)"""
     global _MODULES_DIR_CACHE
     if _MODULES_DIR_CACHE is None:
         from vermes_constants import get_hermes_home

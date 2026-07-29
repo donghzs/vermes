@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli import (
-    HermesCLI,
+    VermesCLI,
     _collect_query_images,
     _format_image_attachment_badges,
     _termux_example_image_path,
@@ -10,7 +10,7 @@ from cli import (
 
 
 def _make_cli():
-    cli_obj = HermesCLI.__new__(HermesCLI)
+    cli_obj = VermesCLI.__new__(VermesCLI)
     cli_obj._attached_images = []
     return cli_obj
 

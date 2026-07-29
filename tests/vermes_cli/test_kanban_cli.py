@@ -194,7 +194,7 @@ def test_run_slash_tenant_filter(kanban_home):
 
 
 def test_run_slash_session_filter(kanban_home):
-    """`hermes kanban list --session <id>` filters by the originating
+    """`vermes kanban list --session <id>` filters by the originating
     chat session id stamped on tasks created from inside an ACP loop."""
     from vermes_cli import kanban_db as kb
     with kb.connect() as conn:

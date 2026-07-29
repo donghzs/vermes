@@ -319,7 +319,7 @@ class TestExecuteCodeModeIntegration(unittest.TestCase):
     def test_project_mode_interpreter_is_venv_python(self):
         """Project mode: sys.executable inside the child is the venv's python
         when VIRTUAL_ENV is set to a real venv."""
-        # The hermes-agent venv is always active during tests, so this also
+        # The vermes-agent venv is always active during tests, so this also
         # happens to equal sys.executable of the parent. What we're asserting
         # is: resolver picked a venv-bin/python path, not that it differs
         # from sys.executable.

@@ -14,7 +14,7 @@ These guard the contract:
     fallback — no crash, no empty list.
 
 Merging is what lets new models (e.g. ``mimo-v2.5-pro`` on opencode-go)
-appear in ``/model`` without a Hermes release.
+appear in ``/model`` without a Vermes release.
 """
 
 import os

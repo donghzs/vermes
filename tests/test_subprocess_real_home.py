@@ -1,11 +1,11 @@
 """Test HERMES_REAL_HOME is set in subprocess environments.
 
-Covers: https://github.com/NousResearch/hermes-agent/issues/25114
+Covers: https://github.com/NousResearch/vermes-agent/issues/25114
 
 When profile isolation activates (HERMES_HOME/home/ exists), child
 processes receive HOME={HERMES_HOME}/home/ for tool config isolation.
 This test verifies that HERMES_REAL_HOME is also set, pointing to the
-actual user home so scripts can locate ~/.hermes/ correctly.
+actual user home so scripts can locate ~/.vermes/ correctly.
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ class TestSubprocessEnvRealHome:
 # ---------------------------------------------------------------------------
 
 class TestRealHomeIntegration:
-    """End-to-end verification that subprocesses can find ~/.hermes/."""
+    """End-to-end verification that subprocesses can find ~/.vermes/."""
 
     def test_subprocess_can_find_hermes_dir(self, tmp_path):
         """A subprocess with overridden HOME can still find .hermes/ via HERMES_REAL_HOME."""

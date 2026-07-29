@@ -329,7 +329,7 @@ class TestResolveProviderClientAzureFoundry:
     ):
         """When azure-foundry is requested but cannot be resolved
         (e.g. no model + no key), we return (None, None) and log a
-        clear warning pointing at ``hermes doctor``."""
+        clear warning pointing at ``vermes doctor``."""
         import logging
         from agent.auxiliary_client import resolve_provider_client
 
@@ -345,6 +345,6 @@ class TestResolveProviderClientAzureFoundry:
         assert client is None
         assert resolved is None
         assert any(
-            "azure-foundry" in rec.message and "hermes doctor" in rec.message
+            "azure-foundry" in rec.message and "vermes doctor" in rec.message
             for rec in caplog.records
         )

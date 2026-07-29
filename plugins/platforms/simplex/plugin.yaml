@@ -3,7 +3,7 @@ label: SimpleX Chat
 kind: platform
 version: 1.0.0
 description: >
-  SimpleX Chat gateway adapter for Hermes Agent.
+  SimpleX Chat gateway adapter for Vermes.
   Connects to a local simplex-chat daemon via WebSocket and relays
   messages between SimpleX contacts/groups and the Hermes agent.
   SimpleX is decentralised and assigns no persistent user IDs —
@@ -11,7 +11,7 @@ description: >
   time, making it one of the most private messengers available.
 author: Mibayy
 # ``requires_env`` and ``optional_env`` entries are surfaced in the
-# ``hermes config`` UI via the platform-plugin env var injector in
+# ``vermes config`` UI via the platform-plugin env var injector in
 # ``vermes_cli/config.py``.
 requires_env:
   - name: SIMPLEX_WS_URL

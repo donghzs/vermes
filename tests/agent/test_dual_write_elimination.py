@@ -204,7 +204,7 @@ class TestSeedData:
 
 
 # ---------------------------------------------------------------------------
-# Hermes data redundancy audit fixes (2026-07-15)
+# Vermes data redundancy audit fixes (2026-07-15)
 # ---------------------------------------------------------------------------
 
 class TestZombieTableElimination:

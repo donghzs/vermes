@@ -490,7 +490,7 @@ class TestMigrate:
     def test_expose_hermes_tools_writes_callback_mcp_entry(self, tmp_path):
         """When expose_hermes_tools=True (production default), an
         [mcp_servers.hermes-tools] entry is written so codex calls back
-        into Hermes for browser/web/delegate_task/vision/memory tools.
+        into Vermes for browser/web/delegate_task/vision/memory tools.
 
         This is the fix for 'all other tools that codex doesn't provide
         should be useable by hermes' — quirk #7."""
@@ -576,7 +576,7 @@ class TestMigrate:
         assert MIGRATION_MARKER in new_text
 
     def test_managed_root_keys_stay_top_level_when_config_ends_in_table(self, tmp_path):
-        """TOML has no explicit 'leave current table' syntax. If Hermes appends
+        """TOML has no explicit 'leave current table' syntax. If Vermes appends
         root keys like default_permissions after a user table such as [features],
         Codex parses them as features.default_permissions and rejects the config.
         The managed block must therefore be inserted before the first table."""
@@ -598,7 +598,7 @@ class TestMigrate:
 
     def test_preserves_user_mcp_server_outside_managed_block(self, tmp_path):
         """Quirk #6: when a user adds their own MCP server entry directly
-        to ~/.codex/config.toml outside Hermes' managed block, re-running
+        to ~/.codex/config.toml outside Vermes' managed block, re-running
         migration must preserve it. Tested both above and below the
         managed block."""
         target = tmp_path / "config.toml"

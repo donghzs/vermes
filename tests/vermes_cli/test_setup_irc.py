@@ -1,7 +1,7 @@
-"""Tests for IRC gateway configuration via `hermes setup gateway` UI.
+"""Tests for IRC gateway configuration via `vermes setup gateway` UI.
 
 Covers the full plugin-platform discovery → status → configure flow so that
-a fresh Hermes install (no state, no env vars) can set up IRC through the
+a fresh Vermes install (no state, no env vars) can set up IRC through the
 interactive setup menus.
 """
 
@@ -57,7 +57,7 @@ def _unregister_irc_platform():
 
 
 class TestIRCFreshInstallDiscovery:
-    """IRC appears in the setup menu on a brand-new Hermes install."""
+    """IRC appears in the setup menu on a brand-new Vermes install."""
 
     def test_irc_appears_in_all_platforms(self, monkeypatch):
         """When the IRC plugin is registered, _all_platforms() surfaces it."""
@@ -170,7 +170,7 @@ class TestIRCInteractiveSetup:
 
 
 class TestIRCGatewaySetupFreshInstall:
-    """Simulate the full `hermes setup gateway` experience with IRC present."""
+    """Simulate the full `vermes setup gateway` experience with IRC present."""
 
     def test_setup_gateway_shows_irc_in_platform_menu(self, monkeypatch, capsys, tmp_path):
         """The gateway setup menu lists IRC among the available platforms."""

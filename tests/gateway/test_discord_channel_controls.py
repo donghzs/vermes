@@ -56,7 +56,7 @@ class FakeDMChannel:
 
 
 class FakeTextChannel:
-    def __init__(self, channel_id: int = 1, name: str = "general", guild_name: str = "Hermes Server"):
+    def __init__(self, channel_id: int = 1, name: str = "general", guild_name: str = "Vermes Server"):
         self.id = channel_id
         self.name = name
         self.guild = SimpleNamespace(name=guild_name)
@@ -64,7 +64,7 @@ class FakeTextChannel:
 
 
 class FakeThread:
-    def __init__(self, channel_id: int = 1, name: str = "thread", parent=None, guild_name: str = "Hermes Server"):
+    def __init__(self, channel_id: int = 1, name: str = "thread", parent=None, guild_name: str = "Vermes Server"):
         self.id = channel_id
         self.name = name
         self.parent = parent

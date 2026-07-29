@@ -1,11 +1,11 @@
 """Tests for subprocess env sanitization in LocalEnvironment.
 
-Verifies that Hermes-managed provider, tool, and gateway env vars are
+Verifies that Vermes-managed provider, tool, and gateway env vars are
 stripped from subprocess environments so external CLIs are not silently
-misrouted or handed Hermes secrets.
+misrouted or handed Vermes secrets.
 
-See: https://github.com/NousResearch/hermes-agent/issues/1002
-See: https://github.com/NousResearch/hermes-agent/issues/1264
+See: https://github.com/NousResearch/vermes-agent/issues/1002
+See: https://github.com/NousResearch/vermes-agent/issues/1264
 """
 
 import os
@@ -57,7 +57,7 @@ def _run_with_env(extra_os_env=None, self_env=None):
 
 
 class TestProviderEnvBlocklist:
-    """Provider env vars loaded from ~/.hermes/.env must not leak."""
+    """Provider env vars loaded from ~/.vermes/.env must not leak."""
 
     def test_blocked_vars_are_stripped(self):
         """OPENAI_BASE_URL and other provider vars must not appear in subprocess env."""

@@ -1,6 +1,6 @@
 """Tests for cmd_update gateway auto-restart — systemd + launchd coverage.
 
-Ensures ``hermes update`` correctly detects running gateways managed by
+Ensures ``vermes update`` correctly detects running gateways managed by
 systemd (Linux) or launchd (macOS) and restarts/informs the user properly,
 rather than leaving zombie processes or telling users to manually restart
 when launchd will auto-respawn.
@@ -73,13 +73,13 @@ def _make_run_side_effect(
             if "--user" in joined and systemd_active:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded active running Hermes Gateway\n",
+                    stdout="hermes-gateway.service loaded active running Vermes Gateway\n",
                     stderr="",
                 )
             elif "--user" not in joined and system_service_active:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded active running Hermes Gateway\n",
+                    stdout="hermes-gateway.service loaded active running Vermes Gateway\n",
                     stderr="",
                 )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -341,7 +341,7 @@ class TestCmdUpdateLaunchdRestart:
         self, mock_run, _mock_which, mock_args, capsys, tmp_path, monkeypatch,
     ):
         """When launchd is running the gateway, update should print
-        'auto-restart via launchd' instead of 'Restart it with: hermes gateway run'."""
+        'auto-restart via launchd' instead of 'Restart it with: vermes gateway run'."""
         # Create a fake launchd plist so is_macos + plist.exists() passes
         plist_path = tmp_path / "ai.vermes.gateway.plist"
         plist_path.write_text("<plist/>")
@@ -365,7 +365,7 @@ class TestCmdUpdateLaunchdRestart:
 
         captured = capsys.readouterr().out
         assert "Restarted" in captured
-        assert "Restart manually: hermes gateway run" not in captured
+        assert "Restart manually: vermes gateway run" not in captured
         mock_launchd_restart.assert_called_once_with()
 
     @patch("shutil.which", return_value=None)
@@ -394,7 +394,7 @@ class TestCmdUpdateLaunchdRestart:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Restart manually: hermes gateway run" in captured
+        assert "Restart manually: vermes gateway run" in captured
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
@@ -438,7 +438,7 @@ class TestCmdUpdateLaunchdRestart:
         # Graceful drain succeeded — no SIGTERM fallback needed.
         kill.assert_not_called()
         assert "Restarting manual gateway profile(s): coder" in captured
-        assert "Restart manually: hermes gateway run" not in captured
+        assert "Restart manually: vermes gateway run" not in captured
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
@@ -845,7 +845,7 @@ class TestCmdUpdateSystemService:
 class TestServicePidExclusion:
     """After restarting a service, the stale-process sweep must NOT kill
     the freshly-spawned service PID.  This was the root cause of the bug
-    where ``hermes update`` would restart the gateway and immediately kill it.
+    where ``vermes update`` would restart the gateway and immediately kill it.
     """
 
     @patch("shutil.which", return_value=None)
@@ -1003,7 +1003,7 @@ class TestGetServicePids:
             if "list-units" in joined:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded active running Hermes Gateway\n",
+                    stdout="hermes-gateway.service loaded active running Vermes Gateway\n",
                     stderr="",
                 )
             if "show" in joined and "MainPID" in joined:
@@ -1053,7 +1053,7 @@ class TestGetServicePids:
             if "list-units" in joined:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded inactive dead Hermes Gateway\n",
+                    stdout="hermes-gateway.service loaded inactive dead Vermes Gateway\n",
                     stderr="",
                 )
             if "show" in joined and "MainPID" in joined:
@@ -1134,8 +1134,8 @@ class TestFindGatewayPidsExclude:
             return subprocess.CompletedProcess(
                 cmd, 0,
                 stdout=(
-                    "100 /Users/dgrieco/.hermes/hermes-agent/venv/bin/python -m vermes_cli.main --profile orcha gateway run --replace\n"
-                    "200 /Users/dgrieco/.hermes/hermes-agent/venv/bin/python -m vermes_cli.main --profile other gateway run --replace\n"
+                    "100 /Users/dgrieco/.hermes/vermes-agent/venv/bin/python -m vermes_cli.main --profile orcha gateway run --replace\n"
+                    "200 /Users/dgrieco/.hermes/vermes-agent/venv/bin/python -m vermes_cli.main --profile other gateway run --replace\n"
                 ),
                 stderr="",
             )
@@ -1156,7 +1156,7 @@ class TestFindGatewayPidsExclude:
 
 
 class TestGatewayModeWritesExitCodeEarly:
-    """When running as ``hermes update --gateway``, the exit code marker must be
+    """When running as ``vermes update --gateway``, the exit code marker must be
     written *before* the gateway restart attempt.  Without this, systemd's
     ``KillMode=mixed`` kills the update process (and its wrapping shell) during
     the cgroup teardown, so the shell epilogue that normally writes the exit
@@ -1268,17 +1268,17 @@ class TestGatewayModeWritesExitCodeEarly:
 
 
 class TestCmdUpdateLegacyGatewayWarning:
-    """Tests for the legacy hermes.service warning printed by `hermes update`.
+    """Tests for the legacy hermes.service warning printed by `vermes update`.
 
-    Users who installed Hermes before the service rename often have a
+    Users who installed Vermes before the service rename often have a
     dormant ``hermes.service`` that starts flap-fighting the current
-    ``hermes-gateway.service`` after PR #5646. Every ``hermes update``
-    should remind them to run ``hermes gateway migrate-legacy`` until
+    ``hermes-gateway.service`` after PR #5646. Every ``vermes update``
+    should remind them to run ``vermes gateway migrate-legacy`` until
     they do.
     """
 
     _OUR_UNIT_TEXT = (
-        "[Unit]\nDescription=Hermes Gateway\n[Service]\n"
+        "[Unit]\nDescription=Vermes Gateway\n[Service]\n"
         "ExecStart=/usr/bin/python -m vermes_cli.main gateway run --replace\n"
     )
 
@@ -1310,9 +1310,9 @@ class TestCmdUpdateLegacyGatewayWarning:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Legacy Hermes gateway unit(s) detected" in captured
+        assert "Legacy Vermes gateway unit(s) detected" in captured
         assert "hermes.service" in captured
-        assert "hermes gateway migrate-legacy" in captured
+        assert "vermes gateway migrate-legacy" in captured
         assert "(user scope)" in captured
 
     @patch("shutil.which", return_value=None)
@@ -1341,7 +1341,7 @@ class TestCmdUpdateLegacyGatewayWarning:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Legacy Hermes gateway" not in captured
+        assert "Legacy Vermes gateway" not in captured
         assert "migrate-legacy" not in captured
 
     @patch("shutil.which", return_value=None)
@@ -1381,7 +1381,7 @@ class TestCmdUpdateLegacyGatewayWarning:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Legacy Hermes gateway" not in captured
+        assert "Legacy Vermes gateway" not in captured
         assert "hermes-gateway-coder.service" not in captured  # not flagged
 
     @patch("shutil.which", return_value=None)
@@ -1413,7 +1413,7 @@ class TestCmdUpdateLegacyGatewayWarning:
 
         captured = capsys.readouterr().out
         # Must not print the warning on non-systemd platforms
-        assert "Legacy Hermes gateway" not in captured
+        assert "Legacy Vermes gateway" not in captured
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
@@ -1442,7 +1442,7 @@ class TestCmdUpdateLegacyGatewayWarning:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Legacy Hermes gateway" in captured
+        assert "Legacy Vermes gateway" in captured
         assert "(system scope)" in captured
         assert "sudo" in captured
 
@@ -1464,12 +1464,12 @@ def _systemctl_calls(mock_run, subcommand):
 
 
 class TestCmdUpdateResetFailedBeforeRestart:
-    """`hermes update` must call `systemctl reset-failed` before every
+    """`vermes update` must call `systemctl reset-failed` before every
     fallback `systemctl restart` so a systemd-parked `failed` state from
     earlier auto-restart crashes (CHDIR, OOM, filesystem race) doesn't
     permanently strand the unit.
 
-    Mirrors the recovery pattern `hermes gateway restart` (systemd_restart)
+    Mirrors the recovery pattern `vermes gateway restart` (systemd_restart)
     adopted in PR #20949.  Without this, users hit "gateway never comes
     back after update" until they manually run `systemctl reset-failed`.
     """

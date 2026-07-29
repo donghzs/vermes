@@ -1475,7 +1475,7 @@ class TestSchemaInit:
     def test_topic_mode_schema_is_not_auto_migrated_on_open(self, tmp_path):
         """Opening an old DB should not add topic-mode columns until /topic opts in.
 
-        The gateway must remain rollback-safe: simply upgrading Hermes and starting
+        The gateway must remain rollback-safe: simply upgrading Vermes and starting
         the old bot should not eagerly mutate the state DB for this feature.
         """
         old_db = tmp_path / "old.db"

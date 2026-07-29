@@ -1,6 +1,6 @@
 """Tests for the OAuth manual-paste fallback for browser-only remotes.
 
-Regression coverage for [#26923](https://github.com/NousResearch/hermes-agent/issues/26923):
+Regression coverage for [#26923](https://github.com/NousResearch/vermes-agent/issues/26923):
 GCP Cloud Shell, GitHub Codespaces, AWS EC2 Instance Connect and
 other browser-only remote consoles can't reach the
 ``http://127.0.0.1:56121/callback`` loopback listener bound on the
@@ -256,8 +256,8 @@ def test_xai_loopback_login_manual_paste_skips_http_server(monkeypatch):
     captured_state: dict = {}
 
     def _fake_prompt(_redirect_uri):
-        # Hermes generates state internally; we won't know it ahead of
-        # time, so capture the state Hermes baked into the authorize
+        # Vermes generates state internally; we won't know it ahead of
+        # time, so capture the state Vermes baked into the authorize
         # URL via a sneak peek on ``_xai_oauth_build_authorize_url``.
         return {
             "code": "fake-auth-code",

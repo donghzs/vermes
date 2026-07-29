@@ -2,7 +2,7 @@
 
 Connects to a self-hosted (or cloud) Mattermost instance via its REST API
 (v4) and WebSocket for real-time events.  No external Mattermost library
-required — uses aiohttp which is already a Hermes dependency.
+required — uses aiohttp which is already a Vermes dependency.
 
 Environment variables:
     MATTERMOST_URL              Server URL (e.g. https://mm.example.com)

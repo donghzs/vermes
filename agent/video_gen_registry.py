@@ -13,7 +13,7 @@ If unset, :func:`get_active_provider` applies fallback logic:
 
 1. If exactly one provider is registered, use it.
 2. Otherwise return ``None`` (the tool surfaces a helpful error pointing
-   the user at ``hermes tools``).
+   the user at ``vermes tools``).
 
 Mirrors ``agent/image_gen_registry.py`` so the two surfaces behave the
 same.

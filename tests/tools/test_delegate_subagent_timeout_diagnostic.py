@@ -2,7 +2,7 @@
 
 When delegate_task's child subagent times out without having made any API
 call, a structured diagnostic file is written under
-``~/.hermes/logs/subagent-timeout-<sid>-<ts>.log``. This gives users a
+``~/.vermes/logs/subagent-timeout-<sid>-<ts>.log``. This gives users a
 concrete artifact to inspect (worker thread stack, system prompt size,
 tool schema bytes, credential pool state, etc.) instead of the previous
 opaque "subagent timed out" error.

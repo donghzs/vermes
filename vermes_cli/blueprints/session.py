@@ -143,7 +143,7 @@ async def send_from_desktop(session_id: str, request: Request):
     - 不 append_message（gateway 管线自己落 user/assistant 消息，避免双写）；
     - 拒绝 source='web'（web 会话 relay 会绕回 web 进程形成环路）。
     认证：/api/sessions/* 非公开路径，web_server auth_middleware 已强制
-    X-Hermes-Session-Token（即设计中的桌面 token 护栏）。
+    X-Vermes-Session-Token（即设计中的桌面 token 护栏）。
     """
     from vermes_state import SessionDB
 
@@ -167,7 +167,7 @@ async def send_from_desktop(session_id: str, request: Request):
             )
         # token 仅作 provenance 留痕落库（desktop_token 列）；真正的防伪造
         # 护栏是 auth_middleware 的 401（gateway 跨进程无 _SESSION_TOKEN 可验）。
-        token = request.headers.get("X-Hermes-Session-Token", "")
+        token = request.headers.get("X-Vermes-Session-Token", "")
         if not db.request_desktop_relay(sid, text, token, ttl=300.0):
             raise HTTPException(
                 status_code=409,

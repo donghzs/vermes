@@ -436,11 +436,11 @@ class TestEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# Hermes audit fixes: initiator, backup cleanup, self_validator integration
+# Vermes audit fixes: initiator, backup cleanup, self_validator integration
 # ---------------------------------------------------------------------------
 
 class TestInitiatorField:
-    """Tests for the initiator field (Hermes audit issue #1).
+    """Tests for the initiator field (Vermes audit issue #1).
 
     The initiator field distinguishes who triggered a change/rollback:
     - 'agent': Agent decided on its own
@@ -490,7 +490,7 @@ class TestInitiatorField:
 
 
 class TestBackupCleanup:
-    """Tests for backup cleanup (Hermes audit issue #3).
+    """Tests for backup cleanup (Vermes audit issue #3).
 
     MAX_BACKUPS_PER_FILE = 5 ensures old backups are pruned.
     """
@@ -550,7 +550,7 @@ class TestBackupCleanup:
 
 
 class TestSelfValidatorIntegration:
-    """Tests that emergent_change delegates to self_validator (Hermes audit issue #2).
+    """Tests that emergent_change delegates to self_validator (Vermes audit issue #2).
 
     _validate_file_format should call self_validator.get_format_validator(),
     not be an independent inline implementation.

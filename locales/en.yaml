@@ -1,4 +1,4 @@
-# Hermes static-message catalog -- English (baseline / source of truth)
+# Vermes static-message catalog -- English (baseline / source of truth)
 #
 # Only user-facing static messages from the CLI approval prompt and a handful
 # of gateway slash-command replies live here.  Agent-generated output, log
@@ -113,8 +113,8 @@ gateway:
     upload_failed:         "✗ Failed to upload debug report: {error}"
     header:                "**Debug report uploaded:**"
     auto_delete:           "⏱ Pastes will auto-delete in 6 hours."
-    full_logs_hint:        "For full log uploads, use `hermes debug share` from the CLI."
-    share_hint:            "Share these links with the Hermes team for support."
+    full_logs_hint:        "For full log uploads, use `vermes debug share` from the CLI."
+    share_hint:            "Share these links with the Vermes team for support."
 
   deny:
     stale:                 "❌ Command denied (approval was stale)."
@@ -151,7 +151,7 @@ gateway:
     set:                   "⊙ Goal set ({budget}-turn budget): {goal}\nI'll keep working until the goal is done, you pause/clear it, or the budget is exhausted.\nControls: /goal status · /goal pause · /goal resume · /goal clear"
 
   help:
-    header:                "📖 **Hermes Commands**\n"
+    header:                "📖 **Vermes Commands**\n"
     skill_header:          "\n⚡ **Skill Commands** ({count} active):"
     more_use_commands:     "\n... and {count} more. Use `/commands` for the full paginated list."
 
@@ -162,7 +162,7 @@ gateway:
   kanban:
     error_prefix:          "⚠ kanban error: {error}"
     subscribed_suffix:     "(subscribed — you'll be notified when {task_id} completes or blocks)"
-    truncated_suffix:      "… (truncated; use `hermes kanban …` in your terminal for full output)"
+    truncated_suffix:      "… (truncated; use `vermes kanban …` in your terminal for full output)"
     no_output:             "(no output)"
 
   personality:
@@ -230,7 +230,7 @@ gateway:
 
   restart:
     in_progress:           "⏳ Gateway restart already in progress..."
-    restarting:            "♻ Restarting gateway. If you aren't notified within 60 seconds, restart from the console with `hermes gateway restart`."
+    restarting:            "♻ Restarting gateway. If you aren't notified within 60 seconds, restart from the console with `vermes gateway restart`."
 
   resume:
     db_unavailable:        "Session database not available."
@@ -262,7 +262,7 @@ gateway:
     success:               "✅ Home channel set to **{name}** (ID: {chat_id}).\nCron jobs and cross-platform messages will be delivered here."
 
   status:
-    header:                "📊 **Hermes Gateway Status**"
+    header:                "📊 **Vermes Gateway Status**"
     session_id:            "**Session ID:** `{session_id}`"
     title:                 "**Title:** {title}"
     created:               "**Created:** {timestamp}"
@@ -297,7 +297,7 @@ gateway:
     topics_user_disallowed:  "Telegram topics are enabled, but users are not allowed to create topics.\n\nOpen @BotFather → choose your bot → Bot Settings → Threads Settings, then turn off 'Disallow users to create new threads'.\n\nThen send /topic again."
     enable_failed:           "Failed to enable Telegram topic mode: {error}"
     bound_status:            "This topic is linked to:\nSession: {label}\nID: {session_id}\n\nUse /new to replace this topic with a fresh session.\nFor parallel work, open All Messages and send a message there to create another topic."
-    thread_ready:            "Telegram multi-session topics are enabled.\n\nThis topic will be used as an independent Hermes session. Use /new to replace this topic's current session. For parallel work, open All Messages and send a message there to create another topic."
+    thread_ready:            "Telegram multi-session topics are enabled.\n\nThis topic will be used as an independent Vermes session. Use /new to replace this topic's current session. For parallel work, open All Messages and send a message there to create another topic."
     untitled_session:        "Untitled session"
 
   undo:
@@ -305,11 +305,11 @@ gateway:
     removed:               "↩️ Undid {count} message(s).\nRemoved: \"{preview}\""
 
   update:
-    platform_not_messaging:  "✗ /update is only available from messaging platforms. Run `hermes update` from the terminal."
+    platform_not_messaging:  "✗ /update is only available from messaging platforms. Run `vermes update` from the terminal."
     not_git_repo:            "✗ Not a git repository — cannot update."
-    hermes_cmd_not_found:    "✗ Could not locate the `hermes` command. Hermes is running, but the update command could not find the executable on PATH or via the current Python interpreter. Try running `hermes update` manually in your terminal."
+    vermes_cmd_not_found:    "✗ Could not locate the `vermes` command. Vermes is running, but the update command could not find the executable on PATH or via the current Python interpreter. Try running `vermes update` manually in your terminal."
     start_failed:            "✗ Failed to start update: {error}"
-    starting:                "⚕ Starting Hermes update… I'll stream progress here."
+    starting:                "⚕ Starting Vermes update… I'll stream progress here."
 
   usage:
     rate_limits:              "⏱️ **Rate Limits:** {state}"

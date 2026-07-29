@@ -22,7 +22,7 @@ from agent.transports.types import NormalizedResponse, ToolCall, Usage
 
 
 def _build_gemini_thinking_config(model: str, reasoning_config: dict | None) -> dict | None:
-    """Translate Hermes/OpenRouter-style reasoning config to Gemini thinkingConfig."""
+    """Translate Vermes/OpenRouter-style reasoning config to Gemini thinkingConfig."""
     if reasoning_config is None or not isinstance(reasoning_config, dict):
         return None
 
@@ -49,7 +49,7 @@ def _build_gemini_thinking_config(model: str, reasoning_config: dict | None) -> 
 
     thinking_config: Dict[str, Any] = {"includeThoughts": True}
 
-    # Gemini 2.5 accepts thinkingBudget; don't guess a budget from Hermes'
+    # Gemini 2.5 accepts thinkingBudget; don't guess a budget from Vermes'
     # coarse effort levels. ``includeThoughts`` alone is enough to surface
     # thought parts without risking request validation errors.
     if normalized_model.startswith("gemini-2.5-"):
@@ -59,7 +59,7 @@ def _build_gemini_thinking_config(model: str, reasoning_config: dict | None) -> 
         effort = "medium"
 
     # Gemini 3 Flash documents low/medium/high thinking levels; Gemini 3 Pro
-    # is stricter (low/high). Clamp Hermes' wider effort set to what each
+    # is stricter (low/high). Clamp Vermes' wider effort set to what each
     # family accepts so we never forward an undocumented level verbatim.
     if normalized_model.startswith(("gemini-3", "gemini-3.1")):
         if "flash" in normalized_model:
@@ -157,7 +157,7 @@ class ChatCompletionsTransport(ProviderTransport):
             msg.pop("codex_message_items", None)
             msg.pop("tool_name", None)
             msg.pop("timestamp", None)  # #47868 — leak into strict providers
-            # Drop all Hermes-internal scaffolding markers (``_``-prefixed).
+            # Drop all Vermes-internal scaffolding markers (``_``-prefixed).
             # OpenAI's message schema has no ``_``-prefixed fields, so this
             # is safe and future-proofs against new markers being added.
             for key in [k for k in msg if isinstance(k, str) and k.startswith("_")]:

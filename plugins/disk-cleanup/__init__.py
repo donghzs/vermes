@@ -1,4 +1,4 @@
-"""disk-cleanup plugin — auto-cleanup of ephemeral Hermes session files.
+"""disk-cleanup plugin — auto-cleanup of ephemeral Vermes session files.
 
 Wires three behaviours:
 
@@ -312,5 +312,5 @@ def register(ctx) -> None:
     ctx.register_command(
         "disk-cleanup",
         handler=_handle_slash,
-        description="Track and clean up ephemeral Hermes session files.",
+        description="Track and clean up ephemeral Vermes session files.",
     )

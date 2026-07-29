@@ -1,12 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from cli import HermesCLI, _rich_text_from_ansi
+from cli import VermesCLI, _rich_text_from_ansi
 from vermes_cli.skin_engine import get_active_skin, set_active_skin
 
 
 def _make_cli_stub():
-    cli = HermesCLI.__new__(HermesCLI)
+    cli = VermesCLI.__new__(VermesCLI)
     cli._sudo_state = None
     cli._secret_state = None
     cli._approval_state = None
@@ -53,7 +53,7 @@ class TestCliSkinPromptIntegration:
         cli = _make_cli_stub()
         cli._voice_mode = True
 
-        with patch.object(HermesCLI, "_get_tui_terminal_width", return_value=50):
+        with patch.object(VermesCLI, "_get_tui_terminal_width", return_value=50):
             assert cli._get_tui_prompt_fragments() == [("class:voice-prompt", "🎤 ")]
 
     def test_narrow_terminals_compact_voice_recording_prompt_fragments(self):
@@ -61,7 +61,7 @@ class TestCliSkinPromptIntegration:
         cli._voice_recording = True
         cli._voice_recorder = SimpleNamespace(current_rms=3000)
 
-        with patch.object(HermesCLI, "_get_tui_terminal_width", return_value=50):
+        with patch.object(VermesCLI, "_get_tui_terminal_width", return_value=50):
             frags = cli._get_tui_prompt_fragments()
 
         assert frags[0][0] == "class:voice-recording"

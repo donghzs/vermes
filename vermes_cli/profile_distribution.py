@@ -1,6 +1,6 @@
-"""Profile distributions — shareable, packaged Hermes profiles via git.
+"""Profile distributions — shareable, packaged Vermes profiles via git.
 
-A distribution is a Hermes profile published as a git repository (or
+A distribution is a Vermes profile published as a git repository (or
 installed from a local directory for development). Install with one command
 from a git URL, update in place, and keep your local memories / sessions /
 credentials untouched.
@@ -9,7 +9,7 @@ Where this fits relative to the existing pieces:
 
 * ``hermes profile export/import`` — local backup / restore for a profile
   on your own machine. NOT a distribution format. Stays as-is.
-* ``hermes skills install <url>`` — the URL install pattern we're mirroring,
+* ``vermes skills install <url>`` — the URL install pattern we're mirroring,
   but at the profile granularity.
 
 Subcommands (all live under ``hermes profile``, not a parallel tree):
@@ -111,7 +111,7 @@ USER_OWNED_EXCLUDE: frozenset = frozenset({
     "browser_screenshots", "checkpoints", "sandboxes",
     "backups", "cache",
     # Infrastructure
-    "hermes-agent", ".worktrees", "profiles", "bin", "node_modules",
+    "vermes-agent", ".worktrees", "profiles", "bin", "node_modules",
     # User customization namespace
     "local",
 })
@@ -320,7 +320,7 @@ def check_hermes_requires(spec: str, current_version: str) -> None:
     }[op]
     if not ok:
         raise DistributionError(
-            f"This distribution requires Hermes {op}{target}, "
+            f"This distribution requires Vermes {op}{target}, "
             f"but you have {current_version}."
         )
 
@@ -333,7 +333,7 @@ def check_hermes_requires(spec: str, current_version: str) -> None:
 def _env_template_from_manifest(manifest: DistributionManifest) -> str:
     """Generate a ``.env.template`` body from env_requires."""
     lines = [
-        "# Environment variables required by this Hermes distribution.",
+        "# Environment variables required by this Vermes distribution.",
         "# Copy to `.env` and fill in your own values before running.",
         "",
     ]
@@ -410,7 +410,7 @@ def _stage_source(source: str, workdir: Path) -> Tuple[Path, str]:
         if not (cloned / MANIFEST_FILENAME).is_file():
             raise DistributionError(
                 f"No {MANIFEST_FILENAME} at the root of {src_str!r}. "
-                "This repository is not a Hermes profile distribution."
+                "This repository is not a Vermes profile distribution."
             )
         return cloned, src_str
 
@@ -484,7 +484,7 @@ def plan_install(
     if manifest is None:
         raise DistributionError(
             f"No {MANIFEST_FILENAME} found at the distribution root — "
-            "this source is not a Hermes distribution."
+            "this source is not a Vermes distribution."
         )
 
     # Version check up-front so we fail fast

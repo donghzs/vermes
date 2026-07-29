@@ -124,8 +124,8 @@ def cron_list(show_all: bool = False):
     from vermes_cli.gateway import find_gateway_pids
     if not find_gateway_pids():
         logger.info(color("  ⚠  Gateway is not running — jobs won't fire automatically.", Colors.YELLOW))
-        logger.info(color("     Start it with: hermes gateway install", Colors.DIM))
-        logger.info(color("                    sudo hermes gateway install --system  # Linux servers", Colors.DIM))
+        logger.info(color("     Start it with: vermes gateway install", Colors.DIM))
+        logger.info(color("                    sudo vermes gateway install --system  # Linux servers", Colors.DIM))
         logger.info()
 
 
@@ -150,9 +150,9 @@ def cron_status():
         logger.info(color("✗ Gateway is not running — cron jobs will NOT fire", Colors.RED))
         logger.info()
         logger.info("  To enable automatic execution:")
-        logger.info("    hermes gateway install    # Install as a user service")
-        logger.info("    sudo hermes gateway install --system  # Linux servers: boot-time system service")
-        logger.info("    hermes gateway            # Or run in foreground")
+        logger.info("    vermes gateway install    # Install as a user service")
+        logger.info("    sudo vermes gateway install --system  # Linux servers: boot-time system service")
+        logger.info("    vermes gateway            # Or run in foreground")
 
     logger.info()
 

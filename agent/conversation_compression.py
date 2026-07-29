@@ -121,7 +121,7 @@ def check_compression_model_feasibility(agent: Any) -> None:
                 msg = (
                     "⚠ 未配置辅助 LLM 服务商 —— 上下文压缩将直接丢弃"
                     "中间轮次且不生成摘要。"
-                    "请运行 `hermes setup` 或设置 OPENROUTER_API_KEY。"
+                    "请运行 `vermes setup` 或设置 OPENROUTER_API_KEY。"
                 )
             agent._compression_warning = msg
             agent._emit_status(msg)
@@ -164,7 +164,7 @@ def check_compression_model_feasibility(agent: Any) -> None:
             raise ValueError(
                 f"Auxiliary compression model {aux_model} has a context "
                 f"window of {aux_context:,} tokens, which is below the "
-                f"minimum {MINIMUM_CONTEXT_LENGTH:,} required by Hermes "
+                f"minimum {MINIMUM_CONTEXT_LENGTH:,} required by Vermes "
                 f"Agent.  Choose a compression model with at least "
                 f"{MINIMUM_CONTEXT_LENGTH // 1000}K context (set "
                 f"auxiliary.compression.model in config.yaml), or set "
@@ -403,7 +403,7 @@ def compress_context(
                     "compression lock subsystem unavailable for session=%s "
                     "(%s: %s) — proceeding without lock. This usually means a "
                     "stale in-memory module after an update; restart the "
-                    "process (or `hermes update`) to resync.",
+                    "process (or `vermes update`) to resync.",
                     _lock_sid, type(_lock_err).__name__, _lock_err,
                 )
             _lock_acquired = True  # treat as acquired-but-unlocked; proceed

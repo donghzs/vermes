@@ -92,7 +92,7 @@ class TestFetchOpenRouterModels:
     def test_filters_out_models_without_tool_support(self, monkeypatch):
         """Models whose supported_parameters omits 'tools' must not appear in the picker.
 
-        hermes-agent is tool-calling-first — surfacing a non-tool model leads to
+        vermes-agent is tool-calling-first — surfacing a non-tool model leads to
         immediate runtime failures when the user selects it. Ported from
         Kilo-Org/kilocode#9068.
         """

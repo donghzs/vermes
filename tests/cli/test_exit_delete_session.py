@@ -10,13 +10,13 @@ from unittest.mock import MagicMock
 
 
 def _make_cli():
-    """Bare HermesCLI suitable for process_command() tests.
+    """Bare VermesCLI suitable for process_command() tests.
 
     Uses ``__new__`` to skip the heavy __init__; only sets the attributes
     the /exit branch touches.
     """
-    from cli import HermesCLI
-    cli = HermesCLI.__new__(HermesCLI)
+    from cli import VermesCLI
+    cli = VermesCLI.__new__(VermesCLI)
     cli.config = {}
     cli.console = MagicMock()
     cli.agent = None

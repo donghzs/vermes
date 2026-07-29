@@ -4,7 +4,7 @@ Before the fix, ``hermes whatsapp`` wrote ``WHATSAPP_ENABLED=true`` at
 step 2 — before npm install (step 4) and before QR pairing (step 6).
 If the user Ctrl+C'd at any later step, ``.env`` claimed WhatsApp was
 ready when the bridge still had no ``creds.json``.  Every subsequent
-``hermes gateway`` then paid a 30s bridge-bootstrap timeout and queued
+``vermes gateway`` then paid a 30s bridge-bootstrap timeout and queued
 WhatsApp for indefinite retries — looking like "the gateway is broken."
 
 The fix: only set ``WHATSAPP_ENABLED=true`` once pairing actually

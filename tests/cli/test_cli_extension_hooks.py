@@ -1,4 +1,4 @@
-"""Tests for protected HermesCLI TUI extension hooks.
+"""Tests for protected VermesCLI TUI extension hooks.
 
 Verifies that wrapper CLIs can extend the TUI via:
   - _get_extra_tui_widgets()
@@ -17,7 +17,7 @@ from prompt_toolkit.key_binding import KeyBindings
 
 
 def _make_cli(**kwargs):
-    """Create a HermesCLI with prompt_toolkit stubs (same pattern as test_cli_init)."""
+    """Create a VermesCLI with prompt_toolkit stubs (same pattern as test_cli_init)."""
     _clean_config = {
         "model": {
             "default": "anthropic/claude-opus-4.6",
@@ -55,7 +55,7 @@ def _make_cli(**kwargs):
         with patch.object(_cli_mod, "get_tool_definitions", return_value=[]), patch.dict(
             _cli_mod.__dict__, {"CLI_CONFIG": _clean_config}
         ):
-            return _cli_mod.HermesCLI(**kwargs)
+            return _cli_mod.VermesCLI(**kwargs)
 
 
 class TestExtensionHookDefaults:

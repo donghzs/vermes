@@ -65,7 +65,7 @@ def atomic_replace(tmp_path: Union[str, Path], target: Union[str, Path]) -> str:
     ``target``.  When ``target`` is a symlink, the symlink itself is
     replaced with a regular file — silently detaching managed deployments
     that symlink ``config.yaml`` / ``SOUL.md`` / ``auth.json`` etc. from
-    ``~/.hermes/`` to a git-tracked profile package or dotfiles repo
+    ``~/.vermes/`` to a git-tracked profile package or dotfiles repo
     (GitHub #16743).
 
     This helper resolves the symlink first so ``os.replace`` writes to

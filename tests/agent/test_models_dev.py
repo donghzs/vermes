@@ -254,7 +254,7 @@ class TestFetchModelsDev:
     @patch("agent.models_dev.requests.get")
     def test_force_refresh_skips_disk_cache(self, mock_get):
         """force_refresh=True bypasses BOTH the in-mem cache AND the
-        disk-cache fast path. Used by ``hermes config refresh`` and
+        disk-cache fast path. Used by ``vermes config refresh`` and
         anywhere else the user explicitly asked for fresh data.
         """
         import agent.models_dev as md

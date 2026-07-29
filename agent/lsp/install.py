@@ -1,7 +1,7 @@
 """Auto-installation of LSP server binaries.
 
 Tries to install missing servers using whatever package manager is
-appropriate.  All installs go to a Hermes-owned bin staging dir,
+appropriate.  All installs go to a Vermes-owned bin staging dir,
 ``<HERMES_HOME>/lsp/bin/``, so we don't pollute the user's global
 toolchain.
 
@@ -111,7 +111,7 @@ _install_lock_meta = threading.Lock()
 
 
 def hermes_lsp_bin_dir() -> Path:
-    """Return the Hermes-owned bin staging dir for LSP servers."""
+    """Return the Vermes-owned bin staging dir for LSP servers."""
     home = os.environ.get("HERMES_HOME")
     if home is None:
         home = os.path.join(os.path.expanduser("~"), ".hermes")

@@ -32,7 +32,7 @@ re-checks defensively).
 
 Providers live in ``<repo>/plugins/transcription/<name>/`` (built-in
 plugins, none shipped today) or
-``~/.hermes/plugins/transcription/<name>/`` (user-installed).
+``~/.vermes/plugins/transcription/<name>/`` (user-installed).
 
 Response contract
 -----------------
@@ -79,7 +79,7 @@ class TranscriptionProvider(abc.ABC):
 
     @property
     def display_name(self) -> str:
-        """Human-readable label shown in ``hermes tools``.
+        """Human-readable label shown in ``vermes tools``.
 
         Defaults to ``name.title()``.
         """
@@ -92,7 +92,7 @@ class TranscriptionProvider(abc.ABC):
         importable. Default: True (providers with no external
         dependencies are always available).
 
-        Must NOT raise — used by the picker and ``hermes setup`` for
+        Must NOT raise — used by the picker and ``vermes setup`` for
         availability displays and should fail gracefully.
         """
         return True
@@ -122,7 +122,7 @@ class TranscriptionProvider(abc.ABC):
         return None
 
     def get_setup_schema(self) -> Dict[str, Any]:
-        """Return provider metadata for the ``hermes tools`` picker.
+        """Return provider metadata for the ``vermes tools`` picker.
 
         Used by ``tools_config.py`` to inject this provider as a row in
         the Speech-to-Text provider list. Shape::

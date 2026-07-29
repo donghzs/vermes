@@ -195,7 +195,7 @@ def test_per_task_max_retries_overrides_dispatcher_limit(kanban_home, all_assign
 
     Three-tier resolution order:
       1. ``task.max_retries`` (set via ``create_task(max_retries=N)`` /
-         ``hermes kanban create --max-retries N``)
+         ``vermes kanban create --max-retries N``)
       2. ``failure_limit`` kwarg passed by the caller (gateway threads
          this from ``kanban.failure_limit`` config)
       3. ``DEFAULT_FAILURE_LIMIT``
@@ -1262,7 +1262,7 @@ def test_migration_renames_legacy_event_kinds(tmp_path, monkeypatch):
 
 def test_list_profiles_on_disk(tmp_path, monkeypatch):
     """list_profiles_on_disk returns the implicit default profile plus
-    named profiles under ~/.hermes/profiles/ that contain a config.yaml."""
+    named profiles under ~/.vermes/profiles/ that contain a config.yaml."""
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.delenv("HERMES_HOME", raising=False)
     profiles = tmp_path / ".hermes" / "profiles"
@@ -1365,7 +1365,7 @@ def test_parse_duration_rejects_garbage():
 
 
 def test_cli_create_max_runtime_via_duration(kanban_home):
-    """`hermes kanban create --max-runtime 2h` should persist 7200 seconds."""
+    """`vermes kanban create --max-runtime 2h` should persist 7200 seconds."""
     out = run_slash("create 'long task' --max-runtime 2h --json")
     data = json.loads(out)
     tid = data["id"]
@@ -2228,7 +2228,7 @@ def test_connect_auto_inits_fresh_db(tmp_path, monkeypatch):
 
 
 def test_cli_show_json_carries_runs(kanban_home):
-    """hermes kanban show --json must include runs[] so scripts that
+    """vermes kanban show --json must include runs[] so scripts that
     inspect attempt history don't need a separate 'runs' call."""
     conn = kb.connect()
     try:
@@ -3060,7 +3060,7 @@ def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monke
 
 
 def test_cli_create_skill_flag_repeatable(kanban_home):
-    """`hermes kanban create --skill a --skill b` persists the list."""
+    """`vermes kanban create --skill a --skill b` persists the list."""
     out = run_slash(
         "create 'multi-skill' --assignee linguist "
         "--skill translation --skill github-code-review --json"
@@ -3082,7 +3082,7 @@ def test_cli_create_without_skill_flag_leaves_none(kanban_home):
 
 
 def test_cli_show_renders_skills(kanban_home):
-    """`hermes kanban show <id>` prints a skills row when present."""
+    """`vermes kanban show <id>` prints a skills row when present."""
     out = run_slash(
         "create 'show-test' --assignee x "
         "--skill translation --json"
@@ -3389,7 +3389,7 @@ def test_check_dispatcher_presence_warns_when_no_gateway(monkeypatch):
     )
     running, msg = kb_cli._check_dispatcher_presence()
     assert running is False
-    assert "hermes gateway start" in msg
+    assert "vermes gateway start" in msg
 
 
 def test_check_dispatcher_presence_warns_when_flag_off(monkeypatch):
@@ -3442,7 +3442,7 @@ def test_cli_create_warns_when_no_gateway(kanban_home, monkeypatch, capsys):
     assert kb_cli._cmd_create(ns) == 0
     captured = capsys.readouterr()
     # Stderr has the warning prefix + guidance.
-    assert "hermes gateway start" in captured.err
+    assert "vermes gateway start" in captured.err
 
 
 def test_cli_create_silent_when_gateway_up(kanban_home, monkeypatch, capsys):
@@ -3456,7 +3456,7 @@ def test_cli_create_silent_when_gateway_up(kanban_home, monkeypatch, capsys):
     ns = _make_create_ns(title="silent", assignee="worker")
     assert kb_cli._cmd_create(ns) == 0
     captured = capsys.readouterr()
-    assert "hermes gateway start" not in captured.err
+    assert "vermes gateway start" not in captured.err
 
 
 def test_cli_create_no_warn_on_triage(kanban_home, monkeypatch, capsys):
@@ -3470,7 +3470,7 @@ def test_cli_create_no_warn_on_triage(kanban_home, monkeypatch, capsys):
     ns = _make_create_ns(title="triage-task", assignee=None, triage=True)
     assert kb_cli._cmd_create(ns) == 0
     err = capsys.readouterr().err
-    assert "hermes gateway start" not in err
+    assert "vermes gateway start" not in err
 
 
 def test_cli_create_no_warn_unassigned(kanban_home, monkeypatch, capsys):
@@ -3484,11 +3484,11 @@ def test_cli_create_no_warn_unassigned(kanban_home, monkeypatch, capsys):
     ns = _make_create_ns(title="nobody", assignee=None)
     assert kb_cli._cmd_create(ns) == 0
     err = capsys.readouterr().err
-    assert "hermes gateway start" not in err
+    assert "vermes gateway start" not in err
 
 
 def test_cli_daemon_without_force_prints_deprecation_exits_2(kanban_home, capsys):
-    """`hermes kanban daemon` (no --force) is a deprecation stub."""
+    """`vermes kanban daemon` (no --force) is a deprecation stub."""
     from vermes_cli import kanban as kb_cli
     ns = argparse.Namespace(
         force=False, interval=60.0, max=None, failure_limit=3,
@@ -3498,7 +3498,7 @@ def test_cli_daemon_without_force_prints_deprecation_exits_2(kanban_home, capsys
     assert rc == 2
     err = capsys.readouterr().err
     assert "DEPRECATED" in err
-    assert "hermes gateway start" in err
+    assert "vermes gateway start" in err
 
 
 def test_cli_daemon_help_marks_deprecated():
@@ -3531,7 +3531,7 @@ def test_cli_daemon_help_marks_deprecated():
                     break
     assert found_deprecation, (
         "daemon subparser help should be marked DEPRECATED so users see "
-        "the migration guidance in `hermes kanban --help` output"
+        "the migration guidance in `vermes kanban --help` output"
     )
 
 

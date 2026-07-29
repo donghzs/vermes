@@ -111,7 +111,7 @@ class TestResolveAzureFoundryRuntimeEntra:
         assert runtime["auth_mode"] == "entra_id"
 
     def test_entra_propagates_scope_only(self, fake_azure_identity):
-        """``model.entra.scope`` is the only Hermes-managed Azure SDK
+        """``model.entra.scope`` is the only Vermes-managed Azure SDK
         setting. Identity selection (client ID, tenant, authority,
         service principal secret, federated token file) flows through
         standard ``AZURE_*`` env vars read by azure-identity directly.

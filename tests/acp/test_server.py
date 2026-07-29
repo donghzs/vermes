@@ -1,4 +1,4 @@
-"""Tests for acp_adapter.server — HermesACPAgent ACP server."""
+"""Tests for acp_adapter.server — VermesACPAgent ACP server."""
 
 import asyncio
 import os
@@ -38,7 +38,7 @@ from acp.schema import (
     UserMessageChunk,
 )
 from acp_adapter.auth import TERMINAL_SETUP_AUTH_METHOD_ID
-from acp_adapter.server import HermesACPAgent, HERMES_VERSION
+from acp_adapter.server import VermesACPAgent, HERMES_VERSION
 from acp_adapter.session import SessionManager
 from vermes_state import SessionDB
 
@@ -51,8 +51,8 @@ def mock_manager():
 
 @pytest.fixture()
 def agent(mock_manager):
-    """HermesACPAgent backed by a mock session manager."""
-    return HermesACPAgent(session_manager=mock_manager)
+    """VermesACPAgent backed by a mock session manager."""
+    return VermesACPAgent(session_manager=mock_manager)
 
 
 @pytest.mark.asyncio
@@ -101,7 +101,7 @@ class TestInitialize:
         resp = await agent.initialize(protocol_version=1)
         assert resp.agent_info is not None
         assert isinstance(resp.agent_info, Implementation)
-        assert resp.agent_info.name == "hermes-agent"
+        assert resp.agent_info.name == "vermes-agent"
         assert resp.agent_info.version == HERMES_VERSION
 
     @pytest.mark.asyncio
@@ -152,11 +152,11 @@ class TestInitialize:
             {
                 "args": ["--setup"],
                 "description": (
-                    "Open Hermes' interactive model/provider setup in a terminal. "
-                    "Use this when Hermes has not been configured on this machine yet."
+                    "Open Vermes' interactive model/provider setup in a terminal. "
+                    "Use this when Vermes has not been configured on this machine yet."
                 ),
                 "id": TERMINAL_SETUP_AUTH_METHOD_ID,
-                "name": "Configure Hermes provider",
+                "name": "Configure Vermes provider",
                 "type": "terminal",
             }
         ]
@@ -244,7 +244,7 @@ class TestSessionOps:
         manager = SessionManager(
             agent_factory=lambda: SimpleNamespace(model="gpt-5.4", provider="openai-codex")
         )
-        acp_agent = HermesACPAgent(session_manager=manager)
+        acp_agent = VermesACPAgent(session_manager=manager)
 
         with patch(
             "vermes_cli.models.curated_models_for_provider",
@@ -369,7 +369,7 @@ class TestSessionOps:
         state.history = [
             {"role": "system", "content": "hidden system"},
             {"role": "user", "content": "what controls the / slash commands?"},
-            {"role": "assistant", "content": "HermesACPAgent._ADVERTISED_COMMANDS controls them."},
+            {"role": "assistant", "content": "VermesACPAgent._ADVERTISED_COMMANDS controls them."},
             {
                 "role": "assistant",
                 "content": "",
@@ -407,7 +407,7 @@ class TestSessionOps:
         assert isinstance(replay_calls[0].kwargs["update"], UserMessageChunk)
         assert replay_calls[0].kwargs["update"].content.text == "what controls the / slash commands?"
         assert isinstance(replay_calls[1].kwargs["update"], AgentMessageChunk)
-        assert replay_calls[1].kwargs["update"].content.text.startswith("HermesACPAgent")
+        assert replay_calls[1].kwargs["update"].content.text.startswith("VermesACPAgent")
 
         tool_updates = [
             call.kwargs["update"]
@@ -974,7 +974,7 @@ class TestSessionConfiguration:
         manager = SessionManager(db=SessionDB(tmp_path / "state.db"))
 
         with patch("run_agent.AIAgent", side_effect=fake_agent):
-            acp_agent = HermesACPAgent(session_manager=manager)
+            acp_agent = VermesACPAgent(session_manager=manager)
             state = manager.create_session(cwd="/tmp")
             result = await acp_agent.set_session_model(
                 model_id="anthropic:claude-sonnet-4-6",
@@ -1546,7 +1546,7 @@ class TestSlashCommands:
         manager = SessionManager(db=SessionDB(tmp_path / "state.db"))
 
         with patch("run_agent.AIAgent", side_effect=fake_agent):
-            acp_agent = HermesACPAgent(session_manager=manager)
+            acp_agent = VermesACPAgent(session_manager=manager)
             state = manager.create_session(cwd="/tmp")
             result = acp_agent._cmd_model("anthropic:claude-sonnet-4-6", state)
 
@@ -1579,7 +1579,7 @@ class TestRegisterSessionMcpServers:
 
         state = mock_manager.create_session(cwd="/tmp")
         # Give the mock agent the attributes _register_session_mcp_servers reads
-        state.agent.enabled_toolsets = ["hermes-acp"]
+        state.agent.enabled_toolsets = ["vermes-acp"]
         state.agent.disabled_toolsets = None
         state.agent.tools = []
         state.agent.valid_tool_names = set()
@@ -1612,7 +1612,7 @@ class TestRegisterSessionMcpServers:
         from acp.schema import McpServerHttp, HttpHeader
 
         state = mock_manager.create_session(cwd="/tmp")
-        state.agent.enabled_toolsets = ["hermes-acp"]
+        state.agent.enabled_toolsets = ["vermes-acp"]
         state.agent.disabled_toolsets = None
         state.agent.tools = []
         state.agent.valid_tool_names = set()
@@ -1643,7 +1643,7 @@ class TestRegisterSessionMcpServers:
         from acp.schema import McpServerStdio
 
         state = mock_manager.create_session(cwd="/tmp")
-        state.agent.enabled_toolsets = ["hermes-acp"]
+        state.agent.enabled_toolsets = ["vermes-acp"]
         state.agent.disabled_toolsets = None
         state.agent.tools = []
         state.agent.valid_tool_names = set()
@@ -1666,11 +1666,11 @@ class TestRegisterSessionMcpServers:
             await agent._register_session_mcp_servers(state, [server])
 
         mock_defs.assert_called_once_with(
-            enabled_toolsets=["hermes-acp", "mcp-srv"],
+            enabled_toolsets=["vermes-acp", "mcp-srv"],
             disabled_toolsets=None,
             quiet_mode=True,
         )
-        assert state.agent.enabled_toolsets == ["hermes-acp", "mcp-srv"]
+        assert state.agent.enabled_toolsets == ["vermes-acp", "mcp-srv"]
         assert state.agent.tools == fake_tools
         assert state.agent.valid_tool_names == {"mcp_srv_search", "terminal"}
         # _invalidate_system_prompt should have been called

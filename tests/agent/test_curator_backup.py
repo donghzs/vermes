@@ -370,7 +370,7 @@ def test_snapshot_without_cron_jobs_file_still_succeeds(backup_env):
     """No cron/jobs.json on disk → snapshot succeeds, manifest records absence."""
     cb = backup_env["cb"]
     _write_skill(backup_env["skills"], "alpha")
-    # Deliberately do not create ~/.hermes/cron/jobs.json
+    # Deliberately do not create ~/.vermes/cron/jobs.json
 
     snap = cb.snapshot_skills(reason="test")
     assert snap is not None

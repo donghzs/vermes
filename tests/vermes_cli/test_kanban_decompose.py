@@ -1,4 +1,4 @@
-"""Tests for the decomposer module + `hermes kanban decompose` CLI surface.
+"""Tests for the decomposer module + `vermes kanban decompose` CLI surface.
 
 The auxiliary LLM client is mocked — no network calls. Tests exercise the
 prompt plumbing, response parsing, DB writes (via the real DB helper),

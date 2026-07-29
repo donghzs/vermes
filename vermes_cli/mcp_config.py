@@ -5,7 +5,7 @@ Implements ``hermes mcp add/remove/list/test/configure`` for interactive
 MCP server lifecycle management (issue #690 Phase 2).
 
 Relies on tools/mcp_tool.py for connection/discovery and keeps
-configuration in ~/.hermes/config.yaml under the ``mcp_servers`` key.
+configuration in ~/.vermes/config.yaml under the ``mcp_servers`` key.
 """
 
 import asyncio
@@ -786,7 +786,7 @@ def mcp_command(args):
 def cmd_mcp_run(args):
     """Run a built-in MCP server by name.
 
-    Uses the same Python interpreter that Hermes uses, guaranteeing
+    Uses the same Python interpreter that Vermes uses, guaranteeing
     all package imports resolve correctly.
     """
     name = getattr(args, "name", None)

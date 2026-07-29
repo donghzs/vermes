@@ -303,7 +303,7 @@ class TestHermesConstantsFallback:
         """Fallback display_hermes_home() handles profile paths under ~/."""
         monkeypatch.setenv("HERMES_HOME", str(Path.home() / ".hermes/profiles/coder"))
         module = self._load_helper(monkeypatch)
-        assert module.display_hermes_home() == "~/.hermes/profiles/coder"
+        assert module.display_hermes_home() == "~/.vermes/profiles/coder"
 
     def test_fallback_display_hermes_home_custom_path(self, monkeypatch):
         """Fallback display_hermes_home() returns full path for non-home locations."""

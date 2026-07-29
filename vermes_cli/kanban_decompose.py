@@ -1,6 +1,6 @@
 """Kanban decomposer — fan a triage task out into a graph of child tasks.
 
-Invoked by ``hermes kanban decompose [task_id | --all]`` and the
+Invoked by ``vermes kanban decompose [task_id | --all]`` and the
 auto-decompose path in the gateway dispatcher loop. Reads the user's
 profile roster (with descriptions) and asks the auxiliary LLM to
 return a task graph in JSON. Then atomically creates the children,

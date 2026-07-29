@@ -52,7 +52,7 @@ class TestProviderEnvDetection:
 
 
 class TestDoctorEnvFileEncoding:
-    """Regression for #18637 (bug 3): `hermes doctor` crashed on Windows
+    """Regression for #18637 (bug 3): `vermes doctor` crashed on Windows
     Chinese locale (GBK) because `.env` was read with Path.read_text() which
     defaults to the system locale encoding, not UTF-8."""
 

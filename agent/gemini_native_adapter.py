@@ -1,6 +1,6 @@
 """OpenAI-compatible facade over Google AI Studio's native Gemini API.
 
-Hermes keeps ``api_mode='chat_completions'`` for the ``gemini`` provider so the
+Vermes keeps ``api_mode='chat_completions'`` for the ``gemini`` provider so the
 main agent loop can keep using its existing OpenAI-shaped message flow.
 This adapter is the transport shim that converts those OpenAI-style
 ``messages[]`` / ``tools[]`` requests into Gemini's native
@@ -8,7 +8,7 @@ This adapter is the transport shim that converts those OpenAI-style
 
 Why this exists
 ---------------
-Google's OpenAI-compatible endpoint has been brittle for Hermes's multi-turn
+Google's OpenAI-compatible endpoint has been brittle for Vermes's multi-turn
 agent/tool loop (auth churn, tool-call replay quirks, thought-signature
 requirements).  The native Gemini API is the canonical path and avoids the
 OpenAI-compat layer entirely.
@@ -55,7 +55,7 @@ def probe_gemini_tier(
 
     Returns one of:
 
-    - ``"free"``    -- key is on the free tier (unusable with Hermes)
+    - ``"free"``    -- key is on the free tier (unusable with Vermes)
     - ``"paid"``    -- key is on a paid tier
     - ``"unknown"`` -- probe failed; callers should proceed without blocking.
     """
@@ -127,7 +127,7 @@ def is_free_tier_quota_error(error_message: str) -> bool:
 
 _FREE_TIER_GUIDANCE = (
     "\n\nYour Google API key is on the free tier (<= 250 requests/day for "
-    "gemini-2.5-flash). Hermes typically makes 3-10 API calls per user turn, "
+    "gemini-2.5-flash). Vermes typically makes 3-10 API calls per user turn, "
     "so the free tier is exhausted in a handful of messages and cannot sustain "
     "an agent session. Enable billing on your Google Cloud project and "
     "regenerate the key in a billing-enabled project: "
@@ -136,7 +136,7 @@ _FREE_TIER_GUIDANCE = (
 
 
 class GeminiAPIError(Exception):
-    """Error shape compatible with Hermes retry/error classification."""
+    """Error shape compatible with Vermes retry/error classification."""
 
     def __init__(
         self,
@@ -818,8 +818,8 @@ class GeminiNativeClient:
         if not (api_key or "").strip():
             raise RuntimeError(
                 "Gemini native client requires an API key, but none was provided. "
-                "Set GOOGLE_API_KEY or GEMINI_API_KEY in your environment / ~/.hermes/.env "
-                "(get one at https://aistudio.google.com/app/apikey), or run `hermes setup` "
+                "Set GOOGLE_API_KEY or GEMINI_API_KEY in your environment / ~/.vermes/.env "
+                "(get one at https://aistudio.google.com/app/apikey), or run `vermes setup` "
                 "to configure the Google provider."
             )
         self.api_key = api_key

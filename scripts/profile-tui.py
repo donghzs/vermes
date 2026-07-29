@@ -5,7 +5,7 @@ Usage:
   scripts/profile-tui.py [--session SID] [--hold KEY] [--seconds N] [--rate HZ]
 
 Defaults: picks the session with the most messages, holds PageUp for 8s at
-~30 Hz (matching xterm key-repeat), summarizes ~/.hermes/perf.log on exit.
+~30 Hz (matching xterm key-repeat), summarizes ~/.vermes/perf.log on exit.
 
 The --tui build must exist (run `npm run build` in ui-tui first). This script
 launches `node dist/entry.js` directly with HERMES_TUI_RESUME set so it
@@ -13,7 +13,7 @@ bypasses the vermes_cli wrapper — we want repeatable timing, not the CLI's
 session-picker flow.
 
 Environment overrides:
-  HERMES_PERF_LOG     (default ~/.hermes/perf.log)
+  HERMES_PERF_LOG     (default ~/.vermes/perf.log)
   HERMES_PERF_NODE    (default node from $PATH)
   HERMES_TUI_DIR      (default: <repo>/ui-tui relative to this script)
 

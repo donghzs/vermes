@@ -152,7 +152,7 @@ def cmd_disable(args) -> None:
 def cmd_sync(args) -> None:
     """Sync Honcho config to all existing profiles.
 
-    Scans all Hermes profiles and creates host blocks for any that don't
+    Scans all Vermes profiles and creates host blocks for any that don't
     have one yet. Inherits settings from the default host block.
     """
     try:
@@ -197,7 +197,7 @@ def cmd_sync(args) -> None:
 def sync_honcho_profiles_quiet() -> int:
     """Sync Honcho host blocks for all profiles. Returns count of newly created blocks.
 
-    Called from `hermes update` -- no output, no exceptions.
+    Called from `vermes update` -- no output, no exceptions.
     """
     try:
         from vermes_cli.profiles import list_profiles
@@ -225,7 +225,7 @@ def sync_honcho_profiles_quiet() -> int:
 _profile_override: str | None = None
 
 def _host_key() -> str:
-    """Return the active Honcho host key, derived from the current Hermes profile."""
+    """Return the active Honcho host key, derived from the current Vermes profile."""
     if _profile_override:
         if _profile_override in {"default", "custom"}:
             return HOST
@@ -347,7 +347,7 @@ def cmd_setup(args) -> None:
     write_path = _local_config_path()
     read_path = _config_path()
     logger.info("\nHoncho memory setup\n" + "─" * 40)
-    logger.info("  Honcho gives Hermes persistent cross-session memory.")
+    logger.info("  Honcho gives Vermes persistent cross-session memory.")
     logger.info(f"  Config: {write_path}")
     if read_path != write_path and read_path.exists():
         logger.info(f"  (seeding from existing config at {read_path})")
@@ -534,7 +534,7 @@ def cmd_setup(args) -> None:
         logger.info("  Memory provider set to 'honcho' in config.yaml")
     except Exception as e:
         logger.info(f"  Could not auto-enable in config.yaml: {e}")
-        logger.info("  Run: hermes config set memory.provider honcho")
+        logger.info("  Run: vermes config set memory.provider honcho")
 
     # --- Test connection ---
     print("  Testing connection... ", end="", flush=True)
@@ -571,7 +571,7 @@ def cmd_setup(args) -> None:
     logger.info("    hermes honcho map <name> -- map this directory to a session name\n")
 
 def _active_profile_name() -> str:
-    """Return the active Hermes profile name (respects --target-profile override)."""
+    """Return the active Vermes profile name (respects --target-profile override)."""
     if _profile_override:
         return _profile_override
     try:
@@ -833,7 +833,7 @@ def cmd_peer(args) -> None:
         logger.info(f"  User peer:   {user}")
         logger.info("    Your identity in Honcho. Messages you send build this peer's card.")
         logger.info(f"  AI peer:     {ai}")
-        logger.info("    Hermes' identity in Honcho. Seed with 'hermes honcho identity <file>'.")
+        logger.info("    Vermes' identity in Honcho. Seed with 'hermes honcho identity <file>'.")
         logger.info("    Dialectic calls ask this peer questions to warm session context.")
         logger.info()
         logger.info(f"  Dialectic reasoning:  {lvl}  ({', '.join(REASONING_LEVELS)})")
@@ -952,7 +952,7 @@ def cmd_tokens(args) -> None:
         logger.info("    the user and session, injected directly into the system prompt.")
         logger.info()
         logger.info(f"  Dialectic   {d_chars} chars, reasoning: {d_level}")
-        logger.info("    AI-to-AI inference. Hermes asks Honcho's AI peer a question")
+        logger.info("    AI-to-AI inference. Vermes asks Honcho's AI peer a question")
         logger.info("    (e.g. \"what were we working on?\") and Honcho runs its own model")
         logger.info("    to synthesize an answer. Used for first-turn session continuity.")
         logger.info("    Level controls how much reasoning Honcho spends on the answer.")
@@ -1049,7 +1049,7 @@ def cmd_identity(args) -> None:
         logger.info("  Failed to seed identity. Check logs for details.\n")
 
 def cmd_migrate(args) -> None:
-    """Step-by-step migration guide: OpenClaw native memory → Hermes + Honcho."""
+    """Step-by-step migration guide: OpenClaw native memory → Vermes + Honcho."""
     from pathlib import Path
 
     # ── Detect OpenClaw native memory files ──────────────────────────────────
@@ -1077,7 +1077,7 @@ def cmd_migrate(args) -> None:
     cfg = _read_config()
     has_key = bool(_resolve_api_key(cfg))
 
-    logger.info("\nHoncho migration: OpenClaw native memory → Hermes\n" + "─" * 50)
+    logger.info("\nHoncho migration: OpenClaw native memory → Vermes\n" + "─" * 50)
     logger.info()
     logger.info("  OpenClaw's native memory stores context in local markdown files")
     logger.info("  (USER.md, MEMORY.md, SOUL.md, ...) and injects them via QMD search.")
@@ -1094,7 +1094,7 @@ def cmd_migrate(args) -> None:
         logger.info(f"  Honcho API key already configured: {masked}")
         logger.info("  Skip to Step 2.")
     else:
-        logger.info("  Honcho is a cloud memory service that gives Hermes persistent memory")
+        logger.info("  Honcho is a cloud memory service that gives Vermes persistent memory")
         logger.info("  across sessions. You need an API key to use it.")
         logger.info()
         logger.info("  1. Get your API key at https://app.honcho.dev")
@@ -1141,7 +1141,7 @@ def cmd_migrate(args) -> None:
         logger.info()
         logger.info("  These are picked up automatically the first time you run 'hermes'")
         logger.info("  with Honcho configured and no prior session history.")
-        logger.info("  (Hermes calls migrate_memory_files() on first session init.)")
+        logger.info("  (Vermes calls migrate_memory_files() on first session init.)")
         logger.info()
         logger.info("  If you want to migrate them now without starting a session:")
         for f in user_files:
@@ -1188,7 +1188,7 @@ def cmd_migrate(args) -> None:
     logger.info("  agent's character, capabilities, and behavioral rules. In OpenClaw")
     logger.info("  these are injected via file search at prompt-build time.")
     logger.info()
-    logger.info("  In Hermes, they are seeded once into Honcho's AI peer through the")
+    logger.info("  In Vermes, they are seeded once into Honcho's AI peer through the")
     logger.info("  observation pipeline. Honcho builds a representation from them and")
     logger.info("  from every subsequent assistant message (observe_me=True). Over time")
     logger.info("  the representation reflects actual behavior, not just declaration.")
@@ -1235,17 +1235,17 @@ def cmd_migrate(args) -> None:
     logger.info()
     logger.info("  Storage")
     logger.info("    OpenClaw: markdown files on disk, searched via QMD at prompt-build time.")
-    logger.info("    Hermes:   cloud-backed Honcho peers. Files can stay on disk as source")
+    logger.info("    Vermes:   cloud-backed Honcho peers. Files can stay on disk as source")
     logger.info("              of truth; Honcho holds the live representation.")
     logger.info()
     logger.info("  Context injection")
     logger.info("    OpenClaw: file excerpts injected synchronously before each LLM call.")
-    logger.info("    Hermes:   Honcho context fetched async at turn end, injected next turn.")
+    logger.info("    Vermes:   Honcho context fetched async at turn end, injected next turn.")
     logger.info("              First turn has no Honcho context; subsequent turns are loaded.")
     logger.info()
     logger.info("  Memory growth")
     logger.info("    OpenClaw: you edit files manually to update memory.")
-    logger.info("    Hermes:   Honcho observes every message and updates representations")
+    logger.info("    Vermes:   Honcho observes every message and updates representations")
     logger.info("              automatically. Files become the seed, not the live store.")
     logger.info()
     logger.info("  Honcho tools (available to the agent during conversation)")
@@ -1257,7 +1257,7 @@ def cmd_migrate(args) -> None:
     logger.info()
     logger.info("  Session naming")
     logger.info("    OpenClaw: no persistent session concept — files are global.")
-    logger.info("    Hermes:   per-session by default — each run gets its own session")
+    logger.info("    Vermes:   per-session by default — each run gets its own session")
     logger.info("              Map a custom name:  hermes honcho map <session-name>")
 
     # ── Step 6: Next steps ────────────────────────────────────────────────────
@@ -1413,7 +1413,7 @@ def register_cli(subparser) -> None:
 
     subs.add_parser(
         "migrate",
-        help="Step-by-step migration guide from openclaw-honcho to Hermes Honcho",
+        help="Step-by-step migration guide from openclaw-honcho to Vermes Honcho",
     )
     subs.add_parser("enable", help="Enable Honcho for the active profile")
     subs.add_parser("disable", help="Disable Honcho for the active profile")

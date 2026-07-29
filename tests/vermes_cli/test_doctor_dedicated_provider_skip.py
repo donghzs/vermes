@@ -1,4 +1,4 @@
-"""Regression: hermes doctor must not run a generic Bearer-auth health
+"""Regression: vermes doctor must not run a generic Bearer-auth health
 check for providers that already have a dedicated check (Anthropic,
 OpenRouter, Bedrock).
 
@@ -8,7 +8,7 @@ with HTTP 404. The dedicated check at vermes_cli/doctor.py already covers
 Anthropic with the right headers, so the pluggable profile must be
 skipped by `_build_apikey_providers_list()`.
 
-See: NousResearch/hermes-agent#22346
+See: NousResearch/vermes-agent#22346
 """
 
 from __future__ import annotations

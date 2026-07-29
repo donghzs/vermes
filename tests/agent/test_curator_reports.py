@@ -1,6 +1,6 @@
 """Tests for the curator per-run report writer (run.json + REPORT.md).
 
-Reports live under ``~/.hermes/logs/curator/{YYYYMMDD-HHMMSS}/`` alongside
+Reports live under ``~/.vermes/logs/curator/{YYYYMMDD-HHMMSS}/`` alongside
 the standard log dir, not inside the user's ``skills/`` data directory.
 """
 

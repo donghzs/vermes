@@ -20,7 +20,7 @@ from pathlib import Path
 from vermes_constants import get_hermes_home
 
 # ---------------------------------------------------------------------------
-# Curses-based interactive picker (same pattern as hermes tools)
+# Curses-based interactive picker (same pattern as vermes tools)
 # ---------------------------------------------------------------------------
 
 def _curses_select(title: str, items: list[tuple[str, str]], default: int = 0) -> int:
@@ -225,7 +225,7 @@ def cmd_setup(args) -> None:
 
     if not providers:
         logger.info("\n  No memory provider plugins detected.")
-        logger.info("  Install a plugin to ~/.hermes/plugins/ and try again.\n")
+        logger.info("  Install a plugin to ~/.vermes/plugins/ and try again.\n")
         return
 
     # Build picker items
@@ -433,7 +433,7 @@ def cmd_status(args) -> None:
                     break
         else:
             logger.info(f"\n  Plugin:    NOT installed ✗")
-            logger.info(f"  Install the '{provider_name}' memory plugin to ~/.hermes/plugins/")
+            logger.info(f"  Install the '{provider_name}' memory plugin to ~/.vermes/plugins/")
 
     providers = _get_available_providers()
     if providers:

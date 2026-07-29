@@ -397,7 +397,7 @@ def test_load_pool_seeds_env_api_key(tmp_path, monkeypatch):
 
 def test_load_pool_prefers_dotenv_over_stale_os_environ(tmp_path, monkeypatch):
     """Regression for #18254: stale OPENROUTER_API_KEY in os.environ (inherited
-    from a parent shell) must NOT shadow the fresh key in ~/.hermes/.env when
+    from a parent shell) must NOT shadow the fresh key in ~/.vermes/.env when
     seeding the credential pool. Before the fix, `get_env_value()` preferred
     os.environ and silently wrote the stale value into auth.json, causing
     persistent 401 errors after key rotation.
@@ -409,7 +409,7 @@ def test_load_pool_prefers_dotenv_over_stale_os_environ(tmp_path, monkeypatch):
     # Simulate the bug: parent shell exported a stale test key
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-STALE-from-shell")
 
-    # User edited ~/.hermes/.env with the fresh key
+    # User edited ~/.vermes/.env with the fresh key
     (hermes_home / ".env").write_text(
         "OPENROUTER_API_KEY=sk-or-FRESH-from-dotenv\n"
     )
@@ -429,7 +429,7 @@ def test_load_pool_prefers_dotenv_over_stale_os_environ(tmp_path, monkeypatch):
 
 
 def test_load_pool_falls_back_to_os_environ_when_dotenv_empty(tmp_path, monkeypatch):
-    """When ~/.hermes/.env does not define OPENROUTER_API_KEY (typical Docker /
+    """When ~/.vermes/.env does not define OPENROUTER_API_KEY (typical Docker /
     K8s / systemd deployment), seeding must still pick up the key from
     os.environ. Guards against regressions that would break production
     deployments relying on runtime-injected env vars.
@@ -1720,7 +1720,7 @@ def test_sync_codex_entry_from_auth_store_adopts_newer_tokens(tmp_path, monkeypa
     assert entry.access_token == "access-OLD"
     assert entry.refresh_token == "refresh-OLD"
 
-    # Simulate `hermes auth openai-codex` replacing the token pair on disk.
+    # Simulate `vermes auth openai-codex` replacing the token pair on disk.
     _write_auth_store(tmp_path, _codex_auth_store("access-NEW", "refresh-NEW"))
 
     synced = pool._sync_codex_entry_from_auth_store(entry)
@@ -1751,7 +1751,7 @@ def test_codex_exhausted_entry_recovers_via_auth_store_sync(tmp_path, monkeypatc
     """An exhausted Codex entry should recover when auth.json has newer tokens.
 
     Reproduces the Discord report (p1aceho1der, Apr 2026): after a Codex
-    rate-limit reset the user ran `hermes model` to reauth, but the pool
+    rate-limit reset the user ran `vermes model` to reauth, but the pool
     entry stayed marked EXHAUSTED with last_error_reset_at many hours in
     the future — so `_available_entries` kept returning empty and every
     request failed with "no available entries (all exhausted or empty)".
@@ -1785,7 +1785,7 @@ def test_codex_exhausted_entry_recovers_via_auth_store_sync(tmp_path, monkeypatc
     available_before = pool._available_entries(clear_expired=True, refresh=False)
     assert available_before == []
 
-    # Simulate `hermes model` / `hermes auth` refreshing the tokens.
+    # Simulate `vermes model` / `vermes auth` refreshing the tokens.
     _write_auth_store(tmp_path, _codex_auth_store("access-FRESH", "refresh-FRESH"))
 
     available = pool._available_entries(clear_expired=True, refresh=False)

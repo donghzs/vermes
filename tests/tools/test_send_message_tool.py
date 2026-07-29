@@ -467,7 +467,7 @@ class TestSendToPlatformChunking:
                     Platform.SLACK,
                     SimpleNamespace(enabled=True, token="***", extra={}),
                     "C123",
-                    "**hello** from [Hermes](<https://example.com>)",
+                    "**hello** from [Vermes](<https://example.com>)",
                 )
             )
 
@@ -475,7 +475,7 @@ class TestSendToPlatformChunking:
         send.assert_awaited_once_with(
             "***",
             "C123",
-            "*hello* from <https://example.com|Hermes>",
+            "*hello* from <https://example.com|Vermes>",
         )
 
     def test_slack_bold_italic_formatted_before_send(self, monkeypatch):
@@ -2216,7 +2216,7 @@ class TestSendViaAdapterStandaloneFallback:
     """Coverage for the out-of-process plugin-platform send path.
 
     When the gateway runner is not in this process (e.g. ``hermes cron``
-    runs separately from ``hermes gateway``), ``_send_via_adapter`` should
+    runs separately from ``vermes gateway``), ``_send_via_adapter`` should
     fall through to the plugin's ``standalone_sender_fn`` registered on
     its ``PlatformEntry``.  Without the hook, the existing error string
     is returned (with a more helpful tail).

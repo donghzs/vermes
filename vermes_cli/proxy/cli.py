@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _print_aiohttp_missing() -> None:
     logger.info(
         "hermes proxy requires aiohttp. Install one of:\n"
-        "  pip install 'hermes-agent[messaging]'\n"
+        "  pip install 'vermes[messaging]'\n"
         "  pip install aiohttp",
         file=sys.stderr,
     )
@@ -56,7 +56,7 @@ def cmd_proxy_start(args: Any) -> int:
     port = getattr(args, "port", None) or DEFAULT_PORT
 
     logger.info(
-        f"Starting Hermes proxy for {adapter.display_name}\n"
+        f"Starting Vermes proxy for {adapter.display_name}\n"
         f"  Listening on:  http://{host}:{port}/v1\n"
         f"  Forwarding to: (resolved per-request from your subscription)\n"
         f"  Use any bearer token in the client — the proxy attaches your real credential.\n"
@@ -77,7 +77,7 @@ def cmd_proxy_start(args: Any) -> int:
 
 def cmd_proxy_status(args: Any) -> int:
     """Print the status of each configured upstream adapter."""
-    logger.info("Hermes proxy upstream adapters\n")
+    logger.info("Vermes proxy upstream adapters\n")
     for name in sorted(ADAPTERS):
         adapter = get_adapter(name)
         if not adapter.is_authenticated():

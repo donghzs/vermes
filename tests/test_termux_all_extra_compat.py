@@ -11,9 +11,9 @@ INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
 def test_pyproject_defines_termux_all_without_known_blockers() -> None:
     text = PYPROJECT.read_text()
     assert "termux-all = [" in text
-    assert '"hermes-agent[termux]"' in text
-    assert '"hermes-agent[matrix]"' not in text.split("termux-all = [", 1)[1].split("]", 1)[0]
-    assert '"hermes-agent[voice]"' not in text.split("termux-all = [", 1)[1].split("]", 1)[0]
+    assert '"vermes-agent[termux]"' in text
+    assert '"vermes-agent[matrix]"' not in text.split("termux-all = [", 1)[1].split("]", 1)[0]
+    assert '"vermes-agent[voice]"' not in text.split("termux-all = [", 1)[1].split("]", 1)[0]
 
 
 def test_install_script_prefers_termux_all_then_fallbacks() -> None:

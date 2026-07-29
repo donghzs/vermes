@@ -1,4 +1,4 @@
-# Каталог статических сообщений Hermes -- Русский
+# Каталог статических сообщений Vermes -- Русский
 # See locales/en.yaml for the source of truth; keep keys in sync.
 
 approval:
@@ -98,8 +98,8 @@ gateway:
     upload_failed:         "✗ Не удалось загрузить отчёт отладки: {error}"
     header:                "**Отчёт отладки загружен:**"
     auto_delete:           "⏱ Вставки автоматически удалятся через 6 часов."
-    full_logs_hint:        "Для загрузки полных журналов используйте `hermes debug share` из CLI."
-    share_hint:            "Поделитесь этими ссылками с командой Hermes для получения поддержки."
+    full_logs_hint:        "Для загрузки полных журналов используйте `vermes debug share` из CLI."
+    share_hint:            "Поделитесь этими ссылками с командой Vermes для получения поддержки."
 
   deny:
     stale:                 "❌ Команда отклонена (одобрение устарело)."
@@ -136,7 +136,7 @@ gateway:
     set:                   "⊙ Цель задана (бюджет {budget} ходов): {goal}\nЯ продолжу работу, пока цель не будет достигнута, вы её не приостановите/очистите, или бюджет не исчерпается.\nУправление: /goal status · /goal pause · /goal resume · /goal clear"
 
   help:
-    header:                "📖 **Команды Hermes**\n"
+    header:                "📖 **Команды Vermes**\n"
     skill_header:          "\n⚡ **Команды навыков** (активных: {count}):"
     more_use_commands:     "\n... и ещё {count}. Используйте `/commands` для полного списка с постраничной разбивкой."
 
@@ -147,7 +147,7 @@ gateway:
   kanban:
     error_prefix:          "⚠ ошибка kanban: {error}"
     subscribed_suffix:     "(подписка оформлена — вы получите уведомление, когда {task_id} завершится или будет заблокирован)"
-    truncated_suffix:      "… (сокращено; используйте `hermes kanban …` в терминале для полного вывода)"
+    truncated_suffix:      "… (сокращено; используйте `vermes kanban …` в терминале для полного вывода)"
     no_output:             "(нет вывода)"
 
   personality:
@@ -215,7 +215,7 @@ gateway:
 
   restart:
     in_progress:           "⏳ Перезапуск шлюза уже выполняется..."
-    restarting:            "♻ Перезапуск шлюза. Если уведомление не придёт в течение 60 секунд, перезапустите из консоли командой `hermes gateway restart`."
+    restarting:            "♻ Перезапуск шлюза. Если уведомление не придёт в течение 60 секунд, перезапустите из консоли командой `vermes gateway restart`."
 
   resume:
     db_unavailable:        "База данных сеансов недоступна."
@@ -247,7 +247,7 @@ gateway:
     success:               "✅ Главный канал установлен на **{name}** (ID: {chat_id}).\nCron-задачи и межплатформенные сообщения будут доставляться сюда."
 
   status:
-    header:                "📊 **Состояние Hermes Gateway**"
+    header:                "📊 **Состояние Vermes Gateway**"
     session_id:            "**ID сеанса:** `{session_id}`"
     title:                 "**Название:** {title}"
     created:               "**Создано:** {timestamp}"
@@ -282,7 +282,7 @@ gateway:
     topics_user_disallowed:  "Telegram topics включены, но пользователям не разрешено создавать topics.\n\nОткройте @BotFather → выберите своего бота → Bot Settings → Threads Settings, затем выключите 'Disallow users to create new threads'.\n\nЗатем снова отправьте /topic."
     enable_failed:           "Не удалось включить режим Telegram topic: {error}"
     bound_status:            "Этот topic привязан к:\nСеанс: {label}\nID: {session_id}\n\nИспользуйте /new, чтобы заменить этот topic новым сеансом.\nДля параллельной работы откройте All Messages и отправьте там сообщение, чтобы создать другой topic."
-    thread_ready:            "Многосеансовые Telegram topics включены.\n\nЭтот topic будет использоваться как независимый сеанс Hermes. Используйте /new, чтобы заменить текущий сеанс этого topic. Для параллельной работы откройте All Messages и отправьте там сообщение, чтобы создать другой topic."
+    thread_ready:            "Многосеансовые Telegram topics включены.\n\nЭтот topic будет использоваться как независимый сеанс Vermes. Используйте /new, чтобы заменить текущий сеанс этого topic. Для параллельной работы откройте All Messages и отправьте там сообщение, чтобы создать другой topic."
     untitled_session:        "Сеанс без названия"
 
   undo:
@@ -290,11 +290,11 @@ gateway:
     removed:               "↩️ Отменено сообщений: {count}.\nУдалено: «{preview}»"
 
   update:
-    platform_not_messaging:  "✗ /update доступен только на платформах обмена сообщениями. Выполните `hermes update` в терминале."
+    platform_not_messaging:  "✗ /update доступен только на платформах обмена сообщениями. Выполните `vermes update` в терминале."
     not_git_repo:            "✗ Не git-репозиторий — обновление невозможно."
-    hermes_cmd_not_found:    "✗ Не удалось найти команду `hermes`. Hermes запущен, но команда обновления не нашла исполняемый файл в PATH или через текущий интерпретатор Python. Попробуйте выполнить `hermes update` вручную в терминале."
+    vermes_cmd_not_found:    "✗ Не удалось найти команду `vermes`. Vermes запущен, но команда обновления не нашла исполняемый файл в PATH или через текущий интерпретатор Python. Попробуйте выполнить `vermes update` вручную в терминале."
     start_failed:            "✗ Не удалось запустить обновление: {error}"
-    starting:                "⚕ Запуск обновления Hermes… Я буду транслировать прогресс сюда."
+    starting:                "⚕ Запуск обновления Vermes… Я буду транслировать прогресс сюда."
 
   usage:
     rate_limits:              "⏱️ **Ограничения скорости:** {state}"

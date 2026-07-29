@@ -1383,14 +1383,14 @@ def test_orchestrator_complete_any_task_allowed(monkeypatch, tmp_path):
 # The dispatcher pins the active board via HERMES_KANBAN_BOARD env var,
 # but a Telegram-side orchestrator handling multiple boards needs to be
 # able to route a single tool call to a specific board's DB without
-# restarting Hermes. These tests pin that ``board=<slug>`` argument
+# restarting Vermes. These tests pin that ``board=<slug>`` argument
 # routes each handler to that board's sqlite file, and that omitting
 # ``board`` preserves the legacy env-driven resolution.
 
 
 @pytest.fixture
 def multi_board_env(monkeypatch, tmp_path):
-    """Isolated Hermes home with two distinct kanban boards seeded.
+    """Isolated Vermes home with two distinct kanban boards seeded.
 
     Returns ``("default", "alt")`` slugs. The default board has one
     pre-existing task ``seed_default``; ``alt`` has ``seed_alt``. No

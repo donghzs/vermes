@@ -116,7 +116,7 @@ export function exposePluginSDK() {
       createContext,
     },
 
-    // Hermes API client
+    // Vermes API client
     api,
     // Raw fetchJSON for plugin-specific endpoints
     fetchJSON,

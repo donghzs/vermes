@@ -80,7 +80,7 @@ def _http_get_json(url: str, timeout: int = 10, retries: int = 2) -> Any:
     """GET JSON from a URL with retry on 429 rate-limit. Returns parsed JSON or None."""
     for attempt in range(retries + 1):
         req = urllib.request.Request(
-            url, headers={"Accept": "application/json", "User-Agent": "HermesAgent/1.0"},
+            url, headers={"Accept": "application/json", "User-Agent": "VermesAgent/1.0"},
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:

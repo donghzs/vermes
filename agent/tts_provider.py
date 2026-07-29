@@ -16,7 +16,7 @@ Three coexisting TTS extension surfaces — in resolution order:
    elevenlabs, …). **Always win** — plugins cannot shadow them.
 2. **Command-type providers** declared under ``tts.providers.<name>:
    type: command`` (PR #17843, commit ``2facea7f7``). Wire any local
-   CLI into Hermes with shell-template placeholders. **Wins over a
+   CLI into Vermes with shell-template placeholders. **Wins over a
    same-name plugin** — config is more local than plugin install.
 3. **Plugin-registered providers** (this ABC). For backends that need a
    Python SDK, streaming bytes, OAuth refresh, or voice-listing APIs
@@ -30,7 +30,7 @@ defensively). The dispatcher also rejects plugin dispatch when a same-
 name command provider is configured.
 
 Providers live in ``<repo>/plugins/tts/<name>/`` (built-in plugins, no
-shipped today) or ``~/.hermes/plugins/tts/<name>/`` (user-installed).
+shipped today) or ``~/.vermes/plugins/tts/<name>/`` (user-installed).
 None ship in-tree as of issue #30398 — the hook is additive
 infrastructure waiting for a real consumer (Cartesia, Fish Audio, …).
 
@@ -39,7 +39,7 @@ Response contract
 :meth:`TTSProvider.synthesize` writes the audio bytes to ``output_path``
 and returns the path as a string. Implementations should raise on
 failure — the dispatcher converts exceptions into the standard
-``{success: False, error: …}`` JSON envelope the rest of Hermes
+``{success: False, error: …}`` JSON envelope the rest of Vermes
 expects.
 """
 
@@ -83,7 +83,7 @@ class TTSProvider(abc.ABC):
 
     @property
     def display_name(self) -> str:
-        """Human-readable label shown in ``hermes tools``.
+        """Human-readable label shown in ``vermes tools``.
 
         Defaults to ``name.title()`` (e.g. ``Cartesia`` for ``cartesia``).
         """
@@ -96,7 +96,7 @@ class TTSProvider(abc.ABC):
         importable. Default: True (providers with no external
         dependencies are always available).
 
-        Must NOT raise — used by the picker and ``hermes setup`` for
+        Must NOT raise — used by the picker and ``vermes setup`` for
         availability displays and should fail gracefully.
         """
         return True
@@ -137,7 +137,7 @@ class TTSProvider(abc.ABC):
         return []
 
     def get_setup_schema(self) -> Dict[str, Any]:
-        """Return provider metadata for the ``hermes tools`` picker.
+        """Return provider metadata for the ``vermes tools`` picker.
 
         Used by ``tools_config.py`` to inject this provider as a row in
         the Text-to-Speech provider list. Shape::

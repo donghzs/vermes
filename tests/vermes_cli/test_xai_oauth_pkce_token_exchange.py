@@ -1,6 +1,6 @@
 """Regression coverage for xAI OAuth PKCE token exchange (issue #26990).
 
-Issue [#26990] reported that ``hermes auth add xai-oauth`` succeeds at the
+Issue [#26990] reported that ``vermes auth add xai-oauth`` succeeds at the
 browser-side authorize step but fails at the token endpoint with
 ``code_challenge is required`` — the symptom of an OAuth server that
 re-validates PKCE at the token step instead of relying purely on

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Propagate agent-turn context into worker threads that dispatch Hermes tools.
+"""Propagate agent-turn context into worker threads that dispatch Vermes tools.
 
 A bare ``threading.Thread`` / ``ThreadPoolExecutor`` worker starts with an
 empty ``contextvars.Context`` and no thread-local approval/sudo callbacks.

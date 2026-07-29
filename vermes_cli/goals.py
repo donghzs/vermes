@@ -1,8 +1,8 @@
-"""Persistent session goals — the Ralph loop for Hermes.
+"""Persistent session goals — the Ralph loop for Vermes.
 
 A goal is a free-form user objective that stays active across turns. After
 each turn completes, a small judge call asks an auxiliary model "is this
-goal satisfied by the assistant's last response?". If not, Hermes feeds a
+goal satisfied by the assistant's last response?". If not, Vermes feeds a
 continuation prompt back into the same session and keeps working until the
 goal is done, turn budget is exhausted, the user pauses/clears it, or the
 user sends a new message (which takes priority and pauses the goal loop).
@@ -21,7 +21,7 @@ Design notes / invariants:
   prompt and also pauses the goal loop for that turn (we still re-judge
   after, so if the user's message happens to complete the goal the judge
   will say ``done``).
-- This module has zero hard dependency on ``cli.HermesCLI`` or the gateway
+- This module has zero hard dependency on ``cli.VermesCLI`` or the gateway
   runner — both wire the same ``GoalManager`` in.
 
 Nothing in this module touches the agent's system prompt or toolset.
@@ -737,7 +737,7 @@ class GoalManager:
                 "message": (
                     f"⏸ Goal paused — the judge model ({state.consecutive_parse_failures} turns) "
                     "isn't returning the required JSON verdict. Route the judge to a stricter "
-                    "model in ~/.hermes/config.yaml:\n"
+                    "model in ~/.vermes/config.yaml:\n"
                     "  auxiliary:\n"
                     "    goal_judge:\n"
                     "      provider: openrouter\n"

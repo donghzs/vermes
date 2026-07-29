@@ -14,29 +14,29 @@ def test_get_managed_system_homebrew(monkeypatch):
     monkeypatch.setenv("HERMES_MANAGED", "homebrew")
 
     assert get_managed_system() == "Homebrew"
-    assert recommended_update_command() == "brew upgrade hermes-agent"
+    assert recommended_update_command() == "brew upgrade vermes-agent"
 
 
 def test_format_managed_message_homebrew(monkeypatch):
     monkeypatch.setenv("HERMES_MANAGED", "homebrew")
 
-    message = format_managed_message("update Hermes Agent")
+    message = format_managed_message("update Vermes Agent")
 
     assert "managed by Homebrew" in message
-    assert "brew upgrade hermes-agent" in message
+    assert "brew upgrade vermes-agent" in message
 
 
 def test_recommended_update_command_defaults_to_hermes_update(monkeypatch):
     monkeypatch.delenv("HERMES_MANAGED", raising=False)
 
     # Also short-circuit the .managed marker path — CI runners may have an
-    # ambient ~/.hermes/.managed if a prior test left HERMES_HOME pointing
+    # ambient ~/.vermes/.managed if a prior test left HERMES_HOME pointing
     # somewhere with that marker, which would make get_managed_update_command()
     # return "Update your Nix flake input ..." instead of falling through to
     # detect_install_method().
     with patch("vermes_cli.config.get_managed_update_command", return_value=None), \
          patch("vermes_cli.config.detect_install_method", return_value="git"):
-        assert recommended_update_command() == "hermes update"
+        assert recommended_update_command() == "vermes update"
 
 
 def test_cmd_update_blocks_managed_homebrew(monkeypatch, capsys):
@@ -48,7 +48,7 @@ def test_cmd_update_blocks_managed_homebrew(monkeypatch, capsys):
     assert not mock_run.called
     captured = capsys.readouterr()
     assert "managed by Homebrew" in captured.err
-    assert "brew upgrade hermes-agent" in captured.err
+    assert "brew upgrade vermes-agent" in captured.err
 
 
 def test_optional_skill_source_honors_env_override(monkeypatch, tmp_path):

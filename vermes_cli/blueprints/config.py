@@ -285,7 +285,7 @@ class RawConfigUpdate(BaseModel):
 def _normalize_config_for_web(config: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize config for the web UI.
 
-    Hermes supports ``model`` as either a bare string or a dict.
+    Vermes supports ``model`` as either a bare string or a dict.
     Normalize to the string form so the frontend schema matches.
     Also surfaces ``model_context_length`` as a top-level field.
     """

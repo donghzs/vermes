@@ -31,7 +31,7 @@ def test_matrix_extra_not_in_all():
     """
     optional_dependencies = _load_optional_dependencies()
 
-    assert "matrix" in optional_dependencies, "[matrix] extra must still exist for explicit `pip install hermes-agent[matrix]`"
+    assert "matrix" in optional_dependencies, "[matrix] extra must still exist for explicit `pip install vermes-agent[matrix]`"
     # Must NOT appear in [all] in any form — neither unconditional nor
     # platform-gated. Lazy-install handles it.
     matrix_in_all = [
@@ -78,7 +78,7 @@ def test_lazy_installable_extras_excluded_from_all():
     for extra in lazy_covered_extras:
         offending = [
             spec for spec in all_extra_specs
-            if f"hermes-agent[{extra}]" in spec
+            if f"vermes-agent[{extra}]" in spec
         ]
         assert not offending, (
             f"[{extra}] is in [all] but also in LAZY_DEPS. "

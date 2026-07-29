@@ -480,7 +480,7 @@ class TestSyncSkills:
 
         captured = capsys.readouterr().out
         assert "new-skill" in captured
-        assert "hermes skills reset new-skill" in captured
+        assert "vermes skills reset new-skill" in captured
 
     def test_nonexistent_bundled_dir(self, tmp_path):
         with patch("tools.skills_sync._get_bundled_dir", return_value=tmp_path / "nope"):

@@ -89,7 +89,7 @@ class TestDynamicSchemaBuilder:
 
         desc = _build_dynamic_video_schema()["description"]
         assert "No video backend is configured" in desc
-        assert "hermes tools" in desc
+        assert "vermes tools" in desc
 
     def test_does_not_mention_edit_or_extend(self, cfg_home):
         """The simplified surface only does text→video and image→video.

@@ -295,7 +295,7 @@ class XAIVideoGenProvider(VideoGenProvider):
         if not api_key:
             return error_response(
                 error=(
-                    "No xAI credentials found. Sign in via `hermes auth add xai-oauth` "
+                    "No xAI credentials found. Sign in via `vermes auth add xai-oauth` "
                     "(SuperGrok subscription) or set XAI_API_KEY from "
                     "https://console.x.ai/."
                 ),

@@ -22,7 +22,7 @@ The active provider is chosen by configuration with this precedence:
    candidate order so installs that never set a config key keep landing
    on the same provider they did before the plugin migration.
 5. Otherwise ``None`` — the tool surfaces a helpful error pointing at
-   ``hermes tools``.
+   ``vermes tools``.
 
 The capability filter (``supports_search`` / ``supports_extract``) is
 applied at every step so a search-only provider (``brave-free``)

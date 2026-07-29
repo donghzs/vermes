@@ -56,7 +56,7 @@ class FakeDMChannel:
 
 
 class FakeTextChannel:
-    def __init__(self, channel_id: int = 1, name: str = "general", guild_name: str = "Hermes Server"):
+    def __init__(self, channel_id: int = 1, name: str = "general", guild_name: str = "Vermes Server"):
         self.id = channel_id
         self.name = name
         self.guild = SimpleNamespace(name=guild_name)
@@ -70,7 +70,7 @@ class FakeTextChannel:
 
 
 class FakeForumChannel:
-    def __init__(self, channel_id: int = 1, name: str = "support-forum", guild_name: str = "Hermes Server"):
+    def __init__(self, channel_id: int = 1, name: str = "support-forum", guild_name: str = "Vermes Server"):
         self.id = channel_id
         self.name = name
         self.guild = SimpleNamespace(name=guild_name)
@@ -79,7 +79,7 @@ class FakeForumChannel:
 
 
 class FakeThread:
-    def __init__(self, channel_id: int = 1, name: str = "thread", parent=None, guild_name: str = "Hermes Server"):
+    def __init__(self, channel_id: int = 1, name: str = "thread", parent=None, guild_name: str = "Vermes Server"):
         self.id = channel_id
         self.name = name
         self.parent = parent
@@ -236,7 +236,7 @@ async def test_discord_forum_threads_are_handled_as_threads(adapter, monkeypatch
     monkeypatch.delenv("DISCORD_FREE_RESPONSE_CHANNELS", raising=False)
 
     forum = FakeForumChannel(channel_id=222, name="support-forum")
-    thread = FakeThread(channel_id=456, name="Can Hermes reply here?", parent=forum)
+    thread = FakeThread(channel_id=456, name="Can Vermes reply here?", parent=forum)
     message = make_message(channel=thread, content="hello from forum post")
 
     await adapter._handle_message(message)
@@ -247,7 +247,7 @@ async def test_discord_forum_threads_are_handled_as_threads(adapter, monkeypatch
     assert event.source.chat_id == "456"
     assert event.source.thread_id == "456"
     assert event.source.chat_type == "thread"
-    assert event.source.chat_name == "Hermes Server / support-forum / Can Hermes reply here?"
+    assert event.source.chat_name == "Vermes Server / support-forum / Can Vermes reply here?"
 
 
 @pytest.mark.asyncio

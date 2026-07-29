@@ -1,4 +1,4 @@
-"""Tests for the ``/reload-skills`` CLI slash command (``HermesCLI._reload_skills``).
+"""Tests for the ``/reload-skills`` CLI slash command (``VermesCLI._reload_skills``).
 
 The CLI handler prints the diff (name + description) for the user and —
 when any skills were added or removed — queues a one-shot note on
@@ -12,10 +12,10 @@ from unittest.mock import patch
 
 
 def _make_cli():
-    """Build a minimal HermesCLI shell exposing ``_reload_skills``."""
+    """Build a minimal VermesCLI shell exposing ``_reload_skills``."""
     import cli as cli_mod
 
-    obj = object.__new__(cli_mod.HermesCLI)
+    obj = object.__new__(cli_mod.VermesCLI)
     obj._command_running = False
     obj.conversation_history = []
     obj.agent = None

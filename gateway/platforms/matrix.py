@@ -735,7 +735,7 @@ class MatrixAdapter(BasePlatformAdapter):
                 await crypto_db.start()
                 self._crypto_db = crypto_db
 
-                _acct_id = self._user_id or "hermes"
+                _acct_id = self._user_id or "vermes"
                 _pickle_key = f"{_acct_id}:{self._device_id or 'default'}"
                 crypto_store = PgCryptoStore(
                     account_id=_acct_id,

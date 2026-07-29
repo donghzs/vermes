@@ -7,7 +7,7 @@ import pytest
 
 @pytest.fixture
 def all_assignees_spawnable(monkeypatch):
-    """Pretend every assignee maps to a real Hermes profile.
+    """Pretend every assignee maps to a real Vermes profile.
 
     Most dispatcher tests use synthetic assignees ("alice", "bob") that
     don't correspond to actual profile directories on disk. Without this

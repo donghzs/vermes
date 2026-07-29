@@ -1,6 +1,6 @@
-"""Tests for the stale-dashboard handling run at the end of ``hermes update``.
+"""Tests for the stale-dashboard handling run at the end of ``vermes update``.
 
-``hermes update`` detects ``hermes dashboard`` processes left over from the
+``vermes update`` detects ``hermes dashboard`` processes left over from the
 previous version and kills them (SIGTERM + SIGKILL grace, or ``taskkill /F``
 on Windows).  Without this, the running backend silently serves stale Python
 against a freshly-updated JS bundle, producing 401s / empty data.
@@ -259,7 +259,7 @@ class TestKillStaleDashboardPosix:
 
     def test_permission_error_is_reported_not_raised(self, capsys):
         """os.kill raising PermissionError (e.g. another user's process)
-        must not abort hermes update — it's reported as a failure and we
+        must not abort vermes update — it's reported as a failure and we
         move on."""
         def fake_kill(pid, sig):
             raise PermissionError("Operation not permitted")
@@ -346,7 +346,7 @@ class TestBackCompatAlias:
 
 class TestWindowsWmicEncoding:
     """Regression tests for #17049 — the Windows wmic branch must not crash
-    `hermes update` on non-UTF-8 system locales (e.g. cp936 on zh-CN).
+    `vermes update` on non-UTF-8 system locales (e.g. cp936 on zh-CN).
     """
 
     def test_wmic_invoked_with_utf8_ignore_errors(self, monkeypatch):
@@ -384,7 +384,7 @@ class TestWindowsWmicEncoding:
         is what Python 3.11 leaves behind when the reader thread silently
         crashed on UnicodeDecodeError before this fix landed — detection
         must short-circuit instead of raising AttributeError on
-        ``None.split('\\n')`` and aborting `hermes update` (#17049)."""
+        ``None.split('\\n')`` and aborting `vermes update` (#17049)."""
         monkeypatch.setattr(sys, "platform", "win32")
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(

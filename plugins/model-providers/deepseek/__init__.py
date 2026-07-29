@@ -3,7 +3,7 @@
 DeepSeek's V4 family (and the legacy ``deepseek-reasoner``) defaults to
 thinking-mode ON when ``extra_body.thinking`` is unset.  The API then returns
 ``reasoning_content`` and starts enforcing the contract that subsequent turns
-echo it back; combined with how Hermes replays history this lands on the
+echo it back; combined with how Vermes replays history this lands on the
 notorious HTTP 400 ``reasoning_content must be passed back`` error after the
 first tool call (#15700, #17212, #17825).
 

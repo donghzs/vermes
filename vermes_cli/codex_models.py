@@ -42,7 +42,7 @@ _FORWARD_COMPAT_TEMPLATE_MODELS: List[tuple[str, tuple[str, ...]]] = [
     # Surface Spark whenever any compatible Codex template is present so
     # accounts hitting the live endpoint with an older lineup still see
     # Spark in the picker. Backend gates real availability by ChatGPT Pro
-    # entitlement; Hermes does not.
+    # entitlement; Vermes does not.
     ("gpt-5.3-codex-spark", ("gpt-5.3-codex", "gpt-5.2-codex")),
 ]
 
@@ -149,7 +149,7 @@ def _read_cache_models(codex_home: Path) -> List[str]:
                 continue
             slug = slug.strip()
             # Do not filter on ``supported_in_api`` here.  It describes the
-            # public OpenAI API, while Hermes openai-codex talks to the same
+            # public OpenAI API, while Vermes openai-codex talks to the same
             # OAuth-backed Codex backend as Codex CLI.
             visibility = item.get("visibility")
             if isinstance(visibility, str) and visibility.strip().lower() in {"hide", "hidden"}:

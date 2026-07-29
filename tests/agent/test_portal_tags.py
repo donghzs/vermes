@@ -27,7 +27,7 @@ def test_nous_portal_tags_contains_product_and_client():
     from agent.portal_tags import vermes_client_tag, nous_portal_tags
 
     tags = nous_portal_tags()
-    assert "product=hermes-agent" in tags
+    assert "product=vermes-agent" in tags
     assert vermes_client_tag() in tags
     assert len(tags) == 2
 

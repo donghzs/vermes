@@ -50,7 +50,7 @@ _FALLBACK_PATTERNS = re.compile(
 )
 _ACCESS_DENIED_PATTERN = re.compile(r"(access is denied|acceso denegado)", re.IGNORECASE)
 
-_TASK_NAME_DEFAULT = "Hermes_Gateway"
+_TASK_NAME_DEFAULT = "Vermes_Gateway"
 _TASK_DESCRIPTION = "Vermes Gateway - Messaging Platform Integration"
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def _is_running_as_admin() -> bool:
         return False
 
 def _current_profile_cli_args() -> list[str]:
-    """Return CLI args that preserve the current Hermes profile."""
+    """Return CLI args that preserve the current Vermes profile."""
     from vermes_cli.gateway import _profile_arg
 
     profile_arg = _profile_arg()
@@ -220,8 +220,8 @@ def _launch_elevated_uninstall() -> bool:
 def get_task_name() -> str:
     """Scheduled Task name, scoped per profile.
 
-    Default profile: ``Hermes_Gateway``
-    Named profile X: ``Hermes_Gateway_<X>``
+    Default profile: ``Vermes_Gateway``
+    Named profile X: ``Vermes_Gateway_<X>``
     """
     _assert_windows()
     # Local import to avoid circular module initialization during vermes_cli boot.
@@ -241,7 +241,7 @@ def get_task_script_path() -> Path:
 
     Lives under ``%LOCALAPPDATA%\\hermes\\gateway-service\\<task_name>.cmd``
     (or ``<HERMES_HOME>/gateway-service/<task_name>.cmd`` so per-profile
-    Hermes installs stay self-contained).
+    Vermes installs stay self-contained).
     """
     _assert_windows()
     from vermes_cli.config import get_hermes_home
@@ -368,7 +368,7 @@ def _resolve_task_user() -> str | None:
 def _install_scheduled_task(task_name: str, script_path: Path) -> tuple[bool, str]:
     """Create or replace the Scheduled Task. Returns (success, detail).
 
-    Always recreate instead of ``/Change``. Older Hermes builds and failed
+    Always recreate instead of ``/Change``. Older Vermes builds and failed
     experiments may have left repeat/restart settings on the task; ``/Change``
     preserves those stale triggers and can make the gateway relaunch every
     minute. Delete+create gives us a clean ONLOGON task every install.
@@ -647,7 +647,7 @@ def _install_startup_fallback(script_path: Path, start_now: bool, detail: str) -
         _report_gateway_start(f"direct spawn (PID {pid})")
     else:
         profile_arg = _profile_arg()
-        start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "hermes gateway start"
+        start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "vermes gateway start"
         logger.info("ℹ Startup fallback installed; gateway not started now.")
         logger.info(f"  Start manually with: {start_cmd}")
     _print_next_steps()
@@ -679,7 +679,7 @@ def install(
                 _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             logger.info("ℹ Gateway not started and no auto-start service installed.")
-            logger.info("  Run later with: hermes gateway start")
+            logger.info("  Run later with: vermes gateway start")
         return
 
     task_name = get_task_name()
@@ -696,11 +696,11 @@ def install(
         logger.info("  UAC is Windows' admin approval prompt; it is needed to create/update the Scheduled Task.")
         if prompt_yes_no("  Open the UAC prompt now?", False):
             if _launch_elevated_install(force=force, start_now=start_now, start_on_login=start_on_login):
-                logger.info("✓ Launched elevated Hermes gateway install prompt.")
+                logger.info("✓ Launched elevated Vermes gateway install prompt.")
                 if start_now:
                     logger.info("  Approve the Windows UAC prompt; the elevated install will start the gateway afterwards.")
                 else:
-                    logger.info("  Approve the Windows UAC prompt, then run: hermes gateway status")
+                    logger.info("  Approve the Windows UAC prompt, then run: vermes gateway status")
                 return
             logger.info("⚠ Falling back to Startup folder because elevation was unavailable or cancelled.")
         else:
@@ -722,7 +722,7 @@ def install(
                 _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             logger.info("ℹ Gateway not started now.")
-            logger.info("  Start manually with: hermes gateway start")
+            logger.info("  Start manually with: vermes gateway start")
         _print_next_steps()
         return
 
@@ -737,11 +737,11 @@ def install(
         logger.info("  UAC is Windows' admin approval prompt; it is needed to create/update the Scheduled Task.")
         if prompt_yes_no("  Open the UAC prompt now?", False):
             if _launch_elevated_install(force=force, start_now=start_now, start_on_login=start_on_login):
-                logger.info("✓ Launched elevated Hermes gateway install prompt.")
+                logger.info("✓ Launched elevated Vermes gateway install prompt.")
                 if start_now:
                     logger.info("  Approve the Windows UAC prompt; the elevated install will start the gateway afterwards.")
                 else:
-                    logger.info("  Approve the Windows UAC prompt, then run: hermes gateway status")
+                    logger.info("  Approve the Windows UAC prompt, then run: vermes gateway status")
                 return
             logger.info("⚠ Falling back to Startup folder because elevation was unavailable or cancelled.")
         else:
@@ -768,7 +768,7 @@ def install(
             _report_gateway_start(f"direct spawn (PID {pid})")
         else:
             profile_arg = _profile_arg()
-            start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "hermes gateway start"
+            start_cmd = f"hermes {profile_arg} gateway start" if profile_arg else "vermes gateway start"
             logger.info("ℹ Startup fallback installed; gateway not started now.")
             logger.info(f"  Start manually with: {start_cmd}")
         _print_next_steps()
@@ -810,7 +810,7 @@ def _print_next_steps() -> None:
     hermes_home = Path(get_hermes_home()).resolve()
     logger.info()
     logger.info("Next steps:")
-    logger.info("  hermes gateway status                      # Check status")
+    logger.info("  vermes gateway status                      # Check status")
     logger.info(f"  type {hermes_home}\\logs\\gateway.log       # View logs")
 
 def uninstall() -> None:
@@ -834,8 +834,8 @@ def uninstall() -> None:
             logger.info("  UAC is Windows' admin approval prompt; it is needed to remove the Scheduled Task.")
             if prompt_yes_no("  Open the UAC prompt now?", False):
                 if _launch_elevated_uninstall():
-                    logger.info("✓ Launched elevated Hermes gateway uninstall prompt.")
-                    logger.info("  Approve the Windows UAC prompt, then run: hermes gateway status")
+                    logger.info("✓ Launched elevated Vermes gateway uninstall prompt.")
+                    logger.info("  Approve the Windows UAC prompt, then run: vermes gateway status")
                     return
                 logger.info("⚠ Elevated uninstall prompt was unavailable or cancelled.")
             else:
@@ -929,7 +929,7 @@ def status(deep: bool = False) -> None:
     if not task_installed and not startup_installed and not pids:
         logger.info()
         logger.info("To install:")
-        logger.info("  hermes gateway install")
+        logger.info("  vermes gateway install")
 
 def start() -> None:
     """Start the gateway. Prefers /Run on the scheduled task if present."""
@@ -947,14 +947,14 @@ def start() -> None:
 
         logger.info("✗ Gateway service is not installed")
         if not prompt_yes_no("  Install it now so the gateway starts on login?", True):
-            logger.info("  Run: hermes gateway install")
+            logger.info("  Run: vermes gateway install")
             return
         install(force=False)
         task_installed = is_task_registered()
         startup_installed = is_startup_entry_installed()
         if not task_installed and not startup_installed:
             logger.info("⚠ Gateway install did not complete in this process.")
-            logger.info("  If a UAC prompt opened, approve it, then run: hermes gateway start")
+            logger.info("  If a UAC prompt opened, approve it, then run: vermes gateway start")
             return
 
     if task_installed:

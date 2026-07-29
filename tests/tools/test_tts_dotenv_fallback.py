@@ -1,6 +1,6 @@
 """Regression tests for #17140.
 
-TTS provider tools must resolve API keys from ``~/.hermes/.env`` (via
+TTS provider tools must resolve API keys from ``~/.vermes/.env`` (via
 ``vermes_cli.config.get_env_value``) and not only from ``os.environ`` —
 otherwise users who keep their keys in the dotenv file see "API key not set"
 errors even though the key is configured. Same class of bug as #15914 (auth)
@@ -33,7 +33,7 @@ def isolate_env(monkeypatch):
 
 
 class TestDotenvFallbackPerProvider:
-    """For each affected provider, when only ``~/.hermes/.env`` carries the
+    """For each affected provider, when only ``~/.vermes/.env`` carries the
     key, the provider must find it. These per-provider tests model that
     dotenv-backed lookup by mocking ``tools.tts_tool.get_env_value`` directly;
     the separate regression-guard tests cover the lower-level
@@ -175,7 +175,7 @@ class TestRegressionGuard:
     """Goal-backward proof that the old behaviour ('only check ``os.environ``')
     breaks reading from a dotenv-only key, and the new behaviour fixes it.
     Implemented as an end-to-end probe that patches
-    ``vermes_cli.config.load_env`` to simulate ``~/.hermes/.env`` carrying the
+    ``vermes_cli.config.load_env`` to simulate ``~/.vermes/.env`` carrying the
     key while ``os.environ`` does not.
     """
 
@@ -223,7 +223,7 @@ class TestRegressionGuard:
 
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
-        # Simulate ~/.hermes/.env carrying the key (load_env returns the dict
+        # Simulate ~/.vermes/.env carrying the key (load_env returns the dict
         # that get_env_value falls back to). The pre-fix ``os.getenv`` call
         # ignores this entirely and raises ValueError.
         with patch(
@@ -260,7 +260,7 @@ class TestRegressionGuard:
         """``check_tts_requirements`` is the gate that decides whether
         ``/voice on`` is even offered. If it only checked ``os.environ`` it
         would say "no provider available" for users who keep MINIMAX_API_KEY
-        in ``~/.hermes/.env``, even though the dispatcher would later succeed.
+        in ``~/.vermes/.env``, even though the dispatcher would later succeed.
         """
         from tools import tts_tool
 

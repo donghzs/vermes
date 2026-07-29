@@ -40,7 +40,7 @@ get_own_cross_signing_public_keys / generate_recovery_key" branch)
 inline so it runs without importing the entire hermes gateway and its
 many dependencies. **If the source diverges from what's in
 `_connect_with_bootstrap`, this test must be updated to match.** A
-small price for not requiring the full hermes-agent runtime in CI.
+small price for not requiring the full vermes-agent runtime in CI.
 
 ## Skipped when
 

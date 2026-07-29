@@ -9,7 +9,7 @@ export const isTermuxEnv = (env: NodeJS.ProcessEnv = process.env): boolean => {
 }
 
 /**
- * Return true when Hermes should enable Termux-focused TUI defaults.
+ * Return true when Vermes should enable Termux-focused TUI defaults.
  *
  * Defaults to on in Termux, with an explicit opt-out for debugging:
  *   HERMES_TUI_TERMUX_MODE=0

@@ -287,7 +287,7 @@ class TestCallbackSubprocess:
         """v1 schema-bug regression gate.
 
         Shell hook returns the Claude-Code-style payload and the bridge
-        must translate it to the canonical Hermes block shape so that
+        must translate it to the canonical Vermes block shape so that
         get_pre_tool_call_block_message() surfaces the block.
         """
         script = _write_script(

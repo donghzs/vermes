@@ -63,7 +63,7 @@ class PlatformEntry:
     # If None, falls back to ``validate_config`` or ``check_fn``.
     is_connected: Optional[Callable[[Any], bool]] = None
 
-    # Env vars this platform needs (for ``hermes setup`` display).
+    # Env vars this platform needs (for ``vermes setup`` display).
     required_env: list = field(default_factory=list)
 
     # Hint shown when check_fn returns False.
@@ -79,7 +79,7 @@ class PlatformEntry:
     source: str = "plugin"
 
     # Name of the plugin manifest that registered this entry (empty for
-    # built-ins).  Used by ``hermes gateway setup`` to auto-enable the
+    # built-ins).  Used by ``vermes gateway setup`` to auto-enable the
     # owning plugin when the user configures its platform.
     plugin_name: str = ""
 

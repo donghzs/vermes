@@ -1,6 +1,6 @@
 """Persistent CDP supervisor for browser dialog + frame detection.
 
-One ``CDPSupervisor`` runs per Hermes ``task_id`` that has a reachable CDP
+One ``CDPSupervisor`` runs per Vermes ``task_id`` that has a reachable CDP
 endpoint. It holds a single persistent WebSocket to the backend, subscribes
 to ``Page`` / ``Runtime`` / ``Target`` events on every attached session
 (top-level page and every OOPIF / worker target that auto-attaches), and

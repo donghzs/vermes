@@ -8,7 +8,7 @@ requires ``msg`` as a positional argument, so every no-arg call raises
 ``TypeError: info() missing 1 required positional argument: 'msg'`` at runtime.
 
 ``cli.py`` installs the same shim inline, but ``vermes_cli/gateway.py`` (the
-``hermes gateway ...`` subcommand path) does NOT import ``cli``. If that path is
+``vermes gateway ...`` subcommand path) does NOT import ``cli``. If that path is
 reached without ``cli.py`` having loaded first, the no-arg calls crash in
 production even though the test suite is green (tests install a conftest shim).
 
@@ -16,7 +16,7 @@ Importing this module guarantees the shim is active for any code path that loads
 ``vermes_cli.gateway`` — independent of entry point / import order.
 
 This is a stopgap. Root fix (P2-1) reverts the no-arg calls to ``print()`` to
-realign with upstream Hermes; at that point this module can be deleted.
+realign with upstream Vermes; at that point this module can be deleted.
 """
 
 import logging as _logging

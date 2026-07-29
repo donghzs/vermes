@@ -1,4 +1,4 @@
-"""Tests that `hermes model` always shows the model selection menu for custom
+"""Tests that `vermes model` always shows the model selection menu for custom
 providers, even when a model is already saved.
 
 Regression test for the bug where _model_flow_named_custom() returned

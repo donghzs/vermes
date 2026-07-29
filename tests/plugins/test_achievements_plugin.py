@@ -12,7 +12,7 @@ These target the two behaviors that matter for official integration:
 The upstream repo ships its own unittest suite under
 ``plugins/hermes-achievements/tests/`` covering the achievement engine
 internals (tier math, secret-state handling, catalog invariants). These
-tests live at the hermes-agent level and focus on the integration
+tests live at the vermes-agent level and focus on the integration
 contract: the plugin scans ALL of your sessions, not the first 200.
 """
 from __future__ import annotations

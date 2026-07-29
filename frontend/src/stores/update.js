@@ -214,7 +214,7 @@ export const useUpdateStore = defineStore('update', () => {
         // Web 模式：HTTP 带 token
         const token = getAgentToken()
         const headers = {}
-        if (token) headers['X-Hermes-Session-Token'] = token
+        if (token) headers['X-Vermes-Session-Token'] = token
         res = await fetch(AGENT_VERSION_URL, {
           signal: AbortSignal.timeout(5000),
           headers,
@@ -363,7 +363,7 @@ export const useUpdateStore = defineStore('update', () => {
         // Web 模式：HTTP 带 token
         const token = getAgentToken()
         const headers = { 'Content-Type': 'application/json' }
-        if (token) headers['X-Hermes-Session-Token'] = token
+        if (token) headers['X-Vermes-Session-Token'] = token
         const response = await fetch('/api/agent/update', {
           method: 'POST',
           headers,

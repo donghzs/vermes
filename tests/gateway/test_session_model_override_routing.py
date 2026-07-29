@@ -189,7 +189,7 @@ fallback_providers:
     def fake_resolve_runtime_provider(*, requested=None, explicit_base_url=None, explicit_api_key=None):
         if requested in (None, "", "openai-codex"):
             from vermes_cli.auth import AuthError
-            raise AuthError("No Codex credentials stored. Run `hermes auth` to authenticate.")
+            raise AuthError("No Codex credentials stored. Run `vermes auth` to authenticate.")
         assert requested == "openrouter"
         return {
             "api_key": "sk-openrouter",

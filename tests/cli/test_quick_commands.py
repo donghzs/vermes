@@ -9,7 +9,7 @@ import pytest
 # ── CLI tests ──────────────────────────────────────────────────────────────
 
 class TestCLIQuickCommands:
-    """Test quick command dispatch in HermesCLI.process_command."""
+    """Test quick command dispatch in VermesCLI.process_command."""
 
     @staticmethod
     def _printed_plain(call_arg):
@@ -18,8 +18,8 @@ class TestCLIQuickCommands:
         return str(call_arg)
 
     def _make_cli(self, quick_commands):
-        from cli import HermesCLI
-        cli = HermesCLI.__new__(HermesCLI)
+        from cli import VermesCLI
+        cli = VermesCLI.__new__(VermesCLI)
         cli.config = {"quick_commands": quick_commands}
         cli.console = MagicMock()
         cli.agent = None

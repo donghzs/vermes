@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_cli(tmp_path, mcp_servers=None):
-    """Create a minimal HermesCLI instance with mocked config."""
+    """Create a minimal VermesCLI instance with mocked config."""
     import cli as cli_mod
-    obj = object.__new__(cli_mod.HermesCLI)
+    obj = object.__new__(cli_mod.VermesCLI)
     obj.config = {"mcp_servers": mcp_servers or {}}
     obj._agent_running = False
     obj._last_config_check = 0.0

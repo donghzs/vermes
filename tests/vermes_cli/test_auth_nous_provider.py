@@ -969,7 +969,7 @@ def test_mint_retry_uses_latest_rotated_refresh_token(tmp_path, monkeypatch):
 
 
 class TestLoginNousSkipKeepsCurrent:
-    """When a user runs `hermes model` → Nous Portal → Skip (keep current) after
+    """When a user runs `vermes model` → Nous Portal → Skip (keep current) after
     a successful OAuth login, the prior provider and model MUST be preserved.
 
     Regression: previously, _update_config_for_provider was called
@@ -1150,7 +1150,7 @@ def _full_state_fixture() -> dict:
 def test_persist_nous_credentials_writes_both_pool_and_providers(tmp_path, monkeypatch):
     """Helper must populate BOTH credential_pool.nous AND providers.nous.
 
-    Regression guard: before this helper existed, `hermes auth add nous`
+    Regression guard: before this helper existed, `vermes auth add nous`
     wrote only the pool. After the Nous agent_key's 24h TTL expired, the
     401-recovery path in run_agent.py called resolve_nous_runtime_credentials
     which reads providers.nous, found it empty, raised AuthError, and the
@@ -1192,7 +1192,7 @@ def test_persist_nous_credentials_writes_both_pool_and_providers(tmp_path, monke
 
 def test_persist_nous_credentials_allows_recovery_from_401(tmp_path, monkeypatch):
     """End-to-end: after persisting via the helper, resolve_nous_runtime_credentials
-    must succeed (not raise "Hermes is not logged into Nous Portal").
+    must succeed (not raise "Vermes is not logged into Nous Portal").
 
     This is the exact path that run_agent.py's `_try_refresh_nous_client_credentials`
     calls after a Nous 401 — before the fix it would raise AuthError because
@@ -1215,7 +1215,7 @@ def test_persist_nous_credentials_allows_recovery_from_401(tmp_path, monkeypatch
 
     # Stub the network-touching steps so we don't actually contact the
     # portal — the point of this test is that state lookup succeeds and
-    # doesn't raise "Hermes is not logged into Nous Portal".
+    # doesn't raise "Vermes is not logged into Nous Portal".
     def _fake_refresh_access_token(*, client, portal_base_url, client_id, refresh_token):
         return {
             "access_token": "access-new",
@@ -1307,7 +1307,7 @@ def test_persist_nous_credentials_reloads_pool_after_singleton_write(tmp_path, m
 def test_persist_nous_credentials_embeds_custom_label(tmp_path, monkeypatch):
     """User-supplied ``--label`` round-trips through providers.nous and the pool.
 
-    Previously `hermes auth add nous --type oauth --label <name>` silently
+    Previously `vermes auth add nous --type oauth --label <name>` silently
     dropped the label because persist_nous_credentials() ignored it and
     _seed_from_singletons always auto-derived via label_from_token().  The
     fix stashes the label inside providers.nous so seeding prefers it.
@@ -1386,10 +1386,10 @@ def test_refresh_token_reuse_detection_surfaces_actionable_message():
     """Regression for #15099.
 
     When the Nous Portal server returns ``invalid_grant`` with
-    ``error_description`` containing "reuse detected", Hermes must surface an
+    ``error_description`` containing "reuse detected", Vermes must surface an
     actionable message explaining that an external process consumed the
     refresh token.  The default opaque "Refresh token reuse detected; please
-    re-authenticate" string led users to report this as a Hermes persistence
+    re-authenticate" string led users to report this as a Vermes persistence
     bug when the true cause is external RT consumption (monitoring scripts,
     custom self-heal hooks).
     """
@@ -1420,7 +1420,7 @@ def test_refresh_token_reuse_detection_surfaces_actionable_message():
     assert "refresh-token reuse" in message.lower() or "refresh token reuse" in message.lower()
     # The message must mention the external-process cause and give next steps.
     assert "external process" in message.lower() or "monitoring script" in message.lower()
-    assert "hermes auth add nous" in message.lower()
+    assert "vermes auth add nous" in message.lower()
     # Must still be classified as invalid_grant + relogin_required.
     assert exc_info.value.code == "invalid_grant"
     assert exc_info.value.relogin_required is True
@@ -1556,7 +1556,7 @@ def test_shared_store_seat_belt_refuses_real_home_under_pytest(monkeypatch):
 
     Mirrors the existing ``_auth_file_path`` seat belt: forgetting to
     redirect this store in a test must fail loudly instead of silently
-    writing to the user's real ``~/.hermes/shared/`` across CI runs.
+    writing to the user's real ``~/.vermes/shared/`` across CI runs.
     """
     from vermes_cli.auth import _nous_shared_store_path
 
@@ -1651,7 +1651,7 @@ def test_persist_nous_credentials_mirrors_to_shared_store(
     tmp_path, monkeypatch, shared_store_env,
 ):
     """persist_nous_credentials must populate BOTH per-profile auth.json
-    AND the shared store, so a future profile's `hermes auth add nous
+    AND the shared store, so a future profile's `vermes auth add nous
     --type oauth` can one-tap import instead of redoing device-code.
     """
     from vermes_cli.auth import (

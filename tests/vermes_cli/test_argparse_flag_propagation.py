@@ -98,7 +98,7 @@ class TestAcceptHooksOnAgentSubparsers:
     position (before the subcommand, between group/subcommand, and
     after the leaf subcommand) for gateway/cron/mcp/acp.  Regression
     against prior behaviour where the flag only worked on the root
-    parser and `chat`, so `hermes gateway run --accept-hooks` failed
+    parser and `chat`, so `vermes gateway run --accept-hooks` failed
     with `unrecognized arguments`."""
 
     @pytest.mark.parametrize("argv", [

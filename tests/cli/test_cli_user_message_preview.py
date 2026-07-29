@@ -49,7 +49,7 @@ def _make_cli(user_message_preview=None):
         mod = importlib.reload(mod)
         _cli_mod = mod
         with patch.object(mod, "get_tool_definitions", return_value=[]), patch.dict(mod.__dict__, {"CLI_CONFIG": clean_config}):
-            return mod.HermesCLI()
+            return mod.VermesCLI()
 
 
 class TestSubmittedUserMessagePreview:

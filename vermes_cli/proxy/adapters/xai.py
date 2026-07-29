@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 _POOL_PROVIDER = "xai-oauth"
 
-# xAI's public API is OpenAI-compatible for the endpoints Hermes commonly
-# uses. The Responses endpoint is included because Hermes' native xAI runtime
+# xAI's public API is OpenAI-compatible for the endpoints Vermes commonly
+# uses. The Responses endpoint is included because Vermes' native xAI runtime
 # uses codex_responses mode.
 _ALLOWED_PATHS: FrozenSet[str] = frozenset(
     {
@@ -29,9 +29,9 @@ _ALLOWED_PATHS: FrozenSet[str] = frozenset(
 
 
 class XAIGrokAdapter(UpstreamAdapter):
-    """Proxy upstream for xAI Grok via Hermes-managed OAuth credentials."""
+    """Proxy upstream for xAI Grok via Vermes-managed OAuth credentials."""
 
-    auth_hint = "hermes auth add xai-oauth --type oauth"
+    auth_hint = "vermes auth add xai-oauth --type oauth"
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -59,15 +59,15 @@ class XAIGrokAdapter(UpstreamAdapter):
             if pool is None or not pool.has_credentials():
                 raise RuntimeError(
                     "No xAI OAuth credentials found. Run "
-                    "`hermes auth add xai-oauth --type oauth` first."
+                    "`vermes auth add xai-oauth --type oauth` first."
                 )
 
             entry = pool.select()
             if entry is None:
                 raise RuntimeError(
                     "No available xAI OAuth credentials found. Run "
-                    "`hermes auth reset xai-oauth` or re-authenticate with "
-                    "`hermes auth add xai-oauth --type oauth`."
+                    "`vermes auth reset xai-oauth` or re-authenticate with "
+                    "`vermes auth add xai-oauth --type oauth`."
                 )
 
             self._pool = pool
@@ -116,7 +116,7 @@ class XAIGrokAdapter(UpstreamAdapter):
         if not bearer:
             raise RuntimeError(
                 "xAI OAuth credential pool entry did not contain an access token. "
-                "Re-authenticate with `hermes auth add xai-oauth --type oauth`."
+                "Re-authenticate with `vermes auth add xai-oauth --type oauth`."
             )
 
         base_url = (

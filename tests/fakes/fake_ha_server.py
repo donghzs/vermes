@@ -1,7 +1,7 @@
 """Fake Home Assistant server for integration testing.
 
 Provides a real HTTP + WebSocket server (via aiohttp.web) that mimics the
-Home Assistant API surface used by hermes-agent:
+Home Assistant API surface used by vermes-agent:
 
 - ``/api/websocket``  -- WebSocket auth handshake + event push
 - ``/api/states``     -- GET all entity states

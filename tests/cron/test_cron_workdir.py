@@ -304,7 +304,7 @@ class TestRunJobTerminalCwd:
         # Unlimited inactivity so the poll loop returns immediately.
         monkeypatch.setenv("HERMES_CRON_TIMEOUT", "0")
 
-        # run_job calls load_dotenv(~/.hermes/.env, override=True), which will
+        # run_job calls load_dotenv(~/.vermes/.env, override=True), which will
         # happily clobber TERMINAL_CWD out from under us if the real user .env
         # has TERMINAL_CWD set (common on dev boxes).  Stub it out.
         import dotenv

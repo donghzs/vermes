@@ -11,7 +11,7 @@ component (harness module, validator, guardrail, etc.) is annotated with:
 - **category**: harness layer (validator, guardrail, gardener, etc.)
 
 This makes it easy to:
-1. Audit what's Vermes-specific vs upstream Hermes
+1. Audit what's Vermes-specific vs upstream Vermes
 2. Identify components that can be removed as the model improves
 3. Track the growth of the harness layer over time
 

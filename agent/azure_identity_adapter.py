@@ -20,7 +20,7 @@ Architecture mirrors `agent/bedrock_adapter.py`:
   purpose prevents accidental token-minting in logging paths or token
   leakage into cache keys / dashboard JSON.
 * No persisted JWT. ``azure-identity`` caches in-process and (where
-  available) in the OS keychain or ``~/.IdentityService``. Hermes does
+  available) in the OS keychain or ``~/.IdentityService``. Vermes does
   not duplicate that storage in ``auth.json``.
 
 Reference: https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/configure-entra-id
@@ -123,7 +123,7 @@ def reset_credential_cache() -> None:
 class EntraIdentityConfig:
     """Serializable Entra ID config.
 
-    Captures the Hermes-managed Entra knobs we need outside Azure SDK
+    Captures the Vermes-managed Entra knobs we need outside Azure SDK
     environment configuration. Everything else
     (tenant ID, service principal secret, federated token file, sovereign
     cloud authority, etc.) flows through azure-identity's standard
@@ -174,12 +174,12 @@ class EntraIdentityConfig:
 def _build_default_credential(config: EntraIdentityConfig) -> Any:
     """Construct a ``DefaultAzureCredential`` for ``config``.
 
-    Only Hermes-selected knobs are passed as kwargs. Everything else
+    Only Vermes-selected knobs are passed as kwargs. Everything else
     (tenant, service principal secret, federated token file, sovereign
     cloud authority, etc.) is read by ``azure-identity`` from the
     standard ``AZURE_*`` environment variables — see Microsoft's
     documented credential resolution chain. Users configure those in
-    ``~/.hermes/.env`` or the deployment environment.
+    ``~/.vermes/.env`` or the deployment environment.
     """
     ai = _require_azure_identity()
     kwargs: Dict[str, Any] = {}
@@ -194,7 +194,7 @@ def _build_default_credential(config: EntraIdentityConfig) -> Any:
 def build_credential(config: EntraIdentityConfig) -> Any:
     """Return the cached ``DefaultAzureCredential`` for ``config``.
 
-    Hermes processes use exactly one Entra config at a time (the
+    Vermes processes use exactly one Entra config at a time (the
     ``model.entra.*`` block in config.yaml drives every aux task,
     subagent, and credential probe in the session). ``maxsize=1`` is
     intentional: it reflects the actual usage pattern and keeps the
@@ -268,8 +268,8 @@ def has_azure_identity_credentials(scope: Optional[str] = None,
 
     Runs ``credential.get_token(scope)`` under a thread-based timeout so
     a slow token service can't hang the caller. Returns False on any
-    error — never raises. Use for ``hermes doctor`` /
-    ``hermes auth status`` / wizard preflight.
+    error — never raises. Use for ``vermes doctor`` /
+    ``vermes auth status`` / wizard preflight.
 
     ``allow_install``: when True (default) and ``azure-identity`` is not
     importable, the adapter triggers the standard lazy-install path
@@ -321,7 +321,7 @@ def describe_active_credential(config: Optional[EntraIdentityConfig] = None,
     """Return diagnostic info about the active credential chain.
 
     Best-effort: runs ``get_token()`` and inspects what came back.
-    Designed for ``hermes doctor`` and the wizard preflight — never
+    Designed for ``vermes doctor`` and the wizard preflight — never
     raises, returns ``{"ok": False, "error": ...}`` on failure.
 
     ``allow_install``: when True (default) and ``azure-identity`` is not
@@ -524,7 +524,7 @@ def build_bearer_http_client(token_provider: Callable[[], str], **httpx_kwargs: 
             logger.warning(
                 "Bearer hook: Entra ID token provider returned empty (%s) "
                 "— stripping Authorization headers. Azure will respond 401. "
-                "Run `hermes doctor` or `az login` to recover.",
+                "Run `vermes doctor` or `az login` to recover.",
                 exc,
             )
             for header_name in ("Authorization", "authorization", "Api-Key", "api-key", "X-Api-Key", "x-api-key"):

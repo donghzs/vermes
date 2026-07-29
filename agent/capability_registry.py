@@ -163,7 +163,7 @@ def _install_chromadb() -> Tuple[bool, str]:
 def _activate_vector_retrieval() -> Tuple[bool, str]:
     """Activate vector retrieval by ensuring Chroma collection exists.
 
-    Creates a persistent Chroma collection at ~/.hermes/chroma/
+    Creates a persistent Chroma collection at ~/.vermes/chroma/
     that hybrid_retriever can use for semantic search.
     """
     try:

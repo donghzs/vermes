@@ -35,7 +35,7 @@ def _check_config():
     if missing:
         logger.info(
             f"Missing required environment variables: {', '.join(missing)}\n"
-            "Set them in ~/.hermes/.env or export them in your shell.\n"
+            "Set them in ~/.vermes/.env or export them in your shell.\n"
             "See the canvas skill SKILL.md for setup instructions.",
             file=sys.stderr,
         )

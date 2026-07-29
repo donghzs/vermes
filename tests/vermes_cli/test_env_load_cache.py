@@ -1,6 +1,6 @@
 """Tests for the load_env() process-level cache.
 
-The cache exists to keep `hermes tools` → "All Platforms" fast: every
+The cache exists to keep `vermes tools` → "All Platforms" fast: every
 `get_env_value()` lookup used to re-read and re-sanitise the entire
 .env file, racking up hundreds of ms across one menu render. The
 cache is keyed on (path, mtime, size); writers (save_env_value /

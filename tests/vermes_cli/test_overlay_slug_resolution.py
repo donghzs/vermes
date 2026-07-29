@@ -1,7 +1,7 @@
 """Test that overlay providers with mismatched models.dev keys resolve correctly.
 
 HERMES_OVERLAYS keys may be models.dev IDs (e.g. "github-copilot") while
-_PROVIDER_MODELS and config.yaml use Hermes IDs ("copilot").  The slug
+_PROVIDER_MODELS and config.yaml use Vermes IDs ("copilot").  The slug
 resolution in list_authenticated_providers() Section 2 must bridge this gap.
 
 Covers: #5223, #6492

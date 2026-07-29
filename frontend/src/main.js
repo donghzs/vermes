@@ -10,10 +10,10 @@ app.use(createPinia())
 app.use(router)
 
 // 桌面模式：从后端注入的全局变量读取 session token
-// 后端在 HTML 中注入 window.__HERMES_SESSION_TOKEN__，进程重启后 token 变化
+// 后端在 HTML 中注入 window.__VERMES_SESSION_TOKEN__，进程重启后 token 变化
 // 在线模式不需要 session token（用 One-API Bearer token）
-if (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) {
-  api.setToken(window.__HERMES_SESSION_TOKEN__)
+if (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) {
+  api.setToken(window.__VERMES_SESSION_TOKEN__)
 }
 
 // 启动时拉取云端模型/推荐提供商配置（失败自动 fallback）

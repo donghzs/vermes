@@ -310,7 +310,7 @@ def test_classic_mode_does_not_double_read_same_file(tmp_path, monkeypatch):
     from vermes_cli.auth import read_credential_pool, _global_auth_file_path
 
     # Classic mode: HERMES_HOME is set to a custom path that is NOT under
-    # ~/.hermes/profiles/ — get_default_hermes_root() returns HERMES_HOME
+    # ~/.vermes/profiles/ — get_default_hermes_root() returns HERMES_HOME
     # itself, so the profile root and global root are the same directory,
     # and the helper correctly returns None (no fallback).
     assert _global_auth_file_path() is None

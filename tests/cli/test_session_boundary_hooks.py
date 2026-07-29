@@ -4,7 +4,7 @@ from vermes_cli.plugins import VALID_HOOKS, PluginManager
 import os
 import shutil
 import tempfile
-from cli import HermesCLI
+from cli import VermesCLI
 
 
 def test_session_hooks_in_valid_hooks():
@@ -16,7 +16,7 @@ def test_session_hooks_in_valid_hooks():
 @patch("vermes_cli.plugins.invoke_hook")
 def test_session_finalize_on_reset(mock_invoke_hook):
     """Verify on_session_finalize fires when /new or /reset is used."""
-    cli = HermesCLI()
+    cli = VermesCLI()
     cli.agent = MagicMock()
     cli.agent.session_id = "test-session-id"
 

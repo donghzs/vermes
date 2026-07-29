@@ -1,9 +1,9 @@
 """Centralized Nous Portal request tags.
 
-Every Hermes request that hits the Nous Portal — main agent loop, auxiliary
+Every Vermes request that hits the Nous Portal — main agent loop, auxiliary
 client (compression / titles / vision / web_extract / session_search / etc.),
 and any future code path — must carry the same product-attribution tags so
-Nous can attribute usage to Hermes Agent and bucket it by client release.
+Nous can attribute usage to Vermes Agent and bucket it by client release.
 
 Tag shape (sent in OpenAI-compatible ``extra_body['tags']``):
 
@@ -35,7 +35,7 @@ from typing import List
 
 
 def _hermes_version() -> str:
-    """Return the current Hermes release version, e.g. ``"0.13.0"``.
+    """Return the current Vermes release version, e.g. ``"0.13.0"``.
 
     Falls back to ``"unknown"`` if ``vermes_cli`` cannot be imported (should
     never happen in a real install — guarded for defensive testing).

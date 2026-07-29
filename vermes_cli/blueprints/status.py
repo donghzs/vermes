@@ -3,7 +3,7 @@
 Endpoints:
 - GET  /api/status              — 服务器状态概览
 - POST /api/gateway/restart     — 重启 Gateway
-- POST /api/hermes/update       — 触发 Hermes 自更新
+- POST /api/hermes/update       — 触发 Vermes 自更新
 - GET  /api/actions/{name}/status — 查询后台任务状态
 - POST /api/shutdown            — 关闭后端服务器
 - POST /api/stop-generation     — 停止正在生成的流
@@ -94,7 +94,7 @@ def _probe_gateway_health() -> tuple[bool, dict | None]:
 
 
 # ---------------------------------------------------------------------------
-# Action spawning (gateway restart, hermes update)
+# Action spawning (gateway restart, vermes update)
 # ---------------------------------------------------------------------------
 
 _ACTION_LOG_DIR: Path = get_hermes_home() / "logs"
@@ -107,7 +107,7 @@ _ACTION_LOG_FILES: Dict[str, str] = {
 _ACTION_PROCS: Dict[str, subprocess.Popen] = {}
 
 
-def _spawn_hermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
+def _spawn_vermes_action(subcommand: List[str], name: str) -> subprocess.Popen:
     """Spawn ``hermes <subcommand>`` detached and record the Popen handle."""
     log_file_name = _ACTION_LOG_FILES[name]
     _ACTION_LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -249,9 +249,9 @@ async def get_status():
 
 
 async def restart_gateway():
-    """Kick off a ``hermes gateway restart`` in the background."""
+    """Kick off a ``vermes gateway restart`` in the background."""
     try:
-        proc = _spawn_hermes_action(["gateway", "restart"], "gateway-restart")
+        proc = _spawn_vermes_action(["gateway", "restart"], "gateway-restart")
     except Exception as exc:
         _log.exception("Failed to spawn gateway restart")
         raise HTTPException(status_code=500, detail=f"Failed to restart gateway: {exc}")
@@ -263,11 +263,11 @@ async def restart_gateway():
 
 
 async def update_hermes():
-    """Kick off ``hermes update`` in the background."""
+    """Kick off ``vermes update`` in the background."""
     try:
-        proc = _spawn_hermes_action(["update"], "hermes-update")
+        proc = _spawn_vermes_action(["update"], "vermes-update")
     except Exception as exc:
-        _log.exception("Failed to spawn hermes update")
+        _log.exception("Failed to spawn vermes update")
         raise HTTPException(status_code=500, detail=f"Failed to start update: {exc}")
     return {
         "ok": True,

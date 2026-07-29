@@ -174,7 +174,7 @@ class TestTerminalIntegration:
 
     def test_passthrough_cannot_override_provider_blocklist(self):
         """GHSA-rhgp-j443-p4rf: register_env_passthrough must NOT accept
-        Hermes provider credentials — that was the bypass where a skill
+        Vermes provider credentials — that was the bypass where a skill
         could declare ANTHROPIC_TOKEN / OPENAI_API_KEY as passthrough and
         defeat the execute_code sandbox scrubbing."""
         from tools.environments.local import (
@@ -220,7 +220,7 @@ class TestTerminalIntegration:
 
     def test_non_hermes_api_key_still_registerable(self):
         """Third-party API keys (TENOR_API_KEY, NOTION_TOKEN, etc.) are NOT
-        Hermes provider credentials and must still pass through — skills
+        Vermes provider credentials and must still pass through — skills
         that legitimately wrap third-party APIs must keep working."""
         # TENOR_API_KEY is a real example — used by the gif-search skill
         register_env_passthrough(["TENOR_API_KEY"])

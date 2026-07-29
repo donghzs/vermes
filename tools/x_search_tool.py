@@ -5,10 +5,10 @@ Authentication
 --------------
 The tool registers when **either** xAI credential path is available:
 
-* ``XAI_API_KEY`` is set in ``~/.hermes/.env`` or the process environment
+* ``XAI_API_KEY`` is set in ``~/.vermes/.env`` or the process environment
   (paid xAI API key), OR
 * The user is signed in via xAI Grok OAuth — SuperGrok subscription —
-  i.e. ``hermes auth add xai-oauth`` has been run and the stored refresh
+  i.e. ``vermes auth add xai-oauth`` has been run and the stored refresh
   token still works.
 
 Credential preference at call time matches
@@ -98,7 +98,7 @@ def _resolve_xai_bearer() -> Tuple[str, str, str]:
     api_key = str(creds.get("api_key") or "").strip()
     if not api_key:
         raise RuntimeError(
-            "No xAI credentials available. Run `hermes auth add xai-oauth` "
+            "No xAI credentials available. Run `vermes auth add xai-oauth` "
             "to sign in with your SuperGrok subscription, or set XAI_API_KEY."
         )
     base_url = str(creds.get("base_url") or DEFAULT_XAI_BASE_URL).strip().rstrip("/")

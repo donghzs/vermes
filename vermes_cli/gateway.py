@@ -1,7 +1,7 @@
 """
-Gateway subcommand for hermes CLI.
+Gateway subcommand for vermes CLI.
 
-Handles: hermes gateway [run|start|stop|restart|status|install|uninstall|setup]
+Handles: vermes gateway [run|start|stop|restart|status|install|uninstall|setup]
 """
 
 import asyncio
@@ -33,7 +33,7 @@ from vermes_cli.config import (
     save_env_value,
 )
 # display_hermes_home is imported lazily at call sites to avoid ImportError
-# when vermes_constants is cached from a pre-update version during `hermes update`.
+# when vermes_constants is cached from a pre-update version during `vermes update`.
 from vermes_cli.setup import (
     print_header, print_info, print_success, print_warning, print_error,
     prompt, prompt_choice, prompt_yes_no,
@@ -85,7 +85,7 @@ def _get_service_pids() -> set:
         for scope_args in [["systemctl", "--user"], ["systemctl"]]:
             try:
                 result = subprocess.run(
-                    scope_args + ["list-units", "hermes-gateway*",
+                    scope_args + ["list-units", "vermes-gateway*",
                                   "--plain", "--no-legend", "--no-pager"],
                     capture_output=True, text=True, timeout=5,
                 )
@@ -140,7 +140,7 @@ def _get_parent_pid(pid: int) -> int | None:
     older implementation shelled out to ``ps -o ppid= -p <pid>``, which
     silently fails on Windows (no ``ps``) so the ancestor walk terminated
     at self — the caller's dedup / exclude logic then couldn't distinguish
-    "hermes CLI that invoked this scan" from "real gateway process".
+    "vermes CLI that invoked this scan" from "real gateway process".
     """
     if pid <= 1:
         return None
@@ -263,7 +263,7 @@ def _get_ancestor_pids() -> set[int]:
 
     Walks from the current PID up to PID 1 (init) so that process-table scans
     never match the calling CLI process or any of its parents.  This prevents
-    ``hermes gateway status`` from falsely counting the ``hermes`` CLI that
+    ``vermes gateway status`` from falsely counting the ``vermes`` CLI that
     invoked it as a running gateway instance (see #13242).
     """
     ancestors: set[int] = set()
@@ -294,7 +294,7 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
     discover gateways outside the current profile.
     """
     # Exclude the entire ancestor chain so the CLI process that invoked this
-    # scan (e.g. ``hermes gateway status``) is never mistaken for a running
+    # scan (e.g. ``vermes gateway status``) is never mistaken for a running
     # gateway.  See #13242.
     exclude_pids = exclude_pids | _get_ancestor_pids()
     pids: list[int] = []
@@ -305,7 +305,7 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
         "vermes_cli/main.py gateway",
         "vermes_cli/main.py --profile",
         "vermes_cli/main.py -p",
-        "hermes gateway",
+        "vermes gateway",
         "gateway/run.py",
     ]
     current_home = str(get_hermes_home().resolve())
@@ -516,10 +516,10 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
         exclude_pids: PIDs to exclude from the result (e.g. service-managed
             PIDs that should not be killed during a stale-process sweep).
         all_profiles: When ``True``, return gateway PIDs across **all**
-            profiles (the pre-7923 global behaviour).  ``hermes update``
+            profiles (the pre-7923 global behaviour).  ``vermes update``
             needs this because a code update affects every profile.
             When ``False`` (default), only PIDs belonging to the current
-            Hermes profile are returned.
+            Vermes profile are returned.
     """
     _exclude = set(exclude_pids or set())
     pids: list[int] = []
@@ -540,7 +540,7 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
 def find_profile_gateway_processes(
     exclude_pids: set | None = None,
 ) -> list[ProfileGatewayProcess]:
-    """Return running gateway PIDs mapped to Hermes profiles via PID files."""
+    """Return running gateway PIDs mapped to Vermes profiles via PID files."""
     _exclude = set(exclude_pids or set())
     processes: list[ProfileGatewayProcess] = []
     try:
@@ -585,8 +585,8 @@ def launch_detached_profile_gateway_restart(profile: str, old_pid: int) -> bool:
     #
     # Windows — ``start_new_session`` is silently accepted but does NOT
     # detach.  The watcher stays attached to the CLI's console and dies
-    # when the user closes the terminal, leaving ``hermes update`` users
-    # with no running gateway until they re-invoke ``hermes gateway``
+    # when the user closes the terminal, leaving ``vermes update`` users
+    # with no running gateway until they re-invoke ``vermes gateway``
     # manually.  The Win32 equivalent is the ``CREATE_NEW_PROCESS_GROUP |
     # DETACHED_PROCESS | CREATE_NO_WINDOW`` creationflags bundle.
     #
@@ -855,7 +855,7 @@ def _wait_for_systemd_service_restart(
 
     logger.info(
         f"⚠ {scope_label} service did not become active within {int(timeout)}s.\n"
-        f"  Check status: {'sudo ' if system else ''}hermes gateway status\n"
+        f"  Check status: {'sudo ' if system else ''}vermes gateway status\n"
         f"  Check logs:   journalctl {'--user ' if not system else ''}-u {svc} -l --since '2 min ago'"
     )
     return False
@@ -896,7 +896,7 @@ def _print_systemd_start_limit_wait(system: bool = False) -> None:
     journal_prefix = "journalctl " if system else "journalctl --user "
     logger.info(f"⏳ {scope_label} service is temporarily rate-limited by systemd.")
     logger.info("  systemd is refusing another immediate start after repeated exits.")
-    logger.info(f"  Wait for the start-limit window to expire, then run: {'sudo ' if system else ''}hermes gateway restart{scope_flag}")
+    logger.info(f"  Wait for the start-limit window to expire, then run: {'sudo ' if system else ''}vermes gateway restart{scope_flag}")
     logger.info(f"  Or clear the failed state manually: {systemctl_prefix}reset-failed {svc}")
     logger.info(f"  Check logs: {journal_prefix}-u {svc} -l --since '5 min ago'")
 
@@ -1026,14 +1026,14 @@ def _print_gateway_process_mismatch(snapshot: GatewayRuntimeSnapshot) -> None:
     logger.info()
     logger.info("⚠ Gateway process is running for this profile, but the service is not active")
     logger.info(f"  PID(s): {_format_gateway_pids(snapshot.gateway_pids, limit=None)}")
-    logger.info("  This is usually a manual foreground/tmux/nohup run, so `hermes gateway`")
+    logger.info("  This is usually a manual foreground/tmux/nohup run, so `vermes gateway`")
     logger.info("  can refuse to start another copy until this process stops.")
 
 
 def _print_other_profiles_gateway_status() -> None:
     """Print a summary of gateway status across all profiles.
 
-    Shown at the bottom of ``hermes gateway status`` output so users with
+    Shown at the bottom of ``vermes gateway status`` output so users with
     multiple profiles can tell at a glance which gateways are running and
     avoid confusing another profile's process with the current one.
     """
@@ -1233,7 +1233,7 @@ def is_windows() -> bool:
 def _windows_gateway_should_absorb_console_controls() -> bool:
     """Return True for detached Windows gateway runs that should ignore Ctrl+C.
 
-    Foreground ``hermes gateway run`` must remain interruptible from
+    Foreground ``vermes gateway run`` must remain interruptible from
     PowerShell/CMD. Detached service-style launches opt in via
     ``HERMES_GATEWAY_DETACHED=1``; older wrappers without the env marker are
     treated as detached when no interactive stdin is attached.
@@ -1289,7 +1289,7 @@ def _profile_suffix() -> str:
 def _profile_arg(hermes_home: str | None = None) -> str:
     """Return ``--profile <name>`` only when HERMES_HOME is a named profile.
 
-    For ``~/.hermes/profiles/<name>``, returns ``"--profile <name>"``.
+    For ``~/.vermes/profiles/<name>``, returns ``"--profile <name>"``.
     For the default profile or hash-based custom paths, returns the empty string.
 
     Args:
@@ -1524,7 +1524,7 @@ def _raise_user_systemd_unavailable(username: str, *, reason: str, fix_hint: str
         "\n"
         "  Alternative: run the gateway in the foreground (stays up until\n"
         "  you exit / close the terminal):\n"
-        "    hermes gateway run"
+        "    vermes gateway run"
     )
     raise UserSystemdUnavailableError(msg)
 
@@ -1575,7 +1575,7 @@ def has_conflicting_systemd_units() -> bool:
     return len(get_installed_systemd_scopes()) > 1
 
 
-# Legacy service names from older Hermes installs that predate the
+# Legacy service names from older Vermes installs that predate the
 # hermes-gateway rename. Kept as an explicit allowlist (NOT a glob) so
 # profile units (hermes-gateway-*.service) and unrelated third-party
 # "hermes" units are never matched.
@@ -1587,8 +1587,8 @@ _LEGACY_UNIT_EXECSTART_MARKERS: tuple[str, ...] = (
     "vermes_cli.main gateway",
     "vermes_cli/main.py gateway",
     "gateway/run.py",
-    " hermes gateway ",
-    "/hermes gateway ",
+    " vermes gateway ",
+    "/vermes gateway ",
 )
 
 
@@ -1605,9 +1605,9 @@ def _legacy_unit_search_paths() -> list[tuple[bool, Path]]:
 
 
 def _find_legacy_hermes_units() -> list[tuple[str, Path, bool]]:
-    """Return ``[(unit_name, unit_path, is_system)]`` for legacy Hermes gateway units.
+    """Return ``[(unit_name, unit_path, is_system)]`` for legacy Vermes gateway units.
 
-    Detects unit files installed by older Hermes versions that used a
+    Detects unit files installed by older Vermes versions that used a
     different service name (e.g. ``hermes.service`` before the rename to
     ``hermes-gateway.service``). When both a legacy unit and the current
     ``hermes-gateway.service`` are active, they fight over the same bot
@@ -1643,12 +1643,12 @@ def _find_legacy_hermes_units() -> list[tuple[str, Path, bool]]:
 
 
 def has_legacy_hermes_units() -> bool:
-    """Return True when any legacy Hermes gateway unit files exist."""
+    """Return True when any legacy Vermes gateway unit files exist."""
     return bool(_find_legacy_hermes_units())
 
 
 def print_legacy_unit_warning() -> None:
-    """Warn about legacy Hermes gateway unit files if any are installed.
+    """Warn about legacy Vermes gateway unit files if any are installed.
 
     Idempotent: prints nothing when no legacy units are detected. Safe to
     call from any status/install/setup path.
@@ -1656,21 +1656,21 @@ def print_legacy_unit_warning() -> None:
     legacy = _find_legacy_hermes_units()
     if not legacy:
         return
-    print_warning("Legacy Hermes gateway unit(s) detected from an older install:")
+    print_warning("Legacy Vermes gateway unit(s) detected from an older install:")
     for name, path, is_system in legacy:
         scope = "system" if is_system else "user"
         print_info(f"    {path}  ({scope} scope)")
     print_info("  These run alongside the current hermes-gateway service and")
     print_info("  cause SIGTERM flap loops — both try to use the same bot token.")
     print_info("  Remove them with:")
-    print_info("    hermes gateway migrate-legacy")
+    print_info("    vermes gateway migrate-legacy")
 
 
 def remove_legacy_hermes_units(
     interactive: bool = True,
     dry_run: bool = False,
 ) -> tuple[int, list[Path]]:
-    """Stop, disable, and remove legacy Hermes gateway unit files.
+    """Stop, disable, and remove legacy Vermes gateway unit files.
 
     Iterates over whatever ``_find_legacy_hermes_units()`` returns — which is
     an explicit allowlist of legacy names (not a glob). Profile units and
@@ -1688,14 +1688,14 @@ def remove_legacy_hermes_units(
     """
     legacy = _find_legacy_hermes_units()
     if not legacy:
-        logger.info("No legacy Hermes gateway units found.")
+        logger.info("No legacy Vermes gateway units found.")
         return 0, []
 
     user_units = [(n, p) for n, p, is_sys in legacy if not is_sys]
     system_units = [(n, p) for n, p, is_sys in legacy if is_sys]
 
     logger.info()
-    logger.info("Legacy Hermes gateway unit(s) found:")
+    logger.info("Legacy Vermes gateway unit(s) found:")
     for name, path, is_system in legacy:
         scope = "system" if is_system else "user"
         logger.info(f"  {path}  ({scope} scope)")
@@ -1706,7 +1706,7 @@ def remove_legacy_hermes_units(
         return 0, [p for _, p, _ in legacy]
 
     if interactive and not prompt_yes_no("Remove these legacy units?", True):
-        logger.info("Skipped. Run again with: hermes gateway migrate-legacy")
+        logger.info("Skipped. Run again with: vermes gateway migrate-legacy")
         return 0, [p for _, p, _ in legacy]
 
     removed = 0
@@ -1735,7 +1735,7 @@ def remove_legacy_hermes_units(
         if os.geteuid() != 0:  # windows-footgun: ok — Linux systemd removal path, guarded by `if system == "Linux"` / systemd-only branch
             logger.info()
             print_warning("System-scope legacy units require root to remove.")
-            print_info("  Re-run with: sudo hermes gateway migrate-legacy")
+            print_info("  Re-run with: sudo vermes gateway migrate-legacy")
             for _, path in system_units:
                 remaining.append(path)
         else:
@@ -1774,8 +1774,8 @@ def print_systemd_scope_conflict_warning() -> None:
     print_info("  This is confusing and can make start/stop/status behavior ambiguous.")
     print_info("  Default gateway commands target the user service unless you pass --system.")
     print_info("  Keep one of these:")
-    print_info("    hermes gateway uninstall")
-    print_info("    sudo hermes gateway uninstall --system")
+    print_info("    vermes gateway uninstall")
+    print_info("    sudo vermes gateway uninstall --system")
 
 
 def _require_root_for_system_service(action: str) -> None:
@@ -1848,12 +1848,12 @@ def install_linux_gateway_from_setup(force: bool = False, enable_on_startup: boo
     if scope == "system":
         run_as_user = _default_system_service_user()
         if os.geteuid() != 0:  # windows-footgun: ok — Linux systemd install wizard, never invoked on Windows
-            print_warning("  System service install requires sudo, so Hermes can't create it from this user session.")
+            print_warning("  System service install requires sudo, so Vermes can't create it from this user session.")
             if run_as_user:
-                print_info(f"  After setup, run: sudo hermes gateway install --system --run-as-user {run_as_user}")
+                print_info(f"  After setup, run: sudo vermes gateway install --system --run-as-user {run_as_user}")
             else:
-                print_info("  After setup, run: sudo hermes gateway install --system --run-as-user <your-user>")
-            print_info("  Then start it with: sudo hermes gateway start --system")
+                print_info("  After setup, run: sudo vermes gateway install --system --run-as-user <your-user>")
+            print_info("  Then start it with: sudo vermes gateway start --system")
             return scope, False
 
         if not run_as_user:
@@ -1936,7 +1936,7 @@ def print_systemd_linger_guidance() -> None:
 def _launchd_user_home() -> Path:
     """Return the real macOS user home for launchd artifacts.
 
-    Profile-mode Hermes often sets ``HOME`` to a profile-scoped directory, but
+    Profile-mode Vermes often sets ``HOME`` to a profile-scoped directory, but
     launchd user agents still live under the actual account home.
     """
     import pwd
@@ -2314,7 +2314,7 @@ def refresh_systemd_unit_if_needed(system: bool = False) -> bool:
 
     unit_path.write_text(new_unit, encoding="utf-8")
     _run_systemctl(["daemon-reload"], system=system, check=True, timeout=30)
-    logger.info(f"↻ Updated gateway {_service_scope_label(system)} service definition to match the current Hermes install")
+    logger.info(f"↻ Updated gateway {_service_scope_label(system)} service definition to match the current Vermes install")
     return True
 
 
@@ -2419,9 +2419,9 @@ def _print_system_scope_remediation(action: str) -> None:
     else:
         print_info(f"         sudo systemctl {action} {svc}")
     print_info("    2. Switch to a per-user service (recommended for personal use):")
-    print_info("         sudo hermes gateway uninstall --system")
-    print_info("         hermes gateway install")
-    print_info("         hermes gateway start")
+    print_info("         sudo vermes gateway uninstall --system")
+    print_info("         vermes gateway install")
+    print_info("         vermes gateway start")
 
 
 def _get_restart_drain_timeout() -> float:
@@ -2488,8 +2488,8 @@ def systemd_install(
     logger.info(f"✓ {_service_scope_label(system).capitalize()} service {enable_label}!")
     logger.info()
     logger.info("Next steps:")
-    logger.info(f"  {'sudo ' if system else ''}hermes gateway start{scope_flag}              # Start the service")
-    logger.info(f"  {'sudo ' if system else ''}hermes gateway status{scope_flag}             # Check status")
+    logger.info(f"  {'sudo ' if system else ''}vermes gateway start{scope_flag}              # Start the service")
+    logger.info(f"  {'sudo ' if system else ''}vermes gateway status{scope_flag}             # Check status")
     logger.info(f"  {'journalctl' if system else 'journalctl --user'} -u {get_service_name()} -f  # View logs")
     logger.info()
 
@@ -2526,7 +2526,7 @@ def _require_service_installed(action: str, system: bool = False) -> None:
     if not unit_path.exists():
         scope_flag = " --system" if system else ""
         logger.info(f"✗ Gateway service is not installed")
-        logger.info(f"  Run: {'sudo ' if system else ''}hermes gateway install{scope_flag}")
+        logger.info(f"  Run: {'sudo ' if system else ''}vermes gateway install{scope_flag}")
         sys.exit(1)
 
 
@@ -2565,7 +2565,7 @@ def systemd_stop(system: bool = False):
         label = _service_scope_label(system)
         logger.info(
             f"Gateway {label} service is still stopping after 90s; "
-            "check `hermes gateway status` or logs for final shutdown state."
+            "check `vermes gateway status` or logs for final shutdown state."
         )
         return
     logger.info(f"✓ {_service_scope_label(system).capitalize()} service stopped")
@@ -2633,7 +2633,7 @@ def systemd_restart(system: bool = False):
             label = _service_scope_label(system)
             logger.info(
                 f"Gateway {label} service is still restarting after 90s; "
-                "check `hermes gateway status` or logs for final state."
+                "check `vermes gateway status` or logs for final state."
             )
             return
         _wait_for_systemd_service_restart(system=system, previous_pid=pid)
@@ -2659,7 +2659,7 @@ def systemd_restart(system: bool = False):
         label = _service_scope_label(system)
         logger.info(
             f"Gateway {label} service is still restarting after 90s; "
-            "check `hermes gateway status` or logs for final state."
+            "check `vermes gateway status` or logs for final state."
         )
         return
     _wait_for_systemd_service_restart(system=system, previous_pid=pid)
@@ -2673,7 +2673,7 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
 
     if not unit_path.exists():
         logger.info("✗ Gateway service is not installed")
-        logger.info(f"  Run: {'sudo ' if system else ''}hermes gateway install{scope_flag}")
+        logger.info(f"  Run: {'sudo ' if system else ''}vermes gateway install{scope_flag}")
         return
 
     _sync_hermes_home_from_systemd_unit(system=system)
@@ -2688,7 +2688,7 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
 
     if not systemd_unit_is_current(system=system):
         logger.info("⚠ Installed gateway service definition is outdated")
-        logger.info(f"  Run: {'sudo ' if system else ''}hermes gateway restart{scope_flag}  # auto-refreshes the unit")
+        logger.info(f"  Run: {'sudo ' if system else ''}vermes gateway restart{scope_flag}  # auto-refreshes the unit")
         logger.info()
 
     status_cmd = ["status", get_service_name(), "--no-pager"]
@@ -2716,7 +2716,7 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
         logger.info(f"✓ {_service_scope_label(system).capitalize()} gateway service is running")
     else:
         logger.info(f"✗ {_service_scope_label(system).capitalize()} gateway service is stopped")
-        logger.info(f"  Run: {'sudo ' if system else ''}hermes gateway start{scope_flag}")
+        logger.info(f"  Run: {'sudo ' if system else ''}vermes gateway start{scope_flag}")
 
     configured_user = _read_systemd_user_from_unit(unit_path) if system else None
     if configured_user:
@@ -2738,11 +2738,11 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
         logger.info("  ⏳ Restart pending: systemd is waiting to relaunch the gateway")
     elif _systemd_unit_is_start_limited(unit_props):
         logger.info("  ⏳ Restart pending: systemd is temporarily rate-limiting starts")
-        logger.info(f"  Run after the start-limit window expires: {'sudo ' if system else ''}hermes gateway restart{scope_flag}")
+        logger.info(f"  Run after the start-limit window expires: {'sudo ' if system else ''}vermes gateway restart{scope_flag}")
         logger.info(f"  Or clear it manually: systemctl {'--user ' if not system else ''}reset-failed {get_service_name()}")
     elif active_state == "failed" and exec_main_status == str(GATEWAY_SERVICE_RESTART_EXIT_CODE):
         logger.info("  ⚠ Planned restart is stuck in systemd failed state (exit 75)")
-        logger.info(f"  Run: systemctl {'--user ' if not system else ''}reset-failed {get_service_name()} && {'sudo ' if system else ''}hermes gateway start{scope_flag}")
+        logger.info(f"  Run: systemctl {'--user ' if not system else ''}reset-failed {get_service_name()} && {'sudo ' if system else ''}vermes gateway start{scope_flag}")
     elif active_state == "failed" and result_code:
         logger.info(f"  ⚠ Systemd unit result: {result_code}")
 
@@ -2899,7 +2899,7 @@ def refresh_launchd_plist_if_needed() -> bool:
     # Bootout/bootstrap so launchd picks up the new definition
     subprocess.run(["launchctl", "bootout", f"{_launchd_domain()}/{label}"], check=False, timeout=90)
     subprocess.run(["launchctl", "bootstrap", _launchd_domain(), str(plist_path)], check=False, timeout=30)
-    logger.info("↻ Updated gateway launchd service definition to match the current Hermes install")
+    logger.info("↻ Updated gateway launchd service definition to match the current Vermes install")
     return True
 
 
@@ -2926,7 +2926,7 @@ def launchd_install(force: bool = False):
     logger.info("✓ Service installed and loaded!")
     logger.info()
     logger.info("Next steps:")
-    logger.info("  hermes gateway status             # Check status")
+    logger.info("  vermes gateway status             # Check status")
     from vermes_constants import display_hermes_home as _dhh
     logger.info(f"  tail -f {_dhh()}/logs/gateway.log  # View logs")
 
@@ -2979,7 +2979,7 @@ def launchd_stop():
     # bootout unloads the service definition so KeepAlive doesn't respawn
     # the process.  A plain `kill SIGTERM` only signals the process — launchd
     # immediately restarts it because KeepAlive.SuccessfulExit = false.
-    # `hermes gateway start` re-bootstraps when it detects the job is unloaded.
+    # `vermes gateway start` re-bootstraps when it detects the job is unloaded.
     try:
         subprocess.run(["launchctl", "bootout", target], check=True, timeout=90)
     except subprocess.CalledProcessError as e:
@@ -3082,10 +3082,10 @@ def launchd_status(deep: bool = False):
 
     logger.info(f"Launchd plist: {plist_path}")
     if launchd_plist_is_current():
-        logger.info("✓ Service definition matches the current Hermes install")
+        logger.info("✓ Service definition matches the current Vermes install")
     else:
-        logger.info("⚠ Service definition is stale relative to the current Hermes install")
-        logger.info("  Run: hermes gateway start")
+        logger.info("⚠ Service definition is stale relative to the current Vermes install")
+        logger.info("  Run: vermes gateway start")
 
     if loaded:
         logger.info("✓ Gateway service is loaded")
@@ -3093,7 +3093,7 @@ def launchd_status(deep: bool = False):
     else:
         logger.info("✗ Gateway service is not loaded")
         logger.info("  Service definition exists locally but launchd has not loaded it.")
-        logger.info("  Run: hermes gateway start")
+        logger.info("  Run: vermes gateway start")
     
     if deep:
         log_file = get_hermes_home() / "logs" / "gateway.log"
@@ -3128,12 +3128,12 @@ def _guard_official_docker_root_gateway() -> None:
         return
 
     print_error(
-        "Refusing to run the Hermes gateway as root inside the official Docker image."
+        "Refusing to run the Vermes gateway as root inside the official Docker image."
     )
     logger.info(
         "  The image entrypoint normally drops privileges to the 'hermes' user. "
         "If you override entrypoint in Docker Compose, include "
-        "/opt/hermes/docker/entrypoint.sh before the Hermes command."
+        "/opt/hermes/docker/entrypoint.sh before the Vermes command."
     )
     logger.info(
         "  Running the gateway as root can leave root-owned files in "
@@ -3157,7 +3157,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     sys.path.insert(0, str(PROJECT_ROOT))
 
     # Detached Windows gateway runs must ignore console-control broadcasts
-    # from sibling CLI processes, but foreground `hermes gateway run` still
+    # from sibling CLI processes, but foreground `vermes gateway run` still
     # needs to obey the banner's "Press Ctrl+C to stop" contract.
     # Service-style launchers set HERMES_GATEWAY_DETACHED=1; older wrappers
     # without the marker are handled by the non-TTY fallback.
@@ -3198,10 +3198,10 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     # Refresh the systemd unit definition on every boot so that restart
     # settings (RestartSec, StartLimitIntervalSec, etc.) stay current even
     # when the process was respawned via exit-code-75 (stale-code or
-    # /restart) rather than through `hermes gateway restart` which already
+    # /restart) rather than through `vermes gateway restart` which already
     # calls refresh_systemd_unit_if_needed().  Without this, a code update
     # that ships new unit settings won't take effect until the next manual
-    # `hermes gateway start/restart` — leaving the gateway vulnerable to
+    # `vermes gateway start/restart` — leaving the gateway vulnerable to
     # the exact failure mode the new settings were meant to prevent.
     if supports_systemd_services():
         try:
@@ -3212,7 +3212,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     from gateway.run import start_gateway
     
     logger.info("┌─────────────────────────────────────────────────────────┐")
-    logger.info("│           ⚕ Hermes Gateway Starting...                 │")
+    logger.info("│           ⚕ Vermes Gateway Starting...                 │")
     logger.info("├─────────────────────────────────────────────────────────┤")
     logger.info("│  Messaging platforms + cron scheduler                    │")
     logger.info("│  Press Ctrl+C to stop                                   │")
@@ -3403,7 +3403,7 @@ _PLATFORMS = [
             "3. Get an access token: Element → Settings → Help & About → Access Token",
             "   Or via API: curl -X POST https://your-server/_matrix/client/v3/login \\",
             "     -d '{\"type\":\"m.login.password\",\"user\":\"@bot:server\",\"password\":\"...\"}'",
-            "4. Alternatively, provide user ID + password and Hermes will log in directly",
+            "4. Alternatively, provide user ID + password and Vermes will log in directly",
             "5. For E2EE: set MATRIX_ENCRYPTION=true (requires pip install 'mautrix[encryption]')",
             "6. To find your user ID: it's @username:your-server (shown in Element profile)",
         ],
@@ -3445,7 +3445,7 @@ _PLATFORMS = [
              "is_allowlist": True,
              "help": "Your Mattermost user ID from step 4 above."},
             {"name": "MATTERMOST_HOME_CHANNEL", "prompt": "Home channel ID (for cron/notification delivery, or empty to set later with /set-home)", "password": False,
-             "help": "Channel ID where Hermes delivers cron results and notifications."},
+             "help": "Channel ID where Vermes delivers cron results and notifications."},
             {"name": "MATTERMOST_REPLY_MODE", "prompt": "Reply mode — 'off' for flat messages, 'thread' for threaded replies (default: off)", "password": False,
              "help": "off = flat channel messages, thread = replies nest under your message."},
         ],
@@ -3468,7 +3468,7 @@ _PLATFORMS = [
         "emoji": "📧",
         "token_var": "EMAIL_ADDRESS",
         "setup_instructions": [
-            "1. Use a dedicated email account for your Hermes agent",
+            "1. Use a dedicated email account for your Vermes agent",
             "2. For Gmail: enable 2FA, then create an App Password at",
             "   https://myaccount.google.com/apppasswords",
             "3. For other providers: use your email password or app-specific password",
@@ -3476,7 +3476,7 @@ _PLATFORMS = [
         ],
         "vars": [
             {"name": "EMAIL_ADDRESS", "prompt": "Email address", "password": False,
-             "help": "The email address Hermes will use (e.g., hermes@gmail.com)."},
+             "help": "The email address Vermes will use (e.g., hermes@gmail.com)."},
             {"name": "EMAIL_PASSWORD", "prompt": "Email password (or app password)", "password": True,
              "help": "For Gmail, use an App Password (not your regular password)."},
             {"name": "EMAIL_IMAP_HOST", "prompt": "IMAP host", "password": False,
@@ -3634,9 +3634,9 @@ _PLATFORMS = [
             "2. Complete the BlueBubbles setup wizard — sign in with your Apple ID",
             "3. In BlueBubbles Settings → API, note the Server URL and password",
             "4. The server URL is typically http://<your-mac-ip>:1234",
-            "5. Hermes connects via the BlueBubbles REST API and receives",
+            "5. Vermes connects via the BlueBubbles REST API and receives",
             "   incoming messages via a local webhook",
-            "6. To authorize users, use DM pairing: hermes pairing generate bluebubbles",
+            "6. To authorize users, use DM pairing: vermes pairing generate bluebubbles",
             "   Share the code — the user sends it via iMessage to get approved",
         ],
         "vars": [
@@ -3683,7 +3683,7 @@ _PLATFORMS = [
             "1. Download the Yuanbao app from https://yuanbao.tencent.com/",
             "2. In the app, go to PAI → My Bot and create a new bot",
             "3. After the bot is created, copy the App ID and App Secret",
-            "4. Enter them below and Hermes will connect automatically over WebSocket",
+            "4. Enter them below and Vermes will connect automatically over WebSocket",
         ],
         "vars": [
             {"name": "YUANBAO_APP_ID", "prompt": "App ID", "password": False,
@@ -3699,7 +3699,7 @@ def _all_platforms() -> list[dict]:
     Combines the built-in ``_PLATFORMS`` with plugin platforms registered via
     ``platform_registry``. Plugins are discovered on first call so bundled
     platforms (like IRC, which auto-load via ``kind: platform``) appear in
-    ``hermes setup gateway`` without needing the gateway to be running.
+    ``vermes setup gateway`` without needing the gateway to be running.
     Built-ins keep their dict shape; plugin entries are adapted to the same
     shape with ``_registry_entry`` holding the source.
 
@@ -3709,13 +3709,13 @@ def _all_platforms() -> list[dict]:
         ``mautrix[encryption]`` -> ``python-olm``, which has no Windows
         wheel and needs ``make`` + libolm to build from sdist. There's
         no native Windows path that works, so we don't offer it in the
-        picker. Users who want Matrix on Windows can run hermes under
+        picker. Users who want Matrix on Windows can run vermes under
         WSL.
     """
     # Populate the registry so plugin platforms are visible. Idempotent.
     # Bundled platform plugins (``kind: platform``) auto-load unconditionally,
     # so every shipped messaging channel appears in the setup menu by default.
-    # User-installed platform plugins under ~/.hermes/plugins/ still require
+    # User-installed platform plugins under ~/.vermes/plugins/ still require
     # opt-in via ``plugins.enabled`` (untrusted code).
     try:
         from vermes_cli.plugins import discover_plugins
@@ -3919,7 +3919,7 @@ def _setup_standard_platform(platform: dict):
                 logger.info()
                 access_choices = [
                     "Enable open access (anyone can message the bot)",
-                    "Use DM pairing (unknown users request access, you approve with 'hermes pairing approve')",
+                    "Use DM pairing (unknown users request access, you approve with 'vermes pairing approve')",
                     "Skip for now (bot will deny all users until configured)",
                 ]
                 access_idx = prompt_choice("  How should unauthorized users be handled?", access_choices, 1)
@@ -3928,9 +3928,9 @@ def _setup_standard_platform(platform: dict):
                     print_warning("  Open access enabled — anyone can use your bot!")
                 elif access_idx == 1:
                     print_success("  DM pairing mode — users will receive a code to request access.")
-                    print_info("  Approve with: hermes pairing approve <platform> <code>")
+                    print_info("  Approve with: vermes pairing approve <platform> <code>")
                 else:
-                    print_info("  Skipped — configure later with 'hermes gateway setup'")
+                    print_info("  Skipped — configure later with 'vermes gateway setup'")
             continue
 
         value = prompt(f"  {var['prompt']}", password=var.get("password", False))
@@ -4121,7 +4121,7 @@ def _setup_wecom():
         logger.info()
         access_choices = [
             "Enable open access (anyone can message the bot)",
-            "Use DM pairing (unknown users request access, you approve with 'hermes pairing approve')",
+            "Use DM pairing (unknown users request access, you approve with 'vermes pairing approve')",
             "Disable direct messages",
             "Skip for now (bot will deny all users until configured)",
         ]
@@ -4133,12 +4133,12 @@ def _setup_wecom():
         elif access_idx == 1:
             save_env_value("WECOM_DM_POLICY", "pairing")
             print_success("  DM pairing mode — users will receive a code to request access.")
-            print_info("  Approve with: hermes pairing approve <platform> <code>")
+            print_info("  Approve with: vermes pairing approve <platform> <code>")
         elif access_idx == 2:
             save_env_value("WECOM_DM_POLICY", "disabled")
             print_warning("  Direct messages disabled.")
         else:
-            print_info("  Skipped — configure later with 'hermes gateway setup'")
+            print_info("  Skipped — configure later with 'vermes gateway setup'")
 
     # ── Home channel (optional) ──
     logger.info()
@@ -4223,9 +4223,9 @@ def _setup_weixin():
     logger.info()
     logger.info(color("  ─── 💬 Weixin / WeChat Setup ───", Colors.CYAN))
     logger.info()
-    print_info("  1. Hermes will open Tencent iLink QR login in this terminal.")
+    print_info("  1. Vermes will open Tencent iLink QR login in this terminal.")
     print_info("  2. Use WeChat to scan and confirm the QR code.")
-    print_info("  3. Hermes will store the returned account_id/token in ~/.hermes/.env.")
+    print_info("  3. Vermes will store the returned account_id/token in ~/.vermes/.env.")
     print_info("  4. This adapter supports native text, image, video, and document delivery.")
 
     existing_account = get_env_value("WEIXIN_ACCOUNT_ID")
@@ -4245,7 +4245,7 @@ def _setup_weixin():
 
     if not check_weixin_requirements():
         print_error("  Missing dependencies: Weixin needs aiohttp and cryptography.")
-        print_info("  Install them, then rerun `hermes gateway setup`.")
+        print_info("  Install them, then rerun `vermes gateway setup`.")
         return
 
     logger.info()
@@ -4658,7 +4658,7 @@ def _setup_signal():
         print_info("    Docker: bbernhard/signal-cli-rest-api")
         logger.info()
         print_info("  After installing, link your account and start the daemon:")
-        print_info("    signal-cli link -n \"HermesAgent\"")
+        print_info("    signal-cli link -n \"VermesAgent\"")
         print_info("    signal-cli --account +YOURNUMBER daemon --http 127.0.0.1:8080")
         logger.info()
 
@@ -4777,7 +4777,7 @@ def _configure_platform(platform: dict) -> None:
       4. Env-var hint fallback for plugins that offer no setup helper.
 
     Bundled platform plugins (e.g. IRC) auto-load, so no plugin enable step
-    is needed here. User-installed platform plugins under ~/.hermes/plugins/
+    is needed here. User-installed platform plugins under ~/.vermes/plugins/
     must already be in ``plugins.enabled`` before they appear in this menu.
     """
     entry = platform.get("_registry_entry")
@@ -4802,7 +4802,7 @@ def _configure_platform(platform: dict) -> None:
     logger.info(color(f"  ─── {emoji} {label} Setup ───", Colors.CYAN))
     required = entry.required_env if entry else []
     if required:
-        print_info(f"  Set these env vars in ~/.hermes/.env: {', '.join(required)}")
+        print_info(f"  Set these env vars in ~/.vermes/.env: {', '.join(required)}")
     else:
         print_info(f"  Configure {label} in config.yaml under gateway.platforms.{platform['key']}")
     if platform.get("install_hint"):
@@ -4920,7 +4920,7 @@ def gateway_setup():
                         gateway_windows.restart()
                     else:
                         stop_profile_gateway()
-                        print_info("Start manually: hermes gateway")
+                        print_info("Start manually: vermes gateway")
                 except UserSystemdUnavailableError as e:
                     print_error("  Restart failed — user systemd not reachable:")
                     for line in str(e).splitlines():
@@ -5000,29 +5000,29 @@ def gateway_setup():
                                 print_error(f"  Start failed: {e}")
                     except subprocess.CalledProcessError as e:
                         print_error(f"  Install failed: {e}")
-                        print_info("  You can try manually: hermes gateway install")
+                        print_info("  You can try manually: vermes gateway install")
                 else:
                     print_info("  Skipped start and auto-start setup.")
-                    print_info("  You can install later: hermes gateway install")
+                    print_info("  You can install later: vermes gateway install")
                     if supports_systemd_services():
-                        print_info("  Or as a boot-time service: sudo hermes gateway install --system")
-                    print_info("  Or run in foreground:  hermes gateway run")
+                        print_info("  Or as a boot-time service: sudo vermes gateway install --system")
+                    print_info("  Or run in foreground:  vermes gateway run")
             elif is_wsl():
                 print_info("  WSL detected but systemd is not running.")
-                print_info("  Run in foreground: hermes gateway run")
-                print_info("  For persistence:   tmux new -s hermes 'hermes gateway run'")
+                print_info("  Run in foreground: vermes gateway run")
+                print_info("  For persistence:   tmux new -s hermes 'vermes gateway run'")
                 print_info("  To enable systemd: add systemd=true to /etc/wsl.conf, then 'wsl --shutdown'")
             elif is_termux():
                 from vermes_constants import display_hermes_home as _dhh
                 print_info("  Termux does not use systemd/launchd services.")
-                print_info("  Run in foreground: hermes gateway run")
-                print_info(f"  Or start it manually in the background (best effort): nohup hermes gateway run >{_dhh()}/logs/gateway.log 2>&1 &")
+                print_info("  Run in foreground: vermes gateway run")
+                print_info(f"  Or start it manually in the background (best effort): nohup vermes gateway run >{_dhh()}/logs/gateway.log 2>&1 &")
             else:
                 print_info("  Service install not supported on this platform.")
-                print_info("  Run in foreground: hermes gateway run")
+                print_info("  Run in foreground: vermes gateway run")
     else:
         logger.info()
-        print_info("No platforms configured. Run 'hermes gateway setup' when ready.")
+        print_info("No platforms configured. Run 'vermes gateway setup' when ready.")
 
     logger.info()
 
@@ -5043,7 +5043,7 @@ def gateway_command(args):
             logger.info(f"  {line}")
         sys.exit(1)
     except SystemScopeRequiresRootError as e:
-        # The direct ``hermes gateway install|uninstall|start|stop|restart``
+        # The direct ``vermes gateway install|uninstall|start|stop|restart``
         # path lands here when the user typed a system-scope action without
         # sudo. Same exit code as before — just gives the wizard a way to
         # intercept the same condition with friendlier guidance before the
@@ -5077,13 +5077,13 @@ def _gateway_command_inner(args):
         run_as_user = getattr(args, 'run_as_user', None)
         if is_termux():
             logger.info("Gateway service installation is not supported on Termux.")
-            logger.info("Run manually: hermes gateway")
+            logger.info("Run manually: vermes gateway")
             sys.exit(1)
         if supports_systemd_services():
             if is_wsl():
                 print_warning("WSL detected — systemd services may not survive WSL restarts.")
-                print_info("  Consider running in foreground instead: hermes gateway run")
-                print_info("  Or use tmux/screen for persistence: tmux new -s hermes 'hermes gateway run'")
+                print_info("  Consider running in foreground instead: vermes gateway run")
+                print_info("  Or use tmux/screen for persistence: tmux new -s hermes 'vermes gateway run'")
                 logger.info()
             start_now = prompt_yes_no("Start the gateway now after installing the service?", True)
             start_on_login = prompt_yes_no("Start the gateway automatically on login/boot with systemd?", True)
@@ -5110,9 +5110,9 @@ def _gateway_command_inner(args):
             logger.info("Either enable systemd (add systemd=true to /etc/wsl.conf and restart WSL)")
             logger.info("or run the gateway in foreground mode:")
             logger.info()
-            logger.info("  hermes gateway run                              # direct foreground")
-            logger.info("  tmux new -s hermes 'hermes gateway run'         # persistent via tmux")
-            logger.info("  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # background")
+            logger.info("  vermes gateway run                              # direct foreground")
+            logger.info("  tmux new -s hermes 'vermes gateway run'         # persistent via tmux")
+            logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # background")
             sys.exit(1)
         elif is_container():
             logger.info("Service installation is not needed inside a Docker container.")
@@ -5121,11 +5121,11 @@ def _gateway_command_inner(args):
             logger.info("  docker run --restart unless-stopped ...   # auto-restart on crash/reboot")
             logger.info("  docker restart <container>                # manual restart")
             logger.info()
-            logger.info("To run the gateway: hermes gateway run")
+            logger.info("To run the gateway: vermes gateway run")
             sys.exit(0)
         else:
             logger.info("Service installation not supported on this platform.")
-            logger.info("Run manually: hermes gateway run")
+            logger.info("Run manually: vermes gateway run")
             sys.exit(1)
     
     elif subcmd == "uninstall":
@@ -5135,7 +5135,7 @@ def _gateway_command_inner(args):
         system = getattr(args, 'system', False)
         if is_termux():
             logger.info("Gateway service uninstall is not supported on Termux because there is no managed service to remove.")
-            logger.info("Stop manual runs with: hermes gateway stop")
+            logger.info("Stop manual runs with: vermes gateway stop")
             sys.exit(1)
         if supports_systemd_services():
             systemd_uninstall(system=system)
@@ -5168,7 +5168,7 @@ def _gateway_command_inner(args):
 
         if is_termux():
             logger.info("Gateway service start is not supported on Termux because there is no system service manager.")
-            logger.info("Run manually: hermes gateway")
+            logger.info("Run manually: vermes gateway")
             sys.exit(1)
         if supports_systemd_services():
             systemd_start(system=system)
@@ -5181,9 +5181,9 @@ def _gateway_command_inner(args):
             logger.info("WSL detected but systemd is not available.")
             logger.info("Run the gateway in foreground mode instead:")
             logger.info()
-            logger.info("  hermes gateway run                              # direct foreground")
-            logger.info("  tmux new -s hermes 'hermes gateway run'         # persistent via tmux")
-            logger.info("  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # background")
+            logger.info("  vermes gateway run                              # direct foreground")
+            logger.info("  tmux new -s hermes 'vermes gateway run'         # persistent via tmux")
+            logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # background")
             logger.info()
             logger.info("To enable systemd: add systemd=true to /etc/wsl.conf and run 'wsl --shutdown' from PowerShell.")
             sys.exit(1)
@@ -5194,7 +5194,7 @@ def _gateway_command_inner(args):
             logger.info("  docker start <container>     # start a stopped container")
             logger.info("  docker restart <container>   # restart a running container")
             logger.info()
-            logger.info("Or run the gateway directly: hermes gateway run")
+            logger.info("Or run the gateway directly: vermes gateway run")
             sys.exit(0)
         else:
             logger.info("Not supported on this platform.")
@@ -5365,14 +5365,14 @@ def _gateway_command_inner(args):
                     logger.info(f"  Run:  sudo loginctl enable-linger {_username}")
                     logger.info()
                     logger.info("  Then restart the gateway:")
-                    logger.info("    hermes gateway restart")
+                    logger.info("    vermes gateway restart")
                     return
 
             if service_configured:
                 logger.info()
                 logger.info("✗ Gateway service restart failed.")
                 logger.info("  The service definition exists, but the service manager did not recover it.")
-                logger.info("  Fix the service, then retry: hermes gateway start")
+                logger.info("  Fix the service, then retry: vermes gateway start")
                 sys.exit(1)
 
             # Manual restart: stop only this profile's gateway
@@ -5428,11 +5428,11 @@ def _gateway_command_inner(args):
                     logger.info("  Use tmux or screen for persistence across terminal closes.")
                 elif is_windows():
                     logger.info("To install as a Windows Scheduled Task (auto-start on login):")
-                    logger.info("  hermes gateway install")
+                    logger.info("  vermes gateway install")
                 else:
                     logger.info("To install as a service:")
-                    logger.info("  hermes gateway install")
-                    logger.info("  sudo hermes gateway install --system")
+                    logger.info("  vermes gateway install")
+                    logger.info("  sudo vermes gateway install --system")
             else:
                 logger.info("✗ Gateway is not running")
                 runtime_lines = _runtime_health_lines()
@@ -5443,17 +5443,17 @@ def _gateway_command_inner(args):
                         logger.info(f"  {line}")
                 logger.info()
                 logger.info("To start:")
-                logger.info("  hermes gateway run      # Run in foreground")
+                logger.info("  vermes gateway run      # Run in foreground")
                 if is_termux():
-                    logger.info("  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # Best-effort background start")
+                    logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # Best-effort background start")
                 elif is_wsl():
-                    logger.info("  tmux new -s hermes 'hermes gateway run'         # persistent via tmux")
-                    logger.info("  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # background")
+                    logger.info("  tmux new -s hermes 'vermes gateway run'         # persistent via tmux")
+                    logger.info("  nohup vermes gateway run > ~/.vermes/logs/gateway.log 2>&1 &  # background")
                 elif is_windows():
-                    logger.info("  hermes gateway install  # Install as Windows Scheduled Task (auto-start on login)")
+                    logger.info("  vermes gateway install  # Install as Windows Scheduled Task (auto-start on login)")
                 else:
-                    logger.info("  hermes gateway install  # Install as user service")
-                    logger.info("  sudo hermes gateway install --system  # Install as boot-time system service")
+                    logger.info("  vermes gateway install  # Install as user service")
+                    logger.info("  sudo vermes gateway install --system  # Install as boot-time system service")
 
         # Show other profiles' gateway status for multi-profile awareness
         _print_other_profiles_gateway_status()
@@ -5462,7 +5462,7 @@ def _gateway_command_inner(args):
         _gateway_list()
 
     elif subcmd == "migrate-legacy":
-        # Stop, disable, and remove legacy Hermes gateway unit files from
+        # Stop, disable, and remove legacy Vermes gateway unit files from
         # pre-rename installs (e.g. hermes.service). Profile units and
         # unrelated third-party services are never touched.
         dry_run = getattr(args, 'dry_run', False)

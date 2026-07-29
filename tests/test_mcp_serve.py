@@ -1,5 +1,5 @@
 """
-Tests for mcp_serve — Hermes MCP server.
+Tests for mcp_serve — Vermes MCP server.
 
 Three layers of tests:
 1. Unit tests — helpers, content extraction, attachment parsing

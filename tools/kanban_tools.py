@@ -6,13 +6,13 @@ the active profile explicitly enables the ``kanban`` toolset for
 orchestrator work. A normal ``hermes chat`` session still sees **zero**
 kanban tools in its schema unless configured.
 
-Why tools instead of just shelling out to ``hermes kanban``?
+Why tools instead of just shelling out to ``vermes kanban``?
 
 1. **Backend portability.** A worker whose terminal tool points at Docker
-   / Modal / Singularity / SSH would run ``hermes kanban complete …``
+   / Modal / Singularity / SSH would run ``vermes kanban complete …``
    inside the container, where ``hermes`` isn't installed and the DB
    isn't mounted. Tools run in the agent's Python process, so they
-   always reach ``~/.hermes/kanban.db`` regardless of terminal backend.
+   always reach ``~/.vermes/kanban.db`` regardless of terminal backend.
 
 2. **No shell-quoting footguns.** Passing ``--metadata '{"x": [...]}'``
    through shlex+argparse is fragile. Structured tool args skip it.
@@ -20,7 +20,7 @@ Why tools instead of just shelling out to ``hermes kanban``?
 3. **Better errors.** Tool-call failures return structured JSON the
    model can reason about, not stderr strings it has to parse.
 
-Humans continue to use the CLI (``hermes kanban …``), the dashboard
+Humans continue to use the CLI (``vermes kanban …``), the dashboard
 (``hermes dashboard``), and the slash command (``/kanban …``) — all
 three bypass the agent entirely. The tools are for dispatcher-spawned
 worker handoffs and for configured orchestrator profiles that route work
@@ -171,7 +171,7 @@ def _connect(board: Optional[str] = None):
     default) preserves the legacy resolution chain
     (``HERMES_KANBAN_DB`` → ``HERMES_KANBAN_BOARD`` env → current symlink
     → ``default``). Per-tool ``board`` lets a Telegram-side agent override
-    the env-pinned active board without restarting Hermes.
+    the env-pinned active board without restarting Vermes.
     """
     from vermes_cli import kanban_db as kb
     return kb, kb.connect(board=board)

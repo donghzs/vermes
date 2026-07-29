@@ -12,11 +12,11 @@ const BACKEND = process.env.HERMES_DASHBOARD_URL ?? "http://127.0.0.1:9119";
  * token, every protected `/api/*` call 401s.
  *
  * This plugin fetches the running dashboard's `index.html` on each dev page
- * load, scrapes the `window.__HERMES_SESSION_TOKEN__` assignment, and
+ * load, scrapes the `window.__VERMES_SESSION_TOKEN__` assignment, and
  * re-injects it into the dev HTML. No-op in production builds.
  */
 function hermesDevToken(): Plugin {
-  const TOKEN_RE = /window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/;
+  const TOKEN_RE = /window\.__VERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/;
   const EMBEDDED_RE =
     /window\.__HERMES_DASHBOARD_EMBEDDED_CHAT__\s*=\s*(true|false)/;
   const LEGACY_TUI_RE =
@@ -49,7 +49,7 @@ function hermesDevToken(): Plugin {
             tag: "script",
             injectTo: "head",
             children:
-              `window.__HERMES_SESSION_TOKEN__="${match[1]}";` +
+              `window.__VERMES_SESSION_TOKEN__="${match[1]}";` +
               `window.__HERMES_DASHBOARD_EMBEDDED_CHAT__=${embeddedJs};`,
           },
         ];

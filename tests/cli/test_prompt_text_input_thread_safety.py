@@ -1,4 +1,4 @@
-"""Tests for ``HermesCLI._prompt_text_input`` thread-safe input dispatch.
+"""Tests for ``VermesCLI._prompt_text_input`` thread-safe input dispatch.
 
 Raw ``input()`` prompts can race with prompt_toolkit when called from the TUI.
 The normal slash confirmations now use a prompt_toolkit-native modal, but
@@ -11,10 +11,10 @@ from unittest.mock import MagicMock, patch
 
 
 def _make_cli():
-    """Minimal HermesCLI shell exposing prompt fallback helpers."""
+    """Minimal VermesCLI shell exposing prompt fallback helpers."""
     import cli as cli_mod
 
-    obj = object.__new__(cli_mod.HermesCLI)
+    obj = object.__new__(cli_mod.VermesCLI)
     obj._app = MagicMock()
     obj._status_bar_visible = True
     return obj

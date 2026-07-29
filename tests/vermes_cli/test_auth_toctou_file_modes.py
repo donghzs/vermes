@@ -34,7 +34,7 @@ pytestmark = pytest.mark.skipif(
 
 
 # ---------------------------------------------------------------------------
-# _save_auth_store  (~/.hermes/auth.json — every native OAuth provider)
+# _save_auth_store  (~/.vermes/auth.json — every native OAuth provider)
 # ---------------------------------------------------------------------------
 
 

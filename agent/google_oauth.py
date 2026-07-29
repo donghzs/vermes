@@ -10,7 +10,7 @@ Synthesized from:
 - clawdbot/extensions/google/ — refresh-token rotation, VPC-SC handling reference
 - PRs #10176 (@sliverp) and #10779 (@newarthur) — PKCE module structure, cross-process lock
 
-Storage (``~/.hermes/auth/google_oauth.json``, chmod 0o600):
+Storage (``~/.vermes/auth/google_oauth.json``, chmod 0o600):
 
     {
       "refresh": "refreshToken|projectId|managedProjectId",
@@ -360,10 +360,10 @@ def _require_client_id() -> str:
     if not cid:
         raise GoogleOAuthError(
             "Google OAuth client ID is not available.\n"
-            "Hermes looks for a locally installed gemini-cli to source the OAuth client. "
+            "Vermes looks for a locally installed gemini-cli to source the OAuth client. "
             "Either:\n"
             "  1. Install it: npm install -g @google/gemini-cli  (or brew install gemini-cli)\n"
-            "  2. Set HERMES_GEMINI_CLIENT_ID and HERMES_GEMINI_CLIENT_SECRET in ~/.hermes/.env\n"
+            "  2. Set HERMES_GEMINI_CLIENT_ID and HERMES_GEMINI_CLIENT_SECRET in ~/.vermes/.env\n"
             "\n"
             "Register a Desktop OAuth client at:\n"
             "  https://console.cloud.google.com/apis/credentials\n"
@@ -656,7 +656,7 @@ def get_valid_access_token(*, force_refresh: bool = False) -> str:
     creds = load_credentials()
     if creds is None:
         raise GoogleOAuthError(
-            "No Google OAuth credentials found. Run `hermes auth add google-gemini-cli` first.",
+            "No Google OAuth credentials found. Run `vermes auth add google-gemini-cli` first.",
             code="google_oauth_not_logged_in",
         )
 
@@ -791,7 +791,7 @@ class _OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
 
 
 _SUCCESS_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Hermes — signed in</title>
+<html><head><meta charset="utf-8"><title>Vermes — signed in</title>
 <style>
 body { font: 16px/1.5 system-ui, sans-serif; margin: 10vh auto; max-width: 32rem; text-align: center; color: #222; }
 h1 { color: #1a7f37; } p { color: #555; }
@@ -801,13 +801,13 @@ h1 { color: #1a7f37; } p { color: #555; }
 """
 
 _ERROR_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Hermes — sign-in failed</title>
+<html><head><meta charset="utf-8"><title>Vermes — sign-in failed</title>
 <style>
 body {{ font: 16px/1.5 system-ui, sans-serif; margin: 10vh auto; max-width: 32rem; text-align: center; color: #222; }}
 h1 {{ color: #b42318; }} p {{ color: #555; }}
 </style></head>
 <body><h1>Sign-in failed</h1><p>{message}</p>
-<p>Return to your terminal — Hermes will walk you through a manual paste fallback.</p></body></html>
+<p>Return to your terminal — Vermes will walk you through a manual paste fallback.</p></body></html>
 """
 
 

@@ -6,7 +6,7 @@ import os
 from typing import Dict
 
 def get_env_value(name: str, default=None):
-    """Read ``name`` from ``~/.hermes/.env`` first, then ``os.environ``.
+    """Read ``name`` from ``~/.vermes/.env`` first, then ``os.environ``.
 
     Wraps :func:`vermes_cli.config.get_env_value` so tests can patch
     ``tools.xai_http.get_env_value`` to inject dotenv-only secrets into the
@@ -24,20 +24,20 @@ def get_env_value(name: str, default=None):
 
 
 def hermes_xai_user_agent() -> str:
-    """Return a stable Hermes-specific User-Agent for xAI HTTP calls."""
+    """Return a stable Vermes-specific User-Agent for xAI HTTP calls."""
     try:
         from vermes_cli import __version__
     except Exception:
         __version__ = "unknown"
-    return f"Hermes-Agent/{__version__}"
+    return f"Vermes-Agent/{__version__}"
 
 
 def resolve_xai_http_credentials() -> Dict[str, str]:
     """Resolve bearer credentials for direct xAI HTTP endpoints.
 
-    Prefers Hermes-managed xAI OAuth credentials when available, then falls back
+    Prefers Vermes-managed xAI OAuth credentials when available, then falls back
     to ``XAI_API_KEY`` resolved via ``vermes_cli.config.get_env_value`` so keys
-    stored in ``~/.hermes/.env`` (the standard Hermes location) are honored —
+    stored in ``~/.vermes/.env`` (the standard Vermes location) are honored —
     not just ones already exported into ``os.environ``. This keeps direct xAI
     endpoints (images, TTS, STT, etc.) aligned with the main runtime auth model
     and preserves the regression contract from PR #17140 / #17163.

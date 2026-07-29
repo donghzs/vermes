@@ -116,7 +116,7 @@ class ResponsesApiTransport(ProviderTransport):
         if reasoning_enabled and is_xai_responses:
             from agent.model_metadata import grok_supports_reasoning_effort
 
-            # NOTE: Hermes does NOT ask xAI to return ``reasoning.encrypted_content``
+            # NOTE: Vermes does NOT ask xAI to return ``reasoning.encrypted_content``
             # any more.  xAI's OAuth/SuperGrok ``/v1/responses`` surface rejects
             # replayed encrypted reasoning items on turn 2+ — see
             # _chat_messages_to_responses_input docstring.  Requesting the field

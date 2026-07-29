@@ -13,7 +13,7 @@ import ProviderCard from './ProviderCard.vue'
 function envHeaders() {
   return {
     'Content-Type': 'application/json',
-    'X-Hermes-Session-Token': (typeof window !== 'undefined' && window.__HERMES_SESSION_TOKEN__) || '',
+    'X-Vermes-Session-Token': (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || '',
   }
 }
 
@@ -1975,7 +1975,7 @@ async function toggleChannel(platformKey) {
           <div class="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center text-white text-2xl font-bold mx-auto">V</div>
           <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">Vermes</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400">AI Agent by vbit.top</p>
-          <p class="text-xs text-gray-400">版本 {{ update.currentVersion }} · 基于 Hermes Agent</p>
+          <p class="text-xs text-gray-400">版本 {{ update.currentVersion }} · 基于 Vermes Agent</p>
           <a href="https://vbit.top" target="_blank" class="text-sm text-green-600 dark:text-green-400 hover:underline">访问 vbit.top →</a>
         </div>
 

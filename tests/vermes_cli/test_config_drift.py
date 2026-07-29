@@ -18,7 +18,7 @@ def test_delegation_default_toolsets_removed_from_cli_config():
 
     We inspect the source of load_cli_config() instead of asserting on the
     runtime CLI_CONFIG dict because CLI_CONFIG is populated by deep-merging
-    the user's ~/.hermes/config.yaml over the defaults (cli.py:359-366).
+    the user's ~/.vermes/config.yaml over the defaults (cli.py:359-366).
     A contributor who still has the legacy key set in their own config
     would cause a false failure, and HERMES_HOME patching via conftest
     doesn't help because cli._hermes_home is frozen at module import time

@@ -33,7 +33,7 @@ to suppress.
 
 Grep recipe::
 
-    tail -f ~/.hermes/logs/agent.log | rg 'lsp\\['
+    tail -f ~/.vermes/logs/agent.log | rg 'lsp\\['
 """
 from __future__ import annotations
 

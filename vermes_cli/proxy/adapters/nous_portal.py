@@ -1,6 +1,6 @@
 """Nous Portal upstream adapter.
 
-Reads the user's Nous OAuth state from ``~/.hermes/auth.json`` through the
+Reads the user's Nous OAuth state from ``~/.vermes/auth.json`` through the
 shared runtime resolver, refreshes the access token and resolves the
 ``agent_key`` compatibility credential when needed, then exposes the upstream
 base URL plus bearer for the proxy server to forward to.

@@ -244,7 +244,7 @@ async def test_send_home_channel_startup_notification_to_configured_home(tmp_pat
     assert delivered == {("telegram", "home-42", None)}
     adapter.send.assert_called_once_with(
         "home-42",
-        "♻️ Gateway online — Hermes is back and ready.",
+        "♻️ Gateway online — Vermes is back and ready.",
     )
 
 
@@ -268,7 +268,7 @@ async def test_send_home_channel_startup_notification_preserves_thread_metadata(
     assert delivered == {("telegram", "parent-42", "topic-7")}
     adapter.send.assert_called_once_with(
         "parent-42",
-        "♻️ Gateway online — Hermes is back and ready.",
+        "♻️ Gateway online — Vermes is back and ready.",
         metadata={"thread_id": "topic-7"},
     )
 

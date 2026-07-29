@@ -127,8 +127,8 @@ export const zh: Translations = {
     starting: "启动中",
     startedInBackground: "已在后台启动 — 请查看日志",
     stopped: "已停止",
-    updateHermes: "更新 vbit Agent",
-    updatingHermes: "正在更新 vbit Agent…",
+    updateVermes: "更新 vbit Agent",
+    updatingVermes: "正在更新 vbit Agent…",
     waitingForOutput: "等待输出…",
   },
 

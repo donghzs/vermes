@@ -362,7 +362,7 @@ class TestTeePattern:
         assert key is not None
 
     def test_tee_hermes_env(self):
-        dangerous, key, desc = detect_dangerous_command("echo x | tee ~/.hermes/.env")
+        dangerous, key, desc = detect_dangerous_command("echo x | tee ~/.vermes/.env")
         assert dangerous is True
         assert key is not None
 
@@ -499,7 +499,7 @@ class TestProjectSensitiveCopyPattern:
 
 class TestSensitiveCopyMovePattern:
     """cp/mv/install OVERWRITING ~/.ssh/*, credential files (~/.netrc etc.),
-    shell rc files, or ~/.hermes/config.yaml/.env must require approval — the
+    shell rc files, or ~/.vermes/config.yaml/.env must require approval — the
     tee/redirection forms were already gated (#14639 family / commit 4e9d886d),
     but cp/mv/install on these targets was an unpaired half-door (key implant /
     shell-rc command injection slipped through auto-approve)."""
@@ -522,7 +522,7 @@ class TestSensitiveCopyMovePattern:
         assert dangerous is True
 
     def test_cp_to_hermes_config(self):
-        dangerous, key, desc = detect_dangerous_command("cp /tmp/evil.yaml ~/.hermes/config.yaml")
+        dangerous, key, desc = detect_dangerous_command("cp /tmp/evil.yaml ~/.vermes/config.yaml")
         assert dangerous is True
 
     def test_cp_from_ssh_is_safe(self):
@@ -648,7 +648,7 @@ class TestGatewayProtection:
     """Prevent agents from starting the gateway outside systemd management."""
 
     def test_gateway_run_with_disown_detected(self):
-        cmd = "kill 1605 && cd ~/.hermes/hermes-agent && source venv/bin/activate && python -m vermes_cli.main gateway run --replace &disown; echo done"
+        cmd = "kill 1605 && cd ~/.vermes/vermes-agent && source venv/bin/activate && python -m vermes_cli.main gateway run --replace &disown; echo done"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "systemctl" in desc

@@ -74,7 +74,7 @@ def _write_aux_config(task="compression", provider="gemini", model_name="gemini-
 
 
 def test_setup_model_provider_preserves_auxiliary_choices_written_by_picker(tmp_path, monkeypatch):
-    """Aux choices made inside hermes setup must survive the wizard's final save."""
+    """Aux choices made inside vermes setup must survive the wizard's final save."""
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
 
@@ -483,7 +483,7 @@ def test_setup_summary_marks_anthropic_auth_as_vision_available(tmp_path, monkey
     output = capsys.readouterr().out
 
     assert "Vision (image analysis)" in output
-    assert "missing run 'hermes setup' to configure" not in output
+    assert "missing run 'vermes setup' to configure" not in output
 
 
 def test_setup_summary_shows_camofox_when_browser_feature_is_camofox(tmp_path, monkeypatch, capsys):

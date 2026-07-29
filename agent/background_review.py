@@ -113,8 +113,8 @@ _SKILL_REVIEW_PROMPT = (
     "If you notice two existing skills that overlap, note it in your "
     "reply — the background curator handles consolidation at scale.\n\n"
     "Protected skills (DO NOT edit these):\n"
-    "  • Bundled skills (shipped with Hermes, e.g. 'hermes-agent').\n"
-    "  • Hub-installed skills (installed via 'hermes skills install').\n"
+    "  • Bundled skills (shipped with Vermes, e.g. 'hermes-agent').\n"
+    "  • Hub-installed skills (installed via 'vermes skills install').\n"
     "Pinned skills (marked via 'hermes curator pin') CAN be improved — "
     "pin only blocks deletion/archive/consolidation by the curator, not "
     "content updates. Patch them when a pitfall or missing step turns up, "
@@ -199,8 +199,8 @@ _COMBINED_REVIEW_PROMPT = (
     "If you notice overlapping existing skills, mention it — the "
     "background curator handles consolidation.\n\n"
     "Protected skills (DO NOT edit these):\n"
-    "  • Bundled skills (shipped with Hermes, e.g. 'hermes-agent').\n"
-    "  • Hub-installed skills (installed via 'hermes skills install').\n"
+    "  • Bundled skills (shipped with Vermes, e.g. 'hermes-agent').\n"
+    "  • Hub-installed skills (installed via 'vermes skills install').\n"
     "Pinned skills (marked via 'hermes curator pin') CAN be improved — "
     "pin only blocks deletion/archive/consolidation by the curator, not "
     "content updates. Patch them when a pitfall or missing step turns up, "
@@ -399,12 +399,12 @@ def _run_review_in_thread(
             _parent_runtime = agent._current_main_runtime()
             _parent_api_mode = _parent_runtime.get("api_mode") or None
             # The review fork needs to call agent-loop tools (memory,
-            # skill_manage). Those tools require Hermes' own dispatch,
+            # skill_manage). Those tools require Vermes' own dispatch,
             # which the codex_app_server runtime bypasses entirely
             # (it runs the turn inside codex's subprocess). So when
             # the parent is on codex_app_server, downgrade the review
             # fork to codex_responses — same auth/credentials, but
-            # talks to the OpenAI Responses API directly so Hermes
+            # talks to the OpenAI Responses API directly so Vermes
             # owns the loop and the agent-loop tools dispatch.
             if _parent_api_mode == "codex_app_server":
                 _parent_api_mode = "codex_responses"

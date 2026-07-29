@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 
-USER_AGENT = "HermesAgent/1.0"
+USER_AGENT = "VermesAgent/1.0"
 DEFAULT_USER_ENV = "HYPERLIQUID_USER_ADDRESS"
 DEFAULT_API_BASE = "https://api.hyperliquid.xyz"
 
@@ -120,7 +120,7 @@ def _resolve_user(user: Optional[str]) -> str:
 
     sys.exit(
         "Missing Hyperliquid address. Pass <address> explicitly or set "
-        f"{DEFAULT_USER_ENV} in your environment or ~/.hermes/.env."
+        f"{DEFAULT_USER_ENV} in your environment or ~/.vermes/.env."
     )
 
 

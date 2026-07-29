@@ -1,4 +1,4 @@
-# Hermes static-message catalog -- French (français)
+# Vermes static-message catalog -- French (français)
 # See locales/en.yaml for the source of truth; keep keys in sync.
 
 approval:
@@ -98,8 +98,8 @@ gateway:
     upload_failed:         "✗ Échec de l'envoi du rapport de débogage : {error}"
     header:                "**Rapport de débogage envoyé :**"
     auto_delete:           "⏱ Les pastes s'effaceront automatiquement dans 6 heures."
-    full_logs_hint:        "Pour envoyer les journaux complets, utilisez `hermes debug share` depuis la CLI."
-    share_hint:            "Partagez ces liens avec l'équipe Hermes pour obtenir de l'aide."
+    full_logs_hint:        "Pour envoyer les journaux complets, utilisez `vermes debug share` depuis la CLI."
+    share_hint:            "Partagez ces liens avec l'équipe Vermes pour obtenir de l'aide."
 
   deny:
     stale:                 "❌ Commande refusée (l'approbation était périmée)."
@@ -136,7 +136,7 @@ gateway:
     set:                   "⊙ Objectif défini (budget de {budget} tours) : {goal}\nJe continuerai jusqu'à ce que l'objectif soit terminé, que vous le mettiez en pause/effaciez, ou que le budget soit épuisé.\nContrôles : /goal status · /goal pause · /goal resume · /goal clear"
 
   help:
-    header:                "📖 **Commandes Hermes**\n"
+    header:                "📖 **Commandes Vermes**\n"
     skill_header:          "\n⚡ **Commandes de skill** ({count} actives) :"
     more_use_commands:     "\n... et {count} de plus. Utilisez `/commands` pour la liste paginée complète."
 
@@ -147,7 +147,7 @@ gateway:
   kanban:
     error_prefix:          "⚠ erreur kanban : {error}"
     subscribed_suffix:     "(abonné — vous serez notifié lorsque {task_id} se terminera ou sera bloqué)"
-    truncated_suffix:      "… (tronqué ; utilisez `hermes kanban …` dans votre terminal pour la sortie complète)"
+    truncated_suffix:      "… (tronqué ; utilisez `vermes kanban …` dans votre terminal pour la sortie complète)"
     no_output:             "(aucune sortie)"
 
   personality:
@@ -215,7 +215,7 @@ gateway:
 
   restart:
     in_progress:           "⏳ Redémarrage du gateway déjà en cours..."
-    restarting:            "♻ Redémarrage du gateway. Si vous n'êtes pas notifié dans les 60 secondes, redémarrez depuis la console avec `hermes gateway restart`."
+    restarting:            "♻ Redémarrage du gateway. Si vous n'êtes pas notifié dans les 60 secondes, redémarrez depuis la console avec `vermes gateway restart`."
 
   resume:
     db_unavailable:        "Base de données des sessions indisponible."
@@ -247,7 +247,7 @@ gateway:
     success:               "✅ Canal principal défini sur **{name}** (ID : {chat_id}).\nLes tâches cron et les messages multi-plateformes seront livrés ici."
 
   status:
-    header:                "📊 **État de Hermes Gateway**"
+    header:                "📊 **État de Vermes Gateway**"
     session_id:            "**ID de session :** `{session_id}`"
     title:                 "**Titre :** {title}"
     created:               "**Créé :** {timestamp}"
@@ -282,7 +282,7 @@ gateway:
     topics_user_disallowed:  "Les topics Telegram sont activés, mais les utilisateurs ne peuvent pas en créer.\n\nOuvrez @BotFather → choisissez votre bot → Bot Settings → Threads Settings, puis désactivez 'Disallow users to create new threads'.\n\nPuis envoyez /topic à nouveau."
     enable_failed:           "Échec de l'activation du mode topic Telegram : {error}"
     bound_status:            "Ce topic est lié à :\nSession : {label}\nID : {session_id}\n\nUtilisez /new pour remplacer ce topic par une nouvelle session.\nPour un travail parallèle, ouvrez All Messages et envoyez-y un message pour créer un autre topic."
-    thread_ready:            "Les topics multi-sessions Telegram sont activés.\n\nCe topic sera utilisé comme session Hermes indépendante. Utilisez /new pour remplacer la session actuelle de ce topic. Pour un travail parallèle, ouvrez All Messages et envoyez-y un message pour créer un autre topic."
+    thread_ready:            "Les topics multi-sessions Telegram sont activés.\n\nCe topic sera utilisé comme session Vermes indépendante. Utilisez /new pour remplacer la session actuelle de ce topic. Pour un travail parallèle, ouvrez All Messages et envoyez-y un message pour créer un autre topic."
     untitled_session:        "Session sans titre"
 
   undo:
@@ -290,11 +290,11 @@ gateway:
     removed:               "↩️ {count} message(s) annulé(s).\nSupprimé : « {preview} »"
 
   update:
-    platform_not_messaging:  "✗ /update n'est disponible que depuis les plateformes de messagerie. Exécutez `hermes update` depuis le terminal."
+    platform_not_messaging:  "✗ /update n'est disponible que depuis les plateformes de messagerie. Exécutez `vermes update` depuis le terminal."
     not_git_repo:            "✗ Pas un dépôt git — impossible de mettre à jour."
-    hermes_cmd_not_found:    "✗ Impossible de localiser la commande `hermes`. Hermes est en cours d'exécution, mais la commande de mise à jour n'a pas pu trouver l'exécutable dans le PATH ni via l'interpréteur Python actuel. Essayez d'exécuter `hermes update` manuellement dans votre terminal."
+    vermes_cmd_not_found:    "✗ Impossible de localiser la commande `vermes`. Vermes est en cours d'exécution, mais la commande de mise à jour n'a pas pu trouver l'exécutable dans le PATH ni via l'interpréteur Python actuel. Essayez d'exécuter `vermes update` manuellement dans votre terminal."
     start_failed:            "✗ Échec du démarrage de la mise à jour : {error}"
-    starting:                "⚕ Démarrage de la mise à jour Hermes… Je diffuserai la progression ici."
+    starting:                "⚕ Démarrage de la mise à jour Vermes… Je diffuserai la progression ici."
 
   usage:
     rate_limits:              "⏱️ **Limites de débit :** {state}"

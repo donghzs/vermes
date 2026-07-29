@@ -62,7 +62,7 @@ def _platform_config_key(platform: "Platform") -> str:
 
 
 def _load_gateway_config() -> dict:
-    """Load and parse ~/.hermes/config.yaml, returning {} on any error."""
+    """Load and parse ~/.vermes/config.yaml, returning {} on any error."""
     _hermes_home = _get_hermes_home()
     config_path = _hermes_home / 'config.yaml'
     try:
@@ -93,8 +93,8 @@ def _resolve_gateway_model(config: dict | None = None) -> str:
     return ""
 
 
-def _resolve_hermes_bin() -> Optional[list[str]]:
-    """Resolve the Hermes update command as argv parts."""
+def _resolve_vermes_bin() -> Optional[list[str]]:
+    """Resolve the Vermes update command as argv parts."""
     import shutil
 
     hermes_bin = shutil.which("hermes")

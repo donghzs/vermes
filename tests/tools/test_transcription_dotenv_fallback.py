@@ -2,7 +2,7 @@
 
 Same class of bug as ``tools/tts_tool.py`` (fixed in PR #17163): the STT
 provider call sites read API keys via ``os.getenv()``, which bypasses
-``~/.hermes/.env`` entries. These tests confirm each STT provider now
+``~/.vermes/.env`` entries. These tests confirm each STT provider now
 consults ``get_env_value()`` and the provider auto-detect + explicit
 selection gate (``_get_provider``) do the same.
 """
@@ -30,7 +30,7 @@ def isolate_env(monkeypatch):
 
 class TestProviderSelectionGate:
     """``_get_provider`` picks the STT backend. If it only consulted
-    ``os.environ`` a user with keys in ``~/.hermes/.env`` would be told
+    ``os.environ`` a user with keys in ``~/.vermes/.env`` would be told
     "no STT available" even though the actual transcribe call would
     succeed. The gate lives behind ``is_stt_enabled(stt_config)``, so
     configure ``{"enabled": True, "provider": ...}`` for explicit tests.
@@ -234,7 +234,7 @@ class TestTranscribeCallSitesReadDotenv:
 
 class TestEndToEndRegressionGuard:
     """End-to-end probe: patch ``vermes_cli.config.load_env`` to simulate
-    ``~/.hermes/.env`` carrying the key while ``os.environ`` does not.
+    ``~/.vermes/.env`` carrying the key while ``os.environ`` does not.
     Before the fix ``_transcribe_xai`` called ``os.getenv("XAI_API_KEY")``
     directly and returned ``XAI_API_KEY not set``."""
 

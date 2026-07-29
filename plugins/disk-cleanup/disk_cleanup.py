@@ -16,7 +16,7 @@ Rules:
   - >500 MB files → prompt always (deep only)
 
 Scope: strictly HERMES_HOME and /tmp/hermes-*
-Never touches: ~/.hermes/logs/ or any system directory.
+Never touches: ~/.vermes/logs/ or any system directory.
 """
 
 from __future__ import annotations

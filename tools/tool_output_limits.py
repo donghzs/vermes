@@ -4,7 +4,7 @@ Ported from anomalyco/opencode PR #23770 (``feat(truncate): allow
 configuring tool output truncation limits``).
 
 OpenCode hardcoded ``MAX_LINES = 2000`` and ``MAX_BYTES = 50 * 1024``
-as tool-output truncation thresholds. Hermes-agent had the same
+as tool-output truncation thresholds. Vermes-agent had the same
 hardcoded constants in two places:
 
 * ``tools/terminal_tool.py`` — ``MAX_OUTPUT_CHARS = 50000`` (terminal

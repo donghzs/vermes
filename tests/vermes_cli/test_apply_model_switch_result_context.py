@@ -1,7 +1,7 @@
 """Regression test for the `/model` picker confirmation display.
 
 Bug (April 2026): after choosing a model from the interactive `/model` picker,
-``HermesCLI._apply_model_switch_result()`` printed ``ModelInfo.context_window``
+``VermesCLI._apply_model_switch_result()`` printed ``ModelInfo.context_window``
 straight from models.dev, which always reports the vendor-wide value (e.g.
 gpt-5.5 = 1,050,000 on ``openai``). That ignored provider-specific caps — in
 particular, ChatGPT Codex OAuth enforces 272K on the same slug. The sibling
@@ -48,9 +48,9 @@ def _run_display(monkeypatch, result):
 
     captured: list[str] = []
     monkeypatch.setattr(cli_mod, "_cprint", lambda s, *a, **k: captured.append(str(s)))
-    # Avoid writing to ~/.hermes/config.yaml during the test.
+    # Avoid writing to ~/.vermes/config.yaml during the test.
     monkeypatch.setattr(cli_mod, "save_config_value", lambda *a, **k: None)
-    cli_mod.HermesCLI._apply_model_switch_result(_StubCLI(), result, False)
+    cli_mod.VermesCLI._apply_model_switch_result(_StubCLI(), result, False)
     return captured
 
 

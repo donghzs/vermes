@@ -245,7 +245,7 @@ def _is_blocked_device(filepath: str, base_dir: str | Path | None = None) -> boo
 
 
 def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | None:
-    """Soft-guard warning when filepath lands in another Hermes profile's area."""
+    """Soft-guard warning when filepath lands in another Vermes profile's area."""
     try:
         from agent.file_safety import (
             get_container_mirror_warning,
@@ -654,7 +654,7 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
                 ),
             })
 
-        # ── Hermes internal path guard ────────────────────────────────
+        # ── Vermes internal path guard ────────────────────────────────
         # Prevent prompt injection via catalog or hub metadata files.
         block_error = get_read_block_error(path)
         if block_error:

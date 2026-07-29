@@ -46,7 +46,7 @@ from gateway.gateway_utils import (
     _home_target_env_var,
     _home_thread_env_var,
     _platform_config_key,
-    _resolve_hermes_bin,
+    _resolve_vermes_bin,
     _telegramize_command_mentions,
 )
 from gateway.session import (
@@ -170,7 +170,7 @@ class SessionMixin:
             )
 
         # When the config has no model.default but a provider was resolved
-        # (e.g. user ran `hermes auth add openai-codex` without `hermes model`),
+        # (e.g. user ran `vermes auth add openai-codex` without `vermes model`),
         # fall back to the provider's first catalog model so the API call
         # doesn't fail with "model must be a non-empty string".
         if not model and runtime_kwargs.get("provider"):

@@ -30,7 +30,7 @@ def test_main_version_prints_without_starting_server(monkeypatch, capsys):
 
     output = capsys.readouterr().out.strip()
     assert output
-    assert "Starting hermes-agent ACP adapter" not in output
+    assert "Starting vermes-agent ACP adapter" not in output
 
 
 def test_main_check_prints_ok_without_starting_server(monkeypatch, capsys):
@@ -38,7 +38,7 @@ def test_main_check_prints_ok_without_starting_server(monkeypatch, capsys):
 
     entry.main(["--check"])
 
-    assert capsys.readouterr().out.strip() == "Hermes ACP check OK"
+    assert capsys.readouterr().out.strip() == "Vermes ACP check OK"
 
 
 def test_main_setup_runs_model_configuration(monkeypatch):
@@ -95,7 +95,7 @@ def test_main_setup_skips_browser_prompt_on_no(monkeypatch):
 
 
 def test_main_setup_browser_calls_ensure_dependency(monkeypatch):
-    """`hermes-acp --setup-browser` routes through dep_ensure.ensure_dependency."""
+    """`vermes-acp --setup-browser` routes through dep_ensure.ensure_dependency."""
     calls = []
 
     def fake_ensure(dep, interactive=True):

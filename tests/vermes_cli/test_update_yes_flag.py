@@ -1,4 +1,4 @@
-"""Tests for `hermes update --yes / -y` — assume yes for interactive prompts.
+"""Tests for `vermes update --yes / -y` — assume yes for interactive prompts.
 
 Covers:
   1. argparse parses the flag

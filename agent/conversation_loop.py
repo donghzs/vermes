@@ -362,7 +362,7 @@ def _sync_failover_system_message(agent, api_messages, active_system_prompt):
 
 
 def _log_turn_exit(
-    agent: "HermesAgent",
+    agent: "VermesAgent",
     messages: list[dict],
     final_response: str | None,
     interrupted: bool,
@@ -416,7 +416,7 @@ def _log_turn_exit(
 
 
 def _record_turn_metrics(
-    agent: "HermesAgent",
+    agent: "VermesAgent",
     messages: list[dict],
     _scheduler: "CompressionScheduler | None",
     api_start_time: float | None,
@@ -451,7 +451,7 @@ def _record_turn_metrics(
 
 
 def _apply_file_mutation_footer(
-    agent: "HermesAgent",
+    agent: "VermesAgent",
     final_response: str | None,
     interrupted: bool,
 ) -> str | None:
@@ -474,7 +474,7 @@ def _apply_file_mutation_footer(
 
 
 def _apply_operator_claim_verifier(
-    agent: "HermesAgent",
+    agent: "VermesAgent",
     messages: list[dict],
     final_response: str | None,
     interrupted: bool,
@@ -595,7 +595,7 @@ def _apply_operator_claim_verifier(
 
 
 def _prepare_api_messages(
-    agent: "HermesAgent",
+    agent: "VermesAgent",
     messages: list[dict],
     active_system_prompt: str | None,
     current_turn_user_idx: int,
@@ -1539,7 +1539,7 @@ def run_conversation(
     # Context is ALWAYS injected into the user message, never the
     # system prompt.  This preserves the prompt cache prefix - the
     # system prompt stays identical across turns so cached tokens
-    # are reused.  The system prompt is Hermes's territory; plugins
+    # are reused.  The system prompt is Vermes's territory; plugins
     # contribute context alongside the user's input.
     #
     # All injected context is ephemeral (not persisted to session DB).
@@ -1648,7 +1648,7 @@ def run_conversation(
 
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
     # turn to the codex app-server subprocess (terminal/file ops/patching
-    # all run inside Codex). Default Hermes path is bypassed entirely.
+    # all run inside Codex). Default Vermes path is bypassed entirely.
     # See agent/transports/codex_app_server_session.py for the adapter
     # and references/codex-app-server-runtime.md for the rationale.
     if agent.api_mode == "codex_app_server":
@@ -2300,7 +2300,7 @@ def run_conversation(
                     )
                     _refusal_response = (
                         "⚠️  模型拒绝响应此请求 "
-                        "（安全策略拒绝 —— 并非 Hermes/网关故障）。\n\n"
+                        "（安全策略拒绝 —— 并非 Vermes/网关故障）。\n\n"
                         f"{_refusal_detail}\n\n"
                         f"{_CONTENT_POLICY_RECOVERY_HINT}"
                     )
@@ -3072,7 +3072,7 @@ def run_conversation(
                         # means Azure rejected the JWT (RBAC role missing,
                         # az login expired, IMDS unreachable, etc.).
                         logger.info(f"{agent.log_prefix}   Auth method: Microsoft Entra ID (httpx event hook)")
-                        logger.info(f"{agent.log_prefix}   Run `hermes doctor` for credential-chain diagnostics, or")
+                        logger.info(f"{agent.log_prefix}   Run `vermes doctor` for credential-chain diagnostics, or")
                         logger.info(f"{agent.log_prefix}   `az login` if your developer session expired.")
                     else:
                         auth_method = "Bearer (OAuth/setup-token)" if _is_oauth_token(key) else "x-api-key (API key)"
@@ -3081,12 +3081,12 @@ def run_conversation(
                     logger.info(f"{agent.log_prefix}   Troubleshooting:")
                     from vermes_constants import display_hermes_home as _dhh_fn
                     _dhh = _dhh_fn()
-                    logger.info(f"{agent.log_prefix}     • Check ANTHROPIC_TOKEN in {_dhh}/.env for Hermes-managed OAuth/setup tokens")
+                    logger.info(f"{agent.log_prefix}     • Check ANTHROPIC_TOKEN in {_dhh}/.env for Vermes-managed OAuth/setup tokens")
                     logger.info(f"{agent.log_prefix}     • Check ANTHROPIC_API_KEY in {_dhh}/.env for API keys or legacy token values")
                     logger.info(f"{agent.log_prefix}     • For API keys: verify at https://platform.claude.com/settings/keys")
                     logger.info(f"{agent.log_prefix}     • For Claude Code: run 'claude /login' to refresh, then retry")
-                    logger.info(f"{agent.log_prefix}     • Legacy cleanup: hermes config set ANTHROPIC_TOKEN \"\"")
-                    logger.info(f"{agent.log_prefix}     • Clear stale keys: hermes config set ANTHROPIC_API_KEY \"\"")
+                    logger.info(f"{agent.log_prefix}     • Legacy cleanup: vermes config set ANTHROPIC_TOKEN \"\"")
+                    logger.info(f"{agent.log_prefix}     • Clear stale keys: vermes config set ANTHROPIC_API_KEY \"\"")
 
                 # ── Thinking block signature recovery ─────────────────
                 # Anthropic signs thinking blocks against the full turn
@@ -3364,7 +3364,7 @@ def run_conversation(
                 # this on the next pass and try fallback or bail.
                 #
                 # IMPORTANT: Nous Portal multiplexes multiple upstream
-                # providers (DeepSeek, Kimi, MiMo, Hermes).  A 429 can
+                # providers (DeepSeek, Kimi, MiMo, Vermes).  A 429 can
                 # also mean an UPSTREAM provider is out of capacity
                 # for one specific model -- transient, clears in
                 # seconds, nothing to do with the caller's quota.
@@ -3425,7 +3425,7 @@ def run_conversation(
 
                 # Actionable hint for GitHub Models (Azure) 413 errors.
                 # The free tier enforces a hard 8K token cap per request,
-                # which Hermes' system prompt + tool schemas alone exceed.
+                # which Vermes' system prompt + tool schemas alone exceed.
                 # Compression can't help - the floor is the system prompt
                 # itself, not the conversation - so surface a clear "not
                 # compatible" message instead of looping into three futile
@@ -3440,7 +3440,7 @@ def run_conversation(
                         force=True,
                     )
                     agent._vprint(
-                        f"{agent.log_prefix}      request at ~8K tokens. Hermes' system prompt + tool schemas baseline",
+                        f"{agent.log_prefix}      request at ~8K tokens. Vermes' system prompt + tool schemas baseline",
                         force=True,
                     )
                     agent._vprint(
@@ -3750,13 +3750,13 @@ def run_conversation(
                                 agent._vprint(f"{agent.log_prefix}   💡 Codex OAuth token was rejected (HTTP 401). Your token may have been", force=True)
                                 agent._vprint(f"{agent.log_prefix}      refreshed by another client (Codex CLI, VS Code). To fix:", force=True)
                                 agent._vprint(f"{agent.log_prefix}      1. Run `codex` in your terminal to generate fresh tokens.", force=True)
-                                agent._vprint(f"{agent.log_prefix}      2. Then run `hermes auth` to re-authenticate.", force=True)
+                                agent._vprint(f"{agent.log_prefix}      2. Then run `vermes auth` to re-authenticate.", force=True)
                             else:
                                 agent._vprint(f"{agent.log_prefix}   💡 xAI OAuth token was rejected (HTTP 401). To fix:", force=True)
-                                agent._vprint(f"{agent.log_prefix}      re-authenticate with xAI Grok OAuth (SuperGrok Subscription) from `hermes model`.", force=True)
+                                agent._vprint(f"{agent.log_prefix}      re-authenticate with xAI Grok OAuth (SuperGrok Subscription) from `vermes model`.", force=True)
                         else:
                             agent._vprint(f"{agent.log_prefix}   💡 Your API key was rejected by the provider. Check:", force=True)
-                            agent._vprint(f"{agent.log_prefix}      • Is the key valid? Run: hermes setup", force=True)
+                            agent._vprint(f"{agent.log_prefix}      • Is the key valid? Run: vermes setup", force=True)
                             agent._vprint(f"{agent.log_prefix}      • Does your account have access to {_model}?", force=True)
                             if base_url_host_matches(str(_base), "openrouter.ai"):
                                 agent._vprint(f"{agent.log_prefix}      • Check credits: https://openrouter.ai/settings/credits", force=True)

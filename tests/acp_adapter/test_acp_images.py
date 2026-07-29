@@ -10,7 +10,7 @@ from acp.schema import (
     TextResourceContents,
 )
 
-from acp_adapter.server import HermesACPAgent, _content_blocks_to_openai_user_content
+from acp_adapter.server import VermesACPAgent, _content_blocks_to_openai_user_content
 
 
 def test_acp_image_blocks_convert_to_openai_multimodal_content():
@@ -80,7 +80,7 @@ def test_acp_embedded_text_resource_is_inlined_as_text():
 
 @pytest.mark.asyncio
 async def test_initialize_advertises_image_prompt_capability():
-    response = await HermesACPAgent().initialize()
+    response = await VermesACPAgent().initialize()
 
     assert response.agent_capabilities is not None
     assert response.agent_capabilities.prompt_capabilities is not None

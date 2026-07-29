@@ -316,7 +316,7 @@ class TestFileDedup(unittest.TestCase):
     def test_write_allows_large_file_that_quotes_status_text(self, mock_ops):
         """Legitimate large content that happens to quote the status is allowed.
 
-        Hermes' own docs / SKILL.md files may legitimately mention the dedup
+        Vermes' own docs / SKILL.md files may legitimately mention the dedup
         message verbatim.  Only short, status-dominated writes are rejected —
         a normal file that contains the message as one line out of many must
         still write successfully.
@@ -700,7 +700,7 @@ class TestWriteInvalidatesDedup(unittest.TestCase):
     cache for the written path.  Without this, a read→write→read sequence
     within the same mtime second returns a stale 'File unchanged' stub.
 
-    Regression test for https://github.com/NousResearch/hermes-agent/issues/13144
+    Regression test for https://github.com/NousResearch/vermes-agent/issues/13144
     """
 
     def setUp(self):

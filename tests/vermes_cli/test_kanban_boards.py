@@ -1,4 +1,4 @@
-"""Tests for the multi-board kanban layer (``hermes kanban boards …``).
+"""Tests for the multi-board kanban layer (``vermes kanban boards …``).
 
 Covers the pieces added when boards became a first-class concept:
 
@@ -9,7 +9,7 @@ Covers the pieces added when boards became a first-class concept:
   ``HERMES_KANBAN_BOARD`` env var.
 * ``connect(board=)`` isolation — writes on one board don't leak.
 * ``create_board`` / ``list_boards`` / ``remove_board`` round trip.
-* CLI surface: ``hermes kanban boards list/create/switch/rm``.
+* CLI surface: ``vermes kanban boards list/create/switch/rm``.
 * ``_default_spawn`` injects ``HERMES_KANBAN_BOARD`` into worker env.
 """
 
@@ -70,7 +70,7 @@ def fresh_home(tmp_path, monkeypatch):
 
 class TestSlugValidation:
     @pytest.mark.parametrize("good", [
-        "default", "atm10-server", "hermes-agent", "proj_1", "a",
+        "default", "atm10-server", "vermes-agent", "proj_1", "a",
         "very-long-but-still-ok-slug-with-hyphens-and-numbers-1234",
     ])
     def test_accepts_valid(self, good):
@@ -468,7 +468,7 @@ class TestWorkerSpawnEnv:
 # ---------------------------------------------------------------------------
 
 def _cli(args: list[str], env_extra: dict | None = None) -> subprocess.CompletedProcess:
-    """Run ``hermes kanban …`` with PYTHONPATH pinned to the worktree."""
+    """Run ``vermes kanban …`` with PYTHONPATH pinned to the worktree."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(_WORKTREE)
     if env_extra:

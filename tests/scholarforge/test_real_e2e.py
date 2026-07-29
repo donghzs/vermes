@@ -16,7 +16,7 @@ import pytest
 
 # 跳过条件:无 API Key 则 skip
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(os.path.expanduser("~/.vermes/.env")) and not os.path.exists(os.path.expanduser("~/.hermes/.env")),
+    not os.path.exists(os.path.expanduser("~/.vermes/.env")) and not os.path.exists(os.path.expanduser("~/.vermes/.env")),
     reason="无 Vermes 配置,跳过真实 E2E",
 )
 

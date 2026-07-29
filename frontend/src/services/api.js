@@ -146,8 +146,8 @@ function buildHeaders(extra = {}) {
     const onlineToken = localStorage.getItem('vermes_wechat_token') || localStorage.getItem('vermes_token')
     if (onlineToken) h['Authorization'] = `Bearer ${onlineToken}`
   } else if (token.value) {
-    // 桌面模式：用 Hermes session token
-    h['X-Hermes-Session-Token'] = token.value
+    // 桌面模式：用 Vermes session token
+    h['X-Vermes-Session-Token'] = token.value
   }
   return h
 }
@@ -205,7 +205,7 @@ async function request(path, options = {}) {
               token.value = data.token
               // 同步到 window 全局变量
               if (typeof window !== 'undefined') {
-                window.__HERMES_SESSION_TOKEN__ = data.token
+                window.__VERMES_SESSION_TOKEN__ = data.token
               }
               continue  // 用新 token 重试
             }

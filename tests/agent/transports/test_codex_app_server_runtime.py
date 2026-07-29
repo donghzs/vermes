@@ -245,7 +245,7 @@ class TestSpawnEnvIsolation:
     def test_kanban_worker_adds_only_kanban_writable_root(self, monkeypatch):
         """Codex-runtime Kanban workers need to write board state outside
         their scratch/worktree workspace, but should not fall back to
-        danger-full-access. Hermes passes a narrow app-server config override
+        danger-full-access. Vermes passes a narrow app-server config override
         for the Kanban root only.
         """
         import subprocess

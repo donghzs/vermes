@@ -1,4 +1,4 @@
-"""Shared constants for Hermes Agent.
+"""Shared constants for Vermes Agent.
 
 Import-safe module with no dependencies — can be imported from anywhere
 without risk of circular imports.
@@ -30,7 +30,7 @@ _HERMES_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
 
 
 def set_hermes_home_override(path: str | Path | None) -> Token:
-    """Set a context-local Hermes home override and return its reset token.
+    """Set a context-local Vermes home override and return its reset token.
 
     This is for in-process, per-task scoping.  It deliberately does not mutate
     ``os.environ`` because that is shared by every thread in the process.
@@ -40,12 +40,12 @@ def set_hermes_home_override(path: str | Path | None) -> Token:
 
 
 def reset_hermes_home_override(token: Token) -> None:
-    """Restore the previous context-local Hermes home override."""
+    """Restore the previous context-local Vermes home override."""
     _HERMES_HOME_OVERRIDE.reset(token)
 
 
 def get_hermes_home_override() -> str | None:
-    """Return the active context-local Hermes home override, if any."""
+    """Return the active context-local Vermes home override, if any."""
     override = _HERMES_HOME_OVERRIDE.get()
     if override is _UNSET or not override:
         return None
@@ -53,7 +53,7 @@ def get_hermes_home_override() -> str | None:
 
 
 def get_hermes_home() -> Path:
-    """Return the Hermes home directory (default: ~/.vermes).
+    """Return the Vermes home directory (default: ~/.vermes).
 
     Reads HERMES_HOME env var, falls back to ~/.vermes.
     This is the single source of truth — all other copies should import this.
@@ -120,7 +120,7 @@ def get_hermes_home() -> Path:
 
 
 def get_default_hermes_root() -> Path:
-    """Return the root Hermes directory for profile-level operations.
+    """Return the root Vermes directory for profile-level operations.
 
     In standard deployments this is ``~/.vermes``.
 
@@ -161,7 +161,7 @@ def get_default_hermes_root() -> Path:
 def _get_packaged_data_dir(name: str) -> Path | None:
     """Return an installed data-files directory if one exists.
 
-    Used to discover bundled skills/optional-skills when Hermes is installed
+    Used to discover bundled skills/optional-skills when Vermes is installed
     from a wheel that emitted them via setuptools data_files.
     """
     candidates = []
@@ -232,7 +232,7 @@ def get_bundled_skills_dir(default: Path | None = None) -> Path:
 
 
 def get_hermes_dir(new_subpath: str, old_name: str) -> Path:
-    """Resolve a Hermes subdirectory with backward compatibility.
+    """Resolve a Vermes subdirectory with backward compatibility.
 
     New installs get the consolidated layout (e.g. ``cache/images``).
     Existing installs that already have the old path (e.g. ``image_cache``)
@@ -297,7 +297,7 @@ def get_subprocess_home() -> str | None:
 
     When ``{HERMES_HOME}/home/`` exists on disk, subprocesses should use it
     as ``HOME`` so system tools (git, ssh, gh, npm …) write their configs
-    inside the Hermes data directory instead of the OS-level ``/root`` or
+    inside the Vermes data directory instead of the OS-level ``/root`` or
     ``~/``.  This provides:
 
     * **Docker persistence** — tool configs land inside the persistent volume.
@@ -312,7 +312,7 @@ def get_subprocess_home() -> str | None:
     Callers that inject the profile home as ``HOME`` into a subprocess
     environment should also set ``HERMES_REAL_HOME`` to the **real** user
     home so that child scripts can distinguish the two (e.g. to locate
-    ``~/.hermes/`` vs the isolated profile home).
+    ``~/.vermes/`` vs the isolated profile home).
     """
     hermes_home = get_hermes_home_override() or os.getenv("HERMES_HOME")
     if not hermes_home:
@@ -329,7 +329,7 @@ def get_real_home() -> str:
     This is the value that ``HOME`` held before any profile-level
     override.  Subprocess helpers should inject this as
     ``HERMES_REAL_HOME`` alongside any profile-specific ``HOME`` so that
-    child scripts can find ``~/.hermes/`` correctly.
+    child scripts can find ``~/.vermes/`` correctly.
 
     Resolution order:
       1. ``HERMES_REAL_HOME`` env var (if already set by a parent process).

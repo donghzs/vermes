@@ -32,7 +32,7 @@ Longer responses smart-chunked at 4500 chars (hard limit 5000/bubble).
 Port notes
 ----------
 
-Ported from Hermes Agent upstream plugins/platforms/line/adapter.py (1,652 lines),
+Ported from Vermes Agent upstream plugins/platforms/line/adapter.py (1,652 lines),
 a synthesis of 7 community PRs. Adapted for Vermes:
 - Builtin platform path (gateway/config.py Platform enum + gateway/run.py
   _create_adapter) instead of plugin registration

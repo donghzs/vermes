@@ -3,14 +3,14 @@ label: Google Chat
 kind: platform
 version: 1.0.0
 description: >
-  Google Chat gateway adapter for Hermes Agent.
+  Google Chat gateway adapter for Vermes.
   Connects via Cloud Pub/Sub pull subscription for inbound events and the
   Google Chat REST API for outbound messages — same ergonomics as Slack
   Socket Mode or Telegram long-polling, no public URL required. Native
   file attachments are delivered via per-user OAuth (each user runs
   /setup-files once in their own DM).
 author: Ramón Fernández
-# ``requires_env`` entries are surfaced in ``hermes config`` UI via the
+# ``requires_env`` entries are surfaced in ``vermes config`` UI via the
 # platform-plugin env var injector in ``vermes_cli/config.py``.  Using the
 # rich-dict form lets us contribute description/url/prompt metadata so users
 # see helpful guidance instead of the auto-generated fallback text.

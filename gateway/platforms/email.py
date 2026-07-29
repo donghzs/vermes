@@ -1,7 +1,7 @@
 """
-Email platform adapter for the Hermes gateway.
+Email platform adapter for the Vermes gateway.
 
-Allows users to interact with Hermes by sending emails.
+Allows users to interact with Vermes by sending emails.
 Uses IMAP to receive and SMTP to send messages.
 
 Environment variables:

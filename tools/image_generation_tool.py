@@ -3,7 +3,7 @@
 Image Generation Tools Module
 
 Provides image generation via FAL.ai. Multiple FAL models are supported and
-selectable via ``hermes tools`` → Image Generation; the active model is
+selectable via ``vermes tools`` → Image Generation; the active model is
 persisted to ``image_gen.model`` in ``config.yaml``.
 
 Architecture:
@@ -497,7 +497,7 @@ def _submit_fal_request(model: str, arguments: Dict[str, Any]):
                 f"(HTTP {status}). This model may not yet be enabled on "
                 f"the Nous Portal's FAL proxy. Either:\n"
                 f"  • Set FAL_KEY in your environment to use FAL.ai directly, or\n"
-                f"  • Pick a different model via `hermes tools` → Image Generation."
+                f"  • Pick a different model via `vermes tools` → Image Generation."
             ) from exc
         raise
 
@@ -897,10 +897,10 @@ def _build_no_backend_setup_message() -> str:
     if managed_nous_tools_enabled():
         lines.append(
             "  2. Sign in to a Nous account that has the managed FAL "
-            "gateway enabled (`hermes setup`)"
+            "gateway enabled (`vermes setup`)"
         )
     lines.append(
-        "  3. Configure a different image_gen provider via `hermes tools` "
+        "  3. Configure a different image_gen provider via `vermes tools` "
         "→ Image Generation (run `hermes plugins list` to see installed "
         "backends)"
     )
@@ -1201,7 +1201,7 @@ def _handle_image_generate(args, **kw):
             "error": (
                 "The in-tree FAL backend does not support image-to-image / editing. "
                 "Switch to a provider that supports edits (OpenAI, Agnes, xAI) "
-                "via `hermes tools` → Image Generation."
+                "via `vermes tools` → Image Generation."
             ),
             "error_type": "modality_unsupported",
         })

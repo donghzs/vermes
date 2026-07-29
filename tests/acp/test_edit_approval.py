@@ -187,7 +187,7 @@ def test_workspace_auto_approval_allows_workspace_and_tmp_but_not_sensitive(tmp_
     # Use tempfile.gettempdir() so this test exercises the same code path on
     # Linux (`/tmp`), macOS (`/private/var/folders/...`) and Windows
     # (`%LOCALAPPDATA%\Temp`). Before the fix this branch only worked on Linux.
-    tmp_file = Path(tempfile.gettempdir()) / "hermes-acp-auto-approve-test.txt"
+    tmp_file = Path(tempfile.gettempdir()) / "vermes-acp-auto-approve-test.txt"
     env_file = tmp_path / ".env"
 
     assert should_auto_approve_edit(

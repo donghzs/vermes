@@ -1174,7 +1174,7 @@ async def qr_login(
 
 
 class WeixinAdapter(BasePlatformAdapter):
-    """Native Hermes adapter for Weixin personal accounts."""
+    """Native Vermes adapter for Weixin personal accounts."""
 
     MAX_MESSAGE_LENGTH = 2000
 
@@ -1282,9 +1282,9 @@ class WeixinAdapter(BasePlatformAdapter):
                 "[%s] WEIXIN_GROUP_POLICY=%s is set, but QR-login connects an iLink bot "
                 "identity (e.g. ...@im.bot) which typically cannot be invited into ordinary "
                 "WeChat groups. iLink usually does not deliver ordinary-group events for "
-                "these accounts, so group messages may never reach Hermes regardless of this "
+                "these accounts, so group messages may never reach Vermes regardless of this "
                 "policy. If group delivery doesn't work, the limitation is on the iLink side, "
-                "not in Hermes.",
+                "not in Vermes.",
                 self.name,
                 self._group_policy,
             )

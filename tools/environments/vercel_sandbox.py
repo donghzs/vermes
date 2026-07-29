@@ -1,6 +1,6 @@
 """Vercel Sandbox execution environment.
 
-Uses the Vercel Python SDK to run commands in cloud sandboxes through Hermes'
+Uses the Vercel Python SDK to run commands in cloud sandboxes through Vermes'
 shared ``BaseEnvironment`` shell contract. When persistence is enabled, the
 backend stores task-scoped snapshot metadata under ``HERMES_HOME`` and restores
 new sandboxes from those snapshots on later task reuse.

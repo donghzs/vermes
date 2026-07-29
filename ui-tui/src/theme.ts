@@ -237,7 +237,7 @@ function normalizeAnsiForeground(color: string): string {
 // ── Defaults ─────────────────────────────────────────────────────────
 
 const BRAND: ThemeBrand = {
-  name: 'Hermes Agent',
+  name: 'Vermes Agent',
   icon: '⚕',
   prompt: '❯',
   welcome: 'Type your message or /help for commands.',
@@ -410,7 +410,7 @@ function backgroundLuminance(raw: string): null | number {
 //      allow-list below cannot override an explicit dark profile.
 //   5. `TERM_PROGRAM` light-default allow-list.
 //
-// Anything we can't decide stays dark — the default Hermes palette
+// Anything we can't decide stays dark — the default Vermes palette
 // is the dark one.
 export function detectLightMode(
   env: NodeJS.ProcessEnv = process.env,
