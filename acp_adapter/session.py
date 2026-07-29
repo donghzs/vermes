@@ -8,7 +8,7 @@ history.
 """
 from __future__ import annotations
 
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 import copy
 import json
@@ -404,17 +404,17 @@ class SessionManager:
         Returns ``None`` if the DB is unavailable (e.g. import error in a
         minimal test environment).
 
-        Note: we resolve ``HERMES_HOME`` dynamically rather than relying on
+        Note: we resolve ``VERMES_HOME`` dynamically rather than relying on
         the module-level ``DEFAULT_DB_PATH`` constant, because that constant
         is evaluated at import time and won't reflect env-var changes made
-        later (e.g. by the test fixture ``_isolate_hermes_home``).
+        later (e.g. by the test fixture ``_isolate_vermes_home``).
         """
         if self._db_instance is not None:
             return self._db_instance
         try:
             from vermes_state import SessionDB
-            hermes_home = get_hermes_home()
-            self._db_instance = SessionDB(db_path=hermes_home / "state.db")
+            VERMES_home = get_vermes_home()
+            self._db_instance = SessionDB(db_path=VERMES_home / "state.db")
             return self._db_instance
         except Exception:
             logger.debug("SessionDB unavailable for ACP persistence", exc_info=True)

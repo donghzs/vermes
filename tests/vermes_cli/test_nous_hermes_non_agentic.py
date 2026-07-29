@@ -1,12 +1,12 @@
-"""Tests for the Nous-Hermes-3/4 non-agentic warning detector.
+"""Tests for the Nous-Vermes-3/4 non-agentic warning detector.
 
 Prior to this check, the warning fired on any model whose name contained
-``"hermes"`` anywhere (case-insensitive). That false-positived on unrelated
-local Modelfiles such as ``hermes-brain:qwen3-14b-ctx16k`` — a tool-capable
-Qwen3 wrapper that happens to live under the "hermes" tag namespace.
+``"Vermes"`` anywhere (case-insensitive). That false-positived on unrelated
+local Modelfiles such as ``Vermes-brain:qwen3-14b-ctx16k`` — a tool-capable
+Qwen3 wrapper that happens to live under the "Vermes" tag namespace.
 
-``is_nous_hermes_non_agentic`` should only match the actual Nous Research
-Hermes-3 / Hermes-4 chat family.
+``is_nous_vermes_non_agentic`` should only match the actual Nous Research
+Vermes-3 / Vermes-4 chat family.
 """
 
 from __future__ import annotations
@@ -14,42 +14,42 @@ from __future__ import annotations
 import pytest
 
 from vermes_cli.model_switch import (
-    _HERMES_MODEL_WARNING,
-    _check_hermes_model_warning,
-    is_nous_hermes_non_agentic,
+    _vermes_MODEL_WARNING,
+    _check_vermes_model_warning,
+    is_nous_vermes_non_agentic,
 )
 
 
 @pytest.mark.parametrize(
     "model_name",
     [
-        "NousResearch/Hermes-3-Llama-3.1-70B",
-        "NousResearch/Hermes-3-Llama-3.1-405B",
-        "hermes-3",
-        "Hermes-3",
-        "hermes-4",
-        "hermes-4-405b",
-        "hermes_4_70b",
-        "openrouter/hermes3:70b",
-        "openrouter/nousresearch/hermes-4-405b",
-        "NousResearch/Hermes3",
-        "hermes-3.1",
+        "donghzs/Vermes-3-Llama-3.1-70B",
+        "donghzs/Vermes-3-Llama-3.1-405B",
+        "Vermes-3",
+        "Vermes-3",
+        "Vermes-4",
+        "Vermes-4-405b",
+        "VERMES_4_70b",
+        "openrouter/vermes3:70b",
+        "openrouter/donghzs/Vermes-4-405b",
+        "donghzs/vermes3",
+        "Vermes-3.1",
     ],
 )
-def test_matches_real_nous_hermes_chat_models(model_name: str) -> None:
-    assert is_nous_hermes_non_agentic(model_name), (
+def test_matches_real_nous_vermes_chat_models(model_name: str) -> None:
+    assert is_nous_vermes_non_agentic(model_name), (
         f"expected {model_name!r} to be flagged as Nous Vermes 3/4"
     )
-    assert _check_hermes_model_warning(model_name) == _HERMES_MODEL_WARNING
+    assert _check_vermes_model_warning(model_name) == _vermes_MODEL_WARNING
 
 
 @pytest.mark.parametrize(
     "model_name",
     [
         # Kyle's local Modelfile — qwen3:14b under a custom tag
-        "hermes-brain:qwen3-14b-ctx16k",
-        "hermes-brain:qwen3-14b-ctx32k",
-        "hermes-honcho:qwen3-8b-ctx8k",
+        "Vermes-brain:qwen3-14b-ctx16k",
+        "Vermes-brain:qwen3-14b-ctx32k",
+        "Vermes-honcho:qwen3-8b-ctx8k",
         # Plain unrelated models
         "qwen3:14b",
         "qwen3-coder:30b",
@@ -60,25 +60,25 @@ def test_matches_real_nous_hermes_chat_models(model_name: str) -> None:
         "openai/gpt-4o",
         "google/gemini-2.5-flash",
         "deepseek-chat",
-        # Non-chat Hermes models we don't warn about
-        "hermes-llm-2",
-        "hermes2-pro",
-        "nous-hermes-2-mistral",
+        # Non-chat Vermes models we don't warn about
+        "Vermes-llm-2",
+        "vermes2-pro",
+        "nous-Vermes-2-mistral",
         # Edge cases
         "",
-        "hermes",  # bare "hermes" isn't the 3/4 family
-        "hermes-brain",
-        "brain-hermes-3-impostor",  # "3" not preceded by /: boundary
+        "Vermes",  # bare "Vermes" isn't the 3/4 family
+        "Vermes-brain",
+        "brain-Vermes-3-impostor",  # "3" not preceded by /: boundary
     ],
 )
 def test_does_not_match_unrelated_models(model_name: str) -> None:
-    assert not is_nous_hermes_non_agentic(model_name), (
+    assert not is_nous_vermes_non_agentic(model_name), (
         f"expected {model_name!r} NOT to be flagged as Nous Vermes 3/4"
     )
-    assert _check_hermes_model_warning(model_name) == ""
+    assert _check_vermes_model_warning(model_name) == ""
 
 
 def test_none_like_inputs_are_safe() -> None:
-    assert is_nous_hermes_non_agentic("") is False
+    assert is_nous_vermes_non_agentic("") is False
     # Defensive: the helper shouldn't crash on None-ish falsy input either.
-    assert _check_hermes_model_warning("") == ""
+    assert _check_vermes_model_warning("") == ""

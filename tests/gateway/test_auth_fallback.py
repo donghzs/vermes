@@ -21,7 +21,7 @@ class TestResolveRuntimeAgentKwargsAuthFallback:
             "  model: meta-llama/llama-4-maverick\n"
         )
 
-        monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
+        monkeypatch.setattr("gateway.run._vermes_home", tmp_path)
 
         call_count = {"n": 0}
 
@@ -40,7 +40,7 @@ class TestResolveRuntimeAgentKwargsAuthFallback:
                 "credential_pool": None,
             }
 
-        monkeypatch.setenv("HERMES_INFERENCE_PROVIDER", "openai-codex")
+        monkeypatch.setenv("VERMES_INFERENCE_PROVIDER", "openai-codex")
 
         with patch(
             "vermes_cli.runtime_provider.resolve_runtime_provider",
@@ -61,8 +61,8 @@ class TestResolveRuntimeAgentKwargsAuthFallback:
         config_path = tmp_path / "config.yaml"
         config_path.write_text("model:\n  provider: openai-codex\n")
 
-        monkeypatch.setattr("gateway.run._hermes_home", tmp_path)
-        monkeypatch.setenv("HERMES_INFERENCE_PROVIDER", "openai-codex")
+        monkeypatch.setattr("gateway.run._vermes_home", tmp_path)
+        monkeypatch.setenv("VERMES_INFERENCE_PROVIDER", "openai-codex")
 
         with patch(
             "vermes_cli.runtime_provider.resolve_runtime_provider",

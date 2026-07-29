@@ -87,7 +87,7 @@ class TestReconfigureWritesProvider:
         video_gen.provider via the post-env-vars branch."""
         from vermes_cli import tools_config
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         video_gen_registry.register_provider(_FakeVideoProvider("xai_fake"))
 
         # Picker prompts replaced — no TTY in tests.
@@ -122,7 +122,7 @@ class TestReconfigureWritesProvider:
         video_gen.provider via the no-env-vars early-return branch."""
         from vermes_cli import tools_config
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         video_gen_registry.register_provider(_FakeVideoProvider(
             "noenv_video",
             schema={

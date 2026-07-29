@@ -33,7 +33,7 @@ def test_config_unknown_command_help_marks_placeholders(capsys):
 
 
 def test_show_config_marks_placeholders(tmp_path, capsys):
-    with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+    with patch.dict(os.environ, {"VERMES_HOME": str(tmp_path)}):
         show_config()
 
     out = capsys.readouterr().out
@@ -41,7 +41,7 @@ def test_show_config_marks_placeholders(tmp_path, capsys):
 
 
 def test_setup_summary_marks_placeholders(tmp_path, capsys):
-    with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+    with patch.dict(os.environ, {"VERMES_HOME": str(tmp_path)}):
         _print_setup_summary({"tts": {"provider": "edge"}}, tmp_path)
 
     out = capsys.readouterr().out

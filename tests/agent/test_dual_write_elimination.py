@@ -16,10 +16,10 @@ from pathlib import Path
 
 
 @pytest.fixture
-def fresh_hermes_home():
-    """Create a fresh HERMES_HOME with seeded DB."""
+def fresh_vermes_home():
+    """Create a fresh VERMES_HOME with seeded DB."""
     home = tempfile.mkdtemp()
-    os.environ["HERMES_HOME"] = home
+    os.environ["VERMES_HOME"] = home
     # Clear cached evolution state
     import agent.evolution_manager as em
     em._evolution_active = None
@@ -34,27 +34,27 @@ def fresh_hermes_home():
     
     # Cleanup
     em._evolution_active = None
-    os.environ.pop("HERMES_HOME", None)
+    os.environ.pop("VERMES_HOME", None)
 
 
 class TestVOutcomesView:
-    def test_view_exists(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_view_exists(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         views = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='view' AND name='v_outcomes'"
         ).fetchall()
         assert len(views) == 1
         conn.close()
 
-    def test_view_maps_raw_events(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_view_maps_raw_events(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         raw_count = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
         view_count = conn.execute("SELECT COUNT(*) FROM v_outcomes").fetchone()[0]
         assert raw_count == view_count
         conn.close()
 
-    def test_view_columns_match_outcomes_schema(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_view_columns_match_outcomes_schema(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         cols = conn.execute("PRAGMA table_info(v_outcomes)").fetchall()
         col_names = [c[1] for c in cols]
         expected = ["id", "timestamp", "task", "action", "tool", "success",
@@ -62,21 +62,21 @@ class TestVOutcomesView:
         assert col_names == expected
         conn.close()
 
-    def test_view_role_is_default(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_view_role_is_default(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         roles = conn.execute("SELECT DISTINCT role FROM v_outcomes").fetchall()
         assert roles == [("default",)]
         conn.close()
 
-    def test_view_domain_is_empty(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_view_domain_is_empty(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         domains = conn.execute("SELECT DISTINCT domain FROM v_outcomes").fetchall()
         assert domains == [("",)]
         conn.close()
 
-    def test_view_error_msg_on_failure(self, fresh_hermes_home):
+    def test_view_error_msg_on_failure(self, fresh_vermes_home):
         from agent.raw_event import record_raw_event
-        conn = sqlite3.connect(fresh_hermes_home)
+        conn = sqlite3.connect(fresh_vermes_home)
         
         record_raw_event(
             tool_name="terminal",
@@ -95,10 +95,10 @@ class TestVOutcomesView:
 
 
 class TestNoDualWrite:
-    def test_record_raw_event_does_not_write_outcomes_table(self, fresh_hermes_home):
+    def test_record_raw_event_does_not_write_outcomes_table(self, fresh_vermes_home):
         from agent.raw_event import record_raw_event
         
-        conn = sqlite3.connect(fresh_hermes_home)
+        conn = sqlite3.connect(fresh_vermes_home)
         # outcomes table no longer created (zombie table eliminated)
         # Verify it doesn't exist
         table_exists = conn.execute(
@@ -125,10 +125,10 @@ class TestNoDualWrite:
         assert raw_after > 10  # 10 seeds + 1 new
         conn.close()
 
-    def test_v_outcomes_grows_with_raw_events(self, fresh_hermes_home):
+    def test_v_outcomes_grows_with_raw_events(self, fresh_vermes_home):
         from agent.raw_event import record_raw_event
         
-        conn = sqlite3.connect(fresh_hermes_home)
+        conn = sqlite3.connect(fresh_vermes_home)
         before = conn.execute("SELECT COUNT(*) FROM v_outcomes").fetchone()[0]
         
         record_raw_event(
@@ -145,22 +145,22 @@ class TestNoDualWrite:
 
 
 class TestLegacyQueries:
-    def test_count_total(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_count_total(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         total = conn.execute("SELECT COUNT(*) FROM v_outcomes").fetchone()[0]
         assert total == 10  # seeded data
         conn.close()
 
-    def test_count_success(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_count_success(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         successes = conn.execute(
             "SELECT COUNT(*) FROM v_outcomes WHERE success = 1"
         ).fetchone()[0]
         assert successes == 10  # all seeds are successful
         conn.close()
 
-    def test_top_tool(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_top_tool(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         row = conn.execute(
             "SELECT tool, COUNT(*) as cnt FROM v_outcomes GROUP BY tool ORDER BY cnt DESC LIMIT 1"
         ).fetchone()
@@ -168,8 +168,8 @@ class TestLegacyQueries:
         assert row[1] == 4
         conn.close()
 
-    def test_recent_query(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_recent_query(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         rows = conn.execute(
             "SELECT task, tool, success FROM v_outcomes ORDER BY id DESC LIMIT 5"
         ).fetchall()
@@ -178,8 +178,8 @@ class TestLegacyQueries:
 
 
 class TestSeedData:
-    def test_seed_writes_raw_events_not_outcomes(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_seed_writes_raw_events_not_outcomes(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         raw_count = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
         
         assert raw_count == 10  # seeds in raw_events
@@ -191,8 +191,8 @@ class TestSeedData:
         assert table_exists == 0, "outcomes table should NOT be created"
         conn.close()
 
-    def test_seed_contains_expected_tools(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_seed_contains_expected_tools(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         tools = conn.execute("SELECT DISTINCT tool_name FROM raw_events").fetchall()
         tool_names = {t[0] for t in tools}
         assert "terminal" in tool_names
@@ -210,25 +210,25 @@ class TestSeedData:
 class TestZombieTableElimination:
     """P3: outcomes and anti_patterns tables should no longer be created."""
 
-    def test_outcomes_table_not_created(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_outcomes_table_not_created(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         exists = conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='outcomes'"
         ).fetchone()[0]
         assert exists == 0, "outcomes table should NOT be created (zombie eliminated)"
         conn.close()
 
-    def test_anti_patterns_table_not_created(self, fresh_hermes_home):
-        conn = sqlite3.connect(fresh_hermes_home)
+    def test_anti_patterns_table_not_created(self, fresh_vermes_home):
+        conn = sqlite3.connect(fresh_vermes_home)
         exists = conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='anti_patterns'"
         ).fetchone()[0]
         assert exists == 0, "anti_patterns table should NOT be created (zombie eliminated)"
         conn.close()
 
-    def test_v_outcomes_still_works(self, fresh_hermes_home):
+    def test_v_outcomes_still_works(self, fresh_vermes_home):
         """v_outcomes view should still function over raw_events."""
-        conn = sqlite3.connect(fresh_hermes_home)
+        conn = sqlite3.connect(fresh_vermes_home)
         count = conn.execute("SELECT COUNT(*) FROM v_outcomes").fetchone()[0]
         assert count == 10  # seeded data
         conn.close()
@@ -237,14 +237,14 @@ class TestZombieTableElimination:
 class TestRelationsTTL:
     """P1: relations table should have 90-day TTL cleanup."""
 
-    def test_old_relations_pruned(self, fresh_hermes_home):
+    def test_old_relations_pruned(self, fresh_vermes_home):
         import json
         from agent.raw_event import record_raw_event
         from agent.evolution_manager import _record_evolution_metric
         from datetime import datetime, timedelta
         import sqlite3
 
-        conn = sqlite3.connect(fresh_hermes_home)
+        conn = sqlite3.connect(fresh_vermes_home)
         # Insert a relation with old timestamp
         old_ts = (datetime.now() - timedelta(days=100)).isoformat()
         conn.execute(
@@ -278,8 +278,8 @@ class TestStagingCleanup:
         import tempfile
         from agent.emergent_change import EmergentChangePipeline
 
-        home = tmp_path / "hermes"
-        pipeline = EmergentChangePipeline(hermes_home=str(home))
+        home = tmp_path / "Vermes"
+        pipeline = EmergentChangePipeline(VERMES_home=str(home))
 
         # Create stale files
         staging = home / "staging"
@@ -288,7 +288,7 @@ class TestStagingCleanup:
         (staging / "keep.txt").write_text("keep")
 
         # New pipeline should clean up
-        pipeline2 = EmergentChangePipeline(hermes_home=str(home))
+        pipeline2 = EmergentChangePipeline(VERMES_home=str(home))
         remaining = [f.name for f in staging.iterdir()]
         assert all(not n.startswith("change_") for n in remaining)
         assert "keep.txt" in remaining

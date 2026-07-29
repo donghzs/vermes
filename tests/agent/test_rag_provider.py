@@ -5,7 +5,7 @@ Covers:
 - Vector backend (sqlite-vec): init with vec table, fail-open when unavailable
 - Edge cases: empty query, missing file, re-ingest overwrite
 
-These tests use a temp HERMES_HOME to avoid polluting the real RAG DB.
+These tests use a temp VERMES_HOME to avoid polluting the real RAG DB.
 """
 
 import json
@@ -20,8 +20,8 @@ import pytest
 
 @pytest.fixture
 def rag_provider(tmp_path, monkeypatch):
-    """Create a RAGProvider with a clean temp HERMES_HOME, default FTS5 backend."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    """Create a RAGProvider with a clean temp VERMES_HOME, default FTS5 backend."""
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.delenv("VERMES_RAG_BACKEND", raising=False)
     # Force reimport so module-level config picks up the new env
     import importlib
@@ -38,7 +38,7 @@ def rag_provider(tmp_path, monkeypatch):
 @pytest.fixture
 def rag_provider_vec(tmp_path, monkeypatch):
     """Create a RAGProvider with sqlite-vec backend enabled."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setenv("VERMES_RAG_BACKEND", "sqlite-vec")
     import importlib
     import vermes_constants
@@ -223,7 +223,7 @@ class TestVectorBackend:
 
     def test_vec_backend_fail_open_on_missing_dylib(self, tmp_path, monkeypatch):
         """When dylib is missing, should fail-open to FTS5."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("VERMES_RAG_BACKEND", "sqlite-vec")
 
         # Mock sqlite_vec import to fail (simulating missing dylib)

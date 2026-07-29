@@ -1,7 +1,7 @@
 """Tests for per-job profile support in cron jobs.
 
 Covers data-layer validation/storage, cronjob tool plumbing, scheduler runtime
-HERMES_HOME scoping, and tick() serialization for profile jobs.
+VERMES_HOME scoping, and tick() serialization for profile jobs.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ import pytest
 @pytest.fixture()
 def isolated_cron_profile_home(tmp_path, monkeypatch):
     """Create an isolated Vermes root with a named profile and temp cron store."""
-    root = tmp_path / "hermes-root"
+    root = tmp_path / "Vermes-root"
     profile_home = root / "profiles" / "support"
     profile_home.mkdir(parents=True)
     (root / "cron").mkdir(parents=True)
 
-    monkeypatch.setenv("HERMES_HOME", str(root))
+    monkeypatch.setenv("VERMES_HOME", str(root))
     monkeypatch.setattr("cron.jobs.CRON_DIR", root / "cron")
     monkeypatch.setattr("cron.jobs.JOBS_FILE", root / "cron" / "jobs.json")
     monkeypatch.setattr("cron.jobs.OUTPUT_DIR", root / "cron" / "output")
@@ -152,10 +152,10 @@ class TestCronjobToolProfile:
         assert "profile" in CRONJOB_SCHEMA["parameters"]["properties"]
         desc = CRONJOB_SCHEMA["parameters"]["properties"]["profile"]["description"]
         desc_lower = desc.lower()
-        assert "hermes profile" in desc_lower
+        assert "Vermes profile" in desc_lower
         assert "context-local" in desc_lower
         assert "subprocess" in desc_lower
-        assert "temporarily sets hermes_home" not in desc_lower
+        assert "temporarily sets VERMES_home" not in desc_lower
 
 
 class TestRunJobProfileContext:
@@ -166,31 +166,31 @@ class TestRunJobProfileContext:
 
         class FakeAgent:
             def __init__(self, **kwargs):
-                from vermes_constants import get_hermes_home
+                from vermes_constants import get_vermes_home
 
-                observed["env_home_during_init"] = os.environ.get("HERMES_HOME")
+                observed["env_home_during_init"] = os.environ.get("VERMES_HOME")
                 observed["profile_env_only_during_init"] = os.environ.get(
-                    "HERMES_PROFILE_TEST_ONLY"
+                    "VERMES_PROFILE_TEST_ONLY"
                 )
                 observed["profile_env_shared_during_init"] = os.environ.get(
-                    "HERMES_PROFILE_TEST_SHARED"
+                    "VERMES_PROFILE_TEST_SHARED"
                 )
-                observed["hermes_home_during_init"] = str(get_hermes_home())
-                observed["scheduler_home_during_init"] = str(sched._get_hermes_home())
+                observed["VERMES_home_during_init"] = str(get_vermes_home())
+                observed["scheduler_home_during_init"] = str(sched._get_vermes_home())
                 observed["skip_context_files"] = kwargs.get("skip_context_files")
 
             def run_conversation(self, *_a, **_kw):
-                from vermes_constants import get_hermes_home
+                from vermes_constants import get_vermes_home
 
-                observed["env_home_during_run"] = os.environ.get("HERMES_HOME")
+                observed["env_home_during_run"] = os.environ.get("VERMES_HOME")
                 observed["profile_env_only_during_run"] = os.environ.get(
-                    "HERMES_PROFILE_TEST_ONLY"
+                    "VERMES_PROFILE_TEST_ONLY"
                 )
                 observed["profile_env_shared_during_run"] = os.environ.get(
-                    "HERMES_PROFILE_TEST_SHARED"
+                    "VERMES_PROFILE_TEST_SHARED"
                 )
-                observed["hermes_home_during_run"] = str(get_hermes_home())
-                observed["scheduler_home_during_run"] = str(sched._get_hermes_home())
+                observed["VERMES_home_during_run"] = str(get_vermes_home())
+                observed["scheduler_home_during_run"] = str(sched._get_vermes_home())
                 return {"final_response": "done", "messages": []}
 
             def get_activity_summary(self):
@@ -220,8 +220,8 @@ class TestRunJobProfileContext:
         monkeypatch.setattr(sched, "_resolve_origin", lambda job: None)
         monkeypatch.setattr(sched, "_resolve_delivery_target", lambda job: None)
         monkeypatch.setattr(sched, "_resolve_cron_enabled_toolsets", lambda job, cfg: None)
-        monkeypatch.setattr(sched, "_hermes_home", None)
-        monkeypatch.setenv("HERMES_CRON_TIMEOUT", "0")
+        monkeypatch.setattr(sched, "_vermes_home", None)
+        monkeypatch.setenv("VERMES_CRON_TIMEOUT", "0")
 
         import dotenv
 
@@ -253,13 +253,13 @@ class TestRunJobProfileContext:
         assert observed["dotenv_paths"] == [str(profile_home / ".env")]
         assert observed["env_home_during_init"] == str(root)
         assert observed["env_home_during_run"] == str(root)
-        assert observed["hermes_home_during_init"] == str(profile_home.resolve())
-        assert observed["hermes_home_during_run"] == str(profile_home.resolve())
+        assert observed["VERMES_home_during_init"] == str(profile_home.resolve())
+        assert observed["VERMES_home_during_run"] == str(profile_home.resolve())
         assert observed["scheduler_home_during_init"] == str(profile_home.resolve())
         assert observed["scheduler_home_during_run"] == str(profile_home.resolve())
         assert observed["skip_context_files"] is True
-        assert os.environ["HERMES_HOME"] == str(root)
-        assert sched._get_hermes_home() == root
+        assert os.environ["VERMES_HOME"] == str(root)
+        assert sched._get_vermes_home() == root
 
     def test_profile_dotenv_environment_is_restored(
         self, isolated_cron_profile_home, monkeypatch
@@ -270,14 +270,14 @@ class TestRunJobProfileContext:
         root, profile_home = isolated_cron_profile_home
         observed: dict = {}
         self._install_agent_stubs(monkeypatch, observed)
-        monkeypatch.setenv("HERMES_PROFILE_TEST_SHARED", "outer")
-        monkeypatch.delenv("HERMES_PROFILE_TEST_ONLY", raising=False)
+        monkeypatch.setenv("VERMES_PROFILE_TEST_SHARED", "outer")
+        monkeypatch.delenv("VERMES_PROFILE_TEST_ONLY", raising=False)
 
         def fake_load_dotenv(path, *_a, **_kw):
             observed.setdefault("dotenv_paths", []).append(str(path))
-            os.environ["HERMES_PROFILE_TEST_SHARED"] = "profile-value"
-            os.environ["HERMES_PROFILE_TEST_ONLY"] = "profile-only"
-            os.environ["HERMES_CRON_TIMEOUT"] = "123"
+            os.environ["VERMES_PROFILE_TEST_SHARED"] = "profile-value"
+            os.environ["VERMES_PROFILE_TEST_ONLY"] = "profile-only"
+            os.environ["VERMES_CRON_TIMEOUT"] = "123"
             return True
 
         monkeypatch.setattr(dotenv, "load_dotenv", fake_load_dotenv)
@@ -297,11 +297,11 @@ class TestRunJobProfileContext:
         assert observed["profile_env_shared_during_init"] == "profile-value"
         assert observed["profile_env_only_during_run"] == "profile-only"
         assert observed["profile_env_shared_during_run"] == "profile-value"
-        assert os.environ["HERMES_PROFILE_TEST_SHARED"] == "outer"
-        assert "HERMES_PROFILE_TEST_ONLY" not in os.environ
-        assert os.environ["HERMES_CRON_TIMEOUT"] == "0"
-        assert os.environ["HERMES_HOME"] == str(root)
-        assert sched._get_hermes_home() == root
+        assert os.environ["VERMES_PROFILE_TEST_SHARED"] == "outer"
+        assert "VERMES_PROFILE_TEST_ONLY" not in os.environ
+        assert os.environ["VERMES_CRON_TIMEOUT"] == "0"
+        assert os.environ["VERMES_HOME"] == str(root)
+        assert sched._get_vermes_home() == root
 
     def test_no_agent_profile_uses_profile_scripts_dir_and_restores_env(
         self, isolated_cron_profile_home, monkeypatch
@@ -312,10 +312,10 @@ class TestRunJobProfileContext:
         scripts_dir = profile_home / "scripts"
         scripts_dir.mkdir(parents=True)
         (scripts_dir / "print_home.py").write_text(
-            "import os\nprint(os.environ.get('HERMES_HOME', ''))\n",
+            "import os\nprint(os.environ.get('VERMES_HOME', ''))\n",
             encoding="utf-8",
         )
-        monkeypatch.setattr(sched, "_hermes_home", None)
+        monkeypatch.setattr(sched, "_vermes_home", None)
 
         job = {
             "id": "script1",
@@ -329,10 +329,10 @@ class TestRunJobProfileContext:
 
         assert success is True, error
         assert response.strip() == str(profile_home.resolve())
-        assert os.environ["HERMES_HOME"] == str(root)
-        assert sched._get_hermes_home() == root
+        assert os.environ["VERMES_HOME"] == str(root)
+        assert sched._get_vermes_home() == root
 
-    def test_run_job_without_profile_leaves_hermes_home_untouched(
+    def test_run_job_without_profile_leaves_vermes_home_untouched(
         self, isolated_cron_profile_home, monkeypatch
     ):
         import cron.scheduler as sched
@@ -351,8 +351,8 @@ class TestRunJobProfileContext:
         success, *_ = sched.run_job(job)
 
         assert success is True
-        assert observed["hermes_home_during_init"] == str(root)
-        assert os.environ["HERMES_HOME"] == str(root)
+        assert observed["VERMES_home_during_init"] == str(root)
+        assert os.environ["VERMES_HOME"] == str(root)
 
     def test_run_job_falls_back_on_missing_runtime_profile(
         self, isolated_cron_profile_home, monkeypatch
@@ -375,8 +375,8 @@ class TestRunJobProfileContext:
 
         assert success is True, f"run_job should fallback, not fail: error={error!r}"
         # Verify it used the default home, not the missing profile
-        assert observed["hermes_home_during_init"] == str(root)
-        assert os.environ["HERMES_HOME"] == str(root)
+        assert observed["VERMES_home_during_init"] == str(root)
+        assert os.environ["VERMES_HOME"] == str(root)
 
 
 class TestTickProfilePartition:
@@ -401,11 +401,11 @@ class TestTickProfilePartition:
         success, _output, _response, error = sched.run_job(job)
 
         assert success is True, error
-        assert observed["hermes_home_during_init"] == str(profile_home.resolve())
+        assert observed["VERMES_home_during_init"] == str(profile_home.resolve())
         assert os.environ.get("TERMINAL_CWD", "") != fake_workdir, \
             "TERMINAL_CWD should be restored after job"
-        assert os.environ["HERMES_HOME"] == str(root)
-        assert sched._get_hermes_home() == root
+        assert os.environ["VERMES_HOME"] == str(root)
+        assert sched._get_vermes_home() == root
 
     def test_profile_jobs_run_sequentially(self, isolated_cron_profile_home, monkeypatch):
         import threading

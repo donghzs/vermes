@@ -1,4 +1,4 @@
-"""Tests for the interactive session browser (`hermes sessions browse`).
+"""Tests for the interactive session browser (`Vermes sessions browse`).
 
 Covers:
 - _session_browse_picker logic (curses mocked, fallback tested)
@@ -390,7 +390,7 @@ class TestSessionBrowseArgparse:
     """Verify the 'browse' subcommand is properly registered."""
 
     def test_browse_subcommand_exists(self):
-        """hermes sessions browse should be parseable."""
+        """Vermes sessions browse should be parseable."""
         from vermes_cli.main import main as _main_entry
 
         # We can't run main(), but we can import and test the parser setup

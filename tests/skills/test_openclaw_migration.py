@@ -12,12 +12,12 @@ SCRIPT_PATH = (
     / "migration"
     / "openclaw-migration"
     / "scripts"
-    / "openclaw_to_hermes.py"
+    / "openclaw_to_vermes.py"
 )
 
 
 def load_module():
-    spec = importlib.util.spec_from_file_location("openclaw_to_hermes", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("openclaw_to_vermes", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module
@@ -105,7 +105,7 @@ def test_resolve_selected_options_rejects_unknown_preset():
 def test_migrator_copies_skill_and_merges_allowlist(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     (source / "workspace" / "skills" / "demo-skill").mkdir(parents=True)
@@ -150,7 +150,7 @@ def test_migrator_copies_skill_and_merges_allowlist(tmp_path: Path):
 def test_migrator_optionally_imports_supported_secrets_and_messaging_settings(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
 
     (source / "credentials").mkdir(parents=True)
     (source / "openclaw.json").write_text(
@@ -189,7 +189,7 @@ def test_messaging_cwd_skipped_when_inside_source(tmp_path: Path):
     """MESSAGING_CWD pointing inside the OpenClaw source dir should be skipped."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     # Workspace path is inside the source directory
@@ -220,7 +220,7 @@ def test_messaging_cwd_skipped_when_inside_source(tmp_path: Path):
 def test_migrator_can_execute_only_selected_categories(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     (source / "workspace" / "skills" / "demo-skill").mkdir(parents=True)
@@ -257,7 +257,7 @@ def test_migrator_can_execute_only_selected_categories(tmp_path: Path):
 def test_migrator_records_preset_in_report(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     (target / "config.yaml").write_text("command_allowlist: []\n", encoding="utf-8")
 
@@ -285,7 +285,7 @@ def test_source_candidate_finds_files_in_custom_workspace(tmp_path: Path):
     be discovered there as a fallback."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     custom_ws = tmp_path / "my-custom-workspace"
 
     target.mkdir()
@@ -343,7 +343,7 @@ def test_source_candidate_prefers_standard_workspace_over_custom(tmp_path: Path)
     the standard location should win (custom is a fallback only)."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     custom_ws = tmp_path / "my-custom-workspace"
 
     target.mkdir()
@@ -379,7 +379,7 @@ def test_source_candidate_prefers_standard_workspace_over_custom(tmp_path: Path)
 def test_migrator_exports_full_overflow_entries(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     (target / "config.yaml").write_text("memory:\n  memory_char_limit: 10\n  user_char_limit: 10\n", encoding="utf-8")
     (source / "workspace").mkdir(parents=True)
@@ -410,7 +410,7 @@ def test_migrator_exports_full_overflow_entries(tmp_path: Path):
 def test_migrator_can_rename_conflicting_imported_skill(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     source_skill = source / "workspace" / "skills" / "demo-skill"
@@ -449,7 +449,7 @@ def test_migrator_can_rename_conflicting_imported_skill(tmp_path: Path):
 def test_migrator_can_overwrite_conflicting_imported_skill_with_backup(tmp_path: Path):
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     source_skill = source / "workspace" / "skills" / "demo-skill"
@@ -487,7 +487,7 @@ def test_discord_settings_migrated(tmp_path: Path):
     """Discord bot token and allowlist migrate to .env."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -518,7 +518,7 @@ def test_slack_settings_migrated(tmp_path: Path):
     """Slack bot/app tokens and allowlist migrate to .env."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -551,7 +551,7 @@ def test_signal_settings_migrated(tmp_path: Path):
     """Signal account, HTTP URL, and allowlist migrate to .env."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -584,7 +584,7 @@ def test_model_config_migrated(tmp_path: Path):
     """Default model setting migrates to config.yaml."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -611,7 +611,7 @@ def test_model_config_object_format(tmp_path: Path):
     """Model config handles {primary: ...} object format."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -637,7 +637,7 @@ def test_tts_config_migrated(tmp_path: Path):
     """TTS provider and voice settings migrate to config.yaml."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -672,7 +672,7 @@ def test_shared_skills_migrated(tmp_path: Path):
     """Shared skills from ~/.openclaw/skills/ are migrated."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     # Create a shared skill (not in workspace/skills/)
@@ -696,7 +696,7 @@ def test_daily_memory_merged(tmp_path: Path):
     """Daily memory notes from workspace/memory/*.md are merged into MEMORY.md."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
 
     mem_dir = source / "workspace" / "memory"
@@ -727,7 +727,7 @@ def test_provider_keys_require_migrate_secrets_flag(tmp_path: Path):
     """Provider keys migration is double-gated: needs option + --migrate-secrets."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     target.mkdir()
     source.mkdir()
 
@@ -771,7 +771,7 @@ def test_workspace_agents_records_skip_when_missing(tmp_path: Path):
     """Bug fix: workspace-agents records 'skipped' when source is missing."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     source.mkdir()
     target.mkdir()
 
@@ -790,7 +790,7 @@ def test_cron_store_is_archived_without_config_cron_section(tmp_path: Path):
     """Bug fix: archive cron store even when openclaw.json has no top-level cron config."""
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     output_dir = target / "migration-report"
     source.mkdir()
     target.mkdir()
@@ -823,7 +823,7 @@ def test_cron_store_is_archived_without_config_cron_section(tmp_path: Path):
     assert Path(archived_store["destination"]).joinpath("jobs.json").exists()
 
     notes_text = (output_dir / "MIGRATION_NOTES.md").read_text(encoding="utf-8")
-    assert "Run `hermes cron` to recreate scheduled tasks" in notes_text
+    assert "Run `Vermes cron` to recreate scheduled tasks" in notes_text
     assert "archive/cron-config.json" not in notes_text
 
 
@@ -841,13 +841,13 @@ def test_skill_installs_cleanly_under_skills_guard():
     # agent_config_mod   — references AGENTS.md to migrate workspace instructions
     # python_os_environ  — reads MIGRATION_JSON_OUTPUT to enable JSON output mode
     #                      (feature flag, not an env dump)
-    # hermes_config_mod  — print statements in the post-migration summary that
+    # VERMES_config_mod  — print statements in the post-migration summary that
     #                      tell the user to *review* ~/.vermes/config.yaml;
     #                      the script never writes to that file
     #
     # Accept "caution" or "safe" — just not "dangerous" from a *real* threat.
     assert result.verdict in {"safe", "caution", "dangerous"}, f"Unexpected verdict: {result.verdict}"
-    KNOWN_FALSE_POSITIVES = {"agent_config_mod", "python_os_environ", "hermes_config_mod"}
+    KNOWN_FALSE_POSITIVES = {"agent_config_mod", "python_os_environ", "VERMES_config_mod"}
     for f in result.findings:
         assert f.pattern_id in KNOWN_FALSE_POSITIVES, f"Unexpected finding: {f}"
 
@@ -862,19 +862,19 @@ def test_rebrand_text_replaces_openclaw_variants():
     assert mod.rebrand_text("I told Open Claw to use dark mode") == "I told Vermes to use dark mode"
     assert mod.rebrand_text("Open-Claw config is great") == "Vermes config is great"
     assert mod.rebrand_text("OPENCLAW uses tools well") == "Vermes uses tools well"
-    # All-lowercase matches → lowercase ``hermes``; this preserves the
-    # real filesystem path ``~/.hermes`` (Vermes home) when rebranding
+    # All-lowercase matches → lowercase ``Vermes``; this preserves the
+    # real filesystem path ``~/.Vermes`` (Vermes home) when rebranding
     # memory entries that reference ``~/.openclaw`` or ``openclaw`` prose.
-    assert mod.rebrand_text("openclaw should always respond concisely") == "hermes should always respond concisely"
+    assert mod.rebrand_text("openclaw should always respond concisely") == "Vermes should always respond concisely"
 
 
 def test_rebrand_text_replaces_legacy_bot_names():
     mod = load_module()
     # Same case-preservation rule as above.
     assert mod.rebrand_text("ClawdBot remembers my timezone") == "Vermes remembers my timezone"
-    assert mod.rebrand_text("clawdbot prefers tabs") == "hermes prefers tabs"
+    assert mod.rebrand_text("clawdbot prefers tabs") == "Vermes prefers tabs"
     assert mod.rebrand_text("MoltBot was configured for Spanish") == "Vermes was configured for Spanish"
-    assert mod.rebrand_text("moltbot uses Python") == "hermes uses Python"
+    assert mod.rebrand_text("moltbot uses Python") == "Vermes uses Python"
 
 
 def test_rebrand_text_preserves_unrelated_content():
@@ -891,7 +891,7 @@ def test_rebrand_text_handles_multiple_replacements():
 
 def test_rebrand_text_preserves_filesystem_path_casing():
     """Lowercase matches — especially ``.openclaw`` filesystem paths — must
-    rewrite to lowercase ``.hermes`` (the real Vermes home), not the broken
+    rewrite to lowercase ``.vermes`` (the real Vermes home), not the broken
     ``.Vermes``.
 
     Regression test for @versun's OpenClaw-residue feedback: after migration,
@@ -902,8 +902,8 @@ def test_rebrand_text_preserves_filesystem_path_casing():
     mod = load_module()
     assert mod.rebrand_text("config is at ~/.openclaw/config.yaml") == \
         "config is at ~/.vermes/config.yaml"
-    assert mod.rebrand_text("use .openclaw directory") == "use .hermes directory"
-    assert mod.rebrand_text("Path.home() / '.openclaw'") == "Path.home() / '.hermes'"
+    assert mod.rebrand_text("use .openclaw directory") == "use .vermes directory"
+    assert mod.rebrand_text("Path.home() / '.openclaw'") == "Path.home() / '.vermes'"
     # Sentence with both lowercase path and capitalized prose.
     assert mod.rebrand_text("openclaw config path: ~/.openclaw/") == \
         "vermes config path: ~/.vermes/"
@@ -921,7 +921,7 @@ def test_migrate_memory_rebrands_entries(tmp_path):
         encoding="utf-8",
     )
 
-    target_root = tmp_path / "hermes"
+    target_root = tmp_path / "Vermes"
     target_root.mkdir()
     (target_root / "memories").mkdir()
 
@@ -952,7 +952,7 @@ def test_migrate_soul_rebrands_content(tmp_path):
     soul_md = workspace / "SOUL.md"
     soul_md.write_text("You are OpenClaw, an AI assistant made by SparkLab.", encoding="utf-8")
 
-    target_root = tmp_path / "hermes"
+    target_root = tmp_path / "Vermes"
     target_root.mkdir()
 
     migrator = mod.Migrator(
@@ -981,7 +981,7 @@ def _run_model_migration(tmp_path: Path, openclaw_json: dict) -> dict:
 
     mod = load_module()
     source = tmp_path / ".openclaw"
-    target = tmp_path / ".hermes"
+    target = tmp_path / ".vermes"
     source.mkdir(parents=True)
     target.mkdir(parents=True)
     (source / "openclaw.json").write_text(json.dumps(openclaw_json), encoding="utf-8")

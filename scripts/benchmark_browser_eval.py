@@ -30,7 +30,7 @@ def _find_chrome() -> str:
     sys.exit(1)
 
 def _start_chrome(port: int):
-    profile = tempfile.mkdtemp(prefix="hermes-bench-eval-")
+    profile = tempfile.mkdtemp(prefix="Vermes-bench-eval-")
     proc = subprocess.Popen(
         [
             _find_chrome(),

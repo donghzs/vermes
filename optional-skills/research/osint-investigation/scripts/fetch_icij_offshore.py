@@ -9,7 +9,7 @@ bulk download:
 
 ~70 MB, ~6 CSVs inside (nodes-entities, nodes-officers, nodes-intermediaries,
 nodes-addresses, relationships, ...). We cache it under
-$HERMES_OSINT_CACHE/icij/ (default: ~/.cache/hermes-osint/icij/) and search
+$VERMES_OSINT_CACHE/icij/ (default: ~/.cache/Vermes-osint/icij/) and search
 locally so the agent doesn't re-download for every query.
 
 Output CSV columns match the original `fetch_icij_offshore.py` contract.
@@ -50,10 +50,10 @@ COLUMNS = [
 
 
 def _cache_dir() -> Path:
-    base = os.environ.get("HERMES_OSINT_CACHE")
+    base = os.environ.get("VERMES_OSINT_CACHE")
     if base:
         return Path(base) / "icij"
-    return Path.home() / ".cache" / "hermes-osint" / "icij"
+    return Path.home() / ".cache" / "Vermes-osint" / "icij"
 
 
 def _download(dest: Path, force: bool = False) -> Path:
@@ -68,7 +68,7 @@ def _download(dest: Path, force: bool = False) -> Path:
     logger.warning(f"Downloading ICIJ bulk database (~70 MB) to {zip_path}")
     req = urllib.request.Request(
         BULK_URL,
-        headers={"User-Agent": "hermes-agent osint-investigation skill"},
+        headers={"User-Agent": "Vermes-agent osint-investigation skill"},
     )
     with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
         tmp = zip_path.with_suffix(".zip.tmp")
@@ -212,7 +212,7 @@ def main() -> int:
         "--cache-dir",
         type=Path,
         default=None,
-        help="Override cache directory (default: $HERMES_OSINT_CACHE/icij or ~/.cache/hermes-osint/icij)",
+        help="Override cache directory (default: $VERMES_OSINT_CACHE/icij or ~/.cache/Vermes-osint/icij)",
     )
     p.add_argument(
         "--force-refresh",

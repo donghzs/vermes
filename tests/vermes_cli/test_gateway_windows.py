@@ -55,8 +55,8 @@ def test_build_gateway_argv_uses_base_pythonw_for_uv_venv_launcher(monkeypatch, 
     monkeypatch.setattr(gateway_windows.sys, "platform", "win32")
     monkeypatch.setattr(gateway, "PROJECT_ROOT", project)
     monkeypatch.setattr(gateway, "get_python_path", lambda: str(venv_python))
-    monkeypatch.setattr(gateway, "_profile_arg", lambda hermes_home: "")
-    monkeypatch.setattr("vermes_cli.config.get_hermes_home", lambda: str(tmp_path / "hermes-home"))
+    monkeypatch.setattr(gateway, "_profile_arg", lambda VERMES_home: "")
+    monkeypatch.setattr("vermes_cli.config.get_vermes_home", lambda: str(tmp_path / "Vermes-home"))
 
     argv, cwd, env_overlay = gateway_windows._build_gateway_argv()
 
@@ -112,7 +112,7 @@ def test_gateway_cmd_script_uses_pythonw_without_replace_or_start_churn(monkeypa
     content = gateway_windows._build_gateway_cmd_script(
         r"C:\\Vermes\\vermes-agent\\venv\\Scripts\\python.exe",
         r"C:\\Vermes\\vermes-agent",
-        r"C:\\HermesHome\\profiles\\alice",
+        r"C:\\vermesHome\\profiles\\alice",
         "--profile alice",
     )
 
@@ -376,7 +376,7 @@ def test_install_startup_fallback_does_not_auto_spawn_when_gateway_stopped(monke
     assert ("next_steps", None) in calls
     out = capsys.readouterr().out
     assert "gateway not started now" in out
-    assert "hermes --profile alice gateway start" in out
+    assert "Vermes --profile alice gateway start" in out
 
 
 def test_install_access_denied_declined_elevation_uses_startup_fallback(monkeypatch, tmp_path, capsys):

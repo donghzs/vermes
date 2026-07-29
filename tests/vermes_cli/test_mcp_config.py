@@ -1,5 +1,5 @@
 """
-Tests for vermes_cli.mcp_config — ``hermes mcp`` subcommands.
+Tests for vermes_cli.mcp_config — ``Vermes mcp`` subcommands.
 
 These tests mock the MCP server connection layer so they run without
 any actual MCP servers or API keys.
@@ -23,9 +23,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate_config(tmp_path, monkeypatch):
     """Redirect all config I/O to a temp directory."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setattr(
-        "vermes_cli.config.get_hermes_home", lambda: tmp_path
+        "vermes_cli.config.get_vermes_home", lambda: tmp_path
     )
     config_path = tmp_path / "config.yaml"
     env_path = tmp_path / ".env"
@@ -155,9 +155,9 @@ class TestMcpRemove:
             "oauth-srv": {"url": "https://example.com/mcp", "auth": "oauth"},
         })
         monkeypatch.setattr("builtins.input", lambda _: "y")
-        # Also patch get_hermes_home in the mcp_config module namespace
+        # Also patch get_vermes_home in the mcp_config module namespace
         monkeypatch.setattr(
-            "vermes_cli.mcp_config.get_hermes_home", lambda: tmp_path
+            "vermes_cli.mcp_config.get_vermes_home", lambda: tmp_path
         )
 
         # Create a fake token file
@@ -555,9 +555,9 @@ class TestMcpRemoveEvictsManager:
         })
         monkeypatch.setattr("builtins.input", lambda _: "y")
         monkeypatch.setattr(
-            "vermes_cli.mcp_config.get_hermes_home", lambda: tmp_path
+            "vermes_cli.mcp_config.get_vermes_home", lambda: tmp_path
         )
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         from tools.mcp_oauth_manager import get_manager, reset_manager_for_tests
         reset_manager_for_tests()

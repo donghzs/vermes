@@ -5,13 +5,13 @@ Hermetic-test invariants enforced here (see AGENTS.md for rationale):
 1. **No credential env vars.** All provider/credential-shaped env vars
    (ending in _API_KEY, _TOKEN, _SECRET, _PASSWORD, _CREDENTIALS, etc.)
    are unset before every test. Local developer keys cannot leak in.
-2. **Isolated HERMES_HOME.** HERMES_HOME points to a per-test tempdir so
-   code reading ``~/.vermes/*`` via ``get_hermes_home()`` can't see the
+2. **Isolated VERMES_HOME.** VERMES_HOME points to a per-test tempdir so
+   code reading ``~/.vermes/*`` via ``get_vermes_home()`` can't see the
    real one. (We do NOT also redirect HOME — that broke subprocesses in
-   CI. Code using ``Path.home() / ".hermes"`` instead of the canonical
-   ``get_hermes_home()`` is a bug to fix at the callsite.)
+   CI. Code using ``Path.home() / ".vermes"`` instead of the canonical
+   ``get_vermes_home()`` is a bug to fix at the callsite.)
 3. **Deterministic runtime.** TZ=UTC, LANG=C.UTF-8, PYTHONHASHSEED=0.
-4. **No HERMES_SESSION_* inheritance** — the agent's current gateway
+4. **No VERMES_SESSION_* inheritance** — the agent's current gateway
    session must not leak into tests.
 
 These invariants make the local test run match CI closely. Gaps that
@@ -157,51 +157,51 @@ def _looks_like_credential(name: str) -> bool:
     return any(name.endswith(suf) for suf in _CREDENTIAL_SUFFIXES)
 
 
-# HERMES_* vars that change test behavior by being set. Unset all of these
+# VERMES_* vars that change test behavior by being set. Unset all of these
 # unconditionally — individual tests that need them set do so explicitly.
-_HERMES_BEHAVIORAL_VARS = frozenset({
-    "HERMES_YOLO_MODE",
-    "HERMES_INTERACTIVE",
-    "HERMES_QUIET",
-    "HERMES_TOOL_PROGRESS",
-    "HERMES_TOOL_PROGRESS_MODE",
-    "HERMES_MAX_ITERATIONS",
-    "HERMES_SESSION_PLATFORM",
-    "HERMES_SESSION_CHAT_ID",
-    "HERMES_SESSION_CHAT_NAME",
-    "HERMES_SESSION_THREAD_ID",
-    "HERMES_SESSION_SOURCE",
-    "HERMES_SESSION_KEY",
-    "HERMES_GATEWAY_SESSION",
-    "HERMES_PLATFORM",
-    "HERMES_MODEL",
-    "HERMES_INFERENCE_MODEL",
-    "HERMES_INFERENCE_PROVIDER",
-    "HERMES_TUI_PROVIDER",
-    "HERMES_MANAGED",
-    "HERMES_DEV",
-    "HERMES_CONTAINER",
-    "HERMES_EPHEMERAL_SYSTEM_PROMPT",
-    "HERMES_TIMEZONE",
-    "HERMES_REDACT_SECRETS",
-    "HERMES_BACKGROUND_NOTIFICATIONS",
-    "HERMES_EXEC_ASK",
-    "HERMES_HOME_MODE",
-    "HERMES_AGENT_USE_LEGACY_SESSION_KEYS",
+_vermes_BEHAVIORAL_VARS = frozenset({
+    "VERMES_YOLO_MODE",
+    "VERMES_INTERACTIVE",
+    "VERMES_QUIET",
+    "VERMES_TOOL_PROGRESS",
+    "VERMES_TOOL_PROGRESS_MODE",
+    "VERMES_MAX_ITERATIONS",
+    "VERMES_SESSION_PLATFORM",
+    "VERMES_SESSION_CHAT_ID",
+    "VERMES_SESSION_CHAT_NAME",
+    "VERMES_SESSION_THREAD_ID",
+    "VERMES_SESSION_SOURCE",
+    "VERMES_SESSION_KEY",
+    "VERMES_GATEWAY_SESSION",
+    "VERMES_PLATFORM",
+    "VERMES_MODEL",
+    "VERMES_INFERENCE_MODEL",
+    "VERMES_INFERENCE_PROVIDER",
+    "VERMES_TUI_PROVIDER",
+    "VERMES_MANAGED",
+    "VERMES_DEV",
+    "VERMES_CONTAINER",
+    "VERMES_EPHEMERAL_SYSTEM_PROMPT",
+    "VERMES_TIMEZONE",
+    "VERMES_REDACT_SECRETS",
+    "VERMES_BACKGROUND_NOTIFICATIONS",
+    "VERMES_EXEC_ASK",
+    "VERMES_HOME_MODE",
+    "VERMES_AGENT_USE_LEGACY_SESSION_KEYS",
     # Kanban path/board pins must never leak from a developer shell or
     # dispatched worker into tests; otherwise tests can write fake tasks to
-    # the real ~/.vermes/kanban.db instead of the per-test HERMES_HOME.
-    "HERMES_KANBAN_DB",
-    "HERMES_KANBAN_BOARD",
-    "HERMES_KANBAN_HOME",
-    "HERMES_KANBAN_WORKSPACES_ROOT",
-    "HERMES_KANBAN_LOGS_ROOT",
-    "HERMES_KANBAN_TASK",
-    "HERMES_KANBAN_WORKSPACE",
-    "HERMES_KANBAN_RUN_ID",
-    "HERMES_KANBAN_CLAIM_LOCK",
-    "HERMES_KANBAN_DISPATCH_IN_GATEWAY",
-    "HERMES_TENANT",
+    # the real ~/.vermes/kanban.db instead of the per-test VERMES_HOME.
+    "VERMES_KANBAN_DB",
+    "VERMES_KANBAN_BOARD",
+    "VERMES_KANBAN_HOME",
+    "VERMES_KANBAN_WORKSPACES_ROOT",
+    "VERMES_KANBAN_LOGS_ROOT",
+    "VERMES_KANBAN_TASK",
+    "VERMES_KANBAN_WORKSPACE",
+    "VERMES_KANBAN_RUN_ID",
+    "VERMES_KANBAN_CLAIM_LOCK",
+    "VERMES_KANBAN_DISPATCH_IN_GATEWAY",
+    "VERMES_TENANT",
     "TERMINAL_CWD",
     "TERMINAL_ENV",
     "TERMINAL_VERCEL_RUNTIME",
@@ -299,7 +299,7 @@ _HERMES_BEHAVIORAL_VARS = frozenset({
 def _hermetic_environment(tmp_path, monkeypatch):
     """Blank out all credential/behavioral env vars so local and CI match.
 
-    Also redirects HOME and HERMES_HOME to per-test tempdirs so code that
+    Also redirects HOME and VERMES_HOME to per-test tempdirs so code that
     reads ``~/.vermes/*`` can't touch the real one, and pins TZ/LANG so
     datetime/locale-sensitive tests are deterministic.
     """
@@ -308,32 +308,32 @@ def _hermetic_environment(tmp_path, monkeypatch):
         if _looks_like_credential(name):
             monkeypatch.delenv(name, raising=False)
 
-    # 2. Blank behavioral HERMES_* vars that could change test semantics.
-    for name in _HERMES_BEHAVIORAL_VARS:
+    # 2. Blank behavioral VERMES_* vars that could change test semantics.
+    for name in _vermes_BEHAVIORAL_VARS:
         monkeypatch.delenv(name, raising=False)
 
-    # 3. Redirect HERMES_HOME to a per-test tempdir. Code that reads
-    #    ``~/.vermes/*`` via ``get_hermes_home()`` now gets the tempdir.
+    # 3. Redirect VERMES_HOME to a per-test tempdir. Code that reads
+    #    ``~/.vermes/*`` via ``get_vermes_home()`` now gets the tempdir.
     #
     #    NOTE: We do NOT also redirect HOME. Doing so broke CI because
     #    some tests (and their transitive deps) spawn subprocesses that
     #    inherit HOME and expect it to be stable. If a test genuinely
     #    needs HOME isolated, it should set it explicitly in its own
     #    fixture. Any code in the codebase reading ``~/.vermes/*`` via
-    #    ``Path.home() / ".hermes"`` instead of ``get_hermes_home()``
+    #    ``Path.home() / ".vermes"`` instead of ``get_vermes_home()``
     #    is a bug to fix at the callsite.
-    fake_hermes_home = tmp_path / "hermes_test"
-    fake_hermes_home.mkdir()
-    (fake_hermes_home / "sessions").mkdir()
-    (fake_hermes_home / "cron").mkdir()
-    (fake_hermes_home / "memories").mkdir()
-    (fake_hermes_home / "skills").mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(fake_hermes_home))
+    fake_vermes_home = tmp_path / "VERMES_test"
+    fake_vermes_home.mkdir()
+    (fake_vermes_home / "sessions").mkdir()
+    (fake_vermes_home / "cron").mkdir()
+    (fake_vermes_home / "memories").mkdir()
+    (fake_vermes_home / "skills").mkdir()
+    monkeypatch.setenv("VERMES_HOME", str(fake_vermes_home))
 
     # 3b. Redirect the machine-local gateway lock dir to a per-test tempdir.
     #     ``gateway.status._get_lock_dir()`` resolves to
-    #     ``$XDG_STATE_HOME/hermes/locks`` (default ``~/.local/state/...``) —
-    #     it is NOT covered by the HERMES_HOME redirect above. Without this,
+    #     ``$XDG_STATE_HOME/Vermes/locks`` (default ``~/.local/state/...``) —
+    #     it is NOT covered by the VERMES_HOME redirect above. Without this,
     #     tests that call ``acquire_scoped_lock`` (e.g. WhatsApp/Slack/Telegram
     #     ``connect()`` paths) share the real on-disk lock dir with each other
     #     AND with any real gateway running on the same machine (e.g. a locally
@@ -343,7 +343,7 @@ def _hermetic_environment(tmp_path, monkeypatch):
     #     per test makes scoped-lock acquisition deterministic and hermetic.
     fake_lock_dir = tmp_path / "gateway_locks"
     fake_lock_dir.mkdir()
-    monkeypatch.setenv("HERMES_GATEWAY_LOCK_DIR", str(fake_lock_dir))
+    monkeypatch.setenv("VERMES_GATEWAY_LOCK_DIR", str(fake_lock_dir))
 
     # 4. Deterministic locale / timezone / hashseed. CI runs in UTC with
     #    C.UTF-8 locale; local dev often doesn't. Pin everything.
@@ -378,7 +378,7 @@ def _hermetic_environment(tmp_path, monkeypatch):
 # Backward-compat alias — old tests reference this fixture name. Keep it
 # as a no-op wrapper so imports don't break.
 @pytest.fixture(autouse=True)
-def _isolate_hermes_home(_hermetic_environment):
+def _isolate_vermes_home(_hermetic_environment):
     """Alias preserved for any test that yields this name explicitly."""
     return None
 
@@ -644,7 +644,7 @@ def _reset_tool_registry_caches():
 # (``cmd_update``, ``kill_gateway_processes``, ``stop_profile_gateway``).
 # When a single test forgets to mock either ``os.kill`` or the global
 # ``find_gateway_pids`` helper, the real call leaks out of the hermetic
-# environment and finds the developer's live ``hermes-gateway`` process
+# environment and finds the developer's live ``Vermes-gateway`` process
 # via ``psutil`` — sending it SIGTERM mid-test. The shutdown forensics in
 # PR #23285 caught this happening 5+ times in 3 days, every time
 # correlated with a ``tests/vermes_cli/`` pytest run starting up.
@@ -656,7 +656,7 @@ def _reset_tool_registry_caches():
 #    a hard ``RuntimeError`` so the offending test gets a stack trace
 #    instead of silently murdering the real gateway.
 #  • ``subprocess.run`` / ``subprocess.Popen`` / ``call`` / ``check_call`` /
-#    ``check_output`` reject any ``systemctl ... <verb> hermes-gateway``
+#    ``check_output`` reject any ``systemctl ... <verb> Vermes-gateway``
 #    invocation that would mutate the live unit. Read-only systemctl
 #    calls (``status``, ``show``, ``list-units``) still pass through.
 #
@@ -728,10 +728,10 @@ def _live_system_guard(request, monkeypatch):
       • pty.spawn
       • asyncio.create_subprocess_exec / create_subprocess_shell
     Subprocess inspection looks at the WHOLE command string (not just
-    tokens[0]), so ``bash -c "systemctl restart hermes-gateway"``,
+    tokens[0]), so ``bash -c "systemctl restart Vermes-gateway"``,
     ``sudo systemctl ...``, ``env systemctl ...``, ``setsid systemctl ...``
     are all caught. ``pkill``/``killall``/``taskkill`` invocations
-    targeting hermes/python patterns are also blocked.
+    targeting Vermes/python patterns are also blocked.
     """
     if request.node.get_closest_marker(_LIVE_SYSTEM_GUARD_BYPASS_MARK):
         yield
@@ -819,9 +819,9 @@ def _live_system_guard(request, monkeypatch):
         monkeypatch.setattr(_os, "killpg", _guarded_killpg)
 
     # ── Subprocess command-string inspection (whole-line) ──────────
-    _HERMES_TOKENS = (
-        "hermes-gateway",
-        "hermes.service",
+    _vermes_TOKENS = (
+        "Vermes-gateway",
+        "Vermes.service",
         "vermes_cli.main gateway",
         "vermes_cli/main.py gateway",
         "gateway/run.py",
@@ -851,15 +851,15 @@ def _live_system_guard(request, monkeypatch):
                 return ""
         return str(cmd)
 
-    def _matches_hermes_gateway(cmd_str: str) -> bool:
+    def _matches_vermes_gateway(cmd_str: str) -> bool:
         low = cmd_str.lower()
-        return any(tok in low for tok in _HERMES_TOKENS)
+        return any(tok in low for tok in _vermes_TOKENS)
 
     def _is_blocked_systemctl(cmd) -> bool:
         cmd_str = _cmd_to_string(cmd)
         if "systemctl" not in cmd_str:
             return False
-        if not _matches_hermes_gateway(cmd_str):
+        if not _matches_vermes_gateway(cmd_str):
             return False
         try:
             tokens = _shlex.split(cmd_str)
@@ -879,11 +879,11 @@ def _live_system_guard(request, monkeypatch):
             head = tok.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
             if head in _PROCESS_KILLERS:
                 low = cmd_str.lower()
-                # pkill -f pattern: catch hermes-themed patterns + a
+                # pkill -f pattern: catch Vermes-themed patterns + a
                 # plain "python" -f which would catch the live gateway
                 # whose cmdline contains "python -m vermes_cli.main".
                 if (
-                    "hermes" in low
+                    "Vermes" in low
                     or "gateway" in low
                     or ("python" in low and "-f" in tokens)
                 ):
@@ -895,7 +895,7 @@ def _live_system_guard(request, monkeypatch):
             raise RuntimeError(
                 f"tests/conftest.py live-system guard: blocked "
                 f"subprocess.{name}({cmd!r}) — would mutate the "
-                "live hermes-gateway systemd unit. Mock "
+                "live Vermes-gateway systemd unit. Mock "
                 "subprocess.run / _run_systemctl in the test, or "
                 "mark with @pytest.mark.live_system_guard_bypass."
             )
@@ -903,7 +903,7 @@ def _live_system_guard(request, monkeypatch):
             raise RuntimeError(
                 f"tests/conftest.py live-system guard: blocked "
                 f"subprocess.{name}({cmd!r}) — process-killer command "
-                "targeting hermes/python could hit the live gateway. "
+                "targeting Vermes/python could hit the live gateway. "
                 "Mark with @pytest.mark.live_system_guard_bypass if "
                 "intentional."
             )

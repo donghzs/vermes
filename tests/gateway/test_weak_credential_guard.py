@@ -144,7 +144,7 @@ class TestAPIServerPlaceholderKeyGuard:
     async def test_refuses_wildcard_with_short_random_key(self):
         """A short but non-placeholder key is brute-forceable on a public bind.
 
-        June 2026 hermes-0day hardening raised the network-bind entropy floor
+        June 2026 Vermes-0day hardening raised the network-bind entropy floor
         from 8 to 16 chars. A 12-char random key (which passed the old guard)
         must now be refused — the API server dispatches terminal-capable agent
         work, so a guessable key is RCE.

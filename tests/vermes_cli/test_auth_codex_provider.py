@@ -25,9 +25,9 @@ from vermes_cli.auth import (
 )
 
 
-def _setup_hermes_auth(hermes_home: Path, *, access_token: str = "access", refresh_token: str = "refresh"):
+def _setup_vermes_auth(VERMES_home: Path, *, access_token: str = "access", refresh_token: str = "refresh"):
     """Write Codex tokens into the Vermes auth store."""
-    hermes_home.mkdir(parents=True, exist_ok=True)
+    VERMES_home.mkdir(parents=True, exist_ok=True)
     auth_store = {
         "version": 1,
         "active_provider": "openai-codex",
@@ -42,7 +42,7 @@ def _setup_hermes_auth(hermes_home: Path, *, access_token: str = "access", refre
             },
         },
     }
-    auth_file = hermes_home / "auth.json"
+    auth_file = VERMES_home / "auth.json"
     auth_file.write_text(json.dumps(auth_store, indent=2))
     return auth_file
 
@@ -54,9 +54,9 @@ def _jwt_with_exp(exp_epoch: int) -> str:
 
 
 def test_read_codex_tokens_success(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    _setup_hermes_auth(hermes_home)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _setup_vermes_auth(VERMES_home)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     data = _read_codex_tokens()
     assert data["tokens"]["access_token"] == "access"
@@ -64,11 +64,11 @@ def test_read_codex_tokens_success(tmp_path, monkeypatch):
 
 
 def test_read_codex_tokens_missing(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
     # Empty auth store
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     with pytest.raises(AuthError) as exc:
         _read_codex_tokens()
@@ -76,9 +76,9 @@ def test_read_codex_tokens_missing(tmp_path, monkeypatch):
 
 
 def test_resolve_codex_runtime_credentials_missing_access_token(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    _setup_hermes_auth(hermes_home, access_token="")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _setup_vermes_auth(VERMES_home, access_token="")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     with pytest.raises(AuthError) as exc:
         resolve_codex_runtime_credentials()
@@ -87,10 +87,10 @@ def test_resolve_codex_runtime_credentials_missing_access_token(tmp_path, monkey
 
 
 def test_resolve_codex_runtime_credentials_refreshes_expiring_token(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     expiring_token = _jwt_with_exp(int(time.time()) - 10)
-    _setup_hermes_auth(hermes_home, access_token=expiring_token, refresh_token="refresh-old")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=expiring_token, refresh_token="refresh-old")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     called = {"count": 0}
 
@@ -107,9 +107,9 @@ def test_resolve_codex_runtime_credentials_refreshes_expiring_token(tmp_path, mo
 
 
 def test_resolve_codex_runtime_credentials_force_refresh(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    _setup_hermes_auth(hermes_home, access_token="access-current", refresh_token="refresh-old")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _setup_vermes_auth(VERMES_home, access_token="access-current", refresh_token="refresh-old")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     called = {"count": 0}
 
@@ -132,10 +132,10 @@ def test_resolve_provider_explicit_codex_does_not_fallback(monkeypatch):
 
 
 def test_save_codex_tokens_roundtrip(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     _save_codex_tokens({"access_token": "at123", "refresh_token": "rt456"})
     data = _read_codex_tokens()
@@ -165,29 +165,29 @@ def test_import_codex_cli_tokens_missing(tmp_path, monkeypatch):
 
 def test_codex_tokens_not_written_to_shared_file(tmp_path, monkeypatch):
     """Verify _save_codex_tokens writes only to Vermes auth store, not ~/.codex/."""
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     codex_home = tmp_path / "codex-cli"
-    hermes_home.mkdir(parents=True, exist_ok=True)
+    VERMES_home.mkdir(parents=True, exist_ok=True)
     codex_home.mkdir(parents=True, exist_ok=True)
 
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
-    _save_codex_tokens({"access_token": "hermes-at", "refresh_token": "hermes-rt"})
+    _save_codex_tokens({"access_token": "Vermes-at", "refresh_token": "Vermes-rt"})
 
     # ~/.codex/auth.json should NOT exist — _save_codex_tokens only touches Vermes store
     assert not (codex_home / "auth.json").exists()
 
     # Vermes auth store should have the tokens
     data = _read_codex_tokens()
-    assert data["tokens"]["access_token"] == "hermes-at"
+    assert data["tokens"]["access_token"] == "Vermes-at"
 
 
-def test_resolve_returns_hermes_auth_store_source(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    _setup_hermes_auth(hermes_home)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+def test_resolve_returns_vermes_auth_store_source(tmp_path, monkeypatch):
+    VERMES_home = tmp_path / "Vermes"
+    _setup_vermes_auth(VERMES_home)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     creds = resolve_codex_runtime_credentials()
     assert creds["source"] == "vermes-auth-store"

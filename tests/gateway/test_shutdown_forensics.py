@@ -89,7 +89,7 @@ class TestSnapshotShutdownContext:
         assert elapsed < 0.5, f"snapshot took {elapsed:.3f}s — too slow"
 
     def test_detects_takeover_marker_for_self(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         marker = tmp_path / ".gateway-takeover.json"
         marker.write_text(
             f'{{"target_pid": {os.getpid()}, "replacer_pid": 99999}}',
@@ -100,7 +100,7 @@ class TestSnapshotShutdownContext:
         assert ctx["takeover_marker_for_self"] is True
 
     def test_detects_takeover_marker_for_other(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         marker = tmp_path / ".gateway-takeover.json"
         marker.write_text(
             '{"target_pid": 1, "replacer_pid": 99999}', encoding="utf-8"
@@ -109,7 +109,7 @@ class TestSnapshotShutdownContext:
         assert ctx["takeover_marker_for_self"] is False
 
     def test_detects_planned_stop_marker(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         marker = tmp_path / ".gateway-planned-stop.json"
         marker.write_text(
             f'{{"target_pid": {os.getpid()}}}', encoding="utf-8"

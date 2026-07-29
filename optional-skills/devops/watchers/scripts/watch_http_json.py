@@ -3,9 +3,9 @@
 
 Usage (via cron with --no-agent):
 
-    hermes cron create api-events \\
+    Vermes cron create api-events \\
       --schedule "*/1 * * * *" --no-agent \\
-      --script "$HERMES_HOME/skills/devops/watchers/scripts/watch_http_json.py" \\
+      --script "$VERMES_HOME/skills/devops/watchers/scripts/watch_http_json.py" \\
       --script-args "--name api --url https://api.example.com/events \\
                      --id-field event_id --items-path data.events"
 

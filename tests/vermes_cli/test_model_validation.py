@@ -76,9 +76,9 @@ class TestParseModelInput:
         assert model == "gpt-5.4"
 
     def test_nous_provider_switch(self):
-        provider, model = parse_model_input("nous:hermes-3", "openrouter")
+        provider, model = parse_model_input("nous:Vermes-3", "openrouter")
         assert provider == "nous"
-        assert model == "hermes-3"
+        assert model == "Vermes-3"
 
     def test_empty_model_after_colon_keeps_current(self):
         provider, model = parse_model_input("openrouter:", "nous")
@@ -793,7 +793,7 @@ class TestProbeApiModelsUserAgent:
         mock_resp.read = MagicMock(return_value=body)
         return mock_resp
 
-    def test_probe_sends_hermes_user_agent(self):
+    def test_probe_sends_vermes_user_agent(self):
         from unittest.mock import patch
 
         body = b'{"data":[{"id":"claude-opus-4.7"}]}'
@@ -808,8 +808,8 @@ class TestProbeApiModelsUserAgent:
         req = mock_urlopen.call_args[0][0]
         ua = req.get_header("User-agent")  # urllib title-cases header names
         assert ua, "probe_api_models must send a User-Agent header"
-        assert ua.startswith("hermes-cli/"), (
-            f"User-Agent must advertise hermes-cli, got {ua!r}"
+        assert ua.startswith("Vermes-cli/"), (
+            f"User-Agent must advertise Vermes-cli, got {ua!r}"
         )
         # Must not fall back to urllib's default — that's what Cloudflare 1010 blocks.
         assert not ua.startswith("Python-urllib")
@@ -827,6 +827,6 @@ class TestProbeApiModelsUserAgent:
 
         req = mock_urlopen.call_args[0][0]
         ua = req.get_header("User-agent")
-        assert ua and ua.startswith("hermes-cli/")
+        assert ua and ua.startswith("Vermes-cli/")
         # No Authorization was set, but UA must still be present.
         assert req.get_header("Authorization") is None

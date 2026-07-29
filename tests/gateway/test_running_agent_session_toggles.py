@@ -92,7 +92,7 @@ def _make_runner():
 
     # Simulate agent actively running for this session so the guard fires.
     # Note: the stale-eviction branch calls agent.get_activity_summary() and
-    # compares seconds_since_activity against HERMES_AGENT_TIMEOUT. Return a
+    # compares seconds_since_activity against VERMES_AGENT_TIMEOUT. Return a
     # dict with recent activity so the eviction path doesn't clear our
     # fake running agent before the toggle guard runs.
     import time

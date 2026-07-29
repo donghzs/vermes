@@ -145,7 +145,7 @@ class TestHasKnownPricing:
         assert _has_known_pricing("gpt-4.1", provider="openai") is True
 
     def test_unknown_custom_model(self):
-        assert _has_known_pricing("FP16_Hermes_4.5") is False
+        assert _has_known_pricing("FP16_vermes_4.5") is False
         assert _has_known_pricing("my-custom-model") is False
         assert _has_known_pricing("glm-5") is False
         assert _has_known_pricing("") is False
@@ -580,17 +580,17 @@ class TestEdgeCases:
 
     def test_custom_model_shows_zero_cost(self, db):
         """Custom/self-hosted models should show $0 cost, not fake estimates."""
-        db.create_session(session_id="s1", source="cli", model="FP16_Hermes_4.5")
+        db.create_session(session_id="s1", source="cli", model="FP16_vermes_4.5")
         db.update_token_counts("s1", input_tokens=100000, output_tokens=50000)
         db._conn.commit()
 
         engine = InsightsEngine(db)
         report = engine.generate(days=30)
         assert report["overview"]["estimated_cost"] == 0.0
-        assert "FP16_Hermes_4.5" in report["overview"]["models_without_pricing"]
+        assert "FP16_vermes_4.5" in report["overview"]["models_without_pricing"]
 
         models = report["models"]
-        custom = next(m for m in models if m["model"] == "FP16_Hermes_4.5")
+        custom = next(m for m in models if m["model"] == "FP16_vermes_4.5")
         assert custom["cost"] == 0.0
         assert custom["has_pricing"] is False
 

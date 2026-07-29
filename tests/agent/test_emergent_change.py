@@ -30,25 +30,25 @@ from agent.self_validator import get_format_validator
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def tmp_hermes_home(tmp_path):
-    """Create a temporary HERMES_HOME."""
-    home = tmp_path / "hermes"
+def tmp_vermes_home(tmp_path):
+    """Create a temporary VERMES_HOME."""
+    home = tmp_path / "Vermes"
     home.mkdir()
     return str(home)
 
 
 @pytest.fixture
-def pipeline(tmp_hermes_home):
-    """Create a pipeline with temp HERMES_HOME.
+def pipeline(tmp_vermes_home):
+    """Create a pipeline with temp VERMES_HOME.
 
     The cold-start safety gate (``_has_sufficient_rollback_history``) is
-    bypassed in tests because the temp HERMES_HOME has no rollback data —
+    bypassed in tests because the temp VERMES_HOME has no rollback data —
     the gate would hold every agent-initiated change for confirmation,
     which is the correct production behaviour but not what these unit
     tests exercise. Tests that specifically want to verify the gate can
     re-patch it on the returned instance.
     """
-    p = EmergentChangePipeline(hermes_home=tmp_hermes_home)
+    p = EmergentChangePipeline(VERMES_home=tmp_vermes_home)
     p._has_sufficient_rollback_history = lambda *a, **kw: True
     return p
 

@@ -16,11 +16,11 @@ import pytest
 
 @pytest.fixture
 def curator_env(tmp_path, monkeypatch):
-    """Isolated HERMES_HOME + freshly reloaded curator + skill_usage modules."""
-    home = tmp_path / ".hermes"
+    """Isolated VERMES_HOME + freshly reloaded curator + skill_usage modules."""
+    home = tmp_path / ".vermes"
     (home / "skills").mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
 
     import tools.skill_usage as usage
     importlib.reload(usage)
@@ -308,7 +308,7 @@ def test_run_review_records_state(curator_env):
 def test_dry_run_does_not_advance_state(curator_env, monkeypatch):
     """Dry-run previews must not bump last_run_at or run_count. A preview
     shouldn't defer the next scheduled real pass or look like a real run in
-    `hermes curator status`. Fixes #18373.
+    `Vermes curator status`. Fixes #18373.
     """
     c = curator_env["curator"]
     u = curator_env["usage"]
@@ -607,7 +607,7 @@ def test_curator_review_prompt_offers_support_file_actions():
 
 
 def test_cli_unpin_refuses_bundled_skill(curator_env, capsys):
-    """hermes curator unpin must refuse bundled/hub skills too (matches pin)."""
+    """Vermes curator unpin must refuse bundled/hub skills too (matches pin)."""
     from vermes_cli import curator as cli
     skills_dir = curator_env["home"] / "skills"
     _write_skill(skills_dir, "ship-skill")

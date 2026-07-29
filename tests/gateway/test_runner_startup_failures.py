@@ -72,7 +72,7 @@ async def test_runner_stays_alive_for_retryable_startup_errors(monkeypatch, tmp_
     platform (e.g. unpaired WhatsApp, DNS blip on Telegram) into a
     systemd restart loop and killed cron jobs in the meantime.
     """
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     config = GatewayConfig(
         platforms={
             Platform.TELEGRAM: PlatformConfig(enabled=True, token="***")
@@ -98,7 +98,7 @@ async def test_runner_stays_alive_for_retryable_startup_errors(monkeypatch, tmp_
 
 @pytest.mark.asyncio
 async def test_runner_allows_cron_only_mode_when_no_platforms_are_enabled(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     config = GatewayConfig(
         platforms={
             Platform.TELEGRAM: PlatformConfig(enabled=False, token="***")
@@ -118,7 +118,7 @@ async def test_runner_allows_cron_only_mode_when_no_platforms_are_enabled(monkey
 
 @pytest.mark.asyncio
 async def test_runner_records_connected_platform_state_on_success(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     config = GatewayConfig(
         platforms={
             Platform.DISCORD: PlatformConfig(enabled=True, token="***")
@@ -144,7 +144,7 @@ async def test_runner_records_connected_platform_state_on_success(monkeypatch, t
 @pytest.mark.asyncio
 async def test_start_gateway_verbosity_imports_redacting_formatter(monkeypatch, tmp_path):
     """Verbosity != None must not crash with NameError on RedactingFormatter (#8044)."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     class _CleanExitRunner:
         def __init__(self, config):
@@ -161,7 +161,7 @@ async def test_start_gateway_verbosity_imports_redacting_formatter(monkeypatch, 
 
     monkeypatch.setattr("gateway.status.get_running_pid", lambda: None)
     monkeypatch.setattr("tools.skills_sync.sync_skills", lambda quiet=True: None)
-    monkeypatch.setattr("vermes_logging.setup_logging", lambda hermes_home, mode: tmp_path)
+    monkeypatch.setattr("vermes_logging.setup_logging", lambda VERMES_home, mode: tmp_path)
     monkeypatch.setattr("vermes_logging._add_rotating_handler", lambda *args, **kwargs: None)
     monkeypatch.setattr("gateway.run.GatewayRunner", _CleanExitRunner)
 
@@ -176,7 +176,7 @@ async def test_start_gateway_verbosity_imports_redacting_formatter(monkeypatch, 
 
 @pytest.mark.asyncio
 async def test_start_gateway_replace_force_uses_terminate_pid(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     calls = []
 
@@ -211,7 +211,7 @@ async def test_start_gateway_replace_force_uses_terminate_pid(monkeypatch, tmp_p
     monkeypatch.setattr("gateway.run.os.kill", lambda pid, sig: None)
     monkeypatch.setattr("time.sleep", lambda _: None)
     monkeypatch.setattr("tools.skills_sync.sync_skills", lambda quiet=True: None)
-    monkeypatch.setattr("vermes_logging.setup_logging", lambda hermes_home, mode: tmp_path)
+    monkeypatch.setattr("vermes_logging.setup_logging", lambda VERMES_home, mode: tmp_path)
     monkeypatch.setattr("vermes_logging._add_rotating_handler", lambda *args, **kwargs: None)
     monkeypatch.setattr("gateway.run.GatewayRunner", _CleanExitRunner)
 
@@ -234,7 +234,7 @@ async def test_start_gateway_replace_writes_takeover_marker_before_sigterm(
     Without the marker, PR #5646's signal-recovery path would revive the
     target via systemd Restart=on-failure, starting a flap loop.
     """
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     # Record the ORDER of marker-write + terminate_pid calls
     events: list[str] = []
@@ -293,7 +293,7 @@ async def test_start_gateway_replace_writes_takeover_marker_before_sigterm(
     )
     monkeypatch.setattr("time.sleep", lambda _: None)
     monkeypatch.setattr("tools.skills_sync.sync_skills", lambda quiet=True: None)
-    monkeypatch.setattr("vermes_logging.setup_logging", lambda hermes_home, mode: tmp_path)
+    monkeypatch.setattr("vermes_logging.setup_logging", lambda VERMES_home, mode: tmp_path)
     monkeypatch.setattr("vermes_logging._add_rotating_handler", lambda *args, **kwargs: None)
     monkeypatch.setattr("gateway.run.GatewayRunner", _CleanExitRunner)
 
@@ -315,7 +315,7 @@ async def test_start_gateway_replace_clears_marker_on_permission_denied(
 ):
     """If we fail to kill the existing PID (permission denied), clean up the
     marker so it doesn't grief an unrelated future shutdown."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     def write_marker(target_pid: int) -> bool:
         from gateway.status import _get_takeover_marker_path, _write_json_file
@@ -335,7 +335,7 @@ async def test_start_gateway_replace_clears_marker_on_permission_denied(
     monkeypatch.setattr("gateway.status.terminate_pid", raise_permission)
     monkeypatch.setattr("gateway.run.os.getpid", lambda: 100)
     monkeypatch.setattr("tools.skills_sync.sync_skills", lambda quiet=True: None)
-    monkeypatch.setattr("vermes_logging.setup_logging", lambda hermes_home, mode: tmp_path)
+    monkeypatch.setattr("vermes_logging.setup_logging", lambda VERMES_home, mode: tmp_path)
     monkeypatch.setattr("vermes_logging._add_rotating_handler", lambda *args, **kwargs: None)
 
     from gateway.run import start_gateway
@@ -357,7 +357,7 @@ async def test_runner_degrades_gracefully_when_all_adapters_missing(monkeypatch,
     In fleet deployments the same config.yaml is shared across nodes that may only
     have credentials for a subset of platforms.  Requiring perfect credentials on
     every node makes fleet operation impossible."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     config = GatewayConfig(
         platforms={
             Platform.TELEGRAM: PlatformConfig(enabled=True, token="***"),
@@ -390,7 +390,7 @@ async def test_runner_degrades_gracefully_when_all_adapters_missing(monkeypatch,
 
 
 def test_runner_warns_when_docker_gateway_lacks_explicit_output_mount(monkeypatch, tmp_path, caplog):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setenv("TERMINAL_ENV", "docker")
     monkeypatch.setenv("TERMINAL_DOCKER_VOLUMES", '["/etc/localtime:/etc/localtime:ro"]')
     config = GatewayConfig(

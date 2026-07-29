@@ -286,7 +286,7 @@ def test_config_bridges_telegram_reactions(monkeypatch, tmp_path):
             "reactions": True,
         },
     }))
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     # Use setenv (not delenv) so monkeypatch registers cleanup even when
     # the var doesn't exist yet — load_gateway_config will overwrite it.
     monkeypatch.setenv("TELEGRAM_REACTIONS", "")
@@ -307,7 +307,7 @@ def test_config_reactions_env_takes_precedence(monkeypatch, tmp_path):
             "reactions": True,
         },
     }))
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setenv("TELEGRAM_REACTIONS", "false")
 
     from gateway.config import load_gateway_config

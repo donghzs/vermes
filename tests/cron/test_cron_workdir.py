@@ -283,7 +283,7 @@ class TestRunJobTerminalCwd:
         fake_mod.AIAgent = FakeAgent
         monkeypatch.setitem(sys.modules, "run_agent", fake_mod)
 
-        # Bypass the real provider resolver — it reads ~/.hermes and credentials.
+        # Bypass the real provider resolver — it reads ~/.Vermes and credentials.
         from vermes_cli import runtime_provider as _rtp
         monkeypatch.setattr(
             _rtp,
@@ -302,7 +302,7 @@ class TestRunJobTerminalCwd:
         monkeypatch.setattr(sched, "_resolve_delivery_target", lambda job: None)
         monkeypatch.setattr(sched, "_resolve_cron_enabled_toolsets", lambda job, cfg: None)
         # Unlimited inactivity so the poll loop returns immediately.
-        monkeypatch.setenv("HERMES_CRON_TIMEOUT", "0")
+        monkeypatch.setenv("VERMES_CRON_TIMEOUT", "0")
 
         # run_job calls load_dotenv(~/.vermes/.env, override=True), which will
         # happily clobber TERMINAL_CWD out from under us if the real user .env

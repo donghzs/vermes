@@ -19,13 +19,13 @@ import pytest
 
 
 @pytest.fixture()
-def hermes_home(tmp_path, monkeypatch):
-    home = tmp_path / ".hermes"
+def VERMES_home(tmp_path, monkeypatch):
+    home = tmp_path / ".vermes"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
 
-    # Bust the goal-module DB cache so it re-resolves HERMES_HOME.
+    # Bust the goal-module DB cache so it re-resolves VERMES_HOME.
     from vermes_cli import goals
 
     goals._DB_CACHE.clear()
@@ -34,7 +34,7 @@ def hermes_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def server(hermes_home):
+def server(VERMES_home):
     with patch.dict(
         "sys.modules",
         {

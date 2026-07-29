@@ -124,7 +124,7 @@ class TestStartRun:
                 status = await status_resp.json()
                 assert status["run_id"] == data["run_id"]
                 assert status["status"] in {"queued", "running", "completed"}
-                assert status["object"] == "hermes.run"
+                assert status["object"] == "Vermes.run"
 
     @pytest.mark.asyncio
     async def test_start_invalid_json_returns_400(self, adapter):

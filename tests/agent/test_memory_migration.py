@@ -1,6 +1,6 @@
 """Slice 4: backfill existing memory into the unified index (memory_migration).
 
-Builds a throwaway HERMES_HOME with the on-disk stores the agent actually uses
+Builds a throwaway VERMES_HOME with the on-disk stores the agent actually uses
 (MEMORY.md / USER.md, recall DBs, RAG documents.db) and asserts the migration
 seeds the fabric index so every layer becomes searchable. Idempotent re-run
 must not duplicate rows.
@@ -13,7 +13,7 @@ import pytest
 
 @pytest.fixture
 def seeded_home(tmp_path, monkeypatch):
-    h = tmp_path / "hermes"
+    h = tmp_path / "Vermes"
     h.mkdir()
 
     # L1 — curated notes
@@ -72,7 +72,7 @@ def seeded_home(tmp_path, monkeypatch):
     _c.commit()
     _c.close()
 
-    monkeypatch.setenv("HERMES_HOME", str(h))
+    monkeypatch.setenv("VERMES_HOME", str(h))
     import agent.memory_fabric as mf
 
     db = mf._get_index_db()
@@ -86,7 +86,7 @@ def test_migration_backfills_all_layers(seeded_home):
     from agent.memory_fabric import recall
 
     skills = [{"name": "mig_skill", "description": "MIG_SKILL_XYZ migration helper"}]
-    summary = migrate_memories_to_fabric(hermes_home=str(seeded_home), skills=skills)
+    summary = migrate_memories_to_fabric(VERMES_home=str(seeded_home), skills=skills)
 
     assert summary["L1_note"] == 2, summary  # MEMORY.md + USER.md
     assert summary["L2_procedural"] == 1, summary  # injected skill
@@ -108,23 +108,23 @@ def test_migration_is_idempotent(seeded_home):
     from agent.memory_fabric import recall
 
     skills = [{"name": "mig_skill", "description": "MIG_SKILL_XYZ migration helper"}]
-    migrate_memories_to_fabric(hermes_home=str(seeded_home), skills=skills)
+    migrate_memories_to_fabric(VERMES_home=str(seeded_home), skills=skills)
     first = recall("MIG_NOTE_XYZ", layer="note")
     # re-run — same pointer → same row, not duplicated
-    migrate_memories_to_fabric(hermes_home=str(seeded_home), skills=skills)
+    migrate_memories_to_fabric(VERMES_home=str(seeded_home), skills=skills)
     second = recall("MIG_NOTE_XYZ", layer="note")
     assert len(first) == len(second) == 1
 
 
 def test_migration_handles_missing_stores_gracefully(tmp_path, monkeypatch):
-    # Empty HERMES_HOME (no recall DBs, no RAG) must not crash.
-    h = tmp_path / "hermes"
+    # Empty VERMES_HOME (no recall DBs, no RAG) must not crash.
+    h = tmp_path / "Vermes"
     h.mkdir()
     (h / "memories").mkdir()
     (h / "memories" / "MEMORY.md").write_text(
         "MIG_ONLYNOTE_XYZ standalone note\n", encoding="utf-8"
     )
-    monkeypatch.setenv("HERMES_HOME", str(h))
+    monkeypatch.setenv("VERMES_HOME", str(h))
     import agent.memory_fabric as mf
 
     db = mf._get_index_db()
@@ -133,7 +133,7 @@ def test_migration_handles_missing_stores_gracefully(tmp_path, monkeypatch):
 
     from agent.memory_migration import migrate_memories_to_fabric
 
-    summary = migrate_memories_to_fabric(hermes_home=str(h))
+    summary = migrate_memories_to_fabric(VERMES_home=str(h))
     assert summary["L1_note"] == 1
     assert summary["L3_episodic"] == 0
     assert summary["L4_reference"] == 0

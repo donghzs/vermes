@@ -298,7 +298,7 @@ class TestExecuteCodeModeIntegration(unittest.TestCase):
         """Strict mode: script's os.getcwd() is the staging tmpdir."""
         result = self._run("import os; print(os.getcwd())", mode="strict")
         self.assertEqual(result["status"], "success")
-        self.assertIn("hermes_sandbox_", result["output"])
+        self.assertIn("VERMES_sandbox_", result["output"])
 
     def test_project_mode_runs_in_session_cwd(self):
         """Project mode: script's os.getcwd() is the session's working dir."""
@@ -334,16 +334,16 @@ class TestExecuteCodeModeIntegration(unittest.TestCase):
                 f"project-mode python should be under VIRTUAL_ENV={ve} or sys.executable={sys.executable}, got {output}",
             )
 
-    def test_project_mode_can_still_import_hermes_tools(self):
-        """Regression: hermes_tools still importable from non-tmpdir CWD.
+    def test_project_mode_can_still_import_vermes_tools(self):
+        """Regression: VERMES_tools still importable from non-tmpdir CWD.
 
         This is the PYTHONPATH fix — without it, switching to session CWD
-        breaks `from hermes_tools import terminal`.
+        breaks `from VERMES_tools import terminal`.
         """
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             code = (
-                "from hermes_tools import terminal\n"
+                "from VERMES_tools import terminal\n"
                 "r = terminal('echo x')\n"
                 "print(r.get('output', 'MISSING'))\n"
             )
@@ -351,10 +351,10 @@ class TestExecuteCodeModeIntegration(unittest.TestCase):
             self.assertEqual(result["status"], "success")
             self.assertIn("mock", result["output"])
 
-    def test_strict_mode_can_still_import_hermes_tools(self):
+    def test_strict_mode_can_still_import_vermes_tools(self):
         """Regression: strict mode's tmpdir CWD still works for imports."""
         code = (
-            "from hermes_tools import terminal\n"
+            "from VERMES_tools import terminal\n"
             "r = terminal('echo x')\n"
             "print(r.get('output', 'MISSING'))\n"
         )
@@ -457,7 +457,7 @@ class TestSecurityInvariantsAcrossModes(unittest.TestCase):
         # execute_code is NOT in SANDBOX_ALLOWED_TOOLS (no recursion)
         self.assertNotIn("execute_code", SANDBOX_ALLOWED_TOOLS)
         code = (
-            "import hermes_tools as ht\n"
+            "import VERMES_tools as ht\n"
             "print('execute_code_available:', hasattr(ht, 'execute_code'))\n"
             "print('delegate_task_available:', hasattr(ht, 'delegate_task'))\n"
         )
@@ -469,7 +469,7 @@ class TestSecurityInvariantsAcrossModes(unittest.TestCase):
     def test_tool_whitelist_enforced_in_project_mode(self):
         """CRITICAL: project mode does NOT widen the tool whitelist."""
         code = (
-            "import hermes_tools as ht\n"
+            "import VERMES_tools as ht\n"
             "print('execute_code_available:', hasattr(ht, 'execute_code'))\n"
             "print('delegate_task_available:', hasattr(ht, 'delegate_task'))\n"
         )

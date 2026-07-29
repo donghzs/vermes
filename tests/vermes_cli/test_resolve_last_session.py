@@ -1,4 +1,4 @@
-"""Verify `hermes -c` picks the session the user most recently used."""
+"""Verify `Vermes -c` picks the session the user most recently used."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def test_resolve_last_session_prefers_last_active_over_started_at(monkeypatch):
 
 def test_search_sessions_exposes_last_active_column(tmp_path, monkeypatch):
     # End-to-end: SessionDB must surface last_active and order by MRU.
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
     import vermes_state
@@ -121,7 +121,7 @@ def test_resolve_last_session_falls_back_to_started_at(monkeypatch):
 def test_resolve_last_session_not_limited_to_newest_started_20(tmp_path, monkeypatch):
     # Regression: when sampling by started_at, -c could miss the true MRU if
     # it was older than the newest 20 started sessions.
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
     import vermes_state

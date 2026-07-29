@@ -12,7 +12,7 @@ from agent.memory_recall import recall_context_as_hits
 
 
 def test_recall_context_as_hits_has_no_self_assessment_side_effect(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     import agent.self_assessment as sa
 
@@ -27,7 +27,7 @@ def test_recall_context_as_hits_has_no_self_assessment_side_effect(monkeypatch, 
 
 def test_recall_context_still_records_self_assessment(monkeypatch, tmp_path):
     """Sanity check: the prompt-injection path keeps its side effect."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     import agent.self_assessment as sa
 

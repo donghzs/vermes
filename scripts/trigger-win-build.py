@@ -43,7 +43,7 @@ def make_tar(dest_path: str):
     log("打包源码（排除 node_modules/dist/__pycache__/._*）...")
     exclude_dirs = {'.git', 'node_modules', 'dist', 'dist-electron', 'build',
                     '__pycache__', '.mypy_cache', '.pytest_cache', '.venv',
-                    'UNKNOWN.egg-info', 'hermes_agent.egg-info', 'vermes.egg-info',
+                    'UNKNOWN.egg-info', 'VERMES_agent.egg-info', 'vermes.egg-info',
                     'downloads', 'website', 'archive', '.github'}
     exclude_files = {'.DS_Store', 'Thumbs.db'}
 

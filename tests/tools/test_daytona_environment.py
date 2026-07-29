@@ -148,7 +148,7 @@ class TestPersistence:
         env = make_env(get_side_effect=lambda name: existing, persistent=True,
                        task_id="mytask")
         existing.start.assert_called_once()
-        env._mock_client.get.assert_called_once_with("hermes-mytask")
+        env._mock_client.get.assert_called_once_with("Vermes-mytask")
         env._mock_client.create.assert_not_called()
 
     def test_persistent_resumes_legacy_via_list(self, make_env, daytona_sdk):
@@ -162,7 +162,7 @@ class TestPersistence:
         )
         legacy.start.assert_called_once()
         env._mock_client.list.assert_called_once_with(
-            labels={"hermes_task_id": "mytask"}, limit=1)
+            labels={"VERMES_task_id": "mytask"}, limit=1)
         env._mock_client.create.assert_not_called()
 
     def test_persistent_creates_new_when_none_found(self, make_env, daytona_sdk):
@@ -174,9 +174,9 @@ class TestPersistence:
         env._mock_client.create.assert_called_once()
         # Verify the name and labels were passed to CreateSandboxFromImageParams
         # by checking get() was called with the right sandbox name
-        env._mock_client.get.assert_called_with("hermes-mytask")
+        env._mock_client.get.assert_called_with("Vermes-mytask")
         env._mock_client.list.assert_called_with(
-            labels={"hermes_task_id": "mytask"}, limit=1)
+            labels={"VERMES_task_id": "mytask"}, limit=1)
 
     def test_non_persistent_skips_lookup(self, make_env):
         env = make_env(persistent=False)
@@ -292,10 +292,10 @@ class TestExecute:
 
         env.execute("python3", stdin_data="print('hi')")
         # Check that the command passed to exec contains heredoc markers
-        # Base class uses HERMES_STDIN_ prefix for heredoc delimiters
+        # Base class uses VERMES_STDIN_ prefix for heredoc delimiters
         call_args = sb.process.exec.call_args_list[-1]
         cmd = call_args[0][0]
-        assert "HERMES_STDIN_" in cmd
+        assert "VERMES_STDIN_" in cmd
         assert "print" in cmd
         assert "hi" in cmd
 

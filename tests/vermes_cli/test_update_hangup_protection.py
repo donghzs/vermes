@@ -184,11 +184,11 @@ class TestInstallHangupProtection:
     )
     def test_installs_sighup_ignore(self, tmp_path, monkeypatch):
         """SIGHUP should be set to SIG_IGN so SSH disconnect doesn't kill the update."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-        # Clear cached get_hermes_home if present
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
+        # Clear cached get_vermes_home if present
         import vermes_cli.config as _cfg
-        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
-            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
+        if hasattr(_cfg, "_vermes_HOME_CACHE"):
+            _cfg._vermes_HOME_CACHE = None  # type: ignore[attr-defined]
 
         original_handler = signal.getsignal(signal.SIGHUP)
         state = _install_hangup_protection(gateway_mode=False)
@@ -201,11 +201,11 @@ class TestInstallHangupProtection:
             signal.signal(signal.SIGHUP, original_handler)
 
     def test_wraps_stdout_and_stderr_with_mirror(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         # Nuke any cached home path
         import vermes_cli.config as _cfg
-        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
-            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
+        if hasattr(_cfg, "_vermes_HOME_CACHE"):
+            _cfg._vermes_HOME_CACHE = None  # type: ignore[attr-defined]
 
         prev_out, prev_err = sys.stdout, sys.stderr
         state = _install_hangup_protection(gateway_mode=False)
@@ -232,10 +232,10 @@ class TestInstallHangupProtection:
             assert sys.stderr is prev_err
 
     def test_logs_dir_created_if_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         import vermes_cli.config as _cfg
-        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
-            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
+        if hasattr(_cfg, "_vermes_HOME_CACHE"):
+            _cfg._vermes_HOME_CACHE = None  # type: ignore[attr-defined]
 
         # No logs/ dir yet.
         assert not (tmp_path / "logs").exists()
@@ -248,7 +248,7 @@ class TestInstallHangupProtection:
             _finalize_update_output(state)
 
     def test_non_fatal_if_log_setup_fails(self, monkeypatch):
-        """If get_hermes_home() raises, stdio must be left untouched but SIGHUP still handled."""
+        """If get_vermes_home() raises, stdio must be left untouched but SIGHUP still handled."""
         prev_out, prev_err = sys.stdout, sys.stderr
 
         def _boom():
@@ -256,7 +256,7 @@ class TestInstallHangupProtection:
 
         # Patch the import inside _install_hangup_protection.
         monkeypatch.setattr(
-            "vermes_cli.config.get_hermes_home", _boom, raising=True
+            "vermes_cli.config.get_vermes_home", _boom, raising=True
         )
 
         original_handler = (
@@ -288,10 +288,10 @@ class TestFinalizeUpdateOutput:
         _finalize_update_output(None)  # must not raise
 
     def test_restores_streams_and_closes_log(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         import vermes_cli.config as _cfg
-        if hasattr(_cfg, "_HERMES_HOME_CACHE"):
-            _cfg._HERMES_HOME_CACHE = None  # type: ignore[attr-defined]
+        if hasattr(_cfg, "_vermes_HOME_CACHE"):
+            _cfg._vermes_HOME_CACHE = None  # type: ignore[attr-defined]
 
         prev_out = sys.stdout
         state = _install_hangup_protection(gateway_mode=False)

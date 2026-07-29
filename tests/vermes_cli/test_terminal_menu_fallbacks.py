@@ -47,7 +47,7 @@ def test_prompt_reasoning_effort_falls_back_on_terminalmenu_runtime_error(monkey
 def test_remove_custom_provider_falls_back_on_terminalmenu_runtime_error(tmp_path, monkeypatch):
     from vermes_cli.main import _remove_custom_provider
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setitem(
         sys.modules,
         "simple_term_menu",
@@ -75,7 +75,7 @@ def test_remove_custom_provider_falls_back_on_terminalmenu_runtime_error(tmp_pat
 def test_named_custom_provider_model_picker_falls_back_on_terminalmenu_runtime_error(tmp_path, monkeypatch):
     from vermes_cli.main import _model_flow_named_custom
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setitem(
         sys.modules,
         "simple_term_menu",

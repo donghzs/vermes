@@ -161,7 +161,7 @@ def test_build_models_payload_does_not_call_provider_model_ids():
     """Curated lists must come from list_authenticated_providers, not
     provider_model_ids — that would pull TTS/embeddings/etc.
     """
-    rows = [{"slug": "nous", "name": "Nous", "models": ["hermes-4-405b"],
+    rows = [{"slug": "nous", "name": "Nous", "models": ["Vermes-4-405b"],
              "total_models": 1, "is_current": False, "is_user_defined": False,
              "source": "built-in"}]
     ctx = _empty_ctx()

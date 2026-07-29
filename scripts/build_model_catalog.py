@@ -17,7 +17,7 @@ Usage::
 Output: ``website/static/api/model-catalog.json``
 
 Live URL (after ``deploy-site.yml`` runs on merge to main):
-``https://hermes-agent.nousresearch.com/docs/api/model-catalog.json``
+``https://Vermes-agent.donghzs.com/docs/api/model-catalog.json``
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ from datetime import datetime, timezone
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
-# Ensure HERMES_HOME is set for imports that touch it at module level.
-os.environ.setdefault("HERMES_HOME", os.path.join(os.path.expanduser("~"), ".hermes"))
+# Ensure VERMES_HOME is set for imports that touch it at module level.
+os.environ.setdefault("VERMES_HOME", os.path.join(os.path.expanduser("~"), ".vermes"))
 
 from vermes_cli.models import OPENROUTER_MODELS, _PROVIDER_MODELS  # noqa: E402
 
@@ -44,8 +44,8 @@ def build_catalog() -> dict:
         "version": CATALOG_VERSION,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "metadata": {
-            "source": "hermes-agent repo",
-            "docs": "https://hermes-agent.nousresearch.com/docs/reference/model-catalog",
+            "source": "Vermes-agent repo",
+            "docs": "https://Vermes-agent.donghzs.com/docs/reference/model-catalog",
         },
         "providers": {
             "openrouter": {

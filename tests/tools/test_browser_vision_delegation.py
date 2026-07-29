@@ -20,7 +20,7 @@ def fake_browser(monkeypatch, tmp_path):
     png = tmp_path / "shot.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n fake-screenshot-bytes")
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path / "Vermes"))
     monkeypatch.setattr(bt, "_is_camofox_mode", lambda: False)
     monkeypatch.setattr(bt, "_get_browser_engine", lambda: "chrome")
     monkeypatch.setattr(bt, "_should_inject_engine", lambda e: False)

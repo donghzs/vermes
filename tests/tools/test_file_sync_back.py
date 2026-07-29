@@ -101,7 +101,7 @@ class TestSyncBackNoop:
     def test_sync_back_noop_without_download_fn(self, tmp_path):
         mgr = _make_manager(tmp_path, bulk_download_fn=None)
         # Should return immediately without error
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
         # Nothing to assert beyond "no exception raised"
 
 
@@ -113,19 +113,19 @@ class TestSyncBackNoChanges:
         host_content = b'{"key": "val"}'
         _write_file(host_file, host_content)
 
-        remote_path = "/root/.hermes/cred.json"
+        remote_path = "/root/.Vermes/cred.json"
         mapping = [(str(host_file), remote_path)]
 
         # Remote tar contains the same content as was pushed
         download_fn = _make_download_fn({
-            "root/.hermes/cred.json": host_content,
+            "root/.Vermes/cred.json": host_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
         # Simulate that we already pushed this file with this hash
         mgr._pushed_hashes[remote_path] = _sha256_bytes(host_content)
 
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # Host file should be unchanged (same content, same bytes)
         assert host_file.read_bytes() == host_content
@@ -139,18 +139,18 @@ class TestSyncBackAppliesChanged:
         original_content = b"print('v1')"
         _write_file(host_file, original_content)
 
-        remote_path = "/root/.hermes/skill.py"
+        remote_path = "/root/.Vermes/skill.py"
         mapping = [(str(host_file), remote_path)]
 
         remote_content = b"print('v2 - edited on remote')"
         download_fn = _make_download_fn({
-            "root/.hermes/skill.py": remote_content,
+            "root/.Vermes/skill.py": remote_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
         mgr._pushed_hashes[remote_path] = _sha256_bytes(original_content)
 
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         assert host_file.read_bytes() == remote_content
 
@@ -162,18 +162,18 @@ class TestSyncBackNewRemoteFile:
         # Existing mapping gives _infer_host_path a prefix to work with
         existing_host = tmp_path / "host" / "skills" / "existing.py"
         _write_file(existing_host, b"existing")
-        mapping = [(str(existing_host), "/root/.hermes/skills/existing.py")]
+        mapping = [(str(existing_host), "/root/.Vermes/skills/existing.py")]
 
         # Remote has a NEW file in the same directory that was never pushed
         new_remote_content = b"# brand new skill created on remote"
         download_fn = _make_download_fn({
-            "root/.hermes/skills/new_skill.py": new_remote_content,
+            "root/.Vermes/skills/new_skill.py": new_remote_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
         # No entry in _pushed_hashes for the new file
 
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # The new file should have been inferred and written to the host
         expected_host_path = tmp_path / "host" / "skills" / "new_skill.py"
@@ -189,7 +189,7 @@ class TestSyncBackConflict:
         original_content = b'{"v": 1}'
         _write_file(host_file, original_content)
 
-        remote_path = "/root/.hermes/config.json"
+        remote_path = "/root/.Vermes/config.json"
         mapping = [(str(host_file), remote_path)]
 
         # Host was modified after push
@@ -198,14 +198,14 @@ class TestSyncBackConflict:
         # Remote was also modified
         remote_content = b'{"v": 3, "remote-edit": true}'
         download_fn = _make_download_fn({
-            "root/.hermes/config.json": remote_content,
+            "root/.Vermes/config.json": remote_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
         mgr._pushed_hashes[remote_path] = _sha256_bytes(original_content)
 
         with caplog.at_level(logging.WARNING, logger="tools.environments.file_sync"):
-            mgr.sync_back(hermes_home=tmp_path / ".hermes")
+            mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # Conflict warning was logged
         assert any("conflict" in r.message.lower() for r in caplog.records)
@@ -230,7 +230,7 @@ class TestSyncBackRetries:
             _make_tar({}, dest)
 
         mgr = _make_manager(tmp_path, bulk_download_fn=flaky_download)
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         assert call_count == 3
         # Sleep called twice (between attempt 1->2 and 2->3)
@@ -247,7 +247,7 @@ class TestSyncBackRetries:
 
         with caplog.at_level(logging.WARNING, logger="tools.environments.file_sync"):
             # Should NOT raise -- failures are logged, not propagated
-            mgr.sync_back(hermes_home=tmp_path / ".hermes")
+            mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # All retries were attempted
         assert mock_sleep.call_count == _SYNC_BACK_MAX_RETRIES - 1
@@ -263,7 +263,7 @@ class TestPushedHashesPopulated:
         host_file = tmp_path / "data.txt"
         host_file.write_bytes(b"hello world")
 
-        remote_path = "/root/.hermes/data.txt"
+        remote_path = "/root/.Vermes/data.txt"
         mapping = [(str(host_file), remote_path)]
 
         mgr = FileSyncManager(
@@ -281,7 +281,7 @@ class TestPushedHashesPopulated:
         host_file = tmp_path / "deleteme.txt"
         host_file.write_bytes(b"to be deleted")
 
-        remote_path = "/root/.hermes/deleteme.txt"
+        remote_path = "/root/.Vermes/deleteme.txt"
         mapping = [(str(host_file), remote_path)]
         current_mapping = list(mapping)
 
@@ -313,7 +313,7 @@ class TestSyncBackFileLock:
         download_fn = _make_download_fn({})
         mgr = _make_manager(tmp_path, bulk_download_fn=download_fn)
 
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # flock should have been called at least twice: LOCK_EX to acquire, LOCK_UN to release
         assert mock_flock.call_count >= 2
@@ -330,7 +330,7 @@ class TestSyncBackFileLock:
 
         with patch("tools.environments.file_sync.fcntl", None):
             # Should not raise — locking is skipped
-            mgr.sync_back(hermes_home=tmp_path / ".hermes")
+            mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
 
 class TestInferHostPath:
@@ -340,26 +340,26 @@ class TestInferHostPath:
         """Remote path in unmapped directory should return None."""
         host_file = tmp_path / "host" / "skills" / "a.py"
         _write_file(host_file, b"content")
-        mapping = [(str(host_file), "/root/.hermes/skills/a.py")]
+        mapping = [(str(host_file), "/root/.Vermes/skills/a.py")]
 
         mgr = _make_manager(tmp_path, file_mapping=mapping)
         result = mgr._infer_host_path(
-            "/root/.hermes/cache/new.json",
+            "/root/.Vermes/cache/new.json",
             file_mapping=mapping,
         )
         assert result is None
 
     def test_infer_partial_prefix_no_false_match(self, tmp_path):
-        """A partial prefix like /root/.hermes/sk should NOT match /root/.hermes/skills/."""
+        """A partial prefix like /root/.Vermes/sk should NOT match /root/.Vermes/skills/."""
         host_file = tmp_path / "host" / "skills" / "a.py"
         _write_file(host_file, b"content")
-        mapping = [(str(host_file), "/root/.hermes/skills/a.py")]
+        mapping = [(str(host_file), "/root/.Vermes/skills/a.py")]
 
         mgr = _make_manager(tmp_path, file_mapping=mapping)
-        # /root/.hermes/skillsXtra/b.py shares prefix "skills" but the
-        # directory is different — should not match /root/.hermes/skills/
+        # /root/.Vermes/skillsXtra/b.py shares prefix "skills" but the
+        # directory is different — should not match /root/.Vermes/skills/
         result = mgr._infer_host_path(
-            "/root/.hermes/skillsXtra/b.py",
+            "/root/.Vermes/skillsXtra/b.py",
             file_mapping=mapping,
         )
         assert result is None
@@ -368,11 +368,11 @@ class TestInferHostPath:
         """A file in a mapped directory should be correctly inferred."""
         host_file = tmp_path / "host" / "skills" / "a.py"
         _write_file(host_file, b"content")
-        mapping = [(str(host_file), "/root/.hermes/skills/a.py")]
+        mapping = [(str(host_file), "/root/.Vermes/skills/a.py")]
 
         mgr = _make_manager(tmp_path, file_mapping=mapping)
         result = mgr._infer_host_path(
-            "/root/.hermes/skills/b.py",
+            "/root/.Vermes/skills/b.py",
             file_mapping=mapping,
         )
         expected = str(tmp_path / "host" / "skills" / "b.py")
@@ -393,7 +393,7 @@ class TestSyncBackSIGINT:
         with patch("tools.environments.file_sync.signal.getsignal",
                     side_effect=original_getsignal) as mock_get, \
              patch("tools.environments.file_sync.signal.signal") as mock_set:
-            mgr.sync_back(hermes_home=tmp_path / ".hermes")
+            mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # signal.getsignal was called to save the original handler
         assert mock_get.called
@@ -417,7 +417,7 @@ class TestSyncBackSIGINT:
             exc = []
             def run():
                 try:
-                    mgr.sync_back(hermes_home=tmp_path / ".hermes")
+                    mgr.sync_back(VERMES_home=tmp_path / ".vermes")
                 except Exception as e:
                     exc.append(e)
 
@@ -438,19 +438,19 @@ class TestSyncBackSizeCap:
         # Build a download_fn that writes a small tar, but patch the cap
         # so the test doesn't need to produce a 2 GiB file.
         skill_host = _write_file(tmp_path / "host_skill.md", b"original")
-        files = {"root/.hermes/skill.md": b"remote_version"}
+        files = {"root/.Vermes/skill.md": b"remote_version"}
         download_fn = _make_download_fn(files)
 
         mgr = _make_manager(
             tmp_path,
-            file_mapping=[(skill_host, "/root/.hermes/skill.md")],
+            file_mapping=[(skill_host, "/root/.Vermes/skill.md")],
             bulk_download_fn=download_fn,
         )
 
         # Cap at 1 byte so any non-empty tar exceeds it
         with caplog.at_level(logging.WARNING, logger="tools.environments.file_sync"):
             with patch("tools.environments.file_sync._SYNC_BACK_MAX_BYTES", 1):
-                mgr.sync_back(hermes_home=tmp_path / ".hermes")
+                mgr.sync_back(VERMES_home=tmp_path / ".vermes")
 
         # Host file should be untouched because extraction was skipped
         assert Path(skill_host).read_bytes() == b"original"
@@ -460,15 +460,15 @@ class TestSyncBackSizeCap:
     def test_sync_back_applies_when_under_cap(self, tmp_path):
         """A tar under the cap should extract normally (sanity check)."""
         host_file = _write_file(tmp_path / "host_skill.md", b"original")
-        files = {"root/.hermes/skill.md": b"remote_version"}
+        files = {"root/.Vermes/skill.md": b"remote_version"}
         download_fn = _make_download_fn(files)
 
         mgr = _make_manager(
             tmp_path,
-            file_mapping=[(host_file, "/root/.hermes/skill.md")],
+            file_mapping=[(host_file, "/root/.Vermes/skill.md")],
             bulk_download_fn=download_fn,
         )
 
         # Default cap (2 GiB) is far above our tiny tar; extraction should proceed
-        mgr.sync_back(hermes_home=tmp_path / ".hermes")
+        mgr.sync_back(VERMES_home=tmp_path / ".vermes")
         assert Path(host_file).read_bytes() == b"remote_version"

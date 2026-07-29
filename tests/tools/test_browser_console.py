@@ -125,9 +125,9 @@ class TestBrowserConsoleToolsetWiring:
         from toolsets import TOOLSETS
         assert "browser_console" in TOOLSETS["browser"]["tools"]
 
-    def test_in_hermes_core_tools(self):
-        from toolsets import _HERMES_CORE_TOOLS
-        assert "browser_console" in _HERMES_CORE_TOOLS
+    def test_in_vermes_core_tools(self):
+        from toolsets import _vermes_CORE_TOOLS
+        assert "browser_console" in _vermes_CORE_TOOLS
 
     def test_in_legacy_toolset_map(self):
         from model_tools import _LEGACY_TOOLSET_MAP
@@ -221,7 +221,7 @@ class TestBrowserVisionConfig:
         # bypassing capability detection and the built-in fallback. The fixed
         # browser_vision must delegate to the unified resolver (vision_analyze_tool).
         with (
-            patch("vermes_constants.get_hermes_dir", return_value=shots_dir),
+            patch("vermes_constants.get_vermes_dir", return_value=shots_dir),
             patch("tools.browser_tool._cleanup_old_screenshots"),
             patch("tools.browser_tool._run_browser_command", return_value={"success": True, "data": {"path": str(screenshot)}}),
             patch("tools.vision_tools.vision_analyze_tool", fake_vision),
@@ -244,7 +244,7 @@ class TestBrowserVisionConfig:
             return json.dumps({"success": False, "error": "no vision model available"})
 
         with (
-            patch("vermes_constants.get_hermes_dir", return_value=shots_dir),
+            patch("vermes_constants.get_vermes_dir", return_value=shots_dir),
             patch("tools.browser_tool._cleanup_old_screenshots"),
             patch("tools.browser_tool._run_browser_command", return_value={"success": True, "data": {"path": str(screenshot)}}),
             patch("tools.vision_tools.vision_analyze_tool", fake_vision),

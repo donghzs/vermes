@@ -69,13 +69,13 @@ class TestRegisterProvider:
 
 class TestGetActiveProvider:
     def test_single_provider_autoresolves(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         video_gen_registry.register_provider(_FakeProvider("solo"))
         active = video_gen_registry.get_active_provider()
         assert active is not None and active.name == "solo"
 
     def test_no_provider_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         assert video_gen_registry.get_active_provider() is None
 
     def test_multi_without_config_returns_none(self, tmp_path, monkeypatch):
@@ -83,7 +83,7 @@ class TestGetActiveProvider:
         legacy default — when there are multiple providers and no config,
         the registry returns None and the tool surfaces a helpful error.
         """
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         video_gen_registry.register_provider(_FakeProvider("xai"))
         video_gen_registry.register_provider(_FakeProvider("fal"))
         assert video_gen_registry.get_active_provider() is None
@@ -91,7 +91,7 @@ class TestGetActiveProvider:
     def test_config_selects_provider(self, tmp_path, monkeypatch):
         import yaml
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text(
             yaml.safe_dump({"video_gen": {"provider": "fal"}})
         )
@@ -105,7 +105,7 @@ class TestGetActiveProvider:
         the single-provider fallback still applies."""
         import yaml
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text(
             yaml.safe_dump({"video_gen": {"provider": "ghost"}})
         )

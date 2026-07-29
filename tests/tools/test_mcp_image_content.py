@@ -58,7 +58,7 @@ class TestCacheMcpImageBlock:
     def test_returns_media_tag_for_valid_image_block(self, tmp_path, monkeypatch):
         """A well-formed ImageContent block with valid PNG bytes caches
         to the image dir and the helper returns a ``MEDIA:<path>`` tag."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         from tools.mcp_tool import _cache_mcp_image_block
 
         block = SimpleNamespace(
@@ -71,7 +71,7 @@ class TestCacheMcpImageBlock:
         from gateway.platforms.base import get_image_cache_dir
         cache_dir = str(get_image_cache_dir().resolve())
         assert tag.startswith(f"MEDIA:{cache_dir}"), (
-            f"cached file not under HERMES_HOME image cache dir. "
+            f"cached file not under VERMES_HOME image cache dir. "
             f"tag={tag!r}, cache_dir={cache_dir!r}"
         )
         # And it should exist + have the PNG bytes
@@ -81,7 +81,7 @@ class TestCacheMcpImageBlock:
 
     def test_returns_empty_when_block_is_not_an_image(self, tmp_path, monkeypatch):
         """Non-image MIME types shouldn't trigger caching."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         from tools.mcp_tool import _cache_mcp_image_block
 
         block = SimpleNamespace(
@@ -91,7 +91,7 @@ class TestCacheMcpImageBlock:
         assert _cache_mcp_image_block(block) == ""
 
     def test_returns_empty_when_block_has_no_data(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         from tools.mcp_tool import _cache_mcp_image_block
 
         block = SimpleNamespace(data=None, mimeType="image/png")
@@ -100,7 +100,7 @@ class TestCacheMcpImageBlock:
     def test_returns_empty_on_malformed_base64(self, tmp_path, monkeypatch):
         """A server that sends garbage base64 shouldn't crash the handler —
         we log and drop the block, letting any text blocks still come through."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         from tools.mcp_tool import _cache_mcp_image_block
 
         block = SimpleNamespace(
@@ -113,7 +113,7 @@ class TestCacheMcpImageBlock:
         """``cache_image_from_bytes`` has a format sniff; if the claimed
         ``image/png`` is actually an HTML error page, the cache raises and
         we log + drop rather than propagate."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         from tools.mcp_tool import _cache_mcp_image_block
 
         block = SimpleNamespace(
@@ -124,7 +124,7 @@ class TestCacheMcpImageBlock:
 
     def test_handles_jpeg(self, tmp_path, monkeypatch):
         """JPEG signature should also be accepted."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         from tools.mcp_tool import _cache_mcp_image_block
 
         # minimal JPEG SOI marker + filler

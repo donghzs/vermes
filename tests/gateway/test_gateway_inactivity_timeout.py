@@ -5,7 +5,7 @@ Tests cover:
 - Warning does not fire when gateway_timeout is 0 (unlimited)
 - Warning fires only once per run, not on every poll
 - Full timeout still fires at gateway_timeout threshold
-- Warning respects HERMES_AGENT_TIMEOUT_WARNING env var
+- Warning respects VERMES_AGENT_TIMEOUT_WARNING env var
 - Warning disabled when gateway_timeout_warning is 0
 """
 
@@ -239,15 +239,15 @@ class TestStagedInactivityWarning:
         assert _inactivity_timeout
 
     def test_warning_env_var_respected(self, monkeypatch):
-        """HERMES_AGENT_TIMEOUT_WARNING env var is parsed correctly."""
-        monkeypatch.setenv("HERMES_AGENT_TIMEOUT_WARNING", "600")
-        _warning = float(os.getenv("HERMES_AGENT_TIMEOUT_WARNING", 900))
+        """VERMES_AGENT_TIMEOUT_WARNING env var is parsed correctly."""
+        monkeypatch.setenv("VERMES_AGENT_TIMEOUT_WARNING", "600")
+        _warning = float(os.getenv("VERMES_AGENT_TIMEOUT_WARNING", 900))
         assert _warning == 600.0
 
     def test_warning_zero_means_disabled(self, monkeypatch):
-        """HERMES_AGENT_TIMEOUT_WARNING=0 disables the warning."""
-        monkeypatch.setenv("HERMES_AGENT_TIMEOUT_WARNING", "0")
-        _raw = float(os.getenv("HERMES_AGENT_TIMEOUT_WARNING", 900))
+        """VERMES_AGENT_TIMEOUT_WARNING=0 disables the warning."""
+        monkeypatch.setenv("VERMES_AGENT_TIMEOUT_WARNING", "0")
+        _raw = float(os.getenv("VERMES_AGENT_TIMEOUT_WARNING", 900))
         _warning = _raw if _raw > 0 else None
         assert _warning is None
 

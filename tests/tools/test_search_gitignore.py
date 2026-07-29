@@ -89,8 +89,8 @@ def test_search_files_mode_returns_files_key_on_empty(git_repo):
 
 
 def test_execute_code_stub_defaults_respect_gitignore_false():
-    from tools.code_execution_tool import generate_hermes_tools_module
-    src = generate_hermes_tools_module(["search_files"], transport="uds")
+    from tools.code_execution_tool import generate_vermes_tools_module
+    src = generate_vermes_tools_module(["search_files"], transport="uds")
     # The sandbox stub must default respect_gitignore=False so files written
     # inside the sandbox are always searchable.
     assert "respect_gitignore: bool = False" in src

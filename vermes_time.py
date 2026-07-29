@@ -5,7 +5,7 @@ Provides a single ``now()`` helper that returns a timezone-aware datetime
 based on the user's configured IANA timezone (e.g. ``Asia/Kolkata``).
 
 Resolution order:
-  1. ``HERMES_TIMEZONE`` environment variable
+  1. ``VERMES_TIMEZONE`` environment variable
   2. ``timezone`` key in ``~/.vermes/config.yaml``
   3. Falls back to the server's local time (``datetime.now().astimezone()``)
 
@@ -41,7 +41,7 @@ def _resolve_timezone_name() -> str:
     should cache the result rather than calling on every ``now()``.
     """
     # 1. Environment variable (highest priority — set by Supervisor, etc.)
-    tz_env = os.getenv("HERMES_TIMEZONE", "").strip()
+    tz_env = os.getenv("VERMES_TIMEZONE", "").strip()
     if tz_env:
         return tz_env
 

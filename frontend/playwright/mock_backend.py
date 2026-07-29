@@ -13,7 +13,7 @@ Endpoints:
     POST /api/chat/completions             -> 200 {}  (frontend aborts this itself)
 
 Usage:
-    HERMES_HOME=/tmp/vermes-e2e python3 frontend/playwright/mock_backend.py [port]
+    VERMES_HOME=/tmp/vermes-e2e python3 frontend/playwright/mock_backend.py [port]
 """
 import json
 import os

@@ -67,17 +67,17 @@ class OwnedTwilioNumber:
     friendly_name: str
     capabilities: dict[str, Any]
 
-def _hermes_home() -> Path:
-    return Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
+def _vermes_home() -> Path:
+    return Path(os.environ.get("VERMES_HOME", "~/.Vermes")).expanduser()
 
 def _env_path() -> Path:
-    return _hermes_home() / ".env"
+    return _vermes_home() / ".env"
 
 def _config_path() -> Path:
-    return _hermes_home() / "config.yaml"
+    return _vermes_home() / "config.yaml"
 
 def _state_path() -> Path:
-    return _hermes_home() / "telephony_state.json"
+    return _vermes_home() / "telephony_state.json"
 
 def _load_root_config() -> dict[str, Any]:
     path = _config_path()

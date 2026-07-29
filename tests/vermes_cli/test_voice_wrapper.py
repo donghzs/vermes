@@ -142,7 +142,7 @@ class TestNormalizeVoiceRecordKeyForPromptToolkit:
         assert normalize_voice_record_key_for_prompt_toolkit("shift+b") == "c-b"
 
     # Round-14 Copilot review regression on #19835. On macOS the TUI
-    # parser rejects alt+c/d/l because hermes-ink reports Alt as
+    # parser rejects alt+c/d/l because Vermes-ink reports Alt as
     # ``key.meta`` and isActionMod(darwin) accepts it. The CLI
     # normalizer must mirror that platform-gated rejection so shared
     # configs like ``option+c`` don't bind Alt+C in the CLI while the

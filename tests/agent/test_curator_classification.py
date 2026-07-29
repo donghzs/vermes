@@ -22,11 +22,11 @@ import pytest
 
 @pytest.fixture
 def curator_env(tmp_path, monkeypatch):
-    home = tmp_path / ".hermes"
+    home = tmp_path / ".vermes"
     home.mkdir()
     (home / "skills").mkdir()
     (home / "logs").mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     import importlib
@@ -891,7 +891,7 @@ def test_reconcile_mixed_declarations_and_legacy_calls(curator_env):
 # ---------------------------------------------------------------------------
 # _build_rename_summary — surfaces the "where did my skills go?" map to the
 # user-visible curator summary (gateway 💾 line, CLI Rich panel,
-# `hermes curator status`). The full data has always been in REPORT.md on
+# `Vermes curator status`). The full data has always been in REPORT.md on
 # disk; this helper makes it visible without digging.
 # ---------------------------------------------------------------------------
 
@@ -938,7 +938,7 @@ def test_rename_summary_consolidation_shows_target(curator_env):
     assert "archived 2 skill(s):" in result
     assert "pdf-extraction → document-tools" in result
     assert "docx-extraction → document-tools" in result
-    assert "full report: hermes curator status" in result
+    assert "full report: Vermes curator status" in result
 
 
 def test_rename_summary_pruned_marked_explicitly(curator_env):
@@ -1023,7 +1023,7 @@ def test_rename_summary_mixed_consolidation_and_pruning(curator_env):
 
 
 # ---------------------------------------------------------------------------
-# Pin hint — surfaces `hermes curator pin <umbrella>` in the rename block so
+# Pin hint — surfaces `Vermes curator pin <umbrella>` in the rename block so
 # users learn the command exists at the moment they care (a consolidation
 # just landed against their library). The hint is gated on having at least
 # one umbrella destination — pruned-only runs skip it.
@@ -1055,7 +1055,7 @@ def test_rename_summary_pin_hint_appears_when_consolidation_produced_umbrella(cu
         ],
         model_final="",
     )
-    assert "hermes curator pin document-tools" in result
+    assert "Vermes curator pin document-tools" in result
     assert "keep an umbrella stable" in result
 
 
@@ -1086,7 +1086,7 @@ def test_rename_summary_pin_hint_skipped_for_pruned_only_runs(curator_env):
     )
     # Block still renders (skills were archived) but no pin hint.
     assert "archived 2 skill(s):" in result
-    assert "hermes curator pin" not in result
+    assert "Vermes curator pin" not in result
     assert "keep an umbrella stable" not in result
 
 
@@ -1119,7 +1119,7 @@ def test_rename_summary_pin_hint_picks_one_umbrella_when_multiple_absorbed(curat
         model_final="",
     )
     # Sorted picks alphabetically first.
-    assert "hermes curator pin umbrella-alpha" in result
+    assert "Vermes curator pin umbrella-alpha" in result
     # Exactly one hint line, not one per umbrella.
-    pin_lines = [ln for ln in result.splitlines() if "hermes curator pin" in ln]
+    pin_lines = [ln for ln in result.splitlines() if "Vermes curator pin" in ln]
     assert len(pin_lines) == 1

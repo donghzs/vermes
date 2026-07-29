@@ -125,7 +125,7 @@ def test_r2_wired_into_run_reflection_review(tmp_path, monkeypatch):
 
     monkeypatch.setattr(memory_fabric, "_get_index_db", lambda: db)
     monkeypatch.setattr(mr, "_reflection_llm_review", fake_llm)
-    monkeypatch.setattr("agent.memory_reflection.get_hermes_home", lambda: tmp_path)
+    monkeypatch.setattr("agent.memory_reflection.get_vermes_home", lambda: tmp_path)
 
     # 模拟空闲（直接调用 review，跳过门控）
     mr.run_reflection_review()

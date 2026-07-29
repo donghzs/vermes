@@ -20,23 +20,23 @@ import pytest
 
 @pytest.fixture
 def curator_env(tmp_path, monkeypatch, capsys):
-    home = tmp_path / ".hermes"
+    home = tmp_path / ".vermes"
     home.mkdir()
     (home / "skills").mkdir()
     (home / "logs").mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     import vermes_constants
     importlib.reload(vermes_constants)
     from agent import curator
     importlib.reload(curator)
-    from vermes_cli import main as hermes_main
-    importlib.reload(hermes_main)
+    from vermes_cli import main as VERMES_main
+    importlib.reload(VERMES_main)
 
     yield {
         "curator": curator,
-        "main": hermes_main,
+        "main": VERMES_main,
         "capsys": capsys,
     }
 
@@ -78,7 +78,7 @@ def test_prints_multiline_summary_with_rename_map(curator_env):
         "archived 2 skill(s):\n"
         "  • pdf-extraction → document-tools\n"
         "  • docx-extraction → document-tools\n"
-        "full report: hermes curator status"
+        "full report: Vermes curator status"
     )
     _set_state(
         curator_env["curator"],
@@ -100,7 +100,7 @@ def test_show_once_semantics(curator_env):
         "auto: no changes; llm: consolidated 1 into 1\n"
         "archived 1 skill(s):\n"
         "  • old → new\n"
-        "full report: hermes curator status"
+        "full report: Vermes curator status"
     )
     _set_state(
         curator_env["curator"],
@@ -127,7 +127,7 @@ def test_new_run_resets_show_once(curator_env):
             "auto: no changes; llm: consolidated 1 into 1\n"
             "archived 1 skill(s):\n"
             "  • thing-a → umbrella\n"
-            "full report: hermes curator status"
+            "full report: Vermes curator status"
         ),
     )
     curator_env["main"]._print_curator_recent_run_notice()
@@ -142,7 +142,7 @@ def test_new_run_resets_show_once(curator_env):
             "auto: no changes; llm: consolidated 1 into 1\n"
             "archived 1 skill(s):\n"
             "  • thing-b → umbrella\n"
-            "full report: hermes curator status"
+            "full report: Vermes curator status"
         ),
     )
     curator_env["main"]._print_curator_recent_run_notice()

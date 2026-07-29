@@ -32,7 +32,7 @@ from pathlib import Path
 # (web/cli/api/local store their context elsewhere; web is never relayed).
 SKIP_SOURCES = {"web", "cli", "api", "local", "gui"}
 
-STATE_DB_PATH = Path.home() / ".hermes" / "state.db"
+STATE_DB_PATH = Path.home() / ".vermes" / "state.db"
 
 _BACKFILL_SQL = """
 UPDATE sessions SET

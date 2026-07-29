@@ -147,7 +147,7 @@ class TestSessionKeyContext:
     def test_context_session_key_overrides_process_env(self):
         token = approval_module.set_current_session_key("alice")
         try:
-            with mock_patch.dict("os.environ", {"HERMES_SESSION_KEY": "bob"}, clear=False):
+            with mock_patch.dict("os.environ", {"VERMES_SESSION_KEY": "bob"}, clear=False):
                 assert approval_module.get_current_session_key() == "alice"
         finally:
             approval_module.reset_current_session_key(token)
@@ -361,18 +361,18 @@ class TestTeePattern:
         assert dangerous is True
         assert key is not None
 
-    def test_tee_hermes_env(self):
+    def test_tee_vermes_env(self):
         dangerous, key, desc = detect_dangerous_command("echo x | tee ~/.vermes/.env")
         assert dangerous is True
         assert key is not None
 
-    def test_tee_custom_hermes_home_env(self):
-        dangerous, key, desc = detect_dangerous_command("echo x | tee $HERMES_HOME/.env")
+    def test_tee_custom_vermes_home_env(self):
+        dangerous, key, desc = detect_dangerous_command("echo x | tee $VERMES_HOME/.env")
         assert dangerous is True
         assert key is not None
 
-    def test_tee_quoted_custom_hermes_home_env(self):
-        dangerous, key, desc = detect_dangerous_command('echo x | tee "$HERMES_HOME/.env"')
+    def test_tee_quoted_custom_vermes_home_env(self):
+        dangerous, key, desc = detect_dangerous_command('echo x | tee "$VERMES_HOME/.env"')
         assert dangerous is True
         assert key is not None
 
@@ -414,8 +414,8 @@ class TestFindExecFullPathRm:
 class TestSensitiveRedirectPattern:
     """Detect shell redirection writes to sensitive user-managed paths."""
 
-    def test_redirect_to_custom_hermes_home_env(self):
-        dangerous, key, desc = detect_dangerous_command("echo x > $HERMES_HOME/.env")
+    def test_redirect_to_custom_vermes_home_env(self):
+        dangerous, key, desc = detect_dangerous_command("echo x > $VERMES_HOME/.env")
         assert dangerous is True
         assert key is not None
 
@@ -521,7 +521,7 @@ class TestSensitiveCopyMovePattern:
         dangerous, key, desc = detect_dangerous_command("cp /tmp/e ~/.bashrc")
         assert dangerous is True
 
-    def test_cp_to_hermes_config(self):
+    def test_cp_to_vermes_config(self):
         dangerous, key, desc = detect_dangerous_command("cp /tmp/evil.yaml ~/.vermes/config.yaml")
         assert dangerous is True
 
@@ -676,20 +676,20 @@ class TestGatewayProtection:
 
     def test_systemctl_restart_flagged(self):
         """systemctl restart kills running agents and should require approval."""
-        cmd = "systemctl --user restart hermes-gateway"
+        cmd = "systemctl --user restart Vermes-gateway"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "stop/restart" in desc
 
-    def test_pkill_hermes_detected(self):
-        """pkill targeting hermes/gateway processes must be caught."""
+    def test_pkill_vermes_detected(self):
+        """pkill targeting Vermes/gateway processes must be caught."""
         cmd = 'pkill -f "cli.py --gateway"'
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "self-termination" in desc
 
-    def test_killall_hermes_detected(self):
-        cmd = "killall hermes"
+    def test_killall_vermes_detected(self):
+        cmd = "killall Vermes"
         dangerous, key, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "self-termination" in desc
@@ -825,20 +825,20 @@ class TestHeredocScriptExecution:
 
 
 class TestPgrepKillExpansion:
-    """kill -9 $(pgrep hermes) bypasses the pkill/killall name-matching
+    """kill -9 $(pgrep Vermes) bypasses the pkill/killall name-matching
     pattern because the command substitution is opaque to regex.
 
     See security audit Test 7.
     """
 
     def test_kill_dollar_pgrep_detected(self):
-        cmd = 'kill -9 $(pgrep -f "hermes.*gateway")'
+        cmd = 'kill -9 $(pgrep -f "Vermes.*gateway")'
         dangerous, _, desc = detect_dangerous_command(cmd)
         assert dangerous is True
         assert "pgrep" in desc.lower()
 
     def test_kill_backtick_pgrep_detected(self):
-        cmd = "kill -9 `pgrep hermes`"
+        cmd = "kill -9 `pgrep Vermes`"
         dangerous, _, desc = detect_dangerous_command(cmd)
         assert dangerous is True
 
@@ -847,9 +847,9 @@ class TestPgrepKillExpansion:
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is True
 
-    def test_pkill_hermes_still_detected(self):
+    def test_pkill_vermes_still_detected(self):
         """Existing pkill pattern must not regress."""
-        cmd = "pkill -9 hermes"
+        cmd = "pkill -9 Vermes"
         dangerous, _, _ = detect_dangerous_command(cmd)
         assert dangerous is True
 

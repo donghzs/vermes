@@ -21,7 +21,7 @@ def tmp_files(tmp_path):
     return files
 
 
-def _make_get_files(tmp_files, remote_base="/root/.hermes"):
+def _make_get_files(tmp_files, remote_base="/root/.Vermes"):
     """Return a get_files_fn that maps local files to remote paths."""
     mapping = [(hp, f"{remote_base}/{name}") for name, hp in tmp_files.items()]
 
@@ -31,7 +31,7 @@ def _make_get_files(tmp_files, remote_base="/root/.hermes"):
     return get_files
 
 
-def _make_manager(tmp_files, remote_base="/root/.hermes", upload=None, delete=None):
+def _make_manager(tmp_files, remote_base="/root/.Vermes", upload=None, delete=None):
     """Create a FileSyncManager with test callbacks."""
     return FileSyncManager(
         get_files_fn=_make_get_files(tmp_files, remote_base),
@@ -245,7 +245,7 @@ class TestEdgeCases:
 
         upload = MagicMock()
         mgr = FileSyncManager(
-            get_files_fn=lambda: [(str(f), "/root/.hermes/ephemeral.txt")],
+            get_files_fn=lambda: [(str(f), "/root/.Vermes/ephemeral.txt")],
             upload_fn=upload,
             delete_fn=MagicMock(),
         )

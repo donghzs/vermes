@@ -1035,7 +1035,7 @@ class TestTryAttachClipboardImage:
         with patch("vermes_cli.clipboard.save_clipboard_image", return_value=True):
             cli._try_attach_clipboard_image()
         path = cli._attached_images[0]
-        assert path.parent == Path(os.environ["HERMES_HOME"]) / "images"
+        assert path.parent == Path(os.environ["VERMES_HOME"]) / "images"
         assert path.name.startswith("clip_")
         assert path.suffix == ".png"
 

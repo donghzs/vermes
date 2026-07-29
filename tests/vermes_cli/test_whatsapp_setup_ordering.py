@@ -1,6 +1,6 @@
 """Regression tests for ``cmd_whatsapp`` env-var write ordering.
 
-Before the fix, ``hermes whatsapp`` wrote ``WHATSAPP_ENABLED=true`` at
+Before the fix, ``Vermes whatsapp`` wrote ``WHATSAPP_ENABLED=true`` at
 step 2 — before npm install (step 4) and before QR pairing (step 6).
 If the user Ctrl+C'd at any later step, ``.env`` claimed WhatsApp was
 ready when the bridge still had no ``creds.json``.  Every subsequent
@@ -25,19 +25,19 @@ import pytest
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
-    hermes = home / ".hermes"
-    hermes.mkdir(parents=True)
+    Vermes = home / ".vermes"
+    Vermes.mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: home)
-    monkeypatch.setenv("HERMES_HOME", str(hermes))
+    monkeypatch.setenv("VERMES_HOME", str(Vermes))
     # Ensure get_env_value cache doesn't carry stale state.
     for key in list(os.environ):
         if key.startswith("WHATSAPP_"):
             monkeypatch.delenv(key, raising=False)
-    return hermes
+    return Vermes
 
 
-def _env_value(hermes_home: Path, key: str) -> str | None:
-    env_file = hermes_home / ".env"
+def _env_value(VERMES_home: Path, key: str) -> str | None:
+    env_file = VERMES_home / ".env"
     if not env_file.exists():
         return None
     for line in env_file.read_text().splitlines():
@@ -85,7 +85,7 @@ def test_aborted_setup_does_not_enable_whatsapp(isolated_home, monkeypatch):
 
 
 def test_existing_pairing_skip_branch_enables_whatsapp(isolated_home, monkeypatch):
-    """User runs ``hermes whatsapp`` with an existing paired session and
+    """User runs ``Vermes whatsapp`` with an existing paired session and
     chooses "no, keep my session" at the re-pair prompt.  The env var
     should be (re-)written to true so the gateway picks WhatsApp back up,
     even if the var was lost since the original pairing.

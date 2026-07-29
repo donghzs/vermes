@@ -19,8 +19,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
-    monkeypatch.delenv("HERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", raising=False)
-    monkeypatch.delenv("HERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", raising=False)
+    monkeypatch.delenv("VERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", raising=False)
+    monkeypatch.delenv("VERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", raising=False)
 
 
 def test_returns_none_when_httpx_unavailable(monkeypatch):
@@ -47,14 +47,14 @@ def test_default_limits_tighten_keepalive_below_httpx_default():
 
 
 def test_env_override_keepalive_expiry(monkeypatch):
-    monkeypatch.setenv("HERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", "7.5")
+    monkeypatch.setenv("VERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", "7.5")
     from gateway.platforms._http_client_limits import platform_httpx_limits
     limits = platform_httpx_limits()
     assert limits.keepalive_expiry == 7.5
 
 
 def test_env_override_max_keepalive(monkeypatch):
-    monkeypatch.setenv("HERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", "25")
+    monkeypatch.setenv("VERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", "25")
     from gateway.platforms._http_client_limits import platform_httpx_limits
     limits = platform_httpx_limits()
     assert limits.max_keepalive_connections == 25
@@ -62,8 +62,8 @@ def test_env_override_max_keepalive(monkeypatch):
 
 def test_env_override_rejects_garbage(monkeypatch):
     """Malformed env values fall back to defaults rather than raising."""
-    monkeypatch.setenv("HERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", "not-a-number")
-    monkeypatch.setenv("HERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", "-3")
+    monkeypatch.setenv("VERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY", "not-a-number")
+    monkeypatch.setenv("VERMES_GATEWAY_HTTPX_MAX_KEEPALIVE", "-3")
     from gateway.platforms._http_client_limits import platform_httpx_limits
     limits = platform_httpx_limits()
     # Non-positive / non-numeric → fell back to defaults (not the override values)

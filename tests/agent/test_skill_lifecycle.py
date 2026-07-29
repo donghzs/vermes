@@ -26,13 +26,13 @@ def _reset_evolution_state():
 
 
 @pytest.fixture(autouse=True)
-def hermes_home(tmp_path, monkeypatch):
+def VERMES_home(tmp_path, monkeypatch):
     """把 evolution DB（含 extracted_skills 与 raw_events）指向临时目录。"""
     from agent.evolution_manager import get_evolution_dir
 
-    d = tmp_path / "hermes"
+    d = tmp_path / "Vermes"
     d.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(d))
+    monkeypatch.setenv("VERMES_HOME", str(d))
     _reset_evolution_state()
     yield d
 
@@ -40,7 +40,7 @@ def hermes_home(tmp_path, monkeypatch):
 def _make_db(tmp_path):
     from agent.evolution_manager import get_evolution_dir, get_self_model_db
 
-    # 技能表与 raw_events 共用同一 evolution DB（HERMES_HOME 已重定向）
+    # 技能表与 raw_events 共用同一 evolution DB（VERMES_HOME 已重定向）
     db = get_self_model_db()
     db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db))

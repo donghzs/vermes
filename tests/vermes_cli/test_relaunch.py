@@ -7,7 +7,7 @@ import pytest
 from vermes_cli import relaunch as relaunch_mod
 
 
-class TestResolveHermesBin:
+class TestResolvevermesBin:
     def test_prefers_absolute_argv0_when_executable(self, monkeypatch):
         fake = "/nix/store/abc/bin/vermes"
         monkeypatch.setattr(sys, "argv", [fake])
@@ -232,7 +232,7 @@ class TestRelaunch:
         assert "open a new terminal" in err.lower() or "path" in err.lower()
 
 
-class TestResolveHermesBinWindowsPyGuard:
+class TestResolvevermesBinWindowsPyGuard:
     """On Windows, resolve_vermes_bin MUST NOT return a .py path.
     os.access(x, os.X_OK) returns True for .py files on Windows because
     PATHEXT includes .py when the Python launcher is installed — but

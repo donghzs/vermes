@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path / "home"))
     yield
 
 

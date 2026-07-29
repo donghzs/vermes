@@ -72,7 +72,7 @@ def test_checker_returns_true_when_configured(platform, checker, monkeypatch):
     elif platform == Platform.SIGNAL:
         mock_config.extra = {"http_url": "http://signal:8080"}
     elif platform == Platform.EMAIL:
-        mock_config.extra = {"address": "hermes@example.com"}
+        mock_config.extra = {"address": "Vermes@example.com"}
     elif platform == Platform.SMS:
         monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACtest")
         mock_config.extra = {}

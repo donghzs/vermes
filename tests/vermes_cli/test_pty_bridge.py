@@ -56,10 +56,10 @@ class TestPtyBridgeSpawn:
 @skip_on_windows
 class TestPtyBridgeIO:
     def test_reads_child_stdout(self):
-        bridge = PtyBridge.spawn(["/bin/sh", "-c", "printf hermes-ok"])
+        bridge = PtyBridge.spawn(["/bin/sh", "-c", "printf Vermes-ok"])
         try:
-            output = _read_until(bridge, b"hermes-ok")
-            assert b"hermes-ok" in output
+            output = _read_until(bridge, b"Vermes-ok")
+            assert b"Vermes-ok" in output
         finally:
             bridge.close()
 
@@ -160,8 +160,8 @@ class TestPtyBridgeEnv:
 
     def test_env_is_forwarded(self):
         bridge = PtyBridge.spawn(
-            ["/bin/sh", "-c", "printf %s \"$HERMES_PTY_TEST\""],
-            env={**os.environ, "HERMES_PTY_TEST": "pty-env-works"},
+            ["/bin/sh", "-c", "printf %s \"$VERMES_PTY_TEST\""],
+            env={**os.environ, "VERMES_PTY_TEST": "pty-env-works"},
         )
         try:
             output = _read_until(bridge, b"pty-env-works")

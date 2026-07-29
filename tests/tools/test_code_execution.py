@@ -5,7 +5,7 @@ Tests for the code execution sandbox (programmatic tool calling).
 
 These tests monkeypatch handle_function_call so they don't require API keys
 or a running terminal backend. They verify the core sandbox mechanics:
-UDS socket lifecycle, hermes_tools generation, timeout enforcement,
+UDS socket lifecycle, VERMES_tools generation, timeout enforcement,
 output capping, tool call counting, and error propagation.
 
 Run with:  python -m pytest tests/test_code_execution.py -v
@@ -39,7 +39,7 @@ from unittest.mock import patch, MagicMock
 from tools.code_execution_tool import (
     SANDBOX_ALLOWED_TOOLS,
     execute_code,
-    generate_hermes_tools_module,
+    generate_vermes_tools_module,
     check_sandbox_requirements,
     build_execute_code_schema,
     EXECUTE_CODE_SCHEMA,
@@ -79,54 +79,54 @@ class TestSandboxRequirements(unittest.TestCase):
         self.assertIn("code", EXECUTE_CODE_SCHEMA["parameters"]["required"])
 
 
-class TestHermesToolsGeneration(unittest.TestCase):
+class TestvermesToolsGeneration(unittest.TestCase):
     def test_generates_all_allowed_tools(self):
-        src = generate_hermes_tools_module(list(SANDBOX_ALLOWED_TOOLS))
+        src = generate_vermes_tools_module(list(SANDBOX_ALLOWED_TOOLS))
         for tool in SANDBOX_ALLOWED_TOOLS:
             self.assertIn(f"def {tool}(", src)
 
     def test_generates_subset(self):
-        src = generate_hermes_tools_module(["terminal", "web_search"])
+        src = generate_vermes_tools_module(["terminal", "web_search"])
         self.assertIn("def terminal(", src)
         self.assertIn("def web_search(", src)
         self.assertNotIn("def read_file(", src)
 
     def test_empty_list_generates_nothing(self):
-        src = generate_hermes_tools_module([])
+        src = generate_vermes_tools_module([])
         self.assertNotIn("def terminal(", src)
         self.assertIn("def _call(", src)  # infrastructure still present
 
     def test_non_allowed_tools_ignored(self):
-        src = generate_hermes_tools_module(["vision_analyze", "terminal"])
+        src = generate_vermes_tools_module(["vision_analyze", "terminal"])
         self.assertIn("def terminal(", src)
         self.assertNotIn("def vision_analyze(", src)
 
     def test_rpc_infrastructure_present(self):
-        src = generate_hermes_tools_module(["terminal"])
-        self.assertIn("HERMES_RPC_SOCKET", src)
+        src = generate_vermes_tools_module(["terminal"])
+        self.assertIn("VERMES_RPC_SOCKET", src)
         self.assertIn("AF_UNIX", src)
         self.assertIn("def _connect(", src)
         self.assertIn("def _call(", src)
 
     def test_convenience_helpers_present(self):
         """Verify json_parse, shell_quote, and retry helpers are generated."""
-        src = generate_hermes_tools_module(["terminal"])
+        src = generate_vermes_tools_module(["terminal"])
         self.assertIn("def json_parse(", src)
         self.assertIn("def shell_quote(", src)
         self.assertIn("def retry(", src)
         self.assertIn("import json, os, socket, shlex, threading, time", src)
 
     def test_file_transport_uses_tempfile_fallback_for_rpc_dir(self):
-        src = generate_hermes_tools_module(["terminal"], transport="file")
+        src = generate_vermes_tools_module(["terminal"], transport="file")
         self.assertIn("import json, os, shlex, tempfile, threading, time", src)
-        self.assertIn("os.path.join(tempfile.gettempdir(), \"hermes_rpc\")", src)
-        self.assertNotIn('os.environ.get("HERMES_RPC_DIR", "/tmp/hermes_rpc")', src)
+        self.assertIn("os.path.join(tempfile.gettempdir(), \"VERMES_rpc\")", src)
+        self.assertNotIn('os.environ.get("VERMES_RPC_DIR", "/tmp/VERMES_rpc")', src)
 
     def test_uds_transport_serializes_concurrent_calls(self):
         """Regression: UDS _call() must hold a lock across send+recv so that
         concurrent tool calls from multiple threads don't interleave on the
         shared socket and receive each other's responses."""
-        src = generate_hermes_tools_module(["terminal"], transport="uds")
+        src = generate_vermes_tools_module(["terminal"], transport="uds")
         self.assertIn("_call_lock = threading.Lock()", src)
         self.assertIn("with _call_lock:", src)
 
@@ -134,7 +134,7 @@ class TestHermesToolsGeneration(unittest.TestCase):
         """Regression: file transport _call() must allocate `_seq` under a
         lock, otherwise concurrent threads can pick the same seq and clobber
         each other's request files."""
-        src = generate_hermes_tools_module(["terminal"], transport="file")
+        src = generate_vermes_tools_module(["terminal"], transport="file")
         self.assertIn("_seq_lock = threading.Lock()", src)
         self.assertIn("with _seq_lock:", src)
 
@@ -169,13 +169,13 @@ class TestExecuteCodeRemoteTempDir(unittest.TestCase):
         mkdir_cmd = env.commands[1][0]
         run_cmd = next(cmd for cmd, _, _ in env.commands if "python3 script.py" in cmd)
         cleanup_cmd = env.commands[-1][0]
-        self.assertIn("mkdir -p /data/data/com.termux/files/usr/tmp/hermes_exec_", mkdir_cmd)
-        self.assertIn("HERMES_RPC_DIR=/data/data/com.termux/files/usr/tmp/hermes_exec_", run_cmd)
-        self.assertIn("rm -rf /data/data/com.termux/files/usr/tmp/hermes_exec_", cleanup_cmd)
-        self.assertNotIn("mkdir -p /tmp/hermes_exec_", mkdir_cmd)
+        self.assertIn("mkdir -p /data/data/com.termux/files/usr/tmp/VERMES_exec_", mkdir_cmd)
+        self.assertIn("VERMES_RPC_DIR=/data/data/com.termux/files/usr/tmp/VERMES_exec_", run_cmd)
+        self.assertIn("rm -rf /data/data/com.termux/files/usr/tmp/VERMES_exec_", cleanup_cmd)
+        self.assertNotIn("mkdir -p /tmp/VERMES_exec_", mkdir_cmd)
 
     def test_timezone_shell_quoted_in_remote_execution(self):
-        """HERMES_TIMEZONE must be shell-quoted in remote env_prefix to prevent injection."""
+        """VERMES_TIMEZONE must be shell-quoted in remote env_prefix to prevent injection."""
         class FakeEnv:
             def __init__(self):
                 self.commands = []
@@ -203,7 +203,7 @@ class TestExecuteCodeRemoteTempDir(unittest.TestCase):
              patch("tools.code_execution_tool._ship_file_to_remote"), \
              patch("tools.code_execution_tool.threading.Thread",
                    return_value=fake_thread), \
-             patch.dict(os.environ, {"HERMES_TIMEZONE": malicious_tz}):
+             patch.dict(os.environ, {"VERMES_TIMEZONE": malicious_tz}):
             result = json.loads(_execute_remote("print('hello')", "task-1", ["terminal"]))
 
         self.assertEqual(result["status"], "success")
@@ -250,7 +250,7 @@ class TestExecuteCode(unittest.TestCase):
     def test_single_tool_call(self):
         """Script calls terminal and prints the result."""
         code = """
-from hermes_tools import terminal
+from VERMES_tools import terminal
 result = terminal("echo hello")
 print(result.get("output", ""))
 """
@@ -262,7 +262,7 @@ print(result.get("output", ""))
     def test_multi_tool_chain(self):
         """Script calls multiple tools sequentially."""
         code = """
-from hermes_tools import terminal, read_file
+from VERMES_tools import terminal, read_file
 r1 = terminal("ls")
 r2 = read_file("test.py")
 print(f"terminal: {r1['output'][:20]}")
@@ -300,7 +300,7 @@ print(f"file lines: {r2['total_lines']}")
         code = '''
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from hermes_tools import terminal
+from VERMES_tools import terminal
 
 N = 10
 
@@ -344,13 +344,13 @@ else:
     def test_excluded_tool_returns_error(self):
         """Script calling a tool not in the allow-list gets an error from RPC."""
         code = """
-from hermes_tools import terminal
+from VERMES_tools import terminal
 result = terminal("echo hi")
 print(result)
 """
         # Only enable web_search -- terminal should be excluded
         result = self._run(code, enabled_tools=["web_search"])
-        # terminal won't be in hermes_tools.py, so import fails
+        # terminal won't be in VERMES_tools.py, so import fails
         self.assertEqual(result["status"], "error")
 
     def test_empty_code(self):
@@ -402,7 +402,7 @@ raise RuntimeError("deliberate crash")
     def test_web_search_tool(self):
         """Script calls web_search and processes results."""
         code = """
-from hermes_tools import web_search
+from VERMES_tools import web_search
 results = web_search("test query")
 print(f"Found {len(results.get('results', []))} results")
 """
@@ -413,7 +413,7 @@ print(f"Found {len(results.get('results', []))} results")
     def test_json_parse_helper(self):
         """json_parse handles control characters that json.loads(strict=True) rejects."""
         code = r"""
-from hermes_tools import json_parse
+from VERMES_tools import json_parse
 # This JSON has a literal tab character which strict mode rejects
 text = '{"body": "line1\tline2\nline3"}'
 result = json_parse(text)
@@ -426,7 +426,7 @@ print(result["body"])
     def test_shell_quote_helper(self):
         """shell_quote properly escapes dangerous characters."""
         code = """
-from hermes_tools import shell_quote
+from VERMES_tools import shell_quote
 # String with backticks, quotes, and special chars
 dangerous = '`rm -rf /` && $(whoami) "hello"'
 escaped = shell_quote(dangerous)
@@ -441,7 +441,7 @@ assert escaped.startswith("'")
     def test_retry_helper_success(self):
         """retry returns on first success."""
         code = """
-from hermes_tools import retry
+from VERMES_tools import retry
 counter = [0]
 def flaky():
     counter[0] += 1
@@ -456,7 +456,7 @@ print(result)
     def test_retry_helper_eventual_success(self):
         """retry retries on failure and succeeds eventually."""
         code = """
-from hermes_tools import retry
+from VERMES_tools import retry
 counter = [0]
 def flaky():
     counter[0] += 1
@@ -473,7 +473,7 @@ print(result)
     def test_retry_helper_all_fail(self):
         """retry raises the last error when all attempts fail."""
         code = """
-from hermes_tools import retry
+from VERMES_tools import retry
 def always_fail():
     raise ValueError("nope")
 try:
@@ -565,12 +565,12 @@ class TestStubSchemaDrift(unittest.TestCase):
                          "search_files stub docstring still uses obsolete 'find' target value")
 
     def test_generated_module_accepts_all_params(self):
-        """The generated hermes_tools.py module should accept all current params
+        """The generated VERMES_tools.py module should accept all current params
         without TypeError when called with keyword arguments."""
-        src = generate_hermes_tools_module(list(SANDBOX_ALLOWED_TOOLS))
+        src = generate_vermes_tools_module(list(SANDBOX_ALLOWED_TOOLS))
 
         # Compile the generated module to check for syntax errors
-        compile(src, "hermes_tools.py", "exec")
+        compile(src, "VERMES_tools.py", "exec")
 
         # Verify specific parameter signatures are in the source
         # search_files must accept context, offset, output_mode
@@ -778,9 +778,9 @@ class TestEnvVarFiltering(unittest.TestCase):
         child_env = self._get_child_env()
         self.assertIn("HOME", child_env)
 
-    def test_hermes_rpc_socket_injected(self):
+    def test_vermes_rpc_socket_injected(self):
         child_env = self._get_child_env()
-        self.assertIn("HERMES_RPC_SOCKET", child_env)
+        self.assertIn("VERMES_RPC_SOCKET", child_env)
 
     def test_pythondontwritebytecode_set(self):
         child_env = self._get_child_env()
@@ -789,7 +789,7 @@ class TestEnvVarFiltering(unittest.TestCase):
     def test_timezone_injected_when_set(self):
         env_backup = os.environ.copy()
         try:
-            os.environ["HERMES_TIMEZONE"] = "America/New_York"
+            os.environ["VERMES_TIMEZONE"] = "America/New_York"
             child_env = self._get_child_env()
             self.assertEqual(child_env.get("TZ"), "America/New_York")
         finally:
@@ -799,7 +799,7 @@ class TestEnvVarFiltering(unittest.TestCase):
     def test_timezone_not_set_when_empty(self):
         env_backup = os.environ.copy()
         try:
-            os.environ.pop("HERMES_TIMEZONE", None)
+            os.environ.pop("VERMES_TIMEZONE", None)
             child_env = self._get_child_env()
             if "TZ" in child_env:
                 self.assertNotEqual(child_env["TZ"], "")
@@ -836,7 +836,7 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
     def test_none_enabled_tools_uses_all(self):
         """When enabled_tools is None, all sandbox tools should be available."""
         code = (
-            "from hermes_tools import terminal, web_search, read_file\n"
+            "from VERMES_tools import terminal, web_search, read_file\n"
             "print('all imports ok')\n"
         )
         with patch("model_tools.handle_function_call",
@@ -850,7 +850,7 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
     def test_empty_enabled_tools_uses_all(self):
         """When enabled_tools is [] (empty), all sandbox tools should be available."""
         code = (
-            "from hermes_tools import terminal, web_search\n"
+            "from VERMES_tools import terminal, web_search\n"
             "print('imports ok')\n"
         )
         with patch("model_tools.handle_function_call",
@@ -865,7 +865,7 @@ class TestExecuteCodeEdgeCases(unittest.TestCase):
         """When enabled_tools has no overlap with SANDBOX_ALLOWED_TOOLS,
         should fall back to all allowed tools."""
         code = (
-            "from hermes_tools import terminal\n"
+            "from VERMES_tools import terminal\n"
             "print('fallback ok')\n"
         )
         with patch("model_tools.handle_function_call",

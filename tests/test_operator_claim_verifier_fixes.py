@@ -3,7 +3,7 @@ import pytest
 import sys
 import os
 
-os.environ["HERMES_HOME"] = os.path.expanduser("~/.hermes")
+os.environ["VERMES_HOME"] = os.path.expanduser("~/.Vermes")
 
 
 class FakeAgent:

@@ -248,23 +248,23 @@ def _make_execute_only_env(forward_env=None):
     env._docker_exe = "/usr/bin/docker"
     # Base class attributes needed by unified execute()
     env._session_id = "test123"
-    env._snapshot_path = "/tmp/hermes-snap-test123.sh"
-    env._cwd_file = "/tmp/hermes-cwd-test123.txt"
-    env._cwd_marker = "__HERMES_CWD_test123__"
+    env._snapshot_path = "/tmp/Vermes-snap-test123.sh"
+    env._cwd_file = "/tmp/Vermes-cwd-test123.txt"
+    env._cwd_marker = "__vermes_CWD_test123__"
     env._snapshot_ready = True
     env._last_sync_time = None
     env._init_env_args = []
     return env
 
 
-def test_init_env_args_uses_hermes_dotenv_for_allowlisted_env(monkeypatch):
+def test_init_env_args_uses_vermes_dotenv_for_allowlisted_env(monkeypatch):
     """_build_init_env_args picks up forwarded env vars from .env file at init time."""
-    # Use a var that is NOT in _HERMES_PROVIDER_ENV_BLOCKLIST (GITHUB_TOKEN
+    # Use a var that is NOT in _vermes_PROVIDER_ENV_BLOCKLIST (GITHUB_TOKEN
     # is in the copilot provider's api_key_env_vars and gets stripped).
     env = _make_execute_only_env(["DATABASE_URL"])
 
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setattr(docker_env, "_load_hermes_env_vars", lambda: {"DATABASE_URL": "value_from_dotenv"})
+    monkeypatch.setattr(docker_env, "_load_vermes_env_vars", lambda: {"DATABASE_URL": "value_from_dotenv"})
 
     args = env._build_init_env_args()
     args_str = " ".join(args)
@@ -272,12 +272,12 @@ def test_init_env_args_uses_hermes_dotenv_for_allowlisted_env(monkeypatch):
     assert "DATABASE_URL=value_from_dotenv" in args_str
 
 
-def test_init_env_args_prefers_shell_env_over_hermes_dotenv(monkeypatch):
+def test_init_env_args_prefers_shell_env_over_vermes_dotenv(monkeypatch):
     """Shell env vars take priority over .env file values in init env args."""
     env = _make_execute_only_env(["DATABASE_URL"])
 
     monkeypatch.setenv("DATABASE_URL", "value_from_shell")
-    monkeypatch.setattr(docker_env, "_load_hermes_env_vars", lambda: {"DATABASE_URL": "value_from_dotenv"})
+    monkeypatch.setattr(docker_env, "_load_vermes_env_vars", lambda: {"DATABASE_URL": "value_from_dotenv"})
 
     args = env._build_init_env_args()
     args_str = " ".join(args)
@@ -321,7 +321,7 @@ def test_forward_env_overrides_docker_env_in_init_args(monkeypatch):
     env._env = {"MY_KEY": "static_value"}
 
     monkeypatch.setenv("MY_KEY", "dynamic_value")
-    monkeypatch.setattr(docker_env, "_load_hermes_env_vars", lambda: {})
+    monkeypatch.setattr(docker_env, "_load_vermes_env_vars", lambda: {})
 
     args = env._build_init_env_args()
     args_str = " ".join(args)
@@ -336,7 +336,7 @@ def test_docker_env_and_forward_env_merge_in_init_args(monkeypatch):
     env._env = {"SSH_AUTH_SOCK": "/run/user/1000/agent.sock"}
 
     monkeypatch.setenv("TOKEN", "secret123")
-    monkeypatch.setattr(docker_env, "_load_hermes_env_vars", lambda: {})
+    monkeypatch.setattr(docker_env, "_load_vermes_env_vars", lambda: {})
 
     args = env._build_init_env_args()
     args_str = " ".join(args)
@@ -388,10 +388,10 @@ def test_normalize_env_dict_rejects_complex_values():
 def test_security_args_include_setuid_setgid_for_gosu_drop(monkeypatch):
     """The default (run_as_host_user=False) invocation must include SETUID and
     SETGID caps so the image entrypoint can drop from root to the non-root
-    `hermes` user via gosu.
+    `Vermes` user via gosu.
 
     Without these caps gosu exits with
-    ``error: failed switching to 'hermes': operation not permitted``
+    ``error: failed switching to 'Vermes': operation not permitted``
     and the container exits immediately (exit 1) before running any work.
 
     `no-new-privileges` is kept, so gosu still cannot escalate back to root

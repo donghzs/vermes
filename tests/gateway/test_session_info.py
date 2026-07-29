@@ -19,7 +19,7 @@ def _patch_info(tmp_path, config_yaml, model, runtime):
     if config_yaml is not None:
         cfg_path.write_text(config_yaml)
     return (
-        patch("gateway.run._hermes_home", tmp_path),
+        patch("gateway.run._vermes_home", tmp_path),
         patch("gateway.run._resolve_gateway_model", return_value=model),
         patch("gateway.run._resolve_runtime_agent_kwargs", return_value=runtime),
     )
@@ -102,7 +102,7 @@ class TestFormatSessionInfo:
         """If runtime resolution raises, should still produce output."""
         cfg_path = tmp_path / "config.yaml"
         cfg_path.write_text("model:\n  default: test-model\n  context_length: 4096\n")
-        with patch("gateway.run._hermes_home", tmp_path), \
+        with patch("gateway.run._vermes_home", tmp_path), \
              patch("gateway.run._resolve_gateway_model", return_value="test-model"), \
              patch("gateway.run._resolve_runtime_agent_kwargs", side_effect=RuntimeError("no creds")):
             info = runner._format_session_info()

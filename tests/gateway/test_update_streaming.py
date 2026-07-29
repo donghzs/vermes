@@ -33,7 +33,7 @@ def _make_event(text="/update", platform=Platform.TELEGRAM,
     return MessageEvent(text=text, source=source)
 
 
-def _make_runner(hermes_home=None):
+def _make_runner(VERMES_home=None):
     """Create a bare GatewayRunner without calling __init__."""
     from gateway.run import GatewayRunner
     runner = object.__new__(GatewayRunner)
@@ -67,49 +67,49 @@ class TestGatewayPrompt:
     def test_writes_prompt_file_and_reads_response(self, tmp_path):
         """Writes .update_prompt.json, reads .update_response, returns answer."""
         import threading
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
 
         # Simulate the response arriving after a short delay
         def write_response():
             time.sleep(0.3)
-            (hermes_home / ".update_response").write_text("y")
+            (VERMES_home / ".update_response").write_text("y")
 
         thread = threading.Thread(target=write_response)
         thread.start()
 
-        with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
+        with patch.dict(os.environ, {"VERMES_HOME": str(VERMES_home)}):
             from vermes_cli.main import _gateway_prompt
             result = _gateway_prompt("Restore? [Y/n]", "y", timeout=5.0)
 
         thread.join()
         assert result == "y"
         # Both files should be cleaned up
-        assert not (hermes_home / ".update_prompt.json").exists()
-        assert not (hermes_home / ".update_response").exists()
+        assert not (VERMES_home / ".update_prompt.json").exists()
+        assert not (VERMES_home / ".update_response").exists()
 
     def test_prompt_file_content(self, tmp_path):
         """Verifies the prompt JSON structure."""
         import threading
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
 
         prompt_data = None
 
         def capture_and_respond():
             nonlocal prompt_data
-            prompt_path = hermes_home / ".update_prompt.json"
+            prompt_path = VERMES_home / ".update_prompt.json"
             for _ in range(20):
                 if prompt_path.exists():
                     prompt_data = json.loads(prompt_path.read_text())
-                    (hermes_home / ".update_response").write_text("n")
+                    (VERMES_home / ".update_response").write_text("n")
                     return
                 time.sleep(0.1)
 
         thread = threading.Thread(target=capture_and_respond)
         thread.start()
 
-        with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
+        with patch.dict(os.environ, {"VERMES_HOME": str(VERMES_home)}):
             from vermes_cli.main import _gateway_prompt
             _gateway_prompt("Configure now? [Y/n]", "n", timeout=5.0)
 
@@ -121,10 +121,10 @@ class TestGatewayPrompt:
 
     def test_timeout_returns_default(self, tmp_path):
         """Returns default when no response within timeout."""
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
 
-        with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
+        with patch.dict(os.environ, {"VERMES_HOME": str(VERMES_home)}):
             from vermes_cli.main import _gateway_prompt
             result = _gateway_prompt("test?", "default_val", timeout=0.5)
 
@@ -132,12 +132,12 @@ class TestGatewayPrompt:
 
     def test_empty_response_returns_default(self, tmp_path):
         """Empty response file returns default."""
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
-        (hermes_home / ".update_response").write_text("")
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
+        (VERMES_home / ".update_response").write_text("")
 
         # Write prompt file so the function starts polling
-        with patch.dict(os.environ, {"HERMES_HOME": str(hermes_home)}):
+        with patch.dict(os.environ, {"VERMES_HOME": str(VERMES_home)}):
             from vermes_cli.main import _gateway_prompt
             # Pre-create the response
             result = _gateway_prompt("test?", "default_val", timeout=2.0)
@@ -222,11 +222,11 @@ class TestUpdateCommandGatewayFlag:
         (fake_root / "gateway").mkdir()
         (fake_root / "gateway" / "run.py").touch()
         fake_file = str(fake_root / "gateway" / "run.py")
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         mock_popen = MagicMock()
-        with patch("gateway.run._hermes_home", hermes_home), \
+        with patch("gateway.run._vermes_home", VERMES_home), \
              patch("gateway.run.__file__", fake_file), \
              patch("shutil.which", side_effect=lambda x: f"/usr/bin/{x}"), \
              patch("subprocess.Popen", mock_popen):
@@ -254,14 +254,14 @@ class TestWatchUpdateProgress:
     async def test_streams_output_to_adapter(self, tmp_path):
         """New output is sent to the adapter periodically."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
         # Write output
-        (hermes_home / ".update_output.txt").write_text("→ Fetching updates...\n", encoding="utf-8")
+        (VERMES_home / ".update_output.txt").write_text("→ Fetching updates...\n", encoding="utf-8")
 
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
@@ -269,12 +269,12 @@ class TestWatchUpdateProgress:
         # Write exit code after a brief delay
         async def write_exit_code():
             await asyncio.sleep(0.3)
-            (hermes_home / ".update_output.txt").write_text(
+            (VERMES_home / ".update_output.txt").write_text(
                 "→ Fetching updates...\n✓ Code updated!\n"
             , encoding="utf-8")
-            (hermes_home / ".update_exit_code").write_text("0")
+            (VERMES_home / ".update_exit_code").write_text("0")
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             task = asyncio.create_task(write_exit_code())
             await runner._watch_update_progress(
                 poll_interval=0.1,
@@ -292,13 +292,13 @@ class TestWatchUpdateProgress:
     async def test_detects_and_forwards_prompt(self, tmp_path):
         """Detects .update_prompt.json and sends it to the user."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
-        (hermes_home / ".update_output.txt").write_text("output\n")
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_output.txt").write_text("output\n")
 
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
@@ -307,15 +307,15 @@ class TestWatchUpdateProgress:
         async def simulate_prompt_cycle():
             await asyncio.sleep(0.3)
             prompt = {"prompt": "Restore local changes? [Y/n]", "default": "y", "id": "test1"}
-            (hermes_home / ".update_prompt.json").write_text(json.dumps(prompt))
+            (VERMES_home / ".update_prompt.json").write_text(json.dumps(prompt))
             # Simulate user responding
             await asyncio.sleep(0.5)
-            (hermes_home / ".update_response").write_text("y")
-            (hermes_home / ".update_prompt.json").unlink(missing_ok=True)
+            (VERMES_home / ".update_response").write_text("y")
+            (VERMES_home / ".update_prompt.json").unlink(missing_ok=True)
             await asyncio.sleep(0.3)
-            (hermes_home / ".update_exit_code").write_text("0")
+            (VERMES_home / ".update_exit_code").write_text("0")
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             task = asyncio.create_task(simulate_prompt_cycle())
             await runner._watch_update_progress(
                 poll_interval=0.1,
@@ -335,8 +335,8 @@ class TestWatchUpdateProgress:
     async def test_prompt_forwarding_preserves_thread_metadata(self, tmp_path):
         """Forwarded update prompts keep the originating thread/topic metadata."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {
             "platform": "telegram",
@@ -345,9 +345,9 @@ class TestWatchUpdateProgress:
             "user_id": "222",
             "session_key": "agent:main:telegram:group:111:777",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
-        (hermes_home / ".update_output.txt").write_text("")
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_output.txt").write_text("")
+        (VERMES_home / ".update_prompt.json").write_text(json.dumps({
             "prompt": "Restore local changes? [Y/n]",
             "default": "y",
             "id": "threaded-prompt",
@@ -366,11 +366,11 @@ class TestWatchUpdateProgress:
 
         async def finish_after_prompt():
             await asyncio.sleep(0.3)
-            (hermes_home / ".update_response").write_text("y")
+            (VERMES_home / ".update_response").write_text("y")
             await asyncio.sleep(0.2)
-            (hermes_home / ".update_exit_code").write_text("0")
+            (VERMES_home / ".update_exit_code").write_text("0")
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             task = asyncio.create_task(finish_after_prompt())
             await runner._watch_update_progress(
                 poll_interval=0.1,
@@ -387,14 +387,14 @@ class TestWatchUpdateProgress:
     async def test_cleans_up_on_completion(self, tmp_path):
         """All marker files are cleaned up when update finishes."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        pending_path = hermes_home / ".update_pending.json"
-        output_path = hermes_home / ".update_output.txt"
-        exit_code_path = hermes_home / ".update_exit_code"
+        pending_path = VERMES_home / ".update_pending.json"
+        output_path = VERMES_home / ".update_output.txt"
+        exit_code_path = VERMES_home / ".update_exit_code"
         pending_path.write_text(json.dumps(pending))
         output_path.write_text("done\n")
         exit_code_path.write_text("0")
@@ -402,7 +402,7 @@ class TestWatchUpdateProgress:
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             await runner._watch_update_progress(
                 poll_interval=0.1,
                 stream_interval=0.2,
@@ -417,19 +417,19 @@ class TestWatchUpdateProgress:
     async def test_failure_exit_code(self, tmp_path):
         """Non-zero exit code sends failure message."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
-        (hermes_home / ".update_output.txt").write_text("error occurred\n")
-        (hermes_home / ".update_exit_code").write_text("1")
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_output.txt").write_text("error occurred\n")
+        (VERMES_home / ".update_exit_code").write_text("1")
 
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             await runner._watch_update_progress(
                 poll_interval=0.1,
                 stream_interval=0.2,
@@ -443,20 +443,20 @@ class TestWatchUpdateProgress:
     async def test_falls_back_when_adapter_unavailable(self, tmp_path):
         """Falls back to legacy notification when adapter can't be resolved."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         # Platform doesn't match any adapter
         pending = {"platform": "discord", "chat_id": "111", "user_id": "222"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
-        (hermes_home / ".update_output.txt").write_text("done\n")
-        (hermes_home / ".update_exit_code").write_text("0")
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_output.txt").write_text("done\n")
+        (VERMES_home / ".update_exit_code").write_text("0")
 
         # Only telegram adapter available
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             await runner._watch_update_progress(
                 poll_interval=0.1,
                 stream_interval=0.2,
@@ -474,13 +474,13 @@ class TestWatchUpdateProgress:
         restart recovery.
         """
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {"platform": "telegram", "chat_id": "111", "user_id": "222",
                    "session_key": "agent:main:telegram:dm:111"}
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
-        (hermes_home / ".update_output.txt").write_text("")
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_output.txt").write_text("")
 
         mock_adapter = AsyncMock()
         runner.adapters = {Platform.TELEGRAM: mock_adapter}
@@ -489,17 +489,17 @@ class TestWatchUpdateProgress:
         # The watcher should forward it exactly once, then delete it.
         prompt = {"prompt": "Would you like to configure new options now? Y/n",
                   "default": "n", "id": "dup-test"}
-        (hermes_home / ".update_prompt.json").write_text(json.dumps(prompt))
+        (VERMES_home / ".update_prompt.json").write_text(json.dumps(prompt))
 
         async def finish_after_polls():
             # Wait long enough for multiple poll cycles to occur, then
             # simulate a response + completion.
             await asyncio.sleep(1.0)
-            (hermes_home / ".update_response").write_text("n")
+            (VERMES_home / ".update_response").write_text("n")
             await asyncio.sleep(0.3)
-            (hermes_home / ".update_exit_code").write_text("0")
+            (VERMES_home / ".update_exit_code").write_text("0")
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             task = asyncio.create_task(finish_after_polls())
             await runner._watch_update_progress(
                 poll_interval=0.1,
@@ -519,8 +519,8 @@ class TestWatchUpdateProgress:
     @pytest.mark.asyncio
     async def test_prompt_is_recovered_after_watcher_restart(self, tmp_path):
         """A forwarded prompt stays on disk until answered so a new watcher can recover it."""
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         pending = {
             "platform": "telegram",
@@ -533,15 +533,15 @@ class TestWatchUpdateProgress:
             "default": "y",
             "id": "restart-recover",
         }
-        (hermes_home / ".update_pending.json").write_text(json.dumps(pending))
-        (hermes_home / ".update_output.txt").write_text("")
-        (hermes_home / ".update_prompt.json").write_text(json.dumps(prompt))
+        (VERMES_home / ".update_pending.json").write_text(json.dumps(pending))
+        (VERMES_home / ".update_output.txt").write_text("")
+        (VERMES_home / ".update_prompt.json").write_text(json.dumps(prompt))
 
         runner1 = _make_runner()
         adapter1 = AsyncMock()
         runner1.adapters = {Platform.TELEGRAM: adapter1}
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             watch1 = asyncio.create_task(
                 runner1._watch_update_progress(
                     poll_interval=0.05,
@@ -555,7 +555,7 @@ class TestWatchUpdateProgress:
                 await asyncio.sleep(0.05)
 
             assert adapter1.send.call_count == 1
-            assert (hermes_home / ".update_prompt.json").exists()
+            assert (VERMES_home / ".update_prompt.json").exists()
 
             watch1.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -567,9 +567,9 @@ class TestWatchUpdateProgress:
 
             async def respond_and_finish():
                 await asyncio.sleep(0.2)
-                (hermes_home / ".update_response").write_text("y")
+                (VERMES_home / ".update_response").write_text("y")
                 await asyncio.sleep(0.2)
-                (hermes_home / ".update_exit_code").write_text("0")
+                (VERMES_home / ".update_exit_code").write_text("0")
 
             finisher = asyncio.create_task(respond_and_finish())
             await runner2._watch_update_progress(
@@ -598,28 +598,28 @@ class TestUpdatePromptInterception:
     async def test_intercepts_response_when_prompt_pending(self, tmp_path):
         """When _update_prompt_pending is set, the next message writes .update_response."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         event = _make_event(text="y", chat_id="67890")
         # The session key uses the full format from build_session_key
         session_key = "agent:main:telegram:dm:67890"
         runner._update_prompt_pending[session_key] = True
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
+        (VERMES_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
 
         # Mock authorization and _session_key_for_source
         runner._is_user_authorized = MagicMock(return_value=True)
         runner._session_key_for_source = MagicMock(return_value=session_key)
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             result = await runner._handle_message(event)
 
         assert result is not None
         assert "Sent" in result
-        response_path = hermes_home / ".update_response"
+        response_path = VERMES_home / ".update_response"
         assert response_path.exists()
         assert response_path.read_text() == "y"
-        assert not (hermes_home / ".update_prompt.json").exists()
+        assert not (VERMES_home / ".update_prompt.json").exists()
         # Should clear the pending flag
         assert session_key not in runner._update_prompt_pending
 
@@ -633,8 +633,8 @@ class TestUpdatePromptInterception:
         empty) before falling through to normal command dispatch.
         """
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         event = _make_event(text="/new", chat_id="67890")
         session_key = "agent:main:telegram:dm:67890"
@@ -642,9 +642,9 @@ class TestUpdatePromptInterception:
         runner._is_user_authorized = MagicMock(return_value=True)
         runner._session_key_for_source = MagicMock(return_value=session_key)
         runner._handle_reset_command = AsyncMock(return_value="reset ok")
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
+        (VERMES_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             result = await runner._handle_message(event)
 
         assert result == "reset ok"
@@ -652,10 +652,10 @@ class TestUpdatePromptInterception:
         # .update_response was written (empty) to unblock the update
         # subprocess; _gateway_prompt will read "", strip to "", and
         # return the prompt's default.
-        response_path = hermes_home / ".update_response"
+        response_path = VERMES_home / ".update_response"
         assert response_path.exists()
         assert response_path.read_text() == ""
-        assert not (hermes_home / ".update_prompt.json").exists()
+        assert not (VERMES_home / ".update_prompt.json").exists()
         # Pending flag is cleared so stray future input won't be
         # re-intercepted for a prompt that is no longer outstanding.
         assert session_key not in runner._update_prompt_pending
@@ -664,23 +664,23 @@ class TestUpdatePromptInterception:
     async def test_unrecognized_slash_command_still_consumed_as_response(self, tmp_path):
         """Unknown /foo is written verbatim to .update_response (legacy behavior)."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         event = _make_event(text="/foobarbaz", chat_id="67890")
         session_key = "agent:main:telegram:dm:67890"
         runner._update_prompt_pending[session_key] = True
         runner._is_user_authorized = MagicMock(return_value=True)
         runner._session_key_for_source = MagicMock(return_value=session_key)
-        (hermes_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
+        (VERMES_home / ".update_prompt.json").write_text(json.dumps({"prompt": "test"}))
 
-        with patch("gateway.run._hermes_home", hermes_home):
+        with patch("gateway.run._vermes_home", VERMES_home):
             result = await runner._handle_message(event)
 
-        response_path = hermes_home / ".update_response"
+        response_path = VERMES_home / ".update_response"
         assert response_path.exists()
         assert response_path.read_text() == "/foobarbaz"
-        assert not (hermes_home / ".update_prompt.json").exists()
+        assert not (VERMES_home / ".update_prompt.json").exists()
         assert "Sent" in (result or "")
         assert session_key not in runner._update_prompt_pending
 
@@ -688,8 +688,8 @@ class TestUpdatePromptInterception:
     async def test_normal_message_when_no_prompt_pending(self, tmp_path):
         """Messages pass through normally when no prompt is pending."""
         runner = _make_runner()
-        hermes_home = tmp_path / "hermes"
-        hermes_home.mkdir()
+        VERMES_home = tmp_path / "Vermes"
+        VERMES_home.mkdir()
 
         event = _make_event(text="hello", chat_id="67890")
 

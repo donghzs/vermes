@@ -22,8 +22,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-HERMES_HOME = Path(os.getenv("HERMES_HOME", Path.home() / ".hermes"))
-ENV_FILE = HERMES_HOME / ".env"
+VERMES_HOME = Path(os.getenv("VERMES_HOME", Path.home() / ".vermes"))
+ENV_FILE = VERMES_HOME / ".env"
 
 OK = "\033[92m\u2713\033[0m"
 FAIL = "\033[91m\u2717\033[0m"
@@ -179,10 +179,10 @@ def check_env_vars():
 
     # Load .env
     try:
-        from vermes_cli.env_loader import load_hermes_dotenv
+        from vermes_cli.env_loader import load_vermes_dotenv
 
-        load_hermes_dotenv(
-            hermes_home=ENV_FILE.parent,
+        load_vermes_dotenv(
+            VERMES_home=ENV_FILE.parent,
             project_env=PROJECT_ROOT / ".env",
         )
     except ImportError:
@@ -241,7 +241,7 @@ def check_config(groq_key, eleven_key):
     """Check vermes config.yaml."""
     section("Configuration")
 
-    config_path = HERMES_HOME / "config.yaml"
+    config_path = VERMES_HOME / "config.yaml"
     if config_path.exists():
         try:
             import yaml
@@ -267,7 +267,7 @@ def check_config(groq_key, eleven_key):
         warn("config.yaml", "not found — using defaults")
 
     # Voice mode state
-    voice_mode_path = HERMES_HOME / "gateway_voice_mode.json"
+    voice_mode_path = VERMES_HOME / "gateway_voice_mode.json"
     if voice_mode_path.exists():
         try:
             import json

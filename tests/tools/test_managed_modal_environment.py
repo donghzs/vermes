@@ -52,7 +52,7 @@ def _install_fake_tools_package(*, credential_mounts=None):
     vermes_cli.__path__ = []  # type: ignore[attr-defined]
     sys.modules["vermes_cli"] = vermes_cli
     sys.modules["vermes_cli.config"] = types.SimpleNamespace(
-        get_hermes_home=lambda: Path(tempfile.gettempdir()) / "hermes-home",
+        get_vermes_home=lambda: Path(tempfile.gettempdir()) / "Vermes-home",
     )
 
     tools_package = types.ModuleType("tools")
@@ -281,7 +281,7 @@ def test_managed_modal_rejects_host_credential_passthrough():
     _install_fake_tools_package(
         credential_mounts=[{
             "host_path": "/tmp/token.json",
-            "container_path": "/root/.hermes/token.json",
+            "container_path": "/root/.Vermes/token.json",
         }]
     )
     managed_modal = _load_tool_module("tools.environments.managed_modal", "environments/managed_modal.py")

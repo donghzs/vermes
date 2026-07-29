@@ -22,7 +22,7 @@ class TestStaleOAuthTokenDetection:
         valid Claude Code credentials anywhere. The flow MUST offer re-auth
         instead of silently skipping to model selection.
         """
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         # Pre-load .env with an expired OAuth token (sk-ant- prefix = OAuth)
         save_env_value("ANTHROPIC_TOKEN", "sk-ant-oat-ExpiredToken00000")
@@ -73,7 +73,7 @@ class TestStaleOAuthTokenDetection:
         flagged as stale even when cc_creds are invalid. Regular API keys don't
         expire the same way OAuth tokens do.
         """
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         # Regular API key — NOT an OAuth token
         save_env_value("ANTHROPIC_API_KEY", "sk-ant-api03-RegularPayPerTokenKey")
@@ -109,7 +109,7 @@ class TestStaleOAuthTokenDetection:
         When ANTHROPIC_TOKEN is OAuth and valid cc_creds with refresh exist,
         the flow should use existing credentials (no forced re-auth).
         """
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         save_env_value("ANTHROPIC_TOKEN", "sk-ant-oat-GoodOAuthToken")
         save_env_value("ANTHROPIC_API_KEY", "")

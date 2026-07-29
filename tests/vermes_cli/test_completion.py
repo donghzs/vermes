@@ -17,8 +17,8 @@ from vermes_cli.completion import _walk, generate_bash, generate_zsh, generate_f
 # ---------------------------------------------------------------------------
 
 def _make_parser() -> argparse.ArgumentParser:
-    """Build a minimal parser that mirrors the real hermes structure."""
-    p = argparse.ArgumentParser(prog="hermes")
+    """Build a minimal parser that mirrors the real Vermes structure."""
+    p = argparse.ArgumentParser(prog="Vermes")
     p.add_argument("--version", "-V", action="store_true")
     p.add_argument("-p", "--profile", help="Profile name")
     sub = p.add_subparsers(dest="command")
@@ -94,8 +94,8 @@ class TestWalk:
 class TestGenerateBash:
     def test_contains_completion_function_and_register(self):
         out = generate_bash(_make_parser())
-        assert "_hermes_completion()" in out
-        assert "complete -F _hermes_completion hermes" in out
+        assert "_vermes_completion()" in out
+        assert "complete -F _vermes_completion Vermes" in out
 
     def test_top_level_commands_present(self):
         out = generate_bash(_make_parser())
@@ -127,7 +127,7 @@ class TestGenerateBash:
 class TestGenerateZsh:
     def test_contains_compdef_header(self):
         out = generate_zsh(_make_parser())
-        assert "#compdef hermes" in out
+        assert "#compdef Vermes" in out
 
     def test_top_level_commands_present(self):
         out = generate_zsh(_make_parser())
@@ -142,14 +142,14 @@ class TestGenerateZsh:
 
     def test_registers_compdef_instead_of_invoking_completion_function(self):
         out = generate_zsh(_make_parser())
-        assert 'compdef _hermes hermes' in out
-        assert '_hermes "$@"' not in out
+        assert 'compdef _vermes Vermes' in out
+        assert '_vermes "$@"' not in out
 
     def test_preserves_valid_zsh_arguments_alias_syntax(self):
         out = generate_zsh(_make_parser())
         assert "'(-)'{-h,--help}'[Show help and exit]'" in out
         assert "'(-)'{-V,--version}'[Show version and exit]'" in out
-        assert "'(-)'{-p,--profile}'[Profile name]:profile:_hermes_profiles'" in out
+        assert "'(-)'{-p,--profile}'[Profile name]:profile:_vermes_profiles'" in out
         assert "'(-h --help){-h,--help}[Show help and exit]'" not in out
         assert '"(-h --help)"{-h,--help}"[Show help and exit]"' not in out
 
@@ -178,7 +178,7 @@ class TestGenerateZsh:
                 [
                     "zsh",
                     "-fc",
-                    f"autoload -Uz compinit && compinit -D; source {path}; [[ ${{_comps[hermes]}} == _hermes ]]",
+                    f"autoload -Uz compinit && compinit -D; source {path}; [[ ${{_comps[Vermes]}} == _vermes ]]",
                 ],
                 capture_output=True,
                 text=True,
@@ -196,7 +196,7 @@ class TestGenerateZsh:
 class TestGenerateFish:
     def test_disables_file_completion(self):
         out = generate_fish(_make_parser())
-        assert "complete -c hermes -f" in out
+        assert "complete -c Vermes -f" in out
 
     def test_top_level_commands_present(self):
         out = generate_fish(_make_parser())
@@ -258,43 +258,43 @@ class TestProfileCompletion:
 
     def test_bash_has_profiles_helper(self):
         out = generate_bash(_make_parser())
-        assert "_hermes_profiles()" in out
-        assert 'profiles_dir="$HOME/.hermes/profiles"' in out
+        assert "_vermes_profiles()" in out
+        assert 'profiles_dir="$HOME/.Vermes/profiles"' in out
 
     def test_bash_completes_profiles_after_p_flag(self):
         out = generate_bash(_make_parser())
         assert '"-p"' in out or "== \"-p\"" in out
         assert '"--profile"' in out or '== "--profile"' in out
-        assert "_hermes_profiles" in out
+        assert "_vermes_profiles" in out
 
     def test_bash_profile_subcommand_has_action_completion(self):
         out = generate_bash(_make_parser())
         assert "use|delete|show|alias|rename|export)" in out
 
     def test_bash_profile_actions_complete_profile_names(self):
-        """After 'hermes profile use', complete with profile names."""
+        """After 'Vermes profile use', complete with profile names."""
         out = generate_bash(_make_parser())
-        # The profile case should have _hermes_profiles for name-taking actions
+        # The profile case should have _vermes_profiles for name-taking actions
         lines = out.split("\n")
         in_profile_case = False
         has_profiles_in_action = False
         for line in lines:
             if "profile)" in line:
                 in_profile_case = True
-            if in_profile_case and "_hermes_profiles" in line:
+            if in_profile_case and "_vermes_profiles" in line:
                 has_profiles_in_action = True
                 break
-        assert has_profiles_in_action, "profile actions should complete with _hermes_profiles"
+        assert has_profiles_in_action, "profile actions should complete with _vermes_profiles"
 
     def test_zsh_has_profiles_helper(self):
         out = generate_zsh(_make_parser())
-        assert "_hermes_profiles()" in out
-        assert "$HOME/.hermes/profiles" in out
+        assert "_vermes_profiles()" in out
+        assert "$HOME/.Vermes/profiles" in out
 
     def test_zsh_has_profile_flag_completion(self):
         out = generate_zsh(_make_parser())
         assert "--profile" in out
-        assert "_hermes_profiles" in out
+        assert "_vermes_profiles" in out
 
     def test_zsh_profile_actions_complete_names(self):
         out = generate_zsh(_make_parser())
@@ -302,18 +302,18 @@ class TestProfileCompletion:
 
     def test_fish_has_profiles_helper(self):
         out = generate_fish(_make_parser())
-        assert "__hermes_profiles" in out
-        assert "$HOME/.hermes/profiles" in out
+        assert "__vermes_profiles" in out
+        assert "$HOME/.Vermes/profiles" in out
 
     def test_fish_has_profile_flag_completion(self):
         out = generate_fish(_make_parser())
         assert "-s p -l profile" in out
-        assert "(__hermes_profiles)" in out
+        assert "(__vermes_profiles)" in out
 
     def test_fish_profile_actions_complete_names(self):
         out = generate_fish(_make_parser())
         # Should have profile name completion for actions like use, delete, etc.
-        assert "__hermes_profiles" in out
-        count = out.count("(__hermes_profiles)")
+        assert "__vermes_profiles" in out
+        count = out.count("(__vermes_profiles)")
         # At least the -p flag + the profile action completions
         assert count >= 2, f"Expected >=2 profile completion entries, got {count}"

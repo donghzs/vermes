@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 from agent.memory_manager import sanitize_context
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ def _delete_delegate_children(conn, parent_ids: List[str]) -> List[str]:
 
 T = TypeVar("T")
 
-DEFAULT_DB_PATH = get_hermes_home() / "state.db"
+DEFAULT_DB_PATH = get_vermes_home() / "state.db"
 
 SCHEMA_VERSION = 14
 
@@ -272,9 +272,9 @@ def startup_integrity_probe(home: Optional[Path] = None) -> Dict[str, Any]:
     """Read-only integrity probe of the state.db ledger. Never writes.
 
     MUST be called before any ``SessionDB()`` instantiation in the process
-    (audit correction C).  *home* defaults to ``get_hermes_home()`` resolved
+    (audit correction C).  *home* defaults to ``get_vermes_home()`` resolved
     AT CALL TIME (audit correction B: two homes coexist on real disks —
-    ``~/.hermes`` legacy vs ``~/.vermes`` active — hardcoding would probe
+    ``~/.Vermes`` legacy vs ``~/.vermes`` active — hardcoding would probe
     the wrong ledger, the exact accident this guard exists to prevent).
 
     Side effects (module state only, zero disk writes):
@@ -282,7 +282,7 @@ def startup_integrity_probe(home: Optional[Path] = None) -> Dict[str, Any]:
     corrupt/missing_with_profile, arms ``_integrity_lockdown``.
     """
     global _integrity_status, _integrity_lockdown
-    home = Path(home) if home is not None else get_hermes_home()
+    home = Path(home) if home is not None else get_vermes_home()
     db_path = home / "state.db"
     verdict = "ok"
     detail = ""
@@ -606,7 +606,7 @@ class SessionDB:
     """
 
     # ── Write-contention tuning ──
-    # With multiple hermes processes (gateway + CLI sessions + worktree agents)
+    # With multiple Vermes processes (gateway + CLI sessions + worktree agents)
     # all sharing one state.db, WAL write-lock contention causes visible TUI
     # freezes.  SQLite's built-in busy handler uses a deterministic sleep
     # schedule that causes convoy effects under high concurrency.
@@ -1061,7 +1061,7 @@ class SessionDB:
                     "Python whose bundled SQLite lacks FTS5) rather than a "
                     "mainline install. Some features may be missing or behave "
                     "differently. Install the supported way: "
-                    "https://hermes-agent.nousresearch.com (underlying error: %s)",
+                    "https://Vermes-agent.donghzs.com (underlying error: %s)",
                     self.db_path,
                     fts_exc,
                 )
@@ -3797,7 +3797,7 @@ class SessionDB:
         index internally, then VACUUM returns the freed pages to the OS.
 
         Skips any FTS table that does not exist (e.g. the trigram index when
-        disabled via ``HERMES_DISABLE_FTS_TRIGRAM`` or not yet created), so
+        disabled via ``VERMES_DISABLE_FTS_TRIGRAM`` or not yet created), so
         it is safe to call unconditionally.
 
         Returns the number of FTS indexes that were optimized.

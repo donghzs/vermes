@@ -14,10 +14,10 @@ import pytest
 
 
 @pytest.fixture
-def hermes_home(tmp_path, monkeypatch):
-    h = tmp_path / "hermes"
+def VERMES_home(tmp_path, monkeypatch):
+    h = tmp_path / "Vermes"
     h.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(h))
+    monkeypatch.setenv("VERMES_HOME", str(h))
     import agent.memory_fabric as mf
 
     # start from a clean unified index for the test
@@ -27,7 +27,7 @@ def hermes_home(tmp_path, monkeypatch):
     return h
 
 
-def test_memory_write_is_searchable_via_fabric(hermes_home):
+def test_memory_write_is_searchable_via_fabric(VERMES_home):
     from tools.memory_tool import MemoryStore
     from agent.memory_fabric import recall
 
@@ -40,7 +40,7 @@ def test_memory_write_is_searchable_via_fabric(hermes_home):
     )
 
 
-def test_memory_replace_updates_index(hermes_home):
+def test_memory_replace_updates_index(VERMES_home):
     from tools.memory_tool import MemoryStore
     from agent.memory_fabric import recall
 

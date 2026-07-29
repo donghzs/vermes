@@ -999,7 +999,7 @@ def test_explicit_openrouter_honors_openrouter_base_url_over_pool(monkeypatch):
 
 
 def test_resolve_requested_provider_precedence(monkeypatch):
-    monkeypatch.setenv("HERMES_INFERENCE_PROVIDER", "nous")
+    monkeypatch.setenv("VERMES_INFERENCE_PROVIDER", "nous")
     monkeypatch.setattr(rp, "_get_model_config", lambda: {"provider": "openai-codex"})
     assert rp.resolve_requested_provider("openrouter") == "openrouter"
     assert rp.resolve_requested_provider() == "openai-codex"
@@ -1007,7 +1007,7 @@ def test_resolve_requested_provider_precedence(monkeypatch):
     monkeypatch.setattr(rp, "_get_model_config", lambda: {})
     assert rp.resolve_requested_provider() == "nous"
 
-    monkeypatch.delenv("HERMES_INFERENCE_PROVIDER", raising=False)
+    monkeypatch.delenv("VERMES_INFERENCE_PROVIDER", raising=False)
     assert rp.resolve_requested_provider() == "auto"
 
 

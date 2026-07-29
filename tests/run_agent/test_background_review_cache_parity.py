@@ -5,7 +5,7 @@ background review's outbound HTTP request must carry the same system bytes as
 the parent's so Anthropic/OpenRouter's exact-prefix cache key matches.
 
 Without this, every review rebuilds the system prompt from scratch — fresh
-``_hermes_now()`` timestamp, fresh ``session_id``, and a different skills
+``_vermes_now()`` timestamp, fresh ``session_id``, and a different skills
 prompt under the (former) narrow toolset — and the prefix-cache miss costs
 roughly the full uncached system-prompt cost per nudge (~26% end-to-end on
 Sonnet 4.5 per the contributor's measurement).

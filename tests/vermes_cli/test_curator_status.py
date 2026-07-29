@@ -1,4 +1,4 @@
-"""Tests for `hermes curator status` output.
+"""Tests for `Vermes curator status` output.
 
 Covers:
 - y0shualee's "least recently active" semantic (view/patch/use all count as activity).
@@ -59,12 +59,12 @@ def test_status_uses_last_activity_not_only_last_used(monkeypatch, capsys):
 
 @pytest.fixture
 def curator_status_env(tmp_path, monkeypatch):
-    """Isolated HERMES_HOME with real agent-created skills on disk."""
-    home = tmp_path / ".hermes"
+    """Isolated VERMES_HOME with real agent-created skills on disk."""
+    home = tmp_path / ".vermes"
     skills = home / "skills"
     skills.mkdir(parents=True)
     (home / "logs").mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     import importlib
@@ -86,7 +86,7 @@ def curator_status_env(tmp_path, monkeypatch):
             "description: test\n"
             "version: 1.0.0\n"
             "metadata:\n"
-            "  hermes:\n"
+            "  Vermes:\n"
             "    agent_created: true\n"
             "---\n"
             f"# {name}\n"

@@ -1,4 +1,4 @@
-"""Tests for vermes_cli.plugins_cmd — the ``hermes plugins`` CLI subcommand."""
+"""Tests for vermes_cli.plugins_cmd — the ``Vermes plugins`` CLI subcommand."""
 
 from __future__ import annotations
 
@@ -400,7 +400,7 @@ class TestCmdList:
 
 
 class TestDiscoverAllPlugins:
-    """Exercise the recursive scan that powers ``hermes plugins list``.
+    """Exercise the recursive scan that powers ``Vermes plugins list``.
 
     Mirrors the layouts the runtime loader handles
     (:meth:`PluginManager._scan_directory_level`): flat plugins at the root,
@@ -717,7 +717,7 @@ class TestProviderDiscovery:
 
     def test_get_current_memory_provider_default(self, tmp_path, monkeypatch):
         """Empty config returns empty string."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         config_file = tmp_path / "config.yaml"
         config_file.write_text("memory:\n  provider: ''\n")
         from vermes_cli.plugins_cmd import _get_current_memory_provider
@@ -726,7 +726,7 @@ class TestProviderDiscovery:
 
     def test_get_current_context_engine_default(self, tmp_path, monkeypatch):
         """Default config returns 'compressor'."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         config_file = tmp_path / "config.yaml"
         config_file.write_text("context:\n  engine: compressor\n")
         from vermes_cli.plugins_cmd import _get_current_context_engine
@@ -735,7 +735,7 @@ class TestProviderDiscovery:
 
     def test_save_memory_provider(self, tmp_path, monkeypatch):
         """Saving a memory provider persists to config.yaml."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         config_file = tmp_path / "config.yaml"
         config_file.write_text("memory:\n  provider: ''\n")
         from vermes_cli.plugins_cmd import _save_memory_provider
@@ -745,7 +745,7 @@ class TestProviderDiscovery:
 
     def test_save_context_engine(self, tmp_path, monkeypatch):
         """Saving a context engine persists to config.yaml."""
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         config_file = tmp_path / "config.yaml"
         config_file.write_text("context:\n  engine: compressor\n")
         from vermes_cli.plugins_cmd import _save_context_engine

@@ -220,7 +220,7 @@ def test_main_top_level_tui_accepts_toolsets(monkeypatch, main_mod):
 
     import vermes_cli.config as config_mod
 
-    monkeypatch.setattr(sys, "argv", ["hermes", "--tui", "--toolsets", "web,terminal"])
+    monkeypatch.setattr(sys, "argv", ["Vermes", "--tui", "--toolsets", "web,terminal"])
     monkeypatch.setitem(
         sys.modules,
         "vermes_cli.plugins",
@@ -257,7 +257,7 @@ def test_main_top_level_oneshot_accepts_toolsets(monkeypatch, main_mod):
     import vermes_cli.config as config_mod
 
     monkeypatch.setattr(
-        sys, "argv", ["hermes", "-z", "hello", "--toolsets", "web,terminal"]
+        sys, "argv", ["Vermes", "-z", "hello", "--toolsets", "web,terminal"]
     )
     monkeypatch.setitem(
         sys.modules,
@@ -391,7 +391,7 @@ def test_oneshot_rejects_disabled_mcp_toolset(monkeypatch, capsys):
     valid, error = _validate_explicit_toolsets("mcp-off")
 
     assert valid is None
-    assert error == "hermes -z: --toolsets did not contain any valid toolsets.\n"
+    assert error == "Vermes -z: --toolsets did not contain any valid toolsets.\n"
     err = capsys.readouterr().err
     assert "ignoring disabled MCP servers" in err
     assert "mcp-off" in err
@@ -420,7 +420,7 @@ def test_oneshot_distinguishes_disabled_mcp_from_unknown(monkeypatch, capsys):
 
 
 def test_oneshot_wires_session_db_for_recall(monkeypatch):
-    """hermes -z bypasses VermesCLI, but recall still needs SessionDB."""
+    """Vermes -z bypasses VermesCLI, but recall still needs SessionDB."""
     from vermes_cli.oneshot import _run_agent
 
     captured = {}
@@ -498,7 +498,7 @@ def test_launch_tui_exports_model_provider_and_toolsets(monkeypatch, main_mod):
     def fake_call(argv, cwd=None, env=None):
         nonlocal active_path_during_call
         captured.update({"argv": argv, "cwd": cwd, "env": env})
-        active_path_during_call = Path(env["HERMES_TUI_ACTIVE_SESSION_FILE"])
+        active_path_during_call = Path(env["VERMES_TUI_ACTIVE_SESSION_FILE"])
         assert active_path_during_call.exists()
         return 1
 
@@ -506,17 +506,17 @@ def test_launch_tui_exports_model_provider_and_toolsets(monkeypatch, main_mod):
 
     with pytest.raises(SystemExit):
         main_mod._launch_tui(
-            model="nous/hermes-test", provider="nous", toolsets="web, terminal"
+            model="nous/Vermes-test", provider="nous", toolsets="web, terminal"
         )
 
     env = captured["env"]
-    assert env["HERMES_MODEL"] == "nous/hermes-test"
-    assert env["HERMES_INFERENCE_MODEL"] == "nous/hermes-test"
-    assert env["HERMES_TUI_PROVIDER"] == "nous"
-    assert env["HERMES_INFERENCE_PROVIDER"] == "nous"
-    assert env["HERMES_TUI_TOOLSETS"] == "web,terminal"
-    active_path = Path(env["HERMES_TUI_ACTIVE_SESSION_FILE"])
-    assert active_path.name.startswith("hermes-tui-active-session-")
+    assert env["VERMES_MODEL"] == "nous/Vermes-test"
+    assert env["VERMES_INFERENCE_MODEL"] == "nous/Vermes-test"
+    assert env["VERMES_TUI_PROVIDER"] == "nous"
+    assert env["VERMES_INFERENCE_PROVIDER"] == "nous"
+    assert env["VERMES_TUI_TOOLSETS"] == "web,terminal"
+    active_path = Path(env["VERMES_TUI_ACTIVE_SESSION_FILE"])
+    assert active_path.name.startswith("Vermes-tui-active-session-")
     assert active_path.suffix == ".json"
     assert active_path_during_call == active_path
     assert not active_path.exists()
@@ -544,7 +544,7 @@ def test_launch_tui_exit_code_42_relaunches_update(monkeypatch, main_mod):
 def test_launch_tui_drops_stale_resume_env_without_resume_arg(monkeypatch, main_mod):
     captured = {}
 
-    monkeypatch.setenv("HERMES_TUI_RESUME", "stale-missing-session")
+    monkeypatch.setenv("VERMES_TUI_RESUME", "stale-missing-session")
     monkeypatch.setattr(
         main_mod,
         "_make_tui_argv",
@@ -559,13 +559,13 @@ def test_launch_tui_drops_stale_resume_env_without_resume_arg(monkeypatch, main_
     with pytest.raises(SystemExit):
         main_mod._launch_tui()
 
-    assert "HERMES_TUI_RESUME" not in captured["env"]
+    assert "VERMES_TUI_RESUME" not in captured["env"]
 
 
 def test_launch_tui_sets_resume_env_from_resume_arg(monkeypatch, main_mod):
     captured = {}
 
-    monkeypatch.setenv("HERMES_TUI_RESUME", "stale-missing-session")
+    monkeypatch.setenv("VERMES_TUI_RESUME", "stale-missing-session")
     monkeypatch.setattr(
         main_mod,
         "_make_tui_argv",
@@ -580,20 +580,20 @@ def test_launch_tui_sets_resume_env_from_resume_arg(monkeypatch, main_mod):
     with pytest.raises(SystemExit):
         main_mod._launch_tui(resume_session_id="20260518_000000_goodid")
 
-    assert captured["env"]["HERMES_TUI_RESUME"] == "20260518_000000_goodid"
+    assert captured["env"]["VERMES_TUI_RESUME"] == "20260518_000000_goodid"
 
 
-def test_make_tui_argv_dev_prebuilds_hermes_ink(monkeypatch, main_mod, tmp_path):
+def test_make_tui_argv_dev_prebuilds_vermes_ink(monkeypatch, main_mod, tmp_path):
     tui_dir = tmp_path / "ui-tui"
     tsx = tui_dir / "node_modules" / ".bin" / "tsx"
-    ink_dir = tui_dir / "packages" / "hermes-ink"
+    ink_dir = tui_dir / "packages" / "Vermes-ink"
     tsx.parent.mkdir(parents=True)
     ink_dir.mkdir(parents=True)
     tsx.write_text("#!/usr/bin/env node\n", encoding="utf-8")
 
     monkeypatch.setattr(main_mod, "_ensure_tui_node", lambda: None)
     monkeypatch.setattr(main_mod, "_tui_need_npm_install", lambda _tui_dir: False)
-    monkeypatch.delenv("HERMES_TUI_DIR", raising=False)
+    monkeypatch.delenv("VERMES_TUI_DIR", raising=False)
     monkeypatch.setattr(main_mod.shutil, "which", lambda bin_name: f"/usr/bin/{bin_name}")
 
     calls = []
@@ -640,8 +640,8 @@ def test_print_tui_exit_summary_includes_resume_and_token_totals(monkeypatch, ca
     out = capsys.readouterr().out
 
     assert "Resume this session with:" in out
-    assert "hermes --tui --resume 20260409_000001_abc123" in out
-    assert 'hermes --tui -c "demo title"' in out
+    assert "Vermes --tui --resume 20260409_000001_abc123" in out
+    assert 'Vermes --tui -c "demo title"' in out
     assert "Tokens:         21 (in 10, out 6, cache 4, reasoning 1)" in out
 
 
@@ -680,5 +680,5 @@ def test_print_tui_exit_summary_prefers_actual_active_session_file(
     out = capsys.readouterr().out
 
     assert seen == ["actual_session"]
-    assert "hermes --tui --resume actual_session" in out
+    assert "Vermes --tui --resume actual_session" in out
     assert "startup_resume" not in out

@@ -21,7 +21,7 @@ Design
 * Read-only: never writes to the evolution DB or the ledger.
 * Fail-open: any failure returns a neutral profile / no guidance.
 * No new tables: reuses v_outcomes + FailureLedger.
-* DB path is resolved locally (env HERMES_HOME) to avoid a harness → agent
+* DB path is resolved locally (env VERMES_HOME) to avoid a harness → agent
   import edge and keep the module self-contained.
 """
 
@@ -47,8 +47,8 @@ _LOW_PRECISION_THRESHOLD = 0.5
 
 def _self_model_db_path() -> Path:
     """Resolve the evolution self-model DB path (mirrors memory_recall)."""
-    hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
-    return Path(hermes_home) / "evolution" / "self-model.db"
+    VERMES_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))
+    return Path(VERMES_home) / "evolution" / "self-model.db"
 
 
 @dataclass

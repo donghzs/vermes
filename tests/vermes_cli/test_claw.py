@@ -1,4 +1,4 @@
-"""Tests for hermes claw commands."""
+"""Tests for Vermes claw commands."""
 
 from argparse import Namespace
 import subprocess
@@ -19,7 +19,7 @@ class TestFindMigrationScript:
     """Test script discovery in known locations."""
 
     def test_finds_project_root_script(self, tmp_path):
-        script = tmp_path / "openclaw_to_hermes.py"
+        script = tmp_path / "openclaw_to_vermes.py"
         script.write_text("# placeholder")
         with patch.object(claw_mod, "_OPENCLAW_SCRIPT", script):
             assert claw_mod._find_migration_script() == script
@@ -238,7 +238,7 @@ class TestCmdMigrate:
         script.write_text("# placeholder")
 
         # Build a fake migration module
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value={"soul", "memory"})
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -276,7 +276,7 @@ class TestCmdMigrate:
         config_path = tmp_path / "config.yaml"
         config_path.write_text("agent:\n  max_turns: 90\n")
 
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value={"soul"})
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -316,7 +316,7 @@ class TestCmdMigrate:
         openclaw_dir = tmp_path / ".openclaw"
         openclaw_dir.mkdir()
 
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value=set())
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -351,7 +351,7 @@ class TestCmdMigrate:
         config_path.write_text("")
 
         # Preview must succeed before the confirmation prompt is shown
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value=set())
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -388,7 +388,7 @@ class TestCmdMigrate:
         config_path = tmp_path / "config.yaml"
         config_path.write_text("")
 
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value=set())
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -443,14 +443,14 @@ class TestCmdMigrate:
         """The 'full' preset must NOT auto-enable migrate_secrets.
 
         Users have to opt in to secret import explicitly via --migrate-secrets,
-        even under the 'full' preset.  This mirrors OpenClaw's migrate-hermes
+        even under the 'full' preset.  This mirrors OpenClaw's migrate-Vermes
         posture (two-phase import) and prevents a 'full' run from silently
         copying API keys.
         """
         openclaw_dir = tmp_path / ".openclaw"
         openclaw_dir.mkdir()
 
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value=set())
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -487,7 +487,7 @@ class TestCmdMigrate:
         openclaw_dir = tmp_path / ".openclaw"
         openclaw_dir.mkdir()
 
-        fake_mod = ModuleType("openclaw_to_hermes")
+        fake_mod = ModuleType("openclaw_to_vermes")
         fake_mod.resolve_selected_options = MagicMock(return_value=set())
         fake_migrator = MagicMock()
         fake_migrator.migrate.return_value = {
@@ -644,8 +644,8 @@ class TestPrintMigrationReport:
         report = {
             "summary": {"migrated": 2, "skipped": 1, "conflict": 1, "error": 0},
             "items": [
-                {"kind": "soul", "status": "migrated", "destination": "/home/user/.hermes/SOUL.md"},
-                {"kind": "memory", "status": "migrated", "destination": "/home/user/.hermes/memories/MEMORY.md"},
+                {"kind": "soul", "status": "migrated", "destination": "/home/user/.Vermes/SOUL.md"},
+                {"kind": "memory", "status": "migrated", "destination": "/home/user/.Vermes/memories/MEMORY.md"},
                 {"kind": "skills", "status": "conflict", "reason": "already exists"},
                 {"kind": "tts-assets", "status": "skipped", "reason": "not found"},
             ],
@@ -662,9 +662,9 @@ class TestPrintMigrationReport:
         report = {
             "summary": {"migrated": 3, "skipped": 0, "conflict": 0, "error": 0},
             "items": [
-                {"kind": "soul", "status": "migrated", "destination": "/home/user/.hermes/SOUL.md"},
+                {"kind": "soul", "status": "migrated", "destination": "/home/user/.Vermes/SOUL.md"},
             ],
-            "output_dir": "/home/user/.hermes/migration/openclaw/20250312T120000",
+            "output_dir": "/home/user/.Vermes/migration/openclaw/20250312T120000",
         }
         claw_mod._print_migration_report(report, dry_run=False)
         captured = capsys.readouterr()

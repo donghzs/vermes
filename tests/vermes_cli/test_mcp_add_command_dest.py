@@ -1,4 +1,4 @@
-"""Regression test: ``hermes mcp add --command`` must not clobber the
+"""Regression test: ``Vermes mcp add --command`` must not clobber the
 top-level ``args.command`` subparser dest.
 
 The top-level argparse parser uses ``dest="command"`` for its subparsers
@@ -10,7 +10,7 @@ The ``mcp add`` subparser exposes a ``--command`` flag (the stdio command
 for an MCP server, e.g. ``npx``).  Without an explicit ``dest=``, argparse
 derives the dest from the flag name and writes ``args.command = None``
 when the flag is omitted, overwriting the top-level ``"mcp"`` value.  As a
-result, ``hermes mcp add foo --url ...`` silently launches chat instead
+result, ``Vermes mcp add foo --url ...`` silently launches chat instead
 of registering an MCP server.
 
 The fix: declare the flag with ``dest="mcp_command"``.  The CLI flag name
@@ -25,11 +25,11 @@ import argparse
 
 
 def _build_parser():
-    """Minimal replica of the slice of the hermes parser that exhibits
+    """Minimal replica of the slice of the Vermes parser that exhibits
     the bug: top-level subparsers (dest="command") and ``mcp add`` with
     its ``--command`` flag.
     """
-    parser = argparse.ArgumentParser(prog="hermes")
+    parser = argparse.ArgumentParser(prog="Vermes")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("chat")
@@ -47,7 +47,7 @@ def _build_parser():
 
 class TestMcpAddCommandDest:
     def test_url_invocation_preserves_top_level_command(self):
-        """`hermes mcp add foo --url ...` must keep args.command == "mcp".
+        """`Vermes mcp add foo --url ...` must keep args.command == "mcp".
 
         Before the dest fix this was clobbered to None, sending the
         dispatcher into the chat fallback.

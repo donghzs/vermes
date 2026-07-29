@@ -67,9 +67,9 @@ class TestReflectionScaffold:
         """状态持久化：.reflection_state 文件"""
         from agent.memory_reflection import _load_state, _save_state, _reflection_state_path
 
-        # Mock hermes home
+        # Mock Vermes home
         monkeypatch.setattr(
-            "agent.memory_reflection.get_hermes_home",
+            "agent.memory_reflection.get_vermes_home",
             lambda: tmp_path
         )
 
@@ -97,7 +97,7 @@ class TestReflectionScaffold:
         from agent.memory_reflection import maybe_run_reflection, _save_state
 
         monkeypatch.setattr(
-            "agent.memory_reflection.get_hermes_home",
+            "agent.memory_reflection.get_vermes_home",
             lambda: tmp_path
         )
 
@@ -114,7 +114,7 @@ class TestReflectionScaffold:
         from agent.memory_reflection import maybe_run_reflection, _save_state
 
         monkeypatch.setattr(
-            "agent.memory_reflection.get_hermes_home",
+            "agent.memory_reflection.get_vermes_home",
             lambda: tmp_path
         )
 
@@ -132,7 +132,7 @@ class TestReflectionScaffold:
         from agent.memory_reflection import maybe_run_reflection, _save_state
 
         monkeypatch.setattr(
-            "agent.memory_reflection.get_hermes_home",
+            "agent.memory_reflection.get_vermes_home",
             lambda: tmp_path
         )
 

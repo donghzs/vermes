@@ -32,7 +32,7 @@ from tools.mcp_oauth import (
 
 class TestVermesTokenStorage:
     def test_roundtrip_tokens(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("test-server")
 
         import asyncio
@@ -64,7 +64,7 @@ class TestVermesTokenStorage:
         0o644 = world-readable) before tightening to owner-only. Mirrors
         the fix shipped for ``agent/google_oauth.py`` in #19673.
         """
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("perm-test-server")
 
         import asyncio
@@ -87,7 +87,7 @@ class TestVermesTokenStorage:
         )
 
     def test_roundtrip_client_info(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("test-server")
         import asyncio
 
@@ -95,7 +95,7 @@ class TestVermesTokenStorage:
 
         mock_client = MagicMock()
         mock_client.model_dump.return_value = {
-            "client_id": "hermes-123",
+            "client_id": "Vermes-123",
             "client_secret": "secret",
         }
         asyncio.run(storage.set_client_info(mock_client))
@@ -104,7 +104,7 @@ class TestVermesTokenStorage:
         assert client_path.exists()
 
     def test_remove_cleans_up(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("test-server")
 
         # Create files
@@ -118,7 +118,7 @@ class TestVermesTokenStorage:
         assert not (d / "test-server.client.json").exists()
 
     def test_has_cached_tokens(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("my-server")
 
         assert not storage.has_cached_tokens()
@@ -130,7 +130,7 @@ class TestVermesTokenStorage:
         assert storage.has_cached_tokens()
 
     def test_corrupt_tokens_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("bad-server")
 
         d = tmp_path / "mcp-tokens"
@@ -141,7 +141,7 @@ class TestVermesTokenStorage:
         assert asyncio.run(storage.get_tokens()) is None
 
     def test_corrupt_client_info_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("bad-server")
 
         d = tmp_path / "mcp-tokens"
@@ -163,7 +163,7 @@ class TestBuildOAuthAuth:
         except ImportError:
             pytest.skip("MCP SDK auth not available")
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         auth = build_oauth_auth("test", "https://example.com/mcp")
         assert isinstance(auth, OAuthClientProvider)
 
@@ -179,7 +179,7 @@ class TestBuildOAuthAuth:
         except ImportError:
             pytest.skip("MCP SDK auth not available")
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         build_oauth_auth("slack", "https://slack.example.com/mcp", {
             "client_id": "my-app-id",
             "client_secret": "my-secret",
@@ -198,7 +198,7 @@ class TestBuildOAuthAuth:
         except ImportError:
             pytest.skip("MCP SDK auth not available")
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         provider = build_oauth_auth("scoped", "https://example.com/mcp", {
             "scope": "read write admin",
         })
@@ -310,7 +310,7 @@ class TestPathTraversal:
     """Verify server_name is sanitized to prevent path traversal."""
 
     def test_path_traversal_blocked(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("../../.ssh/config")
         path = storage._tokens_path()
         # Should stay within mcp-tokens directory
@@ -318,19 +318,19 @@ class TestPathTraversal:
         assert ".ssh" not in str(path.resolve())
 
     def test_dots_and_slashes_sanitized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("../../../etc/passwd")
         path = storage._tokens_path()
         resolved = path.resolve()
         assert resolved.is_relative_to((tmp_path / "mcp-tokens").resolve())
 
     def test_normal_name_unchanged(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("my-mcp-server")
         assert "my-mcp-server.json" in str(storage._tokens_path())
 
     def test_special_chars_sanitized(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         storage = VermesTokenStorage("server@host:8080/path")
         path = storage._tokens_path()
         assert "@" not in path.name
@@ -402,7 +402,7 @@ class TestOAuthPortSharing:
         except ImportError:
             pytest.skip("MCP SDK auth not available")
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         build_oauth_auth("test-port", "https://example.com/mcp")
         assert mod._oauth_port is not None
         assert isinstance(mod._oauth_port, int)
@@ -415,7 +415,7 @@ class TestOAuthPortSharing:
 
 class TestRemoveOAuthTokens:
     def test_removes_files(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         d = tmp_path / "mcp-tokens"
         d.mkdir()
         (d / "myserver.json").write_text("{}")
@@ -427,7 +427,7 @@ class TestRemoveOAuthTokens:
         assert not (d / "myserver.client.json").exists()
 
     def test_no_error_when_files_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         remove_oauth_tokens("nonexistent")  # should not raise
 
 
@@ -486,7 +486,7 @@ class TestBuildOAuthAuthNonInteractive:
         except ImportError:
             pytest.skip("MCP SDK auth not available")
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         mock_stdin = MagicMock()
         mock_stdin.isatty.return_value = False
         monkeypatch.setattr("tools.mcp_oauth.sys.stdin", mock_stdin)
@@ -506,7 +506,7 @@ class TestBuildOAuthAuthNonInteractive:
         except ImportError:
             pytest.skip("MCP SDK auth not available")
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         mock_stdin = MagicMock()
         mock_stdin.isatty.return_value = False
         monkeypatch.setattr("tools.mcp_oauth.sys.stdin", mock_stdin)

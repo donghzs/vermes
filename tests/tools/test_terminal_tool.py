@@ -13,7 +13,7 @@ def teardown_function():
 
 def test_searching_for_sudo_does_not_trigger_rewrite(monkeypatch):
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
 
     command = "rg --line-number --no-heading --with-filename 'sudo' . | head -n 20"
     transformed, sudo_stdin = terminal_tool._transform_sudo_command(command)
@@ -24,7 +24,7 @@ def test_searching_for_sudo_does_not_trigger_rewrite(monkeypatch):
 
 def test_printf_literal_sudo_does_not_trigger_rewrite(monkeypatch):
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
 
     command = "printf '%s\\n' sudo"
     transformed, sudo_stdin = terminal_tool._transform_sudo_command(command)
@@ -35,7 +35,7 @@ def test_printf_literal_sudo_does_not_trigger_rewrite(monkeypatch):
 
 def test_non_command_argument_named_sudo_does_not_trigger_rewrite(monkeypatch):
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
 
     command = "grep -n sudo README.md"
     transformed, sudo_stdin = terminal_tool._transform_sudo_command(command)
@@ -46,7 +46,7 @@ def test_non_command_argument_named_sudo_does_not_trigger_rewrite(monkeypatch):
 
 def test_actual_sudo_command_uses_configured_password(monkeypatch):
     monkeypatch.setenv("SUDO_PASSWORD", "testpass")
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
 
     transformed, sudo_stdin = terminal_tool._transform_sudo_command("sudo apt install -y ripgrep")
 
@@ -56,7 +56,7 @@ def test_actual_sudo_command_uses_configured_password(monkeypatch):
 
 def test_actual_sudo_after_leading_env_assignment_is_rewritten(monkeypatch):
     monkeypatch.setenv("SUDO_PASSWORD", "testpass")
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
 
     transformed, sudo_stdin = terminal_tool._transform_sudo_command("DEBUG=1 sudo whoami")
 
@@ -66,7 +66,7 @@ def test_actual_sudo_after_leading_env_assignment_is_rewritten(monkeypatch):
 
 def test_explicit_empty_sudo_password_tries_empty_without_prompt(monkeypatch):
     monkeypatch.setenv("SUDO_PASSWORD", "")
-    monkeypatch.setenv("HERMES_INTERACTIVE", "1")
+    monkeypatch.setenv("VERMES_INTERACTIVE", "1")
 
     def _fail_prompt(*_args, **_kwargs):
         raise AssertionError("interactive sudo prompt should not run for explicit empty password")
@@ -81,7 +81,7 @@ def test_explicit_empty_sudo_password_tries_empty_without_prompt(monkeypatch):
 
 def test_cached_sudo_password_is_used_when_env_is_unset(monkeypatch):
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
     terminal_tool._set_cached_sudo_password("cached-pass")
 
     transformed, sudo_stdin = terminal_tool._transform_sudo_command("echo ok && sudo whoami")
@@ -92,22 +92,22 @@ def test_cached_sudo_password_is_used_when_env_is_unset(monkeypatch):
 
 def test_cached_sudo_password_isolated_by_session_key(monkeypatch):
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_INTERACTIVE", raising=False)
+    monkeypatch.delenv("VERMES_INTERACTIVE", raising=False)
 
-    monkeypatch.setenv("HERMES_SESSION_KEY", "session-a")
+    monkeypatch.setenv("VERMES_SESSION_KEY", "session-a")
     terminal_tool._set_cached_sudo_password("alpha-pass")
 
-    monkeypatch.setenv("HERMES_SESSION_KEY", "session-b")
+    monkeypatch.setenv("VERMES_SESSION_KEY", "session-b")
     assert terminal_tool._get_cached_sudo_password() == ""
 
-    monkeypatch.setenv("HERMES_SESSION_KEY", "session-a")
+    monkeypatch.setenv("VERMES_SESSION_KEY", "session-a")
     assert terminal_tool._get_cached_sudo_password() == "alpha-pass"
 
 
 def test_passwordless_sudo_skips_interactive_prompt_and_rewrite(monkeypatch):
     monkeypatch.delenv("SUDO_PASSWORD", raising=False)
     monkeypatch.delenv("TERMINAL_ENV", raising=False)
-    monkeypatch.setenv("HERMES_INTERACTIVE", "1")
+    monkeypatch.setenv("VERMES_INTERACTIVE", "1")
 
     def _fail_prompt(*_args, **_kwargs):
         raise AssertionError(

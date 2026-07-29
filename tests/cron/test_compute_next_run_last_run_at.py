@@ -1,6 +1,6 @@
 """Test that compute_next_run uses last_run_at for cron jobs.
 
-Regression test for: cron jobs computing next_run_at from _hermes_now()
+Regression test for: cron jobs computing next_run_at from _vermes_now()
 instead of from last_run_at, making them inconsistent with interval jobs.
 """
 import pytest
@@ -28,7 +28,7 @@ class TestCronComputeNextRunUsesLastRunAt:
 
         # But now it's April 10 at 22:00 (e.g., gateway restarted)
         now = datetime(2026, 4, 10, 22, 0, 0, tzinfo=morocco)
-        monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+        monkeypatch.setattr("cron.jobs._vermes_now", lambda: now)
 
         schedule = {"kind": "cron", "expr": "0 */6 * * *"}  # every 6 hours
 
@@ -47,11 +47,11 @@ class TestCronComputeNextRunUsesLastRunAt:
 
     def test_cron_without_last_run_at_uses_now(self, monkeypatch):
         """When last_run_at is NOT provided, compute_next_run falls back to
-        _hermes_now() as the croniter base (existing behavior)."""
+        _vermes_now() as the croniter base (existing behavior)."""
         morocco = ZoneInfo("Africa/Casablanca")
 
         now = datetime(2026, 4, 10, 22, 0, 0, tzinfo=morocco)
-        monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+        monkeypatch.setattr("cron.jobs._vermes_now", lambda: now)
 
         schedule = {"kind": "cron", "expr": "0 */6 * * *"}
 
@@ -72,7 +72,7 @@ class TestCronComputeNextRunUsesLastRunAt:
 
         last_run = datetime(2026, 4, 6, 14, 10, 0, tzinfo=morocco)
         now = datetime(2026, 4, 10, 22, 0, 0, tzinfo=morocco)
-        monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+        monkeypatch.setattr("cron.jobs._vermes_now", lambda: now)
 
         cron_schedule = {"kind": "cron", "expr": "0 14 * * 1"}
         interval_schedule = {"kind": "interval", "minutes": 7 * 24 * 60}

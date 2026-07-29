@@ -11,7 +11,7 @@ reproduction against a real provider so we have a true end-to-end smoke test
 for any future keepalive / transport plumbing.
 
 Opt-in — not part of default CI:
-    HERMES_LIVE_TESTS=1 pytest tests/run_agent/test_sequential_chats_live.py -v
+    VERMES_LIVE_TESTS=1 pytest tests/run_agent/test_sequential_chats_live.py -v
 
 Requires ``OPENROUTER_API_KEY`` to be set (or sourced via ~/.vermes/.env).
 """
@@ -26,7 +26,7 @@ import pytest
 # Load ~/.vermes/.env so live runs pick up OPENROUTER_API_KEY without
 # needing the runner to shell-source it first. Silent if the file is absent.
 def _load_user_env() -> None:
-    env_file = Path.home() / ".hermes" / ".env"
+    env_file = Path.home() / ".vermes" / ".env"
     if not env_file.exists():
         return
     for raw in env_file.read_text().splitlines():
@@ -43,11 +43,11 @@ def _load_user_env() -> None:
 _load_user_env()
 
 
-LIVE = os.environ.get("HERMES_LIVE_TESTS") == "1"
+LIVE = os.environ.get("VERMES_LIVE_TESTS") == "1"
 OR_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 pytestmark = [
-    pytest.mark.skipif(not LIVE, reason="live-only — set HERMES_LIVE_TESTS=1"),
+    pytest.mark.skipif(not LIVE, reason="live-only — set VERMES_LIVE_TESTS=1"),
     pytest.mark.skipif(not OR_KEY, reason="OPENROUTER_API_KEY not configured"),
 ]
 

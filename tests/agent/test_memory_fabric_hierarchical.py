@@ -10,10 +10,10 @@ import pytest
 
 
 @pytest.fixture
-def hermes_home(tmp_path, monkeypatch):
-    h = tmp_path / "hermes"
+def VERMES_home(tmp_path, monkeypatch):
+    h = tmp_path / "Vermes"
     h.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(h))
+    monkeypatch.setenv("VERMES_HOME", str(h))
     import agent.memory_fabric as mf
 
     db = mf._get_index_db()
@@ -59,7 +59,7 @@ def _seed_all_layers():
     )
 
 
-def test_recall_hierarchical_orders_layers_l1_to_l4(hermes_home):
+def test_recall_hierarchical_orders_layers_l1_to_l4(VERMES_home):
     from agent.memory_fabric import recall_hierarchical
 
     _seed_all_layers()
@@ -68,7 +68,7 @@ def test_recall_hierarchical_orders_layers_l1_to_l4(hermes_home):
     assert layers == ["note", "procedural", "episodic", "reference"], layers
 
 
-def test_recall_hierarchical_dedupes_by_pointer(hermes_home):
+def test_recall_hierarchical_dedupes_by_pointer(VERMES_home):
     from agent.memory_fabric import index_note, recall_hierarchical
 
     index_note("memory", "MIG_DUP_XYZ first version")
@@ -79,7 +79,7 @@ def test_recall_hierarchical_dedupes_by_pointer(hermes_home):
     assert "updated" in hits[0]["content"]
 
 
-def test_recall_hierarchical_l4_federation_hook(hermes_home):
+def test_recall_hierarchical_l4_federation_hook(VERMES_home):
     from agent.memory_fabric import recall_hierarchical, set_l4_federation_hook
 
     set_l4_federation_hook(
@@ -99,7 +99,7 @@ def test_recall_hierarchical_l4_federation_hook(hermes_home):
     assert hits[0]["content"] == "MIG_HOOK_XYZ external kb passage"
 
 
-def test_recall_hierarchical_dedupes_seeded_vs_live_rag_pointer(hermes_home):
+def test_recall_hierarchical_dedupes_seeded_vs_live_rag_pointer(VERMES_home):
     # A2 regression: a RAG document seeded into the fabric index (migration
     # pointer ``rag#{doc_id}#{chunk_index}``) and the SAME document returned by
     # the live L4 federation hook must de-duplicate to a single hit — they used
@@ -131,7 +131,7 @@ def test_recall_hierarchical_dedupes_seeded_vs_live_rag_pointer(hermes_home):
     assert len(rag_hits) == 1, rag_hits
 
 
-def test_recall_hierarchical_l1_surfaces_before_l4_hook(hermes_home):
+def test_recall_hierarchical_l1_surfaces_before_l4_hook(VERMES_home):
     from agent.memory_fabric import (
         index_note,
         recall_hierarchical,
@@ -150,7 +150,7 @@ def test_recall_hierarchical_l1_surfaces_before_l4_hook(hermes_home):
     assert hits[1]["layer"] == "reference"
 
 
-def test_recall_hierarchical_hook_failure_is_non_fatal(hermes_home):
+def test_recall_hierarchical_hook_failure_is_non_fatal(VERMES_home):
     from agent.memory_fabric import recall_hierarchical, set_l4_federation_hook
 
     def _boom(q, limit):
@@ -161,13 +161,13 @@ def test_recall_hierarchical_hook_failure_is_non_fatal(hermes_home):
     assert recall_hierarchical("MIG_ANYTHING_XYZ", limit=5) == []
 
 
-def test_recall_hierarchical_empty_query_returns_empty(hermes_home):
+def test_recall_hierarchical_empty_query_returns_empty(VERMES_home):
     from agent.memory_fabric import recall_hierarchical
 
     assert recall_hierarchical("   ", limit=5) == []
 
 
-def test_recall_hierarchical_l3_live_hook(hermes_home):
+def test_recall_hierarchical_l3_live_hook(VERMES_home):
     from agent.memory_fabric import (
         index_note,
         recall_hierarchical,
@@ -194,7 +194,7 @@ def test_recall_hierarchical_l3_live_hook(hermes_home):
     assert epi["content"] == "MIG_L3_XYZ episodic memory"
 
 
-def test_recall_hierarchical_l3_hook_failure_is_non_fatal(hermes_home):
+def test_recall_hierarchical_l3_hook_failure_is_non_fatal(VERMES_home):
     from agent.memory_fabric import recall_hierarchical, set_l3_live_hook
 
     def _boom(q, limit):

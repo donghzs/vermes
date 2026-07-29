@@ -124,7 +124,7 @@ def test_save_env_value_invalidates_cache(tmp_path, monkeypatch):
     env_path.write_text("EXISTING_KEY=old\n", encoding="utf-8")
 
     monkeypatch.setattr(config_mod, "get_env_path", lambda: env_path)
-    monkeypatch.setattr(config_mod, "ensure_hermes_home", lambda: None)
+    monkeypatch.setattr(config_mod, "ensure_vermes_home", lambda: None)
     monkeypatch.setattr(config_mod, "_secure_file", lambda _p: None)
     monkeypatch.setattr(config_mod, "is_managed", lambda: False)
 
@@ -160,7 +160,7 @@ def test_remove_env_value_invalidates_cache(tmp_path, monkeypatch):
 
     env_path = tmp_path / ".env"
     monkeypatch.setattr(config_mod, "get_env_path", lambda: env_path)
-    monkeypatch.setattr(config_mod, "ensure_hermes_home", lambda: None)
+    monkeypatch.setattr(config_mod, "ensure_vermes_home", lambda: None)
     monkeypatch.setattr(config_mod, "_secure_file", lambda _p: None)
     monkeypatch.setattr(config_mod, "is_managed", lambda: False)
 
@@ -182,7 +182,7 @@ def test_load_env_handles_missing_file():
 
     invalidate_env_cache()
 
-    nonexistent = Path(tempfile.gettempdir()) / "hermes-test-no-such-env-xyz123.env"
+    nonexistent = Path(tempfile.gettempdir()) / "Vermes-test-no-such-env-xyz123.env"
     nonexistent.unlink(missing_ok=True)
 
     try:

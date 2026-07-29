@@ -26,7 +26,7 @@ def test_navigate_surfaces_http_status_on_failure(monkeypatch):
         lambda *a, **k: {"_first_nav": False},
     )
 
-    result = browser_navigate("https://github.com/NousResearch/vermes-agent")
+    result = browser_navigate("https://github.com/donghzs/vermes-agent")
     parsed = json.loads(result)
     assert parsed["success"] is False
     assert parsed.get("status") == 404
@@ -47,7 +47,7 @@ def test_navigate_no_status_unchanged(monkeypatch):
         lambda *a, **k: {"_first_nav": False},
     )
 
-    result = browser_navigate("https://github.com/NousResearch/vermes-agent")
+    result = browser_navigate("https://github.com/donghzs/vermes-agent")
     parsed = json.loads(result)
     assert parsed["success"] is False
     assert "status" not in parsed

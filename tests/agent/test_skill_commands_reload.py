@@ -36,16 +36,16 @@ def _write_skill(skills_dir: Path, name: str, description: str = "") -> Path:
 
 
 @pytest.fixture
-def hermes_home(monkeypatch):
-    """Isolate HERMES_HOME for ``reload_skills`` tests.
+def VERMES_home(monkeypatch):
+    """Isolate VERMES_HOME for ``reload_skills`` tests.
 
     Rather than popping cache-bearing modules from ``sys.modules`` (which
     races against pytest-xdist's parallel workers), we monkeypatch the
-    module-level ``HERMES_HOME`` / ``SKILLS_DIR`` constants in place so the
+    module-level ``VERMES_HOME`` / ``SKILLS_DIR`` constants in place so the
     isolation is local to this fixture's scope.
     """
-    td = tempfile.mkdtemp(prefix="hermes-reload-skills-")
-    monkeypatch.setenv("HERMES_HOME", td)
+    td = tempfile.mkdtemp(prefix="Vermes-reload-skills-")
+    monkeypatch.setenv("VERMES_HOME", td)
     home = Path(td)
     (home / "skills").mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +54,7 @@ def hermes_home(monkeypatch):
     import tools.skills_tool as _st
     import agent.skill_commands as _sc
 
-    monkeypatch.setattr(_st, "HERMES_HOME", home, raising=False)
+    monkeypatch.setattr(_st, "VERMES_HOME", home, raising=False)
     monkeypatch.setattr(_st, "SKILLS_DIR", home / "skills", raising=False)
     # Reset the in-process slash-command cache so each test starts from zero.
     monkeypatch.setattr(_sc, "_skill_commands", {}, raising=False)
@@ -67,7 +67,7 @@ def hermes_home(monkeypatch):
 class TestReloadSkillsHelper:
     """``agent.skill_commands.reload_skills``."""
 
-    def test_returns_expected_keys(self, hermes_home):
+    def test_returns_expected_keys(self, VERMES_home):
         from agent.skill_commands import reload_skills
 
         result = reload_skills()
@@ -76,13 +76,13 @@ class TestReloadSkillsHelper:
         assert result["added"] == []
         assert result["removed"] == []
 
-    def test_detects_newly_added_skill_with_description(self, hermes_home):
+    def test_detects_newly_added_skill_with_description(self, VERMES_home):
         from agent.skill_commands import reload_skills, get_skill_commands
 
         # Prime the cache so subsequent diff is meaningful
         get_skill_commands()
 
-        _write_skill(hermes_home / "skills", "demo", "a demo skill")
+        _write_skill(VERMES_home / "skills", "demo", "a demo skill")
         result = reload_skills()
 
         assert result["added"] == [{"name": "demo", "description": "a demo skill"}]
@@ -90,10 +90,10 @@ class TestReloadSkillsHelper:
         assert result["total"] == 1
         assert result["commands"] == 1
 
-    def test_detects_removed_skill_carries_description(self, hermes_home):
+    def test_detects_removed_skill_carries_description(self, VERMES_home):
         from agent.skill_commands import reload_skills
 
-        skill_dir = _write_skill(hermes_home / "skills", "demo", "soon to be gone")
+        skill_dir = _write_skill(VERMES_home / "skills", "demo", "soon to be gone")
         # First reload: demo present
         first = reload_skills()
         assert first["total"] == 1
@@ -108,7 +108,7 @@ class TestReloadSkillsHelper:
         assert second["added"] == []
         assert second["total"] == 0
 
-    def test_description_passes_through_verbatim(self, hermes_home):
+    def test_description_passes_through_verbatim(self, VERMES_home):
         """``description`` must be the full SKILL.md frontmatter string — no
         truncation. The system prompt renders skills as
         ``    - name: description`` without a length cap, and the reload
@@ -118,16 +118,16 @@ class TestReloadSkillsHelper:
 
         get_skill_commands()  # prime
         long_desc = "x" * 200
-        _write_skill(hermes_home / "skills", "longdesc", long_desc)
+        _write_skill(VERMES_home / "skills", "longdesc", long_desc)
 
         result = reload_skills()
         assert len(result["added"]) == 1
         assert result["added"][0]["description"] == long_desc
 
-    def test_unchanged_skills_appear_in_unchanged_list(self, hermes_home):
+    def test_unchanged_skills_appear_in_unchanged_list(self, VERMES_home):
         from agent.skill_commands import reload_skills, get_skill_commands
 
-        _write_skill(hermes_home / "skills", "alpha")
+        _write_skill(VERMES_home / "skills", "alpha")
         # Prime cache
         get_skill_commands()
 
@@ -137,7 +137,7 @@ class TestReloadSkillsHelper:
         assert result["added"] == []
         assert result["removed"] == []
 
-    def test_does_not_invalidate_prompt_cache_snapshot(self, hermes_home):
+    def test_does_not_invalidate_prompt_cache_snapshot(self, VERMES_home):
         """reload_skills must NOT delete the skills prompt-cache snapshot.
 
         Skills are called at runtime — the system prompt doesn't need to

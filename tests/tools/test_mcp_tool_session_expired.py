@@ -141,7 +141,7 @@ def test_call_tool_handler_reconnects_on_session_expired(monkeypatch, tmp_path):
     """Reporter's exact repro: call_tool raises "Invalid or expired
     session", handler triggers reconnect, retries once, and returns
     the retry's successful JSON (not the generic error)."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     from tools import mcp_tool
     from tools.mcp_tool import _make_tool_handler
@@ -195,7 +195,7 @@ def test_call_tool_handler_non_session_expired_error_falls_through(
     """Preserved-behaviour canary: a non-session-expired exception must
     NOT trigger reconnect — it must fall through to the generic error
     path so the caller sees the real failure."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     from tools import mcp_tool
     from tools.mcp_tool import _make_tool_handler
@@ -277,7 +277,7 @@ def test_session_expired_handler_returns_none_when_retry_also_fails(
     """If the retry after reconnect also raises, fall through to the
     generic error path (don't loop forever, don't mask the second
     failure)."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     from tools import mcp_tool
     from tools.mcp_tool import _handle_session_expired_and_retry
@@ -323,7 +323,7 @@ def test_non_tool_handlers_also_reconnect_on_session_expired(
 ):
     """All four non-``tools/call`` MCP handlers share the recovery
     pattern and must reconnect the same way on session-expired."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     from tools import mcp_tool
 

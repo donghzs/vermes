@@ -20,10 +20,10 @@ def _reset_evolution_state():
 
 
 @pytest.fixture
-def hermes_home(tmp_path, monkeypatch):
-    d = tmp_path / "hermes"
+def VERMES_home(tmp_path, monkeypatch):
+    d = tmp_path / "Vermes"
     d.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(d))
+    monkeypatch.setenv("VERMES_HOME", str(d))
     _reset_evolution_state()
     yield d
 
@@ -41,7 +41,7 @@ def _feedback_rows(tool_name: str):
     return rows
 
 
-def test_thumbs_up_writes_positive_raw_event(hermes_home):
+def test_thumbs_up_writes_positive_raw_event(VERMES_home):
     from agent.feedback_learning import record_user_feedback
 
     ok = record_user_feedback("thumbs_up", "write_file", "格式正确")
@@ -52,7 +52,7 @@ def test_thumbs_up_writes_positive_raw_event(hermes_home):
     assert "write_file" in rows[0][2]
 
 
-def test_thumbs_down_is_negative_event(hermes_home):
+def test_thumbs_down_is_negative_event(VERMES_home):
     from agent.feedback_learning import record_user_feedback
 
     ok = record_user_feedback("thumbs_down", "read_file", "读错文件")
@@ -62,7 +62,7 @@ def test_thumbs_down_is_negative_event(hermes_home):
     assert rows[0][1] == 0  # 点踩 = 失败
 
 
-def test_correction_writes_negative_event(hermes_home):
+def test_correction_writes_negative_event(VERMES_home):
     from agent.feedback_learning import record_user_feedback
 
     ok = record_user_feedback("correction", "错误结论", "正确结论是 X")
@@ -73,14 +73,14 @@ def test_correction_writes_negative_event(hermes_home):
     assert "正确结论是 X" in rows[0][3]
 
 
-def test_unknown_kind_rejected(hermes_home):
+def test_unknown_kind_rejected(VERMES_home):
     from agent.feedback_learning import record_user_feedback
 
     # 未知类型直接拒绝，不落库（未触碰 evolution，DB 可能尚未 seed）
     assert record_user_feedback("bogus", "x") is False
 
 
-def test_tool_handlers_return_success_json(hermes_home):
+def test_tool_handlers_return_success_json(VERMES_home):
     from tools.feedback_tool import thumbs, submit_correction
 
     r1 = json.loads(thumbs("up", "read_file", "nice"))

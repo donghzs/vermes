@@ -14,7 +14,7 @@ from plugins.teams_pipeline.store import TeamsPipelineStore
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
 
 def _make_args(**kwargs):

@@ -196,7 +196,7 @@ def test_deepseek_v4_pro_pricing_entry_exists():
     """Regression test: deepseek-v4-pro must have a pricing entry.
 
     Before this fix, deepseek-v4-pro sessions showed as unknown cost
-    in hermes insights because the _OFFICIAL_DOCS_PRICING table had no
+    in Vermes insights because the _OFFICIAL_DOCS_PRICING table had no
     entry for that model.  See #24218.
     """
     entry = get_pricing_entry(

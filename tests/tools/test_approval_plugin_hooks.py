@@ -26,9 +26,9 @@ def isolated_session(monkeypatch):
     """Give each test a fresh session_key and clean approval-state."""
     session_key = "test:session:approval_hooks"
     token = set_current_session_key(session_key)
-    monkeypatch.setenv("HERMES_SESSION_KEY", session_key)
+    monkeypatch.setenv("VERMES_SESSION_KEY", session_key)
     # Make sure we don't skip guards via yolo / approvals.mode=off
-    monkeypatch.delenv("HERMES_YOLO_MODE", raising=False)
+    monkeypatch.delenv("VERMES_YOLO_MODE", raising=False)
     try:
         yield session_key
     finally:
@@ -40,15 +40,15 @@ def isolated_session(monkeypatch):
 
 
 class TestCliPathFiresHooks:
-    """CLI-interactive approval path: HERMES_INTERACTIVE is set, the
+    """CLI-interactive approval path: VERMES_INTERACTIVE is set, the
     prompt_dangerous_approval() result decides the outcome."""
 
     def test_pre_and_post_fire_with_expected_kwargs(
         self, isolated_session, monkeypatch
     ):
-        monkeypatch.setenv("HERMES_INTERACTIVE", "1")
-        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
-        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.setenv("VERMES_INTERACTIVE", "1")
+        monkeypatch.delenv("VERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("VERMES_EXEC_ASK", raising=False)
         # approvals.mode=manual so we actually reach the prompt site
         monkeypatch.setattr(approval_module, "_get_approval_mode", lambda: "manual")
 
@@ -87,9 +87,9 @@ class TestCliPathFiresHooks:
         assert post_kwargs["command"] == "rm -rf /tmp/test-hook"
 
     def test_deny_reported_to_post_hook(self, isolated_session, monkeypatch):
-        monkeypatch.setenv("HERMES_INTERACTIVE", "1")
-        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
-        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.setenv("VERMES_INTERACTIVE", "1")
+        monkeypatch.delenv("VERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("VERMES_EXEC_ASK", raising=False)
         monkeypatch.setattr(approval_module, "_get_approval_mode", lambda: "manual")
 
         captured = []
@@ -116,9 +116,9 @@ class TestCliPathFiresHooks:
         """A crashing plugin must never prevent the approval flow from
         reaching the user. Hooks are observer-only and safety-critical
         behavior must be preserved."""
-        monkeypatch.setenv("HERMES_INTERACTIVE", "1")
-        monkeypatch.delenv("HERMES_GATEWAY_SESSION", raising=False)
-        monkeypatch.delenv("HERMES_EXEC_ASK", raising=False)
+        monkeypatch.setenv("VERMES_INTERACTIVE", "1")
+        monkeypatch.delenv("VERMES_GATEWAY_SESSION", raising=False)
+        monkeypatch.delenv("VERMES_EXEC_ASK", raising=False)
         monkeypatch.setattr(approval_module, "_get_approval_mode", lambda: "manual")
 
         def boom(hook_name, **kwargs):
@@ -137,7 +137,7 @@ class TestCliPathFiresHooks:
 
 
 class TestGatewayPathFiresHooks:
-    """Async gateway approval path: HERMES_GATEWAY_SESSION is set and a
+    """Async gateway approval path: VERMES_GATEWAY_SESSION is set and a
     gateway notify callback is registered. The agent thread blocks on the
     approval event until resolve_gateway_approval() is called from another
     thread."""

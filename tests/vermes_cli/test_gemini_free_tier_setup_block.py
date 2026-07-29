@@ -8,17 +8,17 @@ import pytest
 
 @pytest.fixture
 def config_home(tmp_path, monkeypatch):
-    """Isolated HERMES_HOME with an empty config."""
-    home = tmp_path / "hermes"
+    """Isolated VERMES_HOME with an empty config."""
+    home = tmp_path / "Vermes"
     home.mkdir()
     (home / "config.yaml").write_text("model: some-old-model\n")
     (home / ".env").write_text("")
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
     # Clear any ambient env that could alter provider resolution
     for var in (
-        "HERMES_MODEL",
+        "VERMES_MODEL",
         "LLM_MODEL",
-        "HERMES_INFERENCE_PROVIDER",
+        "VERMES_INFERENCE_PROVIDER",
         "OPENAI_BASE_URL",
         "OPENAI_API_KEY",
         "GEMINI_BASE_URL",

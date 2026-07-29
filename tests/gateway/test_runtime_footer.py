@@ -36,10 +36,10 @@ def test_model_short_drops_vendor_prefix(model, expected):
 
 def test_home_relative_cwd_collapses_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    sub = tmp_path / "projects" / "hermes"
+    sub = tmp_path / "projects" / "Vermes"
     sub.mkdir(parents=True)
     result = _home_relative_cwd(str(sub))
-    assert result == "~/projects/hermes"
+    assert result == "~/projects/Vermes"
 
 
 def test_home_relative_cwd_leaves_abs_path_alone(tmp_path, monkeypatch):
@@ -58,8 +58,8 @@ def test_home_relative_cwd_empty_returns_empty():
 
 def test_format_footer_all_fields(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("TERMINAL_CWD", str(tmp_path / "projects" / "hermes"))
-    (tmp_path / "projects" / "hermes").mkdir(parents=True)
+    monkeypatch.setenv("TERMINAL_CWD", str(tmp_path / "projects" / "Vermes"))
+    (tmp_path / "projects" / "Vermes").mkdir(parents=True)
     out = format_runtime_footer(
         model="openrouter/openai/gpt-5.4",
         context_tokens=68000,
@@ -67,7 +67,7 @@ def test_format_footer_all_fields(monkeypatch, tmp_path):
         cwd=None,  # falls back to TERMINAL_CWD env var
         fields=("model", "context_pct", "cwd"),
     )
-    assert out == "gpt-5.4 · 68% · ~/projects/hermes"
+    assert out == "gpt-5.4 · 68% · ~/projects/Vermes"
 
 
 def test_format_footer_skips_missing_context_length():

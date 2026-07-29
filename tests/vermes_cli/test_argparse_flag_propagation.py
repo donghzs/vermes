@@ -1,7 +1,7 @@
 """Tests for parent→subparser flag propagation.
 
 When flags like --yolo, -w, -s exist on both the parent parser and the 'chat'
-subparser, placing the flag BEFORE the subcommand (e.g. 'hermes --yolo chat')
+subparser, placing the flag BEFORE the subcommand (e.g. 'Vermes --yolo chat')
 must not silently drop the flag value.
 
 Regression test for: argparse subparser default=False overwriting parent's
@@ -20,13 +20,13 @@ import pytest
 
 
 def _build_parser():
-    """Build the hermes argument parser from the real code.
+    """Build the Vermes argument parser from the real code.
 
     We import the real main() and extract the parser it builds.
     Since main() is a large function that does much more than parse args,
     we replicate just the parser structure here to avoid side effects.
     """
-    parser = argparse.ArgumentParser(prog="hermes")
+    parser = argparse.ArgumentParser(prog="Vermes")
     parser.add_argument("--resume", "-r", metavar="SESSION", default=None)
     parser.add_argument(
         "--continue", "-c", dest="continue_last", nargs="?",
@@ -58,39 +58,39 @@ def _build_parser():
 
 
 class TestYoloEnvVar:
-    """Verify --yolo sets HERMES_YOLO_MODE regardless of flag position.
+    """Verify --yolo sets VERMES_YOLO_MODE regardless of flag position.
 
     This tests the actual cmd_chat logic pattern (getattr → os.environ).
     """
 
     @pytest.fixture(autouse=True)
     def _clean_env(self):
-        os.environ.pop("HERMES_YOLO_MODE", None)
+        os.environ.pop("VERMES_YOLO_MODE", None)
         yield
-        os.environ.pop("HERMES_YOLO_MODE", None)
+        os.environ.pop("VERMES_YOLO_MODE", None)
 
     def _simulate_cmd_chat_yolo_check(self, args):
         """Replicate the exact check from cmd_chat in main.py."""
         if getattr(args, "yolo", False):
-            os.environ["HERMES_YOLO_MODE"] = "1"
+            os.environ["VERMES_YOLO_MODE"] = "1"
 
     def test_yolo_before_chat_sets_env(self):
         parser = _build_parser()
         args = parser.parse_args(["--yolo", "chat"])
         self._simulate_cmd_chat_yolo_check(args)
-        assert os.environ.get("HERMES_YOLO_MODE") == "1"
+        assert os.environ.get("VERMES_YOLO_MODE") == "1"
 
     def test_yolo_after_chat_sets_env(self):
         parser = _build_parser()
         args = parser.parse_args(["chat", "--yolo"])
         self._simulate_cmd_chat_yolo_check(args)
-        assert os.environ.get("HERMES_YOLO_MODE") == "1"
+        assert os.environ.get("VERMES_YOLO_MODE") == "1"
 
     def test_no_yolo_no_env(self):
         parser = _build_parser()
         args = parser.parse_args(["chat"])
         self._simulate_cmd_chat_yolo_check(args)
-        assert os.environ.get("HERMES_YOLO_MODE") is None
+        assert os.environ.get("VERMES_YOLO_MODE") is None
 
 
 class TestAcceptHooksOnAgentSubparsers:
@@ -115,7 +115,7 @@ class TestAcceptHooksOnAgentSubparsers:
         ["acp", "--accept-hooks", "--help"],
     ])
     def test_accepted_at_every_position(self, argv):
-        """Invoking `hermes <argv>` must exit 0 (help) rather than
+        """Invoking `Vermes <argv>` must exit 0 (help) rather than
         failing with `unrecognized arguments`."""
         import subprocess
         result = subprocess.run(

@@ -77,7 +77,7 @@ class TestQueryLocalContextLengthOllama:
         training max — using it would let Vermes grow conversations past
         the runtime limit and Ollama would silently truncate.
 
-        Concrete example: hermes-brain:qwen3-14b-ctx32k is a Modelfile
+        Concrete example: Vermes-brain:qwen3-14b-ctx32k is a Modelfile
         derived from qwen3:14b with `num_ctx 32768`, but the underlying
         GGUF reports `qwen3.context_length: 40960` (training max). If
         Vermes used 40960 it would let the conversation grow past 32768
@@ -100,7 +100,7 @@ class TestQueryLocalContextLengthOllama:
         with patch("agent.model_metadata.detect_local_server_type", return_value="ollama"), \
              patch("httpx.Client", return_value=client_mock):
             result = _query_local_context_length(
-                "hermes-brain:qwen3-14b-ctx32k", "http://100.77.243.5:11434/v1"
+                "Vermes-brain:qwen3-14b-ctx32k", "http://100.77.243.5:11434/v1"
             )
 
         assert result == 32768, (

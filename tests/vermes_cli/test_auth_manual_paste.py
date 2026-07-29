@@ -1,6 +1,6 @@
 """Tests for the OAuth manual-paste fallback for browser-only remotes.
 
-Regression coverage for [#26923](https://github.com/NousResearch/vermes-agent/issues/26923):
+Regression coverage for [#26923](https://github.com/donghzs/vermes-agent/issues/26923):
 GCP Cloud Shell, GitHub Codespaces, AWS EC2 Instance Connect and
 other browser-only remote consoles can't reach the
 ``http://127.0.0.1:56121/callback`` loopback listener bound on the

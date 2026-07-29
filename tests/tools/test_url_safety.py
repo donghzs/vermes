@@ -230,78 +230,78 @@ class TestGlobalAllowPrivateUrls:
 
     def test_default_is_false(self, monkeypatch):
         """Toggle defaults to False when no env var or config is set."""
-        monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.delenv("VERMES_ALLOW_PRIVATE_URLS", raising=False)
         with patch("vermes_cli.config.read_raw_config", side_effect=Exception("no config")):
             assert _global_allow_private_urls() is False
 
     def test_env_var_true(self, monkeypatch):
-        """HERMES_ALLOW_PRIVATE_URLS=true enables the toggle."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        """VERMES_ALLOW_PRIVATE_URLS=true enables the toggle."""
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         assert _global_allow_private_urls() is True
 
     def test_env_var_1(self, monkeypatch):
-        """HERMES_ALLOW_PRIVATE_URLS=1 enables the toggle."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "1")
+        """VERMES_ALLOW_PRIVATE_URLS=1 enables the toggle."""
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "1")
         assert _global_allow_private_urls() is True
 
     def test_env_var_yes(self, monkeypatch):
-        """HERMES_ALLOW_PRIVATE_URLS=yes enables the toggle."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "yes")
+        """VERMES_ALLOW_PRIVATE_URLS=yes enables the toggle."""
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "yes")
         assert _global_allow_private_urls() is True
 
     def test_env_var_false(self, monkeypatch):
-        """HERMES_ALLOW_PRIVATE_URLS=false keeps it disabled."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "false")
+        """VERMES_ALLOW_PRIVATE_URLS=false keeps it disabled."""
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "false")
         assert _global_allow_private_urls() is False
 
     def test_config_security_section(self, monkeypatch):
         """security.allow_private_urls in config enables the toggle."""
-        monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.delenv("VERMES_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"security": {"allow_private_urls": True}}
         with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is True
 
     def test_config_browser_fallback(self, monkeypatch):
         """browser.allow_private_urls works as legacy fallback."""
-        monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.delenv("VERMES_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"browser": {"allow_private_urls": True}}
         with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is True
 
     def test_config_security_string_false_stays_disabled(self, monkeypatch):
         """Quoted false must not opt out of SSRF protection."""
-        monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.delenv("VERMES_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"security": {"allow_private_urls": "false"}}
         with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is False
 
     def test_config_browser_string_false_stays_disabled(self, monkeypatch):
         """Legacy browser.allow_private_urls also normalises quoted false."""
-        monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.delenv("VERMES_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"browser": {"allow_private_urls": "false"}}
         with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is False
 
     def test_config_security_takes_precedence_over_browser(self, monkeypatch):
         """security section is checked before browser section."""
-        monkeypatch.delenv("HERMES_ALLOW_PRIVATE_URLS", raising=False)
+        monkeypatch.delenv("VERMES_ALLOW_PRIVATE_URLS", raising=False)
         cfg = {"security": {"allow_private_urls": True}, "browser": {"allow_private_urls": False}}
         with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is True
 
     def test_env_var_overrides_config(self, monkeypatch):
         """Env var takes priority over config."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "false")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "false")
         cfg = {"security": {"allow_private_urls": True}}
         with patch("vermes_cli.config.read_raw_config", return_value=cfg):
             assert _global_allow_private_urls() is False
 
     def test_result_is_cached(self, monkeypatch):
         """Second call uses cached result, doesn't re-read config."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         assert _global_allow_private_urls() is True
         # Change env after first call — should still be True (cached)
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "false")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "false")
         assert _global_allow_private_urls() is True
 
 
@@ -316,7 +316,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_private_ip_allowed_when_toggle_on(self, monkeypatch):
         """Private IPs pass is_safe_url when toggle is enabled."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("192.168.1.1", 0)),
         ]):
@@ -324,15 +324,15 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_benchmark_ip_allowed_when_toggle_on(self, monkeypatch):
         """198.18.x.x (benchmark/OpenWrt proxy range) passes when toggle is on."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("198.18.23.183", 0)),
         ]):
-            assert is_safe_url("https://nousresearch.com") is True
+            assert is_safe_url("https://donghzs.com") is True
 
     def test_cgnat_allowed_when_toggle_on(self, monkeypatch):
         """CGNAT range (100.64.0.0/10) passes when toggle is on."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("100.100.100.100", 0)),
         ]):
@@ -340,7 +340,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_localhost_allowed_when_toggle_on(self, monkeypatch):
         """Even localhost passes when toggle is on."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("127.0.0.1", 0)),
         ]):
@@ -350,17 +350,17 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_metadata_hostname_blocked_even_with_toggle(self, monkeypatch):
         """metadata.google.internal is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         assert is_safe_url("http://metadata.google.internal/computeMetadata/v1/") is False
 
     def test_metadata_goog_blocked_even_with_toggle(self, monkeypatch):
         """metadata.goog is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         assert is_safe_url("http://metadata.goog/computeMetadata/v1/") is False
 
     def test_metadata_ip_blocked_even_with_toggle(self, monkeypatch):
         """169.254.169.254 (AWS/GCP metadata IP) is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("169.254.169.254", 0)),
         ]):
@@ -368,7 +368,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_metadata_ipv6_blocked_even_with_toggle(self, monkeypatch):
         """fd00:ec2::254 (AWS IPv6 metadata) is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (10, 1, 6, "", ("fd00:ec2::254", 0, 0, 0)),
         ]):
@@ -376,7 +376,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_ecs_metadata_blocked_even_with_toggle(self, monkeypatch):
         """169.254.170.2 (AWS ECS task metadata) is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("169.254.170.2", 0)),
         ]):
@@ -384,7 +384,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_alibaba_metadata_blocked_even_with_toggle(self, monkeypatch):
         """100.100.100.200 (Alibaba Cloud metadata) is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("100.100.100.200", 0)),
         ]):
@@ -392,7 +392,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_azure_wire_server_blocked_even_with_toggle(self, monkeypatch):
         """169.254.169.253 (Azure IMDS wire server) is ALWAYS blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("169.254.169.253", 0)),
         ]):
@@ -400,7 +400,7 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_entire_link_local_blocked_even_with_toggle(self, monkeypatch):
         """Any 169.254.x.x address is ALWAYS blocked (entire link-local range)."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", return_value=[
             (2, 1, 6, "", ("169.254.42.99", 0)),
         ]):
@@ -408,13 +408,13 @@ class TestAllowPrivateUrlsIntegration:
 
     def test_dns_failure_still_blocked_with_toggle(self, monkeypatch):
         """DNS failures are still blocked even with toggle on."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         with patch("socket.getaddrinfo", side_effect=socket.gaierror("fail")):
             assert is_safe_url("https://nonexistent.example.com") is False
 
     def test_empty_url_still_blocked_with_toggle(self, monkeypatch):
         """Empty URLs are still blocked."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         assert is_safe_url("") is False
 
 
@@ -480,7 +480,7 @@ class TestIsAlwaysBlockedUrl:
 
     def test_floor_ignores_allow_private_urls_toggle(self, monkeypatch):
         """security.allow_private_urls can NOT unblock cloud metadata."""
-        monkeypatch.setenv("HERMES_ALLOW_PRIVATE_URLS", "true")
+        monkeypatch.setenv("VERMES_ALLOW_PRIVATE_URLS", "true")
         assert is_always_blocked_url("http://169.254.169.254/") is True
 
 

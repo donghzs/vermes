@@ -296,12 +296,12 @@ class TestSlackNativeSlashes:
             assert isinstance(desc, str)
             assert isinstance(hint, str)
 
-    def test_hermes_catchall_is_first(self):
-        """``/hermes`` must be reserved as the first slot so the legacy
-        ``/hermes <subcommand>`` form keeps working after we add new
+    def test_vermes_catchall_is_first(self):
+        """``/Vermes`` must be reserved as the first slot so the legacy
+        ``/Vermes <subcommand>`` form keeps working after we add new
         commands and hit the 50-slash cap."""
         slashes = slack_native_slashes()
-        assert slashes[0][0] == "hermes"
+        assert slashes[0][0] == "Vermes"
 
     def test_names_respect_slack_limits(self):
         for name, _desc, _hint in slack_native_slashes():
@@ -328,7 +328,7 @@ class TestSlackNativeSlashes:
     def test_excludes_slack_reserved_commands(self):
         """Slack built-in commands (e.g. /status, /me, /join) cannot be
         registered by apps and must be excluded from the manifest.
-        Users can still reach them via /hermes <command>."""
+        Users can still reach them via /Vermes <command>."""
         names = {n for n, _d, _h in slack_native_slashes()}
         for reserved in _SLACK_RESERVED_COMMANDS:
             assert reserved not in names, (
@@ -373,7 +373,7 @@ class TestSlackNativeSlashes:
 
 
 class TestSlackAppManifest:
-    """Generated Slack app manifest (used by `hermes slack manifest`)."""
+    """Generated Slack app manifest (used by `Vermes slack manifest`)."""
 
     def test_returns_dict(self):
         m = slack_app_manifest()
@@ -393,7 +393,7 @@ class TestSlackAppManifest:
 
     def test_btw_is_in_manifest(self):
         """Regression: /btw must be a native Slack slash, not just a
-        /hermes subcommand."""
+        /Vermes subcommand."""
         m = slack_app_manifest()
         commands = [c["command"] for c in m["features"]["slash_commands"]]
         assert "/btw" in commands
@@ -426,7 +426,7 @@ class TestGatewayConfigGate:
         # Write a config with the gate off (default)
         config_file = tmp_path / "config.yaml"
         config_file.write_text("display:\n  tool_progress_command: false\n")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         lines = gateway_help_lines()
         joined = "\n".join(lines)
@@ -436,7 +436,7 @@ class TestGatewayConfigGate:
         """When the config gate is truthy, the command should appear in help."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text("display:\n  tool_progress_command: true\n")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         lines = gateway_help_lines()
         joined = "\n".join(lines)
@@ -446,7 +446,7 @@ class TestGatewayConfigGate:
         """Quoted false must not enable config-gated gateway commands."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text('display:\n  tool_progress_command: "false"\n')
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         lines = gateway_help_lines()
         joined = "\n".join(lines)
@@ -460,7 +460,7 @@ class TestGatewayConfigGate:
     def test_config_gate_excluded_from_telegram_when_off(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("display:\n  tool_progress_command: false\n")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         names = {name for name, _ in telegram_bot_commands()}
         assert "verbose" not in names
@@ -468,7 +468,7 @@ class TestGatewayConfigGate:
     def test_config_gate_included_in_telegram_when_on(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("display:\n  tool_progress_command: true\n")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         names = {name for name, _ in telegram_bot_commands()}
         assert "verbose" in names
@@ -476,7 +476,7 @@ class TestGatewayConfigGate:
     def test_config_gate_excluded_from_slack_when_off(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("display:\n  tool_progress_command: false\n")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         mapping = slack_subcommand_map()
         assert "verbose" not in mapping
@@ -484,7 +484,7 @@ class TestGatewayConfigGate:
     def test_config_gate_included_in_slack_when_on(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("display:\n  tool_progress_command: true\n")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         mapping = slack_subcommand_map()
         assert "verbose" in mapping
@@ -969,7 +969,7 @@ class TestTelegramMenuCommands:
         (tmp_path / "config.yaml").write_text(
             "plugins:\n  enabled:\n    - cmd-plugin\n"
         )
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         with patch.object(plugins_mod, "_plugin_manager", None):
             menu, _ = telegram_menu_commands(max_commands=100)
@@ -989,7 +989,7 @@ class TestTelegramMenuCommands:
             "    telegram:\n"
             "      - my-disabled-skill\n"
         )
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         # Mock get_skill_commands to return two skills
         fake_skills_dir = str(tmp_path / "skills")
@@ -1040,7 +1040,7 @@ class TestTelegramMenuCommands:
         lookalike_dir = tmp_path / "my-skills-extra"
         lookalike_dir.mkdir()
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text(
             f"skills:\n  external_dirs:\n    - {external_dir}\n"
         )
@@ -1090,7 +1090,7 @@ class TestTelegramMenuCommands:
         from unittest.mock import patch
         import re
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         fake_skills_dir = str(tmp_path / "skills")
         fake_cmds = {
@@ -1123,7 +1123,7 @@ class TestTelegramMenuCommands:
         """Skills whose names sanitize to empty string are silently dropped."""
         from unittest.mock import patch
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         fake_skills_dir = str(tmp_path / "skills")
         fake_cmds = {
@@ -1194,7 +1194,7 @@ class TestDiscordSkillCommands:
                 "skill_dir": f"{fake_skills_dir}/code-review",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "skills").mkdir(exist_ok=True)
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
@@ -1226,7 +1226,7 @@ class TestDiscordSkillCommands:
                 "skill_dir": f"{fake_skills_dir}/my-cool-skill",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "skills").mkdir(exist_ok=True)
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
@@ -1252,7 +1252,7 @@ class TestDiscordSkillCommands:
             }
             for i in range(20)
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "skills").mkdir(exist_ok=True)
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
@@ -1276,7 +1276,7 @@ class TestDiscordSkillCommands:
             "    discord:\n"
             "      - secret-skill\n"
         )
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         fake_skills_dir = str(tmp_path / "skills")
         fake_cmds = {
@@ -1319,7 +1319,7 @@ class TestDiscordSkillCommands:
                 "skill_dir": f"{fake_skills_dir}/status",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "skills").mkdir(exist_ok=True)
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
@@ -1346,7 +1346,7 @@ class TestDiscordSkillCommands:
                 "skill_dir": f"{fake_skills_dir}/verbose-skill",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "skills").mkdir(exist_ok=True)
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
@@ -1373,7 +1373,7 @@ class TestDiscordSkillCommands:
                 "skill_dir": f"{fake_skills_dir}/{long_name}",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "skills").mkdir(exist_ok=True)
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
@@ -1430,7 +1430,7 @@ class TestDiscordSkillCommandsByCategory:
                 "skill_md_path": f"{fake_skills_dir}/media/gif-search/SKILL.md",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
             patch("tools.skills_tool.SKILLS_DIR", tmp_path / "skills"),
@@ -1461,7 +1461,7 @@ class TestDiscordSkillCommandsByCategory:
                 "skill_md_path": f"{fake_skills_dir}/dogfood/SKILL.md",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
             patch("tools.skills_tool.SKILLS_DIR", tmp_path / "skills"),
@@ -1489,7 +1489,7 @@ class TestDiscordSkillCommandsByCategory:
                 "skill_md_path": f"{fake_skills_dir}/.hub/some-skill/SKILL.md",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
             patch("tools.skills_tool.SKILLS_DIR", tmp_path / "skills"),
@@ -1523,7 +1523,7 @@ class TestDiscordSkillCommandsByCategory:
                 "skill_md_path": f"{fake_skills_dir}/mlops/inference/vllm/SKILL.md",
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
             patch("tools.skills_tool.SKILLS_DIR", tmp_path / "skills"),
@@ -1570,7 +1570,7 @@ class TestDiscordSkillCommandsByCategory:
                     "skill_md_path": f"{fake_skills_dir}/{cat}/{name}/SKILL.md",
                 }
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
             patch("tools.skills_tool.SKILLS_DIR", tmp_path / "skills"),
@@ -1627,7 +1627,7 @@ class TestDiscordSkillCommandsByCategory:
                 "skill_md_path": str(external_dir / "mlops" / "external-skill" / "SKILL.md"),
             },
         }
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         with (
             patch("agent.skill_commands.get_skill_commands", return_value=fake_cmds),
             patch("tools.skills_tool.SKILLS_DIR", local_skills_dir),
@@ -1697,7 +1697,7 @@ class TestPluginCommandEnumeration:
         assert "background_job" not in names
 
     def test_plugin_command_appears_in_slack_subcommand_map(self, monkeypatch):
-        """/hermes metricas must route through the Slack subcommand map."""
+        """/Vermes metricas must route through the Slack subcommand map."""
         self._patch_plugin_commands(monkeypatch, {
             "metricas": {
                 "handler": lambda _a: "ok",

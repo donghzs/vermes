@@ -36,7 +36,7 @@ class TestConfigureWindowsStdio:
     - set PYTHONIOENCODING / PYTHONUTF8 without overriding explicit user settings
     - reconfigure sys.stdout/stderr/stdin to UTF-8 on Windows
     - flip the console code page to CP_UTF8 (65001) via ctypes
-    - respect HERMES_DISABLE_WINDOWS_UTF8 opt-out
+    - respect VERMES_DISABLE_WINDOWS_UTF8 opt-out
     """
 
     @pytest.fixture(autouse=True)
@@ -72,7 +72,7 @@ class TestConfigureWindowsStdio:
         # Pretend the user has no prior setting
         monkeypatch.delenv("PYTHONIOENCODING", raising=False)
         monkeypatch.delenv("PYTHONUTF8", raising=False)
-        monkeypatch.delenv("HERMES_DISABLE_WINDOWS_UTF8", raising=False)
+        monkeypatch.delenv("VERMES_DISABLE_WINDOWS_UTF8", raising=False)
         monkeypatch.delenv("EDITOR", raising=False)
         monkeypatch.delenv("VISUAL", raising=False)
 
@@ -150,7 +150,7 @@ class TestConfigureWindowsStdio:
         from vermes_cli import stdio
 
         monkeypatch.setattr(stdio, "is_windows", lambda: True)
-        monkeypatch.setenv("HERMES_DISABLE_WINDOWS_UTF8", optout)
+        monkeypatch.setenv("VERMES_DISABLE_WINDOWS_UTF8", optout)
 
         reconfigure_hit = []
         monkeypatch.setattr(
@@ -642,7 +642,7 @@ class TestCodeExecutionTransportTcpFallback:
 
     We can't easily execute the sandbox on Linux CI in Windows mode, but we
     CAN assert that the generated client module supports both AF_UNIX and
-    AF_INET endpoints based on the HERMES_RPC_SOCKET format.
+    AF_INET endpoints based on the VERMES_RPC_SOCKET format.
     """
 
     def test_generated_client_handles_tcp_endpoint(self):
@@ -772,12 +772,12 @@ class TestLocalEnvironmentWindowsTempDir:
                 f"POSIX temp dir must start with '/'; got {tmp_dir!r}"
             )
 
-    def test_source_has_windows_branch_using_hermes_home(self):
+    def test_source_has_windows_branch_using_vermes_home(self):
         root = Path(__file__).resolve().parents[2]
         source = (root / "tools" / "environments" / "local.py").read_text(encoding="utf-8")
         assert "if _IS_WINDOWS:" in source
-        assert "get_hermes_home" in source
-        assert 'cache_dir = get_hermes_home() / "cache" / "terminal"' in source
+        assert "get_vermes_home" in source
+        assert 'cache_dir = get_vermes_home() / "cache" / "terminal"' in source
 
 
 class TestLocalEnvironmentPathInjectionGated:

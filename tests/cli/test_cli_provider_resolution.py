@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from vermes_cli.auth import AuthError
-from vermes_cli import main as hermes_main
+from vermes_cli import main as VERMES_main
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +217,7 @@ def test_cli_turn_routing_uses_primary_when_disabled(monkeypatch):
 def test_cli_prefers_config_provider_over_stale_env_override(monkeypatch):
     cli = _import_cli()
 
-    monkeypatch.setenv("HERMES_INFERENCE_PROVIDER", "openrouter")
+    monkeypatch.setenv("VERMES_INFERENCE_PROVIDER", "openrouter")
     config_copy = dict(cli.CLI_CONFIG)
     model_copy = dict(config_copy.get("model", {}))
     model_copy["provider"] = "custom"
@@ -297,7 +297,7 @@ def test_model_flow_nous_prints_subscription_guidance_without_mutating_explicit_
     monkeypatch.setattr("vermes_cli.auth._save_model_choice", lambda model: None)
     monkeypatch.setattr("vermes_cli.auth._update_config_for_provider", lambda provider, url: None)
 
-    hermes_main._model_flow_nous(config, current_model="claude-opus-4-6")
+    VERMES_main._model_flow_nous(config, current_model="claude-opus-4-6")
 
     out = capsys.readouterr().out
     assert "Default model set to:" in out
@@ -330,7 +330,7 @@ def test_model_flow_nous_offers_tool_gateway_prompt_when_unconfigured(monkeypatc
     monkeypatch.setattr("vermes_cli.auth._prompt_model_selection", lambda model_ids, current_model="", pricing=None, **kw: "claude-opus-4-6")
     monkeypatch.setattr("vermes_cli.auth._save_model_choice", lambda model: None)
     monkeypatch.setattr("vermes_cli.auth._update_config_for_provider", lambda provider, url: None)
-    hermes_main._model_flow_nous(config, current_model="claude-opus-4-6")
+    VERMES_main._model_flow_nous(config, current_model="claude-opus-4-6")
 
     out = capsys.readouterr().out
     # Tool Gateway prompt should be shown (input() raises OSError in pytest
@@ -492,10 +492,10 @@ def test_cmd_model_falls_back_to_auto_on_invalid_provider(monkeypatch, capsys):
         return "openrouter"
 
     monkeypatch.setattr("vermes_cli.auth.resolve_provider", _resolve_provider)
-    monkeypatch.setattr(hermes_main, "_prompt_provider_choice", lambda choices, **kwargs: len(choices) - 1)
+    monkeypatch.setattr(VERMES_main, "_prompt_provider_choice", lambda choices, **kwargs: len(choices) - 1)
     monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})())
 
-    hermes_main.cmd_model(SimpleNamespace())
+    VERMES_main.cmd_model(SimpleNamespace())
     output = capsys.readouterr().out
 
     assert "Warning:" in output
@@ -536,7 +536,7 @@ def test_model_flow_custom_saves_verified_v1_base_url(monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
     monkeypatch.setattr("getpass.getpass", lambda _prompt="": next(answers))
 
-    hermes_main._model_flow_custom({})
+    VERMES_main._model_flow_custom({})
     output = capsys.readouterr().out
 
     assert "Saving the working base URL instead" in output
@@ -594,7 +594,7 @@ def test_model_flow_custom_persists_selected_api_mode(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
     monkeypatch.setattr("getpass.getpass", lambda _prompt="": "test-key")
 
-    hermes_main._model_flow_custom({"model": {"provider": "custom"}})
+    VERMES_main._model_flow_custom({"model": {"provider": "custom"}})
 
     assert saved_cfg["model"]["provider"] == "custom"
     assert saved_cfg["model"]["base_url"] == "https://codex.example.com/v1"
@@ -604,7 +604,7 @@ def test_model_flow_custom_persists_selected_api_mode(monkeypatch):
 
 
 def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
-    monkeypatch.setattr(hermes_main, "_require_tty", lambda *a: None)
+    monkeypatch.setattr(VERMES_main, "_require_tty", lambda *a: None)
     monkeypatch.setattr(
         "vermes_cli.config.load_config",
         lambda: {"model": {"default": "gpt-5", "provider": "nous"}},
@@ -614,7 +614,7 @@ def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
     monkeypatch.setattr("vermes_cli.config.save_env_value", lambda key, value: None)
     monkeypatch.setattr("vermes_cli.auth.resolve_provider", lambda requested, **kwargs: "nous")
     monkeypatch.setattr("vermes_cli.auth.get_provider_auth_state", lambda provider_id: None)
-    monkeypatch.setattr(hermes_main, "_prompt_provider_choice", lambda choices, **kwargs: 0)
+    monkeypatch.setattr(VERMES_main, "_prompt_provider_choice", lambda choices, **kwargs: 0)
 
     captured = {}
 
@@ -630,11 +630,11 @@ def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
 
     monkeypatch.setattr("vermes_cli.auth._login_nous", _fake_login)
 
-    hermes_main.cmd_model(
+    VERMES_main.cmd_model(
         SimpleNamespace(
-            portal_url="https://portal.nousresearch.com",
+            portal_url="https://portal.donghzs.com",
             inference_url="https://inference.nousresearch.com/v1",
-            client_id="hermes-local",
+            client_id="Vermes-local",
             scope="openid profile",
             no_browser=True,
             timeout=7.5,
@@ -644,9 +644,9 @@ def test_cmd_model_forwards_nous_login_tls_options(monkeypatch):
     )
 
     assert captured == {
-        "portal_url": "https://portal.nousresearch.com",
+        "portal_url": "https://portal.donghzs.com",
         "inference_url": "https://inference.nousresearch.com/v1",
-        "client_id": "hermes-local",
+        "client_id": "Vermes-local",
         "scope": "openid profile",
         "no_browser": True,
         "timeout": 7.5,

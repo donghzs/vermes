@@ -119,7 +119,7 @@ def _stub_discord_permissions(monkeypatch):
 def adapter():
     config = PlatformConfig(enabled=True, token="***")
     a = DiscordAdapter(config)
-    a._client = SimpleNamespace(user=SimpleNamespace(id=99999, name="HermesBot"), guilds=[])
+    a._client = SimpleNamespace(user=SimpleNamespace(id=99999, name="vermesBot"), guilds=[])
     return a
 
 

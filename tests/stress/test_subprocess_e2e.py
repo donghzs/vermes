@@ -6,7 +6,7 @@ This validates the IPC + lifecycle story that mocks can't:
   - the child writes heartbeats via the CLI (real argparse, real init_db)
   - the child completes via the CLI with --summary + --metadata
   - the dispatcher observes all of this through the DB only
-  - worker logs are captured to HERMES_HOME/kanban/logs/<task>.log
+  - worker logs are captured to VERMES_HOME/kanban/logs/<task>.log
   - crash detection works against a real dead PID
 """
 
@@ -31,11 +31,11 @@ def make_spawn_fn(home: str):
         log_path = os.path.join(home, f"worker_{task.id}.log")
         env = {
             **os.environ,
-            "HERMES_HOME": home,
+            "VERMES_HOME": home,
             "HOME": home,
             "PYTHONPATH": WT,
-            "HERMES_KANBAN_TASK": task.id,
-            "HERMES_KANBAN_WORKSPACE": workspace,
+            "VERMES_KANBAN_TASK": task.id,
+            "VERMES_KANBAN_WORKSPACE": workspace,
             "PATH": f"{os.path.dirname(PY)}:{os.environ.get('PATH','')}",
         }
         log_f = open(log_path, "ab")
@@ -53,17 +53,17 @@ def make_spawn_fn(home: str):
 
 
 def main():
-    home = tempfile.mkdtemp(prefix="hermes_e2e_")
-    os.environ["HERMES_HOME"] = home
+    home = tempfile.mkdtemp(prefix="VERMES_e2e_")
+    os.environ["VERMES_HOME"] = home
     os.environ["HOME"] = home
     sys.path.insert(0, WT)
     from vermes_cli import kanban_db as kb
 
-    # Point the `hermes` CLI child processes will run at the worktree
+    # Point the `Vermes` CLI child processes will run at the worktree
     # vermes_cli.main. We do this by putting a shim on PATH.
     shim_dir = os.path.join(home, "bin")
     os.makedirs(shim_dir, exist_ok=True)
-    shim_path = os.path.join(shim_dir, "hermes")
+    shim_path = os.path.join(shim_dir, "Vermes")
     with open(shim_path, "w") as f:
         f.write(f"""#!/bin/sh
 exec {PY} -m vermes_cli.main "$@"
@@ -212,7 +212,7 @@ exec {PY} -m vermes_cli.main "$@"
     print("=" * 60)
     print("C. Worker log captured to disk")
     print("=" * 60)
-    # Scenario A workers wrote to /tmp/hermes_e2e_*/worker_*.log
+    # Scenario A workers wrote to /tmp/VERMES_e2e_*/worker_*.log
     import glob
     logs = glob.glob(os.path.join(home, "worker_*.log"))
     print(f"  {len(logs)} worker log files")

@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
-    home = tmp_path / ".hermes"
+    home = tmp_path / ".vermes"
     home.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
     return home
@@ -510,14 +510,14 @@ async def test_notifier_uploads_artifacts_on_completion(kanban_home, tmp_path):
     # Use the production handler so we exercise the full path: tool args
     # → metadata.artifacts → event payload promotion.
     import os
-    os.environ["HERMES_KANBAN_TASK"] = tid
+    os.environ["VERMES_KANBAN_TASK"] = tid
     try:
         out = kt._handle_complete({
             "summary": "rendered the chart",
             "artifacts": [str(chart_path), str(report_path)],
         })
     finally:
-        os.environ.pop("HERMES_KANBAN_TASK", None)
+        os.environ.pop("VERMES_KANBAN_TASK", None)
     import json as _json
     assert _json.loads(out)["ok"] is True
 
@@ -592,14 +592,14 @@ async def test_notifier_artifact_delivery_skips_missing_files(kanban_home, tmp_p
         conn.close()
 
     import os
-    os.environ["HERMES_KANBAN_TASK"] = tid
+    os.environ["VERMES_KANBAN_TASK"] = tid
     try:
         kt._handle_complete({
             "summary": "one real, one ghost",
             "artifacts": [str(real_pdf), "/tmp/definitely-does-not-exist.pdf"],
         })
     finally:
-        os.environ.pop("HERMES_KANBAN_TASK", None)
+        os.environ.pop("VERMES_KANBAN_TASK", None)
 
     runner = object.__new__(GatewayRunner)
     runner._running = True

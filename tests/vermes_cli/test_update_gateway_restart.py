@@ -68,18 +68,18 @@ def _make_run_side_effect(
         if "rev-list" in joined:
             return subprocess.CompletedProcess(cmd, 0, stdout=f"{commit_count}\n", stderr="")
 
-        # systemctl list-units hermes-gateway* — discover all gateway services
+        # systemctl list-units Vermes-gateway* — discover all gateway services
         if "systemctl" in joined and "list-units" in joined:
             if "--user" in joined and systemd_active:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded active running Vermes Gateway\n",
+                    stdout="Vermes-gateway.service loaded active running Vermes Gateway\n",
                     stderr="",
                 )
             elif "--user" not in joined and system_service_active:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded active running Vermes Gateway\n",
+                    stdout="Vermes-gateway.service loaded active running Vermes Gateway\n",
                     stderr="",
                 )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -155,7 +155,7 @@ class TestLaunchdPlistPath:
         assert "<key>EnvironmentVariables</key>" in plist
         assert "<key>PATH</key>" in plist
         assert "<key>VIRTUAL_ENV</key>" in plist
-        assert "<key>HERMES_HOME</key>" in plist
+        assert "<key>VERMES_HOME</key>" in plist
 
     def test_plist_path_includes_venv_bin(self):
         plist = gateway_cli.generate_launchd_plist()
@@ -415,7 +415,7 @@ class TestCmdUpdateLaunchdRestart:
         )
         process = gateway_cli.ProfileGatewayProcess(
             profile="coder",
-            path=tmp_path / ".hermes" / "profiles" / "coder",
+            path=tmp_path / ".vermes" / "profiles" / "coder",
             pid=12345,
         )
 
@@ -459,7 +459,7 @@ class TestCmdUpdateLaunchdRestart:
         )
         process = gateway_cli.ProfileGatewayProcess(
             profile="coder",
-            path=tmp_path / ".hermes" / "profiles" / "coder",
+            path=tmp_path / ".vermes" / "profiles" / "coder",
             pid=12345,
         )
 
@@ -502,7 +502,7 @@ class TestCmdUpdateLaunchdRestart:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Restarted hermes-gateway" in captured
+        assert "Restarted Vermes-gateway" in captured
         # Verify systemctl restart was called
         restart_calls = [
             c for c in mock_run.call_args_list
@@ -543,7 +543,7 @@ class TestCmdUpdateLaunchdRestart:
                 if "--user" in joined:
                     return subprocess.CompletedProcess(
                         cmd, 0,
-                        stdout="hermes-gateway.service loaded active running\n",
+                        stdout="Vermes-gateway.service loaded active running\n",
                         stderr="",
                     )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -606,7 +606,7 @@ class TestCmdUpdateLaunchdRestart:
 
         captured = capsys.readouterr().out
         assert "draining" in captured.lower()
-        assert "Restarted hermes-gateway" in captured
+        assert "Restarted Vermes-gateway" in captured
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
@@ -684,7 +684,7 @@ class TestCmdUpdateLaunchdRestart:
                 if "--user" in joined:
                     return subprocess.CompletedProcess(
                         cmd, 0,
-                        stdout="hermes-gateway.service loaded active running\n",
+                        stdout="Vermes-gateway.service loaded active running\n",
                         stderr="",
                     )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -712,19 +712,19 @@ class TestCmdUpdateLaunchdRestart:
             if "systemctl" in " ".join(str(a) for a in c.args[0])
         ]
 
-        # Must have called ``reset-failed hermes-gateway`` AND ``start
-        # hermes-gateway`` explicitly so systemd bypasses RestartSec.
-        reset_calls = [c for c in calls if "reset-failed" in c and "hermes-gateway" in c]
+        # Must have called ``reset-failed Vermes-gateway`` AND ``start
+        # Vermes-gateway`` explicitly so systemd bypasses RestartSec.
+        reset_calls = [c for c in calls if "reset-failed" in c and "Vermes-gateway" in c]
         start_calls = [
             c for c in calls
-            if "start" in c and "hermes-gateway" in c and "restart" not in c
+            if "start" in c and "Vermes-gateway" in c and "restart" not in c
         ]
         assert reset_calls, (
-            f"Expected explicit `reset-failed hermes-gateway` after graceful drain; "
+            f"Expected explicit `reset-failed Vermes-gateway` after graceful drain; "
             f"systemctl calls were: {calls}"
         )
         assert start_calls, (
-            f"Expected explicit `start hermes-gateway` after graceful drain to "
+            f"Expected explicit `start Vermes-gateway` after graceful drain to "
             f"bypass RestartSec; systemctl calls were: {calls}"
         )
 
@@ -780,7 +780,7 @@ class TestCmdUpdateSystemService:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Restarted hermes-gateway" in captured
+        assert "Restarted Vermes-gateway" in captured
         # Verify systemctl restart (no --user) was called
         restart_calls = [
             c for c in mock_run.call_args_list
@@ -834,7 +834,7 @@ class TestCmdUpdateSystemService:
 
         captured = capsys.readouterr().out
         # Both scopes are discovered and restarted
-        assert "Restarted hermes-gateway" in captured
+        assert "Restarted Vermes-gateway" in captured
 
 
 # ---------------------------------------------------------------------------
@@ -926,7 +926,7 @@ class TestServicePidExclusion:
             cmd_update(mock_args)
 
         captured = capsys.readouterr().out
-        assert "Restarted hermes-gateway" in captured
+        assert "Restarted Vermes-gateway" in captured
         # Service PID must not be killed
         kill_calls = [
             c for c in mock_kill.call_args_list
@@ -1003,7 +1003,7 @@ class TestGetServicePids:
             if "list-units" in joined:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded active running Vermes Gateway\n",
+                    stdout="Vermes-gateway.service loaded active running Vermes Gateway\n",
                     stderr="",
                 )
             if "show" in joined and "MainPID" in joined:
@@ -1053,7 +1053,7 @@ class TestGetServicePids:
             if "list-units" in joined:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    stdout="hermes-gateway.service loaded inactive dead Vermes Gateway\n",
+                    stdout="Vermes-gateway.service loaded inactive dead Vermes Gateway\n",
                     stderr="",
                 )
             if "show" in joined and "MainPID" in joined:
@@ -1121,10 +1121,10 @@ class TestFindGatewayPidsExclude:
         assert 200 in pids
 
     def test_filters_to_current_profile(self, monkeypatch, tmp_path):
-        profile_dir = tmp_path / ".hermes" / "profiles" / "orcha"
+        profile_dir = tmp_path / ".vermes" / "profiles" / "orcha"
         profile_dir.mkdir(parents=True)
         monkeypatch.setattr(gateway_cli, "is_windows", lambda: False)
-        monkeypatch.setattr(gateway_cli, "get_hermes_home", lambda: profile_dir)
+        monkeypatch.setattr(gateway_cli, "get_vermes_home", lambda: profile_dir)
         # Bypass /proc scan so the subprocess (ps) fallback is used
         _real_isdir = os.path.isdir
         monkeypatch.setattr("os.path.isdir", lambda p: False if p == "/proc" else _real_isdir(p))
@@ -1134,8 +1134,8 @@ class TestFindGatewayPidsExclude:
             return subprocess.CompletedProcess(
                 cmd, 0,
                 stdout=(
-                    "100 /Users/dgrieco/.hermes/vermes-agent/venv/bin/python -m vermes_cli.main --profile orcha gateway run --replace\n"
-                    "200 /Users/dgrieco/.hermes/vermes-agent/venv/bin/python -m vermes_cli.main --profile other gateway run --replace\n"
+                    "100 /Users/dgrieco/.Vermes/vermes-agent/venv/bin/python -m vermes_cli.main --profile orcha gateway run --replace\n"
+                    "200 /Users/dgrieco/.Vermes/vermes-agent/venv/bin/python -m vermes_cli.main --profile other gateway run --replace\n"
                 ),
                 stderr="",
             )
@@ -1143,7 +1143,7 @@ class TestFindGatewayPidsExclude:
         monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
         monkeypatch.setattr("os.getpid", lambda: 999)
         monkeypatch.setattr(gateway_cli, "_get_service_pids", lambda: set())
-        monkeypatch.setattr(gateway_cli, "_profile_arg", lambda hermes_home=None: "--profile orcha")
+        monkeypatch.setattr(gateway_cli, "_profile_arg", lambda VERMES_home=None: "--profile orcha")
 
         pids = gateway_cli.find_gateway_pids()
 
@@ -1173,15 +1173,15 @@ class TestGatewayModeWritesExitCodeEarly:
         monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: False)
         monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
 
-        # Point HERMES_HOME at a temp dir so the marker file lands there
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        # Point VERMES_HOME at a temp dir so the marker file lands there
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         import vermes_cli.config as _cfg
-        monkeypatch.setattr(_cfg, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(_cfg, "get_vermes_home", lambda: VERMES_home)
         # Also patch the module-level ref used by cmd_update
         import vermes_cli.main as _main_mod
-        monkeypatch.setattr(_main_mod, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(_main_mod, "get_vermes_home", lambda: VERMES_home)
 
         mock_run.side_effect = _make_run_side_effect(commit_count="1")
 
@@ -1190,7 +1190,7 @@ class TestGatewayModeWritesExitCodeEarly:
         with patch.object(gateway_cli, "find_gateway_pids", return_value=[]):
             cmd_update(args)
 
-        exit_code_path = hermes_home / ".update_exit_code"
+        exit_code_path = VERMES_home / ".update_exit_code"
         assert exit_code_path.exists(), ".update_exit_code not written in gateway mode"
         assert exit_code_path.read_text() == "0"
 
@@ -1204,13 +1204,13 @@ class TestGatewayModeWritesExitCodeEarly:
         monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: False)
         monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
 
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         import vermes_cli.config as _cfg
-        monkeypatch.setattr(_cfg, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(_cfg, "get_vermes_home", lambda: VERMES_home)
         import vermes_cli.main as _main_mod
-        monkeypatch.setattr(_main_mod, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(_main_mod, "get_vermes_home", lambda: VERMES_home)
 
         mock_run.side_effect = _make_run_side_effect(commit_count="1")
 
@@ -1219,7 +1219,7 @@ class TestGatewayModeWritesExitCodeEarly:
         with patch.object(gateway_cli, "find_gateway_pids", return_value=[]):
             cmd_update(args)
 
-        exit_code_path = hermes_home / ".update_exit_code"
+        exit_code_path = VERMES_home / ".update_exit_code"
         assert not exit_code_path.exists(), ".update_exit_code should not be written outside gateway mode"
 
     @patch("shutil.which", return_value=None)
@@ -1232,15 +1232,15 @@ class TestGatewayModeWritesExitCodeEarly:
         monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
         monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
 
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         import vermes_cli.config as _cfg
-        monkeypatch.setattr(_cfg, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(_cfg, "get_vermes_home", lambda: VERMES_home)
         import vermes_cli.main as _main_mod
-        monkeypatch.setattr(_main_mod, "get_hermes_home", lambda: hermes_home)
+        monkeypatch.setattr(_main_mod, "get_vermes_home", lambda: VERMES_home)
 
-        exit_code_path = hermes_home / ".update_exit_code"
+        exit_code_path = VERMES_home / ".update_exit_code"
 
         # Track whether exit code exists when systemctl restart is called
         exit_code_existed_at_restart = []
@@ -1268,11 +1268,11 @@ class TestGatewayModeWritesExitCodeEarly:
 
 
 class TestCmdUpdateLegacyGatewayWarning:
-    """Tests for the legacy hermes.service warning printed by `vermes update`.
+    """Tests for the legacy Vermes.service warning printed by `vermes update`.
 
     Users who installed Vermes before the service rename often have a
-    dormant ``hermes.service`` that starts flap-fighting the current
-    ``hermes-gateway.service`` after PR #5646. Every ``vermes update``
+    dormant ``Vermes.service`` that starts flap-fighting the current
+    ``Vermes-gateway.service`` after PR #5646. Every ``vermes update``
     should remind them to run ``vermes gateway migrate-legacy`` until
     they do.
     """
@@ -1292,7 +1292,7 @@ class TestCmdUpdateLegacyGatewayWarning:
         system_dir = tmp_path / "system"
         user_dir.mkdir()
         system_dir.mkdir()
-        legacy_path = user_dir / "hermes.service"
+        legacy_path = user_dir / "Vermes.service"
         legacy_path.write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
         monkeypatch.setattr(
@@ -1311,7 +1311,7 @@ class TestCmdUpdateLegacyGatewayWarning:
 
         captured = capsys.readouterr().out
         assert "Legacy Vermes gateway unit(s) detected" in captured
-        assert "hermes.service" in captured
+        assert "Vermes.service" in captured
         assert "vermes gateway migrate-legacy" in captured
         assert "(user scope)" in captured
 
@@ -1349,20 +1349,20 @@ class TestCmdUpdateLegacyGatewayWarning:
     def test_update_does_not_flag_profile_units(
         self, mock_run, _mock_which, mock_args, capsys, tmp_path, monkeypatch,
     ):
-        """Profile units (hermes-gateway-coder.service) must not trigger the warning.
+        """Profile units (Vermes-gateway-coder.service) must not trigger the warning.
 
         This is the core safety invariant: the legacy allowlist is
-        ``hermes.service`` only, no globs.
+        ``Vermes.service`` only, no globs.
         """
         user_dir = tmp_path / "user"
         system_dir = tmp_path / "system"
         user_dir.mkdir()
         system_dir.mkdir()
         # Drop a profile unit that an over-eager glob would match
-        (user_dir / "hermes-gateway-coder.service").write_text(
+        (user_dir / "Vermes-gateway-coder.service").write_text(
             self._OUR_UNIT_TEXT, encoding="utf-8"
         )
-        (user_dir / "hermes-gateway.service").write_text(
+        (user_dir / "Vermes-gateway.service").write_text(
             self._OUR_UNIT_TEXT, encoding="utf-8"
         )
 
@@ -1382,7 +1382,7 @@ class TestCmdUpdateLegacyGatewayWarning:
 
         captured = capsys.readouterr().out
         assert "Legacy Vermes gateway" not in captured
-        assert "hermes-gateway-coder.service" not in captured  # not flagged
+        assert "Vermes-gateway-coder.service" not in captured  # not flagged
 
     @patch("shutil.which", return_value=None)
     @patch("subprocess.run")
@@ -1394,7 +1394,7 @@ class TestCmdUpdateLegacyGatewayWarning:
         user_dir = tmp_path / "user"
         user_dir.mkdir()
         # Put a file that WOULD match if the check ran
-        (user_dir / "hermes.service").write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
+        (user_dir / "Vermes.service").write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
         monkeypatch.setattr(
             gateway_cli,
@@ -1425,7 +1425,7 @@ class TestCmdUpdateLegacyGatewayWarning:
         system_dir = tmp_path / "system"
         user_dir.mkdir()
         system_dir.mkdir()
-        (system_dir / "hermes.service").write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
+        (system_dir / "Vermes.service").write_text(self._OUR_UNIT_TEXT, encoding="utf-8")
 
         monkeypatch.setattr(
             gateway_cli,
@@ -1511,10 +1511,10 @@ class TestCmdUpdateResetFailedBeforeRestart:
         restart_calls = _systemctl_calls(mock_run, "restart")
 
         assert any(
-            "hermes-gateway" in " ".join(str(c) for c in call)
+            "Vermes-gateway" in " ".join(str(c) for c in call)
             for call in reset_calls
         ), (
-            "Expected `systemctl reset-failed hermes-gateway` before the "
+            "Expected `systemctl reset-failed Vermes-gateway` before the "
             "fallback `systemctl restart`, got reset_calls=%r" % (reset_calls,)
         )
         assert restart_calls, "Fallback systemctl restart should still run"
@@ -1526,7 +1526,7 @@ class TestCmdUpdateResetFailedBeforeRestart:
             joined = " ".join(str(c) for c in call.args[0])
             if "systemctl" in joined and "reset-failed" in joined and first_reset_idx is None:
                 first_reset_idx = idx
-            if "systemctl" in joined and "restart" in joined and "hermes-gateway" in joined:
+            if "systemctl" in joined and "restart" in joined and "Vermes-gateway" in joined:
                 if first_restart_idx is None:
                     first_restart_idx = idx
         assert first_reset_idx is not None and first_restart_idx is not None
@@ -1568,7 +1568,7 @@ class TestCmdUpdateResetFailedBeforeRestart:
                 if "--user" in joined:
                     return subprocess.CompletedProcess(
                         cmd, 0,
-                        stdout="hermes-gateway.service loaded active running\n",
+                        stdout="Vermes-gateway.service loaded active running\n",
                         stderr="",
                     )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -1600,11 +1600,11 @@ class TestCmdUpdateResetFailedBeforeRestart:
         # Two restart attempts (initial + retry), two reset-failed calls.
         gateway_restarts = [
             c for c in restart_calls
-            if "hermes-gateway" in " ".join(str(a) for a in c)
+            if "Vermes-gateway" in " ".join(str(a) for a in c)
         ]
         gateway_resets = [
             c for c in reset_calls
-            if "hermes-gateway" in " ".join(str(a) for a in c)
+            if "Vermes-gateway" in " ".join(str(a) for a in c)
         ]
         assert len(gateway_restarts) >= 2, (
             f"Expected both initial + retry restart calls, got {len(gateway_restarts)}"
@@ -1641,7 +1641,7 @@ class TestCmdUpdateResetFailedBeforeRestart:
                 if "--user" in joined:
                     return subprocess.CompletedProcess(
                         cmd, 0,
-                        stdout="hermes-gateway.service loaded active running\n",
+                        stdout="Vermes-gateway.service loaded active running\n",
                         stderr="",
                     )
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -1673,4 +1673,4 @@ class TestCmdUpdateResetFailedBeforeRestart:
             "know how to escape systemd's parked failed state.  Got:\n"
             f"{captured}"
         )
-        assert "hermes-gateway" in captured
+        assert "Vermes-gateway" in captured

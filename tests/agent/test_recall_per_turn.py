@@ -19,10 +19,10 @@ def _reset_evolution_state():
 
 
 @pytest.fixture(autouse=True)
-def hermes_home(tmp_path, monkeypatch):
-    d = tmp_path / "hermes"
+def VERMES_home(tmp_path, monkeypatch):
+    d = tmp_path / "Vermes"
     d.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(d))
+    monkeypatch.setenv("VERMES_HOME", str(d))
     _reset_evolution_state()
     yield d
 

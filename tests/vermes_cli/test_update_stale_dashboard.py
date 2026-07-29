@@ -1,6 +1,6 @@
 """Tests for the stale-dashboard handling run at the end of ``vermes update``.
 
-``vermes update`` detects ``hermes dashboard`` processes left over from the
+``vermes update`` detects ``Vermes dashboard`` processes left over from the
 previous version and kills them (SIGTERM + SIGKILL grace, or ``taskkill /F``
 on Windows).  Without this, the running backend silently serves stale Python
 against a freshly-updated JS bundle, producing 401s / empty data.
@@ -110,7 +110,7 @@ class TestFindStaleDashboardPids:
                 returncode=0,
                 stdout="\n".join([
                     _ps_line(12345, "python3 -m vermes_cli.main dashboard --port 9119"),
-                    _ps_line(12346, "hermes dashboard --port 9120 --no-open"),
+                    _ps_line(12346, "Vermes dashboard --port 9120 --no-open"),
                     _ps_line(12347, "python /home/x/vermes_cli/main.py dashboard"),
                 ]) + "\n",
                 stderr="",
@@ -123,7 +123,7 @@ class TestFindStaleDashboardPids:
                 returncode=0,
                 stdout="\n".join([
                     _ps_line(os.getpid(), "python3 -m vermes_cli.main dashboard"),
-                    _ps_line(12345, "hermes dashboard --port 9119"),
+                    _ps_line(12345, "Vermes dashboard --port 9119"),
                 ]) + "\n",
                 stderr="",
             )
@@ -162,8 +162,8 @@ class TestFindStaleDashboardPids:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="\n".join([
-                    _ps_line(99999, "grep hermes dashboard"),
-                    _ps_line(12345, "hermes dashboard --port 9119"),
+                    _ps_line(99999, "grep Vermes dashboard"),
+                    _ps_line(12345, "Vermes dashboard --port 9119"),
                 ]) + "\n",
                 stderr="",
             )
@@ -176,8 +176,8 @@ class TestFindStaleDashboardPids:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="\n".join([
-                    "notapid hermes dashboard --bad",
-                    _ps_line(12345, "hermes dashboard --port 9119"),
+                    "notapid Vermes dashboard --bad",
+                    _ps_line(12345, "Vermes dashboard --port 9119"),
                     "   ",
                 ]) + "\n",
                 stderr="",

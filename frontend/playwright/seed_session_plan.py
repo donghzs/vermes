@@ -9,7 +9,7 @@ The plan shape matches what the frontend store.onPlanCreated expects:
   plan.steps[].id / .title / .status ; todo_states maps step id -> status.
 
 Usage:
-    HERMES_HOME=/tmp/vermes-e2e python3 frontend/playwright/seed_session_plan.py [session_id]
+    VERMES_HOME=/tmp/vermes-e2e python3 frontend/playwright/seed_session_plan.py [session_id]
 """
 import os
 import sys
@@ -36,7 +36,7 @@ TODO_STATES = {"s1": "in_progress", "s2": "pending"}
 def main() -> None:
     session_id = sys.argv[1] if len(sys.argv) > 1 else "sess-cross-restart"
     save_plan_state(session_id, PLAN, TODO_STATES, plan_emitted=True)
-    db = os.path.join(os.environ.get("HERMES_HOME", "~/.hermes"), "session_plans.db")
+    db = os.path.join(os.environ.get("VERMES_HOME", "~/.Vermes"), "session_plans.db")
     print(f"[seed] wrote plan for session={session_id} -> {db}")
 
 

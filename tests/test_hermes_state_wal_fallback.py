@@ -4,7 +4,7 @@ When ``PRAGMA journal_mode=WAL`` raises ``OperationalError("locking protocol")``
 (SQLITE_PROTOCOL — typical on NFS/SMB), Vermes must fall back to
 ``journal_mode=DELETE`` so ``state.db`` / ``kanban.db`` remain usable.
 
-Without this fallback, users on NFS-mounted ``HERMES_HOME`` silently lose
+Without this fallback, users on NFS-mounted ``VERMES_HOME`` silently lose
 ``/resume``, ``/title``, ``/history``, ``/branch``, session search, and the
 kanban dispatcher — because ``SessionDB()`` init propagates the error and
 every caller swallows it, leaving ``_session_db = None``.

@@ -34,39 +34,39 @@ class TestEnvFloatClamped:
     adapter reads — must reject NaN/Inf and honor min/max bounds."""
 
     def test_default_when_unset(self, monkeypatch):
-        monkeypatch.delenv("HERMES_TEST_VAR", raising=False)
-        assert TelegramAdapter._env_float_clamped("HERMES_TEST_VAR", 0.5) == 0.5
+        monkeypatch.delenv("VERMES_TEST_VAR", raising=False)
+        assert TelegramAdapter._env_float_clamped("VERMES_TEST_VAR", 0.5) == 0.5
 
     def test_parses_valid_value(self, monkeypatch):
-        monkeypatch.setenv("HERMES_TEST_VAR", "1.25")
-        assert TelegramAdapter._env_float_clamped("HERMES_TEST_VAR", 0.5) == 1.25
+        monkeypatch.setenv("VERMES_TEST_VAR", "1.25")
+        assert TelegramAdapter._env_float_clamped("VERMES_TEST_VAR", 0.5) == 1.25
 
     def test_falls_back_to_default_on_garbage(self, monkeypatch):
-        monkeypatch.setenv("HERMES_TEST_VAR", "not-a-float")
-        assert TelegramAdapter._env_float_clamped("HERMES_TEST_VAR", 0.5) == 0.5
+        monkeypatch.setenv("VERMES_TEST_VAR", "not-a-float")
+        assert TelegramAdapter._env_float_clamped("VERMES_TEST_VAR", 0.5) == 0.5
 
     def test_rejects_nan(self, monkeypatch):
-        monkeypatch.setenv("HERMES_TEST_VAR", "nan")
-        result = TelegramAdapter._env_float_clamped("HERMES_TEST_VAR", 0.5)
+        monkeypatch.setenv("VERMES_TEST_VAR", "nan")
+        result = TelegramAdapter._env_float_clamped("VERMES_TEST_VAR", 0.5)
         assert math.isfinite(result)
         assert result == 0.5
 
     def test_rejects_inf(self, monkeypatch):
-        monkeypatch.setenv("HERMES_TEST_VAR", "inf")
-        result = TelegramAdapter._env_float_clamped("HERMES_TEST_VAR", 0.5)
+        monkeypatch.setenv("VERMES_TEST_VAR", "inf")
+        result = TelegramAdapter._env_float_clamped("VERMES_TEST_VAR", 0.5)
         assert math.isfinite(result)
         assert result == 0.5
 
     def test_clamps_below_min(self, monkeypatch):
-        monkeypatch.setenv("HERMES_TEST_VAR", "0.01")
+        monkeypatch.setenv("VERMES_TEST_VAR", "0.01")
         assert TelegramAdapter._env_float_clamped(
-            "HERMES_TEST_VAR", 0.5, min_value=0.1,
+            "VERMES_TEST_VAR", 0.5, min_value=0.1,
         ) == 0.1
 
     def test_clamps_above_max(self, monkeypatch):
-        monkeypatch.setenv("HERMES_TEST_VAR", "10.0")
+        monkeypatch.setenv("VERMES_TEST_VAR", "10.0")
         assert TelegramAdapter._env_float_clamped(
-            "HERMES_TEST_VAR", 0.5, max_value=2.0,
+            "VERMES_TEST_VAR", 0.5, max_value=2.0,
         ) == 2.0
 
 

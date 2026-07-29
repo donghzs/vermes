@@ -61,10 +61,10 @@ class VermesGatewayService:
     def _run_gateway(self):
         """Start uvicorn + FastAPI as the Gateway."""
         # Set environment
-        os.environ.setdefault("HERMES_HOME", os.path.expanduser("~/.vermes"))
-        os.makedirs(os.environ["HERMES_HOME"], exist_ok=True)
+        os.environ.setdefault("VERMES_HOME", os.path.expanduser("~/.vermes"))
+        os.makedirs(os.environ["VERMES_HOME"], exist_ok=True)
 
-        log_file = os.path.join(os.environ["HERMES_HOME"], "gateway.log")
+        log_file = os.path.join(os.environ["VERMES_HOME"], "gateway.log")
         logging.basicConfig(
             filename=log_file,
             level=logging.INFO,

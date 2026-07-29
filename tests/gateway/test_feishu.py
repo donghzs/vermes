@@ -1627,7 +1627,7 @@ class TestAdapterBehavior(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "HERMES_FEISHU_TEXT_BATCH_MAX_MESSAGES": "2",
+            "VERMES_FEISHU_TEXT_BATCH_MAX_MESSAGES": "2",
         },
         clear=True,
     )
@@ -1809,7 +1809,7 @@ class TestAdapterBehavior(unittest.TestCase):
                 return _FakeResponse()
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(os.environ, {"HERMES_HOME": tmp}, clear=False):
+            with patch.dict(os.environ, {"VERMES_HOME": tmp}, clear=False):
                 adapter = FeishuAdapter(PlatformConfig())
 
                 async def _run() -> tuple[str, str]:
@@ -1839,7 +1839,7 @@ class TestAdapterBehavior(unittest.TestCase):
         from gateway.platforms.feishu import FeishuAdapter
 
         with tempfile.TemporaryDirectory() as temp_home:
-            with patch.dict(os.environ, {"HERMES_HOME": temp_home}, clear=False):
+            with patch.dict(os.environ, {"VERMES_HOME": temp_home}, clear=False):
                 first = FeishuAdapter(PlatformConfig())
                 self.assertFalse(first._is_duplicate("om_same"))
                 second = FeishuAdapter(PlatformConfig())
@@ -2577,7 +2577,7 @@ class TestAdapterBehavior(unittest.TestCase):
 
         content = (
             "确认已入库 ✓\n"
-            "文件路径：`/root/.hermes/profiles/agent_cto/cron/jobs.json`\n"
+            "文件路径：`/root/.Vermes/profiles/agent_cto/cron/jobs.json`\n"
             "**解码后的内容：**\n"
             "```json\n"
             '{"cron": "list"}\n'
@@ -2603,7 +2603,7 @@ class TestAdapterBehavior(unittest.TestCase):
                 [
                     {
                         "tag": "md",
-                        "text": "确认已入库 ✓\n文件路径：`/root/.hermes/profiles/agent_cto/cron/jobs.json`\n**解码后的内容：**",
+                        "text": "确认已入库 ✓\n文件路径：`/root/.Vermes/profiles/agent_cto/cron/jobs.json`\n**解码后的内容：**",
                     }
                 ],
                 [{"tag": "md", "text": "```json\n{\"cron\": \"list\"}\n```"}],
@@ -2836,7 +2836,7 @@ class TestHydrateBotIdentity(unittest.TestCase):
                 "code": 0,
                 "bot": {
                     "bot_name": "Vermes Bot",
-                    "open_id": "ou_hermes_hydrated",
+                    "open_id": "ou_vermes_hydrated",
                 },
             }
         ).encode("utf-8")
@@ -2845,7 +2845,7 @@ class TestHydrateBotIdentity(unittest.TestCase):
 
         asyncio.run(adapter._hydrate_bot_identity())
 
-        self.assertEqual(adapter._bot_open_id, "ou_hermes_hydrated")
+        self.assertEqual(adapter._bot_open_id, "ou_vermes_hydrated")
         self.assertEqual(adapter._bot_name, "Vermes Bot")
 
     @patch.dict(
@@ -3247,7 +3247,7 @@ class TestDedupTTL(unittest.TestCase):
         from gateway.platforms.feishu import FeishuAdapter
 
         with tempfile.TemporaryDirectory() as temp_home:
-            with patch.dict(os.environ, {"HERMES_HOME": temp_home}, clear=True):
+            with patch.dict(os.environ, {"VERMES_HOME": temp_home}, clear=True):
                 adapter = FeishuAdapter(PlatformConfig())
                 adapter._dedup_state_path.parent.mkdir(parents=True, exist_ok=True)
                 adapter._dedup_state_path.write_text(

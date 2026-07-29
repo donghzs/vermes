@@ -5,7 +5,7 @@ Covers the three paths changed by fix/bedrock-provider-model-ids-live-discovery:
   1. provider_model_ids("bedrock") — uses live discover_bedrock_models() instead
      of the static _PROVIDER_MODELS table, with curated fallback.
 
-  2. list_authenticated_providers() Section 2 (HERMES_OVERLAYS) — bedrock
+  2. list_authenticated_providers() Section 2 (VERMES_OVERLAYS) — bedrock
      appears when AWS credentials are present; model list comes from live
      discovery keyed by the resolved region, NOT the static us.* table.
 
@@ -131,7 +131,7 @@ class TestProviderModelIdsBedrock:
 
 
 # ---------------------------------------------------------------------------
-# 2. list_authenticated_providers() — bedrock via HERMES_OVERLAYS (Section 2)
+# 2. list_authenticated_providers() — bedrock via VERMES_OVERLAYS (Section 2)
 # ---------------------------------------------------------------------------
 
 class TestListAuthenticatedProvidersBedrock:
@@ -336,19 +336,19 @@ class TestBedrockRegionRouting:
 # ---------------------------------------------------------------------------
 
 class TestBedrockOverlayRegistration:
-    """bedrock entry in HERMES_OVERLAYS is correctly configured."""
+    """bedrock entry in VERMES_OVERLAYS is correctly configured."""
 
     def test_bedrock_overlay_exists(self):
-        from vermes_cli.providers import HERMES_OVERLAYS
-        assert "bedrock" in HERMES_OVERLAYS
+        from vermes_cli.providers import VERMES_OVERLAYS
+        assert "bedrock" in VERMES_OVERLAYS
 
     def test_bedrock_overlay_transport(self):
-        from vermes_cli.providers import HERMES_OVERLAYS
-        assert HERMES_OVERLAYS["bedrock"].transport == "bedrock_converse"
+        from vermes_cli.providers import VERMES_OVERLAYS
+        assert VERMES_OVERLAYS["bedrock"].transport == "bedrock_converse"
 
     def test_bedrock_overlay_auth_type(self):
-        from vermes_cli.providers import HERMES_OVERLAYS
-        assert HERMES_OVERLAYS["bedrock"].auth_type == "aws_sdk"
+        from vermes_cli.providers import VERMES_OVERLAYS
+        assert VERMES_OVERLAYS["bedrock"].auth_type == "aws_sdk"
 
     def test_bedrock_label(self):
         from vermes_cli.providers import get_label

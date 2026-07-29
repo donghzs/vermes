@@ -98,7 +98,7 @@ def _make_adapter(telegram_adapter_cls):
     return a
 
 
-def _make_channel_message(text="channel id test @hermes_bot"):
+def _make_channel_message(text="channel id test @VERMES_bot"):
     chat = SimpleNamespace(
         id=-1003950368353,
         type="channel",
@@ -158,7 +158,7 @@ async def test_text_handler_uses_effective_message_for_channel_post(telegram_ada
 
     adapter._enqueue_text_event.assert_called_once()
     event = adapter._enqueue_text_event.call_args.args[0]
-    assert event.text == "channel id test @hermes_bot"
+    assert event.text == "channel id test @VERMES_bot"
     assert event.message_type == MessageType.TEXT
     assert event.source.chat_type == "channel"
     assert event.source.chat_id == "-1003950368353"

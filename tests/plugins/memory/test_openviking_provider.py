@@ -345,7 +345,7 @@ def test_viking_client_headers_include_bearer_when_api_key_set():
         api_key="test-key",
         account="acct",
         user="usr",
-        agent="hermes",
+        agent="Vermes",
     )
     headers = client._headers()
     assert headers["X-API-Key"] == "test-key"
@@ -362,12 +362,12 @@ def test_viking_client_headers_send_tenant_when_default():
         api_key="test-key",
         account="default",
         user="default",
-        agent="hermes",
+        agent="Vermes",
     )
     headers = client._headers()
     assert headers["X-OpenViking-Account"] == "default"
     assert headers["X-OpenViking-User"] == "default"
-    assert headers["X-OpenViking-Agent"] == "hermes"
+    assert headers["X-OpenViking-Agent"] == "Vermes"
     assert headers["Authorization"] == "Bearer test-key"
 
 
@@ -379,7 +379,7 @@ def test_viking_client_headers_send_tenant_when_empty_falls_back_to_default():
         api_key="",
         account="",
         user="",
-        agent="hermes",
+        agent="Vermes",
     )
     headers = client._headers()
     assert headers["X-OpenViking-Account"] == "default"
@@ -394,7 +394,7 @@ def test_viking_client_headers_sent_with_real_tenant_values():
         api_key="test-key",
         account="real-account",
         user="real-user",
-        agent="hermes",
+        agent="Vermes",
     )
     headers = client._headers()
     assert headers["X-OpenViking-Account"] == "real-account"
@@ -407,7 +407,7 @@ def test_viking_client_health_sends_auth_headers(monkeypatch):
         api_key="test-key",
         account="",
         user="",
-        agent="hermes",
+        agent="Vermes",
     )
     captured = {}
 

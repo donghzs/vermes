@@ -1,4 +1,4 @@
-"""Shared utility functions for hermes-agent."""
+"""Shared utility functions for Vermes-agent."""
 
 import json
 import logging

@@ -6,8 +6,8 @@ authorization URL (browser history, Referer headers, auth-server logs) and
 removing CSRF protection on the callback path.
 
 History:
-  - PR #1775 first fixed this on ``run_hermes_oauth_login()``.
-  - PR #2647 (b17e5c10) added ``run_hermes_oauth_login_pure()`` and silently
+  - PR #1775 first fixed this on ``run_vermes_oauth_login()``.
+  - PR #2647 (b17e5c10) added ``run_vermes_oauth_login_pure()`` and silently
     copy-pasted the pre-#1775 vulnerable pattern.
   - PR #3107 removed the old function, leaving only the regressed copy.
   - PR #10699 (issue #10693) fixed the regression on the surviving function.
@@ -29,7 +29,7 @@ def _patch_oauth_flow(
     capture_token_request: Dict[str, Any] | None = None,
     capture_auth_url: Dict[str, str] | None = None,
 ) -> None:
-    """Wire up monkeypatches that let ``run_hermes_oauth_login_pure()`` run
+    """Wire up monkeypatches that let ``run_vermes_oauth_login_pure()`` run
     end-to-end without touching a real browser, stdin, or HTTP endpoint.
 
     ``callback_code`` is the literal string the user would paste back into the
@@ -85,7 +85,7 @@ def test_authorization_url_state_is_not_pkce_verifier(monkeypatch, tmp_path):
     Reusing the verifier as state leaks the verifier into browser history,
     Referer headers, and auth-server access logs — defeating RFC 7636.
     """
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     captured_url: Dict[str, str] = {}
     captured_token: Dict[str, Any] = {}
@@ -114,9 +114,9 @@ def test_authorization_url_state_is_not_pkce_verifier(monkeypatch, tmp_path):
 
     monkeypatch.setattr(builtins, "input", fake_input)
 
-    from agent.anthropic_adapter import run_hermes_oauth_login_pure
+    from agent.anthropic_adapter import run_vermes_oauth_login_pure
 
-    result = run_hermes_oauth_login_pure()
+    result = run_vermes_oauth_login_pure()
     assert result is not None, "OAuth flow should succeed with matching state"
 
     url = captured_url["url"]
@@ -151,7 +151,7 @@ def test_callback_state_mismatch_aborts(monkeypatch, tmp_path, caplog):
     CSRF protection that ``state`` is supposed to provide (RFC 6749 §10.12)
     would be absent.
     """
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     captured_token: Dict[str, Any] = {}
     _patch_oauth_flow(
@@ -160,9 +160,9 @@ def test_callback_state_mismatch_aborts(monkeypatch, tmp_path, caplog):
         capture_token_request=captured_token,
     )
 
-    from agent.anthropic_adapter import run_hermes_oauth_login_pure
+    from agent.anthropic_adapter import run_vermes_oauth_login_pure
 
-    result = run_hermes_oauth_login_pure()
+    result = run_vermes_oauth_login_pure()
 
     assert result is None, "mismatched state must abort the flow"
     assert "url" not in captured_token, (

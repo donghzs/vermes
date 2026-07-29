@@ -77,7 +77,7 @@ class TestCompressionHandoff:
         import importlib, sys
 
         test_db = str(tmp_path / "handoff.db")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         if "agent.memory_fabric" in sys.modules:
             importlib.reload(sys.modules["agent.memory_fabric"])
@@ -121,7 +121,7 @@ class TestCapacityGuard:
         import importlib, sys
 
         test_db = str(tmp_path / "cap.db")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
         if "agent.memory_fabric" in sys.modules:
             importlib.reload(sys.modules["agent.memory_fabric"])

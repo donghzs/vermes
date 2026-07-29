@@ -99,8 +99,8 @@ class TestModalBulkUpload:
         src_b.write_text("skill_content")
 
         files = [
-            (str(src_a), "/root/.hermes/credentials/a.json"),
-            (str(src_b), "/root/.hermes/skills/b.py"),
+            (str(src_a), "/root/.Vermes/credentials/a.json"),
+            (str(src_b), "/root/.Vermes/skills/b.py"),
         ]
 
         exec_calls, _, stdin_mock = _wire_async_exec(env)
@@ -123,13 +123,13 @@ class TestModalBulkUpload:
         buf = io.BytesIO(tar_data)
         with tarfile.open(fileobj=buf, mode="r:gz") as tar:
             names = sorted(tar.getnames())
-            assert "root/.hermes/credentials/a.json" in names
-            assert "root/.hermes/skills/b.py" in names
+            assert "root/.Vermes/credentials/a.json" in names
+            assert "root/.Vermes/skills/b.py" in names
 
             # Verify content
-            a_content = tar.extractfile("root/.hermes/credentials/a.json").read()
+            a_content = tar.extractfile("root/.Vermes/credentials/a.json").read()
             assert a_content == b"cred_content"
-            b_content = tar.extractfile("root/.hermes/skills/b.py").read()
+            b_content = tar.extractfile("root/.Vermes/skills/b.py").read()
             assert b_content == b"skill_content"
 
         # Verify stdin was closed
@@ -143,16 +143,16 @@ class TestModalBulkUpload:
         src.write_text("data")
 
         files = [
-            (str(src), "/root/.hermes/credentials/f.txt"),
-            (str(src), "/root/.hermes/skills/deep/nested/f.txt"),
+            (str(src), "/root/.Vermes/credentials/f.txt"),
+            (str(src), "/root/.Vermes/skills/deep/nested/f.txt"),
         ]
 
         exec_calls, _, _ = _wire_async_exec(env)
         env._modal_bulk_upload(files)
 
         cmd = exec_calls[0][2]
-        assert "/root/.hermes/credentials" in cmd
-        assert "/root/.hermes/skills/deep/nested" in cmd
+        assert "/root/.Vermes/credentials" in cmd
+        assert "/root/.Vermes/skills/deep/nested" in cmd
 
     def test_single_exec_call(self, monkeypatch, tmp_path):
         """Bulk upload should use exactly one exec call regardless of file count."""
@@ -162,7 +162,7 @@ class TestModalBulkUpload:
         for i in range(20):
             src = tmp_path / f"file_{i}.txt"
             src.write_text(f"content_{i}")
-            files.append((str(src), f"/root/.hermes/cache/file_{i}.txt"))
+            files.append((str(src), f"/root/.Vermes/cache/file_{i}.txt"))
 
         exec_calls, _, _ = _wire_async_exec(env)
         env._modal_bulk_upload(files)
@@ -190,7 +190,7 @@ class TestModalBulkUpload:
         # Manually call the part of __init__ that wires FileSyncManager
         from tools.environments.file_sync import iter_sync_files
         env._sync_manager = modal_env.FileSyncManager(
-            get_files_fn=lambda: iter_sync_files("/root/.hermes"),
+            get_files_fn=lambda: iter_sync_files("/root/.Vermes"),
             upload_fn=env._modal_upload,
             delete_fn=env._modal_delete,
             bulk_upload_fn=env._modal_bulk_upload,
@@ -206,7 +206,7 @@ class TestModalBulkUpload:
 
         src = tmp_path / "f.txt"
         src.write_text("data")
-        files = [(str(src), "/root/.hermes/f.txt")]
+        files = [(str(src), "/root/.Vermes/f.txt")]
 
         _, run_kwargs, _ = _wire_async_exec(env)
         env._modal_bulk_upload(files)
@@ -219,7 +219,7 @@ class TestModalBulkUpload:
 
         src = tmp_path / "f.txt"
         src.write_text("data")
-        files = [(str(src), "/root/.hermes/f.txt")]
+        files = [(str(src), "/root/.Vermes/f.txt")]
 
         stdin_mock = _make_mock_stdin()
 
@@ -258,7 +258,7 @@ class TestModalBulkUpload:
 
         src = tmp_path / "f.txt"
         src.write_text("some data to upload")
-        files = [(str(src), "/root/.hermes/f.txt")]
+        files = [(str(src), "/root/.Vermes/f.txt")]
 
         exec_calls, _, stdin_mock = _wire_async_exec(env)
         env._modal_bulk_upload(files)
@@ -278,7 +278,7 @@ class TestModalBulkUpload:
         import os as _os
         src = tmp_path / "large.bin"
         src.write_bytes(_os.urandom(1024 * 1024 + 512 * 1024))
-        files = [(str(src), "/root/.hermes/large.bin")]
+        files = [(str(src), "/root/.Vermes/large.bin")]
 
         exec_calls, _, stdin_mock = _wire_async_exec(env)
         env._modal_bulk_upload(files)
@@ -292,4 +292,4 @@ class TestModalBulkUpload:
         buf = io.BytesIO(tar_data)
         with tarfile.open(fileobj=buf, mode="r:gz") as tar:
             names = tar.getnames()
-            assert "root/.hermes/large.bin" in names
+            assert "root/.Vermes/large.bin" in names

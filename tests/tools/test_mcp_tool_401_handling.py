@@ -59,7 +59,7 @@ def test_is_auth_error_rejects_generic_exception():
 def test_call_tool_handler_returns_needs_reauth_on_unrecoverable_401(monkeypatch, tmp_path):
     """When session.call_tool raises 401 and handle_401 returns False,
     handler returns a structured needs_reauth error (not a generic failure)."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     from tools.mcp_tool import _make_tool_handler
     from tools.mcp_oauth_manager import get_manager, reset_manager_for_tests
@@ -110,7 +110,7 @@ def test_call_tool_handler_returns_needs_reauth_on_unrecoverable_401(monkeypatch
 
 def test_call_tool_handler_non_auth_error_still_generic(monkeypatch, tmp_path):
     """Non-auth exceptions still surface via the generic error path, not needs_reauth."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     from tools.mcp_tool import _make_tool_handler
 
     server = MagicMock()

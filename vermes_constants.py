@@ -19,56 +19,56 @@ _UNSET = object()
 
 
 def get_profile_fallback_active() -> bool:
-    """True if get_hermes_home() ever fell back to the default profile while
+    """True if get_vermes_home() ever fell back to the default profile while
     a non-default profile was sticky-active (data may land in the wrong
     profile).  Read-only; set once by the warning branch in
-    get_hermes_home()."""
+    get_vermes_home()."""
     return _profile_fallback_active
-_HERMES_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
-    "_HERMES_HOME_OVERRIDE", default=_UNSET
+_vermes_HOME_OVERRIDE: ContextVar[str | object] = ContextVar(
+    "_vermes_HOME_OVERRIDE", default=_UNSET
 )
 
 
-def set_hermes_home_override(path: str | Path | None) -> Token:
+def set_vermes_home_override(path: str | Path | None) -> Token:
     """Set a context-local Vermes home override and return its reset token.
 
     This is for in-process, per-task scoping.  It deliberately does not mutate
     ``os.environ`` because that is shared by every thread in the process.
     """
     value: str | object = _UNSET if path is None else str(path)
-    return _HERMES_HOME_OVERRIDE.set(value)
+    return _vermes_HOME_OVERRIDE.set(value)
 
 
-def reset_hermes_home_override(token: Token) -> None:
+def reset_vermes_home_override(token: Token) -> None:
     """Restore the previous context-local Vermes home override."""
-    _HERMES_HOME_OVERRIDE.reset(token)
+    _vermes_HOME_OVERRIDE.reset(token)
 
 
-def get_hermes_home_override() -> str | None:
+def get_vermes_home_override() -> str | None:
     """Return the active context-local Vermes home override, if any."""
-    override = _HERMES_HOME_OVERRIDE.get()
+    override = _vermes_HOME_OVERRIDE.get()
     if override is _UNSET or not override:
         return None
     return str(override)
 
 
-def get_hermes_home() -> Path:
+def get_vermes_home() -> Path:
     """Return the Vermes home directory (default: ~/.vermes).
 
-    Reads HERMES_HOME env var, falls back to ~/.vermes.
+    Reads VERMES_HOME env var, falls back to ~/.vermes.
     This is the single source of truth — all other copies should import this.
 
-    When ``HERMES_HOME`` is unset but an ``active_profile`` file indicates
+    When ``VERMES_HOME`` is unset but an ``active_profile`` file indicates
     a non-default profile is active, logs a loud one-shot warning to
     ``errors.log`` so cross-profile data corruption is diagnosable instead
     of silent.  Behavior is unchanged otherwise — we still return
     ``~/.vermes`` — because raising here would brick 30+ module-level
     callers that import this at load time.  Subprocess spawners are
-    expected to propagate ``HERMES_HOME`` explicitly (see the systemd
+    expected to propagate ``VERMES_HOME`` explicitly (see the systemd
     template in ``vermes_cli/gateway.py`` and the kanban dispatcher in
-    ``vermes_cli/kanban_db.py``).  See https://github.com/NousResearch/hermes-agent/issues/18594.
+    ``vermes_cli/kanban_db.py``).  See https://github.com/donghzs/vermes/issues/18594.
     """
-    override = get_hermes_home_override()
+    override = get_vermes_home_override()
     if override:
         return Path(override)
 
@@ -76,8 +76,8 @@ def get_hermes_home() -> Path:
     if val:
         return Path(val)
 
-    # HERMES_HOME remains supported for backward compatibility
-    val = os.environ.get("HERMES_HOME", "").strip()
+    # VERMES_HOME remains supported for backward compatibility
+    val = os.environ.get("VERMES_HOME", "").strip()
     if val:
         return Path(val)
 
@@ -86,7 +86,7 @@ def get_hermes_home() -> Path:
     global _profile_fallback_warned, _profile_fallback_active
     if not _profile_fallback_warned:
         try:
-            # Inline the default-root resolution from get_default_hermes_root()
+            # Inline the default-root resolution from get_default_vermes_root()
             # to stay import-safe (this function is called from module scope
             # in 30+ files; we cannot afford to trigger logging setup here).
             active_path = (Path.home() / ".vermes" / "active_profile")
@@ -103,7 +103,7 @@ def get_hermes_home() -> Path:
             # on consoles where a StreamHandler is already attached.
             import sys
             msg = (
-                f"[VERMES_HOME fallback] HERMES_HOME is unset but active "
+                f"[VERMES_HOME fallback] VERMES_HOME is unset but active "
                 f"profile is {active!r}. Falling back to ~/.vermes, which "
                 f"is the DEFAULT profile — not {active!r}. Any data this "
                 f"process writes will land in the wrong profile. The "
@@ -119,16 +119,16 @@ def get_hermes_home() -> Path:
     return Path.home() / ".vermes"
 
 
-def get_default_hermes_root() -> Path:
+def get_default_vermes_root() -> Path:
     """Return the root Vermes directory for profile-level operations.
 
     In standard deployments this is ``~/.vermes``.
 
-    In Docker or custom deployments where ``HERMES_HOME`` points outside
-    ``~/.vermes`` (e.g. ``/opt/data``), returns ``HERMES_HOME`` directly
+    In Docker or custom deployments where ``VERMES_HOME`` points outside
+    ``~/.vermes`` (e.g. ``/opt/data``), returns ``VERMES_HOME`` directly
     — that IS the root.
 
-    In profile mode where ``HERMES_HOME`` is ``<root>/profiles/<name>``,
+    In profile mode where ``VERMES_HOME`` is ``<root>/profiles/<name>``,
     returns ``<root>`` so that ``profile list`` can see all profiles.
     Works both for standard (``~/.vermes/profiles/coder``) and Docker
     (``/opt/data/profiles/coder``) layouts.
@@ -136,13 +136,13 @@ def get_default_hermes_root() -> Path:
     Import-safe — no dependencies beyond stdlib.
     """
     native_home = Path.home() / ".vermes"
-    env_home = os.environ.get("HERMES_HOME", "")
+    env_home = os.environ.get("VERMES_HOME", "")
     if not env_home:
         return native_home
     env_path = Path(env_home)
     try:
         env_path.resolve().relative_to(native_home.resolve())
-        # HERMES_HOME is under ~/.vermes (normal or profile mode)
+        # VERMES_HOME is under ~/.vermes (normal or profile mode)
         return native_home
     except ValueError:
         pass
@@ -154,7 +154,7 @@ def get_default_hermes_root() -> Path:
     if env_path.parent.name == "profiles":
         return env_path.parent.parent
 
-    # Not a profile path — HERMES_HOME itself is the root
+    # Not a profile path — VERMES_HOME itself is the root
     return env_path
 
 
@@ -179,9 +179,9 @@ def get_optional_skills_dir(default: Path | None = None) -> Path:
     """Return the optional-skills directory, honoring package-manager wrappers.
 
     Packaged installs may ship ``optional-skills`` outside the Python package
-    tree and expose it via ``HERMES_OPTIONAL_SKILLS``.
+    tree and expose it via ``VERMES_OPTIONAL_SKILLS``.
     """
-    override = os.getenv("HERMES_OPTIONAL_SKILLS", "").strip()
+    override = os.getenv("VERMES_OPTIONAL_SKILLS", "").strip()
     if override:
         return Path(override)
     packaged = _get_packaged_data_dir("optional-skills")
@@ -189,7 +189,7 @@ def get_optional_skills_dir(default: Path | None = None) -> Path:
         return packaged
     if default is not None:
         return default
-    return get_hermes_home() / "optional-skills"
+    return get_vermes_home() / "optional-skills"
 
 
 def get_optional_mcps_dir(default: Path | None = None) -> Path:
@@ -198,9 +198,9 @@ def get_optional_mcps_dir(default: Path | None = None) -> Path:
     Mirrors :func:`get_optional_skills_dir` for the MCP catalog (Nous-approved
     Model Context Protocol servers shipped with the repo but disabled by
     default). Packaged installs may ship ``optional-mcps`` outside the Python
-    package tree and expose it via ``HERMES_OPTIONAL_MCPS``.
+    package tree and expose it via ``VERMES_OPTIONAL_MCPS``.
     """
-    override = os.getenv("HERMES_OPTIONAL_MCPS", "").strip()
+    override = os.getenv("VERMES_OPTIONAL_MCPS", "").strip()
     if override:
         return Path(override)
     packaged = _get_packaged_data_dir("optional-mcps")
@@ -208,19 +208,19 @@ def get_optional_mcps_dir(default: Path | None = None) -> Path:
         return packaged
     if default is not None:
         return default
-    return get_hermes_home() / "optional-mcps"
+    return get_vermes_home() / "optional-mcps"
 
 
 def get_bundled_skills_dir(default: Path | None = None) -> Path:
     """Return the bundled skills directory for source and packaged installs.
 
     Resolution order:
-        1. ``HERMES_BUNDLED_SKILLS`` env var (Nix wrapper / explicit override)
+        1. ``VERMES_BUNDLED_SKILLS`` env var (Nix wrapper / explicit override)
         2. Wheel-installed ``<sysconfig data>/skills`` (pip install path)
         3. Caller-supplied ``default`` (typically the source-checkout path)
-        4. ``<HERMES_HOME>/skills`` last-resort
+        4. ``<VERMES_HOME>/skills`` last-resort
     """
-    override = os.getenv("HERMES_BUNDLED_SKILLS", "").strip()
+    override = os.getenv("VERMES_BUNDLED_SKILLS", "").strip()
     if override:
         return Path(override)
     packaged = _get_packaged_data_dir("skills")
@@ -228,10 +228,10 @@ def get_bundled_skills_dir(default: Path | None = None) -> Path:
         return packaged
     if default is not None:
         return default
-    return get_hermes_home() / "skills"
+    return get_vermes_home() / "skills"
 
 
-def get_hermes_dir(new_subpath: str, old_name: str) -> Path:
+def get_vermes_dir(new_subpath: str, old_name: str) -> Path:
     """Resolve a Vermes subdirectory with backward compatibility.
 
     New installs get the consolidated layout (e.g. ``cache/images``).
@@ -239,33 +239,33 @@ def get_hermes_dir(new_subpath: str, old_name: str) -> Path:
     keep using it — no migration required.
 
     Args:
-        new_subpath: Preferred path relative to HERMES_HOME (e.g. ``"cache/images"``).
-        old_name: Legacy path relative to HERMES_HOME (e.g. ``"image_cache"``).
+        new_subpath: Preferred path relative to VERMES_HOME (e.g. ``"cache/images"``).
+        old_name: Legacy path relative to VERMES_HOME (e.g. ``"image_cache"``).
 
     Returns:
         Absolute ``Path`` — old location if it exists on disk, otherwise the new one.
     """
-    home = get_hermes_home()
+    home = get_vermes_home()
     old_path = home / old_name
     if old_path.exists():
         return old_path
     return home / new_subpath
 
 
-def display_hermes_home() -> str:
-    """Return a user-friendly display string for the current HERMES_HOME.
+def display_vermes_home() -> str:
+    """Return a user-friendly display string for the current VERMES_HOME.
 
     Uses ``~/`` shorthand for readability::
 
         default:  ``~/.vermes``
         profile:  ``~/.vermes/profiles/coder``
-        custom:   ``/opt/hermes-custom``
+        custom:   ``/opt/Vermes-custom``
 
     Use this in **user-facing** print/log messages instead of hardcoding
     ``~/.vermes``.  For code that needs a real ``Path``, use
-    :func:`get_hermes_home` instead.
+    :func:`get_vermes_home` instead.
     """
-    home = get_hermes_home()
+    home = get_vermes_home()
     try:
         return "~/" + str(home.relative_to(Path.home()))
     except ValueError:
@@ -277,10 +277,10 @@ def secure_parent_dir(path: Path) -> None:
 
     Refuses to chmod ``/`` or any top-level directory (resolved parent with
     fewer than 3 parts, i.e. ``/`` or any direct child like ``/usr``) to
-    prevent catastrophic host bricking when ``HERMES_HOME`` or other path
+    prevent catastrophic host bricking when ``VERMES_HOME`` or other path
     env vars resolve to an unexpected location.
 
-    See https://github.com/NousResearch/hermes-agent/issues/25821.
+    See https://github.com/donghzs/vermes/issues/25821.
     """
     parent = path.parent.resolve()
     # Refuse root and its direct children (/usr, /home, /var, /tmp, …).
@@ -295,7 +295,7 @@ def secure_parent_dir(path: Path) -> None:
 def get_subprocess_home() -> str | None:
     """Return a per-profile HOME directory for subprocesses, or None.
 
-    When ``{HERMES_HOME}/home/`` exists on disk, subprocesses should use it
+    When ``{VERMES_HOME}/home/`` exists on disk, subprocesses should use it
     as ``HOME`` so system tools (git, ssh, gh, npm …) write their configs
     inside the Vermes data directory instead of the OS-level ``/root`` or
     ``~/``.  This provides:
@@ -310,14 +310,14 @@ def get_subprocess_home() -> str | None:
     exist, returns ``None`` and behavior is unchanged.
 
     Callers that inject the profile home as ``HOME`` into a subprocess
-    environment should also set ``HERMES_REAL_HOME`` to the **real** user
+    environment should also set ``VERMES_REAL_HOME`` to the **real** user
     home so that child scripts can distinguish the two (e.g. to locate
     ``~/.vermes/`` vs the isolated profile home).
     """
-    hermes_home = get_hermes_home_override() or os.getenv("HERMES_HOME")
-    if not hermes_home:
+    VERMES_home = get_vermes_home_override() or os.getenv("VERMES_HOME")
+    if not VERMES_home:
         return None
-    profile_home = os.path.join(hermes_home, "home")
+    profile_home = os.path.join(VERMES_home, "home")
     if os.path.isdir(profile_home):
         return profile_home
     return None
@@ -328,17 +328,17 @@ def get_real_home() -> str:
 
     This is the value that ``HOME`` held before any profile-level
     override.  Subprocess helpers should inject this as
-    ``HERMES_REAL_HOME`` alongside any profile-specific ``HOME`` so that
+    ``VERMES_REAL_HOME`` alongside any profile-specific ``HOME`` so that
     child scripts can find ``~/.vermes/`` correctly.
 
     Resolution order:
-      1. ``HERMES_REAL_HOME`` env var (if already set by a parent process).
+      1. ``VERMES_REAL_HOME`` env var (if already set by a parent process).
       2. ``HOME`` env var (the real one, set before profile activation).
       3. ``os.path.expanduser("~")``.
       4. ``/tmp`` as a safe last resort.
     """
     # If a parent process already set this, trust it.
-    explicit = os.getenv("HERMES_REAL_HOME", "").strip()
+    explicit = os.getenv("VERMES_REAL_HOME", "").strip()
     if explicit:
         return explicit
     # The current HOME — this is the *real* one because the Python
@@ -439,22 +439,22 @@ def is_container() -> bool:
 
 
 def get_config_path() -> Path:
-    """Return the path to ``config.yaml`` under HERMES_HOME.
+    """Return the path to ``config.yaml`` under VERMES_HOME.
 
-    Replaces the ``get_hermes_home() / "config.yaml"`` pattern repeated
+    Replaces the ``get_vermes_home() / "config.yaml"`` pattern repeated
     in 7+ files (skill_utils.py, vermes_logging.py, vermes_time.py, etc.).
     """
-    return get_hermes_home() / "config.yaml"
+    return get_vermes_home() / "config.yaml"
 
 
 def get_skills_dir() -> Path:
-    """Return the path to the skills directory under HERMES_HOME."""
-    return get_hermes_home() / "skills"
+    """Return the path to the skills directory under VERMES_HOME."""
+    return get_vermes_home() / "skills"
 
 
 def get_env_path() -> Path:
-    """Return the path to the ``.env`` file under HERMES_HOME."""
-    return get_hermes_home() / ".env"
+    """Return the path to the ``.env`` file under VERMES_HOME."""
+    return get_vermes_home() / ".env"
 
 
 # ─── Network Preferences ─────────────────────────────────────────────────────
@@ -482,7 +482,7 @@ def apply_ipv4_preference(force: bool = False) -> None:
     import socket
 
     # Guard against double-patching
-    if getattr(socket.getaddrinfo, "_hermes_ipv4_patched", False):
+    if getattr(socket.getaddrinfo, "_vermes_ipv4_patched", False):
         return
 
     _original_getaddrinfo = socket.getaddrinfo
@@ -498,7 +498,7 @@ def apply_ipv4_preference(force: bool = False) -> None:
                 return _original_getaddrinfo(host, port, family, type, proto, flags)
         return _original_getaddrinfo(host, port, family, type, proto, flags)
 
-    _ipv4_getaddrinfo._hermes_ipv4_patched = True  # type: ignore[attr-defined]
+    _ipv4_getaddrinfo._vermes_ipv4_patched = True  # type: ignore[attr-defined]
     socket.getaddrinfo = _ipv4_getaddrinfo  # type: ignore[assignment]
 
 

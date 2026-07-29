@@ -32,7 +32,7 @@ def _load_plugin_router():
     plugin_file = repo_root / "plugins" / "kanban" / "dashboard" / "plugin_api.py"
     assert plugin_file.exists(), f"plugin file missing: {plugin_file}"
 
-    mod_name = "hermes_dashboard_plugin_kanban_worker_runs_test"
+    mod_name = "VERMES_dashboard_plugin_kanban_worker_runs_test"
     # Re-use a cached module if already loaded to avoid duplicate-router issues.
     if mod_name in sys.modules:
         return sys.modules[mod_name].router
@@ -47,10 +47,10 @@ def _load_plugin_router():
 
 @pytest.fixture
 def kanban_home(tmp_path, monkeypatch):
-    """Isolated HERMES_HOME with an empty kanban DB."""
-    home = tmp_path / ".hermes"
+    """Isolated VERMES_HOME with an empty kanban DB."""
+    home = tmp_path / ".vermes"
     home.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     kb.init_db()
     return home
@@ -238,7 +238,7 @@ def test_inspect_run_dead_pid(client, monkeypatch):
     mock_psutil.Process = _raise_no_such
 
     # Patch the module-level _psutil in the loaded plugin module.
-    plugin_mod_name = "hermes_dashboard_plugin_kanban_worker_runs_test"
+    plugin_mod_name = "VERMES_dashboard_plugin_kanban_worker_runs_test"
     plugin_mod = sys.modules.get(plugin_mod_name)
     if plugin_mod is not None:
         monkeypatch.setattr(plugin_mod, "_psutil", mock_psutil)
@@ -278,12 +278,12 @@ def test_inspect_run_live_pid(client, monkeypatch):
         "num_threads": 4,
         "status": "sleeping",
         "create_time": time.time() - 300,
-        "cmdline": ["python", "-m", "hermes"],
+        "cmdline": ["python", "-m", "Vermes"],
     }
     fake_proc.num_fds.return_value = 12
     mock_psutil.Process.return_value = fake_proc
 
-    plugin_mod_name = "hermes_dashboard_plugin_kanban_worker_runs_test"
+    plugin_mod_name = "VERMES_dashboard_plugin_kanban_worker_runs_test"
     plugin_mod = sys.modules.get(plugin_mod_name)
     if plugin_mod is not None:
         monkeypatch.setattr(plugin_mod, "_psutil", mock_psutil)

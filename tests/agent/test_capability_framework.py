@@ -133,13 +133,13 @@ class TestCapabilityRegistry:
 
     def test_activate_skill_extraction(self, tmp_path):
         """Activating skill_extraction creates tables."""
-        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+        with patch.dict(os.environ, {"VERMES_HOME": str(tmp_path)}):
             ok, detail = activate_capability("skill_extraction")
             assert ok is True
 
     def test_activate_graph_sync(self, tmp_path):
         """Activating graph_sync creates tables."""
-        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+        with patch.dict(os.environ, {"VERMES_HOME": str(tmp_path)}):
             ok, detail = activate_capability("graph_sync")
             assert ok is True
 

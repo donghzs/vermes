@@ -29,15 +29,15 @@ from agent.emergent_change import (
 
 @pytest.fixture
 def tmp_pipeline(tmp_path):
-    """Create a pipeline with a temporary HERMES_HOME."""
-    old_home = os.environ.get("HERMES_HOME")
-    os.environ["HERMES_HOME"] = str(tmp_path)
-    pipeline = EmergentChangePipeline(hermes_home=str(tmp_path))
+    """Create a pipeline with a temporary VERMES_HOME."""
+    old_home = os.environ.get("VERMES_HOME")
+    os.environ["VERMES_HOME"] = str(tmp_path)
+    pipeline = EmergentChangePipeline(VERMES_home=str(tmp_path))
     yield pipeline, tmp_path
     if old_home:
-        os.environ["HERMES_HOME"] = old_home
+        os.environ["VERMES_HOME"] = old_home
     else:
-        os.environ.pop("HERMES_HOME", None)
+        os.environ.pop("VERMES_HOME", None)
 
 
 class TestImportValidation:

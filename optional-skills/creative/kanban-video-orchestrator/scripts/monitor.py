@@ -31,16 +31,16 @@ logger = logging.getLogger(__name__)
 
 
 
-def hermes_available() -> bool:
+def VERMES_available() -> bool:
     return shutil.which("vermes") is not None
 
 
 def kanban_list(tenant: str) -> list[dict]:
     """Returns parsed task rows. Falls back to plain stdout parsing if JSON
-    output isn't supported by the installed hermes CLI."""
+    output isn't supported by the installed Vermes CLI."""
     try:
         out = subprocess.run(
-            ["hermes", "kanban", "list", "--tenant", tenant, "--json"],
+            ["Vermes", "kanban", "list", "--tenant", tenant, "--json"],
             capture_output=True, text=True, check=False,
         )
         if out.returncode == 0 and out.stdout.strip().startswith("["):
@@ -49,7 +49,7 @@ def kanban_list(tenant: str) -> list[dict]:
         pass
     # Fallback: textual parse of `vermes kanban list`
     out = subprocess.run(
-        ["hermes", "kanban", "list", "--tenant", tenant],
+        ["Vermes", "kanban", "list", "--tenant", tenant],
         capture_output=True, text=True, check=False,
     )
     rows = []
@@ -73,7 +73,7 @@ def kanban_list(tenant: str) -> list[dict]:
 
 def kanban_show(task_id: str) -> dict | None:
     out = subprocess.run(
-        ["hermes", "kanban", "show", task_id, "--json"],
+        ["Vermes", "kanban", "show", task_id, "--json"],
         capture_output=True, text=True, check=False,
     )
     if out.returncode != 0:
@@ -176,8 +176,8 @@ def main():
                     help="Print one snapshot and exit (no polling loop)")
     args = ap.parse_args()
 
-    if not hermes_available():
-        logger.warning("ERROR: 'hermes' CLI not found in PATH")
+    if not VERMES_available():
+        logger.warning("ERROR: 'Vermes' CLI not found in PATH")
         sys.exit(1)
 
     if args.once:

@@ -26,13 +26,13 @@ from acp.schema import (
 # ---------------------------------------------------------------------------
 
 
-COMMON_HERMES_TOOLS = ["read_file", "search_files", "terminal", "patch", "write_file", "process"]
+COMMON_vermes_TOOLS = ["read_file", "search_files", "terminal", "patch", "write_file", "process"]
 
 
 class TestToolKindMap:
-    def test_all_hermes_tools_have_kind(self):
-        """Every common hermes tool should appear in TOOL_KIND_MAP."""
-        for tool in COMMON_HERMES_TOOLS:
+    def test_all_vermes_tools_have_kind(self):
+        """Every common Vermes tool should appear in TOOL_KIND_MAP."""
+        for tool in COMMON_vermes_TOOLS:
             assert tool in TOOL_KIND_MAP, f"{tool} missing from TOOL_KIND_MAP"
 
     def test_tool_kind_read_file(self):
@@ -126,8 +126,8 @@ class TestBuildToolTitle:
         assert title == "skill view (github-pitfalls/references/api.md)"
 
     def test_execute_code_title_includes_first_code_line(self):
-        title = build_tool_title("execute_code", {"code": "\nfrom hermes_tools import terminal\nprint('done')"})
-        assert title == "python: from hermes_tools import terminal"
+        title = build_tool_title("execute_code", {"code": "\nfrom VERMES_tools import terminal\nprint('done')"})
+        assert title == "python: from VERMES_tools import terminal"
 
     def test_skill_manage_title_includes_action_and_target(self):
         title = build_tool_title(
@@ -402,7 +402,7 @@ class TestBuildToolComplete:
         result = build_tool_complete(
             "tc-skill-manage",
             "skill_manage",
-            '{"success":true,"message":"Patched references/hermes-acp-zed-rendering.md in skill \'vermes-agent-operations\' (1 replacement)."}',
+            '{"success":true,"message":"Patched references/Vermes-acp-zed-rendering.md in skill \'vermes-agent-operations\' (1 replacement)."}',
             function_args={
                 "action": "patch",
                 "name": "vermes-agent-operations",
@@ -561,12 +561,12 @@ class TestBuildToolComplete:
         result = build_tool_complete(
             "tc-search-files",
             "search_files",
-            '{"total_count":36,"files":["/home/nour/.hermes/config.yaml","/home/nour/.hermes/profiles/recall-test/config.yaml"],"truncated":true}',
+            '{"total_count":36,"files":["/home/nour/.Vermes/config.yaml","/home/nour/.Vermes/profiles/recall-test/config.yaml"],"truncated":true}',
         )
         text = result.content[0].content.text
         assert "File search results" in text
         assert "Found 36 files; showing 2." in text
-        assert "/home/nour/.hermes/config.yaml" in text
+        assert "/home/nour/.Vermes/config.yaml" in text
         assert "use offset to page" in text
         assert "{\"total_count\"" not in text
         assert result.raw_output is None
@@ -602,13 +602,13 @@ class TestBuildToolComplete:
     def test_build_tool_complete_for_write_file_summarizes_without_repeating_diff(self, tmp_path):
         target = tmp_path / "diff-test.txt"
         snapshot = type("Snapshot", (), {"paths": [target], "before": {str(target): None}})()
-        target.write_text("hello from hermes\n", encoding="utf-8")
+        target.write_text("hello from Vermes\n", encoding="utf-8")
 
         result = build_tool_complete(
             "tc-wf1",
             "write_file",
             '{"bytes_written": 18, "dirs_created": false}',
-            function_args={"path": str(target), "content": "hello from hermes\n"},
+            function_args={"path": str(target), "content": "hello from Vermes\n"},
             snapshot=snapshot,
         )
         assert isinstance(result, ToolCallProgress)

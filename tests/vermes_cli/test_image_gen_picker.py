@@ -155,7 +155,7 @@ class TestConfigPrompt:
         not force a setup prompt on the user."""
         from vermes_cli import tools_config
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("FAL_KEY", raising=False)
 
         image_gen_registry.register_provider(_FakeProvider("avail-img", available=True))
@@ -165,7 +165,7 @@ class TestConfigPrompt:
     def test_image_gen_still_prompts_when_nothing_available(self, monkeypatch, tmp_path):
         from vermes_cli import tools_config
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("FAL_KEY", raising=False)
 
         image_gen_registry.register_provider(_FakeProvider("unavail-img", available=False))
@@ -180,7 +180,7 @@ class TestConfigWriting:
         ``image_gen.provider`` and ``image_gen.model``."""
         from vermes_cli import tools_config
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         image_gen_registry.register_provider(_FakeProvider("noenv", schema={
             "name": "NoEnv",
             "badge": "free",
@@ -207,7 +207,7 @@ class TestConfigWriting:
         and onto the selected plugin provider."""
         from vermes_cli import tools_config
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         image_gen_registry.register_provider(_FakeProvider("testopenai"))
         monkeypatch.setattr(tools_config, "_prompt_choice", lambda *a, **kw: 0)
         monkeypatch.setattr(tools_config, "_prompt", lambda *a, **kw: "")

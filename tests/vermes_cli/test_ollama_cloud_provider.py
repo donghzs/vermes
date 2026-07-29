@@ -118,7 +118,7 @@ class TestOllamaCloudModelCatalog:
         """provider_model_ids('ollama-cloud') should call fetch_ollama_cloud_models()."""
         from vermes_cli.models import provider_model_ids
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         mock_mdev = {
@@ -144,7 +144,7 @@ class TestOllamaCloudModelPicker:
         """Ollama Cloud should show non-zero model count in provider picker."""
         from vermes_cli.model_switch import list_authenticated_providers
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         mock_mdev = {
@@ -181,7 +181,7 @@ class TestOllamaCloudMergedDiscovery:
         """Live API models appear first, models.dev additions fill gaps."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         mock_mdev = {
@@ -208,7 +208,7 @@ class TestOllamaCloudMergedDiscovery:
         """Without API key, only models.dev results are returned."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
 
         mock_mdev = {
@@ -227,7 +227,7 @@ class TestOllamaCloudMergedDiscovery:
         """Second call returns cached results without hitting APIs."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         with patch("vermes_cli.models.fetch_api_models", return_value=["model-a"]) as mock_api, \
@@ -245,7 +245,7 @@ class TestOllamaCloudMergedDiscovery:
         """force_refresh=True always hits the API even with fresh cache."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         with patch("vermes_cli.models.fetch_api_models", return_value=["model-a"]) as mock_api, \
@@ -258,7 +258,7 @@ class TestOllamaCloudMergedDiscovery:
         """If both API and models.dev fail, stale cache is returned."""
         from vermes_cli.models import fetch_ollama_cloud_models, _save_ollama_cloud_cache
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         # Pre-populate a stale cache
@@ -283,7 +283,7 @@ class TestOllamaCloudMergedDiscovery:
         """Returns empty list when everything fails and no cache exists."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
 
         with patch("agent.models_dev.fetch_models_dev", return_value={}):
@@ -374,9 +374,9 @@ class TestOllamaCloudAgentInit:
 
 class TestOllamaCloudProvidersNew:
     def test_overlay_exists(self):
-        from vermes_cli.providers import HERMES_OVERLAYS
-        assert "ollama-cloud" in HERMES_OVERLAYS
-        overlay = HERMES_OVERLAYS["ollama-cloud"]
+        from vermes_cli.providers import VERMES_OVERLAYS
+        assert "ollama-cloud" in VERMES_OVERLAYS
+        overlay = VERMES_OVERLAYS["ollama-cloud"]
         assert overlay.transport == "openai_chat"
         assert overlay.base_url_env_var == "OLLAMA_BASE_URL"
 
@@ -414,7 +414,7 @@ class TestOllamaCloudSuffixStripping:
         """:cloud suffix from models.dev is stripped before merge."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
 
         mock_mdev = {
@@ -432,7 +432,7 @@ class TestOllamaCloudSuffixStripping:
         """-cloud suffix from models.dev is stripped before merge."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
 
         mock_mdev = {
@@ -450,7 +450,7 @@ class TestOllamaCloudSuffixStripping:
         """Live API returns clean ID; mdev has :cloud variant — result has exactly one entry."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
 
         mock_mdev = {
@@ -474,7 +474,7 @@ class TestOllamaCloudSuffixStripping:
         """Model IDs without :cloud / -cloud suffix are passed through unchanged."""
         from vermes_cli.models import fetch_ollama_cloud_models
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
 
         mock_mdev = {

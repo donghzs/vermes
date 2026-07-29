@@ -71,7 +71,7 @@ class TestWeixinFormatting:
     def test_format_message_does_not_wrap_long_code_block_lines(self):
         adapter = _make_adapter()
 
-        command = "hermes " + " ".join(f"--option-{idx}=value" for idx in range(30))
+        command = "Vermes " + " ".join(f"--option-{idx}=value" for idx in range(30))
         content = f"```bash\n{command}\n```"
 
         assert adapter.format_message(content) == content
@@ -508,7 +508,7 @@ class TestWeixinOutboundMedia:
              patch("gateway.platforms.weixin.secrets.token_bytes", return_value=aes_key):
             message_id = asyncio.run(adapter._send_file("wxid_test123", str(image_path), ""))
 
-        assert message_id.startswith("hermes-weixin-")
+        assert message_id.startswith("Vermes-weixin-")
         assert len(session.post_calls) == 1
         upload_url, upload_kwargs = session.post_calls[0]
         assert upload_url == "https://upload.example.com/media"

@@ -38,7 +38,7 @@ from acp.schema import (
     UserMessageChunk,
 )
 from acp_adapter.auth import TERMINAL_SETUP_AUTH_METHOD_ID
-from acp_adapter.server import VermesACPAgent, HERMES_VERSION
+from acp_adapter.server import VermesACPAgent, VERMES_VERSION
 from acp_adapter.session import SessionManager
 from vermes_state import SessionDB
 
@@ -102,7 +102,7 @@ class TestInitialize:
         assert resp.agent_info is not None
         assert isinstance(resp.agent_info, Implementation)
         assert resp.agent_info.name == "vermes-agent"
-        assert resp.agent_info.version == HERMES_VERSION
+        assert resp.agent_info.version == VERMES_VERSION
 
     @pytest.mark.asyncio
     async def test_initialize_returns_capabilities(self, agent):
@@ -1091,15 +1091,15 @@ class TestPrompt:
         assert any(update.session_update == "agent_message_chunk" for update in updates)
 
     @pytest.mark.asyncio
-    async def test_prompt_propagates_hermes_session_id_env(self, agent, monkeypatch):
+    async def test_prompt_propagates_vermes_session_id_env(self, agent, monkeypatch):
         """ACP must propagate the originating session id to the agent loop
-        via ``HERMES_SESSION_ID`` so tools that want to stamp side-effects
+        via ``VERMES_SESSION_ID`` so tools that want to stamp side-effects
         with it (e.g. ``kanban_create``) can read the env var inside
         ``run_conversation``. The variable must be visible during the
         agent call AND restored afterwards so a re-used executor thread
         doesn't leak one session's id into another."""
         # Pre-condition: env is clean.
-        monkeypatch.delenv("HERMES_SESSION_ID", raising=False)
+        monkeypatch.delenv("VERMES_SESSION_ID", raising=False)
 
         new_resp = await agent.new_session(cwd=".")
         state = agent.session_manager.get_session(new_resp.session_id)
@@ -1110,7 +1110,7 @@ class TestPrompt:
             # Inside the agent loop the env var must reflect the active
             # ACP session id. ``task_id`` is also the session id at this
             # boundary; assert both for symmetry.
-            captured["env"] = os.environ.get("HERMES_SESSION_ID")
+            captured["env"] = os.environ.get("VERMES_SESSION_ID")
             captured["task_id"] = task_id
             return {"final_response": "ok", "messages": []}
 
@@ -1124,23 +1124,23 @@ class TestPrompt:
         await agent.prompt(prompt=prompt, session_id=new_resp.session_id)
 
         assert captured["env"] == new_resp.session_id, (
-            "HERMES_SESSION_ID must be set to the originating ACP session id "
+            "VERMES_SESSION_ID must be set to the originating ACP session id "
             "while the agent loop is running"
         )
         assert captured["task_id"] == new_resp.session_id
         # Post-condition: must be restored to the prior value (None here).
-        assert os.environ.get("HERMES_SESSION_ID") is None, (
-            "HERMES_SESSION_ID must be restored after the agent call so "
+        assert os.environ.get("VERMES_SESSION_ID") is None, (
+            "VERMES_SESSION_ID must be restored after the agent call so "
             "a re-used executor thread doesn't leak the id into the next "
             "session's tools"
         )
 
     @pytest.mark.asyncio
-    async def test_prompt_restores_prior_hermes_session_id(self, agent, monkeypatch):
-        """If the env already had HERMES_SESSION_ID set (e.g. nested
+    async def test_prompt_restores_prior_vermes_session_id(self, agent, monkeypatch):
+        """If the env already had VERMES_SESSION_ID set (e.g. nested
         agent loops), the prior value must be restored after the inner
         prompt completes — not popped, not left at the inner id."""
-        monkeypatch.setenv("HERMES_SESSION_ID", "outer-sess")
+        monkeypatch.setenv("VERMES_SESSION_ID", "outer-sess")
 
         new_resp = await agent.new_session(cwd=".")
         state = agent.session_manager.get_session(new_resp.session_id)
@@ -1148,7 +1148,7 @@ class TestPrompt:
         captured: dict[str, str | None] = {}
 
         def mock_run(*args, **kwargs):
-            captured["inner"] = os.environ.get("HERMES_SESSION_ID")
+            captured["inner"] = os.environ.get("VERMES_SESSION_ID")
             return {"final_response": "ok", "messages": []}
 
         state.agent.run_conversation = mock_run
@@ -1162,7 +1162,7 @@ class TestPrompt:
 
         assert captured["inner"] == new_resp.session_id
         # Outer scope must be restored.
-        assert os.environ.get("HERMES_SESSION_ID") == "outer-sess"
+        assert os.environ.get("VERMES_SESSION_ID") == "outer-sess"
 
     @pytest.mark.asyncio
     async def test_prompt_does_not_duplicate_streamed_final_message(self, agent):
@@ -1416,7 +1416,7 @@ class TestSlashCommands:
     def test_version(self, agent, mock_manager):
         state = self._make_state(mock_manager)
         result = agent._handle_slash_command("/version", state)
-        assert HERMES_VERSION in result
+        assert VERMES_VERSION in result
 
     def test_compact_compresses_context(self, agent, mock_manager):
         state = self._make_state(mock_manager)

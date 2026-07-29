@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Maps ACP permission option ids to Vermes approval result strings.
 # Option ids are stable across both the ``allow_permanent=True`` and
 # ``allow_permanent=False`` paths even though the option list differs.
-_OPTION_ID_TO_HERMES = {
+_OPTION_ID_TO_vermes = {
     "allow_once": "once",
     "allow_session": "session",
     "allow_always": "always",
@@ -92,7 +92,7 @@ def _build_permission_tool_call(command: str, description: str):
     )
 
 
-def _map_outcome_to_hermes(outcome: object, *, allowed_option_ids: set[str]) -> str:
+def _map_outcome_to_vermes(outcome: object, *, allowed_option_ids: set[str]) -> str:
     """Map an ACP permission outcome into Vermes approval strings."""
     if not isinstance(outcome, AllowedOutcome):
         return "deny"
@@ -101,7 +101,7 @@ def _map_outcome_to_hermes(outcome: object, *, allowed_option_ids: set[str]) -> 
     if option_id not in allowed_option_ids:
         logger.warning("Permission request returned unknown option_id: %s", option_id)
         return "deny"
-    return _OPTION_ID_TO_HERMES.get(option_id, "deny")
+    return _OPTION_ID_TO_vermes.get(option_id, "deny")
 
 
 def make_approval_callback(
@@ -160,7 +160,7 @@ def make_approval_callback(
             return "deny"
 
         allowed_option_ids = {option.option_id for option in options}
-        return _map_outcome_to_hermes(
+        return _map_outcome_to_vermes(
             response.outcome,
             allowed_option_ids=allowed_option_ids,
         )

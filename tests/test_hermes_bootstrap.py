@@ -1,7 +1,7 @@
 """Tests for vermes_bootstrap — Windows UTF-8 stdio shim.
 
 The bootstrap module is imported at the top of every Vermes entry point
-(hermes, vermes-agent, hermes-acp, gateway, batch_runner, cli.py).  It
+(Vermes, vermes-agent, Vermes-acp, gateway, batch_runner, cli.py).  It
 fixes Python's Windows UTF-8 defaults so print("café") doesn't crash and
 subprocess children inherit UTF-8 mode.
 
@@ -241,7 +241,7 @@ class TestEntryPointsImportBootstrap:
     # Entry points that invoke Vermes as a process.  Each one must
     # import vermes_bootstrap before doing any file I/O or stdout writes.
     ENTRY_POINTS = [
-        "vermes_cli/main.py",   # hermes CLI (console_script)
+        "vermes_cli/main.py",   # Vermes CLI (console_script)
         "run_agent.py",          # vermes-agent (console_script)
         "acp_adapter/entry.py",  # vermes-acp (console_script)
         "gateway/run.py",        # gateway
@@ -262,7 +262,7 @@ class TestEntryPointsImportBootstrap:
         points may guard the import against ``ModuleNotFoundError`` so a
         half-finished ``vermes update`` (git-reset landed new code but
         ``uv pip install -e .`` didn't finish re-registering
-        ``vermes_bootstrap`` as a top-level module) leaves hermes
+        ``vermes_bootstrap`` as a top-level module) leaves Vermes
         recoverable instead of crashing on every invocation.  When the
         first top-level node is such a guarded-import block, we peek
         inside it to verify bootstrap is the imported module.
@@ -289,7 +289,7 @@ class TestEntryPointsImportBootstrap:
                 break
             # Accept a guarded-import Try block where the body is a lone
             # Import node — this is the recovery-friendly form that lets
-            # hermes start even when vermes_bootstrap hasn't been
+            # Vermes start even when vermes_bootstrap hasn't been
             # re-registered in the venv yet.
             if isinstance(node, ast.Try) and len(node.body) == 1 and isinstance(
                 node.body[0], (ast.Import, ast.ImportFrom)

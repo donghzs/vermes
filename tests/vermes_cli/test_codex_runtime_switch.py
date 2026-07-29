@@ -23,7 +23,7 @@ class TestParseArgs:
         ("off", "auto"),
         ("codex", "codex_app_server"),
         ("default", "auto"),
-        ("hermes", "auto"),
+        ("Vermes", "auto"),
         ("ENABLE", "codex_app_server"),  # case-insensitive
         ("DiSaBlE", "auto"),
     ])
@@ -117,7 +117,7 @@ class TestApply:
         # Patch migrate so this test doesn't reach into the user's real
         # ~/.codex/config.toml. See issue #26250 Bug C — without this patch,
         # crs.apply() invokes the real migrate() which writes to
-        # Path.home() / ".codex" using whatever HERMES_HOME the running pytest
+        # Path.home() / ".codex" using whatever VERMES_HOME the running pytest
         # session has set, leaking pytest tempdir paths into the user's
         # codex config.
         with patch.object(crs, "check_codex_binary_ok",
@@ -128,7 +128,7 @@ class TestApply:
         assert r.new_value == "codex_app_server"
         assert r.old_value == "auto"
         assert r.requires_new_session is True
-        assert "via MCP" in r.message  # hermes-tools callback message
+        assert "via MCP" in r.message  # Vermes-tools callback message
         assert cfg["model"]["openai_runtime"] == "codex_app_server"
         assert persisted["model"]["openai_runtime"] == "codex_app_server"
 
@@ -167,7 +167,7 @@ class TestApply:
         with patch.object(crs, "check_codex_binary_ok",
                           return_value=(True, "0.130.0")), \
              patch("vermes_cli.codex_runtime_plugin_migration.migrate") as mig:
-            mig.return_value.migrated = ["filesystem", "hermes-tools"]
+            mig.return_value.migrated = ["filesystem", "Vermes-tools"]
             mig.return_value.migrated_plugins = []
             mig.return_value.plugin_query_error = None
             mig.return_value.wrote_permissions_default = ":workspace"
@@ -176,7 +176,7 @@ class TestApply:
             r = crs.apply(cfg, "codex_app_server")
         assert r.success
         assert mig.called  # migration was triggered
-        # User MCP servers are reported (excluding internal hermes-tools)
+        # User MCP servers are reported (excluding internal Vermes-tools)
         assert "Migrated 1 MCP server" in r.message
         assert "filesystem" in r.message
         # Permissions default surfaces

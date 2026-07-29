@@ -417,7 +417,7 @@ class TestLightpandaFallbackWarning:
              patch("tools.browser_tool._chrome_fallback_screenshot", return_value={
                  "success": True, "data": {"path": str(chrome_shot)}
              }), \
-             patch("vermes_constants.get_hermes_dir", return_value=tmp_path), \
+             patch("vermes_constants.get_vermes_dir", return_value=tmp_path), \
              patch("tools.vision_tools.vision_analyze_tool", fake_vision):
             response = json.loads(bt.browser_vision("what is this?", task_id="vision-test"))
 
@@ -465,7 +465,7 @@ class TestLightpandaFallbackWarning:
              patch("tools.browser_tool._chrome_fallback_screenshot", return_value={
                  "success": True, "data": {"path": str(chrome_shot)}
              }), \
-             patch("vermes_constants.get_hermes_dir", return_value=tmp_path), \
+             patch("vermes_constants.get_vermes_dir", return_value=tmp_path), \
              patch("tools.vision_tools.vision_analyze_tool", fake_vision):
             response = json.loads(bt.browser_vision("what is this?", task_id="vision-structured"))
 

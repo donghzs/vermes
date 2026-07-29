@@ -4,9 +4,9 @@ from vermes_cli.config import load_env
 
 
 def test_save_anthropic_oauth_token_uses_token_slot_and_clears_api_key(tmp_path, monkeypatch):
-    home = tmp_path / "hermes"
+    home = tmp_path / "Vermes"
     home.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
 
     from vermes_cli.config import save_anthropic_oauth_token
 
@@ -18,9 +18,9 @@ def test_save_anthropic_oauth_token_uses_token_slot_and_clears_api_key(tmp_path,
 
 
 def test_use_anthropic_claude_code_credentials_clears_env_slots(tmp_path, monkeypatch):
-    home = tmp_path / "hermes"
+    home = tmp_path / "Vermes"
     home.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
 
     from vermes_cli.config import save_anthropic_oauth_token, use_anthropic_claude_code_credentials
 
@@ -33,9 +33,9 @@ def test_use_anthropic_claude_code_credentials_clears_env_slots(tmp_path, monkey
 
 
 def test_save_anthropic_api_key_uses_api_key_slot_and_clears_token(tmp_path, monkeypatch):
-    home = tmp_path / "hermes"
+    home = tmp_path / "Vermes"
     home.mkdir()
-    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("VERMES_HOME", str(home))
 
     from vermes_cli.config import save_anthropic_api_key
 

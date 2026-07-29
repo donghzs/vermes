@@ -28,7 +28,7 @@ def load_module():
 
 def test_save_twilio_writes_env_and_state(tmp_path: Path, monkeypatch):
     mod = load_module()
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path / ".vermes"))
 
     result = mod.save_twilio(
         "AC123",
@@ -37,8 +37,8 @@ def test_save_twilio_writes_env_and_state(tmp_path: Path, monkeypatch):
         phone_sid="PN123",
     )
 
-    env_text = (tmp_path / ".hermes" / ".env").read_text(encoding="utf-8")
-    state = json.loads((tmp_path / ".hermes" / "telephony_state.json").read_text(encoding="utf-8"))
+    env_text = (tmp_path / ".vermes" / ".env").read_text(encoding="utf-8")
+    state = json.loads((tmp_path / ".vermes" / "telephony_state.json").read_text(encoding="utf-8"))
 
     assert result["success"] is True
     assert "TWILIO_ACCOUNT_SID=AC123" in env_text
@@ -199,8 +199,8 @@ def test_vapi_import_twilio_number_saves_phone_number_id(tmp_path: Path):
 
 def test_diagnose_includes_decision_tree_and_saved_state(tmp_path: Path, monkeypatch):
     mod = load_module()
-    hermes_home = tmp_path / ".hermes"
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / ".vermes"
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
     mod._save_state(
         {
             "version": 1,
@@ -212,10 +212,10 @@ def test_diagnose_includes_decision_tree_and_saved_state(tmp_path: Path, monkeyp
                 "phone_number_id": "vapi-abc",
             },
         },
-        hermes_home / "telephony_state.json",
+        VERMES_home / "telephony_state.json",
     )
-    (hermes_home / ".env").parent.mkdir(parents=True, exist_ok=True)
-    (hermes_home / ".env").write_text(
+    (VERMES_home / ".env").parent.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / ".env").write_text(
         "TWILIO_ACCOUNT_SID=AC123\nTWILIO_AUTH_TOKEN=token\nBLAND_API_KEY=bland\n",
         encoding="utf-8",
     )

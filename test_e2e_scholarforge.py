@@ -7,7 +7,7 @@ import asyncio
 import sys
 import os
 
-os.environ["HERMES_HOME"] = os.path.expanduser("~/.hermes")
+os.environ["VERMES_HOME"] = os.path.expanduser("~/.Vermes")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from vermes_cli.scholarforge.tools import (

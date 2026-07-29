@@ -9,7 +9,7 @@ def isolated_profiles(tmp_path, monkeypatch):
     """Give profile discovery an isolated default home with one named profile."""
     from vermes_cli import profiles
 
-    default_home = tmp_path / ".hermes"
+    default_home = tmp_path / ".vermes"
     profiles_root = default_home / "profiles"
     worker_home = profiles_root / "worker_alpha"
 
@@ -17,7 +17,7 @@ def isolated_profiles(tmp_path, monkeypatch):
         (home / "cron").mkdir(parents=True, exist_ok=True)
         (home / "config.yaml").write_text("model: test-model\n", encoding="utf-8")
 
-    monkeypatch.setattr(profiles, "_get_default_hermes_home", lambda: default_home)
+    monkeypatch.setattr(profiles, "_get_default_vermes_home", lambda: default_home)
     monkeypatch.setattr(profiles, "_get_profiles_root", lambda: profiles_root)
     return {"default": default_home, "worker_alpha": worker_home}
 
@@ -40,7 +40,7 @@ def test_call_cron_for_profile_routes_storage_and_restores_globals(isolated_prof
 
     assert job["profile"] == "worker_alpha"
     assert job["profile_name"] == "worker_alpha"
-    assert job["hermes_home"] == str(isolated_profiles["worker_alpha"])
+    assert job["VERMES_home"] == str(isolated_profiles["worker_alpha"])
     assert job["is_default_profile"] is False
     assert (isolated_profiles["worker_alpha"] / "cron" / "jobs.json").exists()
     assert not (isolated_profiles["default"] / "cron" / "jobs.json").exists()
@@ -75,10 +75,10 @@ async def test_list_cron_jobs_all_includes_default_and_named_profiles(isolated_p
     assert set(by_id) >= {default_job["id"], worker_job["id"]}
     assert by_id[default_job["id"]]["profile"] == "default"
     assert by_id[default_job["id"]]["is_default_profile"] is True
-    assert by_id[default_job["id"]]["hermes_home"] == str(isolated_profiles["default"])
+    assert by_id[default_job["id"]]["VERMES_home"] == str(isolated_profiles["default"])
     assert by_id[worker_job["id"]]["profile"] == "worker_alpha"
     assert by_id[worker_job["id"]]["is_default_profile"] is False
-    assert by_id[worker_job["id"]]["hermes_home"] == str(isolated_profiles["worker_alpha"])
+    assert by_id[worker_job["id"]]["VERMES_home"] == str(isolated_profiles["worker_alpha"])
 
 
 @pytest.mark.asyncio

@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from vermes_cli import config as hermes_config
-from vermes_cli import main as hermes_main
+from vermes_cli import config as VERMES_config
+from vermes_cli import main as VERMES_main
 
 
 def test_stash_local_changes_if_needed_returns_none_when_tree_clean(monkeypatch, tmp_path):
@@ -17,9 +17,9 @@ def test_stash_local_changes_if_needed_returns_none_when_tree_clean(monkeypatch,
             return SimpleNamespace(stdout="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    stash_ref = hermes_main._stash_local_changes_if_needed(["git"], tmp_path)
+    stash_ref = VERMES_main._stash_local_changes_if_needed(["git"], tmp_path)
 
     assert stash_ref is None
     assert [cmd[-2:] for cmd, _ in calls] == [["status", "--porcelain"]]
@@ -40,9 +40,9 @@ def test_stash_local_changes_if_needed_returns_specific_stash_commit(monkeypatch
             return SimpleNamespace(stdout="abc123\n", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    stash_ref = hermes_main._stash_local_changes_if_needed(["git"], tmp_path)
+    stash_ref = VERMES_main._stash_local_changes_if_needed(["git"], tmp_path)
 
     assert stash_ref == "abc123"
     assert calls[1][0][-2:] == ["ls-files", "--unmerged"]
@@ -58,9 +58,9 @@ def test_resolve_stash_selector_returns_matching_entry(monkeypatch, tmp_path):
             returncode=0,
         )
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    assert hermes_main._resolve_stash_selector(["git"], tmp_path, "abc123") == "stash@{1}"
+    assert VERMES_main._resolve_stash_selector(["git"], tmp_path, "abc123") == "stash@{1}"
 
 
 
@@ -79,10 +79,10 @@ def test_restore_stashed_changes_prompts_before_applying(monkeypatch, tmp_path, 
             return SimpleNamespace(stdout="dropped\n", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
     monkeypatch.setattr("builtins.input", lambda: "")
 
-    restored = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=True)
+    restored = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=True)
 
     assert restored is True
     assert calls[0][0] == ["git", "stash", "apply", "abc123"]
@@ -103,10 +103,10 @@ def test_restore_stashed_changes_can_skip_restore_and_keep_stash(monkeypatch, tm
         calls.append((cmd, kwargs))
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
     monkeypatch.setattr("builtins.input", lambda: "n")
 
-    restored = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=True)
+    restored = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=True)
 
     assert restored is False
     assert calls == []
@@ -131,9 +131,9 @@ def test_restore_stashed_changes_applies_without_prompt_when_disabled(monkeypatc
             return SimpleNamespace(stdout="dropped\n", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    restored = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
+    restored = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
 
     assert restored is True
     assert calls[0][0] == ["git", "stash", "apply", "abc123"]
@@ -145,7 +145,7 @@ def test_restore_stashed_changes_applies_without_prompt_when_disabled(monkeypatc
 
 
 def test_print_stash_cleanup_guidance_with_selector(capsys):
-    hermes_main._print_stash_cleanup_guidance("abc123", "stash@{2}")
+    VERMES_main._print_stash_cleanup_guidance("abc123", "stash@{2}")
 
     out = capsys.readouterr().out
     assert "Check `git status` first" in out
@@ -167,9 +167,9 @@ def test_restore_stashed_changes_keeps_going_when_stash_entry_cannot_be_resolved
             return SimpleNamespace(stdout="stash@{0} def456\n", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    restored = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
+    restored = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
 
     assert restored is True
     assert calls[0] == (["git", "stash", "apply", "abc123"], {"cwd": tmp_path, "capture_output": True, "text": True})
@@ -199,9 +199,9 @@ def test_restore_stashed_changes_keeps_going_when_drop_fails(monkeypatch, tmp_pa
             return SimpleNamespace(stdout="", stderr="drop failed\n", returncode=1)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    restored = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
+    restored = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
 
     assert restored is True
     assert calls[3][0] == ["git", "stash", "drop", "stash@{0}"]
@@ -216,7 +216,7 @@ def test_restore_stashed_changes_keeps_going_when_drop_fails(monkeypatch, tmp_pa
 def test_restore_stashed_changes_always_resets_on_conflict(monkeypatch, tmp_path, capsys):
     """Conflicts always auto-reset (no prompt) and return False, even interactively.
 
-    Leaving conflict markers in source files makes hermes unrunnable (SyntaxError).
+    Leaving conflict markers in source files makes Vermes unrunnable (SyntaxError).
     The stash is preserved for manual recovery; cmd_update continues normally.
     """
     calls = []
@@ -231,10 +231,10 @@ def test_restore_stashed_changes_always_resets_on_conflict(monkeypatch, tmp_path
             return SimpleNamespace(stdout="", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
     monkeypatch.setattr("builtins.input", lambda: "y")
 
-    result = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=True)
+    result = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=True)
 
     assert result is False
     out = capsys.readouterr().out
@@ -262,9 +262,9 @@ def test_restore_stashed_changes_auto_resets_non_interactive(monkeypatch, tmp_pa
             return SimpleNamespace(stdout="", stderr="", returncode=0)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    result = hermes_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
+    result = VERMES_main._restore_stashed_changes(["git"], tmp_path, "abc123", prompt_user=False)
 
     assert result is False
     out = capsys.readouterr().out
@@ -285,10 +285,10 @@ def test_stash_local_changes_if_needed_raises_when_stash_ref_missing(monkeypatch
             raise CalledProcessError(returncode=128, cmd=cmd)
         raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
     with pytest.raises(CalledProcessError):
-        hermes_main._stash_local_changes_if_needed(["git"], Path(tmp_path))
+        VERMES_main._stash_local_changes_if_needed(["git"], Path(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -298,22 +298,22 @@ def test_stash_local_changes_if_needed_raises_when_stash_ref_missing(monkeypatch
 def _setup_update_mocks(monkeypatch, tmp_path):
     """Common setup for cmd_update tests."""
     (tmp_path / ".git").mkdir()
-    monkeypatch.setattr(hermes_main, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(hermes_main, "_stash_local_changes_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(hermes_main, "_restore_stashed_changes", lambda *a, **kw: True)
-    monkeypatch.setattr(hermes_config, "get_missing_env_vars", lambda required_only=True: [])
-    monkeypatch.setattr(hermes_config, "get_missing_config_fields", lambda: [])
-    monkeypatch.setattr(hermes_config, "check_config_version", lambda: (5, 5))
-    monkeypatch.setattr(hermes_config, "migrate_config", lambda **kw: {"env_added": [], "config_added": []})
-    monkeypatch.setattr(hermes_main, "_refresh_active_lazy_features", lambda: None)
+    monkeypatch.setattr(VERMES_main, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(VERMES_main, "_stash_local_changes_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(VERMES_main, "_restore_stashed_changes", lambda *a, **kw: True)
+    monkeypatch.setattr(VERMES_config, "get_missing_env_vars", lambda required_only=True: [])
+    monkeypatch.setattr(VERMES_config, "get_missing_config_fields", lambda: [])
+    monkeypatch.setattr(VERMES_config, "check_config_version", lambda: (5, 5))
+    monkeypatch.setattr(VERMES_config, "migrate_config", lambda **kw: {"env_added": [], "config_added": []})
+    monkeypatch.setattr(VERMES_main, "_refresh_active_lazy_features", lambda: None)
 
 
 def test_cmd_update_retries_optional_extras_individually_when_all_fails(monkeypatch, tmp_path, capsys):
     """When .[all] fails, update should keep base deps and retry extras individually."""
     _setup_update_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
-    monkeypatch.setattr(hermes_main, "_is_termux_env", lambda env=None: False)
-    monkeypatch.setattr(hermes_main, "_load_installable_optional_extras", lambda group="all": ["matrix", "mcp"])
+    monkeypatch.setattr(VERMES_main, "_is_termux_env", lambda env=None: False)
+    monkeypatch.setattr(VERMES_main, "_load_installable_optional_extras", lambda group="all": ["matrix", "mcp"])
 
     recorded = []
 
@@ -340,9 +340,9 @@ def test_cmd_update_retries_optional_extras_individually_when_all_fails(monkeypa
         # updater) don't crash on AttributeError.
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     install_cmds = [c for c in recorded if "pip" in c and "install" in c]
     assert install_cmds == [
@@ -362,7 +362,7 @@ def test_cmd_update_succeeds_with_extras(monkeypatch, tmp_path):
     """When .[all] succeeds, no fallback should be attempted."""
     _setup_update_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
-    monkeypatch.setattr(hermes_main, "_is_termux_env", lambda env=None: False)
+    monkeypatch.setattr(VERMES_main, "_is_termux_env", lambda env=None: False)
 
     recorded = []
 
@@ -378,9 +378,9 @@ def test_cmd_update_succeeds_with_extras(monkeypatch, tmp_path):
             return SimpleNamespace(stdout="Updating\n", stderr="", returncode=0)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     install_cmds = [c for c in recorded if "pip" in c and "install" in c]
     assert len(install_cmds) == 1
@@ -391,7 +391,7 @@ def test_install_with_optional_fallback_honors_custom_group(monkeypatch):
     """Termux update path should target .[termux-all] when requested."""
     calls = []
     monkeypatch.setattr(
-        hermes_main,
+        VERMES_main,
         "_load_installable_optional_extras",
         lambda group="all": ["termux", "mcp"] if group == "termux-all" else [],
     )
@@ -402,9 +402,9 @@ def test_install_with_optional_fallback_honors_custom_group(monkeypatch):
             raise CalledProcessError(returncode=1, cmd=cmd)
         return None
 
-    monkeypatch.setattr(hermes_main, "_run_install_with_heartbeat", fake_run_with_heartbeat)
+    monkeypatch.setattr(VERMES_main, "_run_install_with_heartbeat", fake_run_with_heartbeat)
 
-    hermes_main._install_python_dependencies_with_optional_fallback(
+    VERMES_main._install_python_dependencies_with_optional_fallback(
         ["/usr/bin/uv", "pip"],
         group="termux-all",
     )
@@ -421,12 +421,12 @@ def test_install_heartbeat_prints_when_dependency_install_is_silent(monkeypatch,
     """Long quiet installs should emit periodic heartbeat lines."""
 
     def fake_run(cmd, **kwargs):
-        hermes_main._time.sleep(1.2)
+        VERMES_main._time.sleep(1.2)
         return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(hermes_main.subprocess, "run", fake_run)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", fake_run)
 
-    hermes_main._run_install_with_heartbeat(
+    VERMES_main._run_install_with_heartbeat(
         ["uv", "pip", "install", "-e", "."],
         heartbeat_interval_seconds=1,
     )
@@ -486,9 +486,9 @@ def test_cmd_update_falls_back_to_reset_when_ff_only_fails(monkeypatch, tmp_path
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
 
     side_effect, recorded = _make_update_side_effect(ff_only_fails=True)
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     reset_calls = [c for c in recorded if "reset" in c and "--hard" in c]
     assert len(reset_calls) == 1
@@ -504,9 +504,9 @@ def test_cmd_update_no_reset_when_ff_only_succeeds(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
 
     side_effect, recorded = _make_update_side_effect()
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     reset_calls = [c for c in recorded if "reset" in c and "--hard" in c]
     assert len(reset_calls) == 0
@@ -522,9 +522,9 @@ def test_cmd_update_switches_to_main_from_feature_branch(monkeypatch, tmp_path, 
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
 
     side_effect, recorded = _make_update_side_effect(current_branch="fix/something")
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     checkout_calls = [c for c in recorded if "checkout" in c and "main" in c]
     assert len(checkout_calls) == 1
@@ -540,9 +540,9 @@ def test_cmd_update_switches_to_main_from_detached_head(monkeypatch, tmp_path, c
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
 
     side_effect, recorded = _make_update_side_effect(current_branch="HEAD")
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     checkout_calls = [c for c in recorded if "checkout" in c and "main" in c]
     assert len(checkout_calls) == 1
@@ -558,21 +558,21 @@ def test_cmd_update_restores_stash_and_branch_when_already_up_to_date(monkeypatc
 
     # Enable stash so it returns a ref
     monkeypatch.setattr(
-        hermes_main, "_stash_local_changes_if_needed",
+        VERMES_main, "_stash_local_changes_if_needed",
         lambda *a, **kw: "abc123deadbeef",
     )
     restore_calls = []
     monkeypatch.setattr(
-        hermes_main, "_restore_stashed_changes",
+        VERMES_main, "_restore_stashed_changes",
         lambda *a, **kw: restore_calls.append(1) or True,
     )
 
     side_effect, recorded = _make_update_side_effect(
         current_branch="fix/something", commit_count="0",
     )
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     # Stash should have been restored
     assert len(restore_calls) == 1
@@ -591,9 +591,9 @@ def test_cmd_update_no_checkout_when_already_on_main(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None)
 
     side_effect, recorded = _make_update_side_effect()
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
-    hermes_main.cmd_update(SimpleNamespace())
+    VERMES_main.cmd_update(SimpleNamespace())
 
     checkout_calls = [c for c in recorded if "checkout" in c]
     assert len(checkout_calls) == 0
@@ -611,10 +611,10 @@ def test_cmd_update_network_error_shows_friendly_message(monkeypatch, tmp_path, 
         fetch_fails=True,
         fetch_stderr="fatal: unable to access 'https://...': Could not resolve host: github.com",
     )
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
     with pytest.raises(SystemExit, match="1"):
-        hermes_main.cmd_update(SimpleNamespace())
+        VERMES_main.cmd_update(SimpleNamespace())
 
     out = capsys.readouterr().out
     assert "Network error" in out
@@ -628,10 +628,10 @@ def test_cmd_update_auth_error_shows_friendly_message(monkeypatch, tmp_path, cap
         fetch_fails=True,
         fetch_stderr="fatal: Authentication failed for 'https://...'",
     )
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
     with pytest.raises(SystemExit, match="1"):
-        hermes_main.cmd_update(SimpleNamespace())
+        VERMES_main.cmd_update(SimpleNamespace())
 
     out = capsys.readouterr().out
     assert "Authentication failed" in out
@@ -646,20 +646,20 @@ def test_cmd_update_skips_stash_restore_when_reset_fails(monkeypatch, tmp_path, 
     _setup_update_mocks(monkeypatch, tmp_path)
     # Re-enable stash so it actually returns a ref
     monkeypatch.setattr(
-        hermes_main, "_stash_local_changes_if_needed",
+        VERMES_main, "_stash_local_changes_if_needed",
         lambda *a, **kw: "abc123deadbeef",
     )
     restore_calls = []
     monkeypatch.setattr(
-        hermes_main, "_restore_stashed_changes",
+        VERMES_main, "_restore_stashed_changes",
         lambda *a, **kw: restore_calls.append(1) or True,
     )
 
     side_effect, _ = _make_update_side_effect(ff_only_fails=True, reset_fails=True)
-    monkeypatch.setattr(hermes_main.subprocess, "run", side_effect)
+    monkeypatch.setattr(VERMES_main.subprocess, "run", side_effect)
 
     with pytest.raises(SystemExit, match="1"):
-        hermes_main.cmd_update(SimpleNamespace())
+        VERMES_main.cmd_update(SimpleNamespace())
 
     # Stash restore should NOT have been called
     assert len(restore_calls) == 0

@@ -25,7 +25,7 @@ def test_resolve_spotify_runtime_credentials_refreshes_without_changing_active_p
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     with auth_mod._auth_store_lock():
         store = auth_mod._load_auth_store()
@@ -93,7 +93,7 @@ def test_spotify_logout_does_not_reset_model_provider(
     monkeypatch: pytest.MonkeyPatch,
     capsys,
 ) -> None:
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "model:\n"
@@ -139,8 +139,8 @@ def test_spotify_interactive_setup_persists_client_id(
     monkeypatch: pytest.MonkeyPatch,
     capsys,
 ) -> None:
-    """The wizard writes HERMES_SPOTIFY_CLIENT_ID to .env and returns the value."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    """The wizard writes VERMES_SPOTIFY_CLIENT_ID to .env and returns the value."""
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setattr("builtins.input", lambda prompt="": "wizard-client-123")
     # Prevent actually opening the browser during tests.
     monkeypatch.setattr(auth_mod, "webbrowser", SimpleNamespace(open=lambda *_a, **_k: False))
@@ -154,9 +154,9 @@ def test_spotify_interactive_setup_persists_client_id(
     env_path = tmp_path / ".env"
     assert env_path.exists()
     env_text = env_path.read_text()
-    assert "HERMES_SPOTIFY_CLIENT_ID=wizard-client-123" in env_text
+    assert "VERMES_SPOTIFY_CLIENT_ID=wizard-client-123" in env_text
     # Default redirect URI should NOT be persisted.
-    assert "HERMES_SPOTIFY_REDIRECT_URI" not in env_text
+    assert "VERMES_SPOTIFY_REDIRECT_URI" not in env_text
 
     # Docs URL should appear in wizard output so users can find the guide.
     output = capsys.readouterr().out
@@ -168,7 +168,7 @@ def test_spotify_interactive_setup_empty_aborts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Empty input aborts cleanly instead of persisting an empty client_id."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setattr("builtins.input", lambda prompt="": "")
     monkeypatch.setattr(auth_mod, "webbrowser", SimpleNamespace(open=lambda *_a, **_k: False))
     monkeypatch.setattr(auth_mod, "_is_remote_session", lambda: True)
@@ -180,4 +180,4 @@ def test_spotify_interactive_setup_empty_aborts(
 
     env_path = tmp_path / ".env"
     if env_path.exists():
-        assert "HERMES_SPOTIFY_CLIENT_ID" not in env_path.read_text()
+        assert "VERMES_SPOTIFY_CLIENT_ID" not in env_path.read_text()

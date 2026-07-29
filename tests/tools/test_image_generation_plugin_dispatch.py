@@ -36,7 +36,7 @@ class TestPluginDispatch:
         from agent import image_gen_registry as registry_module
         from vermes_cli import plugins as plugins_module
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text("image_gen:\n  provider: codex\n")
         image_gen_registry.register_provider(_FakeCodexProvider())
 
@@ -56,7 +56,7 @@ class TestPluginDispatch:
         from tools import image_generation_tool
         from vermes_cli import plugins as plugins_module
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text("image_gen:\n  provider: missing-codex\n")
 
         monkeypatch.setattr(image_generation_tool, "_read_configured_image_provider", lambda: "missing-codex")
@@ -74,7 +74,7 @@ class TestPluginDispatch:
         from vermes_cli import plugins as plugins_module
         from agent import image_gen_registry as registry_module
 
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setenv("VERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text("image_gen:\n  provider: codex\n")
 
         monkeypatch.setattr(image_generation_tool, "_read_configured_image_provider", lambda: "codex")

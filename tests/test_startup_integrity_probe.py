@@ -159,9 +159,9 @@ def test_probe_does_not_modify_existing_ledger(tmp_path):
     assert db.read_bytes() == before, "probe must not write a single byte to the ledger"
 
 
-def test_probe_default_home_is_get_hermes_home_sourced(tmp_path, monkeypatch):
+def test_probe_default_home_is_get_vermes_home_sourced(tmp_path, monkeypatch):
     """Audit correction B: with no explicit home, the probe must resolve
-    get_hermes_home() AT CALL TIME (env override honored), never a stale
+    get_vermes_home() AT CALL TIME (env override honored), never a stale
     import-time constant."""
     monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     status = startup_integrity_probe()

@@ -67,7 +67,7 @@ def _write_model_config(tmp_path, provider, base_url="", model_name="test-model"
 
 def test_setup_delegates_to_select_provider_and_model(tmp_path, monkeypatch):
     """setup_model_provider calls select_provider_and_model and syncs config."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -91,7 +91,7 @@ def test_setup_delegates_to_select_provider_and_model(tmp_path, monkeypatch):
 def test_setup_syncs_openrouter_from_disk(tmp_path, monkeypatch):
     """When select_provider_and_model saves OpenRouter config to disk,
     the wizard's config dict picks it up."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -113,7 +113,7 @@ def test_setup_syncs_openrouter_from_disk(tmp_path, monkeypatch):
 
 def test_setup_syncs_nous_from_disk(tmp_path, monkeypatch):
     """Nous OAuth writes config to disk; wizard config dict must pick it up."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -135,7 +135,7 @@ def test_setup_syncs_nous_from_disk(tmp_path, monkeypatch):
 
 def test_setup_custom_providers_synced(tmp_path, monkeypatch):
     """custom_providers written by select_provider_and_model must survive."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -239,7 +239,7 @@ def test_setup_gateway_in_container_shows_docker_guidance(monkeypatch, capsys):
 
 def test_setup_syncs_custom_provider_removal_from_disk(tmp_path, monkeypatch):
     """Removing the last custom provider in model setup should persist."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -264,7 +264,7 @@ def test_setup_syncs_custom_provider_removal_from_disk(tmp_path, monkeypatch):
 
 def test_setup_cancel_preserves_existing_config(tmp_path, monkeypatch):
     """When the user cancels provider selection, existing config is preserved."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -290,7 +290,7 @@ def test_setup_cancel_preserves_existing_config(tmp_path, monkeypatch):
 
 def test_setup_exception_in_select_gracefully_handled(tmp_path, monkeypatch):
     """If select_provider_and_model raises, setup continues with existing config."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -307,7 +307,7 @@ def test_setup_exception_in_select_gracefully_handled(tmp_path, monkeypatch):
 
 def test_setup_keyboard_interrupt_gracefully_handled(tmp_path, monkeypatch):
     """KeyboardInterrupt during provider selection is handled."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
     _stub_tts(monkeypatch)
 
@@ -325,7 +325,7 @@ def test_select_provider_and_model_warns_if_named_custom_provider_disappears(
     tmp_path, monkeypatch, capsys
 ):
     """If a saved custom provider is deleted mid-selection, show a warning instead of silently doing nothing."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
 
     cfg = load_config()
@@ -356,7 +356,7 @@ def test_select_provider_and_model_warns_if_named_custom_provider_disappears(
 def test_select_provider_and_model_accepts_named_provider_from_providers_section(
     tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_provider_env(monkeypatch)
 
     cfg = load_config()
@@ -390,7 +390,7 @@ def test_select_provider_and_model_accepts_named_provider_from_providers_section
 
 def test_codex_setup_uses_runtime_access_token_for_live_model_list(tmp_path, monkeypatch):
     """Codex model list fetching uses the runtime access token."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
@@ -413,7 +413,7 @@ def test_codex_setup_uses_runtime_access_token_for_live_model_list(tmp_path, mon
 
 def test_modal_setup_can_use_nous_subscription_without_modal_creds(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("vermes_cli.setup.managed_nous_tools_enabled", lambda: True)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     config = load_config()
 
     def fake_prompt_choice(question, choices, default=0):
@@ -455,7 +455,7 @@ def test_modal_setup_can_use_nous_subscription_without_modal_creds(tmp_path, mon
 
 def test_modal_setup_persists_direct_mode_when_user_chooses_their_own_account(tmp_path, monkeypatch):
     monkeypatch.setattr("vermes_cli.setup.managed_nous_tools_enabled", lambda: True)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     monkeypatch.delenv("MODAL_TOKEN_ID", raising=False)
     monkeypatch.delenv("MODAL_TOKEN_SECRET", raising=False)
     config = load_config()
@@ -495,7 +495,7 @@ def test_modal_setup_persists_direct_mode_when_user_chooses_their_own_account(tm
 
 
 def test_vercel_setup_configures_access_token_auth(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_vercel_env(monkeypatch)
     monkeypatch.setenv("VERCEL_OIDC_TOKEN", "old-oidc")
     monkeypatch.setitem(sys.modules, "vercel", types.ModuleType("vercel"))
@@ -526,7 +526,7 @@ def test_vercel_setup_configures_access_token_auth(tmp_path, monkeypatch):
 
 
 def test_vercel_setup_prefills_project_and_team_from_link_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _clear_vercel_env(monkeypatch)
     project_root = tmp_path / "project"
     nested = project_root / "app" / "src"

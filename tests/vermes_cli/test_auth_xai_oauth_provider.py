@@ -37,15 +37,15 @@ from vermes_cli.auth import (
 # ---------------------------------------------------------------------------
 
 
-def _setup_hermes_auth(
-    hermes_home: Path,
+def _setup_vermes_auth(
+    VERMES_home: Path,
     *,
     access_token: str = "access",
     refresh_token: str = "refresh",
     discovery: dict | None = None,
 ):
     """Write xAI OAuth tokens into the Vermes auth store at the given root."""
-    hermes_home.mkdir(parents=True, exist_ok=True)
+    VERMES_home.mkdir(parents=True, exist_ok=True)
     state = {
         "tokens": {
             "access_token": access_token,
@@ -64,7 +64,7 @@ def _setup_hermes_auth(
         "active_provider": "xai-oauth",
         "providers": {"xai-oauth": state},
     }
-    auth_file = hermes_home / "auth.json"
+    auth_file = VERMES_home / "auth.json"
     auth_file.write_text(json.dumps(auth_store, indent=2))
     return auth_file
 
@@ -233,7 +233,7 @@ def test_xai_oauth_authorize_url_includes_plan_generic():
     assert params["plan"] == "generic"
 
 
-def test_xai_oauth_authorize_url_includes_referrer_hermes_agent():
+def test_xai_oauth_authorize_url_includes_referrer_vermes_agent():
     """Attribution: xAI's OAuth server can identify Vermes-originated logins
     via the referrer query param. Must always be present on the authorize URL."""
     url = _xai_oauth_build_authorize_url(
@@ -411,10 +411,10 @@ def test_xai_callback_handler_records_error_callback():
 
 
 def test_save_and_read_xai_oauth_tokens_roundtrip(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     _save_xai_oauth_tokens(
         {
@@ -435,10 +435,10 @@ def test_save_and_read_xai_oauth_tokens_roundtrip(tmp_path, monkeypatch):
 
 
 def test_read_xai_oauth_tokens_missing(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     with pytest.raises(AuthError) as exc:
         _read_xai_oauth_tokens()
@@ -447,9 +447,9 @@ def test_read_xai_oauth_tokens_missing(tmp_path, monkeypatch):
 
 
 def test_read_xai_oauth_tokens_missing_access_token(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    _setup_hermes_auth(hermes_home, access_token="")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _setup_vermes_auth(VERMES_home, access_token="")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     with pytest.raises(AuthError) as exc:
         _read_xai_oauth_tokens()
@@ -458,9 +458,9 @@ def test_read_xai_oauth_tokens_missing_access_token(tmp_path, monkeypatch):
 
 
 def test_read_xai_oauth_tokens_missing_refresh_token(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    _setup_hermes_auth(hermes_home, refresh_token="")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _setup_vermes_auth(VERMES_home, refresh_token="")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     with pytest.raises(AuthError) as exc:
         _read_xai_oauth_tokens()
@@ -474,11 +474,11 @@ def test_read_xai_oauth_tokens_missing_refresh_token(tmp_path, monkeypatch):
 
 
 def test_resolve_xai_runtime_credentials_returns_singleton_state(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-    monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
+    monkeypatch.delenv("VERMES_XAI_BASE_URL", raising=False)
     monkeypatch.delenv("XAI_BASE_URL", raising=False)
 
     creds = resolve_xai_oauth_runtime_credentials()
@@ -490,15 +490,15 @@ def test_resolve_xai_runtime_credentials_returns_singleton_state(tmp_path, monke
 
 
 def test_resolve_xai_runtime_credentials_refreshes_expiring_token(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     expiring = _jwt_with_exp(int(time.time()) - 10)
-    _setup_hermes_auth(
-        hermes_home,
+    _setup_vermes_auth(
+        VERMES_home,
         access_token=expiring,
         refresh_token="rt-old",
         discovery={"token_endpoint": "https://auth.x.ai/oauth2/token"},
     )
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     new_access = _jwt_with_exp(int(time.time()) + 3600)
     called = {"count": 0}
@@ -518,14 +518,14 @@ def test_resolve_xai_runtime_credentials_refreshes_expiring_token(tmp_path, monk
 
 
 def test_resolve_xai_runtime_credentials_force_refresh(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(
-        hermes_home,
+    _setup_vermes_auth(
+        VERMES_home,
         access_token=fresh,
         discovery={"token_endpoint": "https://auth.x.ai/oauth2/token"},
     )
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     forced = _jwt_with_exp(int(time.time()) + 7200)
     called = {"count": 0}
@@ -544,11 +544,11 @@ def test_resolve_xai_runtime_credentials_force_refresh(tmp_path, monkeypatch):
 
 
 def test_resolve_xai_runtime_credentials_honours_env_base_url(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-    monkeypatch.setenv("HERMES_XAI_BASE_URL", "https://custom.x.ai/v1/")
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
+    monkeypatch.setenv("VERMES_XAI_BASE_URL", "https://custom.x.ai/v1/")
 
     creds = resolve_xai_oauth_runtime_credentials()
     assert creds["base_url"] == "https://custom.x.ai/v1"
@@ -574,15 +574,15 @@ _STALE_XAI_OAUTH_STATE = {
 
 
 def _seed_xai_oauth_state(
-    hermes_home: Path, state: dict, *, active_provider: str = "xai-oauth"
+    VERMES_home: Path, state: dict, *, active_provider: str = "xai-oauth"
 ) -> None:
-    hermes_home.mkdir(parents=True, exist_ok=True)
+    VERMES_home.mkdir(parents=True, exist_ok=True)
     auth_store = {
         "version": 1,
         "active_provider": active_provider,
         "providers": {"xai-oauth": state},
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store, indent=2))
+    (VERMES_home / "auth.json").write_text(json.dumps(auth_store, indent=2))
 
 
 def test_resolve_credentials_quarantines_dead_tokens_on_terminal_refresh_failure(
@@ -594,9 +594,9 @@ def test_resolve_credentials_quarantines_dead_tokens_on_terminal_refresh_failure
     last_auth_error marker so subsequent calls fail fast without a network retry.
     Mirrors the credential_pool.py quarantine for the singleton/direct resolve path.
     """
-    hermes_home = tmp_path / "hermes"
-    _seed_xai_oauth_state(hermes_home, dict(_STALE_XAI_OAUTH_STATE), active_provider="nous")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _seed_xai_oauth_state(VERMES_home, dict(_STALE_XAI_OAUTH_STATE), active_provider="nous")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     def _terminal_refresh(tokens, **kwargs):
         raise AuthError(
@@ -614,7 +614,7 @@ def test_resolve_credentials_quarantines_dead_tokens_on_terminal_refresh_failure
     assert exc_info.value.code == "xai_refresh_failed"
     assert exc_info.value.relogin_required is True
 
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
 
     # Dead OAuth fields must be cleared.
@@ -644,9 +644,9 @@ def test_resolve_credentials_does_not_quarantine_on_transient_refresh_failure(
     """Transient refresh failure (relogin_required=False, e.g. 429 / 5xx) must
     NOT trigger the quarantine path — tokens stay on disk for the next attempt.
     """
-    hermes_home = tmp_path / "hermes"
-    _seed_xai_oauth_state(hermes_home, dict(_STALE_XAI_OAUTH_STATE))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    _seed_xai_oauth_state(VERMES_home, dict(_STALE_XAI_OAUTH_STATE))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     def _transient_refresh(tokens, **kwargs):
         raise AuthError(
@@ -664,7 +664,7 @@ def test_resolve_credentials_does_not_quarantine_on_transient_refresh_failure(
     assert exc_info.value.relogin_required is False
 
     # Tokens must be untouched — no quarantine on transient errors.
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
     assert tokens["refresh_token"] == "dead-refresh-token"
     assert tokens["access_token"] == "dead-access-token"
@@ -677,10 +677,10 @@ def test_resolve_credentials_does_not_quarantine_on_transient_refresh_failure(
 
 
 def test_get_xai_oauth_auth_status_logged_in_via_singleton(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     status = get_xai_oauth_auth_status()
     assert status["logged_in"] is True
@@ -689,10 +689,10 @@ def test_get_xai_oauth_auth_status_logged_in_via_singleton(tmp_path, monkeypatch
 
 
 def test_get_xai_oauth_auth_status_logged_out(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     status = get_xai_oauth_auth_status()
     assert status["logged_in"] is False
@@ -1042,10 +1042,10 @@ def test_credential_pool_seeds_xai_oauth_from_singleton(tmp_path, monkeypatch):
     refreshes route through the pool consistently with codex."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh, refresh_token="rt-1")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=fresh, refresh_token="rt-1")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     pool = load_pool("xai-oauth")
     assert pool.has_credentials()
@@ -1061,8 +1061,8 @@ def test_credential_pool_seeds_xai_oauth_from_singleton(tmp_path, monkeypatch):
 def test_credential_pool_does_not_seed_when_singleton_missing_access_token(tmp_path, monkeypatch):
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
     auth_store = {
         "version": 1,
         "providers": {
@@ -1072,8 +1072,8 @@ def test_credential_pool_does_not_seed_when_singleton_missing_access_token(tmp_p
             }
         },
     }
-    (hermes_home / "auth.json").write_text(json.dumps(auth_store))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    (VERMES_home / "auth.json").write_text(json.dumps(auth_store))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     pool = load_pool("xai-oauth")
     assert not pool.has_credentials()
@@ -1084,10 +1084,10 @@ def test_credential_pool_seed_respects_suppression(tmp_path, monkeypatch):
     further re-seeding so the removal is stable across load_pool calls."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     # Suppress the source — mimic `vermes auth remove`.
     from vermes_cli.auth import suppress_credential_source
@@ -1116,15 +1116,15 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
     from vermes_cli.auth_commands import auth_remove_command
     from types import SimpleNamespace
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh, refresh_token="rt-1")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=fresh, refresh_token="rt-1")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     # Confirm pre-state: pool sees the seeded entry, auth.json has the singleton.
     pool = load_pool("xai-oauth")
     assert pool.has_credentials()
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     assert "xai-oauth" in raw.get("providers", {})
 
     # Act: the user runs `vermes auth remove xai-oauth 1`.
@@ -1132,7 +1132,7 @@ def test_auth_remove_xai_oauth_clears_singleton_and_sticks(tmp_path, monkeypatch
 
     # Post-state: auth.json singleton must be cleared so a re-seed has
     # nothing to import.
-    raw_after = json.loads((hermes_home / "auth.json").read_text())
+    raw_after = json.loads((VERMES_home / "auth.json").read_text())
     assert "xai-oauth" not in raw_after.get("providers", {}), (
         "auth.json providers.xai-oauth must be cleared — otherwise the "
         "next load_pool() reseeds the removed entry from the surviving "
@@ -1160,10 +1160,10 @@ def test_pool_sync_back_writes_to_singleton(tmp_path, monkeypatch):
     doesn't keep using the consumed refresh token."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     expired = _jwt_with_exp(int(time.time()) - 10)
-    _setup_hermes_auth(hermes_home, access_token=expired, refresh_token="rt-old")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=expired, refresh_token="rt-old")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     new_access = _jwt_with_exp(int(time.time()) + 3600)
 
@@ -1188,7 +1188,7 @@ def test_pool_sync_back_writes_to_singleton(tmp_path, monkeypatch):
 
     # Singleton must reflect refreshed tokens — otherwise the next process
     # to load credentials would re-seed the consumed refresh token.
-    auth_path = hermes_home / "auth.json"
+    auth_path = VERMES_home / "auth.json"
     raw = json.loads(auth_path.read_text())
     state = raw["providers"]["xai-oauth"]
     assert state["tokens"]["access_token"] == new_access
@@ -1204,11 +1204,11 @@ def test_pool_sync_back_writes_to_singleton(tmp_path, monkeypatch):
 def test_runtime_provider_uses_pool_entry_for_xai_oauth(tmp_path, monkeypatch):
     from vermes_cli.runtime_provider import resolve_runtime_provider
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-    monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
+    monkeypatch.delenv("VERMES_XAI_BASE_URL", raising=False)
     monkeypatch.delenv("XAI_BASE_URL", raising=False)
 
     runtime = resolve_runtime_provider(requested="xai-oauth")
@@ -1224,11 +1224,11 @@ def test_runtime_provider_default_base_url_when_pool_entry_missing_url(tmp_path,
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-    monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
+    monkeypatch.delenv("VERMES_XAI_BASE_URL", raising=False)
     monkeypatch.delenv("XAI_BASE_URL", raising=False)
 
     fresh = _jwt_with_exp(int(time.time()) + 3600)
@@ -1270,10 +1270,10 @@ def test_pool_entry_needs_refresh_when_jwt_within_skew(tmp_path, monkeypatch):
     from vermes_cli.auth import XAI_ACCESS_TOKEN_REFRESH_SKEW_SECONDS
     import uuid
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     # Token expires in 30s — well inside the 120s skew window.
     near_expiry = _jwt_with_exp(int(time.time()) + 30)
@@ -1299,10 +1299,10 @@ def test_pool_entry_no_refresh_for_fresh_jwt(tmp_path, monkeypatch):
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     fresh = _jwt_with_exp(int(time.time()) + 3600)
     pool = load_pool("xai-oauth")
@@ -1328,10 +1328,10 @@ def test_pool_select_proactively_refreshes_expiring_token(tmp_path, monkeypatch)
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     near_expiry = _jwt_with_exp(int(time.time()) + 30)
     new_access = _jwt_with_exp(int(time.time()) + 3600)
@@ -1382,10 +1382,10 @@ def test_pool_try_refresh_current_handles_xai_oauth(tmp_path, monkeypatch):
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     # Even a "fresh-looking" token gets force-refreshed via try_refresh_current.
     # We simulate the scenario where the server rejected the token (401)
@@ -1437,10 +1437,10 @@ def test_pool_refresh_marks_entry_exhausted_on_failure(tmp_path, monkeypatch):
     from vermes_cli.auth import AuthError
     import uuid
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     def _fake_refresh_fail(*args, **kwargs):
         raise AuthError("refresh_token_reused", code="xai_refresh_failed", relogin_required=True)
@@ -1475,10 +1475,10 @@ def test_pool_seeded_entry_sync_back_after_refresh(tmp_path, monkeypatch):
     fresh process load doesn't re-seed the now-consumed refresh token."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     near_expiry = _jwt_with_exp(int(time.time()) + 30)
-    _setup_hermes_auth(hermes_home, access_token=near_expiry, refresh_token="rt-singleton")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=near_expiry, refresh_token="rt-singleton")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     new_access = _jwt_with_exp(int(time.time()) + 3600)
 
@@ -1500,7 +1500,7 @@ def test_pool_seeded_entry_sync_back_after_refresh(tmp_path, monkeypatch):
     assert selected is not None
     assert selected.access_token == new_access
 
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
     assert tokens["access_token"] == new_access
     assert tokens["refresh_token"] == "rt-rotated"
@@ -1519,10 +1519,10 @@ def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, 
     profiles + Vermes processes."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     in_memory_at = _jwt_with_exp(int(time.time()) + 30)  # near-expiry
-    _setup_hermes_auth(hermes_home, access_token=in_memory_at, refresh_token="rt-stale")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=in_memory_at, refresh_token="rt-stale")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     # Load the pool once so the in-memory entry is seeded with rt-stale.
     pool = load_pool("xai-oauth")
@@ -1530,7 +1530,7 @@ def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, 
     # Now simulate "another process refreshed the tokens" by overwriting
     # the singleton on disk WITHOUT touching this process's pool object.
     other_process_at = _jwt_with_exp(int(time.time()) + 3600)
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     raw["providers"]["xai-oauth"]["tokens"] = {
         "access_token": other_process_at,
         "refresh_token": "rt-rotated-by-other-process",
@@ -1538,7 +1538,7 @@ def test_pool_refresh_adopts_singleton_tokens_when_consumed_elsewhere(tmp_path, 
         "expires_in": 3600,
         "token_type": "Bearer",
     }
-    (hermes_home / "auth.json").write_text(json.dumps(raw))
+    (VERMES_home / "auth.json").write_text(json.dumps(raw))
 
     refresh_calls = {"refresh_token_seen": None}
     final_at = _jwt_with_exp(int(time.time()) + 7200)
@@ -1572,10 +1572,10 @@ def test_pool_refresh_recovers_when_other_process_already_refreshed(tmp_path, mo
     entry exhausted."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     in_memory_at = _jwt_with_exp(int(time.time()) + 30)
-    _setup_hermes_auth(hermes_home, access_token=in_memory_at, refresh_token="rt-shared")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=in_memory_at, refresh_token="rt-shared")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     pool = load_pool("xai-oauth")
 
@@ -1585,7 +1585,7 @@ def test_pool_refresh_recovers_when_other_process_already_refreshed(tmp_path, mo
         # Simulate the racing process winning at the auth server right
         # before our POST: by the time we reach this call, auth.json
         # already holds the fresher pair, but we POSTed with rt-shared.
-        raw = json.loads((hermes_home / "auth.json").read_text())
+        raw = json.loads((VERMES_home / "auth.json").read_text())
         raw["providers"]["xai-oauth"]["tokens"] = {
             "access_token": other_process_at,
             "refresh_token": "rt-rotated",
@@ -1593,7 +1593,7 @@ def test_pool_refresh_recovers_when_other_process_already_refreshed(tmp_path, mo
             "expires_in": 3600,
             "token_type": "Bearer",
         }
-        (hermes_home / "auth.json").write_text(json.dumps(raw))
+        (VERMES_home / "auth.json").write_text(json.dumps(raw))
         raise AuthError(
             "refresh_token_reused",
             provider="xai-oauth",
@@ -1620,10 +1620,10 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
     from agent.credential_pool import load_pool, STATUS_EXHAUSTED
     from dataclasses import replace
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     stale_at = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=stale_at, refresh_token="rt-stale")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=stale_at, refresh_token="rt-stale")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     pool = load_pool("xai-oauth")
     seeded = pool.entries()[0]
@@ -1646,7 +1646,7 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
     # Simulate the user re-running `vermes model` -> xAI Grok OAuth: the
     # singleton now has fresh tokens.
     fresh_at = _jwt_with_exp(int(time.time()) + 7200)
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     raw["providers"]["xai-oauth"]["tokens"] = {
         "access_token": fresh_at,
         "refresh_token": "rt-fresh",
@@ -1654,7 +1654,7 @@ def test_pool_exhausted_xai_entry_recovers_after_singleton_refresh(tmp_path, mon
         "expires_in": 3600,
         "token_type": "Bearer",
     }
-    (hermes_home / "auth.json").write_text(json.dumps(raw))
+    (VERMES_home / "auth.json").write_text(json.dumps(raw))
 
     # _available_entries must sync from the singleton, lifting the
     # exhausted state for the seeded entry.
@@ -1674,10 +1674,10 @@ def test_pool_manual_xai_entry_not_synced_from_singleton(tmp_path, monkeypatch):
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     singleton_at = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=singleton_at, refresh_token="rt-singleton")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=singleton_at, refresh_token="rt-singleton")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     pool = load_pool("xai-oauth")
 
@@ -1711,11 +1711,11 @@ def test_pool_manual_entry_does_not_sync_back_to_singleton(tmp_path, monkeypatch
     from agent.credential_pool import load_pool, AUTH_TYPE_OAUTH, PooledCredential
     import uuid
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     # Singleton has its own tokens (separate login).
     singleton_at = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=singleton_at, refresh_token="rt-singleton")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=singleton_at, refresh_token="rt-singleton")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     manual_at_old = _jwt_with_exp(int(time.time()) + 30)
     manual_at_new = _jwt_with_exp(int(time.time()) + 7200)
@@ -1752,7 +1752,7 @@ def test_pool_manual_entry_does_not_sync_back_to_singleton(tmp_path, monkeypatch
     assert len(manual_entries) == 1
     pool._refresh_entry(manual_entries[0], force=True)
 
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     tokens = raw["providers"]["xai-oauth"]["tokens"]
     # Singleton must be untouched — manual refresh shouldn't leak across.
     assert tokens["access_token"] == singleton_at
@@ -1781,11 +1781,11 @@ def test_auxiliary_client_routes_xai_oauth_through_responses_api(tmp_path, monke
         resolve_provider_client,
     )
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-    monkeypatch.delenv("HERMES_XAI_BASE_URL", raising=False)
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
+    monkeypatch.delenv("VERMES_XAI_BASE_URL", raising=False)
     monkeypatch.delenv("XAI_BASE_URL", raising=False)
 
     client, model = resolve_provider_client("xai-oauth", model="grok-4")
@@ -1809,10 +1809,10 @@ def test_auxiliary_client_xai_oauth_returns_none_when_unauthenticated(tmp_path, 
     misconfigured client."""
     from agent.auxiliary_client import resolve_provider_client
 
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    (hermes_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    VERMES_home = tmp_path / "Vermes"
+    VERMES_home.mkdir(parents=True, exist_ok=True)
+    (VERMES_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     client, model = resolve_provider_client("xai-oauth", model="grok-4")
     assert client is None
@@ -1825,10 +1825,10 @@ def test_auxiliary_client_xai_oauth_requires_explicit_model(tmp_path, monkeypatc
     must pass an explicit model (auxiliary.<task>.model in config.yaml)."""
     from agent.auxiliary_client import resolve_provider_client
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     fresh = _jwt_with_exp(int(time.time()) + 3600)
-    _setup_hermes_auth(hermes_home, access_token=fresh)
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=fresh)
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     client, model = resolve_provider_client("xai-oauth", model=None)
     assert client is None
@@ -1846,21 +1846,21 @@ def test_pool_sync_back_preserves_active_provider(tmp_path, monkeypatch):
     using it on the sync-back path means every xAI/Codex/Nous refresh in a
     multi-provider setup silently overrides the user's chosen active
     provider (visible to ``vermes auth status``, ``vermes setup``, and the
-    ``hermes`` no-arg dispatcher).  Pin the ``set_active=False`` contract so
+    ``Vermes`` no-arg dispatcher).  Pin the ``set_active=False`` contract so
     no future refactor regresses to the legacy semantic."""
     from agent.credential_pool import load_pool
 
-    hermes_home = tmp_path / "hermes"
+    VERMES_home = tmp_path / "Vermes"
     near_expiry = _jwt_with_exp(int(time.time()) + 30)
-    _setup_hermes_auth(hermes_home, access_token=near_expiry, refresh_token="rt-xai")
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    _setup_vermes_auth(VERMES_home, access_token=near_expiry, refresh_token="rt-xai")
+    monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
 
     # Simulate a multi-provider user whose actual chosen provider is
     # OpenRouter — xai-oauth tokens exist in the singleton but are NOT
     # the active provider.
-    raw = json.loads((hermes_home / "auth.json").read_text())
+    raw = json.loads((VERMES_home / "auth.json").read_text())
     raw["active_provider"] = "openrouter"
-    (hermes_home / "auth.json").write_text(json.dumps(raw))
+    (VERMES_home / "auth.json").write_text(json.dumps(raw))
 
     new_access = _jwt_with_exp(int(time.time()) + 3600)
 
@@ -1883,7 +1883,7 @@ def test_pool_sync_back_preserves_active_provider(tmp_path, monkeypatch):
 
     # The refresh wrote new tokens back into the singleton — the user's
     # prior ``active_provider`` choice (openrouter) MUST survive.
-    raw_after = json.loads((hermes_home / "auth.json").read_text())
+    raw_after = json.loads((VERMES_home / "auth.json").read_text())
     assert raw_after["active_provider"] == "openrouter", (
         "pool sync-back must not flip active_provider; otherwise xAI/Codex/"
         "Nous token rotations silently take over multi-provider users' "

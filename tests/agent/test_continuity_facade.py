@@ -7,7 +7,7 @@ Covers:
 - to_prompt_sections / summary helpers
 - Integration: load_continuity_context returns valid ContinuityContext
 
-These tests use temp HERMES_HOME to avoid polluting real data.
+These tests use temp VERMES_HOME to avoid polluting real data.
 """
 
 import os
@@ -21,8 +21,8 @@ import pytest
 
 @pytest.fixture
 def clean_home(tmp_path, monkeypatch):
-    """Clean HERMES_HOME for isolation."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    """Clean VERMES_HOME for isolation."""
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     return tmp_path
 
 

@@ -29,7 +29,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from vermes_constants import get_hermes_home
+from vermes_constants import get_vermes_home
 
 
 # Methods clients send as periodic liveness probes. They are not part of the
@@ -94,17 +94,17 @@ def _setup_logging() -> None:
 
 
 def _load_env() -> None:
-    """Load .env from HERMES_HOME (default ``~/.hermes``)."""
-    from vermes_cli.env_loader import load_hermes_dotenv
+    """Load .env from VERMES_HOME (default ``~/.Vermes``)."""
+    from vermes_cli.env_loader import load_vermes_dotenv
 
-    hermes_home = get_hermes_home()
-    loaded = load_hermes_dotenv(hermes_home=hermes_home)
+    VERMES_home = get_vermes_home()
+    loaded = load_vermes_dotenv(VERMES_home=VERMES_home)
     if loaded:
         for env_file in loaded:
             logging.getLogger(__name__).info("Loaded env from %s", env_file)
     else:
         logging.getLogger(__name__).info(
-            "No .env found at %s, using system env", hermes_home / ".env"
+            "No .env found at %s, using system env", VERMES_home / ".env"
         )
 
 
@@ -142,9 +142,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _print_version() -> None:
-    from vermes_cli import __version__ as hermes_version
+    from vermes_cli import __version__ as VERMES_version
 
-    logger.info(hermes_version)
+    logger.info(VERMES_version)
 
 
 def _run_check() -> None:
@@ -155,12 +155,12 @@ def _run_check() -> None:
 
 
 def _run_setup() -> None:
-    from vermes_cli.main import main as hermes_main
+    from vermes_cli.main import main as VERMES_main
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = [old_argv[0] if old_argv else "hermes", "model"]
-        hermes_main()
+        sys.argv = [old_argv[0] if old_argv else "Vermes", "model"]
+        VERMES_main()
     finally:
         sys.argv = old_argv
 
@@ -185,7 +185,7 @@ def _run_setup_browser(assume_yes: bool = False) -> int:
     """Bootstrap agent-browser + Chromium.
 
     Routes through dep_ensure -> install.{sh,ps1} --ensure, sharing code
-    with ``hermes postinstall`` and the runtime lazy installer.
+    with ``Vermes postinstall`` and the runtime lazy installer.
 
     Returns 0 on success, 1 on failure.
     """

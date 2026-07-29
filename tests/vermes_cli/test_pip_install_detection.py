@@ -5,7 +5,7 @@ from unittest.mock import patch
 def test_pip_install_detected_when_no_git_dir(tmp_path):
     """When PROJECT_ROOT has no .git, detect as pip install."""
     with patch("vermes_cli.config.get_managed_system", return_value=None), \
-         patch("vermes_cli.config.get_hermes_home", return_value=tmp_path):
+         patch("vermes_cli.config.get_vermes_home", return_value=tmp_path):
         from vermes_cli.config import detect_install_method
         method = detect_install_method(project_root=tmp_path)
         assert method == "pip"
@@ -15,17 +15,17 @@ def test_git_install_detected_when_git_dir_exists(tmp_path):
     """When PROJECT_ROOT has .git, detect as git install."""
     (tmp_path / ".git").mkdir()
     with patch("vermes_cli.config.get_managed_system", return_value=None), \
-         patch("vermes_cli.config.get_hermes_home", return_value=tmp_path):
+         patch("vermes_cli.config.get_vermes_home", return_value=tmp_path):
         from vermes_cli.config import detect_install_method
         method = detect_install_method(project_root=tmp_path)
         assert method == "git"
 
 
 def test_managed_install_takes_precedence(tmp_path):
-    """When HERMES_MANAGED is set, that takes precedence over git detection."""
+    """When VERMES_MANAGED is set, that takes precedence over git detection."""
     (tmp_path / ".git").mkdir()
     with patch("vermes_cli.config.get_managed_system", return_value="NixOS"), \
-         patch("vermes_cli.config.get_hermes_home", return_value=tmp_path):
+         patch("vermes_cli.config.get_vermes_home", return_value=tmp_path):
         from vermes_cli.config import detect_install_method
         method = detect_install_method(project_root=tmp_path)
         assert method == "nixos"
@@ -44,14 +44,14 @@ def test_stamp_file_takes_precedence(tmp_path):
     (tmp_path / ".git").mkdir()
     (tmp_path / ".install_method").write_text("docker\n")
     with patch("vermes_cli.config.get_managed_system", return_value=None), \
-         patch("vermes_cli.config.get_hermes_home", return_value=tmp_path):
+         patch("vermes_cli.config.get_vermes_home", return_value=tmp_path):
         from vermes_cli.config import detect_install_method
         assert detect_install_method(project_root=tmp_path) == "docker"
 
 
 def test_docker_detected_via_dockerenv(tmp_path):
     with patch("vermes_cli.config.get_managed_system", return_value=None), \
-         patch("vermes_cli.config.get_hermes_home", return_value=tmp_path), \
+         patch("vermes_cli.config.get_vermes_home", return_value=tmp_path), \
          patch("vermes_constants.is_container", return_value=True):
         from vermes_cli.config import detect_install_method
         assert detect_install_method(project_root=tmp_path) == "docker"

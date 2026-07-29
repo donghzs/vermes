@@ -33,18 +33,18 @@ def isolated_db(tmp_path, monkeypatch):
 
 @pytest.fixture
 def llm_creds(monkeypatch):
-    """获取真实 LLM 凭证。绕过 conftest 的 HERMES_HOME 隔离。"""
+    """获取真实 LLM 凭证。绕过 conftest 的 VERMES_HOME 隔离。"""
     import os
     from pathlib import Path
 
-    # conftest autouse fixture 会把 HERMES_HOME 重定向到 tmp_path
+    # conftest autouse fixture 会把 VERMES_HOME 重定向到 tmp_path
     # 这里覆盖回真实路径,让 _resolve_credentials 能读到真实配置
     real_home = Path.home() / ".vermes"
     if not real_home.exists():
-        real_home = Path.home() / ".hermes"
+        real_home = Path.home() / ".vermes"
 
     # 用 monkeypatch 覆盖 conftest 的设置(monkeypatch 后执行的会覆盖先执行的)
-    monkeypatch.setenv("HERMES_HOME", str(real_home))
+    monkeypatch.setenv("VERMES_HOME", str(real_home))
     monkeypatch.setenv("VERMES_HOME", str(real_home))
 
     from vermes_cli.scholarforge.tools import _resolve_credentials

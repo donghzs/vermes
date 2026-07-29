@@ -4,7 +4,7 @@ Covers:
 
 1. ``typescript-language-server`` install recipe pulls in ``typescript``
    alongside the server, so the npm install command targets both.
-2. ``hermes lsp status`` surfaces a ``Backend warnings`` section when
+2. ``Vermes lsp status`` surfaces a ``Backend warnings`` section when
    bash-language-server is installed but ``shellcheck`` is missing.
 3. ``_check_lint`` returns ``skipped`` (not ``error``) when the linter
    command exists on PATH but couldn't actually run — e.g. ``npx tsc``
@@ -40,7 +40,7 @@ def test_typescript_recipe_includes_typescript_sdk():
 
 def test_install_npm_passes_extras_to_npm_command(tmp_path, monkeypatch):
     """Verify the npm subprocess is invoked with both pkg AND extras."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     captured = {}
 
@@ -69,7 +69,7 @@ def test_install_npm_passes_extras_to_npm_command(tmp_path, monkeypatch):
 
 def test_install_npm_works_without_extras(tmp_path, monkeypatch):
     """Backwards compat: pyright-style recipes (no extras) still install."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     captured = {}
 
@@ -88,20 +88,20 @@ def test_install_npm_works_without_extras(tmp_path, monkeypatch):
     assert "pyright" in cmd
     # Should not blow up when extra_pkgs is omitted/None
     install_targets = [c for c in cmd if not c.startswith("-") and c not in {
-        "install", "--prefix", str(install_mod.hermes_lsp_bin_dir().parent),
+        "install", "--prefix", str(install_mod.VERMES_lsp_bin_dir().parent),
         "/usr/bin/npm",
     }]
     assert install_targets == ["pyright"]
 
 
 # ---------------------------------------------------------------------------
-# Fix 2: ``hermes lsp status`` surfaces shellcheck-missing for bash
+# Fix 2: ``Vermes lsp status`` surfaces shellcheck-missing for bash
 # ---------------------------------------------------------------------------
 
 
 def test_backend_warnings_quiet_when_bash_not_installed(tmp_path, monkeypatch):
     """No bash → no warning."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     from agent.lsp import cli as lsp_cli
 
     with patch("shutil.which", return_value=None):
@@ -111,7 +111,7 @@ def test_backend_warnings_quiet_when_bash_not_installed(tmp_path, monkeypatch):
 
 def test_backend_warnings_quiet_when_bash_and_shellcheck_both_present(tmp_path, monkeypatch):
     """Both installed → no warning."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     from agent.lsp import cli as lsp_cli
 
     def which(name):
@@ -124,7 +124,7 @@ def test_backend_warnings_quiet_when_bash_and_shellcheck_both_present(tmp_path, 
 
 def test_backend_warnings_fires_when_bash_installed_but_shellcheck_missing(tmp_path, monkeypatch):
     """The exact scenario from the bug report."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     from agent.lsp import cli as lsp_cli
 
     def which(name):
@@ -141,7 +141,7 @@ def test_backend_warnings_fires_when_bash_installed_but_shellcheck_missing(tmp_p
 
 def test_status_output_includes_backend_warnings_section(tmp_path, monkeypatch):
     """End-to-end: status command output includes the warning section."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
 
     # Pretend bash-language-server is installed but shellcheck is missing
     def which(name):

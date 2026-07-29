@@ -17,9 +17,9 @@ import sqlite3
 from pathlib import Path
 
 
-def migrate(hermes_home: str):
+def migrate(VERMES_home: str):
     """从 v2.0.3 迁移到 v2.0.5"""
-    home = Path(hermes_home)
+    home = Path(VERMES_home)
     migrated = []
     errors = []
 

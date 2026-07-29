@@ -104,21 +104,21 @@ def test_normalize_lang_unknown_falls_back():
 
 
 def test_env_var_override(monkeypatch):
-    """HERMES_LANGUAGE wins over config."""
+    """VERMES_LANGUAGE wins over config."""
     i18n.reset_language_cache()
-    monkeypatch.setenv("HERMES_LANGUAGE", "ja")
+    monkeypatch.setenv("VERMES_LANGUAGE", "ja")
     assert i18n.get_language() == "ja"
 
 
 def test_env_var_normalized(monkeypatch):
     i18n.reset_language_cache()
-    monkeypatch.setenv("HERMES_LANGUAGE", "Chinese")
+    monkeypatch.setenv("VERMES_LANGUAGE", "Chinese")
     assert i18n.get_language() == "zh"
 
 
 def test_default_when_nothing_set(monkeypatch):
     """With no env var and no config override, falls back to English."""
-    monkeypatch.delenv("HERMES_LANGUAGE", raising=False)
+    monkeypatch.delenv("VERMES_LANGUAGE", raising=False)
     # Force config lookup to return None -- patch the cached reader.
     i18n.reset_language_cache()
     monkeypatch.setattr(i18n, "_config_language_cached", lambda: None)

@@ -172,7 +172,7 @@ def test_codex_stream_postlude_error_still_falls_back():
 # The original PR #26644 appended a hint that led with "X Premium+ does NOT
 # include xAI API access — only standalone SuperGrok subscribers can use this
 # provider."  xAI announced on 2026-05-16 that X Premium subs now work in
-# Vermes (https://x.ai/news/grok-hermes), making that hint actively wrong:
+# Vermes (https://x.ai/news/grok-Vermes), making that hint actively wrong:
 # a Premium+ user hitting a real entitlement issue (no Grok sub, wrong tier,
 # exhausted quota) would be misdirected to switch subscriptions when their
 # Premium sub is in fact valid.  We now surface xAI's own body text verbatim

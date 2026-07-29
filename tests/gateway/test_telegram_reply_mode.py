@@ -246,15 +246,15 @@ class TestTelegramYamlConfigLoading:
     """Tests for reply_to_mode loaded from config.yaml telegram section."""
 
     def _write_config(self, tmp_path, content: str):
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
-        (hermes_home / "config.yaml").write_text(content, encoding="utf-8")
-        return hermes_home
+        VERMES_home = tmp_path / ".vermes"
+        VERMES_home.mkdir()
+        (VERMES_home / "config.yaml").write_text(content, encoding="utf-8")
+        return VERMES_home
 
     def test_top_level_reply_to_mode_off(self, tmp_path, monkeypatch):
         """YAML 1.1 parses bare 'off' as boolean False — must map back to 'off'."""
-        hermes_home = self._write_config(tmp_path, "telegram:\n  reply_to_mode: off\n")
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        VERMES_home = self._write_config(tmp_path, "telegram:\n  reply_to_mode: off\n")
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.delenv("TELEGRAM_REPLY_TO_MODE", raising=False)
 
         load_gateway_config()
@@ -262,8 +262,8 @@ class TestTelegramYamlConfigLoading:
         assert os.environ.get("TELEGRAM_REPLY_TO_MODE") == "off"
 
     def test_top_level_reply_to_mode_all(self, tmp_path, monkeypatch):
-        hermes_home = self._write_config(tmp_path, "telegram:\n  reply_to_mode: all\n")
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        VERMES_home = self._write_config(tmp_path, "telegram:\n  reply_to_mode: all\n")
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.delenv("TELEGRAM_REPLY_TO_MODE", raising=False)
 
         load_gateway_config()
@@ -272,10 +272,10 @@ class TestTelegramYamlConfigLoading:
 
     def test_extra_reply_to_mode_off(self, tmp_path, monkeypatch):
         """telegram.extra.reply_to_mode is also honoured."""
-        hermes_home = self._write_config(
+        VERMES_home = self._write_config(
             tmp_path, "telegram:\n  extra:\n    reply_to_mode: \"off\"\n"
         )
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.delenv("TELEGRAM_REPLY_TO_MODE", raising=False)
 
         load_gateway_config()
@@ -284,8 +284,8 @@ class TestTelegramYamlConfigLoading:
 
     def test_env_var_takes_precedence_over_yaml(self, tmp_path, monkeypatch):
         """Existing TELEGRAM_REPLY_TO_MODE env var is not overwritten by YAML."""
-        hermes_home = self._write_config(tmp_path, "telegram:\n  reply_to_mode: all\n")
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        VERMES_home = self._write_config(tmp_path, "telegram:\n  reply_to_mode: all\n")
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.setenv("TELEGRAM_REPLY_TO_MODE", "first")
 
         load_gateway_config()
@@ -294,11 +294,11 @@ class TestTelegramYamlConfigLoading:
 
     def test_top_level_takes_precedence_over_extra(self, tmp_path, monkeypatch):
         """telegram.reply_to_mode wins over telegram.extra.reply_to_mode."""
-        hermes_home = self._write_config(
+        VERMES_home = self._write_config(
             tmp_path,
             "telegram:\n  reply_to_mode: all\n  extra:\n    reply_to_mode: \"off\"\n",
         )
-        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.setenv("VERMES_HOME", str(VERMES_home))
         monkeypatch.delenv("TELEGRAM_REPLY_TO_MODE", raising=False)
 
         load_gateway_config()
@@ -309,8 +309,8 @@ class TestTelegramYamlConfigLoading:
 class TestDMTopicFallbackReplyToMode:
     """Tests for reply_to_mode enforcement on DM topic fallback paths.
 
-    Regression tests for https://github.com/NousResearch/vermes-agent/issues/23994:
-    reply_to_mode 'off' was ignored when sending via Hermes-created DM topic
+    Regression tests for https://github.com/donghzs/vermes-agent/issues/23994:
+    reply_to_mode 'off' was ignored when sending via Vermes-created DM topic
     lanes (telegram_dm_topic_reply_fallback metadata), causing quote bubbles
     despite the user setting reply_to_mode: 'off'.
     """

@@ -2,7 +2,7 @@
 
 Vercel AI Gateway exposes ``/v1/models`` with a richer shape than OpenAI's
 spec (type, tags, pricing). The pricing object uses ``input`` / ``output``
-where hermes's shared picker expects ``prompt`` / ``completion``; these tests
+where Vermes's shared picker expects ``prompt`` / ``completion``; these tests
 pin the translation and the curated-list filtering.
 """
 import json

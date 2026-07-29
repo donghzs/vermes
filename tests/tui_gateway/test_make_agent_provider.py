@@ -114,10 +114,10 @@ def test_make_agent_honors_tui_launch_env_flags():
         patch.dict(
             os.environ,
             {
-                "HERMES_TUI_MAX_TURNS": "7",
-                "HERMES_TUI_CHECKPOINTS": "1",
-                "HERMES_TUI_PASS_SESSION_ID": "1",
-                "HERMES_IGNORE_RULES": "1",
+                "VERMES_TUI_MAX_TURNS": "7",
+                "VERMES_TUI_CHECKPOINTS": "1",
+                "VERMES_TUI_PASS_SESSION_ID": "1",
+                "VERMES_IGNORE_RULES": "1",
             },
         ),
         patch("tui_gateway.server._load_cfg", return_value=fake_cfg),

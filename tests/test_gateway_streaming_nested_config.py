@@ -11,12 +11,12 @@ def _load_with_yaml_dict(yaml_dict: dict):
     """Patch filesystem so load_gateway_config() sees *yaml_dict* as config.yaml."""
     from gateway.config import load_gateway_config
 
-    fake_home = Path("/tmp/fake_hermes_home_25676")
+    fake_home = Path("/tmp/fake_vermes_home_25676")
 
     def fake_exists(self):
         return str(self).endswith("config.yaml")
 
-    with patch("gateway.config.get_hermes_home", return_value=fake_home), \
+    with patch("gateway.config.get_vermes_home", return_value=fake_home), \
          patch.object(Path, "exists", fake_exists), \
          patch("builtins.open", create=True) as mock_file:
         mock_file.return_value.__enter__ = lambda s: s

@@ -1,4 +1,4 @@
-"""Tests for the `hermes proxy` subcommand and its upstream adapters."""
+"""Tests for the `Vermes proxy` subcommand and its upstream adapters."""
 
 from __future__ import annotations
 
@@ -59,9 +59,9 @@ def test_get_adapter_unknown_provider_raises():
 # ---------------------------------------------------------------------------
 
 
-def _write_auth_store(hermes_home: Path, nous_state: Dict[str, Any]) -> Path:
-    """Write an auth.json with the given nous state into a hermetic HERMES_HOME."""
-    auth_path = hermes_home / "auth.json"
+def _write_auth_store(VERMES_home: Path, nous_state: Dict[str, Any]) -> Path:
+    """Write an auth.json with the given nous state into a hermetic VERMES_HOME."""
+    auth_path = VERMES_home / "auth.json"
     auth_path.write_text(json.dumps({
         "version": 1,
         "providers": {"nous": nous_state},
@@ -80,14 +80,14 @@ def test_nous_adapter_metadata():
 
 
 def test_nous_adapter_not_authenticated_when_no_auth_file(tmp_path, monkeypatch):
-    # HERMES_HOME is already set by conftest, but make doubly sure
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    # VERMES_HOME is already set by conftest, but make doubly sure
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     adapter = NousPortalAdapter()
     assert not adapter.is_authenticated()
 
 
 def test_nous_adapter_not_authenticated_when_provider_missing(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     (tmp_path / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
@@ -96,7 +96,7 @@ def test_nous_adapter_not_authenticated_when_provider_missing(tmp_path, monkeypa
 
 
 def test_nous_adapter_authenticated_with_agent_key(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "agent_key": "ov-test-key",
         "agent_key_expires_at": "2099-01-01T00:00:00Z",
@@ -107,7 +107,7 @@ def test_nous_adapter_authenticated_with_agent_key(tmp_path, monkeypatch):
 
 def test_nous_adapter_authenticated_with_refresh_token_only(tmp_path, monkeypatch):
     """If access_token+refresh_token exist but no agent_key yet, we can still mint."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "access-tok",
         "refresh_token": "refresh-tok",
@@ -116,12 +116,12 @@ def test_nous_adapter_authenticated_with_refresh_token_only(tmp_path, monkeypatc
 
 
 def test_nous_adapter_get_credential_uses_runtime_resolver(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "access-tok",
         "refresh_token": "refresh-tok",
-        "client_id": "hermes-cli",
-        "portal_base_url": "https://portal.nousresearch.com",
+        "client_id": "Vermes-cli",
+        "portal_base_url": "https://portal.donghzs.com",
         "inference_base_url": "https://inference-api.nousresearch.com/v1",
     })
 
@@ -146,12 +146,12 @@ def test_nous_adapter_get_credential_uses_runtime_resolver(tmp_path, monkeypatch
 
 
 def test_nous_adapter_retry_credential_forces_legacy_mint(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "jwt-access",
         "refresh_token": "refresh-tok",
-        "client_id": "hermes-cli",
-        "portal_base_url": "https://portal.nousresearch.com",
+        "client_id": "Vermes-cli",
+        "portal_base_url": "https://portal.donghzs.com",
         "inference_base_url": "https://inference-api.nousresearch.com/v1",
         "agent_key": "jwt-access",
     })
@@ -181,7 +181,7 @@ def test_nous_adapter_retry_credential_forces_legacy_mint(tmp_path, monkeypatch)
 
 
 def test_nous_adapter_retry_credential_skips_opaque_bearer(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "jwt-access",
         "refresh_token": "refresh-tok",
@@ -205,14 +205,14 @@ def test_nous_adapter_retry_credential_skips_opaque_bearer(tmp_path, monkeypatch
 
 
 def test_nous_adapter_get_credential_raises_when_not_logged_in(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     adapter = NousPortalAdapter()
-    with pytest.raises(RuntimeError, match="hermes login nous"):
+    with pytest.raises(RuntimeError, match="Vermes login nous"):
         adapter.get_credential()
 
 
 def test_nous_adapter_get_credential_raises_on_refresh_failure(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "access-tok",
         "refresh_token": "refresh-tok",
@@ -231,7 +231,7 @@ def test_nous_adapter_quarantines_terminal_refresh_failure(tmp_path, monkeypatch
     from vermes_cli.auth import AuthError
     from agent.credential_pool import load_pool
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "access-tok",
         "refresh_token": "refresh-tok",
@@ -263,7 +263,7 @@ def test_nous_adapter_quarantines_terminal_refresh_failure(tmp_path, monkeypatch
 
 def test_nous_adapter_get_credential_raises_when_no_agent_key_returned(tmp_path, monkeypatch):
     """If the refresh helper succeeds but produces no agent_key, we surface a clear error."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "access-tok",
         "refresh_token": "refresh-tok",
@@ -280,7 +280,7 @@ def test_nous_adapter_get_credential_raises_when_no_agent_key_returned(tmp_path,
 
 def test_nous_adapter_concurrent_refresh_serialized(tmp_path, monkeypatch):
     """Two parallel get_credential() calls must serialize through the lock."""
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_auth_store(tmp_path, {
         "access_token": "a", "refresh_token": "r",
     })
@@ -345,15 +345,15 @@ def test_nous_adapter_concurrent_refresh_serialized(tmp_path, monkeypatch):
 
 
 def _write_xai_pool_entry(
-    hermes_home: Path,
+    VERMES_home: Path,
     *,
     access_token: str = "xai-access-token",
     refresh_token: str = "xai-refresh-token",
     base_url: str = "https://api.x.ai/v1",
     source: str = "manual:xai_pkce",
 ) -> Path:
-    """Write an xai-oauth pool entry into a hermetic HERMES_HOME."""
-    auth_path = hermes_home / "auth.json"
+    """Write an xai-oauth pool entry into a hermetic VERMES_HOME."""
+    auth_path = VERMES_home / "auth.json"
     auth_path.write_text(json.dumps({
         "version": 1,
         "providers": {},
@@ -385,7 +385,7 @@ def test_xai_adapter_metadata():
 
 
 def test_xai_adapter_not_authenticated_when_no_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     (tmp_path / "auth.json").write_text(json.dumps({
         "version": 1,
         "providers": {},
@@ -395,13 +395,13 @@ def test_xai_adapter_not_authenticated_when_no_pool_entry(tmp_path, monkeypatch)
 
 
 def test_xai_adapter_authenticated_with_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_xai_pool_entry(tmp_path)
     assert XAIGrokAdapter().is_authenticated()
 
 
 def test_xai_adapter_get_credential_uses_oauth_pool(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_xai_pool_entry(
         tmp_path,
         access_token="pool-access-token",
@@ -416,7 +416,7 @@ def test_xai_adapter_get_credential_uses_oauth_pool(tmp_path, monkeypatch):
 
 
 def test_xai_adapter_get_credential_defaults_base_url(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_xai_pool_entry(tmp_path, base_url="")
 
     cred = XAIGrokAdapter().get_credential()
@@ -425,7 +425,7 @@ def test_xai_adapter_get_credential_defaults_base_url(tmp_path, monkeypatch):
 
 
 def test_xai_adapter_retry_refreshes_current_pool_entry(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     _write_xai_pool_entry(tmp_path, access_token="old-access-token")
 
     def fake_refresh(access_token, refresh_token, **kwargs):
@@ -578,7 +578,7 @@ def test_server_forwards_chat_completions():
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{proxy_base}/v1/chat/completions",
-                    json={"model": "Hermes-4-70B",
+                    json={"model": "Vermes-4-70B",
                           "messages": [{"role": "user", "content": "hi"}]},
                     headers={"Authorization": "Bearer client-dummy-key"},
                 ) as resp:
@@ -589,7 +589,7 @@ def test_server_forwards_chat_completions():
             assert len(captured["requests"]) == 1
             req = captured["requests"][0]
             assert req["auth"] == "Bearer real-portal-key"
-            assert "Hermes-4-70B" in req["body"]
+            assert "Vermes-4-70B" in req["body"]
         finally:
             await proxy_runner.cleanup()
             await upstream_runner.cleanup()
@@ -614,7 +614,7 @@ def test_server_retries_once_with_adapter_retry_credential_on_401():
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{proxy_base}/v1/chat/completions",
-                    json={"model": "Hermes-4-70B"},
+                    json={"model": "Vermes-4-70B"},
                 ) as resp:
                     assert resp.status == 200
                     data = await resp.json()
@@ -737,7 +737,7 @@ def test_server_strips_client_auth_header():
 
 
 def test_cmd_proxy_status_runs(capsys, tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     from vermes_cli.proxy.cli import cmd_proxy_status
 
     args = MagicMock()
@@ -774,7 +774,7 @@ def test_cmd_proxy_start_refuses_unknown_provider(capsys):
 
 
 def test_cmd_proxy_start_refuses_when_unauthenticated(capsys, tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("VERMES_HOME", str(tmp_path))
     from vermes_cli.proxy.cli import cmd_proxy_start
 
     args = MagicMock()
@@ -784,4 +784,4 @@ def test_cmd_proxy_start_refuses_when_unauthenticated(capsys, tmp_path, monkeypa
     rc = cmd_proxy_start(args)
     assert rc == 2
     err = capsys.readouterr().err
-    assert "hermes login nous" in err
+    assert "Vermes login nous" in err
