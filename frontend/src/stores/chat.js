@@ -414,6 +414,12 @@ export const useChatStore = defineStore('chat', () => {
       try { localStorage.setItem('vermes-current-provider', newSession.provider || '') } catch(e) {}
     }
 
+    // 渠道会话：启动消息轮询；本地会话：停止轮询
+    if (isChannelSession(id)) {
+      startChannelMessagePolling(id)
+    } else {
+      stopChannelMessagePolling()
+    }
     // 加载新会话消息 — 合并到全局消息池（不替换）
     try {
       const loaded = isChannelSession(id)
@@ -538,6 +544,29 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       sessionLoading.value[sid] = false
     }
+  }
+
+  // ── 渠道会话消息轮询：当前打开渠道会话时，定时拉取新消息 ──
+  let _channelMsgPollTimer = null
+  function startChannelMessagePolling(sid) {
+    stopChannelMessagePolling()
+    _channelMsgPollTimer = setInterval(async () => {
+      try {
+        const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
+        const existingIds = new Set(messages.value.filter(m => m.sessionId === sid).map(m => m.id))
+        let added = false
+        for (const m of mapped) {
+          if (!existingIds.has(m.id)) {
+            messages.value.push(m)
+            added = true
+          }
+        }
+        if (added) scheduleScroll()
+      } catch (e) { /* ignore */ }
+    }, 3000)
+  }
+  function stopChannelMessagePolling() {
+    if (_channelMsgPollTimer) { clearInterval(_channelMsgPollTimer); _channelMsgPollTimer = null }
   }
 
   // ── 发送消息 ──
@@ -1141,6 +1170,7 @@ export const useChatStore = defineStore('chat', () => {
     init, initOnce,
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,
+    startChannelMessagePolling, stopChannelMessagePolling,
     sendMessage, stopGeneration, toggleSidebar, toggleTheme, persistSessions,
     getMessageCount, getFirstMessage, formatSize, newSession,
     searchAllMessages, getSessionStats, sendCompareMessage,

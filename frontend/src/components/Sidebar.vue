@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore, SESSION_TEMPLATES } from '../stores/chat'
 import { useRouter, useRoute } from 'vue-router'
 import { toast } from '../utils/toast'
@@ -210,6 +210,17 @@ watch(() => chat.sessions.length, async () => {
 onMounted(async () => {
   await loadAllSessionMeta()
   chat.loadChannelSessions().catch(() => {})
+})
+
+// ── 渠道会话定时轮询（每 5 秒刷新会话列表，发现新消息/新会话）──
+let _channelPollTimer = null
+onMounted(() => {
+  _channelPollTimer = setInterval(() => {
+    chat.loadChannelSessions().catch(() => {})
+  }, 5000)
+})
+onUnmounted(() => {
+  if (_channelPollTimer) { clearInterval(_channelPollTimer); _channelPollTimer = null }
 })
 
 // ── 右键菜单 ──

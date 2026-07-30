@@ -26,7 +26,7 @@ async def get_sessions(limit: int = 20, offset: int = 0):
         try:
             # 取足够大的窗口，在内存中按“有消息优先、再按最近活动”重排，
             # 避免空壳会话（如批量产生的 telegram 空 session）淹没真实聊天。
-            all_sessions = db.list_sessions_rich(limit=100000, offset=0)
+            all_sessions = db.list_sessions_rich(limit=100000, offset=0, exclude_sources=["web"])
             all_sessions.sort(
                 key=lambda s: (
                     (s.get("message_count") or 0) > 0,
