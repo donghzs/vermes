@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
@@ -97,6 +97,15 @@ const providers = ref([
 
 const customModelInputs = ref({})
 const activeTab = ref('providers')
+
+// 切到对应 Tab 时，如果尚未加载过则补加载（修复首次打开后端未 ready 导致空列表）
+watch(activeTab, (tab) => {
+  if (tab === 'channels' && !channelsData.value && !channelsLoading.value) loadChannels()
+  if (tab === 'channels') checkGatewayStatus()
+  if (tab === 'services' && Object.keys(serviceGroups.value).length === 0 && !servicesLoading.value) loadServices()
+  if (tab === 'literature' && literaturePaid.value.length === 0 && literatureFree.value.length === 0 && literatureCustom.value.length === 0 && !literatureLoading.value) loadLiterature()
+  if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
+})
 
 // ── 安全设置 ──
 const yoloEnabled = ref(localStorage.getItem('vermes-yolo-default') !== 'false')
@@ -1139,6 +1148,7 @@ onMounted(() => {
   loadLiterature()
   // 加载移动渠道（channels 分区）
   loadChannels()
+  checkGatewayStatus()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
@@ -1149,6 +1159,54 @@ const channelsLoading = ref(false)
 const channelExpanded = reactive({})  // { platform_key: true/false }
 const channelForms = reactive({})     // { platform_key: { field_key: value } }
 const channelSaving = ref(false)
+const gatewayRunning = ref(false)
+const gatewayStarting = ref(false)
+
+async function checkGatewayStatus() {
+  try {
+    const d = await api.default.get('/status')
+    gatewayRunning.value = !!d.gateway_running
+  } catch {}
+}
+
+async function startGateway() {
+  gatewayStarting.value = true
+  try {
+    // 通过 Electron IPC 重启渠道网关（main.js 管理生命周期）
+    if (window.vermes?.restartGateway) {
+      await window.vermes.restartGateway()
+    }
+    // 轮询等待网关启动
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      await checkGatewayStatus()
+      if (gatewayRunning.value) break
+    }
+  } catch (e) {
+    console.error('startGateway:', e)
+  } finally {
+    gatewayStarting.value = false
+  }
+}
+
+async function restartGateway() {
+  gatewayStarting.value = true
+  try {
+    if (window.vermes?.restartGateway) {
+      await window.vermes.restartGateway()
+    }
+    gatewayRunning.value = false
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      await checkGatewayStatus()
+      if (gatewayRunning.value) break
+    }
+  } catch (e) {
+    console.error('restartGateway:', e)
+  } finally {
+    gatewayStarting.value = false
+  }
+}
 
 const channelCategories = computed(() => {
   if (!channelsData.value?.grouped) return []
@@ -1199,6 +1257,22 @@ async function saveChannel(platformKey) {
       // 清空表单
       for (const k of Object.keys(form)) form[k] = ''
       toast.success('渠道凭据已保存')
+
+      // 触发 Gateway 热重载（通过 Electron IPC 让 main.js 重启 gateway 进程）
+      if (window.vermes?.restartGateway) {
+        console.log('[Settings] 触发 Gateway 热重载...')
+        try {
+          await window.vermes.restartGateway()
+          toast.success('渠道网关已重启')
+        } catch (e) {
+          console.warn('[Settings] Gateway 重启失败:', e)
+          toast.info('凭据已保存，重启应用后生效')
+        }
+      } else {
+        toast.info('凭据已保存，重启应用后生效')
+      }
+      // 刷新网关状态
+      await checkGatewayStatus()
     }
   } catch (e) {
     toast.error('保存失败: ' + (e.message || e))
@@ -1237,6 +1311,12 @@ async function clearChannel(platformKey) {
       }
     }
     toast.success('已清除凭据')
+
+    // 触发 Gateway 热重载
+    if (window.vermes?.restartGateway) {
+      try { await window.vermes.restartGateway() } catch (e) { console.warn(e) }
+    }
+    await checkGatewayStatus()
   } catch (e) {
     toast.error('清除失败: ' + (e.message || e))
   }
@@ -1256,6 +1336,12 @@ async function toggleChannel(platformKey) {
         }
       }
       toast.success(result.enabled ? '已启用' : '已禁用')
+
+      // 触发 Gateway 热重载
+      if (window.vermes?.restartGateway) {
+        try { await window.vermes.restartGateway() } catch (e) { console.warn(e) }
+      }
+      await checkGatewayStatus()
     }
   } catch (e) {
     toast.error('操作失败: ' + (e.message || e))
@@ -1729,11 +1815,17 @@ async function toggleChannel(platformKey) {
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400">将 Agent 接入即时通讯、邮件、智能家居等平台，实现跨渠道对话。填入平台凭据即可启用，支持 25+ 平台。</p>
 
-          <!-- 状态概览 -->
-          <div v-if="channelsData" class="flex items-center gap-4 text-xs">
+          <!-- 状态概览 + 启动网关 -->
+          <div v-if="channelsData" class="flex items-center gap-4 text-xs flex-wrap">
             <span class="text-gray-500 dark:text-gray-400">已配置 <span class="text-green-600 dark:text-green-400 font-medium">{{ channelsData.configured_count }}</span> / {{ channelsData.total }}</span>
             <span class="text-gray-300 dark:text-gray-600">|</span>
-            <span class="text-gray-500 dark:text-gray-400">启用后需点击「启动网关」生效</span>
+            <span :class="gatewayRunning ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">● 网关{{ gatewayRunning ? '运行中' : '未运行' }}</span>
+            <button v-if="!gatewayRunning" @click="startGateway" :disabled="gatewayStarting" class="px-3 py-1 text-xs rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">
+              {{ gatewayStarting ? '启动中...' : '▶ 启动网关' }}
+            </button>
+            <button v-else @click="restartGateway" :disabled="gatewayStarting" class="px-3 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap">
+              {{ gatewayStarting ? '重启中...' : '↻ 重启网关' }}
+            </button>
           </div>
 
           <div v-if="channelsLoading" class="text-center text-sm text-gray-400 py-8">

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('vermes', {
   platform: process.platform,
   isDesktop: true,
   getBackendStatus: () => ipcRenderer.invoke('backend:status'),
+  restartGateway: () => ipcRenderer.invoke('gateway:restart'),
   wechatLogin: (state) => ipcRenderer.invoke('wechat-login', state),
   openExternalBrowser: (url) => ipcRenderer.invoke('shell:openExternal', url),
   version: appVersion,

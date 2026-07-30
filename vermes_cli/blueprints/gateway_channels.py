@@ -122,6 +122,34 @@ def _remove_env_key(key: str) -> None:
         f.writelines(filtered)
 
 
+def _sync_env_from_config(config_data: dict, schema: ChannelSchema) -> None:
+    """以 config.yaml 为真相源，强制同步 .env 中该平台的所有字段。
+
+    防止 .env 残留旧值导致 Gateway 读到错误凭证。
+    """
+    platforms = config_data.get("platforms", {})
+    plat_data = platforms.get(schema.key, {})
+    extra = plat_data.get("extra", {})
+
+    for field in schema.fields:
+        if not field.env_key:
+            continue
+
+        # 从 config.yaml 读取当前值
+        if field.storage == "token":
+            value = plat_data.get("token", "")
+        elif field.storage == "api_key":
+            value = plat_data.get("api_key", "")
+        else:
+            value = extra.get(field.key, "")
+
+        if value:
+            _append_env(field.env_key, value)
+        else:
+            # config.yaml 中没有该字段，从 .env 中清除
+            _remove_env_key(field.env_key)
+
+
 def _mask(value: str) -> str:
     """Mask a secret value for display."""
     if not value:
@@ -247,7 +275,12 @@ async def get_channel(platform_key: str) -> dict:
 
 @router.put("/{platform_key}")
 async def save_channel(platform_key: str, req: SaveChannelRequest) -> dict:
-    """保存平台凭据。写入 config.yaml platforms 段 + .env。"""
+    """保存平台凭据。写入 config.yaml platforms 段 + .env。
+
+    config.yaml 是唯一真相源：每次保存以 config.yaml 为准同步 .env，
+    确保两者一致。Gateway 进程读 .env，后端 API 读 config.yaml，
+    必须保证同一字段值相同。
+    """
     schema = get_channel_schema(platform_key)
     if not schema:
         raise HTTPException(status_code=404, detail=f"Unknown platform: {platform_key}")
@@ -277,6 +310,10 @@ async def save_channel(platform_key: str, req: SaveChannelRequest) -> dict:
 
     _save_config_yaml(config_data)
 
+    # ── 一致性校验：config.yaml 为真相源，强制同步 .env ──
+    # 防止 .env 残留旧值导致 Gateway 读到错误凭证
+    _sync_env_from_config(config_data, schema)
+
     # 重新加载返回最新状态
     config_data = _load_config_yaml()
     env_data = _load_env()
@@ -303,10 +340,8 @@ async def clear_channel(platform_key: str) -> dict:
         plat_data["enabled"] = False
         _save_config_yaml(config_data)
 
-    # 清除 .env 中对应的 key
-    for field in schema.fields:
-        if field.env_key:
-            _remove_env_key(field.env_key)
+    # 强制同步 .env（config.yaml 中已清除，.env 也清除）
+    _sync_env_from_config(config_data, schema)
 
     return {"ok": True, "message": f"已清除 {schema.label} 的凭据"}
 

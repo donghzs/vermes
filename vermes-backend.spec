@@ -190,17 +190,71 @@ hiddenimports = [
     'toolset_distributions',
     # Vector backend (A-1): sqlite-vec
     'sqlite_vec',
+
+    # ── 平台渠道依赖（打包内置，不再依赖 lazy_deps pip install）──
+    # 飞书/Lark
+    'lark_oapi', 'lark_oapi.api', 'lark_oapi.api.application', 'lark_oapi.api.application.v6',
+    'lark_oapi.api.im', 'lark_oapi.api.im.v1', 'lark_oapi.core', 'lark_oapi.core.const',
+    'lark_oapi.core.model', 'lark_oapi.event', 'lark_oapi.event.callback',
+    'lark_oapi.event.callback.model', 'lark_oapi.event.dispatcher_handler',
+    'lark_oapi.ws',
+    'qrcode',
+    # Telegram — 需安装后启用
+    # 'telegram', 'telegram.ext', 'telegram.request', 'telegram._utils',
+    # Discord — 需安装后启用
+    # 'discord', 'discord.ext', 'brotlicffi',
+    # Slack — 需安装后启用
+    # 'slack_bolt', 'slack_bolt.adapter', 'slack_sdk',
+    # DingTalk — 需安装后启用
+    # 'dingtalk_stream', 'alibabacloud_dingtalk',
+    # WeCom — 需安装后启用
+    # 'aiohttp',
+    # Weixin (微信公众号) — 需安装后启用
+    # 'cryptography',
+    # Matrix — 需安装后启用
+    # 'mautrix', 'mautrix.client', 'mautrix.crypto', 'Markdown',
+    # QQ Bot — 需安装后启用
+    # 'botpy',
+    # Common HTTP
+    'httpx', 'aiohttp', 'websockets',
 ]
 
 # Platform specific
 if sys.platform == 'win32':
     hiddenimports.extend(['pywin32', 'win32api', 'win32con'])
 
+# ── collect_all for platform channel packages with native/extension deps ──
+from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+_extra_datas = []
+_extra_binaries = []
+_extra_hidden = []
+
+for _pkg in [
+    'lark_oapi', 'qrcode',
+    # Telegram
+    # 'telegram', 'discord', 'brotlicffi',
+    # 'slack_bolt', 'slack_sdk',
+    # 'dingtalk_stream', 'alibabacloud_dingtalk',
+    # 'mautrix', 'aiohttp', 'cryptography',
+    # 'botpy',
+]:
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        _extra_datas.extend(_d)
+        _extra_binaries.extend(_b)
+        _extra_hidden.extend(_h)
+        print(f"[Vermes Backend] collect_all({_pkg}) OK")
+    except Exception as _e:
+        print(f"[Vermes Backend] collect_all({_pkg}) SKIP: {_e}")
+
+hiddenimports.extend(_extra_hidden)
+
 a = Analysis(
     [os.path.join(spec_dir, 'backend_main.py')],
     pathex=[spec_dir],
-    binaries=[],
-    datas=datas,
+    binaries=_extra_binaries,
+    datas=datas + _extra_datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=['runtime_hook_no_ensurepip.py'],

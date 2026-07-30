@@ -722,6 +722,15 @@ ipcMain.handle('backend:status', () => {
   return { running: !!backendProcess, pid: backendProcess?.pid || null };
 });
 
+// IPC: 渠道网关重启（Settings 页「启动网关」按钮调用）
+ipcMain.handle('gateway:restart', async () => {
+  console.log('[Vermes] 收到 gateway:restart IPC，重启渠道网关...');
+  stopGateway();
+  await new Promise(r => setTimeout(r, 1000));
+  startGateway();
+  return { ok: true };
+});
+
 // IPC: G4 诊断信息打包（splash 数据保护错误页「复制诊断」按钮）
 // 把 /health 的 integrity 字段 + 版本 + 平台拼成可粘贴文本。
 ipcMain.handle('copyDiagnostic', async (event, diagnostic) => {

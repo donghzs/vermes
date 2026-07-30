@@ -56,6 +56,14 @@ def _handle_sigterm(signum, frame):
 def main():
     global server_instance
 
+    # ── Gateway 模式：当被调用为 `vermes-backend -m vermes_cli.main gateway run --replace` 时，
+    # PyInstaller 打包的入口点会忽略 -m 参数，所有 argv 直接传给 backend_main.main()。
+    # 检测 gateway 子命令并走 gateway 启动路径。
+    if 'gateway' in sys.argv and ('run' in sys.argv or 'restart' in sys.argv):
+        logger.info("[Vermes] 检测到 gateway 命令，切换到 Gateway 模式")
+        _run_gateway()
+        return
+
     port = 9119
     for i, arg in enumerate(sys.argv):
         if arg == "--port" and i + 1 < len(sys.argv):
@@ -189,6 +197,41 @@ def main():
         # shutdown_event
         logger.info("[Vermes] 收到退出信号，关闭。")
         break
+
+
+def _run_gateway():
+    """启动 Gateway 进程（非后端 FastAPI）。
+    
+    当 PyInstaller 打包的 vermes-backend 被调用时，
+    `-m vermes_cli.main gateway run --replace` 参数会被忽略，
+    所有 argv 直接传给 backend_main.main()。
+    本函数检测 gateway 命令并走 gateway 启动路径。
+    """
+    logger.info("[Vermes] 启动 Gateway 进程...")
+    
+    # 清除旧的崩溃标记（gateway 模式不需要崩溃看门狗）
+    _CRASH_MARKER = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
+    if os.path.exists(_CRASH_MARKER):
+        try:
+            os.remove(_CRASH_MARKER)
+        except OSError:
+            pass
+    
+    try:
+        from vermes_cli.main import main as cli_main
+        # 模拟 CLI 调用：vermes gateway run --replace
+        import sys as _sys
+        _orig_argv = _sys.argv
+        _sys.argv = ['vermes', 'gateway', 'run', '--replace']
+        try:
+            cli_main()
+        finally:
+            _sys.argv = _orig_argv
+    except SystemExit as e:
+        logger.info(f"[Vermes] Gateway 进程退出: code={e.code}")
+    except Exception as e:
+        logger.error(f"[Vermes] Gateway 启动失败: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
