@@ -739,7 +739,7 @@ def _report_quota(wechat_openid: str, total_tokens: int, mode: str = ""):
 
 # ── Route handlers ───────────────────────────────────────────────────
 
-def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_response: str) -> None:
+def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_response: str, source: str = "web") -> None:
     """Step 2: best-effort mirror of a web/desktop turn into ``state.db``.
 
     Makes web/desktop conversations appear in the unified cross-channel view
@@ -758,7 +758,7 @@ def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_resp
     try:
         from vermes_state import SessionDB
         db = SessionDB()
-        db.create_session(session_id, source="web")
+        db.create_session(session_id, source=source)
         if user_message:
             db.append_message(session_id, "user", user_message)
         if final_response:
@@ -767,9 +767,12 @@ def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_resp
         _log.debug(f"[web→state.db] persist skipped for {session_id}: {exc}")
 
 
-async def chat_completions(req: ChatRequest):
+async def chat_completions(req: ChatRequest, request: Request):
     """Agent-powered chat: uses AIAgent with tool calling capabilities."""
     from run_agent import AIAgent
+
+    # 桌面端请求标记为 desktop source（区别于浏览器 web）
+    _client_source = "desktop" if request.headers.get("X-Vermes-Client") == "desktop" else "web"
 
     requested_model = req.model or "agnes-2.0-flash"
     provider, base_url, api_key, model = _resolve_model_provider(requested_model, req.provider)
@@ -1323,6 +1326,7 @@ async def chat_completions(req: ChatRequest):
                         _session_id,
                         user_message,
                         (result or {}).get("final_response") or "",
+                        source=_client_source,
                     )
                 except Exception as _web_db_exc:  # pragma: no cover - best-effort
                     _log.debug(f"[web→state.db] persist failed: {_web_db_exc}")
@@ -1509,7 +1513,7 @@ async def chat_completions(req: ChatRequest):
         final_response = result.get("final_response", "") if result else ""
         # ── Step 2: mirror web/desktop turn into state.db (unified view) ──
         try:
-            _persist_web_turn_to_state_db(_session_id, user_message, final_response)
+            _persist_web_turn_to_state_db(_session_id, user_message, final_response, source=_client_source)
         except Exception as _web_db_exc:  # pragma: no cover - best-effort
             _log.debug(f"[web→state.db] persist failed: {_web_db_exc}")
         if not final_response and result and result.get("error"):

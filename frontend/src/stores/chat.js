@@ -224,7 +224,11 @@ export const useChatStore = defineStore('chat', () => {
   function isChannelSession(id) {
     if (!id) return false
     if (sessions.value.find(s => s.id === id)) return false
-    return !!channelSessions.value.find(s => s.id === id)
+    const cs = channelSessions.value.find(s => s.id === id)
+    if (!cs) return false
+    // desktop source = 本地桌面会话（虽在 state.db 但非远程渠道）
+    if (cs.source === 'desktop') return false
+    return true
   }
 
   async function loadChannelSessions() {
@@ -422,7 +426,10 @@ export const useChatStore = defineStore('chat', () => {
     }
     // 加载新会话消息 — 合并到全局消息池（不替换）
     try {
-      const loaded = isChannelSession(id)
+      // 渠道会话和 desktop 会话都从 state.db 加载消息
+      const isRemoteChannel = isChannelSession(id)
+      const isDesktopInStateDB = !isRemoteChannel && channelSessions.value.find(s => s.id === id && s.source === 'desktop')
+      const loaded = (isRemoteChannel || isDesktopInStateDB)
         ? _mapChannelMessages(id, await loadChannelMessagesFromAPI(id))
         : await loadMessagesFromIDB(id)
       if (loaded && loaded.length > 0) {

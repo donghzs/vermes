@@ -89,9 +89,13 @@ export class SSETransport extends ChatTransport {
       if (reasoning_effort) body.reasoning_effort = reasoning_effort
       if (web_search) body.web_search = true
 
+      const headers = { 'Content-Type': 'application/json' }
+      if (typeof window !== 'undefined' && window.vermes?.isDesktop) {
+        headers['X-Vermes-Client'] = 'desktop'
+      }
       const resp = await fetch(`${this._baseUrl}/api/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(body),
         signal: ac.signal,
       })
