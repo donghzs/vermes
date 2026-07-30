@@ -34,7 +34,7 @@ REM Check if vermes_cli is installed
 %PYTHON% -c "import vermes_cli" >nul 2>&1
 if errorlevel 1 (
     echo [WARN] vermes_cli not installed, trying pip install...
-    %PYTHON% -m pip install hermes-cli 2>nul
+    %PYTHON% -m pip install vermes 2>nul
 )
 
 REM Start backend
