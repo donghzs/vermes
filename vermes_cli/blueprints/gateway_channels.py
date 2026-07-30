@@ -287,8 +287,26 @@ async def save_channel(platform_key: str, req: SaveChannelRequest) -> dict:
 
     config_data = _load_config_yaml()
     platforms = config_data.setdefault("platforms", {})
+
+    # ── 新设置覆盖旧设置：清除顶层旧段（如旧版 feishu:） ──
+    # 旧版配置写在顶层（feishu:），新版写在 platforms.feishu:。
+    # 保存时强制清除顶层旧段，确保只有一个位置存配置。
+    if platform_key in config_data and not isinstance(config_data[platform_key], dict):
+        # 非字典，直接删
+        config_data.pop(platform_key, None)
+    elif platform_key in config_data:
+        old_data = config_data[platform_key]
+        if isinstance(old_data, dict) and "platforms" not in old_data:
+            # 看起来是旧版顶层段，清除它
+            config_data.pop(platform_key, None)
+
     plat_data = platforms.setdefault(platform_key, {})
     extra = plat_data.setdefault("extra", {})
+
+    # 覆盖写入：先清空旧字段，再写入新值（确保不残留旧数据）
+    plat_data.pop("token", None)
+    plat_data.pop("api_key", None)
+    extra.clear()
 
     for field in schema.fields:
         value = req.fields.get(field.key, "").strip()
