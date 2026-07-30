@@ -90,6 +90,8 @@ export const useChatStore = defineStore('chat', () => {
   // 与本地 web 会话（sessions）分离存放：channelSessions 永不写入 localStorage，
   // 避免 persistSessions 把渠道会话持久化造成双源污染。
   const channelSessions = ref([])
+  // 渠道会话未读计数（session_id -> 条数），由 WS 实时同步推送维护
+  const channelUnread = ref({})
   const currentSessionId = ref(null)
   const messages = ref([])
   const sessionLoading = ref({})
@@ -439,6 +441,8 @@ export const useChatStore = defineStore('chat', () => {
           if (!existingIds.has(m.id)) messages.value.push(m)
         }
       }
+      // 渠道会话已打开并呈现历史 → 清除其未读角标
+      if (isChannelSession(id)) markChannelRead(id)
     } catch (e) {
       console.error('[Vermes] 加载会话失败:', e)
     }
@@ -574,6 +578,95 @@ export const useChatStore = defineStore('chat', () => {
   }
   function stopChannelMessagePolling() {
     if (_channelMsgPollTimer) { clearInterval(_channelMsgPollTimer); _channelMsgPollTimer = null }
+  }
+
+  // ── 渠道会话消息即时刷新（WS 推送触发，替代轮询等待）──
+  async function refreshChannelMessages(sid) {
+    if (!sid) return
+    try {
+      const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
+      const existingIds = new Set(messages.value.filter(m => m.sessionId === sid).map(m => m.id))
+      let added = false
+      for (const m of mapped) {
+        if (!existingIds.has(m.id)) {
+          messages.value.push(m)
+          added = true
+        }
+      }
+      if (added) scheduleScroll()
+    } catch (e) { /* ignore */ }
+  }
+
+  // ── 全渠道实时同步：独立 WS 连接（与聊天传输层解耦）──
+  // 后端每 2s 轮询 state.db 渠道会话，有新消息即广播轻量通知；
+  // 本连接仅维护未读角标，不触发任何模型调用。
+  let _syncWs = null
+  let _syncRetry = 0
+  const _SYNC_MAX_RETRIES = 20
+  let _sessionListRefreshing = false  // 防 channel_update 并发重复拉取会话列表
+
+  function _syncWsUrl() {
+    const proto = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss:' : 'ws:'
+    return `${proto}//${location.host}/api/ws/chat`
+  }
+
+  function markChannelRead(sid) {
+    if (!sid) return
+    // 本地即时清零，避免角标闪烁
+    channelUnread.value = { ...channelUnread.value, [sid]: 0 }
+    if (_syncWs && _syncWs.readyState === WebSocket.OPEN) {
+      try { _syncWs.send(JSON.stringify({ type: 'mark_read', session_id: sid })) } catch (e) {}
+    }
+  }
+
+  function initChannelSync() {
+    if (_syncWs) return  // 单例
+    const connect = () => {
+      let ws
+      try {
+        ws = new WebSocket(_syncWsUrl())
+      } catch (e) {
+        _scheduleSyncReconnect(connect)
+        return
+      }
+      _syncWs = ws
+      ws.onopen = () => { _syncRetry = 0 }
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.type === 'channel_unread_snapshot') {
+            channelUnread.value = { ...(msg.unread || {}) }
+          } else if (msg.type === 'channel_update') {
+            const sid = msg.session_id
+            if (!sid) return
+            channelUnread.value = { ...channelUnread.value, [sid]: msg.unread || 0 }
+            // 当前正打开该渠道会话 → 即时刷新内容并清除未读
+            if (sid === currentSessionId.value && isChannelSession(sid)) {
+              refreshChannelMessages(sid)
+              markChannelRead(sid)
+            }
+            // 新渠道会话首次出现：即时拉取会话列表，把入口发现延迟
+            // 从 ≤5s 轮询降到 ≤0.5s（对齐事件即时广播会话列表变更）。
+            // 幂等：loadChannelSessions 整体替换列表；in-flight 守卫防并发重复拉取。
+            if (!channelSessions.value.some(s => s.id === sid) && !_sessionListRefreshing) {
+              _sessionListRefreshing = true
+              loadChannelSessions()
+                .catch(() => {})
+                .finally(() => { _sessionListRefreshing = false })
+            }
+          }
+        } catch (e) {}
+      }
+      ws.onclose = () => _scheduleSyncReconnect(connect)
+      ws.onerror = () => { try { ws.close() } catch (e) {} }
+    }
+    const _scheduleSyncReconnect = (fn) => {
+      if (_syncRetry >= _SYNC_MAX_RETRIES) return
+      const delay = Math.min(1000 * Math.pow(2, _syncRetry), 30000)
+      _syncRetry++
+      setTimeout(fn, delay)
+    }
+    connect()
   }
 
   // ── 发送消息 ──
@@ -1178,6 +1271,7 @@ export const useChatStore = defineStore('chat', () => {
     createSession, switchSession, deleteSession, renameSession, pinSession,
     searchAllSessions, exportSession, importSession,
     startChannelMessagePolling, stopChannelMessagePolling,
+    refreshChannelMessages, initChannelSync, markChannelRead, channelUnread,
     sendMessage, stopGeneration, toggleSidebar, toggleTheme, persistSessions,
     getMessageCount, getFirstMessage, formatSize, newSession,
     searchAllMessages, getSessionStats, sendCompareMessage,

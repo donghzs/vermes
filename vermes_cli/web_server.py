@@ -242,6 +242,117 @@ async def request_logging_middleware(request: Request, call_next):
 # WebSocket 活跃连接池（多客户端支持）
 _active_chat_ws: set = set()
 
+# ── 全渠道实时同步（桌面控制台）──────────────────────────────
+# 借鉴 OpenSquilla 的 EventBridge：消息落库即写事件，桌面端尾随事件表
+# （channel_sync_events）而非每轮全量扫描 state.db 的渠道会话。
+# gateway 在 append_message 时对 channel 会话写入事件行；本进程仅取
+# id > 水位的增量行（0.5s 尾随），向所有已连接桌面 WS 广播轻量通知。
+# 成本从 O(全会话×消息) 降为 O(新增事件)，延迟 ≤0.5s；零模型调用、零额外 token。
+_channel_sync_state: Dict[str, Any] = {
+    "last_event_id": None,  # channel_sync_events 水位（已消费最大 id）
+    "unread": {},           # session_id -> 未读条数
+    "seeded": False,        # 首轮仅建水位、不计未读（避免冷启动误报）
+    "task": None,           # 后台尾随任务
+}
+
+
+async def _channel_sync_broadcast(payload: Dict[str, Any]) -> None:
+    """向所有已连接的桌面 WS 客户端广播；断开的自动剔除。"""
+    dead = set()
+    for ws in list(_active_chat_ws):
+        try:
+            await ws.send_text(json.dumps(payload, ensure_ascii=False))
+        except Exception:
+            dead.add(ws)
+    _active_chat_ws.difference_update(dead)
+
+
+async def _channel_sync_tick() -> None:
+    """一次增量：仅尾随 channel_sync_events 的新增事件行，零全量扫描。"""
+    from vermes_state import SessionDB
+
+    try:
+        db = SessionDB()
+    except Exception:
+        return
+    try:
+        # 首轮：把水位竖到当前最大事件 id，避免回放历史造成误报未读
+        if _channel_sync_state["last_event_id"] is None:
+            _channel_sync_state["last_event_id"] = db.get_max_channel_sync_event_id()
+            _channel_sync_state["seeded"] = True
+            return
+
+        last = _channel_sync_state["last_event_id"]
+        rows = db.get_channel_sync_events_since(last)
+        if not rows:
+            return
+
+        # 同一会话的多个新事件聚合成一条更新，避免一 tick 内重复推送
+        agg: Dict[str, Dict[str, Any]] = {}
+        max_seen = last
+        for r in rows:
+            max_seen = r["id"]
+            sid = r["session_id"]
+            if not sid:
+                continue
+            _channel_sync_state["unread"][sid] = (
+                _channel_sync_state["unread"].get(sid, 0) + 1
+            )
+            bucket = agg.setdefault(sid, {"count": 0, "latest": r})
+            bucket["count"] += 1
+            bucket["latest"] = r  # 保留最新一条作为预览
+
+        _channel_sync_state["last_event_id"] = max_seen
+        for sid, b in agg.items():
+            r = b["latest"]
+            await _channel_sync_broadcast({
+                "type": "channel_update",
+                "session_id": sid,
+                "source": r["source"],
+                "unread": _channel_sync_state["unread"][sid],
+                "new_count": b["count"],
+                "latest": {
+                    "role": r["role"],
+                    "content": (r["content_preview"] or "")[:160],
+                    "timestamp": r["ts"],
+                },
+            })
+    finally:
+        db.close()
+
+
+async def _channel_sync_loop() -> None:
+    """后台增量尾随循环：每 0.5s 消费 channel_sync_events 新行并广播；
+    并按小时对事件表做过期 prune，防无限增长。
+    无桌面 WS 客户端时立即退出，不空转；下次连接由 chat_ws 惰性重启
+    （start guard 检测到 task.done() 即重建）。"""
+    _last_prune = 0.0  # 初始 0 → 首轮即跑一次，立刻兜住历史存量库
+    while True:
+        # 无桌面客户端 → 退出，避免空转。事件表的常规 prune 安全网由
+        # gateway 端 append_message 的体积兜底 prune 提供，无需常驻。
+        if not _active_chat_ws:
+            return
+        try:
+            await _channel_sync_tick()
+        except Exception:
+            logger.exception("channel sync tick error")
+        # 定期 prune：每小时清一次过期事件（事件表只是实时投递辅助，过期即删；
+        # 历史会话清理由独立的记忆/摘要压缩负责，与本表无关）。删除不动最高 id，
+        # 冷启动水位快照仍正确。首次启动 60s 后即触发（_last_prune 初始为 0）。
+        try:
+            _now = time.time()
+            if _now - _last_prune >= 3600:
+                _last_prune = _now
+                from vermes_state import SessionDB
+                _pdb = SessionDB()
+                try:
+                    _pdb.prune_channel_sync_events()
+                finally:
+                    _pdb.close()
+        except Exception:
+            logger.exception("channel sync prune error")
+        await asyncio.sleep(0.5)
+
 # ---------------------------------------------------------------------------
 # _PUBLIC_API_PATHS — endpoints accessible without auth
 # ---------------------------------------------------------------------------
@@ -1658,13 +1769,28 @@ async def events_ws(ws: WebSocket) -> None:
 
 @app.websocket("/api/ws/chat")
 async def chat_ws(ws: WebSocket) -> None:
-    """Real-time chat WebSocket — 停止生成、会话切换、未来多端同步。
-    
+    """Real-time chat WebSocket — 停止生成、会话切换、全渠道实时同步。
+
     消息发送继续走 SSE (/api/chat/completions)，
-    本端点只处理实时控制信号。
+    本端点处理实时控制信号 + 渠道新消息推送（桌面控制台）。
     """
     await ws.accept()
     _active_chat_ws.add(ws)
+    # 首个桌面客户端连接时启动后台渠道轮询（仅起一次）
+    _sync_task = _channel_sync_state["task"]
+    if _sync_task is None or getattr(_sync_task, "done", lambda: True)():
+        try:
+            _channel_sync_state["task"] = asyncio.create_task(_channel_sync_loop())
+        except Exception:
+            logger.warning("failed to start channel sync loop")
+    # 下发当前未读快照，避免冷连接后角标空白
+    try:
+        await ws.send_text(json.dumps({
+            "type": "channel_unread_snapshot",
+            "unread": dict(_channel_sync_state["unread"]),
+        }, ensure_ascii=False))
+    except Exception:
+        pass
     try:
         while True:
             raw = await ws.receive_text()
@@ -1672,19 +1798,33 @@ async def chat_ws(ws: WebSocket) -> None:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            
+
             msg_type = msg.get("type", "")
-            
+
             if msg_type == "stop":
                 # 停止指定会话的生成
                 session_id = msg.get("session_id", "")
                 from vermes_cli.blueprints.agent_cache import stop_agent_session
                 await stop_agent_session(session_id)
                 await ws.send_text(json.dumps({"type": "stopped", "session_id": session_id}))
-            
+
             elif msg_type == "ping":
                 await ws.send_text(json.dumps({"type": "pong"}))
-                
+
+            elif msg_type == "mark_read":
+                # 桌面标记某渠道会话已读 → 清除未读角标并广播
+                sid = msg.get("session_id", "")
+                if sid:
+                    _channel_sync_state["unread"][sid] = 0
+                    await _channel_sync_broadcast({
+                        "type": "channel_update",
+                        "session_id": sid,
+                        "source": None,
+                        "unread": 0,
+                        "new_count": 0,
+                        "latest": None,
+                    })
+
     except WebSocketDisconnect:
         pass
     finally:

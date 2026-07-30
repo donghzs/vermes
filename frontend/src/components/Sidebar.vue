@@ -206,10 +206,11 @@ watch(() => chat.sessions.length, async () => {
   await loadAllSessionMeta()
 })
 
-// 组件挂载时加载元数据 + 刷新渠道会话列表
+// 组件挂载时加载元数据 + 刷新渠道会话列表 + 启动全渠道实时同步
 onMounted(async () => {
   await loadAllSessionMeta()
   chat.loadChannelSessions().catch(() => {})
+  chat.initChannelSync()
 })
 
 // ── 渠道会话定时轮询（每 5 秒刷新会话列表，发现新消息/新会话）──
@@ -479,6 +480,7 @@ async function handleImportFile(e) {
               <div class="flex items-center gap-1">
                 <span class="truncate font-medium flex-1">{{ item.data.name || '新 Agent' }}</span>
                 <span v-if="item.data.channel" class="shrink-0 text-[9px] px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300" :title="'来自渠道: ' + item.data.source">{{ sourceBadge(item.data) }}</span>
+                <span v-if="chat.channelUnread[item.data.id] > 0" class="shrink-0 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-semibold rounded-full bg-red-500 text-white" :title="chat.channelUnread[item.data.id] + ' 条未读'">{{ chat.channelUnread[item.data.id] > 99 ? '99+' : chat.channelUnread[item.data.id] }}</span>
                 <span v-if="chat.sessionLoading[item.data.id]" class="shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" title="运行中"></span>
                 <span v-if="getMessageCount(item.data.id) > 0" class="shrink-0 ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-800 text-green-600 dark:text-green-300 font-medium">{{ getMessageCount(item.data.id) }}</span>
               </div>

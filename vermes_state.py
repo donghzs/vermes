@@ -16,6 +16,7 @@ Key design decisions:
 
 import json
 import logging
+import os
 import random
 import re
 import sqlite3
@@ -539,7 +540,32 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_compression_locks_expires ON compression_locks(expires_at);
+
+-- Event-sourced channel sync: a lightweight append-only log written whenever
+-- a message lands in a channel session (source != 'web').  The desktop console
+-- tails this table instead of scanning the whole session list, so delivery is
+-- near-instant (bounded by the tail poll) and cost is O(new events), not
+-- O(all sessions x messages).  Mirrors OpenSquilla's in-process EventBridge,
+-- adapted for Vermes's cross-process SQLite bus shared by gateway + web_server.
+CREATE TABLE IF NOT EXISTS channel_sync_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    role TEXT,
+    source TEXT,
+    content_preview TEXT,
+    ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_channel_sync_events_id ON channel_sync_events(id);
 """
+
+# channel_sync_events 自清理配置。该表只是桌面控制台未读角标的实时投递
+# 辅助，不是会话历史（那是 `messages`），也不是长期记忆/摘要（已独立压缩）。
+# 事件一旦超过可重连窗口（默认 30 天）即可安全删除：prune_channel_sync_events()
+# 按时间清理；下方体积阈值作为兜底，即便控制台/web_server 的定时 prune 不跑，
+# 增长也会被钳住。删除永远不会触及最大 id，冷启动水位快照仍正确。
+_CHANNEL_SYNC_PRUNE_INTERVAL = 500  # 每 N 次 append_message 触发一次兜底 prune
+_channel_sync_prune_counter = 0
 
 FTS_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
@@ -2129,9 +2155,112 @@ class SessionDB:
                     "UPDATE sessions SET message_count = message_count + 1 WHERE id = ?",
                     (session_id,),
                 )
+
+            # Event-sourced channel sync: emit a lightweight event row so the
+            # desktop console can push updates without polling the whole
+            # session list.  Skip the local consoles (source == 'web' local web
+            # console, source == 'desktop' desktop local chat) and any session
+            # whose source can't be resolved — only external channel sessions
+            # (telegram/slack/feishu/...) should produce unread badges,
+            # otherwise the user's own desktop chat would get a red dot (P1-A).
+            # Runs inside the same write transaction as the message insert.
+            try:
+                _src_row = conn.execute(
+                    "SELECT source FROM sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                _src = _src_row["source"] if _src_row else None
+                if _src and _src not in ("web", "desktop"):
+                    if isinstance(content, str):
+                        _preview = content[:160]
+                    elif isinstance(content, list):
+                        _preview = ""
+                        for _p in content:
+                            if isinstance(_p, dict) and _p.get("type") == "text":
+                                _preview = str(_p.get("text", ""))[:160]
+                                break
+                    else:
+                        _preview = ""
+                    conn.execute(
+                        "INSERT INTO channel_sync_events "
+                        "(session_id, message_id, role, source, content_preview, ts) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (session_id, msg_id, role, _src, _preview, time.time()),
+                    )
+            except Exception:
+                pass
             return msg_id
 
-        return self._execute_write(_do)
+        msg_id = self._execute_write(_do)
+
+        # 体积兜底 prune：与上面的事件写入解耦（独立事务，不嵌套在 _do 内）。
+        # 即便控制台/web_server 的定时 prune 不跑，增长也会被钳住。已过期
+        # 行删除安全——不影响最高 id，冷启动水位快照仍正确。
+        global _channel_sync_prune_counter
+        _channel_sync_prune_counter += 1
+        if _channel_sync_prune_counter >= _CHANNEL_SYNC_PRUNE_INTERVAL:
+            _channel_sync_prune_counter = 0
+            try:
+                self.prune_channel_sync_events()
+            except Exception:
+                pass
+
+        return msg_id
+
+    def get_max_channel_sync_event_id(self) -> int:
+        """Highest channel_sync_events.id present (used to seed the watermark)."""
+        try:
+            row = self._conn.execute(
+                "SELECT MAX(id) FROM channel_sync_events"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return 0
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def get_channel_sync_events_since(self, last_id: int, limit: int = 200):
+        """Return channel_sync_events rows with id > last_id, oldest first."""
+        try:
+            cur = self._conn.execute(
+                "SELECT id, session_id, role, source, content_preview, ts "
+                "FROM channel_sync_events WHERE id > ? ORDER BY id ASC LIMIT ?",
+                (last_id, limit),
+            )
+            return cur.fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+    def prune_channel_sync_events(self, older_than_days: int | None = None) -> int:
+        """Delete channel_sync_events older than the retention window.
+
+        The events table is purely a real-time delivery aid for the desktop
+        console's unread badges; it is NOT session history (``messages``) nor
+        long-term memory/summaries (compressed independently).  Rows older than
+        the window are therefore safe to drop.  Retention is configurable via
+        ``VERMES_CHANNEL_SYNC_RETENTION_DAYS`` (default 30 days); pass
+        *older_than_days* to override for a one-off prune.
+
+        Pruning never removes the highest id, so a cold-starting console still
+        seeds its watermark correctly via ``get_max_channel_sync_event_id()``.
+        """
+        days = older_than_days
+        if days is None:
+            try:
+                days = int(os.environ.get("VERMES_CHANNEL_SYNC_RETENTION_DAYS", "30"))
+            except (TypeError, ValueError):
+                days = 30
+        if days <= 0:
+            return 0
+        cutoff = time.time() - days * 86400
+
+        def _do(conn):
+            cur = conn.execute(
+                "DELETE FROM channel_sync_events WHERE ts < ?", (cutoff,)
+            )
+            return cur.rowcount or 0
+
+        try:
+            return int(self._execute_write(_do))
+        except Exception:
+            return 0
 
     def _insert_message_rows(
         self, conn, session_id: str, messages: List[Dict[str, Any]]
