@@ -191,7 +191,7 @@ hiddenimports = [
     # Vector backend (A-1): sqlite-vec
     'sqlite_vec',
 
-    # ── 平台渠道依赖（打包内置，不再依赖 lazy_deps pip install）──
+    # ── 平台渠道依赖（全量打包，即配即用）──
     # 飞书/Lark
     'lark_oapi', 'lark_oapi.api', 'lark_oapi.api.application', 'lark_oapi.api.application.v6',
     'lark_oapi.api.im', 'lark_oapi.api.im.v1', 'lark_oapi.core', 'lark_oapi.core.const',
@@ -199,24 +199,34 @@ hiddenimports = [
     'lark_oapi.event.callback.model', 'lark_oapi.event.dispatcher_handler',
     'lark_oapi.ws',
     'qrcode',
-    # Telegram — 需安装后启用
-    # 'telegram', 'telegram.ext', 'telegram.request', 'telegram._utils',
-    # Discord — 需安装后启用
-    # 'discord', 'discord.ext', 'brotlicffi',
-    # Slack — 需安装后启用
-    # 'slack_bolt', 'slack_bolt.adapter', 'slack_sdk',
-    # DingTalk — 需安装后启用
-    # 'dingtalk_stream', 'alibabacloud_dingtalk',
-    # WeCom — 需安装后启用
-    # 'aiohttp',
-    # Weixin (微信公众号) — 需安装后启用
-    # 'cryptography',
-    # Matrix — 需安装后启用
-    # 'mautrix', 'mautrix.client', 'mautrix.crypto', 'Markdown',
-    # QQ Bot — 需安装后启用
-    # 'botpy',
+    # Telegram
+    'telegram', 'telegram.ext', 'telegram.request', 'telegram._utils',
+    'telegram.error', 'telegram.constants', 'telegram.helpers',
+    # Discord
+    'discord', 'discord.ext', 'discord.utils', 'discord.app_commands',
+    # Slack
+    'slack_bolt', 'slack_bolt.adapter', 'slack_bolt.adapter.asgi', 'slack_sdk',
+    # DingTalk
+    'dingtalk_stream', 'alibabacloud_dingtalk',
+    # WeCom (企业微信)
+    'cryptography', 'cryptography.hazmat', 'cryptography.hazmat.backends',
+    'cryptography.hazmat.primitives', 'cryptography.hazmat.primitives.ciphers',
+    # Weixin (微信公众号)
+    # cryptography 已包含
+    # Matrix
+    'mautrix', 'mautrix.client', 'mautrix.types', 'mautrix.crypto',
+    'mautrix.crypto.attachments', 'mautrix.util',
+    # QQ Bot (不依赖外部 PyPI 包，适配器自包含)
+    # 元宝
+    # websockets 已包含
+    # Nostr
+    'coincurve',
     # Common HTTP
-    'httpx', 'aiohttp', 'websockets',
+    'httpx', 'aiohttp', 'aiohttp_socks', 'websockets',
+    # 音频处理
+    'mutagen', 'mutagen.oggopus',
+    # 其他
+    'pilk', 'nacl', 'nacl.secret', 'markdown', 'brotlicffi', 'Markdown',
 ]
 
 # Platform specific
@@ -233,11 +243,25 @@ _extra_hidden = []
 for _pkg in [
     'lark_oapi', 'qrcode',
     # Telegram
-    # 'telegram', 'discord', 'brotlicffi',
-    # 'slack_bolt', 'slack_sdk',
-    # 'dingtalk_stream', 'alibabacloud_dingtalk',
-    # 'mautrix', 'aiohttp', 'cryptography',
-    # 'botpy',
+    'telegram',
+    # Discord
+    'discord',
+    # Slack
+    'slack_bolt', 'slack_sdk',
+    # DingTalk
+    'dingtalk_stream', 'alibabacloud_dingtalk',
+    # WeCom / Weixin
+    'cryptography',
+    # Matrix
+    'mautrix',
+    # QQ Bot (自包含，无外部依赖)
+    # Nostr
+    'coincurve',
+    # 音频
+    'mutagen',
+    # 其他
+    'pilk', 'nacl', 'brotlicffi', 'aiohttp_socks',
+    'markdown',
 ]:
     try:
         _d, _b, _h = collect_all(_pkg)
