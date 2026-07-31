@@ -221,61 +221,20 @@ class WatcherMixin:
                     platform.value, attempt,
                 )
 
-                try:
-                    adapter = self._create_adapter(platform, platform_config)
-                    if not adapter:
-                        logger.warning(
-                            "Reconnect %s: adapter creation returned None, removing from retry queue",
-                            platform.value,
-                        )
-                        del self._failed_platforms[platform]
-                        continue
-
-                    adapter.set_message_handler(self._handle_message)
-                    adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
-                    adapter.set_session_store(self.session_store)
-                    adapter.set_busy_session_handler(self._handle_active_session_busy_message)
-
-                    success = await self._connect_adapter_with_timeout(adapter, platform)
-                    if success:
-                        self.adapters[platform] = adapter
-                        self._sync_voice_mode_state_to_adapter(adapter)
-                        self.delivery_router.adapters = self.adapters
-                        del self._failed_platforms[platform]
-                        self._update_platform_runtime_status(
-                            platform.value,
-                            platform_state="connected",
-                            error_code=None,
-                            error_message=None,
-                        )
-                        logger.info("✓ %s reconnected successfully", platform.value)
-
-                        # Rebuild channel directory with the new adapter
-                        try:
-                            from gateway.channel_directory import build_channel_directory
-                            await build_channel_directory(self.adapters)
-                        except Exception:
-                            pass
-                    # Check if the failure is non-retryable
-                    elif adapter.has_fatal_error and not adapter.fatal_error_retryable:
-                        self._update_platform_runtime_status(
-                            platform.value,
-                            platform_state="fatal",
-                            error_code=adapter.fatal_error_code,
-                            error_message=adapter.fatal_error_message,
-                        )
+                result = await self._connect_one(platform, platform_config)
+                if result["ok"]:
+                    logger.info("✓ %s reconnected successfully", platform.value)
+                else:
+                    err_msg = result.get("error", "unknown")
+                    # Check if non-retryable
+                    adapter = self.adapters.get(platform)
+                    if adapter and adapter.has_fatal_error and not adapter.fatal_error_retryable:
                         logger.warning(
                             "Reconnect %s: non-retryable error (%s), removing from retry queue",
-                            platform.value, adapter.fatal_error_message,
+                            platform.value, err_msg,
                         )
                         del self._failed_platforms[platform]
                     else:
-                        self._update_platform_runtime_status(
-                            platform.value,
-                            platform_state="retrying",
-                            error_code=adapter.fatal_error_code,
-                            error_message=adapter.fatal_error_message or "failed to reconnect",
-                        )
                         backoff = min(30 * (2 ** (attempt - 1)), _BACKOFF_CAP)
                         info["attempts"] = attempt
                         info["next_retry"] = time.monotonic() + backoff
@@ -284,29 +243,7 @@ class WatcherMixin:
                             platform.value, backoff,
                         )
                         if attempt >= _PAUSE_AFTER_FAILURES:
-                            self._pause_failed_platform(
-                                platform,
-                                reason=(
-                                    adapter.fatal_error_message
-                                    or "failed to reconnect"
-                                ),
-                            )
-                except Exception as e:
-                    self._update_platform_runtime_status(
-                        platform.value,
-                        platform_state="retrying",
-                        error_code=None,
-                        error_message=str(e),
-                    )
-                    backoff = min(30 * (2 ** (attempt - 1)), _BACKOFF_CAP)
-                    info["attempts"] = attempt
-                    info["next_retry"] = time.monotonic() + backoff
-                    logger.warning(
-                        "Reconnect %s error: %s, next retry in %ds",
-                        platform.value, e, backoff,
-                    )
-                    if attempt >= _PAUSE_AFTER_FAILURES:
-                        self._pause_failed_platform(platform, reason=str(e))
+                            self._pause_failed_platform(platform, reason=err_msg)
 
             # Check every 10 seconds for platforms that need reconnection
             for _ in range(10):

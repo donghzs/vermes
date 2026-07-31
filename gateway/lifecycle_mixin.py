@@ -16,6 +16,7 @@ to support test monkeypatching — same pattern as the other mixins.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
@@ -318,117 +319,22 @@ class LifecycleMixin:
             if not platform_config.enabled:
                 continue
             enabled_platform_count += 1
-            
-            adapter = self._create_adapter(platform, platform_config)
-            if not adapter:
-                # Distinguish between missing builtin deps and missing plugin
-                _pval = platform.value
-                _builtin_names = {m.value for m in Platform.__members__.values()}
-                if _pval not in _builtin_names:
-                    logger.warning(
-                        "No adapter for '%s' — is the plugin installed? "
-                        "(platform is enabled in config.yaml but no plugin registered it)",
-                        _pval,
+
+            result = await self._connect_one(platform, platform_config)
+            if result["ok"]:
+                connected_count += 1
+            else:
+                err_msg = result.get("error", "unknown")
+                # Classify the error for startup decision logic
+                if "no adapter available" in err_msg:
+                    # Missing deps/plugin — not retryable
+                    startup_nonretryable_errors.append(
+                        f"{platform.value}: {err_msg}"
                     )
                 else:
-                    logger.warning("No adapter available for %s", _pval)
-                continue
-            
-            # Set up message + fatal error handlers
-            adapter.set_message_handler(self._handle_message)
-            adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
-            adapter.set_session_store(self.session_store)
-            adapter.set_busy_session_handler(self._handle_active_session_busy_message)
-            
-            # Try to connect
-            logger.info("Connecting to %s...", platform.value)
-            self._update_platform_runtime_status(
-                platform.value,
-                platform_state="connecting",
-                error_code=None,
-                error_message=None,
-            )
-            try:
-                success = await self._connect_adapter_with_timeout(adapter, platform)
-                if success:
-                    self.adapters[platform] = adapter
-                    self._sync_voice_mode_state_to_adapter(adapter)
-                    connected_count += 1
-                    self._update_platform_runtime_status(
-                        platform.value,
-                        platform_state="connected",
-                        error_code=None,
-                        error_message=None,
+                    startup_retryable_errors.append(
+                        f"{platform.value}: {err_msg}"
                     )
-                    logger.info("✓ %s connected", platform.value)
-                else:
-                    logger.warning("✗ %s failed to connect", platform.value)
-                    # Defensive cleanup: a failed connect() may have
-                    # allocated resources (aiohttp.ClientSession, poll
-                    # tasks, bridge subprocesses) before giving up.
-                    # Without this call, those resources are orphaned
-                    # and Python logs "Unclosed client session" at
-                    # process exit. Adapter disconnect() implementations
-                    # are expected to be idempotent and tolerate
-                    # partial-init state.
-                    await self._safe_adapter_disconnect(adapter, platform)
-                    if adapter.has_fatal_error:
-                        self._update_platform_runtime_status(
-                            platform.value,
-                            platform_state="retrying" if adapter.fatal_error_retryable else "fatal",
-                            error_code=adapter.fatal_error_code,
-                            error_message=adapter.fatal_error_message,
-                        )
-                        target = (
-                            startup_retryable_errors
-                            if adapter.fatal_error_retryable
-                            else startup_nonretryable_errors
-                        )
-                        target.append(
-                            f"{platform.value}: {adapter.fatal_error_message}"
-                        )
-                        # Queue for reconnection if the error is retryable
-                        if adapter.fatal_error_retryable:
-                            self._failed_platforms[platform] = {
-                                "config": platform_config,
-                                "attempts": 1,
-                                "next_retry": time.monotonic() + 30,
-                            }
-                    else:
-                        self._update_platform_runtime_status(
-                            platform.value,
-                            platform_state="retrying",
-                            error_code=None,
-                            error_message="failed to connect",
-                        )
-                        startup_retryable_errors.append(
-                            f"{platform.value}: failed to connect"
-                        )
-                        # No fatal error info means likely a transient issue — queue for retry
-                        self._failed_platforms[platform] = {
-                            "config": platform_config,
-                            "attempts": 1,
-                            "next_retry": time.monotonic() + 30,
-                        }
-            except Exception as e:
-                logger.error("✗ %s error: %s", platform.value, e)
-                # Same defensive cleanup path for exceptions — an adapter
-                # that raised mid-connect may still have a live
-                # aiohttp.ClientSession or child subprocess.
-                await self._safe_adapter_disconnect(adapter, platform)
-                self._update_platform_runtime_status(
-                    platform.value,
-                    platform_state="retrying",
-                    error_code=None,
-                    error_message=str(e),
-                )
-                startup_retryable_errors.append(f"{platform.value}: {e}")
-                # Unexpected exceptions are typically transient — queue for retry
-                self._failed_platforms[platform] = {
-                    "config": platform_config,
-                    "attempts": 1,
-                    "next_retry": time.monotonic() + 30,
-                }
         
         if connected_count == 0:
             if startup_nonretryable_errors:
@@ -1125,6 +1031,183 @@ class LifecycleMixin:
     async def wait_for_shutdown(self) -> None:
         """Wait for shutdown signal."""
         await self._shutdown_event.wait()
+
+    # ------------------------------------------------------------------
+    # P1: Hot-plug primitives — _connect_one / _disconnect_one
+    # Unified connect/disconnect for a single platform adapter at runtime.
+    # Used by: startup loop, reconnect watcher, config-watch watcher,
+    #           and control server (P3).
+    # ------------------------------------------------------------------
+
+    async def _connect_one(
+        self,
+        platform: Platform,
+        platform_config: Any = None,
+        *,
+        force: bool = False,
+    ) -> dict:
+        """Connect (or reconnect) a single platform adapter at runtime.
+
+        Returns ``{"ok": bool, "state": str, ...}``.
+
+        - If already connected and ``force=False`` and config unchanged → no-op.
+        - If already connected and ``force=True`` → disconnect first, then reconnect.
+        - If in ``_failed_platforms`` → remove from retry queue on success.
+        - On failure → clean up + queue for retry.
+        """
+        if platform_config is None:
+            platform_config = self.config.platforms.get(platform)
+            if platform_config is None:
+                return {"ok": False, "error": f"{platform.value} not in config"}
+
+        # ── Idempotent: already connected ──
+        existing = self.adapters.get(platform)
+        if existing is not None and not force:
+            return {"ok": True, "state": "already_connected"}
+
+        # ── Force reconnect: disconnect first ──
+        if existing is not None and force:
+            await self._safe_adapter_disconnect(existing, platform)
+            self.adapters.pop(platform, None)
+            self.delivery_router.adapters = self.adapters
+
+        # ── Create adapter ──
+        adapter = self._create_adapter(platform, platform_config)
+        if not adapter:
+            _pval = platform.value
+            _builtin_names = {m.value for m in Platform.__members__.values()}
+            if _pval not in _builtin_names:
+                logger.warning(
+                    "No adapter for '%s' — is the plugin installed?",
+                    _pval,
+                )
+            else:
+                logger.warning("No adapter available for %s", _pval)
+            self._update_platform_runtime_status(
+                platform.value,
+                platform_state="fatal",
+                error_code=None,
+                error_message="no adapter available",
+            )
+            return {"ok": False, "error": f"no adapter available for {platform.value}"}
+
+        # ── Install handlers ──
+        adapter.set_message_handler(self._handle_message)
+        adapter.set_fatal_error_handler(self._handle_adapter_fatal_error)
+        adapter.set_session_store(self.session_store)
+        adapter.set_busy_session_handler(self._handle_active_session_busy_message)
+
+        # ── Connect ──
+        logger.info("Connecting to %s...", platform.value)
+        self._update_platform_runtime_status(
+            platform.value,
+            platform_state="connecting",
+            error_code=None,
+            error_message=None,
+        )
+        try:
+            success = await self._connect_adapter_with_timeout(adapter, platform)
+            if success:
+                self.adapters[platform] = adapter
+                self._sync_voice_mode_state_to_adapter(adapter)
+                self.delivery_router.adapters = self.adapters
+                # Remove from failed queue if present
+                self._failed_platforms.pop(platform, None)
+                self._update_platform_runtime_status(
+                    platform.value,
+                    platform_state="connected",
+                    error_code=None,
+                    error_message=None,
+                )
+                logger.info("✓ %s connected", platform.value)
+                # Rebuild channel directory
+                try:
+                    from gateway.channel_directory import build_channel_directory
+                    await build_channel_directory(self.adapters)
+                except Exception as e:
+                    logger.warning("Channel directory rebuild failed: %s", e)
+                return {"ok": True, "state": "connected"}
+            else:
+                # Connect returned False
+                logger.warning("✗ %s failed to connect", platform.value)
+                await self._safe_adapter_disconnect(adapter, platform)
+                if adapter.has_fatal_error:
+                    self._update_platform_runtime_status(
+                        platform.value,
+                        platform_state="retrying" if adapter.fatal_error_retryable else "fatal",
+                        error_code=adapter.fatal_error_code,
+                        error_message=adapter.fatal_error_message,
+                    )
+                    if adapter.fatal_error_retryable:
+                        self._failed_platforms[platform] = {
+                            "config": platform_config,
+                            "attempts": 1,
+                            "next_retry": time.monotonic() + 30,
+                        }
+                    err_msg = adapter.fatal_error_message or "failed to connect"
+                else:
+                    self._update_platform_runtime_status(
+                        platform.value,
+                        platform_state="retrying",
+                        error_code=None,
+                        error_message="failed to connect",
+                    )
+                    self._failed_platforms[platform] = {
+                        "config": platform_config,
+                        "attempts": 1,
+                        "next_retry": time.monotonic() + 30,
+                    }
+                    err_msg = "failed to connect"
+                return {"ok": False, "error": err_msg}
+        except Exception as e:
+            logger.error("✗ %s error: %s", platform.value, e)
+            await self._safe_adapter_disconnect(adapter, platform)
+            self._update_platform_runtime_status(
+                platform.value,
+                platform_state="retrying",
+                error_code=None,
+                error_message=str(e),
+            )
+            self._failed_platforms[platform] = {
+                "config": platform_config,
+                "attempts": 1,
+                "next_retry": time.monotonic() + 30,
+            }
+            return {"ok": False, "error": str(e)}
+
+    async def _disconnect_one(self, platform: Platform) -> dict:
+        """Disconnect a single platform adapter at runtime.
+
+        Returns ``{"ok": bool, "state": str}``.
+        Idempotent — safe to call on a platform that isn't connected.
+        """
+        adapter = self.adapters.get(platform)
+        if adapter is None:
+            return {"ok": True, "state": "not_connected"}
+
+        try:
+            await self._safe_adapter_disconnect(adapter, platform)
+        except Exception as e:
+            logger.warning("Error disconnecting %s: %s", platform.value, e)
+
+        self.adapters.pop(platform, None)
+        self.delivery_router.adapters = self.adapters
+        self._update_platform_runtime_status(
+            platform.value,
+            platform_state="disabled",
+            error_code=None,
+            error_message=None,
+        )
+        logger.info("✓ %s disconnected (hot-plug)", platform.value)
+
+        # Rebuild channel directory
+        try:
+            from gateway.channel_directory import build_channel_directory
+            await build_channel_directory(self.adapters)
+        except Exception as e:
+            logger.warning("Channel directory rebuild failed: %s", e)
+
+        return {"ok": True, "state": "disconnected"}
 
     def _create_adapter(
         self, 
