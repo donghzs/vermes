@@ -4400,6 +4400,33 @@ def cfg_get(cfg: Optional[Dict[str, Any]], *keys: str, default: Any = None) -> A
 
 
 
+def _load_raw_yaml_with_restore(config_path: Path) -> Dict[str, Any]:
+    """Read config.yaml as raw YAML.
+
+    P0-1 (backup-then-rewrite recovery): on parse failure, attempt a one-shot
+    restore from the most recent config-only quick snapshot, then retry. This
+    recovers a corrupted config.yaml instead of silently dropping every user
+    override (the previous behaviour of returning {} / falling back to defaults).
+    """
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        _warn_config_parse_failure(config_path, e)
+        try:
+            from vermes_cli.backup import list_quick_snapshots, restore_quick_snapshot
+            for snap in list_quick_snapshots(limit=20):
+                if (snap.get("files") or {}).get("config.yaml") is not None:
+                    if restore_quick_snapshot(snap["id"]):
+                        logger.info("[Vermes] 已从快照 %s 恢复 config.yaml", snap["id"])
+                        with open(config_path, encoding="utf-8") as f:
+                            return yaml.safe_load(f) or {}
+                    break
+        except Exception as e2:
+            logger.warning("[Vermes] config 快照恢复失败: %s", e2)
+        return {}
+
+
 def read_raw_config() -> Dict[str, Any]:
     """Read ~/.vermes/config.yaml as-is, without merging defaults or migrating.
 
@@ -4425,12 +4452,7 @@ def read_raw_config() -> Dict[str, Any]:
         if cached is not None and cached[:2] == cache_key:
             return copy.deepcopy(cached[2])
 
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except Exception as e:
-            _warn_config_parse_failure(config_path, e)
-            return {}
+        data = _load_raw_yaml_with_restore(config_path)
 
         if not isinstance(data, dict):
             data = {}
@@ -4497,10 +4519,8 @@ def _load_config_impl(*, want_deepcopy: bool) -> Dict[str, Any]:
         config = copy.deepcopy(DEFAULT_CONFIG)
 
         if cache_key is not None:
+            user_config = _load_raw_yaml_with_restore(config_path)
             try:
-                with open(config_path, encoding="utf-8") as f:
-                    user_config = yaml.safe_load(f) or {}
-
                 if "max_turns" in user_config:
                     agent_user_config = dict(user_config.get("agent") or {})
                     if agent_user_config.get("max_turns") is None:
@@ -4646,6 +4666,14 @@ def save_config(config: Dict[str, Any]):
             fb_is_valid = bool(fb.get("provider") and fb.get("model"))
         if not fb_is_valid:
             parts.append(_FALLBACK_COMMENT)
+
+        # P0-1: 写盘前先对 config.yaml 做轻量快照（仅 config.yaml，不含 state.db），
+        # 以便读坏时可从快照恢复。best-effort，失败不影响本次写入。
+        try:
+            from vermes_cli.backup import create_quick_snapshot
+            create_quick_snapshot(label="pre-config-write", files=("config.yaml",))
+        except Exception:
+            pass
 
         atomic_yaml_write(
             config_path,

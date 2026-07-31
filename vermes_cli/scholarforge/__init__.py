@@ -21,8 +21,8 @@ def _load_vermes_config() -> tuple[dict, dict]:
 
     cfg = {}
     if os.path.exists(cfg_path):
-        with open(cfg_path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
+        from vermes_cli.config import read_raw_config
+        cfg = read_raw_config() or {}
 
     env_vars = {}
     if os.path.exists(env_path):

@@ -250,8 +250,8 @@ def _load_vermes_env() -> None:
         return
 
     try:
-        with open(config_path, "r", encoding="utf-8") as fh:
-            raw = yaml.safe_load(fh) or {}
+        from vermes_cli.config import _load_raw_yaml_with_restore
+        raw = _load_raw_yaml_with_restore(config_path)
     except Exception:
         return
 

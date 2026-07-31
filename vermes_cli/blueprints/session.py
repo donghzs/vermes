@@ -4,9 +4,11 @@ Session listing, searching, detail, and deletion endpoints.
 Uses vermes_state.SessionDB for persistence.
 """
 
+import hashlib
 import logging
 import re
 import time
+import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -168,12 +170,28 @@ async def send_from_desktop(session_id: str, request: Request):
         # token 仅作 provenance 留痕落库（desktop_token 列）；真正的防伪造
         # 护栏是 auth_middleware 的 401（gateway 跨进程无 _SESSION_TOKEN 可验）。
         token = request.headers.get("X-Vermes-Session-Token", "")
-        if not db.request_desktop_relay(sid, text, token, ttl=300.0):
+        # P1-3: 先生成 delivery_id + 内容指纹，落 Outbound Intent Ledger（pending）。
+        # 即便 gateway 此刻未运行/渠道未连接，前端也能凭 delivery_id 轮询到终态，
+        # 不再只能干等超时（治愈“QQ 代发 Failed to fetch 后永远 pending”盲区）。
+        delivery_id = str(uuid.uuid4())
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        db.record_outbound_intent(
+            delivery_id=delivery_id,
+            session_id=sid,
+            target=(session.get("source") or None),
+            content_hash=content_hash,
+            intent="desktop_relay",
+            status="pending",
+        )
+        if not db.request_desktop_relay(sid, text, token, ttl=300.0, delivery_id=delivery_id):
+            # relay 被拒（已有在途 relay）：清掉刚写的 pending ledger，避免脏数据。
+            db.update_outbound_intent(delivery_id, status="failed",
+                                      error="relay rejected: in-flight handoff exists")
             raise HTTPException(
                 status_code=409,
                 detail="another relay/handoff is already in flight for this session",
             )
-        return {"ok": True, "session_id": sid, "state": "pending"}
+        return {"ok": True, "session_id": sid, "state": "pending", "delivery_id": delivery_id}
     finally:
         db.close()
 

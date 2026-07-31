@@ -674,6 +674,7 @@ def _quick_snapshot_root(VERMES_home: Optional[Path] = None) -> Path:
 def create_quick_snapshot(
     label: Optional[str] = None,
     VERMES_home: Optional[Path] = None,
+    files: Optional[tuple] = None,
 ) -> Optional[str]:
     """Create a quick state snapshot of critical files.
 
@@ -693,7 +694,7 @@ def create_quick_snapshot(
 
     manifest: Dict[str, int] = {}  # rel_path -> file size
 
-    for rel in _QUICK_STATE_FILES:
+    for rel in (files if files is not None else _QUICK_STATE_FILES):
         src = home / rel
         if not src.exists():
             continue

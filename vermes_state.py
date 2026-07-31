@@ -557,6 +557,25 @@ CREATE TABLE IF NOT EXISTS channel_sync_events (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_channel_sync_events_id ON channel_sync_events(id);
+
+-- Outbound Intent Ledger (借鉴 OpenSquilla outbox): 在"消息尚未真正发出去"时即登记
+-- 投递意图，gateway 消费后更新终态。解决桌面代发在 gateway 未运行/渠道未连接时永远停在
+-- pending、前端只能靠超时的盲区。状态语义参照 OpenSquilla: failed=已 claim 适配器报错,
+-- expired=从未被 claim(gateway 未运行), 二者都【不自动重试】以防重复发送。
+CREATE TABLE IF NOT EXISTS outbound_intent (
+    delivery_id     TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    target          TEXT,
+    content_hash    TEXT NOT NULL,
+    intent          TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    provider_msg_id TEXT,
+    error           TEXT,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outbound_intent_session ON outbound_intent(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_outbound_intent_status  ON outbound_intent(status);
 """
 
 # channel_sync_events 自清理配置。该表只是桌面控制台未读角标的实时投递
@@ -858,6 +877,7 @@ class SessionDB:
         ("session_key", "TEXT"), ("display_name", "TEXT"), ("origin_json", "TEXT"),
         ("relay_text", "TEXT"), ("relay_source", "TEXT"),
         ("desktop_token", "TEXT"), ("relay_expire_at", "REAL"),
+        ("relay_delivery_id", "TEXT"),
     )
 
     def _ensure_session_origin_columns(self, conn) -> None:
@@ -4170,12 +4190,15 @@ class SessionDB:
     # ------------------------------------------------------------------
 
     def request_desktop_relay(
-        self, session_id: str, text: str, token: str, ttl: float = 300.0
+        self, session_id: str, text: str, token: str, ttl: float = 300.0,
+        delivery_id: Optional[str] = None,
     ) -> bool:
         """Request the gateway to relay a real user message to a channel session.
 
         Returns False if the session is already in a non-terminal handoff/relay
-        state (one in-flight relay per session at a time).
+        state (one in-flight relay per session at a time). ``delivery_id`` (if
+        given) is persisted on the session so the gateway watcher can advance the
+        matching outbound_intent ledger row.
         """
         def _do(conn):
             self._ensure_session_origin_columns(conn)
@@ -4187,10 +4210,11 @@ class SessionDB:
                 "    relay_text = ?, "
                 "    relay_source = 'desktop', "
                 "    desktop_token = ?, "
-                "    relay_expire_at = ? "
+                "    relay_expire_at = ?, "
+                "    relay_delivery_id = ? "
                 "WHERE id = ? AND (handoff_state IS NULL "
                 "                  OR handoff_state IN ('completed', 'failed'))",
-                (text, token, time.time() + ttl, session_id),
+                (text, token, time.time() + ttl, delivery_id, session_id),
             )
             return cur.rowcount > 0
         return self._execute_write(_do)
@@ -4221,4 +4245,79 @@ class SessionDB:
                 (session_id,),
             )
         self._execute_write(_do)
+
+    def record_outbound_intent(
+        self,
+        delivery_id: str,
+        session_id: str,
+        target: Optional[str],
+        content_hash: str,
+        intent: str,
+        status: str = "pending",
+        provider_msg_id: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        """登记一条出站投递意图（Outbound Intent Ledger）。
+
+        在「消息尚未真正发出去」时即落库，gateway 消费后由 update_outbound_intent
+        推进终态。解决桌面代发在 gateway 未运行/渠道未连接时永远停在 pending、前端
+        只能靠超时的盲区。返回 True 表示写入成功。
+        """
+        now = time.time()
+        def _do(conn):
+            conn.execute(
+                "INSERT OR REPLACE INTO outbound_intent "
+                "(delivery_id, session_id, target, content_hash, intent, status, "
+                " provider_msg_id, error, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (delivery_id, session_id, target, content_hash, intent, status,
+                 provider_msg_id, error, now, now),
+            )
+            return True
+        return bool(self._execute_write(_do))
+
+    def update_outbound_intent(
+        self,
+        delivery_id: str,
+        *,
+        status: Optional[str] = None,
+        provider_msg_id: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        """更新出站意图状态（claimed/sent/failed/expired）。
+
+        返回 True 表示更新到了已有行；delivery_id 不存在则返回 False。
+        注意：failed=已 claim 适配器报错, expired=从未被 claim（gateway 未运行），
+        二者都【不自动重试】以防重复发送（参照 OpenSquilla outbox 的 unknown 语义）。
+        """
+        def _do(conn):
+            cur = conn.execute(
+                "SELECT status, provider_msg_id, error FROM outbound_intent "
+                "WHERE delivery_id = ?",
+                (delivery_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return False
+            new_status = status if status is not None else row["status"]
+            new_pid = provider_msg_id if provider_msg_id is not None else row["provider_msg_id"]
+            new_err = error if error is not None else row["error"]
+            conn.execute(
+                "UPDATE outbound_intent SET status = ?, provider_msg_id = ?, "
+                "error = ?, updated_at = ? WHERE delivery_id = ?",
+                (new_status, new_pid, new_err, time.time(), delivery_id),
+            )
+            return True
+        return bool(self._execute_write(_do))
+
+    def list_outbound_intents(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """列出某会话的近期出站意图（前端/诊断查看投递轨迹）。"""
+        cur = self._conn.execute(
+            "SELECT delivery_id, session_id, target, content_hash, intent, status, "
+            "provider_msg_id, error, created_at, updated_at "
+            "FROM outbound_intent WHERE session_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (session_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
 

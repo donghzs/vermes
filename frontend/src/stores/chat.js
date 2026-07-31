@@ -337,12 +337,12 @@ export const useChatStore = defineStore('chat', () => {
         if (!lastId || lastId === 'undefined' || lastId === 'null' || !sessions.value.find(s => s.id === lastId)) {
           lastId = sessions.value[0].id
         }
-        await switchSession(lastId)
+        await switchSession(lastId, { hydrate: false })
       } else {
         await createSession('新 Agent')
       }
-      // 注入进化简报（非阻塞）
-      await injectEvolutionBriefing()
+      // 注入进化简报（非阻塞：后台拉取，不挡首屏）
+      injectEvolutionBriefing().catch(() => {})
       // 步骤1：加载 state.db 渠道会话（非阻塞，失败不影响本地会话）
       loadChannelSessions().catch(() => {})
     } catch (e) {
@@ -379,7 +379,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function switchSession(id) {
+  async function switchSession(id, options = {}) {
     if (!id || id === 'undefined' || id === 'null') return
     flushStorageWrites()
     const oldSessionId = currentSessionId.value
@@ -432,30 +432,36 @@ export const useChatStore = defineStore('chat', () => {
       stopChannelMessagePolling()
     }
     // 加载新会话消息 — 合并到全局消息池（不替换）
-    try {
-      // 渠道会话和 desktop 会话都从 state.db 加载消息
-      const isRemoteChannel = isChannelSession(id)
-      const isDesktopInStateDB = !isRemoteChannel && channelSessions.value.find(s => s.id === id && s.source === 'desktop')
-      const loaded = (isRemoteChannel || isDesktopInStateDB)
-        ? _mapChannelMessages(id, await loadChannelMessagesFromAPI(id))
-        : await loadMessagesFromIDB(id)
-      if (loaded && loaded.length > 0) {
-        // 去重合并: 已在池中的跳过
-        const existingIds = new Set(messages.value.map(m => m.id))
-        for (const m of loaded) {
-          if (!existingIds.has(m.id)) messages.value.push(m)
-        }
-      }
-      // 渠道会话已打开并呈现历史 → 清除其未读角标
-      if (isChannelSession(id)) markChannelRead(id)
-    } catch (e) {
-      console.error('[Vermes] 加载会话失败:', e)
+    // P0-2: 首屏冷启动(init)传 hydrate:false → 历史消息后台异步补，不阻塞首屏渲染
+    if (options.hydrate === false) {
+      _hydrateMessages(id).catch(e => console.error('[Vermes] 后台补历史失败:', e))
+    } else {
+      try { await _hydrateMessages(id) } catch (e) { console.error('[Vermes] 加载会话失败:', e) }
     }
     // 恢复新会话的 loading 状态
     // 检查新会话是否已有 loading 状态
     if (!sessionLoading.value[id]) {
       sessionLoading.value[id] = false
     }
+  }
+
+  // 历史消息异步填充：与 switchSession 解耦，首屏可先渲染空壳再由它补历史
+  async function _hydrateMessages(id) {
+    // 渠道会话和 desktop 会话都从 state.db 加载消息
+    const isRemoteChannel = isChannelSession(id)
+    const isDesktopInStateDB = !isRemoteChannel && channelSessions.value.find(s => s.id === id && s.source === 'desktop')
+    const loaded = (isRemoteChannel || isDesktopInStateDB)
+      ? _mapChannelMessages(id, await loadChannelMessagesFromAPI(id))
+      : await loadMessagesFromIDB(id)
+    if (loaded && loaded.length > 0) {
+      // 去重合并: 已在池中的跳过
+      const existingIds = new Set(messages.value.map(m => m.id))
+      for (const m of loaded) {
+        if (!existingIds.has(m.id)) messages.value.push(m)
+      }
+    }
+    // 渠道会话已打开并呈现历史 → 清除其未读角标
+    if (isChannelSession(id)) markChannelRead(id)
   }
 
   async function deleteSession(id) {

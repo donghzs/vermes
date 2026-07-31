@@ -58,46 +58,78 @@ class WatcherMixin:
                     continue
                 pending = self._session_db.list_pending_handoffs()
                 for row in pending:
-                    session_id = row.get("id")
-                    if not session_id:
-                        continue
-                    # 桌面 relay 记录（relay_source='desktop'）与既有 CLI→渠道
-                    # handoff 语义分流，互不干扰。
-                    is_desktop_relay = row.get("relay_source") == "desktop"
-                    # 超时护栏：过期的 relay 直接标 failed，不消费
-                    if is_desktop_relay:
-                        expire_at = row.get("relay_expire_at") or 0
-                        if expire_at and time.time() > expire_at:
-                            if self._session_db.claim_handoff(session_id):
-                                self._session_db.fail_handoff(
-                                    session_id, "relay expired before gateway pickup"
-                                )
-                                self._session_db.clear_desktop_relay(session_id)
-                            continue
-                    if not self._session_db.claim_handoff(session_id):
-                        # Another tick or another gateway already claimed it.
-                        continue
-                    try:
-                        if is_desktop_relay:
-                            await self._process_desktop_relay(row)
-                        else:
-                            await self._process_handoff(row)
-                        self._session_db.complete_handoff(session_id)
-                    except Exception as exc:
-                        logger.warning(
-                            "%s for session %s failed: %s",
-                            "Desktop relay" if is_desktop_relay else "Handoff",
-                            session_id, exc, exc_info=True,
-                        )
-                        self._session_db.fail_handoff(session_id, str(exc))
-                    finally:
-                        if is_desktop_relay:
-                            self._session_db.clear_desktop_relay(session_id)
+                    await self._process_handoff_row(row)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.debug("Handoff watcher tick error: %s", exc, exc_info=True)
             await asyncio.sleep(interval)
+
+    async def _process_handoff_row(self, row: dict) -> None:
+        """Process a single pending handoff/relay row.
+
+        Extracted from the ``_handoff_watcher`` sleep-loop so the per-row
+        state machine (and the P1-3 Outbound Intent Ledger wiring) can be
+        exercised directly by integration tests without spinning the loop.
+
+        The watcher loop now just iterates ``list_pending_handoffs()`` and
+        ``await self._process_handoff_row(row)`` — behaviour is unchanged.
+        """
+        session_id = row.get("id")
+        if not session_id:
+            return
+        # 桌面 relay 记录（relay_source='desktop'）与既有 CLI→渠道
+        # handoff 语义分流，互不干扰。
+        is_desktop_relay = row.get("relay_source") == "desktop"
+        # P1-3: Outbound Intent Ledger 主键。legacy handoff 无此列→None，
+        # 下方 update 调用会安全 no-op（返回 False）。
+        delivery_id = row.get("relay_delivery_id")
+        # 超时护栏：过期的 relay 直接标 failed，不消费
+        if is_desktop_relay:
+            expire_at = row.get("relay_expire_at") or 0
+            if expire_at and time.time() > expire_at:
+                if self._session_db.claim_handoff(session_id):
+                    self._session_db.fail_handoff(
+                        session_id, "relay expired before gateway pickup"
+                    )
+                    if delivery_id:
+                        self._session_db.update_outbound_intent(
+                            delivery_id, status="expired",
+                            error="relay expired before gateway pickup",
+                        )
+                    self._session_db.clear_desktop_relay(session_id)
+                return
+        if not self._session_db.claim_handoff(session_id):
+            # Another tick or another gateway already claimed it.
+            return
+        # P1-3: gateway 已 claim，即将投递——标 claimed（不再“黑盒 pending”）
+        if delivery_id:
+            self._session_db.update_outbound_intent(delivery_id, status="claimed")
+        try:
+            if is_desktop_relay:
+                await self._process_desktop_relay(row)
+            else:
+                await self._process_handoff(row)
+            self._session_db.complete_handoff(session_id)
+            # P1-3: 投递管线跑完（消息已走 adapter.send 发回原渠道）→ sent
+            if delivery_id:
+                self._session_db.update_outbound_intent(delivery_id, status="sent")
+        except Exception as exc:
+            logger.warning(
+                "%s for session %s failed: %s",
+                "Desktop relay" if is_desktop_relay else "Handoff",
+                session_id, exc, exc_info=True,
+            )
+            self._session_db.fail_handoff(session_id, str(exc))
+            # P1-3: failed=适配器已 claim 但报错。不自动重试，
+            # 防重复发送（对齐 OpenSquilla outbox unknown 语义）。
+            if delivery_id:
+                self._session_db.update_outbound_intent(
+                    delivery_id, status="failed", error=str(exc)
+                )
+        finally:
+            if is_desktop_relay:
+                self._session_db.clear_desktop_relay(session_id)
 
     async def _process_desktop_relay(self, row: dict) -> None:
         """Relay a desktop-originated user message into a channel session.

@@ -233,8 +233,8 @@ def _load_toolsets_for_web() -> list[str]:
         import yaml
         cfg_path = os.path.join(get_vermes_home(), "config.yaml")
         if os.path.exists(cfg_path):
-            with open(cfg_path) as f:
-                cfg = yaml.safe_load(f) or {}
+            from vermes_cli.config import read_raw_config
+            cfg = read_raw_config()
             # platform-specific toolsets take priority
             platform_ts = cfg.get("platform_toolsets", {})
             if isinstance(platform_ts, dict) and "web" in platform_ts:
