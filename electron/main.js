@@ -23,7 +23,7 @@ function getAppDir() {
 function getBackendExe() {
   // 打包模式：PyInstaller 构建的独立可执行文件
   if (app.isPackaged) {
-    const exeName = process.platform === 'win32' ? 'vermes-backend.exe' : 'vermes-backend';
+    const exeName = process.platform === 'win32' ? 'vermes.exe' : 'vermes';
     return path.join(process.resourcesPath, 'backend', exeName);
   }
   // 开发模式：用 .venv 的 Python
@@ -36,8 +36,8 @@ function getBackendExe() {
 
 function getBackendArgs() {
   if (app.isPackaged) {
-    // PyInstaller 可执行文件直接运行，不需要参数
-    return ['--port', String(BACKEND_PORT)];
+    // PyInstaller 可执行文件是 vermes_cli.main CLI 入口，需 dashboard 子命令启动 web 后端
+    return ['dashboard', '--port', String(BACKEND_PORT)];
   }
   // 开发模式：用 uvicorn
   return ['-m', 'uvicorn', 'vermes_cli.web_server:app', '--host', '127.0.0.1', '--port', String(BACKEND_PORT), '--log-level', 'warning'];
