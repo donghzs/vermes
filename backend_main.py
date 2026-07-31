@@ -95,6 +95,7 @@ def main():
     # ── 启动崩溃看门狗 ─────────────────────────────────────────────────
     # 跨平台临时目录（Windows 上 /tmp 不存在会导致启动崩溃）
     _CRASH_MARKER = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
+    _ROLLED_BACK_FLAG = os.path.join(tempfile.gettempdir(), "vermes-rolled-back.flag")
     if os.path.exists(_CRASH_MARKER):
         logger.info("[Vermes] ⚠️ 检测到上次启动异常退出")
         # 尝试回滚到上一个备份版本
@@ -107,6 +108,12 @@ def main():
                 logger.info(f"[Vermes] 🔄 自动回滚到 v{_ver} ...")
                 rollback_to_version(_ver)
                 logger.info(f"[Vermes] ✅ 已回滚到 v{_ver}，重启后生效")
+                # 写 flag 让 /health 暴露给前端显示横幅
+                try:
+                    with open(_ROLLED_BACK_FLAG, "w") as _rf:
+                        _rf.write(_ver)
+                except Exception:
+                    pass
             else:
                 logger.info("[Vermes] ❌ 无可用备份，请手动修复")
         except Exception as _e:
@@ -122,6 +129,10 @@ def main():
         if os.path.exists(_CRASH_MARKER):
             os.remove(_CRASH_MARKER)
             logger.info("[Vermes] ✅ 启动稳定，看门狗已解除")
+        # ISSUE-1: 启动稳定后清除回滚标记，防止下次干净启动时横幅重复弹出
+        if os.path.exists(_ROLLED_BACK_FLAG):
+            os.remove(_ROLLED_BACK_FLAG)
+            logger.info("[Vermes] 回滚标记已清除，横幅不再重复弹出")
     threading.Thread(target=_clear_marker, daemon=True).start()
 
     # 强制启用 agent 模式（WebSocket 聊天端点）

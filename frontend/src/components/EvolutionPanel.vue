@@ -14,17 +14,34 @@ const emergenceData = ref(null)
 const skillsData = ref(null)
 const selfModifyHistory = ref([])
 const _retryFns = {} // 失败可重试的函数引用
+let _backendDownToastShown = false
+let _roundInProgress = false // 防雪崩：上一轮未完成不发起下一轮
+
+// 统一 fetch 带超时：3s 后 abort，避免后端卡住时前端无限等待
+function _fetchWithTimeout(url, opts = {}, ms = 3000) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  return fetch(url, { ...opts, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer))
+}
 
 function _fail(fnName, fn, errMsg) {
-  toast.error(`${fnName}失败: ${errMsg || '网络错误'}`)
   _retryFns[fnName] = fn
+  // 多个端点同时失败 = 后端不可达/卡住，只弹一条统揽提示，不刷屏
+  if (!_backendDownToastShown) {
+    _backendDownToastShown = true
+    const isNetwork = errMsg && (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('aborted') || errMsg.includes('fetch'))
+    toast.error(isNetwork ? '后端连接失败，进化面板数据暂不可用' : `${fnName}失败: ${errMsg || '网络错误'}`)
+  }
 }
 
 async function fetchStatus() {
   try {
-    const r = await fetch('/api/evolution/status')
+    const r = await _fetchWithTimeout('/api/evolution/status')
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     status.value = await r.json()
+    // 后端恢复 → 重置失联 toast 节流
+    _backendDownToastShown = false
   } catch (e) {
     _fail('进化状态', fetchStatus, e.message)
   } finally {
@@ -34,7 +51,7 @@ async function fetchStatus() {
 
 async function fetchAchievements() {
   try {
-    const r = await fetch('/api/evolution/achievements?limit=5')
+    const r = await _fetchWithTimeout('/api/evolution/achievements?limit=5')
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     achievements.value = await r.json()
   } catch (e) {
@@ -44,7 +61,7 @@ async function fetchAchievements() {
 
 async function fetchDag() {
   try {
-    const r = await fetch('/api/evolution/dag?limit=50')
+    const r = await _fetchWithTimeout('/api/evolution/dag?limit=50')
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     dagData.value = await r.json()
   } catch (e) {
@@ -54,7 +71,7 @@ async function fetchDag() {
 
 async function fetchEmergence() {
   try {
-    const r = await fetch('/api/emergence/status')
+    const r = await _fetchWithTimeout('/api/emergence/status')
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     emergenceData.value = await r.json()
   } catch (e) {
@@ -64,7 +81,7 @@ async function fetchEmergence() {
 
 async function fetchSkills() {
   try {
-    const r = await fetch('/api/emergence/skills')
+    const r = await _fetchWithTimeout('/api/emergence/skills')
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     skillsData.value = await r.json()
   } catch (e) {
@@ -74,7 +91,7 @@ async function fetchSkills() {
 
 async function confirmSkill(id) {
   try {
-    const r = await fetch(`/api/emergence/skill/${id}/confirm`, { method: 'POST' })
+    const r = await _fetchWithTimeout(`/api/emergence/skill/${id}/confirm`, { method: 'POST' })
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     await fetchSkills()
     toast.success('技能已确认')
@@ -85,7 +102,7 @@ async function confirmSkill(id) {
 
 async function rejectSkill(id) {
   try {
-    const r = await fetch(`/api/emergence/skill/${id}/reject`, { method: 'POST' })
+    const r = await _fetchWithTimeout(`/api/emergence/skill/${id}/reject`, { method: 'POST' })
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     await fetchSkills()
     toast.success('技能已拒绝')
@@ -96,7 +113,7 @@ async function rejectSkill(id) {
 
 async function fetchSelfModifyHistory() {
   try {
-    const r = await fetch('/api/evolution/self_modify_history?limit=50')
+    const r = await _fetchWithTimeout('/api/evolution/self_modify_history?limit=50')
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     const data = await r.json()
     selfModifyHistory.value = data.events || []
@@ -110,7 +127,7 @@ async function rollbackChange(target, backup) {
     return
   }
   try {
-    const r = await fetch('/api/evolution/self_modify_rollback', {
+    const r = await _fetchWithTimeout('/api/evolution/self_modify_rollback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_path: target, backup_path: backup || null }),
@@ -132,7 +149,7 @@ async function retractCapability(capName) {
     return
   }
   try {
-    const r = await fetch('/api/evolution/retract', {
+    const r = await _fetchWithTimeout('/api/evolution/retract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target_type: 'capability', target_name: capName }),
@@ -149,22 +166,27 @@ async function retractCapability(capName) {
   }
 }
 
+async function _refreshAll() {
+  if (_roundInProgress) return // 防雪崩：上一轮未完成不发起下一轮
+  _roundInProgress = true
+  try {
+    await Promise.allSettled([
+      fetchStatus(),
+      fetchAchievements(),
+      fetchDag(),
+      fetchEmergence(),
+      fetchSkills(),
+      fetchSelfModifyHistory(),
+    ])
+  } finally {
+    _roundInProgress = false
+  }
+}
+
 onMounted(() => {
-  fetchStatus()
-  fetchAchievements()
-  fetchDag()
-  fetchEmergence()
-  fetchSkills()
-  fetchSelfModifyHistory()
+  _refreshAll()
   // 每 30 秒刷新全部数据（含成就/DAG/技能）
-  const timer = setInterval(() => {
-    fetchStatus()
-    fetchAchievements()
-    fetchDag()
-    fetchEmergence()
-    fetchSkills()
-    fetchSelfModifyHistory()
-  }, 30000)
+  const timer = setInterval(() => _refreshAll(), 30000)
   onUnmounted(() => clearInterval(timer))
 })
 

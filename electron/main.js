@@ -91,6 +91,22 @@ function startBackend() {
       return;
     }
 
+    // Bug C: 端口预检——如果 9119 已被占用，直接报错而不是等 15 秒超时
+    const { execSync } = require('child_process');
+    try {
+      if (process.platform === 'win32') {
+        execSync(`netstat -ano | findstr :9119 | findstr LISTENING`, { stdio: 'pipe' });
+      } else {
+        execSync(`lsof -i :9119 -sTCP:LISTEN`, { stdio: 'pipe' });
+      }
+      // 如果走到这里说明端口已被占用
+      console.error('[Vermes] 端口 9119 已被占用');
+      resolve({ ok: false, reason: 'port_in_use', detail: '端口 9119 已被其他进程占用，请关闭占用进程或更换端口' });
+      return;
+    } catch (_) {
+      // 端口空闲，正常继续
+    }
+
     const env = { ...process.env };
     // 打包模式下设置 PYTHONPATH
     if (app.isPackaged) {
@@ -105,6 +121,10 @@ function startBackend() {
       windowsHide: true,  // Windows: 隐藏控制台窗口
     });
 
+    // Bug C: 缓存最后几行 stderr 用于诊断
+    let _stderrLines = [];
+    let _resolved = false;
+
     backendProcess.stdout.on('data', (data) => {
       const msg = data.toString().trim();
       if (msg) console.log(`[Backend] ${msg}`);
@@ -112,17 +132,39 @@ function startBackend() {
 
     backendProcess.stderr.on('data', (data) => {
       const msg = data.toString().trim();
-      if (msg) console.error(`[Backend ERR] ${msg}`);
+      if (msg) {
+        console.error(`[Backend ERR] ${msg}`);
+        _stderrLines.push(msg);
+        if (_stderrLines.length > 20) _stderrLines.shift();
+      }
     });
 
     backendProcess.on('error', (err) => {
       console.error(`[Vermes] 后端启动失败: ${err.message}`);
-      resolve(false);
+      if (!_resolved) {
+        _resolved = true;
+        resolve({ ok: false, reason: 'spawn_error', detail: err.message });
+      }
     });
 
     backendProcess.on('exit', (code) => {
       console.log(`[Vermes] 后端进程退出, code=${code}`);
       backendProcess = null;
+      // Bug C: 后端刚启动就退出 → 立刻报错，不等 15 秒超时
+      if (!_resolved && code !== 0) {
+        _resolved = true;
+        clearInterval(checkReady);
+        const stderrTail = _stderrLines.join('\n') || '(无 stderr 输出)';
+        let detail = `后端进程异常退出 (code=${code})`;
+        if (stderrTail.includes('Address already in use') || stderrTail.includes('已在使用')) {
+          detail = '端口 9119 被占用，请关闭其他占用该端口的进程';
+        } else if (stderrTail.includes('ModuleNotFoundError') || stderrTail.includes('ImportError')) {
+          detail = '后端模块缺失，请重新安装或联系支持';
+        } else if (stderrTail.includes('Permission denied')) {
+          detail = '权限不足，请检查文件权限';
+        }
+        resolve({ ok: false, reason: 'crash', code, detail, stderr: stderrTail });
+      }
     });
 
     // 等待后端就绪（最多 15 秒）
@@ -133,6 +175,7 @@ function startBackend() {
         if (resp.ok) {
           clearInterval(checkReady);
           console.log('[Vermes] 后端就绪 ✅');
+          _resolved = true;
           try {
             const body = await resp.json();
             const integrity = (body && body.integrity) || {};
@@ -161,7 +204,10 @@ function startBackend() {
       if (Date.now() - startTime > 15000) {
         clearInterval(checkReady);
         console.warn('[Vermes] 后端启动超时，可能已在外部运行');
-        resolve({ ok: false, reason: 'timeout' });
+        if (!_resolved) {
+          _resolved = true;
+          resolve({ ok: false, reason: 'timeout' });
+        }
       }
     }, 500);
   });
@@ -301,6 +347,15 @@ async function runInitialization() {
       diagnostic = integ;
     } else if (reason === 'timeout') {
       detail = '后端服务启动超时，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。';
+    } else if (reason === 'port_in_use') {
+      detail = (started && started.detail) || '端口 9119 已被占用，请关闭占用该端口的进程后重试。';
+    } else if (reason === 'crash') {
+      detail = (started && started.detail) || '后端进程异常退出';
+      if (started && started.stderr) {
+        detail += `\n\n诊断信息：\n${started.stderr.split('\n').slice(-5).join('\n')}`;
+      }
+    } else if (reason === 'spawn_error') {
+      detail = `后端可执行文件启动失败：${(started && started.detail) || '未知错误'}`;
     } else {
       detail = '后端服务启动失败，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。';
     }

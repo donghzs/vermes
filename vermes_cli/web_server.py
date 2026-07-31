@@ -2950,7 +2950,18 @@ async def health_check():
     except Exception:
         pass
 
-    return {"status": "ok", "version": __version__, "integrity": integrity}
+    # Bug B: 暴露自动回滚信息让前端显示横幅
+    rolled_back = None
+    try:
+        import tempfile as _tf, os as _os
+        _flag = _os.path.join(_tf.gettempdir(), "vermes-rolled-back.flag")
+        if _os.path.exists(_flag):
+            with open(_flag) as _rf:
+                rolled_back = _rf.read().strip() or None
+    except Exception:
+        pass
+
+    return {"status": "ok", "version": __version__, "integrity": integrity, "rolled_back": rolled_back}
 
 
 @app.get("/api/session-token")
