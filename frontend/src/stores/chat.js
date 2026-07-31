@@ -638,9 +638,17 @@ export const useChatStore = defineStore('chat', () => {
       try {
         const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
         const existingIds = new Set(messages.value.filter(m => m.sessionId === sid).map(m => m.id))
+        // 本地 _fromDesktopRelay 的 user 消息与 gateway 落库的 user 行 id 不同但内容相同，
+        // 需按文本去重避免轮询 push 第二条相同用户消息（双发根因）。
+        const localUserTexts = new Set(
+          messages.value
+            .filter(m => m.sessionId === sid && m.role === 'user' && m._fromDesktopRelay)
+            .map(m => m.content.trim())
+        )
         let added = false
         for (const m of mapped) {
           if (!existingIds.has(m.id)) {
+            if (m.role === 'user' && localUserTexts.has(m.content.trim())) continue
             messages.value.push(m)
             added = true
           }
@@ -659,9 +667,15 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
       const existingIds = new Set(messages.value.filter(m => m.sessionId === sid).map(m => m.id))
+      const localUserTexts = new Set(
+        messages.value
+          .filter(m => m.sessionId === sid && m.role === 'user' && m._fromDesktopRelay)
+          .map(m => m.content.trim())
+      )
       let added = false
       for (const m of mapped) {
         if (!existingIds.has(m.id)) {
+          if (m.role === 'user' && localUserTexts.has(m.content.trim())) continue
           messages.value.push(m)
           added = true
         }

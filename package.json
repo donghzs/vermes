@@ -64,7 +64,7 @@
     },
     "extraResources": [
       {
-        "from": "dist/vermes-backend",
+        "from": "dist/vermes",
         "to": "backend"
       }
     ]
