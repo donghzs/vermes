@@ -22,8 +22,8 @@
 
 $ErrorActionPreference = "Stop"
 $VERMES_DIR = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
-$BACKEND_DIR = Join-Path $VERMES_DIR "dist\vermes-backend"
-$BACKEND_EXE = Join-Path $BACKEND_DIR "vermes-backend.exe"
+$BACKEND_DIR = Join-Path $VERMES_DIR "dist\vermes"
+$BACKEND_EXE = Join-Path $BACKEND_DIR "vermes.exe"
 $OUTPUT_DIR = Join-Path $VERMES_DIR "dist-electron"
 
 Write-Host "============================================" -ForegroundColor Cyan
@@ -169,7 +169,7 @@ Write-Host "[Step 7] 验证构建输出..." -ForegroundColor Yellow
 if (Test-Path $BACKEND_EXE) {
     $fileSize = (Get-Item $BACKEND_EXE).Length / 1MB
     $totalSize = (Get-ChildItem $BACKEND_DIR -Recurse | Measure-Object Length -Sum).Sum / 1MB
-    Write-Host "  ✅ vermes-backend.exe: $([math]::Round($fileSize, 1)) MB" -ForegroundColor Green
+    Write-Host "  ✅ vermes.exe: $([math]::Round($fileSize, 1)) MB" -ForegroundColor Green
     Write-Host "  ✅ 目录总大小: $([math]::Round($totalSize, 1)) MB" -ForegroundColor Green
     Write-Host "  路径: $BACKEND_DIR"
 } else {
@@ -209,13 +209,13 @@ Write-Host "⬆️  传输到 Mac 的命令：" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  # 在 Windows (A05/A11) 上执行分片：" -ForegroundColor Gray
 Write-Host "  cd $VERMES_DIR" -ForegroundColor White
-Write-Host "  split -b 30m dist\vermes-backend\vermes-backend.exe vermes-backend.part_" -ForegroundColor White
+Write-Host "  split -b 30m dist\vermes\vermes.exe vermes-backend.part_" -ForegroundColor White
 Write-Host "  # 逐块传: curl -T vermes-backend.part_aa http://<MAC_IP>:8000/" -ForegroundColor White
 Write-Host ""
 Write-Host "  # 在 Mac 上接收后拼接：" -ForegroundColor Gray
 Write-Host "  cd ~/Projects/vermes-electron" -ForegroundColor White
-Write-Host "  cat vermes-backend.part_* > dist/vermes-backend/vermes-backend.exe" -ForegroundColor White
-Write-Host "  chmod +x dist/vermes-backend/vermes-backend.exe" -ForegroundColor White
+Write-Host "  cat vermes-backend.part_* > dist/vermes-backend/vermes.exe" -ForegroundColor White
+Write-Host "  chmod +x dist/vermes-backend/vermes.exe" -ForegroundColor White
 Write-Host ""
 Write-Host "📎 完整传输 backend 目录也可打包 zip:" -ForegroundColor Gray
 Write-Host "  Compress-Archive -Path dist\vermes-backend\* -DestinationPath vermes-backend.zip" -ForegroundColor White

@@ -26,10 +26,15 @@
 
 [CmdletBinding()]
 param(
-    [string]$Root = "C:\Projects\vermes-electron",
+    [string]$Root = "",
     [string]$Python = "",
     [switch]$SkipFrontend
 )
+
+# Root 默认从脚本所在目录推导（避免 WinRM 传参时 \v 被误转义为垂直制表符）
+if (-not $Root) {
+    $Root = Split-Path -Parent $PSScriptRoot
+}
 
 $ErrorActionPreference = "Stop"
 $NODE = "C:\Program Files\nodejs"
@@ -111,12 +116,13 @@ Write-Host "  JS: $($js.Name)"
 # ── 5. Python 依赖 + PyInstaller 后端 ──
 Write-Step 5 "PyInstaller 后端"
 & $Python -m pip install --upgrade pip --quiet 2>$null | Select-Object -Last 1
-& $Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles --quiet 2>$null | Select-Object -Last 1
+Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
+& $Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi qrcode --quiet 2>$null | Select-Object -Last 1
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败 (exit $LASTEXITCODE)，见 $Root\pyinstaller.log" }
 Get-Content "$Root\pyinstaller.log" -Tail 8
-$exe = Get-ChildItem "$Root\dist\vermes-backend\vermes-backend.exe" -ErrorAction SilentlyContinue
+$exe = Get-ChildItem "$Root\dist\vermes\vermes.exe" -ErrorAction SilentlyContinue
 if (-not $exe) { throw "PyInstaller 失败：dist/vermes-backend/vermes-backend.exe 未生成" }
 Write-Host "  后端 exe: $([math]::Round($exe.Length/1MB,1)) MB"
 
@@ -153,7 +159,7 @@ Write-Host "  SHA256: $sha"
 # 内部关键文件
 $unpacked = "$Root\dist-electron\win-unpacked"
 $checks = @{
-    "后端 exe"        = "$unpacked\resources\backend\vermes-backend.exe"
+    "后端 exe"        = "$unpacked\resources\backend\vermes.exe"
     "vec0.dll"        = "$unpacked\resources\backend\_internal\sqlite_vec\vec0.dll"
     "前端 index.html" = "$unpacked\resources\backend\_internal\vermes_cli\web_dist\index.html"
     "memory_reflection" = "$unpacked\resources\backend\_internal\agent\memory_reflection.py"
