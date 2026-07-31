@@ -56,9 +56,81 @@ def test_same_delivery_id_relays_exactly_once(relay_counter):
     res2 = asyncio.run(send_from_desktop("chan-s1", _FakeRequest({"text": "hi", "delivery_id": "dlv-abc"})))
     assert res2["ok"] is True
     assert res2["idempotent"] is True  # 命中既有 ledger，直接 ack
+    # 首次 relay 成功后 ledger 仍为 pending（单元层无 watcher 推进）→ 非终态标记
+    assert res2["terminal"] is False
+    assert res2["state"] == "pending"
 
     # 关键：只 relay 了一次
     assert relay_counter["n"] == 1
+
+
+def test_idempotent_terminal_flag_on_failed(tmp_path, monkeypatch):
+    from vermes_cli.blueprints.session import send_from_desktop
+
+    db = SessionDB(tmp_path / "state.db")
+    db.ensure_session("chan-s1", "telegram")
+    db.close()
+    monkeypatch.setattr(
+        "vermes_state.SessionDB",
+        lambda *a, **k: SessionDB(tmp_path / "state.db"),
+    )
+    calls = {"n": 0}
+
+    def _fake_relay(self, sid, text, token, ttl=300.0, delivery_id=None):
+        calls["n"] += 1
+        return True
+
+    monkeypatch.setattr(SessionDB, "request_desktop_relay", _fake_relay)
+
+    # 首次 relay 成功 → ledger pending（首次返回无 terminal 键）
+    res1 = asyncio.run(send_from_desktop("chan-s1", _FakeRequest({"text": "hi", "delivery_id": "dlv-t"})))
+    assert res1["ok"] is True
+    assert "terminal" not in res1
+
+    # 模拟 watcher 将 ledger 置为 failed（含 error）
+    db2 = SessionDB(tmp_path / "state.db")
+    db2.update_outbound_intent("dlv-t", status="failed", error="gateway down")
+    db2.close()
+
+    # 前端重试：命中 failed ledger → 返回 terminal=True + error，且不二次 relay
+    res2 = asyncio.run(send_from_desktop("chan-s1", _FakeRequest({"text": "hi", "delivery_id": "dlv-t"})))
+    assert res2["ok"] is True
+    assert res2["idempotent"] is True
+    assert res2["terminal"] is True
+    assert res2["state"] == "failed"
+    assert res2["error"] == "gateway down"
+    assert calls["n"] == 1  # 仍 exactly-once
+
+
+def test_idempotent_terminal_flag_on_sent(tmp_path, monkeypatch):
+    from vermes_cli.blueprints.session import send_from_desktop
+
+    db = SessionDB(tmp_path / "state.db")
+    db.ensure_session("chan-s1", "telegram")
+    db.close()
+    monkeypatch.setattr(
+        "vermes_state.SessionDB",
+        lambda *a, **k: SessionDB(tmp_path / "state.db"),
+    )
+    calls = {"n": 0}
+
+    def _fake_relay(self, sid, text, token, ttl=300.0, delivery_id=None):
+        calls["n"] += 1
+        return True
+
+    monkeypatch.setattr(SessionDB, "request_desktop_relay", _fake_relay)
+
+    asyncio.run(send_from_desktop("chan-s1", _FakeRequest({"text": "hi", "delivery_id": "dlv-s"})))
+    db2 = SessionDB(tmp_path / "state.db")
+    db2.update_outbound_intent("dlv-s", status="sent", error=None)
+    db2.close()
+
+    res2 = asyncio.run(send_from_desktop("chan-s1", _FakeRequest({"text": "hi", "delivery_id": "dlv-s"})))
+    assert res2["ok"] is True
+    assert res2["idempotent"] is True
+    assert res2["terminal"] is True
+    assert res2["state"] == "sent"
+    assert calls["n"] == 1
 
 
 def test_different_delivery_id_relays_twice(relay_counter):

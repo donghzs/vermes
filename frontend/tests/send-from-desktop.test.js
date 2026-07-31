@@ -86,4 +86,23 @@ describe('sendFromDesktopAPI (A.4.4 + P0.5/D1)', () => {
     expect(res.ok).toBe(true)
     expect(bodies).toHaveLength(1)
   })
+
+  it('后端幂等返回 terminal/failed 时原样透传（供 sendToChannelSession 跳过 2s 轮询）', async () => {
+    const conn = useBackendConnectionStore()
+    conn.setStatus({ online: true })
+    const bodies = captureFetch(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true, session_id: 's1', state: 'failed',
+        delivery_id: 'dlv-x', idempotent: true, terminal: true, error: 'gateway down',
+      }),
+    }))
+    const res = await sendFromDesktopAPI('s1', 'hi')
+    expect(res.ok).toBe(true)
+    // P2 terminal 标记合同：sendFromDesktopAPI 必须把后端字段透传给调用方
+    expect(res.idempotent).toBe(true)
+    expect(res.terminal).toBe(true)
+    expect(res.state).toBe('failed')
+    expect(res.error).toBe('gateway down')
+  })
 })

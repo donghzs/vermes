@@ -179,12 +179,18 @@ async def send_from_desktop(session_id: str, request: Request):
         # 「响应丢失后前端重试 → 后端真执行两次 relay → 渠道重复回复」的最后一道防线。
         existing = db.get_outbound_intent(delivery_id)
         if existing is not None:
+            st = existing.get("status", "pending")
+            # 终态（sent/failed/expired）→ 带 terminal 标记：前端据此跳过 2s 轮询
+            # 直接处理（failed 立即报错 / sent 立即拉取），不再白等一整轮。
+            terminal = st in ("sent", "failed", "expired")
             return {
                 "ok": True,
                 "session_id": sid,
-                "state": existing.get("status", "pending"),
+                "state": st,
                 "delivery_id": delivery_id,
                 "idempotent": True,
+                "terminal": terminal,
+                "error": existing.get("error"),
             }
         db.record_outbound_intent(
             delivery_id=delivery_id,

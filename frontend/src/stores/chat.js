@@ -572,8 +572,29 @@ export const useChatStore = defineStore('chat', () => {
         const knownIds = new Set(
           messages.value.filter(m => m.sessionId === sid && m._fromStateDB).map(m => m.id)
         )
-        const deadline = Date.now() + 300000  // 5 分钟超时护栏（与后端 ttl 对齐）
         let gotAssistant = false
+        // P3 幂等命中且已是终态（sent/failed/expired）：跳过轮询 2s 空等，直接处理。
+        // 否则 failed 态要白等一整轮才在轮询里被发现；sent 态立即拉取，极端竞态交常规轮询兜底。
+        if (res.terminal) {
+          if (res.state === 'failed') {
+            messages.value.push({
+              id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
+              content: `❌ 渠道代发失败: ${res.error || res.detail || 'relay 已失败'}（gateway 未运行或该渠道未连接）`,
+            })
+            return
+          }
+          // sent/expired：立即拉一次消息（不空等 2s），极端竞态再交常规轮询兜底
+          const _mappedNow = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
+          for (const m of _mappedNow) {
+            if (knownIds.has(m.id)) continue
+            knownIds.add(m.id)
+            if (m.role === 'user' && m.content.trim() === text.trim()) continue
+            messages.value.push(m)
+            if (m.role === 'assistant' && m.timestamp >= sentAtMs - 10000) gotAssistant = true
+          }
+          if (gotAssistant) scheduleScroll()
+        }
+        const deadline = Date.now() + 300000  // 5 分钟超时护栏（与后端 ttl 对齐）
         while (Date.now() < deadline && !gotAssistant) {
           await new Promise(r => setTimeout(r, 2000))
           const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
