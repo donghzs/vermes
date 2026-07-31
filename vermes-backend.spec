@@ -226,7 +226,7 @@ hiddenimports = [
     # 音频处理
     'mutagen', 'mutagen.oggopus',
     # 其他
-    'pilk', 'nacl', 'nacl.secret', 'markdown', 'brotlicffi', 'Markdown',
+    'pilk', 'nacl', 'nacl.secret', 'markdown', 'brotlicffi',
 ]
 
 # Platform specific
@@ -262,6 +262,16 @@ for _pkg in [
     # 其他
     'pilk', 'nacl', 'brotlicffi', 'aiohttp_socks',
     'markdown',
+    # 数值计算（ScholarForge/AI 工具链依赖）
+    'numpy',
+    # 表单解析（FastAPI Form() 依赖）
+    'multipart',
+    # 向量检索（RAG 后端）
+    'sqlite_vec',
+    # YAML 解析（配置文件）
+    'ruamel.yaml',
+    # 重试逻辑（渠道连接）
+    'tenacity',
 ]:
     try:
         _d, _b, _h = collect_all(_pkg)
