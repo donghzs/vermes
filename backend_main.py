@@ -159,7 +159,30 @@ def main():
     # 初始启动：在子线程中运行 uvicorn，主线程监听信号
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", lifespan="off")
     server_instance = uvicorn.Server(config)
-    threading.Thread(target=server_instance.run, daemon=True).start()
+
+    def _run_server_with_guard():
+        """包装 uvicorn.run，捕获端口冲突等致命异常，避免 daemon 线程静默死亡。"""
+        try:
+            server_instance.run()
+        except OSError as e:
+            logger.error(f"[Vermes] ❌ 后端启动失败（端口 {port} 可能被占用）: {e}")
+            # 写入 crash marker 让下次启动时看门狗能检测到
+            try:
+                _marker = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
+                with open(_marker, "w") as _f:
+                    _f.write(str(time.time()))
+            except Exception:
+                pass
+            # 设置 shutdown_event 让主线程退出
+            try:
+                from vermes_cli.shutdown_signal import shutdown_event
+                shutdown_event.set()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.exception(f"[Vermes] ❌ 后端运行时异常: {e}")
+
+    threading.Thread(target=_run_server_with_guard, daemon=True).start()
     logger.info(f"[Vermes Backend] 后端已启动，监听 :{port}")
 
     # ── restart 循环：Agent 框架更新后重启 gateway，不关壳 ──

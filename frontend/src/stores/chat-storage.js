@@ -369,17 +369,13 @@ function stateDBHeaders() {
   return h
 }
 
-/** 列出 state.db 会话（telegram/discord/cli 等全渠道；步骤2后含 web） */
+/** 列出 state.db 会话（telegram/discord/cli 等全渠道；步骤2后含 web）
+ * 失败时抛异常而非返回空数组——调用方应保留旧列表而非整体清空。 */
 export async function listChannelSessionsFromAPI(limit = 200) {
-  try {
-    const resp = await fetch(`/api/sessions?limit=${limit}`, { headers: stateDBHeaders() })
-    if (!resp.ok) return []
-    const data = await resp.json()
-    return data.sessions || []
-  } catch (e) {
-    logger.warn('[Vermes] state.db 会话列表加载失败:', e)
-    return []
-  }
+  const resp = await fetch(`/api/sessions?limit=${limit}`, { headers: stateDBHeaders() })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  const data = await resp.json()
+  return data.sessions || []
 }
 
 /** 读取 state.db 某会话的消息（渠道会话续看） */

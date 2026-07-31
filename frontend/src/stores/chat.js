@@ -234,21 +234,26 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadChannelSessions() {
-    const rows = await listChannelSessionsFromAPI(200)
-    const localIds = new Set(sessions.value.map(s => s.id))
-    channelSessions.value = rows
-      .filter(r => r && r.id && !localIds.has(r.id) && (r.message_count || 0) > 0)
-      .map(r => ({
-        id: r.id,
-        name: r.title || (r.preview ? String(r.preview).slice(0, 40) : `${r.source || '渠道'} 会话`),
-        createdAt: new Date((r.started_at || 0) * 1000).toISOString(),
-        lastActive: new Date((r.last_active || r.started_at || 0) * 1000).toISOString(),
-        channel: true,
-        source: r.source || 'unknown',
-        model: r.model || '',
-        messageCount: r.message_count || 0,
-        preview: r.preview || '',
-      }))
+    try {
+      const rows = await listChannelSessionsFromAPI(200)
+      const localIds = new Set(sessions.value.map(s => s.id))
+      channelSessions.value = rows
+        .filter(r => r && r.id && !localIds.has(r.id) && (r.message_count || 0) > 0)
+        .map(r => ({
+          id: r.id,
+          name: r.title || (r.preview ? String(r.preview).slice(0, 40) : `${r.source || '渠道'} 会话`),
+          createdAt: new Date((r.started_at || 0) * 1000).toISOString(),
+          lastActive: new Date((r.last_active || r.started_at || 0) * 1000).toISOString(),
+          channel: true,
+          source: r.source || 'unknown',
+          model: r.model || '',
+          messageCount: r.message_count || 0,
+          preview: r.preview || '',
+        }))
+    } catch (e) {
+      // 后端不可达时保留旧列表，不清空——避免后端短暂抖动导致渠道会话"消失"
+      logger.warn('[Vermes] 渠道会话列表刷新失败，保留旧列表:', e)
+    }
   }
 
   // state.db 消息行 → 前端消息格式（只呈现可读对话，跳过 tool/system 底噪）
