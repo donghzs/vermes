@@ -1256,20 +1256,21 @@ async function saveChannel(platformKey) {
       }
       // 清空表单
       for (const k of Object.keys(form)) form[k] = ''
-      toast.success('渠道凭据已保存')
 
-      // 触发 Gateway 热重载（通过 Electron IPC 让 main.js 重启 gateway 进程）
-      if (window.vermes?.restartGateway) {
-        console.log('[Settings] 触发 Gateway 热重载...')
-        try {
-          await window.vermes.restartGateway()
-          toast.success('渠道网关已重启')
-        } catch (e) {
-          console.warn('[Settings] Gateway 重启失败:', e)
-          toast.info('凭据已保存，重启应用后生效')
-        }
+      // ── P4: 热插拔反馈 ──
+      // 后端已通过控制服务器通知 gateway 热重载该渠道，
+      // 不再需要全量重启 gateway 进程。
+      const gw = result.gateway
+      if (gw?.ok && gw.state === 'connected') {
+        toast.success(`${platformKey} 已连接`)
+      } else if (gw?.ok && gw.note) {
+        // 控制服务器不可达，config-watch 会在 3s 内接管
+        toast.success('凭据已保存，渠道将在数秒内自动连接')
+      } else if (gw && !gw.ok) {
+        // 连接失败，显示具体错误
+        toast.error(`${platformKey} 连接失败: ${gw.error || '未知错误'}`)
       } else {
-        toast.info('凭据已保存，重启应用后生效')
+        toast.success('渠道凭据已保存')
       }
       // 刷新网关状态
       await checkGatewayStatus()
@@ -1311,11 +1312,7 @@ async function clearChannel(platformKey) {
       }
     }
     toast.success('已清除凭据')
-
-    // 触发 Gateway 热重载
-    if (window.vermes?.restartGateway) {
-      try { await window.vermes.restartGateway() } catch (e) { console.warn(e) }
-    }
+    // Gateway 已被后端通知断开该渠道，无需手动重启
     await checkGatewayStatus()
   } catch (e) {
     toast.error('清除失败: ' + (e.message || e))
@@ -1336,11 +1333,7 @@ async function toggleChannel(platformKey) {
         }
       }
       toast.success(result.enabled ? '已启用' : '已禁用')
-
-      // 触发 Gateway 热重载
-      if (window.vermes?.restartGateway) {
-        try { await window.vermes.restartGateway() } catch (e) { console.warn(e) }
-      }
+      // Gateway 已被后端通知热插该渠道，无需手动重启
       await checkGatewayStatus()
     }
   } catch (e) {

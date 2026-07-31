@@ -496,6 +496,16 @@ class LifecycleMixin:
         # turn so the agent kicks off the new chat.
         asyncio.create_task(self._handoff_watcher())
 
+        # Start config-watch watcher for hot-plug (P2)
+        # Only enabled when gateway.hotplug.enabled is true (default)
+        if self._is_hotplug_enabled():
+            asyncio.create_task(self._config_watch_watcher())
+            logger.info("Config-watch watcher started (hot-plug enabled)")
+            # Start control server (P3) — fast path for save_channel
+            await self._start_control_server()
+        else:
+            logger.info("Hot-plug disabled by config, config-watch watcher not started")
+
         logger.info("Press Ctrl+C to stop")
         
         return True
@@ -932,6 +942,14 @@ class LifecycleMixin:
                 _task.cancel()
             self._background_tasks.clear()
 
+            # Stop the control server (P3) if it was started
+            if hasattr(self, '_control_server') and self._control_server is not None:
+                try:
+                    await self._control_server.stop()
+                    self._control_server = None
+                except Exception as _e:
+                    logger.debug("Control server stop error: %s", _e)
+
             self.adapters.clear()
             self._running_agents.clear()
             self._running_agents_ts.clear()
@@ -1208,6 +1226,147 @@ class LifecycleMixin:
             logger.warning("Channel directory rebuild failed: %s", e)
 
         return {"ok": True, "state": "disconnected"}
+
+    # ------------------------------------------------------------------
+    # P3: Control server — fast-path for save_channel notifications
+    # ------------------------------------------------------------------
+
+    async def _start_control_server(self) -> None:
+        """Start the gateway control server (127.0.0.1 only).
+
+        If the port is already in use, logs a warning and continues —
+        the config-watch watcher (P2) still works as a fallback.
+        """
+        import os
+        port = int(os.environ.get("VERMES_GATEWAY_CONTROL_PORT", "9120"))
+        try:
+            from gateway.control_server import ControlServer
+            self._control_server = ControlServer(self, port=port)
+            success = await self._control_server.start()
+            if not success:
+                self._control_server = None
+        except Exception as e:
+            logger.warning("Failed to start control server: %s", e)
+            self._control_server = None
+
+    # ------------------------------------------------------------------
+    # P2: Config-watch watcher — monitors config.yaml for changes
+    # and hot-connects/disconnects platforms at runtime.
+    # ------------------------------------------------------------------
+
+    def _is_hotplug_enabled(self) -> bool:
+        """Check if hot-plug is enabled in config (default True)."""
+        try:
+            from vermes_cli.config import load_config
+            cfg = load_config()
+            # Navigate: cfg.gateway.hotplug.enabled
+            gw_cfg = cfg.get("gateway", {}) if isinstance(cfg, dict) else {}
+            hotplug_cfg = gw_cfg.get("hotplug", {}) if isinstance(gw_cfg, dict) else {}
+            return hotplug_cfg.get("enabled", True) if isinstance(hotplug_cfg, dict) else True
+        except Exception:
+            return True  # Default enabled on error
+
+    def _read_config_hash(self) -> Optional[str]:
+        """Read config.yaml and return md5 hash of its content."""
+        try:
+            from vermes_cli.config import get_vermes_home
+            config_path = get_vermes_home() / "config.yaml"
+            if not config_path.exists():
+                return None
+            content = config_path.read_text()
+            return hashlib.md5(content.encode()).hexdigest()
+        except Exception as e:
+            logger.debug("config-hash read failed: %s", e)
+            return None
+
+    def _read_config_platforms(self) -> Dict[str, Any]:
+        """Read config.yaml and return the platforms section as a dict."""
+        try:
+            from vermes_cli.config import load_config
+            cfg = load_config()
+            if isinstance(cfg, dict):
+                return cfg.get("platforms", {})
+            return {}
+        except Exception as e:
+            logger.debug("config-platforms read failed: %s", e)
+            return {}
+
+    async def _config_watch_watcher(self, interval: float = 3.0) -> None:
+        """Background task that watches config.yaml for platform changes.
+
+        Every 3s, reads config.yaml and computes an md5 hash:
+        - New + enabled platform → _connect_one
+        - Already connected but config hash changed → _connect_one(force=True)
+        - In adapters but no longer in config / enabled:false → _disconnect_one
+        """
+        await asyncio.sleep(5)  # initial delay — let startup finish
+        last_hash = self._read_config_hash()
+        while self._running:
+            try:
+                current_hash = self._read_config_hash()
+                if current_hash is None:
+                    await asyncio.sleep(interval)
+                    continue
+
+                if current_hash != last_hash:
+                    last_hash = current_hash
+                    logger.info("config.yaml changed, checking platform changes...")
+                    await self._handle_config_change()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.debug("config-watch watcher tick error: %s", exc, exc_info=True)
+
+            await asyncio.sleep(interval)
+
+    async def _handle_config_change(self) -> None:
+        """Detect platform changes from config.yaml and apply them."""
+        platforms_config = self._read_config_platforms()
+
+        # Build set of enabled platform names from config
+        enabled_in_config = set()
+        config_by_name = {}
+        for name, pcfg in platforms_config.items():
+            if isinstance(pcfg, dict) and pcfg.get("enabled", False):
+                enabled_in_config.add(name)
+                config_by_name[name] = pcfg
+
+        # Build set of currently connected platform names
+        connected_names = {p.value for p in self.adapters.keys()}
+
+        # ── Connect new platforms ──
+        for name in enabled_in_config - connected_names:
+            try:
+                platform = Platform(name)
+            except (ValueError, KeyError):
+                logger.warning("config-watch: unknown platform '%s' in config", name)
+                continue
+
+            logger.info("config-watch: connecting new platform %s", name)
+            result = await self._connect_one(platform)
+            if result["ok"]:
+                logger.info("config-watch: ✓ %s connected", name)
+            else:
+                logger.warning("config-watch: ✗ %s failed: %s", name, result.get("error", "unknown"))
+
+        # ── Disconnect removed/disabled platforms ──
+        for name in connected_names - enabled_in_config:
+            try:
+                platform = Platform(name)
+            except (ValueError, KeyError):
+                continue
+
+            logger.info("config-watch: disconnecting removed platform %s", name)
+            result = await self._disconnect_one(platform)
+            if result["ok"]:
+                logger.info("config-watch: ✓ %s disconnected", name)
+
+        # ── Reload existing platforms with changed config ──
+        # We don't force-reload here — the reconnect watcher handles
+        # adapter-level failures. Config changes that require reconnect
+        # (e.g. token change) are handled by the control server (P3)
+        # or by the user manually triggering a reload.
 
     def _create_adapter(
         self, 

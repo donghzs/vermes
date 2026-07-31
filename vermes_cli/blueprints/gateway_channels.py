@@ -332,11 +332,18 @@ async def save_channel(platform_key: str, req: SaveChannelRequest) -> dict:
     # 防止 .env 残留旧值导致 Gateway 读到错误凭证
     _sync_env_from_config(config_data, schema)
 
+    # ── P4: 通知运行中的 Gateway 热重载该渠道 ──
+    # 快通道：POST /control/channels/{platform}/reload
+    # 如果控制服务器不可达（Web 模式或 gateway 未启动），
+    # 降级返回 note，config-watch 会在 3s 内接管。
+    from vermes_cli.blueprints._gateway_control import reload_channel
+    reload_result = await reload_channel(platform_key)
+
     # 重新加载返回最新状态
     config_data = _load_config_yaml()
     env_data = _load_env()
     result = _schema_to_dict(schema, config_data, env_data)
-    return {"ok": True, "channel": result}
+    return {"ok": True, "channel": result, "gateway": reload_result}
 
 
 @router.delete("/{platform_key}")
@@ -361,7 +368,11 @@ async def clear_channel(platform_key: str) -> dict:
     # 强制同步 .env（config.yaml 中已清除，.env 也清除）
     _sync_env_from_config(config_data, schema)
 
-    return {"ok": True, "message": f"已清除 {schema.label} 的凭据"}
+    # ── P4: 通知运行中的 Gateway 断开该渠道 ──
+    from vermes_cli.blueprints._gateway_control import disconnect_channel
+    reload_result = await disconnect_channel(platform_key)
+
+    return {"ok": True, "message": f"已清除 {schema.label} 的凭据", "gateway": reload_result}
 
 
 @router.post("/{platform_key}/toggle")
@@ -379,7 +390,19 @@ async def toggle_channel(platform_key: str) -> dict:
 
     _save_config_yaml(config_data)
 
-    return {"ok": True, "enabled": not current}
+    # ── P4: 通知运行中的 Gateway 热插该渠道 ──
+    from vermes_cli.blueprints._gateway_control import (
+        connect_channel as _gw_connect,
+        disconnect_channel as _gw_disconnect,
+    )
+    if not current:
+        # Now enabled → connect
+        gw_result = await _gw_connect(platform_key)
+    else:
+        # Now disabled → disconnect
+        gw_result = await _gw_disconnect(platform_key)
+
+    return {"ok": True, "enabled": not current, "gateway": gw_result}
 
 
 def register_to(app):
