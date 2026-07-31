@@ -24,6 +24,7 @@ afterEach(() => { if (wrapper) { try { wrapper.unmount() } catch (_) {} wrapper 
 describe('EvolutionPanel (A.4.5)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.resetAllMocks()
     // 所有 fetch 失败（网络错误）→ 触发 _fail 路径
     globalThis.fetch = vi.fn(async () => { throw new Error('Failed to fetch') })
   })
@@ -36,11 +37,23 @@ describe('EvolutionPanel (A.4.5)', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('后端在线但端点失败 → 仍弹 toast（真实错误不丢）', async () => {
+  it('后端在线但端点返回 HTTP 500 → 仍弹 toast（真实错误不丢）', async () => {
     const conn = useBackendConnectionStore()
     conn.setStatus({ online: true })
+    // HTTP 500 不是网络错误，应该弹 toast
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }))
     wrapper = mount(EvolutionPanel)
     await new Promise((r) => setTimeout(r, 60))
     expect(toast.error).toHaveBeenCalled()
+  })
+
+  it('后端在线 + 网络错误（Failed to fetch）→ 不弹 toast（看门狗窗口期静默）', async () => {
+    const conn = useBackendConnectionStore()
+    conn.setStatus({ online: true })
+    // 确保用网络错误 mock（beforeEach 已设，但前一个测试可能覆盖了）
+    globalThis.fetch = vi.fn(async () => { throw new Error('Failed to fetch') })
+    wrapper = mount(EvolutionPanel)
+    await new Promise((r) => setTimeout(r, 60))
+    expect(toast.error).not.toHaveBeenCalled()
   })
 })

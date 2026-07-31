@@ -30,14 +30,15 @@ function _fetchWithTimeout(url, opts = {}, ms = 3000) {
 }
 
 function _fail(fnName, fn, errMsg) {
-  // A.4.5: 后端已知离线（全局 store，由主进程看门狗广播）→ 不弹 toast，
-  // 由面板内联"重连中…"指示，彻底消除红字刷屏（#DMG 实测根因）。
-  if (backendConn.isOffline) return
-  // 多个端点同时失败 = 后端不可达/卡住，只弹一条统揽提示，不刷屏
+  // A.4.5: 后端连接问题不弹 toast——
+  // 看门狗广播离线时由面板内联"重连中…"指示；
+  // 看门狗还没来得及广播时（窗口期）也不弹，因为后端大概率在自愈中。
+  // 只有非网络类错误（HTTP 4xx/5xx、JSON 解析等）才弹 toast。
+  const isNetwork = errMsg && (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('aborted') || errMsg.includes('fetch'))
+  if (isNetwork) return
   if (!_backendDownToastShown) {
     _backendDownToastShown = true
-    const isNetwork = errMsg && (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('aborted') || errMsg.includes('fetch'))
-    toast.error(isNetwork ? '后端连接失败，进化面板数据暂不可用' : `${fnName}失败: ${errMsg || '网络错误'}`)
+    toast.error(`${fnName}失败: ${errMsg || '网络错误'}`)
   }
 }
 
