@@ -213,6 +213,90 @@ function startBackend() {
   });
 }
 
+// ── A.4.1 后端运行期看门狗 + 自重启 ──────────────────────────────────
+// 首启成功后挂一个周期 /health 探测；后端掉线（崩溃/卡死）自动 SIGTERM+重拉，
+// 并向渲染进程广播在线状态，根治"后端死了前端永久离线、只能源头重启 App"。
+let _backendWatchdogTimer = null;
+let _backendOnline = true;
+let _backendRestarting = false;
+
+function _broadcastBackendStatus(online, detail) {
+  const payload = { online, restarting: _backendRestarting, detail: detail || null };
+  try {
+    BrowserWindow.getAllWindows().forEach((w) => {
+      if (w && w.webContents && !w.webContents.isDestroyed()) {
+        w.webContents.send('backend-status', payload);
+      }
+    });
+  } catch (_) {}
+}
+
+function _backendHealthCheck() {
+  return new Promise((resolve) => {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 2000);
+    fetch(`${BACKEND_URL}/health`, { signal: ctrl.signal })
+      .then((r) => { clearTimeout(to); resolve(!!(r && r.ok)); })
+      .catch(() => { clearTimeout(to); resolve(false); });
+  });
+}
+
+async function _backendWatchdogTick() {
+  if (_backendRestarting) return;            // 已有重启在途，避免叠加
+  const alive = await _backendHealthCheck();
+  if (alive) {
+    if (!_backendOnline) {
+      _backendOnline = true;
+      _broadcastBackendStatus(true, 'recovered');
+      console.log('[Vermes] 后端已恢复 ✅');
+    }
+    return;
+  }
+  // 掉线
+  if (_backendOnline) {
+    _backendOnline = false;
+    _broadcastBackendStatus(false, 'backend unreachable');
+    console.warn('[Vermes] 后端不可达，准备自重启…');
+  }
+  _backendRestarting = true;
+  _broadcastBackendStatus(false, 'restarting');
+  try {
+    // 清掉可能残留的僵尸/旧进程（A.4.2 已确保崩溃进程真正退出，这里是双保险）
+    if (backendProcess && !backendProcess.killed) {
+      try { backendProcess.kill('SIGTERM'); } catch (_) {}
+    }
+    backendProcess = null;
+    await new Promise((r) => setTimeout(r, 800));  // 等端口释放，降低 bind 竞态
+    const r = await startBackend();
+    if (r && r.ok) {
+      _backendOnline = true;
+      _backendRestarting = false;
+      _broadcastBackendStatus(true, 'recovered');
+      console.log('[Vermes] 后端自重启完成 ✅');
+    } else {
+      _backendRestarting = false;  // 失败：下一 tick 再试
+      console.error('[Vermes] 后端自重启未成功，下一周期重试');
+    }
+  } catch (e) {
+    _backendRestarting = false;
+    console.error('[Vermes] 后端自重启异常:', e && e.message);
+  }
+}
+
+function startBackendWatchdog() {
+  if (_backendWatchdogTimer) return;  // 幂等
+  _backendOnline = true;
+  _backendWatchdogTimer = setInterval(() => { _backendWatchdogTick(); }, 5000);
+  console.log('[Vermes] 后端看门狗已启动（5s /health 探测）');
+}
+
+function stopBackendWatchdog() {
+  if (_backendWatchdogTimer) {
+    clearInterval(_backendWatchdogTimer);
+    _backendWatchdogTimer = null;
+  }
+}
+
 // ── 渠道网关管理（Vermes 专属 gateway，独立于官方 Vermes / QClaw 的 gateway）──
 // 关键设计：注入 VERMES_HOME=~/.vermes，使 gateway 与桌面后端共享同一份配置与 state.db，
 // 从而飞书/TG 等渠道消息可由桌面端「全渠道统一控制」。命名空间隔离避免多 agent 共存冲突。
@@ -316,6 +400,8 @@ async function runInitialization() {
     sendSplash({ type: 'progress', label: '后端已就绪', percent: 90 });
     // 渠道网关（飞书/TG 等）随桌面端生命周期启动，注入 VERMES_HOME=~/.vermes 与后端共享配置
     startGateway();
+    // A.4.1: 后端首启成功后挂运行期看门狗（掉线自动重启 + 广播在线状态）
+    startBackendWatchdog();
     // 短暂展现 100% 状态再跳转
     await new Promise(r => setTimeout(r, 400));
     sendSplash({ type: 'progress', label: '加载界面…', percent: 100 });

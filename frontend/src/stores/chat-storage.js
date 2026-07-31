@@ -1,4 +1,5 @@
 import { logger } from '@/utils/logger'
+import { useBackendConnectionStore } from './backendConnection'
 
 // ── IndexedDB 图片存储（G6 隐形老化淘汰：无大小限制→有上限，详见 docs/design-c5-g6-image-server-persist.md）──
 const IMAGE_DB = 'vermes-images'
@@ -393,7 +394,19 @@ export async function loadChannelMessagesFromAPI(sessionId) {
 
 /** 步骤3：桌面代发渠道消息（写 relay 信号，gateway 消费后回复回渠道+state.db） */
 export async function sendFromDesktopAPI(sessionId, text) {
+  // A.4.4: 已知后端离线（主进程看门狗广播）→ 不徒劳发请求，返回 pending 让上层自动重发，
+  // 避免"渠道代发失败: TypeError: Failed to fetch"刷屏（#DMG 实测根因）。
+  let backendOffline = false
   try {
+    const conn = useBackendConnectionStore()
+    backendOffline = !conn.online
+  } catch (_) {}
+
+  if (backendOffline) {
+    return { ok: false, status: 0, pending: true, detail: 'backend offline' }
+  }
+
+  const doFetch = async () => {
     const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send-from-desktop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...stateDBHeaders() },
@@ -401,9 +414,25 @@ export async function sendFromDesktopAPI(sessionId, text) {
     })
     const data = await resp.json().catch(() => ({}))
     return { ok: resp.ok, status: resp.status, ...data }
-  } catch (e) {
-    return { ok: false, status: 0, detail: String(e) }
   }
+
+  // A.4.4: 网络错误（Failed to fetch）退避重试，吸收后端自愈窗口
+  // （A.4.1 看门狗 ~5s 自重启；api.js 对 POST 默认 maxRetries=0 不重试，故此处自管）。
+  let lastErr = null
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      return await doFetch()
+    } catch (e) {
+      lastErr = e
+      const msg = String(e && e.message || '')
+      if (attempt < 2 && (msg.includes('Failed to fetch') || msg.includes('NetworkError'))) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)))  // 1s / 2s
+        continue
+      }
+      break
+    }
+  }
+  return { ok: false, status: 0, detail: lastErr ? String(lastErr) : 'unknown error' }
 }
 
 /** 步骤3：轮询 relay 状态（pending/running/completed/failed） */

@@ -55,6 +55,13 @@ contextBridge.exposeInMainWorld('vermes', {
     ipcRenderer.on('splash:message', handler);
     return () => ipcRenderer.removeListener('splash:message', handler);
   },
+
+  // ── 后端连接状态（A.4.1 看门狗广播 → 渲染进程全局 store）──
+  onBackendStatus: (cb) => {
+    const handler = (_e, status) => cb(status);
+    ipcRenderer.on('backend-status', handler);
+    return () => ipcRenderer.removeListener('backend-status', handler);
+  },
   // splash.html 触发重试
   retryInit: () => ipcRenderer.send('splash:retry'),
   // splash.html 「复制诊断信息」按钮（G4 数据保护错误页三件套之一）

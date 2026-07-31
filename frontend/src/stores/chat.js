@@ -9,6 +9,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { logger } from '../utils/logger'
 import { showToast } from '../utils/toast'
 import {
   SESSION_TEMPLATES,
@@ -30,6 +31,7 @@ import { uid, persistMessages } from './chat-session'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
 import { getChatTransport } from '../services/chat-transport'
+import { useBackendConnectionStore } from './backendConnection'
 
 // 常量
 const SESSIONS_KEY = 'vermes-sessions'
@@ -510,6 +512,23 @@ export const useChatStore = defineStore('chat', () => {
   async function importSession(jsonText) { return _importSession(sessions.value, messages.value, jsonText, SESSIONS_KEY, MESSAGES_KEY_PREFIX) }
 
   // ── 步骤3：渠道会话续聊（send-from-desktop 桥） ──
+  // A.4.4: 后端离线时阻塞等待其恢复（A.4.1 看门狗自重启），最多 timeoutMs。
+  // 恢复即 resolve(true)；超时 resolve(false)。避免代发因瞬时离线而失败。
+  function waitForBackendOnline(timeoutMs = 12000) {
+    return new Promise((resolve) => {
+      let conn = null
+      try { conn = useBackendConnectionStore() } catch (_) {}
+      if (conn && conn.online) return resolve(true)
+      const start = Date.now()
+      const iv = setInterval(() => {
+        let up = false
+        try { up = !!(conn && conn.online) } catch (_) {}
+        if (up) { clearInterval(iv); resolve(true) }
+        else if (Date.now() - start > timeoutMs) { clearInterval(iv); resolve(false) }
+      }, 500)
+    })
+  }
+
   // 写 relay 信号 → gateway 进程消费（agent 运行 + adapter.send 回原渠道 +
   // user/assistant 落 state.db + 记忆摄入）→ 桌面轮询 state.db 显示回复。
   async function sendToChannelSession(sid, text) {
@@ -521,7 +540,14 @@ export const useChatStore = defineStore('chat', () => {
     scheduleScroll()
     sessionLoading.value[sid] = true
     try {
-      const res = await sendFromDesktopAPI(sid, text)
+      // A.4.4: 后端已知离线 → 等其恢复（A.4.1 看门狗自重启）后自动重发，
+      // 不弹"代发失败"红字（#DMG 实测"渠道代发失败: TypeError: Failed to fetch"根因）。
+      let res = await sendFromDesktopAPI(sid, text)
+      if (!res.ok && res.pending) {
+        showToast('后端重连中，正在自动重试发送…', 'info')
+        const recovered = await waitForBackendOnline(12000)
+        if (recovered) res = await sendFromDesktopAPI(sid, text)
+      }
       if (!res.ok) {
         showToast(`渠道代发失败: ${res.detail || 'HTTP ' + res.status}`, 'error')
         messages.value.push({

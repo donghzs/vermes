@@ -1,8 +1,10 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
+import { useBackendConnectionStore } from '../stores/backendConnection'
 const { confirm } = useConfirm()
+const backendConn = useBackendConnectionStore()
 
 const status = ref(null)
 const loading = ref(true)
@@ -13,9 +15,11 @@ const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详�
 const emergenceData = ref(null)
 const skillsData = ref(null)
 const selfModifyHistory = ref([])
-const _retryFns = {} // 失败可重试的函数引用
 let _backendDownToastShown = false
 let _roundInProgress = false // 防雪崩：上一轮未完成不发起下一轮
+
+// A.4.5: 后端已知离线时，面板内联展示"重连中…"而非红色 toast 刷屏
+const backendOffline = computed(() => backendConn.isOffline)
 
 // 统一 fetch 带超时：3s 后 abort，避免后端卡住时前端无限等待
 function _fetchWithTimeout(url, opts = {}, ms = 3000) {
@@ -26,7 +30,9 @@ function _fetchWithTimeout(url, opts = {}, ms = 3000) {
 }
 
 function _fail(fnName, fn, errMsg) {
-  _retryFns[fnName] = fn
+  // A.4.5: 后端已知离线（全局 store，由主进程看门狗广播）→ 不弹 toast，
+  // 由面板内联"重连中…"指示，彻底消除红字刷屏（#DMG 实测根因）。
+  if (backendConn.isOffline) return
   // 多个端点同时失败 = 后端不可达/卡住，只弹一条统揽提示，不刷屏
   if (!_backendDownToastShown) {
     _backendDownToastShown = true
@@ -190,6 +196,15 @@ onMounted(() => {
   onUnmounted(() => clearInterval(timer))
 })
 
+// A.4.5: 后端由主进程看门狗自愈恢复 → 立即重刷数据并解除 toast 节流，
+// 用户无需手动刷新即可看到面板重新填充。
+watch(() => backendConn.online, (up) => {
+  if (up) {
+    _backendDownToastShown = false
+    _refreshAll()
+  }
+})
+
 const successRateColor = computed(() => {
   const rate = status.value?.success_rate || 0
   if (rate >= 80) return 'text-green-500'
@@ -269,6 +284,8 @@ const smTypeLabel = (t) => {
     <div class="evo-header" @click="expanded = !expanded">
       <span class="evo-icon">🧠</span>
       <span class="evo-title">进化系统</span>
+      <!-- A.4.5: 后端离线时内联"重连中…"，替代红色 toast 刷屏 -->
+      <span v-if="backendOffline" class="text-xs text-amber-400/80 ml-1">· 重连中…</span>
       <span class="evo-expand">{{ expanded ? '▼' : '▶' }}</span>
       <span class="evo-collapse" @click.stop="collapsed = true">收起</span>
     </div>

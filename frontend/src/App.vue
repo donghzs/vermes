@@ -6,8 +6,10 @@ import ToastContainer from './components/ToastContainer.vue'
 import ApprovalDialog from './components/ApprovalDialog.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import { useChatStore } from './stores/chat'
+import { useBackendConnectionStore } from './stores/backendConnection'
 
 const chat = useChatStore()
+const backendConn = useBackendConnectionStore()
 const theme = computed(() => chat.theme)
 const loading = ref(true)
 
@@ -32,6 +34,8 @@ async function checkProfileMismatch() {
 }
 
 onMounted(async () => {
+  // A.4.3: 订阅主进程后端连接状态广播（掉线/重连中/恢复 → 全局 store）
+  backendConn.init()
   try {
     await chat.init()
   } catch(e) {

@@ -39,6 +39,21 @@ import uvicorn
 from vermes_cli.web_server import app
 import signal as _signal
 
+
+def _is_port_conflict(exc):
+    """端口冲突（EADDRINUSE）是运行期环境问题，不是构建损坏。
+
+    返回 True 时不触发自动回滚看门狗，否则新 DMG 会在端口被占用时
+    静默回滚成旧版本代码（A.4.2 根治项）。
+    """
+    if exc is None:
+        return False
+    errno = getattr(exc, "errno", None)
+    if errno in (98, 48):  # Linux / macOS EADDRINUSE
+        return True
+    msg = str(exc).lower()
+    return ("address already in use" in msg) or ("only one usage of each socket" in msg)
+
 # Gateway server 实例（用于 restart 时优雅关闭）
 server_instance = None
 
@@ -172,18 +187,36 @@ def main():
     server_instance = uvicorn.Server(config)
 
     def _run_server_with_guard():
-        """包装 uvicorn.run，捕获端口冲突等致命异常，避免 daemon 线程静默死亡。"""
+        """包装 uvicorn.run，捕获端口冲突等致命异常，避免 daemon 线程静默死亡。
+
+        A.4.2 加固：
+          - 端口冲突（EADDRINUSE）只终止并交由外壳重启，不写 crash marker，
+            避免下次启动被误判为"坏构建"而静默回滚到旧版本。
+          - 任意异常都必须置位 shutdown_event，否则 daemon 线程已死、主线程
+            while-True 永远不退出 → "进程活、端口死"僵尸（前端永久离线）。
+        """
         try:
             server_instance.run()
         except OSError as e:
             logger.error(f"[Vermes] ❌ 后端启动失败（端口 {port} 可能被占用）: {e}")
-            # 写入 crash marker 让下次启动时看门狗能检测到
-            try:
-                _marker = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
-                with open(_marker, "w") as _f:
-                    _f.write(str(time.time()))
-            except Exception:
-                pass
+            if _is_port_conflict(e):
+                # 端口冲突：清掉启动期 marker，不触发回滚，交由外壳重启。
+                try:
+                    _m = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
+                    if os.path.exists(_m):
+                        os.remove(_m)
+                except Exception:
+                    pass
+                logger.error("[Vermes] 检测到端口冲突，不触发回滚，交由外壳重启。")
+            else:
+                # 非端口冲突的 OSError（权限/配置等）→ 写 crash marker，
+                # 让下次启动的看门狗能检测并回滚到上一个可用版本。
+                try:
+                    _marker = os.path.join(tempfile.gettempdir(), "vermes-startup.lock")
+                    with open(_marker, "w") as _f:
+                        _f.write(str(time.time()))
+                except Exception:
+                    pass
             # 设置 shutdown_event 让主线程退出
             try:
                 from vermes_cli.shutdown_signal import shutdown_event
@@ -192,6 +225,12 @@ def main():
                 pass
         except Exception as e:
             logger.exception(f"[Vermes] ❌ 后端运行时异常: {e}")
+            # A.4.2: 通用异常也必须置位 shutdown_event（原代码漏了这一步）。
+            try:
+                from vermes_cli.shutdown_signal import shutdown_event
+                shutdown_event.set()
+            except Exception:
+                pass
 
     threading.Thread(target=_run_server_with_guard, daemon=True).start()
     logger.info(f"[Vermes Backend] 后端已启动，监听 :{port}")
