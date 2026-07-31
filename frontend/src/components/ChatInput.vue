@@ -192,6 +192,9 @@ function insertFileRef(path) {
 
 // ── 发送 ──
 async function send() {
+  // P2: 发送进行中（chat.loading 由 ChatView.onSend / chat.sendMessage 置位）直接 return，
+  // 覆盖 Enter 键与按钮点击之间的竞态窗口（与 chat.js 会话级发送锁互补）。
+  if (chat.loading) return
   const input = inputText.value.trim()
   const files = [...uploadedFiles.value]
   if (!input && files.length === 0) return
@@ -290,7 +293,7 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         </button>
       </div>
       <button v-if="chat.loading" @click="chat.stopGeneration()" class="px-3 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm transition" title="停止生成">⏹</button>
-      <button @click="send()" :disabled="!inputText.trim() && uploadedFiles.length===0" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
+      <button @click="send()" :disabled="(!inputText.trim() && uploadedFiles.length===0) || chat.loading" class="px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm transition disabled:opacity-40">发送</button>
     </div>
   </div>
 </template>

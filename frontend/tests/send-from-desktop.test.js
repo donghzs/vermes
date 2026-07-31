@@ -11,15 +11,39 @@ Object.defineProperty(globalThis, 'window', {
 const { useBackendConnectionStore } = await import('../src/stores/backendConnection.js')
 const { sendFromDesktopAPI } = await import('../src/stores/chat-storage.js')
 
-describe('sendFromDesktopAPI (A.4.4)', () => {
+// 捕获每次 fetch 的请求体，便于断言 delivery_id 语义
+function captureFetch(handler) {
+  const bodies = []
+  globalThis.fetch = vi.fn(async (url, opts) => {
+    if (opts && opts.body) bodies.push(JSON.parse(opts.body))
+    const resp = handler ? await handler(url, opts, bodies) : { ok: true, json: async () => ({ ok: true }) }
+    return resp
+  })
+  return bodies
+}
+
+describe('sendFromDesktopAPI (A.4.4 + P0.5/D1)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     globalThis.fetch = vi.fn()
   })
 
+  it('正常发送：body 携带 delivery_id 与 text', async () => {
+    const conn = useBackendConnectionStore()
+    conn.setStatus({ online: true })
+    const bodies = captureFetch(async () => ({ ok: true, json: async () => ({ ok: true }) }))
+    const res = await sendFromDesktopAPI('s1', 'hi')
+    expect(res.ok).toBe(true)
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0].text).toBe('hi')
+    // P0.5: 幂等键随请求发出
+    expect(typeof bodies[0].delivery_id).toBe('string')
+    expect(bodies[0].delivery_id.length).toBeGreaterThan(0)
+  })
+
   it('网络错误后重试成功（吸收自愈窗口）', async () => {
     let calls = 0
-    globalThis.fetch = vi.fn(async () => {
+    const bodies = captureFetch(async () => {
       calls++
       if (calls === 1) throw new Error('Failed to fetch')
       return { ok: true, json: async () => ({ ok: true, session_id: 's1', state: 'pending' }) }
@@ -27,35 +51,39 @@ describe('sendFromDesktopAPI (A.4.4)', () => {
     const res = await sendFromDesktopAPI('s1', 'hi')
     expect(res.ok).toBe(true)
     expect(calls).toBe(2) // 1 失败 + 1 重试
+    // P0.5/D1: 重试全程复用同一 delivery_id（后端据此幂等去重）
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0].delivery_id).toBe(bodies[1].delivery_id)
   })
 
   it('持续网络错误 → 重试耗尽返回 ok:false（detail 含 Failed to fetch）', async () => {
     let calls = 0
-    globalThis.fetch = vi.fn(async () => { calls++; throw new Error('Failed to fetch') })
+    const bodies = captureFetch(async () => { calls++; throw new Error('Failed to fetch') })
     const res = await sendFromDesktopAPI('s1', 'hi')
     expect(res.ok).toBe(false)
     expect(res.pending).toBeFalsy()
     expect(res.detail).toContain('Failed to fetch')
     expect(calls).toBe(3) // 初始 + 2 重试
+    // 3 次重试仍复用同一 delivery_id
+    expect(bodies.map((b) => b.delivery_id).every((v, i, a) => v === a[0])).toBe(true)
   })
 
   it('后端已知离线 → 返回 pending 且不发请求（不刷红字）', async () => {
     const conn = useBackendConnectionStore()
     conn.setStatus({ online: false })
-    let calls = 0
-    globalThis.fetch = vi.fn(async () => { calls++; throw new Error('Failed to fetch') })
+    const bodies = captureFetch(async () => { throw new Error('Failed to fetch') })
     const res = await sendFromDesktopAPI('s1', 'hi')
     expect(res.ok).toBe(false)
     expect(res.pending).toBe(true)
-    expect(calls).toBe(0) // 不发徒劳请求
+    expect(bodies).toHaveLength(0) // 不发徒劳请求（也未生成 delivery_id 上送）
   })
 
   it('后端在线 → 正常发一次请求', async () => {
     const conn = useBackendConnectionStore()
     conn.setStatus({ online: true })
-    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }))
+    const bodies = captureFetch(async () => ({ ok: true, json: async () => ({ ok: true }) }))
     const res = await sendFromDesktopAPI('s1', 'hi')
     expect(res.ok).toBe(true)
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(bodies).toHaveLength(1)
   })
 })

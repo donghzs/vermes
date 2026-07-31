@@ -4283,8 +4283,10 @@ class SessionDB:
         """
         now = time.time()
         def _do(conn):
+            # P3: INSERT OR IGNORE（非 REPLACE）—— 并发同 delivery_id 的第二次写入
+            # 直接被 PK 忽略，绝不会覆盖已成 terminal 状态的行（exactly-once 兜底）。
             conn.execute(
-                "INSERT OR REPLACE INTO outbound_intent "
+                "INSERT OR IGNORE INTO outbound_intent "
                 "(delivery_id, session_id, target, content_hash, intent, status, "
                 " provider_msg_id, error, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -4293,6 +4295,22 @@ class SessionDB:
             )
             return True
         return bool(self._execute_write(_do))
+
+    def get_outbound_intent(self, delivery_id: str) -> Optional[Dict[str, Any]]:
+        """按 delivery_id 读取单条出站意图（P3 幂等查重用）。
+
+        命中返回整行 dict（含 status/target/content_hash/provider_msg_id/error）；
+        未命中返回 None。调用方据此判断「同一次代发是否已被登记」，从而
+        exactly-once（既有的行直接返回 ack，绝不二次 relay）。
+        """
+        cur = self._conn.execute(
+            "SELECT delivery_id, session_id, target, content_hash, intent, status, "
+            "provider_msg_id, error, created_at, updated_at "
+            "FROM outbound_intent WHERE delivery_id = ?",
+            (delivery_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row is not None else None
 
     def update_outbound_intent(
         self,

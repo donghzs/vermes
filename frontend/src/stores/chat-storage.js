@@ -410,11 +410,19 @@ export async function sendFromDesktopAPI(sessionId, text) {
     return { ok: false, status: 0, pending: true, detail: 'backend offline' }
   }
 
+  // P0.5+D1: 本次发送一次性生成 delivery_id，重试循环全程复用同一 ID，
+  // 后端据此做幂等去重（响应丢失触发重试时仍传同一 ID → 不会二次 relay）。
+  // 优先 crypto.randomUUID；非安全上下文降级到时间戳+随机串（仍全局唯一）。
+  const deliveryId =
+    (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `dlv_${Date.now()}_${Math.random().toString(36).slice(2)}`
+
   const doFetch = async () => {
     const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send-from-desktop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...stateDBHeaders() },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, delivery_id: deliveryId }),
     })
     const data = await resp.json().catch(() => ({}))
     return { ok: resp.ok, status: resp.status, ...data }

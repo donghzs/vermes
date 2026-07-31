@@ -537,67 +537,76 @@ export const useChatStore = defineStore('chat', () => {
 
   // 写 relay 信号 → gateway 进程消费（agent 运行 + adapter.send 回原渠道 +
   // user/assistant 落 state.db + 记忆摄入）→ 桌面轮询 state.db 显示回复。
+  // P1: 会话级代发串行锁 —— 同一会话并发代发（快速双击 / Enter+Click）只放行一次，
+  // 直接 return 既不重复推本地气泡也不重复 relay；后端 P3 幂等作互补兜底。
+  const _sendingChannelSessions = new Set()
   async function sendToChannelSession(sid, text) {
-    // 本地立即显示用户消息（gateway 落库的同文本 user 行轮询时去重跳过）
-    messages.value.push({
-      id: uid(), role: 'user', content: text,
-      sessionId: sid, timestamp: Date.now(), _fromDesktopRelay: true,
-    })
-    scheduleScroll()
-    sessionLoading.value[sid] = true
+    if (_sendingChannelSessions.has(sid)) return
+    _sendingChannelSessions.add(sid)
     try {
-      // A.4.4: 后端已知离线 → 等其恢复（A.4.1 看门狗自重启）后自动重发，
-      // 不弹"代发失败"红字（#DMG 实测"渠道代发失败: TypeError: Failed to fetch"根因）。
-      let res = await sendFromDesktopAPI(sid, text)
-      if (!res.ok && res.pending) {
-        showToast('后端重连中，正在自动重试发送…', 'info')
-        const recovered = await waitForBackendOnline(12000)
-        if (recovered) res = await sendFromDesktopAPI(sid, text)
-      }
-      if (!res.ok) {
-        showToast(`渠道代发失败: ${res.detail || 'HTTP ' + res.status}`, 'error')
-        messages.value.push({
-          id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
-          content: `❌ 渠道代发失败: ${res.detail || 'HTTP ' + res.status}`,
-        })
-        return
-      }
-      const sentAtMs = Date.now()
-      const knownIds = new Set(
-        messages.value.filter(m => m.sessionId === sid && m._fromStateDB).map(m => m.id)
-      )
-      const deadline = Date.now() + 300000  // 5 分钟超时护栏（与后端 ttl 对齐）
-      let gotAssistant = false
-      while (Date.now() < deadline && !gotAssistant) {
-        await new Promise(r => setTimeout(r, 2000))
-        const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
-        for (const m of mapped) {
-          if (knownIds.has(m.id)) continue
-          knownIds.add(m.id)
-          // gateway 落库的 user 行若与刚发文本相同则跳过（本地已显示）
-          if (m.role === 'user' && m.content.trim() === text.trim()) continue
-          messages.value.push(m)
-          if (m.role === 'assistant' && m.timestamp >= sentAtMs - 10000) gotAssistant = true
+      // 本地立即显示用户消息（gateway 落库的同文本 user 行轮询时去重跳过）
+      messages.value.push({
+        id: uid(), role: 'user', content: text,
+        sessionId: sid, timestamp: Date.now(), _fromDesktopRelay: true,
+      })
+      scheduleScroll()
+      sessionLoading.value[sid] = true
+      try {
+        // A.4.4: 后端已知离线 → 等其恢复（A.4.1 看门狗自重启）后自动重发，
+        // 不弹"代发失败"红字（#DMG 实测"渠道代发失败: TypeError: Failed to fetch"根因）。
+        let res = await sendFromDesktopAPI(sid, text)
+        if (!res.ok && res.pending) {
+          showToast('后端重连中，正在自动重试发送…', 'info')
+          const recovered = await waitForBackendOnline(12000)
+          if (recovered) res = await sendFromDesktopAPI(sid, text)
         }
-        if (gotAssistant) { scheduleScroll(); break }
-        const relay = await getRelayStateAPI(sid)
-        if (relay && relay.state === 'failed') {
+        if (!res.ok) {
+          showToast(`渠道代发失败: ${res.detail || 'HTTP ' + res.status}`, 'error')
           messages.value.push({
             id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
-            content: `❌ 渠道代发失败: ${relay.error || '未知错误'}（gateway 未运行或该渠道未连接）`,
+            content: `❌ 渠道代发失败: ${res.detail || 'HTTP ' + res.status}`,
           })
           return
         }
+        const sentAtMs = Date.now()
+        const knownIds = new Set(
+          messages.value.filter(m => m.sessionId === sid && m._fromStateDB).map(m => m.id)
+        )
+        const deadline = Date.now() + 300000  // 5 分钟超时护栏（与后端 ttl 对齐）
+        let gotAssistant = false
+        while (Date.now() < deadline && !gotAssistant) {
+          await new Promise(r => setTimeout(r, 2000))
+          const mapped = _mapChannelMessages(sid, await loadChannelMessagesFromAPI(sid))
+          for (const m of mapped) {
+            if (knownIds.has(m.id)) continue
+            knownIds.add(m.id)
+            // gateway 落库的 user 行若与刚发文本相同则跳过（本地已显示）
+            if (m.role === 'user' && m.content.trim() === text.trim()) continue
+            messages.value.push(m)
+            if (m.role === 'assistant' && m.timestamp >= sentAtMs - 10000) gotAssistant = true
+          }
+          if (gotAssistant) { scheduleScroll(); break }
+          const relay = await getRelayStateAPI(sid)
+          if (relay && relay.state === 'failed') {
+            messages.value.push({
+              id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
+              content: `❌ 渠道代发失败: ${relay.error || '未知错误'}（gateway 未运行或该渠道未连接）`,
+            })
+            return
+          }
+        }
+        if (!gotAssistant) {
+          messages.value.push({
+            id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
+            content: '⏱ 渠道回复超时（5 分钟）。消息可能仍在处理，稍后重新打开本会话查看。',
+          })
+        }
+      } finally {
+        sessionLoading.value[sid] = false
       }
-      if (!gotAssistant) {
-        messages.value.push({
-          id: uid(), role: 'system', sessionId: sid, timestamp: Date.now(),
-          content: '⏱ 渠道回复超时（5 分钟）。消息可能仍在处理，稍后重新打开本会话查看。',
-        })
+      } finally {
+        _sendingChannelSessions.delete(sid)
       }
-    } finally {
-      sessionLoading.value[sid] = false
-    }
   }
 
   // ── 渠道会话消息轮询：当前打开渠道会话时，定时拉取新消息 ──

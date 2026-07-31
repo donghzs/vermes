@@ -170,11 +170,22 @@ async def send_from_desktop(session_id: str, request: Request):
         # token 仅作 provenance 留痕落库（desktop_token 列）；真正的防伪造
         # 护栏是 auth_middleware 的 401（gateway 跨进程无 _SESSION_TOKEN 可验）。
         token = request.headers.get("X-Vermes-Session-Token", "")
-        # P1-3: 先生成 delivery_id + 内容指纹，落 Outbound Intent Ledger（pending）。
-        # 即便 gateway 此刻未运行/渠道未连接，前端也能凭 delivery_id 轮询到终态，
-        # 不再只能干等超时（治愈“QQ 代发 Failed to fetch 后永远 pending”盲区）。
-        delivery_id = str(uuid.uuid4())
+        # P0.5+P3: 优先用前端传来的 delivery_id（A.4.4 退避重试全程复用同一 ID），
+        # 缺省（旧客户端未带）才由服务端生成，保证向后兼容。
+        delivery_id = (body.get("delivery_id") or "").strip() or str(uuid.uuid4())
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        # P3 exactly-once: 同 delivery_id 已登记 ledger（pending/running/completed/failed
+        # 任意状态）→ 直接返回该次 ack，绝不二次 request_desktop_relay。这是根治
+        # 「响应丢失后前端重试 → 后端真执行两次 relay → 渠道重复回复」的最后一道防线。
+        existing = db.get_outbound_intent(delivery_id)
+        if existing is not None:
+            return {
+                "ok": True,
+                "session_id": sid,
+                "state": existing.get("status", "pending"),
+                "delivery_id": delivery_id,
+                "idempotent": True,
+            }
         db.record_outbound_intent(
             delivery_id=delivery_id,
             session_id=sid,
