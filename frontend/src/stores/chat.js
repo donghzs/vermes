@@ -517,12 +517,18 @@ export const useChatStore = defineStore('chat', () => {
   function waitForBackendOnline(timeoutMs = 12000) {
     return new Promise((resolve) => {
       let conn = null
-      try { conn = useBackendConnectionStore() } catch (_) {}
+      try { conn = useBackendConnectionStore() } catch (_) {
+        // 降级意图：store 不可用时 conn 保持 null → 走下方轮询兜底，
+        // 不假设离线（Web 模式无 window.vermes 属预期路径，非异常）。
+      }
       if (conn && conn.online) return resolve(true)
       const start = Date.now()
       const iv = setInterval(() => {
         let up = false
-        try { up = !!(conn && conn.online) } catch (_) {}
+        try { up = !!(conn && conn.online) } catch (_) {
+          // 降级意图：读取 online 失败则按「仍离线」处理，继续等下一 tick；
+          // 不抛出以免中断整个等待 Promise（conn 为 null 时此分支本就不触发）。
+        }
         if (up) { clearInterval(iv); resolve(true) }
         else if (Date.now() - start > timeoutMs) { clearInterval(iv); resolve(false) }
       }, 500)

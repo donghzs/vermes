@@ -400,7 +400,11 @@ export async function sendFromDesktopAPI(sessionId, text) {
   try {
     const conn = useBackendConnectionStore()
     backendOffline = !conn.online
-  } catch (_) {}
+  } catch (_) {
+    // 降级意图：取不到 store（Web 模式无 window.vermes / 插件未挂载）时，
+    // 不假设离线，继续走下方真实请求；由 sendFromDesktopAPI 自身的退避重试吸收失败，
+    // 而非在此短路返回 pending —— 否则会误吞「store 不可用但后端其实正常」的请求。
+  }
 
   if (backendOffline) {
     return { ok: false, status: 0, pending: true, detail: 'backend offline' }
