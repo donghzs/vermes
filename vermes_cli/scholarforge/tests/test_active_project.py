@@ -42,14 +42,31 @@ class TestActiveProjectResolve(unittest.TestCase):
         ap.set_active_project(7)
         self.assertEqual(ap.resolve_project_id({}), 7)
 
-    def test_no_active_returns_zero(self):
+    def test_no_active_auto_creates_default_project(self):
         ap.set_active_project(0)
-        self.assertEqual(ap.resolve_project_id({}), 0)
+        with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
+             patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 7}) as m_create:
+            pid = ap.resolve_project_id({})
+        self.assertEqual(pid, 7)
+        self.assertEqual(ap.get_active_project(), 7)  # 兜底项目被设为激活
+        m_create.assert_called_once()
 
-    def test_invalid_explicit_clamped_to_zero(self):
-        self.assertEqual(ap.resolve_project_id({"project_id": "abc"}), 0)
-        self.assertEqual(ap.resolve_project_id({"project_id": 0}), 0)
-        self.assertEqual(ap.resolve_project_id({"project_id": -3}), 0)
+    def test_no_active_picks_most_recent_existing(self):
+        ap.set_active_project(0)
+        with patch("vermes_cli.scholarforge.active_project.list_projects",
+                   return_value=[{"id": 12, "title": "Recent"}, {"id": 3, "title": "Old"}]), \
+             patch("vermes_cli.scholarforge.active_project.create_project") as m_create:
+            pid = ap.resolve_project_id({})
+        self.assertEqual(pid, 12)  # 取最近（updated_at DESC 首位）
+        m_create.assert_not_called()  # 已有项目则不新建
+
+    def test_invalid_explicit_clamped_then_auto_default(self):
+        # 非法显式值夹到 0，随后 A1 兜底默认项目（不返回裸 0）
+        with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
+             patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 9}):
+            self.assertEqual(ap.resolve_project_id({"project_id": "abc"}), 9)
+            self.assertEqual(ap.resolve_project_id({"project_id": 0}), 9)
+            self.assertEqual(ap.resolve_project_id({"project_id": -3}), 9)
 
     def test_session_isolation(self):
         ap.set_active_project(0)
@@ -110,25 +127,62 @@ class TestSetActiveProjectHandler(unittest.TestCase):
 
 
 # ───────────────────────── A 缺失即 ❌（写回类工具不静默成功） ─────────────────────────
-class TestWriteMissingProjectId(unittest.TestCase):
-    """write 缺 project_id 且无激活项目：必须明确 ❌，但内容仍生成（不静默丢弃）。"""
+class TestWriteMissingProjectIdAutoDefault(unittest.TestCase):
+    """A1：write 缺 project_id 且无激活项目 → 兜底默认项目，内容落库、无 ❌（不再静默丢内容）。"""
 
     def setUp(self):
         ap.set_active_project(0)
 
-    def test_missing_pid_emits_warning_not_silent(self):
-        with patch("vermes_cli.scholarforge.tools._call_llm", return_value="# 引言\n这是正文内容。"):
+    def test_auto_default_saves_without_warning(self):
+        fake_ctx = "【项目】上下文"
+        with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
+             patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 7}), \
+             patch("vermes_cli.scholarforge.tools._call_llm", return_value="# 引言\n正文段落。"), \
+             patch("vermes_cli.scholarforge.project_context.auto_snapshot"), \
+             patch("vermes_cli.scholarforge.project_context.format_project_context_prompt", return_value=fake_ctx), \
+             patch("vermes_cli.scholarforge.project_context.load_project_context", return_value={"title": "T", "paper_type": "本科论文"}), \
+             patch("vermes_cli.scholarforge.project_context.get_style_prompt", return_value=""), \
+             patch("vermes_cli.scholarforge.project_context.save_section") as m_save, \
+             patch("vermes_cli.scholarforge.quality_gate.run_quality_gate", return_value=("# 引言\n正文段落。", "", False)):
             result = asyncio.run(_handle_scholarforge_write({"topic": "t", "section_type": "abstract"}))
-        self.assertTrue(result.lstrip().startswith("❌"), msg=f"期望 ❌ 前缀，实际：{result[:80]!r}")
-        self.assertIn("未关联 project_id", result)
-        # 内容仍生成（供用户知道工具跑通了，只是没落库）
+        self.assertFalse(result.lstrip().startswith("❌"), msg=f"默认项目应落库不 ❌，实际：{result[:80]!r}")
         self.assertIn("正文", result)
+        m_save.assert_called_once()
+        self.assertEqual(m_save.call_args[0][0], 7)
 
-    def test_missing_pid_via_registry_dispatch(self):
-        # 经真实入口（_with_usage 包装）调用，验证 ❌ 前缀透传（埋点据此记 ok=0）
-        with patch("vermes_cli.scholarforge.tools._call_llm", return_value="# 引言\n正文。"):
+    def test_auto_default_via_registry_dispatch(self):
+        with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
+             patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 7}), \
+             patch("vermes_cli.scholarforge.tools._call_llm", return_value="# 引言\n正文。"):
             result = _sf_registry.dispatch("scholarforge_write", {"topic": "t", "section_type": "abstract"})
-        self.assertTrue(result.lstrip().startswith("❌"), msg=f"registry 入口应透传 ❌，实际：{result[:80]!r}")
+        self.assertFalse(result.lstrip().startswith("❌"), msg=f"registry 入口应透传成功结果，实际：{result[:80]!r}")
+
+
+class TestEnsureDefaultProject(unittest.TestCase):
+    """_ensure_default_project 兜底逻辑单测。"""
+
+    def setUp(self):
+        ap.set_active_project(0)
+
+    def test_empty_db_creates_default(self):
+        with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
+             patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 5}) as m_create:
+            pid = ap._ensure_default_project()
+        self.assertEqual(pid, 5)
+        self.assertEqual(ap.get_active_project(), 5)
+        m_create.assert_called_once_with("Vermes 默认项目")
+
+    def test_nonempty_db_picks_recent_no_create(self):
+        with patch("vermes_cli.scholarforge.active_project.list_projects",
+                   return_value=[{"id": 12, "title": "R"}, {"id": 3, "title": "O"}]), \
+             patch("vermes_cli.scholarforge.active_project.create_project") as m_create:
+            pid = ap._ensure_default_project()
+        self.assertEqual(pid, 12)
+        m_create.assert_not_called()
+
+    def test_db_error_returns_zero(self):
+        with patch("vermes_cli.scholarforge.active_project.list_projects", side_effect=RuntimeError("boom")):
+            self.assertEqual(ap._ensure_default_project(), 0)
 
 
 class TestWriteFallsBackToActive(unittest.TestCase):
@@ -155,12 +209,12 @@ class TestWriteFallsBackToActive(unittest.TestCase):
 
 
 class TestReplaceCitationsMissingProjectId(unittest.TestCase):
-    """replace_citations 缺 project_id 且无激活：仍生成替换结果但不静默成功（❌ 前缀）。"""
+    """A1：replace_citations 缺 project_id 且无激活 → 兜底默认项目，引用替换后仍写回（无 ❌）。"""
 
     def setUp(self):
         ap.set_active_project(0)
 
-    def test_missing_pid_emits_warning_and_still_replaces(self):
+    def test_auto_default_no_warning_and_still_replaces(self):
         draft = "Memory consolidation [1] helps learning."
         fake_papers = [MagicMockPaper("Initial Study Alpha", abstract="x")]
 
@@ -178,15 +232,18 @@ class TestReplaceCitationsMissingProjectId(unittest.TestCase):
         fake_verify = unittest.mock.MagicMock(score=10, accurate=True)
 
         def run():
-            with patch("vermes_cli.scholarforge.search.search_papers", fake_search_papers), \
+            with patch("vermes_cli.scholarforge.active_project.list_projects", return_value=[]), \
+                 patch("vermes_cli.scholarforge.active_project.create_project", return_value={"id": 7}), \
+                 patch("vermes_cli.scholarforge.search.search_papers", fake_search_papers), \
                  patch("vermes_cli.scholarforge.tools._call_llm", side_effect=fake_llm), \
-                 patch("vermes_cli.scholarforge.citation_verifier._fuzzy_verify", return_value=fake_verify):
+                 patch("vermes_cli.scholarforge.citation_verifier._fuzzy_verify", return_value=fake_verify), \
+                 patch("vermes_cli.scholarforge.project_context.auto_snapshot"), \
+                 patch("vermes_cli.scholarforge.database.add_literature"), \
+                 patch("vermes_cli.scholarforge.database.list_literature", return_value=[]):
                 return asyncio.run(_handle_scholarforge_replace_citations({"draft": draft}))
 
         report = run()
-        self.assertTrue(report.lstrip().startswith("❌"), msg=f"期望 ❌ 前缀，实际：{report[:80]!r}")
-        self.assertIn("未关联 project_id", report)
-        # 替换仍发生（内容未静默丢弃）
+        self.assertFalse(report.lstrip().startswith("❌"), msg=f"默认项目应写回不 ❌，实际：{report[:80]!r}")
         self.assertIn("处理后正文", report)
 
 

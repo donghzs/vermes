@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import ApprovalDialog from './components/ApprovalDialog.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import ToolSkillDrawer from './components/ToolSkillDrawer.vue'
 import { useChatStore } from './stores/chat'
 import { useBackendConnectionStore } from './stores/backendConnection'
 
@@ -76,6 +77,7 @@ onMounted(async () => {
       <ToastContainer />
       <ApprovalDialog />
       <ConfirmDialog />
+      <ToolSkillDrawer />
     </ErrorBoundary>
   </div>
 </template>

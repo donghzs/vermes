@@ -8,14 +8,14 @@ const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
-import MCPManager from './MCPManager.vue'
-import SkillManager from './SkillManager.vue'
 import ExpertCatalog from './ExpertCatalog.vue'
+import { useRightPanel } from '../composables/useRightPanel'
 // 生态模块前端动态加载已弃用，改为 Agent 工具集模式
 
 const chat = useChatStore()
 const router = useRouter()
 const route = useRoute()
+const { openPanel } = useRightPanel()
 
 function goSettings() { router.push('/settings') }
 function goStudio() { router.push('/studio') }
@@ -243,8 +243,6 @@ async function handleDelete(id) {
 const showTemplateMenu = ref(false)
 const showCustomPrompt = ref(false)
 const showKnowledgeBase = ref(false)
-const showMCPManager = ref(false)
-const showSkillManager = ref(false)
 const showExpert = ref(false)
 const customPromptInput = ref('')
 const customPromptRef = ref(null)
@@ -521,13 +519,17 @@ async function handleImportFile(e) {
           <span class="text-base">📚</span>
           <span class="sidebar-tooltip group-hover:opacity-100">知识库</span>
         </button>
-        <button @click="showMCPManager = !showMCPManager" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showMCPManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="MCP 服务">
+        <button @click="openPanel('mcp')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/mcp' ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="MCP 服务（右侧面板）">
           <span class="text-base">🔌</span>
           <span class="sidebar-tooltip group-hover:opacity-100">MCP 服务</span>
         </button>
-        <button @click="showSkillManager = !showSkillManager" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showSkillManager ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="技能管理">
+        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="技能管理（右侧面板）">
           <span class="text-base">🧩</span>
           <span class="sidebar-tooltip group-hover:opacity-100">技能管理</span>
+        </button>
+        <button @click="openPanel('tools')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="工具管理（右侧面板）">
+          <span class="text-base">🛠️</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">工具</span>
         </button>
         <button @click="showExpert = !showExpert" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showExpert ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="专家">
           <span class="text-base">🎓</span>
@@ -542,14 +544,7 @@ async function handleImportFile(e) {
       <div v-if="showKnowledgeBase" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
         <KnowledgeBase />
       </div>
-      <!-- MCP 管理面板 -->
-      <div v-if="showMCPManager" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
-        <MCPManager />
-      </div>
-      <!-- 技能管理面板 -->
-      <div v-if="showSkillManager" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
-        <SkillManager />
-      </div>
+      <!-- MCP / 技能 / 工具 管理已统一迁至右侧大面板 ToolSkillDrawer（点击底部按钮展开） -->
       <!-- 专家面板 -->
       <div v-if="showExpert" class="shrink-0 max-h-80 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
         <ExpertCatalog />

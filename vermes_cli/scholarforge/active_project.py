@@ -14,6 +14,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+from vermes_cli.scholarforge.database import list_projects, create_project
+
+# 无激活项目时的兜底默认项目名（保证写回类工具永远有落库目标）
+_DEFAULT_PROJECT_TITLE = "Vermes 默认项目"
+
 # 进程全局：当前激活的论文项目 id（由前端激活或工具设置）
 _active_pid: int = 0
 
@@ -48,10 +53,33 @@ def get_active_project(session_id: Optional[str] = None) -> int:
     return _active_pid
 
 
+def _ensure_default_project() -> int:
+    """无激活项目时的兜底：选最近项目或自动建「默认项目」，保证写回永远落库。
+
+    返回兜底项目 id；DB 异常时返回 0（由调用方降级）。
+    """
+    try:
+        projects = list_projects()
+    except Exception:
+        return 0
+    if projects:
+        # list_projects 按 updated_at DESC，取最近一个作为默认落库目标
+        pid = int(projects[0]["id"])
+    else:
+        try:
+            new = create_project(_DEFAULT_PROJECT_TITLE)
+            pid = int(new["id"])
+        except Exception:
+            return 0
+    set_active_project(pid)
+    return pid
+
+
 def resolve_project_id(args: dict, session_id: Optional[str] = None) -> int:
     """解析写回类工具所需的 project_id。
 
-    优先级：显式 args.project_id（>0）> 激活项目（全局/会话）> 0（缺失）。
+    优先级：显式 args.project_id（>0）> 激活项目（全局/会话）> 兜底默认项目。
+    A1：末尾兜底自动选/建默认项目，写回类工具不再因「双无」而静默丢内容。
     """
     raw = (args or {}).get("project_id", 0)
     try:
@@ -60,4 +88,7 @@ def resolve_project_id(args: dict, session_id: Optional[str] = None) -> int:
         pid = 0
     if pid > 0:
         return pid
-    return get_active_project(session_id)
+    active = get_active_project(session_id)
+    if active > 0:
+        return active
+    return _ensure_default_project()
