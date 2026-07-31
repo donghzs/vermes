@@ -4135,15 +4135,23 @@ class SessionDB:
             return None
 
     def list_pending_handoffs(self) -> List[Dict[str, Any]]:
-        """Return all sessions in handoff_state='pending', oldest first.
+        """Return sessions needing handoff/relay processing, oldest first.
 
-        Used by the gateway's handoff watcher.
+        Includes:
+        - ``pending`` rows (normal queue)
+        - ``running`` rows whose relay_expire_at has passed (stale — gateway
+          crashed/restarted mid-relay). The watcher will fail them and clear
+          the relay payload so subsequent desktop relay requests aren't 409'd.
         """
         try:
+            now = time.time()
             cur = self._conn.execute(
                 "SELECT * FROM sessions "
                 "WHERE handoff_state = 'pending' "
-                "ORDER BY started_at ASC"
+                "   OR (handoff_state = 'running' AND relay_source = 'desktop' "
+                "       AND relay_expire_at IS NOT NULL AND relay_expire_at < ?) "
+                "ORDER BY started_at ASC",
+                (now,),
             )
             return [dict(r) for r in cur.fetchall()]
         except Exception:
@@ -4199,7 +4207,14 @@ class SessionDB:
         state (one in-flight relay per session at a time). ``delivery_id`` (if
         given) is persisted on the session so the gateway watcher can advance the
         matching outbound_intent ledger row.
+
+        Stale ``running`` rows (relay_expire_at < now) are force-overridden —
+        this handles the case where the gateway crashed/restarted mid-relay
+        and the row is stuck in ``running`` forever (would otherwise 409 all
+        subsequent relay requests for that session).
         """
+        now = time.time()
+        expire_at = now + ttl
         def _do(conn):
             self._ensure_session_origin_columns(conn)
             cur = conn.execute(
@@ -4212,9 +4227,12 @@ class SessionDB:
                 "    desktop_token = ?, "
                 "    relay_expire_at = ?, "
                 "    relay_delivery_id = ? "
-                "WHERE id = ? AND (handoff_state IS NULL "
-                "                  OR handoff_state IN ('completed', 'failed'))",
-                (text, token, time.time() + ttl, delivery_id, session_id),
+                "WHERE id = ? AND ("
+                "  handoff_state IS NULL "
+                "  OR handoff_state IN ('completed', 'failed') "
+                "  OR (handoff_state = 'running' AND (relay_expire_at IS NULL OR relay_expire_at < ?))"
+                ")",
+                (text, token, expire_at, delivery_id, session_id, now),
             )
             return cur.rowcount > 0
         return self._execute_write(_do)

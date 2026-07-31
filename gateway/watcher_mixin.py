@@ -88,7 +88,20 @@ class WatcherMixin:
         if is_desktop_relay:
             expire_at = row.get("relay_expire_at") or 0
             if expire_at and time.time() > expire_at:
-                if self._session_db.claim_handoff(session_id):
+                state = row.get("handoff_state")
+                if state == "running":
+                    # running + expired = gateway crash mid-relay
+                    # 直接 fail，不用 claim_handoff（pending→running 检查会失败）
+                    self._session_db.fail_handoff(
+                        session_id, "stale running relay (gateway restart?)"
+                    )
+                    if delivery_id:
+                        self._session_db.update_outbound_intent(
+                            delivery_id, status="failed",
+                            error="stale running relay (gateway restart?)",
+                        )
+                    self._session_db.clear_desktop_relay(session_id)
+                elif self._session_db.claim_handoff(session_id):
                     self._session_db.fail_handoff(
                         session_id, "relay expired before gateway pickup"
                     )
@@ -99,6 +112,19 @@ class WatcherMixin:
                         )
                     self._session_db.clear_desktop_relay(session_id)
                 return
+        # 处理缓存的 running 行（gateway crash/restart 后遗留）
+        if is_desktop_relay and row.get("handoff_state") == "running":
+            # running 且过期 = 僵尸，直接标 failed + clear
+            self._session_db.fail_handoff(
+                session_id, "stale running relay (gateway restart?)"
+            )
+            if delivery_id:
+                self._session_db.update_outbound_intent(
+                    delivery_id, status="failed",
+                    error="stale running relay (gateway restart?)",
+                )
+            self._session_db.clear_desktop_relay(session_id)
+            return
         if not self._session_db.claim_handoff(session_id):
             # Another tick or another gateway already claimed it.
             return
