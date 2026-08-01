@@ -183,3 +183,91 @@ class TestCleanupMergedSkillMemories:
         conn = sqlite3.connect(str(tmp_db))
         assert conn.execute("SELECT COUNT(*) FROM memories WHERE id=6").fetchone()[0] == 1
         conn.close()
+
+
+class TestG1InitDbCleanup:
+    """G1 fix: _init_db triggers merge cleanup on first run."""
+
+    def test_init_db_deletes_merged_skill_memories(self, tmp_path, monkeypatch):
+        """_init_db should delete skill memories flagged resolved-merge."""
+        from agent.memory_fabric import _init_db
+        db_path = tmp_path / "memory_index.db"
+        monkeypatch.setattr("agent.memory_fabric._get_index_db", lambda: db_path)
+        _init_db(db_path)
+
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        # Insert skill memory + merge flag
+        conn.execute(
+            "INSERT INTO memories(source, layer, type, pointer, fts_content, updated_at, lifecycle_tag) "
+            "VALUES ('skill', 'procedural', 'skill_text', 'skill#g1', 'test', '2026-07-01', 'ephemeral')"
+        )
+        mem_id = conn.execute("SELECT id FROM memories WHERE pointer='skill#g1'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO memory_flags(memory_id, flag_type, confidence, evidence, status, resolution, created_at) "
+            "VALUES (?, 'duplicate', 0.95, 'test', 'resolved', 'merge', '2026-07-01T00:00:00')",
+            (mem_id,),
+        )
+        # Clear marker to force cleanup re-run
+        conn.execute("DELETE FROM schema_meta WHERE key='merge_cleanup_done'")
+        conn.commit()
+        conn.close()
+
+        _init_db(db_path)  # re-run triggers cleanup
+
+        conn2 = sqlite3.connect(str(db_path))
+        count = conn2.execute("SELECT COUNT(*) FROM memories WHERE pointer='skill#g1'").fetchone()[0]
+        marker = conn2.execute("SELECT value FROM schema_meta WHERE key='merge_cleanup_done'").fetchone()
+        conn2.close()
+
+        assert count == 0  # deleted
+        assert marker is not None  # marker set
+
+    def test_init_db_cleanup_idempotent(self, tmp_path, monkeypatch):
+        """Second _init_db should not re-run cleanup (marker set)."""
+        from agent.memory_fabric import _init_db
+        db_path = tmp_path / "memory_index.db"
+        monkeypatch.setattr("agent.memory_fabric._get_index_db", lambda: db_path)
+        _init_db(db_path)
+
+        import sqlite3
+        # First cleanup run: insert skill + flag, clear marker, re-init
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "INSERT INTO memories(source, layer, type, pointer, fts_content, updated_at, lifecycle_tag) "
+            "VALUES ('skill', 'procedural', 'skill_text', 'skill#g1a', 'test1', '2026-07-01', 'ephemeral')"
+        )
+        mem_id = conn.execute("SELECT id FROM memories WHERE pointer='skill#g1a'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO memory_flags(memory_id, flag_type, confidence, evidence, status, resolution, created_at) "
+            "VALUES (?, 'duplicate', 0.95, 'test', 'resolved', 'merge', '2026-07-01T00:00:00')",
+            (mem_id,),
+        )
+        conn.execute("DELETE FROM schema_meta WHERE key='merge_cleanup_done'")
+        conn.commit()
+        conn.close()
+
+        _init_db(db_path)  # cleanup runs
+
+        # Insert another skill + flag, DON'T clear marker
+        conn2 = sqlite3.connect(str(db_path))
+        conn2.execute(
+            "INSERT INTO memories(source, layer, type, pointer, fts_content, updated_at, lifecycle_tag) "
+            "VALUES ('skill', 'procedural', 'skill_text', 'skill#g1b', 'test2', '2026-07-01', 'ephemeral')"
+        )
+        mem_id2 = conn2.execute("SELECT id FROM memories WHERE pointer='skill#g1b'").fetchone()[0]
+        conn2.execute(
+            "INSERT INTO memory_flags(memory_id, flag_type, confidence, evidence, status, resolution, created_at) "
+            "VALUES (?, 'duplicate', 0.95, 'test', 'resolved', 'merge', '2026-07-01T00:00:00')",
+            (mem_id2,),
+        )
+        conn2.commit()
+        conn2.close()
+
+        _init_db(db_path)  # marker exists, cleanup skipped
+
+        conn3 = sqlite3.connect(str(db_path))
+        count = conn3.execute("SELECT COUNT(*) FROM memories WHERE pointer='skill#g1b'").fetchone()[0]
+        conn3.close()
+
+        assert count == 1  # not deleted

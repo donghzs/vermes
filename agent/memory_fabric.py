@@ -215,6 +215,46 @@ def _init_db(db_path: Path) -> None:
                 "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('skill_demote_done', '1')"
             )
         _SKILL_DEMOTE_DONE.add(str(db_path))  # 残留兼容
+
+        # ── G1 fix: merge 存量清扫（幂等，一次性）──
+        # resolve_flag('merge') 前向路径已通（DELETE skill memory），
+        # 但 87 条历史 resolved-merge + 51 条 open-duplicate 指向的 skill
+        # 记忆仍在表中。此处一次性清扫，schema_meta 标记防重跑。
+        merge_done = c.execute(
+            "SELECT value FROM schema_meta WHERE key='merge_cleanup_done'"
+        ).fetchone()
+        if not merge_done:
+            try:
+                # 收集待清理的 memory_id
+                ids_to_delete = set()
+                for row in c.execute(
+                    "SELECT memory_id FROM memory_flags "
+                    "WHERE status='resolved' AND resolution='merge' AND memory_id IS NOT NULL"
+                ).fetchall():
+                    ids_to_delete.add(row[0])
+                for row in c.execute(
+                    "SELECT memory_id FROM memory_flags "
+                    "WHERE status='open' AND flag_type='duplicate' AND confidence >= 0.7 "
+                    "AND memory_id IS NOT NULL"
+                ).fetchall():
+                    ids_to_delete.add(row[0])
+                if ids_to_delete:
+                    placeholders = ",".join("?" * len(ids_to_delete))
+                    deleted = c.execute(
+                        f"DELETE FROM memories WHERE id IN ({placeholders}) AND source = 'skill'",
+                        list(ids_to_delete),
+                    ).rowcount
+                    if deleted > 0:
+                        logger.info(
+                            "G1 merge cleanup: deleted %d skill duplicates "
+                            "(from %d flagged ids)",
+                            deleted, len(ids_to_delete),
+                        )
+                c.execute(
+                    "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('merge_cleanup_done', '1')"
+                )
+            except Exception:
+                logger.debug("G1 merge cleanup skipped", exc_info=True)
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_ptr "
             "ON memories(source, pointer, scope)"

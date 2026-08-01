@@ -864,7 +864,7 @@ def auto_resolve_eligible_flags() -> int:
 
 # ── 存量清扫：清理已合并/重复的 skill 记忆 ──────────────────────────────
 
-def cleanup_merged_skill_memories() -> int:
+def cleanup_merged_skill_memories(db_path: str | None = None) -> int:
     """一次性清扫：删除已 resolved-merge 和 open-duplicate 指向的 skill 记忆。
 
     覆盖两类存量：
@@ -874,11 +874,15 @@ def cleanup_merged_skill_memories() -> int:
     只删 source='skill' 的行（安全护栏：非 skill 记忆不动）。
     幂等：重复调用零效果（已删的行不会再匹配）。
 
+    Args:
+        db_path: 可选，记忆库路径。None 时自动取 _get_index_db()。
+
     Returns: 删除的 memory 行数。
     """
     from agent.memory_fabric import _get_index_db as _get_mem_db
 
-    db_path = _get_mem_db()
+    if db_path is None:
+        db_path = _get_mem_db()
     if isinstance(db_path, Path):
         db_path = str(db_path)
 
