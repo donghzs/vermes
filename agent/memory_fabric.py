@@ -165,8 +165,18 @@ def _init_db(db_path: Path) -> None:
             )
             """
         )
-        # ── Route E P0: 幂等迁移——存量库加 lifecycle_tag 列 ──
+        # ── 列检查（用于后续幂等迁移）──
         cols = [r[1] for r in c.execute("PRAGMA table_info(memories)").fetchall()]
+
+        # ── event_time 列（时序加权用）──
+        if "event_time" not in cols:
+            c.execute("ALTER TABLE memories ADD COLUMN event_time TEXT")
+        # 存量回退：每次 init 都跑（幂等，event_time IS NULL 就填 updated_at）
+        c.execute(
+            "UPDATE memories SET event_time = updated_at WHERE event_time IS NULL"
+        )
+
+        # ── Route E P0: 幂等迁移——存量库加 lifecycle_tag 列 ──
         if "lifecycle_tag" not in cols:
             c.execute(
                 "ALTER TABLE memories ADD COLUMN lifecycle_tag TEXT NOT NULL DEFAULT 'reference'"
@@ -300,8 +310,8 @@ def index_note(target: str, content: str, scope: str = "") -> None:
             )
             c.execute(
                 "INSERT INTO memories(source, layer, type, scope, pointer, "
-                "fts_content, updated_at, lifecycle_tag) VALUES(?,?,?,?,?,?,?,?)",
-                ("note", L1_NOTE, "note_text", scope, pointer, content, _now(), lifecycle_tag),
+                "fts_content, updated_at, lifecycle_tag, event_time) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("note", L1_NOTE, "note_text", scope, pointer, content, _now(), lifecycle_tag, _now()),
             )
             conn.commit()
         finally:
@@ -465,7 +475,7 @@ def recall(
     fts = " OR ".join(f'"{t}"' for t in fts_terms[:16])
     sql = (
         "SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer, "
-        "m.fts_content, m.access_count, m.lifecycle_tag "
+        "m.fts_content, m.access_count, m.lifecycle_tag, m.event_time "
         "FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid "
         "WHERE memories_fts MATCH ?"
     )
@@ -520,7 +530,7 @@ def recall(
                     _pat = [f"%{t}%" for t in _lk_terms]
                     _lk_sql = (
                         "SELECT m.id, m.source, m.layer, m.type, m.scope, "
-                        "m.pointer, m.fts_content, m.access_count, m.lifecycle_tag, "
+                        "m.pointer, m.fts_content, m.access_count, m.lifecycle_tag, m.event_time, "
                         f"({_score}) AS _mscore FROM memories m "
                         f"WHERE ({_score}) > 0"
                     )
@@ -552,7 +562,7 @@ def recall(
                 if tag_filter and not rows:
                     _fb_sql = (
                         "SELECT m.id, m.source, m.layer, m.type, m.scope, "
-                        "m.pointer, m.fts_content, m.access_count, m.lifecycle_tag "
+                        "m.pointer, m.fts_content, m.access_count, m.lifecycle_tag, m.event_time "
                         "FROM memories m WHERE m.lifecycle_tag IN (%s)"
                         % placeholders
                     )
@@ -600,6 +610,7 @@ def recall(
                         "content": r[6],
                         "access_count": r[7] + (1 if bumped else 0),
                         "lifecycle_tag": r[8],
+                        "event_time": r[9] if len(r) > 9 else None,
                     }
                     for r in rows
                 ]
@@ -826,8 +837,8 @@ def record(memory: Dict[str, Any]) -> None:
             )
             c.execute(
                 "INSERT INTO memories(source, layer, type, scope, pointer, "
-                "fts_content, updated_at, lifecycle_tag) VALUES(?,?,?,?,?,?,?,?)",
-                (source, layer, mtype, scope, pointer, fts_content, _now(), lifecycle_tag),
+                "fts_content, updated_at, lifecycle_tag, event_time) VALUES(?,?,?,?,?,?,?,?,?)",
+                (source, layer, mtype, scope, pointer, fts_content, _now(), lifecycle_tag, _now()),
             )
             conn.commit()
         finally:
@@ -909,7 +920,50 @@ def _normalize_hit(hit: Dict[str, Any], default_layer: Optional[str]) -> Dict[st
         "content": content,
         "score": float(hit.get("score", 0.0) or 0.0),
         "lifecycle_tag": hit.get("lifecycle_tag", _DEFAULT_LIFECYCLE_TAG),
+        "event_time": hit.get("event_time") or hit.get("updated_at"),
     }
+
+
+# ── Recency 加权常量（时序维度，避免字面量散落）──
+_RECENCY_7D = 1.5      # 7天内：最新鲜，加权提升
+_RECENCY_30D = 1.0    # 30天内：正常权重
+_RECENCY_90D = 0.7    # 90天内：衰减
+_RECENCY_OLD = 0.5    # 更旧：强衰减
+
+
+def _apply_recency_weight(hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """对召回结果按 event_time 应用 recency 乘数。
+
+    event_time IS NULL → 回退 updated_at；两者都无 → 视为最旧（×0.5）。
+    乘数附加到 score 字段，不改变层级优先级排序。
+    fail-open：解析失败默认 1.0（不加权）。
+    """
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    for h in hits:
+        try:
+            ts_str = h.get("event_time") or h.get("updated_at") or ""
+            if not ts_str:
+                h["score"] = float(h.get("score", 0)) * _RECENCY_OLD
+                continue
+            # 解析 ISO 格式（兼容带/不带时区）
+            dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = now - dt
+            if age <= timedelta(days=7):
+                weight = _RECENCY_7D
+            elif age <= timedelta(days=30):
+                weight = _RECENCY_30D
+            elif age <= timedelta(days=90):
+                weight = _RECENCY_90D
+            else:
+                weight = _RECENCY_OLD
+            h["score"] = float(h.get("score", 0)) * weight
+        except Exception:
+            # 解析失败：不加权（默认 1.0）
+            pass
+    return hits
 
 
 def recall_hierarchical(
@@ -996,6 +1050,12 @@ def recall_hierarchical(
             _LAYER_PRIORITY.get(h["layer"], 9),
         )
     )
+
+    # ── Recency 加权（event_time 列）──
+    # 7天内×1.5 / 30天内×1.0 / 90天内×0.7 / 更旧×0.5
+    # event_time IS NULL → 用 updated_at 回退；两者都无 → 0.5（视为最旧）
+    # 乘数附加到 score 上，不改变层级优先级
+    results = _apply_recency_weight(results)
 
     # De-duplicate. The unified pointer format is ``{source}#{id}`` (A2), so
     # key primarily on it. As a safety net against legacy/heterogeneous
@@ -1090,8 +1150,8 @@ def record_usage(kind: str, item_id: str, title: str = "", scope: str = "") -> N
             c = conn.cursor()
             c.execute(
                 "INSERT INTO memories(source, layer, type, scope, pointer, "
-                "fts_content, updated_at, lifecycle_tag) VALUES(?,?,?,?,?,?,?,?)",
-                ("usage", L1_NOTE, f"usage_{kind}", scope, pointer, content, _now(), "ephemeral"),
+                "fts_content, updated_at, lifecycle_tag, event_time) VALUES(?,?,?,?,?,?,?,?,?)",
+                ("usage", L1_NOTE, f"usage_{kind}", scope, pointer, content, _now(), "ephemeral", _now()),
             )
             conn.commit()
         finally:
