@@ -31,6 +31,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("vermes.skill_extractor")
 
+# 涌现式技能候选门槛：success_rate 是系统自身从 outcomes 算出的质量信号，
+# 用作"已确立"的质量下限（类比安全护栏，非跨模块硬编码映射）。
+# tool_diversity 等人工启发式已移除（B1 涌现重构）。
+SKILL_SUCCESS_RATE_FLOOR: float = 0.8
+
 
 # ── Data Classes ─────────────────────────────────────────────────────────────
 
@@ -148,41 +153,24 @@ class SkillExtractor:
     def _find_skill_candidates(self, conn: sqlite3.Connection) -> List[Dict[str, Any]]:
         """Find clusters that qualify for skill extraction.
 
-        Qualification (all relative, no presets):
-          1. Stable lifecycle
-          2. Event count ≥ 15 (enough repetitions to form a pattern)
-          3. Tool diversity ≤ median (repetitive, not exploratory)
+        涌现式门槛（无硬编码跨模块映射、无 tool_diversity 人工启发式）：
+        - lifecycle_stage='stable'：模式已由系统自身判定为确立
+        - event_count >= 15：重复足够多次形成模式
+        - success_rate >= SKILL_SUCCESS_RATE_FLOOR：成功率高（系统已涌现的质量信号）
+        三者皆来自 clusters 表自身已填充的涌现字段，不手工 JOIN 派生。
         """
         try:
             cursor = conn.execute(
-                """SELECT id, name, event_count, tool_names, lifecycle_stage,
-                          success_count, feature_signature
+                """SELECT id, name, event_count, success_count, success_rate,
+                          feature_signature, lifecycle_stage
                    FROM clusters
-                   WHERE lifecycle_stage = 'stable' AND event_count >= 15
-                   ORDER BY event_count DESC"""
+                   WHERE lifecycle_stage = 'stable'
+                     AND event_count >= 15
+                     AND success_rate >= ?
+                   ORDER BY event_count DESC""",
+                (SKILL_SUCCESS_RATE_FLOOR,),
             )
-            clusters = [dict(r) for r in cursor.fetchall()]
-
-            if len(clusters) < 1:
-                return []
-
-            # Compute tool diversity
-            for c in clusters:
-                tools = set((c.get("tool_names") or "").split("|"))
-                tools.discard("")
-                c["_tool_diversity"] = len(tools)
-
-            # Median diversity
-            diversities = sorted(c["_tool_diversity"] for c in clusters)
-            median = diversities[len(diversities) // 2] if diversities else 0
-
-            # Candidates: low diversity (repetitive) + high count
-            candidates = [
-                c for c in clusters
-                if c["_tool_diversity"] <= max(2, median)
-            ]
-
-            return candidates
+            return [dict(r) for r in cursor.fetchall()]
         except Exception:
             return []
 

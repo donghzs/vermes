@@ -215,10 +215,13 @@ def export_graph_to_file(db_path: str, file_path: str, source: str = "") -> bool
 
 
 def _export_clusters(conn: sqlite3.Connection) -> List[Dict]:
-    """Export stable/declining clusters."""
+    """Export stable/declining clusters.
+
+    注：clusters 表无 tool_names 列（B1 死列已移除），导出不含该字段。
+    """
     try:
         cursor = conn.execute(
-            """SELECT id, name, tool_names, event_count, success_count,
+            """SELECT id, name, event_count, success_count,
                       lifecycle_stage, feature_signature, first_seen, last_active
                FROM clusters
                WHERE lifecycle_stage IN ('stable', 'declining') AND is_active = 1"""
@@ -399,12 +402,13 @@ def _cluster_exists(conn: sqlite3.Connection, signature: str) -> bool:
 
 
 def _insert_cluster(conn: sqlite3.Connection, cluster: Dict) -> None:
+    # clusters 表无 tool_names 列（B1 死列已移除），不写入该字段
     conn.execute(
         """INSERT INTO clusters
-           (name, tool_names, event_count, success_count, lifecycle_stage,
+           (name, event_count, success_count, lifecycle_stage,
             feature_signature, first_seen, last_active, is_active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)""",
-        (cluster.get("name", ""), cluster.get("tool_names", ""),
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+        (cluster.get("name", ""),
          cluster.get("event_count", 0), cluster.get("success_count", 0),
          cluster.get("lifecycle_stage", "stable"),
          cluster.get("feature_signature", ""),

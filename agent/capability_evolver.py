@@ -29,6 +29,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("vermes.capability_evolver")
 
+# 涌现式"已确立"质量下限（与 skill_extractor 共用同一涌现信号定义）。
+# success_rate 由系统自身从 outcomes 算出，用作质量护栏，非跨模块硬编码映射。
+SKILL_SUCCESS_RATE_FLOOR: float = 0.8
+
 
 @dataclass
 class EmergenceSignal:
@@ -198,13 +202,13 @@ def _check_pattern_repetition(
 ) -> List[EmergenceSignal]:
     """Check if cluster patterns are repetitive enough for skill extraction.
 
-    A "skill" emerges when a cluster has:
-      - High event count (lots of repetitions)
-      - Low tool diversity (same few tools used repeatedly)
-      - Stable lifecycle stage (pattern is established)
-
-    This is NOT a hardcoded threshold — it compares the cluster's
-    tool diversity to the overall median.
+    A "skill" emerges when a cluster shows strong self-emergent behavioral
+    signals — no hardcoded cross-module mapping, no tool_diversity heuristic:
+      - lifecycle_stage='stable'：模式已由系统判定为确立
+      - event_count >= 15：重复足够多次
+      - success_rate >= SKILL_SUCCESS_RATE_FLOOR：成功率高（系统已涌现的质量信号）
+    The >40% ratio logic is preserved but driven by emergent success_rate,
+    not a median tool-diversity comparison.
     """
     signals: List[EmergenceSignal] = []
 
@@ -218,7 +222,7 @@ def _check_pattern_repetition(
 
         # Load stable clusters with their stats
         cursor = conn.execute(
-            """SELECT id, name, event_count, tool_names, lifecycle_stage
+            """SELECT id, name, event_count, success_rate, lifecycle_stage
                FROM clusters
                WHERE lifecycle_stage = 'stable' AND event_count >= 10
                ORDER BY event_count DESC"""
@@ -228,33 +232,23 @@ def _check_pattern_repetition(
         if len(clusters) < 3:
             return signals
 
-        # Compute tool diversity for each cluster
-        diversities = []
-        for c in clusters:
-            tools = set((c["tool_names"] or "").split("|"))
-            tools.discard("")
-            diversities.append(len(tools))
+        # 涌现式"已确立"判定：用系统自身算出的成功率信号，而非人工 tool_diversity
+        established = sum(
+            1 for c in clusters
+            if (c["success_rate"] or 0) >= SKILL_SUCCESS_RATE_FLOOR
+            and c["event_count"] >= 15
+        )
 
-        # Median diversity
-        diversities.sort()
-        median_diversity = diversities[len(diversities) // 2] if diversities else 0
-
-        # Find clusters with low diversity (repetitive) but high event count
-        repetitive_clusters = 0
-        for i, c in enumerate(clusters):
-            if diversities[i] <= max(1, median_diversity) and c["event_count"] >= 15:
-                repetitive_clusters += 1
-
-        # If >40% of stable clusters are repetitive → skill extraction signal
-        if repetitive_clusters > 0:
-            ratio = repetitive_clusters / len(clusters)
+        # If >40% of stable clusters are established → skill extraction signal
+        if established > 0:
+            ratio = established / len(clusters)
             if ratio > 0.4:
                 signals.append(EmergenceSignal(
                     capability_name="skill_extraction",
                     signal_type="pattern_repeat",
                     confidence=min(1.0, ratio),
-                    evidence=f"{repetitive_clusters}/{len(clusters)} stable clusters "
-                             f"show repetitive patterns (low tool diversity, high count)",
+                    evidence=f"{established}/{len(clusters)} stable clusters "
+                             f"are established (high event count + high success rate)",
                     timestamp=now.isoformat(),
                 ))
 
