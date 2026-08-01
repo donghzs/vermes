@@ -527,28 +527,36 @@ def compress_context(
             # 将压缩摘要写入 memory_fabric，使被压缩的上下文可通过 recall 召回。
             # fail-open：handoff 失败不阻断压缩主流程。
             try:
-                from agent.memory_fabric import record as _mf_record, L2_PROCEDURAL
+                from agent.memory_fabric import record as _mf_record, L3_EPISODIC
                 _sid = agent.session_id or "unknown"
                 _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 # 结构化优先：context_compressor 直接存了 _last_summary_text
                 _summary_text = getattr(agent.context_compressor, "_last_summary_text", "") or ""
-                # 回退：扫描 system 角色消息（最可能是压缩摘要）
+                # 回退：按摘要尾标记定位（兼容不暴露 _last_summary_text 的
+                # 其它压缩引擎）。原实现按 role=="system" 扫描是死分支——
+                # 压缩摘要的 role 只会是 user/assistant（见 context_compressor
+                # 的 summary_role 选择逻辑），system 位只放系统提示词。
                 if not _summary_text:
+                    _marker = "--- END OF CONTEXT SUMMARY"
                     _candidates = [
-                        _msg.get("content", "")
+                        _msg["content"]
                         for _msg in compressed
                         if isinstance(_msg.get("content"), str)
                         and len(_msg["content"]) > 100
-                        and _msg.get("role") == "system"
+                        and _marker in _msg["content"]
                     ]
                     if _candidates:
-                        _summary_text = max(_candidates, key=len)
+                        # 取标记之前的正文，丢掉给模型看的行为指令尾巴
+                        _summary_text = max(_candidates, key=len).split(_marker)[0].strip()
                 if _summary_text:
                     _mf_record({
                         "source": "compression",
                         "pointer": f"session#{_sid}#{_ts}",
                         "fts_content": _summary_text[:4000],
-                        "layer": L2_PROCEDURAL,
+                        # P2-⑨: 压缩摘要是"某次会话发生过什么"的情节记录，
+                        # 属 L3 情节层；此前误标 L2_PROCEDURAL（可复用方法论），
+                        # 会与 skill/工作流记忆抢同一层的召回预算并稀释其语义。
+                        "layer": L3_EPISODIC,
                         "type": "compression_handoff",
                         "scope": _sid,
                         "lifecycle_tag": "volatile",

@@ -690,6 +690,10 @@ class ContextCompressor(ContextEngine):
         # (gateway hygiene, /compress) can surface a visible warning.
         self._last_summary_dropped_count: int = 0
         self._last_summary_fallback_used: bool = False
+        # P2-⑨: 缓存最近一次压缩生成的摘要正文，供 conversation_compression
+        # 的交割代码（Route E P2 handoff）直接取用——此前 getattr 读的是不存在的
+        # 属性，导致交割摘要恒为空、交割代码从未执行。
+        self._last_summary_text: str = ""
         # When summary generation fails we now ABORT compression entirely
         # and return the original messages unchanged instead of dropping
         # the middle window with a static placeholder.  Callers inspect
@@ -1998,6 +2002,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
 
         # Phase 3: Generate structured summary
         summary = self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+        self._last_summary_text = summary or ""
 
         # If summary generation failed, behavior splits on
         # ``abort_on_summary_failure`` (config: compression.abort_on_summary_failure):
@@ -2024,6 +2029,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
             self._last_summary_dropped_count = 0  # nothing actually dropped
             self._last_summary_fallback_used = False
             self._last_compress_aborted = True
+            self._last_summary_text = ""  # 中止压缩，无摘要可交割
             if not self.quiet_mode:
                 if self._last_summary_auth_failure:
                     logger.warning(
@@ -2071,6 +2077,10 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 turns_to_summarize,
                 reason=self._last_summary_error,
             )
+            # P2-⑨: 确定性兜底摘要同样是本次压缩真正落进 transcript 的内容，
+            # 也要交割给 memory_fabric（否则 LLM 摘要失败的那些会话在冷记忆里
+            # 彻底留白）。注意取的是加"END OF CONTEXT SUMMARY"尾标记之前的正文。
+            self._last_summary_text = summary or ""
 
         _merge_summary_into_tail = False
         last_head_role = messages[compress_start - 1].get("role", "user") if compress_start > 0 else "user"

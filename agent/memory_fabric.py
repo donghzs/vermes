@@ -130,6 +130,10 @@ def _now() -> str:
     return datetime.now().isoformat()
 
 
+# P2-⑧: 已跑过 skill 降级迁移的 db 路径（进程级，避免每次写入都全表扫）
+_SKILL_DEMOTE_DONE: set = set()
+
+
 def _init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = _get_conn(str(db_path))
@@ -157,6 +161,28 @@ def _init_db(db_path: Path) -> None:
             c.execute(
                 "ALTER TABLE memories ADD COLUMN lifecycle_tag TEXT NOT NULL DEFAULT 'reference'"
             )
+
+        # ── P2-⑧: skill 存量降级（幂等）──
+        # index_skills() 把 SKILL.md 拷贝写成 L2_PROCEDURAL + lifecycle_tag
+        # 默认 reference，但它们只是技能目录副本、价值低、易被召回淹没。
+        # 统一降级为 ephemeral（短命、优先被裁剪），让出 recall 预算给真值。
+        # 幂等：已 ephemeral 的行不受影响；每进程首次开库跑一次即维持不变量。
+        #
+        # 注意范围比原方案的 `lifecycle_tag='reference'` 更宽：实测存量库里
+        # 有 skill 行被 _infer_lifecycle_tag 的关键词启发式误判成 'preference'
+        # （SKILL.md 正文里出现 "always"/"偏好" 之类词），那是比 reference
+        # 更高价值的标签、污染更重。skill 行一律 ephemeral 才是真正的不变量。
+        if str(db_path) not in _SKILL_DEMOTE_DONE:
+            c.execute(
+                "UPDATE memories SET lifecycle_tag='ephemeral' "
+                "WHERE source='skill' AND lifecycle_tag<>'ephemeral'"
+            )
+            if c.rowcount > 0:
+                logger.info(
+                    "P2-⑧: demoted %d skill memories to lifecycle_tag='ephemeral'",
+                    c.rowcount,
+                )
+            _SKILL_DEMOTE_DONE.add(str(db_path))
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_ptr "
             "ON memories(source, pointer, scope)"
@@ -365,6 +391,14 @@ def recall(
     db_path = _get_index_db()
     if not os.path.exists(str(db_path)):
         return []
+    # P2-⑧: _init_db 只挂在写路径上，纯读会话（只召回、不写记忆）永远拿不到
+    # skill 降级迁移。这里按进程级守卫补跑一次——首次 recall 付一次 DDL 代价，
+    # 之后 _SKILL_DEMOTE_DONE 命中直接跳过，热路径无额外开销。
+    if str(db_path) not in _SKILL_DEMOTE_DONE:
+        try:
+            _init_db(db_path)
+        except Exception:
+            logger.debug("recall: lazy _init_db failed (non-fatal)", exc_info=True)
     _sq = _sanitize_fts(query)
     terms = _sq.split()
     if not terms:
@@ -838,6 +872,9 @@ def index_skills(skills: List[Dict[str, Any]], scope: str = "") -> int:
                     "scope": scope,
                     "pointer": pointer,
                     "fts_content": content,
+                    # P2-⑧: skill 记忆是 SKILL.md 副本，价值低，直接标 ephemeral
+                    # （与存量迁移对齐，避免重新累积为 reference 占 recall 预算）
+                    "lifecycle_tag": "ephemeral",
                 }
             )
             count += 1
