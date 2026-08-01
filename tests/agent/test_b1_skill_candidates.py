@@ -92,13 +92,15 @@ def test_skill_candidates_emergent_gate():
         _stable(20, 0.50, "low_success"),      # success_rate 低于涌现下限
         {"name": "dead", "event_count": 20, "success_rate": 0.95,
          "lifecycle_stage": "dead"},           # 非 stable
-        _stable(5, 0.99, "few_events"),        # event_count 不足
+        _stable(3, 0.99, "too_few"),           # event_count < 5
+        _stable(10, 0.99, "__self_assessment__"),  # 系统自噬簇应被排除
     ])
     try:
         inst = skill_extractor.SkillExtractor(path)
         cands = inst._find_skill_candidates(conn)
         names = {c["name"] for c in cands}
         assert names == {"good_stable"}, f"仅 good_stable 应通过涌现门槛，实际: {names}"
+        assert "__self_assessment__" not in names, "系统自噬簇不应进入技能候选"
     finally:
         conn.close()
         Path(path).unlink()

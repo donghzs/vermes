@@ -155,8 +155,9 @@ class SkillExtractor:
 
         涌现式门槛（无硬编码跨模块映射、无 tool_diversity 人工启发式）：
         - lifecycle_stage='stable'：模式已由系统自身判定为确立
-        - event_count >= 15：重复足够多次形成模式
+        - event_count >= 5：重复足够多次形成模式（相对低门槛，让真实用户行为簇进入）
         - success_rate >= SKILL_SUCCESS_RATE_FLOOR：成功率高（系统已涌现的质量信号）
+        - 排除系统自噬簇（name 匹配 __xxx__ 模式的内部自检行为）
         三者皆来自 clusters 表自身已填充的涌现字段，不手工 JOIN 派生。
         """
         try:
@@ -165,8 +166,9 @@ class SkillExtractor:
                           feature_signature, lifecycle_stage
                    FROM clusters
                    WHERE lifecycle_stage = 'stable'
-                     AND event_count >= 15
+                     AND event_count >= 5
                      AND success_rate >= ?
+                     AND name NOT LIKE '|_|_%|_|_' ESCAPE '|'
                    ORDER BY event_count DESC""",
                 (SKILL_SUCCESS_RATE_FLOOR,),
             )

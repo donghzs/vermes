@@ -2944,6 +2944,7 @@ class SessionDB:
         offset: int = 0,
         sort: str = None,
         include_inactive: bool = False,
+        include_content: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Full-text search across session messages using FTS5.
@@ -3246,9 +3247,13 @@ class SessionDB:
             except Exception:
                 match["context"] = []
 
-        # Remove full content from result (snippet is enough, saves tokens)
-        for match in matches:
-            match.pop("content", None)
+        # Remove full content from result unless explicitly requested.
+        # Default: snippet only (saves tokens, backward compatible).
+        # include_content=True: keep full content (for eval / memory adapters
+        # that need complete text, not 40-token FTS5 snippets).
+        if not include_content:
+            for match in matches:
+                match.pop("content", None)
 
         return matches
 

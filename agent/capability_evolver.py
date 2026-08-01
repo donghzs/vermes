@@ -205,8 +205,9 @@ def _check_pattern_repetition(
     A "skill" emerges when a cluster shows strong self-emergent behavioral
     signals — no hardcoded cross-module mapping, no tool_diversity heuristic:
       - lifecycle_stage='stable'：模式已由系统判定为确立
-      - event_count >= 15：重复足够多次
+      - event_count >= 5：重复足够多次（与 skill_extractor 门槛一致）
       - success_rate >= SKILL_SUCCESS_RATE_FLOOR：成功率高（系统已涌现的质量信号）
+      - 排除 __xxx__ 模式的系统自噬簇
     The >40% ratio logic is preserved but driven by emergent success_rate,
     not a median tool-diversity comparison.
     """
@@ -220,11 +221,12 @@ def _check_pattern_repetition(
         if not cursor.fetchone():
             return signals
 
-        # Load stable clusters with their stats
+        # Load stable clusters with their stats (exclude system self-checks)
         cursor = conn.execute(
             """SELECT id, name, event_count, success_rate, lifecycle_stage
                FROM clusters
-               WHERE lifecycle_stage = 'stable' AND event_count >= 10
+               WHERE lifecycle_stage = 'stable' AND event_count >= 5
+                 AND name NOT LIKE '|_|_%|_|_' ESCAPE '|'
                ORDER BY event_count DESC"""
         )
         clusters = cursor.fetchall()
@@ -236,7 +238,7 @@ def _check_pattern_repetition(
         established = sum(
             1 for c in clusters
             if (c["success_rate"] or 0) >= SKILL_SUCCESS_RATE_FLOOR
-            and c["event_count"] >= 15
+            and c["event_count"] >= 5
         )
 
         # If >40% of stable clusters are established → skill extraction signal
