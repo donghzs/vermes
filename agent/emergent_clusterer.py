@@ -118,6 +118,7 @@ class Cluster:
     feature_signature: str = ""
     parent_cluster_id: Optional[int] = None
     evolved_from: str = ""
+    is_active: bool = True
 
     @property
     def success_rate(self) -> float:
@@ -387,27 +388,34 @@ class ClusterDelta:
     split_clusters: List[Tuple[Cluster, List[Cluster]]] = field(default_factory=list)
     dead_clusters: List[Cluster] = field(default_factory=list)
     stable_clusters: List[Tuple[Cluster, Cluster]] = field(default_factory=list)
+    revived_clusters: List[Cluster] = field(default_factory=list)
 
 
 def match_clusters(
     new_clusters: List[Cluster],
     old_clusters: List[Cluster],
 ) -> ClusterDelta:
-    """Match new clusters against previous clusters to detect evolution.
+    """Match new clusters against **all** previous clusters (active + dead).
 
-    Uses feature_signature overlap (Jaccard) for matching.
+    Key change: dead clusters are included in matching. If a new batch's
+    feature_signature matches a dead cluster, the dead cluster is revived
+    (added to revived_clusters) instead of creating a duplicate. This
+    prevents the "same behavior → N duplicate dead clusters" problem.
     """
     delta = ClusterDelta()
     old_by_sig = {c.feature_signature: c for c in old_clusters}
     matched_old_ids: Set[int] = set()
 
     for nc in new_clusters:
-        # Try exact match first
+        # Try exact match first (across ALL clusters, including dead)
         if nc.feature_signature in old_by_sig:
             oc = old_by_sig[nc.feature_signature]
             nc.parent_cluster_id = oc.id
             delta.stable_clusters.append((nc, oc))
             matched_old_ids.add(oc.id)
+            # If the old cluster was dead, mark for revival
+            if oc.lifecycle_stage == "dead" or not oc.is_active:
+                delta.revived_clusters.append(oc)
             continue
 
         # Try partial match (Jaccard similarity of signatures)
@@ -433,13 +441,17 @@ def match_clusters(
             nc.evolved_from = best_match.name
             delta.stable_clusters.append((nc, best_match))
             matched_old_ids.add(best_match.id)
+            if best_match.lifecycle_stage == "dead":
+                delta.revived_clusters.append(best_match)
         else:
             delta.new_clusters.append(nc)
 
-    # Dead clusters (existed before, no match now)
+    # Dead clusters: old clusters that were active but not matched this batch
     for oc in old_clusters:
         if oc.id not in matched_old_ids:
-            delta.dead_clusters.append(oc)
+            # Only mark as dead if it was previously active
+            if getattr(oc, "is_active", True) and oc.lifecycle_stage != "dead":
+                delta.dead_clusters.append(oc)
 
     return delta
 
@@ -592,7 +604,15 @@ class EmergentClusterer:
             return []
 
     def _load_old_clusters(self) -> List[Cluster]:
-        """Load all active clusters from previous run."""
+        """Load **all** clusters (active + dead) from previous runs.
+
+        Previously only loaded is_active=1, which meant dead clusters
+        could never be matched against — so a recurring behavior whose
+        cluster happened to be marked dead in one batch would be
+        permanently invisible and a duplicate new cluster would be created.
+        Loading all clusters (including dead) allows match_clusters to
+        revive them when the same feature_signature reappears.
+        """
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -600,7 +620,7 @@ class EmergentClusterer:
 
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM clusters WHERE is_active = 1 ORDER BY id"
+                "SELECT * FROM clusters ORDER BY id"
             )
             rows = cursor.fetchall()
             conn.close()
@@ -688,11 +708,23 @@ class EmergentClusterer:
                             label_to_db_id[label] = nc.id
                             break
 
-            # Mark dead clusters as inactive
+            # Mark dead clusters as inactive (only those that were active
+            # and didn't match any new batch)
             for dc in delta.dead_clusters:
                 cursor.execute(
                     "UPDATE clusters SET is_active = 0, lifecycle_stage = 'dead' WHERE id = ?",
                     (dc.id,),
+                )
+
+            # Revive previously-dead clusters that matched a new batch
+            for rc in delta.revived_clusters:
+                cursor.execute(
+                    "UPDATE clusters SET is_active = 1, lifecycle_stage = 'emerging' WHERE id = ?",
+                    (rc.id,),
+                )
+                logger.info(
+                    "Revived dead cluster id=%d name=%r (matched new batch)",
+                    rc.id, rc.name,
                 )
 
             conn.commit()
@@ -731,24 +763,47 @@ class EmergentClusterer:
         cluster.id = cursor.lastrowid
 
     def _upsert_cluster(self, cursor, cluster: Cluster, old_id: int, now: str) -> None:
-        """Update an existing cluster with new data."""
+        """Update an existing cluster, **accumulating** counts across batches.
+
+        Previously this overwrote event_count/success_count/etc with the
+        current batch's values, destroying recurrence signal. Now we read
+        the old row and add the new batch's counts to the stored totals.
+        """
+        row = cursor.execute(
+            "SELECT event_count, success_count, error_count, total_duration FROM clusters WHERE id=?",
+            (old_id,),
+        ).fetchone()
+        old_ec = row[0] if row else 0
+        old_sc = row[1] if row else 0
+        old_er = row[2] if row else 0
+        old_td = row[3] if row else 0.0
+
+        new_ec = old_ec + cluster.event_count
+        new_sc = old_sc + cluster.success_count
+        new_er = old_er + cluster.error_count
+        new_td = old_td + cluster.total_duration
+
+        new_rate = (new_sc / new_ec) if new_ec > 0 else 0.0
+        new_avg = (new_td / new_ec) if new_ec > 0 else 0.0
+
         cursor.execute(
             """UPDATE clusters SET
                name=?, feature_signature=?, event_count=?, success_count=?,
                error_count=?, total_duration=?, last_seen=?, last_active_at=?,
-               success_rate=?, avg_duration=?, lifecycle_stage=?, evolved_from=?
+               success_rate=?, avg_duration=?, lifecycle_stage=?, evolved_from=?,
+               is_active=1
                WHERE id=?""",
             (
                 cluster.name,
                 cluster.feature_signature,
-                cluster.event_count,
-                cluster.success_count,
-                cluster.error_count,
-                cluster.total_duration,
+                new_ec,
+                new_sc,
+                new_er,
+                new_td,
                 cluster.last_seen or now,
                 cluster.last_active_at or now,
-                cluster.success_rate,
-                cluster.avg_duration,
+                new_rate,
+                new_avg,
                 cluster.lifecycle_stage,
                 cluster.evolved_from,
                 old_id,
@@ -797,6 +852,7 @@ def _row_to_cluster(row: sqlite3.Row) -> Cluster:
         feature_signature=row["feature_signature"] or "",
         parent_cluster_id=row["parent_cluster_id"],
         evolved_from=row["evolved_from"] or "",
+        is_active=bool(row["is_active"]) if "is_active" in row.keys() else True,
     )
 
 
