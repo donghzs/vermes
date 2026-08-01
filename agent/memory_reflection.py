@@ -643,7 +643,7 @@ def restore_flag(flag_id: int) -> bool:
       false_positive → flag→open（只重开审视，不改 lifecycle_tag）
 
     P1-5 fix: 不再硬编码 reference，从 flag.prev_lifecycle_tag 读取原始值。
-    若 prev_lifecycle_tag 不存在/为空（旧数据），回退到 _infer_lifecycle_tag。
+    若 prev_lifecycle_tag 不存在/为空（旧数据），回退到 reference（硬编码兜底）。
 
     fail-open：memories 表缺失/行不存在/类型不符不阻断 flag 重开。
     """
@@ -722,15 +722,29 @@ def get_resolved_flags(limit: int = 200) -> List[Dict]:
 
     conn = sqlite3.connect(db_path_str)
     try:
-        rows = conn.execute(
-            """SELECT id, memory_id, flag_type, confidence, evidence,
-                      created_at, resolution, resolved_at
-               FROM memory_flags
-               WHERE status = 'resolved'
-               ORDER BY resolved_at DESC
-               LIMIT ?""",
-            (limit,),
-        ).fetchall()
+        # P2-5 fix: 尝试带 prev_lifecycle_tag（旧库无列时 fail-open 返回 None）
+        try:
+            rows = conn.execute(
+                """SELECT id, memory_id, flag_type, confidence, evidence,
+                          created_at, resolution, resolved_at, prev_lifecycle_tag
+                   FROM memory_flags
+                   WHERE status = 'resolved'
+                   ORDER BY resolved_at DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            has_prev = True
+        except Exception:
+            rows = conn.execute(
+                """SELECT id, memory_id, flag_type, confidence, evidence,
+                          created_at, resolution, resolved_at
+                   FROM memory_flags
+                   WHERE status = 'resolved'
+                   ORDER BY resolved_at DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            has_prev = False
         return [
             {
                 "id": r[0],
@@ -741,6 +755,7 @@ def get_resolved_flags(limit: int = 200) -> List[Dict]:
                 "created_at": r[5],
                 "resolution": r[6],
                 "resolved_at": r[7],
+                "prev_lifecycle_tag": r[8] if has_prev and len(r) > 8 else None,
             }
             for r in rows
         ]

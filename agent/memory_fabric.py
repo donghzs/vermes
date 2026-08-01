@@ -98,6 +98,9 @@ def _infer_lifecycle_tag(memory: Dict[str, Any]) -> str:
         kw in content for kw in EN_PREFERENCE_TRIGGERS
     ):
         return "preference"
+    # P1-B fix: skill 源记忆一律 ephemeral（与 142 条存量自洽，防语料分裂）
+    if _source == "skill":
+        return "ephemeral"
     return _DEFAULT_LIFECYCLE_TAG
 
 
@@ -669,25 +672,42 @@ def list_memories(
 
             # 搜索 query → FTS5 或 LIKE
             if query:
-                # FTS5 路径
+                # FTS5 路径（P1-A fix: 拼入过滤条件，与 LIKE 分支同源）
                 fts_rows = None
+                fts_where = "memories_fts MATCH ?"
+                fts_params = [query]
+                if wheres:
+                    fts_where += " AND " + " AND ".join(
+                        f"m.{w}" if "." not in w else w for w in wheres
+                    )
+                    fts_params = [query] + list(params)
                 try:
                     fts_rows = conn.execute(
-                        """SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer,
+                        f"""SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer,
                                   SUBSTR(m.fts_content, 1, 200), m.access_count,
                                   m.lifecycle_tag, m.updated_at
                            FROM memories m
                            JOIN memories_fts f ON m.id = f.rowid
-                           WHERE memories_fts MATCH ?
+                           WHERE {fts_where}
                            ORDER BY m.access_count DESC, m.updated_at DESC
                            LIMIT ? OFFSET ?""",
-                        [query, limit, offset],
+                        fts_params + [limit, offset],
                     ).fetchall()
                 except Exception:
                     fts_rows = None
 
                 if fts_rows:
                     rows = fts_rows
+                    # P2-1 fix: total 用同一 where 条件 COUNT（非 len(rows)）
+                    count_where = "WHERE fts_content LIKE ?"
+                    count_params = [f"%{query}%"]
+                    if wheres:
+                        count_where += " AND " + " AND ".join(wheres)
+                        count_params = [f"%{query}%"] + list(params)
+                    total = conn.execute(
+                        f"SELECT COUNT(*) FROM memories {count_where}",
+                        count_params,
+                    ).fetchone()[0]
                 else:
                     # P0-2 fix: LIKE 兜底统一拼 where 子句
                     like_wheres = list(wheres) + ["fts_content LIKE ?"]
@@ -702,12 +722,12 @@ def list_memories(
                            LIMIT ? OFFSET ?""",
                         like_params + [limit, offset],
                     ).fetchall()
-                # total 计搜索结果数
-                total = len(rows) if offset == 0 else conn.execute(
-                    f"""SELECT COUNT(*) FROM memories
-                       WHERE fts_content LIKE ?""",
-                    [f"%{query}%"],
-                ).fetchone()[0]
+                    # P2-1/2 fix: total 用同一 where 条件 COUNT（与 LIKE 分支同源）
+                    total = conn.execute(
+                        f"""SELECT COUNT(*) FROM memories
+                           WHERE {' AND '.join(like_wheres)}""",
+                        like_params,
+                    ).fetchone()[0]
             else:
                 where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
                 total = conn.execute(

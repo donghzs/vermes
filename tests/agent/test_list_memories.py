@@ -116,3 +116,52 @@ def test_get_memory_detail_not_found(fab):
     from agent.memory_fabric import get_memory_detail
     detail = get_memory_detail(99999)
     assert detail is None
+
+
+# P2-3: 交叉组合测试（query×tag、query×source、query×分页、total 精确断言）
+
+def test_search_with_lifecycle_tag_filter(fab):
+    """P1-A 回归：搜索 + tag 过滤组合，过滤条件不被吃掉"""
+    from agent.memory_fabric import list_memories
+    # 搜索 "Python" + tag=preference → 应只返回 preference 标签的 Python 相关
+    result = list_memories(query="Python", lifecycle_tag="preference")
+    assert result["total"] == 1, f"应只返回1条preference+Python，实际total={result['total']}"
+    assert all(m["lifecycle_tag"] == "preference" for m in result["memories"])
+
+
+def test_search_with_source_filter(fab):
+    """P1-A 回归：搜索 + source 过滤组合"""
+    from agent.memory_fabric import list_memories
+    result = list_memories(query="Python", source="skill")
+    assert result["total"] == 1, f"应只返回1条skill+Python，实际total={result['total']}"
+    assert all(m["source"] == "skill" for m in result["memories"])
+
+
+def test_search_total_not_truncated_by_limit(fab):
+    """P2-1 回归：total 不被 limit 截断"""
+    from agent.memory_fabric import list_memories
+    # 用一个能匹配多条的搜索词
+    result_l5 = list_memories(query="Python", limit=5)
+    result_l200 = list_memories(query="Python", limit=200)
+    assert result_l5["total"] == result_l200["total"], \
+        f"total 不应随 limit 变化: limit=5→{result_l5['total']}, limit=200→{result_l200['total']}"
+
+
+def test_search_pagination_total_consistent(fab):
+    """P2-2 回归：翻页时 total 一致"""
+    from agent.memory_fabric import list_memories
+    page1 = list_memories(query="Python", limit=2, offset=0)
+    page2 = list_memories(query="Python", limit=2, offset=2)
+    assert page1["total"] == page2["total"], \
+        f"翻页 total 不一致: page1={page1['total']}, page2={page2['total']}"
+
+
+def test_search_with_tag_and_source_combined(fab):
+    """三重组合：搜索 + tag + source"""
+    from agent.memory_fabric import list_memories
+    result = list_memories(query="Python", lifecycle_tag="ephemeral", source="skill")
+    assert result["total"] == 1
+    m = result["memories"][0]
+    assert m["lifecycle_tag"] == "ephemeral"
+    assert m["source"] == "skill"
+    assert "Python" in m["content_preview"]
