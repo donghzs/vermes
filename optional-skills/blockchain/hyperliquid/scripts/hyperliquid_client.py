@@ -51,7 +51,7 @@ DEFAULT_API_BASE = "https://api.hyperliquid.xyz"
 
 
 def _vermes_home() -> Path:
-    return Path(os.environ.get("VERMES_HOME", "~/.Vermes")).expanduser()
+    return Path(os.environ.get("VERMES_HOME", "~/.vermes")).expanduser()
 
 
 def _dotenv_paths() -> List[Path]:

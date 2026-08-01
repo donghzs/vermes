@@ -36,7 +36,7 @@ TODO_STATES = {"s1": "in_progress", "s2": "pending"}
 def main() -> None:
     session_id = sys.argv[1] if len(sys.argv) > 1 else "sess-cross-restart"
     save_plan_state(session_id, PLAN, TODO_STATES, plan_emitted=True)
-    db = os.path.join(os.environ.get("VERMES_HOME", "~/.Vermes"), "session_plans.db")
+    db = os.path.join(os.environ.get("VERMES_HOME", "~/.vermes"), "session_plans.db")
     print(f"[seed] wrote plan for session={session_id} -> {db}")
 
 

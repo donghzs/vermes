@@ -892,11 +892,11 @@ def test_rebrand_text_handles_multiple_replacements():
 def test_rebrand_text_preserves_filesystem_path_casing():
     """Lowercase matches — especially ``.openclaw`` filesystem paths — must
     rewrite to lowercase ``.vermes`` (the real Vermes home), not the broken
-    ``.Vermes``.
+    ``.vermes``.
 
     Regression test for @versun's OpenClaw-residue feedback: after migration,
     memory entries that referenced ``~/.openclaw/config.yaml`` were being
-    rewritten to ``~/.Vermes/config.yaml`` — a path that doesn't exist —
+    rewritten to ``~/.vermes/config.yaml`` — a path that doesn't exist —
     and the agent kept trying to read it.
     """
     mod = load_module()

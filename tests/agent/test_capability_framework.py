@@ -70,7 +70,14 @@ def temp_db(tmp_path):
             feature_signature TEXT DEFAULT '',
             first_seen TEXT DEFAULT '',
             last_active TEXT DEFAULT '',
-            is_active INTEGER DEFAULT 1
+            is_active INTEGER DEFAULT 1,
+            success_rate REAL DEFAULT 0,
+            avg_duration REAL DEFAULT 0,
+            last_seen TEXT DEFAULT '',
+            last_active_at TEXT DEFAULT '',
+            parent_cluster_id INTEGER,
+            evolved_from TEXT,
+            created_at TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS insights (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,8 +211,8 @@ class TestCapabilityEvolver:
         ]
         for name, tools, count, stage in clusters_data:
             conn.execute(
-                "INSERT INTO clusters (name, tool_names, event_count, lifecycle_stage, is_active) VALUES (?, ?, ?, ?, 1)",
-                (name, tools, count, stage)
+                "INSERT INTO clusters (name, tool_names, event_count, lifecycle_stage, is_active, success_rate) VALUES (?, ?, ?, ?, 1, ?)",
+                (name, tools, count, stage, 0.9)
             )
 
         conn.commit()
@@ -233,8 +240,8 @@ class TestSkillExtractor:
 
         # Create a stable cluster with many events
         conn.execute(
-            "INSERT INTO clusters (name, tool_names, event_count, success_count, lifecycle_stage, is_active) "
-            "VALUES ('git_workflow', 'terminal|read_file', 20, 18, 'stable', 1)"
+            "INSERT INTO clusters (name, tool_names, event_count, success_count, lifecycle_stage, is_active, success_rate) "
+            "VALUES ('git_workflow', 'terminal|read_file', 20, 18, 'stable', 1, 0.9)"
         )
         cluster_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 

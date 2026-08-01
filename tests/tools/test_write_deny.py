@@ -34,7 +34,7 @@ class TestWriteDenyExactPaths:
 
     def test_vermes_env(self):
         # ``.env`` under the active VERMES_HOME (profile-aware, not just
-        # ``~/.Vermes``) must be write-denied. The hermetic test conftest
+        # ``~/.vermes``) must be write-denied. The hermetic test conftest
         # points VERMES_HOME at a tempdir — resolve via get_vermes_home()
         # to match the denylist.
         from vermes_constants import get_vermes_home

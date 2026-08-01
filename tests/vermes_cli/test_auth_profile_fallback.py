@@ -28,11 +28,11 @@ def _make_auth_store(pool: dict | None = None, providers: dict | None = None) ->
 
 @pytest.fixture()
 def profile_env(tmp_path, monkeypatch):
-    """Set up a global root + an active profile under Path.home()/.Vermes/profiles/coder.
+    """Set up a global root + an active profile under Path.home()/.vermes/profiles/coder.
 
     * Path.home() -> tmp_path
-    * Global root -> tmp_path/.Vermes            (has its own auth.json fixture)
-    * Profile     -> tmp_path/.Vermes/profiles/coder   (active, VERMES_HOME points here)
+    * Global root -> tmp_path/.vermes            (has its own auth.json fixture)
+    * Profile     -> tmp_path/.vermes/profiles/coder   (active, VERMES_HOME points here)
 
     This mirrors the real "named profile mounted under the default root"
     layout that profile users actually have on disk.
@@ -287,7 +287,7 @@ def test_classic_mode_does_not_double_read_same_file(tmp_path, monkeypatch):
     profile and global resolve to the same directory.
     """
     # Put Path.home() under a subdir so the seat belt in _auth_file_path()
-    # sees tmp_path/home/.Vermes as the "real home" — which is NOT equal
+    # sees tmp_path/home/.vermes as the "real home" — which is NOT equal
     # to the VERMES_HOME we set (tmp_path/classic), so the guard passes.
     fake_home = tmp_path / "home"
     fake_home.mkdir()

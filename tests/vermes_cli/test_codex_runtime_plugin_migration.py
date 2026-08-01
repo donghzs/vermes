@@ -818,8 +818,8 @@ class TestvermesHomeLeakGuard:
         )
 
     def test_tempdir_detector_accepts_real_vermes_home(self):
-        assert not _looks_like_test_tempdir("/Users/alice/.Vermes")
-        assert not _looks_like_test_tempdir("/home/bob/.Vermes")
+        assert not _looks_like_test_tempdir("/Users/alice/.vermes")
+        assert not _looks_like_test_tempdir("/home/bob/.vermes")
         assert not _looks_like_test_tempdir("/opt/Vermes")
         assert not _looks_like_test_tempdir("")
 
@@ -844,7 +844,7 @@ class TestvermesHomeLeakGuard:
         # We can't easily create one in the test, so just use a stable path
         # outside any tempdir-detector needle. The detector checks for tempdir
         # markers, not for path existence.
-        real_path = "/Users/alice/.Vermes"
+        real_path = "/Users/alice/.vermes"
         monkeypatch.setenv("VERMES_HOME", real_path)
         entry = _build_vermes_tools_mcp_entry()
         env = entry.get("env", {})

@@ -68,7 +68,7 @@ class OwnedTwilioNumber:
     capabilities: dict[str, Any]
 
 def _vermes_home() -> Path:
-    return Path(os.environ.get("VERMES_HOME", "~/.Vermes")).expanduser()
+    return Path(os.environ.get("VERMES_HOME", "~/.vermes")).expanduser()
 
 def _env_path() -> Path:
     return _vermes_home() / ".env"

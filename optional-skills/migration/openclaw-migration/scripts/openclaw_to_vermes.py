@@ -389,7 +389,7 @@ def backup_existing(path: Path, backup_root: Path) -> Optional[Path]:
 #
 # Case-preserving: ``OpenClaw`` → ``Vermes`` (prose), but lowercase matches
 # like ``openclaw`` → ``Vermes`` (so filesystem paths like ``~/.openclaw``
-# become ``~/.Vermes`` — the real Vermes home — not the broken ``~/.Vermes``).
+# become ``~/.vermes`` — the real Vermes home — not the broken ``~/.vermes``).
 _REBRAND_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'\bOpen[\s-]?Claw\b', re.IGNORECASE), 'Vermes'),
     (re.compile(r'\bClawdBot\b', re.IGNORECASE), 'Vermes'),
@@ -403,7 +403,7 @@ def _case_preserving_replacement(replacement: str):
     Keeps ``OpenClaw`` → ``Vermes`` but maps ``openclaw`` → ``Vermes`` so a
     filesystem path like ``~/.openclaw/config.yaml`` rewrites to
     ``~/.vermes/config.yaml`` (the real Vermes home) instead of the broken
-    ``~/.Vermes/config.yaml``.
+    ``~/.vermes/config.yaml``.
     """
     def _sub(match: "re.Match[str]") -> str:
         matched = match.group(0)

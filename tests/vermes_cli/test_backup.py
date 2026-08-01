@@ -16,7 +16,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _make_vermes_tree(root: Path) -> None:
-    """Create a realistic ~/.Vermes directory structure for testing."""
+    """Create a realistic ~/.vermes directory structure for testing."""
     (root / "config.yaml").write_text("model:\n  provider: openrouter\n")
     (root / ".env").write_text("OPENROUTER_API_KEY=sk-test-123\n")
     (root / "memory_store.db").write_bytes(b"fake-sqlite")
@@ -1955,7 +1955,7 @@ class TestPreMigrationBackup:
         assert len(remaining) <= 3, f"expected <=3 backups retained, got {len(remaining)}"
 
     def test_missing_vermes_home_returns_none(self, tmp_path):
-        """Fresh install with no ~/.Vermes yet — nothing to back up."""
+        """Fresh install with no ~/.vermes yet — nothing to back up."""
         from vermes_cli.backup import create_pre_migration_backup
         missing = tmp_path / "does-not-exist"
         out = create_pre_migration_backup(VERMES_home=missing)

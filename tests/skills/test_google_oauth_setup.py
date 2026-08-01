@@ -282,7 +282,7 @@ class TestvermesConstantsFallback:
         assert module.get_vermes_home() == tmp_path / "custom-Vermes"
 
     def test_fallback_defaults_to_dot_vermes(self, monkeypatch):
-        """When vermes_constants is missing and VERMES_HOME unset, default to ~/.Vermes."""
+        """When vermes_constants is missing and VERMES_HOME unset, default to ~/.vermes."""
         monkeypatch.delenv("VERMES_HOME", raising=False)
         module = self._load_helper(monkeypatch)
         assert module.get_vermes_home() == Path.home() / ".vermes"
@@ -297,7 +297,7 @@ class TestvermesConstantsFallback:
         """Fallback display_vermes_home() uses ~/ shorthand like the real one."""
         monkeypatch.delenv("VERMES_HOME", raising=False)
         module = self._load_helper(monkeypatch)
-        assert module.display_vermes_home() == "~/.Vermes"
+        assert module.display_vermes_home() == "~/.vermes"
 
     def test_fallback_display_vermes_home_profile_path(self, monkeypatch):
         """Fallback display_vermes_home() handles profile paths under ~/."""

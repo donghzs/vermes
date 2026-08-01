@@ -353,7 +353,7 @@ class TestResolveConfigPath:
 
     def test_falls_back_to_default_profile_when_no_local(self, tmp_path, monkeypatch):
         # Profile mode: VERMES_HOME points at ~/.vermes/profiles/<name>, so
-        # _get_default_vermes_home() must resolve back to ~/.Vermes — that's
+        # _get_default_vermes_home() must resolve back to ~/.vermes — that's
         # the bug the HOME-anchored helper fixes (vs. blindly using Path.home()).
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()

@@ -113,12 +113,12 @@ class TestSyncBackNoChanges:
         host_content = b'{"key": "val"}'
         _write_file(host_file, host_content)
 
-        remote_path = "/root/.Vermes/cred.json"
+        remote_path = "/root/.vermes/cred.json"
         mapping = [(str(host_file), remote_path)]
 
         # Remote tar contains the same content as was pushed
         download_fn = _make_download_fn({
-            "root/.Vermes/cred.json": host_content,
+            "root/.vermes/cred.json": host_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
@@ -139,12 +139,12 @@ class TestSyncBackAppliesChanged:
         original_content = b"print('v1')"
         _write_file(host_file, original_content)
 
-        remote_path = "/root/.Vermes/skill.py"
+        remote_path = "/root/.vermes/skill.py"
         mapping = [(str(host_file), remote_path)]
 
         remote_content = b"print('v2 - edited on remote')"
         download_fn = _make_download_fn({
-            "root/.Vermes/skill.py": remote_content,
+            "root/.vermes/skill.py": remote_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
@@ -162,12 +162,12 @@ class TestSyncBackNewRemoteFile:
         # Existing mapping gives _infer_host_path a prefix to work with
         existing_host = tmp_path / "host" / "skills" / "existing.py"
         _write_file(existing_host, b"existing")
-        mapping = [(str(existing_host), "/root/.Vermes/skills/existing.py")]
+        mapping = [(str(existing_host), "/root/.vermes/skills/existing.py")]
 
         # Remote has a NEW file in the same directory that was never pushed
         new_remote_content = b"# brand new skill created on remote"
         download_fn = _make_download_fn({
-            "root/.Vermes/skills/new_skill.py": new_remote_content,
+            "root/.vermes/skills/new_skill.py": new_remote_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
@@ -189,7 +189,7 @@ class TestSyncBackConflict:
         original_content = b'{"v": 1}'
         _write_file(host_file, original_content)
 
-        remote_path = "/root/.Vermes/config.json"
+        remote_path = "/root/.vermes/config.json"
         mapping = [(str(host_file), remote_path)]
 
         # Host was modified after push
@@ -198,7 +198,7 @@ class TestSyncBackConflict:
         # Remote was also modified
         remote_content = b'{"v": 3, "remote-edit": true}'
         download_fn = _make_download_fn({
-            "root/.Vermes/config.json": remote_content,
+            "root/.vermes/config.json": remote_content,
         })
 
         mgr = _make_manager(tmp_path, file_mapping=mapping, bulk_download_fn=download_fn)
@@ -263,7 +263,7 @@ class TestPushedHashesPopulated:
         host_file = tmp_path / "data.txt"
         host_file.write_bytes(b"hello world")
 
-        remote_path = "/root/.Vermes/data.txt"
+        remote_path = "/root/.vermes/data.txt"
         mapping = [(str(host_file), remote_path)]
 
         mgr = FileSyncManager(
@@ -281,7 +281,7 @@ class TestPushedHashesPopulated:
         host_file = tmp_path / "deleteme.txt"
         host_file.write_bytes(b"to be deleted")
 
-        remote_path = "/root/.Vermes/deleteme.txt"
+        remote_path = "/root/.vermes/deleteme.txt"
         mapping = [(str(host_file), remote_path)]
         current_mapping = list(mapping)
 
@@ -340,26 +340,26 @@ class TestInferHostPath:
         """Remote path in unmapped directory should return None."""
         host_file = tmp_path / "host" / "skills" / "a.py"
         _write_file(host_file, b"content")
-        mapping = [(str(host_file), "/root/.Vermes/skills/a.py")]
+        mapping = [(str(host_file), "/root/.vermes/skills/a.py")]
 
         mgr = _make_manager(tmp_path, file_mapping=mapping)
         result = mgr._infer_host_path(
-            "/root/.Vermes/cache/new.json",
+            "/root/.vermes/cache/new.json",
             file_mapping=mapping,
         )
         assert result is None
 
     def test_infer_partial_prefix_no_false_match(self, tmp_path):
-        """A partial prefix like /root/.Vermes/sk should NOT match /root/.Vermes/skills/."""
+        """A partial prefix like /root/.vermes/sk should NOT match /root/.vermes/skills/."""
         host_file = tmp_path / "host" / "skills" / "a.py"
         _write_file(host_file, b"content")
-        mapping = [(str(host_file), "/root/.Vermes/skills/a.py")]
+        mapping = [(str(host_file), "/root/.vermes/skills/a.py")]
 
         mgr = _make_manager(tmp_path, file_mapping=mapping)
-        # /root/.Vermes/skillsXtra/b.py shares prefix "skills" but the
-        # directory is different — should not match /root/.Vermes/skills/
+        # /root/.vermes/skillsXtra/b.py shares prefix "skills" but the
+        # directory is different — should not match /root/.vermes/skills/
         result = mgr._infer_host_path(
-            "/root/.Vermes/skillsXtra/b.py",
+            "/root/.vermes/skillsXtra/b.py",
             file_mapping=mapping,
         )
         assert result is None
@@ -368,11 +368,11 @@ class TestInferHostPath:
         """A file in a mapped directory should be correctly inferred."""
         host_file = tmp_path / "host" / "skills" / "a.py"
         _write_file(host_file, b"content")
-        mapping = [(str(host_file), "/root/.Vermes/skills/a.py")]
+        mapping = [(str(host_file), "/root/.vermes/skills/a.py")]
 
         mgr = _make_manager(tmp_path, file_mapping=mapping)
         result = mgr._infer_host_path(
-            "/root/.Vermes/skills/b.py",
+            "/root/.vermes/skills/b.py",
             file_mapping=mapping,
         )
         expected = str(tmp_path / "host" / "skills" / "b.py")
@@ -438,12 +438,12 @@ class TestSyncBackSizeCap:
         # Build a download_fn that writes a small tar, but patch the cap
         # so the test doesn't need to produce a 2 GiB file.
         skill_host = _write_file(tmp_path / "host_skill.md", b"original")
-        files = {"root/.Vermes/skill.md": b"remote_version"}
+        files = {"root/.vermes/skill.md": b"remote_version"}
         download_fn = _make_download_fn(files)
 
         mgr = _make_manager(
             tmp_path,
-            file_mapping=[(skill_host, "/root/.Vermes/skill.md")],
+            file_mapping=[(skill_host, "/root/.vermes/skill.md")],
             bulk_download_fn=download_fn,
         )
 
@@ -460,12 +460,12 @@ class TestSyncBackSizeCap:
     def test_sync_back_applies_when_under_cap(self, tmp_path):
         """A tar under the cap should extract normally (sanity check)."""
         host_file = _write_file(tmp_path / "host_skill.md", b"original")
-        files = {"root/.Vermes/skill.md": b"remote_version"}
+        files = {"root/.vermes/skill.md": b"remote_version"}
         download_fn = _make_download_fn(files)
 
         mgr = _make_manager(
             tmp_path,
-            file_mapping=[(host_file, "/root/.Vermes/skill.md")],
+            file_mapping=[(host_file, "/root/.vermes/skill.md")],
             bulk_download_fn=download_fn,
         )
 

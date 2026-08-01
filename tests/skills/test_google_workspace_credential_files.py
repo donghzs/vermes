@@ -67,8 +67,8 @@ class TestGoogleWorkspaceCredentialFiles:
             assert missing == [], f"Unexpected missing files: {missing}"
             mounts = get_credential_file_mounts()
             container_paths = {m["container_path"] for m in mounts}
-            assert "/root/.Vermes/google_token.json" in container_paths
-            assert "/root/.Vermes/google_client_secret.json" in container_paths
+            assert "/root/.vermes/google_token.json" in container_paths
+            assert "/root/.vermes/google_client_secret.json" in container_paths
         finally:
             clear_credential_files()
 
@@ -96,7 +96,7 @@ class TestGoogleWorkspaceCredentialFiles:
             assert "google_token.json" in missing
             mounts = get_credential_file_mounts()
             container_paths = {m["container_path"] for m in mounts}
-            assert "/root/.Vermes/google_client_secret.json" in container_paths
-            assert "/root/.Vermes/google_token.json" not in container_paths
+            assert "/root/.vermes/google_client_secret.json" in container_paths
+            assert "/root/.vermes/google_token.json" not in container_paths
         finally:
             clear_credential_files()

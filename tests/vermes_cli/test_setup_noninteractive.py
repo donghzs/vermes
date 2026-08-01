@@ -74,7 +74,7 @@ class TestNonInteractiveSetup:
         with (
             patch("vermes_cli.setup.ensure_vermes_home"),
             patch("vermes_cli.setup.load_config", return_value={}),
-            patch("vermes_cli.setup.get_vermes_home", return_value="/tmp/.Vermes"),
+            patch("vermes_cli.setup.get_vermes_home", return_value="/tmp/.vermes"),
             patch("vermes_cli.auth.get_active_provider", side_effect=AssertionError("wizard continued")),
             patch("builtins.input", side_effect=AssertionError("input should not be called")),
         ):
@@ -92,7 +92,7 @@ class TestNonInteractiveSetup:
         with (
             patch("vermes_cli.setup.ensure_vermes_home"),
             patch("vermes_cli.setup.load_config", return_value={}),
-            patch("vermes_cli.setup.get_vermes_home", return_value="/tmp/.Vermes"),
+            patch("vermes_cli.setup.get_vermes_home", return_value="/tmp/.vermes"),
             patch("vermes_cli.auth.get_active_provider", side_effect=AssertionError("wizard continued")),
             patch("sys.stdin") as mock_stdin,
             patch("builtins.input", side_effect=AssertionError("input should not be called")),

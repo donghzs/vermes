@@ -42,7 +42,7 @@ class TestOldFilterBrokenOnWindows:
 
     def test_old_filter_works_on_unix_path(self):
         """Old filter works fine on Unix paths (the original platform)."""
-        unix_path = "/home/user/.Vermes/skills/.hub/quarantine/evil-skill/SKILL.md"
+        unix_path = "/home/user/.vermes/skills/.hub/quarantine/evil-skill/SKILL.md"
         assert _old_filter_matches(unix_path) is True
 
 

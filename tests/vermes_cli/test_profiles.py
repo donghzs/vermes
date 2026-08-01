@@ -45,9 +45,9 @@ from vermes_cli.profiles import (
 def profile_env(tmp_path, monkeypatch):
     """Set up an isolated environment for profile tests.
 
-    * Path.home() -> tmp_path  (so _get_profiles_root() = tmp_path/.Vermes/profiles)
-    * VERMES_HOME  -> tmp_path/.Vermes  (so get_vermes_home() agrees)
-    * Creates the bare-minimum ~/.Vermes directory.
+    * Path.home() -> tmp_path  (so _get_profiles_root() = tmp_path/.vermes/profiles)
+    * VERMES_HOME  -> tmp_path/.vermes  (so get_vermes_home() agrees)
+    * Creates the bare-minimum ~/.vermes directory.
     """
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     default_home = tmp_path / ".vermes"
@@ -226,7 +226,7 @@ class TestCreateProfile:
         assert not (profile_dir / "processes.json").exists()
 
     def test_clone_all_excludes_sibling_profiles_tree(self, profile_env):
-        """--clone-all from default ~/.Vermes must not copy profiles/* (nested explosion)."""
+        """--clone-all from default ~/.vermes must not copy profiles/* (nested explosion)."""
         tmp_path = profile_env
         default_home = tmp_path / ".vermes"
         profiles_root = default_home / "profiles"
@@ -523,7 +523,7 @@ class TestGetActiveProfileName:
     """Tests for get_active_profile_name()."""
 
     def test_default_vermes_home_returns_default(self, profile_env):
-        # VERMES_HOME points to tmp_path/.Vermes which is the default
+        # VERMES_HOME points to tmp_path/.vermes which is the default
         assert get_active_profile_name() == "default"
 
     def test_profile_path_returns_profile_name(self, profile_env, monkeypatch):
@@ -1029,7 +1029,7 @@ class TestInternalHelpers:
         assert home == tmp_path / ".vermes"
 
     def test_profiles_root_docker_deployment(self, tmp_path, monkeypatch):
-        """In Docker (VERMES_HOME outside ~/.Vermes), profiles go under VERMES_HOME."""
+        """In Docker (VERMES_HOME outside ~/.vermes), profiles go under VERMES_HOME."""
         docker_home = tmp_path / "opt" / "data"
         docker_home.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -1047,7 +1047,7 @@ class TestInternalHelpers:
         assert home == docker_home
 
     def test_profiles_root_profile_mode(self, tmp_path, monkeypatch):
-        """In profile mode (VERMES_HOME under ~/.Vermes), profiles root is still ~/.vermes/profiles."""
+        """In profile mode (VERMES_HOME under ~/.vermes), profiles root is still ~/.vermes/profiles."""
         native = tmp_path / ".vermes"
         profile_dir = native / "profiles" / "coder"
         profile_dir.mkdir(parents=True)

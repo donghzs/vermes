@@ -1071,7 +1071,7 @@ class TestDiskFailureMarker:
 
 class TestvermesHomeIsolation:
     def test_vermes_bin_dir_respects_vermes_home(self):
-        """_vermes_bin_dir must use VERMES_HOME, not hardcoded ~/.Vermes."""
+        """_vermes_bin_dir must use VERMES_HOME, not hardcoded ~/.vermes."""
         from tools.tirith_security import _vermes_bin_dir
         import tempfile
         tmpdir = tempfile.mkdtemp()
@@ -1081,7 +1081,7 @@ class TestvermesHomeIsolation:
         assert os.path.isdir(result)
 
     def test_failure_marker_respects_vermes_home(self):
-        """_failure_marker_path must use VERMES_HOME, not hardcoded ~/.Vermes."""
+        """_failure_marker_path must use VERMES_HOME, not hardcoded ~/.vermes."""
         from tools.tirith_security import _failure_marker_path
         with patch.dict(os.environ, {"VERMES_HOME": "/custom/Vermes"}):
             result = _failure_marker_path()

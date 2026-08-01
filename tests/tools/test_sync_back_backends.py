@@ -116,7 +116,7 @@ class TestSSHBulkDownload:
         cmd_str = " ".join(cmd)
         assert "tar cf -" in cmd_str
         assert "-C /" in cmd_str
-        assert "home/testuser/.Vermes" in cmd_str
+        assert "home/testuser/.vermes" in cmd_str
         assert "ssh" in cmd_str
         assert "testuser@example.com" in cmd_str
 
@@ -239,7 +239,7 @@ class TestModalBulkDownload:
     """Unit tests for _modal_bulk_download."""
 
     def test_modal_bulk_download_command(self, tmp_path):
-        """exec should be called with tar cf - -C /root/.Vermes ."""
+        """exec should be called with tar cf - -C /root/.vermes ."""
         env = _make_mock_modal_env()
         exec_calls = _wire_modal_download(env, tar_bytes=b"tar-content")
         dest = tmp_path / "backup.tar"
@@ -251,7 +251,7 @@ class TestModalBulkDownload:
         assert args[0] == "bash"
         assert args[1] == "-c"
         assert "tar cf -" in args[2]
-        assert "-C / root/.Vermes" in args[2]
+        assert "-C / root/.vermes" in args[2]
 
     def test_modal_bulk_download_writes_to_dest(self, tmp_path):
         """Downloaded tar bytes should be written to the dest path."""
@@ -379,7 +379,7 @@ class TestDaytonaBulkDownload:
         env._daytona_bulk_download(dest)
 
         tar_cmd = env._sandbox.process.exec.call_args_list[0][0][0]
-        assert "home/daytona/.Vermes" in tar_cmd
+        assert "home/daytona/.vermes" in tar_cmd
 
 
 class TestDaytonaCleanup:
@@ -453,7 +453,7 @@ class TestBulkDownloadWiring:
         # Replicate the wiring done in __init__
         from tools.environments.file_sync import iter_sync_files
         env._sync_manager = modal_env.FileSyncManager(
-            get_files_fn=lambda: iter_sync_files("/root/.Vermes"),
+            get_files_fn=lambda: iter_sync_files("/root/.vermes"),
             upload_fn=env._modal_upload,
             delete_fn=env._modal_delete,
             bulk_upload_fn=env._modal_bulk_upload,
@@ -484,7 +484,7 @@ class TestBulkDownloadWiring:
         # Replicate the wiring done in __init__
         from tools.environments.file_sync import iter_sync_files
         env._sync_manager = daytona_env.FileSyncManager(
-            get_files_fn=lambda: iter_sync_files(f"{env._remote_home}/.Vermes"),
+            get_files_fn=lambda: iter_sync_files(f"{env._remote_home}/.vermes"),
             upload_fn=env._daytona_upload,
             delete_fn=env._daytona_delete,
             bulk_upload_fn=env._daytona_bulk_upload,

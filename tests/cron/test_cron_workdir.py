@@ -283,7 +283,7 @@ class TestRunJobTerminalCwd:
         fake_mod.AIAgent = FakeAgent
         monkeypatch.setitem(sys.modules, "run_agent", fake_mod)
 
-        # Bypass the real provider resolver — it reads ~/.Vermes and credentials.
+        # Bypass the real provider resolver — it reads ~/.vermes and credentials.
         from vermes_cli import runtime_provider as _rtp
         monkeypatch.setattr(
             _rtp,

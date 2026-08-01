@@ -4,7 +4,7 @@ Regression test for https://github.com/donghzs/vermes-agent/issues/18594.
 
 When VERMES_HOME is unset but an active_profile file indicates a non-default
 profile is active, get_vermes_home() should:
-  1. STILL return ~/.Vermes (raising would brick 30+ module-level callers)
+  1. STILL return ~/.vermes (raising would brick 30+ module-level callers)
   2. Emit a loud one-shot warning to stderr so operators can diagnose
      cross-profile data contamination after the fact.
 
@@ -33,7 +33,7 @@ class TestGetvermesHomeProfileWarning:
     def test_classic_mode_no_active_profile_no_warning(
         self, fresh_constants, tmp_path, capsys
     ):
-        """Classic mode: no active_profile file → silent, returns ~/.Vermes."""
+        """Classic mode: no active_profile file → silent, returns ~/.vermes."""
         result = fresh_constants.get_vermes_home()
         assert result == tmp_path / ".vermes"
         assert "VERMES_HOME fallback" not in capsys.readouterr().err
@@ -41,7 +41,7 @@ class TestGetvermesHomeProfileWarning:
     def test_default_active_profile_no_warning(
         self, fresh_constants, tmp_path, capsys
     ):
-        """active_profile=default → still no warning, returns ~/.Vermes."""
+        """active_profile=default → still no warning, returns ~/.vermes."""
         VERMES_dir = tmp_path / ".vermes"
         VERMES_dir.mkdir()
         (VERMES_dir / "active_profile").write_text("default\n")

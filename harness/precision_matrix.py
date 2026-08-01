@@ -47,7 +47,7 @@ _LOW_PRECISION_THRESHOLD = 0.5
 
 def _self_model_db_path() -> Path:
     """Resolve the evolution self-model DB path (mirrors memory_recall)."""
-    VERMES_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))
+    VERMES_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
     return Path(VERMES_home) / "evolution" / "self-model.db"
 
 

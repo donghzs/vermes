@@ -94,7 +94,7 @@ def _setup_logging() -> None:
 
 
 def _load_env() -> None:
-    """Load .env from VERMES_HOME (default ``~/.Vermes``)."""
+    """Load .env from VERMES_HOME (default ``~/.vermes``)."""
     from vermes_cli.env_loader import load_vermes_dotenv
 
     VERMES_home = get_vermes_home()

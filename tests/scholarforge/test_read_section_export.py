@@ -4,7 +4,7 @@ import os
 import sys
 
 # 确保用测试 DB
-os.environ["VERMES_HOME"] = os.path.expanduser("~/.Vermes")
+os.environ["VERMES_HOME"] = os.path.expanduser("~/.vermes")
 
 
 @pytest.fixture

@@ -19,14 +19,14 @@ class TestGetDefaultvermesRoot:
     """Tests for get_default_vermes_root() — Docker/custom deployment awareness."""
 
     def test_no_vermes_home_returns_native(self, tmp_path, monkeypatch):
-        """When VERMES_HOME is not set, returns ~/.Vermes."""
+        """When VERMES_HOME is not set, returns ~/.vermes."""
         monkeypatch.delenv("VERMES_HOME", raising=False)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
         assert get_default_vermes_root() == tmp_path / ".vermes"
 
     def test_vermes_home_is_native(self, tmp_path, monkeypatch):
-        """When VERMES_HOME = ~/.Vermes, returns ~/.Vermes."""
+        """When VERMES_HOME = ~/.vermes, returns ~/.vermes."""
         native = tmp_path / ".vermes"
         native.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -34,7 +34,7 @@ class TestGetDefaultvermesRoot:
         assert get_default_vermes_root() == native
 
     def test_vermes_home_is_profile(self, tmp_path, monkeypatch):
-        """When VERMES_HOME is a profile under ~/.Vermes, returns ~/.Vermes."""
+        """When VERMES_HOME is a profile under ~/.vermes, returns ~/.vermes."""
         native = tmp_path / ".vermes"
         profile = native / "profiles" / "coder"
         profile.mkdir(parents=True)
@@ -43,7 +43,7 @@ class TestGetDefaultvermesRoot:
         assert get_default_vermes_root() == native
 
     def test_vermes_home_is_docker(self, tmp_path, monkeypatch):
-        """When VERMES_HOME points outside ~/.Vermes (Docker), returns VERMES_HOME."""
+        """When VERMES_HOME points outside ~/.vermes (Docker), returns VERMES_HOME."""
         docker_home = tmp_path / "opt" / "data"
         docker_home.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -51,7 +51,7 @@ class TestGetDefaultvermesRoot:
         assert get_default_vermes_root() == docker_home
 
     def test_vermes_home_is_custom_path(self, tmp_path, monkeypatch):
-        """Any VERMES_HOME outside ~/.Vermes is treated as the root."""
+        """Any VERMES_HOME outside ~/.vermes is treated as the root."""
         custom = tmp_path / "my-Vermes-data"
         custom.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)

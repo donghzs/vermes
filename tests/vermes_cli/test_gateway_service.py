@@ -368,7 +368,7 @@ class TestGeneratedSystemdUnits:
             "_system_service_identity",
             lambda run_as_user=None: ("alice", "alice", "/home/alice"),
         )
-        monkeypatch.setattr(gateway_cli, "_vermes_home_for_target_user", lambda home: "/home/alice/.Vermes")
+        monkeypatch.setattr(gateway_cli, "_vermes_home_for_target_user", lambda home: "/home/alice/.vermes")
         monkeypatch.setenv("PATH", "/usr/local/bin:/mnt/c/WINDOWS/system32")
         monkeypatch.setattr(gateway_cli.shutil, "which", lambda cmd: None)
 
@@ -1215,13 +1215,13 @@ class TestSystemUnitvermesHome:
 
         unit = gateway_cli.generate_systemd_unit(system=True, run_as_user="alice")
 
-        assert 'VERMES_HOME=/home/alice/.Vermes' in unit
-        assert '/root/.Vermes' not in unit
+        assert 'VERMES_HOME=/home/alice/.vermes' in unit
+        assert '/root/.vermes' not in unit
 
     def test_system_unit_remaps_profile_to_target_user(self, monkeypatch):
         # Simulate sudo with a profile: VERMES_HOME was resolved under root
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
-        monkeypatch.setenv("VERMES_HOME", "/root/.Vermes/profiles/coder")
+        monkeypatch.setenv("VERMES_HOME", "/root/.vermes/profiles/coder")
         monkeypatch.setattr(
             gateway_cli, "_system_service_identity",
             lambda run_as_user=None: ("alice", "alice", "/home/alice"),
@@ -1233,7 +1233,7 @@ class TestSystemUnitvermesHome:
 
         unit = gateway_cli.generate_systemd_unit(system=True, run_as_user="alice")
 
-        assert 'VERMES_HOME=/home/alice/.Vermes/profiles/coder' in unit
+        assert 'VERMES_HOME=/home/alice/.vermes/profiles/coder' in unit
         assert '/root/' not in unit
 
     def test_system_unit_preserves_custom_vermes_home(self, monkeypatch):
@@ -1269,14 +1269,14 @@ class TestvermesHomeForTargetUser:
         monkeypatch.delenv("VERMES_HOME", raising=False)
 
         result = gateway_cli._vermes_home_for_target_user("/home/alice")
-        assert result == "/home/alice/.Vermes"
+        assert result == "/home/alice/.vermes"
 
     def test_remaps_profile_path(self, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
-        monkeypatch.setenv("VERMES_HOME", "/root/.Vermes/profiles/coder")
+        monkeypatch.setenv("VERMES_HOME", "/root/.vermes/profiles/coder")
 
         result = gateway_cli._vermes_home_for_target_user("/home/alice")
-        assert result == "/home/alice/.Vermes/profiles/coder"
+        assert result == "/home/alice/.vermes/profiles/coder"
 
     def test_keeps_custom_path(self, monkeypatch):
         monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/root")))
@@ -1290,7 +1290,7 @@ class TestvermesHomeForTargetUser:
         monkeypatch.delenv("VERMES_HOME", raising=False)
 
         result = gateway_cli._vermes_home_for_target_user("/home/alice")
-        assert result == "/home/alice/.Vermes"
+        assert result == "/home/alice/.vermes"
 
 
 class TestGeneratedUnitUsesDetectedVenv:
@@ -1583,7 +1583,7 @@ class TestProfileArg:
     """Tests for _profile_arg — returns '--profile <name>' for named profiles."""
 
     def test_default_vermes_home_returns_empty(self, tmp_path, monkeypatch):
-        """Default ~/.Vermes should not produce a --profile flag."""
+        """Default ~/.vermes should not produce a --profile flag."""
         VERMES_home = tmp_path / ".vermes"
         VERMES_home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -1724,7 +1724,7 @@ class TestSystemUnitPathRemapping:
         assert str(root_home) not in unit
         # Target user paths should be present
         assert "/home/alice" in unit
-        assert "WorkingDirectory=/home/alice/.Vermes/vermes-agent" in unit
+        assert "WorkingDirectory=/home/alice/.vermes/vermes-agent" in unit
 
 
 class TestDockerAwareGateway:

@@ -215,7 +215,7 @@ def test_registry_resolve_by_name(tmp_path):
 def test_registry_defaults_to_vermes_home(tmp_path, monkeypatch):
     from plugins.google_meet.node.registry import NodeRegistry
 
-    # _isolate_home already set VERMES_HOME to tmp_path/.Vermes; the
+    # _isolate_home already set VERMES_HOME to tmp_path/.vermes; the
     # registry default path must live inside that tree.
     r = NodeRegistry()
     r.add("x", "ws://x", "t")

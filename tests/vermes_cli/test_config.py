@@ -44,7 +44,7 @@ class TestGetvermesHome:
             assert home == Path("/vermes/custom")
 
     def test_legacy_home_auto_migration(self, tmp_path, monkeypatch):
-        """方案1: 首次运行 ~/.vermes 不存在但 ~/.Vermes 存在时,
+        """方案1: 首次运行 ~/.vermes 不存在但 ~/.vermes 存在时,
         一次性拷贝迁移, legacy 原目录保留, 幂等。"""
         import shutil
         legacy = tmp_path / ".vermes"

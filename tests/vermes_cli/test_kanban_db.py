@@ -1606,7 +1606,7 @@ class TestSharedBoardPaths:
     def test_default_install_anchors_at_home_dot_vermes(
         self, tmp_path, monkeypatch
     ):
-        # Standard install: VERMES_HOME == ~/.Vermes, no profile active.
+        # Standard install: VERMES_HOME == ~/.vermes, no profile active.
         default_home = tmp_path / ".vermes"
         default_home.mkdir()
         self._set_home(monkeypatch, tmp_path, default_home)
@@ -1676,7 +1676,7 @@ class TestSharedBoardPaths:
     def test_docker_custom_vermes_home_uses_env_path_directly(
         self, tmp_path, monkeypatch
     ):
-        # Docker / custom deployment: VERMES_HOME points outside ~/.Vermes.
+        # Docker / custom deployment: VERMES_HOME points outside ~/.vermes.
         # `get_default_vermes_root()` returns env_home directly when it
         # is not a `<root>/profiles/<name>` shape and not under
         # `Path.home() / ".vermes"`.

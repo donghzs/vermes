@@ -275,7 +275,7 @@ def startup_integrity_probe(home: Optional[Path] = None) -> Dict[str, Any]:
     MUST be called before any ``SessionDB()`` instantiation in the process
     (audit correction C).  *home* defaults to ``get_vermes_home()`` resolved
     AT CALL TIME (audit correction B: two homes coexist on real disks —
-    ``~/.Vermes`` legacy vs ``~/.vermes`` active — hardcoding would probe
+    ``~/.vermes`` legacy vs ``~/.vermes`` active — hardcoding would probe
     the wrong ledger, the exact accident this guard exists to prevent).
 
     Side effects (module state only, zero disk writes):

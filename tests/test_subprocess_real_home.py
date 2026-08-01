@@ -110,7 +110,7 @@ class TestSubprocessEnvRealHome:
         """When profile isolation is off, VERMES_REAL_HOME is not needed."""
         with mock.patch.dict(os.environ, {
             "HOME": "/home/testuser",
-            "VERMES_HOME": "/home/testuser/.Vermes",
+            "VERMES_HOME": "/home/testuser/.vermes",
         }, clear=False):
             from vermes_constants import get_subprocess_home
             result = get_subprocess_home()

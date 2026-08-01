@@ -1,7 +1,7 @@
 """Regression tests for _apply_profile_override VERMES_HOME guard (issue #22502).
 
 When VERMES_HOME is set to the Vermes root (e.g. systemd hardcodes
-VERMES_HOME=/root/.Vermes), _apply_profile_override must still read
+VERMES_HOME=/root/.vermes), _apply_profile_override must still read
 active_profile and update VERMES_HOME to the profile directory.
 
 When VERMES_HOME is already a profile directory (.../profiles/<name>),
@@ -61,7 +61,7 @@ class TestApplyProfileOverridevermesHomeGuard:
     def test_vermes_home_at_root_with_active_profile_is_redirected(
         self, tmp_path, monkeypatch
     ):
-        """VERMES_HOME=/root/.Vermes + active_profile=coder must redirect
+        """VERMES_HOME=/root/.vermes + active_profile=coder must redirect
         VERMES_HOME to .../profiles/coder.
 
         Bug scenario from #22502: systemd sets VERMES_HOME to the Vermes root
