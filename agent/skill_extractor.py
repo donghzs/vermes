@@ -168,7 +168,7 @@ class SkillExtractor:
                    WHERE lifecycle_stage = 'stable'
                      AND event_count >= 5
                      AND success_rate >= ?
-                     AND name NOT LIKE '|_|_%|_|_' ESCAPE '|'
+                     AND (name IS NULL OR name NOT LIKE '|_|_%|_|_' ESCAPE '|')
                    ORDER BY event_count DESC""",
                 (SKILL_SUCCESS_RATE_FLOOR,),
             )

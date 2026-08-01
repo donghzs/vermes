@@ -226,7 +226,7 @@ def _check_pattern_repetition(
             """SELECT id, name, event_count, success_rate, lifecycle_stage
                FROM clusters
                WHERE lifecycle_stage = 'stable' AND event_count >= 5
-                 AND name NOT LIKE '|_|_%|_|_' ESCAPE '|'
+                 AND (name IS NULL OR name NOT LIKE '|_|_%|_|_' ESCAPE '|')
                ORDER BY event_count DESC"""
         )
         clusters = cursor.fetchall()

@@ -20,6 +20,7 @@ Embedding model 自动发现：
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -363,7 +364,7 @@ def store_embedding(content: str, target: str = "memory") -> None:
             conn.execute(
                 """INSERT OR REPLACE INTO embeddings (content_hash, content, target, vector, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
-                (str(hash(content)), content[:500], target, blob, __import__("datetime").datetime.now().isoformat()),
+                (hashlib.sha256(content.encode()).hexdigest(), content[:500], target, blob, __import__("datetime").datetime.now().isoformat()),
             )
             conn.commit()
         except Exception as exc:
@@ -378,7 +379,7 @@ def delete_embedding(content: str) -> None:
         return
     try:
         conn = _get_conn()
-        conn.execute("DELETE FROM embeddings WHERE content_hash = ?", (str(hash(content)),))
+        conn.execute("DELETE FROM embeddings WHERE content_hash = ?", (hashlib.sha256(content.encode()).hexdigest(),))
         conn.commit()
     except Exception as exc:
         logger.debug("delete_embedding failed: %s", exc)
