@@ -147,6 +147,32 @@ def _get_handoff_db() -> Optional[Path]:
     return db if db.exists() else None
 
 
+# 中文高频虚词/代词——参与切分会稀释主题词元
+_CJK_STOP_CHARS = set(
+    "的了是在我你他她它们这那个一不有和人就都而与或但如果因为所以"
+    "吗吧呢啊呀哦嗯把被让给对从向到过着为之其此该等则也还很更再又"
+)
+
+
+def _extract_chinese_tokens(text: str, sizes: tuple = (2, 3)) -> List[str]:
+    """重叠 n-gram 滑窗切分中文（保留重复以便词频打分）。
+
+    旧实现是 ``re.findall(r'[\\u4e00-\\u9fff]{2,4}')`` —— 那是**非重叠定长切窗**，
+    不是分词：切窗起点由文本前缀决定，同一短语在写入侧和查询侧会落到不同偏移
+    上，交集恒为空（实测 5 条中文改写提问 5/5 零命中）。重叠滑窗保证任意 2/3 字
+    连续子串在两侧都会被产出，从而可以相交。
+
+    停用字在切分前剔除，两侧做同样变换，故一致性不受影响。
+    """
+    tokens: List[str] = []
+    for seg in re.findall(r'[\u4e00-\u9fff]+', text or ""):
+        filtered = ''.join(c for c in seg if c not in _CJK_STOP_CHARS)
+        for size in sizes:
+            for i in range(len(filtered) - size + 1):
+                tokens.append(filtered[i:i + size])
+    return tokens
+
+
 def _extract_keywords(message: str, max_keywords: int = 5) -> List[str]:
     """Extract meaningful keywords from user message.
 
@@ -159,9 +185,9 @@ def _extract_keywords(message: str, max_keywords: int = 5) -> List[str]:
     clean = re.sub(r'[*_`#\[\]()]', ' ', message)
 
     # Split into words (support both Chinese and English)
-    # Chinese: extract 2-4 char sequences
+    # Chinese: overlapping 2/3-char n-gram sliding window (see above)
     # English: extract words >= 3 chars
-    chinese_tokens = re.findall(r'[\u4e00-\u9fff]{2,4}', clean)
+    chinese_tokens = _extract_chinese_tokens(clean)
     english_tokens = re.findall(r'[a-zA-Z]{3,}', clean)
 
     # English stop words
@@ -186,7 +212,17 @@ def _extract_keywords(message: str, max_keywords: int = 5) -> List[str]:
     # Sort by frequency, then prefer longer tokens
     sorted_tokens = sorted(freq.keys(), key=lambda t: (-freq[t], -len(t)))
 
-    return sorted_tokens[:max_keywords]
+    # CJK 重叠 n-gram 的词元密度约为字符数的 2 倍，远高于英文分词。沿用英文的
+    # 小额度会让长句只有开头一小段进入索引（实测「进行的重大的改造」整段被截断，
+    # 导致「重大改造」类提问零命中）。故按 CJK 字符量自适应放宽，上限 20 —— 下游
+    # ``_query_recent_outcomes`` 每个词元展开 3 个 LIKE，20 即 60 个子句，是
+    # 召回覆盖与 OR 爆炸之间的平衡点。英文路径不受影响。
+    cjk_len = sum(1 for ch in clean if '\u4e00' <= ch <= '\u9fff')
+    effective_max = max_keywords
+    if cjk_len:
+        effective_max = min(20, max(max_keywords, cjk_len))
+
+    return sorted_tokens[:effective_max]
 
 
 def _query_recent_outcomes(

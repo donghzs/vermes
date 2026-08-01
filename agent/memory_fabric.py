@@ -197,6 +197,33 @@ def _sanitize_fts(q: str) -> str:
     return re.sub(r'["*()|:^\[\]{}\\]', " ", q or "").strip()
 
 
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
+
+
+def _cjk_like_terms(sq: str, short_cjk: Optional[List[str]] = None) -> List[str]:
+    """FTS 零命中时的 CJK 兜底词元（重叠 2-gram，过滤停用字）。
+
+    trigram 分词器要求 3 个字**连续**重合，所以「战略调整」查不到「战略定位」
+    ——尽管两者共享「战略」。这类漏召回无法靠 MATCH 修，只能退到子串匹配。
+    停用字表复用 ``memory_recall``（单一事实源）；导入失败时退到内置最小集，
+    保证低层存储模块不会因上层依赖问题而崩。
+    """
+    try:
+        from agent.memory_recall import _CJK_STOP_CHARS as _stop
+    except Exception:  # pragma: no cover - 防御性
+        _stop = set("的了是在我你他她它们这那个一不有和人就都而与或但")
+    out: List[str] = list(short_cjk or [])
+    seen = set(out)
+    for seg in _CJK_RE.findall(sq or ""):
+        filtered = "".join(ch for ch in seg if ch not in _stop)
+        for i in range(len(filtered) - 1):
+            t = filtered[i:i + 2]
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
+    return out
+
+
 def index_note(target: str, content: str, scope: str = "") -> None:
     """Write L1 curated memory into the unified index.
 
@@ -338,7 +365,8 @@ def recall(
     db_path = _get_index_db()
     if not os.path.exists(str(db_path)):
         return []
-    terms = _sanitize_fts(query).split()
+    _sq = _sanitize_fts(query)
+    terms = _sq.split()
     if not terms:
         return []
 
@@ -347,7 +375,37 @@ def recall(
     effective_limit = max(1, int(limit * cap["limit_scale"]))
     skip_cold = cap["skip_cold"]
 
-    fts = " OR ".join(f'"{t}"' for t in terms[:8])
+    # ── CJK 查询分词修复 ────────────────────────────────────────────────
+    # ``memories_fts`` 使用 trigram 分词器，这带来两个必须分别处理的约束：
+    #   1) 中文句子没有空格 —— split() 之后整句是**一个巨型 term**，MATCH 要求
+    #      它原样连续出现，因此自然中文提问恒 0 命中。实测
+    #      "帮我回忆一下户外主题建构游戏的研究" → 0 命中，尽管库中确实存在
+    #      "户外主题建构游戏"。解法：把 CJK 段切成重叠 3-gram 再 OR。
+    #   2) 少于 3 字符的查询词在 trigram 下**无论如何都无法 MATCH**（实测
+    #      "战略" MATCH=0 而 LIKE=2）。这类短词只能走 LIKE 兜底，往 OR 里
+    #      追加 bigram 是无效开销。
+    _cjk_re = _CJK_RE
+    fts_terms: List[str] = []
+    short_cjk: List[str] = []
+    _seen_t = set()
+
+    def _push(t: str) -> None:
+        if t and t not in _seen_t:
+            _seen_t.add(t)
+            fts_terms.append(t)
+
+    for _seg in _cjk_re.findall(_sq):
+        if len(_seg) >= 3:
+            for _i in range(len(_seg) - 2):
+                _push(_seg[_i:_i + 3])
+        elif len(_seg) == 2 and _seg not in short_cjk:
+            short_cjk.append(_seg)
+    # 非 CJK（英文/数字）沿用原有整词行为，避免英文路径回归
+    for _t in terms:
+        for _w in _cjk_re.sub(" ", _t).split():
+            _push(_w)
+
+    fts = " OR ".join(f'"{t}"' for t in fts_terms[:16])
     sql = (
         "SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer, "
         "m.fts_content, m.access_count, m.lifecycle_tag "
@@ -384,8 +442,54 @@ def recall(
             conn = _get_conn(str(db_path))
             try:
                 c = conn.cursor()
-                c.execute(sql, params)
-                rows = c.fetchall()
+                rows = []
+                if fts:
+                    c.execute(sql, params)
+                    rows = c.fetchall()
+                # CJK 兜底：trigram MATCH 对两类查询结构性失效——
+                #   a) <3 字查询词（实测 "战略" MATCH=0 / LIKE=2）；
+                #   b) 3 字窗口错位（"战略调整" 查不到 "战略定位"）。
+                # 两者都只能退到子串匹配。仅在 FTS 零命中时触发，并按"匹配到
+                # 几个词元"打分排序，让弱相关行自然沉底（截断词表会随机丢词，
+                # 打分不会）。
+                if not rows:
+                    _lk_terms = _cjk_like_terms(_sq, short_cjk)[:12]
+                else:
+                    _lk_terms = []
+                if _lk_terms:
+                    _score = " + ".join(
+                        "(m.fts_content LIKE ?)" for _ in _lk_terms
+                    )
+                    _pat = [f"%{t}%" for t in _lk_terms]
+                    _lk_sql = (
+                        "SELECT m.id, m.source, m.layer, m.type, m.scope, "
+                        "m.pointer, m.fts_content, m.access_count, m.lifecycle_tag, "
+                        f"({_score}) AS _mscore FROM memories m "
+                        f"WHERE ({_score}) > 0"
+                    )
+                    _lk_params: List[Any] = _pat + _pat
+                    if layer:
+                        _lk_sql += " AND m.layer=?"
+                        _lk_params.append(layer)
+                    if tag_filter:
+                        _lk_sql += " AND m.lifecycle_tag IN (%s)" % ",".join(
+                            "?" for _ in tag_filter
+                        )
+                        _lk_params.extend(tag_filter)
+                    if skip_cold:
+                        _lk_sql += " AND m.access_count > ?"
+                        _lk_params.append(_COLD_ACCESS_THRESHOLD)
+                    if _scope_boost:
+                        _lk_sql += (
+                            " ORDER BY (m.scope = ?) DESC, _mscore DESC, "
+                            "m.access_count DESC LIMIT ?"
+                        )
+                        _lk_params.append(scope)
+                    else:
+                        _lk_sql += " ORDER BY _mscore DESC, m.access_count DESC LIMIT ?"
+                    _lk_params.append(effective_limit)
+                    c.execute(_lk_sql, _lk_params)
+                    rows = c.fetchall()
                 # Route E P1: tag_filter 回退——FTS 查询词可能与标签记忆内容
                 # 不匹配（如查 "decision" 但记忆是中文），回退到纯 tag 查询
                 if tag_filter and not rows:

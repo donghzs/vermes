@@ -507,25 +507,43 @@ def _apply_operator_claim_verifier(
     """
     if final_response and not interrupted:
         try:
-            # 精确检测：本回合最新一条 assistant 消息是否有 tool_calls
+            # 盲区5：判定维度修复。
+            # ``messages`` 是完整会话历史（``_prepare_messages`` 以
+            # ``list(conversation_history)`` 构造），并非单回合切片。因此：
+            #   - 旧的 reversed()+break 只看最后一条 assistant → 多轮工具执行后的
+            #     总结回复（最后一条无 tool_calls）几乎必被误杀；
+            #   - 但直接全量遍历又会把历史回合的工具调用误计入本回合 → 验证器失效。
+            # 正确边界：最后一条 user 消息之后的切片 == 本回合。等价于
+            # ``_prepare_messages`` 的 ``current_turn_user_idx + 1``，但刻意
+            # 就地计算：硬拒绝会注入一条 role="user" 反馈，让它成为新的回合
+            # 起点，与注入文案「直接调工具重新开始」的语义一致（重试只按重试
+            # 自身的工具证据判定，不继承被拒那半程）。
+            _turn_start = 0
+            for _i in range(len(messages) - 1, -1, -1):
+                _mi = messages[_i]
+                if isinstance(_mi, dict) and _mi.get("role") == "user":
+                    _turn_start = _i + 1
+                    break
+            _turn_msgs = messages[_turn_start:]
+
             _turn_has_tool_calls = False
             _turn_tool_names: set[str] = set()
             _turn_failed_tools: set[str] = set()
             _turn_succeeded_tools: set[str] = set()
-            for _m in reversed(messages):
-                if isinstance(_m, dict) and _m.get("role") == "assistant":
-                    _turn_has_tool_calls = bool(_m.get("tool_calls"))
-                    if _turn_has_tool_calls:
-                        for _tc in (_m.get("tool_calls") or []):
-                            try:
-                                _fn = _tc.get("function", {}).get("name", "")
-                                if _fn:
-                                    _turn_tool_names.add(_fn)
-                            except Exception:
-                                pass
-                    break
-            # 盲区2：检查 tool 结果是否有失败（❌ 开头）vs 成功
-            for _m in messages:
+            # 本回合内累计：任一轮 assistant 有 tool_calls 即视为执行过工具
+            for _m in _turn_msgs:
+                if isinstance(_m, dict) and _m.get("role") == "assistant" and _m.get("tool_calls"):
+                    _turn_has_tool_calls = True
+                    for _tc in (_m.get("tool_calls") or []):
+                        try:
+                            _fn = _tc.get("function", {}).get("name", "")
+                            if _fn:
+                                _turn_tool_names.add(_fn)
+                        except Exception:
+                            pass
+            # 盲区2：检查 tool 结果是否有失败（❌ 开头）vs 成功。
+            # 同样必须限定在本回合内，否则历史回合的成功记录会永久压制失败判定。
+            for _m in _turn_msgs:
                 if isinstance(_m, dict) and _m.get("role") == "tool":
                     _content = _m.get("content", "")
                     _tname = _m.get("name", "")
