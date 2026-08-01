@@ -24,7 +24,7 @@ const router = useRouter()
 // ── 提供商列表 ──
 const DEFAULT_BASE_URLS = {
   openai: 'https://api.openai.com/v1',
-  deepseek: 'https://api.deepseek.com',
+  deepseek: 'https://api.deepseek.com/v1',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   openrouter: 'https://openrouter.ai/api/v1',
   vbit: 'https://api.vbit.top/v1',
@@ -492,7 +492,8 @@ async function save() {
       const envKey = getEnvKey(p.id)
       savePromises.push(
         fetch('/api/env', { method: 'PUT', headers: envHeaders(), body: JSON.stringify({ key: envKey, value: p.key }) })
-          .catch(() => {})
+          .then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`) } }
+          .catch((e) => { console.error(`保存 ${p.id} API Key 失败:`, e); toast.error(`${p.name} Key 保存失败: ${e.message}`) })
       )
       if (!firstRealKey && p.models && p.models.length > 0 && p.id !== 'vbit') firstRealKey = { id: p.id, name: p.name, model: p.models[0] }
     }
@@ -504,7 +505,8 @@ async function save() {
       if (p.key && p.key !== '●●●●●●●●') payload.api_key = p.key
       savePromises.push(
         fetch('/api/provider/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-          .catch(() => {})
+          .then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`) } }
+          .catch((e) => { console.error(`保存 ${p.id} provider 配置失败:`, e); toast.error(`${p.name} 配置保存失败: ${e.message}`) })
       )
     }
   }
