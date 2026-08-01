@@ -1371,6 +1371,20 @@ def _finalize_turn(
 
     _run_post_llm_hooks(agent, final_response, interrupted, messages, original_user_message)
 
+    # P3-⑪: L1 自动抽取——每轮对话结束扫描凭据/偏好并写 L1 note 层。
+    # fail-open：任何异常都不应影响主对话流程与返回结果。
+    if not interrupted and final_response:
+        try:
+            from agent.l1_extractor import run_l1_extraction_for_turn
+
+            _committed = run_l1_extraction_for_turn(
+                original_user_message or user_message or "", final_response
+            )
+            if _committed:
+                logger.info("L1 auto-extract committed %d fact(s) this turn", _committed)
+        except Exception as _l1_err:
+            logger.warning("L1 auto-extract failed (non-fatal): %s", _l1_err)
+
     result = _build_conversation_result(
         agent, messages, final_response, interrupted, api_call_count,
         _turn_exit_reason, original_user_message, completed,

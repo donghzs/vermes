@@ -528,11 +528,12 @@ def get_flag(flag_id: int) -> Optional[Dict]:
 
 
 def resolve_flag(flag_id: int, resolution: str) -> bool:
-    """标记 flag 为已解决。
+    """标记 flag 为已解决，并（按 resolution 类型）联动演进原记忆。
 
-    仅 UPDATE memory_flags 状态列（status→resolved + resolution + resolved_at），
-    **不触碰原 memories 表**，符合铁律（铁律禁的是改原 memories；flag 表自身
-    状态演进合法）。
+    铁律边界说明：铁律禁的是**无差别改写原 memories**；这里对 demote 类
+    flag 的精确降级（把被标记记忆的 lifecycle_tag 置 ephemeral）属于用户
+    显式意图（/resolve_flag demote = "这条记忆降权/弃用"），是合法演进，
+    与"反思引擎静默改写记忆"不同。
 
     Args:
         flag_id: flag 主键
@@ -552,13 +553,49 @@ def resolve_flag(flag_id: int, resolution: str) -> bool:
 
     conn = sqlite3.connect(db_path)
     try:
+        # 先取 memory_id（demote 时需联动原记忆）；flag 不存在直接返回 False
+        _row = conn.execute(
+            "SELECT memory_id FROM memory_flags WHERE id = ? AND status = 'open'",
+            (flag_id,),
+        ).fetchone()
+        if not _row:
+            return False
+        _memory_id = _row[0]
+
         cur = conn.execute(
             """UPDATE memory_flags
                SET status = 'resolved', resolution = ?, resolved_at = ?
                WHERE id = ? AND status = 'open'""",
             (resolution, datetime.now(timezone.utc).isoformat(), flag_id),
         )
+        if cur.rowcount == 0:
+            return False
+
+        # ── P3-⑩: demote 联动降级原记忆 → lifecycle_tag='ephemeral' ──
+        # fail-open：memories 表缺失/该行不存在/类型不匹配都不应阻断 flag 解决。
+        if resolution == "demote":
+            try:
+                try:
+                    _mid = int(_memory_id)
+                except (TypeError, ValueError):
+                    _mid = _memory_id
+                _uc = conn.execute(
+                    "UPDATE memories SET lifecycle_tag='ephemeral' WHERE id = ?",
+                    (_mid,),
+                ).rowcount
+                logger.info(
+                    "[Reflection] resolve_flag demote: flag=%s memory=%s → "
+                    "lifecycle_tag='ephemeral' (%d row(s))",
+                    flag_id, _memory_id, _uc,
+                )
+            except Exception:
+                logger.warning(
+                    "[Reflection] resolve_flag demote: memories 联动降级失败"
+                    "（flag 已 resolved，非致命）",
+                    exc_info=True,
+                )
+
         conn.commit()
-        return cur.rowcount > 0
+        return True
     finally:
         conn.close()
