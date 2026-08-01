@@ -213,3 +213,162 @@ class TestClusterIsActiveField:
 
         assert c.is_active is False
         assert c.lifecycle_stage == "dead"
+
+
+class TestG5LegacyMigration:
+    """G5 fix: ensure_cluster_tables must add is_active to legacy databases."""
+
+    def test_legacy_db_gets_is_active_column(self, tmp_path):
+        """A legacy clusters table without is_active should get it added."""
+        db_path = tmp_path / "legacy.db"
+        conn = sqlite3.connect(str(db_path))
+        # Create legacy schema (no is_active column)
+        conn.execute("""
+            CREATE TABLE clusters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL DEFAULT '',
+                feature_signature TEXT DEFAULT '',
+                event_count INTEGER DEFAULT 0,
+                success_count INTEGER DEFAULT 0,
+                error_count INTEGER DEFAULT 0,
+                total_duration REAL DEFAULT 0.0,
+                first_seen TEXT DEFAULT '',
+                last_seen TEXT DEFAULT '',
+                last_active_at TEXT DEFAULT '',
+                success_rate REAL DEFAULT 0.0,
+                avg_duration REAL DEFAULT 0.0,
+                lifecycle_stage TEXT DEFAULT 'emerging',
+                parent_cluster_id INTEGER DEFAULT NULL,
+                evolved_from TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute(
+            "INSERT INTO clusters(name, lifecycle_stage) VALUES ('legacy_cluster', 'stable')"
+        )
+        conn.commit()
+
+        # Run migration
+        from agent.emergent_clusterer import ensure_cluster_tables
+        ensure_cluster_tables(conn)
+
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(clusters)").fetchall()]
+        assert "is_active" in cols
+
+        # Existing rows get default value 1
+        row = conn.execute(
+            "SELECT name, is_active, lifecycle_stage FROM clusters WHERE name='legacy_cluster'"
+        ).fetchone()
+        assert row[1] == 1  # default 1
+        assert row[2] == "stable"  # preserved
+        conn.close()
+
+    def test_fresh_db_has_is_active_from_create(self, tmp_path):
+        """Fresh databases get is_active from CREATE TABLE (not ALTER)."""
+        db_path = tmp_path / "fresh.db"
+        conn = sqlite3.connect(str(db_path))
+        from agent.emergent_clusterer import ensure_cluster_tables
+        ensure_cluster_tables(conn)
+
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(clusters)").fetchall()]
+        assert "is_active" in cols
+        conn.close()
+
+
+class TestG6StageNoDowngrade:
+    """G6 fix: _upsert_cluster must not downgrade stable → emerging."""
+
+    def test_stable_not_downgraded_to_emerging(self, tmp_path):
+        """An existing stable cluster should stay stable on upsert."""
+        from agent.emergent_clusterer import (
+            EmergentClusterer,
+            Cluster,
+        )
+        db_path = tmp_path / "test.db"
+        conn = sqlite3.connect(db_path)
+        from agent.emergent_clusterer import ensure_cluster_tables
+        ensure_cluster_tables(conn)
+
+        # Insert a stable cluster
+        conn.execute(
+            "INSERT INTO clusters(name, feature_signature, event_count, lifecycle_stage, is_active) "
+            "VALUES('stable_skill', 'sig1', 10, 'stable', 1)"
+        )
+        conn.commit()
+        conn.close()
+
+        # Create a new cluster with same signature but stage='emerging'
+        new_cluster = Cluster(
+            id=0,
+            name="stable_skill",
+            feature_signature="sig1",
+            event_count=5,
+            success_count=5,
+            error_count=0,
+            total_duration=10.0,
+            first_seen="2026-01-01",
+            last_seen="2026-08-02",
+            last_active_at="2026-08-02",
+            lifecycle_stage="emerging",  # new cluster default
+            is_active=True,
+        )
+
+        clusterer = EmergentClusterer(str(db_path))
+        conn2 = sqlite3.connect(db_path)
+        old_id = conn2.execute("SELECT id FROM clusters WHERE name='stable_skill'").fetchone()[0]
+        clusterer._upsert_cluster(conn2, new_cluster, old_id, "2026-08-02T00:00:00")
+        conn2.commit()
+
+        row = conn2.execute(
+            "SELECT lifecycle_stage, event_count FROM clusters WHERE name='stable_skill'"
+        ).fetchone()
+        conn2.close()
+
+        assert row[0] == "stable"  # not downgraded to emerging
+        assert row[1] == 15  # 10 + 5 accumulated
+
+    def test_emerging_can_become_stable(self, tmp_path):
+        """If new cluster is stable and old is emerging, upgrade to stable."""
+        from agent.emergent_clusterer import (
+            EmergentClusterer,
+            Cluster,
+            ensure_cluster_tables,
+        )
+        db_path = tmp_path / "test.db"
+        conn = sqlite3.connect(db_path)
+        ensure_cluster_tables(conn)
+
+        conn.execute(
+            "INSERT INTO clusters(name, feature_signature, event_count, lifecycle_stage, is_active) "
+            "VALUES('growing', 'sig2', 5, 'emerging', 1)"
+        )
+        conn.commit()
+        conn.close()
+
+        new_cluster = Cluster(
+            id=0,
+            name="growing",
+            feature_signature="sig2",
+            event_count=10,
+            success_count=10,
+            error_count=0,
+            total_duration=20.0,
+            first_seen="2026-01-01",
+            last_seen="2026-08-02",
+            last_active_at="2026-08-02",
+            lifecycle_stage="stable",  # upgrade
+            is_active=True,
+        )
+
+        clusterer = EmergentClusterer(str(db_path))
+        conn2 = sqlite3.connect(db_path)
+        old_id = conn2.execute("SELECT id FROM clusters WHERE name='growing'").fetchone()[0]
+        clusterer._upsert_cluster(conn2, new_cluster, old_id, "2026-08-02T00:00:00")
+        conn2.commit()
+
+        row = conn2.execute(
+            "SELECT lifecycle_stage FROM clusters WHERE name='growing'"
+        ).fetchone()
+        conn2.close()
+
+        assert row[0] == "stable"  # upgraded

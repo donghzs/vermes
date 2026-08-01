@@ -496,7 +496,22 @@ CREATE INDEX IF NOT EXISTS idx_lifecycle_cluster ON cluster_lifecycle_events(clu
 
 
 def ensure_cluster_tables(conn: sqlite3.Connection) -> None:
-    """Create cluster tables and indexes if they don't exist."""
+    """Create cluster tables and indexes if they don't exist.
+
+    Also runs lazy migrations for columns added after the initial schema.
+    G5 fix: is_active column must exist for recurrence fix (commit 1580faef6)
+    to work on legacy databases created before the column was in CREATE TABLE.
+    """
+    # G5: Check for legacy database missing is_active BEFORE executing
+    # CLUSTERS_TABLE_SQL (which creates indexes referencing is_active).
+    table_exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='clusters'"
+    ).fetchone()
+    if table_exists:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(clusters)").fetchall()]
+        if "is_active" not in cols:
+            conn.execute("ALTER TABLE clusters ADD COLUMN is_active INTEGER DEFAULT 1")
+            conn.commit()
     conn.executescript(CLUSTERS_TABLE_SQL)
     conn.commit()
 
@@ -786,6 +801,21 @@ class EmergentClusterer:
         new_rate = (new_sc / new_ec) if new_ec > 0 else 0.0
         new_avg = (new_td / new_ec) if new_ec > 0 else 0.0
 
+        # G6 fix: don't downgrade stable → emerging on upsert.
+        # _build_clusters sets all new clusters to 'emerging', but if the
+        # existing cluster is already 'stable', keep it (max semantics).
+        old_stage_row = cursor.execute(
+            "SELECT lifecycle_stage FROM clusters WHERE id=?", (old_id,)
+        ).fetchone()
+        old_stage = old_stage_row[0] if old_stage_row else "emerging"
+        stage_priority = {"stable": 2, "emerging": 1, "dead": 0}
+        final_stage = (
+            cluster.lifecycle_stage
+            if stage_priority.get(cluster.lifecycle_stage, 0)
+            >= stage_priority.get(old_stage, 0)
+            else old_stage
+        )
+
         cursor.execute(
             """UPDATE clusters SET
                name=?, feature_signature=?, event_count=?, success_count=?,
@@ -804,7 +834,7 @@ class EmergentClusterer:
                 cluster.last_active_at or now,
                 new_rate,
                 new_avg,
-                cluster.lifecycle_stage,
+                final_stage,
                 cluster.evolved_from,
                 old_id,
             ),
