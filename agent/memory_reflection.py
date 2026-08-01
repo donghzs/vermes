@@ -401,7 +401,7 @@ def _scan_llm_flags(limit: int = 50) -> int:
 # ── 辅助函数 ────────────────────────────────────────────────────────────
 
 def get_open_flags(limit: int = 50) -> List[Dict]:
-    """获取 open 状态的 flags（供 continuity_facade 注入）"""
+    """获取 open 状态的 flags（供 continuity_facade 注入 + 前端面板）"""
     from agent.memory_fabric import _get_index_db as _get_mem_db
 
     db_path = _get_mem_db()
@@ -410,14 +410,27 @@ def get_open_flags(limit: int = 50) -> List[Dict]:
 
     conn = sqlite3.connect(db_path)
     try:
-        rows = conn.execute(
-            """SELECT id, memory_id, flag_type, confidence, evidence, created_at
-               FROM memory_flags
-               WHERE status = 'open'
-               ORDER BY created_at DESC
-               LIMIT ?""",
-            (limit,),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """SELECT f.id, f.memory_id, f.flag_type, f.confidence, f.evidence,
+                          f.created_at, m.source
+                   FROM memory_flags f
+                   LEFT JOIN memories m ON CAST(f.memory_id AS INTEGER) = m.id
+                   WHERE f.status = 'open'
+                   ORDER BY f.created_at DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        except Exception:
+            # P2-10: memories 表不存在时回退到不 JOIN
+            rows = conn.execute(
+                """SELECT id, memory_id, flag_type, confidence, evidence, created_at
+                   FROM memory_flags
+                   WHERE status = 'open'
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
         return [
             {
                 "id": r[0],
@@ -426,6 +439,7 @@ def get_open_flags(limit: int = 50) -> List[Dict]:
                 "confidence": r[3],
                 "evidence": r[4],
                 "created_at": r[5],
+                "source": r[6] if len(r) > 6 else None,
             }
             for r in rows
         ]
@@ -573,20 +587,37 @@ def resolve_flag(flag_id: int, resolution: str) -> bool:
 
         # ── P3-⑩: demote 联动降级原记忆 → lifecycle_tag='ephemeral' ──
         # fail-open：memories 表缺失/该行不存在/类型不匹配都不应阻断 flag 解决。
+        # P1-5 fix: demote 时保存原始 lifecycle_tag，供 restore 精确还原。
         if resolution == "demote":
             try:
                 try:
                     _mid = int(_memory_id)
                 except (TypeError, ValueError):
                     _mid = _memory_id
+                # 读取原始 lifecycle_tag
+                _orig = conn.execute(
+                    "SELECT lifecycle_tag FROM memories WHERE id = ?", (_mid,)
+                ).fetchone()
+                _orig_tag = _orig[0] if _orig else "reference"
                 _uc = conn.execute(
                     "UPDATE memories SET lifecycle_tag='ephemeral' WHERE id = ?",
                     (_mid,),
                 ).rowcount
+                # 保存原始 tag 到 flag 行（确保列存在）
+                try:
+                    conn.execute(
+                        "ALTER TABLE memory_flags ADD COLUMN prev_lifecycle_tag TEXT"
+                    )
+                except Exception:
+                    pass  # 列已存在
+                conn.execute(
+                    "UPDATE memory_flags SET prev_lifecycle_tag = ? WHERE id = ?",
+                    (_orig_tag, flag_id),
+                )
                 logger.info(
                     "[Reflection] resolve_flag demote: flag=%s memory=%s → "
-                    "lifecycle_tag='ephemeral' (%d row(s))",
-                    flag_id, _memory_id, _uc,
+                    "lifecycle_tag='ephemeral' (was '%s', %d row(s))",
+                    flag_id, _memory_id, _orig_tag, _uc,
                 )
             except Exception:
                 logger.warning(
@@ -599,3 +630,192 @@ def resolve_flag(flag_id: int, resolution: str) -> bool:
         return True
     finally:
         conn.close()
+
+
+# ── R5: restore_flag ────────────────────────────────────────────────
+
+def restore_flag(flag_id: int) -> bool:
+    """用户反降级：恢复被 demote 的记忆权重 + 重开 flag。
+
+    三路语义：
+      demote       → flag→open + lifecycle_tag→prev_lifecycle_tag（精确还原）
+      merge        → flag→open（只重开审视，不改 lifecycle_tag）
+      false_positive → flag→open（只重开审视，不改 lifecycle_tag）
+
+    P1-5 fix: 不再硬编码 reference，从 flag.prev_lifecycle_tag 读取原始值。
+    若 prev_lifecycle_tag 不存在/为空（旧数据），回退到 _infer_lifecycle_tag。
+
+    fail-open：memories 表缺失/行不存在/类型不符不阻断 flag 重开。
+    """
+    from agent.memory_fabric import _get_index_db as _get_mem_db
+
+    db_path = _get_mem_db()
+    if isinstance(db_path, Path):
+        db_path = str(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        _row = conn.execute(
+            "SELECT memory_id, resolution FROM memory_flags "
+            "WHERE id = ? AND status = 'resolved'",
+            (flag_id,),
+        ).fetchone()
+        if not _row:
+            logger.warning("[Reflection] restore_flag: flag %s not found or not resolved", flag_id)
+            return False
+
+        _memory_id, _resolution = _row[0], _row[1]
+
+        # demote 恢复：联动把 lifecycle_tag 改回原始值
+        if _resolution == "demote":
+            try:
+                try:
+                    _mid = int(_memory_id)
+                except (TypeError, ValueError):
+                    _mid = _memory_id
+                # P1-5 fix: 从 flag 行读取原始 tag，不硬编码 reference
+                try:
+                    _prev = conn.execute(
+                        "SELECT prev_lifecycle_tag FROM memory_flags WHERE id = ?",
+                        (flag_id,),
+                    ).fetchone()
+                    _restore_tag = (_prev and _prev[0]) or "reference"
+                except Exception:
+                    _restore_tag = "reference"  # 旧库无列，回退到 reference
+                _uc = conn.execute(
+                    "UPDATE memories SET lifecycle_tag=? WHERE id = ?",
+                    (_restore_tag, _mid),
+                ).rowcount
+                logger.info(
+                    "[Reflection] restore_flag: flag=%s memory=%s → lifecycle_tag='%s' (%d row(s))",
+                    flag_id, _memory_id, _restore_tag, _uc,
+                )
+            except Exception:
+                logger.warning(
+                    "[Reflection] restore_flag: memories 联动恢复失败（非致命）",
+                    exc_info=True,
+                )
+
+        # 所有类型：flag 退回 open
+        conn.execute(
+            "UPDATE memory_flags SET status='open', resolution=NULL, resolved_at=NULL "
+            "WHERE id = ?",
+            (flag_id,),
+        )
+        conn.commit()
+        logger.info("[Reflection] restore_flag: flag=%s resolution=%s → reopened", flag_id, _resolution)
+        return True
+    except Exception:
+        logger.warning("[Reflection] restore_flag failed", exc_info=True)
+        return False
+    finally:
+        conn.close()
+
+
+def get_resolved_flags(limit: int = 200) -> List[Dict]:
+    """获取 resolved 状态的 flags（供"已解决"视图展示+恢复操作）。"""
+    from agent.memory_fabric import _get_index_db as _get_mem_db, _init_db as _fab_init
+
+    db_path = _get_mem_db()  # Path
+    _fab_init(db_path)  # P2-10 fix: 确保表存在（传 Path）
+    db_path_str = str(db_path)
+
+    conn = sqlite3.connect(db_path_str)
+    try:
+        rows = conn.execute(
+            """SELECT id, memory_id, flag_type, confidence, evidence,
+                      created_at, resolution, resolved_at
+               FROM memory_flags
+               WHERE status = 'resolved'
+               ORDER BY resolved_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "memory_id": r[1],
+                "flag_type": r[2],
+                "confidence": r[3],
+                "evidence": r[4],
+                "created_at": r[5],
+                "resolution": r[6],
+                "resolved_at": r[7],
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+# ── 行动环闭合：自动降级 ──────────────────────────────────────────────
+
+def auto_resolve_eligible_flags() -> int:
+    """自动降级高置信度 flags：涌现闭环，复用 resolve_flag(P3-⑩)。
+
+    置信度分级（安全护栏：ephemeral-only 降权，绝不 volatile 删除）：
+      ≥0.9 duplicate + source=skill → 自动 demote（技能描述已在 skill 系统可查）
+      ≥0.85 outdated → 自动 demote（过时信息降权，可恢复）
+      ≥0.7 contradiction / scope_creep → 仅写 flag，不自动处理
+
+    Returns: 自动处理的 flag 数量。
+    """
+    from agent.memory_fabric import _get_index_db as _get_mem_db
+
+    db_path = _get_mem_db()
+    if isinstance(db_path, Path):
+        db_path = str(db_path)
+
+    # P2-11 fix: 先收集 eligible ids，关闭外层连接后再逐个 resolve
+    # 避免嵌套连接写同库的 database is locked 风险
+    conn = sqlite3.connect(db_path)
+    try:
+        eligible = conn.execute(
+            """SELECT id, memory_id, flag_type, confidence
+               FROM memory_flags
+               WHERE status = 'open'
+                 AND (flag_type = 'duplicate' AND confidence >= 0.9
+                      OR flag_type = 'outdated' AND confidence >= 0.85)""",
+        ).fetchall()
+    finally:
+        conn.close()
+
+    resolved_count = 0
+    for flag_id, memory_id, flag_type, confidence in eligible:
+        # 对 skill-source 的 duplicate，确认源是 skill 才自动 demote
+        if flag_type == "duplicate" and confidence >= 0.9:
+            try:
+                _mid = int(memory_id)
+            except (TypeError, ValueError):
+                _mid = memory_id
+            # 独立连接检查 source
+            _conn2 = sqlite3.connect(db_path)
+            try:
+                src_row = _conn2.execute(
+                    "SELECT source FROM memories WHERE id = ?", (_mid,)
+                ).fetchone()
+            finally:
+                _conn2.close()
+            # source=skill → 技能描述已在 skill 系统可查，安全降权
+            # source!=skill → 可能是真实记忆重复，不自动处理
+            if src_row and src_row[0] == "skill":
+                ok = resolve_flag(flag_id, "demote")
+                if ok:
+                    resolved_count += 1
+                    logger.info(
+                        "[Reflection] auto_resolve: flag=%s duplicate+skill → demote",
+                        flag_id,
+                    )
+
+        elif flag_type == "outdated" and confidence >= 0.85:
+            ok = resolve_flag(flag_id, "demote")
+            if ok:
+                resolved_count += 1
+                logger.info(
+                    "[Reflection] auto_resolve: flag=%s outdated → demote",
+                    flag_id,
+                )
+
+    if resolved_count > 0:
+        logger.info("[Reflection] auto_resolve: %d flags auto-resolved", resolved_count)
+    return resolved_count

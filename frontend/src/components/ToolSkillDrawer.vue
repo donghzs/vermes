@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRightPanel } from '../composables/useRightPanel'
 import SkillManager from './SkillManager.vue'
 import MCPManager from './MCPManager.vue'
+import MemoryBrowser from './MemoryBrowser.vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 
@@ -12,6 +13,7 @@ const tabs = [
   { id: 'skills', label: '技能', icon: '🧩' },
   { id: 'tools', label: '工具', icon: '🛠️' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
+  { id: 'memory', label: '记忆', icon: '🧠' },
 ]
 
 // ── 工具集（tools）视图 ──
@@ -133,6 +135,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 
           <!-- MCP：复用完整 MCPManager -->
           <MCPManager v-else-if="tab === 'mcp'" />
+
+          <!-- 记忆：全量浏览+搜索+恢复 -->
+          <MemoryBrowser v-else-if="tab === 'memory'" />
         </div>
       </aside>
     </transition>

@@ -2484,6 +2484,64 @@ async def list_flags_endpoint(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+async def restore_flag_endpoint(request: Request):
+    """Restore a resolved flag (reopen + optionally restore memory weight).
+
+    Body: { flag_id: int }
+    demote → flag→open + lifecycle_tag→reference
+    merge/false_positive → flag→open (lifecycle_tag unchanged)
+    """
+    try:
+        body = await request.json()
+        flag_id = body.get("flag_id")
+        if not isinstance(flag_id, int):
+            try:
+                flag_id = int(flag_id)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "flag_id must be an integer"}
+        from agent.memory_reflection import restore_flag
+        ok = restore_flag(flag_id)
+        return {"ok": ok, "flag_id": flag_id}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def list_resolved_flags_endpoint(request: Request):
+    """List resolved memory flags for the 'resolved' view."""
+    try:
+        from agent.memory_reflection import get_resolved_flags
+        return {"ok": True, "flags": get_resolved_flags()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def list_memories_endpoint(request: Request):
+    """List memories with optional search, filter, pagination."""
+    try:
+        from agent.memory_fabric import list_memories
+        query = request.query_params.get("query", "")
+        lifecycle_tag = request.query_params.get("lifecycle_tag", "")
+        source = request.query_params.get("source", "")
+        limit = int(request.query_params.get("limit", "100"))
+        offset = int(request.query_params.get("offset", "0"))
+        result = list_memories(query=query, lifecycle_tag=lifecycle_tag, source=source, limit=limit, offset=offset)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def get_memory_detail_endpoint(request: Request, memory_id: int):
+    """Get full detail for a single memory."""
+    try:
+        from agent.memory_fabric import get_memory_detail
+        detail = get_memory_detail(memory_id)
+        if detail is None:
+            return {"ok": False, "error": "memory not found"}
+        return {"ok": True, "memory": detail}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def plan_snapshot(session_id: str):
     """P1-3: Return current plan + todo state for SSE reconnect recovery.
 
@@ -2679,6 +2737,30 @@ def register_to(app):
         list_flags_endpoint,
         methods=["GET"],
         name="list_flags",
+    )
+    app.add_api_route(
+        "/api/restore_flag",
+        restore_flag_endpoint,
+        methods=["POST"],
+        name="restore_flag",
+    )
+    app.add_api_route(
+        "/api/flags/resolved",
+        list_resolved_flags_endpoint,
+        methods=["GET"],
+        name="list_resolved_flags",
+    )
+    app.add_api_route(
+        "/api/memories",
+        list_memories_endpoint,
+        methods=["GET"],
+        name="list_memories",
+    )
+    app.add_api_route(
+        "/api/memories/{memory_id}",
+        get_memory_detail_endpoint,
+        methods=["GET"],
+        name="get_memory_detail",
     )
     app.add_api_route(
         "/api/session/{session_id}/plan_snapshot",

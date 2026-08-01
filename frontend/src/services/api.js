@@ -497,8 +497,19 @@ const api = {
 
   // ── Route E-Reflection：记忆 flag ──
   getFlags() { return this.get('/flags') },
+  getResolvedFlags() { return this.get('/flags/resolved') },
   resolveFlag(flagId, resolution) {
     return this.post('/resolve_flag', { flag_id: flagId, resolution })
+  },
+  restoreFlag(flagId) {
+    return this.post('/restore_flag', { flag_id: flagId })
+  },
+  listMemories(params = {}) {
+    const qs = new URLSearchParams(params).toString()
+    return this.get(`/memories?${qs}`)
+  },
+  getMemoryDetail(memoryId) {
+    return this.get(`/memories/${memoryId}`)
   },
 
   // ── Skills 市场 ──

@@ -3663,11 +3663,18 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
         REFLECTION_EVERY = 120  # ticks — poll every ~2h (inner gate: 6h)
         if tick_count % REFLECTION_EVERY == 0:
             try:
-                from agent.memory_reflection import maybe_run_reflection
+                from agent.memory_reflection import maybe_run_reflection, auto_resolve_eligible_flags
                 maybe_run_reflection(
                     idle_for_seconds=_measure_idle_seconds(),
                     on_summary=lambda msg: logger.info("reflection: %s", msg),
                 )
+                # 行动环闭合：反思产 flags 后自动降级高置信度
+                try:
+                    n = auto_resolve_eligible_flags()
+                    if n > 0:
+                        logger.info("auto_resolve: %d flags auto-resolved after reflection", n)
+                except Exception as _e:
+                    logger.debug("auto_resolve tick error: %s", _e)
             except Exception as e:
                 logger.debug("Reflection tick error: %s", e)
 

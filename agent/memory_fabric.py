@@ -138,7 +138,7 @@ def _now() -> str:
 
 
 # P2-⑧: 已跑过 skill 降级迁移的 db 路径（进程级，避免每次写入都全表扫）
-_SKILL_DEMOTE_DONE: set = set()
+_SKILL_DEMOTE_DONE: set = set()  # P0-4 fix: 残留兼容，实际用 DB 持久化
 
 
 def _init_db(db_path: Path) -> None:
@@ -179,7 +179,16 @@ def _init_db(db_path: Path) -> None:
         # 有 skill 行被 _infer_lifecycle_tag 的关键词启发式误判成 'preference'
         # （SKILL.md 正文里出现 "always"/"偏好" 之类词），那是比 reference
         # 更高价值的标签、污染更重。skill 行一律 ephemeral 才是真正的不变量。
-        if str(db_path) not in _SKILL_DEMOTE_DONE:
+        #
+        # P0-4 fix: 用 DB 持久化标记替代进程级 set，避免每次启动重跑迁移
+        # 把用户手动恢复的记忆重新打回 ephemeral。
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)"
+        )
+        row = c.execute(
+            "SELECT value FROM schema_meta WHERE key='skill_demote_done'"
+        ).fetchone()
+        if not row:
             c.execute(
                 "UPDATE memories SET lifecycle_tag='ephemeral' "
                 "WHERE source='skill' AND lifecycle_tag<>'ephemeral'"
@@ -189,7 +198,10 @@ def _init_db(db_path: Path) -> None:
                     "P2-⑧: demoted %d skill memories to lifecycle_tag='ephemeral'",
                     c.rowcount,
                 )
-            _SKILL_DEMOTE_DONE.add(str(db_path))
+            c.execute(
+                "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('skill_demote_done', '1')"
+            )
+        _SKILL_DEMOTE_DONE.add(str(db_path))  # 残留兼容
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_ptr "
             "ON memories(source, pointer, scope)"
@@ -401,6 +413,7 @@ def recall(
     # P2-⑧: _init_db 只挂在写路径上，纯读会话（只召回、不写记忆）永远拿不到
     # skill 降级迁移。这里按进程级守卫补跑一次——首次 recall 付一次 DDL 代价，
     # 之后 _SKILL_DEMOTE_DONE 命中直接跳过，热路径无额外开销。
+    # P0-4 fix: _init_db 内部已改为 DB 持久化标记，这里只需检查进程级缓存。
     if str(db_path) not in _SKILL_DEMOTE_DONE:
         try:
             _init_db(db_path)
@@ -625,6 +638,147 @@ def get_memory_stats() -> Dict[str, Any]:
 def search_notes(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     """Convenience: recall only L1 curated notes."""
     return recall(query, layer=L1_NOTE, limit=limit)
+
+
+def list_memories(
+    query: str = "",
+    lifecycle_tag: str = "",
+    source: str = "",
+    limit: int = 100,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """全量记忆列表（供记忆浏览器前端调用）。
+
+    支持：搜索 query(FTS5/LIKE) + lifecycle_tag 过滤 + source 过滤 + 分页。
+    返回 {total, offset, memories: [{id, source, layer, lifecycle_tag, fts_content(前200字), access_count, pointer, type, updated_at}]}
+    """
+    db_path = _get_index_db()  # Path
+    _init_db(db_path)  # P0-1 fix: 传 Path 不转 str
+
+    with _LOCK:
+        conn = _get_conn(str(db_path))
+        try:
+            wheres = []
+            params = []
+            if lifecycle_tag:
+                wheres.append("lifecycle_tag = ?")
+                params.append(lifecycle_tag)
+            if source:
+                wheres.append("source = ?")
+                params.append(source)
+
+            # 搜索 query → FTS5 或 LIKE
+            if query:
+                # FTS5 路径
+                fts_rows = None
+                try:
+                    fts_rows = conn.execute(
+                        """SELECT m.id, m.source, m.layer, m.type, m.scope, m.pointer,
+                                  SUBSTR(m.fts_content, 1, 200), m.access_count,
+                                  m.lifecycle_tag, m.updated_at
+                           FROM memories m
+                           JOIN memories_fts f ON m.id = f.rowid
+                           WHERE memories_fts MATCH ?
+                           ORDER BY m.access_count DESC, m.updated_at DESC
+                           LIMIT ? OFFSET ?""",
+                        [query, limit, offset],
+                    ).fetchall()
+                except Exception:
+                    fts_rows = None
+
+                if fts_rows:
+                    rows = fts_rows
+                else:
+                    # P0-2 fix: LIKE 兜底统一拼 where 子句
+                    like_wheres = list(wheres) + ["fts_content LIKE ?"]
+                    like_params = list(params) + [f"%{query}%"]
+                    rows = conn.execute(
+                        f"""SELECT id, source, layer, type, scope, pointer,
+                                  SUBSTR(fts_content, 1, 200), access_count,
+                                  lifecycle_tag, updated_at
+                           FROM memories
+                           WHERE {' AND '.join(like_wheres)}
+                           ORDER BY access_count DESC, updated_at DESC
+                           LIMIT ? OFFSET ?""",
+                        like_params + [limit, offset],
+                    ).fetchall()
+                # total 计搜索结果数
+                total = len(rows) if offset == 0 else conn.execute(
+                    f"""SELECT COUNT(*) FROM memories
+                       WHERE fts_content LIKE ?""",
+                    [f"%{query}%"],
+                ).fetchone()[0]
+            else:
+                where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+                total = conn.execute(
+                    f"SELECT COUNT(*) FROM memories {where_sql}", params
+                ).fetchone()[0]
+                rows = conn.execute(
+                    f"""SELECT id, source, layer, type, scope, pointer,
+                              SUBSTR(fts_content, 1, 200), access_count,
+                              lifecycle_tag, updated_at
+                       FROM memories {where_sql}
+                       ORDER BY access_count DESC, updated_at DESC
+                       LIMIT ? OFFSET ?""",
+                    params + [limit, offset],
+                ).fetchall()
+
+            memories = [
+                {
+                    "id": r[0],
+                    "source": r[1],
+                    "layer": r[2],
+                    "type": r[3],
+                    "scope": r[4],
+                    "pointer": r[5],
+                    "content_preview": r[6] or "",
+                    "access_count": r[7],
+                    "lifecycle_tag": r[8],
+                    "updated_at": r[9],
+                }
+                for r in rows
+            ]
+            return {"total": total, "offset": offset, "memories": memories}
+        except Exception:
+            logger.warning("memory_fabric.list_memories failed", exc_info=True)
+            return {"total": 0, "offset": 0, "memories": []}
+        finally:
+            conn.close()
+
+
+def get_memory_detail(memory_id: int) -> Optional[Dict[str, Any]]:
+    """单条记忆详情（完整 fts_content + 全字段）。"""
+    db_path = _get_index_db()  # Path
+    _init_db(db_path)  # P0-1 fix: 传 Path 不转 str
+
+    with _LOCK:
+        conn = _get_conn(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT id, source, layer, type, scope, pointer, "
+                "fts_content, access_count, lifecycle_tag, updated_at "
+                "FROM memories WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return {
+                "id": row[0],
+                "source": row[1],
+                "layer": row[2],
+                "type": row[3],
+                "scope": row[4],
+                "pointer": row[5],
+                "content": row[6] or "",
+                "access_count": row[7],
+                "lifecycle_tag": row[8],
+                "updated_at": row[9],
+            }
+        except Exception:
+            logger.warning("memory_fabric.get_memory_detail failed", exc_info=True)
+            return None
+        finally:
+            conn.close()
 
 
 def record(memory: Dict[str, Any]) -> None:
