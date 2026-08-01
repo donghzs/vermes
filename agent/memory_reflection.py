@@ -626,6 +626,32 @@ def resolve_flag(flag_id: int, resolution: str) -> bool:
                     exc_info=True,
                 )
 
+        # ── merge 真合并：删除被标记的 skill 重复记忆 ──
+        # 技能描述每轮经 available_skills 注入，memories 表留它们是冗余。
+        # merge 时删除 memory 行（仅 source=skill），flag 保留为合并记录。
+        # fail-open：memories 表缺失/行不存在/非 skill 源都不阻断 flag 解决。
+        if resolution == "merge":
+            try:
+                try:
+                    _mid = int(_memory_id)
+                except (TypeError, ValueError):
+                    _mid = _memory_id
+                _dc = conn.execute(
+                    "DELETE FROM memories WHERE id = ? AND source = 'skill'",
+                    (_mid,),
+                ).rowcount
+                if _dc > 0:
+                    logger.info(
+                        "[Reflection] resolve_flag merge: flag=%s memory=%s → deleted skill duplicate (%d row)",
+                        flag_id, _memory_id, _dc,
+                    )
+            except Exception:
+                logger.warning(
+                    "[Reflection] resolve_flag merge: memory cleanup failed"
+                    "（flag 已 resolved，非致命）",
+                    exc_info=True,
+                )
+
         conn.commit()
         return True
     finally:
@@ -639,7 +665,7 @@ def restore_flag(flag_id: int) -> bool:
 
     三路语义：
       demote       → flag→open + lifecycle_tag→prev_lifecycle_tag（精确还原）
-      merge        → flag→open（只重开审视，不改 lifecycle_tag）
+      merge        → flag→open（记忆已被合并清理，重开 flag 但不恢复已删 memory）
       false_positive → flag→open（只重开审视，不改 lifecycle_tag）
 
     P1-5 fix: 不再硬编码 reference，从 flag.prev_lifecycle_tag 读取原始值。
@@ -834,3 +860,65 @@ def auto_resolve_eligible_flags() -> int:
     if resolved_count > 0:
         logger.info("[Reflection] auto_resolve: %d flags auto-resolved", resolved_count)
     return resolved_count
+
+
+# ── 存量清扫：清理已合并/重复的 skill 记忆 ──────────────────────────────
+
+def cleanup_merged_skill_memories() -> int:
+    """一次性清扫：删除已 resolved-merge 和 open-duplicate 指向的 skill 记忆。
+
+    覆盖两类存量：
+    1. resolved + resolution='merge' 的 flag 指向的 skill memory（87 条历史空转）
+    2. open + flag_type='duplicate' + confidence>=0.7 的 flag 指向的 skill memory
+
+    只删 source='skill' 的行（安全护栏：非 skill 记忆不动）。
+    幂等：重复调用零效果（已删的行不会再匹配）。
+
+    Returns: 删除的 memory 行数。
+    """
+    from agent.memory_fabric import _get_index_db as _get_mem_db
+
+    db_path = _get_mem_db()
+    if isinstance(db_path, Path):
+        db_path = str(db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        # 收集所有待清理的 memory_id
+        ids_to_delete = set()
+        # 1. resolved-merge
+        for row in conn.execute(
+            "SELECT memory_id FROM memory_flags "
+            "WHERE status='resolved' AND resolution='merge' AND memory_id IS NOT NULL"
+        ).fetchall():
+            ids_to_delete.add(row[0])
+        # 2. open-duplicate conf>=0.7
+        for row in conn.execute(
+            "SELECT memory_id FROM memory_flags "
+            "WHERE status='open' AND flag_type='duplicate' AND confidence >= 0.7 "
+            "AND memory_id IS NOT NULL"
+        ).fetchall():
+            ids_to_delete.add(row[0])
+
+        if not ids_to_delete:
+            return 0
+
+        # 只删 source='skill' 的（安全护栏）
+        placeholders = ",".join("?" * len(ids_to_delete))
+        deleted = conn.execute(
+            f"DELETE FROM memories WHERE id IN ({placeholders}) AND source = 'skill'",
+            list(ids_to_delete),
+        ).rowcount
+        conn.commit()
+        if deleted > 0:
+            logger.info(
+                "[Reflection] cleanup_merged_skill_memories: deleted %d skill duplicates "
+                "(from %d flagged ids)",
+                deleted, len(ids_to_delete),
+            )
+        return deleted
+    except Exception:
+        logger.warning("[Reflection] cleanup_merged_skill_memories failed", exc_info=True)
+        return 0
+    finally:
+        conn.close()
