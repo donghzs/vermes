@@ -559,6 +559,33 @@ def _collect_recall_sections(user_message: str) -> Dict[str, Any]:
         except Exception as e:
             logger.debug("memory_recall: relations query failed: %s", e)
 
+    # Source 2c: session handoffs (L3 episodic — 质量地板)
+    # handoff 摘要是「会话发生过什么」的情节记录，天然是 episodic
+    # 质量地板：长度≥80 字符 + 排除纯测试噪声（「通讯正常不」/「你好」开头）
+    handoff_db = _get_handoff_db()
+    if handoff_db:
+        try:
+            conn = sqlite3.connect(str(handoff_db))
+            conn.row_factory = sqlite3.Row
+            for row in conn.execute(
+                "SELECT session_id, summary_text FROM session_handoffs "
+                "ORDER BY id DESC LIMIT 5"
+            ).fetchall():
+                text = row["summary_text"] or ""
+                # 质量地板
+                if len(text) < 80:
+                    continue
+                if text.startswith("上次会话主题: 通讯正常") or text.startswith("上次会话主题: 你好"):
+                    continue
+                result.setdefault("handoff_snippets", []).append({
+                    "session_id": row["session_id"],
+                    "content": text,
+                    "id": f"handoff:{row['session_id']}",
+                })
+            conn.close()
+        except Exception as e:
+            logger.debug("memory_recall: handoff query failed: %s", e)
+
     # Source 3: hybrid_retriever rich_search (if embedding API configured)
     try:
         from agent.hybrid_retriever import rich_search as _rich_search
@@ -649,6 +676,8 @@ def recall_context_as_hits(user_message: str, limit: int = 5) -> List[Dict[str, 
         "domain_stats": "recall:domain",
         "emotion": "recall:emotion",
         "embedding_matches": "recall:embedding",
+        "handoff_snippets": "recall:handoff",
+        "relation_snippets": "recall:relations",
     }
     for key, src in section_sources.items():
         val = ctx.get(key)
