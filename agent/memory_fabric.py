@@ -34,6 +34,11 @@ import os
 import re
 import sqlite3
 import threading
+
+from agent._preference_keywords import (
+    ZH_PREFERENCE_TRIGGERS,
+    EN_PREFERENCE_TRIGGERS,
+)
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -88,8 +93,10 @@ def _infer_lifecycle_tag(memory: Dict[str, Any]) -> str:
     # decision: 决定/选择/方案确定
     if any(kw in content for kw in ("@decision", "决定", "确定", "选定", "方案确定", "chose", "decided")):
         return "decision"
-    # preference: 偏好/习惯/总是/从不
-    if any(kw in content for kw in ("@preference", "偏好", "习惯", "总是", "从不", "prefer", "always", "never")):
+    # preference: 共享触发词（与 l1_extractor 抽取口径统一，修复"抽到但推断错层级"）
+    if any(kw in content for kw in ZH_PREFERENCE_TRIGGERS) or any(
+        kw in content for kw in EN_PREFERENCE_TRIGGERS
+    ):
         return "preference"
     return _DEFAULT_LIFECYCLE_TAG
 

@@ -23,6 +23,11 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from agent._preference_keywords import (
+    ZH_PREFERENCE_TRIGGERS,
+    EN_PREFERENCE_TRIGGERS,
+)
+
 logger = logging.getLogger(__name__)
 
 # 密码是否脱敏存储（默认 True，安全优先；设为 False 改存明文）
@@ -69,16 +74,17 @@ _PASSWORD_RES: List[re.Pattern] = [
 ]
 
 # 偏好声明：用户显式表达偏好/习惯/总是/从不 等 + 后续从句
+# 触发词来自共享常量 _preference_keywords（与 memory_fabric 推断口径统一，
+# 修复"抽到 preference 但 fabric 推断成 reference"的层级矛盾）。
+_ZH_PREF_ALT = "|".join(sorted(ZH_PREFERENCE_TRIGGERS))
+_EN_PREF_ALT = "|".join(sorted(EN_PREFERENCE_TRIGGERS))
 _PREFERENCE_RES: List[re.Pattern] = [
-    # 中文：我(们)偏好/喜欢/习惯/总是/从不/通常/倾向于/更想/更愿意/默认 ...
+    # 中文：我(们)(更)? + 偏好触发词 + 后续从句
+    # (?:更)? 结构性修饰，让"我更喜欢/我更爱"等变体也能命中（非新增硬编码词）
+    re.compile(r"(?:我(?:们)?(?:更)?(?:" + _ZH_PREF_ALT + r"))" r"([^。\n；;]{2,60})"),
+    # 英文：I + 偏好触发词 + 后续从句
     re.compile(
-        r"(?:我(?:们)?(?:偏好|喜欢|习惯|总是|从不|一般|通常|倾向于|更爱|更想|更愿意|认定|默认|固定))"
-        r"([^。\n；;]{2,60})"
-    ),
-    # 英文：I prefer/like/always/usually/typically/never/love to ...
-    re.compile(
-        r"\b(I\s+(?:prefer|like|always|usually|typically|never|love to|want to|hate to))\b"
-        r"([^.\n]{2,60})",
+        r"\b(I\s+(?:" + _EN_PREF_ALT + r"))\b" r"([^.\n]{2,60})",
         re.IGNORECASE,
     ),
 ]

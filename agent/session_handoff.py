@@ -26,6 +26,10 @@ import re
 from typing import Any, Dict, List, Optional
 
 from agent.handoff_store import store_handoff, get_global_latest_handoff
+from agent._preference_keywords import (
+    ZH_PREFERENCE_TRIGGERS,
+    EN_PREFERENCE_TRIGGERS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +106,14 @@ def generate_and_store_handoff(
             open_questions,
             key_sentences,
         )
+
+        # 捕获用户偏好（与 l1_extractor / memory_fabric 共用同一词表，关闭 0 覆盖缺口）
+        try:
+            preferences = _extract_preferences(messages)
+            if preferences:
+                summary_text += "\n用户偏好: " + "; ".join(preferences)
+        except Exception:
+            pass
 
         # Extract keywords for relevance matching
         try:
@@ -281,6 +293,36 @@ def _extract_decisions(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if _matched:
                 break  # one decision per message
     return decisions[:10]
+
+
+def _extract_preferences(messages: List[Dict[str, Any]]) -> List[str]:
+    """Capture user-stated preferences using the shared trigger vocabulary.
+
+    与 l1_extractor / memory_fabric 共用同一词表，关掉"session_handoff 0 偏好覆盖"
+    缺口——此前会话交割完全不捕获用户偏好。扫描用户消息，提取含偏好触发词的
+    短句（fail-open，异常不影响主流程）。
+    """
+    prefs: List[str] = []
+    try:
+        for msg in messages:
+            if msg.get("role") != "user":
+                continue
+            content = msg.get("content", "")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            for sent in re.split(r"[。\n！!?？;；]", content):
+                sent = sent.strip()
+                if len(sent) < 4 or len(sent) > 80:
+                    continue
+                if any(kw in sent for kw in ZH_PREFERENCE_TRIGGERS) or any(
+                    kw in sent.lower() for kw in EN_PREFERENCE_TRIGGERS
+                ):
+                    prefs.append(sent)
+                    if len(prefs) >= 5:
+                        return prefs
+    except Exception:
+        pass
+    return prefs[:5]
 
 
 def _extract_pending_tasks(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
