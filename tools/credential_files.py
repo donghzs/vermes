@@ -59,7 +59,7 @@ def _resolve_vermes_home() -> Path:
 
 def register_credential_file(
     relative_path: str,
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> bool:
     """Register a credential file for mounting into remote sandboxes.
 
@@ -113,7 +113,7 @@ def register_credential_file(
 
 def register_credential_files(
     entries: list,
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> List[str]:
     """Register multiple credential files from skill frontmatter entries.
 
@@ -169,7 +169,7 @@ def _load_config_files() -> List[Dict[str, str]]:
                         continue
                     resolved_path = host_path.resolve()
                     if resolved_path.is_file():
-                        container_path = f"/root/.Vermes/{rel}"
+                        container_path = f"/root/.vermes/{rel}"
                         result.append({
                             "host_path": str(resolved_path),
                             "container_path": container_path,
@@ -208,7 +208,7 @@ def get_credential_file_mounts() -> List[Dict[str, str]]:
 
 
 def get_skills_directory_mount(
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> list[Dict[str, str]]:
     """Return mount info for all skill directories (local + external).
 
@@ -299,7 +299,7 @@ def _safe_skills_path(skills_dir: Path) -> str:
 
 
 def iter_skills_files(
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> List[Dict[str, str]]:
     """Yield individual (host_path, container_path) entries for skills files.
 
@@ -359,7 +359,7 @@ _CACHE_DIRS: list[tuple[str, str]] = [
 
 
 def get_cache_directory_mounts(
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> List[Dict[str, str]]:
     """Return mount entries for each cache directory that exists on disk.
 
@@ -384,7 +384,7 @@ def get_cache_directory_mounts(
 
 def to_agent_visible_cache_path(
     host_path: str,
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> str:
     """Translate a host cache path to its mounted path inside the sandbox.
 
@@ -411,7 +411,7 @@ def to_agent_visible_cache_path(
 
 
 def iter_cache_files(
-    container_base: str = "/root/.Vermes",
+    container_base: str = "/root/.vermes",
 ) -> List[Dict[str, str]]:
     """Return individual (host_path, container_path) entries for cache files.
 

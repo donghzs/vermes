@@ -539,7 +539,7 @@ def _looks_like_test_tempdir(path: str) -> bool:
     codex-routed Vermes-tools call fails silently once the directory is GC'd.
 
     We err on the side of refusing — losing a (very unlikely) real
-    ``~/.Vermes`` symlink that happens to live under ``/private/var/folders``
+    ``~/.vermes`` symlink that happens to live under ``/private/var/folders``
     is much less harmful than silently bricking codex's tool surface.
     """
     if not path:

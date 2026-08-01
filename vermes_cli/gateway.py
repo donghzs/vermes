@@ -707,7 +707,7 @@ def _sync_vermes_home_from_systemd_unit(system: bool) -> None:
     """When acting on a system-scope unit, adopt its ``VERMES_HOME``.
 
     Under ``sudo``, ``VERMES_HOME`` is stripped and ``HOME=/root``, so
-    :func:`get_vermes_home` falls back to ``/root/.Vermes`` — the wrong
+    :func:`get_vermes_home` falls back to ``/root/.vermes`` — the wrong
     profile. The unit file pins ``VERMES_HOME`` for the actual gateway
     process, so we mirror that into our own environment to make
     ``read_runtime_status`` / ``get_running_pid`` read the correct files.
@@ -2093,16 +2093,16 @@ def _vermes_home_for_target_user(target_home_dir: str) -> str:
     current_default = (Path.home() / ".vermes").resolve()
     target_default = Path(target_home_dir) / ".vermes"
 
-    # Default ~/.Vermes → remap to target user's default
+    # Default ~/.vermes → remap to target user's default
     if current_vermes == current_default:
         return str(target_default)
 
-    # Profile or subdir of ~/.Vermes → preserve the relative structure
+    # Profile or subdir of ~/.vermes → preserve the relative structure
     try:
         relative = current_vermes.relative_to(current_default)
         return str(target_default / relative)
     except ValueError:
-        # Completely custom path (not under ~/.Vermes) — keep as-is
+        # Completely custom path (not under ~/.vermes) — keep as-is
         return str(current_vermes)
 
 

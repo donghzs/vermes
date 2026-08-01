@@ -36,8 +36,8 @@ Board resolution order (highest precedence first, all optional):
   the "currently selected" board. Written by ``vermes kanban boards
   switch <slug>``. When absent, the active board is ``default``.
 
-In standard installs ``<root>`` is ``~/.Vermes``. In Docker / custom
-deployments where ``VERMES_HOME`` points outside ``~/.Vermes`` (e.g.
+In standard installs ``<root>`` is ``~/.vermes``. In Docker / custom
+deployments where ``VERMES_HOME`` points outside ``~/.vermes`` (e.g.
 ``/opt/Vermes``), ``<root>`` is ``VERMES_HOME``. Legacy env-var
 overrides still work:
 
@@ -5109,7 +5109,7 @@ def _kanban_worker_skill_available(VERMES_home: Optional[str]) -> bool:
     from pathlib import Path as _Path
 
     # An unset VERMES_HOME means the worker falls back to the default root
-    # home (``~/.Vermes``), which ships the bundled skill.
+    # home (``~/.vermes``), which ships the bundled skill.
     base = _Path(VERMES_home) if VERMES_home else (_Path.home() / ".vermes")
     skills_root = base / "skills"
     if not skills_root.is_dir():

@@ -50,7 +50,7 @@ def get_vermes_home():
         return _get_vermes_home()
     import os
     from pathlib import Path
-    # VERMES_HOME 优先，VERMES_HOME 兼容，默认 ~/.vermes（避免误落到 ~/.Vermes）
+    # VERMES_HOME 优先，VERMES_HOME 兼容，默认 ~/.vermes（避免误落到 ~/.vermes）
     _val = os.environ.get("VERMES_HOME") or os.environ.get("VERMES_HOME") or "~/.vermes"
     return Path(_val).expanduser()
 

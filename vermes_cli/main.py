@@ -149,7 +149,7 @@ def _apply_profile_override() -> None:
     # distinguishing heuristic: a profile path has "profiles" as its immediate
     # parent directory name (e.g. ~/.vermes/profiles/coder or
     # /opt/data/profiles/coder).  If VERMES_HOME points to the vermes root
-    # instead (e.g. systemd hardcodes VERMES_HOME=/root/.Vermes), we must
+    # instead (e.g. systemd hardcodes VERMES_HOME=/root/.vermes), we must
     # still read active_profile — the user may have switched profiles via
     # `vermes profile use` and the gateway should honour that choice.
     # See issue #22502.
@@ -9527,7 +9527,7 @@ def cmd_profile(args):
         try:
             set_active_profile(name)
             if name == "default":
-                logger.info(f"Switched to: default (~/.Vermes)")
+                logger.info(f"Switched to: default (~/.vermes)")
             else:
                 logger.info(f"Switched to: {name}")
         except (ValueError, FileNotFoundError) as e:

@@ -21,7 +21,7 @@ from vermes_constants import display_vermes_home
 
 PROJECT_ROOT = get_project_root()
 VERMES_HOME = get_vermes_home()
-_DHH = display_vermes_home()  # user-facing display path (e.g. ~/.Vermes or ~/.vermes/profiles/coder)
+_DHH = display_vermes_home()  # user-facing display path (e.g. ~/.vermes or ~/.vermes/profiles/coder)
 
 # Load environment variables from ~/.vermes/.env so API key checks work
 _env_path = get_env_path()

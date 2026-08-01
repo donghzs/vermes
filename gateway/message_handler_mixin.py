@@ -1436,7 +1436,7 @@ class MessageHandlerMixin:
 
                 # Translate host cache path to in-container path if running under Docker backend.
                 # This ensures the agent receives a path it can open inside its sandbox, as the
-                # cache directories are auto-mounted at /root/.Vermes/cache/* by get_cache_directory_mounts().
+                # cache directories are auto-mounted at /root/.vermes/cache/* by get_cache_directory_mounts().
                 agent_path = to_agent_visible_cache_path(path)
 
                 if mtype.startswith("text/"):

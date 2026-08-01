@@ -53,7 +53,7 @@ ON decisions(status)
 
 def _get_self_model_db() -> Optional[Path]:
     """Resolve the self-model DB path."""
-    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.Vermes")
+    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes")
     db = Path(VERMES_home) / "evolution" / "self-model.db"
     return db if db.exists() else None
 

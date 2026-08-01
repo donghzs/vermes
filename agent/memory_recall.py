@@ -126,7 +126,7 @@ def _sigmoid(x: float, ref: float) -> float:
 
 
 def _get_vermes_home() -> Path:
-    return Path(os.environ.get("VERMES_HOME") or os.path.expanduser("~/.Vermes"))
+    return Path(os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes"))
 
 
 def _get_self_model_db() -> Optional[Path]:

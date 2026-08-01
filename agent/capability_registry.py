@@ -172,7 +172,7 @@ def _activate_vector_retrieval() -> Tuple[bool, str]:
         from pathlib import Path
 
         chroma_path = Path(
-            os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))
+            os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
         ) / "chroma"
         chroma_path.mkdir(parents=True, exist_ok=True)
 
@@ -195,7 +195,7 @@ def _activate_skill_extract() -> Tuple[bool, str]:
         from pathlib import Path
 
         db_path = Path(
-            os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))
+            os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
         ) / "evolution" / "self-model.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -218,7 +218,7 @@ def _activate_graph_sync() -> Tuple[bool, str]:
         from pathlib import Path
 
         db_path = Path(
-            os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))
+            os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
         ) / "evolution" / "self-model.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
 

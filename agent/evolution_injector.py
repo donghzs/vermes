@@ -37,7 +37,7 @@ _RECENT_OUTCOME_DAYS = 7  # only consider outcomes from last 7 days
 
 def _get_evolution_db() -> Optional[Path]:
     """Resolve the self-model DB path."""
-    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.Vermes")
+    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes")
     db = Path(VERMES_home) / "evolution" / "self-model.db"
     return db if db.exists() else None
 

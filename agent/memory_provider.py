@@ -68,7 +68,7 @@ class MemoryProvider(ABC):
 
         kwargs always include:
           - VERMES_home (str): The active VERMES_HOME directory path. Use this
-            for profile-scoped storage instead of hardcoding ``~/.Vermes``.
+            for profile-scoped storage instead of hardcoding ``~/.vermes``.
           - platform (str): "cli", "telegram", "discord", "cron", etc.
 
         kwargs may also include:

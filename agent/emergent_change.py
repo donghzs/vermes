@@ -119,7 +119,7 @@ class EmergentChangePipeline:
 
     def __init__(self, VERMES_home: str = "") -> None:
         self.VERMES_home = VERMES_home or os.environ.get(
-            "VERMES_HOME", os.path.expanduser("~/.Vermes")
+            "VERMES_HOME", os.path.expanduser("~/.vermes")
         )
         self.staging_dir = Path(self.VERMES_home) / "staging"
         self.staging_dir.mkdir(parents=True, exist_ok=True)

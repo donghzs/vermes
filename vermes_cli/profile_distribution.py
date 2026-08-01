@@ -497,7 +497,7 @@ def plan_install(
     if canon == "default":
         raise DistributionError(
             "Cannot install a distribution as 'default' — that is the built-in "
-            "root profile (~/.Vermes).  Pass --name <name> to install under a "
+            "root profile (~/.vermes).  Pass --name <name> to install under a "
             "new profile."
         )
     manifest.name = canon

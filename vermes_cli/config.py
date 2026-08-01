@@ -363,7 +363,7 @@ def get_vermes_home() -> Path:
 
     Fork branding: the canonical home is ``~/.vermes`` (VERMES_HOME overrides,
     VERMES_HOME kept for backward compatibility). On first run, if ~/.vermes
-    does not exist but the legacy ~/.Vermes does, we transparently migrate
+    does not exist but the legacy ~/.vermes does, we transparently migrate
     (copy) the old data into ~/.vermes so existing users keep their config,
     auth, memory and state.db without manual steps.
     """
@@ -378,7 +378,7 @@ def get_vermes_home() -> Path:
 
 
 def _migrate_legacy_home(legacy_home: Path, vermes_home: Path) -> None:
-    """One-time best-effort copy of ~/.Vermes -> ~/.vermes.
+    """One-time best-effort copy of ~/.vermes -> ~/.vermes.
 
     Uses copy (not move) so a failed migration never destroys the user's
     only copy of their data. Idempotent: safe to call repeatedly.
@@ -705,7 +705,7 @@ DEFAULT_CONFIG = {
         # Each entry is "host_path:container_path" (standard Docker -v syntax).
         # Example:
         # ["/home/user/projects:/workspace/projects",
-        #  "/home/user/.Vermes/cache/documents:/output"]
+        #  "/home/user/.vermes/cache/documents:/output"]
         # For gateway MEDIA delivery, write inside Docker to /output/... and emit
         # the host-visible path in MEDIA:, not the container path.
         "docker_volumes": [],

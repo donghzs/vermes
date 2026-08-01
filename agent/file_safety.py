@@ -16,7 +16,7 @@ def _vermes_home_path() -> Path:
         from vermes_constants import get_vermes_home  # local import to avoid cycles
         return get_vermes_home()
     except Exception:
-        return Path(os.path.expanduser("~/.Vermes"))
+        return Path(os.path.expanduser("~/.vermes"))
 
 
 def _vermes_root_path() -> Path:
@@ -25,7 +25,7 @@ def _vermes_root_path() -> Path:
         from vermes_constants import get_default_vermes_root  # local import to avoid cycles
         return get_default_vermes_root()
     except Exception:
-        return Path(os.path.expanduser("~/.Vermes"))
+        return Path(os.path.expanduser("~/.vermes"))
 
 
 def build_write_denied_paths(home: str) -> set[str]:
@@ -342,7 +342,7 @@ PROFILE_SCOPED_AREAS = ("skills", "plugins", "cron", "memories")
 def _resolve_active_profile_name() -> str:
     """Return the active profile name derived from VERMES_HOME.
 
-    ``~/.Vermes``              -> ``"default"``
+    ``~/.vermes``              -> ``"default"``
     ``~/.vermes/profiles/X``  -> ``"X"``
 
     Falls back to ``"default"`` on any resolution failure so the guard

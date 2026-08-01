@@ -448,7 +448,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     try:
         from agent.skill_extractor import get_active_skills_prompt, get_pending_skills_prompt
         from pathlib import Path
-        _db = Path(os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))) / "evolution" / "self-model.db"
+        _db = Path(os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))) / "evolution" / "self-model.db"
         if _db.exists():
             _active_skills = get_active_skills_prompt(str(_db))
             if _active_skills:

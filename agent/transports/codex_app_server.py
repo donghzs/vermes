@@ -97,7 +97,7 @@ class CodexAppServerClient:
                 else spawn_env.get(
                     "VERMES_KANBAN_ROOT",
                     os.path.join(
-                        spawn_env.get("VERMES_HOME", os.path.expanduser("~/.Vermes")),
+                        spawn_env.get("VERMES_HOME", os.path.expanduser("~/.vermes")),
                         "kanban",
                     ),
                 )

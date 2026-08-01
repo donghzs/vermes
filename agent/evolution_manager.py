@@ -67,7 +67,7 @@ def _get_conn(db_path) -> sqlite3.Connection:
 
 def get_evolution_dir() -> Path:
     """Get the evolution data directory."""
-    VERMES_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.Vermes"))
+    VERMES_home = os.environ.get("VERMES_HOME", os.path.expanduser("~/.vermes"))
     return Path(VERMES_home) / "evolution"
 
 

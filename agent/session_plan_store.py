@@ -34,7 +34,7 @@ def _get_db_path() -> Path:
         return _DB_PATH
     import os
 
-    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.Vermes")
+    VERMES_home = os.environ.get("VERMES_HOME") or os.path.expanduser("~/.vermes")
     _db_dir = Path(VERMES_home)
     _db_dir.mkdir(parents=True, exist_ok=True)
     _DB_PATH = _db_dir / "session_plans.db"

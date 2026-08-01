@@ -206,7 +206,7 @@ _vermes_profiles() {{
     local -a profiles
     profiles=(default)
     if [[ -d "$HOME/.vermes/profiles" ]]; then
-        profiles+=("${{(@f)$(ls $HOME/.Vermes/profiles 2>/dev/null)}}")
+        profiles+=("${{(@f)$(ls $HOME/.vermes/profiles 2>/dev/null)}}")
     fi
     _describe 'profile' profiles
 }}
