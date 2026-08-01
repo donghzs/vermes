@@ -1,6 +1,7 @@
 """Tests for memory_recall — automatic context retrieval."""
 
 import os
+import re
 import sqlite3
 import tempfile
 import time
@@ -123,6 +124,16 @@ class TestKeywordExtraction(unittest.TestCase):
         self.assertTrue(len(keywords) > 0)
         # Should also extract English tokens
         self.assertIn("python", [k.lower() for k in keywords])
+        # 重叠 n-gram 切分应产出具体中文词元（而非定长切窗垃圾）
+        self.assertTrue(
+            any("函数" in k or "解析" in k for k in keywords),
+            f"expected Chinese token 函数/解析 in keywords, got {keywords!r}",
+        )
+        # 中文词元非空（至少有一条中文 n-gram）
+        self.assertTrue(
+            any(re.search(r"[\u4e00-\u9fff]", k) for k in keywords),
+            f"expected at least one CJK token in keywords, got {keywords!r}",
+        )
 
     def test_empty_message(self):
         self.assertEqual(_extract_keywords(""), [])
@@ -137,7 +148,11 @@ class TestKeywordExtraction(unittest.TestCase):
 
     def test_mixed_language(self):
         keywords = _extract_keywords("写代码 with Python and database")
-        self.assertTrue(any("写" in k or "代码" in k for k in keywords))
+        # 混合语种：中文应切出「代码」而非整体或空
+        self.assertTrue(
+            any("代码" in k for k in keywords),
+            f"expected Chinese token 代码 in keywords, got {keywords!r}",
+        )
         self.assertIn("python", [k.lower() for k in keywords])
         self.assertIn("database", [k.lower() for k in keywords])
 

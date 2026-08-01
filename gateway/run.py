@@ -3529,6 +3529,43 @@ class GatewayRunner(MessageHandlerMixin, AgentRunnerMixin, LifecycleMixin, Teleg
     # P3: _run_agent_via_proxy, _run_agent — extracted to gateway.agent_runner_mixin
 
 
+def _measure_idle_seconds() -> Optional[float]:
+    """Seconds since the last message activity across *all* channels.
+
+    Background maintenance jobs (curator / reflection) take an
+    ``idle_for_seconds`` argument so they only fire when the user is away.
+    Passing ``float("inf")`` — as this ticker used to — makes that gate
+    vacuously true, so the jobs could kick off an LLM pass in the middle of
+    an active session.
+
+    ``state.db``'s ``messages`` table is the right source: every inbound and
+    outbound message lands there regardless of channel, and the cached-agent
+    ``_last_activity_ts`` cannot be used because idle agents get evicted
+    (an empty cache is indistinguishable from a busy one).
+
+    Returns ``None`` when the measurement is unavailable; callers should then
+    fall back to the previous "don't check" behaviour rather than blocking
+    maintenance forever on a broken read.
+    """
+    try:
+        from vermes_constants import get_vermes_home
+
+        _db = Path(get_vermes_home()) / "state.db"
+        if not _db.exists():
+            return None
+        _conn = sqlite3.connect(f"file:{_db}?mode=ro", uri=True, timeout=5)
+        try:
+            _row = _conn.execute("SELECT MAX(timestamp) FROM messages").fetchone()
+        finally:
+            _conn.close()
+        if not _row or _row[0] is None:
+            return None
+        return max(0.0, time.time() - float(_row[0]))
+    except Exception as e:
+        logger.debug("idle measurement unavailable: %s", e)
+        return None
+
+
 def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, interval: int = 60):
     """
     Background thread that ticks the cron scheduler at a regular interval.
@@ -3614,7 +3651,7 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
             try:
                 from agent.curator import maybe_run_curator
                 maybe_run_curator(
-                    idle_for_seconds=float("inf"),
+                    idle_for_seconds=_measure_idle_seconds(),
                     on_summary=lambda msg: logger.info("curator: %s", msg),
                 )
             except Exception as e:
@@ -3628,7 +3665,7 @@ def _start_cron_ticker(stop_event: threading.Event, adapters=None, loop=None, in
             try:
                 from agent.memory_reflection import maybe_run_reflection
                 maybe_run_reflection(
-                    idle_for_seconds=float("inf"),
+                    idle_for_seconds=_measure_idle_seconds(),
                     on_summary=lambda msg: logger.info("reflection: %s", msg),
                 )
             except Exception as e:

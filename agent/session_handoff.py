@@ -39,8 +39,33 @@ logger = logging.getLogger(__name__)
 _DECISION_STRUCTURAL = [
     r'(?:使用|采用|选择|决定|决定用|方案是|策略是|结论[是为:]|综上).{3,80}[。\n]',
     r'(?:use|using|adopt|choose|decided|going with|will use|conclusion:).{3,120}[.\n]',
-    r'(?:→|->|=>).{3,80}',  # Arrow pattern: "→用Postgres"
+    # 行首箭头 = 结论式要点（"→ 用 Postgres"）。必须锚定行首：句中箭头绝大多数
+    # 是流向/映射记法（"桌面 → QQ 的中继链路通着"、"user_A → 独立对话历史"），
+    # 从箭头处起截会砍掉主语、产出无主语残句 —— 实测污染样本正是这一类。
+    r'(?m)^\s*(?:→|->|=>)\s*[^\s].{2,80}',
 ]
+
+# 代码/日志特征：反引号、ASCII 括号与尖括号、标识符下划线、函数调用、路径。
+# 中文正文用全角（），所以 ASCII 括号出现在中文里基本等于代码。
+_CODE_NOISE_RE = re.compile(r'[`{}\[\]<>|]|\w_\w|\w\(|/\w|\\\\')
+
+
+def _is_prose_decision(text: str) -> bool:
+    """过滤从代码块/日志行里捞出来的伪决策。
+
+    结构化正则不区分「散文」与「代码」，实测抓到过 ``使用错误失败（我用
+    `PdfCanvas`` 、``user_A"     → 独立对话历史`` 这类片段，会直接污染跨会话
+    交割摘要。
+    """
+    s = (text or "").strip()
+    if len(s) < 8:
+        return False
+    if _CODE_NOISE_RE.search(s):
+        return False
+    # 去掉前导箭头与所有标点后仍需有足够实义字符
+    core = re.sub(r'^(?:→|->|=>)\s*', '', s)
+    core = re.sub(r'[\s\W_]+', '', core, flags=re.UNICODE)
+    return len(core) >= 6
 
 # Task/pending indicators: list items that end with action verbs or
 # look like future plans (works across many languages via structural cues)
@@ -68,8 +93,14 @@ def generate_and_store_handoff(
         decisions = _extract_decisions(messages)
         pending_tasks = _extract_pending_tasks(messages)
         open_questions = _extract_open_questions(messages)
+        key_sentences = _extract_key_sentences(messages)
         summary_text = _build_summary_text(
-            user_request, tools_used, decisions, pending_tasks, open_questions
+            user_request,
+            tools_used,
+            decisions,
+            pending_tasks,
+            open_questions,
+            key_sentences,
         )
 
         # Extract keywords for relevance matching
@@ -237,12 +268,17 @@ def _extract_decisions(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not isinstance(content, str) or not content.strip():
             continue
         for pattern in _DECISION_STRUCTURAL:
+            _matched = False
             for m in re.finditer(pattern, content, re.IGNORECASE):
                 sentence = m.group().strip()
-                if sentence and len(sentence) < 300:
+                if len(sentence) < 300 and _is_prose_decision(sentence):
                     decisions.append({"decision": sentence})
+                    _matched = True
                     break
-            if decisions and decisions[-1].get("decision") == sentence:
+            # 原实现用 ``decisions[-1] == sentence`` 判断本条消息是否已产出决策，
+            # 但 ``sentence`` 是函数作用域变量、会残留上一条消息的值：一旦残值
+            # 与末尾决策相等，本条消息剩余的模式就被整体跳过。改用显式标志位。
+            if _matched:
                 break  # one decision per message
     return decisions[:10]
 
@@ -294,14 +330,53 @@ def _extract_open_questions(messages: List[Dict[str, Any]]) -> List[str]:
     return questions[:5]
 
 
+def _extract_key_sentences(
+    messages: List[Dict[str, Any]],
+    top_n: int = 3,
+    max_chars: int = 200,
+) -> List[str]:
+    """取最长的 top-N 条 assistant 正文消息，各截 max_chars 作为关键句。
+
+    用于跨会话交割摘要的语料留存：原实现只保留单条顶层决策（甚至退化为
+    工具计数），长会话里大量真值内容（设计权衡、结论论证、关键上下文）被丢。
+    保留关键句能让新会话通过关键词 / embedding 命中原始上下文锚点，提升交割
+    质量与可检索性。
+    """
+    candidates = []
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content", "")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        # 折叠多余空白，避免把换行 / 缩进算进长度与展示
+        flat = re.sub(r"\s+", " ", content).strip()
+        if len(flat) < 30:
+            continue
+        candidates.append(flat)
+    # 按长度降序取最长
+    candidates.sort(key=len, reverse=True)
+    out = []
+    for c in candidates[:top_n]:
+        if len(c) > max_chars:
+            c = c[:max_chars].rstrip() + "…"
+        out.append(c)
+    return out
+
+
 def _build_summary_text(
     user_request: str,
     tools_used: List[Dict[str, Any]],
     decisions: List[Dict[str, Any]],
     pending_tasks: List[Dict[str, Any]],
     open_questions: List[str],
+    key_sentences: Optional[List[str]] = None,
 ) -> str:
-    """Build a free-text summary from extracted fields."""
+    """Build a free-text summary from extracted fields.
+
+    key_sentences: top-N 最长 assistant 消息（各截 200 字）作为语料留存锚点，
+    让摘要携带真实上下文信号，而非仅单条顶层决策。
+    """
     parts = []
     if user_request:
         parts.append(f"上次会话主题: {user_request[:200]}")
@@ -309,6 +384,9 @@ def _build_summary_text(
         parts.append(f"关键决策: {decisions[0]['decision'][:150]}")
     if pending_tasks:
         parts.append(f"未完成: {pending_tasks[0]['task'][:150]}")
+    if key_sentences:
+        # 关键句作为语料留存，提升跨会话交割的可检索性与上下文还原度
+        parts.append("关键句: " + " // ".join(key_sentences))
     if not parts:
         # Fallback: use tool count as a signal of what was done
         if tools_used:

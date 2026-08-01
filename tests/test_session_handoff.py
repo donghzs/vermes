@@ -22,6 +22,7 @@ from agent.session_handoff import (
     _extract_pending_tasks,
     _extract_open_questions,
     _build_summary_text,
+    _extract_key_sentences,
 )
 from agent import handoff_store
 
@@ -122,6 +123,49 @@ class TestExtractors(unittest.TestCase):
         )
         self.assertIn("search", summary)
 
+    def test_build_summary_text_keeps_key_sentences(self):
+        """P1-⑤: 关键句（top-N 长 assistant 消息）应进入摘要作为语料留存。"""
+        messages = [
+            {"role": "user", "content": "研究一下存储方案"},
+            {"role": "assistant", "content": "我们评估了 Postgres 与 MySQL，最终决定采用 Postgres 作为主存储，因为它对 JSONB 与事务的完整支持更契合我们的需求。"},
+            {"role": "assistant", "content": "短句。"},
+            {"role": "assistant", "content": "索引层选用 trigram 分词器，兼顾中英文混合查询的召回率，避免定长切窗带来的错位问题。"},
+            {"role": "assistant", "content": "连接池层面做了调优以提升并发吞吐，峰值压测下稳定支撑每秒数千次事务。"},
+        ]
+        key_sentences = _extract_key_sentences(messages, top_n=3, max_chars=200)
+        self.assertEqual(len(key_sentences), 3)
+        summary = _build_summary_text(
+            user_request="研究一下存储方案",
+            tools_used=[],
+            decisions=[{"decision": "决定采用 Postgres 作为主存储"}],
+            pending_tasks=[],
+            open_questions=[],
+            key_sentences=key_sentences,
+        )
+        self.assertIn("关键句:", summary)
+        # 最长两条正文应被保留为关键句
+        self.assertTrue(
+            any("Postgres" in s for s in key_sentences)
+        )
+        self.assertTrue(
+            any("trigram" in s for s in key_sentences)
+        )
+        # 关键句应出现在最终摘要里
+        self.assertIn("Postgres", summary)
+        self.assertIn("trigram", summary)
+
+    def test_extract_key_sentences_truncates_long(self):
+        long_msg = "x" * 500
+        messages = [
+            {"role": "assistant", "content": long_msg},
+            {"role": "assistant", "content": "短。"},
+        ]
+        key_sentences = _extract_key_sentences(messages, top_n=3, max_chars=200)
+        self.assertEqual(len(key_sentences), 1)
+        # 超过 max_chars 应被截断并带省略号
+        self.assertTrue(key_sentences[0].endswith("…"))
+        self.assertLessEqual(len(key_sentences[0]), 201)
+
 
 class TestHandoffStore(unittest.TestCase):
     """Test SQLite storage layer."""
@@ -206,6 +250,27 @@ class TestHandoffIntegration(unittest.TestCase):
         self.assertIn("Web服务器", loaded["user_request"])
         self.assertIn("FastAPI", loaded["decisions"][0]["decision"])
         self.assertTrue(len(loaded["pending_tasks"]) > 0)
+
+    def test_generate_stores_key_sentences_in_summary(self):
+        """P1-⑤ 端到端：长 assistant 消息应作为关键句写入 summary_text。"""
+        long_decision = (
+            "经过对 Postgres 与 MySQL 的对比评估，我们最终决定采用 Postgres "
+            "作为主存储引擎，主要考量是它对 JSONB 类型与复杂事务的完整支持。"
+        )
+        messages = [
+            {"role": "user", "content": "研究存储方案"},
+            {"role": "assistant", "content": long_decision},
+        ]
+        row_id = generate_and_store_handoff(messages, "test-session-ks")
+        self.assertGreater(row_id, 0)
+
+        loaded = handoff_store.get_latest_handoff("test-session-ks")
+        self.assertIsNotNone(loaded)
+        summary = loaded["summary_text"]
+        self.assertIn("关键句:", summary)
+        self.assertIn("Postgres", summary)
+        # 关键词也应能从拼接后的 summary 中受益
+        self.assertTrue(len(loaded["keywords"]) > 0)
 
     def test_format_handoff_for_prompt(self):
         handoff = {
