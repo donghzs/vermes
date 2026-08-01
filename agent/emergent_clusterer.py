@@ -808,7 +808,7 @@ class EmergentClusterer:
             "SELECT lifecycle_stage FROM clusters WHERE id=?", (old_id,)
         ).fetchone()
         old_stage = old_stage_row[0] if old_stage_row else "emerging"
-        stage_priority = {"stable": 2, "emerging": 1, "dead": 0}
+        stage_priority = {"stable": 3, "emerging": 2, "declining": 1, "dormant": 1, "dead": 0}
         final_stage = (
             cluster.lifecycle_stage
             if stage_priority.get(cluster.lifecycle_stage, 0)

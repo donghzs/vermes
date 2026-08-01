@@ -225,7 +225,7 @@ def _check_pattern_repetition(
         cursor = conn.execute(
             """SELECT id, name, event_count, success_rate, lifecycle_stage
                FROM clusters
-               WHERE lifecycle_stage = 'stable' AND event_count >= 5
+               WHERE lifecycle_stage = 'stable' AND is_active = 1 AND event_count >= 5
                  AND (name IS NULL OR name NOT LIKE '|_|_%|_|_' ESCAPE '|')
                ORDER BY event_count DESC"""
         )

@@ -166,6 +166,7 @@ class SkillExtractor:
                           feature_signature, lifecycle_stage
                    FROM clusters
                    WHERE lifecycle_stage = 'stable'
+                     AND is_active = 1
                      AND event_count >= 5
                      AND success_rate >= ?
                      AND (name IS NULL OR name NOT LIKE '|_|_%|_|_' ESCAPE '|')
