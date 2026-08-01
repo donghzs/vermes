@@ -432,6 +432,71 @@ def _query_emotion_snapshot(conn: sqlite3.Connection) -> Optional[Dict[str, Any]
     }
 
 
+def _collect_relation_snippets(conn: sqlite3.Connection, limit: int = 3) -> List[Dict[str, Any]]:
+    """查 relations 表，通过 outcomes 桥接取 strategy/anti_pattern 内容。
+
+    桥接路径：recent outcomes → relations(source_id=outcome.id) → target strategies/anti_patterns
+    仅取 target_type IN ('strategy','anti_pattern')——emotional_state 表不存在（1963 条幽灵）。
+    """
+    snippets = []
+    try:
+        # 取最近 N 条 outcomes 的 id
+        recent_outcome_ids = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM outcomes ORDER BY id DESC LIMIT 20"
+            ).fetchall()
+        ]
+        if not recent_outcome_ids:
+            return snippets
+
+        placeholders = ",".join("?" * len(recent_outcome_ids))
+        # 查 relations：outcome → strategy/anti_pattern
+        rels = conn.execute(
+            f"""SELECT r.target_type, r.target_id, r.rel_type, r.weight,
+                      r.source_id as outcome_id
+               FROM relations r
+               WHERE r.source_type = 'outcome'
+                 AND r.source_id IN ({placeholders})
+                 AND r.target_type IN ('strategy', 'anti_pattern')
+               ORDER BY r.source_id DESC
+               LIMIT ?""",
+            recent_outcome_ids + [limit],
+        ).fetchall()
+
+        for rel in rels:
+            if rel["target_type"] == "strategy":
+                row = conn.execute(
+                    "SELECT strategy, success_rate_when_used, times_used FROM strategies WHERE id = ?",
+                    (rel["target_id"],),
+                ).fetchone()
+                if row and row["strategy"]:
+                    snippets.append({
+                        "type": "strategy",
+                        "content": row["strategy"],
+                        "success_rate": row["success_rate_when_used"],
+                        "times_used": row["times_used"],
+                        "rel": rel["rel_type"],
+                    })
+            elif rel["target_type"] == "anti_pattern":
+                row = conn.execute(
+                    "SELECT pattern, correct, domain, frequency FROM anti_patterns WHERE id = ?",
+                    (rel["target_id"],),
+                ).fetchone()
+                if row and row["pattern"]:
+                    snippets.append({
+                        "type": "anti_pattern",
+                        "content": row["pattern"],
+                        "correct": row["correct"],
+                        "domain": row["domain"],
+                        "frequency": row["frequency"],
+                        "rel": rel["rel_type"],
+                    })
+    except Exception as e:
+        logger.debug("_collect_relation_snippets failed: %s", e)
+
+    return snippets
+
+
 def _collect_recall_sections(user_message: str) -> Dict[str, Any]:
     """Pure read of the recall data sources — NO self-assessment write.
 
@@ -479,6 +544,20 @@ def _collect_recall_sections(user_message: str) -> Dict[str, Any]:
             conn.close()
         except Exception as e:
             logger.debug("fusion-state DB query failed: %s", e)
+
+    # Source 2b: relations from self-model DB (session_id bridge)
+    # 桥接：当前无 session_id 上下文 → 用最近 outcomes → relations → strategies/anti_patterns
+    # 仅取 target_type IN ('strategy','anti_pattern')（915/2878=32%，emotional_state 表不存在）
+    if self_model_db:
+        try:
+            conn = sqlite3.connect(str(self_model_db))
+            conn.row_factory = sqlite3.Row
+            relation_snippets = _collect_relation_snippets(conn, limit=3)
+            if relation_snippets:
+                result["relation_snippets"] = relation_snippets
+            conn.close()
+        except Exception as e:
+            logger.debug("memory_recall: relations query failed: %s", e)
 
     # Source 3: hybrid_retriever rich_search (if embedding API configured)
     try:
