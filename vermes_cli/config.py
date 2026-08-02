@@ -1282,6 +1282,16 @@ DEFAULT_CONFIG = {
         # "hindsight", "holographic", "retaindb", "byterover".
         # Only ONE external provider is allowed at a time.
         "provider": "",
+        # ── Auto-resolve thresholds for memory flags ──
+        # Controls which high-confidence flags the reflection daemon
+        # auto-resolves (demote) without human intervention.
+        # All values are optional — missing keys fall back to defaults.
+        "autoResolve": {
+            "duplicate_confidence": 0.9,      # duplicate flag ≥ this → auto demote
+            "outdated_confidence": 0.85,       # outdated flag ≥ this → auto demote
+            "cluster_min_interval_s": 60,      # floor for cluster avg_interval (seconds)
+            "merge_cleanup_confidence": 0.7,   # cleanup_merged: duplicate ≥ this + source=skill → delete
+        },
     },
 
     # Subagent delegation — override the provider:model used by delegate_task

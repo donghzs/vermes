@@ -54,6 +54,17 @@ class ClusterLifecycleManager:
 
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self._min_interval = None  # cached from config, None = not read yet
+
+    @property
+    def MIN_INTERVAL(self):
+        if self._min_interval is None:
+            self._min_interval = self._read_min_interval()
+        return self._min_interval
+
+    @MIN_INTERVAL.setter
+    def MIN_INTERVAL(self, val):
+        self._min_interval = float(val)
 
     def evaluate_all(self) -> Dict[str, int]:
         """Evaluate lifecycle transitions for all active clusters.
@@ -230,7 +241,28 @@ class ClusterLifecycleManager:
     # (sub-second, strictly >0). Without a floor, k_dead = 0.001×15 = 0.015s →
     # the cluster is judged dead 15ms after its last event (Bug 1). The floor
     # keeps death thresholds sane for legitimately high-frequency clusters too.
-    MIN_INTERVAL = 60.0
+    #
+    # Configurable via config.yaml memory.autoResolve.cluster_min_interval_s;
+    # falls back to 60s when missing.
+    DEFAULT_MIN_INTERVAL = 60.0
+
+    @staticmethod
+    def _read_min_interval() -> float:
+        try:
+            from vermes_cli.config import load_config
+
+            cfg = load_config()
+            val = float(cfg.get("memory", {}).get("autoResolve", {}).get(
+                "cluster_min_interval_s", 60))
+            if val >= 0:
+                return val
+        except Exception:
+            pass
+        return 60.0
+
+    # MIN_INTERVAL is a property (with setter for test injection), reading
+    # from config.yaml memory.autoResolve.cluster_min_interval_s on first
+    # access and caching thereafter.
 
     def compute_thresholds(self, cluster: Dict[str, Any]) -> LifecycleThresholds:
         """Compute lifecycle thresholds from cluster's own event interval distribution.

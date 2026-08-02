@@ -791,17 +791,56 @@ def get_resolved_flags(limit: int = 200) -> List[Dict]:
 
 # ── 行动环闭合：自动降级 ──────────────────────────────────────────────
 
+def _load_auto_resolve_config():
+    """Load auto-resolve thresholds from config.yaml → normalize to dict.
+
+    Returns dict with keys: duplicate, outdated, cluster_min_interval.
+    Missing keys / missing file → hardcoded defaults (backward-compatible).
+    """
+    defaults = {
+        "duplicate": 0.9,
+        "outdated": 0.85,
+        "cluster_min_interval": 60,
+        "merge_cleanup": 0.7,
+    }
+    try:
+        from vermes_cli.config import load_config
+
+        cfg = load_config()
+        mem = cfg.get("memory", {})
+        ar = mem.get("autoResolve", {})
+        if isinstance(ar, dict) and ar:
+            for k in defaults:
+                if k in ar and isinstance(ar[k], (int, float)) and ar[k] >= 0:
+                    defaults[k] = float(ar[k])
+            logger.info(
+                "[Reflection] auto_resolve config: duplicate≥%.2f outdated≥%.2f "
+                "cluster_min_interv=%ds merge_cleanup≥%.2f",
+                defaults["duplicate"], defaults["outdated"],
+                int(defaults["cluster_min_interval"]), defaults["merge_cleanup"],
+            )
+    except Exception:
+        pass  # fail-open: hardcoded defaults survive any config error
+    return defaults
+
+
 def auto_resolve_eligible_flags() -> int:
     """自动降级高置信度 flags：涌现闭环，复用 resolve_flag(P3-⑩)。
 
     置信度分级（安全护栏：ephemeral-only 降权，绝不 volatile 删除）：
-      ≥0.9 duplicate + source=skill → 自动 demote（技能描述已在 skill 系统可查）
-      ≥0.85 outdated → 自动 demote（过时信息降权，可恢复）
+      ≥<duplicate> duplicate + source=skill → 自动 demote（技能描述已在 skill 系统可查）
+      ≥<outdated> outdated → 自动 demote（过时信息降权，可恢复）
       ≥0.7 contradiction / scope_creep → 仅写 flag，不自动处理
+
+    阈值从 config.yaml memory.autoResolve 段读取，缺项回落硬编码默认值。
 
     Returns: 自动处理的 flag 数量。
     """
     from agent.memory_fabric import _get_index_db as _get_mem_db
+
+    thresholds = _load_auto_resolve_config()
+    dup_threshold = thresholds["duplicate"]
+    out_threshold = thresholds["outdated"]
 
     db_path = _get_mem_db()
     if isinstance(db_path, Path):
@@ -815,8 +854,9 @@ def auto_resolve_eligible_flags() -> int:
             """SELECT id, memory_id, flag_type, confidence
                FROM memory_flags
                WHERE status = 'open'
-                 AND (flag_type = 'duplicate' AND confidence >= 0.9
-                      OR flag_type = 'outdated' AND confidence >= 0.85)""",
+                 AND (flag_type = 'duplicate' AND confidence >= ?
+                      OR flag_type = 'outdated' AND confidence >= ?)""",
+            (dup_threshold, out_threshold),
         ).fetchall()
     finally:
         conn.close()
@@ -825,7 +865,7 @@ def auto_resolve_eligible_flags() -> int:
     for flag_id, memory_id, flag_type, confidence in eligible:
         # 对 skill-source 的 duplicate，确认源是 skill 才自动 demote
         # 记忆已删 = 确认冗余（orphan），直接 resolve 为 demote
-        if flag_type == "duplicate" and confidence >= 0.9:
+        if flag_type == "duplicate" and confidence >= dup_threshold:
             try:
                 _mid = int(memory_id)
             except (TypeError, ValueError):
@@ -857,7 +897,7 @@ def auto_resolve_eligible_flags() -> int:
                         flag_id,
                     )
 
-        elif flag_type == "outdated" and confidence >= 0.85:
+        elif flag_type == "outdated" and confidence >= out_threshold:
             ok = resolve_flag(flag_id, "demote")
             if ok:
                 resolved_count += 1
@@ -878,10 +918,13 @@ def cleanup_merged_skill_memories(db_path: str | None = None) -> int:
 
     覆盖两类存量：
     1. resolved + resolution='merge' 的 flag 指向的 skill memory（87 条历史空转）
-    2. open + flag_type='duplicate' + confidence>=0.7 的 flag 指向的 skill memory
+    2. open + flag_type='duplicate' + confidence≥<cleanup> 的 flag 指向的 skill memory
 
     只删 source='skill' 的行（安全护栏：非 skill 记忆不动）。
     幂等：重复调用零效果（已删的行不会再匹配）。
+
+    merge_cleanup 阈值从 config.yaml memory.autoResolve.merge_cleanup 读取，
+    缺省回落 0.7。
 
     Args:
         db_path: 可选，记忆库路径。None 时自动取 _get_index_db()。
@@ -889,6 +932,9 @@ def cleanup_merged_skill_memories(db_path: str | None = None) -> int:
     Returns: 删除的 memory 行数。
     """
     from agent.memory_fabric import _get_index_db as _get_mem_db
+
+    thresholds = _load_auto_resolve_config()
+    merge_cleanup_conf = thresholds["merge_cleanup"]
 
     if db_path is None:
         db_path = _get_mem_db()
@@ -905,11 +951,13 @@ def cleanup_merged_skill_memories(db_path: str | None = None) -> int:
             "WHERE status='resolved' AND resolution='merge' AND memory_id IS NOT NULL"
         ).fetchall():
             ids_to_delete.add(row[0])
-        # 2. open-duplicate conf>=0.7
+        # 2. open-duplicate conf>=merge_cleanup threshold (from config, default 0.7)
+        merge_threshold = merge_cleanup_conf
         for row in conn.execute(
             "SELECT memory_id FROM memory_flags "
-            "WHERE status='open' AND flag_type='duplicate' AND confidence >= 0.7 "
-            "AND memory_id IS NOT NULL"
+            "WHERE status='open' AND flag_type='duplicate' AND confidence >= ? "
+            "AND memory_id IS NOT NULL",
+            (merge_threshold,),
         ).fetchall():
             ids_to_delete.add(row[0])
 
