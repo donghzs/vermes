@@ -166,7 +166,47 @@ L1 成立的前提是「用户事后能看见」。当前**没有**统一的变�
 
 ---
 
-## 6. 待拍板
+## 6. 实施进展（2026-08-02 更新）
+
+### 已落地（源码，**尚未进运行态**——按部署铁律需 `build.sh` 重建 DMG）
+
+| 项 | 内容 | 位置 |
+|---|---|---|
+| **T1 ✅** | 源码级改写不再被 YOLO 豁免 | `tools/approval.py` 新增 `is_config_level_target()` + `_source_modify_always_confirm()`；`approve_privileged_action` 改为分层判定 |
+| **T1 ✅** | `yolo_default` 写进默认配置段并注释 | `vermes_cli/config.py` `approvals` 段（消除未文档化的隐式 True）|
+| **T1 ✅** | 新增开关 `approvals.source_modify_always_confirm`（默认 `True`）| 同上 |
+| **T4 ✅** | 幅度护栏：>20% 强制降级 L2 | `agent/memory_reflection.py` `_exceeds_magnitude()`，阈值外置 `evolution.autoApplyMaxDelta`（沿用 >0 注入护栏）|
+| **T7 ✅（顺带发现）** | autoResolve 配置键名前后端不一致导致**外置失效** | 见下 |
+
+**分层后的判定规则**（`approve_privileged_action`）：
+
+- 目标是 `config.yaml` / `.yml` / `.json` / `.toml` → **config 级**，YOLO 照旧直接放行（可逆：`.bak` + 面板撤回）；
+- 目标是 `.py` / 脚本 / 空路径 → **源码级**，即便 `VERMES_YOLO_MODE` / 会话 `/yolo` / `approvals.mode=off` 也**必须弹窗**，弹窗描述前置一行说明为何这次没被 YOLO 放过；
+- 读配置异常、无 session、无 notify 回调 → **fail-closed 拒绝**，绝不静默通过。
+
+### T7：`memory.autoResolve.*` 的配置外置此前是**失效的**
+
+核查 T4 基准值时发现：`config.py` 默认段写的是 `duplicate_confidence / outdated_confidence / cluster_min_interval_s / merge_cleanup_confidence`，而**唯一的读取方** `memory_reflection.py:_load_auto_resolve_config()` 只查 `duplicate / outdated / cluster_min_interval / merge_cleanup`。全仓 `duplicate_confidence` 仅出现在 config.py 那一行——**用户照着默认配置改这些键，等于什么都没改**，P1「策略外置」对这几个 dial 只完成了一半。
+
+与 `yolo_default` 是同一个反模式：**真正生效的键未文档化，文档化的键不生效**。
+
+- 修法：默认段键名对齐读取方（短名），`_load_auto_resolve_config` 同时接受长名作向后兼容别名。
+- 连带：`_exceeds_magnitude` 的基准值走 `_load_auto_resolve_config()` 而非裸查 config，否则用户没显式写该键时会被误判成「新增 dial 无基准」而全部降级 L2。
+
+### 测试
+
+`tests/tools/test_approval_tiering.py`（10 条，新增）+ `tests/agent/test_aegis_proposals.py`（30 条，含 T4 新增 9 条）**全绿**。
+既有失败 `test_approval.py::test_gateway_runner_binds_session_key_to_context_before_agent_run` 属预存技术债——它 AST 断言 `gateway/run.py` 里存在 `run_sync` 与 session-key 绑定，而该文件里这三个符号一个都不存在，且本次未改动该文件。
+
+### 未做
+
+- **T5 变更通知中心**：仍未实现。这意味着 **L1 目前事实上退化成 L0**——自动 apply 只写 `logger.info` 与 `emergence_status` 计数，用户不主动打开 EvolutionPanel 就完全不知情。这是 L1 成立的前提，应排在下一位。
+- T2（能力激活分级）、T3（技能自动采纳）、T6（`tier_mode` 档位总开关）、S5 前端双区展示。
+- **撤回窗口的物理上限**：`MAX_BACKUPS_PER_FILE = 5`，同一文件连续自动 apply 超过 5 次后早期备份被清理，此时撤回返回明确错误而非错误还原。若 24h 内提案频率可能 >5，需要加大该常量或按提案独立留存备份。
+
+---
+
+## 7. 待拍板
 
 1. **T1 是否认同**：源码改写不再受 YOLO 豁免（即便你开着 YOLO，`self_modify` 也会弹窗）。这会**增加**你的弹窗次数，但拦住的是唯一真正不可逆的一类动作。
 2. **默认档位**：`balanced` 作为默认是否合适？还是先发 `conservative` 观察一段时间。

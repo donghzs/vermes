@@ -609,27 +609,96 @@ def request_gateway_approval(session_key: str, approval_data: dict, *, surface: 
     return _await_gateway_decision(session_key, notify_cb, approval_data, surface=surface)
 
 
+_CONFIG_LEVEL_SUFFIXES = {".yaml", ".yml", ".json", ".toml", ".ini", ".env"}
+
+
+def is_config_level_target(target_path: str) -> bool:
+    """True when *target_path* is a **config-level** change target.
+
+    Config-level = the user's ``config.yaml`` (or any other declarative
+    settings file).  Everything else — ``.py``, ``.js``, shell scripts, an
+    empty path — counts as **source-level** and is treated as the higher
+    risk tier (see :func:`approve_privileged_action`).
+
+    Rationale (approval tiering L1 vs L2): a config dial is a single
+    quantified value with a ``.bak`` snapshot and an offline-measurable blast
+    radius, so it can be auto-applied and retracted.  A source rewrite cannot
+    be quantified offline and only takes effect after a full DMG rebuild, so
+    it must always be confirmed by a human.
+    """
+    if not target_path:
+        return False
+    try:
+        from vermes_cli.config import get_config_path
+        cfg_path = str(get_config_path())
+    except Exception:
+        cfg_path = ""
+    tp = str(target_path)
+    try:
+        if cfg_path and os.path.abspath(tp) == os.path.abspath(cfg_path):
+            return True
+    except Exception:
+        pass
+    return os.path.splitext(tp)[1].lower() in _CONFIG_LEVEL_SUFFIXES
+
+
+def _source_modify_always_confirm() -> bool:
+    """Whether source-level rewrites must be confirmed even under YOLO.
+
+    Config key ``approvals.source_modify_always_confirm`` (default ``True``).
+    Fail-safe: any error → ``True`` (confirm), never silently auto-approve an
+    irreversible source rewrite.
+    """
+    try:
+        return bool(_get_approval_config().get("source_modify_always_confirm", True))
+    except Exception:
+        return True
+
+
 def approve_privileged_action(session_key: str, approval_data: dict, *, surface: str = "gateway") -> bool:
-    """YOLO-aware approval for *non-shell* privileged actions (self_modify, rollback).
+    """Tier-aware approval for *non-shell* privileged actions (self_modify, rollback).
 
     Self-modifications are file operations, not shell commands, so the
     dangerous-command guard (``check_all_command_guards``) never sees them.
-    This helper applies the SAME 🔒 tool-approval policy to them so the user
-    gets one consistent rule:
+    This helper applies the tiered 🔒 tool-approval policy to them:
 
-      - ``VERMES_YOLO_MODE`` / session ``/yolo`` / ``approvals.mode=off``
-        → auto-approve, no prompt (identical to dangerous commands under YOLO).
-      - otherwise → block on Gateway approval (desktop / Gateway dialog),
-        reusing the exact wait loop as the command guard.
+      - **Source-level** targets (``.py`` and anything that is not a settings
+        file) → **L2: always block on Gateway approval**, *including* under
+        ``VERMES_YOLO_MODE`` / session ``/yolo`` / ``approvals.mode=off``.
+        Opt out with ``approvals.source_modify_always_confirm: false``.
+      - **Config-level** targets (``config.yaml`` &co.) → YOLO / ``mode=off``
+        auto-approve as before (identical to dangerous commands under YOLO);
+        these changes are reversible via ``.bak`` + panel retract.
+      - Everything else → block on Gateway approval (desktop / Gateway
+        dialog), reusing the exact wait loop as the command guard.
+
+    Why source rewrites are no longer YOLO-exempt: YOLO means "I trust you to
+    run commands", it must not be silently widened into "I trust you to
+    rewrite your own source".  Source rewrites are rare (they need a DMG
+    rebuild to take effect), so the interruption cost is near zero while the
+    downside — an unnoticed, unquantified change to the agent's own code — is
+    the only truly irreversible one in the evolution loop.
 
     Returns True only if the action is allowed to proceed.
 
     Fail-closed: no session key or no registered notify callback → deny.
     """
-    if (is_truthy_value(os.getenv("VERMES_YOLO_MODE"))
+    yolo = (is_truthy_value(os.getenv("VERMES_YOLO_MODE"))
             or is_session_yolo_enabled(session_key)
-            or _get_approval_mode() == "off"):
-        return True
+            or _get_approval_mode() == "off")
+    if yolo:
+        target_path = (approval_data or {}).get("target_path", "")
+        source_level = not is_config_level_target(target_path)
+        if not (source_level and _source_modify_always_confirm()):
+            return True
+        # L2: source rewrite — prompt anyway, and say why the usual YOLO
+        # bypass did not apply so the popup does not look like a regression.
+        approval_data = dict(approval_data or {})
+        approval_data["tier"] = "L2"
+        approval_data["yolo_exempt"] = False
+        _desc = approval_data.get("description", "")
+        _note = "🔒 源码级改写需人工确认（YOLO 不豁免；可用 approvals.source_modify_always_confirm=false 关闭）"
+        approval_data["description"] = f"{_note}\n{_desc}" if _desc else _note
     result = request_gateway_approval(session_key, approval_data, surface=surface)
     choice = result.get("choice")
     return bool(result.get("resolved")) and choice not in (None, "deny", "")

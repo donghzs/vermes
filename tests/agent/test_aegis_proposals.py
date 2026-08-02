@@ -498,3 +498,139 @@ def test_scan_evolution_proposals_auto_apply(tmp_path, monkeypatch):
     # proposed 队列应为空
     pending = em.get_proposals(status="proposed")
     assert len(pending) == 0
+
+
+# ── T4 幅度护栏：改动过猛即便双闸门都过也强制人工审 ──────────────────
+
+def _fake_cfg(dup=0.9, max_delta=None):
+    cfg = {"memory": {"autoResolve": {"duplicate": dup, "outdated": 0.85,
+                                      "cluster_min_interval": 60,
+                                      "merge_cleanup": 0.7}},
+           "evolution": {}}
+    if max_delta is not None:
+        cfg["evolution"]["autoApplyMaxDelta"] = max_delta
+    return cfg
+
+
+def _patch_cfg(monkeypatch, **kw):
+    import vermes_cli.config as vc
+    monkeypatch.setattr(vc, "load_config", lambda: _fake_cfg(**kw))
+
+
+def test_magnitude_guard_allows_small_delta(monkeypatch):
+    _patch_cfg(monkeypatch)
+    over, reason = mr._exceeds_magnitude(
+        {"memory": {"autoResolve": {"duplicate": 0.85}}})   # 0.9→0.85 = 5.6%
+    assert over is False and reason == ""
+
+
+def test_magnitude_guard_blocks_large_delta(monkeypatch):
+    _patch_cfg(monkeypatch)
+    over, reason = mr._exceeds_magnitude(
+        {"memory": {"autoResolve": {"duplicate": 0.5}}})    # 0.9→0.5 = 44%
+    assert over is True
+    assert "duplicate" in reason and "44%" in reason
+
+
+def test_magnitude_guard_uses_effective_autoresolve_baseline(monkeypatch):
+    """基准要走 _load_auto_resolve_config（含别名归一/默认兜底），
+    否则用户没显式写该键时会被误判成"新增 dial 无基准"。"""
+    import vermes_cli.config as vc
+    monkeypatch.setattr(vc, "load_config", lambda: {"memory": {}, "evolution": {}})
+    over, _ = mr._exceeds_magnitude(
+        {"memory": {"autoResolve": {"duplicate": 0.85}}})   # 兜底基准 0.9
+    assert over is False
+
+
+def test_magnitude_guard_unknown_key_is_conservative(monkeypatch):
+    _patch_cfg(monkeypatch)
+    over, reason = mr._exceeds_magnitude({"memory": {"brandNew": {"dial": 3}}})
+    assert over is True
+    assert "无此项" in reason
+
+
+def test_magnitude_guard_ignores_bools_and_empty(monkeypatch):
+    _patch_cfg(monkeypatch)
+    assert mr._exceeds_magnitude({}) == (False, "")
+    assert mr._exceeds_magnitude(None) == (False, "")
+    # 布尔翻转不适用"相对幅度"，交给 hardcoded_guard / Critic
+    assert mr._exceeds_magnitude({"memory": {"flag": True}})[0] is False
+
+
+def test_magnitude_threshold_is_externalized(monkeypatch):
+    _patch_cfg(monkeypatch, max_delta=0.6)
+    over, _ = mr._exceeds_magnitude(
+        {"memory": {"autoResolve": {"duplicate": 0.5}}})    # 44% < 60%
+    assert over is False
+
+
+def test_magnitude_threshold_zero_injection_guard(monkeypatch):
+    """写 0 不能把护栏关掉（沿用 P1 的 >0 注入护栏）。"""
+    _patch_cfg(monkeypatch, max_delta=0)
+    over, _ = mr._exceeds_magnitude(
+        {"memory": {"autoResolve": {"duplicate": 0.5}}})
+    assert over is True
+    _patch_cfg(monkeypatch, max_delta=-1)
+    assert mr._exceeds_magnitude(
+        {"memory": {"autoResolve": {"duplicate": 0.5}}})[0] is True
+
+
+def test_magnitude_guard_fails_safe_on_config_error(monkeypatch):
+    import vermes_cli.config as vc
+    def _boom():
+        raise RuntimeError("no config")
+    monkeypatch.setattr(vc, "load_config", _boom)
+    over, reason = mr._exceeds_magnitude({"memory": {"autoResolve": {"duplicate": 0.5}}})
+    assert over is True and "保守降级" in reason
+
+
+def test_scan_routes_large_delta_to_l2_queue(tmp_path, monkeypatch):
+    """端到端：双闸门都过，但幅度 >20% → 不自动 apply，进 proposed 队列。"""
+    sm = tmp_path / "self-model.db"
+    conn = _make_selfmodel_db(sm)
+    for _ in range(20):
+        _insert_outcome(conn, "web", 15, success=True)
+    for _ in range(10):
+        _insert_outcome(conn, "web", 3, success=False)
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(em, "get_self_model_db", lambda: sm)
+
+    idx = tmp_path / "memory_index.db"
+    conn = _make_index_db(idx)
+    _seed(conn, [
+        {"mem_id": 1, "ftype": "duplicate", "conf": 0.95, "source": "skill"},
+        {"mem_id": 2, "ftype": "duplicate", "conf": 0.90, "source": "skill"},
+        {"mem_id": None, "ftype": "duplicate", "conf": 0.95},
+        {"mem_id": 11, "ftype": "outdated", "conf": 0.90},
+    ])
+    conn.close()
+    monkeypatch.setattr("agent.memory_fabric._get_index_db", lambda: idx)
+
+    state = {}
+    monkeypatch.setattr(mr, "_load_state", lambda: dict(state))
+    monkeypatch.setattr(mr, "_save_state", lambda s: (state.clear(), state.update(s)))
+
+    # 0.9 → 0.6 = 33% > 20%
+    cand = {"task_type": "web", "title": "too-aggressive", "rationale": "r",
+            "config_patch": {"memory": {"autoResolve": {"duplicate": 0.6}}},
+            "expected_effect": "e"}
+    monkeypatch.setattr(mr, "_generate_b1_candidates", lambda pts, llm_call=None: [cand])
+    monkeypatch.setattr(ec, "critic_review",
+                        lambda c, outcomes_summary="", llm_call=None:
+                        [{"safe": True, "concerns": "", "confidence": 0.9}])
+    monkeypatch.setattr(mr, "_is_auto_apply_enabled", lambda: True)
+    # 自动 apply 若被误触发，测试直接失败
+    def _must_not_apply(*a, **k):
+        raise AssertionError("magnitude guard should have routed this to L2")
+    monkeypatch.setattr(mr, "_auto_apply_proposal", _must_not_apply)
+
+    created = mr._scan_evolution_proposals(llm_call=lambda p: {"final": "[]"})
+    assert created == 1
+    assert em.get_proposals(status="auto_applied") == []
+    rows = em.get_proposals(status="proposed")
+    assert len(rows) == 1
+    det = json.loads(rows[0]["deterministic_result"])
+    assert det["passed"] is True          # 闸门本身是过的
+    assert det["tier"] == "L2"            # 但被幅度护栏降级
+    assert "相对变化" in det["tier_reason"]

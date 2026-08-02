@@ -204,6 +204,11 @@ PROPOSAL_EXPIRE_DAYS = 7         # 提案过期天数（外置友好，但固定
 # 约束：同一文件被连续 apply 超过 5 次后，早期备份会被清理，届时撤回将失败并
 # 返回明确错误（而不是错误地还原成别的快照）。
 L1_RETRACT_WINDOW_H = 24
+# T4 幅度护栏：即便双闸门都过，单个数值 dial 的相对变化超过该比例仍强制降级到
+# L2 待审队列。闸门衡量的是"效果没变差"，衡量不了"改动有多激进"——一次把阈值
+# 从 0.9 拉到 0.5 也可能在离线回放里"precision 不降"，但那已经是换了策略而不是
+# 微调。分层模型三维度之三（幅度）：≤10% L0 / 10~20% L1 / >20% L2。
+L1_MAX_RELATIVE_DELTA = 0.20
 
 
 def _aegis_should_run() -> bool:
@@ -397,7 +402,12 @@ def _scan_evolution_proposals(llm_call=None):
                 continue
             # ── 分层：过了双闸门的低风险提案自动 apply，没过的才入待审队列
             # 用户可随时在 EvolutionPanel 撤回已自动 apply 的提案
-            if _is_auto_apply_enabled():
+            # T4 幅度护栏：改动过猛（>20%）即便闸门都过也强制人工审
+            over, over_reason = _exceeds_magnitude(cand.get("config_patch"))
+            if over:
+                logger.info("[AEGIS] magnitude guard → L2 queue: %s — %s",
+                            cand.get("title"), over_reason)
+            if _is_auto_apply_enabled() and not over:
                 # 自动 apply：写 config.yaml + 记录为 auto_applied
                 applied = _auto_apply_proposal(cand, v, gate, str(_cfg_path()))
                 if applied:
@@ -421,7 +431,11 @@ def _scan_evolution_proposals(llm_call=None):
                         created += 1
                         logger.info("[AEGIS] auto-apply failed, queued #%s: %s", pid, cand.get("title"))
             else:
-                # auto_apply=false 或高风险 → 进待审队列
+                # auto_apply=false 或幅度过大 → 进待审队列（L2）
+                _gate = dict(gate)
+                if over:
+                    _gate["tier"] = "L2"
+                    _gate["tier_reason"] = over_reason
                 pid = record_proposal(
                     phase="A→B→C→D",
                     task_type=cand.get("task_type", ""),
@@ -431,7 +445,7 @@ def _scan_evolution_proposals(llm_call=None):
                     target_path=str(_cfg_path()),
                     config_patch=cand.get("config_patch"),
                     critic_verdict=v,
-                    deterministic_result=gate,
+                    deterministic_result=_gate,
                     status="proposed",
                 )
                 if pid:
@@ -440,6 +454,89 @@ def _scan_evolution_proposals(llm_call=None):
     finally:
         _aegis_mark_run()
     return created
+
+
+def _max_relative_delta() -> float:
+    """幅度护栏阈值。外置到 `evolution.autoApplyMaxDelta`，沿用 P1 的 >0 注入护栏
+    （写 0 或负数一律回落默认，防止"把护栏设成 0 = 永远不拦"这类自我放行）。"""
+    try:
+        from vermes_cli.config import load_config
+        raw = load_config().get("evolution", {}).get("autoApplyMaxDelta", None)
+        val = float(raw)
+        if val > 0:
+            return val
+    except Exception:
+        pass
+    return L1_MAX_RELATIVE_DELTA
+
+
+def _flatten_numeric(d, prefix=""):
+    """Yield ``(dotted_key, float_value)`` for every numeric leaf in a dict."""
+    if not isinstance(d, dict):
+        return
+    for k, v in d.items():
+        key = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, dict):
+            yield from _flatten_numeric(v, key)
+        elif isinstance(v, bool):
+            continue  # bool 是 int 的子类，但"翻转开关"不适用相对幅度
+        elif isinstance(v, (int, float)):
+            yield key, float(v)
+
+
+def _exceeds_magnitude(config_patch) -> tuple:
+    """T4 幅度护栏：patch 中任一数值 dial 的相对变化是否超过阈值。
+
+    返回 ``(exceeded: bool, reason: str)``。
+
+    只看数值型叶子：相对变化 = ``|new - old| / max(|old|, eps)``。
+    - 当前配置里**不存在**该键（新增 dial）→ 无基准，按保守处理判为超限；
+    - 布尔/字符串等非数值改动不参与本护栏（由 hardcoded_guard 与 Critic 负责）；
+    - 任何异常一律 fail-safe 判为超限（宁可多让人看一眼，也不静默放行激进改动）。
+    """
+    if not isinstance(config_patch, dict) or not config_patch:
+        return False, ""
+    try:
+        from vermes_cli.config import load_config
+        cur = load_config()
+    except Exception as e:
+        return True, f"无法读取当前配置以计算幅度({e})，保守降级到人工审"
+
+    # autoResolve 子树的"当前值"必须走 _load_auto_resolve_config()——它做了
+    # 短名/长名别名归一 + >0 护栏 + 硬编码兜底，直接查 raw config 会在用户
+    # 没写该键时误判成"新增 dial 无基准"。
+    try:
+        _ar_effective = _load_auto_resolve_config()
+    except Exception:
+        _ar_effective = {}
+
+    limit = _max_relative_delta()
+    worst = None
+    for key, new_val in _flatten_numeric(config_patch):
+        old_val = None
+        if key.startswith("memory.autoResolve."):
+            _leaf = key.split(".")[-1]
+            if _leaf in _ar_effective:
+                old_val = float(_ar_effective[_leaf])
+        if old_val is None:
+            node = cur
+            try:
+                for part in key.split("."):
+                    node = node[part]
+                if isinstance(node, bool) or not isinstance(node, (int, float)):
+                    continue
+                old_val = float(node)
+            except Exception:
+                return True, f"{key}: 当前配置无此项，新增 dial 无基准可比 → 人工审"
+        denom = abs(old_val) if abs(old_val) > 1e-9 else 1e-9
+        delta = abs(new_val - old_val) / denom
+        if worst is None or delta > worst[1]:
+            worst = (key, delta, old_val, new_val)
+    if worst and worst[1] > limit:
+        key, delta, old_val, new_val = worst
+        return True, (f"{key}: {old_val:g} → {new_val:g}"
+                      f"（相对变化 {delta:.0%} > 上限 {limit:.0%}）")
+    return False, ""
 
 
 def _is_auto_apply_enabled() -> bool:
@@ -1152,6 +1249,17 @@ def _load_auto_resolve_config():
         mem = cfg.get("memory", {})
         ar = mem.get("autoResolve", {})
         if isinstance(ar, dict) and ar:
+            # 兼容旧的长键名（config.py 默认段一度写的是这套名字，而这里只读
+            # 短名 → 用户改了长名却毫无效果）。短名优先，长名作别名回落。
+            for _short, _legacy in (
+                ("duplicate", "duplicate_confidence"),
+                ("outdated", "outdated_confidence"),
+                ("cluster_min_interval", "cluster_min_interval_s"),
+                ("merge_cleanup", "merge_cleanup_confidence"),
+            ):
+                if _short not in ar and _legacy in ar:
+                    ar = dict(ar)
+                    ar[_short] = ar[_legacy]
             for k in defaults:
                 # Guard: only strictly-positive values are valid. A configured
                 # `0` would (a) flatten the cluster death-interval floor and

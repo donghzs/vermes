@@ -1286,11 +1286,19 @@ DEFAULT_CONFIG = {
         # Controls which high-confidence flags the reflection daemon
         # auto-resolves (demote) without human intervention.
         # All values are optional — missing keys fall back to defaults.
+        # Only strictly-positive values are honoured (0 → default), see
+        # agent/memory_reflection.py:_load_auto_resolve_config.
+        # NOTE: these key names must match what the reader looks up.  They
+        # used to be spelled `duplicate_confidence` / `outdated_confidence` /
+        # `cluster_min_interval_s` / `merge_cleanup_confidence` here while the
+        # reader only ever looked for the short names below — meaning the
+        # documented keys were inert and editing them changed nothing.  The
+        # long names are still accepted as legacy aliases by the reader.
         "autoResolve": {
-            "duplicate_confidence": 0.9,      # duplicate flag ≥ this → auto demote
-            "outdated_confidence": 0.85,       # outdated flag ≥ this → auto demote
-            "cluster_min_interval_s": 60,      # floor for cluster avg_interval (seconds)
-            "merge_cleanup_confidence": 0.7,   # cleanup_merged: duplicate ≥ this + source=skill → delete
+            "duplicate": 0.9,              # duplicate flag ≥ this → auto demote
+            "outdated": 0.85,              # outdated flag ≥ this → auto demote
+            "cluster_min_interval": 60,    # floor for cluster avg_interval (seconds)
+            "merge_cleanup": 0.7,          # cleanup_merged: duplicate ≥ this + source=skill → delete
         },
     },
 
@@ -1547,6 +1555,25 @@ DEFAULT_CONFIG = {
         # false.  TUI has its own modal overlay (VERMES_TUI_NO_CONFIRM=1 to
         # opt out there).
         "destructive_slash_confirm": True,
+        # Desktop sessions start in YOLO mode (dangerous shell commands are
+        # auto-approved without a popup).  This used to be an *undocumented*
+        # implicit default living in a `.get(..., True)` fallback inside
+        # vermes_cli/blueprints/chat.py — it is spelled out here so the
+        # behaviour is discoverable and can be turned off from config.yaml.
+        # Set to false to make the desktop app prompt like every other
+        # surface.  Note: this only covers shell commands and config-level
+        # changes; source-level rewrites are governed by the key below.
+        "yolo_default": True,
+        # Approval tiering L2: source-level self-modification (rewriting the
+        # agent's own .py files, or rolling one back) ALWAYS asks for human
+        # confirmation — even under YOLO / mode=off.  YOLO means "I trust you
+        # to run commands"; it must not silently widen into "I trust you to
+        # rewrite your own source".  Source rewrites only take effect after a
+        # DMG rebuild, so they are rare and the interruption cost is minimal,
+        # while an unnoticed source change is the one truly irreversible
+        # action in the evolution loop.  Config-level changes (config.yaml)
+        # are unaffected — they stay auto-appliable and retractable.
+        "source_modify_always_confirm": True,
     },
 
     # Permanently allowed dangerous command patterns (added via "always" approval)
