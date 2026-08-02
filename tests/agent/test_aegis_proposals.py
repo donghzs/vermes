@@ -359,9 +359,12 @@ def test_scan_evolution_proposals_records_proposal(tmp_path, monkeypatch):
     monkeypatch.setattr(ec, "critic_review",
                         lambda c, outcomes_summary="", llm_call=None:
                         [{"safe": True, "concerns": "", "confidence": 0.9}])
+    # auto_apply 关闭 → 走 proposed 路径（入待审队列）
+    monkeypatch.setattr(mr, "_is_auto_apply_enabled", lambda: False)
 
     created = mr._scan_evolution_proposals(llm_call=lambda p: {"final": "[]"})
     assert created == 1
+    # auto_apply 关闭 → 进入 proposed 队列
     rows = em.get_proposals(status="proposed")
     assert len(rows) == 1
     assert rows[0]["target_kind"] == "config"
@@ -369,3 +372,77 @@ def test_scan_evolution_proposals_records_proposal(tmp_path, monkeypatch):
     # 闸门结果应记录且通过
     det = json.loads(rows[0]["deterministic_result"])
     assert det["passed"] is True
+
+
+# ── auto_apply 开启时走自动 apply 路径 ──────────────────────────────
+
+def test_scan_evolution_proposals_auto_apply(tmp_path, monkeypatch):
+    """When auto_apply is enabled, passed proposals go to auto_applied."""
+    sm = tmp_path / "self-model.db"
+    conn = _make_selfmodel_db(sm)
+    for _ in range(20):
+        _insert_outcome(conn, "web", 15, success=True)
+    for _ in range(10):
+        _insert_outcome(conn, "web", 3, success=False)
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(em, "get_self_model_db", lambda: sm)
+
+    idx = tmp_path / "memory_index.db"
+    conn = _make_index_db(idx)
+    _seed(conn, [
+        {"mem_id": 1, "ftype": "duplicate", "conf": 0.95, "source": "skill"},
+        {"mem_id": 2, "ftype": "duplicate", "conf": 0.90, "source": "skill"},
+        {"mem_id": None, "ftype": "duplicate", "conf": 0.95},
+        {"mem_id": 11, "ftype": "outdated", "conf": 0.90},
+    ])
+    conn.close()
+    monkeypatch.setattr("agent.memory_fabric._get_index_db", lambda: idx)
+
+    state = {}
+    monkeypatch.setattr(mr, "_load_state", lambda: dict(state))
+    monkeypatch.setattr(mr, "_save_state", lambda s: (state.clear(), state.update(s)))
+
+    cand = {"task_type": "web", "title": "auto-test", "rationale": "r",
+            "config_patch": {"memory": {"autoResolve": {"duplicate": 0.88}}},
+            "expected_effect": "e"}
+    monkeypatch.setattr(mr, "_generate_b1_candidates", lambda pts, llm_call=None: [cand])
+    monkeypatch.setattr(ec, "critic_review",
+                        lambda c, outcomes_summary="", llm_call=None:
+                        [{"safe": True, "concerns": "", "confidence": 0.9}])
+    # auto_apply 开启 → 走自动 apply 路径
+    monkeypatch.setattr(mr, "_is_auto_apply_enabled", lambda: True)
+    # mock _auto_apply_proposal 避免真写文件
+    captured = {}
+    def fake_auto_apply(c, v, g, p):
+        captured["title"] = c.get("title")
+        captured["patch"] = c.get("config_patch")
+        captured["critic"] = v
+        captured["gate"] = g
+        # record_proposal 会在真实 DB 中创建记录
+        em.record_proposal(
+            phase="A→B→C→D (auto)",
+            task_type=c.get("task_type", ""),
+            title=c.get("title", ""),
+            rationale=c.get("rationale", ""),
+            target_kind="config",
+            target_path=p,
+            config_patch=c.get("config_patch"),
+            critic_verdict=v,
+            deterministic_result=g,
+            status="auto_applied",
+        )
+        return True
+    monkeypatch.setattr(mr, "_auto_apply_proposal", fake_auto_apply)
+
+    created = mr._scan_evolution_proposals(llm_call=lambda p: {"final": "[]"})
+    assert created == 1
+    assert captured["title"] == "auto-test"
+    assert captured["patch"]["memory"]["autoResolve"]["duplicate"] == 0.88
+    # auto_applied 队列应有 1 条
+    rows = em.get_proposals(status="auto_applied")
+    assert len(rows) == 1
+    assert rows[0]["title"] == "auto-test"
+    # proposed 队列应为空
+    pending = em.get_proposals(status="proposed")
+    assert len(pending) == 0

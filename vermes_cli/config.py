@@ -1294,6 +1294,16 @@ DEFAULT_CONFIG = {
         },
     },
 
+    # ── Evolution / AEGIS ──
+    # Controls the closed-loop proposal engine (P2).
+    # auto_apply: when true, B1 config proposals that pass all gates
+    #   (hardcoded_guard + Critic + deterministic) are applied automatically
+    #   and land in the "已自动调整" list (user can retract within 24h).
+    #   When false, all proposals go to the "待审队列".
+    "evolution": {
+        "auto_apply": True,
+    },
+
     # Subagent delegation — override the provider:model used by delegate_task
     # so child agents can run on a different (cheaper/faster) provider and model.
     # Uses the same runtime provider resolution as CLI/gateway startup, so all

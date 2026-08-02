@@ -2212,6 +2212,58 @@ async def evolution_proposal_reject(request: Request, proposal_id: int):
         return {"ok": False, "error": str(e)}
 
 
+async def evolution_proposal_retract(request: Request, proposal_id: int):
+    """Retract an auto-applied B1 config proposal (undo the config change).
+
+    Restores config.yaml from the backup created by EmergentChangePipeline.
+    Only works on proposals with status='auto_applied'.
+    """
+    try:
+        from agent.evolution_manager import get_proposal, update_proposal_status
+        proposal = get_proposal(proposal_id)
+        if not proposal:
+            return {"ok": False, "error": f"proposal {proposal_id} not found"}
+        if proposal["status"] != "auto_applied":
+            return {"ok": False, "error": f"only auto_applied proposals can be retracted (current: {proposal['status']})"}
+
+        # Find the raw_event backup for this proposal's config write
+        # and roll it back via EmergentChangePipeline.
+        from agent.emergent_change import get_pipeline
+        from agent.emergent_change import ChangeProposal
+        import os
+
+        target_path = proposal.get("target_path", "")
+        if not target_path or not os.path.exists(target_path):
+            return {"ok": False, "error": "config file not found"}
+
+        # The pipeline's rollback path: find the most recent backup for this target
+        pipeline = get_pipeline()
+        backup_path = pipeline._find_latest_backup(target_path)
+        if not backup_path:
+            return {"ok": False, "error": "no backup found for rollback"}
+
+        # Restore from backup
+        with open(backup_path, "r", encoding="utf-8") as fh:
+            backup_content = fh.read()
+
+        rollback_proposal = ChangeProposal(
+            source="aegis-retract",
+            target_path=target_path,
+            content=backup_content,
+            description=f"[AEGIS 撤回] {proposal.get('title', '')}",
+            metadata={"retract_proposal_id": proposal_id},
+            initiator="user",
+        )
+        result = pipeline.apply_change(rollback_proposal, force=True)
+        if result.committed:
+            update_proposal_status(proposal_id, "retracted")
+            return {"ok": True, "retracted": True, "proposal_id": proposal_id,
+                    "restored_from": backup_path}
+        return {"ok": False, "error": result.error or "rollback failed"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _build_config_diff(target_path: str, new_content: str) -> str:
     """Unified diff of new_content vs current config file (for approval UI)."""
     import difflib
@@ -2326,6 +2378,18 @@ async def emergence_status():
         except Exception:
             auto_resolve = None
 
+        # ── 提案计数：待审 + 已自动调整 ──
+        try:
+            from agent.evolution_manager import get_proposals
+            pending = get_proposals(status="proposed")
+            auto_applied = get_proposals(status="auto_applied")
+            proposal_counts = {
+                "pending": len(pending),
+                "auto_applied": len(auto_applied),
+            }
+        except Exception:
+            proposal_counts = {"pending": 0, "auto_applied": 0}
+
         return {
             "richness": richness_data,
             "clusters": cluster_stats,
@@ -2335,6 +2399,7 @@ async def emergence_status():
             "domain_modules": domain_mods,
             "continuity": continuity,
             "autoResolve": auto_resolve,
+            "proposals": proposal_counts,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -2794,6 +2859,12 @@ def register_to(app):
         evolution_proposal_reject,
         methods=["POST"],
         name="evolution_proposal_reject",
+    )
+    app.add_api_route(
+        "/api/evolution/proposals/{proposal_id}/retract",
+        evolution_proposal_retract,
+        methods=["POST"],
+        name="evolution_proposal_retract",
     )
     app.add_api_route(
         "/api/emergence/status",

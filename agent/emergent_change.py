@@ -418,6 +418,25 @@ class EmergentChangePipeline:
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
+    def _find_latest_backup(self, target_path: str) -> Optional[str]:
+        """Find the most recent backup file for the given target path.
+
+        Backups are named: <target_path>.bak.<timestamp>
+        Returns the path string, or None if no backup exists.
+        """
+        try:
+            target = Path(target_path)
+            parent = target.parent
+            prefix = target.name + ".bak."
+            backups = sorted(
+                [p for p in parent.iterdir() if p.name.startswith(prefix)],
+                key=lambda p: p.name,
+                reverse=True,  # newest first
+            )
+            return str(backups[0]) if backups else None
+        except Exception:
+            return None
+
     # ── Import validation ───────────────────────────────────────────────────
 
     def _validate_import(self, target: Path) -> Optional[str]:

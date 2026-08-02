@@ -391,25 +391,120 @@ def _scan_evolution_proposals(llm_call=None):
                 logger.info("[AEGIS] deterministic gate failed: %s — %s",
                             cand.get("title"), gate)
                 continue
-            # 入队
-            pid = record_proposal(
-                phase="A→B→C→D",
+            # ── 分层：过了双闸门的低风险提案自动 apply，没过的才入待审队列
+            # 用户可随时在 EvolutionPanel 撤回已自动 apply 的提案
+            if _is_auto_apply_enabled():
+                # 自动 apply：写 config.yaml + 记录为 auto_applied
+                applied = _auto_apply_proposal(cand, v, gate, str(_cfg_path()))
+                if applied:
+                    created += 1
+                    logger.info("[AEGIS] auto-applied: %s", cand.get("title"))
+                else:
+                    # 自动 apply 失败（写入异常等）→ 降级进待审队列
+                    pid = record_proposal(
+                        phase="A→B→C→D",
+                        task_type=cand.get("task_type", ""),
+                        title=cand.get("title", ""),
+                        rationale=cand.get("rationale", ""),
+                        target_kind="config",
+                        target_path=str(_cfg_path()),
+                        config_patch=cand.get("config_patch"),
+                        critic_verdict=v,
+                        deterministic_result=gate,
+                        status="proposed",
+                    )
+                    if pid:
+                        created += 1
+                        logger.info("[AEGIS] auto-apply failed, queued #%s: %s", pid, cand.get("title"))
+            else:
+                # auto_apply=false 或高风险 → 进待审队列
+                pid = record_proposal(
+                    phase="A→B→C→D",
+                    task_type=cand.get("task_type", ""),
+                    title=cand.get("title", ""),
+                    rationale=cand.get("rationale", ""),
+                    target_kind="config",
+                    target_path=str(_cfg_path()),
+                    config_patch=cand.get("config_patch"),
+                    critic_verdict=v,
+                    deterministic_result=gate,
+                    status="proposed",
+                )
+                if pid:
+                    created += 1
+                    logger.info("[AEGIS] proposal #%s queued: %s", pid, cand.get("title"))
+    finally:
+        _aegis_mark_run()
+    return created
+
+
+def _is_auto_apply_enabled() -> bool:
+    """Check if auto-apply is enabled for low-risk B1 config proposals."""
+    try:
+        from vermes_cli.config import load_config
+        cfg = load_config()
+        return bool(cfg.get("evolution", {}).get("auto_apply", True))
+    except Exception:
+        return True  # fail-open: default to auto-apply
+
+
+def _auto_apply_proposal(cand: dict, critic_verdict: dict,
+                          gate_result: dict, config_path: str) -> bool:
+    """Auto-apply a B1 config proposal that passed all gates.
+
+    Writes config.yaml via EmergentChangePipeline (backup + raw_event + rollback).
+    Records the proposal as 'auto_applied' in evolution_proposals.
+    Returns True on success.
+    """
+    try:
+        from vermes_cli.config import load_config
+        from agent.emergent_change import get_pipeline, ChangeProposal
+        from agent.evolution_manager import record_proposal
+        import yaml
+
+        config_patch = cand.get("config_patch", {})
+        merged = _deep_merge_config(load_config(), config_patch)
+        new_content = yaml.safe_dump(merged, allow_unicode=True, sort_keys=False)
+
+        proposal_obj = ChangeProposal(
+            source="aegis-auto",
+            target_path=config_path,
+            content=new_content,
+            description=f"[AEGIS 自动] {cand.get('title', '')}",
+            metadata={"auto_applied": True, "critic": critic_verdict},
+            initiator="system",  # system = auto, not agent-initiated
+        )
+        result = get_pipeline().apply_change(proposal_obj, force=True)
+        if result.committed:
+            record_proposal(
+                phase="A→B→C→D (auto)",
                 task_type=cand.get("task_type", ""),
                 title=cand.get("title", ""),
                 rationale=cand.get("rationale", ""),
                 target_kind="config",
-                target_path=str(_cfg_path()),
-                config_patch=cand.get("config_patch"),
-                critic_verdict=v,
-                deterministic_result=gate,
-                status="proposed",
+                target_path=config_path,
+                config_patch=config_patch,
+                critic_verdict=critic_verdict,
+                deterministic_result=gate_result,
+                status="auto_applied",
             )
-            if pid:
-                created += 1
-                logger.info("[AEGIS] proposal #%s queued: %s", pid, cand.get("title"))
-    finally:
-        _aegis_mark_run()
-    return created
+            return True
+        return False
+    except Exception as e:
+        logger.warning("[AEGIS] auto-apply failed: %s", e)
+        return False
+
+
+def _deep_merge_config(base: dict, patch: dict) -> dict:
+    """Recursively merge patch into a copy of base."""
+    import copy
+    out = copy.deepcopy(base)
+    for k, v in (patch or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge_config(out[k], v)
+        else:
+            out[k] = v
+    return out
 
 
 def _merge_auto_resolve_patch(patch: Dict) -> Dict:
