@@ -2,6 +2,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { confirm } = useConfirm()
 
 // ── 渠道数据 ──
 const channelsData = ref(null)
@@ -123,6 +126,7 @@ async function saveChannel(platformKey) {
 async function clearChannel(platformKey) {
   const ch = channelsData.value?.channels.find(c => c.key === platformKey)
   if (!ch) return
+  if (!await confirm({ title: '清除渠道凭据', message: `确认清除 ${ch.label} 的凭据？`, confirmText: '清除', danger: true })) return
   try {
     await api.default.clearGatewayChannel(platformKey)
     if (channelsData.value) {
