@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRightPanel } from '../composables/useRightPanel'
 import SkillManager from './SkillManager.vue'
+import KnowledgeBase from './KnowledgeBase.vue'
 import MCPManager from './MCPManager.vue'
 import MemoryBrowser from './MemoryBrowser.vue'
 import api from '../services/api.js'
@@ -14,6 +15,7 @@ const tabs = [
   { id: 'tools', label: '工具', icon: '🛠️' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
   { id: 'memory', label: '记忆', icon: '🧠' },
+  { id: 'knowledge', label: '知识库', icon: '📚' },
 ]
 
 // ── 工具集（tools）视图 ──
@@ -138,6 +140,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 
           <!-- 记忆：全量浏览+搜索+恢复 -->
           <MemoryBrowser v-else-if="tab === 'memory'" />
+
+          <!-- 知识库 -->
+          <KnowledgeBase v-else-if="tab === 'knowledge'" />
         </div>
       </aside>
     </transition>

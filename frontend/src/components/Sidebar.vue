@@ -8,6 +8,7 @@ const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
+import MobileConnect from './MobileConnect.vue'
 import ExpertCatalog from './ExpertCatalog.vue'
 import { useRightPanel } from '../composables/useRightPanel'
 // 生态模块前端动态加载已弃用，改为 Agent 工具集模式
@@ -242,7 +243,8 @@ async function handleDelete(id) {
 // ── 模板选择 ──
 const showTemplateMenu = ref(false)
 const showCustomPrompt = ref(false)
-const showKnowledgeBase = ref(false)
+const showKnowledgeBase = ref(false)  // 已迁至 Agent 管理面板
+const showMobileConnect = ref(false)
 const showExpert = ref(false)
 const customPromptInput = ref('')
 const customPromptRef = ref(null)
@@ -515,13 +517,13 @@ async function handleImportFile(e) {
           <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span>
           <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
         </button>
-        <button @click="showKnowledgeBase = !showKnowledgeBase" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showKnowledgeBase ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="知识库">
-          <span class="text-base">📚</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">知识库</span>
-        </button>
-        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="open ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Agent 管理（技能/工具/MCP/记忆）">
+        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="open ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Agent 管理（技能/工具/MCP/记忆/知识库）">
           <span class="text-base">🤖</span>
           <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理</span>
+        </button>
+        <button @click="showMobileConnect = !showMobileConnect" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showMobileConnect ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="移动接入">
+          <span class="text-base">📱</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">移动接入</span>
         </button>
         <button @click="showExpert = !showExpert" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showExpert ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="专家">
           <span class="text-base">🎓</span>
@@ -532,10 +534,11 @@ async function handleImportFile(e) {
           <span class="sidebar-tooltip group-hover:opacity-100">论文写作</span>
         </button>
       </div>
-      <!-- 知识库面板 -->
-      <div v-if="showKnowledgeBase" class="shrink-0 max-h-72 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
-        <KnowledgeBase />
+      <!-- 移动接入面板 -->
+      <div v-if="showMobileConnect" class="shrink-0 max-h-80 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
+        <MobileConnect />
       </div>
+      <!-- 知识库面板已迁至 Agent 管理右侧面板 -->
       <!-- MCP / 技能 / 工具 管理已统一迁至右侧大面板 ToolSkillDrawer（点击底部按钮展开） -->
       <!-- 专家面板 -->
       <div v-if="showExpert" class="shrink-0 max-h-80 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
