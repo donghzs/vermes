@@ -17,7 +17,16 @@ from tools import approval as ap
 def _clean_env(monkeypatch):
     monkeypatch.delenv("VERMES_YOLO_MODE", raising=False)
     monkeypatch.setattr(ap, "is_session_yolo_enabled", lambda sk: False)
+    # 批准是有记忆的（TTL / session / permanent grant）——那正是生产要的行为，
+    # 但测试之间必须互不影响，否则前一条用例的批准会让后一条"没弹窗"。
+    ap.clear_privileged_grants()
+    with ap._lock:
+        ap._session_approved.pop("sk", None)
+        _stale = {k for k in ap._permanent_approved
+                  if k.startswith(ap._PRIVILEGED_GRANT_PREFIX)}
+        ap._permanent_approved.difference_update(_stale)
     yield
+    ap.clear_privileged_grants()
 
 
 def _stub_gateway(monkeypatch, calls, choice="approve"):
@@ -162,3 +171,176 @@ def test_no_session_key_fails_closed(monkeypatch):
     _stub_cfg(monkeypatch)
     monkeypatch.setattr(ap, "is_session_yolo_enabled", lambda sk: True)
     assert ap.approve_privileged_action("", {"target_path": "/repo/a.py"}) is False
+
+
+# ── 「非必要不弹」：批准是有记忆的 ────────────────────────────────────
+# T1 要求源码级改写必须人工确认，但不等于每次都问。批准一次即授予一个作用域
+# 通行证：默认 TTL 30 分钟，选"本次会话"到会话结束，选"始终"则永久。
+
+def _src(path="/repo/agent/foo.py", **kw):
+    d = {"target_path": path, "pattern_key": "self_modify"}
+    d.update(kw)
+    return d
+
+
+def test_approval_is_remembered_within_ttl(monkeypatch):
+    """一次任务里连续改 3 个文件 → 只弹 1 次。这是重复弹窗的最大来源。"""
+    _stub_cfg(monkeypatch)
+    monkeypatch.setattr(ap, "is_session_yolo_enabled", lambda sk: True)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    for p in ("/repo/a.py", "/repo/b.py", "/repo/c.py"):
+        assert ap.approve_privileged_action("sk", _src(p)) is True
+    assert len(calls) == 1
+
+
+def test_ttl_zero_disables_reuse(monkeypatch):
+    """0 = 每次都弹。这个方向是收紧，所以按写的值原样尊重（不套 P1 的 >0 护栏）。"""
+    _stub_cfg(monkeypatch, privileged_grant_ttl_minutes=0)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    ap.approve_privileged_action("sk", _src("/repo/b.py"))
+    assert len(calls) == 2
+
+
+def test_expired_grant_asks_again(monkeypatch):
+    _stub_cfg(monkeypatch, privileged_grant_ttl_minutes=30)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert len(calls) == 1
+    # 把通行证的到期时间拨到过去
+    with ap._lock:
+        for k in ap._privileged_grants:
+            ap._privileged_grants[k] = 0.0
+    ap.approve_privileged_action("sk", _src("/repo/b.py"))
+    assert len(calls) == 2
+
+
+def test_session_choice_outlives_ttl(monkeypatch):
+    """选「本次会话都允许」→ 即便 TTL 被设成 0 也不再问。"""
+    calls = []
+    _stub_gateway(monkeypatch, calls, choice="session")
+    _stub_cfg(monkeypatch, privileged_grant_ttl_minutes=0)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert len(calls) == 1
+    ap.approve_privileged_action("sk", _src("/repo/b.py"))
+    assert len(calls) == 1
+    assert "privileged:self_modify" in ap._session_approved.get("sk", set())
+
+
+def test_always_choice_persists(monkeypatch):
+    saved = []
+    monkeypatch.setattr(ap, "save_permanent_allowlist", lambda pats: saved.append(set(pats)))
+    calls = []
+    _stub_gateway(monkeypatch, calls, choice="always")
+    _stub_cfg(monkeypatch, privileged_grant_ttl_minutes=0)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert len(calls) == 1
+    assert "privileged:self_modify" in ap._permanent_approved
+    assert saved and "privileged:self_modify" in saved[0]
+    # 永久授权跨会话生效
+    ap.clear_session("sk")
+    ap.approve_privileged_action("other-session", _src("/repo/b.py"))
+    assert len(calls) == 1
+
+
+def test_grant_does_not_leak_across_action_categories(monkeypatch):
+    """批准「改源码」不等于批准「回滚/删文件」——两类风险各自授权。"""
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert len(calls) == 1
+    ap.approve_privileged_action(
+        "sk", {"target_path": "/repo/a.py", "pattern_key": "self_modify_rollback"})
+    assert len(calls) == 2
+
+
+def test_denial_grants_nothing(monkeypatch):
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls, choice="deny")
+
+    assert ap.approve_privileged_action("sk", _src("/repo/a.py")) is False
+    assert ap.approve_privileged_action("sk", _src("/repo/b.py")) is False
+    assert len(calls) == 2
+
+
+def test_timeout_grants_nothing(monkeypatch):
+    _stub_cfg(monkeypatch)
+    calls = []
+
+    def _timeout(session_key, approval_data, *, surface="gateway"):
+        calls.append(approval_data)
+        return {"resolved": False, "choice": None}
+    monkeypatch.setattr(ap, "request_gateway_approval", _timeout)
+
+    assert ap.approve_privileged_action("sk", _src("/repo/a.py")) is False
+    assert ap.approve_privileged_action("sk", _src("/repo/b.py")) is False
+    assert len(calls) == 2
+
+
+def test_new_session_asks_again(monkeypatch):
+    """TTL 通行证是会话内的：clear_session 之后新会话重新确认。"""
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert len(calls) == 1
+    ap.clear_session("sk")
+    ap.approve_privileged_action("sk", _src("/repo/b.py"))
+    assert len(calls) == 2
+
+
+def test_dialog_offers_remember_scopes(monkeypatch):
+    """弹窗要把「本次会话 / 始终」交给前端，默认推荐「本次会话」。"""
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert calls[0]["scope_options"] == ["once", "session", "always"]
+    assert calls[0]["default_choice"] == "session"
+    assert calls[0]["scope_key"] == "privileged:self_modify"
+
+
+def test_caller_approval_data_not_mutated(monkeypatch):
+    """加注 tier / scope_options 不能污染调用方自己的 dict。"""
+    _stub_cfg(monkeypatch)
+    monkeypatch.setattr(ap, "is_session_yolo_enabled", lambda sk: True)
+    _stub_gateway(monkeypatch, [])
+
+    original = _src("/repo/a.py", description="d")
+    snapshot = dict(original)
+    ap.approve_privileged_action("sk", original)
+    assert original == snapshot
+
+
+def test_grant_ttl_read_failure_is_fail_safe(monkeypatch):
+    """读不到配置 → 不发通行证，下次照常弹（宁可多问一次，不可少拦一次）。
+
+    TTL 在*授予*时读配置决定，不在命中时读——所以 fail-safe 表现为
+    「批准了但没记住」，而不是「记住了却不敢用」。
+    """
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    def _boom():
+        raise RuntimeError("config unreadable")
+    monkeypatch.setattr(ap, "_get_approval_config", _boom)
+    monkeypatch.setattr(ap, "_get_approval_mode", lambda: "manual")
+
+    ap.approve_privileged_action("sk", _src("/repo/a.py"))
+    assert len(calls) == 1
+    assert ap._privileged_grants == {}          # 没发出通行证
+    ap.approve_privileged_action("sk", _src("/repo/b.py"))
+    assert len(calls) == 2

@@ -1574,6 +1574,13 @@ DEFAULT_CONFIG = {
         # action in the evolution loop.  Config-level changes (config.yaml)
         # are unaffected — they stay auto-appliable and retractable.
         "source_modify_always_confirm": True,
+        # ...but "must confirm" is not "must nag".  Approving a privileged
+        # action grants that action category a pass for this many minutes, so
+        # a task that rewrites five files asks once instead of five times.
+        # Answering "本次会话都允许" / "始终允许" in the dialog extends the
+        # grant to the whole session / permanently instead.
+        # 0 disables reuse (prompt every single time).
+        "privileged_grant_ttl_minutes": 30,
     },
 
     # Permanently allowed dangerous command patterns (added via "always" approval)

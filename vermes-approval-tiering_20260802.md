@@ -193,9 +193,35 @@ L1 成立的前提是「用户事后能看见」。当前**没有**统一的变�
 - 修法：默认段键名对齐读取方（短名），`_load_auto_resolve_config` 同时接受长名作向后兼容别名。
 - 连带：`_exceeds_magnitude` 的基准值走 `_load_auto_resolve_config()` 而非裸查 config，否则用户没显式写该键时会被误判成「新增 dial 无基准」而全部降级 L2。
 
+### T1b：「必须确认」≠「必须反复问」（弹窗预算，2026-08-02 追加）
+
+用户拍板：**「弹一两次用户确认就够了，弹多了就是效率低下。非必要不弹，必须弹才弹。」**
+
+这不推翻 T1，而是给它配一个弹窗预算。原实现每次源码改写都独立走一遍 Gateway 审批——一次任务改 5 个文件就弹 5 次，这才是真正的效率损失。改成**批准是有记忆的**：
+
+| 用户的回答 | 授予范围 | 复用现有机制 |
+|---|---|---|
+| 拒绝 | 无（下次照旧问） | — |
+| 仅本次 | 该动作类别 **30 分钟**内不再问 | 新增 `_privileged_grants`（TTL 通行证）|
+| 本次会话允许 | 到会话结束 | `approve_session()` |
+| 始终允许 | 永久，写入 config | `approve_permanent()` + `save_permanent_allowlist()` |
+
+关键设计：
+
+- **TTL 通行证是兜底**。桌面弹窗当前只有「拒绝/仅本次/本次会话允许」三个按钮，即便用户永远只点「仅本次」，30 分钟窗口也已经把「一轮工作弹 5 次」压成「弹 1 次」。前端不改也生效。
+- **授权按动作类别隔离**：`self_modify`（改源码）与 `self_modify_rollback`（回滚/删文件）各自授权，批准前者不顺带放行后者。scope key 带 `privileged:` 前缀，与命令 allowlist 的 pattern key 天然不冲突。
+- **grant 检查放在 YOLO 判定之前**：用户之前答过「始终允许」，就不该因为当下 YOLO 开关状态不同而再被问一遍。
+- **拒绝 / 超时不产生授权**（`resolved=False` 或 `choice=deny` → 不写 grant）。
+- **会话结束清空 TTL 通行证**（`clear_session` 一并清），新会话重新确认。
+- `approvals.privileged_grant_ttl_minutes` 默认 30，**`0` = 每次都弹**。注意这里刻意**不套** P1 的「>0 才生效」注入护栏：在 P1 那里 0 意味着放宽 agent 自身权限（危险），在这里 0 只意味着更多弹窗（收紧），所以按写的值原样尊重。读配置失败 → 不发通行证（宁可多问一次）。
+
+前端同步（`ApprovalDialog.vue`）：补「始终允许」按钮（仅当后端下发 `scope_options` 含 `always` 时显示）、高亮推荐项、加一行说明「批准后 N 分钟内同类操作不再询问」——否则用户会把「仅本次」当成唯一安全选项，反而自找弹窗。
+
+净效果：T1 的安全性不变（源码改写仍然必须有一次人工确认，YOLO 不豁免），但**稳态弹窗次数从「每次改写一次」降到「每轮工作一次」，用户点一次「本次会话允许」后归零**。
+
 ### 测试
 
-`tests/tools/test_approval_tiering.py`（10 条，新增）+ `tests/agent/test_aegis_proposals.py`（30 条，含 T4 新增 9 条）**全绿**。
+`tests/tools/test_approval_tiering.py`（**22 条**：T1 10 条 + T1b 弹窗预算 12 条）+ `tests/agent/test_aegis_proposals.py`（30 条，含 T4 新增 9 条）**全绿**。
 既有失败 `test_approval.py::test_gateway_runner_binds_session_key_to_context_before_agent_run` 属预存技术债——它 AST 断言 `gateway/run.py` 里存在 `run_sync` 与 session-key 绑定，而该文件里这三个符号一个都不存在，且本次未改动该文件。
 
 ### 未做
@@ -208,7 +234,7 @@ L1 成立的前提是「用户事后能看见」。当前**没有**统一的变�
 
 ## 7. 待拍板
 
-1. **T1 是否认同**：源码改写不再受 YOLO 豁免（即便你开着 YOLO，`self_modify` 也会弹窗）。这会**增加**你的弹窗次数，但拦住的是唯一真正不可逆的一类动作。
+1. ~~**T1 是否认同**~~ → **已拍板（2026-08-02）**：认同拦截，但要求「非必要不弹」。已按 T1b 实现弹窗预算：源码改写仍必须人工确认一次，但同类动作 30 分钟 / 一个会话 / 永久内不再重复问。默认 TTL 30 分钟是否合适可再调（`approvals.privileged_grant_ttl_minutes`）。
 2. **默认档位**：`balanced` 作为默认是否合适？还是先发 `conservative` 观察一段时间。
 3. **24h 撤回窗口**是否合理，还是按动作类型区分（config 24h / 能力激活 7d）。
 4. **S1 是否单独先发**：它是安全修复（当前源码改写零拦截），可以不等 S2–S5 一起打包。

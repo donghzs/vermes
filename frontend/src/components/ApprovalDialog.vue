@@ -29,25 +29,52 @@
       </div>
 
       <!-- Actions -->
-      <div class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
-        <button @click="chat.resolveApproval('deny')"
-          class="px-4 py-2 text-sm rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition font-medium">
-          拒绝
-        </button>
-        <button @click="chat.resolveApproval('once')"
-          class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
-          仅本次
-        </button>
-        <button @click="chat.resolveApproval('session')"
-          class="px-4 py-2 text-sm rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 transition font-medium">
-          本次会话允许
-        </button>
+      <div class="px-5 py-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+        <!-- 告诉用户批准不会被反复追问，否则「仅本次」会被误当成唯一安全选项 -->
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ grantHint }}
+        </p>
+        <div class="flex gap-2 justify-end flex-wrap">
+          <button @click="chat.resolveApproval('deny')"
+            class="px-4 py-2 text-sm rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition font-medium">
+            拒绝
+          </button>
+          <button @click="chat.resolveApproval('once')"
+            class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+            仅本次
+          </button>
+          <button v-if="showAlways" @click="chat.resolveApproval('always')"
+            class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+            始终允许
+          </button>
+          <button @click="chat.resolveApproval('session')"
+            class="px-4 py-2 text-sm rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 transition font-medium"
+            :class="{ 'ring-1 ring-green-500/50': recommended === 'session' }">
+            本次会话允许
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 const chat = useChatStore()
+
+// 后端 approve_privileged_action 会带上这两个字段；命令审批不带，保持旧行为。
+const scopeOptions = computed(() => chat.pendingApproval?.scope_options || [])
+const showAlways = computed(() => scopeOptions.value.includes('always'))
+const recommended = computed(() => chat.pendingApproval?.default_choice || '')
+
+const grantHint = computed(() => {
+  const ttl = chat.pendingApproval?.grant_ttl_minutes
+  if (showAlways.value) {
+    return ttl
+      ? `「仅本次」批准后 ${ttl} 分钟内同类操作不再询问；「本次会话允许」到本次对话结束；「始终允许」写入配置，可在设置里撤销。`
+      : '「本次会话允许」到本次对话结束；「始终允许」写入配置，可在设置里撤销。'
+  }
+  return '批准后同类操作在短时间内不会重复询问。'
+})
 </script>

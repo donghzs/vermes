@@ -655,6 +655,91 @@ def _source_modify_always_confirm() -> bool:
         return True
 
 
+# ── 特权动作的「记住选择」授权 ───────────────────────────────────────────
+# T1 要求源码级改写必须人工确认，但**不等于每次都弹**。原则是「非必要不弹，
+# 必须弹才弹」：用户明确表过态之后，同一类动作在授权有效期内直接放行。
+#
+#   choice="always"  → 永久（复用 approve_permanent + 配置持久化）
+#   choice="session" → 到会话结束（复用 approve_session）
+#   其它肯定回答      → 授予一张有 TTL 的临时通行证（默认 30min）
+#
+# 那张 TTL 通行证是关键：重复弹窗的最大来源是「一次任务里连续改好几个文件」，
+# 而桌面端弹窗目前只回一个笼统的「批准」。有了 TTL，前端还没渲染
+# session/always 选项之前就已经是「一轮工作最多弹一次」。
+_PRIVILEGED_GRANT_PREFIX = "privileged:"
+_privileged_grants: dict[str, float] = {}   # "<session>|<scope>" -> expiry epoch
+
+
+def _privileged_scope_key(approval_data: dict) -> str:
+    """Authorization scope key — isolated per action category.
+
+    ``self_modify`` (rewrite source) and ``self_modify_rollback`` (restore /
+    delete a file) are different risks: approving one must not silently widen
+    into the other.
+    """
+    data = approval_data or {}
+    cat = data.get("pattern_key") or data.get("category") or "self_modify"
+    return f"{_PRIVILEGED_GRANT_PREFIX}{cat}"
+
+
+def _privileged_grant_ttl_s() -> float:
+    """Reuse window for a plain approval, in seconds.
+
+    Config key ``approvals.privileged_grant_ttl_minutes`` (default 30).
+    ``0`` disables reuse (prompt every time).
+
+    Note this inverts the P1 ">0 or fall back to default" injection guard on
+    purpose: there, ``0`` would *widen* the agent's own permissions, so it had
+    to be rejected.  Here ``0`` only means *more* prompts, so it is honoured
+    as written.  Negative values clamp to 0, and a config read failure is
+    fail-safe (no reuse → prompt as usual).
+    """
+    try:
+        raw = _get_approval_config().get("privileged_grant_ttl_minutes", 30)
+        return max(0.0, float(raw) * 60.0)
+    except Exception:
+        return 0.0
+
+
+def _has_privileged_grant(session_key: str, scope_key: str) -> bool:
+    """True when the user already authorized this scope (permanent/session/TTL)."""
+    if is_approved(session_key, scope_key):
+        return True
+    with _lock:
+        expiry = _privileged_grants.get(f"{session_key}|{scope_key}")
+    return bool(expiry and expiry > time.time())
+
+
+def _record_privileged_grant(session_key: str, scope_key: str, choice: str) -> None:
+    """Persist an approved choice so the same action stops asking."""
+    if choice == "always":
+        approve_session(session_key, scope_key)
+        approve_permanent(scope_key)
+        try:
+            save_permanent_allowlist(_permanent_approved)
+        except Exception as exc:
+            logger.warning("Failed to persist privileged approval: %s", exc)
+        return
+    if choice == "session":
+        approve_session(session_key, scope_key)
+        return
+    ttl = _privileged_grant_ttl_s()
+    if ttl > 0:
+        with _lock:
+            _privileged_grants[f"{session_key}|{scope_key}"] = time.time() + ttl
+
+
+def clear_privileged_grants(session_key: str = "") -> None:
+    """Drop TTL grants — for one session, or all of them when *session_key* is empty."""
+    with _lock:
+        if session_key:
+            prefix = f"{session_key}|"
+            for k in [k for k in _privileged_grants if k.startswith(prefix)]:
+                _privileged_grants.pop(k, None)
+        else:
+            _privileged_grants.clear()
+
+
 def approve_privileged_action(session_key: str, approval_data: dict, *, surface: str = "gateway") -> bool:
     """Tier-aware approval for *non-shell* privileged actions (self_modify, rollback).
 
@@ -679,29 +764,55 @@ def approve_privileged_action(session_key: str, approval_data: dict, *, surface:
     downside — an unnoticed, unquantified change to the agent's own code — is
     the only truly irreversible one in the evolution loop.
 
+    Asking is rate-limited, not repeated blindly ("非必要不弹，必须弹才弹"):
+    an approved action grants a scope — permanent (``always``), session-wide
+    (``session``) or time-boxed (any other approval, default 30 min) — and
+    further actions in that scope proceed without a prompt.  See
+    :func:`_record_privileged_grant`.
+
     Returns True only if the action is allowed to proceed.
 
     Fail-closed: no session key or no registered notify callback → deny.
     """
+    approval_data = dict(approval_data or {})
+    scope_key = _privileged_scope_key(approval_data)
+
+    # ① Already authorized by the user → do not ask again.  Checked before the
+    #    YOLO branch so it covers *both* paths: a prior "always" answer should
+    #    silence the prompt whether or not YOLO happens to be on right now.
+    if _has_privileged_grant(session_key, scope_key):
+        return True
+
     yolo = (is_truthy_value(os.getenv("VERMES_YOLO_MODE"))
             or is_session_yolo_enabled(session_key)
             or _get_approval_mode() == "off")
     if yolo:
-        target_path = (approval_data or {}).get("target_path", "")
+        target_path = approval_data.get("target_path", "")
         source_level = not is_config_level_target(target_path)
         if not (source_level and _source_modify_always_confirm()):
             return True
         # L2: source rewrite — prompt anyway, and say why the usual YOLO
         # bypass did not apply so the popup does not look like a regression.
-        approval_data = dict(approval_data or {})
         approval_data["tier"] = "L2"
         approval_data["yolo_exempt"] = False
         _desc = approval_data.get("description", "")
         _note = "🔒 源码级改写需人工确认（YOLO 不豁免；可用 approvals.source_modify_always_confirm=false 关闭）"
         approval_data["description"] = f"{_note}\n{_desc}" if _desc else _note
+
+    # ② Offer the "remember my answer" scopes to the surface.  A client that
+    #    does not render them just answers "approve", which still earns the
+    #    TTL grant — so the prompt count drops even without frontend work.
+    approval_data.setdefault("scope_options", ["once", "session", "always"])
+    approval_data.setdefault("default_choice", "session")
+    approval_data.setdefault("grant_ttl_minutes", int(_privileged_grant_ttl_s() // 60))
+    approval_data["scope_key"] = scope_key
+
     result = request_gateway_approval(session_key, approval_data, surface=surface)
     choice = result.get("choice")
-    return bool(result.get("resolved")) and choice not in (None, "deny", "")
+    if not result.get("resolved") or choice in (None, "", "deny"):
+        return False
+    _record_privileged_grant(session_key, scope_key, choice)
+    return True
 
 
 def has_blocking_approval(session_key: str) -> bool:
@@ -747,6 +858,10 @@ def clear_session(session_key: str) -> None:
         _session_yolo.discard(session_key)
         _pending.pop(session_key, None)
         entries = _gateway_queues.pop(session_key, [])
+        # TTL grants are session-scoped too: a new session must re-ask.
+        _prefix = f"{session_key}|"
+        for _k in [k for k in _privileged_grants if k.startswith(_prefix)]:
+            _privileged_grants.pop(_k, None)
     for entry in entries:
         # Session-boundary cleanup should cancel any blocked approval waits
         # immediately so the old run can unwind instead of idling until timeout.
