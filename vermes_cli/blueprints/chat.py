@@ -2083,6 +2083,156 @@ async def retract_evolution_item(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+# ── P2: 进化提案队列（AEGIS 闭环的待审/应用）────────────────────────────
+
+def _deep_merge(base: dict, patch: dict) -> dict:
+    """Recursively merge patch into a copy of base. Returns the merged dict."""
+    import copy
+    out = copy.deepcopy(base)
+    for k, v in (patch or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+async def evolution_proposals(request: Request):
+    """List evolution proposals (optionally filtered by status).
+
+    GET /api/evolution/proposals?status=proposed
+    """
+    try:
+        status = request.query_params.get("status")
+        from agent.evolution_manager import get_proposals
+        rows = get_proposals(status=status)
+        # config_patch 是 JSON 字符串，回填为对象便于前端
+        for r in rows:
+            if r.get("config_patch") and isinstance(r["config_patch"], str):
+                try:
+                    r["config_patch"] = json.loads(r["config_patch"])
+                except Exception:
+                    pass
+            if r.get("critic_verdict") and isinstance(r["critic_verdict"], str):
+                try:
+                    r["critic_verdict"] = json.loads(r["critic_verdict"])
+                except Exception:
+                    pass
+            if r.get("deterministic_result") and isinstance(r["deterministic_result"], str):
+                try:
+                    r["deterministic_result"] = json.loads(r["deterministic_result"])
+                except Exception:
+                    pass
+        return {"ok": True, "proposals": rows, "count": len(rows)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "proposals": []}
+
+
+async def evolution_proposal_apply(request: Request, proposal_id: int):
+    """Apply a B1 config proposal: gate via approval, then write config.yaml.
+
+    No source rebuild needed — config change takes effect at runtime on next
+    reflection read. Records a raw_event (auto-lands in self_modify_history).
+    """
+    try:
+        from agent.evolution_manager import get_proposal, update_proposal_status
+        from vermes_cli.config import load_config, get_config_path, save_config
+        import yaml
+        from agent.emergent_change import get_pipeline, ChangeProposal
+        from tools.approval import get_current_session_key, approve_privileged_action
+
+        proposal = get_proposal(proposal_id)
+        if not proposal:
+            return {"ok": False, "error": f"proposal {proposal_id} not found"}
+        if proposal["status"] != "proposed":
+            return {"ok": False, "error": f"proposal status is {proposal['status']}, cannot apply"}
+
+        config_patch = proposal.get("config_patch")
+        if isinstance(config_patch, str):
+            config_patch = json.loads(config_patch)
+        if not isinstance(config_patch, dict):
+            return {"ok": False, "error": "invalid config_patch"}
+
+        # 合并成全量 config 内容
+        merged = _deep_merge(load_config(), config_patch)
+        try:
+            new_content = yaml.safe_dump(merged, allow_unicode=True, sort_keys=False)
+        except Exception as e:
+            return {"ok": False, "error": f"config merge failed: {e}"}
+
+        target_path = str(get_config_path())
+        diff = _build_config_diff(target_path, new_content)
+
+        # 人类审批闸门（config 级也走，与源码级同闸门；/yolo 时跳过）
+        session_key = get_current_session_key(default="")
+        approval_data = {
+            "command": f"evolution_proposal_apply {proposal_id}",
+            "description": proposal.get("title", "AEGIS 进化提案应用"),
+            "pattern_key": "self_modify",
+            "pattern_keys": ["self_modify"],
+            "diff": diff,
+            "target_path": target_path,
+            "surface": "gui",
+        }
+        approved = approve_privileged_action(session_key, approval_data)
+        if not approved:
+            return {"ok": True, "applied": False, "reason": "denied_or_timeout",
+                    "target_path": target_path, "diff": diff}
+
+        # 用户批准 → 经 EmergentChangePipeline 写 config.yaml（带备份+回滚+raw_event）
+        proposal_obj = ChangeProposal(
+            source="aegis",
+            target_path=target_path,
+            content=new_content,
+            description=proposal.get("title", "AEGIS 进化提案应用"),
+            metadata={"proposal_id": proposal_id},
+            initiator="agent",
+        )
+        result = get_pipeline().apply_change(proposal_obj, force=True)
+        if result.committed:
+            update_proposal_status(proposal_id, "applied", applied_by="user")
+            return {"ok": True, "applied": True, "target_path": target_path, "diff": diff}
+        return {"ok": True, "applied": False, "error": result.error,
+                "target_path": target_path, "diff": diff}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def evolution_proposal_reject(request: Request, proposal_id: int):
+    """Reject a proposed evolution change (records reason)."""
+    try:
+        body = await request.json()
+        reason = body.get("reason", "")
+        from agent.evolution_manager import get_proposal, update_proposal_status
+        if not get_proposal(proposal_id):
+            return {"ok": False, "error": f"proposal {proposal_id} not found"}
+        update_proposal_status(proposal_id, "rejected", reject_reason=reason)
+        return {"ok": True, "rejected": True, "proposal_id": proposal_id}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _build_config_diff(target_path: str, new_content: str) -> str:
+    """Unified diff of new_content vs current config file (for approval UI)."""
+    import difflib
+    import os
+    current = []
+    if os.path.exists(target_path):
+        try:
+            with open(target_path, "r", encoding="utf-8") as fh:
+                current = fh.read().splitlines()
+        except Exception:
+            current = []
+    new_lines = new_content.splitlines()
+    diff = "\n".join(difflib.unified_diff(
+        current, new_lines,
+        fromfile=f"a/{os.path.basename(target_path)}",
+        tofile=f"b/{os.path.basename(target_path)}",
+        lineterm="",
+    ))
+    return diff or "(no content change)"
+
+
 async def emergence_status():
     """Return emergence system status: richness, clusters, capabilities, health."""
     try:
@@ -2626,6 +2776,24 @@ def register_to(app):
         retract_evolution_item,
         methods=["POST"],
         name="retract_evolution_item",
+    )
+    app.add_api_route(
+        "/api/evolution/proposals",
+        evolution_proposals,
+        methods=["GET"],
+        name="evolution_proposals",
+    )
+    app.add_api_route(
+        "/api/evolution/proposals/{proposal_id}/apply",
+        evolution_proposal_apply,
+        methods=["POST"],
+        name="evolution_proposal_apply",
+    )
+    app.add_api_route(
+        "/api/evolution/proposals/{proposal_id}/reject",
+        evolution_proposal_reject,
+        methods=["POST"],
+        name="evolution_proposal_reject",
     )
     app.add_api_route(
         "/api/emergence/status",

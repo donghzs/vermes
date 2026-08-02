@@ -20,7 +20,7 @@ import re
 import sqlite3
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -134,6 +134,150 @@ def is_evolution_active() -> bool:
             logger.debug("evolution_manager.py: is evolution active failed: %s", e)
     _evolution_active = True
     return True
+
+
+# ── P2: 进化提案队列（AEGIS 闭环的待审存储）────────────────────────────
+
+def ensure_proposals_schema():
+    """Ensure evolution_proposals table exists (idempotent).
+
+    既用于新库（_seed_evolution_db 调用），也用于旧库迁移（CRUD 懒调用）。
+    """
+    if not get_self_model_db().exists():
+        return
+    conn = _get_conn(str(get_self_model_db()))
+    conn.execute("""CREATE TABLE IF NOT EXISTS evolution_proposals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phase TEXT,
+        task_type TEXT,
+        title TEXT,
+        rationale TEXT,
+        target_kind TEXT,
+        target_path TEXT,
+        config_patch TEXT,
+        candidate_diff TEXT,
+        critic_verdict TEXT,
+        deterministic_result TEXT,
+        status TEXT,
+        reject_reason TEXT,
+        created TEXT,
+        applied_at TEXT,
+        applied_by TEXT
+    )""")
+
+
+def record_proposal(*, phase, task_type, title, rationale, target_kind,
+                    target_path=None, config_patch=None, candidate_diff=None,
+                    critic_verdict=None, deterministic_result=None,
+                    status="proposed"):
+    """Insert a new evolution proposal. Returns the new row id or None."""
+    try:
+        ensure_proposals_schema()
+        conn = _get_conn(str(get_self_model_db()))
+        cur = conn.execute(
+            """INSERT INTO evolution_proposals
+               (phase, task_type, title, rationale, target_kind, target_path,
+                config_patch, candidate_diff, critic_verdict, deterministic_result,
+                status, created)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (phase, task_type, title, rationale, target_kind, target_path,
+             json.dumps(config_patch, ensure_ascii=False) if config_patch is not None else None,
+             candidate_diff,
+             json.dumps(critic_verdict, ensure_ascii=False) if critic_verdict is not None else None,
+             json.dumps(deterministic_result, ensure_ascii=False) if deterministic_result is not None else None,
+             status, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception as e:
+        logger.warning("[Evolution] record_proposal failed: %s", e)
+        return None
+
+
+def get_proposals(status=None, limit=100):
+    """Return proposal rows (newest first)."""
+    try:
+        ensure_proposals_schema()
+        conn = _get_conn(str(get_self_model_db()))
+        conn.row_factory = sqlite3.Row
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM evolution_proposals WHERE status=? ORDER BY id DESC LIMIT ?",
+                (status, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM evolution_proposals ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning("[Evolution] get_proposals failed: %s", e)
+        return []
+
+
+def get_proposal(proposal_id):
+    """Return a single proposal row as dict, or None."""
+    try:
+        ensure_proposals_schema()
+        conn = _get_conn(str(get_self_model_db()))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM evolution_proposals WHERE id=?", (proposal_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.warning("[Evolution] get_proposal failed: %s", e)
+        return None
+
+
+def update_proposal_status(proposal_id, status, reject_reason=None, applied_by=None):
+    """Update a proposal's status (applied / rejected / expired)."""
+    try:
+        conn = _get_conn(str(get_self_model_db()))
+        if status == "applied":
+            conn.execute(
+                "UPDATE evolution_proposals SET status=?, applied_at=?, applied_by=? WHERE id=?",
+                (status, datetime.now(timezone.utc).isoformat(), applied_by, proposal_id),
+            )
+        elif status == "rejected":
+            conn.execute(
+                "UPDATE evolution_proposals SET status=?, reject_reason=? WHERE id=?",
+                (status, reject_reason, proposal_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE evolution_proposals SET status=? WHERE id=?",
+                (status, proposal_id),
+            )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.warning("[Evolution] update_proposal_status failed: %s", e)
+        return False
+
+
+def expire_stale_proposals(max_age_days=7):
+    """Mark proposed-but-unresolved proposals older than max_age_days as expired.
+
+    Prevents a stale proposal (config already changed) from being mis-applied.
+    Returns count expired.
+    """
+    try:
+        ensure_proposals_schema()
+        conn = _get_conn(str(get_self_model_db()))
+        # ISO-8601 UTC strings sort chronologically under lexicographic compare.
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        cur = conn.execute(
+            "UPDATE evolution_proposals SET status='expired' "
+            "WHERE status='proposed' AND created < ?",
+            (cutoff,),
+        )
+        conn.commit()
+        return cur.rowcount
+    except Exception as e:
+        logger.warning("[Evolution] expire_stale_proposals failed: %s", e)
+        return 0
 
 
 def _seed_evolution_db() -> None:

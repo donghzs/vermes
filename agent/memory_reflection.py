@@ -159,7 +159,8 @@ def run_reflection_review():
 
     R1: 矛盾校核（复用 decision_tracker._check_contradiction）
     R2: 四类 LLM 校核（stale/contradiction_with_new/scope_creep/redundant）
-    R3-R4: 待实现（continuity_facade 已注入 + /resolve_flag）
+    R3: P2 AEGIS 闭环提案引擎（挂 _scan_evolution_proposals，独立 3600s 间隔）
+    R4: 待实现（continuity_facade 已注入 + /resolve_flag）
     """
     ensure_reflection_schema()
     logger.info("[Reflection] Starting reflection review...")
@@ -178,6 +179,12 @@ def run_reflection_review():
     except Exception as e:
         logger.warning(f"[Reflection] R2 LLM scan failed: {e}")
 
+    # R3: P2 AEGIS 闭环提案引擎（独立间隔，不与反思同频）
+    try:
+        _scan_evolution_proposals()
+    except Exception as e:
+        logger.warning(f"[Reflection] R3 AEGIS scan failed: {e}")
+
     # 更新状态
     state = _load_state()
     state["last_run_at"] = datetime.now(timezone.utc).isoformat()
@@ -185,6 +192,234 @@ def run_reflection_review():
     _save_state(state)
 
     logger.info("[Reflection] Reflection review done: %d flag(s)", flags_created)
+
+
+# ── R3: P2 AEGIS 闭环提案引擎 ──────────────────────────────────────────
+
+AEGIS_INTERVAL_S = 3600          # 独立扫描间隔（不跟反思 600s 同频）
+AEGIS_MIN_SR_SLOPE_PP = -10.0    # 退化点斜率阈值（固定默认，发现灵敏度不外置）
+AEGIS_MIN_SAMPLES = 20           # 退化点最小样本（固定默认）
+PROPOSAL_EXPIRE_DAYS = 7         # 提案过期天数（外置友好，但固定默认）
+
+
+def _aegis_should_run() -> bool:
+    """Independent 3600s gating for the AEGIS scan (separate from reflection)."""
+    state = _load_state()
+    last = state.get("last_aegis_run_at")
+    if not last:
+        return True
+    try:
+        last_dt = datetime.fromisoformat(last)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - last_dt).total_seconds() >= AEGIS_INTERVAL_S
+    except Exception:
+        return True
+
+
+def _aegis_mark_run():
+    state = _load_state()
+    state["last_aegis_run_at"] = datetime.now(timezone.utc).isoformat()
+    _save_state(state)
+
+
+def _discover_regression_points() -> List[Dict]:
+    """Phase A: 从 v_outcomes 发现退化点（固定默认灵敏度，不外置）。
+
+    Returns list of {task_type, baseline_sr, recent_sr, delta, n}.
+    """
+    try:
+        from agent.evolution_manager import get_self_model_db, _get_conn
+
+        db = get_self_model_db()
+        if not db.exists():
+            return []
+        conn = _get_conn(str(db))
+        rows = conn.execute(
+            """SELECT tool,
+                      SUM(CASE WHEN timestamp >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS n7,
+                      SUM(CASE WHEN timestamp >= datetime('now','-7 days') THEN success ELSE 0 END) AS s7,
+                      SUM(CASE WHEN timestamp >= datetime('now','-30 days') THEN 1 ELSE 0 END) AS n30,
+                      SUM(CASE WHEN timestamp >= datetime('now','-30 days') THEN success ELSE 0 END) AS s30
+               FROM v_outcomes
+               GROUP BY tool"""
+        ).fetchall()
+        points = []
+        for tool, n7, s7, n30, s30 in rows:
+            if not n30 or n30 < AEGIS_MIN_SAMPLES:
+                continue
+            base_sr = (s30 / n30 * 100) if n30 else 0
+            recent_sr = (s7 / n7 * 100) if n7 else base_sr
+            delta = recent_sr - base_sr
+            if delta <= AEGIS_MIN_SR_SLOPE_PP:
+                points.append({
+                    "task_type": tool,
+                    "baseline_sr": round(base_sr, 1),
+                    "recent_sr": round(recent_sr, 1),
+                    "delta": round(delta, 1),
+                    "n": int(n30),
+                })
+        return points
+    except Exception as e:
+        logger.warning("[AEGIS] discover_regression_points failed: %s", e)
+        return []
+
+
+def _generate_b1_candidates(regression_points: List[Dict], llm_call=None) -> List[Dict]:
+    """Phase B: 只生成 B1 配置级候选（调 autoResolve 拨盘）。
+
+    Returns list of candidate dicts aligned to regression_points.
+    LLM 不可用时返回 []（fail-open）。
+    """
+    if not regression_points:
+        return []
+    if llm_call is None:
+        try:
+            from agent.curator import _run_llm_review
+            llm_call = _run_llm_review
+        except Exception:
+            return []
+
+    items = "\n".join(
+        f"{i+1}. task_type={p['task_type']} | 基线成功率={p['baseline_sr']}% "
+        f"近7d={p['recent_sr']}% | 降幅={p['delta']}pp | 样本={p['n']}"
+        for i, p in enumerate(regression_points)
+    )
+    prompt = (
+        "你是一个进化架构师。以下工具/任务类型出现成功率退化。"
+        "请为每条退化点生成一个自我改进提案：仅调整 config.yaml 的 "
+        "memory.autoResolve 拨盘（可选 duplicate / outdated / cluster_min_interval / "
+        "merge_cleanup 之一），目标是在不误杀边缘案例的前提下缓解退化。\n"
+        "对每条返回 JSON 对象："
+        '{"idx": 序号, "title": "简短标题", "rationale": "理由", '
+        '"config_patch": {"memory": {"autoResolve": {"<dial>": <值>}}}, '
+        '"expected_effect": "预期效果"}。返回 JSON 数组。\n\n'
+        f"退化点：\n{items}"
+    )
+    try:
+        resp = llm_call(prompt)
+        text = resp.get("final", "") if isinstance(resp, dict) else str(resp)
+        s = text.find("[")
+        e = text.rfind("]")
+        if s == -1 or e == -1 or e <= s:
+            return []
+        data = json.loads(text[s:e + 1])
+        cands = []
+        for d in data:
+            if not isinstance(d, dict):
+                continue
+            patch = d.get("config_patch")
+            cands.append({
+                "task_type": regression_points[int(d.get("idx", 0)) - 1]["task_type"]
+                if isinstance(d.get("idx"), int) else "",
+                "title": str(d.get("title", "")),
+                "rationale": str(d.get("rationale", "")),
+                "config_patch": patch,
+                "expected_effect": str(d.get("expected_effect", "")),
+            })
+        return cands
+    except Exception as e:
+        logger.warning("[AEGIS] B1 candidate generation failed: %s (fail-open)", e)
+        return []
+
+
+def _scan_evolution_proposals(llm_call=None):
+    """P2 AEGIS 闭环：A 退化点 → B 候选 → C Critic → D 确定性闸门 → 入队。
+
+    整体 fail-open：任何阶段异常都不影响反思 daemon；LLM 不可用则无提案。
+    独立 3600s 间隔（不跟反思同频）。
+    """
+    if not _aegis_should_run():
+        logger.debug("[AEGIS] skipped (within interval)")
+        return 0
+
+    # 过期陈旧提案（评审补充 a）
+    try:
+        from agent.evolution_manager import expire_stale_proposals
+        expired = expire_stale_proposals(PROPOSAL_EXPIRE_DAYS)
+        if expired:
+            logger.info("[AEGIS] expired %d stale proposal(s)", expired)
+    except Exception as e:
+        logger.debug("[AEGIS] expire_stale_proposals failed: %s", e)
+
+    created = 0
+    try:
+        # Phase A
+        points = _discover_regression_points()
+        if not points:
+            logger.debug("[AEGIS] no regression points")
+            return 0
+
+        # Phase B (B1 only)
+        candidates = _generate_b1_candidates(points, llm_call=llm_call)
+        if not candidates:
+            logger.debug("[AEGIS] no candidates generated")
+            return 0
+
+        # Phase C — Critic（批处理 + 缓存 + 硬编码护栏）
+        from agent.emergence_critic import (
+            critic_review, hardcoded_guard, run_deterministic_gate,
+        )
+        from agent.evolution_manager import record_proposal
+        from vermes_cli.config import get_config_path as _cfg_path
+
+        verdicts = critic_review(candidates, outcomes_summary="", llm_call=llm_call)
+        if not verdicts:
+            logger.debug("[AEGIS] Critic produced no verdicts (fail-open)")
+            return 0
+
+        # Phase D — 确定性闸门（仅对 Critic 通过者）
+        for cand, v in zip(candidates, verdicts):
+            # C1: 硬编码护栏（删表/设0/越界/越权段）
+            ok, reason = hardcoded_guard(cand.get("config_patch"))
+            if not ok:
+                logger.info("[AEGIS] rejected by hard guard: %s — %s", cand.get("title"), reason)
+                continue
+            # C2: Critic 否决或低置信
+            if not v.get("safe") or v.get("confidence", 0) < 0.7:
+                logger.info("[AEGIS] critic rejected: %s — %s (conf=%.2f)",
+                            cand.get("title"), v.get("concerns"), v.get("confidence", 0))
+                continue
+            # D: 确定性闸门（precision 不降 + 数量不爆）
+            try:
+                new_cfg = _merge_auto_resolve_patch(cand["config_patch"])
+                gate = run_deterministic_gate(new_cfg=new_cfg)
+            except Exception as e:
+                logger.warning("[AEGIS] deterministic gate failed: %s", e)
+                continue
+            if not gate["passed"]:
+                logger.info("[AEGIS] deterministic gate failed: %s — %s",
+                            cand.get("title"), gate)
+                continue
+            # 入队
+            pid = record_proposal(
+                phase="A→B→C→D",
+                task_type=cand.get("task_type", ""),
+                title=cand.get("title", ""),
+                rationale=cand.get("rationale", ""),
+                target_kind="config",
+                target_path=str(_cfg_path()),
+                config_patch=cand.get("config_patch"),
+                critic_verdict=v,
+                deterministic_result=gate,
+                status="proposed",
+            )
+            if pid:
+                created += 1
+                logger.info("[AEGIS] proposal #%s queued: %s", pid, cand.get("title"))
+    finally:
+        _aegis_mark_run()
+    return created
+
+
+def _merge_auto_resolve_patch(patch: Dict) -> Dict:
+    """Build the full new autoResolve config by applying patch over current."""
+    cfg = _load_auto_resolve_config()
+    ar = (patch or {}).get("memory", {}).get("autoResolve", {})
+    for k, v in ar.items():
+        if k in cfg:
+            cfg[k] = float(v)
+    return cfg
 
 
 # ── R1: 矛盾校核 ────────────────────────────────────────────────
