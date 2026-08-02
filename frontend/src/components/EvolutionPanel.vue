@@ -427,6 +427,18 @@ const smTypeLabel = (t) => {
           </div>
         </div>
 
+        <!-- 簇统计一列 -->
+
+        <!-- autoResolve 策略阈值（只读，来自 config.yaml） -->
+        <div v-if="emergenceData.autoResolve" class="evo-row">
+          <span class="evo-key">自动处置阈值</span>
+          <span class="evo-val text-xs">
+            <span class="evo-cluster-chip">重复≥{{ emergenceData.autoResolve.duplicate }}</span>
+            <span class="evo-cluster-chip">过时≥{{ emergenceData.autoResolve.outdated }}</span>
+            <span class="evo-cluster-chip">簇间隔≥{{ emergenceData.autoResolve.cluster_min_interval }}s</span>
+          </span>
+        </div>
+
         <!-- 簇统计 -->
         <div v-if="emergenceData.clusters && Object.keys(emergenceData.clusters).length" class="evo-row">
           <span class="evo-key">簇状态</span>

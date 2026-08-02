@@ -2169,6 +2169,13 @@ async def emergence_status():
         except Exception:
             continuity = {"has_snapshot": False}
 
+        # ── autoResolve config (read-only, from config.yaml) ──
+        try:
+            from agent.memory_reflection import _load_auto_resolve_config
+            auto_resolve = _load_auto_resolve_config()
+        except Exception:
+            auto_resolve = None
+
         return {
             "richness": richness_data,
             "clusters": cluster_stats,
@@ -2177,6 +2184,7 @@ async def emergence_status():
             "health": health,
             "domain_modules": domain_mods,
             "continuity": continuity,
+            "autoResolve": auto_resolve,
         }
     except Exception as e:
         return {"error": str(e)}
