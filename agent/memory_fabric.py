@@ -255,6 +255,39 @@ def _init_db(db_path: Path) -> None:
                 )
             except Exception:
                 logger.debug("G1 merge cleanup skipped", exc_info=True)
+
+        # ── 孤儿 flag 清理：指向已删记忆的 open flag 自动 resolve 为 orphan ──
+        # G1 清扫删了大量 skill 记忆，但指向它们的 flag 没跟着关闭。
+        # 用户无法手动处理这些僵尸 flag（记忆已不存在），必须自动清理。
+        orphan_done = c.execute(
+            "SELECT value FROM schema_meta WHERE key='orphan_cleanup_done'"
+        ).fetchone()
+        if not orphan_done:
+            try:
+                orphaned = c.execute(
+                    "SELECT f.id FROM memory_flags f "
+                    "LEFT JOIN memories m ON f.memory_id = m.id "
+                    "WHERE f.status='open' AND m.id IS NULL AND f.memory_id IS NOT NULL"
+                ).fetchall()
+                if orphaned:
+                    ids = [row[0] for row in orphaned]
+                    placeholders = ",".join("?" * len(ids))
+                    resolved = c.execute(
+                        f"UPDATE memory_flags SET status='resolved', "
+                        f"resolution='orphan', resolved_at=datetime('now') "
+                        f"WHERE id IN ({placeholders})",
+                        ids,
+                    ).rowcount
+                    if resolved > 0:
+                        logger.info(
+                            "Orphan flag cleanup: resolved %d flags pointing to deleted memories",
+                            resolved,
+                        )
+                c.execute(
+                    "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('orphan_cleanup_done', '1')"
+                )
+            except Exception:
+                logger.debug("Orphan flag cleanup skipped", exc_info=True)
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_ptr "
             "ON memories(source, pointer, scope)"

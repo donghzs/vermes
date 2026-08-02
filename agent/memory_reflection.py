@@ -824,6 +824,7 @@ def auto_resolve_eligible_flags() -> int:
     resolved_count = 0
     for flag_id, memory_id, flag_type, confidence in eligible:
         # 对 skill-source 的 duplicate，确认源是 skill 才自动 demote
+        # 记忆已删 = 确认冗余（orphan），直接 resolve 为 demote
         if flag_type == "duplicate" and confidence >= 0.9:
             try:
                 _mid = int(memory_id)
@@ -837,9 +838,17 @@ def auto_resolve_eligible_flags() -> int:
                 ).fetchone()
             finally:
                 _conn2.close()
+            # 记忆已不存在 → 确认冗余（orphan），直接 resolve
+            if not src_row:
+                ok = resolve_flag(flag_id, "demote")
+                if ok:
+                    resolved_count += 1
+                    logger.info(
+                        "[Reflection] auto_resolve: flag=%s duplicate+orphan → demote",
+                        flag_id,
+                    )
             # source=skill → 技能描述已在 skill 系统可查，安全降权
-            # source!=skill → 可能是真实记忆重复，不自动处理
-            if src_row and src_row[0] == "skill":
+            elif src_row[0] == "skill":
                 ok = resolve_flag(flag_id, "demote")
                 if ok:
                     resolved_count += 1
