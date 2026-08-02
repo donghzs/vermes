@@ -168,3 +168,75 @@ def test_auto_resolve_does_not_process_contradiction_or_scope_creep(monkeypatch,
 
     n = auto_resolve_eligible_flags()
     assert n == 0
+
+
+# ── 配置边界护栏：config 写入 0 必须回落默认，不可覆盖 ──────────────
+# Phase 1 策略外置后用 `>= 0` 校验，若用户在 config.yaml 写 0 会：
+#   - cluster_min_interval=0 → 撤掉死亡间隔下限 → 复活 Bug 1（簇在末次事件后毫秒级被判死）
+#   - duplicate/outdated/merge_cleanup=0 → 全量 flag 被自动降级 / 删除
+# 修复后改用 `> 0`，0 一律回落硬编码默认。
+
+def test_auto_resolve_config_zero_values_fall_back_to_defaults(monkeypatch):
+    """memory.autoResolve 全部写 0 → 一律回落默认（防 0 注入）。"""
+    import vermes_cli.config as vc_cfg
+
+    monkeypatch.setattr(
+        vc_cfg, "load_config",
+        lambda: {"memory": {"autoResolve": {
+            "duplicate": 0, "outdated": 0,
+            "cluster_min_interval": 0, "merge_cleanup": 0,
+        }}},
+    )
+    from agent.memory_reflection import _load_auto_resolve_config
+
+    cfg = _load_auto_resolve_config()
+    assert cfg["duplicate"] == 0.9
+    assert cfg["outdated"] == 0.85
+    assert cfg["cluster_min_interval"] == 60
+    assert cfg["merge_cleanup"] == 0.7
+
+
+def test_auto_resolve_config_positive_values_accepted(monkeypatch):
+    """memory.autoResolve 写合法正值 → 被采纳。"""
+    import vermes_cli.config as vc_cfg
+
+    monkeypatch.setattr(
+        vc_cfg, "load_config",
+        lambda: {"memory": {"autoResolve": {
+            "duplicate": 0.95, "outdated": 0.80,
+            "cluster_min_interval": 120, "merge_cleanup": 0.6,
+        }}},
+    )
+    from agent.memory_reflection import _load_auto_resolve_config
+
+    cfg = _load_auto_resolve_config()
+    assert cfg["duplicate"] == 0.95
+    assert cfg["outdated"] == 0.80
+    assert cfg["cluster_min_interval"] == 120
+    assert cfg["merge_cleanup"] == 0.6
+
+
+def test_cluster_min_interval_zero_falls_back(monkeypatch):
+    """cluster_min_interval_s=0 → 回落 60.0（防 Bug 1 复活）。"""
+    import vermes_cli.config as vc_cfg
+
+    monkeypatch.setattr(
+        vc_cfg, "load_config",
+        lambda: {"memory": {"autoResolve": {"cluster_min_interval_s": 0}}},
+    )
+    from agent.cluster_lifecycle import ClusterLifecycleManager
+
+    assert ClusterLifecycleManager._read_min_interval() == 60.0
+
+
+def test_cluster_min_interval_positive_accepted(monkeypatch):
+    """cluster_min_interval_s=120 → 被采纳。"""
+    import vermes_cli.config as vc_cfg
+
+    monkeypatch.setattr(
+        vc_cfg, "load_config",
+        lambda: {"memory": {"autoResolve": {"cluster_min_interval_s": 120}}},
+    )
+    from agent.cluster_lifecycle import ClusterLifecycleManager
+
+    assert ClusterLifecycleManager._read_min_interval() == 120.0

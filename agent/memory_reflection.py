@@ -811,7 +811,12 @@ def _load_auto_resolve_config():
         ar = mem.get("autoResolve", {})
         if isinstance(ar, dict) and ar:
             for k in defaults:
-                if k in ar and isinstance(ar[k], (int, float)) and ar[k] >= 0:
+                # Guard: only strictly-positive values are valid. A configured
+                # `0` would (a) flatten the cluster death-interval floor and
+                # reintroduce Bug 1, or (b) force auto-demote / mass-delete of
+                # every flag (duplicate/outdated/merge_cleanup = 0). 0 → keep
+                # the safe default.
+                if k in ar and isinstance(ar[k], (int, float)) and ar[k] > 0:
                     defaults[k] = float(ar[k])
             logger.info(
                 "[Reflection] auto_resolve config: duplicate≥%.2f outdated≥%.2f "

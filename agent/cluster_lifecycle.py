@@ -254,7 +254,10 @@ class ClusterLifecycleManager:
             cfg = load_config()
             val = float(cfg.get("memory", {}).get("autoResolve", {}).get(
                 "cluster_min_interval_s", 60))
-            if val >= 0:
+            # Guard: only a strictly-positive floor is valid. A configured `0`
+            # would remove the floor entirely and reintroduce Bug 1 (cluster
+            # judged dead milliseconds after its last event). 0 → fall back.
+            if val > 0:
                 return val
         except Exception:
             pass
