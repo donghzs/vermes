@@ -67,7 +67,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
         <!-- 头部 -->
         <header class="shrink-0 px-5 py-3.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">工具与技能</h2>
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">Agent 管理</h2>
             <nav class="flex items-center gap-1">
               <button
                 v-for="t in tabs" :key="t.id"
