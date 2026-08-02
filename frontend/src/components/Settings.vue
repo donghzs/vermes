@@ -1,15 +1,13 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUpdateStore } from '../stores/update'
 import * as api from '../services/api'
 import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
-import ProviderCard from './ProviderCard.vue'
-import MobileConnect from './MobileConnect.vue'
-import KnowledgeBase from './KnowledgeBase.vue'
 const { confirm } = useConfirm()
+import ProviderCard from './ProviderCard.vue'
 
 // P0-c 加固后 /api/env 需携带 session token（裸 fetch 不走 api.js 封装，否则 401）
 function envHeaders() {
@@ -22,6 +20,7 @@ function envHeaders() {
 const chat = useChatStore()
 const update = useUpdateStore()
 const router = useRouter()
+const route = useRoute()
 
 // ── 提供商列表 ──
 const DEFAULT_BASE_URLS = {
@@ -98,12 +97,15 @@ const providers = ref([
 ])
 
 const customModelInputs = ref({})
-const activeTab = ref('providers')
+const activeTab = ref(route.query.tab || 'providers')
 
 // 切到对应 Tab 时，如果尚未加载过则补加载（修复首次打开后端未 ready 导致空列表）
 watch(activeTab, (tab) => {
+  if (tab === 'channels' && !channelsData.value && !channelsLoading.value) loadChannels()
+  if (tab === 'channels') checkGatewayStatus()
   if (tab === 'services' && Object.keys(serviceGroups.value).length === 0 && !servicesLoading.value) loadServices()
   if (tab === 'literature' && literaturePaid.value.length === 0 && literatureFree.value.length === 0 && literatureCustom.value.length === 0 && !literatureLoading.value) loadLiterature()
+  if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
 })
 
 // ── 安全设置 ──
@@ -125,6 +127,157 @@ async function toggleYolo() {
 const cacheMetrics = ref(null)
 const cacheRefreshing = ref(false)
 
+// ── 知识库 (RAG) ──
+const ragDocs = ref([])
+const ragLoading = ref(false)
+const ragUploading = ref(false)
+const ragDragging = ref(false)
+const ragFileInput = ref(null)
+const ragPreview = ref(null)  // { doc, chunks, loading }
+const ragSearchQuery = ref('')
+const ragSearchResults = ref([])
+const ragSearching = ref(false)
+
+async function fetchRagDocs() {
+  ragLoading.value = true
+  try {
+    const resp = await fetch('/api/rag/documents')
+    const data = await resp.json()
+    ragDocs.value = data.documents || []
+  } catch (e) {
+    console.error('[RAG] fetch docs error:', e)
+  } finally {
+    ragLoading.value = false
+  }
+}
+
+async function uploadRagFile(file) {
+  ragUploading.value = true
+  try {
+    const reader = new FileReader()
+    const b64 = await new Promise((resolve, reject) => {
+      reader.onload = () => {
+        const result = reader.result.split(',')[1]
+        resolve(result)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const resp = await fetch('/api/rag/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, content: b64, file_type: '' }),
+    })
+    const data = await resp.json()
+    if (data.error) {
+      toast.error(`上传失败: ${data.error}`)
+    } else {
+      toast.success(`${file.name} 已索引 (${data.chunks} 块)`)
+      await fetchRagDocs()
+    }
+  } catch (e) {
+    toast.error(`上传失败: ${e.message}`)
+  } finally {
+    ragUploading.value = false
+  }
+}
+
+function onRagFileSelect(e) {
+  const files = Array.from(e.target.files || [])
+  files.forEach(uploadRagFile)
+  if (ragFileInput.value) ragFileInput.value.value = ''
+}
+
+function onRagDrop(e) {
+  ragDragging.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  files.forEach(uploadRagFile)
+}
+
+async function deleteRagDoc(id) {
+  if (!await confirm({ title: '删除文档', message: '删除这个文档？', confirmText: '删除', danger: true })) return
+  try {
+    const resp = await fetch(`/api/rag/delete/${id}`, { method: 'DELETE' })
+    const data = await resp.json()
+    if (data.deleted) {
+      toast.success('已删除')
+      await fetchRagDocs()
+    } else {
+      toast.error('删除失败')
+    }
+  } catch (e) {
+    toast.error(`删除失败: ${e.message}`)
+  }
+}
+
+function getFileIcon(type) {
+  const t = (type || '').toLowerCase()
+  if (['.md', '.markdown'].includes(t)) return '📝'
+  if (['.py'].includes(t)) return '🐍'
+  if (['.js', '.ts'].includes(t)) return '📜'
+  if (['.json'].includes(t)) return '🗂️'
+  if (['.csv', '.tsv'].includes(t)) return '📊'
+  if (['.html', '.css'].includes(t)) return '🌐'
+  if (['.sql'].includes(t)) return '🗄️'
+  if (['.pdf'].includes(t)) return '📕'
+  if (['.docx', '.doc'].includes(t)) return '📘'
+  if (['.xlsx', '.xls'].includes(t)) return '📗'
+  if (['.pptx', '.ppt'].includes(t)) return '📙'
+  return '📄'
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function formatTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+async function previewRagDoc(doc) {
+  ragPreview.value = { doc, chunks: [], loading: true }
+  try {
+    const resp = await fetch(`/api/rag/chunks/${doc.id}`)
+    const data = await resp.json()
+    ragPreview.value = { doc, chunks: data.chunks || [], loading: false }
+  } catch (e) {
+    console.error('[RAG] preview error:', e)
+    ragPreview.value = { doc, chunks: [], loading: false }
+  }
+}
+
+function closeRagPreview() {
+  ragPreview.value = null
+}
+
+async function runRagSearch() {
+  const q = ragSearchQuery.value.trim()
+  if (!q) return
+  ragSearching.value = true
+  ragSearchResults.value = []
+  try {
+    const resp = await fetch('/api/rag/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, limit: 5 })
+    })
+    const data = await resp.json()
+    ragSearchResults.value = data.results || []
+  } catch (e) {
+    console.error('[RAG] search error:', e)
+  } finally {
+    ragSearching.value = false
+  }
+}
+
+function clearRagSearch() {
+  ragSearchQuery.value = ''
+  ragSearchResults.value = []
+}
 
 async function fetchCacheMetrics() {
   cacheRefreshing.value = true
@@ -990,14 +1143,206 @@ onMounted(() => {
   fetch('/api/storage/usage').then(r => r.ok && r.json().then(d => storageUsage.value = d)).catch(() => {})
   // 加载缓存性能指标
   fetchCacheMetrics()
+  // 加载知识库文档列表
+  fetchRagDocs()
   // 加载统一服务 API 凭证表单（services 分区）
   loadServices()
   // 加载文献源凭证表单（literature 分区）
   loadLiterature()
+  // 加载移动渠道（channels 分区）
+  loadChannels()
+  checkGatewayStatus()
 })
 
 onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
 
+// ── 移动接入渠道（gateway channels） ──
+const channelsData = ref(null)       // { channels, grouped, total, configured_count }
+const channelsLoading = ref(false)
+const channelExpanded = reactive({})  // { platform_key: true/false }
+const channelForms = reactive({})     // { platform_key: { field_key: value } }
+const channelSaving = ref(false)
+const gatewayRunning = ref(false)
+const gatewayStarting = ref(false)
+
+async function checkGatewayStatus() {
+  try {
+    const d = await api.default.get('/status')
+    gatewayRunning.value = !!d.gateway_running
+  } catch {}
+}
+
+async function startGateway() {
+  gatewayStarting.value = true
+  try {
+    // 通过 Electron IPC 重启渠道网关（main.js 管理生命周期）
+    if (window.vermes?.restartGateway) {
+      await window.vermes.restartGateway()
+    }
+    // 轮询等待网关启动
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      await checkGatewayStatus()
+      if (gatewayRunning.value) break
+    }
+  } catch (e) {
+    console.error('startGateway:', e)
+  } finally {
+    gatewayStarting.value = false
+  }
+}
+
+async function restartGateway() {
+  gatewayStarting.value = true
+  try {
+    if (window.vermes?.restartGateway) {
+      await window.vermes.restartGateway()
+    }
+    gatewayRunning.value = false
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      await checkGatewayStatus()
+      if (gatewayRunning.value) break
+    }
+  } catch (e) {
+    console.error('restartGateway:', e)
+  } finally {
+    gatewayStarting.value = false
+  }
+}
+
+const channelCategories = computed(() => {
+  if (!channelsData.value?.grouped) return []
+  return Object.entries(channelsData.value.grouped).map(([cat, items]) => ({ cat, items }))
+})
+
+async function loadChannels() {
+  channelsLoading.value = true
+  try {
+    const data = await api.default.listGatewayChannels()
+    channelsData.value = data
+    // 初始化表单数据
+    for (const ch of data.channels || []) {
+      channelForms[ch.key] = {}
+      for (const f of ch.fields) {
+        channelForms[ch.key][f.key] = f.has_value ? '' : ''  // 不回显密钥，用户重新输入
+      }
+    }
+  } catch (e) {
+    console.error('loadChannels:', e)
+  } finally {
+    channelsLoading.value = false
+  }
+}
+
+async function saveChannel(platformKey) {
+  const form = channelForms[platformKey]
+  if (!form) return
+  channelSaving.value = true
+  try {
+    // 只发送有值的字段
+    const fields = {}
+    for (const [k, v] of Object.entries(form)) {
+      if (v && v.trim()) fields[k] = v.trim()
+    }
+    const result = await api.default.saveGatewayChannel(platformKey, fields)
+    if (result.ok) {
+      // 更新 UI 状态
+      if (channelsData.value) {
+        const idx = channelsData.value.channels.findIndex(c => c.key === platformKey)
+        if (idx >= 0) channelsData.value.channels[idx] = result.channel
+        // 更新 grouped
+        for (const [cat, items] of Object.entries(channelsData.value.grouped)) {
+          const i2 = items.findIndex(c => c.key === platformKey)
+          if (i2 >= 0) items[i2] = result.channel
+        }
+      }
+      // 清空表单
+      for (const k of Object.keys(form)) form[k] = ''
+
+      // ── P4: 热插拔反馈 ──
+      // 后端已通过控制服务器通知 gateway 热重载该渠道，
+      // 不再需要全量重启 gateway 进程。
+      const gw = result.gateway
+      if (gw?.ok && gw.state === 'connected') {
+        toast.success(`${platformKey} 已连接`)
+      } else if (gw?.ok && gw.note) {
+        // 控制服务器不可达，config-watch 会在 3s 内接管
+        toast.success('凭据已保存，渠道将在数秒内自动连接')
+      } else if (gw && !gw.ok) {
+        // 连接失败，显示具体错误
+        toast.error(`${platformKey} 连接失败: ${gw.error || '未知错误'}`)
+      } else {
+        toast.success('渠道凭据已保存')
+      }
+      // 刷新网关状态
+      await checkGatewayStatus()
+    }
+  } catch (e) {
+    toast.error('保存失败: ' + (e.message || e))
+  } finally {
+    channelSaving.value = false
+  }
+}
+
+async function clearChannel(platformKey) {
+  const ch = channelsData.value?.channels.find(c => c.key === platformKey)
+  if (!ch) return
+  if (!await confirm({ title: '清除渠道凭据', message: `确认清除 ${ch.label} 的凭据？`, confirmText: '清除', danger: true })) return
+  try {
+    await api.default.clearGatewayChannel(platformKey)
+    // 更新 UI
+    if (channelsData.value) {
+      const idx = channelsData.value.channels.findIndex(c => c.key === platformKey)
+      if (idx >= 0) {
+        channelsData.value.channels[idx].configured = false
+        channelsData.value.channels[idx].enabled = false
+        for (const f of channelsData.value.channels[idx].fields) {
+          f.value = ''
+          f.has_value = false
+        }
+      }
+      for (const [cat, items] of Object.entries(channelsData.value.grouped)) {
+        const i2 = items.findIndex(c => c.key === platformKey)
+        if (i2 >= 0) {
+          items[i2].configured = false
+          items[i2].enabled = false
+          for (const f of items[i2].fields) {
+            f.value = ''
+            f.has_value = false
+          }
+        }
+      }
+    }
+    toast.success('已清除凭据')
+    // Gateway 已被后端通知断开该渠道，无需手动重启
+    await checkGatewayStatus()
+  } catch (e) {
+    toast.error('清除失败: ' + (e.message || e))
+  }
+}
+
+async function toggleChannel(platformKey) {
+  try {
+    const result = await api.default.toggleGatewayChannel(platformKey)
+    if (result.ok) {
+      // 更新 UI
+      if (channelsData.value) {
+        const ch = channelsData.value.channels.find(c => c.key === platformKey)
+        if (ch) ch.enabled = result.enabled
+        for (const [cat, items] of Object.entries(channelsData.value.grouped)) {
+          const i2 = items.findIndex(c => c.key === platformKey)
+          if (i2 >= 0) items[i2].enabled = result.enabled
+        }
+      }
+      toast.success(result.enabled ? '已启用' : '已禁用')
+      // Gateway 已被后端通知热插该渠道，无需手动重启
+      await checkGatewayStatus()
+    }
+  } catch (e) {
+    toast.error('操作失败: ' + (e.message || e))
+  }
+}
 </script>
 
 <template>
@@ -1457,9 +1802,96 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
         </div>
       </div>
 
-      <!-- 移动接入 -->
-      <div v-if="activeTab === 'channels'" class="max-w-3xl">
-        <MobileConnect />
+      <!-- 安全 -->
+      <div v-if="activeTab === 'channels'" class="max-w-3xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">📱</span>
+            <h3 class="font-medium text-gray-800 dark:text-gray-200">移动渠道接入</h3>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">将 Agent 接入即时通讯、邮件、智能家居等平台，实现跨渠道对话。填入平台凭据即可启用，支持 25+ 平台。</p>
+
+          <!-- 状态概览 + 启动网关 -->
+          <div v-if="channelsData" class="flex items-center gap-4 text-xs flex-wrap">
+            <span class="text-gray-500 dark:text-gray-400">已配置 <span class="text-green-600 dark:text-green-400 font-medium">{{ channelsData.configured_count }}</span> / {{ channelsData.total }}</span>
+            <span class="text-gray-300 dark:text-gray-600">|</span>
+            <span :class="gatewayRunning ? 'text-green-600 dark:text-green-400' : 'text-gray-400'">● 网关{{ gatewayRunning ? '运行中' : '未运行' }}</span>
+            <button v-if="!gatewayRunning" @click="startGateway" :disabled="gatewayStarting" class="px-3 py-1 text-xs rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">
+              {{ gatewayStarting ? '启动中...' : '▶ 启动网关' }}
+            </button>
+            <button v-else @click="restartGateway" :disabled="gatewayStarting" class="px-3 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap">
+              {{ gatewayStarting ? '重启中...' : '↻ 重启网关' }}
+            </button>
+          </div>
+
+          <div v-if="channelsLoading" class="text-center text-sm text-gray-400 py-8">
+            <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div> 加载中...
+          </div>
+
+          <!-- 按分类分组展示 -->
+          <div v-else-if="channelCategories.length > 0" class="space-y-6">
+            <div v-for="group in channelCategories" :key="group.cat" class="space-y-2">
+              <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <span v-if="group.cat === '国内'">🇨🇳</span>
+                <span v-else-if="group.cat === '国际'">🌍</span>
+                <span v-else>⚙️</span>
+                {{ group.cat }}平台（{{ group.items.length }} 个）
+              </h4>
+              <div class="space-y-2">
+                <div v-for="ch in group.items" :key="ch.key" class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30 overflow-hidden">
+                  <!-- 头部：点击展开 -->
+                  <div @click="channelExpanded[ch.key] = !channelExpanded[ch.key]" class="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700/50 transition">
+                    <div class="flex items-center gap-2">
+                      <span class="text-base">{{ ch.icon }}</span>
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ ch.label }}</span>
+                      <span v-if="ch.configured" class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400">已配置</span>
+                      <span v-if="ch.enabled" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">已启用</span>
+                    </div>
+                    <span class="text-gray-400 text-xs">{{ channelExpanded[ch.key] ? '▼' : '▶' }}</span>
+                  </div>
+                  <!-- 展开内容 -->
+                  <div v-if="channelExpanded[ch.key]" class="px-3 pb-3 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                    <!-- 凭据字段 -->
+                    <div class="pt-2 space-y-2">
+                      <div v-for="f in ch.fields" :key="f.key" class="flex gap-2 items-center">
+                        <label class="w-36 shrink-0 text-xs text-gray-500 dark:text-gray-400 truncate" :title="f.key">
+                          {{ f.label }}
+                          <span v-if="!f.required" class="text-gray-400">(可选)</span>
+                        </label>
+                        <input
+                          :value="channelForms[ch.key]?.[f.key] || ''"
+                          @input="channelForms[ch.key][f.key] = $event.target.value"
+                          :type="f.secret ? 'password' : 'text'"
+                          :placeholder="f.has_value ? '已配置（重新输入可覆盖）' : f.placeholder"
+                          class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
+                        />
+                        <span v-if="f.has_value" class="text-green-500 text-xs whitespace-nowrap">●●●●</span>
+                      </div>
+                    </div>
+                    <!-- 操作按钮 -->
+                    <div class="flex gap-2 justify-end pt-1">
+                      <button v-if="ch.configured" @click="toggleChannel(ch.key)" class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap">{{ ch.enabled ? '禁用' : '启用' }}</button>
+                      <button v-if="ch.configured" @click="clearChannel(ch.key)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+                      <button @click="saveChannel(ch.key)" :disabled="channelSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
+                    </div>
+                    <!-- 接入教程 -->
+                    <div class="rounded-lg bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-3 space-y-1">
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-xs">📘</span>
+                        <span class="text-xs font-medium text-blue-600 dark:text-blue-400">接入教程</span>
+                        <a v-if="ch.apply_url" :href="ch.apply_url" target="_blank" rel="noopener" class="text-[11px] text-blue-500 hover:underline ml-auto">申请入口 ↗</a>
+                      </div>
+                      <p class="text-[11px] text-gray-500 dark:text-gray-400 whitespace-pre-wrap leading-relaxed pl-5">{{ ch.tutorial }}</p>
+                      <p v-if="ch.note" class="text-[10px] text-gray-400 dark:text-gray-500 pl-5 pt-1">💡 {{ ch.note }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="text-center text-sm text-gray-400 py-4">暂无可用渠道</div>
+        </div>
       </div>
 
       <!-- 安全 -->
@@ -1478,8 +1910,151 @@ onUnmounted(() => { window.removeEventListener('trial-token', _onTrialToken) })
         </div>
       </div>
 
-      <div v-if="activeTab === 'knowledge'" class="max-w-2xl">
-        <KnowledgeBase />
+      <!-- 知识库 -->
+      <div v-if="activeTab === 'knowledge'" class="max-w-2xl space-y-4">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">📚 知识库管理</h3>
+              <p class="text-xs text-gray-400 mt-1">上传文档到知识库，Agent 将自动检索相关内容辅助回答</p>
+            </div>
+            <span class="text-xs text-gray-400">{{ ragDocs.length }} 个文档</span>
+          </div>
+
+          <!-- 上传区 -->
+          <div 
+            class="border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer"
+            :class="ragDragging ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-green-400'"
+            @dragover.prevent="ragDragging = true"
+            @dragleave.prevent="ragDragging = false"
+            @drop.prevent="onRagDrop"
+            @click="ragFileInput?.click()"
+          >
+            <input type="file" ref="ragFileInput" class="hidden" multiple 
+              accept=".txt,.md,.py,.js,.ts,.json,.yaml,.yml,.html,.css,.xml,.csv,.tsv,.sh,.sql,.log,.pdf,.docx,.xlsx,.pptx" 
+              @change="onRagFileSelect" />
+            <div class="text-3xl mb-2">📎</div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              {{ ragUploading ? '⏳ 正在上传...' : '点击或拖拽文件到此处' }}
+            </p>
+            <p class="text-xs text-gray-400 mt-1">支持 PDF / DOCX / XLSX / PPTX 及 txt/md/py/json 等文本文件</p>
+          </div>
+
+          <!-- 文档列表 -->
+          <div v-if="ragDocs.length > 0" class="space-y-2">
+            <div v-for="doc in ragDocs" :key="doc.id" 
+              class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 hover:border-green-400 dark:hover:border-green-600 cursor-pointer transition"
+              @click="previewRagDoc(doc)">
+              <div class="text-lg flex-shrink-0">{{ getFileIcon(doc.file_type) }}</div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-gray-700 dark:text-gray-300 truncate font-medium">{{ doc.filename }}</p>
+                <p class="text-xs text-gray-400">
+                  {{ doc.chunk_count }} 块 · {{ formatSize(doc.file_size) }} · {{ formatTime(doc.ingested_at) }}
+                </p>
+              </div>
+              <button 
+                @click.stop="deleteRagDoc(doc.id)" 
+                class="text-xs text-red-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+              >🗑️</button>
+            </div>
+          </div>
+          <div v-else-if="!ragLoading" class="text-center text-sm text-gray-400 py-4">
+            暂无文档，上传一个试试吧
+          </div>
+          <div v-if="ragLoading" class="text-center text-sm text-gray-400 py-2">加载中...</div>
+
+          <!-- 搜索测试面板 -->
+          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <h4 class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
+              🔍 检索测试
+            </h4>
+            <div class="flex gap-2">
+              <input 
+                v-model="ragSearchQuery" 
+                @keydown.enter="runRagSearch"
+                type="text" 
+                placeholder="输入关键词测试知识库检索..."
+                class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none"
+              />
+              <button 
+                @click="runRagSearch" 
+                :disabled="ragSearching || !ragSearchQuery.trim()"
+                class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {{ ragSearching ? '⌛' : '搜索' }}
+              </button>
+              <button 
+                v-if="ragSearchResults.length > 0" 
+                @click="clearRagSearch"
+                class="px-2 py-2 text-sm rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >✕</button>
+            </div>
+
+            <!-- 搜索结果 -->
+            <div v-if="ragSearching" class="mt-3 text-center text-sm text-gray-400">
+              <div class="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full mr-1"></div>
+              检索中...
+            </div>
+            <div v-else-if="ragSearchResults.length > 0" class="mt-3 space-y-2">
+              <p class="text-xs text-gray-400">找到 {{ ragSearchResults.length }} 条匹配结果：</p>
+              <div v-for="(result, i) in ragSearchResults" :key="i" 
+                class="p-3 rounded-lg bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs font-medium text-green-600 dark:text-green-400">
+                    {{ getFileIcon(result.file_type) }} {{ result.filename }} #{{ result.chunk_index }}
+                  </span>
+                  <span class="text-xs text-gray-400">{{ result.char_count }} 字符</span>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{{ result.preview }}</p>
+              </div>
+            </div>
+            <div v-else-if="ragSearchQuery && !ragSearching" class="mt-3 text-center text-xs text-gray-400 py-2">
+              无匹配结果
+            </div>
+          </div>
+        </div>
+
+        <!-- 文档预览弹窗 -->
+        <div v-if="ragPreview" 
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" 
+          @click.self="closeRagPreview">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4">
+            <!-- 弹窗头 -->
+            <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-xl flex-shrink-0">{{ getFileIcon(ragPreview.doc.file_type) }}</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ ragPreview.doc.filename }}</p>
+                  <p class="text-xs text-gray-400">
+                    {{ ragPreview.doc.chunk_count }} 块 · {{ formatSize(ragPreview.doc.file_size) }} · {{ ragPreview.chunks.length }} 个分块
+                  </p>
+                </div>
+              </div>
+              <button @click="closeRagPreview" 
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                ✕
+              </button>
+            </div>
+            <!-- 弹窗内容 -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+              <div v-if="ragPreview.loading" class="text-center text-gray-400 py-8">
+                <div class="animate-spin inline-block w-6 h-6 border-2 border-gray-300 border-t-green-500 rounded-full mb-2"></div>
+                <p class="text-sm">加载中...</p>
+              </div>
+              <div v-else-if="ragPreview.chunks.length === 0" class="text-center text-gray-400 py-8">
+                <p class="text-sm">该文档无分块内容</p>
+              </div>
+              <div v-else v-for="chunk in ragPreview.chunks" :key="chunk.id" 
+                class="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-medium text-green-600 dark:text-green-400">📄 分块 {{ chunk.chunk_index + 1 }}</span>
+                  <span class="text-xs text-gray-400">{{ chunk.char_count }} 字符</span>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed">{{ chunk.content }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 关于 -->
