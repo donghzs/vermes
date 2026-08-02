@@ -169,7 +169,7 @@ class SkillExtractor:
                      AND is_active = 1
                      AND event_count >= 5
                      AND success_rate >= ?
-                     AND (name IS NULL OR name NOT LIKE '|_|_%|_|_' ESCAPE '|')
+                     AND (name IS NULL OR name NOT GLOB '__*__')
                    ORDER BY event_count DESC""",
                 (SKILL_SUCCESS_RATE_FLOOR,),
             )

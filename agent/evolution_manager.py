@@ -435,6 +435,50 @@ def _record_emotional_state(
         return None
 
 
+# Guard so the ghost purge runs at most once per process.
+_GHOST_EMOTION_PURGED = False
+
+
+def purge_phantom_emotional_state_relations() -> int:
+    """Delete relations pointing at the non-existent ``emotional_state`` table.
+
+    ``emotional_state`` rows live in fusion-state.db, but a legacy DAG writer
+    added ``outcome → emotional_state`` edges into self-model.db.relations.
+    Those edges can never be resolved (cross-DB) and are pure ghosts that
+    pollute the relation graph. This removes them once per process. The actual
+    emotion record is unaffected — it still lives in fusion-state.db.
+
+    Returns the number of rows removed.
+    """
+    global _GHOST_EMOTION_PURGED
+    if _GHOST_EMOTION_PURGED:
+        return 0
+    removed = 0
+    try:
+        db = get_self_model_db()
+        if not db:
+            return 0
+        conn = _get_conn(str(db))
+        # Defensive: only act if the relations table exists.
+        tbl = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='relations'"
+        ).fetchone()
+        if tbl:
+            conn.execute(
+                "DELETE FROM relations WHERE target_type = 'emotional_state'"
+            )
+            removed = conn.total_changes
+        conn.commit()
+        conn.close()
+    except Exception:
+        logger.debug("purge phantom emotional_state relations failed", exc_info=True)
+        return 0
+    _GHOST_EMOTION_PURGED = True
+    if removed:
+        logger.info("Purged %d phantom emotional_state relations", removed)
+    return removed
+
+
 def _record_evolution_metric(metric: str, value: float, details: str = "") -> None:
     """Record a metric to fusion-state.db evolution_metrics table."""
     db_path = _get_fusion_db()
@@ -606,17 +650,12 @@ def record_tool_outcome(
             pass  # 情绪记录非阻塞
 
         # ── DAG: outcome → emotional_state 边 ────────────────────────
-        if _emotion_id is not None:
-            try:
-                _ec = _get_conn(str(get_self_model_db()))
-                _ec.execute(
-                    "INSERT INTO relations (source_type, source_id, target_type, target_id, rel_type, weight, timestamp) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ('outcome', outcome_id, 'emotional_state', _emotion_id, 'caused_emotion', 0.5, timestamp),
-                )
-                _ec.commit()
-            except Exception as e:
-                logger.debug("evolution_manager.py: record tool outcome failed: %s", e)
+        # REMOVED: emotional_state rows live in fusion-state.db, so writing an
+        # outcome→emotional_state edge into self-model.db.relations created
+        # unresolved cross-DB "ghost" edges (2003 found in production). The
+        # emotion itself is still recorded in fusion-state.db (above). Instead of
+        # creating new ghosts, purge any legacy ones once per process.
+        purge_phantom_emotional_state_relations()
 
         # ── DAG: anti_pattern → skill（预留，skills 表有 ID 后启用）─
         # Skill 关联暂不实现，等 skill 系统提供技能 ID 后在此写入：

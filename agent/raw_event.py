@@ -383,6 +383,7 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                 try:
                     from agent.capability_evolver import run_emergence_cycle
                     decisions = run_emergence_cycle(db_path)
+                    logger.info("Emergence cycle: %d decision(s) generated", len(decisions))
                     for d in decisions:
                         if d.action == "activate":
                             import threading
@@ -439,15 +440,40 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                                             duration=0.0,
                                             trigger_clustering=False,
                                         )
-                                except Exception:
-                                    logger.warning("Background capability activation (gated) failed", exc_info=True)
+                                except Exception as _act_err:
+                                    # Bug 2 visible: a failure here (e.g. frozen
+                                    # bundle missing tools.approval) was previously
+                                    # swallowed at warning level, making "decision
+                                    # generated but never landed" indistinguishable
+                                    # from "user denied". Promote to error and
+                                    # record a failure event so the two are
+                                    # separable in the raw_event stream.
+                                    logger.error(
+                                        "Background capability activation (gated) failed: %s",
+                                        _act_err, exc_info=True,
+                                    )
+                                    try:
+                                        record_raw_event(
+                                            tool_name="capability_activate",
+                                            tool_args={
+                                                "capability": cap_name,
+                                                "initiator": "system",
+                                                "error": str(_act_err)[:200],
+                                            },
+                                            result=f"failed: {cap_name}",
+                                            is_error=True,
+                                            duration=0.0,
+                                            trigger_clustering=False,
+                                        )
+                                    except Exception:
+                                        pass
                             threading.Thread(
                                 target=_bg_activate,
                                 daemon=True,
                                 name=f"cap-activate-{d.capability_name}",
                             ).start()
                 except Exception:
-                    logger.debug("Emergence cycle skipped", exc_info=True)
+                    logger.info("Emergence cycle skipped", exc_info=True)
 
                 # ── Skill extraction: are there repetitive patterns to extract? ──
                 try:
@@ -456,7 +482,7 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                     if new_skills:
                         logger.info("Skills extracted: %d", len(new_skills))
                 except Exception:
-                    logger.debug("Skill extraction skipped", exc_info=True)
+                    logger.info("Skill extraction skipped", exc_info=True)
 
                 # ── H4.3 评测闭环：提取后评估 active 技能生命周期（fail-open）──
                 try:
@@ -468,9 +494,9 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                             _life["evaluated"], _life["demoted"], _life["promoted"], _life["reactivated"],
                         )
                 except Exception:
-                    logger.debug("Skill lifecycle eval skipped", exc_info=True)
+                    logger.info("Skill lifecycle eval skipped", exc_info=True)
     except Exception:
-        logger.debug("Clustering trigger skipped", exc_info=True)
+        logger.info("Clustering trigger skipped", exc_info=True)
 
 
 # ── Retention ────────────────────────────────────────────────────────────────

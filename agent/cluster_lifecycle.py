@@ -59,11 +59,17 @@ class ClusterLifecycleManager:
         """Evaluate lifecycle transitions for all active clusters.
 
         Returns:
-            {"transitioned": N, "stayed": M, "errors": E}
+            {"transitioned": N, "stayed": M, "errors": E,
+             "resurrected": R, "normalized": Z}
         """
-        stats = {"transitioned": 0, "stayed": 0, "errors": 0}
+        stats = {"transitioned": 0, "stayed": 0, "errors": 0,
+                 "resurrected": 0, "normalized": 0}
 
         try:
+            # Fix contradictory clusters (stage != dead but is_active=0) first so
+            # they enter the active evaluation path (Bug 1 companion fix).
+            stats["normalized"] = self._normalize_active_flag()
+
             clusters = self._load_active_clusters()
             for cluster in clusters:
                 old_stage = cluster.get("lifecycle_stage", "emerging")
@@ -76,11 +82,108 @@ class ClusterLifecycleManager:
                 else:
                     stats["stayed"] += 1
 
+            # Dead clusters were previously unreachable (evaluate_all only scanned
+            # is_active=1). Re-open the resurrection path so a dead cluster that
+            # receives new events can return to emerging instead of being frozen.
+            stats["resurrected"] = self._resurrect_dead_clusters()
+
         except Exception:
-            logger.debug("Lifecycle evaluation failed", exc_info=True)
+            logger.warning("Lifecycle evaluation failed", exc_info=True)
             stats["errors"] += 1
 
         return stats
+
+    def _normalize_active_flag(self) -> int:
+        """Fix clusters whose stage implies life but is_active=0 (contradiction).
+
+        A cluster in emerging/stable/declining/dormant with is_active=0 is a
+        contradiction produced by the old _upsert_cluster path. Restore
+        is_active=1 so it re-enters evaluation. Idempotent. Returns count fixed.
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.execute(
+                "UPDATE clusters SET is_active=1 "
+                "WHERE lifecycle_stage IN ('emerging','stable','declining','dormant') "
+                "AND is_active=0"
+            )
+            n = cur.rowcount
+            conn.commit()
+            conn.close()
+            if n:
+                logger.info("Normalized %d contradictory (stage live but is_active=0) clusters", n)
+            return n
+        except Exception:
+            logger.debug("normalize active flag failed", exc_info=True)
+            return 0
+
+    def _resurrect_dead_clusters(self) -> int:
+        """Bring dead clusters back to emerging if they received new events.
+
+        Dead clusters were previously never re-scanned (is_active=0). Now, if a
+        dead cluster has raw_events arriving after its last_active_at, it
+        resurrects to emerging (preserving evolved_from via the transition log).
+        Returns count resurrected.
+        """
+        resurrected = 0
+        try:
+            rows = self._load_dead_clusters()
+            for r in rows:
+                cid = r["id"]
+                if self._has_new_events_since_death(cid):
+                    self._record_transition(cid, "dead", "emerging", "resurrect_new_events")
+                    self._update_stage(cid, "emerging")
+                    self._set_active(cid, 1)
+                    resurrected += 1
+                    logger.info("Cluster %d resurrected: dead → emerging", cid)
+        except Exception:
+            logger.debug("resurrect dead clusters failed", exc_info=True)
+        return resurrected
+
+    def _load_dead_clusters(self) -> List[Dict[str, Any]]:
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id FROM clusters WHERE lifecycle_stage='dead' AND is_active=0"
+            ).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+    def _has_new_events_since_death(self, cluster_id: int) -> bool:
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT last_active_at FROM clusters WHERE id=?", (cluster_id,)
+            ).fetchone()
+            if not row or not row["last_active_at"]:
+                conn.close()
+                return False
+            last = row["last_active_at"]
+            cnt = conn.execute(
+                "SELECT COUNT(*) n FROM raw_events "
+                "WHERE cluster_id=? AND timestamp > ?",
+                (cluster_id, last)
+            ).fetchone()["n"]
+            conn.close()
+            return cnt > 0
+        except Exception:
+            return False
+
+    def _set_active(self, cluster_id: int, active: int) -> None:
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.execute(
+                "UPDATE clusters SET is_active=? WHERE id=?",
+                (active, cluster_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            logger.debug("set active failed for cluster %d", cluster_id, exc_info=True)
 
     def on_new_event(self, cluster_id: int) -> Optional[str]:
         """Handle new event arriving in a cluster.
@@ -122,6 +225,13 @@ class ClusterLifecycleManager:
             logger.debug("on_new_event failed for cluster %d", cluster_id, exc_info=True)
             return None
 
+    # Floor on the derived average interval (seconds). A cluster whose events
+    # were burst-inserted in the same wall-clock second gets avg_interval≈0.001s
+    # (sub-second, strictly >0). Without a floor, k_dead = 0.001×15 = 0.015s →
+    # the cluster is judged dead 15ms after its last event (Bug 1). The floor
+    # keeps death thresholds sane for legitimately high-frequency clusters too.
+    MIN_INTERVAL = 60.0
+
     def compute_thresholds(self, cluster: Dict[str, Any]) -> LifecycleThresholds:
         """Compute lifecycle thresholds from cluster's own event interval distribution.
 
@@ -134,6 +244,9 @@ class ClusterLifecycleManager:
 
         For a cluster with 30d avg interval:
           N=90d, M=180d, K=450d
+
+        avg_interval is floored at MIN_INTERVAL (60s) so sub-second burst gaps
+        cannot collapse k_dead to milliseconds (Bug 1).
         """
         avg_interval = self._compute_avg_interval(cluster)
 
@@ -141,6 +254,9 @@ class ClusterLifecycleManager:
         if avg_interval <= 0:
             # Default: 1h interval assumption
             avg_interval = 3600.0
+
+        # Floor: prevent sub-second death thresholds from burst-inserted events.
+        avg_interval = max(avg_interval, self.MIN_INTERVAL)
 
         return LifecycleThresholds(
             n_declining=avg_interval * 3,

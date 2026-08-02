@@ -235,6 +235,31 @@ def main():
     threading.Thread(target=_run_server_with_guard, daemon=True).start()
     logger.info(f"[Vermes Backend] 后端已启动，监听 :{port}")
 
+    # ── 反思/自解析守护线程（B11）──
+    # gateway/run.py 的 idle 循环是唯一调用 maybe_run_reflection /
+    # auto_resolve_eligible_flags 的地方。桌面直连（不经 gateway）模式下
+    # 反思环不跑 → 记忆旗帜/孤儿永不自愈。后端常驻进程补一个周期性触发，
+    # 保证闭环独立于 gateway。fail-open：任何异常只记日志，不波及主循环。
+    def _reflection_daemon():
+        import time as _t
+        while not shutdown_event.is_set():
+            _t.sleep(600)  # 10 分钟一拍
+            if shutdown_event.is_set():
+                break
+            try:
+                from agent.memory_reflection import (
+                    maybe_run_reflection,
+                    auto_resolve_eligible_flags,
+                )
+                maybe_run_reflection()
+                try:
+                    auto_resolve_eligible_flags()
+                except Exception:
+                    logger.debug("auto_resolve_eligible_flags failed", exc_info=True)
+            except Exception:
+                logger.debug("reflection daemon tick failed", exc_info=True)
+    threading.Thread(target=_reflection_daemon, daemon=True, name="vermes-reflection").start()
+
     # ── restart 循环：Agent 框架更新后重启 gateway，不关壳 ──
     while True:
         try:

@@ -117,7 +117,56 @@ _last_capacity_warn_count = 0    # 上次警告时的行数
 
 
 def _get_index_db() -> Path:
+    _maybe_cleanup_orphan_dbs()
     return Path(get_vermes_home()) / "memory_index.db"
+
+
+# Guard so orphan cleanup runs at most once per process.
+_ORPHAN_DBS_CLEANED = False
+
+
+def _maybe_cleanup_orphan_dbs() -> None:
+    """Remove stale/empty database files left by older layouts.
+
+    Two confirmed orphans from prior versions:
+      - ``~/.vermes/embeddings.db`` (0 bytes) — the live store moved to
+        ``index/embeddings.db``; this top-level file is never opened by current
+        code, so a 0-byte copy is safe to delete.
+      - ``~/.vermes/evolution/memory_index.db`` (no tables) — the canonical
+        index is the top-level ``memory_index.db``; this stale shell is empty
+        and unused.
+
+    Both checks are conservative: a file is only removed if it is *exactly* the
+    orphan shape (0 bytes, or an empty SQLite file). Any real DB is left
+    untouched. Fail-open: errors are logged, never raised.
+    """
+    global _ORPHAN_DBS_CLEANED
+    if _ORPHAN_DBS_CLEANED:
+        return
+    _ORPHAN_DBS_CLEANED = True
+    try:
+        home = Path(get_vermes_home())
+
+        orphan_emb = home / "embeddings.db"
+        if orphan_emb.exists() and orphan_emb.stat().st_size == 0:
+            orphan_emb.unlink()
+            logger.info("Removed orphan 0-byte embeddings.db (live store: index/embeddings.db)")
+
+        stale_idx = home / "evolution" / "memory_index.db"
+        if stale_idx.exists():
+            try:
+                c = sqlite3.connect(str(stale_idx))
+                n_tables = c.execute(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+                ).fetchone()[0]
+                c.close()
+                if n_tables == 0:
+                    stale_idx.unlink()
+                    logger.info("Removed empty orphan evolution/memory_index.db (canonical: memory_index.db)")
+            except Exception:
+                logger.debug("stale memory_index.db inspection failed", exc_info=True)
+    except Exception:
+        logger.debug("orphan db cleanup skipped", exc_info=True)
 
 
 def index_db_path() -> Path:

@@ -359,7 +359,15 @@ def store_embedding(content: str, target: str = "memory") -> None:
     def _do_store():
         try:
             vec = _get_embedding(content)
-            blob = _vector_to_blob(vec) if vec else None
+            if not vec:
+                # No embedding available (provider has no /embeddings endpoint,
+                # auth failure, network error, etc.). Skip the write instead of
+                # inserting a NULL-vector shell — a row with no vector is dead
+                # weight that pollutes the index and can never be used for
+                # similarity search. This is fail-open: if a real provider is
+                # configured later, vec becomes populated and writes resume.
+                return
+            blob = _vector_to_blob(vec)
             conn = _get_conn()
             conn.execute(
                 """INSERT OR REPLACE INTO embeddings (content_hash, content, target, vector, created_at)

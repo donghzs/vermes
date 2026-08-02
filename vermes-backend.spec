@@ -165,6 +165,23 @@ hiddenimports = [
     'agent.pipeline',
     'agent.metrics',
 
+    # Emergence / self-learning pipeline modules. These are imported at runtime
+    # inside try/except blocks (e.g. raw_event._bg_activate -> tools.approval),
+    # so PyInstaller's import tracer never sees them and would ship a frozen
+    # bundle that raises ModuleNotFoundError on the activation path (Bug 2).
+    # Declare them explicitly so the frozen backend collects them.
+    'tools', 'tools.approval',
+    'utils',
+    'agent.capability_evolver', 'agent.cluster_lifecycle',
+    'agent.skill_extractor', 'agent.evolution_manager',
+    'agent.memory_recall', 'agent.memory_fabric',
+    'agent.memory_reflection', 'agent.hybrid_retriever',
+    'agent.raw_event', 'agent.graph_sync',
+    'agent.self_model', 'agent.relations',
+    'agent.episodic', 'agent.event_time',
+    'agent.learning', 'agent.domain_modules',
+    'agent.memory_migration', 'agent.session_handoff',
+
     # ScholarForge modules
     'vermes_cli.scholarforge', 'vermes_cli.scholarforge.tools',
     'vermes_cli.scholarforge.blueprint', 'vermes_cli.scholarforge.database',

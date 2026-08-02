@@ -343,9 +343,13 @@ def compute_richness() -> "RichnessScore":
             score.raw_event_count = row[0] if row else 0
             score.raw_event_density = _sigmoid(score.raw_event_count, _REF_RAW_EVENTS)
 
-            # Stable clusters (pattern maturity — emerged, not configured)
+            # Stable clusters (pattern maturity — emerged, not configured).
+            # Only count live clusters (is_active=1) so dead/self-eaten clusters
+            # no longer inflate the richness score (keeps graph_sync.py:227
+            # and this count on the same is_active=1口径).
             row = conn.execute(
-                "SELECT COUNT(*) FROM clusters WHERE lifecycle_stage IN ('stable','declining')"
+                "SELECT COUNT(*) FROM clusters "
+                "WHERE lifecycle_stage IN ('stable','declining') AND is_active = 1"
             ).fetchone()
             score.stable_cluster_count = row[0] if row else 0
             score.cluster_density = _sigmoid(score.stable_cluster_count, _REF_STABLE_CLUSTERS)

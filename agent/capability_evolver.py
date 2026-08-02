@@ -226,12 +226,17 @@ def _check_pattern_repetition(
             """SELECT id, name, event_count, success_rate, lifecycle_stage
                FROM clusters
                WHERE lifecycle_stage = 'stable' AND is_active = 1 AND event_count >= 5
-                 AND (name IS NULL OR name NOT LIKE '|_|_%|_|_' ESCAPE '|')
+                 AND (name IS NULL OR name NOT GLOB '__*__')
                ORDER BY event_count DESC"""
         )
         clusters = cursor.fetchall()
 
-        if len(clusters) < 3:
+        # No hard minimum on cluster count: a single well-established stable
+        # cluster (event_count>=5, success_rate>=floor) is enough signal to
+        # trigger emergence. The old `len(clusters) < 3` brake froze the whole
+        # flywheel whenever few clusters were alive (Bug 1 fallout). We keep the
+        # data-driven >40% established ratio below as the quality gate.
+        if not clusters:
             return signals
 
         # 涌现式"已确立"判定：用系统自身算出的成功率信号，而非人工 tool_diversity
