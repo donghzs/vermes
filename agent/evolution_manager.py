@@ -162,30 +162,51 @@ def ensure_proposals_schema():
         reject_reason TEXT,
         created TEXT,
         applied_at TEXT,
-        applied_by TEXT
+        applied_by TEXT,
+        bak_path TEXT,
+        retract_deadline TEXT
     )""")
+    # 旧库迁移：CREATE TABLE IF NOT EXISTS 不会给已存在的表补列。
+    # L1 自动 apply 的撤回依赖 bak_path 精确绑定（不能靠"找最新备份"猜，
+    # 因为 _cleanup_old_backups 只保留 5 份且后续 apply 会产生新备份）。
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(evolution_proposals)")}
+        for _col in ("bak_path", "retract_deadline"):
+            if _col not in cols:
+                conn.execute(f"ALTER TABLE evolution_proposals ADD COLUMN {_col} TEXT")
+        conn.commit()
+    except Exception as e:
+        logger.warning("[Evolution] proposals schema migration failed: %s", e)
 
 
 def record_proposal(*, phase, task_type, title, rationale, target_kind,
                     target_path=None, config_patch=None, candidate_diff=None,
                     critic_verdict=None, deterministic_result=None,
-                    status="proposed"):
-    """Insert a new evolution proposal. Returns the new row id or None."""
+                    status="proposed", bak_path=None, retract_deadline=None,
+                    applied_by=None):
+    """Insert a new evolution proposal. Returns the new row id or None.
+
+    bak_path / retract_deadline 供 L1 自动 apply 使用：撤回时必须还原到
+    *这次变更* 的备份，而不是目录里最新的那个备份（后者在连续 apply 时
+    会指向别人的快照）。
+    """
     try:
         ensure_proposals_schema()
         conn = _get_conn(str(get_self_model_db()))
+        _now = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
             """INSERT INTO evolution_proposals
                (phase, task_type, title, rationale, target_kind, target_path,
                 config_patch, candidate_diff, critic_verdict, deterministic_result,
-                status, created)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                status, created, bak_path, retract_deadline, applied_at, applied_by)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (phase, task_type, title, rationale, target_kind, target_path,
              json.dumps(config_patch, ensure_ascii=False) if config_patch is not None else None,
              candidate_diff,
              json.dumps(critic_verdict, ensure_ascii=False) if critic_verdict is not None else None,
              json.dumps(deterministic_result, ensure_ascii=False) if deterministic_result is not None else None,
-             status, datetime.now(timezone.utc).isoformat()),
+             status, _now, bak_path, retract_deadline,
+             _now if applied_by else None, applied_by),
         )
         conn.commit()
         return cur.lastrowid

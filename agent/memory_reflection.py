@@ -9,7 +9,7 @@ FLAG 记忆反思引擎 — 复用 curator idiom（空闲门控 + fork 辅助 ag
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -200,6 +200,10 @@ AEGIS_INTERVAL_S = 3600          # 独立扫描间隔（不跟反思 600s 同频
 AEGIS_MIN_SR_SLOPE_PP = -10.0    # 退化点斜率阈值（固定默认，发现灵敏度不外置）
 AEGIS_MIN_SAMPLES = 20           # 退化点最小样本（固定默认）
 PROPOSAL_EXPIRE_DAYS = 7         # 提案过期天数（外置友好，但固定默认）
+# L1 自动 apply 后的撤回窗口。上限受 EmergentChangePipeline.MAX_BACKUPS_PER_FILE=5
+# 约束：同一文件被连续 apply 超过 5 次后，早期备份会被清理，届时撤回将失败并
+# 返回明确错误（而不是错误地还原成别的快照）。
+L1_RETRACT_WINDOW_H = 24
 
 
 def _aegis_should_run() -> bool:
@@ -476,6 +480,11 @@ def _auto_apply_proposal(cand: dict, critic_verdict: dict,
         )
         result = get_pipeline().apply_change(proposal_obj, force=True)
         if result.committed:
+            # 绑定 *本次* 变更的备份路径：apply_change 已把它放在 result 里。
+            # 不能事后靠"目录里最新的 .bak"反推——连续 apply 时最新备份属于
+            # 后一次变更，且 _cleanup_old_backups 只保留 5 份。
+            _deadline = (datetime.now(timezone.utc)
+                         + timedelta(hours=L1_RETRACT_WINDOW_H)).isoformat()
             record_proposal(
                 phase="A→B→C→D (auto)",
                 task_type=cand.get("task_type", ""),
@@ -487,6 +496,9 @@ def _auto_apply_proposal(cand: dict, critic_verdict: dict,
                 critic_verdict=critic_verdict,
                 deterministic_result=gate_result,
                 status="auto_applied",
+                bak_path=getattr(result, "backup_path", None),
+                retract_deadline=_deadline,
+                applied_by="agent",
             )
             return True
         return False

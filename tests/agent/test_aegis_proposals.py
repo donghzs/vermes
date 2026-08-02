@@ -265,6 +265,58 @@ def test_proposal_record_and_get(tmp_selfmodel):
     assert json.loads(rows[0]["config_patch"])["memory"]["autoResolve"]["duplicate"] == 0.85
 
 
+def test_proposal_records_bak_path_and_deadline(tmp_selfmodel):
+    """L1 撤回契约：bak_path / retract_deadline 必须能落库并读回。"""
+    pid = em.record_proposal(
+        phase="A→B→C→D (auto)", task_type="web", title="t", rationale="r",
+        target_kind="config", status="auto_applied",
+        bak_path="/tmp/config.yaml.bak.20260802170000",
+        retract_deadline="2026-08-03T17:00:00+00:00",
+        applied_by="agent",
+    )
+    row = em.get_proposal(pid)
+    assert row["bak_path"] == "/tmp/config.yaml.bak.20260802170000"
+    assert row["retract_deadline"] == "2026-08-03T17:00:00+00:00"
+    assert row["applied_by"] == "agent" and row["applied_at"]
+
+
+def test_auto_apply_binds_its_own_backup(tmp_selfmodel, monkeypatch):
+    """回归：连续两次自动 apply，每条提案必须绑定*自己*那次的备份。
+
+    早期实现靠「找目录里最新的 .bak」反推，导致撤回第一次变更时会错误地
+    还原成第二次变更的快照。
+    """
+    import agent.emergent_change as emc
+    import vermes_cli.config as vcfg
+
+    monkeypatch.setattr(vcfg, "load_config", lambda: {"memory": {}})
+
+    baks = iter(["/tmp/c.yaml.bak.001", "/tmp/c.yaml.bak.002"])
+
+    class _Result:
+        committed = True
+        def __init__(self):
+            self.backup_path = next(baks)
+
+    class _Pipe:
+        def apply_change(self, proposal, force=False):
+            return _Result()
+
+    monkeypatch.setattr(emc, "get_pipeline", lambda: _Pipe())
+
+    cand = {"task_type": "web", "title": "t", "rationale": "r",
+            "config_patch": {"memory": {"autoResolve": {"duplicate": 0.85}}}}
+    assert mr._auto_apply_proposal(cand, {"safe": True}, {"passed": True}, "/tmp/c.yaml")
+    assert mr._auto_apply_proposal(cand, {"safe": True}, {"passed": True}, "/tmp/c.yaml")
+
+    rows = sorted(em.get_proposals(status="auto_applied"), key=lambda r: r["id"])
+    assert [r["bak_path"] for r in rows] == ["/tmp/c.yaml.bak.001", "/tmp/c.yaml.bak.002"]
+    # 撤回截止时间应落在未来
+    for r in rows:
+        assert datetime.datetime.fromisoformat(r["retract_deadline"]) > \
+            datetime.datetime.now(datetime.timezone.utc)
+
+
 def test_proposal_update_status(tmp_selfmodel):
     pid = em.record_proposal(phase="x", task_type="web", title="t", rationale="r",
                              target_kind="config", status="proposed")

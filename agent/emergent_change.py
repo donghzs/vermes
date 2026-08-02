@@ -418,24 +418,10 @@ class EmergentChangePipeline:
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
-    def _find_latest_backup(self, target_path: str) -> Optional[str]:
-        """Find the most recent backup file for the given target path.
-
-        Backups are named: <target_path>.bak.<timestamp>
-        Returns the path string, or None if no backup exists.
-        """
-        try:
-            target = Path(target_path)
-            parent = target.parent
-            prefix = target.name + ".bak."
-            backups = sorted(
-                [p for p in parent.iterdir() if p.name.startswith(prefix)],
-                key=lambda p: p.name,
-                reverse=True,  # newest first
-            )
-            return str(backups[0]) if backups else None
-        except Exception:
-            return None
+    # 注意：这里曾有一个 _find_latest_backup()「找目录里最新的 .bak」。它已被移除，
+    # 因为该语义在连续 apply 场景下必然取错——最新备份属于*后一次*变更，用它撤回
+    # 前一次变更会还原成错误的快照。要撤回某次变更，请使用 apply_change() 返回的
+    # ChangeResult.backup_path（已随变更记录持久化），再调 rollback_change()。
 
     # ── Import validation ───────────────────────────────────────────────────
 

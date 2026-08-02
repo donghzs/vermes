@@ -2226,40 +2226,43 @@ async def evolution_proposal_retract(request: Request, proposal_id: int):
         if proposal["status"] != "auto_applied":
             return {"ok": False, "error": f"only auto_applied proposals can be retracted (current: {proposal['status']})"}
 
-        # Find the raw_event backup for this proposal's config write
-        # and roll it back via EmergentChangePipeline.
         from agent.emergent_change import get_pipeline
-        from agent.emergent_change import ChangeProposal
         import os
+        from datetime import datetime, timezone
 
         target_path = proposal.get("target_path", "")
         if not target_path or not os.path.exists(target_path):
             return {"ok": False, "error": "config file not found"}
 
-        # The pipeline's rollback path: find the most recent backup for this target
-        pipeline = get_pipeline()
-        backup_path = pipeline._find_latest_backup(target_path)
+        # 撤回窗口：超过 retract_deadline 不再允许撤回。备份只保留 5 份
+        # （EmergentChangePipeline.MAX_BACKUPS_PER_FILE），过期后快照多半已回收。
+        deadline = proposal.get("retract_deadline")
+        if deadline:
+            try:
+                if datetime.now(timezone.utc) > datetime.fromisoformat(deadline):
+                    return {"ok": False, "error": f"撤回窗口已过期（截止 {deadline}）"}
+            except Exception:
+                pass  # 时间解析失败不阻断撤回
+
+        # 必须还原 *这次* 变更记录下来的备份。不能用「目录里最新的 .bak」反推：
+        # 连续 apply 时最新备份属于后一次变更 —— 撤回 A 会错误地还原成 B 的快照。
+        backup_path = proposal.get("bak_path")
         if not backup_path:
-            return {"ok": False, "error": "no backup found for rollback"}
+            return {"ok": False, "error": "该提案未记录备份路径，无法安全撤回"}
+        if not os.path.exists(backup_path):
+            return {"ok": False, "error": f"备份已被回收，无法撤回：{backup_path}"}
 
-        # Restore from backup
-        with open(backup_path, "r", encoding="utf-8") as fh:
-            backup_content = fh.read()
-
-        rollback_proposal = ChangeProposal(
-            source="aegis-retract",
-            target_path=target_path,
-            content=backup_content,
-            description=f"[AEGIS 撤回] {proposal.get('title', '')}",
-            metadata={"retract_proposal_id": proposal_id},
-            initiator="user",
+        # initiator="user" → 点击即确认，跳过审批闸门（emergent_change.py:311-313）。
+        # rollback_change 会写一条 rollback 事件并消耗掉该备份，语义比「再 apply 一次
+        # 旧内容」准确（后者在 self_modify_history 里会显示成又改了一次）。
+        ok = get_pipeline().rollback_change(
+            target_path, backup_path=backup_path, initiator="user",
         )
-        result = pipeline.apply_change(rollback_proposal, force=True)
-        if result.committed:
+        if ok:
             update_proposal_status(proposal_id, "retracted")
             return {"ok": True, "retracted": True, "proposal_id": proposal_id,
                     "restored_from": backup_path}
-        return {"ok": False, "error": result.error or "rollback failed"}
+        return {"ok": False, "error": "rollback failed"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
