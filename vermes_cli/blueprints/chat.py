@@ -10,6 +10,7 @@ import base64 as b64mod
 import difflib
 import json
 import logging
+import sqlite3
 
 logger = logging.getLogger(__name__)
 import os
@@ -2200,7 +2201,7 @@ async def emergence_skills():
                 "description": s.description,
                 "cluster_id": s.cluster_id,
                 "status": s.status,
-                "created_at": s.created_at,
+                "created_at": s.extracted_at,
                 "confirmed_at": s.confirmed_at,
             }
 
