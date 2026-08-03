@@ -173,19 +173,29 @@ async function markChangesRead() {
   }
 }
 
+// 「撤回」对不同变更是不同的动作：配置改动是还原 .bak 快照，技能采纳是
+// 打回 rejected。用一个按钮表达同一个意图，但必须分派到正确的端点。
+function _retractEndpoint(c) {
+  if (c.ref_kind === 'skill') return `/api/emergence/skill/${c.ref_id}/reject`
+  return `/api/evolution/proposals/${c.ref_id}/retract`
+}
+
 async function retractChange(c) {
+  const isSkill = c.ref_kind === 'skill'
   if (!await confirm({
-    title: '撤回自动调整',
-    message: `${c.title}\n\n将把配置还原到这次调整之前的快照。`,
+    title: isSkill ? '撤回技能采纳' : '撤回自动调整',
+    message: isSkill
+      ? `${c.title}\n\n将停用该技能，系统不会再自动使用这个模式。`
+      : `${c.title}\n\n将把配置还原到这次调整之前的快照。`,
     confirmText: '撤回',
     danger: true,
   })) return
   try {
-    const r = await _fetchWithTimeout(`/api/evolution/proposals/${c.ref_id}/retract`, { method: 'POST' })
+    const r = await _fetchWithTimeout(_retractEndpoint(c), { method: 'POST' })
     const data = await r.json()
     if (data.ok) {
-      await Promise.allSettled([fetchChanges(), fetchProposals()])
-      toast.success('已撤回，配置已还原')
+      await Promise.allSettled([fetchChanges(), fetchSkills(), fetchProposals()])
+      toast.success(isSkill ? '已撤回，技能已停用' : '已撤回，配置已还原')
     } else {
       throw new Error(data.error || '未知错误')
     }
@@ -236,10 +246,16 @@ async function rejectProposal(p) {
   }
 }
 
-// 只展示还能撤回的那些：备份被回收或过了 24h 窗口的，后端已把
-// retractable 置 false，这里据此把按钮换成灰字说明，避免用户点进一个错误。
+// 系统自作主张做过的事，统一在一个区里交代 —— 配置自动调参（T4）、
+// 技能自动采纳（T3）、能力自动激活（T2）本质是同一类：没问就做了。
+// 已经被撤掉的不再展示；备份被回收或过了 24h 的，后端把 retractable
+// 置 false，这里据此换成灰字说明，避免用户点进一个必然失败的操作。
+const _AUTO_KINDS = ['config_auto_apply', 'skill_adopted', 'capability_activated']
+const _RETRACTED = ['retracted', 'rejected']
 const autoApplied = computed(() =>
-  (changes.value || []).filter(c => c.kind === 'config_auto_apply' && c.ref_status !== 'retracted')
+  (changes.value || []).filter(
+    c => _AUTO_KINDS.includes(c.kind) && !_RETRACTED.includes(c.ref_status)
+  )
 )
 
 function changeTime(iso) {

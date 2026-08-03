@@ -670,6 +670,49 @@ _PRIVILEGED_GRANT_PREFIX = "privileged:"
 _privileged_grants: dict[str, float] = {}   # "<session>|<scope>" -> expiry epoch
 
 
+# ── T6：档位总开关 ───────────────────────────────────────────────────────────
+# YOLO 是个二元开关：要么什么都问，要么什么都不问。真实需求在中间 —— 用户
+# 想要的是「按风险问」，而调风险偏好不该逼人去改每一个触点的阈值。
+#
+#   conservative — 收紧一档：L0→L1（至少留痕通知）、L1→L2（做之前先问）。
+#   balanced     — 默认，就是分层文档里那套判定，不做任何调整。
+#   autonomous   — 放宽一档，**但只对可逆动作**：可逆的 L2 降到 L1（照做 +
+#                  通知 + 可撤回）。不可逆的（改源码、pip install）永远是 L2。
+#
+# 刻意不提供「全 L0」：L1 对用户的成本只是一个角标，不是打断。把它降成 L0
+# 省不下什么，却会让自动变更彻底隐形 —— 那正是这轮工作要消灭的东西。
+TIER_MODES = ("conservative", "balanced", "autonomous")
+_TIER_ORDER = ("L0", "L1", "L2")
+
+
+def get_tier_mode() -> str:
+    """Read ``approvals.tier_mode``. Unknown / unreadable → ``balanced``."""
+    try:
+        mode = str(_get_approval_config().get("tier_mode", "balanced")).strip().lower()
+    except Exception:
+        return "balanced"
+    return mode if mode in TIER_MODES else "balanced"
+
+
+def effective_tier(base_tier: str, *, reversible: bool = True,
+                   mode: Optional[str] = None) -> str:
+    """Apply the user's tier_mode to a per-action base tier.
+
+    *reversible* is the action's own property, not a preference — it is what
+    keeps ``autonomous`` from turning into "do anything without asking".
+    """
+    if base_tier not in _TIER_ORDER:
+        return base_tier
+    mode = mode or get_tier_mode()
+    idx = _TIER_ORDER.index(base_tier)
+    if mode == "conservative":
+        return _TIER_ORDER[min(idx + 1, 2)]
+    if mode == "autonomous" and reversible:
+        # 只放宽 L2→L1；L1 保持 L1（见上：不降成 L0）。
+        return "L1" if base_tier == "L2" else base_tier
+    return base_tier
+
+
 def _privileged_scope_key(approval_data: dict) -> str:
     """Authorization scope key — isolated per action category.
 

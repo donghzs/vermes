@@ -424,3 +424,86 @@ def test_capability_grant_does_not_leak_into_source_modify(monkeypatch):
     assert len(calls) == 1
     ap.approve_privileged_action("sk", _src("/repo/agent/foo.py"))
     assert len(calls) == 2                      # 又弹了一次，没被串用
+
+
+# ── T6：tier_mode 档位总开关 ──────────────────────────────────────────
+
+def test_tier_mode_defaults_to_balanced(monkeypatch):
+    """没配 / 配了不认识的值 / 读配置直接抛 —— 一律回落 balanced。"""
+    _stub_cfg(monkeypatch)
+    assert ap.get_tier_mode() == "balanced"
+
+    _stub_cfg(monkeypatch, tier_mode="YOLO_EVERYTHING")
+    assert ap.get_tier_mode() == "balanced"
+
+    def _boom():
+        raise RuntimeError("config on fire")
+    monkeypatch.setattr(ap, "_get_approval_config", _boom)
+    assert ap.get_tier_mode() == "balanced"
+
+
+def test_tier_mode_is_case_and_space_tolerant(monkeypatch):
+    _stub_cfg(monkeypatch, tier_mode="  Autonomous ")
+    assert ap.get_tier_mode() == "autonomous"
+
+
+def test_balanced_changes_nothing(monkeypatch):
+    _stub_cfg(monkeypatch, tier_mode="balanced")
+    for t in ("L0", "L1", "L2"):
+        assert ap.effective_tier(t) == t
+        assert ap.effective_tier(t, reversible=False) == t
+
+
+def test_conservative_tightens_one_notch(monkeypatch):
+    _stub_cfg(monkeypatch, tier_mode="conservative")
+    assert ap.effective_tier("L0") == "L1"      # 至少留个通知
+    assert ap.effective_tier("L1") == "L2"      # 做之前先问
+    assert ap.effective_tier("L2") == "L2"      # 已经封顶
+
+
+def test_conservative_tightens_irreversible_too(monkeypatch):
+    """收紧方向对可逆性不敏感 —— 往安全侧走永远允许。"""
+    _stub_cfg(monkeypatch, tier_mode="conservative")
+    assert ap.effective_tier("L1", reversible=False) == "L2"
+
+
+def test_autonomous_relaxes_only_reversible_l2(monkeypatch):
+    _stub_cfg(monkeypatch, tier_mode="autonomous")
+    assert ap.effective_tier("L2", reversible=True) == "L1"
+
+
+def test_autonomous_never_relaxes_irreversible(monkeypatch):
+    """这条是 T6 的命根子：改源码 / pip install 在任何档位都是 L2。
+
+    档位是**偏好**，可逆性是动作的**属性**——偏好不该能覆盖属性。
+    """
+    _stub_cfg(monkeypatch, tier_mode="autonomous")
+    assert ap.effective_tier("L2", reversible=False) == "L2"
+
+
+def test_autonomous_never_reaches_l0(monkeypatch):
+    """刻意不提供「全静默」：L1 的成本只是一个角标，不是打断。"""
+    _stub_cfg(monkeypatch, tier_mode="autonomous")
+    assert ap.effective_tier("L1", reversible=True) == "L1"
+    assert ap.effective_tier("L0", reversible=True) == "L0"
+
+
+def test_unknown_base_tier_passes_through(monkeypatch):
+    _stub_cfg(monkeypatch, tier_mode="conservative")
+    assert ap.effective_tier("L9") == "L9"
+    assert ap.effective_tier("") == ""
+
+
+def test_explicit_mode_overrides_config(monkeypatch):
+    """显式传 mode 时不读配置 —— 让调用方能做 what-if 预览。"""
+    _stub_cfg(monkeypatch, tier_mode="conservative")
+    assert ap.effective_tier("L2", reversible=True, mode="autonomous") == "L1"
+
+
+def test_every_mode_keeps_tier_in_range(monkeypatch):
+    """无论怎么组合，输出都必须还是合法档位 —— 防止算错索引滑出边界。"""
+    for mode in ap.TIER_MODES:
+        _stub_cfg(monkeypatch, tier_mode=mode)
+        for base in ("L0", "L1", "L2"):
+            for rev in (True, False):
+                assert ap.effective_tier(base, reversible=rev) in ("L0", "L1", "L2")

@@ -648,10 +648,20 @@ def test_auto_apply_defaults_to_off(monkeypatch):
     assert mr._is_auto_apply_enabled() is False
 
 
-def test_auto_apply_default_in_config_module_is_off():
-    """防回归：默认配置段本身也必须是 False，不能只靠读取方兜底。"""
+def test_auto_apply_default_is_on_now_that_notifications_exist():
+    """默认值翻回 True —— 但它挂在一个**前提**上，这条测试锁的是那个前提。
+
+    6da381742 把 auto_apply 关掉的理由是「没有通知就没有 L1」：自动改了配置
+    却没有任何地方告诉用户，L1 事实上退化成 L0。T5（07ed267e6）补上了变更
+    通知中心，前提消失，默认值才翻回来。所以这里连带断言通知链路仍然在 ——
+    哪天有人把 change_ledger 拆了，这条会先炸，而不是等用户发现配置被偷改。
+    """
     from vermes_cli.config import DEFAULT_CONFIG
-    assert DEFAULT_CONFIG["evolution"]["auto_apply"] is False
+    assert DEFAULT_CONFIG["evolution"]["auto_apply"] is True
+
+    from agent.change_ledger import record_change, KIND_CONFIG_AUTO_APPLY, TIER_L1
+    assert callable(record_change)
+    assert KIND_CONFIG_AUTO_APPLY and TIER_L1 == "L1"
 
 
 def test_auto_apply_fails_closed_on_config_error(monkeypatch):
@@ -670,3 +680,49 @@ def test_auto_apply_honours_explicit_opt_in(monkeypatch):
     monkeypatch.setattr(vc, "load_config",
                         lambda: {"evolution": {"auto_apply": True}})
     assert mr._is_auto_apply_enabled() is True
+
+
+# ── T6：档位作用到 config 自动 apply ─────────────────────────────────
+
+def test_config_apply_tier_baseline_is_l1(monkeypatch):
+    import tools.approval as ap
+    monkeypatch.setattr(ap, "_get_approval_config", lambda: {"tier_mode": "balanced"})
+    assert mr._config_apply_tier() == ("L1", "")
+
+
+def test_config_apply_tier_conservative_goes_l2(monkeypatch):
+    import tools.approval as ap
+    monkeypatch.setattr(ap, "_get_approval_config",
+                        lambda: {"tier_mode": "conservative"})
+    tier, why = mr._config_apply_tier()
+    assert tier == "L2" and why                # 必须带上人能看懂的理由
+
+
+def test_config_apply_tier_autonomous_stays_l1(monkeypatch):
+    """autonomous 只放宽 L2→L1，L1 本来就是 L1，不会被降成静默。"""
+    import tools.approval as ap
+    monkeypatch.setattr(ap, "_get_approval_config",
+                        lambda: {"tier_mode": "autonomous"})
+    assert mr._config_apply_tier() == ("L1", "")
+
+
+def test_config_apply_tier_unreadable_falls_back(monkeypatch):
+    def _boom(*a, **kw):
+        raise RuntimeError("nope")
+    monkeypatch.setattr("tools.approval.effective_tier", _boom)
+    assert mr._config_apply_tier() == ("L1", "")
+
+
+def test_magnitude_guard_ignores_tier_mode(monkeypatch):
+    """T4 是硬底线：autonomous 也放宽不了 >20% 的改动。
+
+    那种「可逆」是纸面上的 —— 真出问题要靠用户 24h 内自己察觉记忆质量
+    变差才会去撤，所以幅度护栏刻意不接 effective_tier。
+    """
+    import tools.approval as ap
+    monkeypatch.setattr(ap, "_get_approval_config",
+                        lambda: {"tier_mode": "autonomous"})
+    from pathlib import Path as _P
+    src = _P(mr.__file__).read_text(encoding="utf-8")
+    body = src.split("def _exceeds_magnitude")[1].split("\ndef ")[0]
+    assert "effective_tier" not in body

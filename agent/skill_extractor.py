@@ -36,6 +36,82 @@ logger = logging.getLogger("vermes.skill_extractor")
 # tool_diversity 等人工启发式已移除（B1 涌现重构）。
 SKILL_SUCCESS_RATE_FLOOR: float = 0.8
 
+# ── T3 自动采纳阈值（P1 外置范式：config.yaml → memory.skillAdopt.*）────────
+# 提取门槛（上面那个）回答「这算不算一个模式」；采纳门槛回答「够不够格
+# 不问就用」。两者必须分开：把提取门槛直接当采纳门槛，等于把所有候选一律
+# 自动启用。默认值刻意高于提取门槛。
+_SKILL_ADOPT_DEFAULTS: Dict[str, Any] = {
+    "enabled": True,
+    "min_success_rate": 0.9,   # 提取门槛 0.8 之上再留一档
+    "min_usage": 10,           # 提取门槛 5 次之上再翻一倍
+    "retract_window_h": 24,    # 与 L1 撤回窗口一致
+}
+
+
+def load_skill_adopt_config() -> Dict[str, Any]:
+    """Read ``memory.skillAdopt.*`` with the P1 ">0 or fall back" guard.
+
+    A configured ``0``/负数 would mean "adopt everything" —— 那正是这套阈值
+    要防的事，所以按 P1 注入护栏处理：非正数一律回落到默认值。读配置失败
+    同样回落（fail-safe 到默认，而不是关掉整个机制或全量放行）。
+    """
+    cfg = dict(_SKILL_ADOPT_DEFAULTS)
+    try:
+        from vermes_cli.config import load_config
+
+        raw = (load_config().get("memory", {}) or {}).get("skillAdopt", {})
+        if not isinstance(raw, dict):
+            return cfg
+        if "enabled" in raw:
+            cfg["enabled"] = bool(raw["enabled"])
+        for k in ("min_success_rate", "min_usage", "retract_window_h"):
+            v = raw.get(k)
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+                cfg[k] = float(v) if k == "min_success_rate" else int(v)
+    except Exception:
+        logger.debug("skill adopt config unreadable, using defaults", exc_info=True)
+    return cfg
+
+
+def _adopt_tier() -> str:
+    """技能采纳的有效档位 —— 基线 L1，交给用户的 tier_mode 调节。
+
+    读不到偏好时返回基线 L1，而不是保守降级：tier_mode 是**偏好**，
+    读不出偏好不该改变安全基线（该动作本身可逆且有通知）。
+    """
+    try:
+        from tools.approval import effective_tier
+        return effective_tier("L1", reversible=True)
+    except Exception:
+        return "L1"
+
+
+def should_auto_adopt(
+    skill: "ExtractedSkill", cfg: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, str]:
+    """T3 — 这个技能够不够格「不问就用」（L1）？
+
+    采纳一个技能是**可逆**的（一键 reject 打回）、**爆炸半径小**的（只是
+    多一条可用模式进提示词），所以拦在 L2 弹窗后面只会攒出一堆没人处理的
+    pending 待办债 —— 系统学到了东西却永远用不上。但可逆不等于免检：
+    低置信度的技能自动上线会污染行为，所以门槛按两个客观量判定，
+    且两者都要满足。
+
+    Returns ``(adopt, reason)``；reason 无论采纳与否都给，用于通知文案。
+    """
+    cfg = cfg or load_skill_adopt_config()
+    if not cfg.get("enabled", True):
+        return False, "自动采纳已关闭（memory.skillAdopt.enabled=false）"
+    rate = float(skill.success_rate or 0.0)
+    uses = int(skill.usage_count or 0)
+    min_rate = float(cfg["min_success_rate"])
+    min_uses = int(cfg["min_usage"])
+    if rate < min_rate:
+        return False, f"成功率 {rate:.0%} < {min_rate:.0%}，留待人工确认"
+    if uses < min_uses:
+        return False, f"使用 {uses} 次 < {min_uses} 次，留待人工确认"
+    return True, f"成功率 {rate:.0%}、已重复 {uses} 次，达到自动采纳门槛"
+
 
 # ── Data Classes ─────────────────────────────────────────────────────────────
 
@@ -127,6 +203,9 @@ class SkillExtractor:
             conn.execute("PRAGMA busy_timeout=5000")
             ensure_skill_tables(conn)
 
+            # 一轮只读一次配置：同一批技能用同一套阈值判定，避免中途被改。
+            adopt_cfg = load_skill_adopt_config()
+
             # Find clusters ripe for skill extraction
             candidates = self._find_skill_candidates(conn)
             existing_cluster_ids = self._get_existing_skill_clusters(conn)
@@ -143,6 +222,7 @@ class SkillExtractor:
                     new_skills.append(skill)
                     logger.info("Skill extracted: %s (cluster %d, %d uses)",
                                skill.name, skill.cluster_id, skill.usage_count)
+                    self._maybe_auto_adopt(conn, skill, adopt_cfg)
 
             conn.close()
         except Exception:
@@ -294,6 +374,71 @@ class SkillExtractor:
         conn.commit()
         skill.id = cursor.lastrowid
         return skill.id
+
+    def _maybe_auto_adopt(
+        self, conn: sqlite3.Connection, skill: ExtractedSkill,
+        cfg: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """T3 — 达标就直接启用，并留一条可撤回的通知（L1）。
+
+        不达标的照旧留在 pending，等人工确认。整段包在 try 里：采纳失败
+        绝不能把这次提取也带崩 —— 最坏结果只是这个技能停在 pending。
+        """
+        try:
+            adopt, why = should_auto_adopt(skill, cfg)
+            if not adopt:
+                logger.debug("Skill '%s' stays pending: %s", skill.name, why)
+                return False
+
+            # T6：采纳的基线是 L1（可逆 —— 面板一键否决就退回 pending）。
+            # tier_mode=conservative 会把它收紧成 L2，此时不自动启用，留在
+            # pending 等人工点确认，行为退回 T3 之前，属于用户明确选择。
+            if _adopt_tier() != "L1":
+                logger.info("Skill '%s' stays pending: tier_mode 收紧到 L2", skill.name)
+                return False
+
+            conn.execute(
+                """UPDATE extracted_skills SET
+                   status = 'active', confirmed_at = ?, updated_at = datetime('now')
+                   WHERE id = ? AND status = 'pending'""",
+                (datetime.now().isoformat(), skill.id),
+            )
+            conn.commit()
+            skill.status = "active"
+            logger.info("Skill auto-adopted (L1): %s — %s", skill.name, why)
+        except Exception as e:
+            logger.warning("Skill auto-adopt failed for '%s': %s", skill.name, e)
+            return False
+
+        # 通知是侧信道：写不进去也不回退已经生效的采纳，但要吼一声，
+        # 因为「静默采纳」正是这套分层要消灭的东西。
+        try:
+            from datetime import timedelta, timezone
+
+            from agent.change_ledger import (
+                record_change, KIND_SKILL_ADOPTED, TIER_L1, REF_SKILL,
+            )
+            hours = int((cfg or load_skill_adopt_config())["retract_window_h"])
+            record_change(
+                kind=KIND_SKILL_ADOPTED,
+                tier=TIER_L1,
+                title=f"已自动采纳技能：{skill.name}",
+                summary=why,
+                detail={
+                    "tool_sequence": skill.tool_sequence,
+                    "usage_count": skill.usage_count,
+                    "success_rate": skill.success_rate,
+                    "description": skill.description,
+                },
+                retract_deadline=(
+                    datetime.now(timezone.utc) + timedelta(hours=hours)
+                ).isoformat(),
+                ref_kind=REF_SKILL,
+                ref_id=skill.id,
+            )
+        except Exception as e:
+            logger.warning("[Changes] skill adoption notice failed: %s", e)
+        return True
 
     def _update_skill_stats(
         self, conn: sqlite3.Connection, cluster: Dict[str, Any],

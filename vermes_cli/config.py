@@ -1300,6 +1300,22 @@ DEFAULT_CONFIG = {
             "cluster_min_interval": 60,    # floor for cluster avg_interval (seconds)
             "merge_cleanup": 0.7,          # cleanup_merged: duplicate ≥ this + source=skill → delete
         },
+        # T3 — auto-adopting an extracted skill (L1: do it, tell the user,
+        # one click to undo).  Without this every extracted skill sits in
+        # `pending` forever, so the system learns patterns it never uses.
+        # Bars are deliberately stricter than the *extraction* bars
+        # (success_rate 0.8 / 5 events): "this is a pattern" and "this is
+        # good enough to use unasked" are different questions.
+        # Reader: agent.skill_extractor.load_skill_adopt_config (same key
+        # names as below — no long/short mismatch this time).
+        # Any value ≤ 0 falls back to the default (P1 injection guard):
+        # a configured 0 would mean "adopt everything".
+        "skillAdopt": {
+            "enabled": True,
+            "min_success_rate": 0.9,   # adopt only at ≥ this success rate
+            "min_usage": 10,           # …and only after this many uses
+            "retract_window_h": 24,    # how long the panel offers "撤回"
+        },
     },
 
     # ── Evolution / AEGIS ──
@@ -1309,17 +1325,20 @@ DEFAULT_CONFIG = {
     #   automatically and land in the "已自动调整" list (retractable for 24h).
     #   When false, every proposal goes to the "待审队列" instead.
     #
-    #   DEFAULT IS FALSE ON PURPOSE — do not flip this back without reading:
-    #   L1 ("silently execute, notify, retractable") only holds if the user is
-    #   actually *told*.  Right now there is no notification channel (T5) and
-    #   the desktop EvolutionPanel does not render proposals yet, so an
-    #   auto-applied change is invisible: it would silently rewrite the user's
-    #   config.yaml with no way to notice.  That is L0 behaviour wearing an L1
-    #   label, and it is exactly the "危险的没拦住" failure mode the approval
-    #   tiering work set out to fix.  Flip to true once T5 lands.
-    #   See vermes-approval-tiering_20260802.md §T5.
+    #   This was forced to False in 6da381742 because L1 ("silently execute,
+    #   notify, retractable") only holds if the user is actually *told*, and
+    #   at the time there was no notification channel at all — an auto-applied
+    #   change silently rewrote the user's config.yaml with no way to notice.
+    #   That is L0 behaviour wearing an L1 label.
+    #
+    #   Re-enabled now that the missing half exists (T5, 07ed267e6):
+    #   agent.change_ledger records every auto-apply, the EvolutionPanel shows
+    #   "已自动调整 N 项 · 24h 内可撤回" with a per-item retract button, and the
+    #   collapsed indicator carries an unread badge.  The >20% magnitude guard
+    #   (T4) still forces large changes into the L2 queue regardless.
+    #   See vermes-approval-tiering_20260802.md §T4/§T5.
     "evolution": {
-        "auto_apply": False,
+        "auto_apply": True,
     },
 
     # Subagent delegation — override the provider:model used by delegate_task
@@ -1591,6 +1610,21 @@ DEFAULT_CONFIG = {
         # grant to the whole session / permanently instead.
         # 0 disables reuse (prompt every single time).
         "privileged_grant_ttl_minutes": 30,
+        # Tier mode — one dial for "how much do you want to be asked", instead
+        # of hunting down a threshold at every call site.  YOLO is binary
+        # (ask everything / ask nothing); the real preference lives between.
+        #   "conservative" — tighten one notch: L0→L1 (at least leave a
+        #                    notice), L1→L2 (ask before doing).
+        #   "balanced"     — default; the tiering rules as documented.
+        #   "autonomous"   — loosen one notch, but ONLY for reversible
+        #                    actions: a reversible L2 drops to L1 (do it,
+        #                    notify, stay retractable).  Irreversible ones
+        #                    (source rewrite, pip install) stay L2 forever.
+        # There is deliberately no "everything L0" mode: L1 costs the user a
+        # badge, not an interruption, and making auto-changes invisible again
+        # is exactly what the tiering work set out to kill.  The T4 magnitude
+        # guard (>20% config swing) is a hard floor and ignores this dial.
+        "tier_mode": "balanced",
     },
 
     # Permanently allowed dangerous command patterns (added via "always" approval)

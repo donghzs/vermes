@@ -414,6 +414,16 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                                     )
                                     _t = classify_activation_tier(cap_name)
                                     tier, why = _t["tier"], _t["reason"]
+                                    # T6：按用户档位调整。reversible 取自动作
+                                    # 本身 —— 要 pip install 的一律不可逆，
+                                    # 所以 autonomous 也放宽不了它。
+                                    try:
+                                        from tools.approval import effective_tier
+                                        tier = effective_tier(
+                                            tier, reversible=not _t.get("needs_install", False),
+                                        )
+                                    except Exception:
+                                        pass
 
                                     if tier == "L2":
                                         from tools.approval import (

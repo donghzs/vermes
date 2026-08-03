@@ -106,6 +106,7 @@ watch(activeTab, (tab) => {
   if (tab === 'services' && Object.keys(serviceGroups.value).length === 0 && !servicesLoading.value) loadServices()
   if (tab === 'literature' && literaturePaid.value.length === 0 && literatureFree.value.length === 0 && literatureCustom.value.length === 0 && !literatureLoading.value) loadLiterature()
   if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
+  if (tab === 'security') loadTierMode()
 })
 
 // ── 安全设置 ──
@@ -121,6 +122,47 @@ async function toggleYolo() {
       body: JSON.stringify({ approvals: { yolo_default: yoloEnabled.value } }),
     })
   } catch (e) { console.error('[Config] Failed to sync yolo:', e) }
+}
+
+// ── T6 自我进化档位 ──
+// YOLO 管的是「跑命令要不要问」，这个管的是「Vermes 改自己要不要问」。
+// 两件事，所以是两个控件，别合并。
+const TIER_MODES = [
+  { id: 'conservative', label: '保守', desc: '所有自动调整都先问过你' },
+  { id: 'balanced', label: '均衡', desc: '低风险的照做并通知，高风险的先问（推荐）' },
+  { id: 'autonomous', label: '放手', desc: '可撤销的一律照做并通知；改源码、装依赖仍然必问' },
+]
+const tierMode = ref('balanced')
+const tierSaving = ref(false)
+
+async function loadTierMode() {
+  try {
+    const resp = await fetch('/api/config')
+    const data = await resp.json()
+    const m = data?.config?.approvals?.tier_mode ?? data?.approvals?.tier_mode
+    if (TIER_MODES.some(t => t.id === m)) tierMode.value = m
+  } catch (e) { console.error('[Config] Failed to load tier_mode:', e) }
+}
+
+async function setTierMode(mode) {
+  if (mode === tierMode.value || tierSaving.value) return
+  const prev = tierMode.value
+  tierMode.value = mode
+  tierSaving.value = true
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvals: { tier_mode: mode } }),
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  } catch (e) {
+    // 存不下就把界面退回去 —— 显示成功但其实没写，比直接报错更糟
+    tierMode.value = prev
+    console.error('[Config] Failed to save tier_mode:', e)
+  } finally {
+    tierSaving.value = false
+  }
 }
 
 // ── 缓存监控 ──
@@ -1907,6 +1949,42 @@ async function toggleChannel(platformKey) {
               <span class="inline-block h-4 w-4 transform rounded-full bg-white transition" :class="yoloEnabled ? 'translate-x-6' : 'translate-x-1'" />
             </button>
           </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
+            这个开关只管「跑命令」。Vermes 调整自己（改配置、采纳技能、改源码）由下面的档位决定，不受它影响。
+          </p>
+        </div>
+
+        <!-- T6：自我进化档位 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <div>
+            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">🧬 自我进化档位</h3>
+            <p class="text-xs text-gray-400 mt-1">
+              Vermes 会根据你的使用习惯调整自己。这里决定它什么时候可以直接做、什么时候必须先问你。
+            </p>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="t in TIER_MODES"
+              :key="t.id"
+              @click="setTierMode(t.id)"
+              :disabled="tierSaving"
+              class="rounded-lg border px-3 py-2 text-sm transition text-left disabled:opacity-60"
+              :class="tierMode === t.id
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'">
+              <span class="font-medium">{{ t.label }}</span>
+            </button>
+          </div>
+
+          <p class="text-xs text-gray-500 dark:text-gray-400 min-h-[2rem]">
+            {{ TIER_MODES.find(t => t.id === tierMode)?.desc }}
+          </p>
+
+          <p class="text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
+            两条底线不受档位影响：<strong>改自己的源码</strong>和<strong>安装新依赖</strong>永远会先问你；
+            自动做过的调整都会出现在「进化」面板里，24 小时内可以一键撤回。
+          </p>
         </div>
       </div>
 

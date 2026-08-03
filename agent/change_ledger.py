@@ -48,6 +48,7 @@ KIND_ROLLBACK = "rollback"
 
 # 引用的源表，决定 list_changes 回查当前状态的方式
 REF_PROPOSAL = "proposal"
+REF_SKILL = "skill"
 
 
 def _db_path():
@@ -159,21 +160,43 @@ def _resolve_ref_status(rows: List[Dict[str, Any]]) -> None:
     """
     proposal_ids = [r["ref_id"] for r in rows
                     if r.get("ref_kind") == REF_PROPOSAL and r.get("ref_id")]
-    if not proposal_ids:
-        return
-    status_by_id: Dict[int, str] = {}
-    try:
-        from agent.evolution_manager import get_proposal
-        for pid in set(proposal_ids):
-            p = get_proposal(pid)
-            if p:
-                status_by_id[pid] = p.get("status", "")
-    except Exception as e:
-        logger.debug("[ChangeLedger] ref status lookup failed: %s", e)
-        return
-    for r in rows:
-        if r.get("ref_kind") == REF_PROPOSAL:
-            r["ref_status"] = status_by_id.get(r.get("ref_id"), "")
+    if proposal_ids:
+        status_by_id: Dict[int, str] = {}
+        try:
+            from agent.evolution_manager import get_proposal
+            for pid in set(proposal_ids):
+                p = get_proposal(pid)
+                if p:
+                    status_by_id[pid] = p.get("status", "")
+        except Exception as e:
+            logger.debug("[ChangeLedger] ref status lookup failed: %s", e)
+            status_by_id = {}
+        for r in rows:
+            if r.get("ref_kind") == REF_PROPOSAL:
+                r["ref_status"] = status_by_id.get(r.get("ref_id"), "")
+
+    skill_ids = [r["ref_id"] for r in rows
+                 if r.get("ref_kind") == REF_SKILL and r.get("ref_id")]
+    if skill_ids:
+        skill_status: Dict[int, str] = {}
+        conn = _conn()
+        if conn is not None:
+            try:
+                q = ",".join("?" * len(set(skill_ids)))
+                for row in conn.execute(
+                    f"SELECT id, status FROM extracted_skills WHERE id IN ({q})",
+                    tuple(set(skill_ids)),
+                ):
+                    skill_status[row[0]] = row[1] or ""
+            except Exception as e:
+                logger.debug("[ChangeLedger] skill status lookup failed: %s", e)
+        for r in rows:
+            if r.get("ref_kind") == REF_SKILL:
+                r["ref_status"] = skill_status.get(r.get("ref_id"), "")
+        # 撤回可行性依赖刚查到的状态，所以必须在这之后重算。
+        for r in rows:
+            if r.get("ref_kind") == REF_SKILL:
+                r["retractable"] = _is_retractable(r)
 
 
 def list_changes(*, unread_only: bool = False, limit: int = 50,
@@ -220,19 +243,27 @@ def list_changes(*, unread_only: bool = False, limit: int = 50,
         return []
 
 
-def _is_retractable(row: Dict[str, Any]) -> bool:
-    """A change is retractable while it has a live backup and an unexpired
-    window. Mirrors the checks in the retract route so the UI can grey the
-    button out instead of letting the user click into an error."""
-    if not row.get("bak_path"):
-        return False
+def _within_deadline(row: Dict[str, Any]) -> bool:
     deadline = row.get("retract_deadline")
     if not deadline:
         return False
     try:
-        if datetime.now(timezone.utc) > datetime.fromisoformat(deadline):
-            return False
+        return datetime.now(timezone.utc) <= datetime.fromisoformat(deadline)
     except Exception:
+        return False
+
+
+def _is_retractable(row: Dict[str, Any]) -> bool:
+    """A change is retractable while it has a live backup and an unexpired
+    window. Mirrors the checks in the retract route so the UI can grey the
+    button out instead of letting the user click into an error."""
+    # 技能采纳没有文件备份 —— 「撤回」就是把它打回 rejected，只要它还是
+    # active 且在窗口内就一直可行。用 bak_path 判定会把它误标成不可撤回。
+    if row.get("ref_kind") == REF_SKILL:
+        return row.get("ref_status") == "active" and _within_deadline(row)
+    if not row.get("bak_path"):
+        return False
+    if not _within_deadline(row):
         return False
     try:
         import os

@@ -407,7 +407,13 @@ def _scan_evolution_proposals(llm_call=None):
             if over:
                 logger.info("[AEGIS] magnitude guard → L2 queue: %s — %s",
                             cand.get("title"), over_reason)
-            if _is_auto_apply_enabled() and not over:
+            # T6：自动 apply 的基线是 L1（写前备份 + 24h 可撤回）。
+            # tier_mode=conservative 收紧成 L2 —— 配置也要先问一次。
+            _tier, _tier_why = _config_apply_tier()
+            if _tier != "L1" and not over:
+                over_reason = _tier_why
+                logger.info("[AEGIS] tier_mode → L2 queue: %s", cand.get("title"))
+            if _is_auto_apply_enabled() and not over and _tier == "L1":
                 # 自动 apply：写 config.yaml + 记录为 auto_applied
                 applied = _auto_apply_proposal(cand, v, gate, str(_cfg_path()))
                 if applied:
@@ -431,9 +437,9 @@ def _scan_evolution_proposals(llm_call=None):
                         created += 1
                         logger.info("[AEGIS] auto-apply failed, queued #%s: %s", pid, cand.get("title"))
             else:
-                # auto_apply=false 或幅度过大 → 进待审队列（L2）
+                # auto_apply=false / 幅度过大 / tier_mode 收紧 → 进待审队列（L2）
                 _gate = dict(gate)
-                if over:
+                if over or _tier != "L1":
                     _gate["tier"] = "L2"
                     _gate["tier_reason"] = over_reason
                 pid = record_proposal(
@@ -454,6 +460,26 @@ def _scan_evolution_proposals(llm_call=None):
     finally:
         _aegis_mark_run()
     return created
+
+
+def _config_apply_tier() -> tuple:
+    """config 自动 apply 的有效档位，返回 ``(tier, reason)``。
+
+    基线 L1：改动可逆（写前 .bak + 面板 24h 撤回）且有通知。用户的
+    ``approvals.tier_mode`` 可以收紧到 L2（先问再改）。
+
+    刻意**不**让 autonomous 放宽 T4 幅度护栏：那条护栏的定位是「即便双闸门
+    都过也要人看一眼」的硬底线，而 >20% 的改动虽然技术上可逆，实际却要靠
+    用户在 24h 内自己察觉记忆质量变差才会去撤 —— 那种「可逆」是纸面上的。
+    """
+    try:
+        from tools.approval import effective_tier
+        tier = effective_tier("L1", reversible=True)
+    except Exception:
+        return "L1", ""
+    if tier == "L1":
+        return "L1", ""
+    return tier, "tier_mode=conservative：配置自动调整也先经人工确认"
 
 
 def _max_relative_delta() -> float:
