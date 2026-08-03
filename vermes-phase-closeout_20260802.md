@@ -1,13 +1,26 @@
 # Vermes 进化系统阶段收口 — 交接给「乐高式改造」
 
-> 日期：2026-08-02 · 分支 `feature/vermes-brand-fork` · 收口提交 `6da381742`
+> 日期：2026-08-02 · 分支 `feature/vermes-brand-fork`
+> 首版收口 `6da381742` → **全面收口 `f95de9c43`**（2026-08-03 补完 T5 / S5 / T2 / T3 / T6）
 > 用途：把 P0–P2 + 审批分层这一摊工作**明确关闭**，并交出下一阶段（HarnessX 乐高化）需要知道的地基状态与约束。
 
 ---
 
 ## 0. 一句话
 
-本阶段交付了**进化引擎的闭环骨架 + 治理层**；收口时堵住了最后一个「上线即静默改配置」的风险；**唯一剩余机械动作是一次 `build.sh` 重建**——在此之前，下面所有东西对运行态零效果。
+本阶段交付了**进化引擎的闭环骨架 + 完整治理层**。首版收口时用「关掉 `auto_apply`」堵住了「上线即静默改配置」的风险；**8-03 把当时明确挂起的五项（T5 / S5 / T2 / T3 / T6）全部补完**，前提消失，`auto_apply` 已翻回 `True`。`bash build.sh` 已生成 2.3.7 DMG 并**重装覆盖** `/Applications/Vermes.app` + 干净重启，运行态 `GET /api/config` 确认 `tier_mode=balanced` & `auto_apply=True`，**源码+构建+重装+运行态验证全闭环**。
+
+### 8-03 补完清单
+
+| 项 | 提交 | 结果 |
+|---|---|---|
+| **T5 变更通知中心** | `07ed267e6` | L1 不再等于 L0：账本 + 未读角标 + 3 个 API + 面板双区 |
+| **S5 / P3 前端** | `07ed267e6` `f95de9c43` | EvolutionPanel 对接 proposals，「已自动调整 / 待审提案」双区 + 撤回 |
+| **T2 能力激活分级** | `ccec52a4d` | 按可逆性定级；「安全的老在问」那一侧收口 |
+| **T3 技能自动采纳** | `f95de9c43` | 达标技能直接启用（L1，24h 可撤回），不再永久 pending |
+| **T6 `tier_mode` 档位** | `f95de9c43` | 保守 / 均衡 / 放手，且放手也放宽不了不可逆动作 |
+| **`auto_apply` 翻回 True** | `f95de9c43` | 前提（通知中心）已具备 |
+| *额外*：`PATCH /api/config` | `7ca5ac66c` | 顺手挖出的真 bug，见 §3.1 |
 
 ---
 
@@ -21,16 +34,36 @@
 
 > 实证方法：冻结包里 `agent/emergence_critic.py` **不存在**（P2 新增文件），而 `emergent_change.py` 等旧文件存在 → 包早于 P2。
 
-### 顺带纠正一条长期记忆里的错误
+### 顺带纠正两条错误说法（其中一条写在 spec 自己的注释里）
 
-之前记的「重建前必须补 `vermes-backend.spec` 的 `hiddenimports`，否则新模块 ModuleNotFoundError」——**对这批新模块不适用**。实读 spec：
+**① 记忆里的「重建前必须补 `hiddenimports`」对这批模块不适用。** 实读 spec：
 
 ```python
 datas = []
 for src, dst in [..., ('tools','tools'), ('agent','agent'), ('gateway','gateway'), ('harness','harness'), ...]:
 ```
 
-是**整目录拷贝源码**，且 `_internal/agent/__init__.py` 确认在包内。所以 `agent/` `tools/` 下的新增模块**自动进包，无需改 spec**。`hiddenimports` 只对「不在这些目录、且仅被函数体内动态 import」的模块才有意义。
+是**整目录拷贝源码**，且 `_internal/agent/__init__.py` 确认在包内。所以 `agent/` `tools/` 下的新增模块**自动进包**。
+
+**② `vermes-backend.spec` 里那句「函数体内 / try-except 里的 import，PyInstaller 追踪不到」是错的**，而且它写在注释里，会持续误导后来人（这次就让我多查了一轮）。
+
+控制实验（对现装冻结包 `_internal/` 逐个 `ls`）：
+
+| 模块 | 只在函数体内被 import | 在 `hiddenimports` 里 | 在冻结包里 |
+|---|---|---|---|
+| `agent/emergent_insight.py` | 是 | **否** | **在** |
+| `agent/curator.py` | 是 | **否** | **在** |
+| `agent/decision_tracker.py` | 是 | **否** | **在** |
+| `agent/system_prompt.py` | 是 | **否** | **在** |
+| `agent/capability_registry.py` | 是 | **否** | **在** |
+
+四个反例足够了：modulegraph 走的是**字节码**，嵌套 `import x` 和顶层 `import x` 一样能被追到。
+
+真正追不到的是**计算出来的 import**：`importlib.import_module(变量)`、`__import__(name)`、按目录扫描的插件发现。只有这类才必须写进 `hiddenimports`。
+
+> 已把 spec 的注释改写成上述准确表述。**别把这份清单当成「某模块能工作的原因」**——列表里绝大多数条目是冗余的，删掉也照常工作，所以它也不能反过来当作「没列 = 会挂」的依据。
+
+顺带一提，`agent/emergence_critic.py`、`agent/change_ledger.py` 当前不在冻结包里，**不是** spec 的问题，纯粹是它们比现装的包新。
 
 ---
 
@@ -84,21 +117,52 @@ evolution.auto_apply 默认 True（且读配置异常 fail-open 还是 True）
 
 **不删任何已实现能力**：T4 幅度护栏、`bak_path` 绑定、24h 撤回窗口、retract API 全部保留。**T5 落地后翻一个布尔值即启用。**
 
+> **8-03 更新**：T5 已落地（`07ed267e6`），前提消失，`auto_apply` 已翻回 `True`（`f95de9c43`）。
+> 原来那条「断言默认值必须是 False」的测试没有删，而是**改写成断言新前提**——默认值为 `True` **且** `change_ledger` 通知链路仍在。哪天有人把通知中心拆了，这条测试会先炸，而不是等用户发现配置被偷改。
+
+### 3.1 收口途中挖出的真 bug：`PATCH /api/config` 根本没注册
+
+做 T6 的档位开关时需要一条「只改一个键」的写入路径，一查发现：
+
+- `Settings.vue` 的 YOLO 开关**从上线起就在发 `PATCH /api/config`**；
+- 路由表里只注册了 `GET` 和 `PUT`；
+- 于是每次点击都 405 → 异常被 `try/catch` 吞成一行 `console.error` → 开关只写进了 `localStorage`。
+
+**用户以为把 YOLO 关了，`config.yaml` 里 `yolo_default` 纹丝不动**，换个渠道照样是 YOLO。这正是 §2.3② 那个反模式的又一变体：UI 显示成功，后端什么都没发生。
+
+`PUT` 顶不上——它是整份覆盖，发 `{"approvals": {...}}` 会把其余配置全抹掉。所以缺的确实是 `PATCH`。
+
+修复（`7ca5ac66c`）另有一个容易忽略的点：**深合并的基准取 `read_raw_config()` 而不是 `load_config()`**。后者是「默认值 + 用户覆盖」的合并结果，写回磁盘等于把今天这版默认值全部固化进用户文件，以后升级改默认值对这个用户永远不生效。那种配置腐化几乎不可能被发现，测试里专门锁了一条。
+
 ---
 
-## 4. 明确挂起（不阻塞乐高，但要知道它们敞着）
+## 4. 挂起项状态（8-03 已清）
 
-| 项 | 状态 | 何时必须做 |
+| 项 | 首版状态 | **现状** |
 |---|---|---|
-| **T5 变更通知中心** | 未做 | **想启用 `auto_apply` 之前**。没有它 L1 恒等于 L0 |
-| **S5 / P3 前端** | 未做 | 前端连 proposals 都没对接；乐高需要「积木视图」时一并做 |
-| **T2 能力激活分级** | 未做 | `capability_activate` 仍每次必弹（安全但吵） |
-| **T3 技能自动采纳** | 未做 | 低优先 |
-| **T6 `tier_mode` 档位总开关** | 未做 | 用户想一键切保守/激进时 |
-| **撤回窗口物理上限** | 已知约束 | `MAX_BACKUPS_PER_FILE=5`：24h 内连续自动 apply >5 次，早期备份被回收，撤回返回明确错误（不会错还原） |
-| **`test_approval.py` 1 条失败** | 预存技术债 | 它 AST 断言 `gateway/run.py` 里有 `run_sync`/`set_current_session_key`，实测三个符号一个都不存在，与本阶段无关 |
+| **T5 变更通知中心** | 未做 | ✅ `07ed267e6` |
+| **S5 / P3 前端** | 未做 | ✅ `07ed267e6` + `f95de9c43`（含设置页档位选择器） |
+| **T2 能力激活分级** | 未做 | ✅ `ccec52a4d` |
+| **T3 技能自动采纳** | 未做 | ✅ `f95de9c43` |
+| **T6 `tier_mode` 档位总开关** | 未做 | ✅ `f95de9c43` |
+| **撤回窗口物理上限** | 已知约束 | ⚠️ 仍在：`MAX_BACKUPS_PER_FILE=5`，24h 内连续自动 apply >5 次早期备份被回收，撤回返回明确错误（不会错还原） |
+| **`test_approval.py` 1 条失败** | 预存技术债 | ⚠️ 仍在：AST 断言 `gateway/run.py` 有 `run_sync`/`set_current_session_key`，实测三个符号一个都不存在。已用 `git stash` 对照确认与本阶段改动无关 |
 
-**判断依据**：以上都是「还没做」，不是「做坏了」。唯一属于「做坏了」的 `auto_apply` 已在 §3 关闭。
+### T3 / T6 的两条判断依据（值得复用）
+
+**T3：采纳门槛必须高于提取门槛。** 提取是 0.8 / 5 次，采纳是 0.9 / 10 次。「值得记下来」和「可以直接用起来」不是一回事——前者错了只是多存一条噪音，后者错了会污染之后每一轮的提示。测试里把这条不变量锁死了，防止以后有人为了「让技能多用起来」把两个门槛调平。
+
+**T6：档位是偏好，可逆性是事实，偏好不该能覆盖事实。** `effective_tier(base, reversible=...)` 的 `reversible` 取自**动作本身的属性**：
+
+- `autonomous` 只把**可逆的** L2 降到 L1；改源码、`pip install` 永远不可逆 → 任何档位下都是 L2；
+- 刻意**不提供「全 L0」**：L1 对用户的成本只是一个角标，不是打断。降成 L0 省不下什么，却让自动变更重新隐形——那正是这轮工作要消灭的东西；
+- **T4 幅度护栏刻意不接 `effective_tier`**：>20% 的配置改动虽然技术上可逆，实际却要靠用户在 24h 内自己察觉记忆质量变差才会去撤，那种「可逆」是纸面上的。有一条测试直接扫源码，防止以后有人顺手把它接上。
+
+### 「原语做完 ≠ 功能做完」
+
+T6 一度处在「`effective_tier()` 写好了、零个调用点」的状态——那等于没做。所以三个接线点**每处都配了独立的接线测试**（`_adopt_tier` / `_config_apply_tier` / `_bg_activate` 的 `reversible` 传参），并且用真实 `config.yaml` 做了端到端验证，而不是只测纯函数。
+
+> 这条对乐高阶段直接适用：积木注册表写好了但没有任何运行时真正去查它，跟没写一样。**验收标准应当是「调用点存在且被测试覆盖」，不是「模块存在」。**
 
 ---
 
@@ -113,7 +177,8 @@ unset CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR CODEBUDDY_TOOL_CALL_ID \
       CODEBUDDY_SAFE_DELETE_BULK_GUARD CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD \
       CODEBUDDY_SAFE_DELETE_BIN_DIR CODEBUDDY_SAFE_DELETE_REPORT_PATH
 
-# 2. 构建（本次含前端改动：ApprovalDialog.vue 的「始终允许」按钮）
+# 2. 构建（本次含前端改动：ApprovalDialog 的「始终允许」按钮、
+#    EvolutionPanel 双区 + 撤回、Settings 安全页的档位选择器）
 bash build.sh
 
 # 3. 用新 DMG 覆盖重装 /Applications/Vermes.app
