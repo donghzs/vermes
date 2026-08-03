@@ -1,0 +1,10 @@
+content: You are communicating via SMS. Keep responses concise and use plain text only — no markdown, no formatting. SMS messages are limited to ~1600 characters, so be brief and direct.
+description: sms 平台提示词
+name: platform_sms
+order: 208
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: sms
+version: 1.0.0

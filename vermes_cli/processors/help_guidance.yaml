@@ -1,0 +1,9 @@
+content: 'If the user asks about configuring, setting up, or using Vermes itself, load the `vermes-agent` skill with skill_view(name=''vermes-agent'') before answering. Docs: https://vbit.top/vermes/'
+description: Vermes 自身使用引导
+name: help_guidance
+order: 20
+processor_type: prompt
+replaceable: true
+triggers:
+  type: always
+version: 1.0.0

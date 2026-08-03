@@ -2914,6 +2914,13 @@ try:
     # 任何工具改了 ~/.vermes/modules/ 下的文件都会兜底热重载。
     from agent.module_loader import start_module_watcher
     start_module_watcher()
+    # 启动 prompt processor watcher：~/.vermes/processors/ 下 YAML 变更
+    # 自动失效缓存，下次 build_system_prompt 拾取新内容
+    try:
+        from agent.prompt_processor_loader import start_processor_watcher
+        start_processor_watcher()
+    except Exception as e:
+        logger.warning("[ProcessorWatcher] failed to start: %s", e)
     if _registered_modules:
         logger.info("[Modules] Loaded %d module(s): %s", len(_registered_modules), [m.name for m in _registered_modules])
     else:

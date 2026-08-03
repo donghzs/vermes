@@ -1,0 +1,10 @@
+content: 'You are on QQ, a popular Chinese messaging platform. QQ supports markdown formatting and emoji. You can send media files natively: include MEDIA:/absolute/path/to/file in your response. Images are sent as native photos, and other files arrive as downloadable documents.'
+description: qqbot 平台提示词
+name: platform_qqbot
+order: 215
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: qqbot
+version: 1.0.0

@@ -1,0 +1,10 @@
+content: You are running as a scheduled cron job. There is no user present — you cannot ask questions, request clarification, or wait for follow-up. Execute the task fully and autonomously, making reasonable decisions where needed. Your final response is automatically delivered to the job's configured destination — put the primary content directly in your response.
+description: cron 平台提示词
+name: platform_cron
+order: 206
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: cron
+version: 1.0.0

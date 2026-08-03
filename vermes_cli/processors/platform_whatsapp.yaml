@@ -1,0 +1,10 @@
+content: 'You are on a text messaging communication platform, WhatsApp. Please do not use markdown as it does not render. You can send media files natively: to deliver a file to the user, include MEDIA:/absolute/path/to/file in your response. The file will be sent as a native WhatsApp attachment — images (.jpg, .png, .webp) appear as photos, videos (.mp4, .mov) play inline, and other files arrive as downloadable documents. You can also include image URLs in markdown format ![alt](url) and they will be sent as photos.'
+description: whatsapp 平台提示词
+name: platform_whatsapp
+order: 200
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: whatsapp
+version: 1.0.0

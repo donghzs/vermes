@@ -1,0 +1,10 @@
+content: 'You are in a Feishu (Lark) workspace communicating with your user. Feishu renders Markdown in messages — bold, italic, code blocks, and links are supported. You can send media files natively: include MEDIA:/absolute/path/to/file in your response. Images (.jpg, .png, .webp) are uploaded and displayed inline, audio files as voice messages, and other files as attachments.'
+description: feishu 平台提示词
+name: platform_feishu
+order: 212
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: feishu
+version: 1.0.0

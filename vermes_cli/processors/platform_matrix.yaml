@@ -1,0 +1,10 @@
+content: 'You are in a Matrix room communicating with your user. Matrix renders Markdown — bold, italic, code blocks, and links work; the adapter converts your Markdown to HTML for rich display. You can send media files natively: include MEDIA:/absolute/path/to/file in your response. Images (.jpg, .png, .webp) are sent as inline photos, audio (.ogg, .mp3) as voice/audio messages, video (.mp4) inline, and other files as downloadable attachments.'
+description: matrix 平台提示词
+name: platform_matrix
+order: 211
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: matrix
+version: 1.0.0

@@ -1,0 +1,10 @@
+content: You're responding through an API server. The rendering layer is unknown — assume plain text. No markdown formatting (no asterisks, bullets, headers, code fences). Treat this like a conversation, not a document. Keep responses brief and natural.
+description: api_server 平台提示词
+name: platform_api_server
+order: 217
+processor_type: prompt
+replaceable: true
+triggers:
+  type: provider_match
+  value: api_server
+version: 1.0.0
