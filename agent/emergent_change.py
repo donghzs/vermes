@@ -248,6 +248,62 @@ class EmergentChangePipeline:
             # Step 4: record raw_event
             event_id = self._record_change_event(proposal, committed=True, backup_path=backup_path)
 
+            # Step 4b: hot reload if target is in ~/.vermes/modules/ hot path
+            reload_state = None
+            needs_rebuild = False
+            try:
+                from agent.module_loader import is_module_hot_path, extract_module_name, reload_module_tools
+                if is_module_hot_path(proposal.target_path):
+                    mod_name = extract_module_name(proposal.target_path)
+                    if mod_name:
+                        reload_result = reload_module_tools(mod_name)
+                        reload_state = reload_result.get("state")
+                        if reload_result["ok"]:
+                            logger.info("Hot reload OK for %s: %s (%d tools)",
+                                        mod_name, reload_result["state"],
+                                        reload_result.get("tools_loaded", 0))
+                        else:
+                            # File written but reload failed — don't rollback,
+                            # next restart will pick it up normally
+                            logger.warning("Hot reload failed for %s: %s — file written, will load on next restart",
+                                           mod_name, reload_result.get("error"))
+                else:
+                    # Target is NOT in hot path — needs DMG rebuild to take effect
+                    needs_rebuild = True
+            except Exception as e:
+                logger.debug("Hot reload check failed: %s", e)
+
+            # Step 4c: record change_ledger notification
+            try:
+                from agent.change_ledger import record_change
+                tier_label = "L1" if reload_state else "L2"
+                if needs_rebuild:
+                    record_change(
+                        kind="self_modify",
+                        tier="L2",
+                        title=f"改写 {Path(proposal.target_path).name}",
+                        summary=f"⚠️ 此改动需重建 DMG 才生效：{proposal.description or proposal.target_path}",
+                        detail={"target_path": proposal.target_path, "needs_rebuild": True},
+                        target_path=proposal.target_path,
+                        bak_path=backup_path,
+                        ref_kind="raw_event",
+                        ref_id=event_id,
+                    )
+                elif reload_state:
+                    record_change(
+                        kind="self_modify",
+                        tier="L1",
+                        title=f"热加载 {Path(proposal.target_path).name}",
+                        summary=f"模块已热加载生效：{proposal.description or ''}",
+                        detail={"target_path": proposal.target_path, "reload_state": reload_state},
+                        target_path=proposal.target_path,
+                        bak_path=backup_path,
+                        ref_kind="raw_event",
+                        ref_id=event_id,
+                    )
+            except Exception:
+                logger.debug("change_ledger notification failed", exc_info=True)
+
             return ChangeResult(
                 committed=True,
                 target_path=proposal.target_path,
@@ -382,6 +438,21 @@ class EmergentChangePipeline:
 
             # Record rollback as raw_event
             self._record_rollback_event(target_path, initiator=initiator)
+
+            # Hot reload after rollback — symmetric with apply_change Step 4b
+            try:
+                from agent.module_loader import is_module_hot_path, extract_module_name, reload_module_tools
+                if is_module_hot_path(target_path):
+                    mod_name = extract_module_name(target_path)
+                    if mod_name:
+                        rr = reload_module_tools(mod_name)
+                        if rr["ok"]:
+                            logger.info("Hot reload after rollback OK for %s", mod_name)
+                        else:
+                            logger.warning("Hot reload after rollback failed for %s: %s", mod_name, rr.get("error"))
+            except Exception as e:
+                logger.debug("Hot reload after rollback failed: %s", e)
+
             return True
         except Exception as e:
             logger.error("Rollback failed: %s — %s", target_path, e)

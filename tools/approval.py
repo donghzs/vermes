@@ -642,6 +642,35 @@ def is_config_level_target(target_path: str) -> bool:
     return os.path.splitext(tp)[1].lower() in _CONFIG_LEVEL_SUFFIXES
 
 
+def classify_component_swap(target_path: str) -> str:
+    """Three-class classifier for self-modification targets.
+
+    Returns one of:
+      - ``"config_level"``: config.yaml / .yaml / .json etc — blast radius = scalar dial
+      - ``"module_hot_path"``: under ~/.vermes/modules/ — blast radius = single module
+      - ``"source_level"``: frozen package .py or unknown — blast radius = global
+
+    This supersedes the binary is_config_level_target for approval tiering.
+    ``module_hot_path`` gets L1 (auto-apply + retractable) because the blast
+    radius is contained to one hot-loadable module, unlike frozen-package
+    source edits which need a DMG rebuild.
+    """
+    if not target_path:
+        return "source_level"
+    # Check module hot path FIRST — a module.yaml inside ~/.vermes/modules/
+    # would also match _CONFIG_LEVEL_SUFFIXES, but its blast radius is module
+    # level, not config level.
+    try:
+        from agent.module_loader import is_module_hot_path
+        if is_module_hot_path(target_path):
+            return "module_hot_path"
+    except Exception:
+        pass
+    if is_config_level_target(target_path):
+        return "config_level"
+    return "source_level"
+
+
 def _source_modify_always_confirm() -> bool:
     """Whether source-level rewrites must be confirmed even under YOLO.
 
@@ -842,8 +871,20 @@ def approve_privileged_action(session_key: str, approval_data: dict, *, surface:
         # fail-safe behaviour of prompting.
         _cat = approval_data.get("pattern_key") or approval_data.get("category") or "self_modify"
         is_file_rewrite = str(_cat).startswith("self_modify") or bool(target_path)
-        source_level = is_file_rewrite and not is_config_level_target(target_path)
-        if not (source_level and _source_modify_always_confirm()):
+        # Three-class: config_level (L0/L1) | module_hot_path (L1) | source_level (L2)
+        component_class = classify_component_swap(target_path) if is_file_rewrite else "config_level"
+        if component_class == "module_hot_path":
+            # L1: module-level hot reload — auto-apply + retractable.
+            # NOT subject to _source_modify_always_confirm (that's for frozen .py).
+            approval_data["tier"] = "L1"
+            approval_data["yolo_exempt"] = True
+            approval_data["component_class"] = "module_hot_path"
+            return True
+        if component_class != "source_level":
+            # config_level — YOLO auto-approves
+            return True
+        # source_level — frozen package .py, needs human confirmation
+        if not _source_modify_always_confirm():
             return True
         # L2: source rewrite — prompt anyway, and say why the usual YOLO
         # bypass did not apply so the popup does not look like a regression.

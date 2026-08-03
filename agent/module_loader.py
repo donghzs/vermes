@@ -43,8 +43,16 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# 模块安装目录 — 延迟初始化，因为 get_vermes_home() 可能在配置加载后才可用
+# 模块安装目录 — 延迟初始化，因为 get_vermes_home() 可能在配置加载才可用
 _MODULES_DIR_CACHE = None
+
+# 模块级缓存：app 和 host_api 引用，供 reload_module_tools 使用
+_app_ref: Optional[Any] = None
+_host_api_ref: Optional["HostAPI"] = None
+
+# 模块 → 工具名集合映射（注册时实测快照，reload 时精确 deregister）
+# key = module_name, value = set of tool names registered by that module
+_module_tool_names: Dict[str, set] = {}
 
 def get_modules_dir() -> Path:
     """返回模块安装目录 (~/.vermes/modules/)"""
@@ -317,11 +325,15 @@ def register_modules(app, host_api: HostAPI):
             except Exception as e:
                 logger.error("Module %s: register_to failed: %s", manifest.name, e)
 
-        # 注册 Agent 工具
+        # 注册 Agent 工具（注册前后快照，记录该模块注册了哪些工具名）
+        _before = set(registry_snapshot_names())
         if manifest.tools_entry and hasattr(mod, "register_tools"):
             try:
                 mod.register_tools(host_api)
-                logger.info("Module %s: agent tools registered", manifest.name)
+                _after = set(registry_snapshot_names())
+                _module_tool_names[manifest.name] = _after - _before
+                logger.info("Module %s: agent tools registered (%d tools)",
+                            manifest.name, len(_module_tool_names.get(manifest.name, set())))
             except Exception as e:
                 logger.error("Module %s: register_tools failed: %s", manifest.name, e)
         elif manifest.tools_entry:
@@ -339,7 +351,10 @@ def register_modules(app, host_api: HostAPI):
                 spec2.loader.exec_module(tools_mod)
                 if hasattr(tools_mod, "register_tools"):
                     tools_mod.register_tools(host_api)
-                    logger.info("Module %s: agent tools registered (separate file)", manifest.name)
+                    _after = set(registry_snapshot_names())
+                    _module_tool_names[manifest.name] = _after - _before
+                    logger.info("Module %s: agent tools registered (%d tools, separate file)",
+                                manifest.name, len(_module_tool_names.get(manifest.name, set())))
 
         registered.append(manifest)
 
@@ -412,3 +427,154 @@ def register_module_api(app, host_api: HostAPI):
             return JSONResponse({"error": "not found"}, status_code=404)
         _mime, _ = mimetypes.guess_type(str(full))
         return Response(content=full.read_bytes(), media_type=_mime or "application/octet-stream")
+
+
+# ---------------------------------------------------------------------------
+# Hot reload support — Phase 0
+# ---------------------------------------------------------------------------
+
+def _set_app_ref(app, host_api: "HostAPI") -> None:
+    """启动时由 web_server.py 调用，缓存 app 和 host_api 引用。"""
+    global _app_ref, _host_api_ref
+    _app_ref = app
+    _host_api_ref = host_api
+
+
+def _get_host_api() -> "HostAPI":
+    """获取启动时缓存的 HostAPI 实例。"""
+    global _host_api_ref
+    if _host_api_ref is None:
+        _host_api_ref = HostAPI()
+    return _host_api_ref
+
+
+def registry_snapshot_names() -> list:
+    """返回当前 registry 中所有工具名的快照（用于注册前后 diff）。"""
+    try:
+        from tools.registry import registry
+        return [e.name for e in registry._snapshot_entries()]
+    except Exception:
+        return []
+
+
+def is_module_hot_path(target_path: str) -> bool:
+    """判断 target 是否在 ~/.vermes/modules/ 热路径下。"""
+    try:
+        modules_dir = get_modules_dir().resolve()
+        Path(target_path).resolve().relative_to(modules_dir)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def extract_module_name(target_path: str) -> str:
+    """从 ~/.vermes/modules/<name>/... 路径提取模块名。"""
+    try:
+        parts = Path(target_path).resolve().parts
+        for i, part in enumerate(parts):
+            if part == "modules" and i + 1 < len(parts):
+                return parts[i + 1]
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
+def reload_module_tools(name: str) -> dict:
+    """运行态重新加载单个模块的工具（deregister 旧 → load 新 → register 新）。
+
+    流程：
+    1. 从 _module_tool_names 取该模块注册的旧工具名集合
+    2. 逐个 deregister 旧工具
+    3. 清除 sys.modules 中的旧模块缓存
+    4. 重新 parse_manifest + load + register_tools
+
+    返回 {"ok": bool, "state": str, "error": str|None, "tools_loaded": int}
+    """
+    from tools.registry import registry
+
+    mod_dir = get_modules_dir() / name
+    if not mod_dir.exists():
+        return {"ok": False, "state": "not_found", "error": f"module {name} not found", "tools_loaded": 0}
+
+    manifest = parse_manifest(mod_dir)
+    if not manifest:
+        return {"ok": False, "state": "parse_failed", "error": "invalid module.yaml", "tools_loaded": 0}
+
+    # Step 1: deregister old tools (using recorded names, not toolset guessing)
+    old_names = _module_tool_names.pop(name, set())
+    deregistered = 0
+    for tool_name in old_names:
+        registry.deregister(tool_name)
+        deregistered += 1
+    if deregistered:
+        logger.info("Hot reload %s: deregistered %d old tools", name, deregistered)
+
+    # Step 2: clear sys.modules cache for this module
+    cleared = 0
+    for key in list(sys.modules.keys()):
+        if key.startswith(f"_vermes_module_{name}"):
+            del sys.modules[key]
+            cleared += 1
+    if cleared:
+        logger.debug("Hot reload %s: cleared %d sys.modules entries", name, cleared)
+
+    # Step 2b: invalidate importlib caches and clear __pycache__ for this module
+    # SourceFileLoader may use stale .pyc files otherwise
+    importlib.invalidate_caches()
+    for pycache in (mod_dir / "backend").rglob("__pycache__"):
+        for pyc in pycache.iterdir():
+            if name in pyc.name or "tools" in pyc.name or "blueprint" in pyc.name:
+                try:
+                    pyc.unlink()
+                except OSError:
+                    pass
+
+    # Step 3: re-load and register tools
+    host_api = _get_host_api()
+    before = set(registry_snapshot_names())
+
+    # Try loading via tools_entry (separate file) or backend_entry
+    tools_path = mod_dir / manifest.tools_entry if manifest.tools_entry else None
+    loaded = False
+
+    if tools_path and tools_path.exists():
+        tools_mod_name = f"_vermes_module_{name}_tools"
+        spec = importlib.util.spec_from_file_location(
+            tools_mod_name,
+            str(tools_path),
+            submodule_search_locations=[str(tools_path.parent)],
+        )
+        if spec and spec.loader:
+            tools_mod = importlib.util.module_from_spec(spec)
+            sys.modules[tools_mod_name] = tools_mod
+            try:
+                spec.loader.exec_module(tools_mod)
+                if hasattr(tools_mod, "register_tools"):
+                    tools_mod.register_tools(host_api)
+                    loaded = True
+                else:
+                    return {"ok": False, "state": "no_register_tools",
+                            "error": "tools.py has no register_tools function", "tools_loaded": 0}
+            except Exception as e:
+                del sys.modules[tools_mod_name]
+                logger.error("Hot reload %s: exec failed: %s", name, e)
+                return {"ok": False, "state": "exec_failed", "error": str(e), "tools_loaded": 0}
+    else:
+        # Fall back to backend_entry (module with register_tools on main module object)
+        mod = load_module_pyd(mod_dir, manifest)
+        if mod and hasattr(mod, "register_tools"):
+            try:
+                mod.register_tools(host_api)
+                loaded = True
+            except Exception as e:
+                return {"ok": False, "state": "register_failed", "error": str(e), "tools_loaded": 0}
+
+    if not loaded:
+        return {"ok": False, "state": "no_tools", "error": "no tools_entry or register_tools found", "tools_loaded": 0}
+
+    after = set(registry_snapshot_names())
+    new_names = after - before
+    _module_tool_names[name] = new_names
+
+    logger.info("Hot reload %s: registered %d new tools", name, len(new_names))
+    return {"ok": True, "state": "reloaded", "error": None, "tools_loaded": len(new_names)}

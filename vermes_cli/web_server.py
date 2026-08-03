@@ -2905,8 +2905,9 @@ blueprints.oauth.register_to(app)
 # ── 生态模块加载器（替代硬编码 ScholarForge 注册） ──
 # 必须在 mount_spa() 之前注册，否则 SPA catch-all 会拦截 /api/modules 路由
 try:
-    from agent.module_loader import register_modules, register_module_api, HostAPI
+    from agent.module_loader import register_modules, register_module_api, HostAPI, _set_app_ref
     _host_api = HostAPI()
+    _set_app_ref(app, _host_api)
     _registered_modules = register_modules(app, _host_api)
     register_module_api(app, _host_api)
     if _registered_modules:
