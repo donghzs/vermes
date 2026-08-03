@@ -35,6 +35,8 @@ import importlib.util
 import logging
 import sys
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
@@ -53,6 +55,20 @@ _host_api_ref: Optional["HostAPI"] = None
 # 模块 → 工具名集合映射（注册时实测快照，reload 时精确 deregister）
 # key = module_name, value = set of tool names registered by that module
 _module_tool_names: Dict[str, set] = {}
+
+# 热加载并发保护：reload_module_tools 是唯一改动 registry/sys.modules 的入口，
+# 所有调用方（apply_change 显式 reload、文件 watcher 兜底 reload）必须串行。
+_reload_lock = threading.Lock()
+
+# 文件 watcher 兜底：self_modify 已显式 reload 后写入时间戳，watcher 在窗口内
+# 忽略同模块变更，避免一次写入触发两次 reload（显式 + watcher）。
+_last_explicit_reload: Dict[str, float] = {}
+_WATCHER_DEDUP_WINDOW = 2.0
+
+# watcher 后台线程句柄（daemon），由 start_module_watcher() 启动
+_module_watcher: Optional[threading.Thread] = None
+# watcher 停止信号（模块级，便于测试干净关停 + 重启覆盖）
+_watcher_stop = threading.Event()
 
 def get_modules_dir() -> Path:
     """返回模块安装目录 (~/.vermes/modules/)"""
@@ -490,91 +506,184 @@ def reload_module_tools(name: str) -> dict:
 
     返回 {"ok": bool, "state": str, "error": str|None, "tools_loaded": int}
     """
-    from tools.registry import registry
+    with _reload_lock:
+        from tools.registry import registry
 
-    mod_dir = get_modules_dir() / name
-    if not mod_dir.exists():
-        return {"ok": False, "state": "not_found", "error": f"module {name} not found", "tools_loaded": 0}
+        mod_dir = get_modules_dir() / name
+        if not mod_dir.exists():
+            return {"ok": False, "state": "not_found", "error": f"module {name} not found", "tools_loaded": 0}
 
-    manifest = parse_manifest(mod_dir)
-    if not manifest:
-        return {"ok": False, "state": "parse_failed", "error": "invalid module.yaml", "tools_loaded": 0}
+        manifest = parse_manifest(mod_dir)
+        if not manifest:
+            return {"ok": False, "state": "parse_failed", "error": "invalid module.yaml", "tools_loaded": 0}
 
-    # Step 1: deregister old tools (using recorded names, not toolset guessing)
-    old_names = _module_tool_names.pop(name, set())
-    deregistered = 0
-    for tool_name in old_names:
-        registry.deregister(tool_name)
-        deregistered += 1
-    if deregistered:
-        logger.info("Hot reload %s: deregistered %d old tools", name, deregistered)
+        # Step 1: deregister old tools (using recorded names, not toolset guessing)
+        old_names = _module_tool_names.pop(name, set())
+        deregistered = 0
+        for tool_name in old_names:
+            registry.deregister(tool_name)
+            deregistered += 1
+        if deregistered:
+            logger.info("Hot reload %s: deregistered %d old tools", name, deregistered)
 
-    # Step 2: clear sys.modules cache for this module
-    cleared = 0
-    for key in list(sys.modules.keys()):
-        if key.startswith(f"_vermes_module_{name}"):
-            del sys.modules[key]
-            cleared += 1
-    if cleared:
-        logger.debug("Hot reload %s: cleared %d sys.modules entries", name, cleared)
+        # Step 2: clear sys.modules cache for this module
+        cleared = 0
+        for key in list(sys.modules.keys()):
+            if key.startswith(f"_vermes_module_{name}"):
+                del sys.modules[key]
+                cleared += 1
+        if cleared:
+            logger.debug("Hot reload %s: cleared %d sys.modules entries", name, cleared)
 
-    # Step 2b: invalidate importlib caches and clear __pycache__ for this module
-    # SourceFileLoader may use stale .pyc files otherwise
-    importlib.invalidate_caches()
-    for pycache in (mod_dir / "backend").rglob("__pycache__"):
-        for pyc in pycache.iterdir():
-            if name in pyc.name or "tools" in pyc.name or "blueprint" in pyc.name:
+        # Step 2b: invalidate importlib caches and clear __pycache__ for this module
+        # SourceFileLoader may use stale .pyc files otherwise
+        importlib.invalidate_caches()
+        for pycache in (mod_dir / "backend").rglob("__pycache__"):
+            for pyc in pycache.iterdir():
+                if name in pyc.name or "tools" in pyc.name or "blueprint" in pyc.name:
+                    try:
+                        pyc.unlink()
+                    except OSError:
+                        pass
+
+        # Step 3: re-load and register tools
+        host_api = _get_host_api()
+        before = set(registry_snapshot_names())
+
+        # Try loading via tools_entry (separate file) or backend_entry
+        tools_path = mod_dir / manifest.tools_entry if manifest.tools_entry else None
+        loaded = False
+
+        if tools_path and tools_path.exists():
+            tools_mod_name = f"_vermes_module_{name}_tools"
+            spec = importlib.util.spec_from_file_location(
+                tools_mod_name,
+                str(tools_path),
+                submodule_search_locations=[str(tools_path.parent)],
+            )
+            if spec and spec.loader:
+                tools_mod = importlib.util.module_from_spec(spec)
+                sys.modules[tools_mod_name] = tools_mod
                 try:
-                    pyc.unlink()
-                except OSError:
-                    pass
-
-    # Step 3: re-load and register tools
-    host_api = _get_host_api()
-    before = set(registry_snapshot_names())
-
-    # Try loading via tools_entry (separate file) or backend_entry
-    tools_path = mod_dir / manifest.tools_entry if manifest.tools_entry else None
-    loaded = False
-
-    if tools_path and tools_path.exists():
-        tools_mod_name = f"_vermes_module_{name}_tools"
-        spec = importlib.util.spec_from_file_location(
-            tools_mod_name,
-            str(tools_path),
-            submodule_search_locations=[str(tools_path.parent)],
-        )
-        if spec and spec.loader:
-            tools_mod = importlib.util.module_from_spec(spec)
-            sys.modules[tools_mod_name] = tools_mod
-            try:
-                spec.loader.exec_module(tools_mod)
-                if hasattr(tools_mod, "register_tools"):
-                    tools_mod.register_tools(host_api)
+                    spec.loader.exec_module(tools_mod)
+                    if hasattr(tools_mod, "register_tools"):
+                        tools_mod.register_tools(host_api)
+                        loaded = True
+                    else:
+                        return {"ok": False, "state": "no_register_tools",
+                                "error": "tools.py has no register_tools function", "tools_loaded": 0}
+                except Exception as e:
+                    del sys.modules[tools_mod_name]
+                    logger.error("Hot reload %s: exec failed: %s", name, e)
+                    return {"ok": False, "state": "exec_failed", "error": str(e), "tools_loaded": 0}
+        else:
+            # Fall back to backend_entry (module with register_tools on main module object)
+            mod = load_module_pyd(mod_dir, manifest)
+            if mod and hasattr(mod, "register_tools"):
+                try:
+                    mod.register_tools(host_api)
                     loaded = True
-                else:
-                    return {"ok": False, "state": "no_register_tools",
-                            "error": "tools.py has no register_tools function", "tools_loaded": 0}
-            except Exception as e:
-                del sys.modules[tools_mod_name]
-                logger.error("Hot reload %s: exec failed: %s", name, e)
-                return {"ok": False, "state": "exec_failed", "error": str(e), "tools_loaded": 0}
-    else:
-        # Fall back to backend_entry (module with register_tools on main module object)
-        mod = load_module_pyd(mod_dir, manifest)
-        if mod and hasattr(mod, "register_tools"):
+                except Exception as e:
+                    return {"ok": False, "state": "register_failed", "error": str(e), "tools_loaded": 0}
+
+        if not loaded:
+            return {"ok": False, "state": "no_tools", "error": "no tools_entry or register_tools found", "tools_loaded": 0}
+
+        after = set(registry_snapshot_names())
+        new_names = after - before
+        _module_tool_names[name] = new_names
+
+        logger.info("Hot reload %s: registered %d new tools", name, len(new_names))
+        return {"ok": True, "state": "reloaded", "error": None, "tools_loaded": len(new_names)}
+
+
+def mark_explicit_reload(name: str) -> None:
+    """记录一次由 self_modify/apply_change 显式触发的 reload 时间戳。
+
+    文件 watcher 在窗口内看到同模块变更时会忽略，避免一次写入被
+    reload 两次（显式 + watcher）。patch/write_file 等绕过 self_modify
+    的写入不会调用本函数，因此 watcher 会作为安全网兜底触发 reload。
+    """
+    _last_explicit_reload[name] = time.time()
+
+
+def start_module_watcher(poll_interval: float = 0.5, debounce: float = 0.3) -> None:
+    """启动后台轮询，监听 ~/.vermes/modules/ 下 .py/.yaml 变更并热重载对应模块。
+
+    这是「热路径文件被绕过 self_modify 直接写入」（如 patch/write_file 工具）
+    时的安全网：那些写入落盘但不调用 reload_module_tools，没有 watcher 就只能
+    等重启才生效。watcher 与 apply_change 的显式 reload 通过 _reload_lock 串行、
+    通过 _last_explicit_reload 去重，互不打架。
+
+    采用 dependency-free 轮询（不引 watchdog），避免冻结包新增第三方依赖。
+    """
+    global _module_watcher
+    if _module_watcher is not None and _module_watcher.is_alive():
+        return
+
+    _watcher_stop.clear()
+    mtimes: Dict[str, float] = {}          # 文件路径 -> 上次已知 mtime
+    pending: Dict[str, float] = {}         # 模块名 -> 首次变更时间（用于 debounce）
+
+    def _poll() -> None:
+        while not _watcher_stop.is_set():
             try:
-                mod.register_tools(host_api)
-                loaded = True
+                modules_dir = get_modules_dir()
+                if modules_dir.exists():
+                    for p in modules_dir.rglob("*"):
+                        if not p.is_file():
+                            continue
+                        if p.suffix not in (".py", ".yaml", ".yml"):
+                            continue
+                        try:
+                            mt = p.stat().st_mtime
+                        except OSError:
+                            continue
+                        key = str(p)
+                        prev = mtimes.get(key)
+                        if prev is None:
+                            # 首次见到：只记录，不触发（避免启动即误 reload）
+                            mtimes[key] = mt
+                            continue
+                        if mt != prev:
+                            mtimes[key] = mt
+                            mod = extract_module_name(key)
+                            if mod:
+                                pending[mod] = time.time()
+                    # 处理达到 debounce 阈值的待 reload 模块
+                    now = time.time()
+                    for mod in list(pending.keys()):
+                        if now - pending[mod] < debounce:
+                            continue
+                        del pending[mod]
+                        # 去重：显式 reload 刚做过则跳过
+                        if now - _last_explicit_reload.get(mod, 0.0) < _WATCHER_DEDUP_WINDOW:
+                            continue
+                        try:
+                            res = reload_module_tools(mod)
+                        except Exception as e:  # 单次失败不应拖垮轮询线程
+                            logger.error("[ModuleWatcher] reload %s error: %s", mod, e)
+                            continue
+                        if res.get("ok"):
+                            logger.info("[ModuleWatcher] hot-reloaded %s (tools=%d)", mod, res.get("tools_loaded"))
+                        else:
+                            logger.warning("[ModuleWatcher] reload %s skipped: %s", mod, res.get("error"))
             except Exception as e:
-                return {"ok": False, "state": "register_failed", "error": str(e), "tools_loaded": 0}
+                logger.debug("[ModuleWatcher] poll error: %s", e)
+            _watcher_stop.wait(poll_interval)
 
-    if not loaded:
-        return {"ok": False, "state": "no_tools", "error": "no tools_entry or register_tools found", "tools_loaded": 0}
+    t = threading.Thread(target=_poll, name="module-watcher", daemon=True)
+    t.start()
+    _module_watcher = t
+    logger.info("[ModuleWatcher] started, watching %s (poll=%ss debounce=%ss)",
+                get_modules_dir(), poll_interval, debounce)
 
-    after = set(registry_snapshot_names())
-    new_names = after - before
-    _module_tool_names[name] = new_names
 
-    logger.info("Hot reload %s: registered %d new tools", name, len(new_names))
-    return {"ok": True, "state": "reloaded", "error": None, "tools_loaded": len(new_names)}
+def stop_module_watcher() -> None:
+    """停止后台文件 watcher（主要用于测试与干净关停）。"""
+    global _module_watcher
+    _watcher_stop.set()
+    if _module_watcher is not None:
+        _module_watcher.join(timeout=2.0)
+        _module_watcher = None
+

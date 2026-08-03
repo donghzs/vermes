@@ -2910,6 +2910,10 @@ try:
     _set_app_ref(app, _host_api)
     _registered_modules = register_modules(app, _host_api)
     register_module_api(app, _host_api)
+    # 启动模块文件 watcher：作为 patch/write_file 等绕过 self_modify 的安全网，
+    # 任何工具改了 ~/.vermes/modules/ 下的文件都会兜底热重载。
+    from agent.module_loader import start_module_watcher
+    start_module_watcher()
     if _registered_modules:
         logger.info("[Modules] Loaded %d module(s): %s", len(_registered_modules), [m.name for m in _registered_modules])
     else:

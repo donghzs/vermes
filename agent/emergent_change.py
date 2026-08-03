@@ -252,11 +252,12 @@ class EmergentChangePipeline:
             reload_state = None
             needs_rebuild = False
             try:
-                from agent.module_loader import is_module_hot_path, extract_module_name, reload_module_tools
+                from agent.module_loader import is_module_hot_path, extract_module_name, reload_module_tools, mark_explicit_reload
                 if is_module_hot_path(proposal.target_path):
                     mod_name = extract_module_name(proposal.target_path)
                     if mod_name:
                         reload_result = reload_module_tools(mod_name)
+                        mark_explicit_reload(mod_name)  # 防止文件 watcher 二次 reload
                         reload_state = reload_result.get("state")
                         if reload_result["ok"]:
                             logger.info("Hot reload OK for %s: %s (%d tools)",
@@ -441,11 +442,12 @@ class EmergentChangePipeline:
 
             # Hot reload after rollback — symmetric with apply_change Step 4b
             try:
-                from agent.module_loader import is_module_hot_path, extract_module_name, reload_module_tools
+                from agent.module_loader import is_module_hot_path, extract_module_name, reload_module_tools, mark_explicit_reload
                 if is_module_hot_path(target_path):
                     mod_name = extract_module_name(target_path)
                     if mod_name:
                         rr = reload_module_tools(mod_name)
+                        mark_explicit_reload(mod_name)  # 防止文件 watcher 二次 reload
                         if rr["ok"]:
                             logger.info("Hot reload after rollback OK for %s", mod_name)
                         else:
