@@ -2260,9 +2260,74 @@ async def evolution_proposal_retract(request: Request, proposal_id: int):
         )
         if ok:
             update_proposal_status(proposal_id, "retracted")
+            # 用户已经处理过这条变更，别再让它顶着红点。
+            try:
+                from agent.change_ledger import list_changes, mark_read, REF_PROPOSAL
+                _ids = [c["id"] for c in list_changes(limit=200)
+                        if c.get("ref_kind") == REF_PROPOSAL
+                        and c.get("ref_id") == proposal_id]
+                if _ids:
+                    mark_read(_ids)
+            except Exception as e:
+                logger.debug("[Changes] mark read after retract failed: %s", e)
             return {"ok": True, "retracted": True, "proposal_id": proposal_id,
                     "restored_from": backup_path}
         return {"ok": False, "error": "rollback failed"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ── T5 变更通知中心 ──────────────────────────────────────────────────
+# L1 的「通知」这一半。没有这组接口，自动执行的变更只写日志，
+# 用户不主动打开面板就完全不知情 —— L1 事实上等于 L0。
+
+async def changes_list(request: Request):
+    """List recent agent-initiated changes.
+
+    GET /api/changes?unread=1&limit=50&kind=&tier=
+    """
+    try:
+        from agent.change_ledger import list_changes, unread_count
+        q = request.query_params
+        unread_only = q.get("unread", "").lower() in ("1", "true", "yes")
+        try:
+            limit = min(int(q.get("limit", 50)), 200)
+        except Exception:
+            limit = 50
+        rows = list_changes(
+            unread_only=unread_only,
+            limit=limit,
+            kind=q.get("kind") or None,
+            tier=q.get("tier") or None,
+        )
+        return {"ok": True, "changes": rows, "count": len(rows),
+                "unread": unread_count()}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "changes": [], "unread": 0}
+
+
+async def changes_unread_count():
+    """GET /api/changes/unread_count — drives the sidebar badge."""
+    try:
+        from agent.change_ledger import unread_count
+        return {"ok": True, "unread": unread_count()}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "unread": 0}
+
+
+async def changes_mark_read(request: Request):
+    """POST /api/changes/read  body: {"ids": [1,2]} or {"all": true}"""
+    try:
+        from agent.change_ledger import mark_read, mark_all_read, unread_count
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if body.get("all"):
+            n = mark_all_read()
+        else:
+            n = mark_read(body.get("ids") or [])
+        return {"ok": True, "marked": n, "unread": unread_count()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -2868,6 +2933,24 @@ def register_to(app):
         evolution_proposal_retract,
         methods=["POST"],
         name="evolution_proposal_retract",
+    )
+    app.add_api_route(
+        "/api/changes",
+        changes_list,
+        methods=["GET"],
+        name="changes_list",
+    )
+    app.add_api_route(
+        "/api/changes/unread_count",
+        changes_unread_count,
+        methods=["GET"],
+        name="changes_unread_count",
+    )
+    app.add_api_route(
+        "/api/changes/read",
+        changes_mark_read,
+        methods=["POST"],
+        name="changes_mark_read",
     )
     app.add_api_route(
         "/api/emergence/status",

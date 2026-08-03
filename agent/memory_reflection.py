@@ -592,7 +592,8 @@ def _auto_apply_proposal(cand: dict, critic_verdict: dict,
             # 后一次变更，且 _cleanup_old_backups 只保留 5 份。
             _deadline = (datetime.now(timezone.utc)
                          + timedelta(hours=L1_RETRACT_WINDOW_H)).isoformat()
-            record_proposal(
+            _bak = getattr(result, "backup_path", None)
+            _pid = record_proposal(
                 phase="A→B→C→D (auto)",
                 task_type=cand.get("task_type", ""),
                 title=cand.get("title", ""),
@@ -603,10 +604,33 @@ def _auto_apply_proposal(cand: dict, critic_verdict: dict,
                 critic_verdict=critic_verdict,
                 deterministic_result=gate_result,
                 status="auto_applied",
-                bak_path=getattr(result, "backup_path", None),
+                bak_path=_bak,
                 retract_deadline=_deadline,
                 applied_by="agent",
             )
+            # T5：通知用户。L1 = 静默执行 + **告知** + 可撤回；少了告知这一半，
+            # 自动 apply 就是在背着用户改他的 config —— 记账失败不回滚变更
+            # （账本是旁路），但 record_change 内部会 warning。
+            try:
+                from agent.change_ledger import (
+                    record_change, KIND_CONFIG_AUTO_APPLY, TIER_L1, REF_PROPOSAL,
+                )
+                record_change(
+                    kind=KIND_CONFIG_AUTO_APPLY,
+                    tier=TIER_L1,
+                    title=cand.get("title", "") or "自动调整配置",
+                    summary=cand.get("rationale", ""),
+                    detail={"config_patch": config_patch,
+                            "expected_effect": cand.get("expected_effect", ""),
+                            "critic": critic_verdict},
+                    target_path=config_path,
+                    bak_path=_bak,
+                    retract_deadline=_deadline,
+                    ref_kind=REF_PROPOSAL,
+                    ref_id=_pid,
+                )
+            except Exception as e:
+                logger.warning("[AEGIS] change ledger notify failed: %s", e)
             return True
         return False
     except Exception as e:

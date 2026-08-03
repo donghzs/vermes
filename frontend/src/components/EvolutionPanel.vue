@@ -15,6 +15,9 @@ const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详�
 const emergenceData = ref(null)
 const skillsData = ref(null)
 const selfModifyHistory = ref([])
+const changes = ref([])          // T5 变更流水（L1 通知）
+const unreadCount = ref(0)
+const proposals = ref([])        // 双闸门没过 / 幅度过大 → 待人工审
 let _backendDownToastShown = false
 let _roundInProgress = false // 防雪崩：上一轮未完成不发起下一轮
 
@@ -129,6 +132,121 @@ async function fetchSelfModifyHistory() {
   }
 }
 
+// ── 审批分层：已自动调整（L1，可撤回）+ 待审提案（L2）──────────────
+// L1 的语义是「静默执行 + 通知 + 可撤回」。下面这两个区就是「通知」和
+// 「可撤回」的落点 —— 没有它们，自动 apply 就是在背着用户改配置。
+
+async function fetchChanges() {
+  try {
+    const r = await _fetchWithTimeout('/api/changes?limit=20')
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const data = await r.json()
+    changes.value = data.changes || []
+    unreadCount.value = data.unread || 0
+  } catch (e) {
+    _fail('变更记录', fetchChanges, e.message)
+  }
+}
+
+async function fetchProposals() {
+  try {
+    const r = await _fetchWithTimeout('/api/evolution/proposals?status=proposed')
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const data = await r.json()
+    proposals.value = data.proposals || []
+  } catch (e) {
+    _fail('待审提案', fetchProposals, e.message)
+  }
+}
+
+async function markChangesRead() {
+  try {
+    await _fetchWithTimeout('/api/changes/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true }),
+    })
+    unreadCount.value = 0
+    changes.value = changes.value.map(c => ({ ...c, unread: false }))
+  } catch (e) {
+    _fail('标记已读', markChangesRead, e.message)
+  }
+}
+
+async function retractChange(c) {
+  if (!await confirm({
+    title: '撤回自动调整',
+    message: `${c.title}\n\n将把配置还原到这次调整之前的快照。`,
+    confirmText: '撤回',
+    danger: true,
+  })) return
+  try {
+    const r = await _fetchWithTimeout(`/api/evolution/proposals/${c.ref_id}/retract`, { method: 'POST' })
+    const data = await r.json()
+    if (data.ok) {
+      await Promise.allSettled([fetchChanges(), fetchProposals()])
+      toast.success('已撤回，配置已还原')
+    } else {
+      throw new Error(data.error || '未知错误')
+    }
+  } catch (e) {
+    _fail('撤回变更', () => retractChange(c), e.message)
+  }
+}
+
+async function applyProposal(p) {
+  if (!await confirm({
+    title: '应用提案',
+    message: `${p.title}\n\n${p.rationale || ''}\n\n将写入 config.yaml（带备份，可回滚）。`,
+    confirmText: '应用',
+  })) return
+  try {
+    const r = await _fetchWithTimeout(`/api/evolution/proposals/${p.id}/apply`, { method: 'POST' }, 15000)
+    const data = await r.json()
+    if (data.ok && data.applied) {
+      await Promise.allSettled([fetchProposals(), fetchChanges()])
+      toast.success('提案已应用')
+    } else if (data.ok && !data.applied) {
+      // 审批被拒/超时不是错误，是用户的选择 —— 别报红。
+      toast.info(data.reason === 'denied_or_timeout' ? '已取消' : (data.error || '未应用'))
+    } else {
+      throw new Error(data.error || '未知错误')
+    }
+  } catch (e) {
+    _fail('应用提案', () => applyProposal(p), e.message)
+  }
+}
+
+async function rejectProposal(p) {
+  try {
+    const r = await _fetchWithTimeout(`/api/evolution/proposals/${p.id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'user_rejected' }),
+    })
+    const data = await r.json()
+    if (data.ok) {
+      await fetchProposals()
+      toast.success('已拒绝')
+    } else {
+      throw new Error(data.error || '未知错误')
+    }
+  } catch (e) {
+    _fail('拒绝提案', () => rejectProposal(p), e.message)
+  }
+}
+
+// 只展示还能撤回的那些：备份被回收或过了 24h 窗口的，后端已把
+// retractable 置 false，这里据此把按钮换成灰字说明，避免用户点进一个错误。
+const autoApplied = computed(() =>
+  (changes.value || []).filter(c => c.kind === 'config_auto_apply' && c.ref_status !== 'retracted')
+)
+
+function changeTime(iso) {
+  if (!iso) return ''
+  return String(iso).slice(5, 16).replace('T', ' ')
+}
+
 async function rollbackChange(target, backup) {
   if (!await confirm({ title: '回滚自我改写', message: `${target}\n\n将恢复备份、撤销该次改写。此操作不可自动恢复。`, confirmText: '回滚', danger: true })) {
     return
@@ -184,6 +302,8 @@ async function _refreshAll() {
       fetchEmergence(),
       fetchSkills(),
       fetchSelfModifyHistory(),
+      fetchChanges(),
+      fetchProposals(),
     ])
   } finally {
     _roundInProgress = false
@@ -278,6 +398,10 @@ const smTypeLabel = (t) => {
   <div v-if="!loading && status?.active && collapsed" class="evolution-mini" @click="collapsed = false">
     <span class="evo-mini-icon">🧠</span>
     <span class="evo-mini-text">{{ status.total_outcomes || 0 }} 次 · {{ status.success_rate || 0 }}%</span>
+    <!-- L1 的角标：面板折叠时唯一的「有事发生」信号。没有它，自动调整
+         就只存在于日志里，用户永远不会主动去看。 -->
+    <span v-if="unreadCount > 0" class="evo-mini-badge" :title="`${unreadCount} 项自动调整待查看`">{{ unreadCount }}</span>
+    <span v-else-if="proposals.length" class="evo-mini-badge evo-mini-badge--pending" :title="`${proposals.length} 条提案待审`">{{ proposals.length }}</span>
     <span class="evo-mini-expand">▶</span>
   </div>
   <!-- 完整面板模式（点击展开） -->
@@ -307,6 +431,49 @@ const smTypeLabel = (t) => {
            :style="{ width: Math.min(100, status.success_rate || 0) + '%' }">
       </div>
     </div>
+
+    <!-- ── 已自动调整（L1：静默执行 + 通知 + 24h 可撤回）──────────── -->
+    <!-- 这一区不藏在 expanded 里：需要用户行动的东西必须一眼可见。 -->
+    <div v-if="autoApplied.length" class="evo-changes">
+      <div class="evo-changes-head">
+        <span class="evo-key">
+          已自动调整 {{ autoApplied.length }} 项
+          <span class="evo-changes-hint">· 24h 内可撤回</span>
+        </span>
+        <button v-if="unreadCount > 0" class="evo-btn-read" @click="markChangesRead">全部已读</button>
+      </div>
+      <div v-for="c in autoApplied" :key="c.id" class="evo-change-card" :class="{ 'evo-change--unread': c.unread }">
+        <div class="evo-change-main">
+          <div class="evo-change-title">
+            <span v-if="c.unread" class="evo-dot" title="未读"></span>{{ c.title }}
+          </div>
+          <div v-if="c.summary" class="evo-change-desc">{{ c.summary }}</div>
+        </div>
+        <button v-if="c.retractable" class="evo-btn-retract" @click="retractChange(c)">撤回</button>
+        <span v-else class="evo-change-expired" title="超过 24h 或备份已被回收">不可撤回</span>
+        <span class="evo-sm-time">{{ changeTime(c.created) }}</span>
+      </div>
+    </div>
+
+    <!-- ── 待审提案（L2：闸门没过 / 幅度 >20%）───────────────────── -->
+    <div v-if="proposals.length" class="evo-changes evo-proposals">
+      <div class="evo-changes-head">
+        <span class="evo-key">待审提案 {{ proposals.length }} 条</span>
+      </div>
+      <div v-for="p in proposals" :key="p.id" class="evo-change-card">
+        <div class="evo-change-main">
+          <div class="evo-change-title">{{ p.title }}</div>
+          <div v-if="p.rationale" class="evo-change-desc">{{ p.rationale }}</div>
+          <!-- 说清楚它为什么需要人来看，而不是只丢一个「待审」标签 -->
+          <div v-if="p.deterministic_result?.tier_reason" class="evo-change-why">
+            ⚠ {{ p.deterministic_result.tier_reason }}
+          </div>
+        </div>
+        <button class="evo-btn-confirm" @click="applyProposal(p)">应用</button>
+        <button class="evo-btn-reject" @click="rejectProposal(p)">拒绝</button>
+      </div>
+    </div>
+
     <div v-if="expanded" class="evo-detail">
       <div v-if="status.current_emotion" class="evo-row">
         <span class="evo-key">当前状态</span>
@@ -971,5 +1138,121 @@ const smTypeLabel = (t) => {
 }
 .evo-btn-retract:hover {
   opacity: 0.85;
+}
+
+/* ── T5 变更通知中心：L1 已自动调整 + L2 待审提案 ─────────────────── */
+/* 折叠态角标：面板收起时唯一的「有事发生」信号 */
+.evo-mini-badge {
+  flex-shrink: 0;
+  min-width: 0.875rem;
+  padding: 0 0.25rem;
+  border-radius: 0.5rem;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.5625rem;
+  line-height: 0.875rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.evo-mini-badge--pending {
+  background: rgba(107, 114, 128, 0.75);
+}
+.dark .evo-mini-badge--pending {
+  background: rgba(156, 163, 175, 0.6);
+}
+
+.evo-changes {
+  margin-top: 0.5rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid rgba(229, 231, 235, 0.3);
+}
+.dark .evo-changes { border-top-color: rgba(55, 65, 81, 0.3); }
+.evo-changes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  margin-bottom: 0.25rem;
+}
+.evo-changes-hint {
+  font-weight: 400;
+  color: #9ca3af;
+  font-size: 0.5625rem;
+}
+.evo-btn-read {
+  flex-shrink: 0;
+  font-size: 0.5625rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(156, 163, 175, 0.35);
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.dark .evo-btn-read { color: #9ca3af; }
+.evo-btn-read:hover { opacity: 0.75; }
+
+.evo-change-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.625rem;
+}
+.evo-change--unread {
+  background: rgba(245, 158, 11, 0.06);
+  border-left: 2px solid rgba(245, 158, 11, 0.35);
+}
+.dark .evo-change--unread {
+  background: rgba(245, 158, 11, 0.1);
+  border-left-color: rgba(245, 158, 11, 0.5);
+}
+.evo-change-main { flex: 1; min-width: 0; }
+.evo-change-title {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dark .evo-change-title { color: #d1d5db; }
+.evo-change-desc {
+  color: #9ca3af;
+  font-size: 0.5625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evo-change-why {
+  color: #d97706;
+  font-size: 0.5625rem;
+  margin-top: 0.0625rem;
+}
+.dark .evo-change-why { color: #f59e0b; }
+.evo-dot {
+  flex-shrink: 0;
+  width: 0.3125rem;
+  height: 0.3125rem;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+.evo-change-expired {
+  flex-shrink: 0;
+  font-size: 0.5625rem;
+  color: #9ca3af;
+  padding: 0.0625rem 0.375rem;
+}
+.evo-proposals .evo-change-card {
+  background: rgba(59, 130, 246, 0.05);
+  border-left: 2px solid rgba(59, 130, 246, 0.3);
+  margin-bottom: 0.125rem;
+}
+.dark .evo-proposals .evo-change-card {
+  background: rgba(59, 130, 246, 0.1);
+  border-left-color: rgba(59, 130, 246, 0.5);
 }
 </style>
