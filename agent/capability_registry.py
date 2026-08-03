@@ -309,6 +309,53 @@ def check_all_capabilities() -> CapabilityReport:
     return report
 
 
+def classify_activation_tier(name: str) -> dict:
+    """T2 — how much human involvement does activating *name* deserve?
+
+    Judged on the same three objective axes used everywhere else in the
+    approval tiering (reversibility / blast radius / magnitude), not on a
+    hand-maintained allowlist:
+
+    - **Needs ``pip install``** (``built_in=False`` and the dependency is not
+      importable yet) → **L2**.  It mutates the *Python environment*, which
+      lives outside the agent's own home directory, survives a restart and is
+      not something we should silently ``pip uninstall`` later.  That is the
+      only genuinely irreversible half of capability activation.
+    - **Everything else** (built-in pure-Python capabilities, or a dependency
+      that is already installed) → **L1**.  Activation then only creates
+      tables/collections under ``~/.vermes`` and flips an *in-process* status
+      flag — ``_CAPABILITIES`` is never persisted, so a restart already
+      undoes it.  Blocking the user for that is the "安全的老在问" failure
+      mode this tiering exists to remove.
+
+    Returns ``{"tier": "L1"|"L2", "reason": str, "needs_install": bool}``.
+    Unknown capability → L2, because an unrecognised name is exactly when we
+    should not be guessing (fail-closed).
+    """
+    cap = get_capability(name)
+    if not cap:
+        return {"tier": "L2", "reason": f"未知能力 {name}，按最高等级处理",
+                "needs_install": False}
+
+    if cap.built_in:
+        return {"tier": "L1", "reason": "纯 Python 内置能力，只建本地表，重启即复位",
+                "needs_install": False}
+
+    # Ask the checker rather than trusting a possibly stale cached status:
+    # the package may have been installed by something else since last check.
+    try:
+        installed, _detail = cap.check_fn()
+    except Exception:
+        installed = cap.status in (CapabilityStatus.INSTALLED, CapabilityStatus.ACTIVE)
+
+    if installed:
+        return {"tier": "L1", "reason": "依赖已安装，激活只是初始化本地存储",
+                "needs_install": False}
+
+    return {"tier": "L2", "reason": "需要 pip install 安装依赖，会改动 Python 环境",
+            "needs_install": True}
+
+
 def install_capability(name: str) -> Tuple[bool, str]:
     """Install a capability's dependencies.
 

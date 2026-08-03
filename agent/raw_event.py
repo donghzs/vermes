@@ -388,58 +388,100 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                         if d.action == "activate":
                             import threading
                             def _bg_activate(cap_name=d.capability_name):
-                                """Activate a capability, but only after the
-                                user confirms via the Gateway/desktop approval
-                                flow. This is a privileged self-evolution action
-                                (may run ``pip install``), so it must NOT be
-                                applied automatically — consistent with the
-                                human-in-the-loop gate used by ``self_modify``.
+                                """Activate a capability at the tier it deserves (T2).
+
+                                Previously *every* activation blocked on a
+                                Gateway popup, with no remembered approval —
+                                the "安全的老在问" half of the inverted
+                                tiering.  Now the decision is made from the
+                                capability itself:
+
+                                - **L2** (``pip install`` needed): still a
+                                  popup, but via ``approve_privileged_action``
+                                  so an answer is remembered for the whole
+                                  ``capability_activate`` scope (T1b), instead
+                                  of asking once per capability per cycle.
+                                - **L1** (built-in / already installed):
+                                  activate silently and drop a notification in
+                                  the change ledger.  Nothing durable happens —
+                                  ``_CAPABILITIES`` is in-process only, so a
+                                  restart already undoes it.
                                 """
                                 try:
-                                    from tools.approval import (
-                                        request_gateway_approval,
-                                        get_current_session_key,
+                                    from agent.capability_registry import (
+                                        activate_capability,
+                                        classify_activation_tier,
                                     )
-                                    session_key = get_current_session_key()
-                                    approval_data = {
-                                        "type": "capability_activate",
-                                        "capability": cap_name,
-                                        "title": f"激活能力：{cap_name}",
-                                        "description": (
-                                            f"系统涌现决策建议激活能力 «{cap_name}»"
-                                            f"（可能执行 pip install 安装依赖）。"
-                                            f"是否允许？"
-                                        ),
-                                        "surface": "gui",
-                                    }
-                                    decision = request_gateway_approval(
-                                        session_key, approval_data, surface="gui"
-                                    )
-                                    approved = decision.get("choice") in (
-                                        "approve", "once", "session", "always"
-                                    )
-                                    if approved:
-                                        from agent.capability_registry import activate_capability
-                                        activate_capability(cap_name)
-                                        logger.info("Capability auto-activated (user-approved): %s", cap_name)
-                                        record_raw_event(
-                                            tool_name="capability_activate",
-                                            tool_args={"capability": cap_name, "initiator": "system"},
-                                            result=f"activated: {cap_name}",
-                                            is_error=False,
-                                            duration=0.0,
-                                            trigger_clustering=False,
+                                    _t = classify_activation_tier(cap_name)
+                                    tier, why = _t["tier"], _t["reason"]
+
+                                    if tier == "L2":
+                                        from tools.approval import (
+                                            approve_privileged_action,
+                                            get_current_session_key,
                                         )
-                                    else:
-                                        logger.info("Capability activation denied by user: %s", cap_name)
-                                        record_raw_event(
-                                            tool_name="capability_activate",
-                                            tool_args={"capability": cap_name, "initiator": "system"},
-                                            result=f"denied: {cap_name}",
-                                            is_error=False,
-                                            duration=0.0,
-                                            trigger_clustering=False,
+                                        session_key = get_current_session_key()
+                                        approved = approve_privileged_action(
+                                            session_key,
+                                            {
+                                                "type": "capability_activate",
+                                                "category": "capability_activate",
+                                                "pattern_key": "capability_activate",
+                                                "capability": cap_name,
+                                                "tier": "L2",
+                                                "title": f"激活能力：{cap_name}",
+                                                "description": (
+                                                    f"系统涌现决策建议激活能力 «{cap_name}»。\n"
+                                                    f"⚠ {why}。是否允许？"
+                                                ),
+                                                "surface": "gui",
+                                            },
+                                            surface="gui",
                                         )
+                                        if not approved:
+                                            logger.info("Capability activation denied by user: %s", cap_name)
+                                            record_raw_event(
+                                                tool_name="capability_activate",
+                                                tool_args={"capability": cap_name, "initiator": "system"},
+                                                result=f"denied: {cap_name}",
+                                                is_error=False,
+                                                duration=0.0,
+                                                trigger_clustering=False,
+                                            )
+                                            return
+
+                                    ok, detail = activate_capability(cap_name)
+                                    logger.info(
+                                        "Capability activation (%s): %s → %s (%s)",
+                                        tier, cap_name, ok, detail,
+                                    )
+                                    record_raw_event(
+                                        tool_name="capability_activate",
+                                        tool_args={"capability": cap_name, "initiator": "system",
+                                                   "tier": tier},
+                                        result=f"{'activated' if ok else 'failed'}: {cap_name} ({detail})",
+                                        is_error=not ok,
+                                        duration=0.0,
+                                        trigger_clustering=False,
+                                    )
+                                    # 通知中心：L1 是「静默执行」，不是「不告诉你」。
+                                    # 账本失败只降级，绝不回滚一次成功的激活。
+                                    if ok:
+                                        try:
+                                            from agent.change_ledger import (
+                                                record_change, KIND_CAPABILITY_ACTIVATED,
+                                            )
+                                            record_change(
+                                                kind=KIND_CAPABILITY_ACTIVATED,
+                                                tier=tier,
+                                                title=f"已激活能力：{cap_name}",
+                                                summary=why,
+                                                detail={"capability": cap_name, "detail": detail},
+                                            )
+                                        except Exception as _led_err:
+                                            logger.warning(
+                                                "[Changes] capability notice failed: %s", _led_err,
+                                            )
                                 except Exception as _act_err:
                                     # Bug 2 visible: a failure here (e.g. frozen
                                     # bundle missing tools.approval) was previously

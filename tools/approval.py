@@ -788,7 +788,18 @@ def approve_privileged_action(session_key: str, approval_data: dict, *, surface:
             or _get_approval_mode() == "off")
     if yolo:
         target_path = approval_data.get("target_path", "")
-        source_level = not is_config_level_target(target_path)
+        # The "YOLO does not exempt source rewrites" rule (T1) is about
+        # *rewriting a file*.  Non-file privileged actions (e.g. activating a
+        # capability, which may pip-install) must not be dragged into it just
+        # because they have no ``target_path`` — YOLO already means "I trust
+        # you to run commands", and pip install is a command.
+        #
+        # A missing category still defaults to the self-modify family (see
+        # :func:`_privileged_scope_key`), so an unlabelled call keeps the old
+        # fail-safe behaviour of prompting.
+        _cat = approval_data.get("pattern_key") or approval_data.get("category") or "self_modify"
+        is_file_rewrite = str(_cat).startswith("self_modify") or bool(target_path)
+        source_level = is_file_rewrite and not is_config_level_target(target_path)
         if not (source_level and _source_modify_always_confirm()):
             return True
         # L2: source rewrite — prompt anyway, and say why the usual YOLO

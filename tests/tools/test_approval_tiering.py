@@ -344,3 +344,83 @@ def test_grant_ttl_read_failure_is_fail_safe(monkeypatch):
     assert ap._privileged_grants == {}          # 没发出通行证
     ap.approve_privileged_action("sk", _src("/repo/b.py"))
     assert len(calls) == 2
+
+
+# ── T2：能力激活分级（非文件类特权动作不再被误判成源码改写）─────────
+
+def _cap(**kw):
+    """能力激活的 approval_data：有类别、没有 target_path。"""
+    d = {"type": "capability_activate",
+         "category": "capability_activate",
+         "pattern_key": "capability_activate"}
+    d.update(kw)
+    return d
+
+
+def test_capability_activate_is_yolo_exempt(monkeypatch):
+    """开着 YOLO 时，能力激活不该被「源码改写不豁免」规则误伤。
+
+    T1 那条规则的对象是*改文件*。能力激活没有 target_path，若照
+    `is_config_level_target("") is False` 直接推成源码级，就会在 YOLO
+    下照弹不误 —— 而 YOLO 本来就已经代表「我信你执行命令」，pip install
+    正是命令。
+    """
+    _stub_cfg(monkeypatch)
+    monkeypatch.setattr(ap, "is_session_yolo_enabled", lambda sk: True)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    assert ap.approve_privileged_action("sk", _cap()) is True
+    assert calls == []                          # 没弹
+
+
+def test_unlabelled_action_still_prompts_under_yolo(monkeypatch):
+    """没写类别 = 按 self_modify 处理 —— 保留原来的 fail-safe。
+
+    这条锁住上面那个豁免不会被写成「只要没 target_path 就放行」：
+    缺省类别仍落回 self_modify 家族，照弹。
+    """
+    _stub_cfg(monkeypatch)
+    monkeypatch.setattr(ap, "is_session_yolo_enabled", lambda sk: True)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", {"description": "来路不明的特权动作"})
+    assert len(calls) == 1
+    assert calls[0]["tier"] == "L2"
+
+
+def test_capability_activate_still_prompts_without_yolo(monkeypatch):
+    """非 YOLO 下 L2 能力激活照常要人确认（豁免只针对 YOLO）。"""
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    assert ap.approve_privileged_action("sk", _cap()) is True
+    assert len(calls) == 1
+
+
+def test_capability_approval_is_remembered(monkeypatch):
+    """批准一次 → 同类别后续激活不再弹（T1b 通行证覆盖 T2）。
+
+    修复前每个能力、每个涌现周期都要弹一次，这正是「安全的老在问」。
+    """
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    assert ap.approve_privileged_action("sk", _cap(capability="a")) is True
+    assert ap.approve_privileged_action("sk", _cap(capability="b")) is True
+    assert len(calls) == 1
+
+
+def test_capability_grant_does_not_leak_into_source_modify(monkeypatch):
+    """批准能力激活 ≠ 批准改源码 —— 授权按类别隔离。"""
+    _stub_cfg(monkeypatch)
+    calls = []
+    _stub_gateway(monkeypatch, calls)
+
+    ap.approve_privileged_action("sk", _cap())
+    assert len(calls) == 1
+    ap.approve_privileged_action("sk", _src("/repo/agent/foo.py"))
+    assert len(calls) == 2                      # 又弹了一次，没被串用
