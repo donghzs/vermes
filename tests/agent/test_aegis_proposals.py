@@ -634,3 +634,39 @@ def test_scan_routes_large_delta_to_l2_queue(tmp_path, monkeypatch):
     assert det["passed"] is True          # 闸门本身是过的
     assert det["tier"] == "L2"            # 但被幅度护栏降级
     assert "相对变化" in det["tier_reason"]
+
+
+# ── auto_apply 默认关闭：L1 的前提是「用户被告知」，T5 未落地前不许自动改配置 ──
+
+def test_auto_apply_defaults_to_off(monkeypatch):
+    """默认必须是关的。没有通知通路时自动 apply = 静默改用户 config。"""
+    import vermes_cli.config as vc
+    monkeypatch.setattr(vc, "load_config", lambda: {})
+    assert mr._is_auto_apply_enabled() is False
+    # 显式空 evolution 段也一样
+    monkeypatch.setattr(vc, "load_config", lambda: {"evolution": {}})
+    assert mr._is_auto_apply_enabled() is False
+
+
+def test_auto_apply_default_in_config_module_is_off():
+    """防回归：默认配置段本身也必须是 False，不能只靠读取方兜底。"""
+    from vermes_cli.config import DEFAULT_CONFIG
+    assert DEFAULT_CONFIG["evolution"]["auto_apply"] is False
+
+
+def test_auto_apply_fails_closed_on_config_error(monkeypatch):
+    """读配置炸了 → 进待审队列，而不是「不知道就自己动手」。"""
+    import vermes_cli.config as vc
+
+    def _boom():
+        raise RuntimeError("config unreadable")
+    monkeypatch.setattr(vc, "load_config", _boom)
+    assert mr._is_auto_apply_enabled() is False
+
+
+def test_auto_apply_honours_explicit_opt_in(monkeypatch):
+    """用户显式打开时照常生效（T5 落地后翻默认值即可）。"""
+    import vermes_cli.config as vc
+    monkeypatch.setattr(vc, "load_config",
+                        lambda: {"evolution": {"auto_apply": True}})
+    assert mr._is_auto_apply_enabled() is True

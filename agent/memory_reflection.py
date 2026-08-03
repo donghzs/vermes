@@ -540,13 +540,23 @@ def _exceeds_magnitude(config_patch) -> tuple:
 
 
 def _is_auto_apply_enabled() -> bool:
-    """Check if auto-apply is enabled for low-risk B1 config proposals."""
+    """Check if auto-apply is enabled for low-risk B1 config proposals.
+
+    Fail-CLOSED on purpose.  The two failure modes cost wildly different
+    amounts: wrongly falling back to auto-apply silently rewrites the user's
+    config with no notification path (see config.py "evolution.auto_apply"),
+    while wrongly falling back to the review queue costs one click.  A config
+    read that raises is precisely the moment we know least about the user's
+    intent, so it must not be the moment we act most autonomously.
+    """
     try:
         from vermes_cli.config import load_config
         cfg = load_config()
-        return bool(cfg.get("evolution", {}).get("auto_apply", True))
+        return bool(cfg.get("evolution", {}).get("auto_apply", False))
     except Exception:
-        return True  # fail-open: default to auto-apply
+        logger.warning(
+            "[evolution] auto_apply 配置读取失败 → 保守降级，提案改走待审队列")
+        return False  # fail-closed: queue it, don't apply it
 
 
 def _auto_apply_proposal(cand: dict, critic_verdict: dict,

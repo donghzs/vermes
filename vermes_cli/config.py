@@ -1305,11 +1305,21 @@ DEFAULT_CONFIG = {
     # ── Evolution / AEGIS ──
     # Controls the closed-loop proposal engine (P2).
     # auto_apply: when true, B1 config proposals that pass all gates
-    #   (hardcoded_guard + Critic + deterministic) are applied automatically
-    #   and land in the "已自动调整" list (user can retract within 24h).
-    #   When false, all proposals go to the "待审队列".
+    #   (hardcoded_guard + Critic + deterministic + magnitude) are applied
+    #   automatically and land in the "已自动调整" list (retractable for 24h).
+    #   When false, every proposal goes to the "待审队列" instead.
+    #
+    #   DEFAULT IS FALSE ON PURPOSE — do not flip this back without reading:
+    #   L1 ("silently execute, notify, retractable") only holds if the user is
+    #   actually *told*.  Right now there is no notification channel (T5) and
+    #   the desktop EvolutionPanel does not render proposals yet, so an
+    #   auto-applied change is invisible: it would silently rewrite the user's
+    #   config.yaml with no way to notice.  That is L0 behaviour wearing an L1
+    #   label, and it is exactly the "危险的没拦住" failure mode the approval
+    #   tiering work set out to fix.  Flip to true once T5 lands.
+    #   See vermes-approval-tiering_20260802.md §T5.
     "evolution": {
-        "auto_apply": True,
+        "auto_apply": False,
     },
 
     # Subagent delegation — override the provider:model used by delegate_task
