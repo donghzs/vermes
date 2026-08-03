@@ -3,7 +3,8 @@
 Endpoints:
 - GET  /api/onboarding       — 首次配置检查
 - GET  /api/config            — 读取配置
-- PUT  /api/config            — 写入配置
+- PUT  /api/config            — 写入配置（整份覆盖）
+- PATCH /api/config           — 局部深合并写入（UI 单个开关走这条）
 - GET  /api/config/defaults   — 默认配置
 - GET  /api/config/schema     — 配置 schema
 - GET  /api/config/raw        — 原始 YAML
@@ -689,6 +690,50 @@ async def update_config(body: ConfigUpdate):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively merge *patch* into *base* without mutating either.
+
+    Dict values merge key-by-key; everything else (scalars, lists) is
+    replaced wholesale — a list patch means "this is the new list", not
+    "append to the old one".
+    """
+    out = dict(base or {})
+    for k, v in (patch or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+async def patch_config(body: Dict[str, Any]):
+    """PATCH /api/config — deep-merge a partial config into config.yaml.
+
+    PUT replaces the whole document, so a UI toggle that only wants to flip
+    one key had no safe write path: sending ``{"approvals": {...}}`` via PUT
+    would wipe every other setting.  The Settings UI has been calling PATCH
+    all along — the route was simply never registered, so those writes 405'd
+    into a ``console.error`` and the toggle silently only ever updated
+    ``localStorage``.  This is that missing route.
+
+    Merges into the **raw** file rather than ``load_config()`` on purpose:
+    writing the fully-merged config back would freeze today's defaults into
+    the user's file and quietly opt them out of future default changes.
+    """
+    if not isinstance(body, dict) or not body:
+        raise HTTPException(status_code=400, detail="body must be a non-empty object")
+    try:
+        from vermes_cli.config import read_raw_config
+        merged = _deep_merge(read_raw_config(), _denormalize_config_from_web(body))
+        save_config(merged)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception:
+        _log.exception("PATCH /api/config failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 async def get_config_raw():
     path = get_config_path()
     if not path.exists():
@@ -816,6 +861,7 @@ def register_to(app):
     app.add_api_route("/api/onboarding", get_onboarding, methods=["GET"])
     app.add_api_route("/api/config", get_config, methods=["GET"])
     app.add_api_route("/api/config", update_config, methods=["PUT"])
+    app.add_api_route("/api/config", patch_config, methods=["PATCH"])
     app.add_api_route("/api/config/defaults", get_defaults, methods=["GET"])
     app.add_api_route("/api/config/cloud-models", get_cloud_models, methods=["GET"])
     app.add_api_route("/api/config/schema", get_schema, methods=["GET"])
