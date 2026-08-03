@@ -165,11 +165,22 @@ hiddenimports = [
     'agent.pipeline',
     'agent.metrics',
 
-    # Emergence / self-learning pipeline modules. These are imported at runtime
-    # inside try/except blocks (e.g. raw_event._bg_activate -> tools.approval),
-    # so PyInstaller's import tracer never sees them and would ship a frozen
-    # bundle that raises ModuleNotFoundError on the activation path (Bug 2).
-    # Declare them explicitly so the frozen backend collects them.
+    # Emergence / self-learning pipeline modules, kept explicit as a belt-and-
+    # braces measure for the activation path (Bug 2).
+    #
+    # NB: the old comment here claimed PyInstaller "never sees" imports written
+    # inside functions / try-except blocks.  That is not true and it cost real
+    # debugging time — modulegraph walks bytecode, so a nested `import x` is
+    # traced just like a top-level one.  Control experiment on the shipped
+    # bundle: agent/emergent_insight.py, curator.py, decision_tracker.py and
+    # system_prompt.py are all imported only from inside function bodies and
+    # are all absent from this list, yet all four are present in _internal/.
+    #
+    # What modulegraph genuinely cannot follow is a *computed* import —
+    # importlib.import_module(some_variable), __import__(name), plugin
+    # discovery by directory scan.  Those are the ones that must be declared
+    # here.  Adding a statically-written module is harmless but not load-
+    # bearing, so don't treat this list as the reason a module works.
     'tools', 'tools.approval',
     'utils',
     'agent.capability_evolver', 'agent.cluster_lifecycle',
