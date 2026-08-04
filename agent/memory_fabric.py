@@ -1213,36 +1213,11 @@ def index_skills(skills: List[Dict[str, Any]], scope: str = "") -> int:
     L2 entry keyed by a stable ``pointer`` (``skill:<category>/<name>``).
     Returns the number of skills indexed.
     """
-    count = 0
-    for s in skills:
-        name = (s.get("name") or "").strip()
-        if not name:
-            continue
-        desc = (s.get("description") or "").strip()
-        category = (s.get("category") or "").strip()
-        pointer = s.get("pointer") or (
-            f"skill#{category}/{name}" if category else f"skill#{name}"
-        )
-        content = f"{name}: {desc}".strip()
-        if not content:
-            continue
-        try:
-            record(
-                {
-                    "source": "skill",
-                    "layer": L2_PROCEDURAL,
-                    "type": "skill",
-                    "scope": scope,
-                    "pointer": pointer,
-                    "fts_content": content,
-                    # P2-⑧: skill 记忆是 SKILL.md 副本，价值低，直接标 ephemeral
-                    # （与存量迁移对齐，避免重新累积为 reference 占 recall 预算）
-                    "lifecycle_tag": "ephemeral",
-                }
-            )
-            count += 1
-        except Exception:
-            logger.warning("index_skills failed for %r", name, exc_info=True)
+    # 技能描述通过 skill 注册表每轮注入上下文，不需要写入 memories 表。
+    # 写入只会导致反思系统误 flag 为重复/范围漂移（80/85 memories 全是 skill 描述）。
+    # skill 使用频率通过 record_usage() 记录（source=usage），与描述文本无关。
+    # 保留函数签名以向后兼容，但不再入库。
+    count = len(skills)
     return count
 
 

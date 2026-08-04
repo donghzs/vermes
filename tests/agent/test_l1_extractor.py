@@ -182,3 +182,30 @@ def test_real_password_still_extracted_after_evidence_filter():
         assert pw_facts, f"真实密码应被抽取: {text!r}"
         assert expected_raw not in pw_facts[0].value, f"密码应脱敏: {text!r}"
         assert "*" in pw_facts[0].value, f"脱敏形态应含*: {text!r}"
+
+
+# ── index_skills 不再写入 memories 表 ──────────────────────────
+
+def test_index_skills_does_not_write_memories(tmp_path, monkeypatch):
+    """技能描述通过 skill 注册表注入，不应写入 memories 表。
+    写入只会导致反思系统误 flag 为重复/范围漂移。
+    """
+    from agent import memory_fabric as mf
+
+    db = tmp_path / "skill_test.db"
+    mf._init_db(db)
+    monkeypatch.setattr(mf, "_get_index_db", lambda: db)
+
+    import sqlite3
+    conn = sqlite3.connect(str(db))
+    before = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+
+    n = mf.index_skills([
+        {"name": "test-skill", "description": "A test skill for unit testing."},
+        {"name": "another-skill", "description": "Another skill description."},
+    ], scope="test")
+
+    after = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+    conn.close()
+    assert n == 2, "index_skills 应返回技能数"
+    assert after == before, f"index_skills 不应写入 memories 表 (before={before}, after={after})"
