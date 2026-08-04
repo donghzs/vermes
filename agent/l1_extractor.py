@@ -121,6 +121,36 @@ def _valid_ipv4(ip: str) -> bool:
         return False
 
 
+# 反思 evidence 关键词：当密码正则匹配到的"值"包含这些关键词时，说明
+# 不是真正的密码值，而是反思系统产生的描述性文本（如"属强时效性事实"）
+# 不阻止会导致癌细胞式繁殖（每天 500-1500 条垃圾密码残片）
+_REFLECTION_EVIDENCE_KEYWORDS = frozenset({
+    "时效", "易变", "凭据", "失效", "过时", "轮换", "脱敏", "矛盾",
+    "重复", "冗余", "泛化", "漂移", "强时", "弱时", "衰减", "验证",
+    "条目", "记忆", "上下文", "自述", "承认", "注明", "标注",
+    "事实", "数据", "信息", "快照", "引用", "存档", "残片",
+    "属强", "属典", "本身", "类凭", "随时", "会被", "值是",
+    "值可", "值为", "写入", "后此", "及长", "天然", "易被",
+    "定期", "更换", "重置", "已脱敏", "已过期", "已失效",
+})
+
+
+def _is_reflection_evidence(captured: str) -> bool:
+    """判断密码正则匹配到的文本是否是反思 evidence 描述而非真实密码值。
+
+    规则：如果 captured 包含 ≥2 个反思 evidence 关键词，或 captured 全是
+    汉字（真实密码极少全汉字），判定为 evidence 文本，跳过不抽取。
+    """
+    if not captured:
+        return False
+    # 全汉字：真实密码极少全是汉字（除非是中文密码短语，但 ≥6 汉字不常见）
+    if all('\u4e00' <= ch <= '\u9fff' for ch in captured):
+        return True
+    # 包含 ≥2 个 evidence 关键词
+    hits = sum(1 for kw in _REFLECTION_EVIDENCE_KEYWORDS if kw in captured)
+    return hits >= 2
+
+
 def _mask_secret(secret: str, keep_head: int = 2, keep_tail: int = 1) -> str:
     """脱敏：保留首尾若干字符，中间用 * 替代，并标注长度。"""
     if len(secret) <= keep_head + keep_tail:
@@ -182,6 +212,13 @@ def extract_facts(text: str) -> List[L1Fact]:
         for m in rx.finditer(text):
             val = m.group(1)
             if not val or len(val) < 6:
+                continue
+            # P3-⑪ fix: 排除反思 evidence 文本被误匹配为密码值
+            # 反思系统产生的 flag evidence 常含"密码属强时效性事实"等描述性
+            # 文本，密码正则会匹配到"属强时效性事实"这串汉字——这不是密码值
+            # 而是元描述。不阻止会导致癌细胞式繁殖：反思→flag evidence
+            # 含"密码"→L1 抽取器扫到→新密码残片入库→下一轮反思再 flag→无限循环
+            if _is_reflection_evidence(val):
                 continue
             stored = _mask_secret(val) if MASK_PASSWORDS else val
             _add(L1Fact(

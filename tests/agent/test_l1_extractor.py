@@ -132,3 +132,53 @@ def test_idempotent_dedupe(tmp_path, monkeypatch):
 
     assert first >= 1
     assert second == first, "相同事实重复轮次不应累积重复行"
+
+
+# ── P3-⑪ fix: 反思 evidence 文本不得被误抽为密码 ──────────────────────
+
+def test_reflection_evidence_not_extracted_as_password():
+    """反思系统 flag evidence 含"密码属强时效性事实"等描述性文本。
+    密码正则会匹配到"属强时效性事实"这串汉字——不是密码值而是元描述。
+    不阻止会导致癌细胞式繁殖：反思→flag evidence 含"密码"→L1 抽取器
+    扫到→新密码残片入库→下一轮反思再 flag→无限循环（3 天 3377 条垃圾）。
+    """
+    from agent.l1_extractor import extract_facts
+
+    evidence_texts = [
+        "密码属强时效性事实（记忆上下文自述承认）",
+        "密码本身属于强时效性事实",
+        "密码值是易变凭据",
+        "密码类凭据随时间失效",
+        "密码随时可能被用户修改或失效",
+        "密码会被定期更换/重置",
+        "密码值可能在任意一次改密后即过期",
+        "密码值极可能已过时且无法验证有效性",
+        "密码属典型易变数据（条目自身已注明）",
+        "密码及长度=18均为易变信息",
+        "密码写入即已过期",
+        "密码后此条目即失效",
+    ]
+    for text in evidence_texts:
+        facts = extract_facts(text)
+        pw_facts = [f for f in facts if f.kind == "password"]
+        assert not pw_facts, (
+            f"反思 evidence 不应被抽为密码: {text!r} → {[f.content[:30] for f in pw_facts]}"
+        )
+
+
+def test_real_password_still_extracted_after_evidence_filter():
+    """evidence 过滤器不得误杀真实密码。"""
+    from agent.l1_extractor import extract_facts
+
+    real_cases = [
+        ("我的密码是 MyP@ssw0rd123", "MyP@ssw0rd123"),
+        ("password: Tr0ub4dour&3", "Tr0ub4dour&3"),
+        ("密码: a8xK9mP2", "a8xK9mP2"),
+        ("password=Sup3rS3cr3t", "Sup3rS3cr3t"),
+    ]
+    for text, expected_raw in real_cases:
+        facts = extract_facts(text)
+        pw_facts = [f for f in facts if f.kind == "password"]
+        assert pw_facts, f"真实密码应被抽取: {text!r}"
+        assert expected_raw not in pw_facts[0].value, f"密码应脱敏: {text!r}"
+        assert "*" in pw_facts[0].value, f"脱敏形态应含*: {text!r}"
