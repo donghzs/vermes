@@ -2870,6 +2870,34 @@ async def list_flags_endpoint(request: Request):
         return {"ok": False, "error": str(e)}
 
 
+async def batch_resolve_flags_endpoint(request: Request):
+    """Batch-resolve all open memory flags.
+
+    Body: { resolution: "false_positive"|"demote"|"merge" (default: false_positive),
+             flag_type: optional filter (e.g. "duplicate", "outdated") }
+    """
+    try:
+        body = await request.json() if request.method == "POST" else {}
+        resolution = body.get("resolution", "false_positive")
+        flag_type_filter = body.get("flag_type")
+        if resolution not in ("demote", "merge", "false_positive"):
+            return {"ok": False, "error": "resolution must be demote|merge|false_positive"}
+        from agent.memory_reflection import resolve_flag, get_open_flags
+        flags = get_open_flags()
+        if flag_type_filter:
+            flags = [f for f in flags if f.get("flag_type") == flag_type_filter]
+        resolved = 0
+        for f in flags:
+            try:
+                if resolve_flag(f["id"], resolution):
+                    resolved += 1
+            except Exception:
+                pass
+        return {"ok": True, "resolved": resolved, "total": len(flags)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def restore_flag_endpoint(request: Request):
     """Restore a resolved flag (reopen + optionally restore memory weight).
 
@@ -3202,6 +3230,12 @@ def register_to(app):
         list_flags_endpoint,
         methods=["GET"],
         name="list_flags",
+    )
+    app.add_api_route(
+        "/api/flags/batch_resolve",
+        batch_resolve_flags_endpoint,
+        methods=["POST"],
+        name="batch_resolve_flags",
     )
     app.add_api_route(
         "/api/restore_flag",

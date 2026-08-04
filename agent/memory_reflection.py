@@ -988,10 +988,12 @@ def write_flag(memory_id: str, flag_type: str, evidence: str, confidence: float 
 
     conn = sqlite3.connect(db_path)
     try:
-        # 去重检查
+        # 去重检查：跳过已 open 的，也跳过已标记为 false_positive 的 resolved flag
         existing = conn.execute(
             """SELECT id FROM memory_flags
-               WHERE memory_id = ? AND flag_type = ? AND status = 'open'""",
+               WHERE memory_id = ? AND flag_type = ?
+               AND (status = 'open'
+                    OR (status = 'resolved' AND resolution = 'false_positive'))""",
             (memory_id, flag_type),
         ).fetchone()
         if existing:
@@ -1328,7 +1330,7 @@ def _load_auto_resolve_config():
                 # the safe default.
                 if k in ar and isinstance(ar[k], (int, float)) and ar[k] > 0:
                     defaults[k] = float(ar[k])
-            logger.info(
+            logger.debug(
                 "[Reflection] auto_resolve config: duplicate≥%.2f outdated≥%.2f "
                 "cluster_min_interv=%ds merge_cleanup≥%.2f",
                 defaults["duplicate"], defaults["outdated"],
