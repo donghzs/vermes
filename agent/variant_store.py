@@ -141,6 +141,21 @@ def _load_registry(processor_id: str) -> Dict[str, Any]:
     }
 
 
+def get_active_variant_hash(processor_id: str) -> Optional[str]:
+    """Return the active variant hash for a processor, or None.
+
+    Public P4 accessor used by tool_executor (outcome attribution) and
+    variant_ranker. Returns None when the processor has no variant
+    tracking (builtins, unmodified user processors) so callers can treat
+    None as "no variant context".
+    """
+    try:
+        h = _load_registry(processor_id).get("active_hash", "")
+        return h or None
+    except Exception:
+        return None
+
+
 def _save_registry(processor_id: str, registry: Dict[str, Any]) -> None:
     """Atomically write the registry JSON."""
     path = _registry_path(processor_id)
@@ -450,3 +465,155 @@ def snapshot_and_gc(
         if proc_id:
             gc_variants(proc_id, max_variants)
     return hash_val
+
+
+# ── P4-C: outcome-driven auto promotion (governance-gated) ─────────────
+
+PROMOTE_DELTA = 0.15  # best variant's score must exceed active's by this (z-score units)
+
+
+def _tier_from_content(content: str) -> str:
+    """Decide governance tier for a promotion from the variant's own content.
+
+    Mirrors Phase 2.5 P1: ``handler.inline`` forces L2 (self-proving
+    governance — an inline tool must not auto-promote). Only an explicit
+    ``governance.risk_tier: L1`` (and no inline) qualifies for auto-landing.
+    Anything else → L2 (propose, wait for human).
+    """
+    try:
+        data = yaml.safe_load(content) or {}
+        if not isinstance(data, dict):
+            return "L2"
+        handler = data.get("handler") or {}
+        if isinstance(handler, dict) and "inline" in handler:
+            return "L2"
+        gov = data.get("governance") or {}
+        risk_tier = gov.get("risk_tier", "L2") if isinstance(gov, dict) else "L2"
+        return "L1" if risk_tier == "L1" else "L2"
+    except Exception:
+        return "L2"  # unparseable → safest
+
+
+def promote_best_variant(processor_id: str, db_path: str = "") -> Dict[str, Any]:
+    """Promote the best-scoring variant to active, if it clearly beats the current.
+
+    Governance (design 拍板 ④, ties to Phase 2.5 self-proving-governance lesson):
+      - L1 processor (no inline, risk_tier=L1): auto-land via
+        ``emergent_change.apply_change(force=True)`` — leaves a self_modify
+        raw_event + change_ledger entry. The apply_change snapshot hook
+        (Phase 3) archives the outgoing active automatically.
+      - L2 / inline processor: does NOT auto-land. Creates an evolution
+        proposal (status="proposed") for human approval via the existing
+        ``POST /api/evolution/proposals/{id}/apply`` endpoint.
+
+    Refuses to promote:
+      - exploring variants (n_samples < EXPLORATION_K) — cold-start budget
+      - variants whose score doesn't exceed active's by PROMOTE_DELTA
+      - when there's no active variant to compare against
+
+    Returns a decision dict: {action, processor_id, target_hash, tier,
+    committed/proposed, reason}.
+    """
+    from agent.variant_ranker import get_variant_scores, EXPLORATION_K
+
+    decision: Dict[str, Any] = {
+        "action": "none", "processor_id": processor_id,
+        "target_hash": "", "tier": "", "reason": "",
+    }
+
+    registry = _load_registry(processor_id)
+    active_hash = registry.get("active_hash", "")
+    if not active_hash:
+        decision["reason"] = "no active variant to compare against"
+        return decision
+
+    scored = get_variant_scores(processor_id)
+    if not scored:
+        decision["reason"] = "no scored variants"
+        return decision
+
+    active_entry = next((v for v in scored if v["hash"] == active_hash), None)
+    active_score = active_entry.get("score", 0.0) if active_entry else 0.0
+
+    # Best non-active, non-exploring variant
+    for cand in scored:
+        if cand["hash"] == active_hash:
+            continue
+        if cand.get("exploring", False) or cand.get("n_samples", 0) < EXPLORATION_K:
+            continue
+        if cand.get("score", 0.0) - active_score < PROMOTE_DELTA:
+            continue
+        # Candidate qualifies — attempt promotion
+        target_hash = cand["hash"]
+        variant_content = get_variant_content(processor_id, target_hash)
+        if variant_content is None:
+            decision["reason"] = f"variant {target_hash[:16]} content missing"
+            return decision
+
+        tier = _tier_from_content(variant_content)
+        decision["tier"] = tier
+        decision["target_hash"] = target_hash
+        active_path = str(_active_yaml_path(processor_id))
+
+        if tier == "L1":
+            # Auto-land through the change pipeline (force bypasses cold-start
+            # gate; snapshot hook archives outgoing active; ledger records it).
+            try:
+                from agent.emergent_change import get_pipeline, ChangeProposal
+                proposal = ChangeProposal(
+                    source="variant_selector",
+                    target_path=active_path,
+                    content=variant_content,
+                    description=(
+                        f"auto-promote variant {target_hash[:16]} "
+                        f"(score {cand['score']:.2f} vs active {active_score:.2f})"
+                    ),
+                    initiator="system",
+                    metadata={"variant_promotion": True, "target_hash": target_hash},
+                )
+                result = get_pipeline().apply_change(proposal, force=True)
+                decision["action"] = "promoted" if result.committed else "blocked"
+                decision["committed"] = result.committed
+                decision["reason"] = result.error if not result.committed else (
+                    f"promoted {target_hash[:16]} (L1 auto, Δscore={cand['score']-active_score:.2f})"
+                )
+                logger.info("Variant auto-promote %s → %s (%s)", processor_id, target_hash[:16], decision["reason"])
+            except Exception as e:
+                decision["action"] = "error"
+                decision["reason"] = f"L1 promote failed: {e}"
+                logger.warning("Variant promote failed %s: %s", processor_id, e)
+        else:
+            # L2 / inline → propose, don't auto-land
+            try:
+                from agent.evolution_manager import record_proposal
+                diff = diff_variants(processor_id, target_hash) or ""
+                pid = record_proposal(
+                    phase="variant_selector",
+                    task_type="variant_promotion",
+                    title=f"晋升变体 {target_hash[:16]} → {processor_id}",
+                    rationale=(
+                        f"变体 {target_hash[:16]} 得分 {cand['score']:.2f} 高于 active "
+                        f"{active_score:.2f}（Δ={cand['score']-active_score:.2f}，"
+                        f"n={cand.get('n_samples',0)}）。L2/inline processor 需人工确认。"
+                    ),
+                    target_kind="processor",
+                    target_path=active_path,
+                    candidate_diff=diff,
+                    deterministic_result={"target_hash": target_hash, "tier": tier},
+                    status="proposed",
+                )
+                decision["action"] = "proposed"
+                decision["proposal_id"] = pid
+                decision["reason"] = (
+                    f"proposed {target_hash[:16]} (L2/inline, proposal #{pid})"
+                )
+                logger.info("Variant propose %s → %s (L2/inline)", processor_id, target_hash[:16])
+            except Exception as e:
+                decision["action"] = "error"
+                decision["reason"] = f"L2 propose failed: {e}"
+                logger.warning("Variant propose failed %s: %s", processor_id, e)
+        return decision
+
+    decision["reason"] = "no variant beats active by Δ"
+    return decision
+

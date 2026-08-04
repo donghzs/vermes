@@ -277,14 +277,62 @@ def format_evolution_for_prompt(evolution: Dict[str, Any]) -> str:
     return block
 
 
+def _variant_evolution_block() -> str:
+    """P4-D: build a concise block describing active variant choices.
+
+    Only includes processors that actually have *scored* variants (most have
+    none → returns "" → no prompt bloat). Lets the model see which variant of
+    each tool it's running, so behavior is influenced by harness selection
+    (the loop closes here, not at model weights).
+    """
+    try:
+        from agent.variant_store import _get_user_dir, _load_registry
+        user_dir = _get_user_dir()
+        if not user_dir.exists():
+            return ""
+        lines: List[str] = []
+        for proc_dir in user_dir.iterdir():
+            if not proc_dir.is_dir():
+                continue
+            registry = _load_registry(proc_dir.name)
+            active_hash = registry.get("active_hash", "")
+            scored = [v for v in registry.get("variants", []) if v.get("scored_at")]
+            if not scored or not active_hash:
+                continue
+            active = next((v for v in scored if v["hash"] == active_hash), None)
+            if active is None:
+                continue
+            # Is a non-active variant leading? Surface that a promotion may be pending.
+            best = max(scored, key=lambda v: v.get("score", 0.0))
+            leading = ""
+            if best["hash"] != active_hash and not best.get("exploring"):
+                delta = best.get("score", 0.0) - active.get("score", 0.0)
+                if delta > 0.05:
+                    leading = f" (variant {best['hash'][:8]} leading by +{delta:.2f})"
+            lines.append(
+                f"  tool {proc_dir.name}: active variant {active_hash[:8]} "
+                f"(score {active.get('score',0.0):.2f}, n={active.get('n_samples',0)}){leading}"
+            )
+        if not lines:
+            return ""
+        return "Active processor variants:\n" + "\n".join(lines)
+    except Exception:
+        logger.debug("variant evolution block skipped", exc_info=True)
+        return ""
+
+
 def load_and_format_evolution(user_message: str = "") -> str:
     """Convenience: load evolution data and format for prompt injection.
 
     Tries emergent insight extraction (P3) first. Falls back to legacy
     anti_patterns/strategies tables if no cluster data exists yet.
 
+    P4-D: appends a concise "active variant" block so the model is aware of
+    harness-level variant selection (the model↔harness loop closes here).
+
     Returns empty string if no evolution data available.
     """
+    base = ""
     # P3: Try emergent insights from clusters first
     db_path = _get_evolution_db()
     if db_path is not None:
@@ -292,12 +340,19 @@ def load_and_format_evolution(user_message: str = "") -> str:
             from agent.emergent_insight import build_insight_prompt_block
             emergent_block = build_insight_prompt_block(str(db_path), max_lines=12)
             if emergent_block:
-                return f"<learned_experience>\n{emergent_block}\n</learned_experience>"
+                base = f"<learned_experience>\n{emergent_block}\n</learned_experience>"
         except Exception:
             logger.debug("Emergent insight extraction failed, falling back", exc_info=True)
 
     # Legacy: fall back to old anti_patterns/strategies tables
-    evolution = load_evolution_context(user_message)
-    if evolution is None:
-        return ""
-    return format_evolution_for_prompt(evolution)
+    if not base:
+        evolution = load_evolution_context(user_message)
+        if evolution is not None:
+            base = format_evolution_for_prompt(evolution)
+
+    # P4-D: append active-variant block (only when there's something to say)
+    if base:
+        ve = _variant_evolution_block()
+        if ve:
+            base = base.replace("</learned_experience>", f"\n{ve}\n</learned_experience>", 1)
+    return base

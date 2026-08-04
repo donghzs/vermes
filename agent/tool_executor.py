@@ -346,7 +346,17 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         # 桥：记录工具执行结果到自我进化系统，跨会话积累经验
         _evo_event = None
         try:
-            _evo_event = record_tool_outcome(agent, function_name, function_args, result, is_error, duration)
+            # P4: 归因当前 active processor variant（仅 tool processor 有变体时非 None）
+            _variant_hash = None
+            try:
+                from agent.variant_store import get_active_variant_hash
+                _variant_hash = get_active_variant_hash(function_name)
+            except Exception:
+                pass  # variant 归因失败不阻塞 outcome 记录
+            _evo_event = record_tool_outcome(
+                agent, function_name, function_args, result, is_error, duration,
+                variant_hash=_variant_hash,
+            )
         except Exception:
             pass  # 进化记录不应阻塞工具执行
         # 传递进化事件（成就/建议）给 SSE 流

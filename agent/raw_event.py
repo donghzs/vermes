@@ -76,6 +76,7 @@ class RawEvent:
     cluster_id: Optional[int] = None
     embedding_id: Optional[int] = None
     protected: bool = False
+    variant_hash: Optional[str] = None  # P4: active processor variant when this tool ran (None for non-processor tools)
 
     def to_db_row(self) -> tuple:
         """Convert to tuple for INSERT INTO raw_events."""
@@ -91,6 +92,7 @@ class RawEvent:
             self.cluster_id,
             self.embedding_id,
             1 if self.protected else 0,
+            self.variant_hash,
         )
 
     @classmethod
@@ -108,6 +110,7 @@ class RawEvent:
             cluster_id=row["cluster_id"],
             embedding_id=row["embedding_id"],
             protected=bool(row["protected"]),
+            variant_hash=row["variant_hash"] if "variant_hash" in row.keys() else None,
         )
 
 
@@ -126,7 +129,8 @@ CREATE TABLE IF NOT EXISTS raw_events (
     turn_number     INTEGER DEFAULT 0,
     cluster_id      INTEGER DEFAULT NULL,
     embedding_id    INTEGER DEFAULT NULL,
-    protected       INTEGER DEFAULT 0
+    protected       INTEGER DEFAULT 0,
+    variant_hash    TEXT    DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_raw_events_timestamp   ON raw_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_raw_events_session      ON raw_events(session_id);
@@ -143,7 +147,21 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
     to FROM v_outcomes without modification. This eliminates dual-write:
     raw_events is the single source of truth.
     """
+    # ── Migration FIRST: CREATE TABLE IF NOT EXISTS won't add columns to an
+    #    already-existing table. If raw_events predates variant_hash (P4),
+    #    ALTER it before any index on variant_hash is created. Idempotent. ──
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_events)")}
+        if cols and "variant_hash" not in cols:
+            conn.execute("ALTER TABLE raw_events ADD COLUMN variant_hash TEXT DEFAULT NULL")
+    except Exception:
+        logger.debug("variant_hash migration skipped", exc_info=True)
     conn.executescript(RAW_EVENTS_TABLE_SQL)
+    # variant_hash index (column now guaranteed to exist on fresh + migrated tables)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_events_variant ON raw_events(variant_hash)")
+    except Exception:
+        logger.debug("variant_hash index skipped", exc_info=True)
     # Compatibility view: maps raw_events → outcomes schema
     # domain/error_type are '' (legacy code never populated them meaningfully)
     # role is 'default' (roles table rarely exists, detect_role always returned 'default')
@@ -179,8 +197,9 @@ def _write_raw_event_to_db(event: RawEvent, db_path: str) -> Optional[int]:
         cursor.execute(
             """INSERT INTO raw_events
                (timestamp, tool_name, args_preview, result_preview, success,
-                duration, session_id, turn_number, cluster_id, embedding_id, protected)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                duration, session_id, turn_number, cluster_id, embedding_id,
+                protected, variant_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             event.to_db_row(),
         )
         conn.commit()
@@ -203,6 +222,7 @@ def record_raw_event(
     session_id: str = "",
     turn_number: int = 0,
     trigger_clustering: bool = True,
+    variant_hash: Optional[str] = None,
 ) -> Optional[int]:
     """Record a tool execution as a zero-classification RawEvent.
 
@@ -219,6 +239,8 @@ def record_raw_event(
         duration:    Execution duration in seconds
         session_id:  Session identifier (for cross-session analysis)
         turn_number: Turn number within the session
+        variant_hash: P4 — active processor variant hash when this tool ran
+                      (None for non-processor tools / processors with no variants)
 
     Returns:
         Row ID of the inserted event, or None on failure.
@@ -235,6 +257,7 @@ def record_raw_event(
         duration=duration,
         session_id=session_id,
         turn_number=turn_number,
+        variant_hash=variant_hash,
     )
 
     db_path = get_self_model_db()
@@ -547,6 +570,19 @@ def _maybe_trigger_clustering(session_id: str) -> None:
                         )
                 except Exception:
                     logger.info("Skill lifecycle eval skipped", exc_info=True)
+
+                # ── P4-E: 变体进化闭环（GRPO 式组内相对排序 + 治理收口晋升）──
+                # outcome 已在 P4-A 写入 raw_events.variant_hash；此处按 should_rank
+                # 门控（事件驱动 + MIN_INTERVAL）打分，promote_best_variant 按治理
+                # 分层落地（L1 自动 / L2·inline 提案）。fail-open，绝不破坏涌现链。
+                try:
+                    from agent.variant_ranker import run_variant_evolution_for_all
+                    _ve = run_variant_evolution_for_all(db_path)
+                    _acted = [r for r in _ve if r.get("ranked")]
+                    if _acted:
+                        logger.info("Variant evolution: %d processor(s) ranked", len(_acted))
+                except Exception:
+                    logger.debug("Variant evolution skipped", exc_info=True)
     except Exception:
         logger.info("Clustering trigger skipped", exc_info=True)
 

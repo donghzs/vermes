@@ -722,14 +722,20 @@ def record_tool_outcome(
     is_error: bool,
     duration: float,
     user_message: str = "",
+    variant_hash: Optional[str] = None,
 ) -> None:
     """Record tool execution outcome to self-model.db.
-    
+
     This is called after each tool execution in tool_executor.py.
+
+    variant_hash: P4 — the active processor variant hash when this tool ran
+                  (looked up by tool_executor for tool processors). None for
+                  non-processor tools. Flows into raw_events.variant_hash so
+                  the variant_ranker can compute per-variant reward.
     """
     if not is_evolution_active():
         return
-    
+
     try:
         # ── P1: 零分类原始事件（先写 raw_events，作为唯一真实源）───
         try:
@@ -744,6 +750,7 @@ def record_tool_outcome(
                 duration=duration,
                 session_id=session_id,
                 turn_number=turn_number,
+                variant_hash=variant_hash,
             )
         except Exception:
             logger.debug("raw_event recording skipped", exc_info=True)
