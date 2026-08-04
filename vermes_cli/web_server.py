@@ -427,6 +427,10 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/evolution/self_modify_history",
     "/api/evolution/retract",
     "/api/evolution/self_modify_rollback",
+    # 待审提案（EvolutionPanel 列表 + apply/reject/retract 子路由，前缀匹配）
+    "/api/evolution/proposals",
+    # 变更记录（EvolutionPanel L1 自动调整通知 + read/unread_count 子路由，前缀匹配）
+    "/api/changes",
     # 涌现系统（EvolutionPanel 状态/技能列表/技能确认-拒绝）
     "/api/emergence/status",
     "/api/emergence/skills",
