@@ -1294,12 +1294,17 @@ DEFAULT_CONFIG = {
         # reader only ever looked for the short names below — meaning the
         # documented keys were inert and editing them changed nothing.  The
         # long names are still accepted as legacy aliases by the reader.
-        "autoResolve": {
-            "duplicate": 0.9,              # duplicate flag ≥ this → auto demote
-            "outdated": 0.85,              # outdated flag ≥ this → auto demote
+                "autoResolve": {
+            "duplicate": 0.7,              # duplicate flag >= this -> auto demote
+            "outdated": 0.6,               # outdated flag >= this -> auto demote
             "cluster_min_interval": 60,    # floor for cluster avg_interval (seconds)
-            "merge_cleanup": 0.7,          # cleanup_merged: duplicate ≥ this + source=skill → delete
+            "merge_cleanup": 0.7,          # cleanup_merged: duplicate >= this + source=skill -> delete
         },
+
+        # 2026-08-04 retro: old thresholds (0.9/0.85) mismatched R2 actual
+        # confidence (outdated mostly 0.55-0.84) -> 1621 outdated open flags
+        # never cleared, 2189 total/day. Relaxed to 0.7/0.6 so auto_resolve
+        # can drain R2 output without unbounded accumulation.
         # T3 — auto-adopting an extracted skill (L1: do it, tell the user,
         # one click to undo).  Without this every extracted skill sits in
         # `pending` forever, so the system learns patterns it never uses.

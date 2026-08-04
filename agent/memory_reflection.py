@@ -44,16 +44,23 @@ def _save_state(state: Dict):
 # ── 空闲门控 ───────────────────────────────────────────────────────
 
 def get_reflection_min_idle_hours() -> float:
-    """复用 curator 空闲阈值（或新增配置）"""
-    # 直接复制 curator 逻辑，避免循环 import
-    DEFAULT_MIN_IDLE_HOURS = 0.5
+    """复用 curator 空闲阈值（或新增配置）
+
+    设计护栏：默认 6h，避免高频反思把 memory_index.db 刷成 flag 垃圾场。
+    经验数据（2026-08-04 复盘）：min_idle=0.5h 时每 ~40min 跑一轮反思，
+    每轮扫最新50条 memory 创 ~44 flag，auto_resolve 仅清 ~14 -> 净增 ~30/h，
+    全天累计 2189 open flag。提至 6h 后反思频率与人工复核节奏匹配。
+    """
+    DEFAULT_MIN_IDLE_HOURS = 6.0
     try:
         from vermes_constants import get_vermes_home
         cfg_path = get_vermes_home() / "curator_config.json"
         if cfg_path.exists():
             import json as _json
             cfg = _json.loads(cfg_path.read_text())
-            return float(cfg.get("min_idle_hours", DEFAULT_MIN_IDLE_HOURS))
+            v = cfg.get("reflection_min_idle_hours", cfg.get("min_idle_hours", DEFAULT_MIN_IDLE_HOURS))
+            if isinstance(v, (int, float)) and v > 0:
+                return float(v)
     except Exception:
         pass
     return DEFAULT_MIN_IDLE_HOURS
@@ -832,7 +839,8 @@ def _parse_r2_response(text: str) -> List[Dict]:
 def _scan_llm_flags(limit: int = 50) -> int:
     """R2: 四类 LLM 一致性校核。
 
-    读取近期记忆（跳过 @decision/@preference，已由 R1 覆盖），逐条调 LLM
+    读取近期记忆（跳过 @decision/@preference，已由 R1 覆盖；跳过已 demote/
+    false_positive 的 memory，避免反复扫描重新创建 flag），逐条调 LLM
     分类四类问题：stale / contradiction_with_new / scope_creep / redundant。
     只读 memories 表，只 INSERT memory_flags。fail-open。
 
@@ -847,8 +855,10 @@ def _scan_llm_flags(limit: int = 50) -> int:
 
     conn = sqlite3.connect(db_path)
     try:
-        # 排除已有 false_positive flag 的记忆——用户已标记为误报，
-        # 不应再被 LLM 反复扫描和重新创建 flag
+        # 排除已 resolved 的记忆——无论 resolution 是 false_positive 还是 demote，
+        # 都说明该 memory 已被反思引擎处置过，不应再被 LLM 反复扫描、重新创 flag。
+        # 这是堵住"标了又清、清了又标"爆炸回路的核心：demote 后 memory 变 ephemeral，
+        # 但旧逻辑只排除 false_positive，导致 ephemeral 记忆每轮都被重新扫、重新标。
         rows = conn.execute(
             """SELECT m.id, m.fts_content, m.pointer, m.scope
                FROM memories m
@@ -857,7 +867,7 @@ def _scan_llm_flags(limit: int = 50) -> int:
                  AND m.id NOT IN (
                    SELECT DISTINCT memory_id
                    FROM memory_flags
-                   WHERE status = 'resolved' AND resolution = 'false_positive'
+                   WHERE status = 'resolved'
                  )
                ORDER BY m.id DESC
                LIMIT ?""",
@@ -1306,8 +1316,8 @@ def _load_auto_resolve_config():
     Missing keys / missing file → hardcoded defaults (backward-compatible).
     """
     defaults = {
-        "duplicate": 0.9,
-        "outdated": 0.85,
+        "duplicate": 0.7,
+        "outdated": 0.6,
         "cluster_min_interval": 60,
         "merge_cleanup": 0.7,
     }
@@ -1373,6 +1383,8 @@ def auto_resolve_eligible_flags() -> int:
     # P2-11 fix: 先收集 eligible ids，关闭外层连接后再逐个 resolve
     # 避免嵌套连接写同库的 database is locked 风险
     conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA busy_timeout=30000")
+    
     try:
         eligible = conn.execute(
             """SELECT id, memory_id, flag_type, confidence
@@ -1385,54 +1397,105 @@ def auto_resolve_eligible_flags() -> int:
     finally:
         conn.close()
 
-    resolved_count = 0
-    for flag_id, memory_id, flag_type, confidence in eligible:
-        # 对 skill-source 的 duplicate，确认源是 skill 才自动 demote
-        # 记忆已删 = 确认冗余（orphan），直接 resolve 为 demote
-        if flag_type == "duplicate" and confidence >= dup_threshold:
-            try:
-                _mid = int(memory_id)
-            except (TypeError, ValueError):
-                _mid = memory_id
-            # 独立连接检查 source
-            _conn2 = sqlite3.connect(db_path)
-            try:
-                src_row = _conn2.execute(
+    # 2026-08-04 修复：复用单个连接完成所有 demote，避免为每个 flag 反复
+    # 开关连接写同库触发 "database is locked"（原实现调 resolve_flag 各自开
+    # 新连接，同进程并发写同库必锁）。这里直接在同一连接内 UPDATE + 联动降级。
+    now = datetime.now(timezone.utc).isoformat()
+    conn = sqlite3.connect(db_path, timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
+    try:
+        resolved_count = 0
+        for flag_id, memory_id, flag_type, confidence in eligible:
+            _demote = False
+            if flag_type == "duplicate" and confidence >= dup_threshold:
+                try:
+                    _mid = int(memory_id)
+                except (TypeError, ValueError):
+                    _mid = memory_id
+                _src = conn.execute(
                     "SELECT source FROM memories WHERE id = ?", (_mid,)
                 ).fetchone()
-            finally:
-                _conn2.close()
-            # 记忆已不存在 → 确认冗余（orphan），直接 resolve
-            if not src_row:
-                ok = resolve_flag(flag_id, "demote")
-                if ok:
-                    resolved_count += 1
-                    logger.info(
-                        "[Reflection] auto_resolve: flag=%s duplicate+orphan → demote",
-                        flag_id,
-                    )
-            # source=skill → 技能描述已在 skill 系统可查，安全降权
-            elif src_row[0] == "skill":
-                ok = resolve_flag(flag_id, "demote")
-                if ok:
-                    resolved_count += 1
-                    logger.info(
-                        "[Reflection] auto_resolve: flag=%s duplicate+skill → demote",
-                        flag_id,
-                    )
+                # 记忆已删（orphan）或 source=skill → 安全降权
+                if not _src or _src[0] == "skill":
+                    _demote = True
+            elif flag_type == "outdated" and confidence >= out_threshold:
+                _demote = True
 
-        elif flag_type == "outdated" and confidence >= out_threshold:
-            ok = resolve_flag(flag_id, "demote")
-            if ok:
-                resolved_count += 1
-                logger.info(
-                    "[Reflection] auto_resolve: flag=%s outdated → demote",
-                    flag_id,
+            if _demote:
+                # 联动降级原记忆 lifecycle_tag → ephemeral（与 resolve_flag demote 一致）
+                try:
+                    _mid = int(memory_id)
+                except (TypeError, ValueError):
+                    _mid = memory_id
+                conn.execute(
+                    "UPDATE memories SET lifecycle_tag='ephemeral' WHERE id = ?",
+                    (_mid,),
                 )
+                _uc = conn.execute(
+                    "UPDATE memory_flags SET status='resolved', resolution='demote', "
+                    "resolved_at=? WHERE id=? AND status='open'",
+                    (now, flag_id),
+                ).rowcount
+                if _uc > 0:
+                    resolved_count += 1
+                    logger.info(
+                        "[Reflection] auto_resolve: flag=%s %s → demote",
+                        flag_id, flag_type,
+                    )
+    finally:
+        conn.commit()
+        conn.close()
 
     if resolved_count > 0:
         logger.info("[Reflection] auto_resolve: %d flags auto-resolved", resolved_count)
+
+    # ── 孤儿 flag 清扫（2026-08-04 新增）─────────────────────────────
+    # 痛点复盘：2189 个 open flag 中 2097 个指向已删除/不存在的记忆（memory_id
+    # 落在 memories 表 id 范围之外）。这些"孤儿" flag 既不被 auto_resolve 处理
+    # （auto_resolve 只认 duplicate/outdated），也不被任何 UI 展示，纯属噪音，
+    # 且会持续误导"有多少未决问题"的统计。孤儿 flag 直接 resolve 为 'orphan'
+    # （不联动 memory 行，因为 memory 已不存在），安全清零。
+    orphan_count = _sweep_orphan_flags(db_path)
+    if orphan_count > 0:
+        logger.info("[Reflection] auto_resolve: %d orphan flags swept", orphan_count)
+        resolved_count += orphan_count
+
     return resolved_count
+
+
+def _sweep_orphan_flags(db_path: str | None = None) -> int:
+    """清扫指向不存在记忆的 open flag → resolution='orphan'。
+
+    安全护栏：只改 flag 行（status/resolved/resolution），绝不删除 memory，
+    也不降级任何现存 memory。memory 已不存在，无记忆可降级。
+    幂等：重复调用对已 resolved 的 flag 无效果。
+    """
+    from agent.memory_fabric import _get_index_db as _get_mem_db
+
+    if db_path is None:
+        db_path = _get_mem_db()
+    if isinstance(db_path, Path):
+        db_path = str(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA busy_timeout=30000")
+    
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        cur = conn.execute(
+            """UPDATE memory_flags
+               SET status='resolved', resolution='orphan', resolved_at=?
+               WHERE status='open'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM memories m
+                   WHERE CAST(m.id AS TEXT) = memory_flags.memory_id
+                 )""",
+            (now,),
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
 
 
 # ── 存量清扫：清理已合并/重复的 skill 记忆 ──────────────────────────────
