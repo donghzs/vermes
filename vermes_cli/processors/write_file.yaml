@@ -1,0 +1,43 @@
+api: vermes.processor/v1
+kind: tool
+id: write_file
+name: write_file
+version: 1.0.0
+enabled: true
+priority: 100
+toolset: file
+schema:
+  name: write_file
+  description: "Write content to a file, completely replacing existing content. Use this instead of echo/cat heredoc in terminal. Creates parent directories automatically. OVERWRITES the entire file — use 'patch' for targeted edits. Auto-runs syntax checks on .py/.json/.yaml/.toml and other linted languages; only NEW errors introduced by this write are surfaced (pre-existing errors are filtered out)."
+  parameters:
+    type: object
+    properties:
+      path:
+        type: string
+        description: "Path to the file to write (will be created if it doesn't exist, overwritten if it does)"
+      content:
+        type: string
+        description: "Complete content to write to the file"
+    required:
+      - path
+      - content
+handler:
+  ref: tools.file_tools._handle_write_file
+availability:
+  check_fn_ref: tools.file_tools._check_file_reqs
+  requires_env: []
+is_async: false
+emoji: "✍️"
+max_result_size_chars: 100000
+governance:
+  risk_tier: L2
+  replaceable: true
+  mutable_by_aegis: true
+  rollback: enabled
+  critic_guarded: false
+  hash: auto
+lifecycle:
+  hooks: []
+metadata:
+  author: vermes-core
+  source: builtin

@@ -1,0 +1,49 @@
+api: vermes.processor/v1
+kind: tool
+id: read_file
+name: read_file
+version: 1.0.0
+enabled: true
+priority: 100
+toolset: file
+schema:
+  name: read_file
+  description: "Read a text file with line numbers and pagination. Use this instead of cat/head/tail in terminal. Output format: 'LINE_NUM|CONTENT'. Suggests similar filenames if not found. Use offset and limit for large files. Reads exceeding ~100K characters are rejected; use offset and limit to read specific sections of large files. NOTE: Cannot read images or binary files — use vision_analyze for images."
+  parameters:
+    type: object
+    properties:
+      path:
+        type: string
+        description: "Path to the file to read (absolute, relative, or ~/path)"
+      offset:
+        type: integer
+        description: "Line number to start reading from (1-indexed, default: 1)"
+        default: 1
+        minimum: 1
+      limit:
+        type: integer
+        description: "Maximum number of lines to read (default: 500, max: 2000)"
+        default: 500
+        maximum: 2000
+    required:
+      - path
+handler:
+  ref: tools.file_tools._handle_read_file
+availability:
+  check_fn_ref: tools.file_tools._check_file_reqs
+  requires_env: []
+is_async: false
+emoji: "📖"
+max_result_size_chars: 100000
+governance:
+  risk_tier: L2
+  replaceable: true
+  mutable_by_aegis: true
+  rollback: enabled
+  critic_guarded: false
+  hash: auto
+lifecycle:
+  hooks: []
+metadata:
+  author: vermes-core
+  source: builtin

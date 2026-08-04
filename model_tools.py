@@ -179,6 +179,17 @@ def _run_async(coro):
 
 discover_builtin_tools()
 
+# Phase 2: register `kind: tool` processors (YAML-declared tools) into the
+# same registry. Lazy import + broad try so a tool-processor misconfiguration
+# can never break the core tool discovery above.
+try:
+    from agent.tool_processor_loader import register_tool_processors
+    _registered_tool_procs = register_tool_processors()
+    if _registered_tool_procs:
+        logger.info("Registered %d tool processor(s) from YAML", _registered_tool_procs)
+except Exception as _tp_err:  # pragma: no cover - defensive
+    logger.warning("Tool processor registration skipped: %s", _tp_err)
+
 # MCP tool discovery (external MCP servers from config) used to run here as
 # a module-level side effect.  It was removed because discover_mcp_tools()
 # internally uses a blocking future.result(timeout=120) wait, and the
