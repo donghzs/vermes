@@ -2556,7 +2556,7 @@ async def variant_rollback(processor_id: str, req: Request):
     Restore a previous variant by routing through the approval flow."""
     try:
         from agent.variant_store import get_variant_content, _active_yaml_path
-        from agent.emergent_change import EmergentChangeManager, ChangeProposal
+        from agent.emergent_change import get_pipeline, ChangeProposal
         body = await req.json()
         target_hash = body.get("hash", "")
         if not target_hash:
@@ -2567,7 +2567,6 @@ async def variant_rollback(processor_id: str, req: Request):
         active_path = str(_active_yaml_path(processor_id))
         # Route through the approval pipeline — this will .bak the current,
         # archive it as a variant, write the old content, and update active hash.
-        manager = EmergentChangeManager()
         proposal = ChangeProposal(
             source="user",
             target_path=active_path,
@@ -2575,7 +2574,7 @@ async def variant_rollback(processor_id: str, req: Request):
             description=f"rollback to variant {target_hash[:16]}",
             initiator="user",
         )
-        result = manager.apply_change(proposal, force=True)
+        result = get_pipeline().apply_change(proposal, force=True)
         return {
             "ok": result.committed,
             "target_path": result.target_path,
