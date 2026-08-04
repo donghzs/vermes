@@ -8,3 +8,10 @@ triggers:
   type: provider_match
   value: cron
 version: 1.0.0
+governance:
+  risk_tier: L1
+  replaceable: true
+  mutable_by_aegis: true
+  rollback: enabled
+  critic_guarded: false
+  hash: auto
