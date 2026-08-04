@@ -301,6 +301,7 @@ def run_variant_evolution_for_all(db_path: str) -> List[Dict[str, Any]]:
     """
     results: List[Dict[str, Any]] = []
     try:
+        import yaml as _yaml
         from agent.variant_store import _get_user_dir, _REGISTRY_NAME, _VARIANTS_SUBDIR
         user_dir = _get_user_dir()
         if not user_dir.exists():
@@ -311,6 +312,24 @@ def run_variant_evolution_for_all(db_path: str) -> List[Dict[str, Any]]:
             registry = proc_dir / _VARIANTS_SUBDIR / _REGISTRY_NAME
             if not registry.exists():
                 continue
+            # P4-①: 仅对 kind: tool 的 processor 做变体进化
+            # 设计文档拍板：先只对 tool processor 做变体排序，
+            # prompt_fragment 等不进 ranker（避免误排序）
+            active_yaml = proc_dir / "processor.yaml"
+            if active_yaml.exists():
+                try:
+                    with open(active_yaml, "r", encoding="utf-8") as f:
+                        cfg = _yaml.safe_load(f) or {}
+                    if cfg.get("kind") != "tool":
+                        logger.debug(
+                            "skip variant evolution for %s (kind=%s, not tool)",
+                            proc_dir.name, cfg.get("kind", "unknown"),
+                        )
+                        continue
+                except Exception:
+                    # 读 yaml 失败 → fail-open，仍然跳过
+                    logger.debug("skip variant evolution for %s (yaml read error)", proc_dir.name)
+                    continue
             processor_id = proc_dir.name
             results.append(run_variant_evolution(processor_id, db_path))
     except Exception as e:
