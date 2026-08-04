@@ -216,9 +216,29 @@ class EmergentChangePipeline:
                 shutil.copy2(str(target), backup_path)
                 # Clean up old backups (keep only MAX_BACKUPS_PER_FILE)
                 self._cleanup_old_backups(str(target))
+                # Phase 3: archive old content as a hash-indexed variant
+                # (additive to .bak; only for processor YAMLs).
+                try:
+                    from agent.variant_store import snapshot_and_gc
+                    old_content = target.read_text(encoding="utf-8")
+                    snapshot_and_gc(
+                        str(target), old_content,
+                        author=proposal.initiator,
+                        note=(proposal.description or "")[:200],
+                    )
+                except Exception as e:
+                    logger.debug("Variant snapshot skipped for %s: %s", target, e)
 
             shutil.copy2(staging_path, str(target))
             logger.info("Change committed: %s (source=%s)", proposal.target_path, proposal.source)
+
+            # Phase 3: record new active hash after write succeeds.
+            try:
+                from agent.variant_store import update_active_hash
+                new_content = target.read_text(encoding="utf-8")
+                update_active_hash(str(target), new_content)
+            except Exception as e:
+                logger.debug("Active hash update skipped for %s: %s", target, e)
 
             # Clean up staging
             os.unlink(staging_path)

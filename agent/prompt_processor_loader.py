@@ -653,6 +653,10 @@ def start_processor_watcher(poll_interval: float = 1.0) -> None:
                 current = {}
                 if user_dir.exists():
                     # Subdirectory pattern: <id>/processor.yaml
+                    # Phase 3: variant archives live in <id>/variants/<hash>.yaml
+                    # — the glob `*/processor.yaml` naturally excludes them
+                    # (variant files are named sha256_<hash>.yaml, not processor.yaml,
+                    # and are one level deeper).  No explicit skip needed.
                     for p in user_dir.glob("*/processor.yaml"):
                         try:
                             current[str(p)] = p.stat().st_mtime

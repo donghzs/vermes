@@ -2526,6 +2526,101 @@ async def emergence_confirm_skill(skill_id: int, action: str = "confirm"):
         return {"error": str(e)}
 
 
+async def variant_list(processor_id: str):
+    """GET /api/evolution/processors/{processor_id}/variants
+    List all archived variants for a processor."""
+    try:
+        from agent.variant_store import list_variants
+        variants = list_variants(processor_id)
+        return {"ok": True, "variants": variants, "count": len(variants)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "variants": []}
+
+
+async def variant_diff(processor_id: str, hash_val: str):
+    """GET /api/evolution/processors/{processor_id}/variants/{hash}/diff
+    Unified diff of a target variant vs the active processor.yaml."""
+    try:
+        from agent.variant_store import diff_variants
+        diff = diff_variants(processor_id, hash_val)
+        if diff is None:
+            return {"ok": False, "error": "variant or active file not found"}
+        return {"ok": True, "diff": diff}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def variant_rollback(processor_id: str, req: Request):
+    """POST /api/evolution/processors/{processor_id}/rollback
+    Body: {"hash": "sha256:..."}
+    Restore a previous variant by routing through the approval flow."""
+    try:
+        from agent.variant_store import get_variant_content, _active_yaml_path
+        from agent.emergent_change import EmergentChangeManager, ChangeProposal
+        body = await req.json()
+        target_hash = body.get("hash", "")
+        if not target_hash:
+            return {"ok": False, "error": "hash is required"}
+        variant_content = get_variant_content(processor_id, target_hash)
+        if variant_content is None:
+            return {"ok": False, "error": f"variant {target_hash} not found"}
+        active_path = str(_active_yaml_path(processor_id))
+        # Route through the approval pipeline — this will .bak the current,
+        # archive it as a variant, write the old content, and update active hash.
+        manager = EmergentChangeManager()
+        proposal = ChangeProposal(
+            source="user",
+            target_path=active_path,
+            content=variant_content,
+            description=f"rollback to variant {target_hash[:16]}",
+            initiator="user",
+        )
+        result = manager.apply_change(proposal, force=True)
+        return {
+            "ok": result.committed,
+            "target_path": result.target_path,
+            "error": result.error if not result.committed else "",
+            "new_active_hash": target_hash if result.committed else "",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def variant_pin(processor_id: str, hash_val: str):
+    """POST /api/evolution/processors/{processor_id}/variants/{hash}/pin
+    Pin a variant (exempt from GC)."""
+    try:
+        from agent.variant_store import pin_variant
+        ok = pin_variant(processor_id, hash_val, pinned=True)
+        return {"ok": ok, "pinned": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def variant_unpin(processor_id: str, hash_val: str):
+    """POST /api/evolution/processors/{processor_id}/variants/{hash}/unpin
+    Unpin a variant (allow GC)."""
+    try:
+        from agent.variant_store import pin_variant
+        ok = pin_variant(processor_id, hash_val, pinned=False)
+        return {"ok": ok, "pinned": False}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def variant_delete(processor_id: str, hash_val: str):
+    """DELETE /api/evolution/processors/{processor_id}/variants/{hash}
+    Delete a variant (refuses if active or pinned)."""
+    try:
+        from agent.variant_store import delete_variant
+        ok = delete_variant(processor_id, hash_val)
+        if not ok:
+            return {"ok": False, "error": "cannot delete active or pinned variant"}
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def rag_list_documents():
     """List all indexed RAG documents."""
     try:
@@ -2969,6 +3064,43 @@ def register_to(app):
         emergence_confirm_skill,
         methods=["POST"],
         name="emergence_confirm_skill",
+    )
+    # Phase 3: Variant isolation endpoints
+    app.add_api_route(
+        "/api/evolution/processors/{processor_id}/variants",
+        variant_list,
+        methods=["GET"],
+        name="variant_list",
+    )
+    app.add_api_route(
+        "/api/evolution/processors/{processor_id}/variants/{hash_val}/diff",
+        variant_diff,
+        methods=["GET"],
+        name="variant_diff",
+    )
+    app.add_api_route(
+        "/api/evolution/processors/{processor_id}/rollback",
+        variant_rollback,
+        methods=["POST"],
+        name="variant_rollback",
+    )
+    app.add_api_route(
+        "/api/evolution/processors/{processor_id}/variants/{hash_val}/pin",
+        variant_pin,
+        methods=["POST"],
+        name="variant_pin",
+    )
+    app.add_api_route(
+        "/api/evolution/processors/{processor_id}/variants/{hash_val}/unpin",
+        variant_unpin,
+        methods=["POST"],
+        name="variant_unpin",
+    )
+    app.add_api_route(
+        "/api/evolution/processors/{processor_id}/variants/{hash_val}",
+        variant_delete,
+        methods=["DELETE"],
+        name="variant_delete",
     )
     app.add_api_route(
         "/api/delegate/status/{task_id}",

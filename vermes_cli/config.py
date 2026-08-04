@@ -1339,6 +1339,9 @@ DEFAULT_CONFIG = {
     #   See vermes-approval-tiering_20260802.md §T4/§T5.
     "evolution": {
         "auto_apply": True,
+        # Phase 3: max archived variants per processor before GC kicks in.
+        # Pinned variants are exempt.  0 = unlimited (no GC).
+        "max_variants_per_processor": 10,
     },
 
     # Subagent delegation — override the provider:model used by delegate_task
