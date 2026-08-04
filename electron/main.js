@@ -77,6 +77,107 @@ function getIconPath() {
   ]);
 }
 
+// ── Windows Git Bash 检测与自动安装 ──
+// Vermes 工具链依赖 bash（write_file/terminal/search 等），
+// Windows 不自带 bash，需要 Git for Windows。
+// install.ps1 有完整逻辑但 Electron NSIS 安装不跑它，
+// 这里在首次启动时检测：没有可用 bash 就自动下载 PortableGit。
+async function ensureGitBash() {
+  if (process.platform !== 'win32') return; // Mac/Linux 自带 bash
+
+  const localAppData = process.env.LOCALAPPDATA || '';
+  if (!localAppData) return;
+
+  const vermesGitDir = path.join(localAppData, 'Vermes', 'git');
+  const portableBash = path.join(vermesGitDir, 'bin', 'bash.exe');
+  const envVar = 'VERMES_GIT_BASH_PATH';
+
+  // 1. 已有环境变量且文件存在 → 跳过
+  const existing = process.env[envVar];
+  if (existing && fs.existsSync(existing)) {
+    console.log('[Vermes] Git Bash found via env:', existing);
+    return;
+  }
+
+  // 2. PortableGit 已安装但环境变量没设 → 设上
+  if (fs.existsSync(portableBash)) {
+    console.log('[Vermes] PortableGit found, setting env var:', portableBash);
+    process.env[envVar] = portableBash;
+    return;
+  }
+
+  // 3. 系统有 Git for Windows（Program Files\Git\bin\bash.exe）→ 设环境变量
+  const systemGitBash = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'bash.exe');
+  if (fs.existsSync(systemGitBash)) {
+    console.log('[Vermes] System Git Bash found, setting env var:', systemGitBash);
+    process.env[envVar] = systemGitBash;
+    return;
+  }
+
+  // 4. 都没有 → 下载 PortableGit
+  console.log('[Vermes] No bash found, downloading PortableGit...');
+  const { execFileSync } = require('child_process');
+  const os = require('os');
+
+  // 检测架构
+  const arch = process.arch; // 'arm64' | 'x64' | 'ia32'
+  const gitVer = '2.54.0';
+  const gitTag = `v${gitVer}.windows.1`;
+
+  let assetName;
+  if (arch === 'arm64') {
+    assetName = `PortableGit-${gitVer}-arm64.7z.exe`;
+  } else {
+    assetName = `PortableGit-${gitVer}-64-bit.7z.exe`;
+  }
+
+  const downloadUrl = `https://github.com/git-for-windows/git/releases/download/${gitTag}/${assetName}`;
+  const tmpFile = path.join(os.tmpdir(), assetName);
+
+  try {
+    // 下载（PowerShell Invoke-WebRequest，可靠且显示进度）
+    console.log(`[Vermes] Downloading ${assetName}...`);
+    execFileSync('powershell', [
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+      `$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '${downloadUrl}' -OutFile '${tmpFile}' -UseBasicParsing`
+    ], { stdio: 'pipe', timeout: 300000 }); // 5 min timeout
+
+    // 解压（PortableGit 是自解压 7z）
+    console.log(`[Vermes] Extracting to ${vermesGitDir}...`);
+    if (fs.existsSync(vermesGitDir)) {
+      fs.rmSync(vermesGitDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(vermesGitDir, { recursive: true });
+    execFileSync(tmpFile, [`-o"${vermesGitDir}"`, '-y'], {
+      stdio: 'pipe',
+      timeout: 120000,
+      windowsHide: true
+    });
+
+    // 清理临时文件
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+
+    // 验证
+    if (fs.existsSync(portableBash)) {
+      console.log('[Vermes] PortableGit installed successfully:', portableBash);
+      process.env[envVar] = portableBash;
+
+      // 持久化环境变量（User scope）
+      try {
+        execFileSync('powershell', [
+          '-NoProfile', '-Command',
+          `[System.Environment]::SetEnvironmentVariable('${envVar}', '${portableBash}', 'User')`
+        ], { stdio: 'pipe' });
+      } catch (_) {}
+    } else {
+      console.error('[Vermes] PortableGit extraction did not produce bash.exe');
+    }
+  } catch (err) {
+    console.error('[Vermes] Failed to install PortableGit:', err.message);
+    // 非致命——后端仍能启动，bash 相关工具不可用
+  }
+}
+
 // ── 后端管理 ──
 function startBackend() {
   return new Promise((resolve, reject) => {
@@ -167,7 +268,9 @@ function startBackend() {
       }
     });
 
-    // 等待后端就绪（最多 15 秒）
+    // 等待后端就绪（最多 60 秒——PyInstaller onefolder 在 Windows 上
+    // 冷启动需加载 ~2 万个文件到 _internal/，加上 antivirus 扫描，
+    // 15 秒根本不够；2.3.6 时代包小所以 15 秒够用）
     const startTime = Date.now();
     const checkReady = setInterval(async () => {
       try {
@@ -201,9 +304,9 @@ function startBackend() {
       } catch (_) {
         // 还没就绪
       }
-      if (Date.now() - startTime > 15000) {
+      if (Date.now() - startTime > 60000) {
         clearInterval(checkReady);
-        console.warn('[Vermes] 后端启动超时，可能已在外部运行');
+        console.warn('[Vermes] 后端启动超时（60s），可能已在外部运行');
         if (!_resolved) {
           _resolved = true;
           resolve({ ok: false, reason: 'timeout' });
@@ -389,6 +492,11 @@ let _initializing = false
 async function runInitialization() {
   if (_initializing) return
   _initializing = true
+  // 0. Windows: 确保 Git Bash 可用（首次启动自动下载 PortableGit）
+  if (process.platform === 'win32') {
+    sendSplash({ type: 'progress', label: '正在检查运行环境…', percent: 5 });
+    await ensureGitBash();
+  }
   // 1. 启动后端
   sendSplash({ type: 'progress', label: '正在启动后端服务…', percent: 10 });
   const started = await startBackend();
@@ -432,7 +540,7 @@ async function runInitialization() {
       dataProtect = true;
       diagnostic = integ;
     } else if (reason === 'timeout') {
-      detail = '后端服务启动超时，请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。';
+      detail = '后端服务启动超时（60秒），请关闭应用后重新打开。\n如果问题持续，请检查系统资源占用或重新安装。';
     } else if (reason === 'port_in_use') {
       detail = (started && started.detail) || '端口 9119 已被占用，请关闭占用该端口的进程后重试。';
     } else if (reason === 'crash') {
