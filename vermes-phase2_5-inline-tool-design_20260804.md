@@ -183,3 +183,23 @@ inline 的"定义"本身就是执行体——**改 inline YAML = 直接改 agent
 - **Phase 3**：变体隔离（依赖 Phase 1/2 共用的 `governance.hash` 作为身份键）。
 - **Phase 4**：闭环串联 + 模型-Harness 联合进化（GRPO）。
 - **P2.5+**：`python` 脚本后端（复用 `execute_code` 底座，按需）。
+
+
+---
+
+## 8. 审计补正落地记录（Phase 2.5 二次审计：1 P1 + 1 P2 + Phase 2 的 1 P1）
+
+用户完成 Phase 2.5 代码审计，结论通过但抓出 2 处需补正 + Phase 2 遗留 1 P1，均已修复（commit 待补）：
+
+### 8.1 Phase 2.5 P1 — 审批闸门未区分 inline（真漏洞，已修）
+- **现象**：loader 层把 inline `risk_tier` 钳 L2，但审批路径 `_resolve_processor_tier`(`tools/approval.py`) 不区分 inline/non-inline。用户写 `risk_tier: L1` 的 inline processor → 审批判 L1 → 无弹窗自动应用 → 违反"钳 L2 不可降级"。
+- **修复**：`tool_processor_loader.is_inline_processor_content()`（yaml 安全解析；解析失败 fail-closed 返回 True 强制 L2，空/无 handler 返回 False）；`_resolve_processor_tier` 在「磁盘旧内容」与「待写入新内容」两处均检测 `handler.inline`，任一命中即强制 L2。测试 `test_approval_gate_forces_L2_for_inline` 覆盖：inline+L1→L2、plain+L1→L1（非回归）、磁盘/plain·incoming/inline 交叉→L2。
+- 这是"自证式治理"反模式的再次封堵：档位不可由被治理对象自身声明决定。
+
+### 8.2 Phase 2.5 P2 — inline 闭包显式截断（设计文档澄清，已加固）
+- `_run_shell`/`_run_http` 原本已在 payload 上调用 `_truncate`，功能已存在；审计记为 P2 实为文档表述缺漏。已在 `_make_inline_handler` 的闭包层再包一层 `_truncate(result, max_chars)`（执行器级之上再兜底），并补测试 `test_inline_closure_truncates_to_max_result_size`（真实 subprocess + 500 字符 payload 截断到 20）。
+
+### 8.3 Phase 2 P1 — Watcher 未联动 tool processor 热加载（已修）
+- **现象**：设计稿称"Watcher 改动即时生效"，但 prompt watcher 只清自己的缓存，不调 `tool_processor_loader`；且 `register_tool_processors()` 仅在启动时跑一次，改 tool processor YAML 后 ToolRegistry 仍是旧工具，需重启。
+- **修复**（`agent/prompt_processor_loader.py` watcher `_poll`）：变更时除 `invalidate_cache()` 外，额外调 `tool_processor_loader.invalidate_cache()` + `register_tool_processors()`（lazy import 避免循环依赖），真正把改动重注册进 `ToolRegistry`。
+- **连带修**：`register_tool_processors` 每次重跑会往 `PluginManager._hooks` **重复追加** recorder（因 `_registered_hook_keys` 每次清空）。已给 recorder 打 `_vermes_tool_hook=(tool,ev)` tag，并在重跑开头按 tag 去重，避免热加载累积重复 hook 触发。测试 `test_watcher_invalidates_tool_cache` 断言 handler 被真实替换（os.getcwd→os.getpid），非仅缓存 bump。

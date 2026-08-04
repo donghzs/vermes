@@ -672,6 +672,22 @@ def start_processor_watcher(poll_interval: float = 1.0) -> None:
                 elif current != last_mtime:
                     logger.info("[ProcessorWatcher] change detected, invalidating cache")
                     invalidate_cache()
+                    # Phase 2 audit P1: the tool-processor loader keeps its own
+                    # cache; without this, editing a tool processor YAML would
+                    # not hot-reload.  Lazy import avoids a circular import
+                    # (tool_processor_loader imports this module at load time).
+                    try:
+                        from agent.tool_processor_loader import (
+                            invalidate_cache as _tpl_invalidate,
+                            register_tool_processors as _tpl_register,
+                        )
+                        _tpl_invalidate()
+                        # Re-populate ToolRegistry so the user-visible tool set
+                        # reflects the edited YAML WITHOUT a restart — this is
+                        # the half that actually closes the "needs restart" gap.
+                        _tpl_register()
+                    except Exception as _e:  # pragma: no cover - defensive
+                        logger.debug("[ProcessorWatcher] tool hot-reload skipped: %s", _e)
                 last_mtime.clear()
                 last_mtime.update(current)
             except Exception as e:

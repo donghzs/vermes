@@ -757,24 +757,41 @@ def _resolve_processor_tier(target_path: str, approval_data: dict) -> str:
 
     # ── tier currently on disk (what the user previously consented to) ──
     on_disk: Optional[str] = None
+    on_disk_text = ""
     try:
-        on_disk = parse_risk_tier(tp.read_text(encoding="utf-8"))
+        on_disk_text = tp.read_text(encoding="utf-8")
+        on_disk = parse_risk_tier(on_disk_text)
     except Exception:
         on_disk = None
 
     # ── tier of the content about to be written ────────────────────────
     incoming: Optional[str] = None
+    incoming_text = ""
     new_content = approval_data.get("new_content")
     if isinstance(new_content, str) and new_content.strip():
+        incoming_text = new_content
         incoming = parse_risk_tier(new_content)
     else:
         # Rollback path ships a backup file instead of inline content.
         backup_path = approval_data.get("backup_path") or ""
         if backup_path:
             try:
-                incoming = parse_risk_tier(Path(backup_path).read_text(encoding="utf-8"))
+                incoming_text = Path(backup_path).read_text(encoding="utf-8")
+                incoming = parse_risk_tier(incoming_text)
             except Exception:
                 incoming = None
+
+    # Phase 2.5 hardening: an inline handler's *definition IS its execution
+    # body — editing the YAML edits what the agent runs.  Inline processors
+    # therefore can never self-attest below L2, regardless of what the manifest
+    # declares in ``governance.risk_tier``.  Force L2 if either the on-disk file
+    # or the incoming write declares a ``handler.inline`` block.
+    try:
+        from agent.tool_processor_loader import is_inline_processor_content
+        if is_inline_processor_content(on_disk_text) or is_inline_processor_content(incoming_text):
+            return "L2"
+    except Exception:
+        return "L2"  # detection unavailable → fail closed (stay L2)
 
     effective = max(_severity(on_disk), _severity(incoming))
     tier = "L2" if effective >= 2 else "L1"

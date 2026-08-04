@@ -255,6 +255,31 @@ def _truncate(text: str, max_chars: Optional[int]) -> str:
     return text
 
 
+def is_inline_processor_content(content: Optional[str]) -> bool:
+    """True if a processor manifest's text declares a ``handler.inline`` block.
+
+    Used by the approval gate (:func:`tools.approval._resolve_processor_tier`)
+    to force L2 for inline (command/HTTP-executing) tools: editing the YAML
+    edits what the agent runs, so an inline processor can never self-attest
+    below L2 regardless of what ``governance.risk_tier`` claims.
+
+    Parse-safe: a malformed or unreadable manifest is treated as *inline*
+    (fail-closed — force L2 review is the safe default rather than letting a
+    sneaky inline manifest slip through at a lower tier).  Empty / non-string
+    content returns ``False`` (nothing to govern).
+    """
+    if not content or not isinstance(content, str):
+        return False
+    try:
+        data = yaml.safe_load(content)
+    except Exception:
+        return True  # unreadable → assume risky, force L2
+    if not isinstance(data, dict):
+        return False
+    handler = data.get("handler")
+    return isinstance(handler, dict) and "inline" in handler
+
+
 def _allow_inline_shell() -> bool:
     """Whether ``handler.inline.type: shell`` is permitted (approvals gate).
 
@@ -355,7 +380,10 @@ def _make_inline_handler(spec: Dict[str, Any], max_chars: Optional[int]) -> Call
         timeout = int(spec.get("timeout", 30))
         def _run_shell_handler(args: Dict[str, Any], **kw: Any) -> str:
             argv = [_subst(tok, args) for tok in argv_tmpl]
-            return _run_shell(argv, timeout, max_chars)
+            # Closure-level guarantee: cap the returned string at max_chars
+            # (the executor already truncates the payload; this is a belt-and-
+            # suspenders so ANY return path stays bounded).
+            return _truncate(_run_shell(argv, timeout, max_chars), max_chars)
         _run_shell_handler.__name__ = "_inline_shell_handler"
         return _run_shell_handler
 
@@ -369,7 +397,8 @@ def _make_inline_handler(spec: Dict[str, Any], max_chars: Optional[int]) -> Call
             q = {k: _subst(str(v), args) for k, v in (spec.get("query") or {}).items()}
             hdrs = {k: _subst(str(v), args) for k, v in (spec.get("headers") or {}).items()}
             body = _subst(spec["body"], args) if spec.get("body") else None
-            return _run_http(method, target, q, hdrs, body, timeout, max_chars)
+            # Closure-level guarantee: cap the returned string at max_chars.
+            return _truncate(_run_http(method, target, q, hdrs, body, timeout, max_chars), max_chars)
         _run_http_handler.__name__ = "_inline_http_handler"
         return _run_http_handler
 
@@ -628,6 +657,21 @@ def register_tool_processors(reg: Any = None) -> int:
     TOOL_LIFECYCLE_HOOKS.clear()
     _registered_hook_keys.clear()
 
+    # Before re-registering, strip any hook recorders WE previously appended
+    # to PluginManager._hooks.  register_tool_processors() is also called by
+    # the watcher on hot-reload, and invoke_hook iterates _hooks directly — so
+    # without this we would accumulate duplicate callbacks on every reload.
+    try:
+        from vermes_cli.plugins import get_plugin_manager
+        _pm = get_plugin_manager()
+        for _ev in list(_pm._hooks.keys()):
+            _pm._hooks[_ev] = [
+                cb for cb in _pm._hooks[_ev]
+                if not getattr(cb, "_vermes_tool_hook", None)
+            ]
+    except Exception:
+        _pm = None
+
     for p in procs:
         if not p.enabled or p.kind != TOOL_KIND:
             continue
@@ -739,7 +783,10 @@ def register_tool_processors(reg: Any = None) -> int:
                 for ev in p.validated_hooks:
                     key = (tool_name, ev)
                     if key not in _registered_hook_keys:
-                        pm._hooks.setdefault(ev, []).append(_make_hook_recorder(tool_name, ev))
+                        rec = _make_hook_recorder(tool_name, ev)
+                        # Tag so the watcher-driven re-register can de-dup us.
+                        rec._vermes_tool_hook = (tool_name, ev)  # type: ignore[attr-defined]
+                        pm._hooks.setdefault(ev, []).append(rec)
                         _registered_hook_keys.add(key)
             except Exception as e:
                 logger.debug("Tool processor '%s': hook registration skipped: %s", tool_name, e)

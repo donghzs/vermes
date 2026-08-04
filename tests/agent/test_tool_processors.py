@@ -10,18 +10,23 @@ are genuine on-disk manifests, and we assert behaviour against the singleton
 import os
 import textwrap
 import threading
+import time
 
 import pytest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from tools.registry import discover_builtin_tools, registry
+from tools.approval import _resolve_processor_tier
 import agent.tool_processor_loader as TPL
 from agent.tool_processor_loader import (
     register_tool_processors,
     load_tool_processors,
     get_tool_lifecycle_hooks,
     clear_hook_fires,
+    _make_inline_handler,
+    is_inline_processor_content,
 )
+from agent.prompt_processor_loader import start_processor_watcher, stop_processor_watcher
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -396,3 +401,132 @@ def test_inline_http_scheme_whitelist(user_dir):
     assert e is not None
     result = registry.dispatch("fsget", {"url": "file:///etc/passwd"})
     assert '"error"' in result         # rejected by scheme whitelist
+
+
+# ── Phase 2.5 audit corrections (P1 approval gate, P2 truncation) ────────────
+
+def test_is_inline_processor_content():
+    inline = textwrap.dedent("""
+        api: vermes.processor/v1
+        kind: tool
+        handler:
+          inline: {type: http, url_arg: url}
+    """)
+    plain = textwrap.dedent("""
+        api: vermes.processor/v1
+        kind: tool
+        handler: {ref: os.getcwd}
+    """)
+    assert is_inline_processor_content(inline) is True
+    assert is_inline_processor_content(plain) is False
+    # Malformed/unreadable content → fail-closed (force L2 review, never slip through).
+    assert is_inline_processor_content("not: yaml: [broken") is True
+    assert is_inline_processor_content("") is False
+    assert is_inline_processor_content(None) is False
+
+
+def test_approval_gate_forces_L2_for_inline(tmp_path):
+    # A tool processor declaring handler.inline but risk_tier L1 must be forced
+    # to L2 by the approval gate — otherwise the manifest self-attests its way
+    # past human confirmation (the loophole the audit caught).
+    inline_l1 = textwrap.dedent("""
+        api: vermes.processor/v1
+        kind: tool
+        id: inline1
+        name: inline1
+        schema: {name: inline1, description: x, parameters: {type: object, properties: {}}}
+        handler: {inline: {type: http, url_arg: url}}
+        governance: {risk_tier: L1}
+    """)
+    plain_l1 = textwrap.dedent("""
+        api: vermes.processor/v1
+        kind: tool
+        id: plain1
+        name: plain1
+        schema: {name: plain1, description: x, parameters: {type: object, properties: {}}}
+        handler: {ref: tools.file_tools._handle_read_file}
+        governance: {risk_tier: L1}
+    """)
+    p_inline = tmp_path / "inline.yaml"
+    p_plain = tmp_path / "plain.yaml"
+    p_inline.write_text(inline_l1)
+    p_plain.write_text(plain_l1)
+
+    # Non-inline (plain) processor, incoming L1 → L1 (self-attest allowed; no
+    # regression).  This also proves the inline-detection import succeeded —
+    # if it had failed, the fail-closed except would return L2 here.
+    assert _resolve_processor_tier(str(p_plain), {"new_content": plain_l1}) == "L1"
+    # Inline processor, incoming L1 → L2 (forced; cannot self-attest to L1).
+    assert _resolve_processor_tier(str(p_inline), {"new_content": inline_l1}) == "L2"
+    # Plain on disk + inline incoming → L2 (incoming inline forces it).
+    assert _resolve_processor_tier(str(p_plain), {"new_content": inline_l1}) == "L2"
+    # Inline on disk + plain incoming → L2 (on-disk inline forces it).
+    assert _resolve_processor_tier(str(p_inline), {"new_content": plain_l1}) == "L2"
+
+
+def test_inline_closure_truncates_to_max_result_size():
+    # Real subprocess (no mock). Payload is 500 chars; capped at 20 by
+    # max_result_size_chars at the closure level.
+    spec = {"type": "shell", "command": ["printf", "%s", "A" * 500]}
+    handler = _make_inline_handler(spec, 20)
+    result = handler({}, **{})
+    # Result is a JSON envelope; the closure guarantees the whole string is
+    # bounded by max_result_size_chars (+ small envelope slack).
+    assert len(result) <= 20 + 64
+    assert "AAAA" in result  # content actually flowed through the executor
+
+
+def test_watcher_invalidates_tool_cache(tmp_path, monkeypatch):
+    # Phase 2 audit P1: editing a tool processor YAML must hot-reload the tool
+    # loader cache AND re-populate ToolRegistry (no restart needed).
+    import tools.file_tools as FT
+
+    monkeypatch.setattr(
+        "agent.prompt_processor_loader._get_user_dir", lambda: tmp_path
+    )
+    monkeypatch.setattr(TPL, "_get_user_dir", lambda: tmp_path)
+    stop_processor_watcher()  # ensure a clean singleton
+    g0 = TPL.get_generation()
+
+    # Seed a user tool processor BEFORE starting the watcher, so the registry
+    # has a known entry we can later mutate via the watcher.
+    proc = tmp_path / "myshift" / "processor.yaml"
+    proc.parent.mkdir(exist_ok=True)
+    proc.write_text(textwrap.dedent("""
+        api: vermes.processor/v1
+        kind: tool
+        id: myshift
+        name: myshift
+        schema: {name: myshift, description: x, parameters: {type: object, properties: {}}}
+        handler: {ref: tools.file_tools._handle_read_file}
+        governance: {risk_tier: L2}
+    """))
+    TPL._tool_processors_cache = None
+    register_tool_processors()
+    h0 = registry.get_entry("myshift").handler
+    assert h0 is FT._handle_read_file
+
+    start_processor_watcher(poll_interval=0.2)
+    try:
+        time.sleep(0.35)  # let the first scan baseline the directory
+        # Swap the handler on disk → watcher must re-register it into
+        # ToolRegistry WITHOUT a restart, picking up the new handler.
+        proc.write_text(textwrap.dedent("""
+            api: vermes.processor/v1
+            kind: tool
+            id: myshift
+            name: myshift
+            schema: {name: myshift, description: x, parameters: {type: object, properties: {}}}
+            handler: {ref: tools.file_tools._handle_write_file}
+            governance: {risk_tier: L2}
+        """))
+        for _ in range(50):
+            e = registry.get_entry("myshift")
+            if TPL.get_generation() > g0 and e is not None and e.handler is FT._handle_write_file:
+                break
+            time.sleep(0.1)
+        assert TPL.get_generation() > g0
+        # Hot reload actually swapped the handler — not just a cache bump.
+        assert registry.get_entry("myshift").handler is FT._handle_write_file
+    finally:
+        stop_processor_watcher()
