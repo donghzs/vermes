@@ -1158,7 +1158,7 @@ const _onTrialToken = (e) => {
   if (vbit) { vbit.key = token; saveProvidersToStorage() }
 }
 
-onMounted(() => {
+onMounted(async () => {
   const saved_data = localStorage.getItem('vermes-providers')
   if (saved_data) {
     try {
@@ -1178,6 +1178,28 @@ onMounted(() => {
         }
       }
     } catch(e) {}
+  } else {
+    // localStorage 为空（重装/清缓存后）：从 /api/config 恢复 provider 配置
+    // 后端 config.yaml 的 provider 有 key_env 指向 .env 里的 API_KEY
+    // 有 key_env 或 api_key 的 provider 标记为已配置（mask）
+    try {
+      const resp = await fetch('/api/config')
+      if (resp.ok) {
+        const cfg = await resp.json()
+        const cfgProviders = cfg.providers || {}
+        for (const [pid, pcfg] of Object.entries(cfgProviders)) {
+          const target = providers.value.find(pp => pp.id === pid)
+          if (!target) continue
+          if (pcfg.base_url) target.baseUrl = pcfg.base_url
+          // 有 api_key 或 key_env 说明已配置，显示 mask
+          if (pcfg.api_key || pcfg.key_env) {
+            target.key = '●●●●●●●●'
+          }
+        }
+        // 持久化到 localStorage 防止下次再丢
+        saveProvidersToStorage()
+      }
+    } catch(e) { console.error('[Settings] Failed to restore providers from /api/config:', e) }
   }
   window.addEventListener('trial-token', _onTrialToken)
   loadMaxTokens()
