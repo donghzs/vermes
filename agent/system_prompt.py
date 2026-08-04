@@ -71,6 +71,28 @@ _PROCESSOR_FALLBACK = {
 }
 
 
+def _proc_or_default(name: str) -> str:
+    """Get processor content by name, with hardcoded constant fallback.
+
+    All 13 guidance injection points MUST use this function instead of
+    bare _get_processor() — if a YAML file is missing/corrupt, the
+    guidance silently disappears from the system prompt. This function
+    guarantees the constant is always present.
+    """
+    proc = _get_processor(name)
+    if proc is not None:
+        return proc
+    fallback = _PROCESSOR_FALLBACK.get(name)
+    if fallback is not None:
+        return fallback
+    # computer_use is imported lazily
+    if name == "computer_use":
+        from agent.prompt_builder import COMPUTER_USE_GUIDANCE
+        return COMPUTER_USE_GUIDANCE
+    logger.warning("No processor or fallback for: %s", name)
+    return ""
+
+
 def _ra():
     """Lazy reference to the ``run_agent`` module.
 
@@ -197,8 +219,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
 
     if not _soul_loaded:
         # Fallback: use processor or hardcoded identity
-        _proc = _get_processor("identity")
-        stable_parts.append(_proc or DEFAULT_AGENT_IDENTITY)
+        stable_parts.append(_proc_or_default("identity"))
 
     # ── Phase 1: Processor-driven guidance injection ──────────────
     # Load YAML-based prompt processors. Each processor has a declarative
@@ -210,37 +231,24 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     _procs = _get_injectable_processors(agent)
 
     # help_guidance (always inject)
-    _proc = _get_processor("help_guidance")
-    if _proc:
-        stable_parts.append(_proc)
+    stable_parts.append(_proc_or_default("help_guidance"))
 
     # task_completion (config_flag)
-    _proc = _get_processor("task_completion")
-    if _proc and getattr(agent, "_task_completion_guidance", True) and agent.valid_tool_names:
-        stable_parts.append(_proc)
+    if getattr(agent, "_task_completion_guidance", True) and agent.valid_tool_names:
+        stable_parts.append(_proc_or_default("task_completion"))
 
     # Tool-aware behavioral guidance: only inject when the tools are loaded
     tool_guidance = []
     if "memory" in agent.valid_tool_names:
-        _p = _get_processor("memory_guidance")
-        if _p:
-            tool_guidance.append(_p)
+        tool_guidance.append(_proc_or_default("memory_guidance"))
     if "session_search" in agent.valid_tool_names:
-        _p = _get_processor("session_search")
-        if _p:
-            tool_guidance.append(_p)
+        tool_guidance.append(_proc_or_default("session_search"))
     if "skill_manage" in agent.valid_tool_names:
-        _p = _get_processor("skills_guidance")
-        if _p:
-            tool_guidance.append(_p)
+        tool_guidance.append(_proc_or_default("skills_guidance"))
     if "image_generate" in agent.valid_tool_names:
-        _p = _get_processor("image_generate")
-        if _p:
-            tool_guidance.append(_p)
+        tool_guidance.append(_proc_or_default("image_generate"))
     if "web_search" in agent.valid_tool_names:
-        _p = _get_processor("academic_search")
-        if _p:
-            tool_guidance.append(_p)
+        tool_guidance.append(_proc_or_default("academic_search"))
     # Kanban worker/orchestrator lifecycle — only present when the
     # dispatcher spawned this process (kanban_show check_fn gates on
     # VERMES_KANBAN_TASK env var). Normal chat sessions never see
@@ -250,18 +258,14 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         tool_guidance.append(_kanban_guidance)
     elif _kanban_guidance is None and "kanban_show" in agent.valid_tool_names:
         # Fallback for code paths that bypass agent_init (rare).
-        _p = _get_processor("kanban")
-        if _p:
-            tool_guidance.append(_p)
+        tool_guidance.append(_proc_or_default("kanban"))
     if tool_guidance:
         stable_parts.append(" ".join(tool_guidance))
 
     # Computer-use (macOS) — goes in as its own block rather than being
     # merged into tool_guidance because the content is multi-paragraph.
     if "computer_use" in agent.valid_tool_names:
-        from agent.prompt_builder import COMPUTER_USE_GUIDANCE
-        _p = _get_processor("computer_use")
-        stable_parts.append(_p or COMPUTER_USE_GUIDANCE)
+        stable_parts.append(_proc_or_default("computer_use"))
 
     nous_subscription_prompt = _r.build_nous_subscription_prompt(agent.valid_tool_names)
     if nous_subscription_prompt:
@@ -292,22 +296,19 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
                 for p in TOOL_USE_ENFORCEMENT_EXCLUDED_MODELS
             )
         if _inject:
-            _p = _get_processor("tool_use_enforcement")
-            stable_parts.append(_p or TOOL_USE_ENFORCEMENT_GUIDANCE)
+            stable_parts.append(_proc_or_default("tool_use_enforcement"))
             _model_lower = (agent.model or "").lower()
             # Google model operational guidance (conciseness, absolute
             # paths, parallel tool calls, verify-before-edit, etc.)
             if "gemini" in _model_lower or "gemma" in _model_lower:
-                _p = _get_processor("google_model")
-                stable_parts.append(_p or GOOGLE_MODEL_OPERATIONAL_GUIDANCE)
+                stable_parts.append(_proc_or_default("google_model"))
             # OpenAI GPT/Codex execution discipline (tool persistence,
             # prerequisite checks, verification, anti-hallucination).
             # Also applied to xAI Grok — same failure modes (claims completion
             # without tool calls, suggests workarounds instead of using
             # existing tools, replies with plans instead of executing).
             if "gpt" in _model_lower or "codex" in _model_lower or "grok" in _model_lower:
-                _p = _get_processor("openai_model")
-                stable_parts.append(_p or OPENAI_MODEL_EXECUTION_GUIDANCE)
+                stable_parts.append(_proc_or_default("openai_model"))
 
     has_skills_tools = any(name in agent.valid_tool_names for name in ['skills_list', 'skill_view', 'skill_manage'])
     if has_skills_tools:

@@ -643,17 +643,21 @@ def is_config_level_target(target_path: str) -> bool:
 
 
 def classify_component_swap(target_path: str) -> str:
-    """Three-class classifier for self-modification targets.
+    """Four-class classifier for self-modification targets.
 
     Returns one of:
       - ``"config_level"``: config.yaml / .yaml / .json etc — blast radius = scalar dial
       - ``"module_hot_path"``: under ~/.vermes/modules/ — blast radius = single module
+      - ``"processor_hot_path"``: under ~/.vermes/processors/ — blast radius = prompt/behavior
       - ``"source_level"``: frozen package .py or unknown — blast radius = global
 
     This supersedes the binary is_config_level_target for approval tiering.
     ``module_hot_path`` gets L1 (auto-apply + retractable) because the blast
     radius is contained to one hot-loadable module, unlike frozen-package
     source edits which need a DMG rebuild.
+    ``processor_hot_path`` risk tier is determined by the manifest's
+    governance.risk_tier field (L0/L1/L2), defaulting to L2 (fail-closed)
+    when the manifest is missing or unreadable.
     """
     if not target_path:
         return "source_level"
@@ -664,6 +668,16 @@ def classify_component_swap(target_path: str) -> str:
         from agent.module_loader import is_module_hot_path
         if is_module_hot_path(target_path):
             return "module_hot_path"
+    except Exception:
+        pass
+    # Check processor hot path SECOND — processor.yaml inside ~/.vermes/processors/
+    # would also match _CONFIG_LEVEL_SUFFIXES (.yaml), but its blast radius is
+    # prompt/behavior level, not a scalar config dial. The risk tier is read
+    # from the manifest's governance.risk_tier field.
+    try:
+        from agent.prompt_processor_loader import is_processor_hot_path
+        if is_processor_hot_path(target_path):
+            return "processor_hot_path"
     except Exception:
         pass
     if is_config_level_target(target_path):
@@ -871,7 +885,7 @@ def approve_privileged_action(session_key: str, approval_data: dict, *, surface:
         # fail-safe behaviour of prompting.
         _cat = approval_data.get("pattern_key") or approval_data.get("category") or "self_modify"
         is_file_rewrite = str(_cat).startswith("self_modify") or bool(target_path)
-        # Three-class: config_level (L0/L1) | module_hot_path (L1) | source_level (L2)
+        # Four-class: config_level (L0/L1) | module_hot_path (L1) | processor_hot_path (manifest tier) | source_level (L2)
         component_class = classify_component_swap(target_path) if is_file_rewrite else "config_level"
         if component_class == "module_hot_path":
             # L1: module-level hot reload — auto-apply + retractable.
@@ -880,19 +894,51 @@ def approve_privileged_action(session_key: str, approval_data: dict, *, surface:
             approval_data["yolo_exempt"] = True
             approval_data["component_class"] = "module_hot_path"
             return True
-        if component_class != "source_level":
+        if component_class == "processor_hot_path":
+            # Risk tier determined by manifest's governance.risk_tier.
+            # Read the target YAML; if missing/corrupt → L2 (fail-closed).
+            _proc_tier = "L2"  # fail-closed default
+            try:
+                import yaml as _yaml
+                _tp = Path(target_path)
+                if _tp.exists():
+                    _data = _yaml.safe_load(_tp.read_text(encoding="utf-8"))
+                    if _data and isinstance(_data, dict):
+                        _gov = _data.get("governance", {})
+                        _proc_tier = _gov.get("risk_tier", "L2")
+            except Exception:
+                pass  # keep L2 fail-closed
+            approval_data["component_class"] = "processor_hot_path"
+            if _proc_tier == "L0":
+                # L0: auto-apply, no notification needed
+                return True
+            elif _proc_tier == "L1":
+                # L1: auto-apply + retractable (like module_hot_path)
+                approval_data["tier"] = "L1"
+                approval_data["yolo_exempt"] = True
+                return True
+            else:
+                # L2: needs human confirmation (prompt/behavior change)
+                if not _source_modify_always_confirm():
+                    return True
+                approval_data["tier"] = "L2"
+                approval_data["yolo_exempt"] = False
+                _desc = approval_data.get("description", "")
+                _note = "🔒 Processor 改写需人工确认（governance.risk_tier=L2）"
+                approval_data["description"] = f"{_note}\n{_desc}" if _desc else _note
+                # Fall through to scope_options below
+        elif component_class != "source_level":
             # config_level — YOLO auto-approves
             return True
-        # source_level — frozen package .py, needs human confirmation
-        if not _source_modify_always_confirm():
-            return True
-        # L2: source rewrite — prompt anyway, and say why the usual YOLO
-        # bypass did not apply so the popup does not look like a regression.
-        approval_data["tier"] = "L2"
-        approval_data["yolo_exempt"] = False
-        _desc = approval_data.get("description", "")
-        _note = "🔒 源码级改写需人工确认（YOLO 不豁免；可用 approvals.source_modify_always_confirm=false 关闭）"
-        approval_data["description"] = f"{_note}\n{_desc}" if _desc else _note
+        else:
+            # source_level — frozen package .py, needs human confirmation
+            if not _source_modify_always_confirm():
+                return True
+            approval_data["tier"] = "L2"
+            approval_data["yolo_exempt"] = False
+            _desc = approval_data.get("description", "")
+            _note = "🔒 源码级改写需人工确认（YOLO 不豁免；可用 approvals.source_modify_always_confirm=false 关闭）"
+            approval_data["description"] = f"{_note}\n{_desc}" if _desc else _note
 
     # ② Offer the "remember my answer" scopes to the surface.  A client that
     #    does not render them just answers "approve", which still earns the

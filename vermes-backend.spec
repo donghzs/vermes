@@ -22,6 +22,7 @@ for src, dst in [
     ('vermes_cli/web_dist', 'vermes_cli/web_dist'),
     ('vermes_cli/blueprints', 'vermes_cli/blueprints'),
     ('vermes_cli/scholarforge', 'vermes_cli/scholarforge'),
+    ('vermes_cli/processors', 'vermes_cli/processors'),
     ('locales', 'locales'),
     ('skills', 'skills'),
     ('plugins', 'plugins'),
