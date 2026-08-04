@@ -252,10 +252,9 @@ def _find_bash() -> str:
             if os.path.isfile(candidate):
                 return candidate
 
-    found = shutil.which("bash")
-    if found:
-        return found
-
+    # Check well-known Git for Windows locations BEFORE shutil.which(),
+    # because on Windows System32\bash.exe is a WSL stub that redirects to
+    # the Microsoft Store when WSL is not installed.  We must not return it.
     for candidate in (
         os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git", "bin", "bash.exe"),
         os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Git", "bin", "bash.exe"),
@@ -263,6 +262,12 @@ def _find_bash() -> str:
     ):
         if candidate and os.path.isfile(candidate):
             return candidate
+
+    # Last resort: shutil.which("bash") — may return the WSL stub on Windows.
+    # Reject C:\Windows\System32\bash.exe explicitly (WSL placeholder).
+    found = shutil.which("bash")
+    if found and not found.lower().startswith(r"c:\windows\system32"):
+        return found
 
     raise RuntimeError(
         "Git Bash not found. Vermes requires Git for Windows on Windows.\n"
