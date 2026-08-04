@@ -11,8 +11,14 @@ registers the tool into :mod:`tools.registry`, so it flows automatically into
 ``valid_tool_names`` downstream — the same single-source-of-truth registry that
 the 80+ self-registering Python tools use.
 
-Design notes (see vermes-phase2-tool-processor-design_20260804.md):
-  - Thin bridge: execution stays in Python; ``handler.inline`` deferred to 2.5.
+Design notes (see vermes-phase2-tool-processor-design_20260804.md and
+vermes-phase2_5-inline-tool-design_20260804.md):
+  - Thin bridge (Phase 2): execution stays in Python via ``handler.ref``.
+  - Declarative execution (Phase 2.5): ``handler.inline`` builds a standard
+    ``(args, **kw)`` handler closure at load time (no Python file needed),
+    so a brand-new tool can land from a pure YAML manifest.  The generated
+    handler registers into ``tools.registry`` exactly like a Python tool —
+    registry / dispatch / governance / hooks are untouched.
   - ``kind: tool`` is disjoint from the prompt loader: the prompt loader
     requires a non-empty ``content`` block and silently skips tool processors;
     this loader only keeps ``kind == "tool"`` and never requires ``content``.
@@ -34,6 +40,8 @@ import importlib
 import inspect
 import logging
 import os
+import re
+import subprocess
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -106,6 +114,7 @@ class ToolProcessor:
     toolset: str = "user"             # maps to registry toolset
     schema: Dict[str, Any] = field(default_factory=dict)   # OpenAI-format function obj
     handler_ref: Optional[str] = None  # dotted path → (args, **kw) callable
+    inline_spec: Optional[Dict[str, Any]] = None  # handler.inline → declarative executor
     check_fn_ref: Optional[str] = None  # dotted path → zero-arg availability callable
     requires_env: List[str] = field(default_factory=list)
     is_async: bool = False
@@ -207,6 +216,166 @@ def _make_env_check(envs: List[str]) -> Callable[[], bool]:
     return _check
 
 
+# ── Inline declarative execution (Phase 2.5) ───────────────────────────────
+# ``handler.inline`` carries a declarative execution spec (shell / http).  The
+# loader builds a standard ``(args, **kw)`` handler closure from it and registers
+# it into ToolRegistry — identical to a Python tool, so registry / dispatch /
+# governance / hooks are unchanged.  Two backends:
+#
+#   shell — argv LIST (never a shell string) executed with shell=False.  This is
+#           RCE-equivalent, so it is gated by ``approvals.allow_inline_shell``
+#           (default False) AND its risk_tier is force-clamped to L2.
+#   http  — GET/POST to a URL.  Static base URL + templated query/headers/body,
+#           OR a whole-URL-from-param escape hatch (``url_arg``) that is STRICT
+#           scheme-whitelisted (http/https only).  Always clamped to L2.
+#
+# Security hardening (see vermes-phase2_5-inline-tool-design_20260804.md §2):
+#   * args are interpolated per-element into argv / query / headers / body via
+#     ``_subst`` — never concatenated into a shell string, so ``; rm -rf`` style
+#     payloads are inert argv elements, not command separators.
+#   * every executor returns a JSON string via tool_result / tool_error.
+#   * invalid specs / missing shell permission → error-skip (never silent).
+
+# Safe ``{arg}`` substitution: replace ``{name}`` tokens only, leaving any other
+# braces / literal text intact (no str.format() — that would choke on literal
+# braces in the value and would happily evaluate format specifiers).
+_SUBST_RE = re.compile(r"\{(\w+)\}")
+
+
+def _subst(token: str, args: Dict[str, Any]) -> str:
+    """Replace ``{key}`` placeholders in *token* with ``args[key]`` (str()'d)."""
+    if not isinstance(token, str):
+        return token
+    return _SUBST_RE.sub(lambda m: str(args.get(m.group(1), "")), token)
+
+
+def _truncate(text: str, max_chars: Optional[int]) -> str:
+    if max_chars and isinstance(max_chars, int) and len(text) > max_chars:
+        return text[:max_chars]
+    return text
+
+
+def _allow_inline_shell() -> bool:
+    """Whether ``handler.inline.type: shell`` is permitted (approvals gate).
+
+    Config key ``approvals.allow_inline_shell`` (default ``False``).  Fail-safe:
+    any error → ``False`` (locked down).
+    """
+    try:
+        from tools.approval import _get_approval_config
+        return bool(_get_approval_config().get("allow_inline_shell", False))
+    except Exception:
+        return False
+
+
+def _run_shell(argv: List[str], timeout: int, max_chars: Optional[int]) -> str:
+    """Execute an argv list with shell=False. Returns a JSON string."""
+    from tools.registry import tool_error, tool_result
+    try:
+        from vermes_constants import get_subprocess_home
+        cwd = get_subprocess_home() or None
+    except Exception:
+        cwd = None
+    try:
+        proc = subprocess.run(
+            argv,
+            shell=False,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return tool_error(f"inline shell timed out after {timeout}s")
+    except (OSError, subprocess.SubprocessError) as e:
+        return tool_error(f"inline shell execution failed: {e}")
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        # Surface non-zero exit but still return the captured output.
+        return tool_result(output=_truncate(out, max_chars), returncode=proc.returncode)
+    return tool_result(output=_truncate(out, max_chars), returncode=0)
+
+
+def _run_http(
+    method: str,
+    url: Optional[str],
+    query: Dict[str, str],
+    headers: Dict[str, str],
+    body: Optional[str],
+    timeout: int,
+    max_chars: Optional[int],
+) -> str:
+    """Perform an HTTP request (urllib, zero extra deps). Returns a JSON string."""
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    from tools.registry import tool_error, tool_result
+
+    if not url or not isinstance(url, str):
+        return tool_error("inline http: missing or invalid url")
+    # Scheme whitelist — block file://, gopher://, ftp://, etc. (SSRF guard).
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return tool_error(
+            f"inline http: unsupported scheme '{parsed.scheme}' (only http/https allowed)"
+        )
+    if query:
+        sep = "&" if "?" in url else "?"
+        url = url + sep + urllib.parse.urlencode(query)
+    data = body.encode("utf-8") if body else None
+    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+        return tool_result(status=resp.status, body=_truncate(raw, max_chars))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        return tool_error(f"HTTP {e.code}: {_truncate(detail, 500)}", status=e.code)
+    except (OSError, urllib.error.URLError) as e:
+        return tool_error(f"inline http request failed: {e}")
+
+
+def _make_inline_handler(spec: Dict[str, Any], max_chars: Optional[int]) -> Callable:
+    """Build a ``(args, **kw)`` handler closure from an inline spec.
+
+    Raises on an unknown backend type so the caller can error-skip the
+    processor (never silently).  ``args`` is the tool's parameter dict; ``**kw``
+    carries caller-injected metadata (task_id / user_task / ...) which we ignore,
+    exactly like every other registry handler.
+    """
+    itype = spec.get("type")
+    if itype == "shell":
+        argv_tmpl = spec.get("command") or []
+        if not isinstance(argv_tmpl, list) or not all(isinstance(t, str) for t in argv_tmpl):
+            raise ValueError("shell inline 'command' must be a list of strings")
+        timeout = int(spec.get("timeout", 30))
+        def _run_shell_handler(args: Dict[str, Any], **kw: Any) -> str:
+            argv = [_subst(tok, args) for tok in argv_tmpl]
+            return _run_shell(argv, timeout, max_chars)
+        _run_shell_handler.__name__ = "_inline_shell_handler"
+        return _run_shell_handler
+
+    if itype == "http":
+        method = str(spec.get("method", "GET")).upper()
+        url_arg = spec.get("url_arg")  # whole-URL-from-param escape hatch (scheme-checked)
+        static_url = spec.get("url")
+        timeout = int(spec.get("timeout", 30))
+        def _run_http_handler(args: Dict[str, Any], **kw: Any) -> str:
+            target = args.get(url_arg) if url_arg else static_url
+            q = {k: _subst(str(v), args) for k, v in (spec.get("query") or {}).items()}
+            hdrs = {k: _subst(str(v), args) for k, v in (spec.get("headers") or {}).items()}
+            body = _subst(spec["body"], args) if spec.get("body") else None
+            return _run_http(method, target, q, hdrs, body, timeout, max_chars)
+        _run_http_handler.__name__ = "_inline_http_handler"
+        return _run_http_handler
+
+    raise ValueError(f"unknown inline type '{itype}' (expected 'shell' or 'http')")
+
+
 # ── Parsing ─────────────────────────────────────────────────────────────
 def _parse_tool_yaml(path: Path) -> Optional[ToolProcessor]:
     """Parse a single YAML file into a ToolProcessor.
@@ -254,6 +423,46 @@ def _parse_tool_yaml(path: Path) -> Optional[ToolProcessor]:
 
     handler = data.get("handler") or {}
     handler_ref = handler.get("ref") if isinstance(handler, dict) else None
+
+    # ── handler.inline (Phase 2.5 declarative execution) ──
+    # Parse + validate now so a malformed spec is rejected at parse time
+    # (error-skip, never silent).  Resolution into a callable happens later in
+    # register_tool_processors via _make_inline_handler.
+    inline_spec: Optional[Dict[str, Any]] = None
+    inline_raw = handler.get("inline") if isinstance(handler, dict) else None
+    if inline_raw is not None:
+        if not isinstance(inline_raw, dict):
+            logger.error("Tool processor %s: handler.inline must be a mapping — SKIPPING", name)
+            return None
+        itype = inline_raw.get("type")
+        if itype not in ("shell", "http"):
+            logger.error(
+                "Tool processor %s: handler.inline.type '%s' invalid (expected "
+                "'shell' or 'http') — SKIPPING", name, itype,
+            )
+            return None
+        if itype == "shell":
+            cmd = inline_raw.get("command")
+            if not isinstance(cmd, list) or not all(isinstance(t, str) for t in cmd):
+                logger.error(
+                    "Tool processor %s: shell inline 'command' must be a list of "
+                    "strings — SKIPPING", name,
+                )
+                return None
+        else:  # http
+            if not inline_raw.get("url_arg") and not inline_raw.get("url"):
+                logger.error(
+                    "Tool processor %s: http inline requires 'url' (static base) "
+                    "or 'url_arg' (param) — SKIPPING", name,
+                )
+                return None
+            if inline_raw.get("url") and not str(inline_raw["url"]).startswith(("http://", "https://")):
+                logger.error(
+                    "Tool processor %s: http inline 'url' must be http/https — SKIPPING",
+                    name,
+                )
+                return None
+        inline_spec = dict(inline_raw)
     availability = data.get("availability") or {}
     if not isinstance(availability, dict):
         availability = {}
@@ -313,11 +522,28 @@ def _parse_tool_yaml(path: Path) -> Optional[ToolProcessor]:
         governance["declared_hash"] = _declared
     governance["hash"] = _computed
 
+    # Phase 2.5 hardening: an inline handler's *definition IS its execution
+    # body — editing the YAML edits what the agent runs.  That is strictly more
+    # dangerous than a fixed ``handler.ref`` to an existing function, so inline
+    # tools are force-clamped to L2 (per-rewrite human confirmation).  This is a
+    # loader-enforced floor; it does NOT read the manifest's own declared tier
+    # (that would be self-attested governance).  L0/L1 declared → bumped to L2.
+    if inline_spec is not None:
+        rt = governance.get("risk_tier")
+        if rt in ("L0", "L1"):
+            logger.warning(
+                "Tool processor %s: inline handler risk_tier '%s' clamped to L2 "
+                "(inline executes commands/requests — not downgradable)",
+                name, rt,
+            )
+            governance["risk_tier"] = "L2"
+
     metadata = data.get("metadata", {"author": "unknown", "source": "builtin"})
 
     return ToolProcessor(
         name=name, kind=kind, id=proc_id, enabled=enabled, priority=priority,
         toolset=toolset, schema=schema, handler_ref=handler_ref,
+        inline_spec=inline_spec,
         check_fn_ref=check_fn_ref, requires_env=list(requires_env),
         is_async=is_async, emoji=emoji,
         max_result_size_chars=max_result_size_chars,
@@ -408,7 +634,7 @@ def register_tool_processors(reg: Any = None) -> int:
         tool_name = p.effective_id
         existing = reg.get_entry(tool_name)
 
-        # ── resolve handler ──
+        # ── resolve handler (three branches: ref → inline → keep builtin) ──
         handler: Optional[Callable] = None
         if p.handler_ref:
             try:
@@ -419,12 +645,31 @@ def register_tool_processors(reg: Any = None) -> int:
                     tool_name, p.handler_ref, type(e).__name__ + ": " + str(e),
                 )
                 continue
+        elif p.inline_spec is not None:
+            # Phase 2.5: build a declarative handler closure.  shell inline is
+            # gated by approvals.allow_inline_shell (default False); http inline
+            # is always allowed but was already force-clamped to L2 at parse.
+            if p.inline_spec.get("type") == "shell" and not _allow_inline_shell():
+                logger.error(
+                    "Tool processor '%s': shell inline blocked "
+                    "(approvals.allow_inline_shell=False) — SKIPPING",
+                    tool_name,
+                )
+                continue
+            try:
+                handler = _make_inline_handler(p.inline_spec, p.max_result_size_chars)
+            except Exception as e:
+                logger.error(
+                    "Tool processor '%s': inline handler build failed (%s) — SKIPPING",
+                    tool_name, type(e).__name__ + ": " + str(e),
+                )
+                continue
         elif existing is not None:
             # Override keeps the built-in Python handler (decision C).
             handler = existing.handler
         else:
             logger.error(
-                "Tool processor '%s': no handler.ref and tool not pre-registered — SKIPPING",
+                "Tool processor '%s': no handler.ref/inline and tool not pre-registered — SKIPPING",
                 tool_name,
             )
             continue

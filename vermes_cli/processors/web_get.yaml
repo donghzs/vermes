@@ -1,0 +1,57 @@
+api: vermes.processor/v1
+kind: tool
+id: web_get
+name: web_get
+version: 1.0.0
+enabled: true
+priority: 100
+toolset: web
+schema:
+  name: web_get
+  description: "Fetch any http/https URL and return the response status + body as JSON. Pure-YAML tool (handler.inline) — no Python backend. NOTE: only http/https schemes are permitted; the URL is supplied by the caller via the 'url' argument and is scheme-whitelisted at execution time. Use this for ad-hoc web fetches that don't need a dedicated tool."
+  parameters:
+    type: object
+    properties:
+      url:
+        type: string
+        description: "Full http/https URL to fetch"
+      method:
+        type: string
+        description: "HTTP method (default GET)"
+        default: GET
+      query:
+        type: object
+        description: "Optional query-string parameters (key/value)"
+        additionalProperties: true
+      headers:
+        type: object
+        description: "Optional request headers (key/value)"
+        additionalProperties: true
+      body:
+        type: string
+        description: "Optional request body (for POST/PUT)"
+    required:
+      - url
+handler:
+  inline:
+    type: http
+    method: GET
+    url_arg: url
+    timeout: 30
+availability:
+  requires_env: []
+is_async: false
+emoji: "🌐"
+max_result_size_chars: 200000
+governance:
+  risk_tier: L2
+  replaceable: true
+  mutable_by_aegis: true
+  rollback: enabled
+  critic_guarded: false
+  hash: auto
+lifecycle:
+  hooks: []
+metadata:
+  author: vermes-core
+  source: builtin

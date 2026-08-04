@@ -1613,6 +1613,14 @@ DEFAULT_CONFIG = {
         # L1 processors (already reviewed once) stay auto-applied and
         # retractable regardless.
         "processor_modify_always_confirm": True,
+        # Phase 2.5 — inline ``shell`` tool processors (handler.inline.type:
+        # shell) execute argv lists via subprocess (RCE-equivalent).  Default
+        # OFF so a fresh out-of-the-box Vermes never exposes a shell-injection
+        # surface; only users who explicitly opt in (and still face the L2
+        # per-rewrite approval gate) can register shell-inline tools.  http
+        # inline does NOT consult this key (it is lower-risk and stays enabled
+        # by default, still clamped to L2).
+        "allow_inline_shell": False,
         # ...but "must confirm" is not "must nag".  Approving a privileged
         # action grants that action category a pass for this many minutes, so
         # a task that rewrites five files asks once instead of five times.
