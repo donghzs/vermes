@@ -130,6 +130,10 @@ def self_modify_tool(args) -> str:
         "pattern_keys": ["self_modify"],
         "diff": diff,
         "target_path": target_path,
+        # The content about to be written.  Governance needs to grade the
+        # *incoming* manifest, not just the one already on disk — otherwise a
+        # processor could loosen its own risk_tier without review.
+        "new_content": content,
         "surface": "gui",
     }
     approved = approve_privileged_action(session_key, approval_data)

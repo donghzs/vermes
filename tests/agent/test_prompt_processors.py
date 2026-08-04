@@ -614,3 +614,242 @@ class TestProcessorClassify:
         from tools.approval import classify_component_swap
         path = "/Applications/Vermes.app/Contents/Resources/backend/_internal/agent/foo.py"
         assert classify_component_swap(path) == "source_level"
+
+
+# ── A: three-level deterministic ordering (prefix-cache protection) ────
+
+def _write_proc(directory, fname, *, pid, layer="stable", priority=100):
+    p = directory / fname
+    p.write_text(
+        "api: vermes.processor/v1\n"
+        f"id: {pid}\n"
+        f"name: {pid}\n"
+        f"layer: {layer}\n"
+        f"priority: {priority}\n"
+        f"content: 'body of {pid}'\n",
+        encoding="utf-8",
+    )
+    return p
+
+
+class TestLayerOrdering:
+    """`layer` must be the PRIMARY sort key.
+
+    If a volatile fragment can sort ahead of a stable one, the system prompt
+    prefix changes every turn and the provider prompt cache misses on the
+    whole prompt — a direct token cost.
+    """
+
+    def test_layer_beats_priority(self, tmp_path):
+        d = tmp_path / "p"
+        d.mkdir()
+        # volatile has the *better* (lower) priority but must still sort last
+        _write_proc(d, "v.yaml", pid="vol", layer="volatile", priority=1)
+        _write_proc(d, "c.yaml", pid="ctx", layer="context", priority=50)
+        _write_proc(d, "s.yaml", pid="sta", layer="stable", priority=900)
+
+        with patch("agent.prompt_processor_loader._get_builtin_dir", return_value=d), \
+             patch("agent.prompt_processor_loader._get_user_dir", return_value=tmp_path / "none"):
+            invalidate_cache()
+            procs = load_all_processors()
+
+        assert [p.effective_id for p in procs] == ["sta", "ctx", "vol"]
+
+    def test_id_tiebreak_is_deterministic(self, tmp_path):
+        """Same layer + same priority → id lexicographic, never glob order."""
+        d = tmp_path / "p"
+        d.mkdir()
+        # deliberately create in reverse-alphabetical filename order
+        _write_proc(d, "zzz.yaml", pid="bbb", layer="stable", priority=100)
+        _write_proc(d, "aaa.yaml", pid="aaa", layer="stable", priority=100)
+        _write_proc(d, "mmm.yaml", pid="ccc", layer="stable", priority=100)
+
+        with patch("agent.prompt_processor_loader._get_builtin_dir", return_value=d), \
+             patch("agent.prompt_processor_loader._get_user_dir", return_value=tmp_path / "none"):
+            invalidate_cache()
+            procs = load_all_processors()
+
+        assert [p.effective_id for p in procs] == ["aaa", "bbb", "ccc"]
+
+    def test_unknown_layer_falls_back_to_stable(self, tmp_path):
+        d = tmp_path / "p"
+        d.mkdir()
+        _write_proc(d, "x.yaml", pid="weird", layer="banana", priority=10)
+        proc = _parse_yaml(d / "x.yaml")
+        assert proc.layer == "stable"
+        assert proc.layer_rank == 0
+
+    def test_real_builtins_are_layer_sorted(self):
+        """No-mock regression: real builtins must come back layer-ordered."""
+        invalidate_cache()
+        procs = load_all_processors()
+        assert len(procs) >= 30
+        ranks = [p.layer_rank for p in procs]
+        assert ranks == sorted(ranks), "builtin processors are not layer-ordered"
+
+
+# ── B: canonical manifest hash ─────────────────────────────────────────
+
+class TestCanonicalHash:
+    """`governance.hash` is the identity of a processor version.
+
+    Phase 2 variant isolation keys off it, so it must be byte-stable across
+    key order, YAML round-trips and machines.
+    """
+
+    def test_hash_is_key_order_independent(self):
+        from agent.prompt_processor_loader import compute_manifest_hash
+        a = {"b": 1, "a": {"z": [3, 2, 1], "y": "文本"}}
+        b = {"a": {"y": "文本", "z": [3, 2, 1]}, "b": 1}
+        assert compute_manifest_hash(a) == compute_manifest_hash(b)
+
+    def test_hash_excludes_itself(self):
+        from agent.prompt_processor_loader import compute_manifest_hash
+        base = {"name": "x", "content": "c", "governance": {"risk_tier": "L2"}}
+        with_hash = {
+            "name": "x", "content": "c",
+            "governance": {"risk_tier": "L2", "hash": "sha256:deadbeef"},
+        }
+        assert compute_manifest_hash(base) == compute_manifest_hash(with_hash)
+
+    def test_hash_changes_when_content_changes(self):
+        from agent.prompt_processor_loader import compute_manifest_hash
+        a = {"name": "x", "content": "one"}
+        b = {"name": "x", "content": "two"}
+        assert compute_manifest_hash(a) != compute_manifest_hash(b)
+
+    def test_auto_is_resolved_at_parse_time(self, tmp_path):
+        p = tmp_path / "h.yaml"
+        p.write_text(
+            "api: vermes.processor/v1\nid: h\nname: h\ncontent: hello\n"
+            "governance:\n  risk_tier: L2\n  hash: auto\n",
+            encoding="utf-8",
+        )
+        proc = _parse_yaml(p)
+        assert proc.content_hash.startswith("sha256:")
+        assert proc.content_hash != "auto"
+        assert len(proc.content_hash) == len("sha256:") + 64
+
+    def test_declared_mismatch_is_recorded_not_trusted(self, tmp_path):
+        p = tmp_path / "h.yaml"
+        p.write_text(
+            "api: vermes.processor/v1\nid: h\nname: h\ncontent: hello\n"
+            "governance:\n  risk_tier: L2\n  hash: 'sha256:0000'\n",
+            encoding="utf-8",
+        )
+        proc = _parse_yaml(p)
+        assert proc.content_hash != "sha256:0000"
+        assert proc.governance.get("declared_hash") == "sha256:0000"
+
+    def test_no_real_builtin_left_as_auto(self):
+        """No-mock regression: every shipped processor has a real digest."""
+        invalidate_cache()
+        procs = load_all_processors()
+        unresolved = [p.effective_id for p in procs if not p.content_hash.startswith("sha256:")]
+        assert unresolved == [], f"processors with unresolved hash: {unresolved}"
+
+
+# ── C: processor risk tier cannot be self-attested ─────────────────────
+
+class TestProcessorTierResolution:
+    """A manifest is the governed object; it may not grade itself down.
+
+    Rules: strictest of (on-disk, incoming); creation is L2; L0 clamps to L1.
+    """
+
+    @staticmethod
+    def _mk(directory, name, tier):
+        p = directory / name
+        body = "api: vermes.processor/v1\nname: x\ncontent: hello\n"
+        if tier:
+            body += f"governance:\n  risk_tier: {tier}\n"
+        p.write_text(body, encoding="utf-8")
+        return str(p)
+
+    @staticmethod
+    def _payload(tier):
+        return (
+            "api: vermes.processor/v1\nname: x\ncontent: new\n"
+            f"governance:\n  risk_tier: {tier}\n"
+        )
+
+    def test_creation_is_l2_even_if_it_claims_l0(self, tmp_path):
+        from tools.approval import _resolve_processor_tier
+        missing = str(tmp_path / "does_not_exist.yaml")
+        got = _resolve_processor_tier(missing, {"new_content": self._payload("L0")})
+        assert got == "L2"
+
+    def test_incoming_cannot_downgrade_on_disk_tier(self, tmp_path):
+        """The escalation path: plant L0 in the payload to silence review."""
+        from tools.approval import _resolve_processor_tier
+        target = self._mk(tmp_path, "a.yaml", "L2")
+        got = _resolve_processor_tier(target, {"new_content": self._payload("L0")})
+        assert got == "L2"
+
+    def test_established_l1_stays_l1(self, tmp_path):
+        from tools.approval import _resolve_processor_tier
+        target = self._mk(tmp_path, "b.yaml", "L1")
+        got = _resolve_processor_tier(target, {"new_content": self._payload("L1")})
+        assert got == "L1"
+
+    def test_l0_is_clamped_to_l1(self, tmp_path):
+        from tools.approval import _resolve_processor_tier
+        target = self._mk(tmp_path, "c.yaml", "L0")
+        got = _resolve_processor_tier(target, {"new_content": self._payload("L0")})
+        assert got == "L1", "processors must never reach L0 (no ledger entry)"
+
+    def test_tightening_is_always_allowed(self, tmp_path):
+        from tools.approval import _resolve_processor_tier
+        target = self._mk(tmp_path, "d.yaml", "L1")
+        got = _resolve_processor_tier(target, {"new_content": self._payload("L2")})
+        assert got == "L2"
+
+    def test_missing_governance_block_is_l2(self, tmp_path):
+        """All 32 shipped v0 processors look like this."""
+        from tools.approval import _resolve_processor_tier
+        target = self._mk(tmp_path, "e.yaml", None)
+        got = _resolve_processor_tier(target, {"new_content": self._payload("L1")})
+        assert got == "L2"
+
+    def test_corrupt_incoming_yaml_is_l2(self, tmp_path):
+        from tools.approval import _resolve_processor_tier
+        target = self._mk(tmp_path, "f.yaml", "L1")
+        got = _resolve_processor_tier(target, {"new_content": "::: not yaml ["})
+        assert got == "L2"
+
+    def test_rollback_reads_backup_path(self, tmp_path):
+        from tools.approval import _resolve_processor_tier
+        backup = self._mk(tmp_path, "g.bak.yaml", "L1")
+        target = self._mk(tmp_path, "g.yaml", "L1")
+        got = _resolve_processor_tier(target, {"backup_path": backup})
+        assert got == "L1"
+
+
+class TestProcessorConfirmKeyIsIndependent:
+    """The L2 escape hatch must NOT be source_modify_always_confirm.
+
+    That key's documented scope is .py rewrites; silencing it must not also
+    silence prompt-constitution rewrites.
+    """
+
+    def test_key_exists_in_default_config(self):
+        from vermes_cli.config import DEFAULT_CONFIG
+        approvals = DEFAULT_CONFIG["approvals"]
+        assert approvals["processor_modify_always_confirm"] is True
+
+    def test_reader_uses_its_own_key(self):
+        from tools import approval as ap
+        with patch.object(ap, "_get_approval_config",
+                          return_value={"source_modify_always_confirm": False}):
+            # source key off, processor key absent → processor still confirms
+            assert ap._processor_modify_always_confirm() is True
+        with patch.object(ap, "_get_approval_config",
+                          return_value={"processor_modify_always_confirm": False}):
+            assert ap._processor_modify_always_confirm() is False
+            # ...and the source key is untouched by that
+            assert ap._source_modify_always_confirm() is True
+
+    def test_fails_closed_on_config_error(self):
+        from tools import approval as ap
+        with patch.object(ap, "_get_approval_config", side_effect=RuntimeError("boom")):
+            assert ap._processor_modify_always_confirm() is True

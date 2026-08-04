@@ -16,11 +16,13 @@ Design constraints (Phase 1 spec):
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import logging
 import os
 import re
 import threading
-from dataclasses import dataclass, field, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -33,6 +35,19 @@ _processors_cache: Optional[List["PromptProcessor"]] = None
 _cache_lock = threading.Lock()
 # Used by watcher to invalidate cache — bumped on file change
 _processors_generation: int = 0
+
+# ── Layer ordering (prefix-cache protection) ───────────────────────────
+# The system prompt is concatenated layer-first so that the *stable* prefix
+# stays byte-identical across turns.  If a volatile fragment could sort ahead
+# of a stable one (priority alone allows that), every turn would emit a
+# different prefix and the provider prompt cache would miss on the WHOLE
+# prompt — a direct token cost, not a cosmetic issue.
+#
+#   stable   — identity, guidance, platform hints. Same for the whole session.
+#   context  — per-session context (context files, skills). Stable within a session.
+#   volatile — per-turn injections (memory recall, steer, reminders).
+_LAYER_ORDER: Dict[str, int] = {"stable": 0, "context": 1, "volatile": 2}
+_DEFAULT_LAYER = "stable"
 
 
 @dataclass
@@ -90,6 +105,20 @@ class PromptProcessor:
     def risk_tier(self) -> str:
         """Risk tier for classify_component_swap. Defaults to L2 (fail-closed)."""
         return self.governance.get("risk_tier", "L2")
+
+    @property
+    def layer_rank(self) -> int:
+        """Numeric layer rank for ordering. Unknown layers sort as stable."""
+        return _LAYER_ORDER.get(self.layer, _LAYER_ORDER[_DEFAULT_LAYER])
+
+    @property
+    def content_hash(self) -> str:
+        """Canonical sha256 of this manifest (``governance.hash``).
+
+        Resolved at parse time; ``"auto"`` only survives for objects built
+        directly in code rather than loaded from YAML.
+        """
+        return self.governance.get("hash", "auto")
 
     def should_inject(self, agent: Any) -> bool:
         """Evaluate whether this processor should be injected into the prompt.
@@ -229,6 +258,77 @@ class PromptProcessor:
         return self.content
 
 
+# ── Canonical manifest hash ────────────────────────────────────────────
+# ``governance.hash`` is the identity of a processor *version*.  Phase 2
+# (variant isolation) and Phase 3 (evolution history) key off it, so the
+# serialization MUST be canonical: the same manifest has to hash identically
+# on every machine, every Python version, every YAML round-trip.
+#
+# Canonical form:
+#   1. drop ``governance.hash`` itself (a hash cannot contain itself)
+#   2. recursively sort dict keys (dict iteration order is insertion order)
+#   3. yaml.safe_dump(sort_keys=True, allow_unicode=True, default_flow_style=False)
+#   4. normalize CRLF/CR → LF, strip trailing newlines
+#   5. sha256 of the UTF-8 bytes, prefixed "sha256:"
+
+_HASH_PREFIX = "sha256:"
+
+
+def _canonicalize(obj: Any) -> Any:
+    """Recursively sort dict keys for stable serialization."""
+    if isinstance(obj, dict):
+        return {k: _canonicalize(obj[k]) for k in sorted(obj.keys(), key=str)}
+    if isinstance(obj, (list, tuple)):
+        return [_canonicalize(x) for x in obj]
+    return obj
+
+
+def compute_manifest_hash(data: Dict[str, Any]) -> str:
+    """Compute the canonical sha256 of a processor manifest dict.
+
+    ``governance.hash`` is excluded so the value is self-consistent.
+    Returns ``"sha256:<hex>"``.
+    """
+    try:
+        payload = copy.deepcopy(data)
+    except Exception:
+        payload = dict(data)
+    gov = payload.get("governance")
+    if isinstance(gov, dict):
+        gov.pop("hash", None)
+    canon = _canonicalize(payload)
+    text = yaml.safe_dump(
+        canon,
+        sort_keys=True,
+        allow_unicode=True,
+        default_flow_style=False,
+    )
+    text = text.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
+    return _HASH_PREFIX + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def parse_risk_tier(text: str) -> Optional[str]:
+    """Extract ``governance.risk_tier`` from raw manifest YAML text.
+
+    Returns ``"L0"``/``"L1"``/``"L2"``, or ``None`` when the text is not a
+    parseable manifest or declares no tier.  Callers decide the fail-closed
+    default — this function never invents one.
+    """
+    try:
+        data = yaml.safe_load(text)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    gov = data.get("governance")
+    if not isinstance(gov, dict):
+        return None
+    tier = gov.get("risk_tier")
+    if isinstance(tier, str) and tier.upper() in ("L0", "L1", "L2"):
+        return tier.upper()
+    return None
+
+
 def _get_builtin_dir() -> Path:
     """Return the built-in processors directory (shipped in bundle)."""
     # In frozen bundle: _internal/vermes_cli/processors/
@@ -295,19 +395,54 @@ def _parse_yaml(path: Path) -> Optional[PromptProcessor]:
 
     enabled = data.get("enabled", True)
     priority = data.get("priority")  # None = fall back to v0 `order`
-    layer = data.get("layer", "stable")
-    model_affinity = data.get("model_affinity", {"operator": "any_of", "match": []})
-    conditions = data.get("conditions", {})
-    render = data.get("render", {"engine": "none", "on_missing": "keep", "inputs": {}})
+
+    # layer drives prefix-cache-safe ordering — an unknown value must not
+    # silently sort ahead of everything, so fall back to the stable layer.
+    layer = data.get("layer", _DEFAULT_LAYER)
+    if layer not in _LAYER_ORDER:
+        logger.warning(
+            "Processor %s declares unknown layer '%s' (valid: %s), falling back to '%s'",
+            name, layer, sorted(_LAYER_ORDER), _DEFAULT_LAYER,
+        )
+        layer = _DEFAULT_LAYER
+
+    model_affinity = data.get("model_affinity") or {"operator": "any_of", "match": []}
+    conditions = data.get("conditions") or {}
+    render = data.get("render") or {"engine": "none", "on_missing": "keep", "inputs": {}}
+    # A YAML key present but null (``render:``) yields None, and a scalar
+    # yields a str — both would blow up on ``.get``.  Coerce to the default.
+    if not isinstance(model_affinity, dict):
+        model_affinity = {"operator": "any_of", "match": []}
+    if not isinstance(conditions, dict):
+        conditions = {}
+    if not isinstance(render, dict):
+        render = {"engine": "none", "on_missing": "keep", "inputs": {}}
 
     # governance: merge v0 replaceable into v1 governance.replaceable
     gov_defaults = {"risk_tier": "L2", "replaceable": replaceable_v0, "mutable_by_aegis": True, "rollback": "enabled", "critic_guarded": False, "hash": "auto"}
-    governance = data.get("governance", {})
+    governance = data.get("governance") or {}
+    if not isinstance(governance, dict):
+        governance = {}
     # Fill missing governance keys with defaults (v0 replaceable → governance.replaceable)
     for k, v in gov_defaults.items():
         governance.setdefault(k, v)
 
-    lifecycle = data.get("lifecycle", {"hooks": []})
+    # Resolve ``hash: auto`` into the real canonical digest.  An explicitly
+    # declared digest that disagrees is a tamper/staleness signal — log it,
+    # but always trust the computed value (a manifest cannot vouch for itself).
+    _declared = governance.get("hash")
+    _computed = compute_manifest_hash(data)
+    if isinstance(_declared, str) and _declared not in ("", "auto") and _declared != _computed:
+        logger.warning(
+            "Processor %s declares hash %s but content hashes to %s (using computed)",
+            name, _declared, _computed,
+        )
+        governance["declared_hash"] = _declared
+    governance["hash"] = _computed
+
+    lifecycle = data.get("lifecycle") or {"hooks": []}
+    if not isinstance(lifecycle, dict):
+        lifecycle = {"hooks": []}
     # Validate hooks against VALID_HOOKS
     hooks = lifecycle.get("hooks", [])
     if hooks:
@@ -396,8 +531,14 @@ def load_all_processors() -> List[PromptProcessor]:
                     by_name[key] = proc
                     logger.debug("Loaded user processor: %s (id=%s, overrides=%s)", proc.name, key, existing is not None)
 
-        # 3. Sort by effective_priority, then by effective_id (deterministic tie-break)
-        result = sorted(by_name.values(), key=lambda p: (p.effective_priority, p.effective_id))
+        # 3. Deterministic three-level sort: layer → priority → id.
+        #    layer FIRST keeps the stable prefix byte-identical (prompt cache);
+        #    id LAST removes any dependence on glob/dict iteration order, which
+        #    would otherwise make the prompt prefix jitter between runs.
+        result = sorted(
+            by_name.values(),
+            key=lambda p: (p.layer_rank, p.effective_priority, p.effective_id),
+        )
         _processors_cache = result
         logger.info("Loaded %d prompt processors (%d built-in, %d user)",
                      len(result),

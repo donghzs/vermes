@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import unicodedata
+from pathlib import Path
 from typing import Optional
 from vermes_cli.config import cfg_get
 
@@ -698,6 +699,89 @@ def _source_modify_always_confirm() -> bool:
         return True
 
 
+def _processor_modify_always_confirm() -> bool:
+    """Whether L2 processor rewrites must be confirmed even under YOLO.
+
+    Deliberately a *separate* key from ``source_modify_always_confirm``.
+    That key's documented scope is "rewriting the agent's own .py files";
+    a user who turns it off to stop being nagged about frozen-package source
+    edits has not consented to silent rewrites of the prompt/behaviour
+    constitution.  Reusing one key for two jurisdictions is the
+    "key name ≠ actual scope" anti-pattern this codebase keeps tripping over.
+
+    Config key ``approvals.processor_modify_always_confirm`` (default ``True``).
+    Fail-safe: any error → ``True``.
+    """
+    try:
+        return bool(_get_approval_config().get("processor_modify_always_confirm", True))
+    except Exception:
+        return True
+
+
+# Severity ordering for processor risk tiers — higher = stricter.
+_PROCESSOR_TIER_SEVERITY = {"L0": 0, "L1": 1, "L2": 2}
+
+
+def _resolve_processor_tier(target_path: str, approval_data: dict) -> str:
+    """Decide the effective approval tier for a processor manifest rewrite.
+
+    A processor manifest declares its own ``governance.risk_tier``, but the
+    manifest is precisely the thing being governed — reading the tier straight
+    out of the *incoming* content would let a caller self-attest its way to
+    "no approval needed".  Two rules close that:
+
+    1. **Take the strictest of (on-disk tier, incoming tier).**  Loosening a
+       processor's tier therefore costs one approval at the *current* tier;
+       tightening is always free.  A file that does not exist yet (creation)
+       is L2 — you cannot be born trusted.
+    2. **L0 is not available to processors.**  A manifest self-declaring L0 is
+       clamped to L1.  Processor content *is* the behaviour constitution, so
+       even the most harmless edit must leave a retractable ledger entry.
+       L1 does not prompt, so this costs the user zero popups — it only
+       guarantees the change is visible and undoable.
+
+    Returns ``"L1"`` or ``"L2"``.
+    """
+    def _severity(tier: Optional[str]) -> int:
+        return _PROCESSOR_TIER_SEVERITY.get(tier or "", 2)
+
+    try:
+        from agent.prompt_processor_loader import parse_risk_tier
+    except Exception:
+        return "L2"  # loader unavailable → fail closed
+
+    tp = Path(target_path) if target_path else None
+    if tp is None or not tp.exists():
+        # Creating a brand-new processor always needs a human in the loop.
+        return "L2"
+
+    # ── tier currently on disk (what the user previously consented to) ──
+    on_disk: Optional[str] = None
+    try:
+        on_disk = parse_risk_tier(tp.read_text(encoding="utf-8"))
+    except Exception:
+        on_disk = None
+
+    # ── tier of the content about to be written ────────────────────────
+    incoming: Optional[str] = None
+    new_content = approval_data.get("new_content")
+    if isinstance(new_content, str) and new_content.strip():
+        incoming = parse_risk_tier(new_content)
+    else:
+        # Rollback path ships a backup file instead of inline content.
+        backup_path = approval_data.get("backup_path") or ""
+        if backup_path:
+            try:
+                incoming = parse_risk_tier(Path(backup_path).read_text(encoding="utf-8"))
+            except Exception:
+                incoming = None
+
+    effective = max(_severity(on_disk), _severity(incoming))
+    tier = "L2" if effective >= 2 else "L1"
+    # Rule 2: clamp — processors never reach L0.
+    return tier
+
+
 # ── 特权动作的「记住选择」授权 ───────────────────────────────────────────
 # T1 要求源码级改写必须人工确认，但**不等于每次都弹**。原则是「非必要不弹，
 # 必须弹才弹」：用户明确表过态之后，同一类动作在授权有效期内直接放行。
@@ -895,36 +979,29 @@ def approve_privileged_action(session_key: str, approval_data: dict, *, surface:
             approval_data["component_class"] = "module_hot_path"
             return True
         if component_class == "processor_hot_path":
-            # Risk tier determined by manifest's governance.risk_tier.
-            # Read the target YAML; if missing/corrupt → L2 (fail-closed).
-            _proc_tier = "L2"  # fail-closed default
-            try:
-                import yaml as _yaml
-                _tp = Path(target_path)
-                if _tp.exists():
-                    _data = _yaml.safe_load(_tp.read_text(encoding="utf-8"))
-                    if _data and isinstance(_data, dict):
-                        _gov = _data.get("governance", {})
-                        _proc_tier = _gov.get("risk_tier", "L2")
-            except Exception:
-                pass  # keep L2 fail-closed
+            # Tier comes from the manifest's governance.risk_tier — but the
+            # manifest is the governed object, so it cannot be trusted to
+            # grade itself.  _resolve_processor_tier takes the strictest of
+            # (on-disk, incoming), treats creation as L2, and clamps L0→L1.
+            _proc_tier = _resolve_processor_tier(target_path, approval_data)
             approval_data["component_class"] = "processor_hot_path"
-            if _proc_tier == "L0":
-                # L0: auto-apply, no notification needed
-                return True
-            elif _proc_tier == "L1":
-                # L1: auto-apply + retractable (like module_hot_path)
+            if _proc_tier == "L1":
+                # L1: auto-apply + retractable, recorded in the change ledger.
                 approval_data["tier"] = "L1"
                 approval_data["yolo_exempt"] = True
                 return True
             else:
-                # L2: needs human confirmation (prompt/behavior change)
-                if not _source_modify_always_confirm():
+                # L2: needs human confirmation (prompt/behaviour change).
+                # Gated by its OWN key — see _processor_modify_always_confirm.
+                if not _processor_modify_always_confirm():
                     return True
                 approval_data["tier"] = "L2"
                 approval_data["yolo_exempt"] = False
                 _desc = approval_data.get("description", "")
-                _note = "🔒 Processor 改写需人工确认（governance.risk_tier=L2）"
+                _note = (
+                    "🔒 Processor（提示词/行为）改写需人工确认"
+                    "（可用 approvals.processor_modify_always_confirm=false 关闭）"
+                )
                 approval_data["description"] = f"{_note}\n{_desc}" if _desc else _note
                 # Fall through to scope_options below
         elif component_class != "source_level":

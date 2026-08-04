@@ -1603,6 +1603,16 @@ DEFAULT_CONFIG = {
         # action in the evolution loop.  Config-level changes (config.yaml)
         # are unaffected — they stay auto-appliable and retractable.
         "source_modify_always_confirm": True,
+        # Same rule, separate jurisdiction: rewriting a prompt Processor
+        # manifest under ~/.vermes/processors/ changes the agent's *behaviour
+        # constitution*, which is a far bigger blast radius than a scalar
+        # dial — even though the file happens to end in .yaml.  It gets its
+        # own key rather than riding on source_modify_always_confirm, because
+        # a user who silenced .py-rewrite prompts has not thereby consented to
+        # silent prompt rewrites.  Only the L2 tier is governed by this key;
+        # L1 processors (already reviewed once) stay auto-applied and
+        # retractable regardless.
+        "processor_modify_always_confirm": True,
         # ...but "must confirm" is not "must nag".  Approving a privileged
         # action grants that action category a pass for this many minutes, so
         # a task that rewrites five files asks once instead of five times.
