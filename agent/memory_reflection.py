@@ -847,12 +847,19 @@ def _scan_llm_flags(limit: int = 50) -> int:
 
     conn = sqlite3.connect(db_path)
     try:
+        # 排除已有 false_positive flag 的记忆——用户已标记为误报，
+        # 不应再被 LLM 反复扫描和重新创建 flag
         rows = conn.execute(
-            """SELECT id, fts_content, pointer, scope
-               FROM memories
-               WHERE lifecycle_tag IS NULL
-                  OR lifecycle_tag NOT IN ('decision', 'preference')
-               ORDER BY id DESC
+            """SELECT m.id, m.fts_content, m.pointer, m.scope
+               FROM memories m
+               WHERE (m.lifecycle_tag IS NULL
+                      OR m.lifecycle_tag NOT IN ('decision', 'preference'))
+                 AND m.id NOT IN (
+                   SELECT DISTINCT memory_id
+                   FROM memory_flags
+                   WHERE status = 'resolved' AND resolution = 'false_positive'
+                 )
+               ORDER BY m.id DESC
                LIMIT ?""",
             (limit,),
         ).fetchall()
