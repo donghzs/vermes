@@ -155,35 +155,43 @@ export const useUpdateStore = defineStore('update', () => {
         latestVersion.value = res.version.replace(/^v/i, '')
         hasUpdate.value = true
 
-        // 解析下载 URL：优先 download_url 字段，回退到 macOS/windows 嵌套结构
+        // 解析下载 URL / 校验和。
+        // 历史上 version.json 出现过多种键名写法（mac / macOS / macos、url / dmg / zip），
+        // 线上实际投放的是 { mac: { url, sha256 }, windows: { url, sha256, size } }，
+        // 而旧解析器只认 macOS.dmg / windows.exe —— 两边对不上时 downloadUrl 会静默解析成
+        // 空串，表现为"更新弹窗出来了但点下载没反应"。这里改成宽松取值，任何一种写法都能命中。
         const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac')
+        const absolutize = (u) => (u && u.startsWith('/')) ? `https://vbit.top${u}` : (u || '')
+        // 平台节点：按 mac / macOS / macos / darwin（或 windows / win）依次探测
+        const platNode = isMac
+          ? (res.mac || res.macOS || res.macos || res.darwin || null)
+          : (res.windows || res.win || null)
+        // 节点内的下载地址：url / dmg / zip / exe / installer 任取其一
+        const nodeUrl = platNode && typeof platNode === 'object'
+          ? (platNode.url || platNode.dmg || platNode.zip || platNode.exe || platNode.installer || '')
+          : (typeof platNode === 'string' ? platNode : '')
+
         if (typeof res.download_url === 'string') {
           downloadUrl.value = res.download_url
         } else if (res.download_url && typeof res.download_url === 'object') {
-          downloadUrl.value = isMac
+          downloadUrl.value = absolutize(isMac
             ? (res.download_url.macos_dmg || res.download_url.macos_zip || '')
-            : (res.download_url.windows_zip || res.download_url.windows_exe || '')
-        } else if (res.macOS || res.windows) {
-          // 兼容 version.json 嵌套结构
-          if (isMac && res.macOS) {
-            const rel = res.macOS.dmg || res.macOS.zip || ''
-            downloadUrl.value = rel.startsWith('/') ? `https://vbit.top${rel}` : rel
-          } else if (res.windows) {
-            const rel = res.windows.exe || res.windows.zip || ''
-            downloadUrl.value = rel.startsWith('/') ? `https://vbit.top${rel}` : rel
-          }
+            : (res.download_url.windows_zip || res.download_url.windows_exe || ''))
+        } else if (nodeUrl) {
+          downloadUrl.value = absolutize(nodeUrl)
         } else {
-          downloadUrl.value = res.mac_url || res.win_url || ''
+          downloadUrl.value = absolutize(res.mac_url || res.win_url || '')
         }
 
-        if (res.sha256) {
-          if (typeof res.sha256 === 'object') {
-            sha256.value = isMac
-              ? (res.sha256.macos_dmg || res.sha256.macos_zip || '')
-              : (res.sha256.windows_exe || res.sha256.windows_zip || '')
-          } else {
-            sha256.value = res.sha256
-          }
+        // 校验和：顶层 sha256（字符串/对象）优先，其次取平台节点内的 sha256
+        if (typeof res.sha256 === 'string' && res.sha256) {
+          sha256.value = res.sha256
+        } else if (res.sha256 && typeof res.sha256 === 'object') {
+          sha256.value = isMac
+            ? (res.sha256.macos_dmg || res.sha256.macos_zip || '')
+            : (res.sha256.windows_exe || res.sha256.windows_zip || '')
+        } else if (platNode && typeof platNode === 'object') {
+          sha256.value = platNode.sha256 || platNode.sha_256 || ''
         }
 
         minDataVersion.value = res.min_data_version || ''
