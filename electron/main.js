@@ -511,6 +511,51 @@ function sendSplash(msg) {
 }
 
 let _initializing = false
+/**
+ * 首次启动同步 bundled + optional 技能到 ~/.vermes/skills/。
+ * install.ps1 原有此逻辑但 Electron NSIS 不执行 install.ps1，
+ * 与 PortableGit 同一个问题。
+ * 用 Python 跑 skills_sync.py（已打包），非阻塞。
+ */
+function ensureSkillsSynced() {
+  const vermesHome = process.env.VERMES_HOME || path.join(
+    process.env.HOME || process.env.USERPROFILE || '', '.vermes'
+  );
+  const skillsDir = path.join(vermesHome, 'skills');
+  const manifestFile = path.join(skillsDir, '.bundled_manifest');
+
+  // 已有 manifest → 之前同步过，跳过
+  if (fs.existsSync(manifestFile)) {
+    console.log('[Vermes] Skills already synced (manifest exists)');
+    return;
+  }
+
+  // 找后端可执行文件里的 Python
+  const backendExe = getBackendExe();
+  const backendDir = path.dirname(backendExe);
+
+  // 打包模式下 skills_sync.py 在 _internal/tools/
+  const syncScript = path.join(backendDir, '_internal', 'tools', 'skills_sync.py');
+  if (!fs.existsSync(syncScript)) {
+    console.log('[Vermes] skills_sync.py not found, skipping skill sync');
+    return;
+  }
+
+  console.log('[Vermes] Syncing bundled skills to ~/.vermes/skills/...');
+  try {
+    const { execFileSync } = require('child_process');
+    execFileSync(backendExe, [syncScript], {
+      stdio: 'pipe',
+      timeout: 30000,
+      windowsHide: true,
+      env: { ...process.env, VERMES_HOME: vermesHome }
+    });
+    console.log('[Vermes] Skills sync completed ✅');
+  } catch (err) {
+    console.error('[Vermes] Skills sync failed (non-fatal):', err.message);
+  }
+}
+
 async function runInitialization() {
   if (_initializing) return
   _initializing = true
@@ -519,6 +564,9 @@ async function runInitialization() {
     sendSplash({ type: 'progress', label: '正在检查运行环境…', percent: 5 });
     await ensureGitBash();
   }
+  // 0.5 首次启动同步 bundled 技能（Electron NSIS 不执行 install.ps1）
+  sendSplash({ type: 'progress', label: '正在加载技能…', percent: 8 });
+  ensureSkillsSynced();
   // 1. 启动后端
   sendSplash({ type: 'progress', label: '正在启动后端服务…', percent: 10 });
   const started = await startBackend();

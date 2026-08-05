@@ -25,6 +25,7 @@ for src, dst in [
     ('vermes_cli/processors', 'vermes_cli/processors'),
     ('locales', 'locales'),
     ('skills', 'skills'),
+    ('optional-skills', 'optional-skills'),
     ('plugins', 'plugins'),
     ('tools', 'tools'),
     ('cron', 'cron'),
