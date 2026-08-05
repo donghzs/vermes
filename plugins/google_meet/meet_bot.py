@@ -2,7 +2,6 @@
 
 Runs as a standalone subprocess spawned by ``process_manager.py``. Reads config
 from env vars, writes status + transcript to files under
-from agent.service_credentials import get_api_key, get_service_credentials, register_service
 ``$VERMES_HOME/workspace/meetings/<meeting-id>/``. The main Vermes process
 reads those files via the ``meet_*`` tools — no IPC beyond filesystem.
 
@@ -38,6 +37,12 @@ import threading
 import time
 from pathlib import Path
 from typing import Optional
+
+from agent.service_credentials import (
+    get_api_key,
+    get_service_credentials,
+    register_service,
+)
 
 # Match ``https://meet.google.com/abc-defg-hij`` or ``.../lookup/...`` — the
 # short three-segment code or a lookup URL. Anything else is rejected.

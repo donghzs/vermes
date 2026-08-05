@@ -1,8 +1,48 @@
 """Regression tests for task/session cwd propagation in terminal_tool."""
 
 import json
+import os
 
 import tools.terminal_tool as terminal_tool
+
+
+def test_cd_persists_across_foreground_calls(monkeypatch):
+    """Without an explicit workdir or ACP task-cwd override, a `cd` issued in
+    one foreground call must persist into the next (Hermes parity).
+
+    Regresses the bug where terminal_tool passed the config-default cwd on
+    every call, which reset the working directory each time and made `cd`
+    silently no-op across calls.
+    """
+    task_id = "cd-persist-test"
+    monkeypatch.setattr(terminal_tool, "_active_environments", {})
+    monkeypatch.setattr(terminal_tool, "_last_activity", {})
+    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {})
+    monkeypatch.setattr(
+        terminal_tool,
+        "_check_all_guards",
+        lambda command, env_type: {"approved": True},
+    )
+
+    try:
+        out1 = json.loads(
+            terminal_tool.terminal_tool(
+                command="cd /tmp && pwd", task_id=task_id, timeout=20
+            )
+        )
+        assert out1["exit_code"] == 0
+        out2 = json.loads(
+            terminal_tool.terminal_tool(command="pwd", task_id=task_id, timeout=20)
+        )
+        # macOS resolves /tmp -> /private/tmp; either form proves persistence.
+        assert out2["output"].strip().endswith("/tmp")
+    finally:
+        env = terminal_tool._active_environments.get(task_id)
+        if env is not None:
+            try:
+                env.cleanup()
+            except Exception:
+                pass
 
 
 def _minimal_terminal_config(cwd="/default"):

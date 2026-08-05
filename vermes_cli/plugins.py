@@ -1006,7 +1006,17 @@ class PluginManager:
             # Bundled platform plugins (gateway adapters like IRC) auto-load
             # for the same reason: every platform Vermes ships must be
             # available out of the box without the user having to opt in.
-            if manifest.source == "bundled" and manifest.kind in {"backend", "platform"}:
+            #
+            # Bundled *standalone* plugins (e.g. disk-cleanup, google_meet)
+            # also ship with vermes and are auto-loaded for the same
+            # factory-ready reason — a beginner should not have to discover
+            # an opt-in flag to use a feature that already shipped. Only
+            # user-installed / entry-point standalone plugins stay opt-in
+            # via ``plugins.enabled``.
+            if (
+                manifest.source == "bundled"
+                and manifest.kind in {"backend", "platform", "standalone"}
+            ):
                 self._load_plugin(manifest)
                 continue
 

@@ -1014,11 +1014,16 @@ def _get_env_config() -> Dict[str, Any]:
     
     mount_docker_cwd = os.getenv("TERMINAL_DOCKER_MOUNT_CWD_TO_WORKSPACE", "false").lower() in {"true", "1", "yes"}
 
-    # Default cwd: local uses the host's current directory, ssh uses the
-    # remote home, Vercel uses its documented workspace root, and everything
-    # else starts in the backend's default root-like cwd.
+    # Default cwd:
+    #  - local: the user's HOME directory (Hermes parity). Inside a frozen app
+    #    bundle os.getcwd() resolves to the install directory, which is never
+    #    what a user wants as a terminal root. An explicit TERMINAL_CWD still
+    #    wins over this default.
+    #  - ssh: the remote home
+    #  - vercel_sandbox: its documented workspace root
+    #  - everything else: the backend's default root-like cwd.
     if env_type == "local":
-        default_cwd = os.getcwd()
+        default_cwd = os.path.expanduser("~")
     elif env_type == "ssh":
         default_cwd = "~"
     elif env_type == "vercel_sandbox":
@@ -2037,7 +2042,13 @@ def terminal_tool(
                 try:
                     execute_kwargs = {
                         "timeout": effective_timeout,
-                        "cwd": workdir or cwd,
+                        # Priority: explicit workdir > ACP-registered task cwd
+                        # override > empty (so execute() falls back to the env's
+                        # tracked self.cwd, which `cd` updated in the previous
+                        # call). The empty fallback restores cross-call working-
+                        # directory persistence (Hermes parity); passing the
+                        # config default here would reset cwd every call.
+                        "cwd": workdir or overrides.get("cwd") or "",
                     }
                     result = env.execute(command, **execute_kwargs)
                 except Exception as e:
