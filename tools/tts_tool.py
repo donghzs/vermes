@@ -79,7 +79,20 @@ from tools.xai_http import VERMES_xai_user_agent
 # ---------------------------------------------------------------------------
 
 def _import_edge_tts():
-    """Lazy import edge_tts. Returns the module or raises ImportError."""
+    """Lazy import edge_tts. Returns the module or raises ImportError.
+
+    先直接 ``import edge_tts`` 再退回 ``ensure``：冻结/PyInstaller 构建里
+    edge_tts 已被打进 PYZ（可直接 import），但其 dist-info 元数据常被裁剪，
+    会让 ``lazy_deps.ensure`` 误判"未安装"并在**请求路径上同步跑 pip install**——
+    这会阻塞 asyncio 事件循环，使 ``/health`` 在 2s 看门狗窗口内无响应，
+    进而被主进程 SIGTERM 误杀（前端表现为 "Failed to fetch" / "重连中"）。
+    直接 import 短路掉这条阻塞路径；仅当模块真的缺失时才退回 ensure()。
+    """
+    try:
+        import edge_tts
+        return edge_tts
+    except ImportError:
+        pass
     try:
         from tools.lazy_deps import ensure as _lazy_ensure
         _lazy_ensure("tts.edge", prompt=False)
