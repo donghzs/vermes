@@ -311,8 +311,6 @@ for _pkg in [
     'ruamel.yaml',
     # 重试逻辑（渠道连接）
     'tenacity',
-    # 事件循环（PyInstaller 冻结包需 collect_all 收全子模块）
-    'uvloop',
 ]:
     try:
         _d, _b, _h = collect_all(_pkg)
