@@ -174,7 +174,7 @@ def format_memory_summary(blocks: Dict[str, str]) -> str:
     """Format a brief summary of memory blocks for logging.
 
     Returns a one-line summary like:
-    "Memory: recall=400ch handoff=200ch evolution=160ch decisions=0ch | total=760ch/4000"
+    "Memory: recall=400ch handoff=200ch evolution=160ch decisions=0ch | total=760ch/8000"
     """
     parts: List[str] = []
     total = 0

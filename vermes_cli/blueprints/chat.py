@@ -1852,7 +1852,7 @@ async def memory_status(session_id: str = ""):
             "blocks": blocks,
             "total_chars": total_chars,
             "total_tokens_est": round(total_chars / 4),
-            "budget_limit": 4000,
+            "budget_limit": 8000,
             "handoff_source": handoff_info,
             "session_id": session_id or getattr(agent, "session_id", ""),
         }
