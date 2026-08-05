@@ -126,6 +126,9 @@ hiddenimports = [
     'vermes_cli.blueprints.agent_cache',
     'vermes_cli.blueprints.profiles', 'vermes_cli.blueprints.oauth',
     'vermes_cli.tools_config',
+    'vermes_cli.plugins',
+    'vermes_cli.commands',
+    'vermes_cli.config',
     'vermes_cli.update_manager',
     'vermes_cli.shutdown_signal',
     'vermes_cli.win_adapter',
@@ -275,6 +278,8 @@ _extra_binaries = []
 _extra_hidden = []
 
 for _pkg in [
+    # LLM SDK（延迟导入，必须 collect_all 才能收全子模块）
+    'openai', 'anthropic',
     'lark_oapi', 'qrcode',
     # Telegram
     'telegram',
@@ -338,6 +343,7 @@ a = Analysis(
         'datasets', 'diffusers', 'accelerate', 'peft',
         'bitsandbytes', 'xformers', 'sentencepiece',
         'transformers', 'triton',
+        'numba', 'llvmlite',  # JIT 编译器，120MB LLVM DLL，桌面端不需要
         'PIL', 'PIL.ImageFilter',
         'fsspec', 'sqlalchemy',
         'dateutil',

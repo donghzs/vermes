@@ -28,11 +28,13 @@ class _TeeStream:
         self._lock = threading.Lock()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         self._f = open(log_path, "a", buffering=1)  # line-buffered
-        original.flush()
+        if original is not None:
+            original.flush()
 
     def write(self, data):
         with self._lock:
-            self.original.write(data)
+            if self.original is not None:
+                self.original.write(data)
             try:
                 self._f.write(data)
                 if self._f.tell() > self.max_bytes:
@@ -41,7 +43,8 @@ class _TeeStream:
                 pass  # 日志写失败不影响主流程
 
     def flush(self):
-        self.original.flush()
+        if self.original is not None:
+            self.original.flush()
         with self._lock:
             try:
                 self._f.flush()
@@ -92,12 +95,12 @@ def install(log_dir: str | Path | None = None) -> Path:
     log_path = log_dir / f"vermes_{today}.log"
 
     # 1. 双写 stdout
-    if not getattr(sys.stdout, "_vermes_tee", False):
+    if sys.stdout is not None and not getattr(sys.stdout, "_vermes_tee", False):
         sys.stdout = _TeeStream(sys.stdout, log_path)
         sys.stdout._vermes_tee = True  # type: ignore
 
     # 2. 双写 stderr（走同一个日志文件）
-    if not getattr(sys.stderr, "_vermes_tee", False):
+    if sys.stderr is not None and not getattr(sys.stderr, "_vermes_tee", False):
         sys.stderr = _TeeStream(sys.stderr, log_path)
         sys.stderr._vermes_tee = True  # type: ignore
 

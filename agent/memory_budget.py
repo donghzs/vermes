@@ -7,7 +7,7 @@ system prompt volatile tier:
   3. Memory recall (~400 tokens)
   4. Active decisions (~200 tokens)
 
-Total budget: ~1000 tokens (4000 chars)
+Total budget: ~2000 tokens (8000 chars)
 
 When total exceeds budget, lower-priority blocks are truncated or dropped.
 Priority order (highest first):
@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # Total budget for all memory injections
-_TOTAL_BUDGET_CHARS = 4000  # ~1000 tokens
+_TOTAL_BUDGET_CHARS = 8000  # ~2000 tokens
 
 # Per-block priority (lower number = higher priority)
 # Block is identified by the attribute name on the agent object
@@ -45,11 +45,11 @@ _BLOCK_PRIORITIES: Dict[str, int] = {
 
 # Per-block soft cap (chars) — blocks should not exceed this individually
 _BLOCK_SOFT_CAPS: Dict[str, int] = {
-    "_recall_context": 1600,
-    "_handoff_context": 1200,
-    "_evolution_context": 1000,
-    "_decisions_context": 800,
-    "_continuity_context": 600,
+    "_recall_context": 3000,
+    "_handoff_context": 2000,
+    "_evolution_context": 1500,
+    "_decisions_context": 1200,
+    "_continuity_context": 800,
 }
 
 

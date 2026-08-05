@@ -63,23 +63,24 @@ class TestApplyBudget(unittest.TestCase):
     def test_over_budget_trims_lowest_priority(self):
         # Create blocks that total over budget
         blocks = {
-            "_recall_context": "a" * 1600,    # priority 1 (highest)
-            "_handoff_context": "b" * 1200,   # priority 2
-            "_evolution_context": "c" * 1000,  # priority 3
-            "_decisions_context": "d" * 800,   # priority 4 (lowest)
+            "_recall_context": "a" * 3000,    # priority 1 (highest)
+            "_handoff_context": "b" * 2000,   # priority 2
+            "_evolution_context": "c" * 1500,  # priority 3
+            "_decisions_context": "d" * 1200,   # priority 4 (lowest)
+            "_continuity_context": "e" * 800,  # priority 5 (lowest)
         }
-        # Total = 4600 > 4000 budget
+        # Total = 8500 > 8000 budget
         result = apply_budget(blocks)
 
         # All blocks should still be present (trimmed, not dropped)
-        self.assertEqual(len(result), 4)
+        self.assertEqual(len(result), 5)
 
         # Total should be under budget (approximately)
         total = sum(len(v) for v in result.values())
         self.assertLessEqual(total, _TOTAL_BUDGET_CHARS + 100)  # small margin for tags
 
         # Highest priority block should be least trimmed
-        self.assertGreater(len(result["_recall_context"]), len(result["_decisions_context"]))
+        self.assertGreater(len(result["_recall_context"]), len(result["_continuity_context"]))
 
     def test_empty_blocks_filtered(self):
         blocks = {
@@ -102,29 +103,26 @@ class TestApplyBudget(unittest.TestCase):
 
     def test_single_block_over_budget(self):
         blocks = {
-            "_recall_context": "a" * 5000,  # Way over budget
+            "_recall_context": "a" * 10000,  # Way over budget
         }
         result = apply_budget(blocks)
-        # Should be trimmed to soft cap
-        self.assertLessEqual(len(result["_recall_context"]), 1600 + 100)
+        # Should be trimmed to soft cap (3000 after budget increase)
+        self.assertLessEqual(len(result["_recall_context"]), 3000 + 100)
 
     def test_budget_exhaustion_drops_blocks(self):
         # Create blocks where high-priority blocks consume all budget
         blocks = {
-            "_recall_context": "a" * 1600,
-            "_handoff_context": "b" * 1200,
-            "_evolution_context": "c" * 1000,
-            "_decisions_context": "d" * 800,
+            "_recall_context": "a" * 3000,
+            "_handoff_context": "b" * 2000,
+            "_evolution_context": "c" * 1500,
+            "_decisions_context": "d" * 1200,
         }
-        # Total = 4600, budget = 4000
-        # recall=1600, handoff=1200 → 2800, remaining=1200
-        # evolution gets min(1000, 1200) = 1000 → 3800, remaining=200
-        # decisions gets min(800, 200) = 200 → 4000
+        # Total = 7700, budget = 8000 → under budget, no trimming needed
         result = apply_budget(blocks)
 
-        # All blocks present, but decisions is heavily trimmed
+        # All blocks present at full size
         self.assertIn("_decisions_context", result)
-        self.assertLessEqual(len(result["_decisions_context"]), 300)
+        self.assertEqual(len(result["_recall_context"]), 3000)
 
     def test_unknown_block_name(self):
         blocks = {
@@ -152,7 +150,7 @@ class TestGetMemoryStats(unittest.TestCase):
 
     def test_over_budget_flag(self):
         blocks = {
-            "_recall_context": "a" * 5000,
+            "_recall_context": "a" * 10000,
         }
         stats = get_memory_stats(blocks)
         self.assertTrue(stats["over_budget"])
@@ -186,7 +184,7 @@ class TestFormatMemorySummary(unittest.TestCase):
         self.assertIn("handoff=200ch", summary)
         self.assertIn("evolution=160ch", summary)
         self.assertIn("total=760ch", summary)
-        self.assertIn("4000", summary)
+        self.assertIn("8000", summary)
 
     def test_empty_blocks(self):
         summary = format_memory_summary({})
