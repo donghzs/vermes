@@ -2253,6 +2253,7 @@ def _parse_papers(raw: Any) -> list[dict]:
         pass
 
     # 按行解析
+    import re
     papers = []
     for line in raw.strip().split("\n"):
         line = line.strip()
