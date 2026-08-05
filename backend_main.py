@@ -183,7 +183,7 @@ def main():
     from vermes_cli.shutdown_signal import shutdown_event, restart_event
 
     # 初始启动：在子线程中运行 uvicorn，主线程监听信号
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", lifespan="off", loop="asyncio", http="h11")
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", lifespan="off", loop="asyncio")
     server_instance = uvicorn.Server(config)
 
     def _run_server_with_guard():
