@@ -322,6 +322,12 @@ function startBackend() {
 let _backendWatchdogTimer = null;
 let _backendOnline = true;
 let _backendRestarting = false;
+// 连续探测失败计数。单次失败就重启后端太激进：后端任何一次短暂占用（长工具调用、
+// 大模型首包慢、GC、磁盘抖动）都会被判死刑并 SIGTERM，前端表现为 "Failed to fetch"
+// + "重连中 (n/2)" 的循环。要求连续 N 次不可达才动手。
+let _backendMissedProbes = 0;
+const BACKEND_PROBE_TIMEOUT_MS = 5000;   // 单次 /health 探测超时（原 2000，过紧）
+const BACKEND_MAX_MISSED_PROBES = 3;     // 连续 3 次（≈15s）不可达才判定真的死了
 
 function _broadcastBackendStatus(online, detail) {
   const payload = { online, restarting: _backendRestarting, detail: detail || null };
@@ -337,7 +343,7 @@ function _broadcastBackendStatus(online, detail) {
 function _backendHealthCheck() {
   return new Promise((resolve) => {
     const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 2000);
+    const to = setTimeout(() => ctrl.abort(), BACKEND_PROBE_TIMEOUT_MS);
     fetch(`${BACKEND_URL}/health`, { signal: ctrl.signal })
       .then((r) => { clearTimeout(to); resolve(!!(r && r.ok)); })
       .catch(() => { clearTimeout(to); resolve(false); });
@@ -348,6 +354,7 @@ async function _backendWatchdogTick() {
   if (_backendRestarting) return;            // 已有重启在途，避免叠加
   const alive = await _backendHealthCheck();
   if (alive) {
+    _backendMissedProbes = 0;
     if (!_backendOnline) {
       _backendOnline = true;
       _broadcastBackendStatus(true, 'recovered');
@@ -355,11 +362,21 @@ async function _backendWatchdogTick() {
     }
     return;
   }
+
+  // 探测失败 ≠ 后端死了。先累计，够 N 次再动手，避免把"正忙"误判成"已死"。
+  _backendMissedProbes += 1;
+  if (_backendMissedProbes < BACKEND_MAX_MISSED_PROBES) {
+    console.warn(
+      `[Vermes] /health 探测失败 ${_backendMissedProbes}/${BACKEND_MAX_MISSED_PROBES}（尚未判定掉线）`
+    );
+    return;
+  }
+
   // 掉线
   if (_backendOnline) {
     _backendOnline = false;
     _broadcastBackendStatus(false, 'backend unreachable');
-    console.warn('[Vermes] 后端不可达，准备自重启…');
+    console.warn('[Vermes] 后端连续不可达，准备自重启…');
   }
   _backendRestarting = true;
   _broadcastBackendStatus(false, 'restarting');
@@ -374,6 +391,7 @@ async function _backendWatchdogTick() {
     if (r && r.ok) {
       _backendOnline = true;
       _backendRestarting = false;
+      _backendMissedProbes = 0;
       _broadcastBackendStatus(true, 'recovered');
       console.log('[Vermes] 后端自重启完成 ✅');
     } else {
@@ -389,8 +407,12 @@ async function _backendWatchdogTick() {
 function startBackendWatchdog() {
   if (_backendWatchdogTimer) return;  // 幂等
   _backendOnline = true;
+  _backendMissedProbes = 0;
   _backendWatchdogTimer = setInterval(() => { _backendWatchdogTick(); }, 5000);
-  console.log('[Vermes] 后端看门狗已启动（5s /health 探测）');
+  console.log(
+    `[Vermes] 后端看门狗已启动（5s 探测 / ${BACKEND_PROBE_TIMEOUT_MS}ms 超时 / ` +
+    `连续 ${BACKEND_MAX_MISSED_PROBES} 次失败才重启）`
+  );
 }
 
 function stopBackendWatchdog() {

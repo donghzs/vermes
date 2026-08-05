@@ -272,6 +272,51 @@ def _specifier_from_spec(spec: str) -> str:
     return spec[m.end():]
 
 
+# Package name → import name, for the cases where they differ. Used only by
+# the frozen-bundle fallback below; a plain ``-`` → ``_`` swap covers the rest.
+_IMPORT_NAME_OVERRIDES: dict[str, str] = {
+    "discord.py": "discord",
+    "python-telegram-bot": "telegram",
+    "azure-identity": "azure.identity",
+    "firecrawl-py": "firecrawl",
+    "parallel-web": "parallel",
+    "honcho-ai": "honcho",
+    "hindsight-client": "hindsight",
+    "fal-client": "fal_client",
+    "python-multipart": "multipart",
+    "Markdown": "markdown",
+    "faster-whisper": "faster_whisper",
+}
+
+
+def _frozen_module_present(pkg: str) -> bool:
+    """Is ``pkg`` importable even though it has no dist-info metadata?
+
+    PyInstaller compiles third-party packages into the PYZ archive and, for
+    most of them, drops the ``*.dist-info`` directory. ``importlib.metadata``
+    then reports ``PackageNotFoundError`` for a package that imports perfectly
+    well. Treating that as "not installed" is actively dangerous here: the
+    caller's next move is a **synchronous** ``subprocess.run(pip install …)``
+    on whatever thread asked — including the asyncio event loop serving
+    ``/health`` — which the Electron watchdog reads as a dead backend and
+    SIGTERMs (user-visible as "Failed to fetch" / "重连中").
+
+    So in frozen builds we fall back to import-spec detection. Kept strictly
+    behind ``sys.frozen`` so source checkouts keep the metadata-based version
+    pinning that ``vermes update`` relies on.
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    mod = _IMPORT_NAME_OVERRIDES.get(pkg, pkg.replace("-", "_"))
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec(mod) is not None
+    except Exception:
+        # find_spec raises for half-initialised parents, bad names, etc.
+        return False
+
+
 def _is_satisfied(spec: str) -> bool:
     """Is ``spec`` already satisfied in the current env?
 
@@ -293,9 +338,10 @@ def _is_satisfied(spec: str) -> bool:
     try:
         installed = version(pkg)
     except PackageNotFoundError:
-        return False
+        # Frozen builds strip dist-info — ask the import system instead.
+        return _frozen_module_present(pkg)
     except Exception:
-        return False
+        return _frozen_module_present(pkg)
 
     spec_tail = _specifier_from_spec(spec)
     if not spec_tail:
@@ -331,9 +377,9 @@ def _is_present(spec: str) -> bool:
         version(pkg)
         return True
     except PackageNotFoundError:
-        return False
+        return _frozen_module_present(pkg)
     except Exception:
-        return False
+        return _frozen_module_present(pkg)
 
 
 def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _InstallResult:
@@ -439,6 +485,22 @@ def ensure(feature: str, *, prompt: bool = True) -> None:
                 feature, missing,
                 f"refusing to install unsafe spec {spec!r}"
             )
+
+    # Hard stop in packaged builds. ``sys.executable`` is the PyInstaller
+    # launcher, not a Python interpreter, so every rung of the install ladder
+    # is wrong *and slow*: uv gets a bogus VIRTUAL_ENV, then we re-exec the app
+    # binary as ``-m pip`` (15s probe) → ``-m ensurepip`` (120s) → ``-m pip
+    # install`` (300s). That's up to ~7 minutes of **synchronous** blocking on
+    # whatever thread called us. On the request path that's the asyncio event
+    # loop, /health stops answering, and the Electron watchdog SIGTERMs the
+    # backend — the "重连中 / Failed to fetch" loop. Fail fast instead so
+    # callers degrade to "feature unavailable", which they already handle.
+    if getattr(sys, "frozen", False):
+        raise FeatureUnavailable(
+            feature, missing,
+            "lazy installs are disabled in packaged builds — run Vermes from "
+            "a source checkout and install the extra there"
+        )
 
     if not _allow_lazy_installs():
         raise FeatureUnavailable(
