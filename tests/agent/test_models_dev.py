@@ -158,6 +158,28 @@ class TestLookupModelsDevContext:
 
 
 class TestFetchModelsDev:
+    @pytest.fixture(autouse=True)
+    def _reset_module_cache_state(self):
+        """Reset every module-level cache global between test cases.
+
+        ``fetch_models_dev`` keeps three pieces of process-wide state: the
+        payload, its timestamp, and the last-network-failure timestamp that
+        suppresses retries. Leaking any of them across tests makes results
+        order-dependent — a failed fetch in one case would silently make the
+        next case skip the very network call it is asserting on.
+        """
+        import agent.models_dev as md
+        _clean = (
+            ("_models_dev_cache", {}),
+            ("_models_dev_cache_time", 0),
+            ("_models_dev_last_failure", 0.0),
+        )
+        for _name, _value in _clean:
+            setattr(md, _name, _value)
+        yield
+        for _name, _value in _clean:
+            setattr(md, _name, _value)
+
     @patch("agent.models_dev.requests.get")
     def test_fetch_success(self, mock_get):
         mock_resp = MagicMock()
@@ -250,6 +272,47 @@ class TestFetchModelsDev:
 
         mock_get.assert_called_once()
         assert "anthropic" in result
+
+    @patch("agent.models_dev.requests.get")
+    def test_repeated_network_failure_does_not_retry_every_call(self, mock_get):
+        """An unreachable models.dev must cost ONE timeout, not one per call.
+
+        Regression guard for the GUI-wide hang: models.dev sits on the
+        synchronous path of /api/model/info, /api/chat/models and chat
+        completions, which FastAPI serves from a bounded threadpool. The old
+        code only re-anchored ``_models_dev_cache_time`` inside the
+        ``if not _models_dev_cache`` branch, so once a stale cache had been
+        loaded the timestamp stayed permanently expired and EVERY subsequent
+        lookup paid the full socket timeout again. With enough concurrent
+        callers the threadpool drained and every synchronous endpoint stopped
+        answering — which the browser reports as "Failed to fetch".
+        """
+        import agent.models_dev as md
+        mock_get.side_effect = OSError("network unreachable")
+
+        with patch.object(md, "_disk_cache_age_seconds",
+                          return_value=md._MODELS_DEV_CACHE_TTL + 60), \
+             patch.object(md, "_load_disk_cache", return_value=SAMPLE_REGISTRY), \
+             patch.object(md, "_save_disk_cache"):
+            first = fetch_models_dev()
+            for _ in range(5):
+                # Age the in-memory timestamp past the TTL before each call.
+                # This is what actually happens in a long-lived GUI process:
+                # the short post-failure grace period lapses, stage 1 and
+                # stage 2 both miss, and control reaches the network stage
+                # again. Suppression must come from the failure timestamp,
+                # not from the payload timestamp.
+                md._models_dev_cache_time = 0
+                again = fetch_models_dev()
+
+        # Exactly one network attempt despite six calls.
+        assert mock_get.call_count == 1, (
+            f"expected 1 network attempt inside the failure grace window, "
+            f"got {mock_get.call_count} — negative caching is not engaging"
+        )
+        # Stale data is still served rather than an empty registry.
+        assert "anthropic" in first
+        assert "anthropic" in again
 
     @patch("agent.models_dev.requests.get")
     def test_force_refresh_skips_disk_cache(self, mock_get):

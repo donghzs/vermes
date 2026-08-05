@@ -34,9 +34,26 @@ logger = logging.getLogger(__name__)
 MODELS_DEV_URL = "https://models.dev/api.json"
 _MODELS_DEV_CACHE_TTL = 3600  # 1 hour in-memory
 
+# Network budget for the models.dev fetch. This call sits on the synchronous
+# request path of interactive endpoints (/api/model/info, /api/chat/models,
+# chat completions), which FastAPI runs in a bounded threadpool. A long
+# timeout here does not merely slow one request down — enough concurrent
+# blocked calls exhaust the threadpool and every synchronous endpoint stops
+# responding, which the browser surfaces as "Failed to fetch". Keep it short:
+# models.dev is an enrichment source, never a hard dependency.
+_MODELS_DEV_FETCH_TIMEOUT = 5
+
+# After a failed network fetch, suppress further attempts for this long.
+# Without it, a permanently unreachable models.dev (DNS poisoning, offline
+# laptop, corporate egress block) costs _MODELS_DEV_FETCH_TIMEOUT seconds on
+# *every* lookup.
+_MODELS_DEV_FAILURE_GRACE = 300  # 5 minutes
+
 # In-memory cache
 _models_dev_cache: Dict[str, Any] = {}
 _models_dev_cache_time: float = 0
+# Monotonic-ish wall clock of the last failed network fetch. 0 = never failed.
+_models_dev_last_failure: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +273,7 @@ def fetch_models_dev(force_refresh: bool = False) -> Dict[str, Any]:
     function always hits the network and only falls back to disk if the
     network call fails.
     """
-    global _models_dev_cache, _models_dev_cache_time
+    global _models_dev_cache, _models_dev_cache_time, _models_dev_last_failure
 
     # Stage 1: fresh in-memory cache wins. This is the hot path on
     # long-lived processes — no I/O, no system calls.
@@ -287,32 +304,59 @@ def fetch_models_dev(force_refresh: bool = False) -> Dict[str, Any]:
                 )
                 return _models_dev_cache
 
-    # Stage 3: network fetch.
-    try:
-        response = requests.get(MODELS_DEV_URL, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        if isinstance(data, dict) and data:
-            _models_dev_cache = data
-            _models_dev_cache_time = time.time()
-            _save_disk_cache(data)
-            logger.debug(
-                "Fetched models.dev registry: %d providers, %d total models",
-                len(data),
-                sum(len(p.get("models", {})) for p in data.values() if isinstance(p, dict)),
-            )
-            return data
-    except Exception as e:
-        logger.debug("Failed to fetch models.dev: %s", e)
+    # Stage 3: network fetch — unless we're inside the post-failure grace
+    # window. Skipping the call is what keeps an unreachable models.dev from
+    # charging every single lookup the full socket timeout.
+    now = time.time()
+    in_failure_grace = (
+        not force_refresh
+        and _models_dev_last_failure > 0
+        and (now - _models_dev_last_failure) < _MODELS_DEV_FAILURE_GRACE
+    )
+    if not in_failure_grace:
+        try:
+            response = requests.get(MODELS_DEV_URL, timeout=_MODELS_DEV_FETCH_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and data:
+                _models_dev_cache = data
+                _models_dev_cache_time = time.time()
+                _models_dev_last_failure = 0.0
+                _save_disk_cache(data)
+                logger.debug(
+                    "Fetched models.dev registry: %d providers, %d total models",
+                    len(data),
+                    sum(len(p.get("models", {})) for p in data.values() if isinstance(p, dict)),
+                )
+                return data
+            # Reached only when the response parsed but carried no usable
+            # payload — treat it as a failure so the grace window engages.
+            _models_dev_last_failure = time.time()
+            logger.debug("models.dev returned an empty/invalid payload")
+        except Exception as e:
+            _models_dev_last_failure = time.time()
+            logger.debug("Failed to fetch models.dev: %s", e)
 
-    # Stage 4: network failed — fall back to whatever disk cache exists,
-    # even if it's stale. Give it a short 5 min in-mem TTL so we retry
-    # the network soon instead of serving stale data for a full hour.
+    # Stage 4: no usable network data — serve whatever disk cache exists,
+    # even if stale. models.dev metadata (context windows, capability flags)
+    # ages slowly; stale data beats an empty registry, which would silently
+    # strip tool/vision support detection from every model.
     if not _models_dev_cache:
         _models_dev_cache = _load_disk_cache()
         if _models_dev_cache:
-            _models_dev_cache_time = time.time() - _MODELS_DEV_CACHE_TTL + 300
-            logger.debug("Loaded models.dev from disk cache (%d providers)", len(_models_dev_cache))
+            logger.debug(
+                "Loaded models.dev from stale disk cache (%d providers)",
+                len(_models_dev_cache),
+            )
+
+    if _models_dev_cache:
+        # Re-anchor the in-memory TTL on EVERY failed refresh, not just the
+        # first one. The previous code only did this inside the
+        # ``if not _models_dev_cache`` branch, so once a cache was loaded the
+        # timestamp stayed expired forever: Stage 1 missed, Stage 2 missed
+        # (stale file), and Stage 3 paid the full network timeout on every
+        # call. That is the failure mode that made the whole GUI hang.
+        _models_dev_cache_time = time.time() - _MODELS_DEV_CACHE_TTL + _MODELS_DEV_FAILURE_GRACE
 
     return _models_dev_cache
 
