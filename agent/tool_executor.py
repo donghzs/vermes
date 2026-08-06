@@ -54,9 +54,10 @@ from tools.tool_result_storage import (
 from tools.budget_config import BudgetConfig, DEFAULT_BUDGET, budget_for_context_window
 
 try:
-    from harness.recoverable import classify_failure
+    from harness.recoverable import classify_failure, invoke_with_retry
 except ImportError:
     classify_failure = None
+    invoke_with_retry = None
 
 logger = logging.getLogger(__name__)
 
@@ -314,13 +315,16 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 )
         if _precheck_result is None or not _precheck_result.block:
             try:
-                result = agent._invoke_tool(
+                result = invoke_with_retry(
+                    lambda: agent._invoke_tool(
+                        function_name,
+                        function_args,
+                        effective_task_id,
+                        tool_call.id,
+                        messages=messages,
+                        pre_tool_block_checked=True,
+                    ),
                     function_name,
-                    function_args,
-                    effective_task_id,
-                    tool_call.id,
-                    messages=messages,
-                    pre_tool_block_checked=True,
                 )
             except Exception as tool_error:
                 if classify_failure:
@@ -990,12 +994,15 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         logger.warning("[H2.1-seq] tool %s warning: %s", function_name, _precheck_seq.warning)
                 if _precheck_seq is None or not _precheck_seq.block:
                     try:
-                        function_result = _ra().handle_function_call(
-                            function_name, function_args, effective_task_id,
-                            tool_call_id=tool_call.id,
-                            session_id=agent.session_id or "",
-                            enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
-                            skip_pre_tool_call_hook=True,
+                        function_result = invoke_with_retry(
+                            lambda: _ra().handle_function_call(
+                                function_name, function_args, effective_task_id,
+                                tool_call_id=tool_call.id,
+                                session_id=agent.session_id or "",
+                                enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
+                                skip_pre_tool_call_hook=True,
+                            ),
+                            function_name,
                         )
                         _spinner_result = function_result
                         if _precheck_seq is not None and not _precheck_seq.passed:
@@ -1046,12 +1053,15 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 logger.warning("[H2.1-ns] tool %s warning: %s", function_name, _precheck_ns.warning)
             if _precheck_ns is None or not _precheck_ns.block:
                 try:
-                    function_result = _ra().handle_function_call(
-                        function_name, function_args, effective_task_id,
-                        tool_call_id=tool_call.id,
-                        session_id=agent.session_id or "",
-                        enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
-                        skip_pre_tool_call_hook=True,
+                    function_result = invoke_with_retry(
+                        lambda: _ra().handle_function_call(
+                            function_name, function_args, effective_task_id,
+                            tool_call_id=tool_call.id,
+                            session_id=agent.session_id or "",
+                            enabled_tools=list(agent.valid_tool_names) if agent.valid_tool_names else None,
+                            skip_pre_tool_call_hook=True,
+                        ),
+                        function_name,
                     )
                     if _precheck_ns is not None and not _precheck_ns.passed:
                         function_result = f"{function_result}\n\n[harness pre-check] {_precheck_ns.warning}"

@@ -23,6 +23,7 @@ import functools
 import inspect
 import json
 import logging
+import time
 import traceback
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Optional
@@ -78,6 +79,75 @@ def classify_failure(exc: BaseException) -> tuple[str, str]:
     if isinstance(exc, (RuntimeError,)):
         return "runtime_error", f"运行时错误：{msg or etype}"
     return "unexpected_error", msg or etype
+
+
+# ---------------------------------------------------------------------------
+# Retry (P3): transient network-jitter tolerance for tool invocation.
+# ---------------------------------------------------------------------------
+# 确定性内置工具：失败是逻辑/状态错误而非瞬态，retry 无意义。
+_BUILTIN_NO_RETRY = frozenset(
+    {"todo", "memory", "session_search", "clarify", "delegate_task"}
+)
+
+# 仅这些分类值得重试（瞬态网络抖动）。其余（缺依赖/权限/入参错/未知等）是
+# 确定性失败，重试只会浪费时间并可能误导 agent，一律不重试。
+_RETRYABLE_ERROR_TYPES = frozenset({"network_error"})
+
+
+def invoke_with_retry(
+    invoke_fn: Callable[[], Any],
+    function_name: str,
+    *,
+    max_attempts: int = 2,
+    base_delay: float = 0.5,
+    classify: Optional[Callable[[BaseException], tuple[str, str]]] = None,
+    log: Optional[logging.Logger] = None,
+) -> Any:
+    """调用 ``invoke_fn()``，对瞬态 ``network_error`` 做指数退避重试。
+
+    设计边界（P3 v1）：
+    - 只包"调用抛异常"这一层；工具成功返回但内容错（verify_fail，P0-A 范畴）
+      不在此范围——重试验证失败会得到同样的坏结果，毫无意义。
+    - 用 *否定过滤* 决定重试：仅 ``network_error``（含折入的 ``TimeoutError``）
+      重试，其余分类立即冒泡。
+    - 确定性内置工具（``_BUILTIN_NO_RETRY``）直接调用一次，跳过重试逻辑。
+    - 所有尝试耗尽或命中非瞬态异常时，raise 最后一次异常，由外层 except 走
+      原有 ``classify → record → 错误串`` 流程（控制流完全不变）。
+    - 熔断（基于 ``failure_learning.should_warn`` + 重试率）是 P3.5 的活，
+      这里只发可被 grep 的 retry 日志，不改动执行决策。
+
+    Args:
+        invoke_fn: 无参可调用，执行真实工具调用。
+        function_name: 工具名，用于内置短路与日志。
+        max_attempts: 最大尝试次数（默认 2 = 1 次重试）。
+        base_delay: 退避基数（秒），第 k 次重试 sleep ``base_delay * 2**k``。
+        classify: 异常分类器，默认 ``classify_failure``。
+        log: 日志器，默认 ``harness.recoverable``。
+    """
+    if function_name in _BUILTIN_NO_RETRY:
+        return invoke_fn()
+    _log = log or logger
+    _classify = classify or classify_failure
+    last_exc: Optional[BaseException] = None
+    for attempt in range(max_attempts):
+        try:
+            return invoke_fn()
+        except Exception as exc:  # noqa: BLE001 — 重试需捕获所有调用异常
+            last_exc = exc
+            if _classify is None:
+                break
+            etype, _ = _classify(exc)
+            if etype not in _RETRYABLE_ERROR_TYPES:
+                break  # 确定性失败，重试无意义
+            if attempt < max_attempts - 1:
+                _log.warning(
+                    "tool %s retry %d/%d after %s",
+                    function_name, attempt + 1, max_attempts - 1, etype,
+                )
+                time.sleep(base_delay * (2 ** attempt))
+    if last_exc is None:  # 理论不可达（max_attempts>=1），仅防御
+        raise RuntimeError("invoke_with_retry: no attempt executed")
+    raise last_exc
 
 
 def recoverable_tool(
