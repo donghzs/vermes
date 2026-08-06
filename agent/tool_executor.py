@@ -561,6 +561,22 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 except Exception as _ver_err:
                     logging.debug("file-mutation verifier record failed: %s", _ver_err)
 
+            # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
+            if not blocked:
+                try:
+                    from harness.outcome_verifier import verify_tool_outcome
+                    _ov_ok, _ov_reason = verify_tool_outcome(
+                        function_name, function_args, function_result, is_error,
+                    )
+                    if not _ov_ok:
+                        logger.warning(
+                            "outcome verified FAIL: %s → %s | result=%s",
+                            function_name, _ov_reason,
+                            str(function_result)[:200],
+                        )
+                except Exception as _ov_exc:
+                    logging.debug("outcome verifier raised: %s", _ov_exc)
+
             if not blocked and agent.tool_progress_callback:
                 try:
                     # 生成工具结果摘要（按工具类型区分长度）
@@ -1102,6 +1118,22 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 )
             except Exception as _ver_err:
                 logging.debug("file-mutation verifier record failed: %s", _ver_err)
+
+        # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
+        if not _execution_blocked:
+            try:
+                from harness.outcome_verifier import verify_tool_outcome
+                _ov_ok, _ov_reason = verify_tool_outcome(
+                    function_name, function_args, function_result, _is_error_result,
+                )
+                if not _ov_ok:
+                    logger.warning(
+                        "outcome verified FAIL: %s → %s | result=%s",
+                        function_name, _ov_reason,
+                        str(function_result)[:200],
+                    )
+            except Exception as _ov_exc:
+                logging.debug("outcome verifier raised: %s", _ov_exc)
 
         # 桥：记录工具完整性签名（sequential 路径）
         if not _execution_blocked and not _is_error_result and hasattr(agent, "_record_tool_signature"):

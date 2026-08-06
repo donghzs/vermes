@@ -3464,6 +3464,60 @@ def register_tools(host_api=None):
     Called by module_loader after host_api injection.
     Not called on import to avoid premature registration.
     """
+
+    # P0-A: Outcome Verifier — 外证回读验证工具写回是否真在库
+    def _verify_scholarforge_write(
+        function_name: str, function_args: dict,
+        function_result: str, is_error: bool,
+    ) -> tuple[bool, str]:
+        """外证回读：查 section_contents 表确认内容真在库且非空。
+
+        R1: 不信任 is_error —— handler 返回 ❌ 字符串而非抛错。
+        R3: 走外证回读（SELECT），不自证工具返回串。
+        """
+        try:
+            from vermes_cli.scholarforge.database import get_conn, init_db
+            init_db()
+            project_id = function_args.get("project_id")
+            section_key = function_args.get("section_key")
+            if not project_id or not section_key:
+                return (True, "no project_id/section_key — skip verification")
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT content FROM section_contents WHERE project_id=? AND section_key=?",
+                    (project_id, section_key),
+                ).fetchone()
+            if row is None:
+                return (False, f"section_contents row not found (pid={project_id}, key={section_key})")
+            if not row["content"]:
+                return (False, f"section_contents content is empty (pid={project_id}, key={section_key})")
+            return (True, "")
+        except Exception as e:
+            # R4: fail-open
+            return (True, f"verifier error: {e}")
+
+    def _verify_scholarforge_outline(
+        function_name: str, function_args: dict,
+        function_result: str, is_error: bool,
+    ) -> tuple[bool, str]:
+        """外证回读：查 outlines 表确认条目真在库。"""
+        try:
+            from vermes_cli.scholarforge.database import get_conn, init_db
+            init_db()
+            project_id = function_args.get("project_id")
+            if not project_id:
+                return (True, "no project_id — skip verification")
+            with get_conn() as conn:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM outlines WHERE project_id=?",
+                    (project_id,),
+                ).fetchone()
+            if count is None or count[0] == 0:
+                return (False, f"outlines: 0 rows after outline (pid={project_id})")
+            return (True, f"outlines: {count[0]} rows confirmed")
+        except Exception as e:
+            return (True, f"verifier error: {e}")
+
     registry.register(
         name="scholarforge_search",
         toolset="scholarforge",
@@ -3481,6 +3535,7 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="✍️",
         description="撰写学术论文内容（引言/文献综述/方法/实验/讨论/结论）",
+        verify_fn=_verify_scholarforge_write,
     )
     registry.register(
         name="scholarforge_review",
@@ -3517,6 +3572,7 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="📝",
         description="生成论文大纲（章节结构+每章要点+预估字数）",
+        verify_fn=_verify_scholarforge_outline,
     )
     registry.register(
         name="scholarforge_polish",
