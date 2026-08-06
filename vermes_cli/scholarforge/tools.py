@@ -689,7 +689,10 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
         )
         if not blocked:
             from vermes_cli.scholarforge.project_context import save_section
-            save_section(project_id, section_key, content)
+            _save_ok = save_section(project_id, section_key, content)
+            if not _save_ok:
+                logger.error("scholarforge_write: save_section failed for project_id=%s section_key=%s", project_id, section_key)
+                return f"❌ 章节写回失败：内容已生成但未能持久化到数据库（project_id={project_id}, section_key={section_key}）。请检查数据库连接后重试。\n\n---\n\n{content}"
         else:
             return f"🚫 质量闸门拦截（mode=block）：检测到 P0 级严重问题，已拒绝写回。\n\n---\n\n{gate_report}\n\n---\n\n请根据报告修改后重新提交。"
 
@@ -1597,7 +1600,10 @@ async def _handle_scholarforge_outline(args: dict, **kw: Any) -> str:
                 title = line[3:].strip()
                 sections.append({"section_key": f"section_{len(sections)+1}", "title": title, "word_count": 0, "status": "pending"})
         if sections:
-            save_outline(project_id, sections)
+            _outline_ok = save_outline(project_id, sections)
+            if not _outline_ok:
+                logger.error("scholarforge_outline: save_outline failed for project_id=%s", project_id)
+                return f"❌ 大纲写回失败：大纲已生成但未能持久化到数据库（project_id={project_id}）。请检查数据库连接后重试。\n\n---\n\n{outline_result}"
 
     return outline_result
 

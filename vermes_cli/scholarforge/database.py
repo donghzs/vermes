@@ -503,24 +503,43 @@ def delete_project(pid: int) -> bool:
 # Section content
 # ═══════════════════════════════════════════════════════════════════
 
-def save_outline(pid: int, outline_sections: list[dict]) -> None:
-    """批量保存大纲到 outlines 表（先删后插）"""
+def save_outline(pid: int, outline_sections: list[dict]) -> bool:
+    """批量保存大纲到 outlines 表（先删后插），返回 True 仅当回读确认条目已落库。"""
     init_db()
     now = int(time.time())
-    with get_conn() as conn:
-        conn.execute("DELETE FROM outlines WHERE project_id=?", (pid,))
-        for i, sec in enumerate(outline_sections):
-            conn.execute(
-                """INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (pid, sec.get("id", f"sec_{i}"),
-                 sec.get("number", i + 1),
-                 sec.get("title", ""),
-                 sec.get("wordCount", 0),
-                 sec.get("status", "pending"),
-                 i, now),
-            )
-    touch_project(pid)
+    try:
+        with get_conn() as conn:
+            conn.execute("DELETE FROM outlines WHERE project_id=?", (pid,))
+            for i, sec in enumerate(outline_sections):
+                conn.execute(
+                    """INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (pid, sec.get("id", f"sec_{i}"),
+                     sec.get("number", i + 1),
+                     sec.get("title", ""),
+                     sec.get("wordCount", 0),
+                     sec.get("status", "pending"),
+                     i, now),
+                )
+        touch_project(pid)
+    except Exception as e:
+        logger.error("save_outline(%s) write failed: %s", pid, e)
+        return False
+
+    # 外证回读：确认条目真在库
+    try:
+        with get_conn() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM outlines WHERE project_id=?",
+                (pid,),
+            ).fetchone()
+        if count is None or count[0] == 0:
+            logger.error("save_outline(%s) readback: 0 rows after insert", pid)
+            return False
+        return True
+    except Exception as e:
+        logger.error("save_outline(%s) readback failed: %s", pid, e)
+        return False
 
 
 def get_outline(pid: int) -> list[dict]:
@@ -546,21 +565,48 @@ def get_all_sections(pid: int) -> dict[str, str]:
         return {r["section_key"]: r["content"] for r in rows}
 
 
-def save_section_content(pid: int, section_key: str, content: str):
+def save_section_content(pid: int, section_key: str, content: str) -> bool:
+    """写回章节内容，返回 True 仅当写回且回读确认内容已落库。
+
+    外证回读：写完后立刻 SELECT 验证内容真在库且非空。
+    这是确定性验证（不依赖工具返回串自证），堵「报成功但实际没写」类静默假成功。
+    """
     init_db()
     now = int(time.time())
-    with get_conn() as conn:
-        conn.execute("""
-            INSERT INTO section_contents (project_id, section_key, content, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(project_id, section_key) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at
-        """, (pid, section_key, content, now))
-        # 同步更新 outline 的 word_count
-        conn.execute(
-            "UPDATE outlines SET word_count=? WHERE project_id=? AND section_key=?",
-            (len(content), pid, section_key),
-        )
-    touch_project(pid)
+    try:
+        with get_conn() as conn:
+            conn.execute("""
+                INSERT INTO section_contents (project_id, section_key, content, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(project_id, section_key) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at
+            """, (pid, section_key, content, now))
+            # 同步更新 outline 的 word_count
+            conn.execute(
+                "UPDATE outlines SET word_count=? WHERE project_id=? AND section_key=?",
+                (len(content), pid, section_key),
+            )
+        touch_project(pid)
+    except Exception as e:
+        logger.error("save_section_content(%s, %s) write failed: %s", pid, section_key, e)
+        return False
+
+    # 外证回读：确认内容真在库且非空
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT content FROM section_contents WHERE project_id=? AND section_key=?",
+                (pid, section_key),
+            ).fetchone()
+        if row is None:
+            logger.error("save_section_content(%s, %s) readback: row not found", pid, section_key)
+            return False
+        if not row["content"]:
+            logger.error("save_section_content(%s, %s) readback: content is empty", pid, section_key)
+            return False
+        return True
+    except Exception as e:
+        logger.error("save_section_content(%s, %s) readback failed: %s", pid, section_key, e)
+        return False
 
 
 def get_section_content(pid: int, section_key: str) -> str:

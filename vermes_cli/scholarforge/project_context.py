@@ -121,33 +121,20 @@ def format_project_context_prompt(project_id: int) -> str:
 
 
 def save_section(project_id: int, section_key: str, content: str) -> bool:
-    """写回章节内容到 section_contents 表。"""
+    """写回章节内容到 section_contents 表。
+
+    Returns True only when content is confirmed persisted (via database.save_section_content
+    外证回读).  Callers MUST check the return value.
+    """
     if not project_id or project_id <= 0:
         return False
 
     try:
-        from vermes_cli.scholarforge.database import get_conn, init_db
-        init_db()
-        now = int(time.time())
-        with get_conn() as conn:
-            # upsert
-            existing = conn.execute(
-                "SELECT id FROM section_contents WHERE project_id=? AND section_key=?",
-                (project_id, section_key),
-            ).fetchone()
-            if existing:
-                conn.execute(
-                    "UPDATE section_contents SET content=?, updated_at=? WHERE id=?",
-                    (content, now, existing["id"]),
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO section_contents (project_id, section_key, content, updated_at) VALUES (?, ?, ?, ?)",
-                    (project_id, section_key, content, now),
-                )
-            # 更新 projects.updated_at
-            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
-        return True
+        from vermes_cli.scholarforge.database import save_section_content
+        ok = save_section_content(project_id, section_key, content)
+        if not ok:
+            logger.error("save_section(%s, %s): database.save_section_content returned False", project_id, section_key)
+        return ok
     except Exception as e:
         logger.warning("save_section(%s, %s) failed: %s", project_id, section_key, e)
         return False
@@ -178,33 +165,20 @@ def get_style_prompt(project_id: int) -> str:
 
 
 def save_outline(project_id: int, sections: list[dict]) -> bool:
-    """写回大纲到 outlines 表。"""
+    """写回大纲到 outlines 表。
+
+    Returns True only when rows are confirmed persisted (via database.save_outline
+    外证回读).  Callers MUST check the return value.
+    """
     if not project_id or project_id <= 0 or not sections:
         return False
 
     try:
-        from vermes_cli.scholarforge.database import get_conn, init_db
-        init_db()
-        now = int(time.time())
-        with get_conn() as conn:
-            # 清除旧大纲
-            conn.execute("DELETE FROM outlines WHERE project_id=?", (project_id,))
-            # 插入新大纲
-            for i, s in enumerate(sections):
-                conn.execute("""
-                    INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    project_id,
-                    s.get("section_key", f"section_{i+1}"),
-                    s.get("section_number", str(i+1)),
-                    s.get("title", s.get("section_title", "")),
-                    s.get("word_count", 0),
-                    s.get("status", "pending"),
-                    i,
-                ))
-            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
-        return True
+        from vermes_cli.scholarforge.database import save_outline as _db_save_outline
+        ok = _db_save_outline(project_id, sections)
+        if not ok:
+            logger.error("save_outline(%s): database.save_outline returned False", project_id)
+        return ok
     except Exception as e:
         logger.warning("save_outline(%s) failed: %s", project_id, e)
         return False
