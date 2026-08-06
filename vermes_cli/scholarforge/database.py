@@ -503,43 +503,110 @@ def delete_project(pid: int) -> bool:
 # Section content
 # ═══════════════════════════════════════════════════════════════════
 
+def _norm_outline_section(sec: dict, i: int) -> tuple:
+    """归一化单条大纲条目，兼容仓内并存的两套字段契约。
+
+    - camelCase  {id, number, title, wordCount, status}
+      ← BUILTIN_TEMPLATES(project_templates.py) / blueprint.py 的前端 JSON
+    - snake_case {section_key, section_number, section_title, word_count, status}
+      ← project_context.save_outline 的历史契约 / tools.py:1600 的 agent 工具
+
+    数值字段用 `is None` 判定而非 `or`，否则合法的 0 会被 fallback 吞掉。
+    返回 (section_key, section_number, section_title, word_count, status)。
+    """
+    key = sec.get("id") or sec.get("section_key") or f"sec_{i}"
+    number = sec.get("number")
+    if number is None:
+        number = sec.get("section_number")
+    if number is None:
+        number = i + 1
+    title = sec.get("title") or sec.get("section_title") or ""
+    word_count = sec.get("wordCount")
+    if word_count is None:
+        word_count = sec.get("word_count")
+    if word_count is None:
+        word_count = 0
+    status = sec.get("status") or "pending"
+    return key, number, title, word_count, status
+
+
+def _word_count_equal(expected, stored) -> bool:
+    """比较 word_count 期望值与回读值，容忍类型差异。
+
+    `outlines.word_count` 是 INTEGER 列，但前端/LLM 传来的 JSON 可能给字符串
+    "500"，SQLite 的类型亲和性会静默转成 int 500。若直接用 `!=` 比对会把这种
+    合法写入误判成失败（假阴性）。故先做数值归一，无法归一时退回原值比较。
+    """
+    if expected == stored:
+        return True
+    try:
+        return int(expected) == int(stored)
+    except (TypeError, ValueError):
+        return False
+
+
 def save_outline(pid: int, outline_sections: list[dict]) -> bool:
-    """批量保存大纲到 outlines 表（先删后插），返回 True 仅当回读确认条目已落库。"""
+    """批量保存大纲到 outlines 表（先删后插），返回 True 仅当回读确认条目已落库。
+
+    外证回读校验三件事（不止「有行」）：条目数相符、section_key 逐条相符、
+    word_count 与写入值一致。否则字段契约错配这类 bug 会被验证器自己认证成成功。
+    """
     init_db()
+    if not outline_sections:
+        # 空大纲视为写回失败（保持既有语义）：调用方要的是「大纲已落库」，不是「清空了大纲」
+        logger.error("save_outline(%s): refused empty outline", pid)
+        return False
     now = int(time.time())
+    expected = [_norm_outline_section(sec, i) for i, sec in enumerate(outline_sections)]
     try:
         with get_conn() as conn:
             conn.execute("DELETE FROM outlines WHERE project_id=?", (pid,))
-            for i, sec in enumerate(outline_sections):
+            for i, (key, number, title, word_count, status) in enumerate(expected):
                 conn.execute(
                     """INSERT INTO outlines (project_id, section_key, section_number, section_title, word_count, status, sort_order, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (pid, sec.get("id", f"sec_{i}"),
-                     sec.get("number", i + 1),
-                     sec.get("title", ""),
-                     sec.get("wordCount", 0),
-                     sec.get("status", "pending"),
-                     i, now),
+                    (pid, key, number, title, word_count, status, i, now),
                 )
-        touch_project(pid)
     except Exception as e:
         logger.error("save_outline(%s) write failed: %s", pid, e)
         return False
 
-    # 外证回读：确认条目真在库
+    # 外证回读：条目数 / section_key / word_count 三重比对
     try:
         with get_conn() as conn:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM outlines WHERE project_id=?",
+            rows = conn.execute(
+                "SELECT section_key, word_count FROM outlines WHERE project_id=? ORDER BY sort_order",
                 (pid,),
-            ).fetchone()
-        if count is None or count[0] == 0:
-            logger.error("save_outline(%s) readback: 0 rows after insert", pid)
+            ).fetchall()
+        if len(rows) != len(expected):
+            logger.error(
+                "save_outline(%s) readback: row count mismatch (expected %d, got %d)",
+                pid, len(expected), len(rows),
+            )
             return False
-        return True
+        for (key, _number, _title, word_count, _status), row in zip(expected, rows):
+            if row["section_key"] != key:
+                logger.error(
+                    "save_outline(%s) readback: section_key mismatch (expected %r, got %r)",
+                    pid, key, row["section_key"],
+                )
+                return False
+            if not _word_count_equal(word_count, row["word_count"]):
+                logger.error(
+                    "save_outline(%s) readback: word_count mismatch for %r (expected %r, got %r)",
+                    pid, key, word_count, row["word_count"],
+                )
+                return False
     except Exception as e:
         logger.error("save_outline(%s) readback failed: %s", pid, e)
         return False
+
+    # touch_project 只是元数据副作用，它失败不应否定「大纲已落库」这个事实
+    try:
+        touch_project(pid)
+    except Exception as e:
+        logger.warning("save_outline(%s): touch_project failed (non-fatal): %s", pid, e)
+    return True
 
 
 def get_outline(pid: int) -> list[dict]:
@@ -568,7 +635,8 @@ def get_all_sections(pid: int) -> dict[str, str]:
 def save_section_content(pid: int, section_key: str, content: str) -> bool:
     """写回章节内容，返回 True 仅当写回且回读确认内容已落库。
 
-    外证回读：写完后立刻 SELECT 验证内容真在库且非空。
+    外证回读：写完后立刻用另一条连接 SELECT，验证库里的内容**逐字等于**写入值且非空。
+    只验「非空」抓不到「upsert 没生效、旧内容还在」，所以这里做全等比对。
     这是确定性验证（不依赖工具返回串自证），堵「报成功但实际没写」类静默假成功。
     """
     init_db()
@@ -585,12 +653,11 @@ def save_section_content(pid: int, section_key: str, content: str) -> bool:
                 "UPDATE outlines SET word_count=? WHERE project_id=? AND section_key=?",
                 (len(content), pid, section_key),
             )
-        touch_project(pid)
     except Exception as e:
         logger.error("save_section_content(%s, %s) write failed: %s", pid, section_key, e)
         return False
 
-    # 外证回读：确认内容真在库且非空
+    # 外证回读：行存在 + 内容与写入值全等 + 非空
     try:
         with get_conn() as conn:
             row = conn.execute(
@@ -600,13 +667,31 @@ def save_section_content(pid: int, section_key: str, content: str) -> bool:
         if row is None:
             logger.error("save_section_content(%s, %s) readback: row not found", pid, section_key)
             return False
-        if not row["content"]:
-            logger.error("save_section_content(%s, %s) readback: content is empty", pid, section_key)
+        stored = row["content"]
+        if stored != content:
+            # upsert 未生效 / 内容被截断（如含 NUL 字节）——只验非空是抓不到的
+            logger.error(
+                "save_section_content(%s, %s) readback: content mismatch (wrote %d chars, stored %d chars)",
+                pid, section_key, len(content), len(stored or ""),
+            )
             return False
-        return True
+        if not stored:
+            # 行确实在库里，只是内容为空——与「没写进去」是两回事，日志需区分
+            logger.error(
+                "save_section_content(%s, %s) readback: row persisted but content is empty",
+                pid, section_key,
+            )
+            return False
     except Exception as e:
         logger.error("save_section_content(%s, %s) readback failed: %s", pid, section_key, e)
         return False
+
+    # touch_project 只是元数据副作用，它失败不应否定「正文已落库」这个事实
+    try:
+        touch_project(pid)
+    except Exception as e:
+        logger.warning("save_section_content(%s, %s): touch_project failed (non-fatal): %s", pid, section_key, e)
+    return True
 
 
 def get_section_content(pid: int, section_key: str) -> str:

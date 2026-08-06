@@ -487,7 +487,20 @@ def register_to(app, host_api=None):
             content, _gate_report, _blocked = run_quality_gate(
                 pid, section_key, content, mode="flag", stage="write"
             )
-        db.save_section_content(pid, section_key, content)
+        # P0-B 扩面：接回返回值，不再无条件 saved:True（web 端此前是静默假成功路径）。
+        # 空内容是前端合法的「清空章节」操作，save_section_content 对其返回 False，
+        # 但那不算写回失败，故只在 content 非空时判为真失败。
+        _persist_ok = db.save_section_content(pid, section_key, content)
+        if not _persist_ok and content:
+            logger.error(
+                "api_save_section: save_section_content failed (pid=%s, section_key=%s)",
+                pid, section_key,
+            )
+            return {
+                "saved": False,
+                "section_key": section_key,
+                "error": "内容未能持久化到数据库，请重试",
+            }
         db.update_project(pid, last_section_key=section_key)
         return {"saved": True, "section_key": section_key}
 
@@ -1061,7 +1074,11 @@ def register_to(app, host_api=None):
                             try:
                                 outline_data = ctx.outline.get("sections", []) if isinstance(ctx.outline, dict) else []
                                 if outline_data:
-                                    db.save_outline(pid, outline_data)
+                                    if not db.save_outline(pid, outline_data):
+                                        logger.error(
+                                            "_outline_hook: save_outline failed (pid=%s, %d sections)",
+                                            pid, len(outline_data),
+                                        )
                             except Exception as e:
                                 logger.debug(f"Failed to save outline after pipeline: {e}")
 
@@ -1200,7 +1217,11 @@ def register_to(app, host_api=None):
                             try:
                                 outline_sections = evt.get("sections", [])
                                 if outline_sections:
-                                    db.save_outline(pid, outline_sections)
+                                    if not db.save_outline(pid, outline_sections):
+                                        logger.error(
+                                            "outline event: save_outline failed (pid=%s, %d sections)",
+                                            pid, len(outline_sections),
+                                        )
                             except Exception as e:
                                 logger.warning(f"Failed to save outline to DB: {e}")
                     # 保存Agent回复消息到DB
