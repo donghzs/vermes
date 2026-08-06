@@ -2011,7 +2011,38 @@ def run_conversation(
                             api_kwargs, on_first_delta=_stop_spinner
                         )
                     else:
-                        response = agent._interruptible_api_call(api_kwargs)
+                        # Test-Time Compute (best-of-N) — non-streaming seam ONLY.
+                        # Streaming stays N=1 (report §9.8 R6: sample-then-select
+                        # contradicts show-while-generating). Fail-open: any error
+                        # degrades to the single baseline call, loop unchanged.
+                        try:
+                            from harness.test_time_compute import (
+                                sample_best_of_n,
+                                get_test_time_config,
+                                DefaultJudge,
+                            )
+                            _ttc = get_test_time_config(agent)
+                            if _ttc.enabled and _ttc.n > 1:
+                                # recent_tool_verify is the P0-A Verifier signal slot;
+                                # populated by verifier wiring (P2), empty in v1.
+                                response = sample_best_of_n(
+                                    agent,
+                                    api_kwargs,
+                                    cfg=_ttc,
+                                    judge=DefaultJudge(),
+                                    context={
+                                        "task_id": effective_task_id,
+                                        "recent_tool_verify": [],
+                                    },
+                                )[0]
+                            else:
+                                response = agent._interruptible_api_call(api_kwargs)
+                        except Exception as _ttc_err:  # noqa: BLE001 - fail-open
+                            logger.debug(
+                                "test_time_compute disabled by error, baseline call: %s",
+                                _ttc_err,
+                            )
+                            response = agent._interruptible_api_call(api_kwargs)
 
                 api_duration = time.time() - api_start_time
 
