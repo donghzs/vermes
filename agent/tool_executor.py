@@ -59,6 +59,17 @@ except ImportError:
     classify_failure = None
     invoke_with_retry = None
 
+try:
+    from harness.circuit_breaker import circuit_open, max_attempts_for, CB_PREFIX
+except ImportError:
+    def circuit_open(name):  # type: ignore
+        return False
+
+    def max_attempts_for(name, default=2):  # type: ignore
+        return default
+
+    CB_PREFIX = ""
+
 logger = logging.getLogger(__name__)
 
 
@@ -286,14 +297,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         _precheck_result = None
         try:
             from harness.tool_precheck import run_precheck
-            # H4.1: check historical failure patterns before tool execution.
+            # H4.1 / P3.5: circuit breaker — if recurring failures, skip retry.
             try:
-                from harness.failure_learning import get_ledger
-                _h4_warn = get_ledger().should_warn(function_name)
-                if _h4_warn:
-                    logger.info("[H4.1] historical failure warning for %s", function_name)
+                if circuit_open is not None and circuit_open(function_name):
+                    logger.warning(
+                        "[circuit-breaker] tool %s open; skip retry", function_name
+                    )
             except Exception as e:
-                logger.debug("tool_executor.py:  run tool failed: %s", e)
+                logger.debug("tool_executor.py: circuit_breaker check failed: %s", e)
             _precheck_result = run_precheck(function_name, function_args, agent)
         except Exception:
             pass  # harness unavailable → no-op (additive design)
@@ -315,6 +326,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 )
         if _precheck_result is None or not _precheck_result.block:
             try:
+                _max_att = max_attempts_for(function_name) if max_attempts_for else 2
                 result = invoke_with_retry(
                     lambda: agent._invoke_tool(
                         function_name,
@@ -325,6 +337,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         pre_tool_block_checked=True,
                     ),
                     function_name,
+                    max_attempts=_max_att,
                 )
             except Exception as tool_error:
                 if classify_failure:
@@ -423,6 +436,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             from harness.failure_learning import get_ledger
             _h4_hist = get_ledger().should_warn(function_name)
             if _h4_hist:
+                if circuit_open is not None and circuit_open(function_name):
+                    _h4_hist = f"{CB_PREFIX} {_h4_hist}"
                 result = f"{result}\n\n{_h4_hist}"
                 logger.warning("[H4.1] injected historical failure warning for %s", function_name)
         except Exception:
@@ -973,14 +988,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _precheck_seq = None
             try:
                 from harness.tool_precheck import run_precheck
-                # H4.1: check historical failure patterns before tool execution.
+                # H4.1 / P3.5: circuit breaker — if recurring failures, skip retry.
                 try:
-                    from harness.failure_learning import get_ledger
-                    _h4_warn_seq = get_ledger().should_warn(function_name)
-                    if _h4_warn_seq:
-                        logger.info("[H4.1-seq] historical failure warning for %s", function_name)
+                    if circuit_open is not None and circuit_open(function_name):
+                        logger.warning(
+                            "[circuit-breaker] tool %s open; skip retry", function_name
+                        )
                 except Exception as e:
-                    logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
+                    logger.debug("tool_executor.py: circuit_breaker check failed: %s", e)
                 _precheck_seq = run_precheck(function_name, function_args, agent)
             except Exception as e:
                 logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
@@ -994,6 +1009,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                         logger.warning("[H2.1-seq] tool %s warning: %s", function_name, _precheck_seq.warning)
                 if _precheck_seq is None or not _precheck_seq.block:
                     try:
+                        _max_att = max_attempts_for(function_name) if max_attempts_for else 2
                         function_result = invoke_with_retry(
                             lambda: _ra().handle_function_call(
                                 function_name, function_args, effective_task_id,
@@ -1003,6 +1019,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                                 skip_pre_tool_call_hook=True,
                             ),
                             function_name,
+                            max_attempts=_max_att,
                         )
                         _spinner_result = function_result
                         if _precheck_seq is not None and not _precheck_seq.passed:
@@ -1035,14 +1052,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _precheck_ns = None
             try:
                 from harness.tool_precheck import run_precheck
-                # H4.1: check historical failure patterns before tool execution.
+                # H4.1 / P3.5: circuit breaker — if recurring failures, skip retry.
                 try:
-                    from harness.failure_learning import get_ledger
-                    _h4_warn_ns = get_ledger().should_warn(function_name)
-                    if _h4_warn_ns:
-                        logger.info("[H4.1-ns] historical failure warning for %s", function_name)
+                    if circuit_open is not None and circuit_open(function_name):
+                        logger.warning(
+                            "[circuit-breaker] tool %s open; skip retry", function_name
+                        )
                 except Exception as e:
-                    logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
+                    logger.debug("tool_executor.py: circuit_breaker check failed: %s", e)
                 _precheck_ns = run_precheck(function_name, function_args, agent)
             except Exception as e:
                 logger.debug("tool_executor.py: execute tool calls sequential failed: %s", e)
@@ -1053,6 +1070,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 logger.warning("[H2.1-ns] tool %s warning: %s", function_name, _precheck_ns.warning)
             if _precheck_ns is None or not _precheck_ns.block:
                 try:
+                    _max_att = max_attempts_for(function_name) if max_attempts_for else 2
                     function_result = invoke_with_retry(
                         lambda: _ra().handle_function_call(
                             function_name, function_args, effective_task_id,
@@ -1254,6 +1272,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             from harness.failure_learning import get_ledger
             _h4_hist_seq = get_ledger().should_warn(function_name)
             if _h4_hist_seq:
+                if circuit_open is not None and circuit_open(function_name):
+                    _h4_hist_seq = f"{CB_PREFIX} {_h4_hist_seq}"
                 function_result = f"{function_result}\n\n{_h4_hist_seq}"
                 logger.warning("[H4.1-seq] injected historical failure warning for %s", function_name)
         except Exception:
