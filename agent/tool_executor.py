@@ -563,6 +563,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
 
             # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
             if not blocked:
+                _ov_ok, _ov_reason = True, ""
                 try:
                     from harness.outcome_verifier import verify_tool_outcome
                     _ov_ok, _ov_reason = verify_tool_outcome(
@@ -576,6 +577,12 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         )
                 except Exception as _ov_exc:
                     logging.debug("outcome verifier raised: %s", _ov_exc)
+                # P2 信号桥：把验证结果喂给任务级 Critic（只收集本回合，不跨回合）
+                try:
+                    from harness.outcome_verifier import record_tool_verify
+                    record_tool_verify(agent, function_name, _ov_ok, _ov_reason)
+                except Exception as _rec_exc:
+                    logging.debug("outcome verifier record failed: %s", _rec_exc)
 
             if not blocked and agent.tool_progress_callback:
                 try:
@@ -1121,6 +1128,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
         # P0-A: 通用 Outcome Verifier — 按名查 verify_fn，fail-open
         if not _execution_blocked:
+            _ov_ok, _ov_reason = True, ""
             try:
                 from harness.outcome_verifier import verify_tool_outcome
                 _ov_ok, _ov_reason = verify_tool_outcome(
@@ -1134,6 +1142,12 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     )
             except Exception as _ov_exc:
                 logging.debug("outcome verifier raised: %s", _ov_exc)
+            # P2 信号桥：把验证结果喂给任务级 Critic（只收集本回合，不跨回合）
+            try:
+                from harness.outcome_verifier import record_tool_verify
+                record_tool_verify(agent, function_name, _ov_ok, _ov_reason)
+            except Exception as _rec_exc:
+                logging.debug("outcome verifier record failed: %s", _rec_exc)
 
         # 桥：记录工具完整性签名（sequential 路径）
         if not _execution_blocked and not _is_error_result and hasattr(agent, "_record_tool_signature"):

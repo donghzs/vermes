@@ -47,6 +47,8 @@ class TTCConfig:
     enabled: bool = False
     n: int = 1
     temperature: float = 0.7
+    judge: str = "default"          # "default" = DefaultJudge (filter); "critic" = CriticJudge (P2 LLM)
+    critic_model: Optional[str] = None  # P2: 指定更强/不同法官模型；None = 复用主对话 provider
 
 
 def _config_path():
@@ -77,6 +79,8 @@ def load_test_time_config() -> TTCConfig:
             n=int(ttc.get("n", 1)) if ttc.get("n") is not None else 1,
             temperature=float(ttc.get("temperature", 0.7))
             if ttc.get("temperature") is not None else 0.7,
+            judge=str(ttc.get("judge", "default")) if ttc.get("judge") is not None else "default",
+            critic_model=str(ttc["critic_model"]) if ttc.get("critic_model") else None,
         )
     except Exception as e:  # noqa: BLE001 - fail-open to defaults
         logger.debug("test_time_compute config load failed, using defaults: %s", e)

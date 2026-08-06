@@ -67,3 +67,39 @@ def verify_tool_outcome(
         # R4: fail-open — 验证器自身出错不阻断工具结果
         logger.warning("verify_tool_outcome(%s) raised: %s", function_name, e)
         return (True, f"verifier error: {e}")
+
+
+def record_tool_verify(
+    agent: Any,
+    function_name: str,
+    ok: bool,
+    reason: str,
+) -> None:
+    """P2 信号桥：把一次工具验证结果喂给任务级 Critic（只收集本回合）。
+
+    - fail-open：任何异常只记 debug 日志，绝不阻断工具执行或 agent loop。
+    - 写入 ``agent._recent_tool_verify``（每回合由 conversation_loop 重置为空
+      列表，不跨回合累积）。CriticJudge 只读本回合信号（跨回合排名是 P4 的活）。
+    - 列表上限保护：单回合工具调用数有限，但设 64 上限防异常膨胀。
+
+    调用点：agent/tool_executor.py 并发路径(:567) 与串行路径(:1126) 的 verify
+    钩子之后。
+    """
+    try:
+        buf = getattr(agent, "_recent_tool_verify", None)
+        if buf is None:
+            buf = []
+            try:
+                agent._recent_tool_verify = buf
+            except Exception:
+                pass
+        buf.append({
+            "function_name": function_name,
+            "ok": bool(ok),
+            "reason": reason if isinstance(reason, str) else str(reason),
+        })
+        # 单回合上限保护（正常远不到，防异常膨胀）
+        if len(buf) > 64:
+            del buf[: len(buf) - 64]
+    except Exception as e:  # noqa: BLE001 - 信号桥失败绝不阻断
+        logger.debug("record_tool_verify(%s) failed: %s", function_name, e)

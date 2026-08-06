@@ -1660,6 +1660,10 @@ def run_conversation(
     # over-claim success while the file is actually unchanged on disk.
     agent._turn_failed_file_mutations: Dict[str, Dict[str, Any]] = {}
 
+    # P2 信号桥：本回合工具验证结果缓冲（P0-A Verifier 写入，CriticJudge 只读）。
+    # 每回合重置为空列表 → 只收集本回合，不跨回合累积（跨回合排名是 P4 的活）。
+    agent._recent_tool_verify: List[dict] = []
+
     # Record the execution thread so interrupt()/clear_interrupt() can
     # scope the tool-level interrupt signal to THIS agent's thread only.
     # Must be set before any thread-scoped interrupt syncing.
@@ -2023,16 +2027,31 @@ def run_conversation(
                             )
                             _ttc = get_test_time_config(agent)
                             if _ttc.enabled and _ttc.n > 1:
-                                # recent_tool_verify is the P0-A Verifier signal slot;
-                                # populated by verifier wiring (P2), empty in v1.
+                                # P2: 选 Judge — 默认 DefaultJudge（保守过滤器），
+                                # "critic" 走 CriticJudge（LLM 法官，复用主对话 provider，
+                                # 可经 test_time_compute.critic_model 指定更强模型）。
+                                # P1 的 sample_best_of_n / OutcomeJudge 协议零改动。
+                                if _ttc.judge == "critic":
+                                    from harness.critic_judge import CriticJudge
+                                    _judge = CriticJudge(
+                                        agent,
+                                        critic_model=_ttc.critic_model,
+                                        base_api_kwargs=api_kwargs,
+                                    )
+                                else:
+                                    _judge = DefaultJudge()
+                                # P2 信号桥：本回合工具验证结果（P0-A Verifier 写入，
+                                # 每回合重置），只收集本回合，不跨回合累积。
                                 response = sample_best_of_n(
                                     agent,
                                     api_kwargs,
                                     cfg=_ttc,
-                                    judge=DefaultJudge(),
+                                    judge=_judge,
                                     context={
                                         "task_id": effective_task_id,
-                                        "recent_tool_verify": [],
+                                        "recent_tool_verify": getattr(
+                                            agent, "_recent_tool_verify", []
+                                        ),
                                     },
                                 )[0]
                             else:
