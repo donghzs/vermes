@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import types
 import httpx
 from typing import Any
 
@@ -301,8 +302,11 @@ def _get_llm_client() -> httpx.AsyncClient:
     return client
 
 
-async def _call_llm_request(url: str, body: dict, headers: dict) -> str:
+async def _call_llm_request(url: str, body: dict, headers: dict) -> tuple[str, dict | None]:
     """真正的一次 HTTP 请求（httpx 异步，原生不阻塞事件循环）。
+
+    返回 ``(content, usage)``：usage 是响应 JSON 的 ``usage`` 字段（token 统计字典），
+    无则为 ``None``。此前 usage 被直接丢弃（G4a 黑洞）——现在上抛给 _call_llm 累加。
 
     抛 _LlmHttpError 携带 retryable 标志，供上层决定是否重试。
     """
@@ -333,9 +337,10 @@ async def _call_llm_request(url: str, body: dict, headers: dict) -> str:
         data = resp.json()
     except Exception:
         raise _LlmHttpError(f"❌ LLM 响应解析失败: {resp.text[:300]}", retryable=False)
+    _usage = data.get("usage")  # token 统计字典，可能是 None
     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
     if content:
-        return content
+        return content, _usage
     # 响应格式异常：不可重试（重发无意义）
     raise _LlmHttpError(
         f"❌ LLM 响应格式异常: {json.dumps(data, ensure_ascii=False)[:300]}",
@@ -400,7 +405,15 @@ async def _call_llm(
     last_error = ""
     for attempt in range(1, max_attempts + 1):
         try:
-            return await _call_llm_request(url, body, headers)
+            _content, _usage = await _call_llm_request(url, body, headers)
+            # G4a：把本次调用的 token 用量累加进当前工具调用上下文（若存在）。
+            # usage 为 None（无统计）时跳过；重试多次则累加而非覆盖。
+            if _usage is not None:
+                _accumulate_llm_usage(
+                    _usage, creds["provider"], effective_model,
+                    creds.get("base_url"), creds.get("api_key"),
+                )
+            return _content
         except _LlmHttpError as e:
             last_error = e.message
             if not e.retryable or attempt == max_attempts:
@@ -3176,12 +3189,72 @@ async def _handle_scholarforge_quality_gate(args: dict, **kw: Any) -> str:
         return f"❌ 质量检查失败: {str(e)[:200]}"
 
 
+# ── LLM token 用量累加器（G4a：闭环 ScholarForge token 黑洞）──
+# _call_llm 内部把每次 LLM 调用的 usage 累加进当前工具调用上下文；
+# _with_usage 在 finally 汇总归一化后落库。用 ContextVar 隔离并发工具调用，
+# 默认 None 时 _call_llm 直接跳过（无感知、零开销），不影响未包裹的调用。
+_LLM_USAGE_ACC: _cv.ContextVar = _cv.ContextVar("_scholarforge_llm_usage_acc", default=None)
+
+
+def _accumulate_llm_usage(usage_dict, provider, model, base_url, api_key):
+    """把一次 LLM 调用的 usage 追加到当前工具调用上下文（若存在）。"""
+    _acc = _LLM_USAGE_ACC.get()
+    if _acc is None:
+        return
+    _acc.append((usage_dict, provider, model, base_url, api_key))
+
+
+def _dict_to_ns(d):
+    """递归把 dict 转成 SimpleNamespace，使 normalize_usage 的 getattr 能读到字段。"""
+    if isinstance(d, dict):
+        return types.SimpleNamespace(**{k: _dict_to_ns(v) for k, v in d.items()})
+    return d
+
+
+def _summarize_llm_usage(entries):
+    """汇总多次 LLM 调用的 token 与估算成本。
+
+    复用主链路 agent.usage_pricing 的 normalize_usage + estimate_usage_cost，
+    不重写任何计价逻辑。返回 {input_tokens, output_tokens, estimated_cost_usd, model}。
+    任何单条解析/计价失败都跳过该条（fail-open），绝不阻断工具。
+    """
+    _in = _out = 0
+    _cost = 0.0
+    _model = None
+    try:
+        from agent.usage_pricing import normalize_usage, estimate_usage_cost
+    except Exception:
+        return {"input_tokens": 0, "output_tokens": 0, "estimated_cost_usd": 0.0, "model": None}
+    for (_usage, _provider, _model_e, _base_url, _api_key) in entries:
+        if not _model:
+            _model = _model_e
+        try:
+            _ns = _dict_to_ns(_usage) if isinstance(_usage, dict) else _usage
+            _cu = normalize_usage(_ns, provider=_provider, api_mode=None)
+            _in += int(_cu.input_tokens or 0)
+            _out += int(_cu.output_tokens or 0)
+            _cr = estimate_usage_cost(
+                _model_e or "", _cu, provider=_provider, base_url=_base_url, api_key=_api_key
+            )
+            if _cr and _cr.amount_usd is not None:
+                _cost += float(_cr.amount_usd)
+        except Exception:
+            continue
+    return {
+        "input_tokens": _in,
+        "output_tokens": _out,
+        "estimated_cost_usd": _cost,
+        "model": _model,
+    }
+
+
 def _with_usage(name: str, handler):
     """工具使用埋点包装器（用户场景验证）。
 
-    记录每次调用的工具名/成败/耗时到 scholarforge 自有 DB 的 tool_usage 表，
-    用真实使用数据驱动后续优化优先级。埋点失败静默，绝不影响工具本身。
-    成败判定：handler 抛异常或返回以 ❌ 开头的字符串视为失败。
+    记录每次调用的工具名/成败/耗时/token 到 scholarforge 自有 DB 的 tool_usage 表，
+    用真实使用数据驱动后续优化优先级。token 来自 _call_llm 经 _LLM_USAGE_ACC 累加的
+    usage 字段，复用主链路 normalize_usage + estimate_usage_cost 归一化计价（G4a）。
+    埋点失败静默，绝不影响工具本身。成败判定：handler 抛异常或返回以 ❌ 开头的字符串视为失败。
     """
     import functools
     import time as _time
@@ -3189,20 +3262,42 @@ def _with_usage(name: str, handler):
     @functools.wraps(handler)
     async def wrapped(args: dict, **kw):
         _t0 = _time.monotonic()
+        _acc_token = _LLM_USAGE_ACC.set([])
         ok = True
         try:
-            result = await handler(args, **kw)
-            ok = not (isinstance(result, str) and result.lstrip().startswith("❌"))
-            return result
-        except Exception:
-            ok = False
-            raise
+            try:
+                result = await handler(args, **kw)
+                ok = not (isinstance(result, str) and result.lstrip().startswith("❌"))
+                return result
+            except Exception:
+                ok = False
+                raise
         finally:
             try:
-                from vermes_cli.scholarforge.database import record_tool_usage
-                record_tool_usage(name, ok=ok, duration_ms=int((_time.monotonic() - _t0) * 1000))
+                _entries = _LLM_USAGE_ACC.get()
+                _LLM_USAGE_ACC.reset(_acc_token)
+                if _entries:
+                    _sum = _summarize_llm_usage(_entries)
+                    from vermes_cli.scholarforge.database import record_tool_usage
+                    record_tool_usage(
+                        name, ok=ok,
+                        duration_ms=int((_time.monotonic() - _t0) * 1000),
+                        input_tokens=_sum["input_tokens"],
+                        output_tokens=_sum["output_tokens"],
+                        estimated_cost_usd=_sum["estimated_cost_usd"],
+                        model=_sum["model"],
+                    )
+                else:
+                    from vermes_cli.scholarforge.database import record_tool_usage
+                    record_tool_usage(
+                        name, ok=ok,
+                        duration_ms=int((_time.monotonic() - _t0) * 1000),
+                    )
             except Exception:
-                pass
+                try:
+                    _LLM_USAGE_ACC.reset(_acc_token)
+                except Exception:
+                    pass
 
     return wrapped
 

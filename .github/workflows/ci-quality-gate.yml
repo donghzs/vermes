@@ -53,6 +53,16 @@ jobs:
             --ignore=tests/gateway/test_tirith.py \
             $DESELECT
 
+      - name: Eval gate (ScholarForge golden-set, warn-only)
+        # P4 评测闭环门禁（warn-only 阶段）：跑离线 golden-set，比已提交的
+        # baseline.scholarforge.json 看退步。退步只告警不阻断（非严格模式）；
+        # 跑稳积累信号后，把下方命令换成 `python scripts/eval_gate.py --strict
+        # --no-record` 即成为硬门禁。--no-record 避免 CI 写 ~/.vermes/eval_runs。
+        if: always()
+        continue-on-error: true
+        run: |
+          python scripts/eval_gate.py --json --no-record >> $GITHUB_STEP_SUMMARY || true
+
       - name: Test summary
         if: always()
         run: |

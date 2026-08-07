@@ -182,7 +182,7 @@ class TestCallLlmRetry:
             calls["n"] += 1
             if calls["n"] < 2:
                 raise tools._LlmHttpError("5xx", retryable=True, http_code=503)
-            return "OK 内容"
+            return "OK 内容", None
 
         monkeypatch.setattr(tools, "_call_llm_request", flaky_sync)
         monkeypatch.setattr(tools.asyncio, "sleep", _noop_sleep)

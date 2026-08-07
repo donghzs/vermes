@@ -184,11 +184,26 @@ def init_db():
                     tool_name TEXT NOT NULL,
                     ok INTEGER NOT NULL DEFAULT 1,
                     duration_ms INTEGER DEFAULT 0,
-                    called_at INTEGER NOT NULL
+                    called_at INTEGER NOT NULL,
+                    input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER DEFAULT 0,
+                    estimated_cost_usd REAL DEFAULT 0,
+                    model TEXT
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_tool ON tool_usage(tool_name)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_time ON tool_usage(called_at)")
+            # 迁移：旧库补 token/cost 列（CREATE IF NOT EXISTS 对存量表是 no-op）
+            for _col, _ctype in (
+                ("input_tokens", "INTEGER DEFAULT 0"),
+                ("output_tokens", "INTEGER DEFAULT 0"),
+                ("estimated_cost_usd", "REAL DEFAULT 0"),
+                ("model", "TEXT"),
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE tool_usage ADD COLUMN {_col} {_ctype}")
+                except sqlite3.OperationalError:
+                    pass  # 列已存在
         except sqlite3.OperationalError as e:
             logger.warning(f"tool_usage table migration: {e}")
 
@@ -1126,14 +1141,39 @@ def create_project_snapshot(project_id: int, label: str = "", note: str = "") ->
 # 工具使用埋点（用户场景验证：用真实使用数据驱动工具优先级）
 # ══════════════════════════════════════════════════════════════════
 
-def record_tool_usage(tool_name: str, ok: bool = True, duration_ms: int = 0) -> None:
-    """记录一次工具调用。失败静默（埋点绝不能影响工具本身）。"""
+def record_tool_usage(
+    tool_name: str,
+    ok: bool = True,
+    duration_ms: int = 0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    estimated_cost_usd: float = 0.0,
+    model: str = None,
+) -> None:
+    """记录一次工具调用（含 LLM token 用量与估算成本）。
+
+    失败静默（埋点绝不能影响工具本身）。token/cost 来自 ScholarForge 自有 LLM
+    通道的 usage 字段，经 agent.usage_pricing 归一化+估算后在此落库——闭环
+    G4a：此前这部分 token 被 _call_llm 直接丢弃，导致 /insights 等成本看板
+    完全不知道用户在 ScholarForge 写论文烧了多少 token。
+    """
     try:
         init_db()
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO tool_usage (tool_name, ok, duration_ms, called_at) VALUES (?, ?, ?, ?)",
-                (tool_name, 1 if ok else 0, int(duration_ms), int(time.time())),
+                "INSERT INTO tool_usage "
+                "(tool_name, ok, duration_ms, called_at, input_tokens, output_tokens, estimated_cost_usd, model) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    tool_name,
+                    1 if ok else 0,
+                    int(duration_ms),
+                    int(time.time()),
+                    int(input_tokens or 0),
+                    int(output_tokens or 0),
+                    float(estimated_cost_usd or 0.0),
+                    model or None,
+                ),
             )
     except Exception:
         pass
@@ -1149,7 +1189,10 @@ def get_tool_usage_stats(days: int = 30) -> List[Dict[str, Any]]:
                    COUNT(*) AS calls,
                    SUM(ok) AS successes,
                    AVG(duration_ms) AS avg_ms,
-                   MAX(called_at) AS last_used
+                   MAX(called_at) AS last_used,
+                   SUM(input_tokens) AS input_tokens,
+                   SUM(output_tokens) AS output_tokens,
+                   SUM(estimated_cost_usd) AS estimated_cost_usd
             FROM tool_usage
             WHERE called_at >= ?
             GROUP BY tool_name

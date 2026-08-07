@@ -88,7 +88,7 @@ def migrate(VERMES_home: str):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     date TEXT NOT NULL,
                     used INTEGER DEFAULT 0,
-                    limit INTEGER DEFAULT 500,
+                    "limit" INTEGER DEFAULT 500,
                     updated_at REAL
                 )
             """)

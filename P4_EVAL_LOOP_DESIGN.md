@@ -76,7 +76,7 @@
 - **严格度（待团队拍板，默认提案：warn-only 非阻塞）**：
   - 先 warn-only：跌破基线仅告警，不挡 PR（符合 fail-open 纪律，建基线后再升 blocking）。
   - 基线：首次全量跑分定为 baseline，warn 阈值 = baseline − Δ%（Δ 待定，建议 5%）。
-- 本地优先：`python scripts/eval_gate.py --suite scholarforge` 可离线跑；CI 接入另议。
+- 本地优先：`python scripts/eval_gate.py --manifest tests/eval/golden/scholarforge.golden.json` 可离线跑（manifest 有默认值，省略即跑 ScholarForge 全量）；CI 接入另议。
 
 ---
 
@@ -89,7 +89,7 @@ ALTER TABLE raw_events ADD COLUMN verified INTEGER;  -- NULL=未验证, 0=失败
 -- golden 跑分结果表（新建，轻量）
 CREATE TABLE eval_runs (
   id INTEGER PRIMARY KEY,
-  suite TEXT,            -- scholarforge / general
+  manifest TEXT,         -- golden manifest 文件名（实际实现为文件式基线，见 --manifest/--baseline，本表未落地）
   run_at TEXT,
   total INTEGER,
   passed INTEGER,
@@ -97,6 +97,8 @@ CREATE TABLE eval_runs (
   git_sha TEXT
 );
 ```
+
+> 注：§3 的 SQL 草稿**未落地**——实际实现（`scripts/eval_gate.py`）采用文件式基线：golden manifest（`--manifest`，默认 `tests/eval/golden/scholarforge.golden.json`）+ baseline JSON（`--baseline`，默认 `tests/eval/baseline.scholarforge.json`）+ 跑分记录目录（`--runs-dir`，默认 `~/.vermes/eval_runs`，CI 用 `--no-record`）。门禁旗标是 `--manifest` 而非 `--suite`。
 
 ---
 
