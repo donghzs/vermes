@@ -165,8 +165,13 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
     # Compatibility view: maps raw_events → outcomes schema
     # domain/error_type are '' (legacy code never populated them meaningfully)
     # role is 'default' (roles table rarely exists, detect_role always returned 'default')
+    #
+    # DROP+CREATE (not IF NOT EXISTS):存量库的旧视图定义不会被 IF NOT EXISTS 更新,
+    # 必须显式 DROP 才能把 __verified__/__self_validation__ 过滤写进去。
+    # 幂等:DROP IF EXISTS 对全新库无副作用。
+    conn.execute("DROP VIEW IF EXISTS v_outcomes")
     conn.execute(
-        """CREATE VIEW IF NOT EXISTS v_outcomes AS
+        """CREATE VIEW v_outcomes AS
            SELECT
              id,
              timestamp,
@@ -181,7 +186,7 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
              CASE WHEN success = 0 THEN result_preview ELSE '' END AS error_msg,
              'default' AS role
            FROM raw_events
-           WHERE tool_name != '__verified__'"""
+           WHERE tool_name NOT IN ('__verified__', '__self_validation__')"""
     )
     conn.commit()
 
