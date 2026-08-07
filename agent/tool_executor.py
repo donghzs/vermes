@@ -387,6 +387,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         else:
             logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
         # 桥：自验证层 — warn 模式下仅 log，不修改 result
+        _vr = None  # fail-open：self_validator 不可用时不阻断；并供并发路径透传真实判定
         try:
             _vr = _get_self_validator().verify_tool_result(
                 function_name, function_args, result, agent, is_error=is_error,
@@ -396,6 +397,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 result = result + _suffix
         except Exception:
             pass  # 验证层永不阻塞工具执行
+        # 并发路径透传：把真实 self_validator 判定带出 worker（post-loop 用于 P4）
+        vr_ok_worker = getattr(_vr, "ok", True)
         # H3.1: result structure validation (runtime quality gate, fail-open).
         try:
             from harness.result_validator import validate_result
@@ -442,7 +445,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 logger.warning("[H4.1] injected historical failure warning for %s", function_name)
         except Exception:
             pass  # H4.1 注入永不阻塞
-        results[index] = (function_name, function_args, result, duration, is_error, False)
+        results[index] = (function_name, function_args, result, duration, is_error, False, vr_ok_worker)
         # 桥：记录工具完整性签名，防止上下文压缩后丢失操作证据
         if not is_error and hasattr(agent, "_record_tool_signature"):
             try:
@@ -554,7 +557,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 function_result = f"Error executing tool '{name}': thread did not return a result"
             tool_duration = 0.0
         else:
-            function_name, function_args, function_result, tool_duration, is_error, blocked = r
+            function_name, function_args, function_result, tool_duration, is_error, blocked, vr_ok_worker = r
 
             if not blocked:
                 function_result = agent._append_guardrail_observation(
@@ -618,7 +621,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         except Exception:
                             _file_landed = None
                     _verified = compute_verified(
-                        vr_ok=True,
+                        vr_ok=vr_ok_worker,
                         ov_ok=_ov_ok,
                         file_landed=_file_landed,
                     )

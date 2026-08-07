@@ -86,17 +86,17 @@ class TestCheckMessageLength:
     def test_empty_message_warns(self):
         result = _check_message_length("")
         assert result is not None
-        assert "empty" in result[0].lower()
+        assert result[1]["issue"] == "empty"
 
     def test_whitespace_only_message_warns(self):
         result = _check_message_length("   \n\t  ")
         assert result is not None
-        assert "empty" in result[0].lower()
+        assert result[1]["issue"] == "empty"
 
     def test_very_long_message_warns(self):
         result = _check_message_length("x" * 100_001)
         assert result is not None
-        assert "long" in result[0].lower()
+        assert result[1]["issue"] == "too_long"
         assert result[1]["length"] == 100_001
 
     def test_message_at_limit_passes(self):
@@ -116,7 +116,7 @@ class TestCheckIterationBudget:
         agent = FakeAgent(iteration_budget=FakeBudget(90, 90))
         result = _check_iteration_budget(agent)
         assert result is not None
-        assert "exhausted" in result[0].lower()
+        assert result[1]["issue"] == "exhausted"
 
     def test_budget_over_limit_warns(self):
         agent = FakeAgent(iteration_budget=FakeBudget(100, 90))
@@ -165,19 +165,19 @@ class TestCheckTaskConstraints:
         agent = FakeAgent()
         result = check_task_constraints("", agent)
         assert result.passed is False
-        assert "empty" in result.warning.lower()
+        assert result.detail["message_length"]["issue"] == "empty"
 
     def test_very_long_message_warns(self):
         agent = FakeAgent()
         result = check_task_constraints("x" * 200_000, agent)
         assert result.passed is False
-        assert "long" in result.warning.lower()
+        assert result.detail["message_length"]["issue"] == "too_long"
 
     def test_exhausted_budget_warns(self):
         agent = FakeAgent(iteration_budget=FakeBudget(90, 90))
         result = check_task_constraints("hello", agent)
         assert result.passed is False
-        assert "exhausted" in result.warning.lower()
+        assert result.detail["iteration_budget"]["issue"] == "exhausted"
 
     def test_disabled_toolsets_warns(self):
         agent = FakeAgent(disabled_toolsets=["terminal_tool"])
@@ -192,11 +192,13 @@ class TestCheckTaskConstraints:
         )
         result = check_task_constraints("", agent)
         assert result.passed is False
-        assert "empty" in result.warning.lower()
-        assert "exhausted" in result.warning.lower()
-        assert "web_search" in result.warning
-        # Multiple warnings are newline-joined
-        assert "\n" in result.warning
+        assert result.detail["message_length"]["issue"] == "empty"
+        assert result.detail["iteration_budget"]["issue"] == "exhausted"
+        assert "web_search" in result.detail["disabled_toolsets"]["toolsets"]
+        # Three independent checks all contributed (structured detail has 3 keys)
+        assert {"message_length", "iteration_budget", "disabled_toolsets"} <= set(
+            result.detail.keys()
+        )
 
     def test_never_raises_on_bad_agent(self):
         """If agent is None or broken, should return ok, not raise."""
@@ -225,7 +227,7 @@ class TestCheckTaskConstraints:
         agent = FakeAgent()
         result = check_task_constraints(None, agent)  # type: ignore
         assert result.passed is False
-        assert "empty" in result.warning.lower()
+        assert result.detail["message_length"]["issue"] == "empty"
 
     def test_agent_without_iteration_budget(self):
         """Agent with no iteration_budget attribute should skip that check."""
