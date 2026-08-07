@@ -1,0 +1,105 @@
+{
+  "name": "scholarforge",
+  "version": 1,
+  "description": "ScholarForge 离线 golden-set。每个 case 用罐头 LLM 输出驱动真实 handler，判定依据是数据库真实状态而非工具自述文案。case 的选取原则：每条都对应一个曾真实发生过、或代价足够高的回归。",
+  "cases": [
+    {
+      "id": "write_abstract_persists",
+      "tool": "scholarforge_write",
+      "why": "P0 回归：写回类 handler 曾因 project_id 取默认 0 而跳过 save_section，内容零落库却仍返回成功（幻影进度）。此 case 锁死「生成即落库」。",
+      "setup": {
+        "project": {"title": "面向边缘计算的联邦学习优化", "paper_type": "硕士论文"}
+      },
+      "args": {
+        "topic": "面向边缘计算的联邦学习优化",
+        "section_type": "abstract",
+        "section_key": "abstract",
+        "quality_gate": "flag"
+      },
+      "llm_response": "## 摘要\n\n本文针对边缘计算场景下联邦学习通信开销过高的问题，提出了一种基于梯度稀疏化与自适应聚合频率的优化方法。首先分析了现有联邦学习框架在边缘设备异构性下的性能瓶颈，其次设计了动态权重聚合算法，最后在三个公开数据集上进行了验证。实验结果表明，所提方法在保持模型精度基本不变的前提下，将通信开销降低了约百分之四十二，训练收敛速度提升约百分之十八。本研究为资源受限场景下的分布式机器学习部署提供了可行方案。",
+      "expect_verify": true,
+      "expect": [
+        {"predicate": "result_not_error"},
+        {"predicate": "section_persisted", "section_key": "abstract", "min_chars": 100},
+        {"predicate": "section_contains", "section_key": "abstract", "text": "梯度稀疏化"},
+        {"predicate": "tool_usage_ok", "ok": true}
+      ]
+    },
+    {
+      "id": "write_injects_project_context",
+      "tool": "scholarforge_write",
+      "why": "上下文注入是不落库的行为，只体现在发给 LLM 的 prompt 上。曾出现过项目上下文静默不注入、模型凭空写作的情况。",
+      "setup": {
+        "project": {"title": "知识图谱驱动的医疗问答系统", "paper_type": "本科论文"},
+        "outline": [
+          {"section_key": "section_1", "title": "绪论", "sort_order": 0},
+          {"section_key": "section_2", "title": "相关工作", "sort_order": 1}
+        ],
+        "sections": [
+          {"key": "section_1", "content": "本章介绍知识图谱在医疗领域的应用背景与研究意义。"}
+        ]
+      },
+      "args": {
+        "topic": "知识图谱驱动的医疗问答系统",
+        "section_type": "method",
+        "section_key": "section_2",
+        "quality_gate": "flag"
+      },
+      "llm_response": "## 方法\n\n本文提出的医疗问答系统由三个模块组成：实体识别模块负责从用户问句中抽取医学实体，图谱检索模块基于实体在知识图谱中执行多跳查询，答案生成模块将检索到的三元组组织为自然语言回复。实体识别采用 BERT-CRF 结构，在中文医疗命名实体识别数据集上微调。图谱检索使用 Cypher 查询语言，支持最多三跳的关系推理。答案生成模块采用模板与生成式模型混合的策略，在保证事实准确性的同时提升表达自然度。",
+      "expect_verify": true,
+      "expect": [
+        {"predicate": "result_not_error"},
+        {"predicate": "prompt_contains", "text": "知识图谱驱动的医疗问答系统"},
+        {"predicate": "section_persisted", "section_key": "section_2", "min_chars": 100},
+        {"predicate": "llm_call_count", "count": 1}
+      ]
+    },
+    {
+      "id": "outline_persists_section_keys",
+      "tool": "scholarforge_outline",
+      "why": "字段归一化回归：save_outline 曾在合并两个函数时丢掉键名归一化，落库 key 从 section_N 退化成 sec_N。只查行数抓不到，必须断言键名。",
+      "setup": {
+        "project": {"title": "基于强化学习的自动驾驶决策", "paper_type": "硕士论文"}
+      },
+      "args": {
+        "topic": "基于强化学习的自动驾驶决策",
+        "paper_type": "硕士论文"
+      },
+      "llm_response": "# 论文大纲\n\n## 摘要\n\n简述研究问题与贡献，约 300 字。\n\n## 引言\n\n研究背景、问题陈述与本文贡献，约 1500 字。\n\n## 相关工作\n\n梳理强化学习在自动驾驶决策中的既有研究，约 2000 字。\n\n## 方法\n\n提出基于分层强化学习的决策框架，约 2000 字。\n\n## 实验\n\n在仿真环境中验证方法有效性，约 1800 字。\n\n## 结论\n\n总结贡献与未来工作，约 600 字。\n",
+      "expect_verify": true,
+      "expect": [
+        {"predicate": "result_not_error"},
+        {"predicate": "outline_rows_at_least", "count": 6},
+        {"predicate": "outline_section_keys", "prefix": "section_"}
+      ]
+    },
+    {
+      "id": "export_auto_assembles_from_db",
+      "tool": "scholarforge_export",
+      "why": "P0-B 回归：content 为空时 export 应从 DB 自动组装已写回章节，而不是直接报错。这是「写了但导不出」这类断链的守门 case。",
+      "setup": {
+        "project": {"title": "深度学习模型压缩技术研究", "paper_type": "本科论文"},
+        "outline": [
+          {"section_key": "section_1", "title": "引言", "sort_order": 0},
+          {"section_key": "section_2", "title": "模型剪枝", "sort_order": 1}
+        ],
+        "sections": [
+          {"key": "section_1", "content": "模型压缩是深度学习工程化落地的关键环节，本章介绍其研究背景。"},
+          {"key": "section_2", "content": "结构化剪枝通过移除整个通道来获得实际加速效果，非结构化剪枝则依赖稀疏计算库。"}
+        ]
+      },
+      "args": {
+        "title": "深度学习模型压缩技术研究",
+        "content": "",
+        "format": "markdown"
+      },
+      "expect": [
+        {"predicate": "result_not_error"},
+        {"predicate": "exported_file_exists", "min_bytes": 100},
+        {"predicate": "exported_file_contains", "text": "结构化剪枝"},
+        {"predicate": "exported_file_contains", "text": "模型压缩是深度学习工程化落地"},
+        {"predicate": "llm_call_count", "count": 0}
+      ]
+    }
+  ]
+}

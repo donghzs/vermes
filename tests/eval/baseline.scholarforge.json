@@ -1,0 +1,13 @@
+{
+  "manifest": "scholarforge.golden.json",
+  "recorded_at": 1786090992,
+  "task_success_rate": 1.0,
+  "total": 4,
+  "passed": 4,
+  "cases": {
+    "write_abstract_persists": true,
+    "write_injects_project_context": true,
+    "outline_persists_section_keys": true,
+    "export_auto_assembles_from_db": true
+  }
+}
