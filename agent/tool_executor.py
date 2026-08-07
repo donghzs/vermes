@@ -603,7 +603,10 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 except Exception as _rec_exc:
                     logging.debug("outcome verifier record failed: %s", _rec_exc)
 
-                # P4: 持久化统一 verified 信号（复用已算出的 _vr / _ov_ok，绝不重调验证器）
+                # P4: 持久化统一 verified 信号（复用已算出的 _ov_ok，绝不重调验证器）
+                # NOTE: 并发路径 _vr 在 _run_tool worker 内定义，post-execution
+                # 循环不可达。此处 vr_ok=True（fail-open：不因 self_validator
+                # 缺失而判未验证，仅靠 P0-A ov_ok + file_landed 判定）。
                 try:
                     from harness.outcome_verifier import compute_verified
                     from agent.raw_event import record_verification
@@ -615,13 +618,13 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                         except Exception:
                             _file_landed = None
                     _verified = compute_verified(
-                        vr_ok=getattr(_vr, "ok", True),
+                        vr_ok=True,
                         ov_ok=_ov_ok,
                         file_landed=_file_landed,
                     )
                     record_verification(
                         function_name, _verified,
-                        f"self_validator={getattr(_vr, 'ok', 'n/a')} p0a={_ov_ok}",
+                        f"self_validator=n/a(concurrent) p0a={_ov_ok}",
                         agent,
                     )
                 except Exception as _ver_exc:

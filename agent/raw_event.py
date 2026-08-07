@@ -180,7 +180,8 @@ def ensure_raw_events_table(conn: sqlite3.Connection) -> None:
              '' AS error_type,
              CASE WHEN success = 0 THEN result_preview ELSE '' END AS error_msg,
              'default' AS role
-           FROM raw_events"""
+           FROM raw_events
+           WHERE tool_name != '__verified__'"""
     )
     conn.commit()
 
@@ -223,6 +224,7 @@ def record_raw_event(
     turn_number: int = 0,
     trigger_clustering: bool = True,
     variant_hash: Optional[str] = None,
+    skip_embedding: bool = False,
 ) -> Optional[int]:
     """Record a tool execution as a zero-classification RawEvent.
 
@@ -277,7 +279,8 @@ def record_raw_event(
             else:
                 emb_parts.append(f"Success: {str(result)[:200]}")
             emb_content = " | ".join(emb_parts)
-            store_embedding(emb_content, target=f"raw_event:{rowid}")
+            if not skip_embedding:
+                store_embedding(emb_content, target=f"raw_event:{rowid}")
         except Exception:
             logger.debug("store_embedding skipped for raw_event:%d", rowid, exc_info=True)
 
@@ -345,6 +348,7 @@ def record_verification(
             session_id=session_id,
             turn_number=turn_number,
             trigger_clustering=False,
+            skip_embedding=True,
         )
     except Exception as e:  # noqa: BLE001 - 信号持久化失败绝不阻断
         logger.debug("record_verification(%s) failed (fail-open): %s", tool_name, e)
