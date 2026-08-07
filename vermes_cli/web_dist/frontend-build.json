@@ -1,7 +1,7 @@
 {
   "version": "2.3.7",
-  "gitHash": "afe0e48b6",
+  "gitHash": "4dbb05f12",
   "gitBranch": "feature/vermes-brand-fork",
-  "buildTime": "2026-08-05T07:33:16.073Z",
-  "nodeVersion": "v22.22.3"
+  "buildTime": "2026-08-07T05:06:59.099Z",
+  "nodeVersion": "v22.22.2"
 }

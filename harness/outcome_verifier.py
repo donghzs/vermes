@@ -103,3 +103,28 @@ def record_tool_verify(
             del buf[: len(buf) - 64]
     except Exception as e:  # noqa: BLE001 - 信号桥失败绝不阻断
         logger.debug("record_tool_verify(%s) failed: %s", function_name, e)
+
+
+def compute_verified(
+    vr_ok: bool,
+    ov_ok: bool,
+    file_landed: Optional[bool] = None,
+) -> bool:
+    """聚合已算出的验证 verdict，产出统一 ``verified`` 信号（纯函数，可测）。
+
+    设计要点：
+      - **不重调任何验证器**（无双重验证）。``vr_ok`` 来自 self_validator
+        （tool_executor 已执行），``ov_ok`` 来自本模块 ``verify_tool_outcome``
+        （tool_executor 已执行）。此处只做布尔聚合。
+      - 写类工具（write_file/patch）额外要求结果证明确实落盘
+        （``file_landed``，由调用方用 ``file_mutation_result_landed`` 计算后传入），
+        否则"写回成功"是静默假成功。
+      - fail-open：``file_landed`` 为 None（非写类工具或判定失败）时不强制为 False。
+
+    反向验证（R5 解药）：test_verified_signal.py 覆盖 vr/ov/file_landed 各组合，
+    且拷到本函数加入前必失败 → 证聚合逻辑真实生效。
+    """
+    verified = bool(vr_ok) and bool(ov_ok)
+    if file_landed is not None:
+        verified = verified and bool(file_landed)
+    return verified

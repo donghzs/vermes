@@ -356,6 +356,21 @@ const progressBarColor = computed(() => {
   return 'bg-red-500'
 })
 
+// P4: 接地率（verified_rate）着色——与成功率同阈值。
+const verifiedRateColor = computed(() => {
+  const rate = status.value?.verified_rate || 0
+  if (rate >= 80) return 'text-green-500'
+  if (rate >= 60) return 'text-yellow-500'
+  return 'text-red-500'
+})
+
+const verifiedBarColor = computed(() => {
+  const rate = status.value?.verified_rate || 0
+  if (rate >= 80) return 'bg-green-500'
+  if (rate >= 60) return 'bg-yellow-500'
+  return 'bg-red-500'
+})
+
 const richnessTierLabel = (tier) => {
   const map = { cold_start: '冷启动', building: '积累中', learning: '学习中', fluent: '熟练' }
   return map[tier] || tier
@@ -413,7 +428,7 @@ const smTypeLabel = (t) => {
   <!-- 微型指示器模式（默认）：仅一行小字 -->
   <div v-if="!loading && status?.active && collapsed" class="evolution-mini" @click="collapsed = false">
     <span class="evo-mini-icon">🧠</span>
-    <span class="evo-mini-text">{{ status.total_outcomes || 0 }} 次 · {{ status.success_rate || 0 }}%</span>
+    <span class="evo-mini-text">{{ status.total_outcomes || 0 }} 次 · 成功 {{ status.success_rate || 0 }}% · 接地 {{ status.verified_rate || 0 }}%</span>
     <!-- L1 的角标：面板折叠时唯一的「有事发生」信号。没有它，自动调整
          就只存在于日志里，用户永远不会主动去看。 -->
     <span v-if="unreadCount > 0" class="evo-mini-badge" :title="`${unreadCount} 项自动调整待查看`">{{ unreadCount }}</span>
@@ -441,10 +456,22 @@ const smTypeLabel = (t) => {
         </div>
         <div class="evo-label">成功率</div>
       </div>
+      <!-- P4: 接地率（verified_rate）——跨会话持久化的统一验证信号占比 -->
+      <div class="evo-card">
+        <div class="evo-value" :class="verifiedRateColor">
+          {{ status.verified_rate || 0 }}%
+        </div>
+        <div class="evo-label">接地率</div>
+      </div>
     </div>
     <div class="evo-progress">
       <div class="evo-progress-bar" :class="progressBarColor"
            :style="{ width: Math.min(100, status.success_rate || 0) + '%' }">
+      </div>
+    </div>
+    <div class="evo-progress evo-progress--alt">
+      <div class="evo-progress-bar" :class="verifiedBarColor"
+           :style="{ width: Math.min(100, status.verified_rate || 0) + '%' }">
       </div>
     </div>
 

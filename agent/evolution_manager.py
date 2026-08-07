@@ -1071,6 +1071,34 @@ def get_strategy_advice(tool_name: str, domain: str) -> Optional[str]:
         return None
 
 
+def get_verified_rate() -> float:
+    """P4: cross-session verified rate (%) from ``__verified__`` raw_events.
+
+    Aggregates the unified verification signal persisted by
+    ``agent.raw_event.record_verification`` (written by tool_executor for
+    every tool call in concurrent/sequential paths). Returns percentage of
+    verified tool calls. Fail-open: returns 0.0 on any error or when the
+    evolution system is inactive. 0 also when no signal has been collected
+    yet (cold start) — not penalizing.
+    """
+    if not is_evolution_active():
+        return 0.0
+    try:
+        db_path = get_self_model_db()
+        conn = _get_conn(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*), COALESCE(SUM(success), 0) "
+            "FROM raw_events WHERE tool_name = '__verified__'"
+        )
+        row = cursor.fetchone()
+        total = row[0] if row else 0
+        passed = row[1] if row else 0
+        return round(passed / total * 100, 1) if total > 0 else 0.0
+    except Exception:
+        return 0.0
+
+
 def get_evolution_status() -> Dict[str, Any]:
     """Get current evolution system status."""
     if not is_evolution_active():
@@ -1089,6 +1117,9 @@ def get_evolution_status() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM v_outcomes WHERE success = 1")
         successes = cursor.fetchone()[0]
         success_rate = (successes / total * 100) if total > 0 else 0
+
+        # Verified rate (P4): aggregated from __verified__ raw_events.
+        verified_rate = get_verified_rate()
         
         # anti_patterns is a zombie table — may not exist or be empty
         try:
@@ -1154,6 +1185,7 @@ def get_evolution_status() -> Dict[str, Any]:
             "active": True,
             "total_outcomes": total,
             "success_rate": round(success_rate, 1),
+            "verified_rate": round(verified_rate, 1),
             "anti_patterns_count": anti_patterns_count,
             "top_domains": top_domains,
             "role_stats": role_stats,

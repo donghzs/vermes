@@ -603,6 +603,30 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 except Exception as _rec_exc:
                     logging.debug("outcome verifier record failed: %s", _rec_exc)
 
+                # P4: 持久化统一 verified 信号（复用已算出的 _vr / _ov_ok，绝不重调验证器）
+                try:
+                    from harness.outcome_verifier import compute_verified
+                    from agent.raw_event import record_verification
+                    _file_landed = None
+                    if function_name in ("write_file", "patch"):
+                        try:
+                            from agent.tool_result_classification import file_mutation_result_landed
+                            _file_landed = file_mutation_result_landed(function_name, function_result)
+                        except Exception:
+                            _file_landed = None
+                    _verified = compute_verified(
+                        vr_ok=getattr(_vr, "ok", True),
+                        ov_ok=_ov_ok,
+                        file_landed=_file_landed,
+                    )
+                    record_verification(
+                        function_name, _verified,
+                        f"self_validator={getattr(_vr, 'ok', 'n/a')} p0a={_ov_ok}",
+                        agent,
+                    )
+                except Exception as _ver_exc:
+                    logging.debug("verified signal record failed: %s", _ver_exc)
+
             if not blocked and agent.tool_progress_callback:
                 try:
                     # 生成工具结果摘要（按工具类型区分长度）
@@ -1176,6 +1200,30 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 record_tool_verify(agent, function_name, _ov_ok, _ov_reason)
             except Exception as _rec_exc:
                 logging.debug("outcome verifier record failed: %s", _rec_exc)
+
+            # P4: 持久化统一 verified 信号（复用已算出的 _vr / _ov_ok，绝不重调验证器）
+            try:
+                from harness.outcome_verifier import compute_verified
+                from agent.raw_event import record_verification
+                _file_landed = None
+                if function_name in ("write_file", "patch"):
+                    try:
+                        from agent.tool_result_classification import file_mutation_result_landed
+                        _file_landed = file_mutation_result_landed(function_name, function_result)
+                    except Exception:
+                        _file_landed = None
+                _verified = compute_verified(
+                    vr_ok=getattr(_vr, "ok", True),
+                    ov_ok=_ov_ok,
+                    file_landed=_file_landed,
+                )
+                record_verification(
+                    function_name, _verified,
+                    f"self_validator={getattr(_vr, 'ok', 'n/a')} p0a={_ov_ok}",
+                    agent,
+                )
+            except Exception as _ver_exc:
+                logging.debug("verified signal record failed: %s", _ver_exc)
 
         # 桥：记录工具完整性签名（sequential 路径）
         if not _execution_blocked and not _is_error_result and hasattr(agent, "_record_tool_signature"):

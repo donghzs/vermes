@@ -314,6 +314,43 @@ def record_raw_event(
     return rowid
 
 
+def record_verification(
+    tool_name: str,
+    verified: bool,
+    detail: str = "",
+    agent: Any = None,
+) -> Optional[int]:
+    """持久化统一的工具验证信号（P4 verified）为一条 raw_event。
+
+    背景：self_validator（每工具结果都跑）与 P0-A outcome_verifier 已经算出
+    verdict，但前者只 append warning / 记 ``__self_validation__`` 事件，后者只
+    写 ``agent._recent_tool_verify``（当回合内存、供 CriticJudge）。两者都**不**
+    产生一个跨会话可聚合的"本工具是否通过验证"信号。本函数补上这一环：每个
+    工具调用写一条 ``tool_name="__verified__"`` 的事件，``success`` 列即 verdict，
+    供 EvolutionPanel 算"未验证率/接地率"趋势。
+
+    fail-open：任何异常只返回 None，绝不阻断工具执行 / agent loop。
+    trigger_clustering=False：验证事件是派生信号，不应再触发涌现链（避免与
+    ``__self_validation__`` 重复驱动聚类）。
+    """
+    try:
+        session_id = getattr(agent, "session_id", "") or "" if agent else ""
+        turn_number = getattr(agent, "turn_counter", 0) or 0 if agent else 0
+        return record_raw_event(
+            tool_name="__verified__",
+            tool_args={"verified": bool(verified), "tool": tool_name},
+            result=detail or "",
+            is_error=not verified,
+            duration=0.0,
+            session_id=session_id,
+            turn_number=turn_number,
+            trigger_clustering=False,
+        )
+    except Exception as e:  # noqa: BLE001 - 信号持久化失败绝不阻断
+        logger.debug("record_verification(%s) failed (fail-open): %s", tool_name, e)
+        return None
+
+
 def record_retraction(
     target_type: str,
     target_name: str,
