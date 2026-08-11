@@ -386,7 +386,7 @@ def format_citation_report(checks: list[CitationCheck]) -> str:
     total = len(checks)
     verified = sum(1 for c in checks if c.verified)
     api_unavailable = sum(1 for c in checks if c.source == "api_unavailable")
-    suspicious = sum(1 for c in checks if not c.verified and c.source != "api_unavailable" and c.confidence < 0.3)
+    suspicious = sum(1 for c in checks if not c.verified and c.source != "api_unavailable" and c.confidence <= 0.3)
 
     lines = [f"## 🔍 文献引用真实性验证报告\n"]
     lines.append(f"**总计**: {total} 篇文献")
@@ -407,7 +407,7 @@ def format_citation_report(checks: list[CitationCheck]) -> str:
     if suspicious > 0:
         lines.append("### ⚠️ 存疑文献\n")
         for c in checks:
-            if not c.verified and c.confidence < 0.3:
+            if not c.verified and c.confidence <= 0.3:
                 lines.append(f"- **[{c.ref_num}]** {c.title[:60]}...")
                 lines.append(f"  - 作者: {c.authors[:40]}")
                 lines.append(f"  - 年份: {c.year}")

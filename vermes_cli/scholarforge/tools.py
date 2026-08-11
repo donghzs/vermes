@@ -473,6 +473,10 @@ async def stream_call_llm(
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True,
+        # F-21: 请求 stream_options 让 provider 在最后一个 chunk 返回 usage 统计，
+        # 供 G4a token 记账。部分 provider 可能不支持（返回 400），
+        # 调用方负责 fail-open 去掉此字段重试。
+        "stream_options": {"include_usage": True},
     }
     effective_model = model or creds["model"]
     if effective_model:
@@ -489,6 +493,32 @@ async def stream_call_llm(
         async with client.stream("POST", url, json=body, headers=headers) as resp:
             if resp.status_code >= 400:
                 error_text = await resp.aread()
+                # F-21: 部分 provider 不支持 stream_options 返回 400，
+                # 去掉 stream_options 重试一次（fail-open）
+                if resp.status_code == 400 and "stream_options" in body:
+                    logger.warning("LLM stream 400 with stream_options, retrying without")
+                    body.pop("stream_options", None)
+                    async with client.stream("POST", url, json=body, headers=headers) as resp2:
+                        if resp2.status_code >= 400:
+                            err2 = await resp2.aread()
+                            logger.error(f"LLM stream retry failed (HTTP {resp2.status_code}): {err2[:200]}")
+                            yield f"❌ LLM 流式调用失败 (HTTP {resp2.status_code})"
+                            return
+                        async for line in resp2.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            payload = line[6:]
+                            if payload.strip() == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(payload)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                text = delta.get("content", "")
+                                if text:
+                                    yield text
+                            except (json.JSONDecodeError, IndexError, KeyError):
+                                continue
+                    return
                 logger.error(f"LLM stream failed (HTTP {resp.status_code}): {error_text[:200]}")
                 yield f"❌ LLM 流式调用失败 (HTTP {resp.status_code})"
                 return
@@ -501,6 +531,16 @@ async def stream_call_llm(
                     break
                 try:
                     chunk = json.loads(payload)
+                    # F-21: 捕获最后一个 chunk 的 usage 统计（stream_options.include_usage）
+                    chunk_usage = chunk.get("usage")
+                    if chunk_usage:
+                        try:
+                            _accumulate_llm_usage(
+                                chunk_usage, creds["provider"], effective_model,
+                                creds.get("base_url"), creds.get("api_key"),
+                            )
+                        except Exception:
+                            pass  # fail-open: 记账失败不影响流式输出
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     text = delta.get("content", "")
                     if text:
@@ -675,7 +715,7 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
 【写作风格要求（请严格模仿）】
 {style_prompt}"""
 
-    prompt += """
+    prompt += f"""
 
 请直接输出该章节的完整内容（Markdown 格式，{label} 用 ## 标记），
 引用文献时使用 [n] 标记（n为编号占位，用户后续会替换为真实文献）。"""
@@ -1268,35 +1308,36 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
         next_ref_num += 1
 
     # 替换草稿中的占位符（支持 [n] / [n-m] / [n,m,...]）
-    result_draft = draft
-    for m, nums in match_to_nums:
-        original = m.group(0)  # 如 [1-3] 或 [24,25] 或 [26]
-        # 检查所有编号是否都有映射
+    # 修复 F-2/F-3: 旧代码用顺序 str.replace() 导致级联串号（[5]→[3] 后被 [3]→[8] 二次命中）
+    # 和未匹配占位符与真引用撞号。改为单次正则回调替换，位置精确、不重扫。
+    import re as _re
+    def _sub_citation(_m: _re.Match) -> str:
+        nums = expand_citation(_m.group(0))
         mapped = [num_to_ref.get(n) for n in nums]
         if all(r is not None for r in mapped):
-            # 全部映射成功，生成替换文本
-            if len(mapped) == 1:
-                replacement = f"[{mapped[0]}]"
-            else:
-                # 多编号：用逗号分隔 [1,2,3]
-                replacement = f"[{','.join(str(r) for r in mapped)}]"
-            result_draft = result_draft.replace(original, replacement)
+            return f"[{','.join(str(r) for r in mapped)}]"
+        # 未匹配的占位符显式标记，杜绝与真引用撞号
+        return f"[?{_m.group(0)[1:-1]}]"
+    result_draft = _re.sub(r'\[\d+(?:[-,]\d+)*\]', _sub_citation, draft)
 
     # ── 修复3: 替换后交叉验证 ──
     verify_report = ""
     if ref_list:
         try:
             from vermes_cli.scholarforge.citation_verifier import _fuzzy_verify
+            # 构造完整 PaperResult 列表（修复 F-4: 之前每次循环只传 [_P()] 单元素，
+            # 导致 _fuzzy_verify 的范围检查 ref_num > len(papers) 始终为 True，[2] 及以上全判 0/10）
+            class _P:
+                def __init__(self, ref):
+                    self.title = ref["title"]
+                    self.abstract = ""
+                    self.year = ref["year"]
+                    self.authors = ref["authors"].split(", ")
+                    self.paper_id = f"ref_{ref['ref_num']}"
+            all_papers = [_P(ref) for ref in ref_list]
             verify_results = []
             for ref in ref_list:
-                # 构造 PaperResult 供验证
-                class _P:
-                    title = ref["title"]
-                    abstract = ""
-                    year = ref["year"]
-                    authors = ref["authors"].split(", ")
-                    paper_id = f"ref_{ref['ref_num']}"
-                result = _fuzzy_verify(ref["ref_num"], result_draft, [_P()])
+                result = _fuzzy_verify(ref["ref_num"], result_draft, all_papers)
                 if result:
                     verify_results.append((ref["ref_num"], result.score, result.accurate))
 

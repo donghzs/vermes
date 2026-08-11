@@ -402,24 +402,25 @@ async def replace_pseudo_citations(
             logger.debug(f"  [{n}] → '{citations[best_idx].title[:40]}' (score={best_score:.2f})")
 
     # 3. 替换占位符（支持 [n] / [n-m] / [n,m,...]）
-    result_draft = draft
-    for m, nums in match_to_nums:
-        original = m.group(0)
+    # 修复 F-2/F-3: 旧代码用顺序 str.replace() 导致级联串号，改为单次正则回调替换。
+    import re as _re
+    def _sub_citation(_m: _re.Match) -> str:
+        nums = expand_citation(_m.group(0))
         mapped = [num_to_citation.get(n) for n in nums]
         if all(c is not None for c in mapped):
-            # 按引用在参考文献列表中的编号生成替换文本
             ref_nums = [citations.index(c) + 1 for c in mapped]
-            if len(ref_nums) == 1:
-                replacement = f"[{ref_nums[0]}]"
-            else:
-                replacement = f"[{','.join(str(r) for r in ref_nums)}]"
-            result_draft = result_draft.replace(original, replacement)
+            return f"[{','.join(str(r) for r in ref_nums)}]"
+        return f"[?{_m.group(0)[1:-1]}]"
+    result_draft = _re.sub(r'\[\d+(?:[-,]\d+)*\]', _sub_citation, draft)
 
-    # 4. 生成参考文献列表
+    # 4. 生成参考文献列表（修复 F-7: 旧代码列出全部 fetch 回来的文献，
+    #    包括正文从未引用的——评审最忌讳的形式问题。改为只列出被引用的。）
+    cited_indices = sorted(set(citations.index(c) for c in num_to_citation.values() if c in citations))
     refs_text = ""
-    for i, c in enumerate(citations, 1):
+    for i in cited_indices:
+        c = citations[i]
         authors_short = f"{c.authors[0].split()[-1] if c.authors else '?'} et al." if len(c.authors) > 1 else (c.authors[0] if c.authors else "?")
-        refs_text += f"[{i}] {authors_short}. {c.title}. {c.venue}, {c.year}. DOI: {c.doi}\n"
+        refs_text += f"[{i + 1}] {authors_short}. {c.title}. {c.venue}, {c.year}. DOI: {c.doi}\n"
 
     # 检测并替换已有参考文献节（避免重复追加）
     ref_section_pattern = r'(\n\n---\n)?## 参考文献\n\n[\s\S]*$'

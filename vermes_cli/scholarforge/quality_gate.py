@@ -135,9 +135,9 @@ async def run_citation_gate(
 
         checks = await verify_citation_authenticity(
             papers,
-            enable_online=(mode == "block"),
+            enable_online=(mode != "off"),
         )
-        fake = [c for c in checks if not c.verified and c.confidence < 0.3]
+        fake = [c for c in checks if not c.verified and c.confidence <= 0.3]
         if fake:
             report = format_citation_report(checks)
             blocked = mode == "block"
