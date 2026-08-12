@@ -1240,72 +1240,25 @@ async def _handle_scholarforge_replace_citations(args: dict, **kw: Any) -> str:
     # 对每个编号，从候选中选最佳匹配
     # score_relevance / llm_rerank 已抽取为模块级函数（见文件上方），直接调用
 
-    # 选择最佳匹配
-    seen_titles: set[str] = set()
-    ref_list: list[dict] = []
-    next_ref_num = 1
-    num_to_ref: dict[int, int] = {}
-    match_log: list[str] = []
-    failed: list[int] = []
+    # ── F-25: 改用公共匹配管线（citation_matcher.match_citations）──
+    # 旧代码将匹配逻辑内联，与 citation_provider 各自维护导致能力不对等。
+    # 公共管线统一保证：0.3 阈值 + LLM 精排 + 去重 + 连续编号。
+    from vermes_cli.scholarforge.citation_matcher import match_citations as _match
+    _match_result = await _match(
+        unique_nums=unique_nums,
+        candidates=candidates,
+        num_context=num_context,
+        num_keywords=num_keywords,
+        local_papers=local_papers,
+    )
+    num_to_ref = _match_result.num_to_ref
+    ref_list = _match_result.ref_list
+    match_log = _match_result.match_log
+    failed = _match_result.failed
 
-    for n in unique_nums:
-        # Phase 2: 本地文献库与在线检索结果合并为候选池（本地在前，按标题去重）
-        pool: list = []
-        pool_titles: set[str] = set()
-        for p in local_papers + candidates.get(n, []):
-            tk = (p.title or "").lower().strip()[:80]
-            if tk and tk not in pool_titles:
-                pool_titles.add(tk)
-                pool.append(p)
-        if not pool:
-            failed.append(n)
-            continue
-
-        # 粗排 + LLM 精排
-        coarse = [(p, score_relevance(p, num_context.get(n, ''), num_keywords.get(n, '')))
-                  for p in pool]
-        coarse.sort(key=lambda x: x[1], reverse=True)
-
-        # 取 top-5 粗排候选送 LLM 精排
-        top_candidates = [p for p, _ in coarse[:5]]
-        reranked = await llm_rerank(top_candidates, num_context.get(n, ''), num_keywords.get(n, ''))
-        reranked.sort(key=lambda x: x[1], reverse=True)
-
-        best_paper, best_score = reranked[0]
-        if best_score < 0.3:
-            failed.append(n)
-            match_log.append(f"  [{n}] ⚠️ 最佳匹配分数过低 ({best_score:.2f})，跳过")
-            continue
-
-        # 去重：同一篇论文不重复引用
-        title_key = best_paper.title.lower().strip()[:80]
-        if title_key in seen_titles:
-            # 找已分配的编号
-            for ref in ref_list:
-                if ref["title"].lower().strip()[:80] == title_key:
-                    num_to_ref[n] = ref["ref_num"]
-                    break
-            match_log.append(f"  [{n}] → [{num_to_ref.get(n)}] (重复，合并)")
-            continue
-
-        seen_titles.add(title_key)
-        num_to_ref[n] = next_ref_num
-        is_local = getattr(best_paper, "source", "") == "local"
-        ref_list.append({
-            "ref_num": next_ref_num,
-            "title": best_paper.title,
-            "authors": ", ".join(best_paper.authors[:3]) if best_paper.authors else "Unknown",
-            "year": best_paper.year or "n.d.",
-            "venue": best_paper.venue or "",
-            "doi": best_paper.doi or "",
-            "url": getattr(best_paper, "url", "") or "",
-            "abstract": (getattr(best_paper, "abstract", "") or "")[:1000],
-            "source": getattr(best_paper, "source", "") or "",
-            "score": round(best_score, 2),
-        })
-        tag = "📚本地" if is_local else "🌐"
-        match_log.append(f"  [{n}] → [{next_ref_num}] ✅ {tag} ({best_score:.0%}) {best_paper.title[:50]}")
-        next_ref_num += 1
+    # 日志输出
+    for line in match_log:
+        logger.info(f"[ScholarForge] {line}")
 
     # 替换草稿中的占位符（支持 [n] / [n-m] / [n,m,...]）
     # 修复 F-2/F-3: 旧代码用顺序 str.replace() 导致级联串号（[5]→[3] 后被 [3]→[8] 二次命中）

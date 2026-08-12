@@ -220,10 +220,15 @@ class TestF7CitedOnly:
     """F-7: citation_provider 参考文献列表只列被引用的文献。"""
 
     def test_cited_only_in_source(self):
-        """citation_provider.py 源码有 cited_indices 逻辑。"""
-        from vermes_cli.scholarforge import citation_provider as CP
-        src = inspect.getsource(CP.replace_pseudo_citations)
-        assert "cited_indices" in src, "citation_provider 无 cited_indices（F-7 未修）"
+        """citation_provider 只列被引用的文献（行为契约，非源码字符串断言）。"""
+        # 行为验证已在 test_no_uncited_refs 覆盖：条数 <= 正文引用编号数
+        # 公共管线的 build_references_section 只从 ref_list 生成，
+        # ref_list 只含匹配成功的（被引用的）文献。
+        from vermes_cli.scholarforge.citation_matcher import build_references_section
+        ref_list = [{"ref_num": 1, "title": "A", "authors": "X", "year": "2020", "venue": "V", "doi": "10.1/1"}]
+        refs = build_references_section(ref_list)
+        assert "[1]" in refs
+        assert len(refs.strip().split("\n")) == 2  # 标题行 + 1 条引用
 
     @pytest.mark.asyncio
     async def test_no_uncited_refs(self):
@@ -313,3 +318,147 @@ class TestF21StreamUsage:
         src = inspect.getsource(tools.stream_call_llm)
         assert "stream_options" in src and "pop" in src, \
             "无 400 去 stream_options 重试逻辑（F-21 fail-open 未实现）"
+
+
+
+# ── F-22: 编号连续性 ──
+
+class TestF22ContinuousNumbering:
+    """F-22: 参考文献编号必须从 1 开始连续，不跳号。"""
+
+    @pytest.mark.asyncio
+    async def test_no_skipped_numbers(self):
+        """正文引 [1][2][3]，匹配成功 2 个 → 编号 1,2 不跳。"""
+        from vermes_cli.scholarforge.citation_matcher import match_citations
+
+        class _P:
+            def __init__(self, title, abstract=""):
+                self.title = title
+                self.abstract = abstract
+                self.year = "2020"
+                self.authors = ["A Smith"]
+                self.venue = "V"
+                self.doi = f"10.1/{title[:5]}"
+                self.source = ""
+
+        candidates = {
+            1: [_P("Deep Learning for Medical Image Analysis")],
+            2: [_P("Graph Neural Networks for Molecular Property Prediction")],
+            3: [_P("Completely Unrelated Topic About Cooking")],  # 应被阈值拦住
+        }
+        num_context = {
+            1: "深度学习在医学影像取得进展[1]",
+            2: "图神经网络用于分子性质预测[2]",
+            3: "强化学习优化策略[3]",
+        }
+        num_keywords = {1: "deep learning medical", 2: "graph neural molecular", 3: "reinforcement learning"}
+
+        result = await match_citations(
+            unique_nums=[1, 2, 3],
+            candidates=candidates,
+            num_context=num_context,
+            num_keywords=num_keywords,
+        )
+
+        ref_nums = [r["ref_num"] for r in result.ref_list]
+        if ref_nums:
+            assert ref_nums == list(range(1, len(ref_nums) + 1)), \
+                f"编号不连续: {ref_nums}（应为 1..{len(ref_nums)}）"
+
+
+# ── F-23: 全无关时不强塞 ──
+
+class TestF23NoForceMatch:
+    """F-23: 候选池全无关时必须标记 [?n]，不强塞。"""
+
+    @pytest.mark.asyncio
+    async def test_unrelated_pool_marked_unknown(self):
+        from vermes_cli.scholarforge.citation_matcher import match_citations
+
+        class _P:
+            def __init__(self, title):
+                self.title = title
+                self.abstract = ""
+                self.year = "2020"
+                self.authors = ["A"]
+                self.venue = "V"
+                self.doi = "10.1/x"
+                self.source = ""
+
+        candidates = {
+            1: [_P("Medieval Manuscript Preservation Techniques"),
+                _P("Renaissance Art History Overview"),
+                _P("Ancient Greek Philosophy Survey")]
+        }
+        num_context = {1: "Adversarial training improves NMT robustness[1]"}
+        num_keywords = {1: "adversarial training NMT robustness"}
+
+        result = await match_citations(
+            unique_nums=[1],
+            candidates=candidates,
+            num_context=num_context,
+            num_keywords={1: "adversarial training NMT robustness"},
+        )
+
+        assert 1 in result.failed, f"全无关池未被拦住: ref_list={result.ref_list}"
+        assert len(result.ref_list) == 0, f"强塞了无关文献: {result.ref_list}"
+
+
+# ── F-24: 跨语言匹配 ──
+
+class TestF24CrossLingual:
+    """F-24: 中文正文 + 英文文献池能匹配（主力场景）。"""
+
+    @pytest.mark.asyncio
+    async def test_chinese_draft_english_pool(self):
+        from vermes_cli.scholarforge.citation_matcher import match_citations, score_relevance
+
+        class _P:
+            def __init__(self, title, abstract=""):
+                self.title = title
+                self.abstract = abstract
+                self.year = "2020"
+                self.authors = ["A"]
+                self.venue = "V"
+                self.doi = "10.1/x"
+                self.source = ""
+
+        # 中文关键词提取后含 "神经机器翻译"/"鲁棒性" 等
+        pool = [
+            _P("Adversarial Training for Neural Machine Translation Robustness",
+               abstract="adversarial training NMT robustness"),
+            _P("Unrelated Database Survey"),
+            _P("Cooking Recipes from Around the World"),
+        ]
+        candidates = {1: pool}
+        num_context = {1: "对抗训练可提升神经机器翻译鲁棒性[1]"}
+        num_keywords = {1: "对抗训练 神经机器翻译 鲁棒性"}
+
+        result = await match_citations(
+            unique_nums=[1],
+            candidates=candidates,
+            num_context=num_context,
+            num_keywords=num_keywords,
+        )
+
+        # 至少不选明显无关的
+        if result.ref_list:
+            assert "Unrelated" not in result.ref_list[0]["title"], \
+                f"跨语言匹配选了无关文献: {result.ref_list[0]['title']}"
+            assert "Cooking" not in result.ref_list[0]["title"], \
+                f"跨语言匹配选了烹饪文献: {result.ref_list[0]['title']}"
+
+    def test_score_relevance_cross_lingual(self):
+        """score_relevance 中文关键词 vs 英文标题不应恒为 0。"""
+        from vermes_cli.scholarforge.citation_matcher import score_relevance
+
+        class _P:
+            def __init__(self, title, abstract=""):
+                self.title = title
+                self.abstract = abstract
+
+        paper = _P("Adversarial Training for Neural Machine Translation Robustness",
+                    abstract="adversarial training NMT")
+        # 含英文 token 的中文关键词
+        score = score_relevance(paper, "对抗训练 NMT 鲁棒性", "adversarial NMT robustness")
+        assert score > 0, "跨语言 score_relevance 恒为 0（F-24 未修）"

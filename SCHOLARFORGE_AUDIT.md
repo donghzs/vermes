@@ -15,6 +15,10 @@
 
 好消息：**7 个缺陷里有 4 个是 1–20 行的改动**。地基没塌，是几颗螺丝拧错了位置。
 
+> **2026-08-12 更新**：F-2/F-3/F-4/F-5/F-6/F-7/F-20/F-21 已于 commit `e79d62f4e` 修复，本文 §8 记录逐条核验结果（全部通过，含索引对齐与 usage 捕获顺序两处易错点的额外核准）。
+>
+> 但复核中**新发现两个 P0**（F-23 无相关度阈值 → 强塞无关文献、F-24 跨语言匹配失效），**严重度高于已修的 F-2**。Launch 阻断项因此并未清零——修订后的门槛见 §9。
+
 ---
 
 ## 1. 缺陷总表
@@ -42,6 +46,17 @@
 | F-19 | `_fallback_score` 硬编码 `originality=5.0` | 🟡 P2 | `scoring.py:165` | 小 |
 | F-20 | f-string 缺失，`{label}` 泄漏进提示词 | 🟡 P2 | `tools.py:680` | 1 字符 |
 | F-21 | `stream_call_llm` 零 token 记账 | 🟡 P2 | `tools.py:447,687,1715` | 中 |
+
+### 修复后复核新增（见 §8，commit `e79d62f4e` 之后）
+
+| ID | 缺陷 | 严重度 | 证据 | 修复量 |
+|----|------|--------|------|--------|
+| F-22 | 参考文献编号跳号（修 F-7 引入） | 🟡 P2 | `citation_provider.py:411,424` | 小 |
+| F-23 | **匹配无最低分阈值 → 强塞无关文献** | 🔴 **P0** | `citation_provider.py:394-406` | 约 6 行 |
+| F-24 | **跨语言匹配完全失效（中文正文引英文文献）** | 🔴 **P0** | `citation_provider.py:343-368` | 中 |
+| F-25 | 两条引用替换路径能力严重不对等 | 🟠 P1 | `tools.py:1253-1308` vs `citation_provider.py:394-424` | 架构 |
+
+**F-1 ~ F-7 中的 F-2/F-3/F-4/F-5/F-6/F-7 及 F-20/F-21 已修并逐条核验通过**（§8.1）。但复核过程中发现 F-23/F-24 两个新的 P0——**它们比已修的 F-2 更严重**，因为 F-2 只在多引用时串号，而这两个在中文主力场景下**每次引用都可能指向不相关文献**。
 
 ---
 
@@ -352,15 +367,151 @@ if _final_usage:
 
 ---
 
+## 8. 修复后复核（commit `e79d62f4e`）—— 7 项确认 + 4 项新发现
+
+> 方法：不采信完工报告，逐条静态对账 + 真实调用实跑。
+
+### 8.1 已修复项逐条对账
+
+| ID | 核验方式 | 结论 |
+|----|----------|------|
+| F-6 | 全仓 grep `confidence < 0.3` | ✅ 零残留；三处（`quality_gate.py:140`、`validators.py:389,410`）全改 `<= 0.3` |
+| F-5 | `quality_gate.py:138` | ✅ `enable_online=(mode != "off")` |
+| F-4 | `tools.py:1337` | ✅ 传完整 `all_papers`。**并核准索引对齐**：`_fuzzy_verify` 用 `papers[ref_num-1]` 严格位置索引，而 `next_ref_num` 从 1 起逐条 +1（`:1246/1295/1308`），故精确对应——**未引入错位** |
+| F-2/F-3 | 两套实现均查 | ✅ `tools.py:1321` 与 `citation_provider.py:414` 都改为单次正则回调，`[?n]` 标记均在（`:1320`/`:413`）。`agents/__init__.py:1389` 残留的 `draft.replace` 经核为「标记无效编号」语义：字面量 `[5]` 不命中 `[15]`、产物 `[?5?]` 不被二次命中，**幂等安全，非漏改** |
+| F-7 | 真实调用 | ✅ 注水消除（20 条 → 只列被引用的 3 条） |
+| F-20 | `:688`/`:718` | ✅ 两处 f 前缀齐备 |
+| F-21 | `:479/:498/:534` | ✅ `stream_options` + 400 去字段**真重发**（`resp2`）+ usage 捕获。**关键顺序正确**：usage 捕获置于取 `delta` 之前——OpenAI 末帧 `choices` 为空数组会抛 IndexError 被 except 吞掉，顺序颠倒则 usage 永久丢失 |
+
+### 8.2 F-22 参考文献编号跳号（P2，修 F-7 引入）
+
+`citation_provider.py:411,424` 正文与列表都用 `citations.index(c)+1`（**全量池**索引），指向一致但编号不连续。
+
+实跑：正文 `[11][12][13]`，列表也从 `[11]` 起——缺 `[1]`–`[10]`。
+
+无造假风险，但期刊排版要求连续编号。修法：建 `idx_to_seq = {old: new for new, old in enumerate(cited_indices, 1)}`，正文与列表都走映射（需把 `cited_indices` 提到 `_sub_citation` 之前计算）。
+
+对照：`tools.py` 用 `next_ref_num` 连续分配，**无此问题**。
+
+### 8.3 🔴 F-23 匹配无最低分阈值 → 强塞无关文献（P0，新发现，比已修的 F-2 更严重）
+
+`citation_provider.py:394-406`：
+
+```python
+best_idx, best_score = -1, -1.0
+for i, c in enumerate(citations):
+    if i in used_citations: continue
+    score = score_relevance(c, kw)
+    if score > best_score:
+        best_score, best_idx = score, i
+if best_idx >= 0:                      # ← 没有任何最低分门槛
+    num_to_citation[n] = citations[best_idx]
+```
+
+`best_score` 初始 `-1.0` ⇒ **任何 score ≥ 0 都会当选**。全部候选相关度为 0 时，胜者由 `difflib` 浮点噪声决定。
+
+实跑（候选池刻意只放三篇毫不相关的）：
+
+```
+正文  : Adversarial training improves NMT robustness [3].
+引用  : [3] Medieval Manuscript Preservation. V3, 2020. DOI: 10.1/3
+```
+
+**「对抗训练提升 NMT 鲁棒性」引用了「中世纪手稿保护」，配格式合规的 DOI。**
+
+比 F-2 更危险：F-2 是两个引用撞同一篇（尚可察觉），这里每个引用都指向一篇**真实存在、格式完美、内容毫不相关**的文献。审稿人逐条核对即构成学术不端指控。
+
+对照：`tools.py:1277` 有 `if best_score < 0.3: failed.append(n); continue` + 明确告警。**旗舰路径缺这道闸门。**
+
+修法（约 6 行）：加阈值，未达标就**不放进** `num_to_citation`——F-3 的修复已让未匹配项自动输出 `[?n]`，正好接上：
+
+```python
+MIN_RELEVANCE = 0.3
+if best_idx >= 0 and best_score >= MIN_RELEVANCE:
+    num_to_citation[n] = citations[best_idx]
+    used_citations.add(best_idx)
+else:
+    logger.warning(f"[{n}] 无相关文献（最高分 {best_score:.2f}），保留占位符")
+```
+
+### 8.4 🔴 F-24 跨语言匹配完全失效（P0，新发现，命中中文主力场景）
+
+`score_relevance`（`:343-368`）四因子全是**同语言字面比对**：专有名词正则只取 `[A-Z][A-Za-z0-9]{2,}`、token 重叠按字面交集、`difflib` 按字符相似、venue 按子串。中文正文 vs 英文标题 ⇒ 四项**全部恒为 0**。
+
+实跑（池中放了一篇完美匹配的）：
+
+```
+正文  : 对抗训练可提升神经机器翻译鲁棒性[1]。
+池中  : ["Unrelated Database Survey",
+         "Adversarial Training for Neural Machine Translation Robustness",  ← 完美匹配
+         "Quantum Annealing Methods"]
+选中  : [1] Unrelated Database Survey        ❌
+```
+
+英文正文同池**能选对**（已实跑对照）——所以算法本身没坏，是跨语言这条路根本没铺。
+
+**中文论文引用英文文献是学术常态**，正是增长战略定为尖刀的中文学术用户的默认场景。叠加 F-23 无阈值 ⇒ 旗舰「一键成文」对中文用户**几乎必然产出错误引用**，且外观完全正常。
+
+对照：`tools.py:1271` 走 `llm_rerank`，LLM 天然跨语言，**独立工具路径无此问题**。
+
+### 8.5 F-25 两条路径能力严重不对等（架构层，P1）
+
+| 能力 | 独立工具 `tools.py` | 旗舰一键成文 `citation_provider.py` |
+|------|---------------------|--------------------------------------|
+| 相关度阈值 | ✅ `< 0.3` 跳过 + 告警（`:1277`） | ❌ 无（F-23） |
+| LLM 精排 | ✅ `llm_rerank` top-5（`:1271`） | ❌ 仅四因子启发式（F-24） |
+| 本地文献库 | ✅ 合并进候选池（`:1253`） | ❌ 不使用 |
+| 重复引用合并 | ✅ 按标题归并到同一编号（`:1281`） | ⚠️ 仅 `used_citations` 防复用 |
+| 编号连续性 | ✅ `next_ref_num`（`:1308`） | ❌ 跳号（F-22） |
+| 匹配过程可见 | ✅ `match_log` 逐条 ✅/⚠️ | ❌ 仅 `logger.debug` |
+
+**用户默认走的是能力更弱的那条。** 建议不要给 `citation_provider` 逐项打补丁，而是把 `tools.py` 那套已验证的管线（粗排 → LLM 精排 → 阈值 → 连续编号 → match_log）抽成公共函数供两处共用——一改同时消灭 F-22/F-23/F-24，且复用的是已过 R5 的实现。
+
+### 8.6 R5 测试为何没抓到这些
+
+`tests/scholarforge/test_sf_p0_fixes.py` 的 F-7 用例有两处方法论问题：
+
+1. `test_cited_only_in_source`（`:222-226`）是**源码字符串断言**：`assert "cited_indices" in src`。改个变量名就红，逻辑写错反而绿——验证的是「代码长什么样」，不是「代码做什么」。
+2. `test_no_uncited_refs`（`:257-259`）只断言**条数** `<= len(cited_nums) + 1`，不查编号连续性、不查所选文献与论述是否相关。
+
+「测试镜像实现而非校验契约」的又一变体。补测建议改为断言**行为契约**：(a) 编号必须 `1..N` 连续；(b) 候选池全无关时必须输出 `[?n]` 而非任何 `[数字]`；(c) 池中存在完美匹配时必须选中它（含中文正文 + 英文文献的跨语言用例）。
+
+---
+
+## 9. 修订后的 Launch 门槛
+
+**阻断项（不修不能发）**
+
+- ~~F-4 / F-5 / F-6 / F-2 / F-3~~ ✅ 已修并核验（`e79d62f4e`）
+- 🔴 **F-23 无阈值强塞无关文献** —— 每次引用都可能指向不相关文献
+- 🔴 **F-24 跨语言匹配失效** —— 中文用户主力场景几乎必然出错
+- 宣传口径四条 —— 法律与口碑风险
+
+**强烈建议（发布首周内）**
+
+- F-25 两路径能力对齐（抽公共匹配管线，一并解 F-22/23/24）
+- F-1 写作接文献
+- F-12 中文检索短路
+
+**可延后**：F-15/16/17/18/19、F-22（若已随 F-25 一并解决则关闭）
+
+---
+
 ## 附录：复现脚本
 
-所有 P0 结论均可离线复现（不调 LLM、不联网）：
+所有结论均可离线复现（不调 LLM、不联网）：
 
-- `/tmp/sf_repro.py` —— F-3 撞号、F-4 全量误报
-- `/tmp/sf_repro2.py` —— F-5 闸门对编造文献失明
-- `/tmp/sf_repro3.py` —— F-6 confidence 边界（mock 权威源返回"查无此文献"）
-- `/tmp/sf_repro4.py` —— F-7 参考文献注水、F-2 旗舰路径级联串号
+| 脚本 | 覆盖 |
+|------|------|
+| `/tmp/sf_repro.py` | F-3 撞号、F-4 全量误报 |
+| `/tmp/sf_repro2.py` | F-5 闸门对编造文献失明 |
+| `/tmp/sf_repro3.py` | F-6 confidence 边界（mock 权威源返回"查无此文献"） |
+| `/tmp/sf_repro4.py` | F-7 参考文献注水、F-2 旗舰路径级联串号 |
+| `/tmp/sf_verify_f7.py` | F-22 编号跳号（复算编号逻辑） |
+| `/tmp/sf_verify_f22.py` | F-22 真实调用验证跳号 |
+| `/tmp/sf_verify_f23.py` | **F-23 强塞无关文献 + F-24 跨语言失效**（三组对照实验） |
 
-运行：`.venv/bin/python /tmp/sf_reproN.py`
+运行：`PYTHONPATH=$(pwd) .venv/bin/python /tmp/<脚本>`
+（注意：缺 `PYTHONPATH` 会报 `ModuleNotFoundError: No module named 'vermes_cli'`）
 
-建议在整改时把这四个脚本转成正式回归测试，并按 R5 纪律做反向验证。
+建议整改时把这些脚本转成正式回归测试，并按 R5 纪律做反向验证——**且断言行为契约而非源码字符串**（见 8.6）。

@@ -251,22 +251,28 @@ async def replace_pseudo_citations(
     paper_type: str = "本科论文",
 ) -> tuple[str, list[RealCitation]]:
     """替换正文中的伪引用 [n] 为真实文献
-    
+
+    F-25 修复：改用公共匹配管线 citation_matcher.match_citations()，
+    统一保证：0.3 阈值 + LLM 精排 + 去重 + 连续编号。
+    旧实现仅启发式 score_relevance、无阈值、无 LLM 精排、无去重、跳号。
+
     支持三种占位符格式: [n] / [n-m] / [n,m,...]
-    
+
     Returns:
         (替换后的正文, 新获取的真实引用列表)
     """
-    import difflib
+    from vermes_cli.scholarforge.citation_matcher import (
+        match_citations, replace_citations_in_text, build_references_section,
+        expand_citation as _expand,
+    )
 
-    # ── P0修复: 支持范围引用 [n] / [n-m] / [n,m,...] ──
+    # ── 1. 解析占位符 ──
     cite_pattern = re.compile(r'\[(\d+(?:\s*[-–,]\s*\d+)*)\]')
     raw_matches = list(cite_pattern.finditer(draft))
     if not raw_matches:
         return draft, []
 
     def expand_citation(raw: str) -> list[int]:
-        """展开 [n] / [n-m] / [n,m,...] 为编号列表"""
         raw = raw.strip('[]')
         nums = []
         for part in re.split(r'[,，]', raw):
@@ -279,95 +285,19 @@ async def replace_pseudo_citations(
                 nums.append(int(part))
         return nums
 
-    # 收集所有编号（含展开的范围引用）
     all_nums: set[int] = set()
-    match_to_nums: list[tuple[re.Match, list[int]]] = []
     for m in raw_matches:
-        nums = expand_citation(m.group(0))
-        if nums:
-            match_to_nums.append((m, nums))
-            all_nums.update(nums)
-
+        all_nums.update(expand_citation(m.group(0)))
     unique_nums = sorted(all_nums)
     max_ref = max(unique_nums) if unique_nums else 0
 
-    # 2. 拉取真实文献
+    # ── 2. 拉取真实文献 ──
     citations = await fetch_real_citations(topic, keywords, paper_type, limit=max(20, max_ref))
     if not citations:
         logger.info("No real citations found, keeping pseudo citations")
         return draft, []
 
-    # ── P0修复: 按编号→关键词上下文匹配真实文献（而非按顺序硬塞）──
-    # 为每个编号提取上下文关键词
-    def extract_keywords(text: str) -> str:
-        """从上下文提取搜索关键词，优先专有名词"""
-        proper_nouns = re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', text)
-        stop_proper = {'The', 'This', 'That', 'These', 'Those', 'Such', 'However',
-                       'Moreover', 'Furthermore', 'Therefore', 'Also', 'While',
-                       'When', 'Where', 'What', 'Which', 'Based', 'Using',
-                       'Given', 'Since', 'From', 'With', 'Both', 'Each',
-                       'First', 'Second', 'Third', 'Finally', 'In', 'For',
-                       'And', 'But', 'Not', 'Are', 'Was', 'Were', 'Has',
-                       'Have', 'Can', 'May', 'Will', 'Been', 'Some', 'More',
-                       'Most', 'Other', 'All', 'One', 'Two', 'Three'}
-        proper_nouns = [w for w in proper_nouns if w not in stop_proper]
-
-        stop_en = {'the', 'and', 'for', 'are', 'but', 'not', 'this', 'that', 'with',
-                   'from', 'have', 'has', 'was', 'were', 'will', 'can', 'may',
-                   'also', 'such', 'than', 'then', 'these', 'those', 'which',
-                   'their', 'there', 'what', 'when', 'where', 'who', 'whom',
-                   'been', 'being', 'into', 'about', 'after', 'before',
-                   'between', 'through', 'during', 'above', 'below', 'over',
-                   'under', 'again', 'more', 'most', 'other', 'some'}
-        en_words = re.findall(r'[A-Za-z]{3,30}', text)
-        en_words = [w for w in en_words if w.lower() not in stop_en]
-
-        cn_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', text)
-        stop_cn = {'的研究', '本文', '本研', '研究', '方法', '结果', '结论',
-                   '实验', '分析', '通过', '基于', '采用', '提出', '实现',
-                   '一个', '可以', '这个', '那个', '因此', '所以', '然而',
-                   '此外', '同时', '另外', '首先', '其次', '最后'}
-        cn_words = [w for w in cn_words if w not in stop_cn]
-
-        seen = set()
-        all_words = []
-        for w in proper_nouns + en_words[:5] + cn_words[:3]:
-            wl = w.lower()
-            if wl not in seen:
-                seen.add(wl)
-                all_words.append(w)
-        if not all_words:
-            return text[:60].strip()
-        return ' '.join(all_words[:6])
-
-    def score_relevance(citation: RealCitation, keyword: str) -> float:
-        """四因子评分: 专有名词40% + token重叠20% + 模糊相似20% + 摘要匹配20%"""
-        proper_kw = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', keyword))
-        proper_title = set(re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', citation.title))
-
-        proper_match = 0.0
-        if proper_kw:
-            matched = proper_kw & proper_title
-            proper_match = len(matched) / len(proper_kw)
-
-        kw_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', keyword.lower()))
-        title_tokens = set(re.findall(r'[A-Za-z]{3,}|[\u4e00-\u9fa5]{2,}', citation.title.lower()))
-        overlap = len(kw_tokens & title_tokens) / max(len(kw_tokens), 1)
-
-        fuzzy = difflib.SequenceMatcher(None,
-            keyword[:80].lower(),
-            citation.title[:80].lower()
-        ).ratio()
-
-        # venue 也参与匹配
-        venue_match = 0.0
-        if citation.venue:
-            venue_lower = citation.venue.lower()
-            venue_match = sum(1 for t in kw_tokens if t.lower() in venue_lower) / max(len(kw_tokens), 1)
-
-        return min(proper_match * 0.4 + overlap * 0.2 + fuzzy * 0.2 + venue_match * 0.2, 1.0)
-
-    # 为每个编号提取上下文
+    # ── 3. 提取每个编号的上下文 + 关键词 ──
     num_context: dict[int, str] = {}
     num_keywords: dict[int, str] = {}
     paragraphs = draft.split("\n")
@@ -380,63 +310,79 @@ async def replace_pseudo_citations(
                     end = min(len(para), m.end() + 120)
                     ctx = para[start:end].strip()
                     num_context[n] = ctx
-                    num_keywords[n] = extract_keywords(ctx)
+                    num_keywords[n] = _extract_keywords_local(ctx, topic)
 
-    # 按编号→最佳匹配文献
-    num_to_citation: dict[int, RealCitation] = {}
-    used_citations: set[int] = set()  # 已分配的 citation index
-    for n in unique_nums:
-        kw = num_keywords.get(n, topic)
-        best_idx = -1
-        best_score = -1.0
-        for i, c in enumerate(citations):
-            if i in used_citations:
-                continue
-            score = score_relevance(c, kw)
-            if score > best_score:
-                best_score = score
-                best_idx = i
-        if best_idx >= 0:
-            num_to_citation[n] = citations[best_idx]
-            used_citations.add(best_idx)
-            logger.debug(f"  [{n}] → '{citations[best_idx].title[:40]}' (score={best_score:.2f})")
+    # ── 4. 公共匹配管线 ──
+    candidates = {n: citations for n in unique_nums}  # 全池共享（match_citations 内部去重）
+    result = await match_citations(
+        unique_nums=unique_nums,
+        candidates=candidates,
+        num_context=num_context,
+        num_keywords=num_keywords,
+        local_papers=None,
+    )
 
-    # 3. 替换占位符（支持 [n] / [n-m] / [n,m,...]）
-    # 修复 F-2/F-3: 旧代码用顺序 str.replace() 导致级联串号，改为单次正则回调替换。
-    import re as _re
-    def _sub_citation(_m: _re.Match) -> str:
-        nums = expand_citation(_m.group(0))
-        mapped = [num_to_citation.get(n) for n in nums]
-        if all(c is not None for c in mapped):
-            ref_nums = [citations.index(c) + 1 for c in mapped]
-            return f"[{','.join(str(r) for r in ref_nums)}]"
-        return f"[?{_m.group(0)[1:-1]}]"
-    result_draft = _re.sub(r'\[\d+(?:[-,]\d+)*\]', _sub_citation, draft)
+    # ── 5. 正文替换 ──
+    new_draft = replace_citations_in_text(draft, result.num_to_ref)
 
-    # 4. 生成参考文献列表（修复 F-7: 旧代码列出全部 fetch 回来的文献，
-    #    包括正文从未引用的——评审最忌讳的形式问题。改为只列出被引用的。）
-    cited_indices = sorted(set(citations.index(c) for c in num_to_citation.values() if c in citations))
-    refs_text = ""
-    for i in cited_indices:
-        c = citations[i]
-        authors_short = f"{c.authors[0].split()[-1] if c.authors else '?'} et al." if len(c.authors) > 1 else (c.authors[0] if c.authors else "?")
-        refs_text += f"[{i + 1}] {authors_short}. {c.title}. {c.venue}, {c.year}. DOI: {c.doi}\n"
+    # ── 6. 参考文献列表 ──
+    if result.ref_list:
+        refs_text = build_references_section(result.ref_list)
+        # 检测并替换已有参考文献节
+        if re.search(r'(?i)##\s*参考文献', new_draft):
+            ref_section_pattern = r'(\n\n---\n)?## 参考文献\n\n[\s\S]*$'
+            new_draft = re.sub(ref_section_pattern, '\n\n---\n' + refs_text, new_draft)
+        else:
+            new_draft = new_draft + "\n\n---\n" + refs_text
 
-    # 检测并替换已有参考文献节（避免重复追加）
-    ref_section_pattern = r'(\n\n---\n)?## 参考文献\n\n[\s\S]*$'
-    if re.search(r'(?i)##\s*参考文献', result_draft):
-        new_draft = re.sub(ref_section_pattern, f'\n\n---\n## 参考文献\n\n{refs_text}', result_draft)
-    else:
-        new_draft = result_draft + f"\n\n---\n## 参考文献\n\n{refs_text}"
+    # 日志
+    for line in result.match_log:
+        logger.info(line)
 
     return new_draft, citations
 
 
-# ═══════════════════════════════════════════════════════════════════
-# 引用格式化 — 6种标准格式
-# ═══════════════════════════════════════════════════════════════════
+def _extract_keywords_local(text: str, fallback: str = "") -> str:
+    """从上下文提取搜索关键词（本地版，保留原 extract_keywords 逻辑）。"""
+    proper_nouns = re.findall(r'(?<![A-Za-z0-9])[A-Z][A-Za-z0-9]{2,}(?![A-Za-z0-9])', text)
+    stop_proper = {'The', 'This', 'That', 'These', 'Those', 'Such', 'However',
+                   'Moreover', 'Furthermore', 'Therefore', 'Also', 'While',
+                   'When', 'Where', 'What', 'Which', 'Based', 'Using',
+                   'Given', 'Since', 'From', 'With', 'Both', 'Each',
+                   'First', 'Second', 'Third', 'Finally', 'In', 'For',
+                   'And', 'But', 'Not', 'Are', 'Was', 'Were', 'Has',
+                   'Have', 'Can', 'May', 'Will', 'Been', 'Some', 'More',
+                   'Most', 'Other', 'All', 'One', 'Two', 'Three'}
+    proper_nouns = [w for w in proper_nouns if w not in stop_proper]
 
-CITATION_STYLES = ["gbt7714", "apa", "mla", "ieee", "chicago", "vancouver"]
+    stop_en = {'the', 'and', 'for', 'are', 'but', 'not', 'this', 'that', 'with',
+               'from', 'have', 'has', 'was', 'were', 'will', 'can', 'may',
+               'also', 'such', 'than', 'then', 'these', 'those', 'which',
+               'their', 'there', 'what', 'when', 'where', 'who', 'whom',
+               'been', 'being', 'into', 'about', 'after', 'before',
+               'between', 'through', 'during', 'above', 'below', 'over',
+               'under', 'again', 'more', 'most', 'other', 'some'}
+    en_words = re.findall(r'[A-Za-z]{3,30}', text)
+    en_words = [w for w in en_words if w.lower() not in stop_en]
+
+    cn_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', text)
+    stop_cn = {'的研究', '本文', '本研', '研究', '方法', '结果', '结论',
+               '实验', '分析', '通过', '基于', '采用', '提出', '实现',
+               '一个', '可以', '这个', '那个', '因此', '所以', '然而',
+               '此外', '同时', '另外', '首先', '其次', '最后'}
+    cn_words = [w for w in cn_words if w not in stop_cn]
+
+    seen = set()
+    all_words = []
+    for w in proper_nouns + en_words[:5] + cn_words[:3]:
+        wl = w.lower()
+        if wl not in seen:
+            seen.add(wl)
+            all_words.append(w)
+    if not all_words:
+        return fallback[:60].strip()
+    return ' '.join(all_words[:6])
+
 
 
 def format_authors_gbt(authors: list[str]) -> str:
