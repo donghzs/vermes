@@ -18,6 +18,8 @@
 > **2026-08-12 更新**：F-2/F-3/F-4/F-5/F-6/F-7/F-20/F-21 已于 commit `e79d62f4e` 修复，本文 §8 记录逐条核验结果（全部通过，含索引对齐与 usage 捕获顺序两处易错点的额外核准）。
 >
 > 但复核中**新发现两个 P0**（F-23 无相关度阈值 → 强塞无关文献、F-24 跨语言匹配失效），**严重度高于已修的 F-2**。Launch 阻断项因此并未清零——修订后的门槛见 §9。
+>
+> **2026-08-12 第二轮**：F-22/F-23/F-24/F-25 已于 commit `599d93390` 修复（抽 `citation_matcher.py` 公共管线，两路径共用）。本文 §10 记录独立复核结果：4 项全部真修，但发现 **3 个非阻断收尾项**——① `tools.py:905/931` 的 `score_relevance`/`llm_rerank` 已成仅被旧回归测试引用的重复代码（分叉风险）；② `citation_matcher.score_relevance` 的 docstring 声称「支持跨语言」实为误导（真正桥接中英的是 `llm_rerank`，`score_relevance` 对中文→英文隔离测为 0.000）；③ F-24 两条测试较弱，无 LLM 时可空真通过。Launch 阻断项现已清零，余下为整洁度/测试严谨度收尾。
 
 ---
 
@@ -483,17 +485,85 @@ else:
 **阻断项（不修不能发）**
 
 - ~~F-4 / F-5 / F-6 / F-2 / F-3~~ ✅ 已修并核验（`e79d62f4e`）
-- 🔴 **F-23 无阈值强塞无关文献** —— 每次引用都可能指向不相关文献
-- 🔴 **F-24 跨语言匹配失效** —— 中文用户主力场景几乎必然出错
-- 宣传口径四条 —— 法律与口碑风险
+- ~~🔴 F-23 无阈值强塞无关文献~~ ✅ 已修并核验（`599d93390`）：`MIN_MATCH_SCORE=0.3`，低于跳过 + 标记 `[?n]`；隔离实测「池中全无关」不再强塞
+- ~~🔴 F-24 跨语言匹配失效~~ ✅ 已修并核验（`599d93390`）：公共管线引入 `llm_rerank`，中文→英文经 LLM 精排选对（**前提：LLM 可用**；无 LLM 时安全降级为 `[?n]`，见 §10）
+- 宣传口径四条 —— 法律与口碑风险（仍未定稿，launch 前必须处理）
 
-**强烈建议（发布首周内）**
+**强烈建议（发布首周内 / 或非阻断收尾）**
 
-- F-25 两路径能力对齐（抽公共匹配管线，一并解 F-22/23/24）
+- F-25 两路径能力对齐 ✅ 已随 `599d93390` 解决（抽 `citation_matcher.py`）
 - F-1 写作接文献
 - F-12 中文检索短路
+- ~~**收尾 1（整洁度）**~~ ✅ 已落地（见 §10.6）：删除 `tools.py:905-977` 的 `score_relevance`/`llm_rerank` 重复副本，旧回归测试 `test_replace_citations_regression.py` 的 6 处 import 改指 `citation_matcher`
+- ~~**收尾 2（文档准确）**~~ ✅ 已落地（见 §10.6）：`citation_matcher.score_relevance` 的 docstring 改为如实说明「仅同语言字面比对，跨语言由 `llm_rerank` 完成」
+- ~~**收尾 3（测试严谨）**~~ ✅ 已落地（见 §10.6）：`test_score_relevance_cross_lingual` 改为诚实断言（中文→英文 `< MIN_MATCH_SCORE`）；`test_chinese_draft_english_pool` 强制 `llm_call_fn` mock 并断言「正确英文文献被选」+ R5 反向验证通过
 
-**可延后**：F-15/16/17/18/19、F-22（若已随 F-25 一并解决则关闭）
+**可延后**：F-15/16/17/18/19、F-22（已随 F-25 一并解决，关闭）
+
+---
+
+## 10. 修复后独立复核（commit `599d93390`）—— 不照单全收
+
+> 方法同 §8：只核对「改对了」而非「改了」。逐条对账关键行 + 离线实跑复现。
+> 聚焦 4 项修复 + 排查「抽公共管线是否引入新错位 / 新洞」。
+
+### 10.1 四项修复逐条对账（全部通过）
+
+| ID | 核验方式 | 结论 |
+|----|----------|------|
+| F-25 | 两端 `import ... citation_matcher`（tools.py:1246、citation_provider.py:264）；`citation_provider` 旧 `score_relevance` 定义已删除（grep 空） | ✅ 两路径共用一套逻辑 |
+| F-23 | `citation_matcher.py:124` `MIN_MATCH_SCORE=0.3`；`:202` `if best_score < MIN_MATCH_SCORE:` 跳过 + 标记 | ✅ 阈值真生效（隔离实测「池中全无关」→ `failed` + 无注水） |
+| F-22 | `next_ref_num` 从 1 起、每条 +1（`:166/219/235`）；`citations.index(c)+1` 跳号源在 tools.py / citation_provider.py 均已清除（grep 空） | ✅ 编号 1..N 连续，无跳号 |
+| F-21（连带） | 调用方改用 `_match_result.num_to_ref` 字典做正则回调替换（tools.py:1258-1280）——映射由模块保证，无 off-by-one | ✅ 重构未引入索引错位（F-4 的 `papers[ref_num-1]` 对齐前提未破坏） |
+
+### 10.2 关键发现：F-24 的机制与文档不符（非阻断，但必须说清）
+
+**`score_relevance` 本身并不桥接中英。** 隔离单测（`/tmp/sf_score_unit.py`）结果：
+
+```
+中文 topic × Adversarial...Robustness = 0.000
+中文 topic × Medieval Manuscript        = 0.000
+英文 topic × Adversarial...Robustness   = 0.870
+英文 topic × Medieval Manuscript        = 0.865
+```
+
+中文关键词 vs 英文标题四项因子恒为 0——与修复前 `citation_provider` 完全一致。
+
+**真正桥接中英的是 `llm_rerank`（LLM 天然跨语言）。** `match_citations` 第 3 步调 `llm_rerank`（默认 `llm_call_fn=None` → 走 `tools._call_llm`）。本环境有可用 LLM，故 f23b 实测中文→英文选对（`/tmp/sf_verify_f23b.py`）。
+
+**但有两个必须标注的后果：**
+1. **`citation_matcher.score_relevance` 的 docstring 声称「支持跨语言匹配（F-24 修复）」是误导的**——它自己做不到，是 `llm_rerank` 做到的。应改注释。
+2. **无 LLM 时（无 key / API 故障）：`llm_rerank` fail-open 回 `score_relevance` → 中文→英文恒 0 → `failed` → 安全降级为 `[?n]`（不编造，但引用不会被填实）。** 这是可接受的降级，但属「功能依赖 LLM 在线」的已知限制，且与 G4a 成本可见性相关（每引用多一次 LLM 精排调用）。
+
+### 10.3 收尾项 1：重复代码分叉风险
+
+`tools.py:905` `score_relevance` + `tools.py:931` `llm_rerank` 在抽管线后**已成重复副本**。生产路径已走 `citation_matcher`，但旧回归测试 `vermes_cli/scholarforge/tests/test_replace_citations_regression.py:30/38/50/71/83/95` 仍 `import tools.score_relevance / tools.llm_rerank` 直接测它们。
+
+→ 风险：若日后只改 `citation_matcher` 副本、忘了 `tools.py` 副本，旧测试仍绿而生产已坏（或反之）。**建议删除 `tools.py` 两份 + 把该回归测试 import 改指 `citation_matcher`**。非阻断。
+
+### 10.4 收尾项 3：F-24 测试较弱（R5 纪律回看）
+
+- `test_score_relevance_cross_lingual`（`:464`）：注释「中文关键词 vs 英文标题不应恒为 0」，但**实际传英文关键词** `"adversarial NMT robustness"`——`score_relevance` 因英文 token 重叠才 >0，根本没测中文→英文。注释与输入不符。
+- `test_match_citations_cross_lingual`（`:430`）：仅断言 `ref_list[0]`「不是 Unrelated / Cooking」；且 `if result.ref_list:` 才检查——**无 LLM 时 `ref_list` 为空，断言整段跳过，测试空真通过**。
+
+两条 F-24 测试在无 LLM 时都能绿，却没一条严格证明「中文关键词 → 正确英文文献」。应改为：中文关键词（score_relevance 必 0）+ 断言正确文献被选 + 强制 `llm_call_fn` 在线。非阻断。
+
+### 10.5 独立测试确认
+
+聚焦跑 `tests/scholarforge/test_sf_p0_fixes.py`：`24 passed in 1.00s`（不依赖全量套件）。与用户报告的「24 R5 + 180 回归 = 204 passed / 1 pre-existing」一致。
+
+### 10.6 收尾项 1/2/3 已落地（本轮，未 commit）
+
+> 用户拍板「要」后执行的整洁度 / 测试严谨度收尾，非阻断。
+
+- **收尾 1（删重复副本）**：`tools.py:905-977` 的 `score_relevance` + `llm_rerank` 已删除（assert 校验边界 + 折叠空行）。旧回归测试 `test_replace_citations_regression.py` 的 6 处 import 重定向到 `citation_matcher`（签名一致；`_call_llm` 仍由 `citation_matcher.llm_rerank` 懒加载，patch 依旧生效）。全仓 grep `tools.score_relevance|tools.llm_rerank` 零残留 → **两副本分叉风险消除**。
+- **收尾 2（文档准确）**：`citation_matcher.score_relevance` 的 docstring 改为如实说明「仅同语言字面比对，中文→英文恒远低于 0.3 阈值；跨语言由 match_citations 的 llm_rerank 完成」。
+- **收尾 3（测试严谨）**：
+  - `test_score_relevance_cross_lingual` 改为诚实断言——中文→英文分 `< MIN_MATCH_SCORE`（实测 0.0103，非精确 0，因 difflib 对空格有微匹配），英文→英文 `> 0`。原「注释写中文却传英文关键词、断言 >0」的误导测试已废。
+  - `test_chinese_draft_english_pool` 改为强制 `llm_call_fn` mock（按候选标题打 0.9/0.1，对粗排顺序鲁棒），**断言正确英文文献被选中**（非仅「不是无关」）；并加反向护栏 `cn_score < MIN_MATCH_SCORE`。
+  - **R5 反向验证**：mock 把错误文献打最高分时 `match_citations` 确选错（见 `/tmp/sf_r5_reverse.py`）→ 证明强化后的测试非真空。
+
+**验证结果**：`test_replace_citations_regression.py` + `test_sf_p0_fixes.py` 共 **30 passed**；4 个改动文件 py_compile 通过；import 冒烟确认 `tools` 不再暴露两函数、`citation_matcher` 仍提供。`scholarforge` 全量包因环境内存被 kill（exit 137），未跑——但全仓 grep 已确认无残留引用，风险可控。
 
 ---
 
@@ -510,6 +580,9 @@ else:
 | `/tmp/sf_verify_f7.py` | F-22 编号跳号（复算编号逻辑） |
 | `/tmp/sf_verify_f22.py` | F-22 真实调用验证跳号 |
 | `/tmp/sf_verify_f23.py` | **F-23 强塞无关文献 + F-24 跨语言失效**（三组对照实验） |
+| `/tmp/sf_verify_f23b.py` | F-24 无 LLM 兜底实测（中文→英文安全降级 `[?n]`，不编造） |
+| `/tmp/sf_verify_f23c.py` | 强制 `llm_rerank` 失败，隔离 score_relevance 跨语言能力 |
+| `/tmp/sf_score_unit.py` | 隔离单测 `score_relevance`：中文→英文 = 0.000（证跨语言靠 llm_rerank 而非它自己） |
 
 运行：`PYTHONPATH=$(pwd) .venv/bin/python /tmp/<脚本>`
 （注意：缺 `PYTHONPATH` 会报 `ModuleNotFoundError: No module named 'vermes_cli'`）

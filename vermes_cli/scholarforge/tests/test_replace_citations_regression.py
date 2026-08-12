@@ -27,7 +27,7 @@ class TestScoreRelevance(unittest.TestCase):
     """score_relevance 是粗排打分（0-1），应优先命中关键词重叠。"""
 
     def test_favors_keyword_overlap(self):
-        from vermes_cli.scholarforge.tools import score_relevance
+        from vermes_cli.scholarforge.citation_matcher import score_relevance
 
         kw = "memory consolidation"
         high = _paper("Memory Consolidation in Sleep", abstract="studies memory consolidation")
@@ -35,7 +35,7 @@ class TestScoreRelevance(unittest.TestCase):
         self.assertGreater(score_relevance(high, "ctx", kw), score_relevance(low, "ctx", kw))
 
     def test_range_zero_to_one(self):
-        from vermes_cli.scholarforge.tools import score_relevance
+        from vermes_cli.scholarforge.citation_matcher import score_relevance
 
         p = _paper("Memory Consolidation Study", abstract="about memory consolidation")
         s = score_relevance(p, "ctx", "memory consolidation")
@@ -47,7 +47,7 @@ class TestLLMRerank(unittest.TestCase):
     """llm_rerank 用 LLM 分数对候选重新排序；分数数不符或异常时 fail-open 回退粗排。"""
 
     def _run(self, candidates, llm_return):
-        from vermes_cli.scholarforge.tools import llm_rerank
+        from vermes_cli.scholarforge.citation_matcher import llm_rerank
 
         async def fake_llm(prompt, system="", **kwargs):
             return llm_return
@@ -68,7 +68,7 @@ class TestLLMRerank(unittest.TestCase):
 
     def test_falls_back_on_score_count_mismatch(self):
         # 候选 3 个，但 LLM 只回 2 个分数 → 数量不符 → 回退粗排（score_relevance）
-        from vermes_cli.scholarforge.tools import score_relevance
+        from vermes_cli.scholarforge.citation_matcher import score_relevance
 
         a = _paper("Memory Consolidation A", abstract="memory consolidation overlap")
         b = _paper("Quantum B", abstract="unrelated")
@@ -80,7 +80,7 @@ class TestLLMRerank(unittest.TestCase):
         self.assertEqual([p.title for p, _ in result], [p.title for p in expected])
 
     def test_falls_back_on_llm_exception(self):
-        from vermes_cli.scholarforge.tools import score_relevance
+        from vermes_cli.scholarforge.citation_matcher import score_relevance
 
         a = _paper("Memory Consolidation A", abstract="memory consolidation overlap")
         b = _paper("Quantum B", abstract="unrelated")
@@ -92,7 +92,7 @@ class TestLLMRerank(unittest.TestCase):
 
         async def go():
             with patch("vermes_cli.scholarforge.tools._call_llm", side_effect=boom):
-                from vermes_cli.scholarforge.tools import llm_rerank
+                from vermes_cli.scholarforge.citation_matcher import llm_rerank
                 return await llm_rerank(candidates, "ctx", "kw")
 
         result = asyncio.run(go())

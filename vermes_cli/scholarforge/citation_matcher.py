@@ -33,8 +33,11 @@ logger = logging.getLogger("scholarforge.citation")
 def score_relevance(paper, context: str, keyword: str) -> float:
     """粗排评分（0-1），用于在 LLM 精排前缩小候选池。
 
-    含中文 token 提取，支持跨语言匹配（F-24 修复：旧 citation_provider 版本
-    四因子全同语言字面比对，中文正文 vs 英文标题恒为 0）。
+    仅同语言字面比对：提取标题/关键词的中文字面 token 与英文单词做重叠 +
+    difflib 模糊相似。中文关键词 vs 英文标题四项因子恒为 0（无法桥接跨语言）。
+
+    跨语言匹配由 match_citations 中的 llm_rerank 完成（LLM 天然理解双语）：
+    本函数对中文→英文只能给出 0 分，真实跨语言选择依赖 llm_rerank 的 LLM 精排。
     """
     import difflib
     # 标题与关键词的 token 重叠（含中文 2-gram）
