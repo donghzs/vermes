@@ -20,11 +20,48 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+_VAR_KEYWORD = inspect.Parameter.VAR_KEYWORD
+_KEYWORD_KINDS = (
+    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    inspect.Parameter.KEYWORD_ONLY,
+)
+
+
+def select_supported_kwargs(run_method: Any, kwargs: dict) -> dict:
+    """Return the subset of ``kwargs`` that ``run_method`` can actually accept.
+
+    Why this exists (P0): ``extra_kwargs`` is broadcast to *every* stage, but
+    real agents have fixed signatures — only ``LiteratureAgent.run`` accepts
+    ``depth``, only ``WritingAgent.run`` accepts ``section``. Handing an agent
+    an unsupported kwarg raises ``TypeError``, which the fail-open handler below
+    converts into a stage ``error`` event — silently killing the stage while the
+    pipeline reports "complete". Filtering against the real signature keeps
+    broadcast convenient *and* safe.
+
+    Fail-open: if the signature cannot be introspected, everything is passed
+    through so exotic callables keep their previous behaviour.
+    """
+    try:
+        params = inspect.signature(run_method).parameters
+    except (TypeError, ValueError):
+        return dict(kwargs)
+
+    # A ``**kwargs`` catch-all means the agent accepts anything.
+    if any(p.kind is _VAR_KEYWORD for p in params.values()):
+        return dict(kwargs)
+
+    accepted = {
+        name for name, p in params.items()
+        if p.kind in _KEYWORD_KINDS and name != "self"
+    }
+    return {k: v for k, v in kwargs.items() if k in accepted}
 
 
 # ── Event helpers ────────────────────────────────────────────────────
@@ -180,12 +217,30 @@ class Pipeline:
             try:
                 agent = await make_agent(stage, ctx)
                 kwargs = {"user_input": user_input, **extra_kwargs}
-                if stage.section_kwarg and hasattr(ctx, "section"):
-                    kwargs[stage.section_kwarg] = getattr(ctx, "section", None)
-                if stage.depth_kwarg and hasattr(ctx, "depth"):
-                    kwargs[stage.depth_kwarg] = getattr(ctx, "depth", None)
+                # Declarative routing: an explicit value in extra_kwargs wins;
+                # otherwise fall back to the context object (legacy path — note
+                # ScholarForge's ProjectContext carries neither attribute, so
+                # this fallback is a no-op there by design).
+                if stage.section_kwarg and stage.section_kwarg not in kwargs:
+                    _sec = getattr(ctx, "section", None)
+                    if _sec is not None:
+                        kwargs[stage.section_kwarg] = _sec
+                if stage.depth_kwarg and stage.depth_kwarg not in kwargs:
+                    _dep = getattr(ctx, "depth", None)
+                    if _dep is not None:
+                        kwargs[stage.depth_kwarg] = _dep
 
-                async for evt in agent.run(**kwargs):
+                # P0: never hand an agent a kwarg its run() cannot accept —
+                # a TypeError here would be swallowed into a stage error below.
+                safe_kwargs = select_supported_kwargs(agent.run, kwargs)
+                if len(safe_kwargs) != len(kwargs):
+                    logger.debug(
+                        "Pipeline: stage=%s dropped unsupported kwargs %s",
+                        stage.name,
+                        sorted(set(kwargs) - set(safe_kwargs)),
+                    )
+
+                async for evt in agent.run(**safe_kwargs):
                     yield evt
             except Exception as exc:
                 _stage_error = True
@@ -242,6 +297,7 @@ __all__ = [
     "Pipeline",
     "PipelineConfig",
     "Stage",
+    "select_supported_kwargs",
     "stage_event",
     "checkpoint_event",
     "done_event",

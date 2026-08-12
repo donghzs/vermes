@@ -11,13 +11,204 @@ import os
 import time
 from typing import Optional
 
-from fastapi import HTTPException, Path, UploadFile, File
+from fastapi import HTTPException, Path, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from agent.pipeline import Pipeline, PipelineConfig, Stage
 
+from . import database as db
+
 logger = logging.getLogger(__name__)
+
+
+def _outline_hook(ctx, pid: int, stage_name: str):
+    """pipeline 大纲阶段结束后的落库 hook（模块级，可被 _get_ctx 复用）。
+
+    #385 根因修复：OutlineAgent.run 把 ctx.outline['sections'] 设成纯字符串列表，
+    必须先用 _normalize_outline_for_save 归一化为 dict 形状({id,number,title,...})，
+    否则 db.save_outline → _norm_outline_section 调 sec.get('id') 对字符串抛
+    AttributeError，且该异常被静默吞掉，大纲永不落库。
+    """
+    if stage_name == "outline" and pid > 0:
+        try:
+            outline_data = ctx.outline.get("sections", []) if isinstance(ctx.outline, dict) else []
+            outline_data = _normalize_outline_for_save(outline_data)
+            if outline_data:
+                if not db.save_outline(pid, outline_data):
+                    logger.error(
+                        "_outline_hook: save_outline failed (pid=%s, %d sections)",
+                        pid, len(outline_data),
+                    )
+        except Exception as e:
+            logger.debug(f"Failed to save outline after pipeline: {e}")
+
+
+def _writing_hook(ctx, pid: int, stage_name: str):
+    """pipeline 写作阶段结束后的落库 hook（模块级）。"""
+    if stage_name == "writing" and pid > 0:
+        try:
+            db.save_section_content(pid, "full_paper", ctx.draft or "")
+        except Exception as e:
+            logger.debug(f"Failed to save full paper after pipeline: {e}")
+
+
+async def _run_pipeline_core(ctx, pid: int, req_message: str, *, checkpoint: bool = False,
+                       continue_from: str = None, section: str = "", depth: int = 0,
+                       is_disconnected=None):
+    """ScholarForge pipeline 的「纯逻辑」编排核心，供两条路径共用：
+
+    - blueprint `scholar_stream` 的 SSE 分支：对每个事件 `yield _sse_rl(...)`
+    - tools.py 的 `scholarforge_run_pipeline` 工具：聚合事件后返回结构化结果
+
+    抽出来的目的：pipeline 的 Stage 组装、`_outline_hook`/`_writing_hook` 落库、
+    `replace_pseudo_citations` 后处理这三段是「单一真相源」，任何一处改动都必须
+    同时反映到 SSE 与工具两条路径，否则会出现「SSE 能落库、工具不落库」或反之的
+    漂移 bug。统一在此处维护。
+
+    Args:
+        ctx: ProjectContext（调用方负责按 pid 从 DB 恢复）
+        pid: 项目 ID（>0 才落库）
+        req_message: 用户选题/写作指令
+        checkpoint: 是否启用断点续跑
+        continue_from: 从指定阶段恢复（仅 SSE 路径用，工具路径一般从头跑）
+        section: 指定只写某一节（透传给 WritingAgent）
+        depth: 文献检索深度（透传给 LiteratureAgent）
+    """
+    from vermes_cli.scholarforge.agents import AGENTS as _AGENTS
+
+    _STAGE_LABELS = {
+        "topic": "选题分析", "literature": "文献综述",
+        "outline": "论文大纲", "writing": "章节撰写",
+        "refinement": "润色检查", "reviewer": "审稿",
+    }
+
+    _pipeline = Pipeline(stages=[
+        Stage("topic", _AGENTS["topic"], label=_STAGE_LABELS["topic"]),
+        Stage("literature", _AGENTS["literature"], label=_STAGE_LABELS["literature"], depth_kwarg="depth"),
+        Stage("outline", _AGENTS["outline"], label=_STAGE_LABELS["outline"], post_hooks=[lambda c, s: _outline_hook(c, pid, s)]),
+        Stage("writing", _AGENTS["writing"], label=_STAGE_LABELS["writing"], section_kwarg="section", post_hooks=[lambda c, s: _writing_hook(c, pid, s)]),
+        Stage("refinement", _AGENTS["refinement"], label=_STAGE_LABELS["refinement"]),
+        Stage("reviewer", _AGENTS["reviewer"], label=_STAGE_LABELS["reviewer"]),
+    ])
+
+    async def _make_stage_agent(stage, _ctx):
+        # 工具路径不依赖 request：用 _call_llm 作为 LLM 调用（单位置参数、async，
+        # 与 agent 的 `await self.llm(prompt)` 完全兼容）。
+        from vermes_cli.scholarforge.tools import _call_llm
+        return stage.agent_cls(_ctx, _call_llm)
+
+    _config = PipelineConfig(
+        checkpoint=checkpoint,
+        continue_from=continue_from,
+    )
+    _extra_kwargs = {}
+    if section:
+        _extra_kwargs["section"] = section
+    if depth:
+        _extra_kwargs["depth"] = depth
+
+    async def _null_disconnect():
+        return False
+
+    _disc = is_disconnected or _null_disconnect
+
+    async for _evt in _pipeline.run(
+        ctx, _config, _make_stage_agent,
+        user_input=req_message,
+        extra_kwargs=_extra_kwargs,
+        is_disconnected=_disc,
+        stage_labels=_STAGE_LABELS,
+    ):
+        yield _evt
+
+    # Pipeline 完成后自动尝试替换伪引用为真实文献
+    _citations_replaced = False
+    if ctx.draft and ctx.topic:
+        try:
+            from vermes_cli.scholarforge.citation_provider import replace_pseudo_citations
+            _new_draft, _real_citations = await replace_pseudo_citations(
+                ctx.draft, ctx.topic,
+                keywords=ctx.papers[:5] if ctx.papers else [],
+                paper_type=ctx.paper_type)
+            if _real_citations:
+                ctx.draft = _new_draft
+                _citations_replaced = True
+                yield {"type": "citation",
+                       "message": f"已替换为 {len(_real_citations)} 篇真实文献",
+                       "count": len(_real_citations)}
+        except Exception as e:
+            logger.warning(f"Real citation replacement failed: {e}")
+    yield {"type": "done", "pipeline": "complete",
+           "papers": len(ctx.papers),
+           "citations_replaced": _citations_replaced}
+
+
+
+def _paper_card_from_row(row: dict):
+    """把 literatures 表的一行(dict)安全地转换为 PaperCard 对象。
+
+    根因修复(#384)：直接用 dict 调 `ProjectContext.add_paper` 会因
+    `add_paper` 内部读 `card.paper_id` 抛 AttributeError，且被上层
+    `except Exception: logger.debug(...)` 静默吞掉，导致上下文恢复
+    循环中断、outline 丢失、ctx.papers 被 dict 污染，下游 Agent 构造
+    prompt 时 `to_context_text()`/`build_global_ref_list()` 双双崩溃。
+
+    两条恢复路径(_get_ctx / continue_from)共用此 helper，保证 dict→PaperCard
+    转换与字段契约(authors 可能为 JSON 字符串)一致处理。
+    """
+    from vermes_cli.scholarforge.agents import PaperCard
+    raw_authors = row.get("authors", [])
+    if isinstance(raw_authors, str):
+        try:
+            raw_authors = json.loads(raw_authors) if raw_authors else []
+        except Exception:
+            raw_authors = []
+    if not isinstance(raw_authors, list):
+        raw_authors = []
+    return PaperCard(
+        paper_id=str(row.get("paper_id", row.get("id", ""))),
+        title=row.get("title", ""),
+        authors=raw_authors,
+        year=str(row.get("year", "")),
+        venue=row.get("venue", ""),
+        abstract=row.get("abstract", ""),
+        url=row.get("url", ""),
+        source=row.get("source", ""),
+    )
+
+
+def _normalize_outline_for_save(outline_sections):
+    """把 OutlineAgent 产出的纯字符串标题列表归一化为 save_outline 期望的 dict 形状。
+
+    根因修复(#385)：OutlineAgent.run 把 `ctx.outline["sections"]` 设成
+    纯字符串列表(["引言","相关工作",...])，而 `db.save_outline` 经
+    `_norm_outline_section` 调 `sec.get("id")` —— 对字符串调 .get 抛
+    AttributeError，且该异常在 save_outline 内部的 try 块之外，穿出后被
+    `_outline_hook` 的 `except Exception: logger.debug(...)` 静默吞掉，
+    pipeline 生成的大纲永不落库。
+
+    这里对齐 agents/__init__.py OutlineAgent 发往前端的 `outline_for_frontend`
+    形状({id, number, title, wordCount, status})，保证落库条目可被
+    `get_outline` 正确回读。
+    """
+    if not isinstance(outline_sections, list):
+        return []
+    norm = []
+    for i, s in enumerate(outline_sections):
+        if isinstance(s, dict):
+            # 已经是 dict 形状(前端/历史契约)，原样保留
+            norm.append(s)
+        else:
+            title = s if isinstance(s, str) else str(s)
+            norm.append({
+                "id": f"sec_{i}",
+                "number": i + 1,
+                "title": title,
+                "wordCount": 0,
+                "status": "pending",
+            })
+    return norm
 
 # RAG retriever 缓存 (project_id → (paper_count, PaperRetriever))
 _rag_cache: dict = {}
@@ -264,14 +455,17 @@ async def _get_ctx(project_id: str = "default", client_id: str = ""):
                     full_paper = contents.get("full_paper", "")
                     if full_paper:
                         ctx.draft = full_paper
-                    # 从 literatures 恢复 papers
+                    # 从 literatures 恢复 papers（#384: dict→PaperCard 转换）
                     literatures = proj.get("literatures", [])
                     for lit in literatures:
-                        ctx.add_paper(lit)
-                    # 从 outlines 恢复 outline
+                        ctx.add_paper(_paper_card_from_row(lit))
+                    # 从 outlines 恢复 outline（#385: 字符串列表→dict 形状）
+                    # 注意：此处只恢复 ctx，不重复落库——落库由 _outline_hook 在
+                    # pipeline 大纲阶段结束后统一负责，避免恢复路径触发多余写库
+                    # 造成 SQLite 锁竞争（实跑回归：e2e 单测从 12s 飙到 88s 超时）。
                     outline_rows = proj.get("outline", [])
                     if outline_rows:
-                        ctx.outline = {"sections": outline_rows}
+                        ctx.outline = {"sections": _normalize_outline_for_save(outline_rows)}
         except Exception as e:
             logger.debug(f"Session context restore failed: {e}", exc_info=True)
         _session_contexts[ctx_key] = ctx
@@ -1029,8 +1223,14 @@ def register_to(app, host_api=None):
         return _sse(data)
 
     @app.post("/api/scholar/stream")
-    async def scholar_stream(req: ScholarChatRequest):
-        """论文写作 SSE 流式接口 — 每个 Agent 独立模型，支持 STORM 全链路"""
+    async def scholar_stream(req: ScholarChatRequest, request: Request):
+        """论文写作 SSE 流式接口 — 每个 Agent 独立模型，支持 STORM 全链路
+
+        ``request`` is required for client-disconnect detection inside the
+        pipeline branch (see ``_check_disconnect``); without it that callback
+        raised NameError, which pipeline's fail-open swallowed — disabling
+        disconnect detection entirely.
+        """
         from . import database as db
 
         if not req.message.strip():
@@ -1060,131 +1260,45 @@ def register_to(app, host_api=None):
                 if req.pipeline:
                     use_checkpoint = req.checkpoint and req.pipeline
 
-                    # ── 构建 ScholarForge pipeline ──
-                    from vermes_cli.scholarforge.agents import AGENTS as _AGENTS
-
-                    _STAGE_LABELS = {
-                        "topic": "选题分析", "literature": "文献综述",
-                        "outline": "论文大纲", "writing": "章节撰写",
-                        "refinement": "润色检查", "reviewer": "审稿",
-                    }
-
-                    def _outline_hook(ctx, stage_name):
-                        if stage_name == "outline" and pid > 0:
-                            try:
-                                outline_data = ctx.outline.get("sections", []) if isinstance(ctx.outline, dict) else []
-                                if outline_data:
-                                    if not db.save_outline(pid, outline_data):
-                                        logger.error(
-                                            "_outline_hook: save_outline failed (pid=%s, %d sections)",
-                                            pid, len(outline_data),
-                                        )
-                            except Exception as e:
-                                logger.debug(f"Failed to save outline after pipeline: {e}")
-
-                    def _writing_hook(ctx, stage_name):
-                        if stage_name == "writing" and pid > 0:
-                            try:
-                                db.save_section_content(pid, "full_paper", ctx.draft or "")
-                            except Exception as e:
-                                logger.debug(f"Failed to save full paper after pipeline: {e}")
-
-                    _pipeline = Pipeline(stages=[
-                        Stage("topic", _AGENTS["topic"], label=_STAGE_LABELS["topic"]),
-                        Stage("literature", _AGENTS["literature"], label=_STAGE_LABELS["literature"], depth_kwarg="depth"),
-                        Stage("outline", _AGENTS["outline"], label=_STAGE_LABELS["outline"], post_hooks=[_outline_hook]),
-                        Stage("writing", _AGENTS["writing"], label=_STAGE_LABELS["writing"], section_kwarg="section", post_hooks=[_writing_hook]),
-                        Stage("refinement", _AGENTS["refinement"], label=_STAGE_LABELS["refinement"]),
-                        Stage("reviewer", _AGENTS["reviewer"], label=_STAGE_LABELS["reviewer"]),
-                    ])
-
-                    # P1: 加载已有项目上下文（continue_from 时恢复）
-                    if req.continue_from and req.continue_from in _pipeline.stage_names and pid > 0:
+                    # continue_from 恢复（仅 SSE 路径需要；工具路径一般从头跑）
+                    if req.continue_from and pid > 0:
                         try:
                             p = db.get_project(pid)
                             if p:
                                 ctx.topic = p.get("title", "")
                                 ctx.paper_type = p.get("paper_type", "")
                                 ctx.target_words = int(p.get("target_words", 8000))
-                            outline_data = db.get_outline(pid)
-                            if outline_data:
-                                ctx.outline = {"sections": outline_data}
-                            from vermes_cli.scholarforge.agents import PaperCard
-                            lit_rows = db.list_literature(pid)
-                            for lr in lit_rows:
-                                ctx.add_paper(PaperCard(
-                                    paper_id=str(lr.get("paper_id", lr.get("id", ""))),
-                                    title=lr.get("title", ""),
-                                    authors=lr.get("authors", []) if isinstance(lr.get("authors"), list) else [],
-                                    year=str(lr.get("year", "")),
-                                    venue=lr.get("venue", ""),
-                                    abstract=lr.get("abstract", ""),
-                                    url=lr.get("url", ""),
-                                    source=lr.get("source", ""),
-                                ))
-                            sections = db.get_all_sections(pid)
-                            if sections:
-                                draft_parts = []
-                                for sk, content in sections.items():
+                            _outline = db.get_outline(pid)
+                            if _outline:
+                                ctx.outline = {"sections": _normalize_outline_for_save(_outline)}
+                            for lr in db.list_literature(pid):
+                                ctx.add_paper(_paper_card_from_row(lr))
+                            _sections = db.get_all_sections(pid)
+                            if _sections:
+                                _draft_parts = []
+                                for sk, content in _sections.items():
                                     ctx.section_contents[sk] = content
-                                    draft_parts.append(content)
-                                if draft_parts:
-                                    ctx.draft = "\n\n".join(draft_parts)
+                                    _draft_parts.append(content)
+                                if _draft_parts:
+                                    ctx.draft = "\n\n".join(_draft_parts)
                         except Exception as e:
                             logging.warning(f"Failed to restore context for continue_from: {e}")
 
-                    # ── make_agent callback ──
-                    async def _make_stage_agent(stage, ctx):
-                        cfg = agent_cfg.get(stage.name, {})
-                        agent_llm = await _make_llm(cfg.get("provider"), cfg.get("model"))
-                        return stage.agent_cls(ctx, agent_llm)
-
-                    # ── is_disconnected callback ──
+                    # 统一编排核心（与 scholarforge_run_pipeline 工具共用，单一真相源）
+                    # 保留 request 闭包做客户端断开检测（P1 回归：绑定到 Request，
+                    # 否则 pipeline 的 fail-open 会吞掉 NameError，断开检测永久失效）
                     async def _check_disconnect():
                         return await request.is_disconnected()
 
-                    # ── 执行 pipeline ──
-                    _config = PipelineConfig(
+                    async for _evt in _run_pipeline_core(
+                        ctx, pid, req.message,
                         checkpoint=use_checkpoint,
                         continue_from=req.continue_from,
-                    )
-                    _extra_kwargs = {}
-                    if req.section:
-                        _extra_kwargs["section"] = req.section
-                    if req.depth:
-                        _extra_kwargs["depth"] = req.depth
-
-                    async for _evt in _pipeline.run(
-                        ctx, _config, _make_stage_agent,
-                        user_input=req.message,
-                        extra_kwargs=_extra_kwargs,
+                        section=req.section or "",
+                        depth=req.depth or 0,
                         is_disconnected=_check_disconnect,
-                        stage_labels=_STAGE_LABELS,
                     ):
                         yield await _sse_rl(_evt, client_id)
-
-                    # Pipeline 完成后自动尝试替换伪引用为真实文献
-                    citations_replaced = False
-                    if ctx.draft and ctx.topic:
-                        yield await _sse_rl({"type": "thinking", "message": "🔍 检索真实文献替换伪引用..."}, client_id)
-                        try:
-                            from vermes_cli.scholarforge.citation_provider import replace_pseudo_citations
-                            new_draft, real_citations = await replace_pseudo_citations(
-                                ctx.draft, ctx.topic,
-                                keywords=ctx.papers[:5] if ctx.papers else [],
-                                paper_type=ctx.paper_type)
-                            if real_citations:
-                                ctx.draft = new_draft
-                                citations_replaced = True
-                                yield await _sse_rl({"type": "citation",
-                                             "message": f"已替换为 {len(real_citations)} 篇真实文献",
-                                             "count": len(real_citations)}, client_id)
-                        except Exception as e:
-                            logger.warning(f"Real citation replacement failed: {e}")
-
-                    yield await _sse_rl({"type": "done", "pipeline": "complete",
-                                 "papers": len(ctx.papers),
-                                 "citations_replaced": citations_replaced}, client_id)
                 else:
                     from vermes_cli.scholarforge.agents import AGENTS
                     agent_cls = AGENTS.get(req.agent)
@@ -1200,10 +1314,10 @@ def register_to(app, host_api=None):
                         kwargs["section"] = req.section
                     if req.depth and agent_name == "literature":
                         kwargs["depth"] = req.depth
-                    # 保存用户消息到DB
+                    # 保存用户消息到DB（#383: add_message(pid, agent, role, content)）
                     if pid > 0:
                         try:
-                            db.add_message(pid, "user", req.message, agent_name)
+                            db.add_message(pid, agent_name, "user", req.message)
                         except Exception as e:
                             logger.debug(f"Failed to save user message to DB: {e}")
                     _agent_content_parts = []
@@ -1224,10 +1338,10 @@ def register_to(app, host_api=None):
                                         )
                             except Exception as e:
                                 logger.warning(f"Failed to save outline to DB: {e}")
-                    # 保存Agent回复消息到DB
+                    # 保存Agent回复消息到DB（#383: add_message(pid, agent, role, content)）
                     if pid > 0 and _agent_content_parts:
                         try:
-                            db.add_message(pid, "assistant", "".join(_agent_content_parts), agent_name)
+                            db.add_message(pid, agent_name, "assistant", "".join(_agent_content_parts))
                         except Exception as e:
                             logger.debug(f"Failed to save agent reply to DB: {e}")
 

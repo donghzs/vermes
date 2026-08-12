@@ -40,6 +40,7 @@ from agent.prompt_builder import (
     MEMORY_GUIDANCE,
     OPENAI_MODEL_EXECUTION_GUIDANCE,
     PLATFORM_HINTS,
+    SCHOLARFORGE_WORKFLOW_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
     SKILLS_GUIDANCE,
     TASK_COMPLETION_GUIDANCE,
@@ -63,6 +64,7 @@ _PROCESSOR_FALLBACK = {
     "skills_guidance": SKILLS_GUIDANCE,
     "image_generate": IMAGE_GENERATE_GUIDANCE,
     "academic_search": ACADEMIC_SEARCH_GUIDANCE,
+    "scholarforge_workflow": SCHOLARFORGE_WORKFLOW_GUIDANCE,
     "kanban": KANBAN_GUIDANCE,
     "computer_use": None,  # imported lazily below
     "tool_use_enforcement": TOOL_USE_ENFORCEMENT_GUIDANCE,
@@ -261,6 +263,19 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         tool_guidance.append(_proc_or_default("kanban"))
     if tool_guidance:
         stable_parts.append(" ".join(tool_guidance))
+
+    # ScholarForge paper suite — own block (multi-paragraph, like computer_use
+    # below). Function-calling schemas alone give the model ~27 loose
+    # scholarforge_* tools with no call order and no project-context rule, so it
+    # falls back to web_search + write_file for paper work and silently bypasses
+    # multi-source retrieval, citation verification and the quality gate.
+    if agent.valid_tool_names and (
+        "scholarforge_write" in agent.valid_tool_names
+        or "scholarforge_search" in agent.valid_tool_names
+    ):
+        _sf_guidance = _proc_or_default("scholarforge_workflow")
+        if _sf_guidance:
+            stable_parts.append(_sf_guidance)
 
     # Computer-use (macOS) — goes in as its own block rather than being
     # merged into tool_guidance because the content is multi-paragraph.

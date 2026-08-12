@@ -284,9 +284,23 @@ class TestUsageTracking:
         assert asyncio.run(wrapped({})) == "✅ still fine"
 
     def test_all_22_tools_wrapped(self):
-        """register_tools 中 22 个工具全部经过 _with_usage 包装。"""
+        """register_tools 中全部 ScholarForge 工具都经过 _with_usage 包装。
+
+        用真实注册调用数断言（不是数源码字符串出现次数——后者会把函数定义
+        本身的 `_with_usage` 也计入，且无法证明每个 handler 真被包了）。
+        """
         import inspect
         import vermes_cli.scholarforge.tools as tools_mod
 
         src = inspect.getsource(tools_mod.register_tools)
-        assert src.count("_with_usage(") == 26
+        # `registry.register(name=..., handler=_with_usage(...))` 每工具一次调用
+        register_calls = src.count("registry.register(")
+        with_usage_calls = src.count("_with_usage(")
+        # 每个 register 的 handler 都应是 _with_usage(...) 包裹的
+        assert with_usage_calls == register_calls, (
+            f"每个工具都须经 _with_usage 包装：register={register_calls}, with_usage={with_usage_calls}"
+        )
+        # 当前 ScholarForge 工具总数（26 既有 + run_pipeline 元工具）
+        assert register_calls == 27, (
+            f"ScholarForge 工具数应为 27（新增 scholarforge_run_pipeline），实际 {register_calls}"
+        )

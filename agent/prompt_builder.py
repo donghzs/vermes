@@ -308,13 +308,59 @@ IMAGE_GENERATE_GUIDANCE = (
 
 ACADEMIC_SEARCH_GUIDANCE = (
     "# Academic & research search\n"
-    "When the user asks for literature review, academic sources, or research papers, \n"
-    "use web_search with queries augmented with academic keywords: 'paper', 'arXiv', \n"
-    "'research', 'survey', 'journal', 'conference'. For best results: \n"
+    "If scholarforge_search is in your toolset, it is the primary path for papers and\n"
+    "literature reviews — it queries academic indexes directly (arXiv, Crossref,\n"
+    "OpenAlex, DOAJ, Semantic Scholar, PubMed, CORE, plus any local library or\n"
+    "configured paid source) and returns structured records with DOI/venue/year that\n"
+    "can be verified and cited. Use web_search only as a fallback for grey literature,\n"
+    "news, blogs, or pages that are not indexed academically.\n"
+    "When scholarforge_search is NOT available, use web_search with academic keywords\n"
+    "('paper', 'arXiv', 'survey', 'journal', 'conference'). For best results:\n"
     "1. Search with author + keyword + venue (e.g. 'attention mechanism Vaswani NeurIPS')\n"
-    "2. For recent work, add year or '2024'/'2025' to the query\n"
-    "3. Cross-reference by searching the title on Google Scholar or arXiv directly\n"
-    "4. When RAG knowledge base has relevant documents, search those first before web\n"
+    "2. For recent work, add the year to the query\n"
+    "3. Cross-reference by searching the title on arXiv or the publisher site directly\n"
+    "4. When a RAG knowledge base has relevant documents, search those first\n"
+    "Never present a search snippet as a verified citation — a citation needs a real\n"
+    "resolvable record (DOI or canonical URL), not a plausible-looking title.\n"
+)
+
+# Injected when the ScholarForge paper suite is loaded. Without this, the model
+# sees ~27 loose scholarforge_* schemas with no call order and falls back to
+# web_search + write_file for paper work, bypassing multi-source retrieval,
+# citation verification, the quality gate and the project DB.
+SCHOLARFORGE_WORKFLOW_GUIDANCE = (
+    "# ScholarForge — academic paper toolchain\n"
+    "You have the ScholarForge suite loaded (tools prefixed `scholarforge_`). For any\n"
+    "paper writing, literature review, plagiarism/AI-style check, citation\n"
+    "verification or submission check, use these tools — do NOT use web_search to\n"
+    "find literature and do NOT use write_file to write paper body text.\n"
+    "\n"
+    "Rule 1 — project context before any body text: write-back tools need a\n"
+    "project_id (explicit arg > active project). Start with\n"
+    "`scholarforge_list_projects`, then `scholarforge_set_active_project`. There is\n"
+    "NO create-project tool: if no project exists, tell the user to create one in the\n"
+    "ScholarForge panel. Never invent a project_id — unassociated writes are not\n"
+    "persisted and the tool returns an explicit failure.\n"
+    "\n"
+    "Rule 2 — citations must be real: `[n]` markers produced during writing are\n"
+    "placeholders, not references. Before delivery run\n"
+    "`scholarforge_replace_citations` then `scholarforge_verify_citations`.\n"
+    "\n"
+    "Call order — one shot: `scholarforge_run_pipeline` runs topic → literature →\n"
+    "outline → writing → refinement → review and persists results. Step by step:\n"
+    "research_map → search → save_literature_cards → literature_matrix → outline\n"
+    "(optionally apply_template) → write (per section_key; read_section first for\n"
+    "cross-section continuity; learn_style if the user supplied a sample) →\n"
+    "replace_citations → verify_citations → format_refs → check_stats /\n"
+    "quality_gate / review_claims / plagiarism_check / deaigc / review / score →\n"
+    "export.\n"
+    "\n"
+    "Check after writing: `scholarforge_write` already runs local gates (style\n"
+    "naturalization, similarity, design flaws) on every write-back, but citation\n"
+    "authenticity and statistical consistency are NOT part of it — call\n"
+    "`scholarforge_verify_citations` and `scholarforge_check_stats` yourself after\n"
+    "each section or batch. A tool result starting with ❌ or 🚫 means nothing was\n"
+    "saved or the gate blocked it: report it honestly instead of claiming success.\n"
 )
 
 TASK_COMPLETION_GUIDANCE = (

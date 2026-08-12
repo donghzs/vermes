@@ -1,4 +1,4 @@
-content: "# Academic & research search\nWhen the user asks for literature review, academic sources, or research papers, \nuse web_search with queries augmented with academic keywords: 'paper', 'arXiv', \n'research', 'survey', 'journal', 'conference'. For best results: \n1. Search with author + keyword + venue (e.g. 'attention mechanism Vaswani NeurIPS')\n2. For recent work, add year or '2024'/'2025' to the query\n3. Cross-reference by searching the title on Google Scholar or arXiv directly\n4. When RAG knowledge base has relevant documents, search those first before web\n"
+content: "# Academic & research search\nIf scholarforge_search is in your toolset, it is the primary path for papers and\nliterature reviews — it queries academic indexes directly (arXiv, Crossref,\nOpenAlex, DOAJ, Semantic Scholar, PubMed, CORE, plus any local library or\nconfigured paid source) and returns structured records with DOI/venue/year that\ncan be verified and cited. Use web_search only as a fallback for grey literature,\nnews, blogs, or pages that are not indexed academically.\nWhen scholarforge_search is NOT available, use web_search with academic keywords\n('paper', 'arXiv', 'survey', 'journal', 'conference'). For best results:\n1. Search with author + keyword + venue (e.g. 'attention mechanism Vaswani NeurIPS')\n2. For recent work, add the year to the query\n3. Cross-reference by searching the title on arXiv or the publisher site directly\n4. When a RAG knowledge base has relevant documents, search those first\nNever present a search snippet as a verified citation — a citation needs a real\nresolvable record (DOI or canonical URL), not a plausible-looking title.\n"
 description: 学术搜索引导
 name: academic_search
 order: 80
@@ -8,7 +8,7 @@ triggers:
   tools:
   - web_search
   type: tool_present
-version: 1.0.0
+version: 1.1.0
 governance:
   risk_tier: L1
   replaceable: true

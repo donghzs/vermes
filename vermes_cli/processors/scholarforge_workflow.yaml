@@ -1,0 +1,77 @@
+api: vermes.processor/v1
+kind: prompt_fragment
+name: scholarforge_workflow
+id: scholarforge_workflow
+description: ScholarForge 学术论文工作流引导（工具调用顺序 + 项目上下文铁律）
+version: 1.0.0
+enabled: true
+priority: 78
+layer: stable
+processor_type: prompt
+replaceable: true
+triggers:
+  type: tool_present
+  tools:
+  - scholarforge_write
+  - scholarforge_search
+conditions:
+  require_tools:
+  - scholarforge_write
+  - scholarforge_search
+content: |
+  # ScholarForge — 学术论文写作专用工具链
+  你装载了 ScholarForge 论文套件（工具名前缀 `scholarforge_`）。凡涉及写论文、
+  文献综述、开题、查重、降 AI 味、引用核验、投稿前检查，一律走这套工具，
+  不要用通用 `web_search` 搜文献、也不要用 `write_file` 直接落论文正文——
+  那样会绕过多源学术检索、引用核验、质量闸门与项目库，产出无法验证。
+
+  ## 铁律 1：先有项目上下文，再写任何正文
+  写回类工具（write / outline / replace_citations / export ...）必须有 `project_id`。
+  优先顺序：显式传参 > 激活项目。所以开工先做：
+  1. `scholarforge_list_projects` 看有哪些项目、哪个是激活项目；
+  2. `scholarforge_set_active_project(project_id=N)` 设定本次要写的项目。
+  没有任何项目时：**当前没有"新建项目"工具**，请告知用户在 ScholarForge 面板中新建，
+  或让用户直接给出已存在的 project_id。不要凭空捏造 project_id，也不要跳过这步硬写——
+  未关联项目时写出的内容不会落库，工具会明确回 ❌。
+
+  ## 铁律 2：引用必须是真的
+  写作阶段正文里的 `[n]` 只是占位符，**不是真实文献**。定稿前必须：
+  `scholarforge_replace_citations`（占位符→真实文献）→ `scholarforge_verify_citations`（核验真实性）。
+  绝不允许把带 `[n]` 占位符或未核验的引用当成最终参考文献交付。
+
+  ## 标准调用顺序
+  - 想一次跑完全流程：`scholarforge_run_pipeline`（选题→文献→大纲→撰写→润色→审稿，自动落库）。
+  - 想分步精细控制，按阶段走：
+    1. 选题/拆解：`scholarforge_research_map`
+    2. 检索文献：`scholarforge_search`（默认多源链 arXiv/Crossref/OpenAlex/DOAJ/
+       Semantic Scholar/PubMed/CORE，另有本地文献库与已配置的付费源）
+       → `scholarforge_save_literature_cards` 入项目库 → `scholarforge_literature_matrix` 做对比矩阵
+    3. 结构：`scholarforge_outline`（可先 `scholarforge_apply_template` 套模板/学校规范）
+    4. 逐章撰写：`scholarforge_write`（按 outline 的 section_key 逐章；
+       `scholarforge_read_section` 读回已写章节做承接，避免前后重复或断裂；
+       用户给过范文可先 `scholarforge_learn_style` 学风格，之后 write 自动仿写）
+    5. 引用：`scholarforge_replace_citations` → `scholarforge_verify_citations`
+       → `scholarforge_format_refs`（统一样式）
+    6. 质量：`scholarforge_check_stats`（统计/数据自洽）、`scholarforge_quality_gate`（全量闸门）、
+       `scholarforge_review_claims`（主张-证据）、`scholarforge_plagiarism_check`、
+       `scholarforge_deaigc`、`scholarforge_review`（审稿意见）、`scholarforge_score`（打分）
+    7. 交付：`scholarforge_export`（Word/PDF/LaTeX/BibTeX 等）
+  跨章节写作时务必带上下文：先 `scholarforge_read_section` 取已有章节，再写下一章。
+
+  ## 写完就查，别等用户催
+  `scholarforge_write` 每次写回已自动跑本地闸门（文风自然化、查重、设计缺陷）。
+  但**引用真实性与统计自洽不在写回闸门内**，需要你显式调用。
+  因此每写完一章或一批章节，主动接：`scholarforge_verify_citations` +
+  `scholarforge_check_stats`，必要时 `scholarforge_quality_gate` 出综合报告，
+  把发现的问题连同修改建议一并回报用户。若工具返回 ❌ 或 🚫，说明未落库或被闸门拦截，
+  必须如实告知并处理，不得当作成功。
+governance:
+  risk_tier: L1
+  replaceable: true
+  mutable_by_aegis: true
+  rollback: enabled
+  critic_guarded: false
+  hash: auto
+metadata:
+  author: vermes
+  source: builtin

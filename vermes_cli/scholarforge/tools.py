@@ -603,13 +603,30 @@ async def _handle_scholarforge_search(args: dict, **kw: Any) -> str:
         return f"❌ 文献搜索失败: {str(e)[:200]}"
 
 
+def _resolve_section_key(args: dict) -> str:
+    """章节落库键的唯一推导口径。
+
+    section_key 优先（对应 outline 中的 id），缺省回落 section_type，
+    再缺省回落 "introduction"（与 schema 默认值一致）。
+
+    单独抽出是为了让写回 handler 与 Outcome Verifier 用同一份口径：
+    此前 verifier 自己解析 args，handler 改了默认值就会漂移，
+    导致「写到 A 键、去 B 键回读」的假失败或假跳过。
+    """
+    return (
+        args.get("section_key", "")
+        or args.get("section_type", "")
+        or "introduction"
+    )
+
+
 async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
     """撰写论文内容"""
     topic = args.get("topic", "")
     section_type = args.get("section_type", "introduction")
     # section_key 优先：如果用户传了 section_key（对应 outline 中的 id），用它作为保存键
     # 这样 write 保存的 key 与 outline 一致，read/export 能正确读取
-    section_key = args.get("section_key", "") or section_type
+    section_key = _resolve_section_key(args)
     context = args.get("context", "")
     paper_type = args.get("paper_type", "本科论文")
     # 解析 project_id：显式参数优先，否则回退到激活项目
@@ -757,6 +774,27 @@ async def _handle_scholarforge_write(args: dict, **kw: Any) -> str:
         if gate_report:
             return f"{warn}\n\n{content}\n\n---\n\n{gate_report}"
         return f"{warn}\n\n{content}"
+
+    # ── A-P4：写后下一步引导 ────────────────────────────
+    # 写回闸门（run_quality_gate）只跑本地确定性检查：文风自然化、simhash 查重、
+    # 设计缺陷。引用真实性与统计自洽**不在其中**（前者要联网核验、后者需统计上下文），
+    # 硬接进写回热路径会让每次写章节都产生网络开销与不可预期延迟。
+    # 因此这里只追加一条确定性的下一步提示，由 Agent 决定何时显式调用——
+    # 契合「框架给积木不给定式」：能力可见，是否执行交给调用方。
+    # 注意：本提示只加在返回串上，落库发生在此之前（save_section），DB 内容不受污染。
+    if project_id and content and not content.startswith("❌"):
+        next_steps = (
+            "🧭 下一步（本章已写回项目 #%s，写回闸门已跑本地检查：文风/查重/设计缺陷）：\n"
+            "- 引用真实性未核验 → 若正文含 [n] 占位符，先 scholarforge_replace_citations，"
+            "再 scholarforge_verify_citations\n"
+            "- 统计与数据自洽未检查 → scholarforge_check_stats\n"
+            "- 需要综合质量报告 → scholarforge_quality_gate\n"
+            "- 继续下一章前 → scholarforge_read_section 读回已写章节，保持上下文承接\n"
+            "（以上为工具使用提示，不属于论文正文，请勿写入论文）"
+        ) % project_id
+        if gate_report:
+            return f"{content}\n\n---\n\n{gate_report}\n\n---\n\n{next_steps}"
+        return f"{content}\n\n---\n\n{next_steps}"
 
     if gate_report:
         return f"{content}\n\n---\n\n{gate_report}"
@@ -3107,6 +3145,159 @@ async def _handle_scholarforge_quality_gate(args: dict, **kw: Any) -> str:
         return f"❌ 质量检查失败: {str(e)[:200]}"
 
 
+SCHOLARFORGE_RUN_PIPELINE_SCHEMA = {
+    "name": "scholarforge_run_pipeline",
+    "description": (
+        "一键运行 ScholarForge 全链路写作流水线（STORM 六阶段：选题分析→文献综述→论文大纲→"
+        "章节撰写→润色检查→审稿）。适合「用户已给定选题/方向，希望 Agent 自动把整篇论文跑出来」的场景。"
+        "管线会在每阶段结束自动落库（大纲写 outlines 表、正文写 section_contents 表），完成后自动把伪引用 [n]"
+        "替换为真实文献。与单步工具(scholarforge_write/outline/...)不同，这是一个『端到端把论文写完』的元工具。"
+        "可选参数：section 指定只写某节、depth 控制文献检索深度、checkpoint 启用断点续跑。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_id": {
+                "type": "integer",
+                "description": "论文项目 ID。留空则使用激活项目；若都无则自动新建一个项目。",
+            },
+            "message": {
+                "type": "string",
+                "description": "选题/写作指令，如『写一篇关于大语言模型幻觉检测的综述论文』。",
+            },
+            "section": {
+                "type": "string",
+                "description": "可选：指定只撰写某一节（section_key，如 intro/method）。留空则按大纲写完全部章节。",
+            },
+            "depth": {
+                "type": "integer",
+                "description": "可选：文献检索深度（1-3）。越大检索越广。默认 1。",
+            },
+            "checkpoint": {
+                "type": "boolean",
+                "description": "可选：是否启用断点续跑。默认 false。",
+            },
+            "continue_from": {
+                "type": "string",
+                "description": "可选：从指定阶段恢复（topic/literature/outline/writing/refinement/reviewer）。默认从头跑。",
+            },
+        },
+        "required": ["message"],
+    },
+}
+
+
+async def _handle_scholarforge_run_pipeline(args: dict, **kw: Any) -> str:
+    """A-P5: 端到端论文写作流水线元工具。
+
+    复用 blueprint._run_pipeline_core 这一「单一真相源」编排（与前端 SSE 路径
+    同一套 Stage 组装 / 落库 hook / 伪引用替换），只把 SSE 事件聚合为结构化结果返回。
+    工具路径不依赖 FastAPI Request，故用 _call_llm 作为 LLM 调用（与 agent 的
+    `await self.llm(prompt)` 完全兼容）。
+
+    Agent 不知道 ScholarForge 存在（审计核心根因）的根治手段之一：把这个元工具注册进
+    tools.registry，Agent 在对话里即可「一句话把整篇论文跑出来」。
+    """
+    from . import database as db
+    from vermes_cli.scholarforge.blueprint import _run_pipeline_core
+    from vermes_cli.scholarforge.agents import ProjectContext
+
+    message = (args.get("message") or "").strip()
+    if not message:
+        return "❌ 缺少必填参数 message（选题/写作指令）。"
+
+    project_id = resolve_project_id(args)
+    if not project_id:
+        # 兜底：自动新建项目，记录选题
+        try:
+            project_id = db.create_project(message, "综述论文", 8000)
+        except Exception as e:
+            return f"❌ 无法创建论文项目: {type(e).__name__}: {str(e)[:200]}"
+
+    # 从 DB 恢复项目上下文（topic/outline/papers/draft），让管线接在已有进度上
+    ctx = ProjectContext(project_id=project_id)
+    try:
+        proj = db.get_project(project_id)
+        if proj:
+            if proj.get("title"):
+                ctx.topic = proj["title"]
+            if proj.get("paper_type"):
+                ctx.paper_type = proj["paper_type"]
+            ctx.target_words = int(proj.get("target_words", 8000))
+            outline_rows = proj.get("outline", [])
+            if outline_rows:
+                ctx.outline = {"sections": outline_rows}
+            for lit in proj.get("literatures", []):
+                # 复用 blueprint 的 dict→PaperCard 转换（字段契约一致）
+                from vermes_cli.scholarforge.blueprint import _paper_card_from_row
+                ctx.add_paper(_paper_card_from_row(lit))
+            contents = proj.get("contents", {})
+            full_paper = contents.get("full_paper", "")
+            if full_paper:
+                ctx.draft = full_paper
+    except Exception as e:
+        logger.warning(f"run_pipeline: context restore failed (pid={project_id}): {e}")
+
+    section = args.get("section") or ""
+    try:
+        depth = int(args.get("depth") or 1)
+    except (TypeError, ValueError):
+        depth = 1
+    checkpoint = bool(args.get("checkpoint"))
+    continue_from = args.get("continue_from") or None
+
+    collected: dict[str, list] = {}
+    last_stage = None
+    citations_replaced = False
+    error_msg = None
+    async for evt in _run_pipeline_core(
+        ctx, project_id, message,
+        checkpoint=checkpoint,
+        continue_from=continue_from,
+        section=section,
+        depth=depth,
+    ):
+        etype = evt.get("type")
+        if etype == "stage":
+            last_stage = evt.get("stage") or evt.get("name")
+        elif etype == "content":
+            txt = evt.get("text", "")
+            if txt:
+                collected.setdefault(last_stage or "content", []).append(txt)
+        elif etype == "outline":
+            collected.setdefault("outline", []).append(evt.get("sections", []))
+        elif etype == "citation":
+            citations_replaced = True
+        elif etype == "error":
+            error_msg = evt.get("message", "pipeline error")
+
+    if error_msg:
+        return f"❌ 流水线执行出错: {error_msg}"
+
+    # 聚合结果摘要
+    outline = ctx.outline.get("sections", []) if isinstance(ctx.outline, dict) else []
+    outline_titles = outline if outline and isinstance(outline[0], str) else \
+        [s.get("title", "") for s in outline if isinstance(s, dict)]
+    draft = ctx.draft or ""
+    preview = draft[:1500] + ("\n…（已截断，完整正文见 section_contents/full_paper）" if len(draft) > 1500 else "")
+
+    lines = [
+        f"## ✅ ScholarForge 流水线完成（项目 #{project_id}）",
+        f"- 阶段顺序：选题→文献→大纲→写作→润色→审稿",
+        f"- 文献数：{len(ctx.papers)} 篇",
+        f"- 伪引用替换：{'已替换' if citations_replaced else '无需替换'}",
+    ]
+    if outline_titles:
+        lines.append(f"- 大纲（{len(outline_titles)} 章）：" + " / ".join(outline_titles))
+    lines.append(f"- 正文长度：{len(draft)} 字")
+    lines.append("")
+    lines.append("### 📄 正文预览")
+    lines.append(preview or "（未生成正文）")
+    lines.append("")
+    lines.append("> 完整正文与大纲已落库（outlines / section_contents 表），可用 scholarforge_read_section 读取。")
+    return "\n".join(lines)
+
+
 # ── LLM token 用量累加器（G4a：闭环 ScholarForge token 黑洞）──
 # _call_llm 内部把每次 LLM 调用的 usage 累加进当前工具调用上下文；
 # _with_usage 在 finally 汇总归一化后落库。用 ContextVar 隔离并发工具调用，
@@ -3381,7 +3572,13 @@ async def _handle_scholarforge_list_projects(args: dict, **kw: Any) -> str:
     active = get_active_project()
     projects = list_projects()
     if not projects:
-        return "📭 当前没有任何论文项目。请先在面板新建，或调用对应创建工具。"
+        # 注意：ScholarForge 未提供「新建项目」工具，建项目只能走前端面板。
+        # 原文案「或调用对应创建工具」会诱导 Agent 去找不存在的工具并空转。
+        return (
+            "📭 当前没有任何论文项目。ScholarForge 没有「新建项目」工具，"
+            "请让用户在 ScholarForge 面板中新建项目后再继续；"
+            "或让用户直接提供已存在的 project_id。请勿臆造 project_id。"
+        )
 
     lines = ["## 📚 论文项目列表", ""]
     for p in projects:
@@ -3487,12 +3684,28 @@ def register_tools(host_api=None):
 
         R1: 不信任 is_error —— handler 返回 ❌ 字符串而非抛错。
         R3: 走外证回读（SELECT），不自证工具返回串。
+
+        A-P2 盲区修复：原实现只认 function_args 里显式传的 project_id/section_key，
+        而 Agent 对话路径的正常姿势是「先 set_active_project，后续 write 不带 pid」，
+        于是最需要验证的那条路径反而恒 skip（fail-open 静默放过）。这里改为按 handler
+        同样的口径解析（resolve_project_id 显式>激活；section_key 缺省回落 section_type），
+        使激活项目路径也能被外证回读覆盖。
         """
         try:
             from vermes_cli.scholarforge.database import get_conn, init_db
+            from vermes_cli.scholarforge.active_project import get_active_project
             init_db()
-            project_id = function_args.get("project_id")
-            section_key = function_args.get("section_key")
+            # A-P2 盲区修复：显式带 pid 或存在激活项目时，按 resolve_project_id 解析到的
+            # 项目外证回读（显式>激活，覆盖「set_active_project 后不带 pid」那条最需要验证的路径）。
+            # 但若既无显式 pid 也无激活项目（Agent 未指定任何项目上下文），则跳过验证——
+            # 否则 resolve_project_id 会回落到「默认兜底项目」，对 Agent 从没指向的项目误判
+            # （写 A 键、查默认 B 键的假成功/假失败），且破坏「无 pid 即 skip」的 fail-open 契约。
+            explicit_pid = function_args.get("project_id")
+            if not explicit_pid and not get_active_project():
+                return (True, "no project_id and no active project — skip verification")
+            project_id = resolve_project_id(function_args)
+            # 与 handler 同源推导，避免默认值漂移导致「写 A 键、查 B 键」
+            section_key = _resolve_section_key(function_args)
             if not project_id or not section_key:
                 return (True, "no project_id/section_key — skip verification")
             with get_conn() as conn:
@@ -3758,6 +3971,15 @@ def register_tools(host_api=None):
         emoji="🎯",
         description="设置当前激活论文项目（写回类工具默认作用对象）",
     )
+    registry.register(
+        name="scholarforge_run_pipeline",
+        toolset="scholarforge",
+        schema=SCHOLARFORGE_RUN_PIPELINE_SCHEMA,
+        handler=_with_usage("scholarforge_run_pipeline", _handle_scholarforge_run_pipeline),
+        is_async=True,
+        emoji="🚀",
+        description="端到端论文写作流水线元工具（选题→文献→大纲→写作→润色→审稿，自动落库+替换伪引用）",
+    )
 
     # ── read_section ──
     registry.register(
@@ -3786,4 +4008,4 @@ def register_tools(host_api=None):
         emoji="📖",
         description="读取论文章节内容（单章或全部概览）",
     )
-    logger.info("[ScholarForge] 26 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section")
+    logger.info("[ScholarForge] 27 Agent tools registered: search/write/review/replace_citations/learn_style/outline/polish/plagiarism_check/deaigc/score/export/format_refs/verify_citations/check_stats/detect_design_flaws/review_claims/research_map/save_literature_cards/literature_matrix/manage_snapshots/apply_template/quality_gate/citation_graph/list_projects/set_active_project/read_section/run_pipeline")

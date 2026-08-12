@@ -171,17 +171,39 @@ TOOLSETS = {
     },
     
     "scholarforge": {
-        "description": "Academic paper writing tools: outline, literature search, AI writing, polish, review, citation replacement, plagiarism check, de-AIGC, scoring, export, style learning, citation verification, statistics check, design flaw detection",
+        "description": (
+            "Academic paper writing suite (ScholarForge). Full workflow: project "
+            "context (list/set active project) → literature search & cards → "
+            "outline → section writing → citation replacement & verification → "
+            "quality gate (plagiarism, de-AIGC, stats, design flaws) → scoring → "
+            "export. Also: research map, literature matrix, citation graph, "
+            "style learning, templates, snapshots, one-shot STORM pipeline."
+        ),
+        # Must stay in sync with scholarforge/tools.py register_tools().
+        # Ordered by workflow phase so the model can infer the call sequence.
         "tools": [
-            "scholarforge_search", "scholarforge_write",
-            "scholarforge_review", "scholarforge_replace_citations",
-            "scholarforge_learn_style",
-            "scholarforge_outline", "scholarforge_polish",
+            # ── Phase 0: project context (required before any write-back) ──
+            "scholarforge_list_projects", "scholarforge_set_active_project",
+            # ── Phase 1: research & literature ──
+            "scholarforge_research_map", "scholarforge_search",
+            "scholarforge_save_literature_cards", "scholarforge_literature_matrix",
+            # ── Phase 2: structure ──
+            "scholarforge_outline", "scholarforge_apply_template",
+            # ── Phase 3: writing ──
+            "scholarforge_write", "scholarforge_read_section",
+            "scholarforge_learn_style", "scholarforge_polish",
+            # ── Phase 4: citations ──
+            "scholarforge_replace_citations", "scholarforge_verify_citations",
+            "scholarforge_format_refs", "scholarforge_citation_graph",
+            # ── Phase 5: quality gates ──
+            "scholarforge_quality_gate", "scholarforge_check_stats",
+            "scholarforge_detect_design_flaws", "scholarforge_review_claims",
             "scholarforge_plagiarism_check", "scholarforge_deaigc",
-            "scholarforge_score", "scholarforge_export",
-            "scholarforge_format_refs",
-            "scholarforge_verify_citations", "scholarforge_check_stats",
-            "scholarforge_detect_design_flaws"
+            "scholarforge_review", "scholarforge_score",
+            # ── Phase 6: delivery & versioning ──
+            "scholarforge_export", "scholarforge_manage_snapshots",
+            # ── One-shot orchestration (runs phases 1-5 end to end) ──
+            "scholarforge_run_pipeline",
         ],
         "includes": []
     },
