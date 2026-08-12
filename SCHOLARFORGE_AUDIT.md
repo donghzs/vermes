@@ -581,6 +581,34 @@ else:
 
 ---
 
+## 11. 重构后链路审计（commit `599d93390`+`bcf80312a` 完成后）
+
+目的：保证抽公共管线 + 删重复副本这轮改动**不带入新 bug、系统自洽**。
+
+### 11.1 调用方映射（全仓 scholarforge 目录）
+- `tools.py:1170` `from ...citation_matcher import match_citations as _match` ✅
+- `citation_provider.py:265/317` 用 `match_citations` ✅
+- `blueprint.py:1171-1175` `replace_pseudo_citations(ctx.draft, ctx.topic, keywords=, paper_type=)` 签名与 `citation_provider` 定义一致，旗舰路径未断 ✅
+- `agents/__init__.py:481/505` 的 `self._score_relevance` 是独立 agent 方法（下划线前缀），非被删的 `tools.score_relevance`，无冲突 ✅
+- 全仓 `tools.score_relevance` / `tools.llm_rerank` 引用 = 零（含旧回归测试已改指 `citation_matcher`）✅
+
+### 11.2 测试分包跑（避环境 OOM，整包同跑会 exit 137）
+- 包1 `vermes_cli/scholarforge/tests`：253 passed / **1 failed**（`test_auto_default_via_registry_dispatch`，DB 外键约束，worktree 证伪在 `599d93390` 已失败 → 预存，非本轮引入）
+- 包2 `tests/scholarforge`：178 passed / **3 failed**，逐一定位：
+  - 🔴 **`test_local_literature_becomes_candidate` / `test_writeback_dedup`**：`monkeypatch.setattr(tools_mod, "llm_rerank", ...)` 打到**被删的 `tools.llm_rerank`** → AttributeError。**本轮收尾删除引入的真实回归**。修复：改打 `citation_matcher.llm_rerank`（让 mock 真正生效，且 `**kwargs` 兼容 `llm_call_fn=` 实参）。重跑 17 passed ✅
+  - ⚪ `test_read_section_no_project_id`：read_section 无 project_id 时自动解析 active project。worktree 证伪在 `e79d62f4e` 已失败 → **预存**，与引用匹配重构无关（active_project 行为）
+
+### 11.3 端到端链路冒烟（旗舰路径）
+`replace_pseudo_citations`（= blueprint.py 入口）→ `citation_matcher.match_citations`，mock fetch + 运行时 mock `citation_matcher.llm_rerank`，中文 draft → 英文池（1 强相关 + 3 无关）：
+- 正确选中英文文献 ✅ / 强塞无关文献 无 ✅ / 编号连续 1..N ✅ / 引用条数==正文占位 ✅
+- 结论：重构后生产链路自洽，无 NameError/ImportError。
+
+### 11.4 结论
+- 本轮重构**抓出并修复 2 个真实回归**（测试指针未随删除更新）；1 个预存失败与本轮无关。
+- ScholarForge 论文模块全部改动（P0 → 公共管线 → 收尾 → 文案）已 commit + push 至 `feature/vermes-brand-fork`，链路自洽确认。
+
+---
+
 ## 附录：复现脚本
 
 所有结论均可离线复现（不调 LLM、不联网）：

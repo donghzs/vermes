@@ -66,10 +66,12 @@ class TestReplaceCitationsLoop:
 
         monkeypatch.setattr(tools_mod, "_call_llm", fake_llm)
 
-        async def fake_rerank(cands, ctx, kw):
+        async def fake_rerank(cands, ctx, kw, **kwargs):
             return [(p, 0.9) for p in cands]
 
-        monkeypatch.setattr(tools_mod, "llm_rerank", fake_rerank)
+        # F-25 重构后匹配走 citation_matcher.match_citations，精排改打 citation_matcher.llm_rerank
+        from vermes_cli.scholarforge import citation_matcher as cm_mod
+        monkeypatch.setattr(cm_mod, "llm_rerank", fake_rerank)
 
         draft = "Retrieval Augmented Generation (RAG) improves knowledge intensive tasks [1]。"
         result = asyncio.run(
@@ -108,10 +110,12 @@ class TestReplaceCitationsLoop:
 
         monkeypatch.setattr(tools_mod, "_call_llm", fake_llm)
 
-        async def fake_rerank(cands, ctx, kw):
+        async def fake_rerank(cands, ctx, kw, **kwargs):
             return [(p, 0.95) for p in cands]
 
-        monkeypatch.setattr(tools_mod, "llm_rerank", fake_rerank)
+        # F-25 重构后匹配走 citation_matcher.match_citations，精排改打 citation_matcher.llm_rerank
+        from vermes_cli.scholarforge import citation_matcher as cm_mod
+        monkeypatch.setattr(cm_mod, "llm_rerank", fake_rerank)
 
         draft = "Transformer architecture with attention mechanism [1]。"
         result = asyncio.run(
