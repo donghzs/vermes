@@ -94,16 +94,43 @@ def _resolve_engine() -> tuple[str, Path]:
 
 
 def _resolve_api_key() -> str:
-    """Engine 的 _llm_client 读 DASHSCOPE_API_KEY（POC 借名塞 DeepSeek key）。
+    """统一从前端用户配置读取 LLM key —— 禁止各插件散读 os.environ。
 
-    优先 MFG_CAD_API_KEY（Vermes 侧专用），其次 DEEPSEEK_API_KEY / DASHSCOPE_API_KEY。
+    Vermes 设计铁律（agent/service_credentials.py）：所有外部 API 调用都应从
+    用户中央 API 配置读取，而非 ``os.environ.get("XXX_API_KEY")``。
+
+    解析优先级：
+      1. service_credentials.get_api_key("mfgcad") —— 用户在统一凭证层为
+         「制造 CAD」单独设的 key（前端单字段渲染，env 名 MFG_CAD_API_KEY）。
+         留空表示复用主 Agent 的 key。
+      2. 复用用户在前端为 Vermes 主 Agent 配的同一把 LLM key
+         （auth.resolve_api_key_provider_credentials(active_provider)）。
+         这样「一个 API 设置，处处可用」，符合用户预期。
+    两者皆空返回 ""，由调用方提示去前端配置。
     """
-    return (
-        os.environ.get("MFG_CAD_API_KEY")
-        or os.environ.get("DEEPSEEK_API_KEY")
-        or os.environ.get("DASHSCOPE_API_KEY")
-        or ""
-    )
+    # 1) mfgcad 专属覆盖（统一凭证层）
+    try:
+        from agent.service_credentials import get_api_key as _sc_get
+        k = _sc_get("mfgcad")
+        if k:
+            return k
+    except Exception:
+        pass
+    # 2) 复用主 Agent 的活跃 provider key（统一前端设置）
+    try:
+        from vermes_cli.auth import (
+            get_active_provider,
+            resolve_api_key_provider_credentials,
+        )
+        pid = get_active_provider()
+        if pid:
+            creds = resolve_api_key_provider_credentials(pid) or {}
+            ak = creds.get("api_key")
+            if ak:
+                return ak
+    except Exception:
+        pass
+    return ""
 
 
 def _parse_engine_json(stdout: str) -> Optional[dict]:
@@ -142,8 +169,9 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
         env["OPENAI_API_KEY"] = key
         env["OPENAI_API_BASE"] = "https://api.deepseek.com/v1"
     else:
-        return ("❌ 未配置 LLM API key。请在环境设置 MFG_CAD_API_KEY（或 DEEPSEEK_API_KEY）"
-                "为有效的 DeepSeek/OpenAI 兼容 key，引擎才能调用大模型。")
+        return ("❌ 未配置 LLM API key。请在 Vermes 前端「设置 → API」中为「制造 CAD」"
+                "填一个 DeepSeek/OpenAI 兼容 key，或直接使用已为主 Agent 配置的同一把 key"
+                "（mfgcad 会自动复用活跃 provider 的 key）；引擎需要 key 才能调用大模型。")
 
     cmd = [
         python_exe, str(engine_dir / "run_mac.py"),
@@ -234,6 +262,21 @@ def register_tools(host_api=None):
     accepted for signature parity with ScholarForge but unused — mfgcad is
     self-contained (its own LLM client + engine venv).
     """
+    # 接入统一凭证层：声明「制造 CAD」服务，使前端「设置 → API」能单字段渲染
+    # 其 key（env 名 MFG_CAD_API_KEY）。留空则 _resolve_api_key 复用主 Agent
+    # 的活跃 provider key —— 不散读 os.environ。
+    try:
+        from agent.service_credentials import register_service
+        register_service(
+            "mfgcad",
+            api_key_env_var="MFG_CAD_API_KEY",
+            label="制造 CAD (Multi-Agent-CAD)",
+            category="services",
+            description="自然语言生成 STEP 三维模型所需的 LLM key（DeepSeek/OpenAI 兼容）。留空则复用 Vermes 主 Agent 的 LLM key。",
+        )
+    except Exception:
+        pass  # 凭证层缺失不阻断工具注册
+
     registry.register(
         name="mfg_text_to_cad",
         toolset="mfgcad",

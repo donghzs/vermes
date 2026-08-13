@@ -52,23 +52,28 @@ python3 -m venv .venv && .venv/bin/pip install -r <MAC requirements>
 
 ---
 
-## 3. LLM key 配置
+## 3. LLM key 配置（统一前端 API 设置，不散读 env）
 
-MAC 的 `nodes._llm_client()` 读 `DASHSCOPE_API_KEY`（POC 借名塞 DeepSeek key，
-命名是历史遗留）。桥接时 `tools.py` 统一透传以下变量给子进程：
+mfgcad 严格走 Vermes 统一凭证层，**不**在任何插件里散读 `os.environ.get("XXX_API_KEY")`
+（设计铁律见 `agent/service_credentials.py`）。
 
-优先级：`MFG_CAD_API_KEY` > `DEEPSEEK_API_KEY` > `DASHSCOPE_API_KEY`。
+解析优先级（`tools.py::_resolve_api_key`）：
+1. `service_credentials.get_api_key("mfgcad")` —— 用户在统一凭证层为「制造 CAD」
+   单独设的 key。该服务已在 `register_tools` 中 `register_service("mfgcad",
+   api_key_env_var="MFG_CAD_API_KEY", ...)` 注册，**前端「设置 → API」会单字段
+   渲染**「制造 CAD (Multi-Agent-CAD) API Key」。留空即复用主 Agent 的 key。
+2. 复用用户在前端为 Vermes 主 Agent 配的同一把 LLM key ——
+   `auth.resolve_api_key_provider_credentials(auth.get_active_provider())`。
+   「一个 API 设置，处处可用」。
 
-```bash
-export MFG_CAD_API_KEY="<valid DeepSeek / OpenAI-compatible key>"
-```
+引擎边界的转译（适配器职责，非散读）：MAC 的 `nodes._llm_client()` 读
+`DASHSCOPE_API_KEY`（POC 借名塞 DeepSeek key，命名历史遗留），因此桥接时把上一步
+解析出的 key 透传给子进程为 `DASHSCOPE_API_KEY` / `DS_API_KEY` / `OPENAI_API_KEY`
+（并设 `OPENAI_API_BASE=https://api.deepseek.com/v1`）。改 `tools.py` 时**只改上游
+统一解析，不要在这里加第三个 `os.environ.get`**。
 
-> ⚠️ zshrc 里旧的 `DEEPSEEK_API_KEY` 已失效（401）。当前有效 key 在
-> `~/.vermes/.env`（`DEEPSEEK_API_KEY`）。确保启动 Vermes 的环境能读到它，
-> 或显式设 `MFG_CAD_API_KEY`。缺失 key 时工具直接返回 `❌ 未配置 ...`。
-
-config.py 中 `DS_BASE_URL="https://api.deepseek.com/v1"`，四阶段均用
-`deepseek-chat`。
+config.py 中 `DS_BASE_URL="https://api.deepseek.com/v1"`，四阶段均用 `deepseek-chat`。
+两处皆空时工具返回 `❌ 未配置 LLM API key`，提示去前端设置。
 
 ---
 
