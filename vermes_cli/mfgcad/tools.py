@@ -167,7 +167,23 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
         env["DASHSCOPE_API_KEY"] = key
         env["DS_API_KEY"] = key
         env["OPENAI_API_KEY"] = key
-        env["OPENAI_API_BASE"] = "https://api.deepseek.com/v1"
+        # 透传用户配置的 base_url（非硬编码 DeepSeek）
+        # 优先从活跃 provider 的 base_url 取，fallback 留 DeepSeek（MAC POC 默认）
+        base_url = "https://api.deepseek.com/v1"
+        try:
+            from vermes_cli.auth import (
+                get_active_provider,
+                resolve_api_key_provider_credentials,
+            )
+            pid = get_active_provider()
+            if pid:
+                creds = resolve_api_key_provider_credentials(pid) or {}
+                bu = creds.get("base_url") or ""
+                if bu:
+                    base_url = bu
+        except Exception:
+            pass
+        env["OPENAI_API_BASE"] = base_url
     else:
         return ("❌ 未配置 LLM API key。请在 Vermes 前端「设置 → API」中为「制造 CAD」"
                 "填一个 DeepSeek/OpenAI 兼容 key，或直接使用已为主 Agent 配置的同一把 key"

@@ -22,6 +22,7 @@ for src, dst in [
     ('vermes_cli/web_dist', 'vermes_cli/web_dist'),
     ('vermes_cli/blueprints', 'vermes_cli/blueprints'),
     ('vermes_cli/scholarforge', 'vermes_cli/scholarforge'),
+    ('vermes_cli/mfgcad', 'vermes_cli/mfgcad'),
     ('vermes_cli/processors', 'vermes_cli/processors'),
     ('locales', 'locales'),
     ('skills', 'skills'),
@@ -366,7 +367,7 @@ a = Analysis(
 _vec_keep = lambda d: 'vec0' in str(d).replace('\\', '/')
 a.datas = [d for d in a.datas if _vec_keep(d[0]) or not any(
     ex in str(d[0]).replace('\\', '/')
-    for ex in ['/test', '/tests', '/__pycache__', '/.git', '/.venv', '/node_modules']
+    for ex in ['/test', '/tests', '/__pycache__', '/.git', '/.venv', '/node_modules', '/pipeline_cache']
 )]
 a.binaries = [b for b in a.binaries if not any(
     ex in str(b[0]).replace('\\', '/')

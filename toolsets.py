@@ -15,10 +15,10 @@ Features:
 
 Usage:
     from toolsets import get_toolset, resolve_toolset, get_all_toolsets
-    
+
     # Get tools for a specific toolset
     tools = get_toolset("research")
-    
+
     # Resolve a toolset to get all tool names (including from composed toolsets)
     all_tools = resolve_toolset("full_stack")
 """
@@ -63,7 +63,7 @@ _vermes_CORE_TOOLS = [
     "send_message",
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
     "ha_list_entities", "ha_get_state", "ha_list_services", "ha_call_service",
-    # Kanban multi-agent coordination — only in schema when the agent is
+    # Kanban multi-agent coordination - only in schema when the agent is
     # spawned as a kanban worker (VERMES_KANBAN_TASK env set) or the current
     # profile explicitly enables the kanban toolset. Gated via check_fn in
     # tools/kanban_tools.py.
@@ -95,7 +95,7 @@ TOOLSETS = {
         "tools": ["web_search", "web_extract"],
         "includes": []  # No other toolsets included
     },
-    
+
     "search": {
         "description": "Web search only (no content extraction/scraping)",
         "tools": ["web_search"],
@@ -112,7 +112,7 @@ TOOLSETS = {
         "tools": ["x_search"],
         "includes": []
     },
-    
+
     "vision": {
         "description": "Image analysis and vision tools",
         "tools": ["vision_analyze"],
@@ -124,7 +124,7 @@ TOOLSETS = {
         "tools": ["video_analyze"],
         "includes": []
     },
-    
+
     "image_gen": {
         "description": "Creative generation tools (images)",
         "tools": ["image_generate"],
@@ -135,7 +135,7 @@ TOOLSETS = {
         "description": (
             "Video generation tools. Single ``video_generate`` tool covers "
             "text-to-video (prompt only) and image-to-video (prompt + "
-            "image_url) — the active backend auto-routes. Configure via "
+            "image_url) - the active backend auto-routes. Configure via "
             "``vermes tools`` → Video Generation."
         ),
         "tools": ["video_generate"],
@@ -144,7 +144,7 @@ TOOLSETS = {
 
     "computer_use": {
         "description": (
-            "Background macOS desktop control via cua-driver — screenshots, "
+            "Background macOS desktop control via cua-driver - screenshots, "
             "mouse, keyboard, scroll, drag. Does NOT steal the user's cursor "
             "or keyboard focus. Works with any tool-capable model."
         ),
@@ -157,19 +157,19 @@ TOOLSETS = {
         "tools": ["terminal", "process"],
         "includes": []
     },
-    
+
     "moa": {
         "description": "Advanced reasoning and problem-solving tools",
         "tools": ["mixture_of_agents"],
         "includes": []
     },
-    
+
     "skills": {
         "description": "Access, create, edit, and manage skill documents with specialized instructions and knowledge",
         "tools": ["skills_list", "skill_view", "skill_manage"],
         "includes": []
     },
-    
+
     "scholarforge": {
         "description": (
             "Academic paper writing suite (ScholarForge). Full workflow: project "
@@ -207,7 +207,24 @@ TOOLSETS = {
         ],
         "includes": []
     },
-    
+
+    "mfgcad": {
+        "description": (
+            "Manufacturing text-to-CAD (mfgcad). Natural-language requirement "
+            "→ STEP 3D model via Multi-Agent-CAD engine (4-agent pipeline: "
+            "spec planning → geometric architecture → build123d code generation "
+            "→ dual-engine QA). Output: STEP file path + volume + QA report. "
+            "Supports session-based stateful design, checkpoint for human review, "
+            "and workflow selection (original=deterministic, aider=flexible). "
+            "Use for: 'design a pen holder OD60mm wall3mm height100mm' or similar "
+            "manufacturing parts with explicit dimensions."
+        ),
+        "tools": [
+            "mfg_text_to_cad",
+        ],
+        "includes": []
+    },
+
     "browser": {
         "description": "Browser automation for web interaction (navigate, click, type, scroll, iframes, hold-click) with web search for finding URLs",
         "tools": [
@@ -219,38 +236,38 @@ TOOLSETS = {
         ],
         "includes": []
     },
-    
+
     "cronjob": {
         "description": "Cronjob management tool - create, list, update, pause, resume, remove, and trigger scheduled tasks",
         "tools": ["cronjob"],
         "includes": []
     },
-    
+
     "messaging": {
         "description": "Cross-platform messaging: send messages to Telegram, Discord, Slack, SMS, etc.",
         "tools": ["send_message"],
         "includes": []
     },
 
-    
+
     "file": {
         "description": "File manipulation tools: read, write, patch (with fuzzy matching), and search (content + files)",
         "tools": ["read_file", "write_file", "patch", "search_files"],
         "includes": []
     },
-    
+
     "tts": {
         "description": "Text-to-speech: convert text to audio with Edge TTS (free), ElevenLabs, OpenAI, or xAI",
         "tools": ["text_to_speech"],
         "includes": []
     },
-    
+
     "todo": {
         "description": "Task planning and tracking for multi-step work",
         "tools": ["todo"],
         "includes": []
     },
-    
+
     "memory": {
         "description": "Persistent memory across sessions (personal notes + user profile)",
         "tools": ["memory"],
@@ -262,32 +279,32 @@ TOOLSETS = {
         "tools": [],
         "includes": []
     },
-    
+
     "session_search": {
         "description": "Search and recall past conversations with summarization",
         "tools": ["session_search"],
         "includes": []
     },
-    
+
     "clarify": {
         "description": "Ask the user clarifying questions (multiple-choice or open-ended)",
         "tools": ["clarify"],
         "includes": []
     },
-    
+
     "code_execution": {
         "description": "Run Python scripts that call tools programmatically (reduces LLM round trips)",
         "tools": ["execute_code"],
         "includes": []
     },
-    
+
     "delegation": {
         "description": "Spawn subagents with isolated context for complex subtasks",
         "tools": ["delegate_task"],
         "includes": []
     },
 
-    # "honcho" toolset removed — Honcho is now a memory provider plugin.
+    # "honcho" toolset removed - Honcho is now a memory provider plugin.
     # Tools are injected via MemoryManager, not the toolset system.
 
     "homeassistant": {
@@ -298,7 +315,7 @@ TOOLSETS = {
 
     "kanban": {
         "description": (
-            "Kanban multi-agent coordination — only active when the agent "
+            "Kanban multi-agent coordination - only active when the agent "
             "is spawned by the kanban dispatcher (VERMES_KANBAN_TASK env "
             "set). The dispatcher runs inside the gateway by default; see "
             "`kanban.dispatch_in_gateway` in config.yaml. Lets workers mark "
@@ -365,19 +382,19 @@ TOOLSETS = {
 
 
     # Scenario-specific toolsets
-    
+
     "debugging": {
         "description": "Debugging and troubleshooting toolkit",
         "tools": ["terminal", "process"],
         "includes": ["web", "file"]  # For searching error messages and solutions, and file operations
     },
-    
+
     "safe": {
         "description": "Safe toolkit without terminal access",
         "tools": [],
         "includes": ["web", "vision", "image_gen"]
     },
-    
+
     # ==========================================================================
     # Full Vermes toolsets (CLI + messaging platforms)
     #
@@ -386,7 +403,7 @@ TOOLSETS = {
     # ==========================================================================
 
     "vermes-acp": {
-        "description": "Editor integration (VS Code, Zed, JetBrains) — coding-focused tools without messaging, audio, or clarify UI",
+        "description": "Editor integration (VS Code, Zed, JetBrains) - coding-focused tools without messaging, audio, or clarify UI",
         "tools": [
             "web_search", "web_extract",
             "terminal", "process",
@@ -405,7 +422,7 @@ TOOLSETS = {
     },
 
     "Vermes-api-server": {
-        "description": "OpenAI-compatible API server — full agent tools accessible via HTTP (no interactive UI tools like clarify or send_message)",
+        "description": "OpenAI-compatible API server - full agent tools accessible via HTTP (no interactive UI tools like clarify or send_message)",
         "tools": [
             # Web
             "web_search", "web_extract",
@@ -436,7 +453,7 @@ TOOLSETS = {
         ],
         "includes": []
     },
-    
+
     "Vermes-cli": {
         "description": "Full interactive CLI toolset - all default tools plus cronjob management",
         "tools": _vermes_CORE_TOOLS,
@@ -445,7 +462,7 @@ TOOLSETS = {
 
     "Vermes-cron": {
         # Mirrors Vermes-cli so cron's "default" toolset is the same set of
-        # core tools users see interactively — then `vermes tools` filters
+        # core tools users see interactively - then `vermes tools` filters
         # them down per the platform config. _DEFAULT_OFF_TOOLSETS (moa,
         # homeassistant) are excluded by _get_platform_tools() unless
         # the user explicitly enables them.
@@ -459,7 +476,7 @@ TOOLSETS = {
         "tools": _vermes_CORE_TOOLS,
         "includes": []
     },
-    
+
     "Vermes-discord": {
         "description": "Discord bot toolset - full access (terminal has safety checks via dangerous command approval)",
         "tools": _vermes_CORE_TOOLS + [
@@ -468,19 +485,19 @@ TOOLSETS = {
         ],
         "includes": []
     },
-    
+
     "Vermes-whatsapp": {
         "description": "WhatsApp bot toolset - similar to Telegram (personal messaging, more trusted)",
         "tools": _vermes_CORE_TOOLS,
         "includes": []
     },
-    
+
     "Vermes-slack": {
         "description": "Slack bot toolset - full access for workspace use (terminal has safety checks)",
         "tools": _vermes_CORE_TOOLS,
         "includes": []
     },
-    
+
     "Vermes-signal": {
         "description": "Signal bot toolset - encrypted messaging platform (full access)",
         "tools": _vermes_CORE_TOOLS,
@@ -595,10 +612,10 @@ TOOLSETS = {
 def get_toolset(name: str) -> Optional[Dict[str, Any]]:
     """
     Get a toolset definition by name.
-    
+
     Args:
         name (str): Name of the toolset
-        
+
     Returns:
         Dict: Toolset definition with description, tools, and includes
         None: If toolset not found
@@ -646,20 +663,20 @@ def get_toolset(name: str) -> Optional[Dict[str, Any]]:
 def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
     """
     Recursively resolve a toolset to get all tool names.
-    
+
     This function handles toolset composition by recursively resolving
     included toolsets and combining all tools.
-    
+
     Args:
         name (str): Name of the toolset to resolve
         visited (Set[str]): Set of already visited toolsets (for cycle detection)
-        
+
     Returns:
         List[str]: List of all tool names in the toolset
     """
     if visited is None:
         visited = set()
-    
+
     # Special aliases that represent all tools across every toolset
     # This ensures future toolsets are automatically included without changes.
     if name in {"all", "*"}:
@@ -671,7 +688,7 @@ def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
         return sorted(all_tools)
 
     # Check for cycles / already-resolved (diamond deps).
-    # Silently return [] — either this is a diamond (not a bug, tools already
+    # Silently return [] - either this is a diamond (not a bug, tools already
     # collected via another path) or a genuine cycle (safe to skip).
     if name in visited:
         return []
@@ -713,26 +730,26 @@ def resolve_toolset(name: str, visited: Set[str] = None) -> List[str]:
     for included_name in toolset.get("includes", []):
         included_tools = resolve_toolset(included_name, visited)
         tools.update(included_tools)
-    
+
     return sorted(tools)
 
 
 def resolve_multiple_toolsets(toolset_names: List[str]) -> List[str]:
     """
     Resolve multiple toolsets and combine their tools.
-    
+
     Args:
         toolset_names (List[str]): List of toolset names to resolve
-        
+
     Returns:
         List[str]: Combined list of all tool names (deduplicated)
     """
     all_tools = set()
-    
+
     for name in toolset_names:
         tools = resolve_toolset(name)
         all_tools.update(tools)
-    
+
     return sorted(all_tools)
 
 
@@ -740,7 +757,7 @@ def _get_plugin_toolset_names() -> Set[str]:
     """Return toolset names registered by plugins (from the tool registry).
 
     These are toolsets that exist in the registry but not in the static
-    ``TOOLSETS`` dict — i.e. they were added by plugins at load time.
+    ``TOOLSETS`` dict - i.e. they were added by plugins at load time.
     """
     try:
         from tools.registry import registry
@@ -769,7 +786,7 @@ def get_all_toolsets() -> Dict[str, Dict[str, Any]]:
     Get all available toolsets with their definitions.
 
     Includes both statically-defined toolsets and plugin-registered ones.
-    
+
     Returns:
         Dict: All toolset definitions
     """
@@ -794,7 +811,7 @@ def get_toolset_names() -> List[str]:
     Get names of all available toolsets (excluding aliases).
 
     Includes plugin-registered toolset names.
-    
+
     Returns:
         List[str]: List of toolset names
     """
@@ -813,10 +830,10 @@ def get_toolset_names() -> List[str]:
 def validate_toolset(name: str) -> bool:
     """
     Check if a toolset name is valid.
-    
+
     Args:
         name (str): Toolset name to validate
-        
+
     Returns:
         bool: True if valid, False otherwise
     """
@@ -838,7 +855,7 @@ def create_custom_toolset(
 ) -> None:
     """
     Create a custom toolset at runtime.
-    
+
     Args:
         name (str): Name for the new toolset
         description (str): Description of the toolset
@@ -855,19 +872,19 @@ def create_custom_toolset(
 def get_toolset_info(name: str) -> Dict[str, Any]:
     """
     Get detailed information about a toolset including resolved tools.
-    
+
     Args:
         name (str): Toolset name
-        
+
     Returns:
         Dict: Detailed toolset information
     """
     toolset = get_toolset(name)
     if not toolset:
         return None
-    
+
     resolved_tools = resolve_toolset(name)
-    
+
     return {
         "name": name,
         "description": toolset["description"],
@@ -882,7 +899,7 @@ def get_toolset_info(name: str) -> Dict[str, Any]:
 if __name__ == "__main__":
     logger.info("Toolsets System Demo")
     logger.info("=" * 60)
-    
+
     logger.info("\nAvailable Toolsets:")
     logger.info("-" * 40)
     for name, toolset in get_all_toolsets().items():
@@ -890,20 +907,20 @@ if __name__ == "__main__":
         composite = "[composite]" if info["is_composite"] else "[leaf]"
         logger.info(f"  {composite} {name:20} - {toolset['description']}")
         logger.info(f"     Tools: {len(info['resolved_tools'])} total")
-    
+
     logger.info("\nToolset Resolution Examples:")
     logger.info("-" * 40)
     for name in ["web", "terminal", "safe", "debugging"]:
         tools = resolve_toolset(name)
         logger.info(f"\n  {name}:")
         logger.info(f"    Resolved to {len(tools)} tools: {', '.join(sorted(tools))}")
-    
+
     logger.info("\nMultiple Toolset Resolution:")
     logger.info("-" * 40)
     combined = resolve_multiple_toolsets(["web", "vision", "terminal"])
     logger.info("  Combining ['web', 'vision', 'terminal']:")
     logger.info(f"    Result: {', '.join(sorted(combined))}")
-    
+
     logger.info("\nCustom Toolset Creation:")
     logger.info("-" * 40)
     create_custom_toolset(
