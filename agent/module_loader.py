@@ -228,6 +228,7 @@ def _get_bundle_root() -> Optional[Path]:
 # 这些是自家功能，代码已编译进桁面应用，直接从 bundle 加载，零拷贝。
 _BUILTIN_MODULES: Dict[str, str] = {
     "scholarforge": "vermes_cli/scholarforge",
+    "mfgcad": "vermes_cli/mfgcad",
 }
 
 
@@ -274,7 +275,37 @@ def discover_builtin_modules() -> List[ModuleManifest]:
             continue
         if name == "scholarforge":
             manifests.append(_synth_scholarforge_manifest(pkg_dir))
+        elif name == "mfgcad":
+            manifests.append(_synth_mfgcad_manifest(pkg_dir))
     return manifests
+
+
+def _synth_mfgcad_manifest(pkg_dir: Path) -> ModuleManifest:
+    """为内置 mfgcad（制造业 text-to-CAD）合成 manifest（无需 module.yaml）。
+
+    mfgcad 是无前端的 Agent 工具模块：后端入口即 tools.py（register_tools 在其中），
+    无 FastAPI blueprint、无前端路由。引擎（MAC）走独立 venv 子进程桥接，
+    不在此加载。
+    """
+    return ModuleManifest(
+        name="mfgcad",
+        display_name="制造 CAD",
+        version="0.1.0",
+        description="制造业 text-to-CAD：自然语言需求直接生成 STEP 三维模型（双引擎校验）",
+        author="Vermes Team",
+        homepage="https://vbit.top/vermes",
+        backend_entry="tools.py",
+        tools_entry="tools.py",
+        frontend_entry=None,
+        frontend_route=None,
+        frontend_icon="🏭",
+        frontend_menu_title="",
+        permissions=["llm_call", "file_read", "file_write"],
+        vermes_min="2.1.0",
+        raw={},
+        module_root=pkg_dir,
+        builtin=True,
+    )
 
 
 def discover_modules() -> List[ModuleManifest]:

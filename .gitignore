@@ -96,3 +96,9 @@ vermes.egg-info/
 
 # 前端构建备份产物 (非源码, 含构建 JS, 不进版本库)
 vermes_cli/web_dist.bak.v1/
+
+# mfgcad 制造业 text-to-CAD 模块
+# 引擎（MAC）独立 venv 已在全局 .venv/ 规则覆盖；以下为运行时产物/缓存。
+vermes_cli/mfgcad/engine/pipeline_cache/
+vermes_cli/mfgcad/engine/**/*.bak_gate*
+vermes_cli/mfgcad/engine/**/__pycache__/
