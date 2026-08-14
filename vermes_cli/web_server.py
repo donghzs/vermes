@@ -3005,4 +3005,96 @@ async def prometheus_metrics():
     )
 
 
+# ── mfgcad 3D 文件服务 ──────────────────────────────────
+# 安全地服务 ~/.vermes/mfgcad/output/ 下的模型文件给前端 WebGL 视图器。
+# 路径限制：只允许 session_id 目录下的已知扩展名文件。
+
+_MFGCAD_ALLOWED_EXT = {".stl", ".glb", ".gltf", ".3mf", ".png", ".jpg", ".jpeg"}
+_MFGCAD_OUTPUT_DIR = Path.home() / ".vermes" / "mfgcad" / "output"
+
+
+@app.get("/api/mfgcad/files/{session_id}/{filename}")
+async def serve_mfgcad_file(session_id: str, filename: str):
+    """提供 mfgcad 生成的 3D 模型文件给前端查看器。
+
+    安全约束：
+    - session_id 只允许字母数字下划线连字符
+    - filename 只允许字母数字下划线连字符点
+    - 扩展名白名单（stl/glb/gltf/3mf/png/jpg）
+    - 路径穿越检测（resolve 后必须在 output_dir 下）
+    """
+    import re
+    from fastapi.responses import FileResponse
+
+    # 输入校验
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return {"error": "invalid session_id"}, 400
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', filename):
+        return {"error": "invalid filename"}, 400
+
+    ext = Path(filename).suffix.lower()
+    if ext not in _MFGCAD_ALLOWED_EXT:
+        return {"error": f"extension {ext} not allowed"}, 400
+
+    file_path = (_MFGCAD_OUTPUT_DIR / session_id / filename).resolve()
+    # 路径穿越防护
+    try:
+        file_path.relative_to(_MFGCAD_OUTPUT_DIR.resolve())
+    except ValueError:
+        return {"error": "path traversal denied"}, 403
+
+    if not file_path.is_file():
+        return {"error": "file not found"}, 404
+
+    # MIME 类型
+    mime_map = {
+        ".stl": "model/stl",
+        ".glb": "model/gltf-binary",
+        ".gltf": "model/gltf+json",
+        ".3mf": "model/3mf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+    }
+    return FileResponse(str(file_path), media_type=mime_map.get(ext, "application/octet-stream"))
+
+
+@app.get("/api/mfgcad/sessions")
+async def list_mfgcad_sessions():
+    """列出所有 mfgcad 设计会话及其生成文件。"""
+    import json
+    from fastapi.responses import JSONResponse
+
+    sessions = []
+    sess_dir = Path.home() / ".vermes" / "mfgcad" / "sessions"
+    if not sess_dir.is_dir():
+        return JSONResponse({"sessions": []})
+
+    for sf in sorted(sess_dir.glob("*/session.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(sf.read_text(encoding="utf-8"))
+            sessions.append({
+                "session_id": data.get("session_id", sf.parent.name),
+                "request": data.get("request", ""),
+                "backend": data.get("backend", "mac"),
+                "ok": data.get("ok", False),
+                "files": {
+                    k: v for k, v in {
+                        "step": data.get("step_path"),
+                        "stl": data.get("stl_path"),
+                        "3mf": data.get("stl_3mf_path"),
+                        "glb": data.get("glb_path"),
+                        "preview": data.get("preview_path"),
+                    }.items() if v
+                },
+                "volume_mm3": data.get("volume_mm3"),
+                "qa": data.get("qa", {}),
+                "ts": data.get("ts", 0),
+            })
+        except Exception:
+            continue
+
+    return JSONResponse({"sessions": sessions})
+
+
 mount_spa(app)

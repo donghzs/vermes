@@ -22,6 +22,7 @@ function goSettings() { router.push('/settings') }
 function goMobileConnect() { router.push('/settings?tab=channels') }
 function goStudio() { router.push('/studio') }
 function goScholarForge() { router.push('/scholarforge') }
+function go3DStudio() { router.push('/3d-studio') }
 
 // 点击会话项：切换会话 + 如果不在聊天页则跳回
 function switchAndGoChat(id) {
@@ -533,7 +534,11 @@ async function handleImportFile(e) {
           <span class="text-base">📝</span>
           <span class="sidebar-tooltip group-hover:opacity-100">论文写作</span>
         </button>
-      </div>
+        <button @click="go3DStudio()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/3d-studio' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="3D 建模">
+          <span class="text-base">🏭</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">3D 建模</span>
+        </button>
+        </div>
 
       <!-- 知识库面板已迁至 Agent 管理右侧面板 -->
       <!-- MCP / 技能 / 工具 管理已统一迁至右侧大面板 ToolSkillDrawer（点击底部按钮展开） -->
