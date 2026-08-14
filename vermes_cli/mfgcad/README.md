@@ -15,12 +15,14 @@ MAC 的重依赖（`build123d` / `cadquery-ocp` / `trimesh` / `langgraph` / `aid
 ```
 Vermes 主进程 (主 venv)
   └─ mfg_text_to_cad (vermes_cli/mfgcad/tools.py)
-       └─ subprocess → engine/.venv/bin/python  (MAC 独立 venv)
-            └─ engine/run_mac.py  →  multi_agent_cad 4-Agent 流水线
+       └─ subprocess → ~/.vermes/engines/mac/.venv/bin/python  (MAC 独立 venv)
+            └─ ~/.vermes/engines/mac/run_mac.py  →  multi_agent_cad 4-Agent 流水线
 ```
 
-* 引擎代码随模块 vendored 在 `engine/`（含 `multi_agent_cad/`、`packages/cadpy`、
-  `legacy_refs/check_mesh.py`），不依赖外部 MAC 仓库。
+* 引擎层（重依赖）**按需安装、不在基础仓库内** —— 默认位于
+  `~/.vermes/engines/mac/`（含 `multi_agent_cad/`、`packages/cadpy`、
+  `legacy_refs/check_mesh.py`）。基础仓库只保留轻量框架（`tools.py` 胶水 +
+  澄清/导出契约），不膨安装包。分层依据见 `VERMES_3D_ARCH_BASELINE.md` §3。
 * 进度/调试全部走 **STDERR**；**STDOUT 只吐最终 1 行 JSON**（见 §4 契约）。
 * 引擎 venv 与主 venv 完全隔离，重装主 venv 不影响 MAC。
 
@@ -31,7 +33,7 @@ Vermes 主进程 (主 venv)
 `tools.py::_resolve_engine()` 按以下顺序定位 python：
 
 1. 环境变量 `MFG_CAD_ENGINE_PY` —— 显式指向任一已装好 MAC 依赖的 python。
-2. 否则 `vermes_cli/mfgcad/engine/.venv/bin/python` —— 需自行创建。
+2. 否则 `~/.vermes/engines/mac/.venv/bin/python` —— 需自行创建。
 
 推荐做法（开发期直接复用 mac_poc 的 venv，零重装）：
 
@@ -40,15 +42,16 @@ Vermes 主进程 (主 venv)
 export MFG_CAD_ENGINE_PY="$HOME/WorkBuddy/2026-07-16-12-56-04/mac_poc/.venv/bin/python"
 ```
 
-若要从零建引擎 venv（在 `engine/` 下）：
+若要从零建引擎 venv（在引擎目录下）：
 
 ```bash
-cd vermes_cli/mfgcad/engine
+mkdir -p ~/.vermes/engines
+cd ~/.vermes/engines/mac
 python3 -m venv .venv && .venv/bin/pip install -r <MAC requirements>
 # 需含: build123d cadquery-ocp trimesh langgraph aider cadpy(本地)
 ```
 
-引擎入口位置本身可用 `MFG_CAD_ENGINE_DIR` 覆盖（默认即 `engine/`）。
+引擎入口位置本身可用 `MFG_CAD_ENGINE_DIR` 覆盖（默认 `~/.vermes/engines/mac/`）。
 
 ---
 

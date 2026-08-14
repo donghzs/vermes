@@ -25,7 +25,9 @@ from typing import Any, Optional
 from tools.registry import registry
 
 _HERE = Path(__file__).resolve().parent
-_ENGINE_DIR_DEFAULT = _HERE / "engine"
+# 引擎层（重依赖）按需安装、不在基础仓库内 —— 默认位于用户目录，可被
+# MFG_CAD_ENGINE_DIR 覆盖。见 VERMES_3D_ARCH_BASELINE.md §3。
+_ENGINE_DIR_DEFAULT = Path.home() / ".vermes" / "engines" / "mac"
 
 MFGCAD_SCHEMA = {
     "name": "mfg_text_to_cad",
@@ -77,8 +79,11 @@ def _resolve_engine() -> tuple[str, Path]:
     engine_dir = Path(os.environ.get("MFG_CAD_ENGINE_DIR", str(_ENGINE_DIR_DEFAULT))).resolve()
     if not (engine_dir / "run_mac.py").is_file():
         raise RuntimeError(
-            f"未找到引擎入口 {engine_dir}/run_mac.py。"
-            "请确认 vermes_cli/mfgcad/engine 已就位，或用 MFG_CAD_ENGINE_DIR 指向 MAC 引擎目录。"
+            f"未找到 MAC 引擎于 {engine_dir}/run_mac.py。请先安装引擎：把 Multi-Agent-CAD 放到该目录"
+            f"（或设 MFG_CAD_ENGINE_DIR 指向引擎根）。引擎含 build123d/cadquery-ocp/trimesh/"
+            f"langgraph/aider/cadpy 等重依赖，刻意不随 Vermes 基础安装打包。安装后在其下建 venv"
+            f"（含上述依赖），并用 MFG_CAD_ENGINE_PY 指向其 python；或 MFG_CAD_ENGINE_PY 指向"
+            f"已有的 MAC venv。"
         )
     python_exe = os.environ.get("MFG_CAD_ENGINE_PY")
     if not python_exe:
@@ -218,6 +223,8 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
     qa = result.get("qa") or {}
     passed = qa.get("passed", 0)
     issues = qa.get("issues", [])
+    stl_path = result.get("stl_path")
+    stl_3mf_path = result.get("stl_3mf_path")
 
     # 落状态化 session 记录（无论成败都记，便于续作/排查）。
     try:
@@ -257,6 +264,8 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
             f"⏸ CHECKPOINT 人工核对：候选 STEP 已生成 {step_path}\n"
             f"体积 {vol_str}；双引擎校验通过 {passed} 项"
             + (f"（注意：{'; '.join(issues)}）" if issues else "")
+            + (f"\nSTL（切片/打印）: {stl_path}" if stl_path else "")
+            + (f"\n3MF（Bambu/切片）: {stl_3mf_path}" if stl_3mf_path else "")
             + f"\n请人工核对尺寸/拓扑。确认后再次调用 mfg_text_to_cad"
             f"（同一 session_id={session_id}，checkpoint=false）定稿，"
             f"或调用 mfg_dfm_prescreen 做可制造性初筛。"
@@ -266,7 +275,9 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
         f"✅ STEP 已生成：{step_path}\n"
         f"体积 {vol_str}；双引擎校验通过 {passed} 项"
         + (f"（提示：{'; '.join(issues)}）" if issues else "")
-        + f"\n会话 session_id={session_id}。可用 CAD 软件打开该 STEP 查看，"
+        + (f"\nSTL（切片/打印）: {stl_path}" if stl_path else "")
+        + (f"\n3MF（Bambu/切片）: {stl_3mf_path}" if stl_3mf_path else "")
+        + f"\n会话 session_id={session_id}。可用 CAD 软件打开 STEP/STL 查看，"
         f"或继续调用 mfg_dfm_prescreen / mfg_printer 进入下游。"
     )
 

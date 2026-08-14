@@ -98,7 +98,7 @@ vermes.egg-info/
 vermes_cli/web_dist.bak.v1/
 
 # mfgcad 制造业 text-to-CAD 模块
-# 引擎（MAC）独立 venv 已在全局 .venv/ 规则覆盖；以下为运行时产物/缓存。
-vermes_cli/mfgcad/engine/pipeline_cache/
-vermes_cli/mfgcad/engine/**/*.bak_gate*
-vermes_cli/mfgcad/engine/**/__pycache__/
+# 引擎（MAC）已外置为按需安装层，位于 ~/.vermes/engines/mac/（仓库外，无需忽略）。
+# 以下仅覆盖框架层（仓库内）的运行时产物。
+vermes_cli/mfgcad/**/*.bak_gate*
+vermes_cli/mfgcad/**/__pycache__/
