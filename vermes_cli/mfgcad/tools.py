@@ -233,21 +233,25 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
         except Exception:
             pass  # clarify 失败 fail-open，不阻断建模
 
+    # ── 多后端路由（P1） ──
+    # 据 preset.engine 选后端，无 preset 默认 mac
+    from vermes_cli.mfgcad.engine_backends import resolve_backend
+    from vermes_cli.mfgcad.clarify import get_preset as _get_preset
+
+    preset_def = _get_preset(preset) if preset else None
+
     try:
-        python_exe, engine_dir = _resolve_engine()
+        backend = resolve_backend(preset_def)
     except RuntimeError as e:
         return f"❌ 引擎未就绪: {e}"
 
-    # 透传 API key：engine 的 _llm_client 读 DASHSCOPE_API_KEY（legacy 命名）。
+    # 透传 API key
     env = dict(os.environ)
     key = _resolve_api_key()
     if key:
         env["DASHSCOPE_API_KEY"] = key
         env["DS_API_KEY"] = key
         env["OPENAI_API_KEY"] = key
-        # 透传用户配置的 base_url（非硬编码 DeepSeek）
-        # 优先从活跃 provider 的 base_url 取，fallback 留 DeepSeek（MAC POC 默认）
-        base_url = "https://api.deepseek.com/v1"
         try:
             from vermes_cli.auth import (
                 get_active_provider,
@@ -258,48 +262,45 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
                 creds = resolve_api_key_provider_credentials(pid) or {}
                 bu = creds.get("base_url") or ""
                 if bu:
-                    base_url = bu
+                    env["OPENAI_API_BASE"] = bu
         except Exception:
             pass
-        env["OPENAI_API_BASE"] = base_url
     else:
-        return ("❌ 未配置 LLM API key。请在 Vermes 前端「设置 → API」中为「制造 CAD」"
-                "填一个 DeepSeek/OpenAI 兼容 key，或直接使用已为主 Agent 配置的同一把 key"
-                "（mfgcad 会自动复用活跃 provider 的 key）；引擎需要 key 才能调用大模型。")
+        if backend.name == "trellis":
+            if not env.get("TRELLIS_CLOUD_API_KEY"):
+                return ("❌ 未配置 LLM API key。TRELLIS 云模式需设 TRELLIS_CLOUD_API_KEY；"
+                        "本地模式需先安装引擎。或在「设置 → API」配置 LLM key。")
+        else:
+            return ("❌ 未配置 LLM API key。请在 Vermes 前端「设置 → API」中为「制造 CAD」"
+                    "填一个 DeepSeek/OpenAI 兼容 key，或直接使用已为主 Agent 配置的同一把 key"
+                    "（mfgcad 会自动复用活跃 provider 的 key）；引擎需要 key 才能调用大模型。")
 
-    cmd = [
-        python_exe, str(engine_dir / "run_mac.py"),
-        "--request", request,
-        "--output-dir", output_dir,
-        "--workflow-id", workflow_id,
-        "--max-retries", "5",
-    ]
-
+    # 调后端
     try:
-        proc = await asyncio.to_thread(
-            subprocess.run, cmd, env=env, capture_output=True, text=True, timeout=1800
+        result = await backend.generate(
+            request=request,
+            output_dir=output_dir,
+            preset=preset_def,
+            env=env,
+            workflow_id=workflow_id,
+            checkpoint=checkpoint,
         )
-    except subprocess.TimeoutExpired:
-        return "❌ 建模超时（>30min）。请简化需求或检查引擎日志。"
-    except Exception as e:  # pragma: no cover - defensive
-        return f"❌ 引擎子进程调用失败: {type(e).__name__}: {e}"
+    except Exception as e:
+        return f"❌ 引擎调用失败: {type(e).__name__}: {e}"
 
-    result = _parse_engine_json(proc.stdout)
-    if result is None:
-        tail = "\n".join(proc.stderr.strip().splitlines()[-15:])
-        return (f"❌ 引擎未返回可解析结果。退出码={proc.returncode}。\n"
-                f"--- 引擎日志尾部 ---\n{tail}")
-
-    ok = bool(result.get("ok"))
-    step_path = result.get("step_path")
-    volume = result.get("volume_mm3")
-    qa = result.get("qa") or {}
+    ok = result.ok
+    files = result.files or {}
+    volume = result.volume_mm3
+    qa = result.qa or {}
     passed = qa.get("passed", 0)
     issues = qa.get("issues", [])
-    stl_path = result.get("stl_path")
-    stl_3mf_path = result.get("stl_3mf_path")
+    step_path = files.get("step")
+    stl_path = files.get("stl")
+    stl_3mf_path = files.get("3mf")
+    glb_path = files.get("glb")
+    preview_path = files.get("png")
 
-    # 落状态化 session 记录（无论成败都记，便于续作/排查）。
+    # 落状态化 session 记录
     try:
         sess_dir = _mfg_home() / "sessions" / session_id
         sess_dir.mkdir(parents=True, exist_ok=True)
@@ -310,13 +311,16 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
                     "request": request,
                     "workflow_id": workflow_id,
                     "checkpoint": checkpoint,
+                    "backend": backend.name,
                     "ok": ok,
                     "step_path": step_path,
                     "stl_path": stl_path,
                     "stl_3mf_path": stl_3mf_path,
+                    "glb_path": glb_path,
+                    "preview_path": preview_path,
                     "volume_mm3": volume,
                     "qa": qa,
-                    "error_type": result.get("error_type"),
+                    "error_type": result.error_type,
                     "ts": int(time.time()),
                 },
                 ensure_ascii=False,
@@ -325,36 +329,51 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
             encoding="utf-8",
         )
     except Exception:
-        pass  # 状态落盘失败不阻断主流程
+        pass
 
-    vol_str = f"{volume:.2f} mm³（{volume/1000:.3f} cm³）" if volume is not None else "未知"
+    vol_str = f"{volume:.2f} mm³（{volume/1000:.3f} cm³）" if volume is not None else ""
 
-    if not ok or not step_path:
-        tail = "\n".join(proc.stderr.strip().splitlines()[-10:])
-        diag = f"\n引擎日志尾部:\n{tail}" if tail else ""
-        return (f"❌ 建模失败（{result.get('error_type')}）：{result.get('message','')}{diag}")
+    if not ok:
+        return f"❌ 建模失败（{result.error_type}）：{result.message or ''}"
 
-    if checkpoint:
+    # ── 按后端类型格式化输出 ──
+    if backend.name == "mac":
+        if checkpoint:
+            return (
+                f"⏸ CHECKPOINT 人工核对：候选 STEP 已生成 {step_path}\n"
+                f"体积 {vol_str}；双引擎校验通过 {passed} 项"
+                + (f"（注意：{'; '.join(issues)}）" if issues else "")
+                + (f"\nSTL（切片/打印）: {stl_path}" if stl_path else "")
+                + (f"\n3MF（Bambu/切片）: {stl_3mf_path}" if stl_3mf_path else "")
+                + f"\n请人工核对尺寸/拓扑。确认后再次调用 mfg_text_to_cad"
+                + f"（同一 session_id={session_id}，checkpoint=false）定稿。"
+            )
         return (
-            f"⏸ CHECKPOINT 人工核对：候选 STEP 已生成 {step_path}\n"
+            f"✅ STEP 已生成：{step_path}\n"
             f"体积 {vol_str}；双引擎校验通过 {passed} 项"
-            + (f"（注意：{'; '.join(issues)}）" if issues else "")
+            + (f"（提示：{'; '.join(issues)}）" if issues else "")
             + (f"\nSTL（切片/打印）: {stl_path}" if stl_path else "")
             + (f"\n3MF（Bambu/切片）: {stl_3mf_path}" if stl_3mf_path else "")
-            + f"\n请人工核对尺寸/拓扑。确认后再次调用 mfg_text_to_cad"
-            f"（同一 session_id={session_id}，checkpoint=false）定稿，"
-            f"或调用 mfg_dfm_prescreen 做可制造性初筛。"
+            + f"\n会话 session_id={session_id}。可用 CAD 软件打开 STEP/STL 查看。"
         )
-
-    return (
-        f"✅ STEP 已生成：{step_path}\n"
-        f"体积 {vol_str}；双引擎校验通过 {passed} 项"
-        + (f"（提示：{'; '.join(issues)}）" if issues else "")
-        + (f"\nSTL（切片/打印）: {stl_path}" if stl_path else "")
-        + (f"\n3MF（Bambu/切片）: {stl_3mf_path}" if stl_3mf_path else "")
-        + f"\n会话 session_id={session_id}。可用 CAD 软件打开 STEP/STL 查看，"
-        f"或继续调用 mfg_dfm_prescreen / mfg_printer 进入下游。"
-    )
+    elif backend.name == "trellis":
+        return (
+            f"✅ 3D 模型已生成\n"
+            + (f"GLB（网页/AR 展示）: {glb_path}\n" if glb_path else "")
+            + (f"预览图: {preview_path}\n" if preview_path else "")
+            + (f"体积 {vol_str}\n" if vol_str else "")
+            + (f"（提示：{'; '.join(issues)}）" if issues else "")
+            + f"\n会话 session_id={session_id}。可用 Three.js/ModelViewer 加载 GLB 展示。"
+        )
+    else:
+        parts = ["✅ 模型已生成"]
+        for fmt, p in files.items():
+            if p:
+                parts.append(f"{fmt.upper()}: {p}")
+        if vol_str:
+            parts.append(f"体积 {vol_str}")
+        parts.append(f"会话 session_id={session_id}")
+        return "\n".join(parts)
 
 
 async def _handle_mfg_clarify(args: dict, **kw: Any) -> str:
