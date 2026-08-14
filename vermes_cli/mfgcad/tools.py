@@ -173,6 +173,22 @@ def _resolve_api_key() -> str:
     return ""
 
 
+def _resolve_api_key_provider_base_url() -> str:
+    """返回活跃 provider 的 base_url，供多模态工具复用。"""
+    try:
+        from vermes_cli.auth import (
+            get_active_provider,
+            resolve_api_key_provider_credentials,
+        )
+        pid = get_active_provider()
+        if pid:
+            creds = resolve_api_key_provider_credentials(pid) or {}
+            return creds.get("base_url", "")
+    except Exception:
+        pass
+    return ""
+
+
 def _parse_engine_json(stdout: str) -> Optional[dict]:
     """Extract the single JSON result line emitted by run_mac.py."""
     for line in reversed(stdout.splitlines()):
@@ -480,3 +496,11 @@ def register_tools(host_api=None):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad P3 edit tools registration failed: %s", e)
+
+    # P4：多模态控制（参考图/草图/bbox）
+    try:
+        from vermes_cli.mfgcad.multimodal_tools import register_tools as _register_mm_tools
+        _register_mm_tools(host_api)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("mfgcad P4 multimodal tools registration failed: %s", e)

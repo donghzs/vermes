@@ -225,6 +225,9 @@ TOOLSETS = {
             "mfg_edit_part",
             "mfg_paint_texture",
             "mfg_transform",
+            "mfg_image_to_cad",
+            "mfg_bbox_to_cad",
+            "mfg_multi_view_to_cad",
         ],
         "includes": []
     },
