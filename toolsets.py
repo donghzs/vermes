@@ -222,6 +222,9 @@ TOOLSETS = {
         "tools": [
             "mfg_text_to_cad",
             "mfg_clarify",
+            "mfg_edit_part",
+            "mfg_paint_texture",
+            "mfg_transform",
         ],
         "includes": []
     },

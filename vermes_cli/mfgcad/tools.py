@@ -472,3 +472,11 @@ def register_tools(host_api=None):
         emoji="🔍",
         description="建模需求歧义检查：检查请求是否清晰，返回追问建议",
     )
+
+    # P3：局部编辑 + 纹理绘制 + 几何变换
+    try:
+        from vermes_cli.mfgcad.edit_tools import register_tools as _register_edit_tools
+        _register_edit_tools(host_api)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("mfgcad P3 edit tools registration failed: %s", e)
