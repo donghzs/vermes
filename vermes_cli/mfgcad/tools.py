@@ -239,6 +239,8 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
                     "checkpoint": checkpoint,
                     "ok": ok,
                     "step_path": step_path,
+                    "stl_path": stl_path,
+                    "stl_3mf_path": stl_3mf_path,
                     "volume_mm3": volume,
                     "qa": qa,
                     "error_type": result.get("error_type"),
