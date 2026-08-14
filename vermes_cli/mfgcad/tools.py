@@ -32,13 +32,15 @@ _ENGINE_DIR_DEFAULT = Path.home() / ".vermes" / "engines" / "mac"
 MFGCAD_SCHEMA = {
     "name": "mfg_text_to_cad",
     "description": (
-        "制造业 text-to-CAD：把自然语言建模需求直接生成 STEP 三维模型文件。"
+        "3D 建模：把自然语言建模需求直接生成 STEP 三维模型文件。"
         "底层由 Multi-Agent-CAD 引擎驱动（4-Agent 流水线：需求解析→几何规划→"
         "build123d 确定性代码翻译→双引擎几何/网格校验），无需人工写代码。"
-        "适合「用户用中文描述一个零件（尺寸/形状/壁厚/孔位等），希望得到可制造的 STEP」的场景。"
-        "返回 STEP 文件路径 + 体积 + 双引擎校验结果。可在 CAD 软件中打开 STEP 查看。"
+        "适合「用户用中文描述一个零件/打印件（尺寸/形状/壁厚/孔位等），希望得到可制造的 STEP+STL+3MF」的场景。"
+        "返回 STEP/STL/3MF 文件路径 + 体积 + 双引擎校验结果。"
         "可选参数：session_id 用于状态化续作；checkpoint=true 生成后暂停人工核对不自动定稿；"
-        "workflow_id 选引擎工作流（original=确定性翻译优先，aider=Aider 优先）。"
+        "workflow_id 选引擎工作流（original=确定性翻译优先，aider=Aider 优先）；"
+        "preset 选场景模板（mechanical_part/print_part/ecommerce_display/film_prop）；"
+        "auto_clarify=true 自动检查歧义并追问（默认 true）。"
     ),
     "parameters": {
         "type": "object",
@@ -63,6 +65,39 @@ MFGCAD_SCHEMA = {
             "checkpoint": {
                 "type": "boolean",
                 "description": "可选：true=生成候选 STEP 后暂停，交人工核对尺寸/拓扑，不自动定稿；false=直接定稿返回。默认 false。",
+            },
+            "preset": {
+                "type": "string",
+                "enum": ["mechanical_part", "print_part", "ecommerce_display", "film_prop"],
+                "description": "可选：场景模板。mechanical_part=机械零件，print_part=3D打印件，ecommerce_display=电商展示，film_prop=影视道具。留空自动猜测。",
+            },
+            "auto_clarify": {
+                "type": "boolean",
+                "description": "可选：true=建模前自动检查歧义（缺尺寸/矛盾），有问题则返回追问不调引擎。false=跳过检查直接建模。默认 true。",
+            },
+        },
+        "required": ["request"],
+    },
+}
+
+MFG_CLARIFY_SCHEMA = {
+    "name": "mfg_clarify",
+    "description": (
+        "建模需求歧义检查：检查用户的自然语言建模请求是否包含足够信息来生成精确 3D 模型。"
+        "返回缺失项 + 矛盾项 + 追问建议。纯 LLM 轻调用，不调建模引擎。"
+        "适合在 mfg_text_to_cad 前先检查，或在 Agent 对话中主动判断是否需要追问用户。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "request": {
+                "type": "string",
+                "description": "用户的自然语言建模请求。",
+            },
+            "preset": {
+                "type": "string",
+                "enum": ["mechanical_part", "print_part", "ecommerce_display", "film_prop"],
+                "description": "可选：场景模板。留空自动猜测。",
             },
         },
         "required": ["request"],
@@ -159,6 +194,44 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
     output_dir = args.get("output_dir") or str(_mfg_home() / "output" / session_id)
     workflow_id = args.get("workflow_id") or "original"
     checkpoint = bool(args.get("checkpoint"))
+    preset = (args.get("preset") or "").strip() or None
+    auto_clarify = args.get("auto_clarify")
+    if auto_clarify is None:
+        auto_clarify = True  # 默认开启歧义检查
+
+    # ── P0a 歧义澄清前置 ──
+    # auto_clarify=true 时先检查请求是否清晰，不清晰则返回追问不调引擎
+    if auto_clarify:
+        try:
+            from vermes_cli.mfgcad.clarify import check_clarity
+            clarity = await check_clarity(request, preset)
+            if not clarity.get("is_clear"):
+                q = clarity.get("clarification_question", "")
+                missing = clarity.get("missing", [])
+                conflicts = clarity.get("conflicts", [])
+                lines = ["⏸ 需要补充信息才能精确建模，请回答以下问题后重试：", ""]
+                if q:
+                    lines.append(q)
+                if missing:
+                    lines.append("")
+                    lines.append("缺失项：")
+                    for m in missing:
+                        lines.append(f"  • {m.get('label', m.get('name', '?'))}: {m.get('reason', '')}")
+                if conflicts:
+                    lines.append("")
+                    lines.append("矛盾项：")
+                    for c in conflicts:
+                        lines.append(f"  • {c.get('reason', '')}: {', '.join(c.get('items', []))}")
+                lines.append("")
+                lines.append(f"补充后可直接调用 mfg_text_to_cad（设 auto_clarify=false 跳过检查），")
+                lines.append(f"或先调 mfg_clarify 检查是否清晰。")
+                return "\n".join(lines)
+            # 清晰 → 用增强后的 request（补全默认值）
+            enhanced = clarity.get("enhanced_request", request)
+            if enhanced and enhanced != request:
+                request = enhanced
+        except Exception:
+            pass  # clarify 失败 fail-open，不阻断建模
 
     try:
         python_exe, engine_dir = _resolve_engine()
@@ -284,6 +357,61 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
     )
 
 
+async def _handle_mfg_clarify(args: dict, **kw: Any) -> str:
+    """建模需求歧义检查（独立工具，不调引擎）。"""
+    request = (args.get("request") or "").strip()
+    if not request:
+        return "❌ 缺少参数 request。"
+
+    preset = (args.get("preset") or "").strip() or None
+
+    try:
+        from vermes_cli.mfgcad.clarify import check_clarity
+        result = await check_clarity(request, preset)
+    except Exception as e:
+        return f"❌ 歧义检查失败: {type(e).__name__}: {e}"
+
+    is_clear = result.get("is_clear", True)
+    preset_name = result.get("preset", "unknown")
+    extracted = result.get("extracted", {})
+    missing = result.get("missing", [])
+    conflicts = result.get("conflicts", [])
+    question = result.get("clarification_question", "")
+    enhanced = result.get("enhanced_request", request)
+
+    lines = [f"📋 歧义检查（场景: {preset_name}）", ""]
+
+    if is_clear:
+        lines.append("✅ 请求信息完整，可直接建模。")
+        if extracted:
+            lines.append("")
+            lines.append("已识别信息：")
+            for k, v in extracted.items():
+                lines.append(f"  • {k}: {v}")
+        if enhanced != request:
+            lines.append("")
+            lines.append(f"增强请求：{enhanced}")
+        return "\n".join(lines)
+
+    lines.append("⏸ 需要补充信息：")
+    if question:
+        lines.append("")
+        lines.append(question)
+    if missing:
+        lines.append("")
+        lines.append("缺失项：")
+        for m in missing:
+            lines.append(f"  • {m.get('label', m.get('name', '?'))}: {m.get('reason', '')}")
+    if conflicts:
+        lines.append("")
+        lines.append("矛盾项：")
+        for c in conflicts:
+            lines.append(f"  • {c.get('reason', '')}: {', '.join(c.get('items', []))}")
+    lines.append("")
+    lines.append("补充信息后调用 mfg_text_to_cad 建模。")
+    return "\n".join(lines)
+
+
 def register_tools(host_api=None):
     """Register mfgcad tools in the global registry.
 
@@ -313,5 +441,15 @@ def register_tools(host_api=None):
         handler=_handle_mfg_text_to_cad,
         is_async=True,
         emoji="🏭",
-        description="制造业 text-to-CAD：自然语言需求直接生成 STEP 三维模型（双引擎校验）",
+        description="3D 建模：自然语言需求直接生成 STEP 三维模型（双引擎校验）",
+    )
+
+    registry.register(
+        name="mfg_clarify",
+        toolset="mfgcad",
+        schema=MFG_CLARIFY_SCHEMA,
+        handler=_handle_mfg_clarify,
+        is_async=True,
+        emoji="🔍",
+        description="建模需求歧义检查：检查请求是否清晰，返回追问建议",
     )

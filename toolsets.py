@@ -221,6 +221,7 @@ TOOLSETS = {
         ),
         "tools": [
             "mfg_text_to_cad",
+            "mfg_clarify",
         ],
         "includes": []
     },

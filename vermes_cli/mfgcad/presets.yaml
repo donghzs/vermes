@@ -1,0 +1,159 @@
+# mfgcad 行业 preset 模板
+# 每个 preset 定义一个场景的结构化槽位 + 约束 + 必填项。
+# clarify agent 据 preset 检查用户 request 是否缺关键信息，缺则追问。
+#
+# 槽位字段:
+#   name: 槽位标识（程序用）
+#   label: 中文显示名
+#   required: 是否必填（true=缺失时必须追问）
+#   description: 槽位含义 + 合理默认值说明
+#   default: 可选默认值（required=false 且用户未提供时用）
+#   examples: 示例值（帮助用户理解格式）
+
+presets:
+  mechanical_part:
+    label: 机械零件
+    description: 精确工程建模，输出 STEP 用于 CAM/模具/机加工
+    output_formats: [step, stl, 3mf]
+    slots:
+      - name: geometry_type
+        label: 几何类型
+        required: true
+        description: 零件的基本形状类别（如圆柱体、长方体、L型支架、法兰、螺母、齿轮等）
+        examples: ["圆柱体", "L型支架", "法兰盘", "六角螺母"]
+      - name: dimensions
+        label: 关键尺寸
+        required: true
+        description: 所有关键尺寸（长/宽/高/外径/内径/壁厚等，单位 mm）。缺失尺寸会导致生成错件。
+        examples: ["外径60mm 壁厚3mm 高100mm", "长80 宽40 高20 孔径M4"]
+      - name: tolerance
+        label: 公差要求
+        required: false
+        default: "一般公差 ±0.1mm"
+        description: 配合面公差、表面粗糙度要求。无特殊要求可留空。
+      - name: material
+        label: 材料
+        required: false
+        description: 零件材料（影响壁厚下限、脱模角度等工艺约束建议）
+        examples: ["ABS", "铝合金 6061", "不锈钢 304", "PLA"]
+      - name: assembly_relation
+        label: 装配关系
+        required: false
+        description: 与其他零件的配合关系（如"插入 Φ20 轴"、"与零件A螺纹连接"）
+        examples: ["插入Φ20轴", "与M8螺栓配合", "卡扣固定在50mm导轨上"]
+
+  print_part:
+    label: 3D 打印件
+    description: 面向 FDM/SLA/SLM 3D 打印的建模，输出 STL/3MF 直接进切片软件
+    output_formats: [stl, 3mf, step]
+    slots:
+      - name: geometry_type
+        label: 几何类型
+        required: true
+        description: 打印件的基本形状
+        examples: ["手机支架", "齿轮", "花瓶", "铰链", "收纳盒"]
+      - name: dimensions
+        label: 关键尺寸
+        required: true
+        description: 所有关键尺寸（单位 mm）。打印件需注意最小壁厚和最小特征尺寸。
+        examples: ["长120 宽60 高8 壁厚2", "直径80 高50"]
+      - name: wall_thickness
+        label: 壁厚
+        required: false
+        default: 2.0
+        description: 最小壁厚（mm）。FDM 建议 ≥1.2mm，SLA 建议 ≥1.0mm，SLM 建议 ≥0.8mm。
+      - name: print_orientation
+        label: 打印方向
+        required: false
+        default: "自动选择最小支撑方向"
+        description: 预期打印方向（影响悬垂角度和支撑量）
+        examples: ["Z轴向上", "平放底面朝下", "45度斜放"]
+      - name: print_tech
+        label: 打印工艺
+        required: false
+        default: "FDM"
+        description: 打印工艺类型（FDM/SLA/SLM/SLS），影响最小特征和公差建议
+        examples: ["FDM", "SLA", "SLM", "SLS"]
+      - name: material
+        label: 打印材料
+        required: false
+        default: "PLA"
+        description: 打印材料
+        examples: ["PLA", "PETG", "ABS", "TPU", "光敏树脂", "尼龙"]
+
+  ecommerce_display:
+    label: 电商产品展示
+    description: 电商商品 3D 展示模型，注重外观精度和 PBR 纹理，输出 GLB 用于网页/AR 展示
+    output_formats: [glb]
+    engine: trellis
+    slots:
+      - name: product_type
+        label: 产品类型
+        required: true
+        description: 要展示的产品类别
+        examples: ["运动鞋", "耳机", "手表", "家具", "包装盒"]
+      - name: scale
+        label: 比例
+        required: false
+        default: "1:1 实际尺寸"
+        description: 模型比例
+        examples: ["1:1", "1:4", "1:10"]
+      - name: style
+        label: 风格
+        required: false
+        default: "写实"
+        description: 模型风格
+        examples: ["写实", "低多边形", "卡通", "线框"]
+      - name: reference_image
+        label: 参考图
+        required: false
+        description: 参考图片 URL 或本地路径（帮助引擎理解目标外观）
+      - name: pbr_textures
+        label: PBR 纹理
+        required: false
+        default: true
+        description: 是否需要 PBR 纹理（基础色/金属度/粗糙度/法线），电商展示建议开启
+      - name: background
+        label: 背景
+        required: false
+        default: "透明"
+        description: 渲染背景（透明/纯色/场景）
+
+  film_prop:
+    label: 影视/短视频道具
+    description: 影视/短视频道具建模，注重外观和氛围，输出 GLB + 截图
+    output_formats: [glb]
+    engine: trellis
+    slots:
+      - name: theme
+        label: 主题
+        required: true
+        description: 道具的主题描述（如"赛博朋克手枪"、"古风茶具"、"科幻头盔"）
+        examples: ["赛博朋克手枪", "古风茶具", "科幻头盔", "魔法杖"]
+      - name: style
+        label: 风格
+        required: false
+        default: "写实"
+        description: 视觉风格
+        examples: ["写实", "赛博朋克", "复古", "Q版", "水墨"]
+      - name: scale
+        label: 比例
+        required: false
+        default: "1:1"
+        description: 模型比例
+        examples: ["1:1", "1:6 手办比例", "1:12"]
+      - name: material_reference
+        label: 材质参考
+        required: false
+        description: 材质/质感参考（如"哑光金属"、"做旧青铜"、"发光半透明"）
+        examples: ["哑光金属", "做旧青铜", "发光半透明", "木质"]
+      - name: base_mount
+        label: 底座/支撑
+        required: false
+        default: false
+        description: 是否需要底座或支撑结构（手办/展示用）
+      - name: animation_ready
+        label: 动画就绪
+        required: false
+        default: false
+        description: 是否需要动画就绪拓扑（影视用，需合理布线）
