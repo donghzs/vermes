@@ -579,7 +579,7 @@ async function clearAllSettings() {
 }
 
 // ── 服务 API（统一凭证表单，源自 GET /api/config/schema 的 services 分区） ──
-const serviceGroups = ref({})      // sid -> { sid, label, apiKeyEnv, apiKeyVal, saved }
+const serviceGroups = ref({})      // sid -> { sid, label, fields: [{kind, key, label, val, saved}], saved }
 const servicesLoading = ref(false)
 const servicesSaving = ref(false)
 const _MASK = '●●●●●●●●'
@@ -594,25 +594,37 @@ async function loadServices() {
     const groups = {}
     for (const [key, f] of Object.entries(fields)) {
       if (f.category !== 'services') continue
-      const m = key.match(/^services\.([^.]+)\.api_key$/)
+      // 匹配 services.<sid>.<field_name>（支持 api_key / base_url / extra）
+      const m = key.match(/^services\.([^.]+)\.(.+)$/)
       if (!m) continue
       const sid = m[1]
-      groups[sid] = {
-        sid,
-        label: (f.description || '').replace(/ API key$/, '') || sid,
-        apiKeyEnv: f.env_var || null,
-        apiKeyVal: '',
-        saved: false,
+      const fieldName = m[2]
+      if (!groups[sid]) {
+        groups[sid] = {
+          sid,
+          label: (f.description || '').replace(/ API key$/, '') || sid,
+          fields: [],
+          saved: false,
+        }
       }
+      groups[sid].fields.push({
+        kind: fieldName.includes('base_url') ? 'base_url' : (fieldName.includes('model') ? 'model' : 'api_key'),
+        key: f.env_var || key,
+        label: f.description || key,
+        val: '',
+        saved: false,
+      })
     }
-    // 2) env 状态 -> 已配置的服务显示掩码，避免保存时覆盖真实值
+    // 2) env 状态 -> 已配置的服务显示掩码
     try {
       const envResp = await fetch('/api/env', { headers: envHeaders() })
       const envData = await envResp.json()
       for (const sid of Object.keys(groups)) {
         const g = groups[sid]
-        if (g.apiKeyEnv && envData[g.apiKeyEnv] && envData[g.apiKeyEnv].is_set) {
-          g.apiKeyVal = _MASK
+        for (const fld of g.fields) {
+          if (fld.key && envData[fld.key] && envData[fld.key].is_set) {
+            fld.val = _MASK
+          }
         }
       }
     } catch (e) { console.error('[Services] env status error:', e) }
@@ -626,23 +638,30 @@ async function loadServices() {
 
 async function saveService(sid) {
   const g = serviceGroups.value[sid]
-  if (!g || !g.apiKeyEnv) return
-  if (!g.apiKeyVal || g.apiKeyVal === _MASK) { toast.warning('请输入 ' + g.label + ' 的 API Key 后再保存'); return }
+  if (!g) return
   servicesSaving.value = true
   try {
-    const resp = await fetch('/api/env', {
-      method: 'PUT',
-      headers: envHeaders(),
-      body: JSON.stringify({ key: g.apiKeyEnv, value: g.apiKeyVal }),
-    })
-    if (resp.ok) {
-      g.apiKeyVal = _MASK
+    let anySaved = false
+    for (const fld of g.fields) {
+      if (!fld.key) continue
+      if (!fld.val || fld.val === _MASK) continue
+      const resp = await fetch('/api/env', {
+        method: 'PUT',
+        headers: envHeaders(),
+        body: JSON.stringify({ key: fld.key, value: fld.val }),
+      })
+      if (resp.ok) {
+        fld.val = _MASK
+        fld.saved = true
+        anySaved = true
+      }
+    }
+    if (anySaved) {
       g.saved = true
       setTimeout(() => (g.saved = false), 2000)
       toast.success('已保存 ' + g.label)
     } else {
-      const d = await resp.json().catch(() => ({}))
-      toast.error('保存失败: ' + (d.detail || resp.status))
+      toast.warning('请输入至少一个字段后再保存')
     }
   } catch (e) {
     toast.error('保存请求失败: ' + e.message)
@@ -653,28 +672,27 @@ async function saveService(sid) {
 
 async function clearService(sid) {
   const g = serviceGroups.value[sid]
-  if (!g || !g.apiKeyEnv) return
-  if (!await confirm({ title: '清除 API Key', message: '清除 ' + g.label + ' 的 API Key？', confirmText: '清除', danger: true })) return
+  if (!g) return
+  if (!await confirm({ title: '清除凭证', message: '清除 ' + g.label + ' 的所有配置？', confirmText: '清除', danger: true })) return
   try {
-    const resp = await fetch('/api/env', {
-      method: 'DELETE',
-      headers: envHeaders(),
-      body: JSON.stringify({ key: g.apiKeyEnv }),
-    })
-    if (resp.ok) {
-      g.apiKeyVal = ''
-      toast.success('已清除 ' + g.label)
-    } else {
-      toast.error('清除失败')
+    for (const fld of g.fields) {
+      if (!fld.key) continue
+      await fetch('/api/env', {
+        method: 'DELETE',
+        headers: envHeaders(),
+        body: JSON.stringify({ key: fld.key }),
+      })
+      fld.val = ''
     }
+    toast.success('已清除 ' + g.label)
   } catch (e) {
     toast.error('清除失败: ' + e.message)
   }
 }
 
-// 聚焦输入框时清除掩码，方便直接输入新 Key
-function focusServiceKey(g) {
-  if (g.apiKeyVal === _MASK) g.apiKeyVal = ''
+// 聚焦输入框时清除掩码
+function focusServiceKey(g, fld) {
+  if (fld && fld.val === _MASK) fld.val = ''
 }
 
 // ── 文献源（category === 'literature'，源自 GET /api/registered-services） ──
@@ -1578,23 +1596,28 @@ async function toggleChannel(platformKey) {
           </div>
           <div v-else-if="Object.keys(serviceGroups).length === 0" class="text-center text-sm text-gray-400 py-4">暂无已注册的服务</div>
           <div v-else class="space-y-3">
-            <div v-for="g in Object.values(serviceGroups)" :key="g.sid" class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 space-y-2">
+            <div v-for="g in Object.values(serviceGroups)" :key="g.sid" class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ g.label }}</span>
                 <span v-if="g.saved" class="text-green-500 text-xs">✅ 已保存</span>
               </div>
-              <div class="flex gap-2">
-                <input
-                  v-model="g.apiKeyVal"
-                  type="password"
-                  :placeholder="g.apiKeyEnv"
-                  @focus="focusServiceKey(g)"
-                  class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
-                />
-                <button @click="saveService(g.sid)" :disabled="servicesSaving" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
-                <button @click="clearService(g.sid)" class="px-3 py-2 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+              <div v-for="fld in g.fields" :key="fld.key" class="space-y-1">
+                <label class="block text-xs text-gray-500 dark:text-gray-400">{{ fld.kind === 'api_key' ? 'API Key' : fld.kind === 'base_url' ? '接口地址' : '模型名' }}</label>
+                <div class="flex gap-2">
+                  <input
+                    v-model="fld.val"
+                    :type="fld.kind === 'api_key' ? 'password' : 'text'"
+                    :placeholder="fld.key"
+                    @focus="focusServiceKey(g, fld)"
+                    class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:border-green-400 focus:ring-1 focus:ring-green-400 outline-none font-mono"
+                  />
+                </div>
+                <p class="text-[11px] text-gray-400 font-mono">{{ fld.key }}</p>
               </div>
-              <p class="text-[11px] text-gray-400 font-mono">{{ g.apiKeyEnv }}</p>
+              <div class="flex gap-2 pt-1">
+                <button @click="saveService(g.sid)" :disabled="servicesSaving" class="px-4 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 whitespace-nowrap">保存</button>
+                <button @click="clearService(g.sid)" class="px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-red-500 border border-gray-300 dark:border-gray-600 whitespace-nowrap">清除</button>
+              </div>
             </div>
           </div>
         </div>

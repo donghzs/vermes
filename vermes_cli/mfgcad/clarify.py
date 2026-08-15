@@ -172,14 +172,23 @@ _CLARIFY_MODEL_BY_PROVIDER = {
 
 
 def _resolve_clarify_model() -> str:
-    """clarify 用的 chat 模型：env MFGCAD_CLARIFY_MODEL > 活跃 provider 映射 > deepseek-chat 兜底。
+    """clarify 用的 chat 模型。
 
-    与 P4 视觉模型派生同一思路——消除「默认写死 deepseek 导致非 deepseek
-    活跃 provider 调用 401」的反模式。
+    优先级：mfgcad 专属 model（MFG_CAD_MODEL）> 活跃 provider 映射 > deepseek-chat 兜底。
     """
+    # 1) mfgcad 专属模型（前端「服务→制造 CAD」配置）
+    try:
+        from vermes_cli.mfgcad.tools import _resolve_mfgcad_model
+        m = _resolve_mfgcad_model()
+        if m:
+            return m
+    except Exception:
+        pass
+    # 2) env 覆盖
     env = os.environ.get("MFGCAD_CLARIFY_MODEL")
     if env:
         return env
+    # 3) 活跃 provider 映射
     try:
         from vermes_cli.auth import (
             get_active_provider,

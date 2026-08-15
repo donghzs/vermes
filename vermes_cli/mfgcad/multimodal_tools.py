@@ -369,8 +369,15 @@ async def _llm_vision_describe(image_path: str, api_key: str, image_paths: list[
     if not base_url:
         base_url = "https://api.openai.com/v1"  # 兜底：通用 OpenAI 兼容地址
 
-    # 视觉模型：env 覆盖 > provider 映射 > 通用兜底
-    model = os.environ.get("MFGCAD_VISION_MODEL")
+    # 视觉模型：mfgcad 专属 model > env 覆盖 > provider 映射 > 通用兜底
+    model = ""
+    try:
+        from vermes_cli.mfgcad.tools import _resolve_mfgcad_model
+        model = _resolve_mfgcad_model()
+    except Exception:
+        pass
+    if not model:
+        model = os.environ.get("MFGCAD_VISION_MODEL")
     if not model:
         try:
             from vermes_cli.auth import (

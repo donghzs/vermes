@@ -133,60 +133,60 @@ def _resolve_engine() -> tuple[str, Path]:
     return python_exe, engine_dir
 
 
+def _resolve_mfgcad_service_creds() -> dict:
+    """读取 mfgcad 专属服务配置（api_key + base_url + model）。
+
+    优先级：统一凭证层 mfgcad 服务 > 主 Agent 活跃 provider。
+    返回 dict: {api_key, base_url, model}，未配置的字段为空字符串。
+    """
+    creds = {"api_key": "", "base_url": "", "model": ""}
+    # 1) mfgcad 专属配置（统一凭证层）
+    try:
+        from agent.service_credentials import get_service_credentials
+        svc = get_service_credentials("mfgcad")
+        creds["api_key"] = svc.get("api_key") or ""
+        creds["base_url"] = svc.get("base_url") or ""
+    except Exception:
+        pass
+    # model 从 extra_fields 读（中央配置 services.mfgcad.MFG_CAD_MODEL 或 env）
+    if not creds["model"]:
+        creds["model"] = os.environ.get("MFG_CAD_MODEL", "")
+    # 2) 回退主 Agent 活跃 provider（只补空字段）
+    if not creds["api_key"]:
+        try:
+            from vermes_cli.auth import (
+                get_active_provider,
+                resolve_api_key_provider_credentials,
+            )
+            pid = get_active_provider()
+            if pid:
+                c = resolve_api_key_provider_credentials(pid) or {}
+                creds["api_key"] = c.get("api_key") or ""
+                if not creds["base_url"]:
+                    creds["base_url"] = c.get("base_url") or ""
+        except Exception:
+            pass
+    return creds
+
+
 def _resolve_api_key() -> str:
     """统一从前端用户配置读取 LLM key —— 禁止各插件散读 os.environ。
 
-    Vermes 设计铁律（agent/service_credentials.py）：所有外部 API 调用都应从
-    用户中央 API 配置读取，而非 ``os.environ.get("XXX_API_KEY")``。
-
-    解析优先级：
-      1. service_credentials.get_api_key("mfgcad") —— 用户在统一凭证层为
-         「制造 CAD」单独设的 key（前端单字段渲染，env 名 MFG_CAD_API_KEY）。
-         留空表示复用主 Agent 的 key。
-      2. 复用用户在前端为 Vermes 主 Agent 配的同一把 LLM key
-         （auth.resolve_api_key_provider_credentials(active_provider)）。
-         这样「一个 API 设置，处处可用」，符合用户预期。
-    两者皆空返回 ""，由调用方提示去前端配置。
+    优先级：
+      1. mfgcad 专属 key（前端「设置 → 服务 → 制造 CAD」单字段，env MFG_CAD_API_KEY）
+      2. 复用主 Agent 的活跃 provider key
     """
-    # 1) mfgcad 专属覆盖（统一凭证层）
-    try:
-        from agent.service_credentials import get_api_key as _sc_get
-        k = _sc_get("mfgcad")
-        if k:
-            return k
-    except Exception:
-        pass
-    # 2) 复用主 Agent 的活跃 provider key（统一前端设置）
-    try:
-        from vermes_cli.auth import (
-            get_active_provider,
-            resolve_api_key_provider_credentials,
-        )
-        pid = get_active_provider()
-        if pid:
-            creds = resolve_api_key_provider_credentials(pid) or {}
-            ak = creds.get("api_key")
-            if ak:
-                return ak
-    except Exception:
-        pass
-    return ""
+    return _resolve_mfgcad_service_creds()["api_key"]
 
 
 def _resolve_api_key_provider_base_url() -> str:
-    """返回活跃 provider 的 base_url，供多模态工具复用。"""
-    try:
-        from vermes_cli.auth import (
-            get_active_provider,
-            resolve_api_key_provider_credentials,
-        )
-        pid = get_active_provider()
-        if pid:
-            creds = resolve_api_key_provider_credentials(pid) or {}
-            return creds.get("base_url", "")
-    except Exception:
-        pass
-    return ""
+    """返回 LLM base_url：mfgcad 专属 > 活跃 provider。"""
+    return _resolve_mfgcad_service_creds()["base_url"]
+
+
+def _resolve_mfgcad_model() -> str:
+    """返回 mfgcad 专属模型名（env MFG_CAD_MODEL），未配置返回空。"""
+    return _resolve_mfgcad_service_creds()["model"]
 
 
 def _parse_engine_json(stdout: str) -> Optional[dict]:
@@ -454,17 +454,21 @@ def register_tools(host_api=None):
     accepted for signature parity with ScholarForge but unused — mfgcad is
     self-contained (its own LLM client + engine venv).
     """
-    # 接入统一凭证层：声明「制造 CAD」服务，使前端「设置 → API」能单字段渲染
-    # 其 key（env 名 MFG_CAD_API_KEY）。留空则 _resolve_api_key 复用主 Agent
-    # 的活跃 provider key —— 不散读 os.environ。
+    # 接入统一凭证层：声明「制造 CAD」服务的完整三字段配置（key + base_url + model），
+    # 使前端「设置 → 服务 → 制造 CAD」可独立配置 3D 建模专用的 LLM 厂商。
+    # 留空则回退复用 Vermes 主 Agent 的活跃 provider（key/base_url/model 全派生）。
     try:
         from agent.service_credentials import register_service
         register_service(
             "mfgcad",
             api_key_env_var="MFG_CAD_API_KEY",
-            label="制造 CAD (Multi-Agent-CAD)",
+            base_url_env_var="MFG_CAD_BASE_URL",
+            label="制造 CAD (3D 建模)",
             category="services",
-            description="自然语言生成 STEP 三维模型所需的 LLM key（DeepSeek/OpenAI 兼容）。留空则复用 Vermes 主 Agent 的 LLM key。",
+            description="3D 建模专用 LLM 配置。留空则复用 Vermes 主 Agent 的活跃 Provider。填写后 3D 建模（含歧义检查、视觉理解）走此独立配置。",
+            extra_fields=[
+                {"key": "MFG_CAD_MODEL", "label": "制造 CAD 模型名", "secret": False},
+            ],
         )
     except Exception:
         pass  # 凭证层缺失不阻断工具注册
