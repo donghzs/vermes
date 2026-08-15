@@ -14,7 +14,7 @@ Provides subcommands for:
 import os
 import sys
 
-__version__ = "2.3.8"
+__version__ = "2.3.9"
 __release_date__ = "2026.6.10"
 
 
