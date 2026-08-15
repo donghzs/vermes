@@ -84,6 +84,40 @@ async def test_vision_model_derived_from_provider(monkeypatch, tmp_path):
     assert desc == "视觉描述"
 
 
+@pytest.mark.asyncio
+async def test_vision_model_gemini_derived(monkeypatch, tmp_path):
+    """gemini 活跃 provider 必须自动派生 gemini-2.5-pro（QClaw 审计补映射）。
+
+    R5 反向属性：改前映射表无 gemini 键，_VISION_MODEL_BY_PROVIDER.get('gemini', 'gpt-4o')
+    落到兜底 gpt-4o → 本断言失败，证明测的是真实映射而非镜像实现。
+    """
+    img = tmp_path / "g.jpg"
+    img.write_bytes(b"\xff\xd8\xff\xe0fakejpeg")
+
+    clients = []
+
+    def _maker(*a, **k):
+        c = _FakeVisionClient()
+        clients.append(c)
+        return c
+
+    monkeypatch.setattr("httpx.AsyncClient", _maker)
+    monkeypatch.setattr(
+        "vermes_cli.mfgcad.tools._resolve_api_key_provider_base_url",
+        lambda: "https://generativelanguage.googleapis.com/v1beta/openai",
+    )
+    monkeypatch.setattr("vermes_cli.auth.get_active_provider", lambda: "gemini")
+    monkeypatch.setattr(
+        "vermes_cli.auth.resolve_api_key_provider_credentials",
+        lambda pid: {"provider": "gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"},
+    )
+
+    desc = await _llm_vision_describe(str(img), "fakekey")
+
+    assert clients and clients[0].model == "gemini-2.5-pro"
+    assert desc == "视觉描述"
+
+
 # ── P4 bbox 坐标透传（#402）───────────────────────────────
 
 

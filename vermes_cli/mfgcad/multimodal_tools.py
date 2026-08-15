@@ -161,11 +161,16 @@ _VISION_MODEL_BY_PROVIDER = {
     "deepseek": "deepseek-vision",
     "openai": "gpt-4o",
     "azure-openai": "gpt-4o",
+    # gemini：配 Gemini key 即自动用最强空间推理视觉模型（GeoArena 视觉推理 #1，
+    # 空间推理基准显著优于其余闭源 VLM）。无需手动设 MFGCAD_VISION_MODEL。
+    "gemini": "gemini-2.5-pro",
     "dashscope": "qwen-vl-max",
     "qwen": "qwen-vl-max",
     "siliconflow": "Qwen/Qwen2.5-VL-72B-Instruct",
     "zhipu": "glm-4v",
     "moonshot": "moonshot-v1-8k-vision",
+    # 推理模型（o4-mini / o3 等）无独立 provider key，挂在 openai 下；
+    # 想用推理视觉模型设 MFGCAD_VISION_MODEL=o4-mini 即可，无须在此列死条目。
 }
 
 

@@ -129,3 +129,6 @@ class TestVisionModelResolution:
         # 验证映射存在
         assert "deepseek" in _VISION_MODEL_BY_PROVIDER
         assert "openai" in _VISION_MODEL_BY_PROVIDER
+        # gemini 自动用最强空间推理视觉模型（QClaw 审计结论：补映射最小成本最高回报）
+        assert "gemini" in _VISION_MODEL_BY_PROVIDER
+        assert _VISION_MODEL_BY_PROVIDER["gemini"] == "gemini-2.5-pro"
