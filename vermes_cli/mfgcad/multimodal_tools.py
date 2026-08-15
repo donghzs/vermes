@@ -164,6 +164,9 @@ _VISION_MODEL_BY_PROVIDER = {
     # gemini：配 Gemini key 即自动用最强空间推理视觉模型（GeoArena 视觉推理 #1，
     # 空间推理基准显著优于其余闭源 VLM）。无需手动设 MFGCAD_VISION_MODEL。
     "gemini": "gemini-2.5-pro",
+    # anthropic：Claude Sonnet 4 视觉推理接近 Gemini 2.5 Pro，
+    # 且不少用户用 Claude 当主 provider，缺了是遗漏。
+    "anthropic": "claude-sonnet-4-20250514",
     "dashscope": "qwen-vl-max",
     "qwen": "qwen-vl-max",
     "siliconflow": "Qwen/Qwen2.5-VL-72B-Instruct",
