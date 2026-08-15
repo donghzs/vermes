@@ -155,11 +155,22 @@ def _save_uploaded_image(image_path: str, session_id: str) -> str:
     return str(dst)
 
 
+# provider → 视觉模型映射（仅覆盖常见 provider；未列出走 env 覆盖或通用兜底）。
+# 目的：消除 P4 初版硬编码 deepseek 导致的「非 deepseek provider 多模态必 401」。
+_VISION_MODEL_BY_PROVIDER = {
+    "deepseek": "deepseek-vision",
+    "openai": "gpt-4o",
+    "azure-openai": "gpt-4o",
+    "dashscope": "qwen-vl-max",
+    "qwen": "qwen-vl-max",
+    "siliconflow": "Qwen/Qwen2.5-VL-72B-Instruct",
+    "zhipu": "glm-4v",
+    "moonshot": "moonshot-v1-8k-vision",
+}
+
+
 def _image_to_description(image_path: str) -> str:
-    """用 LLM 视觉模型把图片转成 NL 描述（MAC fallback 路径）。"""
-    # 这里走统一凭证层调 LLM vision
-    # 实际实现时接入 agent 的 vision 能力
-    # 简单 fallback：返回空让 MAC 自行处理
+    """（保留接口）占位：真实视觉提取走 _llm_vision_describe。"""
     return ""
 
 
@@ -172,6 +183,7 @@ async def _handle_mfg_image_to_cad(args: dict, **kw: Any) -> str:
     description = (args.get("description") or "").strip()
     backend_choice = (args.get("backend") or "auto").strip()
     session_id = (args.get("session_id") or f"img_{int(time.time())}").strip()
+    extra_images = args.get("extra_images") or []
 
     if not image_path:
         return "❌ 缺少参数 image_path。"
@@ -195,12 +207,11 @@ async def _handle_mfg_image_to_cad(args: dict, **kw: Any) -> str:
         if not key:
             return "❌ MAC 后端需要 LLM API key。请配置后重试或使用 trellis/cloud_api 后端。"
 
-        # 用 LLM vision 提取描述
+        # 用 LLM vision 提取描述（多视图时把其余视图一并传入）
         img_desc = description or _image_to_description(saved_path)
         if not img_desc:
-            # 尝试用 LLM vision
             try:
-                img_desc = await _llm_vision_describe(saved_path, key)
+                img_desc = await _llm_vision_describe(saved_path, key, extra_images)
             except Exception as e:
                 return f"❌ 图片描述提取失败: {e}\n请手动提供 description 参数。"
 
@@ -287,14 +298,15 @@ async def _handle_mfg_bbox_to_cad(args: dict, **kw: Any) -> str:
 
     saved_path = _save_uploaded_image(image_path, session_id)
 
-    # 把 bbox 信息拼成文字描述
+    # 把 bbox 信息（含像素坐标）拼成文字描述，真正传给模型做空间布局
     bbox_desc = description
     if bboxes:
         parts = []
         for b in bboxes:
             label = b.get("label", "未知")
-            parts.append(f"{label}")
-        bbox_desc = f"标注部位：{', '.join(parts)}。{description}"
+            x = b.get("x"); y = b.get("y"); w = b.get("width"); h = b.get("height")
+            parts.append(f"{label}(左上x={x},y={y},宽{w},高{h})")
+        bbox_desc = f"标注部位及像素坐标：{', '.join(parts)}。{description}"
 
     # 复用 image_to_cad 逻辑
     return await _handle_mfg_image_to_cad({
@@ -333,51 +345,75 @@ async def _handle_mfg_multi_view_to_cad(args: dict, **kw: Any) -> str:
     if description:
         view_desc += f"。{description}"
 
-    # 走 image_to_cad（用正面图作为主参考）
+    # 走 image_to_cad（正面图作主参考，side/top 作为 extra_images 真透传给视觉模型）
+    extra = [p for p in [views.get("side"), views.get("top")] if p]
     return await _handle_mfg_image_to_cad({
         "image_path": views["front"],
         "description": view_desc,
         "backend": "auto",
         "session_id": session_id,
+        "extra_images": extra,
     })
 
 
-async def _llm_vision_describe(image_path: str, api_key: str) -> str:
-    """用 LLM vision 模型把图片转成文字描述。"""
+async def _llm_vision_describe(image_path: str, api_key: str, image_paths: list[str] | None = None) -> str:
+    """用 LLM vision 模型把图片转成文字描述。
+
+    模型与 base_url 一律从统一凭证层派生（不再硬编码 deepseek），保证任意
+    活跃 provider 的多模态路径都不会因 base_url/模型不匹配而 401。
+    - 视觉模型：env MFGCAD_VISION_MODEL > provider 映射 > 通用 gpt-4o 兜底
+    - base_url：活跃 provider 的 base_url；为空则兜底 OpenAI 兼容地址
+    - image_paths：多视图时传入其余视图，一并发给视觉模型
+    """
     import base64
 
-    # 读图片转 base64
-    with open(image_path, "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode()
-
-    # 判断 MIME
-    ext = Path(image_path).suffix.lower()
-    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
-
-    # 调 OpenAI 兼容 vision API
-    import httpx
     from vermes_cli.mfgcad.tools import _resolve_api_key_provider_base_url
 
+    # base_url 统一从凭证层解析
     base_url = _resolve_api_key_provider_base_url()
     if not base_url:
-        base_url = "https://api.deepseek.com/v1"
+        base_url = "https://api.openai.com/v1"  # 兜底：通用 OpenAI 兼容地址
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    # 视觉模型：env 覆盖 > provider 映射 > 通用兜底
+    model = os.environ.get("MFGCAD_VISION_MODEL")
+    if not model:
+        try:
+            from vermes_cli.auth import (
+                get_active_provider,
+                resolve_api_key_provider_credentials,
+            )
+            pid = get_active_provider()
+            if pid:
+                creds = resolve_api_key_provider_credentials(pid) or {}
+                model = _VISION_MODEL_BY_PROVIDER.get(creds.get("provider", pid), "gpt-4o")
+        except Exception:
+            model = "gpt-4o"
+
+    # 组装多图 content（主图 + 其余视图）
+    all_images = [image_path] + [p for p in (image_paths or []) if p and p != image_path]
+    content: list[dict] = [{
+        "type": "text",
+        "text": "详细描述这张图片中的物体形状、尺寸比例、结构特征，用于 3D 建模。用简洁的技术语言。",
+    }]
+    for img in all_images:
+        try:
+            with open(img, "rb") as f:
+                img_b64 = base64.b64encode(f.read()).decode()
+        except Exception:
+            continue
+        ext = Path(img).suffix.lower()
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+        content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}})
+
+    import httpx
+    async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
             f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
             json={
-                "model": "deepseek-v4-flash",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "详细描述这张图片中的物体形状、尺寸比例、结构特征，用于 3D 建模。用简洁的技术语言。"},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}},
-                        ],
-                    }
-                ],
-                "max_tokens": 500,
+                "model": model,
+                "messages": [{"role": "user", "content": content}],
+                "max_tokens": 800,
             },
         )
         resp.raise_for_status()

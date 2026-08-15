@@ -259,7 +259,7 @@ async def _builtin_edit(source_file: str, edit_desc: str, output_dir: Path, sess
     try:
         import trimesh
     except ImportError:
-        return "❌ 内置编辑需要 trimesh（pip install trimesh），或安装 Nano3D 引擎用 NL 编辑。"
+        return "❌ 内置编辑需要 trimesh（pip install 'vermes[mfgcad]' 或 uv sync --extra mfgcad），或安装 Nano3D 引擎用 NL 编辑。"
 
     # 加载模型
     try:
@@ -421,7 +421,7 @@ async def _builtin_paint(source_file: str, texture_desc: str, output_dir: Path, 
     try:
         import trimesh
     except ImportError:
-        return "❌ 内置纹理需要 trimesh（pip install trimesh），或安装 Paint3D 引擎。"
+        return "❌ 内置纹理需要 trimesh（pip install 'vermes[mfgcad]' 或 uv sync --extra mfgcad），或安装 Paint3D 引擎。"
 
     try:
         mesh = trimesh.load(source_file, force='mesh')
@@ -509,7 +509,7 @@ async def _handle_mfg_transform(args: dict, **kw: Any) -> str:
         import trimesh
         import numpy as np
     except ImportError:
-        return "❌ 需要 trimesh（pip install trimesh）。"
+        return "❌ 需要 trimesh（pip install 'vermes[mfgcad]' 或 uv sync --extra mfgcad）。"
 
     try:
         mesh = trimesh.load(source_file, force='mesh')

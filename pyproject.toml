@@ -171,6 +171,11 @@ youtube = [
 ]
 # `vermes dashboard` (localhost SPA + API).  Not in core to keep the default install lean.
 web = ["fastapi==0.133.1", "uvicorn[standard]==0.41.0"]
+# mfgcad — 3D 建模 P3 局部编辑内置后端（mfg_edit_part / mfg_transform / mfg_paint_texture
+# 的 builtin 分支在主进程跑 trimesh 做几何变换，非懒装）。作为 extra 声明，避免把
+# 重几何依赖拖入每个 session 的核心依赖。安装：
+#   pip install 'vermes[mfgcad]'   或   uv sync --extra mfgcad
+mfgcad = ["trimesh==5.0.0"]
 all = [
   # Policy (2026-05-12): `[all]` includes only extras that genuinely
   # CAN'T be lazy-installed via `tools/lazy_deps.py` — i.e. things every

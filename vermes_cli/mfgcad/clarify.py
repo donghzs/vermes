@@ -26,39 +26,63 @@ _HERE = Path(__file__).resolve().parent
 _PRESETS_CACHE: dict[str, dict] | None = None
 
 
+def _merge_presets(presets: dict, data: dict | None) -> dict:
+    """把一份 YAML 数据中的 presets 合并进 presets dict。
+
+    兼容两种 YAML 形态（用户对 list 形态极易写错，曾导致 loader 崩溃）：
+      - dict:  {presets: {key: {...}}}
+      - list:  {presets: [{name: key, ...}, ...]}
+    其他形态（None / 标量）静默忽略，不抛异常。
+    """
+    raw = (data or {}).get("presets")
+    if isinstance(raw, dict):
+        for key, val in raw.items():
+            if isinstance(val, dict):
+                presets[key] = val
+    elif isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("key")
+                if name:
+                    presets[name] = item
+    return presets
+
+
 def _load_presets() -> dict[str, dict]:
-    """加载 preset 定义，合并内置 + 用户目录。"""
+    """加载 preset 定义，合并内置 + 用户目录。
+
+    健壮性：单文件解析失败只 warn + 跳过，不让一次坏 preset 拖垮全部 clarify。
+    """
     global _PRESETS_CACHE
     if _PRESETS_CACHE is not None:
         return _PRESETS_CACHE
 
+    import logging
     import yaml
 
+    _log = logging.getLogger(__name__)
     presets: dict[str, dict] = {}
 
     # 内置 preset
     builtin = _HERE / "presets.yaml"
     if builtin.is_file():
-        with open(builtin, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        for p in data.get("presets", []):
-            if isinstance(p, dict) and "name" not in p:
-                # YAML list items use key as name
-                continue
-        # YAML 格式是 {presets: {key: {...}}}
-        for key, val in (data.get("presets") or {}).items():
-            if isinstance(val, dict):
-                presets[key] = val
+        try:
+            data = yaml.safe_load(builtin.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            _log.warning("内置 presets.yaml 解析失败: %s", e)
+            data = {}
+        presets = _merge_presets(presets, data)
 
-    # 用户自定义 preset（覆盖同名内置）
+    # 用户自定义 preset（覆盖同名内置）；逐文件 try，坏文件不影响整体
     user_dir = Path.home() / ".vermes" / "mfgcad" / "presets"
     if user_dir.is_dir():
-        for pkl in user_dir.glob("*.yaml"):
-            with open(pkl, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            for key, val in (data.get("presets") or {}).items():
-                if isinstance(val, dict):
-                    presets[key] = val
+        for pkl in sorted(user_dir.glob("*.yaml")):
+            try:
+                data = yaml.safe_load(pkl.read_text(encoding="utf-8")) or {}
+            except Exception as e:
+                _log.warning("用户 preset %s 解析失败，已跳过: %s", pkl.name, e)
+                continue
+            presets = _merge_presets(presets, data)
 
     _PRESETS_CACHE = presets
     return presets
