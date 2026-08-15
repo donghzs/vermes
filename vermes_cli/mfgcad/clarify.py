@@ -157,6 +157,43 @@ def _resolve_base_url() -> str:
     return "https://api.deepseek.com/v1"
 
 
+# clarifier 用的 chat 模型映射（与 _VISION_MODEL_BY_PROVIDER 区分：
+# clarify 不需要视觉能力，用各 provider 的 chat 模型而非 vision 模型）。
+_CLARIFY_MODEL_BY_PROVIDER = {
+    "deepseek": "deepseek-chat",
+    "openai": "gpt-4o",
+    "azure-openai": "gpt-4o",
+    "dashscope": "qwen-plus",
+    "qwen": "qwen-plus",
+    "siliconflow": "Qwen/Qwen2.5-72B-Instruct",
+    "zhipu": "glm-4-flash",
+    "moonshot": "moonshot-v1-8k",
+}
+
+
+def _resolve_clarify_model() -> str:
+    """clarify 用的 chat 模型：env MFGCAD_CLARIFY_MODEL > 活跃 provider 映射 > deepseek-chat 兜底。
+
+    与 P4 视觉模型派生同一思路——消除「默认写死 deepseek 导致非 deepseek
+    活跃 provider 调用 401」的反模式。
+    """
+    env = os.environ.get("MFGCAD_CLARIFY_MODEL")
+    if env:
+        return env
+    try:
+        from vermes_cli.auth import (
+            get_active_provider,
+            resolve_api_key_provider_credentials,
+        )
+        pid = get_active_provider()
+        if pid:
+            creds = resolve_api_key_provider_credentials(pid) or {}
+            return _CLARIFY_MODEL_BY_PROVIDER.get(creds.get("provider", pid), "deepseek-chat")
+    except Exception:
+        pass
+    return "deepseek-chat"
+
+
 async def check_clarity(
     request: str,
     preset_name: str | None = None,
@@ -301,7 +338,7 @@ async def _call_llm_for_clarify(api_key: str, user_msg: str) -> dict | None:
             f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
             json={
-                "model": os.environ.get("MFGCAD_CLARIFY_MODEL", "deepseek-chat"),
+                "model": _resolve_clarify_model(),
                 "messages": [
                     {"role": "system", "content": _CLARIFY_SYSTEM},
                     {"role": "user", "content": user_msg},

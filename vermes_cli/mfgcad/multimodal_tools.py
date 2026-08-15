@@ -169,11 +169,6 @@ _VISION_MODEL_BY_PROVIDER = {
 }
 
 
-def _image_to_description(image_path: str) -> str:
-    """（保留接口）占位：真实视觉提取走 _llm_vision_describe。"""
-    return ""
-
-
 # ── Handlers ─────────────────────────────────────────────
 
 
@@ -208,7 +203,7 @@ async def _handle_mfg_image_to_cad(args: dict, **kw: Any) -> str:
             return "❌ MAC 后端需要 LLM API key。请配置后重试或使用 trellis/cloud_api 后端。"
 
         # 用 LLM vision 提取描述（多视图时把其余视图一并传入）
-        img_desc = description or _image_to_description(saved_path)
+        img_desc = description
         if not img_desc:
             try:
                 img_desc = await _llm_vision_describe(saved_path, key, extra_images)

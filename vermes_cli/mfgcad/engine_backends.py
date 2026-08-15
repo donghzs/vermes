@@ -234,6 +234,25 @@ class TrellisBackend(EngineBackend):
             os.environ.get("TRELLIS_ENGINE_DIR", str(Path.home() / ".vermes" / "engines" / "trellis"))
         ).resolve()
 
+    def _python_exe(self) -> str:
+        """解析 TRELLIS 本地推理用的 Python 解释器。
+
+        解析顺序：① 环境变量 TRELLIS_ENGINE_PY 显式指定
+                   ② 引擎 venv（<engine_dir>/.venv/bin/python）
+        找不到时抛 RuntimeError，由调用方转为清晰的错误结果（不再裸 `python3`）。
+        """
+        exe = os.environ.get("TRELLIS_ENGINE_PY")
+        if exe:
+            return exe
+        candidate = self._engine_dir() / ".venv" / "bin" / "python"
+        if candidate.is_file():
+            return str(candidate)
+        raise RuntimeError(
+            f"TRELLIS 引擎解释器未就绪：{candidate} 不存在。"
+            f"请在 {self._engine_dir()} 下创建含 torch/trellis 依赖的 venv，"
+            f"或用 TRELLIS_ENGINE_PY 显式指定解释器。"
+        )
+
     def _detect_mode(self) -> str:
         """检测可用部署模式。"""
         # 1. 本地 CUDA
@@ -307,8 +326,13 @@ class TrellisBackend(EngineBackend):
                 message=f"TRELLIS 运行脚本不存在：{runner}。请先安装 TRELLIS 引擎。",
             )
 
+        try:
+            python_exe = self._python_exe()
+        except RuntimeError as e:
+            return EngineResult(ok=False, error_type="engine_not_ready", message=str(e))
+
         cmd = [
-            "python3", str(runner),
+            python_exe, str(runner),
             "--request", request,
             "--output-dir", output_dir,
             "--mode", mode,
@@ -362,10 +386,16 @@ class TrellisBackend(EngineBackend):
         import httpx
 
         api_key = env.get("TRELLIS_CLOUD_API_KEY", "")
-        api_base = env.get(
-            "TRELLIS_CLOUD_API_BASE",
-            "https://api.trellis.example.com/v1",
-        )
+        api_base = env.get("TRELLIS_CLOUD_API_BASE")
+        if not api_base:
+            return EngineResult(
+                ok=False,
+                error_type="config_missing",
+                message=(
+                    "TRELLIS 云 API 端点未配置。请设置环境变量 TRELLIS_CLOUD_API_BASE"
+                    "（例如 https://your-trellis-cloud.example/v1）。"
+                ),
+            )
 
         try:
             async with httpx.AsyncClient(timeout=120) as client:

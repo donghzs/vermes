@@ -175,7 +175,10 @@ class TestTrellisBackend:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     result = await b.generate(
                         "一只赛博朋克猫", tmpdir,
-                        env={"TRELLIS_CLOUD_API_KEY": "sk-test"},
+                        env={
+                            "TRELLIS_CLOUD_API_KEY": "sk-test",
+                            "TRELLIS_CLOUD_API_BASE": "https://api.trellis.example.com/v1",
+                        },
                     )
 
         assert result.ok is True
