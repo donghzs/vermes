@@ -10,7 +10,6 @@
 - #12 删除 `_image_to_description` 死桩（恒返 "" 的占位函数）
 """
 
-import os
 from pathlib import Path
 from unittest.mock import patch
 
