@@ -54,17 +54,17 @@ function selectSession(s) {
 
 const availableFiles = computed(() => {
   if (!selectedSession.value?.files) return []
-  const sid = selectedSession.value.session_id
-  return Object.entries(selectedSession.value.files).map(([key, path]) => {
-    // 从完整路径提取文件名
-    const filename = path.split('/').pop().split('\\').pop()
+  return Object.entries(selectedSession.value.files).map(([key, url]) => {
+    // url 已是 /api/mfgcad/files/{sid}/{filename} 格式
+    const filename = url.split('/').pop()
+    const ext = filename.split('.').pop().toLowerCase()
     return {
       key,
       label: key.toUpperCase(),
-      url: `/api/mfgcad/files/${sid}/${filename}`,
-      ext: filename.split('.').pop().toLowerCase(),
+      url,
+      ext,
     }
-  }).filter(f => ['stl', 'glb', 'gltf', 'png', 'jpg', 'jpeg'].includes(f.ext))
+  }).filter(f => ['stl', 'glb', 'gltf', '3mf', 'png', 'jpg', 'jpeg'].includes(f.ext))
 })
 
 function selectFile(f) {
@@ -295,9 +295,12 @@ onMounted(loadSessions)
           <div class="text-center">
             <div class="text-6xl mb-4">🏭</div>
             <h2 class="text-lg font-medium text-gray-600 dark:text-gray-300 mb-2">3D 建模工作室</h2>
-            <p class="text-sm text-gray-400 max-w-xs">
-              在对话中描述你要建模的零件，调用 mfg_text_to_cad 生成 3D 模型后，可在此查看和管理所有设计会话。
+            <p class="text-sm text-gray-400 max-w-xs mb-4">
+              在对话中描述你要建模的零件，AI 自动生成 3D 模型后在此查看和管理。
             </p>
+            <button @click="goChat" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition">
+              💬 去对话建模
+            </button>
           </div>
         </div>
       </div>

@@ -3011,7 +3011,7 @@ async def prometheus_metrics():
 # 安全地服务 ~/.vermes/mfgcad/output/ 下的模型文件给前端 WebGL 视图器。
 # 路径限制：只允许 session_id 目录下的已知扩展名文件。
 
-_MFGCAD_ALLOWED_EXT = {".stl", ".glb", ".gltf", ".3mf", ".png", ".jpg", ".jpeg"}
+_MFGCAD_ALLOWED_EXT = {".stl", ".glb", ".gltf", ".3mf", ".png", ".jpg", ".jpeg", ".step", ".stp"}
 _MFGCAD_OUTPUT_DIR = Path.home() / ".vermes" / "mfgcad" / "output"
 
 
@@ -3054,6 +3054,8 @@ async def serve_mfgcad_file(session_id: str, filename: str):
         ".glb": "model/gltf-binary",
         ".gltf": "model/gltf+json",
         ".3mf": "model/3mf",
+        ".step": "application/STEP",
+        ".stp": "application/STEP",
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
@@ -3063,32 +3065,64 @@ async def serve_mfgcad_file(session_id: str, filename: str):
 
 @app.get("/api/mfgcad/sessions")
 async def list_mfgcad_sessions():
-    """列出所有 mfgcad 设计会话及其生成文件。"""
+    """列出所有 mfgcad 设计会话及其生成文件。
+
+    自动扫描 output 目录补齐旧 session 缺失的 stl/step 路径，
+    返回前端可用的 /api/mfgcad/files/{sid}/{filename} URL。
+    """
     import json
     from fastapi.responses import JSONResponse
 
     sessions = []
     sess_dir = Path.home() / ".vermes" / "mfgcad" / "sessions"
+    output_dir = Path.home() / ".vermes" / "mfgcad" / "output"
     if not sess_dir.is_dir():
         return JSONResponse({"sessions": []})
 
     for sf in sorted(sess_dir.glob("*/session.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             data = json.loads(sf.read_text(encoding="utf-8"))
+            sid = data.get("session_id", sf.parent.name)
+
+            # 自动扫描 output/<sid>/ 补齐缺失文件
+            sess_out = output_dir / sid
+            if sess_out.is_dir():
+                for ext, key in [(".step", "step_path"), (".stl", "stl_path"), (".3mf", "stl_3mf_path")]:
+                    if not data.get(key):
+                        files = sorted(sess_out.glob(f"*{ext}"), key=lambda p: p.stat().st_mtime, reverse=True)
+                        if files:
+                            data[key] = str(files[0])
+
+            # 把绝对路径转为前端可用的 URL
+            def _to_url(abs_path):
+                if not abs_path:
+                    return None
+                p = Path(abs_path)
+                try:
+                    rel = p.relative_to(output_dir / sid)
+                    return f"/api/mfgcad/files/{sid}/{rel.name}"
+                except ValueError:
+                    pass
+                return None
+
+            files_url = {}
+            for k, v in {
+                "step": data.get("step_path"),
+                "stl": data.get("stl_path"),
+                "3mf": data.get("stl_3mf_path"),
+                "glb": data.get("glb_path"),
+                "preview": data.get("preview_path"),
+            }.items():
+                url = _to_url(v)
+                if url:
+                    files_url[k] = url
+
             sessions.append({
-                "session_id": data.get("session_id", sf.parent.name),
+                "session_id": sid,
                 "request": data.get("request", ""),
                 "backend": data.get("backend", "mac"),
                 "ok": data.get("ok", False),
-                "files": {
-                    k: v for k, v in {
-                        "step": data.get("step_path"),
-                        "stl": data.get("stl_path"),
-                        "3mf": data.get("stl_3mf_path"),
-                        "glb": data.get("glb_path"),
-                        "preview": data.get("preview_path"),
-                    }.items() if v
-                },
+                "files": files_url,
                 "volume_mm3": data.get("volume_mm3"),
                 "qa": data.get("qa", {}),
                 "ts": data.get("ts", 0),
