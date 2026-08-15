@@ -3090,11 +3090,95 @@ async def list_mfgcad_sessions():
                 "volume_mm3": data.get("volume_mm3"),
                 "qa": data.get("qa", {}),
                 "ts": data.get("ts", 0),
+                "has_parameters": data.get("has_parameters", False),
+                "build123d_source": data.get("build123d_source"),
             })
         except Exception:
             continue
 
     return JSONResponse({"sessions": sessions})
+
+
+@app.get("/api/mfgcad/sessions/{session_id}/parameters")
+async def get_mfgcad_parameters(session_id: str):
+    """返回会话的可调参数（供前端渲染滑块：value/min/max/step/unit）。"""
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    from vermes_cli.mfgcad.parametric import (
+        load_parameters,
+        load_source,
+        acquire_source,
+        extract_parameters,
+    )
+
+    params = load_parameters(session_id)
+    if not params:
+        # parameters.json 可能未生成（引擎未落源码）→ 退而从源码现抽
+        src = load_source(session_id) or acquire_source(
+            session_id, str(_MFGCAD_OUTPUT_DIR / session_id)
+        )
+        if src:
+            params = extract_parameters(src)
+
+    return JSONResponse({
+        "session_id": session_id,
+        "has_parameters": bool(params),
+        "parameters": params,
+    })
+
+
+@app.post("/api/mfgcad/sessions/{session_id}/rebuild")
+async def rebuild_mfgcad_parametric(session_id: str, request):
+    """参数化重建：用新参数重建源会话，返回新建的子会话。
+
+    body: {"parameters": {"HEIGHT": 120.0, "HOLE_COUNT": 12}}
+    """
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json body"}, status_code=400)
+
+    params = (body or {}).get("parameters")
+    if not isinstance(params, dict) or not params:
+        return JSONResponse({"error": "missing parameters object"}, status_code=400)
+
+    from vermes_cli.mfgcad import tools as mfgcad_tools
+
+    message = await mfgcad_tools._handle_mfg_rebuild_parametric({
+        "base_session_id": session_id,
+        "parameters": params,
+    })
+
+    # 读取本次新建的子会话（base_session_id 指向源会话、ts 最大者）
+    sess_root = Path.home() / ".vermes" / "mfgcad" / "sessions"
+    child = None
+    child_ts = -1
+    if sess_root.is_dir():
+        for sf in sess_root.glob("*/session.json"):
+            try:
+                d = json.loads(sf.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if d.get("base_session_id") == session_id:
+                ts = d.get("ts", 0)
+                if ts > child_ts:
+                    child_ts = ts
+                    child = d
+
+    return JSONResponse({
+        "message": message,
+        "child_session": child,
+    })
 
 
 mount_spa(app)

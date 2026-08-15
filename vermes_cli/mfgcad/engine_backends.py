@@ -74,6 +74,23 @@ class EngineBackend(abc.ABC):
         """检查后端是否已安装就绪。"""
         return True
 
+    async def rebuild_from_script(
+        self,
+        source: str,
+        output_dir: str,
+        workflow_id: str = "original",
+        env: dict | None = None,
+    ) -> "EngineResult":
+        """（可选）从 build123d 源码重建，返回结构化结果。
+
+        网格类后端（TRELLIS）不支持参数化重建，默认抛 NotImplementedError；
+        参数化后端（MAC）应重写本方法：把源码落盘为 output_dir/build123d_source.py，
+        调引擎 ``--script`` 重建。
+        """
+        raise NotImplementedError(
+            f"后端 {self.name} 不支持参数化重建（rebuild_from_script）。"
+        )
+
 
 class EngineResult:
     """统一引擎输出结构。"""
@@ -190,6 +207,78 @@ class MACBackend(EngineBackend):
                 ok=False,
                 error_type="parse_error",
                 message=f"引擎未返回可解析结果。退出码={proc.returncode}。\n{tail}",
+            )
+
+        return EngineResult(
+            ok=bool(result.get("ok")),
+            files={
+                "step": result.get("step_path"),
+                "stl": result.get("stl_path"),
+                "3mf": result.get("stl_3mf_path"),
+            },
+            volume_mm3=result.get("volume_mm3"),
+            qa=result.get("qa") or {},
+            error_type=result.get("error_type"),
+            message=result.get("message", ""),
+            raw=result,
+        )
+
+    async def rebuild_from_script(
+        self,
+        source: str,
+        output_dir: str,
+        workflow_id: str = "original",
+        env: dict | None = None,
+    ) -> EngineResult:
+        """参数化重建：把 build123d 源码落盘并交给引擎用 ``--script`` 重建。
+
+        契约（需引擎 run_mac.py 配合支持 ``--script``）：
+          - 源码写入 output_dir/build123d_source.py；
+          - 调用 ``run_mac.py --script <path> --output-dir <dir> --workflow-id <id> --max-retries 5``；
+          - 引擎返回与 generate 同构的 JSON 行（step_path/stl_path/stl_3mf_path/
+            volume_mm3/qa/ok/error_type/message）。
+
+        已知边界：当前 MAC 引擎黑盒未必已落 ``--script`` 分支，若引擎不支持会返回
+        error_type（如 'unsupported_script'）。上层（tools.py）据此优雅降级为「需引擎升级」。
+        """
+        import asyncio
+
+        python_exe = self._python_exe()
+        engine_dir = self._engine_dir()
+        out_path = Path(output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+        script_path = out_path / "build123d_source.py"
+        script_path.write_text(source, encoding="utf-8")
+
+        cmd = [
+            python_exe,
+            str(engine_dir / "run_mac.py"),
+            "--script", str(script_path),
+            "--output-dir", str(out_path),
+            "--workflow-id", workflow_id,
+            "--max-retries", "5",
+        ]
+
+        full_env = dict(os.environ)
+        if env:
+            full_env.update(env)
+
+        try:
+            proc = await asyncio.to_thread(
+                subprocess.run, cmd, env=full_env, capture_output=True, text=True, timeout=1800
+            )
+        except subprocess.TimeoutExpired:
+            return EngineResult(ok=False, error_type="timeout", message="参数化重建超时（>30min）")
+        except Exception as e:
+            return EngineResult(ok=False, error_type="subprocess_error", message=f"{type(e).__name__}: {e}")
+
+        result = _parse_json_line(proc.stdout)
+        if result is None:
+            tail = "\n".join(proc.stderr.strip().splitlines()[-15:])
+            return EngineResult(
+                ok=False,
+                error_type="parse_error",
+                message=f"引擎未返回可解析结果（可能不支持 --script）。退出码={proc.returncode}。\n{tail}",
             )
 
         return EngineResult(

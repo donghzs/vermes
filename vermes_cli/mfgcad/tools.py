@@ -109,6 +109,16 @@ def _mfg_home() -> Path:
     return Path.home() / ".vermes" / "mfgcad"
 
 
+def _write_session_record(session_id: str, record: dict) -> None:
+    """把会话状态落到 sessions/<id>/session.json（自动合并 session_id/ts）。"""
+    sess_dir = _mfg_home() / "sessions" / session_id
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    record = {**record, "session_id": session_id, "ts": record.get("ts", int(time.time()))}
+    (sess_dir / "session.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
 def _resolve_engine() -> tuple[str, Path]:
     """Return (python_exe, engine_dir). Raise RuntimeError if not provisioned."""
     engine_dir = Path(os.environ.get("MFG_CAD_ENGINE_DIR", str(_ENGINE_DIR_DEFAULT))).resolve()
@@ -316,33 +326,51 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
     glb_path = files.get("glb")
     preview_path = files.get("png")
 
+    # 参数化重建地基：若引擎落盘了 build123d 源码，则抽取参数并持久化
+    build123d_source_path = None
+    has_parameters = False
+    if ok:
+        try:
+            from vermes_cli.mfgcad.parametric import (
+                acquire_source,
+                persist_source,
+                extract_parameters,
+                save_parameters,
+            )
+            src = acquire_source(session_id, output_dir)
+            if src:
+                persist_source(session_id, src)
+                params = extract_parameters(src)
+                if params:
+                    save_parameters(session_id, params)
+                    has_parameters = True
+                build123d_source_path = str(
+                    _mfg_home() / "sessions" / session_id / "build123d_source.py"
+                )
+        except Exception:
+            pass
+
     # 落状态化 session 记录
     try:
-        sess_dir = _mfg_home() / "sessions" / session_id
-        sess_dir.mkdir(parents=True, exist_ok=True)
-        (sess_dir / "session.json").write_text(
-            json.dumps(
-                {
-                    "session_id": session_id,
-                    "request": request,
-                    "workflow_id": workflow_id,
-                    "checkpoint": checkpoint,
-                    "backend": backend.name,
-                    "ok": ok,
-                    "step_path": step_path,
-                    "stl_path": stl_path,
-                    "stl_3mf_path": stl_3mf_path,
-                    "glb_path": glb_path,
-                    "preview_path": preview_path,
-                    "volume_mm3": volume,
-                    "qa": qa,
-                    "error_type": result.error_type,
-                    "ts": int(time.time()),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        _write_session_record(
+            session_id,
+            {
+                "request": request,
+                "workflow_id": workflow_id,
+                "checkpoint": checkpoint,
+                "backend": backend.name,
+                "ok": ok,
+                "step_path": step_path,
+                "stl_path": stl_path,
+                "stl_3mf_path": stl_3mf_path,
+                "glb_path": glb_path,
+                "preview_path": preview_path,
+                "volume_mm3": volume,
+                "qa": qa,
+                "error_type": result.error_type,
+                "build123d_source": build123d_source_path,
+                "has_parameters": has_parameters,
+            },
         )
     except Exception:
         pass
@@ -447,6 +475,148 @@ async def _handle_mfg_clarify(args: dict, **kw: Any) -> str:
     return "\n".join(lines)
 
 
+async def _handle_mfg_rebuild_parametric(args: dict, **kw: Any) -> str:
+    """参数化重建：对已有 build123d 会话改参后重建（拖滑块改参的核心入口）。
+
+    流程：load 源会话的 build123d 源码 → 校验参数名 → 源码级 apply_parameters
+    改参 → 调 MAC 引擎 rebuild_from_script 重建 → 落新 session（含新源码/参数）。
+    网格引擎（TRELLIS）无源码、不含可调常量，自然走「无可用源码」降级分支。
+    """
+    base_session_id = (args.get("base_session_id") or "").strip()
+    if not base_session_id:
+        return "❌ 缺少必填参数 base_session_id（要改参的源会话 ID，从 /api/mfgcad/sessions 列表获取）。"
+    params = args.get("parameters")
+    if not isinstance(params, dict) or not params:
+        return "❌ 缺少必填参数 parameters（格式：{\"参数名\": 新数值}，如 {\"HEIGHT\": 120.0}）。"
+
+    from vermes_cli.mfgcad.parametric import (
+        load_source,
+        acquire_source,
+        apply_parameters,
+        persist_source,
+        extract_parameters,
+        save_parameters,
+    )
+    source = load_source(base_session_id) or acquire_source(base_session_id, None)
+    if not source:
+        return (
+            f"❌ 会话 {base_session_id} 无可用的 build123d 源码，无法参数化重建。"
+            "可能原因：① 该会话由网格引擎（TRELLIS）生成，尺寸不可编辑；"
+            "② MAC 引擎未落盘 build123d_source.py（需引擎支持 --script 重建）。"
+        )
+
+    # 校验参数名确实存在于源码，避免静默改错对象
+    available = extract_parameters(source)
+    unknown = [k for k in params if k not in available]
+    if unknown:
+        return (
+            f"❌ 参数名不存在于源码：{', '.join(unknown)}。"
+            f"可用参数：{', '.join(available.keys()) or '（无，该源码无可调常量）'}"
+        )
+
+    try:
+        new_source = apply_parameters(source, params)
+    except Exception as e:
+        return f"❌ 参数重写失败: {type(e).__name__}: {e}"
+
+    new_session_id = f"auto_{int(time.time())}"
+    output_dir = str(_mfg_home() / "output" / new_session_id)
+
+    from vermes_cli.mfgcad.engine_backends import resolve_backend
+    backend = resolve_backend(None)  # 参数化重建固定走默认后端（mac，参数化 B-Rep）
+    if not backend.is_available():
+        return "❌ 引擎未就绪，参数化重建不可用。请先安装 MAC 引擎（含 build123d/cadquery-ocp）。"
+
+    env = {}
+    api_key = _resolve_api_key()
+    if api_key:
+        env["MFG_CAD_API_KEY"] = api_key
+
+    try:
+        result = await backend.rebuild_from_script(new_source, output_dir, workflow_id="original", env=env)
+    except Exception as e:
+        return f"❌ 引擎重建失败: {type(e).__name__}: {e}"
+
+    # 持久化新会话（含新源码 + 本次应用的参数），供继续微调
+    build123d_source_path = str(_mfg_home() / "sessions" / new_session_id / "build123d_source.py")
+    has_parameters = False
+    try:
+        persist_source(new_session_id, new_source)
+        new_params = extract_parameters(new_source)
+        if new_params:
+            save_parameters(new_session_id, new_params)
+            has_parameters = True
+    except Exception:
+        pass
+
+    step_path = result.files.get("step")
+    stl_path = result.files.get("stl")
+    stl_3mf_path = result.files.get("3mf")
+    glb_path = result.files.get("glb")
+    preview_path = result.files.get("png")
+    volume = result.volume_mm3
+    qa = result.qa or {}
+
+    try:
+        _write_session_record(
+            new_session_id,
+            {
+                "request": f"[参数化重建] base={base_session_id}",
+                "workflow_id": "original",
+                "checkpoint": False,
+                "backend": backend.name,
+                "ok": result.ok,
+                "step_path": step_path,
+                "stl_path": stl_path,
+                "stl_3mf_path": stl_3mf_path,
+                "glb_path": glb_path,
+                "preview_path": preview_path,
+                "volume_mm3": volume,
+                "qa": qa,
+                "error_type": result.error_type,
+                "build123d_source": build123d_source_path,
+                "has_parameters": has_parameters,
+                "base_session_id": base_session_id,
+                "applied_parameters": params,
+            },
+        )
+    except Exception:
+        pass
+
+    if not result.ok:
+        return f"❌ 参数化重建失败（{result.error_type}）：{result.message or ''}"
+
+    vol_str = f"{volume:.2f} mm³（{volume/1000:.3f} cm³）" if volume is not None else ""
+    return (
+        f"✅ 参数化重建完成（基于 {base_session_id}，改参：{params}）\n"
+        + (f"STEP: {step_path}\n" if step_path else "")
+        + (f"STL: {stl_path}\n" if stl_path else "")
+        + (f"3MF: {stl_3mf_path}\n" if stl_3mf_path else "")
+        + (f"体积 {vol_str}\n" if vol_str else "")
+        + f"新会话 session_id={new_session_id}。可继续拖滑块微调或导出 STEP/STL。"
+    )
+
+
+MFG_REBUILD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "base_session_id": {
+            "type": "string",
+            "description": "要改参的源会话 ID（需 has_parameters=true、含 build123d 源码的会话）。",
+        },
+        "parameters": {
+            "type": "object",
+            "description": (
+                "要修改的参数（参数名 → 新数值）。如 {\"HEIGHT\": 120.0, \"HOLE_COUNT\": 12}。"
+                "参数名须与 /api/mfgcad/sessions/<id>/parameters 返回的键一致。"
+            ),
+            "additionalProperties": {"type": "number"},
+        },
+    },
+    "required": ["base_session_id", "parameters"],
+}
+
+
 def register_tools(host_api=None):
     """Register mfgcad tools in the global registry.
 
@@ -491,6 +661,16 @@ def register_tools(host_api=None):
         is_async=True,
         emoji="🔍",
         description="建模需求歧义检查：检查请求是否清晰，返回追问建议",
+    )
+
+    registry.register(
+        name="mfg_rebuild_parametric",
+        toolset="mfgcad",
+        schema=MFG_REBUILD_SCHEMA,
+        handler=_handle_mfg_rebuild_parametric,
+        is_async=True,
+        emoji="🎚️",
+        description="参数化重建：拖滑块改参后重建（改 build123d 源码而非网格），小白傻瓜式优化出最终版",
     )
 
     # P3：局部编辑 + 纹理绘制 + 几何变换

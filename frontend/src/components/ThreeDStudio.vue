@@ -48,6 +48,8 @@ function selectSession(s) {
   if (files.length > 0) {
     selectedFile.value = files[0]
   }
+  // 若该会话支持参数化，加载其可调参数（供滑块渲染）
+  loadParameters(s)
 }
 
 const availableFiles = computed(() => {
@@ -81,6 +83,71 @@ function fmtVolume(v) {
 }
 
 function goChat() { router.push('/') }
+
+// ── 参数化重建（拖滑块改参） ──
+const paramsForSession = ref([])   // [{name, value, min, max, step, unit}]
+const sliderValues = ref({})       // name -> 当前数值
+const rebuilding = ref(false)
+const rebuildMsg = ref('')
+let rebuildTimer = null
+
+async function loadParameters(s) {
+  paramsForSession.value = []
+  sliderValues.value = {}
+  rebuildMsg.value = ''
+  if (!s?.has_parameters) return
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${s.session_id}/parameters`)
+    if (!resp.ok) return
+    const data = await resp.json()
+    const ps = data.parameters || {}
+    const arr = Object.entries(ps).map(([name, p]) => ({
+      name,
+      value: p.value,
+      min: p.min,
+      max: p.max,
+      step: p.step,
+      unit: p.unit || '',
+    }))
+    paramsForSession.value = arr
+    const sv = {}
+    for (const p of arr) sv[p.name] = p.value
+    sliderValues.value = sv
+  } catch (e) {
+    // 忽略：无参数则无滑块
+  }
+}
+
+function onSliderInput() {
+  rebuildMsg.value = ''
+  if (rebuildTimer) clearTimeout(rebuildTimer)
+  rebuildTimer = setTimeout(() => rebuild(), 600)
+}
+
+async function rebuild() {
+  const sid = selectedSession.value?.session_id
+  if (!sid || !selectedSession.value?.has_parameters || rebuilding.value) return
+  rebuilding.value = true
+  rebuildMsg.value = '重建中…'
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${sid}/rebuild`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parameters: sliderValues.value }),
+    })
+    const data = await resp.json()
+    rebuildMsg.value = data.message || '重建完成'
+    if (data.child_session && data.child_session.ok) {
+      await loadSessions()
+      const child = sessions.value.find(x => x.session_id === data.child_session.session_id)
+      if (child) selectSession(child)
+    }
+  } catch (e) {
+    rebuildMsg.value = `重建失败: ${e.message}`
+  } finally {
+    rebuilding.value = false
+  }
+}
 
 onMounted(loadSessions)
 </script>
@@ -176,6 +243,35 @@ onMounted(loadSessions)
                 >
                   {{ transparentBg ? '🌙 暗背景' : '☀️ 透明' }}
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 参数化滑块（拖拽改参自动重建） -->
+          <div
+            v-if="paramsForSession.length"
+            class="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
+          >
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-xs font-medium text-gray-500 dark:text-gray-400">🎚️ 参数微调（拖拽改参后自动重建）</span>
+              <span v-if="rebuilding" class="text-xs text-blue-500">🔄 重建中…</span>
+              <span v-else-if="rebuildMsg" class="text-xs text-green-600 truncate">{{ rebuildMsg }}</span>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+              <div v-for="p in paramsForSession" :key="p.name" class="flex flex-col">
+                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <span class="font-mono">{{ p.name }}</span>
+                  <span class="tabular-nums">{{ sliderValues[p.name] }} {{ p.unit }}</span>
+                </div>
+                <input
+                  type="range"
+                  :min="p.min"
+                  :max="p.max"
+                  :step="p.step"
+                  v-model.number="sliderValues[p.name]"
+                  @input="onSliderInput"
+                  class="w-full accent-green-500"
+                />
               </div>
             </div>
           </div>
