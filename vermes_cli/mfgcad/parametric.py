@@ -310,10 +310,21 @@ def acquire_source(session_id: str, output_dir: Optional[str] = None) -> Optiona
     if src:
         return src
     if output_dir:
-        cand = Path(output_dir) / "build123d_source.py"
+        out = Path(output_dir)
+        # 优先找规范命名的 build123d_source.py
+        cand = out / "build123d_source.py"
         if cand.is_file():
             s = cand.read_text(encoding="utf-8")
-            # 顺手固化到 session 目录，后续 rebuild 不必再依赖引擎
             persist_source(session_id, s)
             return s
+        # 兼容旧引擎产出：temp_design_*.py（选最新的）
+        candidates = sorted(out.glob("temp_design_*.py"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for cand in candidates:
+            try:
+                s = cand.read_text(encoding="utf-8")
+                if "build123d" in s or "cadquery" in s or "export_step" in s:
+                    persist_source(session_id, s)
+                    return s
+            except Exception:
+                continue
     return None
