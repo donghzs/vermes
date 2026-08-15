@@ -1361,10 +1361,12 @@ async def _handle_scholarforge_learn_style(args: dict, **kw: Any) -> str:
     import statistics
 
     sample = args.get("sample_text", "")
-    # 解析 project_id：显式参数优先，否则回退到激活项目；缺失则明确报错
-    project_id = resolve_project_id(args)
-    if not project_id:
+    # 读/分析类操作不应静默落到默认兜底项目：未显式指定且无常驻激活项目时追问
+    # （意图对齐 read_section / A-P2 盲区修复）。
+    explicit_pid = (args or {}).get("project_id")
+    if not explicit_pid and not get_active_project():
         return PROJECT_ID_MISSING_MSG
+    project_id = resolve_project_id(args)
     if len(sample.strip()) < 100:
         return "❌ 样本文本过短，至少需要 500 字才能提取风格特征。"
 
@@ -3607,9 +3609,12 @@ async def _handle_scholarforge_list_projects(args: dict, **kw: Any) -> str:
 
 async def _handle_scholarforge_read_section(args: dict, **kw: Any) -> str:
     """读取论文项目中已写入的章节内容。"""
-    project_id = resolve_project_id(args)
-    if not project_id:
+    # 读操作不应静默落到「默认兜底项目」：未显式指定且无常驻激活项目时追问，
+    # 避免用户以为看自己项目、实际看默认项目(如 #52)的空概览。口径对齐 A-P2 盲区修复。
+    explicit_pid = (args or {}).get("project_id")
+    if not explicit_pid and not get_active_project():
         return PROJECT_ID_MISSING_MSG
+    project_id = resolve_project_id(args)
 
     section_key = args.get("section_key", "").strip()
 
