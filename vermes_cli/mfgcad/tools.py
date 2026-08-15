@@ -616,6 +616,60 @@ MFG_REBUILD_SCHEMA = {
     "required": ["base_session_id", "parameters"],
 }
 
+MFG_BOM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "session_id": {
+            "type": "string",
+            "description": "要生成 BOM 的建模会话 ID。",
+        },
+        "preset": {
+            "type": "string",
+            "description": "行业 preset 名称（如 mechanical_part/print_part），用于补充材料/工艺信息。留空自动推断。",
+        },
+    },
+    "required": ["session_id"],
+}
+
+
+async def _handle_mfg_generate_bom(args: dict, **kw: Any) -> str:
+    """生成 BOM + 组装指南。"""
+    session_id = args.get("session_id", "")
+    preset_name = args.get("preset", "")
+    if not session_id:
+        return "❌ 缺少 session_id 参数。"
+
+    # 解析凭证
+    api_key, base_url, model = _resolve_mfgcad_service_creds()
+    if not api_key:
+        return (
+            "❌ 未配置 LLM API Key。请在「设置 → 服务 → 制造 CAD」填写 API Key，"
+            "或在主 Agent 设置中配置一个活跃的 Provider。"
+        )
+
+    # 加载 preset（可选）
+    preset = None
+    if preset_name:
+        try:
+            from vermes_cli.mfgcad.clarify import _load_presets
+            all_presets = _load_presets()
+            preset = all_presets.get(preset_name)
+        except Exception:
+            pass
+
+    try:
+        from vermes_cli.mfgcad.bom import generate_bom
+        markdown = await generate_bom(
+            session_id=session_id,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            preset=preset,
+        )
+        return markdown
+    except Exception as e:
+        return f"❌ BOM 生成失败：{type(e).__name__}: {e}"
+
 
 def register_tools(host_api=None):
     """Register mfgcad tools in the global registry.
@@ -688,3 +742,18 @@ def register_tools(host_api=None):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad P4 multimodal tools registration failed: %s", e)
+
+    # 切片②：BOM + 组装指南
+    try:
+        registry.register(
+            name="mfg_generate_bom",
+            toolset="mfgcad",
+            schema=MFG_BOM_SCHEMA,
+            handler=_handle_mfg_generate_bom,
+            is_async=True,
+            emoji="📋",
+            description="BOM+组装指南：从建模会话生成结构化物料清单、组装步骤、成本估算、3D 打印建议",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("mfgcad BOM tool registration failed: %s", e)
