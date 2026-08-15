@@ -56,9 +56,17 @@ class TestReadSection:
 
     @pytest.mark.asyncio
     async def test_read_section_no_project_id(self):
-        from vermes_cli.scholarforge.tools import _handle_scholarforge_read_section
-        out = await _handle_scholarforge_read_section({})
-        assert "project_id" in out
+        # 读操作契约：未显式指定 project_id 且无常驻激活项目时，应追问而非静默落到默认兜底项目。
+        # 清空进程全局激活项目，确保断言前提取「无激活项目」前提（避免被其他测试的兜底写库污染）。
+        from vermes_cli.scholarforge.active_project import get_active_project, set_active_project
+        saved = get_active_project()
+        set_active_project(0)
+        try:
+            from vermes_cli.scholarforge.tools import _handle_scholarforge_read_section
+            out = await _handle_scholarforge_read_section({})
+            assert "project_id" in out
+        finally:
+            set_active_project(saved)
 
 
 class TestExportAutoAssemble:
