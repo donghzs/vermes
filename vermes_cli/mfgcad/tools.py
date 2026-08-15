@@ -631,6 +631,36 @@ MFG_BOM_SCHEMA = {
     "required": ["session_id"],
 }
 
+MFG_PROJECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["create", "list", "get", "update", "delete", "link", "unlink"],
+            "description": "项目管理动作。",
+        },
+        "project_id": {"type": "integer", "description": "项目 ID（get/update/delete/link/unlink 需要）。"},
+        "title": {"type": "string", "description": "项目名称（create 需要）。"},
+        "template": {"type": "string", "description": "模板名（create 可选）：injection_mold/3d_print/mechanical_part/ecommerce_display/film_prop。"},
+        "notes": {"type": "string", "description": "项目备注（create/update 可选）。"},
+        "session_id": {"type": "string", "description": "要关联/解关联的会话 ID（link/unlink 需要）。"},
+    },
+    "required": ["action"],
+}
+
+MFG_TEMPLATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["list", "get"],
+            "description": "查看模板列表或单个模板详情。",
+        },
+        "template": {"type": "string", "description": "模板名（get 需要）。"},
+    },
+    "required": ["action"],
+}
+
 
 async def _handle_mfg_generate_bom(args: dict, **kw: Any) -> str:
     """生成 BOM + 组装指南。"""
@@ -669,6 +699,142 @@ async def _handle_mfg_generate_bom(args: dict, **kw: Any) -> str:
         return markdown
     except Exception as e:
         return f"❌ BOM 生成失败：{type(e).__name__}: {e}"
+
+
+async def _handle_mfg_project(args: dict, **kw: Any) -> str:
+    """3D 建模项目管理。"""
+    from vermes_cli.mfgcad import projects as proj_mod
+
+    action = args.get("action", "list")
+
+    if action == "create":
+        title = args.get("title", "")
+        if not title:
+            return "❌ 创建项目需要 title 参数。"
+        template = args.get("template", "")
+        notes = args.get("notes", "")
+        p = proj_mod.create_project(title, template=template, notes=notes)
+        lines = [f"✅ 项目创建成功 #{p['id']}「{p['title']}」"]
+        if template:
+            t = proj_mod.get_template(template)
+            if t:
+                lines.append(f"📋 模板：{t['name']} — {t['description']}")
+                lines.append(f"💡 建议请求：{t.get('suggested_request', '')}")
+        return "\n".join(lines)
+
+    elif action == "list":
+        projects = proj_mod.list_projects()
+        if not projects:
+            return "暂无 3D 建模项目。用 action=create 创建。"
+        lines = ["## 📦 3D 建模项目\n"]
+        for p in projects:
+            tpl = p.get("template", "")
+            tpl_tag = f" [{tpl}]" if tpl else ""
+            n_sessions = len(p.get("session_ids", []))
+            lines.append(f"- #{p['id']}「{p['title']}」{tpl_tag} — {n_sessions} 个会话")
+        return "\n".join(lines)
+
+    elif action == "get":
+        pid = args.get("project_id")
+        if not pid:
+            return "❌ 需要 project_id 参数。"
+        p = proj_mod.get_project(pid)
+        if not p:
+            return f"❌ 项目 #{pid} 不存在。"
+        lines = [f"## 项目 #{p['id']}「{p['title']}」"]
+        if p.get("template"):
+            lines.append(f"模板: {p['template']}")
+        if p.get("notes"):
+            lines.append(f"备注: {p['notes']}")
+        lines.append(f"会话数: {len(p.get('session_ids', []))}")
+        for sid in p.get("session_ids", []):
+            lines.append(f"  - {sid}")
+        return "\n".join(lines)
+
+    elif action == "update":
+        pid = args.get("project_id")
+        if not pid:
+            return "❌ 需要 project_id 参数。"
+        kwargs = {}
+        for k in ("title", "template", "notes"):
+            if k in args:
+                kwargs[k] = args[k]
+        p = proj_mod.update_project(pid, **kwargs)
+        if not p:
+            return f"❌ 项目 #{pid} 不存在。"
+        return f"✅ 项目 #{pid} 已更新。"
+
+    elif action == "delete":
+        pid = args.get("project_id")
+        if not pid:
+            return "❌ 需要 project_id 参数。"
+        if proj_mod.delete_project(pid):
+            return f"✅ 项目 #{pid} 已删除。"
+        return f"❌ 项目 #{pid} 不存在。"
+
+    elif action == "link":
+        pid = args.get("project_id")
+        sid = args.get("session_id")
+        if not pid or not sid:
+            return "❌ 需要 project_id 和 session_id 参数。"
+        if proj_mod.link_session(pid, sid):
+            return f"✅ 会话 {sid} 已关联到项目 #{pid}。"
+        return f"❌ 项目 #{pid} 不存在。"
+
+    elif action == "unlink":
+        pid = args.get("project_id")
+        sid = args.get("session_id")
+        if not pid or not sid:
+            return "❌ 需要 project_id 和 session_id 参数。"
+        if proj_mod.unlink_session(pid, sid):
+            return f"✅ 会话 {sid} 已从项目 #{pid} 解除关联。"
+        return f"❌ 项目 #{pid} 不存在。"
+
+    return f"❌ 未知动作：{action}"
+
+
+async def _handle_mfg_template(args: dict, **kw: Any) -> str:
+    """查看 3D 建模模板。"""
+    from vermes_cli.mfgcad import projects as proj_mod
+
+    action = args.get("action", "list")
+
+    if action == "list":
+        templates = proj_mod.list_templates()
+        lines = ["## 📋 3D 建模模板\n"]
+        for key, t in templates.items():
+            lines.append(f"### {key} — {t['name']}")
+            lines.append(f"{t['description']}")
+            params = t.get("default_params", {})
+            if params:
+                lines.append("**默认参数**:")
+                for pk, pv in params.items():
+                    lines.append(f"  - {pk}: {pv}")
+            sr = t.get("suggested_request")
+            if sr:
+                lines.append(f"💡 **建议请求**：{sr}")
+            lines.append("")
+        return "\n".join(lines)
+
+    elif action == "get":
+        name = args.get("template", "")
+        t = proj_mod.get_template(name)
+        if not t:
+            return f"❌ 模板「{name}」不存在。可用模板：{', '.join(proj_mod.list_templates().keys())}"
+        lines = [f"## 📋 {name} — {t['name']}"]
+        lines.append(f"{t['description']}")
+        lines.append(f"\n**Preset**: {t.get('preset', '')}")
+        params = t.get("default_params", {})
+        if params:
+            lines.append("\n**默认参数**:")
+            for pk, pv in params.items():
+                lines.append(f"  - {pk}: {pv}")
+        sr = t.get("suggested_request")
+        if sr:
+            lines.append(f"\n💡 **建议请求**：{sr}")
+        return "\n".join(lines)
+
+    return f"❌ 未知动作：{action}"
 
 
 def register_tools(host_api=None):
@@ -757,3 +923,27 @@ def register_tools(host_api=None):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad BOM tool registration failed: %s", e)
+
+    # 切片③：项目管理 + 模板
+    try:
+        registry.register(
+            name="mfg_project",
+            toolset="mfgcad",
+            schema=MFG_PROJECT_SCHEMA,
+            handler=_handle_mfg_project,
+            is_async=True,
+            emoji="📁",
+            description="3D 建模项目管理：创建/列表/查看/更新/删除项目，关联建模会话",
+        )
+        registry.register(
+            name="mfg_template",
+            toolset="mfgcad",
+            schema=MFG_TEMPLATE_SCHEMA,
+            handler=_handle_mfg_template,
+            is_async=True,
+            emoji="📋",
+            description="查看 3D 建模模板：注塑件/3D打印件/机械零件/电商展示/影视道具",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("mfgcad project/template tools registration failed: %s", e)

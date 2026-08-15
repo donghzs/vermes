@@ -230,6 +230,8 @@ TOOLSETS = {
             "mfg_multi_view_to_cad",
             "mfg_rebuild_parametric",
             "mfg_generate_bom",
+            "mfg_project",
+            "mfg_template",
         ],
         "includes": []
     },

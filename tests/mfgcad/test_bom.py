@@ -232,7 +232,7 @@ class TestToolsetConsistency:
         import toolsets
         assert "mfg_rebuild_parametric" in toolsets.TOOLSETS["mfgcad"]["tools"]
 
-    def test_toolset_count_matches_10(self):
+    def test_toolset_count_matches_12(self):
         import toolsets
         tools = toolsets.TOOLSETS["mfgcad"]["tools"]
-        assert len(tools) == 10, f"Expected 10 mfgcad tools, got {len(tools)}: {tools}"
+        assert len(tools) == 12, f"Expected 12 mfgcad tools, got {len(tools)}: {tools}"
