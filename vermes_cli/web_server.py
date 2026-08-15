@@ -3093,6 +3093,25 @@ async def list_mfgcad_sessions():
                         if files:
                             data[key] = str(files[0])
 
+            # 自动检测参数化能力：从 output 目录的源码抽取参数
+            if not data.get("has_parameters"):
+                from vermes_cli.mfgcad.parametric import extract_parameters
+                sess_out = output_dir / sid
+                if sess_out.is_dir():
+                    # 找 build123d 源码
+                    py_files = list(sess_out.glob("*.py"))
+                    for pf in py_files:
+                        try:
+                            code = pf.read_text(encoding="utf-8")
+                            params = extract_parameters(code)
+                            if params:
+                                data["has_parameters"] = True
+                                data["_auto_params"] = {k: v for k, v in params.items()}
+                                data["_auto_source"] = str(pf)
+                                break
+                        except Exception:
+                            continue
+
             # 把绝对路径转为前端可用的 URL
             def _to_url(abs_path):
                 if not abs_path:
@@ -3215,6 +3234,202 @@ async def rebuild_mfgcad_parametric(session_id: str, request):
         "message": message,
         "child_session": child,
     })
+
+
+@app.post("/api/mfgcad/upload")
+async def upload_mfgcad_file(request: Request):
+    """上传用户自有 STEP/STL/3MF 文件，创建新会话。"""
+    from fastapi.responses import JSONResponse
+    import time
+    import shutil
+    import re
+
+    content_type = request.headers.get("content-type", "")
+    if not content_type.startswith("multipart/form-data"):
+        return JSONResponse({"error": "expected multipart/form-data"}, status_code=400)
+
+    form = await request.form()
+    upload_file = form.get("file")
+    name = (form.get("name") or "uploaded").strip()
+
+    if not upload_file or not hasattr(upload_file, "filename"):
+        return JSONResponse({"error": "no file uploaded"}, status_code=400)
+
+    filename = upload_file.filename
+    ext = Path(filename).suffix.lower()
+    if ext not in {".step", ".stp", ".stl", ".3mf"}:
+        return JSONResponse({"error": f"unsupported format: {ext}"}, status_code=400)
+
+    # 创建会话
+    session_id = f"upload_{int(time.time())}_{re.sub(r'[^a-zA-Z0-9_-]', '', name)[:20]}"
+    output_dir = Path.home() / ".vermes" / "mfgcad" / "output" / session_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 保存文件
+    safe_name = f"model{ext}"
+    file_path = output_dir / safe_name
+    with open(file_path, "wb") as f:
+        content = await upload_file.read()
+        f.write(content)
+
+    # 如果是 STEP，尝试生成 STL 预览
+    stl_path = None
+    if ext in (".step", ".stp"):
+        stl_name = "model.stl"
+        # 尝试用 trimesh 转换（如果有）
+        try:
+            import subprocess
+            venv_python = str(Path.home() / ".vermes" / "engines" / "mac" / ".venv" / "bin" / "python")
+            if not Path(venv_python).exists():
+                venv_python = "python3"
+            script = f'''
+import sys
+try:
+    import trimesh
+    mesh = trimesh.load("{file_path}")
+    if hasattr(mesh, "export"):
+        mesh.export("{output_dir / stl_name}")
+        print("OK")
+    else:
+        print("SKIP")
+except Exception as e:
+    print(f"ERR: {{e}}")
+'''
+            result = subprocess.run([venv_python, "-c", script], capture_output=True, text=True, timeout=30)
+            if result.returncode == 0 and "OK" in result.stdout:
+                stl_path = str(output_dir / stl_name)
+        except Exception:
+            pass
+
+    # 创建 session.json
+    session_data = {
+        "session_id": session_id,
+        "request": f"\U0001f4c2 打开文件: {filename}",
+        "backend": "upload",
+        "ok": True,
+        "step_path": str(file_path) if ext in (".step", ".stp") else None,
+        "stl_path": stl_path or (str(file_path) if ext == ".stl" else None),
+        "stl_3mf_path": str(file_path) if ext == ".3mf" else None,
+        "volume_mm3": None,
+        "qa": {"passed": 0, "failed": 0, "issues": []},
+        "has_parameters": False,
+        "ts": int(time.time()),
+    }
+
+    sess_dir = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    (sess_dir / "session.json").write_text(json.dumps(session_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return JSONResponse({
+        "session_id": session_id,
+        "message": f"\u2705 {filename} \u5df2\u5bfc\u5165",
+        "files": {
+            "step": f"/api/mfgcad/files/{session_id}/{safe_name}" if ext in (".step", ".stp") else None,
+            "stl": f"/api/mfgcad/files/{session_id}/{safe_name}" if ext == ".stl" else (f"/api/mfgcad/files/{session_id}/model.stl" if stl_path else None),
+            "3mf": f"/api/mfgcad/files/{session_id}/{safe_name}" if ext == ".3mf" else None,
+        },
+    })
+
+
+@app.post("/api/mfgcad/sessions/{session_id}/ai-assist")
+async def mfgcad_ai_assist(session_id: str, request: Request):
+    """AI 协助修改：用户用自然语言描述修改需求，AI 调参重建。
+
+    body: {"prompt": "\u58c1\u539a\u6539\u62105mm"}
+    """
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json body"}, status_code=400)
+
+    prompt = (body or {}).get("prompt", "").strip()
+    if not prompt:
+        return JSONResponse({"error": "missing prompt"}, status_code=400)
+
+    # 读取会话信息
+    sess_file = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id / "session.json"
+    if not sess_file.is_file():
+        return JSONResponse({"error": "session not found"}, status_code=404)
+
+    session_data = json.loads(sess_file.read_text(encoding="utf-8"))
+
+    # 如果有参数，尝试用 LLM 解析用户需求→改参→重建
+    from vermes_cli.mfgcad.parametric import load_parameters, load_source, apply_parameters
+    params = load_parameters(session_id)
+    source = load_source(session_id)
+
+    if params and source:
+        # 有参数：LLM 解析需求→改参→重建
+        import httpx
+        from vermes_cli.mfgcad.tools import _resolve_mfgcad_service_creds
+
+        api_key, base_url, model_name = _resolve_mfgcad_service_creds()
+        if not api_key:
+            return JSONResponse({
+                "message": "\u274c \u672a\u914d\u7f6e API Key\uff0cAI \u534f\u52a9\u4e0d\u53ef\u7528\u3002\u8bf7\u5728\u8bbe\u7f6e\u2192\u670d\u52a1\u4e2d\u914d\u7f6e\u5236\u9020 CAD \u7684 API Key\u3002"
+            })
+
+        # 构建参数描述
+        param_desc = "\n".join([
+            f"- {name}: \u5f53\u524d\u503c {p['value']} {p.get('unit', '')}\uff08\u8303\u56f4 {p.get('min', 0)}~{p.get('max', 999)}\uff09"
+            for name, p in params.items()
+        ])
+
+        system_msg = f"\u4f60\u662f\u4e00\u4e2a3D\u5efa\u6a21\u52a9\u624b\u3002\u7528\u6237\u8981\u4fee\u6539\u6a21\u578b\u53c2\u6570\u3002\u6839\u636e\u7528\u6237\u63cf\u8ff0\uff0c\u8fd4\u56de\u9700\u8981\u4fee\u6539\u7684\u53c2\u6570\u540d\u548c\u65b0\u503c\u3002\n\n\u5f53\u524d\u53c2\u6570\uff1a\n{param_desc}\n\n\u8fd4\u56de JSON \u683c\u5f0f: {{\"parameters\": {{\"PARAM_NAME\": new_value}}}}\uff0c\u53ea\u8fd4\u56de\u9700\u8981\u6539\u7684\u53c2\u6570\u3002\u5982\u679c\u7528\u6237\u7684\u63cf\u8ff0\u65e0\u6cd5\u6620\u5c04\u5230\u73b0\u6709\u53c2\u6570\uff0c\u8fd4\u56de {{\"parameters\": {{}}, \"reply\": \"\u65e0\u6cd5\u4ece\u73b0\u6709\u53c2\u6570\u5b9e\u73b0\u8be5\u4fee\u6539\uff0c\u8bf7\u5c1d\u8bd5\u91cd\u65b0\u5efa\u6a21\"}}\u3002"
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": model_name or "deepseek-chat",
+                        "messages": [
+                            {"role": "system", "content": system_msg},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "temperature": 0.1,
+                    },
+                )
+                resp.raise_for_status()
+                ai_reply = resp.json()["choices"][0]["message"]["content"]
+
+            # 解析 AI 返回的参数
+            import re as _re
+            json_match = _re.search(r'\{[^}]+\}', ai_reply, _re.DOTALL)
+            if json_match:
+                ai_result = json.loads(json_match.group())
+                new_params = ai_result.get("parameters", {})
+                reply_text = ai_result.get("reply", "")
+
+                if new_params:
+                    # 应用新参数重建
+                    from vermes_cli.mfgcad import tools as mfgcad_tools
+                    rebuild_msg = await mfgcad_tools._handle_mfg_rebuild_parametric({
+                        "base_session_id": session_id,
+                        "parameters": new_params,
+                    })
+                    return JSONResponse({
+                        "message": reply_text or f"\u2705 \u5df2\u8c03\u6574 {len(new_params)} \u4e2a\u53c2\u6570\u5e76\u91cd\u5efa: {rebuild_msg}",
+                        "rebuilt": True,
+                    })
+                else:
+                    return JSONResponse({"message": reply_text or "\u65e0\u6cd5\u4ece\u73b0\u6709\u53c2\u6570\u5b9e\u73b0\u8be5\u4fee\u6539"})
+            else:
+                return JSONResponse({"message": ai_reply})
+        except Exception as e:
+            return JSONResponse({"message": f"\u274c AI \u5904\u7406\u5931\u8d25: {e}"})
+    else:
+        # 无参数：提示用户用对话重新建模
+        return JSONResponse({
+            "message": "\u8be5\u6a21\u578b\u65e0\u53ef\u8c03\u53c2\u6570\uff08\u53ef\u80fd\u662f\u4e0a\u4f20\u6587\u4ef6\u6216\u65e7\u7248\u4f1a\u8bdd\uff09\u3002\u8bf7\u5728\u5bf9\u8bdd\u4e2d\u91cd\u65b0\u63cf\u8ff0\u9700\u6c42\uff0cAI \u4f1a\u751f\u6210\u65b0\u7684\u53ef\u53c2\u6570\u5316\u6a21\u578b\u3002"
+        })
 
 
 mount_spa(app)
