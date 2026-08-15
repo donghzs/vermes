@@ -455,6 +455,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/cache/metrics",
     # ScholarForge 论文写作（独立模块）
     "/api/scholar",
+    # mfgcad 3D 建模（桌面本地工具，session 数据非敏感）
+    "/api/mfgcad",
     # Studio 创作空间（直连大模型的试点；SPA 带用户 Key 调用，与 /api/provider/add 同源设计）
     "/api/studio",
     # 文献源注册表（只返回元数据：label/category/字段描述，不含凭证值）
