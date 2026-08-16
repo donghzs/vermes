@@ -8,7 +8,7 @@
 // - 右侧：可折叠参数面板 + AI 协助（默认折叠，点击展开浮层）
 // - 底部：历史时间线
 
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import ModelViewer from './ModelViewer.vue'
 
