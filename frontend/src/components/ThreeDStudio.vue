@@ -241,6 +241,7 @@ async function loadParameters(s) {
     const ps = data.parameters || {}
     const arr = Object.entries(ps).map(([name, p]) => ({
       name,
+      label: p.label || name,
       value: p.value,
       min: p.min,
       max: p.max,
@@ -623,7 +624,7 @@ onMounted(loadSessions)
     <!-- ═══ 顶部工具栏 ═══ -->
     <div class="flex items-center gap-1 px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
       <!-- 左侧按钮 -->
-      <button @click="leftPanelOpen = !leftPanelOpen" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="会话列表">
+      <button @click="leftPanelOpen = !leftPanelOpen" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="设计会话列表">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
 
@@ -631,41 +632,41 @@ onMounted(loadSessions)
 
       <!-- 视图切换 -->
       <div class="flex items-center gap-0.5">
-        <button @click="setView('perspective')" class="px-2 py-1 text-xs rounded" :class="viewMode === 'perspective' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">透视</button>
-        <button @click="setView('front')" class="px-2 py-1 text-xs rounded" :class="viewMode === 'front' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">前视</button>
-        <button @click="setView('top')" class="px-2 py-1 text-xs rounded" :class="viewMode === 'top' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">顶视</button>
-        <button @click="setView('side')" class="px-2 py-1 text-xs rounded" :class="viewMode === 'side' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">侧视</button>
-        <button @click="setView('iso')" class="px-2 py-1 text-xs rounded" :class="viewMode === 'iso' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">等轴</button>
+        <button @click="setView('perspective')" title="透视图 — 自由角度 3D 视角" class="px-2 py-1 text-xs rounded" :class="viewMode === 'perspective' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">透视</button>
+        <button @click="setView('front')" title="正视图 — 从正面看" class="px-2 py-1 text-xs rounded" :class="viewMode === 'front' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">前视</button>
+        <button @click="setView('top')" title="俯视图 — 从上方看" class="px-2 py-1 text-xs rounded" :class="viewMode === 'top' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">顶视</button>
+        <button @click="setView('side')" title="侧视图 — 从侧面看" class="px-2 py-1 text-xs rounded" :class="viewMode === 'side' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">侧视</button>
+        <button @click="setView('iso')" title="等轴测图 — 30°标准工程视角" class="px-2 py-1 text-xs rounded" :class="viewMode === 'iso' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">等轴</button>
       </div>
 
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
       <!-- 工具按钮 -->
-      <button @click="toggleTool('pick')" class="p-1.5 rounded" :class="tool === 'pick' ? 'bg-orange-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="选择面">
+      <button @click="toggleTool('pick')" class="p-1.5 rounded" :class="tool === 'pick' ? 'bg-orange-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="选择面 — 点击模型表面高亮选中">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
       </button>
-      <button @click="showExportMenu = !showExportMenu" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="导出">
+      <button @click="showExportMenu = !showExportMenu" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="导出 — 生成工程图/BOM/3D打印建议">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
-      <button @click="toggleTool('measure')" class="p-1.5 rounded" :class="tool === 'measure' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="测量">
+      <button @click="toggleTool('measure')" class="p-1.5 rounded" :class="tool === 'measure' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="测量 — 点击两个点测距离 (mm)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7L8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><line x1="14" y1="6" x2="18" y2="10"/></svg>
       </button>
-      <button @click="cycleSection()" class="p-1.5 rounded" :class="tool === 'section' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="剖视图">
+      <button @click="cycleSection()" class="p-1.5 rounded" :class="tool === 'section' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="剖视图 — 切平面看内部结构">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="20" height="6" rx="1"/><line x1="2" y1="12" x2="22" y2="12" stroke-dasharray="3 3"/></svg>
       </button>
-      <button @click="wireframe = !wireframe" class="p-1.5 rounded" :class="wireframe ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="线框">
+      <button @click="wireframe = !wireframe" class="p-1.5 rounded" :class="wireframe ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="线框模式 — 显示模型网格结构">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
       </button>
-      <button @click="autoRotate = !autoRotate" class="p-1.5 rounded" :class="autoRotate ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="自动旋转">
+      <button @click="autoRotate = !autoRotate" class="p-1.5 rounded" :class="autoRotate ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="自动旋转 — 模型缓慢旋转展示">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
       </button>
 
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
       <!-- 文件操作 -->
-      <button @click="uploadRef?.click()" class="px-2 py-1 text-xs rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100">📂 打开</button>
+      <button @click="uploadRef?.click()" title="打开本地 STEP/STL/3MF 文件" class="px-2 py-1 text-xs rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100">📂 打开</button>
       <input ref="uploadRef" type="file" accept=".step,.stp,.stl,.3mf" @change="onUpload" class="hidden" />
-      <button v-if="selectedFile" @click="downloadFile(selectedFile)" class="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200">⬇️ 下载</button>
+      <button v-if="selectedFile" @click="downloadFile(selectedFile)" title="下载当前文件" class="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200">⬇️ 下载</button>
 
       <!-- 右侧 -->
       <div class="ml-auto flex items-center gap-2">
@@ -934,7 +935,7 @@ onMounted(loadSessions)
       <!-- 右侧：可折叠参数面板 + AI 协助（浮层，不挤占视口） -->
       <div v-if="rightPanelOpen" class="w-72 flex-shrink-0 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-lg flex flex-col relative">
         <!-- 折叠按钮 -->
-        <button @click="rightPanelOpen = false" class="absolute -left-6 top-2 p-1 rounded-l bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600">
+        <button @click.stop="rightPanelOpen = false" class="absolute -left-5 top-1/2 -translate-y-1/2 p-1 rounded-l bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 z-10 shadow-sm">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
 
@@ -947,19 +948,23 @@ onMounted(loadSessions)
           </div>
           <div class="space-y-2 max-h-60 overflow-y-auto">
             <div v-for="p in paramsForSession" :key="p.name" class="flex flex-col gap-1">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-mono text-gray-500">{{ p.label || p.name }}</span>
-                <!-- 精确数值输入框 -->
-                <input
-                  type="number"
-                  :value="paramInputs[p.name]"
-                  @input="onParamInput(p.name, $event.target.value)"
-                  :step="p.step"
-                  :min="p.min"
-                  :max="p.max"
-                  class="w-16 text-xs text-right px-1 py-0.5 rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-green-500"
-                />
-                <span class="text-xs text-gray-400 w-6">{{ p.unit }}</span>
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-xs text-gray-600 dark:text-gray-300 truncate" :title="p.label || p.name">{{ p.label || p.name }}</span>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                  <!-- 精确数值输入框 -->
+                  <input
+                    type="number"
+                    :value="paramInputs[p.name]"
+                    @input="onParamInput(p.name, $event.target.value)"
+                    @click.stop
+                    @focus="rightPanelOpen = true"
+                    :step="p.step"
+                    :min="p.min"
+                    :max="p.max"
+                    class="w-20 text-xs text-right px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 cursor-text"
+                  />
+                  <span class="text-xs text-gray-400 w-8">{{ p.unit }}</span>
+                </div>
               </div>
               <!-- 滑块（辅助） -->
               <input
@@ -969,7 +974,8 @@ onMounted(loadSessions)
                 :step="p.step"
                 :value="paramValues[p.name]"
                 @input="onParamChange(p.name, parseFloat($event.target.value))"
-                class="w-full h-1 accent-green-500"
+                @click.stop
+                class="w-full h-1.5 accent-green-500 cursor-pointer"
               />
             </div>
           </div>
