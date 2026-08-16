@@ -1,88 +1,63 @@
 <script setup>
-// ModelViewer：3D 模型 WebGL 视图器（P2）。
+// ModelViewer Pro — 专业级 3D 模型查看器
 //
-// 零 npm 依赖策略：
-// - GLB/GLTF：用 <model-viewer> Web Component（Google 维护，CDN ~100KB）
-// - STL：用 Three.js CDN（仅 STL 时加载，~600KB）
-// - PNG/JPG：直接 <img>
-//
-// 加载方式按文件扩展名自动选择，用户可拖拽旋转/缩放/切换背景。
+// 能力：
+// - STL/STEP 渲染（Three.js CDN 按需加载）
+// - 多视图切换（透视/前/上/侧/等轴）
+// - 测量工具（点两个面/点显示距离）
+// - 剖视图（按 XY/YZ/XZ 平面切开）
+// - 点击拾取（Raycaster 选面/边/顶点高亮）
+// - 自动旋转/线框/背景切换
 
-import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 
 const props = defineProps({
-  // 文件 URL（相对路径，如 /api/mfgcad/files/xxx/output.stl）
   src: { type: String, default: '' },
-  // 文件类型（auto=按扩展名判断 / glb / stl / image）
-  type: { type: String, default: 'auto' },
-  // 自动旋转
   autoRotate: { type: Boolean, default: false },
-  // 背景透明
   transparentBg: { type: Boolean, default: true },
+  // 视图模式: perspective / front / top / side / iso
+  viewMode: { type: String, default: 'perspective' },
+  // 工具模式: none / measure / section / pick
+  tool: { type: String, default: 'none' },
+  // 剖切平面: xy / yz / xz
+  sectionPlane: { type: String, default: 'xy' },
+  // 线框模式
+  wireframe: { type: Boolean, default: false },
 })
+
+const emit = defineEmits(['measure', 'pick', 'loaded'])
 
 const loading = ref(true)
 const error = ref('')
-const viewerType = ref('') // 'model-viewer' / 'three-stl' / 'image'
-const modelViewerLoaded = ref(false)
+const containerRef = ref(null)
 
-const ext = computed(() => {
-  if (!props.src) return ''
-  return props.src.split('.').pop().toLowerCase()
-})
+// Three.js 实例（非响应式）
+let THREE = null
+let scene = null
+let camera = null
+let renderer = null
+let controls = null
+let mesh = null
+let animationId = null
+let raycaster = null
+let mouse = null
+let highlightMesh = null
+let measurePoints = []
+let measureLines = []
+let sectionMesh = null
 
-const resolvedType = computed(() => {
-  if (props.type !== 'auto') return props.type
-  const e = ext.value
-  if (['glb', 'gltf'].includes(e)) return 'glb'
-  if (e === 'stl') return 'stl'
-  if (['png', 'jpg', 'jpeg'].includes(e)) return 'image'
-  return 'glb' // 默认尝试 model-viewer
-})
-
-// ── model-viewer Web Component 加载 ─────────────────────
-
-let modelViewerScript = null
-
-function ensureModelViewer() {
-  return new Promise((resolve, reject) => {
-    if (customElements.get('model-viewer')) {
-      resolve()
-      return
-    }
-    if (modelViewerScript) {
-      modelViewerScript.onload = resolve
-      modelViewerScript.onerror = reject
-      return
-    }
-    modelViewerScript = document.createElement('script')
-    modelViewerScript.type = 'module'
-    modelViewerScript.src = 'https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js'
-    modelViewerScript.onload = resolve
-    modelViewerScript.onerror = () => reject(new Error('model-viewer CDN 加载失败'))
-    document.head.appendChild(modelViewerScript)
-  })
-}
-
-// ── Three.js STL 加载（仅 STL 时按需加载） ──────────────
-
-let threeScript = null
+// ── Three.js 动态加载 ──
 
 function ensureThreeJS() {
   return new Promise((resolve, reject) => {
     if (window.THREE) {
+      THREE = window.THREE
       resolve()
       return
     }
-    if (threeScript) {
-      threeScript.onload = resolve
-      threeScript.onerror = reject
-      return
-    }
-    // 加载 Three.js + STLLoader
-    threeScript = document.createElement('script')
-    threeScript.type = 'module'
-    threeScript.textContent = `
+    const script = document.createElement('script')
+    script.type = 'module'
+    script.textContent = `
       import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
       import { STLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js';
       import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
@@ -90,113 +65,294 @@ function ensureThreeJS() {
       window.STLLoader = STLLoader;
       window.OrbitControls = OrbitControls;
     `
-    threeScript.onload = resolve
-    threeScript.onerror = () => reject(new Error('Three.js CDN 加载失败'))
-    document.head.appendChild(threeScript)
+    script.onload = () => {
+      THREE = window.THREE
+      resolve()
+    }
+    script.onerror = () => reject(new Error('Three.js CDN 加载失败'))
+    document.head.appendChild(script)
   })
 }
 
-// ── STL 渲染 ────────────────────────────────────────────
+// ── 初始化场景 ──
 
-let stlScene = null
-let stlRenderer = null
-let stlAnimationId = null
+function initScene(container) {
+  const width = container.clientWidth || 600
+  const height = container.clientHeight || 400
 
-async function renderSTL(container) {
-  await ensureThreeJS()
-
-  const THREE = window.THREE
-  const STLLoader = window.STLLoader
-  const OrbitControls = window.OrbitControls
-
-  // 清旧
-  if (stlRenderer) {
-    stlRenderer.dispose()
-    stlRenderer = null
-  }
-  if (stlAnimationId) {
-    cancelAnimationFrame(stlAnimationId)
-    stlAnimationId = null
-  }
-
-  const width = container.clientWidth || 400
-  const height = container.clientHeight || 300
-
-  // 场景
-  stlScene = new THREE.Scene()
+  scene = new THREE.Scene()
   if (!props.transparentBg) {
-    stlScene.background = new THREE.Color(0x1a1a2e)
+    scene.background = new THREE.Color(0x1a1a2e)
   }
 
-  // 相机
-  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000)
-  camera.position.set(0, 0, 100)
+  camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000)
+  camera.position.set(60, 60, 100)
 
-  // 渲染器
-  stlRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: props.transparentBg })
-  stlRenderer.setSize(width, height)
-  stlRenderer.setPixelRatio(window.devicePixelRatio)
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: props.transparentBg })
+  renderer.setSize(width, height)
+  renderer.setPixelRatio(window.devicePixelRatio)
   container.innerHTML = ''
-  container.appendChild(stlRenderer.domElement)
+  container.appendChild(renderer.domElement)
 
   // 光照
-  const ambient = new THREE.AmbientLight(0xffffff, 0.6)
-  stlScene.add(ambient)
+  const ambient = new THREE.AmbientLight(0xffffff, 0.5)
+  scene.add(ambient)
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.8)
   dirLight.position.set(1, 1, 1)
-  stlScene.add(dirLight)
+  scene.add(dirLight)
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3)
+  dirLight2.position.set(-1, -1, -1)
+  scene.add(dirLight2)
+
+  // 网格地面
+  const gridHelper = new THREE.GridHelper(200, 20, 0x444444, 0x222222)
+  gridHelper.position.y = -0.1
+  scene.add(gridHelper)
 
   // 控制器
-  const controls = new OrbitControls(camera, stlRenderer.domElement)
+  const OrbitControls = window.OrbitControls
+  controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
+  controls.dampingFactor = 0.05
 
-  // 加载 STL
-  const loader = new STLLoader()
-  loader.load(
-    props.src,
-    (geometry) => {
-      geometry.computeVertexNormals()
-      const material = new THREE.MeshPhongMaterial({
-        color: 0x22c55e,
-        specular: 0x111111,
-        shininess: 50,
-      })
-      const mesh = new THREE.Mesh(geometry, material)
+  // Raycaster
+  raycaster = new THREE.Raycaster()
+  mouse = new THREE.Vector2()
 
-      // 自动居中+缩放
-      const box = new THREE.Box3().setFromObject(mesh)
-      const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
-      const maxDim = Math.max(size.x, size.y, size.z)
-      const scale = 50 / maxDim
-      mesh.scale.setScalar(scale)
-      mesh.position.sub(center.multiplyScalar(scale))
+  // 点击事件
+  renderer.domElement.addEventListener('click', onCanvasClick)
 
-      stlScene.add(mesh)
-      loading.value = false
-
-      // 渲染循环
-      const animate = () => {
-        stlAnimationId = requestAnimationFrame(animate)
-        controls.update()
-        if (props.autoRotate) {
-          mesh.rotation.y += 0.005
-        }
-        stlRenderer.render(stlScene, camera)
-      }
-      animate()
-    },
-    undefined,
-    (err) => {
-      error.value = `STL 加载失败: ${err.message || err}`
-      loading.value = false
+  // 窗口大小调整
+  const resizeObserver = new ResizeObserver(() => {
+    if (!renderer || !container) return
+    const w = container.clientWidth
+    const h = container.clientHeight
+    if (w > 0 && h > 0) {
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      renderer.setSize(w, h)
     }
-  )
+  })
+  resizeObserver.observe(container)
+
+  return resizeObserver
 }
 
-// ── 生命周期 ────────────────────────────────────────────
+let resizeObs = null
 
-const containerRef = ref(null)
+// ── 加载 STL ──
+
+async function loadSTL(url) {
+  const STLLoader = window.STLLoader
+  const loader = new STLLoader()
+
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (geometry) => {
+        geometry.computeVertexNormals()
+        const material = new THREE.MeshPhongMaterial({
+          color: 0x22c55e,
+          specular: 0x111111,
+          shininess: 50,
+          wireframe: props.wireframe,
+          flatShading: false,
+        })
+        mesh = new THREE.Mesh(geometry, material)
+
+        // 自动居中 + 缩放到标准大小
+        const box = new THREE.Box3().setFromObject(mesh)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+        const maxDim = Math.max(size.x, size.y, size.z)
+        const scale = 80 / (maxDim || 1)
+        mesh.scale.setScalar(scale)
+        mesh.position.sub(center.multiplyScalar(scale))
+
+        // 存储原始尺寸用于测量显示
+        mesh.userData.originalSize = size
+        mesh.userData.scale = scale
+
+        scene.add(mesh)
+        loading.value = false
+        emit('loaded', { size })
+
+        // 设置初始视角
+        setViewMode(props.viewMode)
+
+        resolve(mesh)
+      },
+      undefined,
+      (err) => reject(err)
+    )
+  })
+}
+
+// ── 视图模式切换 ──
+
+function setViewMode(mode) {
+  if (!camera || !controls) return
+  const d = 100
+  switch (mode) {
+    case 'front':
+      camera.position.set(0, 0, d)
+      camera.up.set(0, 1, 0)
+      break
+    case 'top':
+      camera.position.set(0, d, 0)
+      camera.up.set(0, 0, -1)
+      break
+    case 'side':
+      camera.position.set(d, 0, 0)
+      camera.up.set(0, 1, 0)
+      break
+    case 'iso':
+      camera.position.set(d * 0.6, d * 0.6, d * 0.6)
+      camera.up.set(0, 1, 0)
+      break
+    case 'perspective':
+    default:
+      camera.position.set(60, 60, 100)
+      camera.up.set(0, 1, 0)
+  }
+  controls.target.set(0, 0, 0)
+  controls.update()
+}
+
+// ── 点击拾取 ──
+
+function onCanvasClick(event) {
+  if (!mesh || !raycaster || props.tool === 'none') return
+
+  const rect = renderer.domElement.getBoundingClientRect()
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+
+  raycaster.setFromCamera(mouse, camera)
+  const intersects = raycaster.intersectObject(mesh)
+
+  if (intersects.length > 0) {
+    const hit = intersects[0]
+    const point = hit.point.clone()
+
+    if (props.tool === 'measure') {
+      measurePoints.push(point)
+      addMarker(point)
+
+      if (measurePoints.length >= 2) {
+        const p1 = measurePoints[0]
+        const p2 = measurePoints[1]
+        const distance = p1.distanceTo(p2)
+        // 转换为原始尺寸
+        const scale = mesh.userData.scale || 1
+        const realDistance = distance / scale
+        emit('measure', { distance: realDistance, p1, p2 })
+        drawMeasureLine(p1, p2)
+        measurePoints = []
+      }
+    } else if (props.tool === 'pick') {
+      // 高亮面
+      if (highlightMesh) scene.remove(highlightMesh)
+      const faceGeom = new THREE.BufferGeometry()
+      const face = hit.face
+      const positions = mesh.geometry.attributes.position
+      const v1 = new THREE.Vector3().fromBufferAttribute(positions, face.a).applyMatrix4(mesh.matrixWorld)
+      const v2 = new THREE.Vector3().fromBufferAttribute(positions, face.b).applyMatrix4(mesh.matrixWorld)
+      const v3 = new THREE.Vector3().fromBufferAttribute(positions, face.c).applyMatrix4(mesh.matrixWorld)
+      faceGeom.setFromPoints([v1, v2, v3])
+      faceGeom.setIndex([0, 1, 2])
+      faceGeom.computeVertexNormals()
+      const faceMat = new THREE.MeshBasicMaterial({
+        color: 0xff8800,
+        side: 2,
+        transparent: true,
+        opacity: 0.5,
+      })
+      highlightMesh = new THREE.Mesh(faceGeom, faceMat)
+      scene.add(highlightMesh)
+      emit('pick', { point, face: hit.face, normal: hit.face.normal })
+    }
+  }
+}
+
+// ── 标记点 ──
+
+function addMarker(point) {
+  const geom = new THREE.SphereGeometry(1.5, 16, 16)
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
+  const marker = new THREE.Mesh(geom, mat)
+  marker.position.copy(point)
+  scene.add(marker)
+}
+
+// ── 测量线 ──
+
+function drawMeasureLine(p1, p2) {
+  const geom = new THREE.BufferGeometry().setFromPoints([p1, p2])
+  const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 })
+  const line = new THREE.Line(geom, mat)
+  scene.add(line)
+  measureLines.push(line)
+}
+
+// ── 清除测量 ──
+
+function clearMeasure() {
+  measureLines.forEach(l => scene.remove(l))
+  measureLines = []
+  measurePoints = []
+  // 清除标记球
+  scene.children.forEach(child => {
+    if (child.geometry && child.geometry.type === 'SphereGeometry') {
+      scene.remove(child)
+    }
+  })
+}
+
+// ── 剖视图 ──
+
+function applySection(plane) {
+  if (!renderer) return
+  if (sectionMesh) {
+    scene.remove(sectionMesh)
+    sectionMesh = null
+  }
+  if (plane === 'none') return
+
+  // 用 clipping plane
+  const localPlane = new THREE.Plane()
+  switch (plane) {
+    case 'xy':
+      localPlane.set(new THREE.Vector3(0, 1, 0), 0)
+      break
+    case 'yz':
+      localPlane.set(new THREE.Vector3(1, 0, 0), 0)
+      break
+    case 'xz':
+      localPlane.set(new THREE.Vector3(0, 0, 1), 0)
+      break
+  }
+  renderer.localClippingEnabled = true
+  if (mesh) {
+    mesh.material.clippingPlanes = [localPlane]
+    mesh.material.clipShadows = true
+  }
+}
+
+// ── 渲染循环 ──
+
+function animate() {
+  animationId = requestAnimationFrame(animate)
+  if (controls) controls.update()
+  if (props.autoRotate && mesh) {
+    mesh.rotation.y += 0.005
+  }
+  if (renderer && scene && camera) {
+    renderer.render(scene, camera)
+  }
+}
+
+// ── 生命周期 ──
 
 onMounted(async () => {
   if (!props.src) {
@@ -205,18 +361,31 @@ onMounted(async () => {
     return
   }
 
-  viewerType.value = resolvedType.value
+  const ext = props.src.split('.').pop().toLowerCase()
+  if (!['stl', 'step', 'stp'].includes(ext)) {
+    error.value = `暂不支持 .${ext} 格式预览，支持 STL/STEP`
+    loading.value = false
+    return
+  }
 
   try {
-    if (viewerType.value === 'glb') {
-      await ensureModelViewer()
-      modelViewerLoaded.value = true
-      loading.value = false
-    } else if (viewerType.value === 'stl') {
-      await renderSTL(containerRef.value)
-    } else if (viewerType.value === 'image') {
-      loading.value = false
+    await ensureThreeJS()
+    resizeObs = initScene(containerRef.value)
+
+    if (ext === 'stl') {
+      await loadSTL(props.src)
+    } else if (ext === 'step' || ext === 'stp') {
+      // STEP 需后端转 STL 后加载
+      const stlUrl = props.src.replace(/\.(step|stp)$/i, '.stl')
+      try {
+        await loadSTL(stlUrl)
+      } catch {
+        error.value = 'STEP 预览需后端转换 STL，暂不可用'
+        loading.value = false
+      }
     }
+
+    animate()
   } catch (e) {
     error.value = e.message || '加载失败'
     loading.value = false
@@ -224,19 +393,26 @@ onMounted(async () => {
 })
 
 watch(() => props.src, async (newSrc) => {
-  if (!newSrc) return
+  if (!newSrc || !THREE) return
   loading.value = true
   error.value = ''
-  viewerType.value = resolvedType.value
+  // 清旧 mesh
+  if (mesh) {
+    scene.remove(mesh)
+    mesh = null
+  }
+  if (highlightMesh) {
+    scene.remove(highlightMesh)
+    highlightMesh = null
+  }
+  clearMeasure()
   try {
-    if (viewerType.value === 'glb') {
-      await ensureModelViewer()
-      modelViewerLoaded.value = true
-      loading.value = false
-    } else if (viewerType.value === 'stl') {
-      await renderSTL(containerRef.value)
-    } else if (viewerType.value === 'image') {
-      loading.value = false
+    const ext = newSrc.split('.').pop().toLowerCase()
+    if (ext === 'stl') {
+      await loadSTL(newSrc)
+    } else if (ext === 'step' || ext === 'stp') {
+      const stlUrl = newSrc.replace(/\.(step|stp)$/i, '.stl')
+      await loadSTL(stlUrl)
     }
   } catch (e) {
     error.value = e.message || '加载失败'
@@ -244,16 +420,38 @@ watch(() => props.src, async (newSrc) => {
   }
 })
 
-onBeforeUnmount(() => {
-  if (stlAnimationId) cancelAnimationFrame(stlAnimationId)
-  if (stlRenderer) stlRenderer.dispose()
+watch(() => props.viewMode, (mode) => {
+  setViewMode(mode)
 })
 
-const bgClass = computed(() => props.transparentBg ? 'bg-transparent' : 'bg-gray-900')
+watch(() => props.wireframe, (wf) => {
+  if (mesh) mesh.material.wireframe = wf
+})
+
+watch(() => props.transparentBg, (tp) => {
+  if (scene) {
+    scene.background = tp ? null : new THREE.Color(0x1a1a2e)
+  }
+})
+
+watch(() => props.sectionPlane, (plane) => {
+  applySection(plane)
+})
+
+onBeforeUnmount(() => {
+  if (animationId) cancelAnimationFrame(animationId)
+  if (renderer) renderer.dispose()
+  if (resizeObs) resizeObs.disconnect()
+  if (renderer && renderer.domElement) {
+    renderer.domElement.removeEventListener('click', onCanvasClick)
+  }
+})
+
+defineExpose({ clearMeasure })
 </script>
 
 <template>
-  <div class="model-viewer-wrapper relative w-full h-full rounded-lg overflow-hidden" :class="bgClass">
+  <div class="relative w-full h-full rounded-lg overflow-hidden" :class="transparentBg ? 'bg-transparent' : 'bg-gray-900'">
     <!-- Loading -->
     <div v-if="loading" class="absolute inset-0 flex items-center justify-center z-10">
       <div class="text-center">
@@ -263,54 +461,13 @@ const bgClass = computed(() => props.transparentBg ? 'bg-transparent' : 'bg-gray
     </div>
 
     <!-- Error -->
-    <div v-if="error" class="absolute inset-0 flex items-center justify-center">
+    <div v-if="error" class="absolute inset-0 flex items-center justify-center z-10">
       <div class="text-center p-4">
         <p class="text-red-500 text-sm">⚠️ {{ error }}</p>
       </div>
     </div>
 
-    <!-- GLB via model-viewer -->
-    <model-viewer
-      v-if="viewerType === 'glb' && modelViewerLoaded && !loading"
-      :src="src"
-      :auto-rotate="autoRotate"
-      camera-controls
-      shadow-intensity="1"
-      environment-image="neutral"
-      :class="['w-full h-full', bgClass]"
-      style="min-height: 300px"
-    >
-      <div slot="poster" class="absolute inset-0 flex items-center justify-center">
-        <p class="text-gray-400 text-sm">准备加载…</p>
-      </div>
-    </model-viewer>
-
-    <!-- STL via Three.js -->
-    <div
-      v-if="viewerType === 'stl'"
-      ref="containerRef"
-      class="w-full h-full stl-container"
-      style="min-height: 300px"
-    ></div>
-
-    <!-- Image -->
-    <img
-      v-if="viewerType === 'image' && !loading"
-      :src="src"
-      class="w-full h-full object-contain"
-      style="min-height: 300px"
-    />
+    <!-- Three.js 容器 -->
+    <div ref="containerRef" class="w-full h-full" style="min-height: 400px"></div>
   </div>
 </template>
-
-<style scoped>
-.model-viewer-wrapper {
-  min-height: 300px;
-}
-model-viewer {
-  width: 100%;
-  height: 100%;
-  min-height: 300px;
-  display: block;
-}
-</style>
