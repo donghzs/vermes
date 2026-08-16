@@ -52,6 +52,16 @@ const aiHistory = ref([])
 // ── 测量结果 ──
 const measureResult = ref(null)
 
+// ── 拾取/上下文工具栏（Phase B） ──
+const pickedInfo = ref(null) // {point, face, normal}
+const contextMenu = ref(null) // {x, y, visible}
+const contextActions = ref([])
+const editingDimension = ref(null) // {name, currentValue, newValue}
+const showDimEditor = ref(false)
+
+// ── 模型尺寸标注（3D 视口上浮层） ──
+const dimensionLabels = ref([]) // [{text, x, y}]
+
 // ── 时间线 ──
 const timeline = ref([]) // [{ts, action, detail}]
 
@@ -321,9 +331,102 @@ function downloadFile(file) {
   document.body.removeChild(a)
 }
 
-// ── 测量回调 ──
+// ── 拾取回调 ──
 function onMeasure(data) {
   measureResult.value = data
+}
+
+// ── 拾取面回调（Phase B） ──
+function onPick(data) {
+  pickedInfo.value = data
+  // 弹出上下文工具栏
+  const container = document.querySelector('.model-viewer-wrapper')
+  if (container) {
+    const rect = container.getBoundingClientRect()
+    // 用鼠标最后位置（近似）
+    contextMenu.value = {
+      x: data.point.x + 20,
+      y: data.point.y - 20,
+      visible: true,
+    }
+  }
+  // 根据法线方向推断可用操作
+  const n = data.normal
+  const isFlat = Math.abs(n.y) > 0.9 || Math.abs(n.x) > 0.9 || Math.abs(n.z) > 0.9
+  contextActions.value = [
+    { id: 'fillet', label: '🔄 倒角/圆角', desc: '给这条边加圆角' },
+    { id: 'offset', label: '⬅️ 偏移面', desc: '沿法线偏移这个面' },
+    { id: 'extrude', label: '⬆️ 拉伸', desc: '沿法线拉伸这个面' },
+    { id: 'cut', label: '✂️ 切割', desc: '在这个面上挖孔/切槽' },
+    { id: 'measure', label: '📏 测量', desc: '测量到另一个面的距离' },
+  ]
+}
+
+function closeContextMenu() {
+  if (contextMenu.value) contextMenu.value.visible = false
+}
+
+function executeContextAction(action) {
+  closeContextMenu()
+  if (!pickedInfo.value) return
+
+  switch (action.id) {
+    case 'fillet':
+      // AI 协助：用自然语言让后端加圆角
+      aiPrompt.value = `给选中的面加 0.5mm 圆角（法线方向: ${pickedInfo.value.normal.toArray().map(v => v.toFixed(2)).join(',')}）`
+      aiAssist()
+      break
+    case 'offset':
+      showDimEditor.value = true
+      editingDimension.value = {
+        name: '偏移距离',
+        currentValue: 1.0,
+        newValue: 1.0,
+        unit: 'mm',
+        action: 'offset',
+      }
+      break
+    case 'extrude':
+      showDimEditor.value = true
+      editingDimension.value = {
+        name: '拉伸高度',
+        currentValue: 5.0,
+        newValue: 5.0,
+        unit: 'mm',
+        action: 'extrude',
+      }
+      break
+    case 'cut':
+      aiPrompt.value = `在选中面上挖一个直径 5mm 的通孔（面法线: ${pickedInfo.value.normal.toArray().map(v => v.toFixed(2)).join(',')}）`
+      aiAssist()
+      break
+    case 'measure':
+      tool.value = 'measure'
+      break
+  }
+}
+
+function confirmDimensionEdit() {
+  if (!editingDimension.value || !pickedInfo.value) return
+  const ed = editingDimension.value
+  const val = ed.newValue
+  const normal = pickedInfo.value.normal.toArray().map(v => v.toFixed(2)).join(',')
+
+  switch (ed.action) {
+    case 'offset':
+      aiPrompt.value = `将选中面沿法线方向(${normal})偏移 ${val}mm`
+      break
+    case 'extrude':
+      aiPrompt.value = `将选中面沿法线方向(${normal})拉伸 ${val}mm`
+      break
+  }
+  showDimEditor.value = false
+  aiAssist()
+}
+
+function cancelDimensionEdit() {
+  showDimEditor.value = false
+  editingDimension.value = null
 }
 
 // ── 工具栏切换 ──
@@ -378,6 +481,9 @@ onMounted(loadSessions)
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
       <!-- 工具按钮 -->
+      <button @click="toggleTool('pick')" class="p-1.5 rounded" :class="tool === 'pick' ? 'bg-orange-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="选择面">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+      </button>
       <button @click="toggleTool('measure')" class="p-1.5 rounded" :class="tool === 'measure' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="测量">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7L8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><line x1="14" y1="6" x2="18" y2="10"/></svg>
       </button>
@@ -454,6 +560,7 @@ onMounted(loadSessions)
           :auto-rotate="autoRotate"
           :transparent-bg="true"
           @measure="onMeasure"
+          @pick="onPick"
         />
         <div v-else class="flex items-center justify-center h-full">
           <div class="text-center">
@@ -476,6 +583,48 @@ onMounted(loadSessions)
             class="px-3 py-1 text-xs rounded transition"
             :class="selectedFile?.key === f.key ? 'bg-green-500 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'"
           >{{ f.label }}</button>
+        </div>
+
+        <!-- 浮层：上下文工具栏（Phase B — 选中面后弹出） -->
+        <div
+          v-if="contextMenu?.visible && pickedInfo"
+          class="absolute z-30 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 min-w-48"
+          :style="{ top: '60px', right: '20px' }"
+        >
+          <div class="px-3 py-1.5 text-xs font-medium text-gray-400 border-b border-gray-100 dark:border-gray-700">
+            选中面操作
+          </div>
+          <button
+            v-for="action in contextActions"
+            :key="action.id"
+            @click="executeContextAction(action)"
+            class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+          >
+            {{ action.label }}
+          </button>
+          <button @click="closeContextMenu" class="w-full text-left px-3 py-1 text-xs text-gray-400 hover:bg-gray-50">取消</button>
+        </div>
+
+        <!-- 浮层：尺寸编辑弹窗（Phase B） -->
+        <div
+          v-if="showDimEditor && editingDimension"
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-4 min-w-64"
+        >
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">{{ editingDimension.name }}</h3>
+          <div class="flex items-center gap-2 mb-3">
+            <input
+              type="number"
+              v-model="editingDimension.newValue"
+              :step="0.1"
+              :min="0"
+              class="w-24 text-sm px-2 py-1.5 rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <span class="text-sm text-gray-400">{{ editingDimension.unit }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button @click="confirmDimensionEdit" class="px-3 py-1.5 text-xs rounded bg-green-500 text-white hover:bg-green-600">确认</button>
+            <button @click="cancelDimensionEdit" class="px-3 py-1.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-500">取消</button>
+          </div>
         </div>
 
         <!-- 浮层：会话信息（左上） -->
