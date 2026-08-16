@@ -1139,6 +1139,125 @@ def register_tools(host_api=None):
             emoji="🔧",
             description="查询标准件库（螺丝/螺母/轴承/垫圈），获取件号和参数",
         )
+        # 制造链路
+        from .manufacturing import export_dxf, slice_gcode, send_print
+        MFG_DXF_SCHEMA = {
+            "name": "mfg_export_dxf",
+            "description": "从 STEP 文件导出 DXF（2D 投影，激光切割/钣金用）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "会话 ID"},
+                    "filename": {"type": "string", "description": "STEP 文件名"},
+                    "views": {"type": "array", "items": {"type": "string"}, "description": "投影视图（top/front/side）"},
+                },
+                "required": ["session_id", "filename"],
+            },
+        }
+
+        async def _handle_mfg_export_dxf(args: dict, **kw: Any) -> str:
+            sid = args.get("session_id", "")
+            fname = args.get("filename", "")
+            views = args.get("views", ["top", "front", "side"])
+            output_dir = Path.home() / ".vermes" / "mfgcad" / "output" / sid
+            step_file = output_dir / fname
+            result = export_dxf(step_file, views=views)
+            if result["ok"]:
+                return f"✅ DXF 已导出: {result['dxf_path']}（视图: {', '.join(result.get('views', []))})"
+            return f"❌ DXF 导出失败: {result['error']}"
+
+        registry.register(
+            name="mfg_export_dxf",
+            toolset="mfgcad",
+            schema=MFG_DXF_SCHEMA,
+            handler=_handle_mfg_export_dxf,
+            is_async=True,
+            emoji="📐",
+            description="从 STEP 导出 DXF（2D 工程图，激光切割用）",
+        )
+
+        MFG_SLICE_SCHEMA = {
+            "name": "mfg_slice_gcode",
+            "description": "调用本地切片软件生成 G-code（3D 打印用）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "会话 ID"},
+                    "filename": {"type": "string", "description": "STL 文件名"},
+                    "layer_height": {"type": "number", "description": "层高 mm，默认 0.2"},
+                    "infill": {"type": "number", "description": "填充密度 %，默认 20"},
+                    "filament": {"type": "string", "description": "耗材类型，默认 PLA"},
+                    "dry_run": {"type": "boolean", "description": "只预览不执行，默认 true"},
+                },
+                "required": ["session_id", "filename"],
+            },
+        }
+
+        async def _handle_mfg_slice_gcode(args: dict, **kw: Any) -> str:
+            sid = args.get("session_id", "")
+            fname = args.get("filename", "")
+            layer_height = args.get("layer_height", 0.2)
+            infill = args.get("infill", 20)
+            filament = args.get("filament", "PLA")
+            dry_run = args.get("dry_run", True)
+            output_dir = Path.home() / ".vermes" / "mfgcad" / "output" / sid
+            stl_file = output_dir / fname
+            result = slice_gcode(stl_file, layer_height=layer_height, infill=infill,
+                                 filament=filament, dry_run=dry_run)
+            if result["ok"]:
+                dry = " [dry-run]" if result.get("dry_run") else ""
+                return f"✅ G-code 生成{dry}: {result['gcode_path']}（切片器: {result['slicer']}）\n  命令: {result.get('command', '')}"
+            return f"❌ 切片失败: {result['error']}"
+
+        registry.register(
+            name="mfg_slice_gcode",
+            toolset="mfgcad",
+            schema=MFG_SLICE_SCHEMA,
+            handler=_handle_mfg_slice_gcode,
+            is_async=True,
+            emoji="🖨️",
+            description="调用切片软件生成 G-code（3D 打印）",
+        )
+
+        MFG_PRINT_SCHEMA = {
+            "name": "mfg_send_print",
+            "description": "推送 G-code 到 Bambu/拓竹打印机",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "会话 ID"},
+                    "filename": {"type": "string", "description": "G-code 文件名"},
+                    "printer_ip": {"type": "string", "description": "打印机 IP 地址"},
+                    "access_code": {"type": "string", "description": "打印机访问码"},
+                    "dry_run": {"type": "boolean", "description": "只预览不推送，默认 true"},
+                },
+                "required": ["session_id", "filename"],
+            },
+        }
+
+        async def _handle_mfg_send_print(args: dict, **kw: Any) -> str:
+            sid = args.get("session_id", "")
+            fname = args.get("filename", "")
+            printer_ip = args.get("printer_ip", "")
+            access_code = args.get("access_code", "")
+            dry_run = args.get("dry_run", True)
+            output_dir = Path.home() / ".vermes" / "mfgcad" / "output" / sid
+            gcode_file = output_dir / fname
+            result = send_print(gcode_file, printer_ip=printer_ip, access_code=access_code, dry_run=dry_run)
+            if result["ok"]:
+                dry = " [dry-run]" if result.get("dry_run") else ""
+                return f"✅ 打印推送{dry}: {result.get('message', '')}"
+            return f"❌ 推送失败: {result['error']}"
+
+        registry.register(
+            name="mfg_send_print",
+            toolset="mfgcad",
+            schema=MFG_PRINT_SCHEMA,
+            handler=_handle_mfg_send_print,
+            is_async=True,
+            emoji="🚀",
+            description="推送 G-code 到打印机（Bambu/拓竹）",
+        )
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad project/template tools registration failed: %s", e)

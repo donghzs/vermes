@@ -233,6 +233,9 @@ TOOLSETS = {
             "mfg_project",
             "mfg_template",
             "mfg_standard_part",
+            "mfg_export_dxf",
+            "mfg_slice_gcode",
+            "mfg_send_print",
         ],
         "includes": []
     },
