@@ -3432,8 +3432,6 @@ async def mfgcad_ai_assist(session_id: str, request: Request):
         })
 
 
-mount_spa(app)
-
 # ── Phase D: 2D 工程图 / BOM / 3D 打印建议 ──────────────────
 
 @app.get("/api/mfgcad/sessions/{session_id}/drawing")
@@ -3696,3 +3694,5 @@ async def mfgcad_print_advice(session_id: str):
         advice["recommendations"].append("不建议用 ABS（需封闭舱体 + 100°C 热床）")
 
     return JSONResponse(advice)
+
+mount_spa(app)
