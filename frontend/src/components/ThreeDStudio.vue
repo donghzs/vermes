@@ -30,8 +30,11 @@ const autoRotate = ref(false)
 const showGrid = ref(true)
 
 // ── 面板折叠 ──
-const rightPanelOpen = ref(false) // 默认折叠
+const rightPanelOpen = ref(true) // 默认展开（用户需要看到参数）
 const leftPanelOpen = ref(true)
+
+// ── 模型包围盒（从 ModelViewer 接收） ──
+const modelBBox = ref(null) // {length_mm, width_mm, height_mm, volume_mm3}
 
 // ── 参数 ──
 const paramsForSession = ref([])
@@ -310,9 +313,9 @@ function onParamInput(name, rawValue) {
 }
 
 function scheduleRebuild() {
-  rebuildMsg.value = ''
+  rebuildMsg.value = '⏳ 预览中…松手后自动重建'
   if (rebuildTimer) clearTimeout(rebuildTimer)
-  rebuildTimer = setTimeout(() => rebuild(), 800)
+  rebuildTimer = setTimeout(() => rebuild(), 600)
 }
 
 async function rebuild() {
@@ -481,6 +484,11 @@ function downloadFile(file) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
+}
+
+// ── 包围盒回调 ──
+function onBBox(bbox) {
+  modelBBox.value = bbox
 }
 
 // ── 拾取回调 ──
@@ -716,6 +724,7 @@ onMounted(loadSessions)
           :transparent-bg="true"
           @measure="onMeasure"
           @pick="onPick"
+          @bbox="onBBox"
         />
         <div v-else class="flex items-center justify-center h-full">
           <div class="text-center">
@@ -898,6 +907,16 @@ onMounted(loadSessions)
           <div class="flex items-center gap-2">
             <button @click="confirmDimensionEdit" class="px-3 py-1.5 text-xs rounded bg-green-500 text-white hover:bg-green-600">确认</button>
             <button @click="cancelDimensionEdit" class="px-3 py-1.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-500">取消</button>
+          </div>
+        </div>
+
+        <!-- 浮层：尺寸标注（右上角，从 ModelViewer bbox 回调获得） -->
+        <div v-if="modelBBox" class="absolute top-2 right-2 px-3 py-2 rounded-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur shadow-sm z-10">
+          <div class="text-xs font-medium text-gray-400 mb-1">📏 包围盒尺寸</div>
+          <div class="flex gap-3 text-xs text-gray-600 dark:text-gray-300">
+            <span>长 <b>{{ modelBBox.length_mm }}</b>mm</span>
+            <span>宽 <b>{{ modelBBox.width_mm }}</b>mm</span>
+            <span>高 <b>{{ modelBBox.height_mm }}</b>mm</span>
           </div>
         </div>
 
