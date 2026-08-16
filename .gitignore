@@ -102,3 +102,4 @@ vermes_cli/web_dist.bak.v1/
 # 以下仅覆盖框架层（仓库内）的运行时产物。
 vermes_cli/mfgcad/**/*.bak_gate*
 vermes_cli/mfgcad/**/__pycache__/
+dist-modules/*.tar.gz

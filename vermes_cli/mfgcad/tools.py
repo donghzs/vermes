@@ -75,6 +75,10 @@ MFGCAD_SCHEMA = {
                 "type": "boolean",
                 "description": "可选：true=建模前自动检查歧义（缺尺寸/矛盾），有问题则返回追问不调引擎。false=跳过检查直接建模。默认 true。",
             },
+            "auto_setup": {
+                "type": "boolean",
+                "description": "可选：true=若检测到 MAC 引擎 venv 未安装，Agent 自动一键安装（建 venv+装依赖+验证）后无感继续出图（默认 true，首次使用才会触发，仅此一次）。false=不自动安装，改为返回引导让你/Agent 调用 mfg_setup_engine。",
+            },
         },
         "required": ["request"],
     },
@@ -221,6 +225,9 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
     workflow_id = args.get("workflow_id") or "original"
     checkpoint = bool(args.get("checkpoint"))
     preset = (args.get("preset") or "").strip() or None
+    auto_setup = args.get("auto_setup")
+    if auto_setup is None:
+        auto_setup = True  # 默认首次自动安装引擎
     auto_clarify = args.get("auto_clarify")
     if auto_clarify is None:
         auto_clarify = True  # 默认开启歧义检查
@@ -270,6 +277,19 @@ async def _handle_mfg_text_to_cad(args: dict, **kw: Any) -> str:
         backend = resolve_backend(preset_def)
     except RuntimeError as e:
         return f"❌ 引擎未就绪: {e}"
+
+    # ── 引擎自安装引导（首次使用 Agent 自理）──
+    # mac 后端依赖独立 venv；若未就绪，按 auto_setup 自动安装或返回引导。
+    if backend.name == "mac":
+        from vermes_cli.mfgcad import engine_setup
+
+        ready, msg = await engine_setup.ensure_mac_ready(
+            engine_setup.get_engine_dir(),
+            auto_setup=auto_setup,
+            include_aider=(workflow_id == "aider"),
+        )
+        if not ready:
+            return msg
 
     # 透传 API key
     env = dict(os.environ)
@@ -488,6 +508,9 @@ async def _handle_mfg_rebuild_parametric(args: dict, **kw: Any) -> str:
     params = args.get("parameters")
     if not isinstance(params, dict) or not params:
         return "❌ 缺少必填参数 parameters（格式：{\"参数名\": 新数值}，如 {\"HEIGHT\": 120.0}）。"
+    auto_setup = args.get("auto_setup")
+    if auto_setup is None:
+        auto_setup = True
 
     from vermes_cli.mfgcad.parametric import (
         load_source,
@@ -523,9 +546,14 @@ async def _handle_mfg_rebuild_parametric(args: dict, **kw: Any) -> str:
     output_dir = str(_mfg_home() / "output" / new_session_id)
 
     from vermes_cli.mfgcad.engine_backends import resolve_backend
+    from vermes_cli.mfgcad import engine_setup
+
     backend = resolve_backend(None)  # 参数化重建固定走默认后端（mac，参数化 B-Rep）
-    if not backend.is_available():
-        return "❌ 引擎未就绪，参数化重建不可用。请先安装 MAC 引擎（含 build123d/cadquery-ocp）。"
+    ready, msg = await engine_setup.ensure_mac_ready(
+        engine_setup.get_engine_dir(), auto_setup=auto_setup, include_aider=False
+    )
+    if not ready:
+        return msg
 
     env = {}
     api_key = _resolve_api_key()
@@ -612,6 +640,10 @@ MFG_REBUILD_SCHEMA = {
             ),
             "additionalProperties": {"type": "number"},
         },
+        "auto_setup": {
+            "type": "boolean",
+            "description": "可选：true=若 MAC 引擎 venv 未安装则自动安装后重建（默认 true）。false=不自动安装，改为返回引导调用 mfg_setup_engine。",
+        },
     },
     "required": ["base_session_id", "parameters"],
 }
@@ -660,6 +692,74 @@ MFG_TEMPLATE_SCHEMA = {
     },
     "required": ["action"],
 }
+
+
+MFG_SETUP_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "engine": {
+            "type": "string",
+            "enum": ["mac", "trellis"],
+            "description": "可选：要安装的引擎。默认 mac（Multi-Agent-CAD，精确 CAD）。trellis 需 GPU 权重，暂不支持自动安装。",
+        },
+        "force": {
+            "type": "boolean",
+            "description": "可选：true=即使 venv 已存在也重装全部依赖（不删 venv）。用于依赖损坏后修复。默认 false。",
+        },
+        "include_aider": {
+            "type": "boolean",
+            "description": "可选：true=额外安装 aider（仅 --workflow-id aider 自修复路径需要，较大且 best-effort）。默认 false。",
+        },
+    },
+    "required": [],
+}
+
+
+async def _handle_mfg_setup_engine(args: dict, **kw: Any) -> str:
+    """一键安装 3D 建模引擎（Agent 自理，终端用户零配置）。
+
+    检测 MAC 引擎 venv 是否就绪：缺失则建 venv → 升 pip → 装核心依赖
+    （build123d/cadquery-ocp/trimesh/langgraph/openai/pydantic）→ 装本地 cadpy
+    → 可选 aider → 验证关键导入。幂等：已就绪直接返回。
+
+    返回人类可读状态；失败返回含重试/手动命令的引导。
+    """
+    from vermes_cli.mfgcad import engine_setup
+
+    engine = (args.get("engine") or "mac").strip()
+    force = bool(args.get("force"))
+    include_aider = bool(args.get("include_aider"))
+
+    if engine != "mac":
+        return (
+            "⚠️ 目前仅支持自动安装 mac 引擎（Multi-Agent-CAD）。"
+            "trellis 需本地 GPU 权重，请按文档手动部署到 ~/.vermes/engines/trellis/。"
+        )
+
+    ed = engine_setup.get_engine_dir()
+    if not engine_setup.engine_code_present(ed):
+        return (
+            "❌ 未找到 MAC 引擎代码于 %s（需 run_mac.py + multi_agent_cad/）。\n"
+            "自动安装只解决 venv/依赖，不能替你下载引擎本身。请把 Multi-Agent-CAD 引擎\n"
+            "（含 run_mac.py 与 multi_agent_cad/ 包）放到该目录，或设 MFG_CAD_ENGINE_DIR 指向引擎根。"
+        ) % ed
+
+    if engine_setup.is_provisioned(ed) and not force:
+        return f"✅ MAC 引擎已就绪（{ed}/.venv）。无需安装，可直接建模。"
+
+    # 收集进度，拼成一个可读状态回执
+    steps: list[str] = []
+    res = await engine_setup.provision_engine(
+        ed, force=force, include_aider=include_aider, progress=steps.append
+    )
+
+    if res["ok"]:
+        summary = "\n".join(steps)
+        return (
+            f"✅ MAC 引擎安装完成（{ed}/.venv）。\n{summary}\n"
+            "现在可直接调用 mfg_text_to_cad 出图，终端用户无需其他操作。"
+        )
+    return engine_setup.format_setup_failure(res, ed)
 
 
 async def _handle_mfg_generate_bom(args: dict, **kw: Any) -> str:
@@ -872,6 +972,21 @@ def register_tools(host_api=None):
         emoji="🏭",
         description="3D 建模：自然语言需求直接生成 STEP 三维模型（双引擎校验）",
     )
+
+    # 引擎自安装（Agent 自理，终端用户零配置；首次使用 mac 未就绪时由 mfg_text_to_cad 自动触发）
+    try:
+        registry.register(
+            name="mfg_setup_engine",
+            toolset="mfgcad",
+            schema=MFG_SETUP_SCHEMA,
+            handler=_handle_mfg_setup_engine,
+            is_async=True,
+            emoji="⚙️",
+            description="一键安装 3D 建模引擎（MAC）：建 venv+装依赖+验证，终端用户零配置；引擎缺失时 Agent 自动调用",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("mfg_setup_engine registration failed: %s", e)
 
     registry.register(
         name="mfg_clarify",

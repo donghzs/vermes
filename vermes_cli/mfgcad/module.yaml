@@ -1,0 +1,54 @@
+name: mfgcad
+display_name: 制造 CAD（3D 建模）
+version: 0.2.0
+author: Vermes Team
+homepage: https://github.com/donghzs/vermes-mod-mfgcad
+description: 自然语言→STEP 三维模型，参数化建模+制造链路
+repository: donghzs/vermes-mod-mfgcad
+
+backend:
+  tools_entry: tools.py
+
+frontend:
+  entry: frontend/dist/index.html
+  route: /3d-studio
+  icon: 🏭
+  menu_title: 3D 建模
+
+permissions:
+  - subprocess
+  - filesystem_write
+
+compatibility:
+  vermes_min: "2.3.9"
+
+provides_tools:
+  - mfg_text_to_cad
+  - mfg_clarify
+  - mfg_edit_part
+  - mfg_paint_texture
+  - mfg_transform
+  - mfg_image_to_cad
+  - mfg_bbox_to_cad
+  - mfg_multi_view_to_cad
+  - mfg_rebuild_parametric
+  - mfg_generate_bom
+  - mfg_project
+  - mfg_template
+  - mfg_setup_engine
+
+keywords:
+  - 3D
+  - 建模
+  - CAD
+  - 笔筒
+  - 零件
+  - STEP
+  - STL
+  - 3D打印
+  - 制造
+  - 模具
+  - 注塑
+  - 参数化
+  - SolidWorks
+  - Fusion

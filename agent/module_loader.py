@@ -98,6 +98,11 @@ class ModuleManifest:
     frontend_menu_title: str = ""
     permissions: List[str] = field(default_factory=list)
     vermes_min: str = "0.0.0"
+    # 新增（P1 可插拔模块）：声明本模块提供的 Agent 工具 + 意图关键词，
+    # 供 Agent 自动检测「缺失模块」用（见 agent/module_catalog.py）。
+    provides_tools: List[str] = field(default_factory=list)
+    keywords: List[str] = field(default_factory=list)
+    repository: str = ""
     raw: Dict[str, Any] = field(default_factory=dict)
     # 模块根目录（内置模块=bundle 路径，第三方插件=~/.vermes/modules/<name>）
     # 不再硬编码 ~/.vermes/modules，避免“双路径/三副本”陷阱。
@@ -136,6 +141,10 @@ def parse_manifest(module_dir: Path) -> Optional[ModuleManifest]:
         frontend_menu_title=frontend.get("menu_title", ""),
         permissions=data.get("permissions", []),
         vermes_min=compat.get("vermes_min", "0.0.0"),
+        # P1 可插拔模块：声明工具 + 意图关键词 + 仓库地址
+        provides_tools=data.get("provides_tools", []) or [],
+        keywords=data.get("keywords", []) or [],
+        repository=data.get("repository", ""),
         raw=data,
         module_root=module_dir,
         builtin=False,
@@ -230,6 +239,11 @@ _BUILTIN_MODULES: Dict[str, str] = {
     "scholarforge": "vermes_cli/scholarforge",
     "mfgcad": "vermes_cli/mfgcad",
 }
+
+
+def is_builtin_module(name: str) -> bool:
+    """判断模块名是否为内置模块（P5 降级时用：内置模块不从远程下载）。"""
+    return name in _BUILTIN_MODULES
 
 
 def _synth_scholarforge_manifest(pkg_dir: Path) -> ModuleManifest:

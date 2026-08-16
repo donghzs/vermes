@@ -1,0 +1,64 @@
+name: scholarforge
+display_name: ScholarForge 论文写作
+version: 1.0.0
+author: Vermes Team
+homepage: https://github.com/donghzs/vermes-mod-scholarforge
+description: AI 驱动的学术论文写作全链路（文献搜索→写作→查重→评分→导出）
+repository: donghzs/vermes-mod-scholarforge
+
+backend:
+  tools_entry: tools.py
+
+frontend:
+  entry: frontend/dist/index.html
+  route: /scholarforge
+  icon: 📝
+  menu_title: 论文写作
+
+permissions:
+  - subprocess
+  - filesystem_write
+
+compatibility:
+  vermes_min: "2.3.9"
+
+provides_tools:
+  - scholarforge_search
+  - scholarforge_outline
+  - scholarforge_write
+  - scholarforge_review
+  - scholarforge_polish
+  - scholarforge_export
+  - scholarforge_check_stats
+  - scholarforge_citation_graph
+  - scholarforge_deaigc
+  - scholarforge_detect_design_flaws
+  - scholarforge_format_refs
+  - scholarforge_learn_style
+  - scholarforge_list_projects
+  - scholarforge_literature_matrix
+  - scholarforge_manage_snapshots
+  - scholarforge_plagiarism_check
+  - scholarforge_quality_gate
+  - scholarforge_read_section
+  - scholarforge_replace_citations
+  - scholarforge_research_map
+  - scholarforge_review_claims
+  - scholarforge_run_pipeline
+  - scholarforge_save_literature_cards
+  - scholarforge_score
+  - scholarforge_set_active_project
+  - scholarforge_verify_citations
+  - scholarforge_apply_template
+
+keywords:
+  - 论文
+  - 写作
+  - 学术
+  - 文献
+  - 引用
+  - 查重
+  - ScholarForge
+  - 论文评分
+  - 论文导出
+  - 研究综述
