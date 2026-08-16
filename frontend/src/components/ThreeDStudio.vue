@@ -1014,11 +1014,11 @@ onMounted(loadSessions)
         </div>
       </div>
 
-      <!-- 右侧：可折叠参数面板 + AI 协助（浮层，不挤占视口） -->
+      <!-- 右侧：悬浮参数面板 + AI 协助（不挤占视口，浮在 3D 图上方） -->
       <!-- 展开状态 -->
-      <div v-if="rightPanelOpen" class="w-72 flex-shrink-0 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-lg flex flex-col relative">
+      <div v-if="rightPanelOpen" class="absolute right-0 top-0 bottom-0 w-72 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col z-20">
         <!-- 折叠按钮 -->
-        <button @click.stop="rightPanelOpen = false" @mouseenter="showTooltip($event, '点击收起参数面板')" @mouseleave="hideTooltip" class="absolute -left-5 top-1/2 -translate-y-1/2 p-1 rounded-l bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 z-10 shadow-sm">
+        <button @click.stop="rightPanelOpen = false" @mouseenter="showTooltip($event, '点击收起参数面板')" @mouseleave="hideTooltip" class="absolute -left-6 top-1/2 -translate-y-1/2 p-1.5 rounded-l bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600 z-10 shadow-sm">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
 
@@ -1124,10 +1124,9 @@ onMounted(loadSessions)
           </div>
         </div>
       </div>
-      <!-- 折叠状态：竖条展开按钮 -->
-      <button v-else @click="rightPanelOpen = true" @mouseenter="showTooltip($event, '点击展开参数面板和AI协助')" @mouseleave="hideTooltip" class="w-8 flex-shrink-0 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-gray-600 transition py-3">
+      <!-- 折叠状态：悬浮展开按钮（不占布局空间，浮在视口上方） -->
+      <button v-else @click="rightPanelOpen = true" @mouseenter="showTooltip($event, '点击展开参数面板和AI协助')" @mouseleave="hideTooltip" class="absolute right-2 top-1/2 -translate-y-1/2 z-20 w-10 h-16 rounded-l-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg hover:bg-gray-50 dark:hover:bg-gray-700 flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-gray-600 transition">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="rotate-180"><polyline points="9 18 15 12 9 6"/></svg>
-        <span class="text-[10px]" style="writing-mode: vertical-rl;">参数</span>
         <span v-if="paramsForSession.length" class="text-[10px] text-blue-500 font-medium">{{ paramsForSession.length }}</span>
       </button>
     </div>
