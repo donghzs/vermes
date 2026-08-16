@@ -284,6 +284,69 @@ async function aiAssist() {
   }
 }
 
+// ── AI 上下文建议（Phase C） ──
+const aiSuggestions = ref([])
+
+function generateAISuggestions() {
+  if (!selectedSession.value) return
+  const s = selectedSession.value
+  const suggestions = []
+
+  if (s.volume_mm3 && s.volume_mm3 < 1000) {
+    suggestions.push({ icon: '💡', text: '模型较小，建议增加壁厚', action: 'wall_thickness' })
+  }
+  if (s.qa && s.qa.warnings) {
+    for (const w of (Array.isArray(s.qa.warnings) ? s.qa.warnings : [])) {
+      if (w.includes('wall') || w.includes('壁')) {
+        suggestions.push({ icon: '⚠️', text: '壁厚偏薄，建议加到 2mm 以上', action: 'wall_thickness' })
+      }
+      if (w.includes('hole') || w.includes('孔')) {
+        suggestions.push({ icon: '⚠️', text: '孔边距偏小，建议 > 1×孔径', action: 'hole_distance' })
+      }
+    }
+  }
+  if (paramsForSession.value.length > 0) {
+    suggestions.push({ icon: '🎚️', text: `${paramsForSession.value.length} 个参数可调`, action: 'params' })
+  }
+  suggestions.push({ icon: '🎨', text: '更换材质或颜色外观', action: 'material' })
+  suggestions.push({ icon: '📐', text: '生成 2D 工程图', action: 'drawing' })
+  suggestions.push({ icon: '🖨️', text: '3D 打印参数建议', action: 'print' })
+
+  aiSuggestions.value = suggestions
+}
+
+function executeSuggestion(s) {
+  switch (s.action) {
+    case 'wall_thickness':
+      aiPrompt.value = '将壁厚增加到 2mm，保持其他尺寸不变'
+      aiAssist()
+      break
+    case 'hole_distance':
+      aiPrompt.value = '调整孔位置使孔边距 > 1×孔径'
+      aiAssist()
+      break
+    case 'params':
+      rightPanelOpen.value = true
+      break
+    case 'material':
+      aiPrompt.value = '更换为金属质感外观'
+      aiAssist()
+      break
+    case 'drawing':
+      aiPrompt.value = '生成 2D 工程图，含三视图和尺寸标注'
+      aiAssist()
+      break
+    case 'print':
+      aiPrompt.value = '分析模型并给出 3D 打印参数建议'
+      aiAssist()
+      break
+  }
+}
+
+watch(selectedSession, () => {
+  nextTick(() => generateAISuggestions())
+}, { immediate: true })
+
 // ── 时间线 ──
 async function loadTimeline(s) {
   timeline.value = []
@@ -570,6 +633,21 @@ onMounted(loadSessions)
             <div class="flex items-center justify-center gap-3">
               <button @click="goChat" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600">💬 对话建模</button>
               <button @click="uploadRef?.click()" class="px-4 py-2 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600">📂 打开文件</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 建议浮层（左下，Phase C） -->
+        <div v-if="aiSuggestions.length && !rightPanelOpen" class="absolute bottom-14 left-2 max-w-56">
+          <div class="bg-white/90 dark:bg-gray-800/90 backdrop-blur rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-2">
+            <div class="text-xs font-medium text-gray-400 mb-1.5">🤖 AI 建议</div>
+            <div class="space-y-1">
+              <button
+                v-for="(s, i) in aiSuggestions.slice(0, 4)"
+                :key="i"
+                @click="executeSuggestion(s)"
+                class="block w-full text-left text-xs px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+              >{{ s.icon }} {{ s.text }}</button>
             </div>
           </div>
         </div>
