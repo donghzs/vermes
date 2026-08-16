@@ -236,6 +236,7 @@ TOOLSETS = {
             "mfg_export_dxf",
             "mfg_slice_gcode",
             "mfg_send_print",
+            "mfg_export_urdf",
         ],
         "includes": []
     },

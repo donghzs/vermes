@@ -1258,6 +1258,86 @@ def register_tools(host_api=None):
             emoji="🚀",
             description="推送 G-code 到打印机（Bambu/拓竹）",
         )
+        # 机器人模型导出
+        from .robot_export import RobotLink, RobotJoint, export_urdf, export_srdf, export_sdf
+        MFG_URDF_SCHEMA = {
+            "name": "mfg_export_urdf",
+            "description": "从多零件组装体导出 URDF/SRDF/SDF（机器人描述格式，ROS/Gazebo 用）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "robot_name": {"type": "string", "description": "机器人名称"},
+                    "links": {
+                        "type": "array",
+                        "description": "link 列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "mass": {"type": "number"},
+                                "geometry_file": {"type": "string"},
+                            },
+                        },
+                    },
+                    "joints": {
+                        "type": "array",
+                        "description": "joint 列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "joint_type": {"type": "string", "enum": ["revolute", "continuous", "fixed", "prismatic"]},
+                                "parent": {"type": "string"},
+                                "child": {"type": "string"},
+                            },
+                        },
+                    },
+                    "format": {"type": "string", "enum": ["urdf", "srdf", "sdf", "all"], "description": "导出格式，默认 all"},
+                },
+                "required": ["robot_name", "links"],
+            },
+        }
+
+        async def _handle_mfg_export_urdf(args: dict, **kw: Any) -> str:
+            robot_name = args.get("robot_name", "vermes_robot")
+            fmt = args.get("format", "all")
+            link_data = args.get("links", [])
+            joint_data = args.get("joints", [])
+
+            links = [RobotLink(**l) for l in link_data]
+            joints = [RobotJoint(**j) for j in joint_data]
+
+            results = []
+            if fmt in ("urdf", "all"):
+                r = export_urdf(links, joints, robot_name=robot_name)
+                if r["ok"]:
+                    results.append(f"✅ URDF: {r['urdf_path']}（{r['link_count']} links, {r['joint_count']} joints）")
+                else:
+                    results.append(f"❌ URDF: {r['error']}")
+            if fmt in ("srdf", "all"):
+                r = export_srdf(links, joints, robot_name=robot_name)
+                if r["ok"]:
+                    results.append(f"✅ SRDF: {r['srdf_path']}")
+                else:
+                    results.append(f"❌ SRDF: {r['error']}")
+            if fmt in ("sdf", "all"):
+                r = export_sdf(links, joints, robot_name=robot_name)
+                if r["ok"]:
+                    results.append(f"✅ SDF: {r['sdf_path']}")
+                else:
+                    results.append(f"❌ SDF: {r['error']}")
+
+            return "\n".join(results)
+
+        registry.register(
+            name="mfg_export_urdf",
+            toolset="mfgcad",
+            schema=MFG_URDF_SCHEMA,
+            handler=_handle_mfg_export_urdf,
+            is_async=True,
+            emoji="🤖",
+            description="导出 URDF/SRDF/SDF（机器人描述格式，ROS/Gazebo）",
+        )
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad project/template tools registration failed: %s", e)
