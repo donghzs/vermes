@@ -932,7 +932,7 @@ onMounted(loadSessions)
       </div>
 
       <!-- 右侧：可折叠参数面板 + AI 协助（浮层，不挤占视口） -->
-      <div v-if="rightPanelOpen" class="absolute right-0 top-0 bottom-0 w-72 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-lg flex flex-col z-20">
+      <div v-if="rightPanelOpen" class="w-72 flex-shrink-0 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 shadow-lg flex flex-col relative">
         <!-- 折叠按钮 -->
         <button @click="rightPanelOpen = false" class="absolute -left-6 top-2 p-1 rounded-l bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>

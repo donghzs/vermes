@@ -51,10 +51,14 @@ let dimensionLabels = []
 
 function ensureThreeJS() {
   return new Promise((resolve, reject) => {
-    if (window.THREE) {
+    if (window.THREE && window.STLLoader && window.OrbitControls) {
       THREE = window.THREE
       resolve()
       return
+    }
+    // 重置：如果部分加载失败，清理后重试
+    if (window.THREE && (!window.STLLoader || !window.OrbitControls)) {
+      // THREE 在但子模块不在，可能 CDN 部分失败，继续尝试加载子模块
     }
     const script = document.createElement('script')
     script.type = 'module'
@@ -66,11 +70,22 @@ function ensureThreeJS() {
       window.STLLoader = STLLoader;
       window.OrbitControls = OrbitControls;
     `
+    const timer = setTimeout(() => {
+      reject(new Error('Three.js CDN 加载超时（10s）'))
+    }, 10000)
     script.onload = () => {
+      clearTimeout(timer)
       THREE = window.THREE
-      resolve()
+      if (THREE && window.STLLoader && window.OrbitControls) {
+        resolve()
+      } else {
+        reject(new Error('Three.js 模块加载不完整'))
+      }
     }
-    script.onerror = () => reject(new Error('Three.js CDN 加载失败'))
+    script.onerror = () => {
+      clearTimeout(timer)
+      reject(new Error('Three.js CDN 加载失败'))
+    }
     document.head.appendChild(script)
   })
 }
