@@ -28,6 +28,7 @@ from typing import Any, Optional
 __all__ = [
     "extract_parameters",
     "apply_parameters",
+    "label_for",
     "infer_unit",
     "suggest_range",
     "persist_source",
@@ -41,6 +42,70 @@ __all__ = [
 # ── 本地复刻 _mfg_home：避免与 tools.py 循环 import ──
 def _mfg_home() -> Path:
     return Path.home() / ".vermes" / "mfgcad"
+
+
+# ── 参数中英文映射表 ──
+# 常见 build123d 参数名的中文标签，让非专业用户也能看懂
+_PARAM_LABELS: dict[str, str] = {
+    # 尺寸类
+    "OUTER_DIAMETER": "外径",
+    "INNER_DIAMETER": "内径",
+    "OUTER_RADIUS": "外半径",
+    "INNER_RADIUS": "内半径",
+    "HEIGHT": "高度",
+    "WIDTH": "宽度",
+    "LENGTH": "长度",
+    "DEPTH": "深度",
+    "THICKNESS": "厚度",
+    "WALL_THICKNESS": "壁厚",
+    "BOTTOM_THICKNESS": "底厚",
+    "TOP_THICKNESS": "顶厚",
+    "RADIUS": "半径",
+    "DIAMETER": "直径",
+    # 螺纹类
+    "THREAD_MAJOR_DIAMETER": "螺纹大径",
+    "THREAD_MAJOR_DIAMETER_MM": "螺纹大径",
+    "THREAD_MINOR_DIAMETER": "螺纹小径",
+    "THREAD_MINOR_DIAMETER_MM": "螺纹小径",
+    "THREAD_PITCH": "螺距",
+    # 倒角类
+    "CHAMFER_ANGLE": "倒角角度",
+    "CHAMFER_ANGLE_DEG": "倒角角度",
+    "CHAMFER_HEIGHT": "倒角高度",
+    "CHAMFER_HEIGHT_MM": "倒角高度",
+    "CHAMFER_SIZE": "倒角尺寸",
+    "FILLET_RADIUS": "圆角半径",
+    # 六角类
+    "HEX_ACROSS_FLATS": "六角对边距",
+    "HEX_ACROSS_FLATS_MM": "六角对边距",
+    "HEX_ACROSS_CORNERS": "六角对角距",
+    "HEX_ACROSS_CORNERS_MM": "六角对角距",
+    "HEX_HEIGHT": "六角高度",
+    "HEX_HEIGHT_MM": "六角高度",
+    # 孔类
+    "HOLE_DIAMETER": "孔径",
+    "HOLE_DEPTH": "孔深",
+    # 基座类
+    "_base_half_x": "基座半宽X",
+    "_base_half_y": "基座半宽Y",
+    "_base_thickness": "基座厚度",
+    # 角度类
+    "ANGLE": "角度",
+    "TAPER_ANGLE": "锥角",
+    # 通用
+    "SCALE": "缩放比例",
+    "OFFSET": "偏移量",
+    "CLEARANCE": "间隙",
+    "TOLERANCE": "公差",
+}
+
+
+def label_for(name: str) -> str:
+    """返回参数的中英文双语标签。"""
+    cn = _PARAM_LABELS.get(name)
+    if cn:
+        return f"{cn} ({name})"
+    return name
 
 
 def _session_dir(session_id: str) -> Path:
@@ -179,6 +244,7 @@ def extract_parameters(source: str) -> dict:
         params[name] = {
             "value": val,
             "unit": unit,
+            "label": label_for(name),
             **rng,
         }
     return params

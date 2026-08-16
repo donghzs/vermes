@@ -1,16 +1,10 @@
 <script setup>
-// ModelViewer Pro v2 — 专业级 3D 模型查看器
-//
-// 核心能力：
-// - STL 渲染（Three.js CDN 按需加载，OrbitControls 鼠标拖拽旋转/缩放/平移）
-// - 多视图切换（透视/前/上/侧/等轴）
-// - 测量工具（点两个点显示精确距离 mm）
-// - 剖视图（按 XY/YZ/XZ 平面裁剪）
-// - 点击拾取（Raycaster 选面高亮 + 法线方向）
-// - 包围盒尺寸自动暴露给父组件
-// - 尺寸标注浮层（3D 视口内显示长宽高）
-// - 鼠标悬停面高亮预览
+// ModelViewer Pro — 专业级 3D 模型查看器
+// Three.js 通过 Vite 打包到本地 bundle，无 CDN 依赖
 
+import * as THREE from 'three'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
@@ -18,7 +12,7 @@ const props = defineProps({
   autoRotate: { type: Boolean, default: false },
   transparentBg: { type: Boolean, default: true },
   viewMode: { type: String, default: 'perspective' },
-  tool: { type: String, default: 'none' }, // none/measure/section/pick
+  tool: { type: String, default: 'none' },
   sectionPlane: { type: String, default: 'none' },
   wireframe: { type: Boolean, default: false },
 })
@@ -28,10 +22,8 @@ const emit = defineEmits(['measure', 'pick', 'loaded', 'bbox'])
 const loading = ref(true)
 const error = ref('')
 const containerRef = ref(null)
-const hoverFace = ref(null) // 悬停面信息
+const hoverFace = ref(null)
 
-// Three.js 实例
-let THREE = null
 let scene = null
 let camera = null
 let renderer = null
@@ -47,48 +39,6 @@ let measureLines = []
 let markers = []
 let resizeObs = null
 let bboxHelper = null
-let dimensionLabels = []
-
-function ensureThreeJS() {
-  return new Promise((resolve, reject) => {
-    if (window.THREE && window.STLLoader && window.OrbitControls) {
-      THREE = window.THREE
-      resolve()
-      return
-    }
-    // 重置：如果部分加载失败，清理后重试
-    if (window.THREE && (!window.STLLoader || !window.OrbitControls)) {
-      // THREE 在但子模块不在，可能 CDN 部分失败，继续尝试加载子模块
-    }
-    const script = document.createElement('script')
-    script.type = 'module'
-    script.textContent = `
-      import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-      import { STLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/STLLoader.js';
-      import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-      window.THREE = THREE;
-      window.STLLoader = STLLoader;
-      window.OrbitControls = OrbitControls;
-    `
-    const timer = setTimeout(() => {
-      reject(new Error('Three.js CDN 加载超时（10s）'))
-    }, 10000)
-    script.onload = () => {
-      clearTimeout(timer)
-      THREE = window.THREE
-      if (THREE && window.STLLoader && window.OrbitControls) {
-        resolve()
-      } else {
-        reject(new Error('Three.js 模块加载不完整'))
-      }
-    }
-    script.onerror = () => {
-      clearTimeout(timer)
-      reject(new Error('Three.js CDN 加载失败'))
-    }
-    document.head.appendChild(script)
-  })
-}
 
 function initScene(container) {
   const width = container.clientWidth || 600
@@ -109,7 +59,6 @@ function initScene(container) {
   container.innerHTML = ''
   container.appendChild(renderer.domElement)
 
-  // 光照
   scene.add(new THREE.AmbientLight(0xffffff, 0.5))
   const d1 = new THREE.DirectionalLight(0xffffff, 0.8)
   d1.position.set(1, 1, 1)
@@ -118,13 +67,10 @@ function initScene(container) {
   d2.position.set(-1, -1, -1)
   scene.add(d2)
 
-  // 网格
   const grid = new THREE.GridHelper(200, 20, 0x444444, 0x222222)
   grid.position.y = -0.1
   scene.add(grid)
 
-  // OrbitControls — 鼠标拖拽旋转/缩放/平移
-  const OrbitControls = window.OrbitControls
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.08
@@ -136,11 +82,9 @@ function initScene(container) {
 
   raycaster = new THREE.Raycaster()
 
-  // 事件
   renderer.domElement.addEventListener('click', onCanvasClick)
   renderer.domElement.addEventListener('mousemove', onCanvasMove)
 
-  // ResizeObserver
   resizeObs = new ResizeObserver(() => {
     if (!renderer || !container) return
     const w = container.clientWidth
@@ -154,70 +98,56 @@ function initScene(container) {
   resizeObs.observe(container)
 }
 
-// ── 加载 STL ──
-
-async function loadSTL(url) {
-  const STLLoader = window.STLLoader
+function loadSTL(url) {
   const loader = new STLLoader()
-
   return new Promise((resolve, reject) => {
-    loader.load(
-      url,
-      (geometry) => {
-        geometry.computeVertexNormals()
-        const material = new THREE.MeshPhongMaterial({
-          color: 0x22c55e,
-          specular: 0x111111,
-          shininess: 50,
-          wireframe: props.wireframe,
-          flatShading: false,
-          side: THREE.DoubleSide,
-        })
-        mesh = new THREE.Mesh(geometry, material)
+    loader.load(url, (geometry) => {
+      geometry.computeVertexNormals()
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x22c55e,
+        specular: 0x111111,
+        shininess: 50,
+        wireframe: props.wireframe,
+        flatShading: false,
+        side: THREE.DoubleSide,
+      })
+      mesh = new THREE.Mesh(geometry, material)
 
-        // 包围盒
-        const box = new THREE.Box3().setFromObject(mesh)
-        const center = box.getCenter(new THREE.Vector3())
-        const size = box.getSize(new THREE.Vector3())
-        const maxDim = Math.max(size.x, size.y, size.z)
-        const scale = 80 / (maxDim || 1)
-        mesh.scale.setScalar(scale)
-        mesh.position.sub(center.multiplyScalar(scale))
+      const box = new THREE.Box3().setFromObject(mesh)
+      const center = box.getCenter(new THREE.Vector3())
+      const size = box.getSize(new THREE.Vector3())
+      const maxDim = Math.max(size.x, size.y, size.z)
+      const scale = 80 / (maxDim || 1)
+      mesh.scale.setScalar(scale)
+      mesh.position.sub(center.multiplyScalar(scale))
 
-        mesh.userData.originalSize = size
-        mesh.userData.scale = scale
+      mesh.userData.originalSize = size
+      mesh.userData.scale = scale
 
-        scene.add(mesh)
-        loading.value = false
+      scene.add(mesh)
+      loading.value = false
 
-        // 暴露包围盒给父组件（原始 mm 尺寸）
-        emit('bbox', {
-          length_mm: round(size.x),
-          width_mm: round(size.y),
-          height_mm: round(size.z),
-          volume_mm3: round(size.x * size.y * size.z),
-        })
-        emit('loaded', { size })
+      emit('bbox', {
+        length_mm: round(size.x),
+        width_mm: round(size.y),
+        height_mm: round(size.z),
+        volume_mm3: round(size.x * size.y * size.z),
+      })
+      emit('loaded', { size })
 
-        // 包围盒辅助线
-        if (bboxHelper) scene.remove(bboxHelper)
-        const boxGeom = new THREE.BoxGeometry(size.x * scale, size.y * scale, size.z * scale)
-        const boxEdges = new THREE.EdgesGeometry(boxGeom)
-        bboxHelper = new THREE.LineSegments(boxEdges, new THREE.LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.3 }))
-        scene.add(bboxHelper)
+      if (bboxHelper) scene.remove(bboxHelper)
+      const boxGeom = new THREE.BoxGeometry(size.x * scale, size.y * scale, size.z * scale)
+      const boxEdges = new THREE.EdgesGeometry(boxGeom)
+      bboxHelper = new THREE.LineSegments(boxEdges, new THREE.LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.3 }))
+      scene.add(bboxHelper)
 
-        setViewMode(props.viewMode)
-        resolve(mesh)
-      },
-      undefined,
-      (err) => reject(err)
-    )
+      setViewMode(props.viewMode)
+      resolve(mesh)
+    }, undefined, (err) => reject(err))
   })
 }
 
 function round(v) { return Math.round(v * 100) / 100 }
-
-// ── 视图模式 ──
 
 function setViewMode(mode) {
   if (!camera || !controls) return
@@ -233,8 +163,6 @@ function setViewMode(mode) {
   controls.update()
 }
 
-// ── 鼠标移动（悬停高亮）──
-
 function onCanvasMove(event) {
   if (!mesh || !raycaster) return
   const rect = renderer.domElement.getBoundingClientRect()
@@ -245,7 +173,6 @@ function onCanvasMove(event) {
     raycaster.setFromCamera(mouse, camera)
     const hits = raycaster.intersectObject(mesh)
     if (hits.length > 0) {
-      // 悬停高亮
       if (!hoverHighlight) {
         hoverHighlight = new THREE.Mesh(
           new THREE.BufferGeometry(),
@@ -270,8 +197,6 @@ function onCanvasMove(event) {
   }
 }
 
-// ── 点击拾取 ──
-
 function onCanvasClick(event) {
   if (!mesh || !raycaster || props.tool === 'none') return
   const rect = renderer.domElement.getBoundingClientRect()
@@ -280,7 +205,6 @@ function onCanvasClick(event) {
 
   raycaster.setFromCamera(mouse, camera)
   const intersects = raycaster.intersectObject(mesh)
-
   if (intersects.length === 0) return
   const hit = intersects[0]
   const point = hit.point.clone()
@@ -309,8 +233,6 @@ function onCanvasClick(event) {
     faceGeom.computeVertexNormals()
     highlightMesh = new THREE.Mesh(faceGeom, new THREE.MeshBasicMaterial({ color: 0xff8800, side: THREE.DoubleSide, transparent: true, opacity: 0.6 }))
     scene.add(highlightMesh)
-
-    // 返回屏幕坐标（用于上下文菜单定位）+ 法线
     const screen = { x: event.clientX - rect.left, y: event.clientY - rect.top }
     emit('pick', { point: screen, face: hit.face, normal: hit.face.normal, worldPoint: hit.point })
   }
@@ -341,8 +263,6 @@ function clearMeasure() {
   measurePoints = []
 }
 
-// ── 剖切 ──
-
 function applySection(plane) {
   if (!renderer) return
   if (plane === 'none') {
@@ -358,16 +278,12 @@ function applySection(plane) {
   if (mesh) mesh.material.clippingPlanes = [p]
 }
 
-// ── 渲染循环 ──
-
 function animate() {
   animationId = requestAnimationFrame(animate)
   if (controls) controls.update()
   if (props.autoRotate && mesh) mesh.rotation.y += 0.005
   if (renderer && scene && camera) renderer.render(scene, camera)
 }
-
-// ── 生命周期 ──
 
 onMounted(async () => {
   if (!props.src) {
@@ -381,13 +297,11 @@ onMounted(async () => {
     loading.value = false
     return
   }
-  // 非三维文件不初始化 Three.js
   if (!['stl', 'step', 'stp', 'glb', 'gltf'].includes(ext)) {
     loading.value = false
     return
   }
   try {
-    await ensureThreeJS()
     initScene(containerRef.value)
     if (ext === 'stl') {
       await loadSTL(props.src)
@@ -403,7 +317,7 @@ onMounted(async () => {
 })
 
 watch(() => props.src, async (newSrc) => {
-  if (!newSrc || !THREE) return
+  if (!newSrc || !scene) return
   loading.value = true
   error.value = ''
   if (mesh) { scene.remove(mesh); mesh = null }

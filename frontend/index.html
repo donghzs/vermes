@@ -3,23 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!--
-    P2 修复：Three.js STL 查看器修复。
-    ModelViewer.vue 的 ensureThreeJS() 用内联 module 脚本从 unpkg 加载
-    STLLoader / OrbitControls（examples/jsm 下的文件）。这些文件内部用裸
-    `import ... from 'three'`，浏览器无法解析裸 specifier 会抛
-    "Failed to resolve module specifier 'three'"，导致 window.STLLoader 永远
-    不赋值、STL 渲染崩溃。这里用 import map 把 'three' 指到同一份 three.module.js，
-    必须放在首个 module 脚本之前。
-  -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/": "https://unpkg.com/three@0.160.0/"
-    }
-  }
-  </script>
   <title>Vermes - AI Agent</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <script>window.__VERMES_ONLINE__ = window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost'</script>

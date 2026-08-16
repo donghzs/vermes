@@ -797,7 +797,7 @@ onMounted(loadSessions)
                   </thead>
                   <tbody>
                     <tr v-for="(p, i) in bomData.parts" :key="i" class="border-b border-gray-100 dark:border-gray-700">
-                      <td class="py-1 text-gray-600 dark:text-gray-300 font-mono">{{ p.name }}</td>
+                      <td class="py-1 text-gray-600 dark:text-gray-300 font-mono">{{ p.label || p.name }}</td>
                       <td class="py-1 text-right text-gray-600 dark:text-gray-300">{{ p.value }}</td>
                       <td class="py-1 text-right text-gray-400">{{ p.unit }}</td>
                     </tr>
@@ -948,7 +948,7 @@ onMounted(loadSessions)
           <div class="space-y-2 max-h-60 overflow-y-auto">
             <div v-for="p in paramsForSession" :key="p.name" class="flex flex-col gap-1">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-mono text-gray-500">{{ p.name }}</span>
+                <span class="text-xs font-mono text-gray-500">{{ p.label || p.name }}</span>
                 <!-- 精确数值输入框 -->
                 <input
                   type="number"
