@@ -762,7 +762,7 @@ onMounted(loadSessions)
                 <span>宽: {{ drawingDims.width_mm }}mm</span>
                 <span>高: {{ drawingDims.height_mm }}mm</span>
                 <span v-if="drawingDims.volume_mm3">体积: {{ drawingDims.volume_mm3 }}mm³</span>
-                <button @click="downloadFile({url: drawingUrl, name: 'engineering_drawing.png'})" class="ml-auto text-green-500 hover:underline">💾 下载 PNG</button>
+                <button @click="downloadFile({url: drawingUrl, name: 'engineering_drawing.svg'})" class="ml-auto text-green-500 hover:underline">💾 下载 SVG</button>
               </div>
             </div>
           </div>

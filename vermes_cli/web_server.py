@@ -3011,7 +3011,7 @@ async def prometheus_metrics():
 # 安全地服务 ~/.vermes/mfgcad/output/ 下的模型文件给前端 WebGL 视图器。
 # 路径限制：只允许 session_id 目录下的已知扩展名文件。
 
-_MFGCAD_ALLOWED_EXT = {".stl", ".glb", ".gltf", ".3mf", ".png", ".jpg", ".jpeg", ".step", ".stp"}
+_MFGCAD_ALLOWED_EXT = {".stl", ".glb", ".gltf", ".3mf", ".png", ".jpg", ".jpeg", ".step", ".stp", ".svg"}
 _MFGCAD_OUTPUT_DIR = Path.home() / ".vermes" / "mfgcad" / "output"
 
 
@@ -3055,6 +3055,7 @@ async def serve_mfgcad_file(session_id: str, filename: str):
         ".gltf": "model/gltf+json",
         ".3mf": "model/3mf",
         ".step": "application/STEP",
+        ".svg": "image/svg+xml",
         ".stp": "application/STEP",
         ".png": "image/png",
         ".jpg": "image/jpeg",
@@ -3493,25 +3494,11 @@ async def mfgcad_drawing(session_id: str):
         bbox_max = verts.max(axis=0)
         dims = bbox_max - bbox_min  # [x, y, z] = [长, 宽, 高]
 
-        # 用纯 numpy + Pillow 生成工程图（不依赖 matplotlib）
-        from PIL import Image, ImageDraw, ImageFont
+        # 用纯 stdlib 生成工程图（不依赖 matplotlib/Pillow）
+        # 输出 SVG 矢量图（文本格式，零依赖）
+        svg_parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" style="background:white;font-family:sans-serif">']
+        svg_parts.append(f'<text x="600" y="25" text-anchor="middle" font-size="16" fill="black">工程图 — {session.get("request", session_id)[:40]}</text>')
 
-        W, H = 1200, 900
-        img = Image.new('RGB', (W, H), 'white')
-        draw = ImageDraw.Draw(img)
-
-        # 标题
-        try:
-            font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 18)
-            font_sm = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 12)
-        except Exception:
-            font = ImageFont.load_default()
-            font_sm = font
-
-        title = f"工程图 — {session.get('request', session_id)[:40]}"
-        draw.text((W//2 - len(title)*5, 10), title, fill='black', font=font)
-
-        # 四个子图区域
         regions = [
             (10, 50, 580, 420, 'front', '前视图'),
             (600, 50, 1170, 420, 'top', '顶视图'),
@@ -3520,11 +3507,9 @@ async def mfgcad_drawing(session_id: str):
         ]
 
         for x0, y0, x1, y1, view, label in regions:
-            # 边框
-            draw.rectangle([x0, y0, x1, y1], outline='gray', width=1)
-            draw.text((x0 + 5, y0 + 3), label, fill='gray', font=font_sm)
+            svg_parts.append(f'<rect x="{x0}" y="{y0}" width="{x1-x0}" height="{y1-y0}" fill="none" stroke="gray" stroke-width="1"/>')
+            svg_parts.append(f'<text x="{x0+8}" y="{y0+16}" font-size="11" fill="gray">{label}</text>')
 
-            # 投影
             if view == 'front':
                 xs, ys = verts[:, 0], verts[:, 2]
                 dx, dy = dims[0], dims[2]
@@ -3534,44 +3519,42 @@ async def mfgcad_drawing(session_id: str):
             elif view == 'side':
                 xs, ys = verts[:, 1], verts[:, 2]
                 dx, dy = dims[1], dims[2]
-            else:  # iso
+            else:
                 xs = verts[:, 0] * 0.7 + verts[:, 1] * 0.35
                 ys = verts[:, 2] * 0.8 + verts[:, 1] * 0.3
                 dx = dims[0] * 0.7 + dims[1] * 0.35
                 dy = dims[2] * 0.8 + dims[1] * 0.3
 
-            # 缩放到子图区域
             pw, ph = (x1 - x0 - 40), (y1 - y0 - 40)
             scale = min(pw / max(dx, 0.1), ph / max(dy, 0.1)) * 0.8
             cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
             px = cx + (xs - xs.mean()) * scale
-            py = cy - (ys - ys.mean()) * scale  # Y 翻转
+            py = cy - (ys - ys.mean()) * scale
 
-            # 画点（降采样）
-            step = max(1, len(px) // 2000)
-            points = list(zip(px[::step], py[::step]))
-            for p in points:
-                draw.point(p, fill='steelblue')
+            step = max(1, len(px) // 1000)
+            for i in range(0, len(px), step):
+                svg_parts.append(f'<circle cx="{px[i]:.1f}" cy="{py[i]:.1f}" r="0.5" fill="steelblue"/>')
 
-            # 尺寸标注
             if view != 'iso':
-                # 水平尺寸
-                dim_y = y1 - 15
-                draw.line([(x0 + 20, dim_y), (x1 - 20, dim_y)], fill='red', width=1)
-                draw.text((cx - 15, dim_y + 1), f"{dx:.1f}mm", fill='red', font=font_sm)
-                # 垂直尺寸
-                dim_x = x1 - 25
-                draw.line([(dim_x, y0 + 20), (dim_x, y1 - 20)], fill='red', width=1)
-                draw.text((dim_x - 25, cy - 5), f"{dy:.1f}mm", fill='red', font=font_sm)
+                dim_y = y1 - 10
+                svg_parts.append(f'<line x1="{x0+20}" y1="{dim_y}" x2="{x1-20}" y2="{dim_y}" stroke="red" stroke-width="1"/>')
+                svg_parts.append(f'<text x="{cx-20}" y="{dim_y+12}" font-size="10" fill="red">{dx:.1f}mm</text>')
+                dim_x = x1 - 20
+                svg_parts.append(f'<line x1="{dim_x}" y1="{y0+20}" x2="{dim_x}" y2="{y1-20}" stroke="red" stroke-width="1"/>')
+                svg_parts.append(f'<text x="{dim_x-35}" y="{cy}" font-size="10" fill="red">{dy:.1f}mm</text>')
 
-        # 保存
+        svg_parts.append('</svg>')
+        svg_content = '\n'.join(svg_parts)
+
+        # 保存 SVG
         drawing_dir = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id
         drawing_dir.mkdir(parents=True, exist_ok=True)
-        drawing_path = drawing_dir / "engineering_drawing.png"
-        img.save(drawing_path, 'PNG')
+        drawing_path = drawing_dir / "engineering_drawing.svg"
+        drawing_path.write_text(svg_content, encoding="utf-8")
 
         return JSONResponse({
-            "drawing_url": f"/api/mfgcad/files/{session_id}/engineering_drawing.png",
+            "drawing_url": f"/api/mfgcad/files/{session_id}/engineering_drawing.svg",
+            "drawing_format": "svg",
             "dimensions": {
                 "length_mm": round(float(dims[0]), 2),
                 "width_mm": round(float(dims[1]), 2),
