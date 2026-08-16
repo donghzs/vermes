@@ -232,6 +232,7 @@ TOOLSETS = {
             "mfg_generate_bom",
             "mfg_project",
             "mfg_template",
+            "mfg_standard_part",
         ],
         "includes": []
     },

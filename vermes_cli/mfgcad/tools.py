@@ -1059,6 +1059,86 @@ def register_tools(host_api=None):
             emoji="📋",
             description="查看 3D 建模模板：注塑件/3D打印件/机械零件/电商展示/影视道具",
         )
+        # 标准件库
+        from .standard_parts import list_parts, get_part, search_parts, list_categories
+        STANDARD_PART_SCHEMA = {
+            "name": "mfg_standard_part",
+            "description": "查询标准件库（螺丝/螺母/轴承/垫圈），获取件号和 STEP 文件路径",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "get", "search", "categories"],
+                        "description": "list=列出件号, get=获取单个, search=搜索, categories=分类列表",
+                    },
+                    "part_id": {
+                        "type": "string",
+                        "description": "件号（action=get 时必填，如 M5_screw）",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "分类（action=list 时可选：screws/nuts/bearings/washers）",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "搜索词（action=search 时必填）",
+                    },
+                },
+                "required": ["action"],
+            },
+        }
+
+        async def _handle_mfg_standard_part(args: dict, **kw: Any) -> str:
+            action = args.get("action", "list")
+            if action == "list":
+                parts = list_parts(args.get("category"))
+                if not parts:
+                    return "标准件库为空"
+                lines = [f"标准件库（{len(parts)} 件）:"]
+                for p in parts:
+                    status = "✅" if p["available"] else "⬇"
+                    lines.append(f"  {status} {p['id']}: {p['name']} ({p['standard']})")
+                return "\n".join(lines)
+            elif action == "get":
+                part_id = args.get("part_id", "")
+                info = get_part(part_id)
+                if not info:
+                    return f"未找到标准件: {part_id}"
+                lines = [f"{info['name']} ({info['id']})", f"  标准: {info['standard']}"]
+                if info.get("parameters"):
+                    lines.append("  参数:")
+                    for k, v in info["parameters"].items():
+                        lines.append(f"    {k}: {v}mm")
+                if info.get("file_path"):
+                    lines.append(f"  STEP: {info['file_path']}")
+                else:
+                    lines.append("  STEP: 未下载（标准件库尚未配置）")
+                return "\n".join(lines)
+            elif action == "search":
+                q = args.get("query", "")
+                results = search_parts(q)
+                if not results:
+                    return f"未找到匹配 '{q}' 的标准件"
+                lines = [f"搜索 '{q}'（{len(results)} 结果）:"]
+                for r in results:
+                    status = "✅" if r["available"] else "⬇"
+                    lines.append(f"  {status} {r['id']}: {r['name']} ({r['standard']})")
+                return "\n".join(lines)
+            elif action == "categories":
+                cats = list_categories()
+                return f"标准件分类: {', '.join(cats)}"
+            return f"未知操作: {action}"
+
+        registry.register(
+            name="mfg_standard_part",
+            toolset="mfgcad",
+            schema=STANDARD_PART_SCHEMA,
+            handler=_handle_mfg_standard_part,
+            is_async=True,
+            emoji="🔧",
+            description="查询标准件库（螺丝/螺母/轴承/垫圈），获取件号和参数",
+        )
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad project/template tools registration failed: %s", e)
