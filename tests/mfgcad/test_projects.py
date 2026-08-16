@@ -242,7 +242,7 @@ class TestToolsetConsistency:
         import toolsets
         assert "mfg_template" in toolsets.TOOLSETS["mfgcad"]["tools"]
 
-    def test_toolset_count_12(self):
+    def test_toolset_count_17(self):
         import toolsets
         tools = toolsets.TOOLSETS["mfgcad"]["tools"]
-        assert len(tools) == 12, f"Expected 12, got {len(tools)}: {tools}"
+        assert len(tools) == 17, f"Expected 12, got {len(tools)}: {tools}"
