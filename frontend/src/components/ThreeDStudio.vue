@@ -247,6 +247,7 @@ async function loadParameters(s) {
       max: p.max,
       step: p.step || (p.max - p.min) / 100,
       unit: p.unit || '',
+      presets: guessPresets(name, p),
     }))
     paramsForSession.value = arr
     const sv = {}
@@ -263,6 +264,45 @@ async function loadParameters(s) {
   } catch (e) {
     // 无参数则无面板
   }
+}
+
+// ── 参数分组与预设 ──
+const collapsedGroups = ref({})
+
+function guessParamGroup(name) {
+  const n = name.toUpperCase()
+  if (n.includes('THREAD') || n.includes('HEX') || n.includes('NUT')) return '螺纹/六角'
+  if (n.includes('CHAMFER') || n.includes('FILLET') || n.includes('ROUND')) return '倒角/圆角'
+  if (n.includes('BASE') || n.includes('_BASE_')) return '基座'
+  if (n.includes('WALL') || n.includes('THICKNESS') || n.includes('BOTTOM')) return '壁厚/底厚'
+  if (n.includes('DIAMETER') || n.includes('RADIUS') || n.includes('HEIGHT') || n.includes('WIDTH') || n.includes('LENGTH') || n.includes('DEPTH')) return '主尺寸'
+  return '其他'
+}
+
+function guessPresets(name, p) {
+  const n = name.toUpperCase()
+  const presets = []
+  if (n.includes('WALL_THICKNESS')) presets.push(2, 3, 5)
+  else if (n.includes('HEIGHT') && p.max > 50) presets.push(50, 100, 150)
+  else if (n.includes('DIAMETER') && p.max > 20) presets.push(10, 30, 60)
+  else if (n.includes('CHAMFER') && n.includes('ANGLE')) presets.push(30, 45)
+  else if (n.includes('BOTTOM_THICKNESS')) presets.push(2, 3, 5)
+  // 去超出范围的
+  return presets.filter(v => v >= p.min && v <= p.max).slice(0, 3)
+}
+
+const groupedParams = computed(() => {
+  const groups = {}
+  for (const p of paramsForSession.value) {
+    const g = guessParamGroup(p.name)
+    if (!groups[g]) groups[g] = []
+    groups[g].push(p)
+  }
+  return groups
+})
+
+function toggleParamGroup(gName) {
+  collapsedGroups.value[gName] = !collapsedGroups.value[gName]
 }
 
 // ── 参数联动推断 ──
@@ -333,7 +373,17 @@ async function rebuild() {
     const data = await resp.json()
     rebuildMsg.value = data.message || '重建完成'
     if (data.child_session && data.child_session.ok) {
-      timeline.value.unshift({ ts: Date.now(), action: '参数修改', detail: rebuildMsg.value })
+      // 记录参数变化摘要
+      const changes = []
+      for (const [k, v] of Object.entries(paramValues.value)) {
+        const orig = paramsForSession.value.find(p => p.name === k)
+        if (orig && Math.abs(orig.value - v) > 0.01) {
+          const label = orig.label || k
+          changes.push(`${label}: ${orig.value}→${typeof v === 'number' ? v.toFixed(1) : v}`)
+        }
+      }
+      const summary = changes.length ? changes.join(', ') : '参数微调'
+      timeline.value.unshift({ ts: Date.now(), action: summary, detail: rebuildMsg.value })
       await loadSessions()
       const child = sessions.value.find(x => x.session_id === data.child_session.session_id)
       if (child) selectSession(child)
@@ -939,44 +989,67 @@ onMounted(loadSessions)
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
 
-        <!-- 参数面板 -->
+        <!-- 参数面板（分组折叠） -->
         <div v-if="paramsForSession.length" class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500">🎚️ 参数 ({{ paramsForSession.length }})</span>
             <span v-if="rebuilding" class="text-xs text-blue-500">重建中…</span>
             <span v-else-if="rebuildMsg" class="text-xs text-green-600 truncate max-w-32">{{ rebuildMsg }}</span>
           </div>
-          <div class="space-y-2 max-h-60 overflow-y-auto">
-            <div v-for="p in paramsForSession" :key="p.name" class="flex flex-col gap-1">
-              <div class="flex items-center justify-between gap-1">
-                <span class="text-xs text-gray-600 dark:text-gray-300 truncate" :title="p.label || p.name">{{ p.label || p.name }}</span>
-                <div class="flex items-center gap-1 flex-shrink-0">
-                  <!-- 精确数值输入框 -->
-                  <input
-                    type="number"
-                    :value="paramInputs[p.name]"
-                    @input="onParamInput(p.name, $event.target.value)"
-                    @click.stop
-                    @focus="rightPanelOpen = true"
-                    :step="p.step"
-                    :min="p.min"
-                    :max="p.max"
-                    class="w-20 text-xs text-right px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 cursor-text"
-                  />
-                  <span class="text-xs text-gray-400 w-8">{{ p.unit }}</span>
+          <div class="space-y-2 max-h-72 overflow-y-auto">
+            <div v-for="(group, gName) in groupedParams" :key="gName">
+              <!-- 分组标题（可折叠） -->
+              <button @click.stop="toggleParamGroup(gName)" class="flex items-center gap-1 w-full text-xs font-medium text-gray-400 hover:text-gray-600 mb-1">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" :class="collapsedGroups[gName] ? '-rotate-90' : ''" class="transition-transform"><polyline points="6 9 12 15 18 9"/></svg>
+                {{ gName }}
+                <span class="text-gray-300 ml-auto">{{ group.length }}</span>
+              </button>
+              <!-- 参数列表 -->
+              <div v-show="!collapsedGroups[gName]" class="space-y-2 pl-2">
+                <div v-for="p in group" :key="p.name" class="flex flex-col gap-1">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-xs text-gray-600 dark:text-gray-300 truncate" :title="p.label || p.name">{{ p.label || p.name }}</span>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                      <!-- 精确数值输入框 -->
+                      <input
+                        type="number"
+                        :value="paramInputs[p.name]"
+                        @input="onParamInput(p.name, $event.target.value)"
+                        @click.stop
+                        @focus="rightPanelOpen = true"
+                        :step="p.step"
+                        :min="p.min"
+                        :max="p.max"
+                        class="w-20 text-xs text-right px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 cursor-text"
+                      />
+                      <span class="text-xs text-gray-400 w-8">{{ p.unit }}</span>
+                    </div>
+                  </div>
+                  <!-- 滑块 + 预设快捷按钮 -->
+                  <div class="flex items-center gap-1.5">
+                    <input
+                      type="range"
+                      :min="p.min"
+                      :max="p.max"
+                      :step="p.step"
+                      :value="paramValues[p.name]"
+                      @input="onParamChange(p.name, parseFloat($event.target.value))"
+                      @click.stop
+                      class="flex-1 h-1.5 accent-green-500 cursor-pointer"
+                    />
+                    <!-- 预设快捷值 -->
+                    <div v-if="p.presets?.length" class="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        v-for="pv in p.presets"
+                        :key="pv"
+                        @click.stop="onParamChange(p.name, pv)"
+                        :class="Math.abs(paramValues[p.name] - pv) < 0.01 ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'"
+                        class="text-[10px] px-1.5 py-0.5 rounded transition"
+                      >{{ pv }}</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <!-- 滑块（辅助） -->
-              <input
-                type="range"
-                :min="p.min"
-                :max="p.max"
-                :step="p.step"
-                :value="paramValues[p.name]"
-                @input="onParamChange(p.name, parseFloat($event.target.value))"
-                @click.stop
-                class="w-full h-1.5 accent-green-500 cursor-pointer"
-              />
             </div>
           </div>
         </div>
@@ -1021,18 +1094,19 @@ onMounted(loadSessions)
     </div>
 
     <!-- ═══ 底部时间线 ═══ -->
-    <div v-if="timeline.length" class="h-8 px-3 py-1 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2 overflow-x-auto">
+    <div v-if="timeline.length" class="h-10 px-3 py-1.5 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center gap-1.5 overflow-x-auto">
       <span class="text-xs text-gray-400 flex-shrink-0">时间线:</span>
       <div
         v-for="(item, i) in timeline"
         :key="i"
-        class="flex items-center gap-1 flex-shrink-0"
+        class="flex items-center gap-1 flex-shrink-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1.5 py-0.5 transition"
+        :title="item.detail || item.action"
       >
         <div class="w-2 h-2 rounded-full" :class="i === 0 ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"></div>
-        <span class="text-xs text-gray-500">{{ item.action }}</span>
+        <span class="text-xs text-gray-600 dark:text-gray-300 max-w-48 truncate">{{ item.action }}</span>
         <span class="text-xs text-gray-300 dark:text-gray-600">·</span>
         <span class="text-xs text-gray-400">{{ fmtTime(item.ts / 1000) }}</span>
-        <span v-if="i < timeline.length - 1" class="text-gray-300 dark:text-gray-600 mx-1">→</span>
+        <span v-if="i < timeline.length - 1" class="text-gray-300 dark:text-gray-600 mx-0.5">→</span>
       </div>
     </div>
   </div>
