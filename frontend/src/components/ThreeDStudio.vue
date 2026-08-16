@@ -640,6 +640,26 @@ function cancelDimensionEdit() {
   editingDimension.value = null
 }
 
+// ── Tooltip 系统 ──
+const tooltipVisible = ref(false)
+const tooltipText = ref('')
+const tooltipX = ref(0)
+const tooltipY = ref(0)
+let tooltipTimer = null
+
+function showTooltip(e, text) {
+  clearTimeout(tooltipTimer)
+  const rect = e.currentTarget.getBoundingClientRect()
+  tooltipX.value = rect.left + rect.width / 2
+  tooltipY.value = rect.bottom + 6
+  tooltipText.value = text
+  tooltipTimer = setTimeout(() => { tooltipVisible.value = true }, 200)
+}
+function hideTooltip() {
+  clearTimeout(tooltipTimer)
+  tooltipVisible.value = false
+}
+
 // ── 工具栏切换 ──
 function setView(mode) { viewMode.value = mode }
 function toggleTool(t) {
@@ -674,49 +694,49 @@ onMounted(loadSessions)
     <!-- ═══ 顶部工具栏 ═══ -->
     <div class="flex items-center gap-1 px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
       <!-- 左侧按钮 -->
-      <button @click="leftPanelOpen = !leftPanelOpen" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="设计会话列表">
+      <button @click="leftPanelOpen = !leftPanelOpen" @mouseenter="showTooltip($event, '显示/隐藏设计会话列表')" @mouseleave="hideTooltip" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
 
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
-      <!-- 视图切换 -->
+      <!-- 视图切换（图标+文字） -->
       <div class="flex items-center gap-0.5">
-        <button @click="setView('perspective')" title="透视图 — 自由角度 3D 视角" class="px-2 py-1 text-xs rounded" :class="viewMode === 'perspective' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">透视</button>
-        <button @click="setView('front')" title="正视图 — 从正面看" class="px-2 py-1 text-xs rounded" :class="viewMode === 'front' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">前视</button>
-        <button @click="setView('top')" title="俯视图 — 从上方看" class="px-2 py-1 text-xs rounded" :class="viewMode === 'top' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">顶视</button>
-        <button @click="setView('side')" title="侧视图 — 从侧面看" class="px-2 py-1 text-xs rounded" :class="viewMode === 'side' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">侧视</button>
-        <button @click="setView('iso')" title="等轴测图 — 30°标准工程视角" class="px-2 py-1 text-xs rounded" :class="viewMode === 'iso' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">等轴</button>
+        <button @click="setView('perspective')" @mouseenter="showTooltip($event, '透视图：自由角度3D视角，可旋转缩放')" @mouseleave="hideTooltip" class="px-2 py-1 text-xs rounded transition" :class="viewMode === 'perspective' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">🏠 透视</button>
+        <button @click="setView('front')" @mouseenter="showTooltip($event, '正视图：从正面看模型，显示长×高')" @mouseleave="hideTooltip" class="px-2 py-1 text-xs rounded transition" :class="viewMode === 'front' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">⬛ 前视</button>
+        <button @click="setView('top')" @mouseenter="showTooltip($event, '俯视图：从上方看模型，显示长×宽')" @mouseleave="hideTooltip" class="px-2 py-1 text-xs rounded transition" :class="viewMode === 'top' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">⬛ 顶视</button>
+        <button @click="setView('side')" @mouseenter="showTooltip($event, '侧视图：从侧面看模型，显示宽×高')" @mouseleave="hideTooltip" class="px-2 py-1 text-xs rounded transition" :class="viewMode === 'side' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">⬛ 侧视</button>
+        <button @click="setView('iso')" @mouseenter="showTooltip($event, '等轴测图：30°标准工程视角')" @mouseleave="hideTooltip" class="px-2 py-1 text-xs rounded transition" :class="viewMode === 'iso' ? 'bg-green-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">📐 等轴</button>
       </div>
 
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
-      <!-- 工具按钮 -->
-      <button @click="toggleTool('pick')" class="p-1.5 rounded" :class="tool === 'pick' ? 'bg-orange-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="选择面 — 点击模型表面高亮选中">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+      <!-- 工具按钮（图标+文字） -->
+      <button @click="toggleTool('pick')" @mouseenter="showTooltip($event, '选择面：点击模型表面高亮选中，可后续操作')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded transition" :class="tool === 'pick' ? 'bg-orange-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg> 选择
       </button>
-      <button @click="showExportMenu = !showExportMenu" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="导出 — 生成工程图/BOM/3D打印建议">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <button @click="toggleTool('measure')" @mouseenter="showTooltip($event, '测量距离：点击模型上两个点，显示直线距离(mm)')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded transition" :class="tool === 'measure' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7L8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><line x1="14" y1="6" x2="18" y2="10"/></svg> 测量
       </button>
-      <button @click="toggleTool('measure')" class="p-1.5 rounded" :class="tool === 'measure' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="测量 — 点击两个点测距离 (mm)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7L8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><line x1="14" y1="6" x2="18" y2="10"/></svg>
+      <button @click="cycleSection()" @mouseenter="showTooltip($event, '剖视图：用切平面切开模型看内部结构')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded transition" :class="tool === 'section' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="20" height="6" rx="1"/><line x1="2" y1="12" x2="22" y2="12" stroke-dasharray="3 3"/></svg> 剖切
       </button>
-      <button @click="cycleSection()" class="p-1.5 rounded" :class="tool === 'section' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="剖视图 — 切平面看内部结构">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="20" height="6" rx="1"/><line x1="2" y1="12" x2="22" y2="12" stroke-dasharray="3 3"/></svg>
+      <button @click="wireframe = !wireframe" @mouseenter="showTooltip($event, '线框模式：只显示模型网格线，看内部结构')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded transition" :class="wireframe ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> 线框
       </button>
-      <button @click="wireframe = !wireframe" class="p-1.5 rounded" :class="wireframe ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="线框模式 — 显示模型网格结构">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <button @click="autoRotate = !autoRotate" @mouseenter="showTooltip($event, '自动旋转：模型缓慢360°旋转展示')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded transition" :class="autoRotate ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg> 旋转
       </button>
-      <button @click="autoRotate = !autoRotate" class="p-1.5 rounded" :class="autoRotate ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="自动旋转 — 模型缓慢旋转展示">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
+      <button @click="showExportMenu = !showExportMenu" @mouseenter="showTooltip($event, '导出：生成2D工程图、BOM物料清单、3D打印参数建议')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded transition hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 导出
       </button>
 
       <div class="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
       <!-- 文件操作 -->
-      <button @click="uploadRef?.click()" title="打开本地 STEP/STL/3MF 文件" class="px-2 py-1 text-xs rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100">📂 打开</button>
+      <button @click="uploadRef?.click()" @mouseenter="showTooltip($event, '打开本地STEP/STL/3MF文件进行查看和编辑')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100">📂 打开</button>
       <input ref="uploadRef" type="file" accept=".step,.stp,.stl,.3mf" @change="onUpload" class="hidden" />
-      <button v-if="selectedFile" @click="downloadFile(selectedFile)" title="下载当前文件" class="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200">⬇️ 下载</button>
+      <button v-if="selectedFile" @click="downloadFile(selectedFile)" @mouseenter="showTooltip($event, '下载当前查看的文件到本地')" @mouseleave="hideTooltip" class="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200">⬇️ 下载</button>
 
       <!-- 右侧 -->
       <div class="ml-auto flex items-center gap-2">
@@ -726,12 +746,19 @@ onMounted(loadSessions)
         <span v-if="measureResult" class="text-xs text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 px-2 py-0.5 rounded">
           📏 {{ fmtDistance(measureResult.distance) }}
         </span>
-        <button @click="rightPanelOpen = !rightPanelOpen" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="参数/AI 面板">
+        <button @click="rightPanelOpen = !rightPanelOpen" @mouseenter="showTooltip($event, '显示/隐藏右侧参数面板和AI协助')" @mouseleave="hideTooltip" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
         </button>
-        <button @click="goChat" class="text-sm text-gray-500 hover:text-gray-700 px-2">← 对话</button>
+        <button @click="goChat" @mouseenter="showTooltip($event, '返回对话页面，用自然语言描述需求让AI建模')" @mouseleave="hideTooltip" class="text-sm text-gray-500 hover:text-gray-700 px-2">← 对话</button>
       </div>
     </div>
+
+    <!-- Tooltip 浮层 -->
+    <div
+      v-if="tooltipVisible"
+      class="fixed z-50 px-2.5 py-1.5 text-xs text-white bg-gray-800 dark:bg-gray-700 rounded shadow-lg pointer-events-none whitespace-nowrap max-w-xs"
+      :style="{ left: tooltipX + 'px', top: tooltipY + 'px', transform: 'translateX(-50%)' }"
+    >{{ tooltipText }}</div>
 
     <!-- ═══ 主体区域 ═══ -->
     <div class="flex flex-1 overflow-hidden relative">
@@ -778,13 +805,18 @@ onMounted(loadSessions)
           @bbox="onBBox"
         />
         <div v-else class="flex items-center justify-center h-full">
-          <div class="text-center">
+          <div class="text-center max-w-md">
             <div class="text-6xl mb-4">🏭</div>
             <h2 class="text-lg font-medium text-gray-600 dark:text-gray-300 mb-2">3D 建模工作室</h2>
-            <p class="text-sm text-gray-400 mb-4">AI 建模 + 精确改参 + 协助优化</p>
-            <div class="flex items-center justify-center gap-3">
-              <button @click="goChat" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600">💬 对话建模</button>
-              <button @click="uploadRef?.click()" class="px-4 py-2 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600">📂 打开文件</button>
+            <p class="text-sm text-gray-400 mb-6">AI 建模 + 精确改参 + 协助优化，从对话开始</p>
+            <div class="flex flex-col gap-3 items-center">
+              <button @click="goChat" class="px-6 py-2.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition shadow-sm">
+                💬 对话建模 — 描述需求让 AI 生成
+              </button>
+              <button @click="uploadRef?.click()" class="px-6 py-2.5 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 hover:bg-blue-100 transition">
+                📂 打开本地文件 — 查看 STEP/STL/3MF
+              </button>
+              <p class="text-xs text-gray-300 mt-2">提示：对话中描述「做个直径60mm高100mm壁厚3mm的笔筒」即可生成模型</p>
             </div>
           </div>
         </div>
