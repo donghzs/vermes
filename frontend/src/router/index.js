@@ -4,6 +4,7 @@ import Settings from '../components/Settings.vue'
 import StudioChat from '../components/StudioChat.vue'
 import ScholarForgePanel from '../components/ScholarForgePanel.vue'
 import ThreeDStudio from '../components/ThreeDStudio.vue'
+import ModuStore from '../components/ModuStore.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -11,6 +12,7 @@ const routes = [
   { path: '/studio', component: StudioChat },
   { path: '/scholarforge', component: ScholarForgePanel },
   { path: '/3d-studio', component: ThreeDStudio },
+  { path: '/module-store', component: ModuStore },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/

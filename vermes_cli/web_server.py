@@ -457,6 +457,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/scholar",
     # mfgcad 3D 建模（桌面本地工具，session 数据非敏感）
     "/api/mfgcad",
+    # 模块商店（桌面模式无需鉴权）
+    "/api/modules",
     # Studio 创作空间（直连大模型的试点；SPA 带用户 Key 调用，与 /api/provider/add 同源设计）
     "/api/studio",
     # 文献源注册表（只返回元数据：label/category/字段描述，不含凭证值）
@@ -3695,5 +3697,116 @@ async def mfgcad_print_advice(session_id: str):
         advice["recommendations"].append("不建议用 ABS（需封闭舱体 + 100°C 热床）")
 
     return JSONResponse(advice)
+
+
+# ── P4: 模块商店 API ──────────────────────────────────────────
+
+@app.get("/api/modules/catalog")
+async def get_module_catalog():
+    """返回可用模块目录 + 已安装状态。"""
+    try:
+        from agent.module_catalog import load_catalog, catalog_modules, is_module_installed
+        from agent.module_loader import get_modules_dir
+        from pathlib import Path
+
+        # 内置 catalog
+        root = Path(__file__).resolve().parent.parent
+        cat_path = root / "vermes_cli" / "modules" / "catalog.json"
+        if not cat_path.exists():
+            try:
+                from vermes_constants import get_vermes_home
+                cat_path = Path(get_vermes_home()) / "modules" / "catalog.json"
+            except Exception:
+                pass
+
+        data = load_catalog(str(cat_path)) if cat_path.exists() else {"modules": []}
+        mods = catalog_modules(data)
+        modules_dir = get_modules_dir()
+
+        result = []
+        for m in mods:
+            result.append({
+                "name": m.name,
+                "display_name": m.display_name,
+                "latest": m.latest,
+                "vermes_min": m.vermes_min,
+                "description": m.description,
+                "homepage": m.homepage,
+                "repository": m.repository,
+                "recommended": m.recommended,
+                "size_code": m.size_code,
+                "provides_tools": m.provides_tools,
+                "keywords": m.keywords,
+                "installed": is_module_installed(m.name, modules_dir),
+            })
+        return {"modules": result}
+    except Exception as e:
+        return {"modules": [], "error": str(e)}
+
+
+@app.post("/api/modules/install/{name}")
+async def install_module(name: str):
+    """安装模块（从 catalog 下载）。"""
+    try:
+        from agent.module_catalog import (
+            load_catalog, catalog_modules, install_module_code, is_module_installed
+        )
+        from agent.module_loader import get_modules_dir
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        cat_path = root / "vermes_cli" / "modules" / "catalog.json"
+        if not cat_path.exists():
+            try:
+                from vermes_constants import get_vermes_home
+                cat_path = Path(get_vermes_home()) / "modules" / "catalog.json"
+            except Exception:
+                pass
+
+        data = load_catalog(str(cat_path)) if cat_path.exists() else {"modules": []}
+        mods = catalog_modules(data)
+        mod = next((m for m in mods if m.name == name), None)
+        if mod is None:
+            return JSONResponse({"ok": False, "error": f"模块 {name} 不在目录中"}, status_code=404)
+
+        modules_dir = get_modules_dir()
+        # 已安装则先删
+        if is_module_installed(name, modules_dir):
+            import shutil
+            shutil.rmtree(modules_dir / name)
+
+        install_module_code(name, modules=mods, modules_dir=modules_dir)
+
+        # 热重载
+        try:
+            from agent.module_loader import reload_module_tools
+            reload_module_tools(name)
+        except Exception:
+            pass  # 热重载失败不阻塞安装成功
+
+        return {"ok": True, "name": name, "version": mod.latest}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/modules/uninstall/{name}")
+async def uninstall_module(name: str):
+    """卸载模块。"""
+    try:
+        from agent.module_loader import get_modules_dir, is_builtin_module
+        import shutil
+
+        if is_builtin_module(name):
+            return JSONResponse({"ok": False, "error": f"内置模块 {name} 不可卸载"}, status_code=400)
+
+        target = get_modules_dir() / name
+        if not target.exists():
+            return JSONResponse({"ok": False, "error": f"模块 {name} 未安装"}, status_code=404)
+
+        shutil.rmtree(target)
+        return {"ok": True, "name": name}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
 
 mount_spa(app)
