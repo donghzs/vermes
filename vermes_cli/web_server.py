@@ -3066,6 +3066,86 @@ async def serve_mfgcad_file(session_id: str, filename: str):
     return FileResponse(str(file_path), media_type=mime_map.get(ext, "application/octet-stream"))
 
 
+@app.get("/api/mfgcad/files/{session_id}/{filename}/tessellate")
+async def tessellate_step_to_stl(session_id: str, filename: str):
+    """将 STEP 文件 tessellate 为 STL（浏览器可直接渲染）。
+
+    用引擎 venv 中的 build123d 读取 STEP → 导出二进制 STL。
+    结果缓存到 session 目录，下次直接返回缓存的 STL。
+    """
+    import re
+    from pathlib import Path
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return {"error": "invalid session_id"}, 400
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', filename):
+        return {"error": "invalid filename"}, 400
+
+    ext = Path(filename).suffix.lower()
+    if ext not in (".step", ".stp"):
+        return {"error": f"only STEP files supported, got {ext}"}, 400
+
+    src_path = (_MFGCAD_OUTPUT_DIR / session_id / filename).resolve()
+    try:
+        src_path.relative_to(_MFGCAD_OUTPUT_DIR.resolve())
+    except ValueError:
+        return {"error": "path traversal denied"}, 403
+
+    if not src_path.is_file():
+        return {"error": "file not found"}, 404
+
+    # 缓存 STL
+    stl_name = Path(filename).stem + ".stl"
+    stl_path = (_MFGCAD_OUTPUT_DIR / session_id / stl_name).resolve()
+
+    if stl_path.is_file():
+        # 已有缓存
+        return {
+            "ok": True,
+            "stl_url": f"/api/mfgcad/files/{session_id}/{stl_name}",
+            "cached": True,
+        }
+
+    # 用引擎 venv 转换
+    import subprocess
+    import tempfile
+
+    venv_python = Path.home() / ".vermes" / "engines" / "mac" / ".venv" / "bin" / "python"
+    if not venv_python.exists():
+        return {"ok": False, "error": "引擎 venv 未安装，请先调用 mfg_setup_engine"}, 503
+
+    script = f'''
+import sys
+from build123d import import_step, export_stl
+from pathlib import Path
+
+shape = import_step(Path({str(src_path)!r}))
+export_stl(shape, Path({str(stl_path)!r}))
+print(f"OK: {{stl_path}}")
+'''
+
+    try:
+        result = subprocess.run(
+            [str(venv_python), "-c", script],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            return {"ok": False, "error": f"转换失败: {result.stderr[:500]}"}, 500
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "转换超时（60s）"}, 504
+    except Exception as e:
+        return {"ok": False, "error": f"转换异常: {e}"}, 500
+
+    if not stl_path.is_file():
+        return {"ok": False, "error": "STL 文件未生成"}, 500
+
+    return {
+        "ok": True,
+        "stl_url": f"/api/mfgcad/files/{session_id}/{stl_name}",
+        "cached": False,
+    }
+
+
 @app.get("/api/mfgcad/sessions")
 async def list_mfgcad_sessions():
     """列出所有 mfgcad 设计会话及其生成文件。

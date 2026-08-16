@@ -365,6 +365,29 @@ def list_installed():
     return 0
 
 
+def benchmark(name: str):
+    """运行模块的 benchmark
+
+    Args:
+        name: 模块名（目前支持 mfgcad）
+    """
+    if name == "mfgcad":
+        from vermes_cli.mfgcad.benchmark import run_benchmark, TASKS
+        _info(f"运行 mfgcad benchmark（{len(TASKS)} 任务）…")
+        result = run_benchmark(verbose=True)
+        s = result["summary"]
+        print(f"\n{BOLD}Benchmark 结果{RESET}")
+        print(f"{'─' * 40}")
+        print(f"  通过: {s['passed']}/{s['total']} ({s['pass_rate']}%)")
+        print(f"  平均耗时: {s['avg_time_s']}s")
+        for cat, cs in s["categories"].items():
+            print(f"  {cat}: {cs['passed']}/{cs['total']} ({cs['pass_rate']}%)")
+        return 0 if s["passed"] > 0 else 1
+    else:
+        _err(f"模块 {name} 暂不支持 benchmark")
+        return 1
+
+
 def info(name: str):
     """显示模块详细信息
 

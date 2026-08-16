@@ -306,8 +306,26 @@ onMounted(async () => {
     if (ext === 'stl') {
       await loadSTL(props.src)
     } else if (ext === 'step' || ext === 'stp') {
+      // 先尝试直接加载同名 STL（后端可能已转换）
       const stlUrl = props.src.replace(/\.(step|stp)$/i, '.stl')
-      try { await loadSTL(stlUrl) } catch { error.value = 'STEP 预览需后端转 STL'; loading.value = false }
+      try {
+        await loadSTL(stlUrl)
+      } catch {
+        // 同名 STL 不存在，调后端 tessellate
+        try {
+          const res = await fetch(props.src + '/tessellate')
+          const data = await res.json()
+          if (data.ok && data.stl_url) {
+            await loadSTL(data.stl_url)
+          } else {
+            error.value = data.error || 'STEP 转 STL 失败'
+            loading.value = false
+          }
+        } catch {
+          error.value = 'STEP 预览需后端转换，请确保引擎已安装'
+          loading.value = false
+        }
+      }
     }
     animate()
   } catch (e) {
@@ -330,7 +348,17 @@ watch(() => props.src, async (newSrc) => {
     if (ext === 'stl') await loadSTL(newSrc)
     else if (ext === 'step' || ext === 'stp') {
       const stlUrl = newSrc.replace(/\.(step|stp)$/i, '.stl')
-      await loadSTL(stlUrl)
+      try {
+        await loadSTL(stlUrl)
+      } catch {
+        const res = await fetch(newSrc + '/tessellate')
+        const data = await res.json()
+        if (data.ok && data.stl_url) {
+          await loadSTL(data.stl_url)
+        } else {
+          error.value = data.error || 'STEP 转 STL 失败'
+        }
+      }
     }
   } catch (e) {
     error.value = e.message || '加载失败'
