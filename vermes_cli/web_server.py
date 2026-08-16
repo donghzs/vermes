@@ -3493,64 +3493,82 @@ async def mfgcad_drawing(session_id: str):
         bbox_max = verts.max(axis=0)
         dims = bbox_max - bbox_min  # [x, y, z] = [长, 宽, 高]
 
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
+        # 用纯 numpy + Pillow 生成工程图（不依赖 matplotlib）
+        from PIL import Image, ImageDraw, ImageFont
 
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        fig.suptitle(f"工程图 — {session.get('request', session_id)[:40]}", fontsize=14, fontproperties=__import__('matplotlib.font_manager').font_manager.FontProperties(fname=__find_cjk_font()))
+        W, H = 1200, 900
+        img = Image.new('RGB', (W, H), 'white')
+        draw = ImageDraw.Draw(img)
 
-        # 投影函数
-        def project(ax, view: str, title: str):
+        # 标题
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 18)
+            font_sm = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 12)
+        except Exception:
+            font = ImageFont.load_default()
+            font_sm = font
+
+        title = f"工程图 — {session.get('request', session_id)[:40]}"
+        draw.text((W//2 - len(title)*5, 10), title, fill='black', font=font)
+
+        # 四个子图区域
+        regions = [
+            (10, 50, 580, 420, 'front', '前视图'),
+            (600, 50, 1170, 420, 'top', '顶视图'),
+            (10, 440, 580, 810, 'side', '侧视图'),
+            (600, 440, 1170, 810, 'iso', '等轴测'),
+        ]
+
+        for x0, y0, x1, y1, view, label in regions:
+            # 边框
+            draw.rectangle([x0, y0, x1, y1], outline='gray', width=1)
+            draw.text((x0 + 5, y0 + 3), label, fill='gray', font=font_sm)
+
+            # 投影
             if view == 'front':
                 xs, ys = verts[:, 0], verts[:, 2]
-                xl, yl = 'X (mm)', 'Z (mm)'
+                dx, dy = dims[0], dims[2]
             elif view == 'top':
                 xs, ys = verts[:, 0], verts[:, 1]
-                xl, yl = 'X (mm)', 'Y (mm)'
+                dx, dy = dims[0], dims[1]
             elif view == 'side':
                 xs, ys = verts[:, 1], verts[:, 2]
-                xl, yl = 'Y (mm)', 'Z (mm)'
+                dx, dy = dims[1], dims[2]
             else:  # iso
-                ax_3d = fig.add_subplot(2, 2, 4, projection='3d')
-                ax_3d.scatter(verts[::10, 0], verts[::10, 1], verts[::10, 2], s=0.1, c='steelblue', alpha=0.5)
-                ax_3d.set_xlabel('X'); ax_3d.set_ylabel('Y'); ax_3d.set_zlabel('Z')
-                ax_3d.set_title('等轴测', fontproperties=__cjk_font())
-                return
+                xs = verts[:, 0] * 0.7 + verts[:, 1] * 0.35
+                ys = verts[:, 2] * 0.8 + verts[:, 1] * 0.3
+                dx = dims[0] * 0.7 + dims[1] * 0.35
+                dy = dims[2] * 0.8 + dims[1] * 0.3
 
-            ax.scatter(xs[::10], ys[::10], s=0.1, c='steelblue', alpha=0.5)
-            ax.set_xlabel(xl); ax.set_ylabel(yl)
-            ax.set_title(title, fontproperties=__cjk_font())
-            ax.set_aspect('equal')
-            # 标注尺寸
-            if view == 'front':
-                ax.annotate(f'{dims[0]:.1f}', xy=(bbox_min[0], bbox_max[2]+2), xytext=(bbox_max[0], bbox_max[2]+2),
-                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='center')
-                ax.annotate(f'{dims[2]:.1f}', xy=(bbox_max[0]+2, bbox_min[2]), xytext=(bbox_max[0]+2, bbox_max[2]),
-                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='left')
-            elif view == 'top':
-                ax.annotate(f'{dims[0]:.1f}', xy=(bbox_min[0], bbox_max[1]+2), xytext=(bbox_max[0], bbox_max[1]+2),
-                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='center')
-                ax.annotate(f'{dims[1]:.1f}', xy=(bbox_max[0]+2, bbox_min[1]), xytext=(bbox_max[0]+2, bbox_max[1]),
-                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='left')
-            elif view == 'side':
-                ax.annotate(f'{dims[1]:.1f}', xy=(bbox_min[1], bbox_max[2]+2), xytext=(bbox_max[1], bbox_max[2]+2),
-                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='center')
-                ax.annotate(f'{dims[2]:.1f}', xy=(bbox_max[1]+2, bbox_min[2]), xytext=(bbox_max[1]+2, bbox_max[2]),
-                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='left')
+            # 缩放到子图区域
+            pw, ph = (x1 - x0 - 40), (y1 - y0 - 40)
+            scale = min(pw / max(dx, 0.1), ph / max(dy, 0.1)) * 0.8
+            cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+            px = cx + (xs - xs.mean()) * scale
+            py = cy - (ys - ys.mean()) * scale  # Y 翻转
 
-        project(axes[0, 0], 'front', '前视图')
-        project(axes[0, 1], 'top', '顶视图')
-        project(axes[1, 0], 'side', '侧视图')
-        project(None, 'iso', '等轴测')
+            # 画点（降采样）
+            step = max(1, len(px) // 2000)
+            points = list(zip(px[::step], py[::step]))
+            for p in points:
+                draw.point(p, fill='steelblue')
+
+            # 尺寸标注
+            if view != 'iso':
+                # 水平尺寸
+                dim_y = y1 - 15
+                draw.line([(x0 + 20, dim_y), (x1 - 20, dim_y)], fill='red', width=1)
+                draw.text((cx - 15, dim_y + 1), f"{dx:.1f}mm", fill='red', font=font_sm)
+                # 垂直尺寸
+                dim_x = x1 - 25
+                draw.line([(dim_x, y0 + 20), (dim_x, y1 - 20)], fill='red', width=1)
+                draw.text((dim_x - 25, cy - 5), f"{dy:.1f}mm", fill='red', font=font_sm)
 
         # 保存
         drawing_dir = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id
         drawing_dir.mkdir(parents=True, exist_ok=True)
         drawing_path = drawing_dir / "engineering_drawing.png"
-        fig.savefig(drawing_path, dpi=150, bbox_inches='tight')
-        plt.close(fig)
+        img.save(drawing_path, 'PNG')
 
         return JSONResponse({
             "drawing_url": f"/api/mfgcad/files/{session_id}/engineering_drawing.png",
