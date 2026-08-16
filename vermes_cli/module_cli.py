@@ -166,6 +166,153 @@ def install(source: str):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def install_from_release(name: str):
+    """从远程 catalog 下载并安装模块（P2）。
+
+    流程: load_catalog → 查找模块 → 下载 tar.gz → SHA256 校验 → 安全解压 → 验证。
+    """
+    from agent.module_catalog import (
+        load_catalog,
+        catalog_modules,
+        install_module_code,
+        is_module_installed,
+    )
+
+    # 1. 加载 catalog（默认从内置缓存或远程）
+    catalog_path = _default_catalog_path()
+    _info(f"加载模块目录: {catalog_path}")
+    data = load_catalog(str(catalog_path))
+    mods = catalog_modules(data)
+
+    if not mods:
+        _err("模块目录为空或加载失败")
+        _info(f"catalog 路径: {catalog_path}")
+        return 1
+
+    # 2. 查找目标模块
+    mod = next((m for m in mods if m.name == name), None)
+    if mod is None:
+        _err(f"模块目录中不存在: {name}")
+        _info(f"可用模块: {[m.name for m in mods]}")
+        return 1
+
+    # 3. 检查是否已安装
+    if is_module_installed(name):
+        _warn(f"模块 {BOLD}{name}{RESET} 已安装，正在更新...")
+        target = get_modules_dir() / name
+        shutil.rmtree(target)
+
+    # 4. 下载 + 校验 + 解压
+    _info(f"下载 {mod.display_name} v{mod.latest} ({mod.size_code // 1024}KB)...")
+    try:
+        root = install_module_code(name, modules=mods)
+    except Exception as e:
+        _err(f"安装失败: {e}")
+        return 1
+
+    _ok(f"模块已安装: {mod.display_name} v{mod.latest}")
+    _info(f"位置: {root}")
+
+    # 5. 显示工具清单
+    if mod.provides_tools:
+        _info(f"提供 {len(mod.provides_tools)} 个工具: {', '.join(mod.provides_tools[:5])}{'...' if len(mod.provides_tools) > 5 else ''}")
+
+    # 6. 验证
+    try:
+        loaded = parse_manifest(root)
+        if loaded:
+            _ok(f"模块验证通过")
+            _info("重启 Vermes 后生效，或调用 reload_module_tools() 热重载")
+        else:
+            _warn("模块验证失败，请检查 module.yaml")
+    except Exception as e:
+        _warn(f"模块验证出错: {e}")
+
+    return 0
+
+
+def _default_catalog_path() -> Path:
+    """默认 catalog.json 路径：内置缓存。"""
+    # 内置缓存: vermes_cli/modules/catalog.json
+    builtin = _PROJECT_ROOT / "vermes_cli" / "modules" / "catalog.json"
+    if builtin.exists():
+        return builtin
+    # 用户缓存: ~/.vermes/modules/catalog.json
+    from vermes_constants import get_vermes_home
+    user = Path(get_vermes_home()) / "modules" / "catalog.json"
+    return user
+
+
+def search(query: str):
+    """搜索可用模块（P2 新增）。"""
+    from agent.module_catalog import (
+        load_catalog,
+        catalog_modules,
+        match_modules_by_keywords,
+        is_module_installed,
+    )
+
+    catalog_path = _default_catalog_path()
+    data = load_catalog(str(catalog_path))
+    mods = catalog_modules(data)
+
+    if not mods:
+        _err("模块目录为空或加载失败")
+        return 1
+
+    # 关键词匹配
+    matches = match_modules_by_keywords(query, mods)
+    installed = {d.name for d in discover_modules()}
+
+    if not matches:
+        _info(f"未找到匹配 '{query}' 的模块")
+        _info(f"可用模块: {[m.name for m in mods]}")
+        return 0
+
+    print(f"\n{BOLD}搜索结果: '{query}'{RESET}")
+    print(f"{'─' * 60}")
+    for mod, score in matches:
+        status = f"{GREEN}已安装{RESET}" if mod.name in installed else f"{YELLOW}未安装{RESET}"
+        print(f"  {CYAN}{mod.name}{RESET} v{mod.latest}  [{status}]")
+        print(f"    {mod.display_name}")
+        if mod.description:
+            print(f"    {mod.description}")
+        if mod.provides_tools:
+            print(f"    工具: {', '.join(mod.provides_tools[:5])}{'...' if len(mod.provides_tools) > 5 else ''}")
+        print(f"    匹配度: {score}")
+        print()
+    return 0
+
+
+def list_available():
+    """列出 catalog 中所有可用模块（P2 新增）。"""
+    from agent.module_catalog import load_catalog, catalog_modules, is_module_installed
+
+    catalog_path = _default_catalog_path()
+    data = load_catalog(str(catalog_path))
+    mods = catalog_modules(data)
+
+    if not mods:
+        _info("模块目录为空")
+        _info(f"catalog 路径: {catalog_path}")
+        return 0
+
+    installed = {d.name for d in discover_modules()}
+
+    print(f"\n{BOLD}可用模块目录{RESET}")
+    print(f"{'─' * 60}")
+    for mod in mods:
+        status = f"{GREEN}✅ 已安装{RESET}" if mod.name in installed else f"{YELLOW}⬇  可安装{RESET}"
+        rec = f" {BOLD}推荐{RESET}" if mod.recommended else ""
+        print(f"  {CYAN}{mod.name}{RESET} v{mod.latest}  [{status}]{rec}")
+        print(f"    {mod.display_name}")
+        if mod.description:
+            print(f"    {mod.description}")
+        print(f"    大小: {mod.size_code // 1024}KB  工具: {len(mod.provides_tools)} 个")
+        print()
+    return 0
+
+
 def uninstall(name: str):
     """卸载生态模块
 
@@ -276,20 +423,29 @@ def main():
   python3 -m vermes_cli.module_cli <command> [args]
 
 {BOLD}命令:{RESET}
-  {CYAN}install{RESET} <path-or-url>   安装模块（本地目录或 Git URL）
-  {CYAN}uninstall{RESET} <name>        卸载模块
-  {CYAN}list{RESET}                   列出已安装模块
-  {CYAN}info{RESET} <name>            显示模块详情
+  {CYAN}install{RESET} <path-or-url>       安装模块（本地目录或 Git URL）
+  {CYAN}install --release{RESET} <name>   从模块目录下载安装（P2）
+  {CYAN}uninstall{RESET} <name>            卸载模块
+  {CYAN}list{RESET}                     列出已安装模块
+  {CYAN}available{RESET}                列出所有可用模块（P2）
+  {CYAN}search{RESET} <query>            搜索可用模块（P2）
+  {CYAN}info{RESET} <name>               显示模块详情
 
 {BOLD}示例:{RESET}
+  # 从模块目录安装
+  python3 -m vermes_cli.module_cli install --release mfgcad
+
   # 从本地目录安装
   python3 -m vermes_cli.module_cli install ~/Projects/vermes-scholarforge
 
   # 从 Git 安装
   python3 -m vermes_cli.module_cli install https://github.com/donghzs/vermes-scholarforge
 
-  # 列出已安装
-  python3 -m vermes_cli.module_cli list
+  # 搜索模块
+  python3 -m vermes_cli.module_cli search 3D建模
+
+  # 列出可用模块
+  python3 -m vermes_cli.module_cli available
 
   # 卸载
   python3 -m vermes_cli.module_cli uninstall scholarforge
@@ -301,12 +457,22 @@ def main():
     cmd = args[0]
     rest = args[1:]
 
-    if cmd == "install" and rest:
+    if cmd == "install" and len(rest) >= 1:
+        # install --release <name>
+        if rest[0] == "--release" and len(rest) >= 2:
+            return install_from_release(rest[1])
+        # install --release=<name>
+        if rest[0].startswith("--release="):
+            return install_from_release(rest[0].split("=", 1)[1])
         return install(rest[0])
     elif cmd == "uninstall" and rest:
         return uninstall(rest[0])
     elif cmd == "list":
         return list_installed()
+    elif cmd == "available":
+        return list_available()
+    elif cmd == "search" and rest:
+        return search(rest[0])
     elif cmd == "info" and rest:
         return info(rest[0])
     else:

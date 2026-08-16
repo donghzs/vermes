@@ -204,6 +204,47 @@ class ToolRegistry:
         with self._lock:
             return self._tools.get(name)
 
+    def _suggest_module_for_tool(self, tool_name: str) -> Optional[str]:
+        """P3: 工具未注册时查 catalog，返回安装提示。"""
+        try:
+            from agent.module_catalog import (
+                load_catalog,
+                catalog_modules,
+                find_module_for_tool,
+                is_module_installed,
+            )
+            # 内置 catalog 缓存
+            from pathlib import Path
+            import sys
+            root = Path(__file__).resolve().parent.parent
+            cat = root / "vermes_cli" / "modules" / "catalog.json"
+            if not cat.exists():
+                # 用户缓存
+                try:
+                    from vermes_constants import get_vermes_home
+                    cat = Path(get_vermes_home()) / "modules" / "catalog.json"
+                except Exception:
+                    return None
+            if not cat.exists():
+                return None
+            mods = catalog_modules(load_catalog(str(cat)))
+            mod = find_module_for_tool(tool_name, mods)
+            if mod is None:
+                return None
+            installed = is_module_installed(mod.name)
+            if installed:
+                # 已安装但工具未注册——可能是加载问题
+                return (
+                    f"工具 {tool_name} 属于已安装模块 {mod.name}，"
+                    f"但工具未注册。尝试重启 Vermes 或运行 reload_module_tools('{mod.name}')。"
+                )
+            return (
+                f"工具 {tool_name} 属于可插拔模块 {mod.name}（{mod.display_name}）。"
+                f"安装命令: vermes module install --release {mod.name}"
+            )
+        except Exception:
+            return None
+
     def get_registered_toolset_names(self) -> List[str]:
         """Return sorted unique toolset names present in the registry."""
         return sorted({entry.toolset for entry in self._snapshot_entries()})
@@ -405,9 +446,17 @@ class ToolRegistry:
         * Async handlers are bridged automatically via ``_run_async()``.
         * All exceptions are caught and returned as ``{"error": "..."}``
           for consistent error format.
+        * P3: Unknown tool → 查 catalog 提示安装可插拔模块。
         """
         entry = self.get_entry(name)
         if not entry:
+            # P3: 查 catalog 是否有模块提供此工具
+            hint = self._suggest_module_for_tool(name)
+            if hint:
+                return json.dumps({
+                    "error": f"Unknown tool: {name}",
+                    "hint": hint,
+                }, ensure_ascii=False)
             return json.dumps({"error": f"Unknown tool: {name}"})
         try:
             if entry.is_async:
