@@ -321,6 +321,15 @@ def _modules_dir() -> Path:
         return get_vermes_home() / "modules"
 
 
+def _vermes_home() -> Path:
+    """返回 ~/.vermes/（懒加载）。"""
+    try:
+        from vermes_constants import get_vermes_home
+        return get_vermes_home()
+    except Exception:  # noqa: BLE001
+        return Path.home() / ".vermes"
+
+
 def is_module_installed(name: str, modules_dir: Optional[Path] = None) -> bool:
     """模块是否已安装到 ~/.vermes/modules/<name>/（存在 module.yaml 即视为已装）。"""
     d = Path(modules_dir) if modules_dir else _modules_dir()
@@ -417,3 +426,184 @@ def ensure_module_ready_sync(
         name, catalog_path_or_url=catalog_path_or_url,
         auto_install=auto_install, progress=progress,
     ))
+
+
+# ---------------------------------------------------------------------------
+# P6: 重资产管理（引擎 / 权重 / 标准件库）
+# ---------------------------------------------------------------------------
+
+def install_module_asset(
+    name: str,
+    asset_id: str,
+    *,
+    modules: Optional[List[CatalogModule]] = None,
+    progress: Optional[Any] = None,
+) -> Path:
+    """下载并安装模块的一个重资产（引擎 venv / 模型权重 / 标准件库）。
+
+    与 install_module_code 同构：download → sha256 校验 → 解压到 target 目录。
+    返回资产落点 Path。失败抛异常。
+    """
+    if modules is None:
+        modules = get_catalog_modules()
+    mod = next((m for m in modules if m.name == name), None)
+    if mod is None:
+        raise ModuleNotFoundError(f"catalog 中不存在模块 {name!r}")
+
+    asset = next((a for a in mod.assets if a.id == asset_id), None)
+    if asset is None:
+        raise ValueError(f"模块 {name!r} 没有资产 {asset_id!r}")
+
+    if not asset.url:
+        raise ValueError(f"资产 {asset_id!r} 没有 url")
+
+    # target 落点：绝对路径直接用；相对路径基于 ~/.vermes/
+    if asset.target:
+        target = Path(asset.target)
+        if not target.is_absolute():
+            target = _vermes_home() / asset.target
+    else:
+        target = _vermes_home() / "engines" / asset_id
+
+    target.mkdir(parents=True, exist_ok=True)
+
+    # 下载到临时文件
+    tmp = target / f".{asset_id}.download.tmp"
+    if not download_file(asset.url, tmp, sha256=asset.sha256 or None, progress=progress):
+        raise RuntimeError(f"下载/校验资产失败: {asset.url}")
+
+    try:
+        # tar.gz 解压；其他格式（如 zip / 二进制）直接移动
+        if asset.url.endswith(('.tar.gz', '.tgz')):
+            safe_extract(tmp, target)
+        else:
+            dest = target / Path(asset.url).name
+            tmp.rename(dest)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+    # 写 marker 供 _is_asset_ready 快速检测
+    if asset.sha256:
+        try:
+            import json as _json
+            (target / ".asset_ready").write_text(
+                _json.dumps({"sha256": asset.sha256, "id": asset.id, "name": name})
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    logger.info("资产 %s/%s 已安装到 %s", name, asset_id, target)
+    return target
+
+
+def list_module_assets(
+    name: str,
+    *,
+    modules: Optional[List[CatalogModule]] = None,
+) -> List[Dict[str, Any]]:
+    """列出模块的所有重资产及其就绪状态。"""
+    if modules is None:
+        modules = get_catalog_modules()
+    mod = next((m for m in modules if m.name == name), None)
+    if mod is None or not mod.assets:
+        return []
+
+    result = []
+    for a in mod.assets:
+        target = _resolve_asset_target(a)
+        ready = _is_asset_ready(a, target)
+        result.append({
+            "id": a.id,
+            "label": a.label,
+            "url": a.url,
+            "sha256": a.sha256[:16] + "..." if a.sha256 else "",
+            "size": a.size,
+            "size_mb": round(a.size / 1048576, 1) if a.size else 0,
+            "target": str(target),
+            "ready": ready,
+            "optional": a.optional,
+        })
+    return result
+
+
+def ensure_assets_ready(
+    name: str,
+    *,
+    auto_install: bool = True,
+    progress: Optional[Any] = None,
+) -> Tuple[bool, str]:
+    """确保模块的所有必选重资产已就绪。缺失则自动下载安装。
+
+    与 ensure_module_ready 同构。返回 (ok, message)。
+    """
+    modules = get_catalog_modules()
+    mod = next((m for m in modules if m.name == name), None)
+    if mod is None or not mod.assets:
+        return True, ""  # 无资产或无 catalog = 无需检查
+
+    missing = []
+    for a in mod.assets:
+        if a.optional:
+            continue
+        target = _resolve_asset_target(a)
+        if not _is_asset_ready(a, target):
+            missing.append(a)
+
+    if not missing:
+        return True, ""
+
+    if not auto_install:
+        labels = ", ".join(a.label or a.id for a in missing)
+        return False, (
+            f"⚙️ 模块 {name} 缺少重资产：{labels}。"
+            f"请到「模块商店」安装或调用 install_module_asset('{name}', '<asset_id>')。"
+        )
+
+    for a in missing:
+        if progress:
+            try:
+                progress(f"⚙️ 下载「{a.label or a.id}」中，请稍候…（{a.size // 1048576 if a.size else '?'}MB）")
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            install_module_asset(name, a.id, modules=modules, progress=progress)
+        except Exception as e:  # noqa: BLE001
+            return False, f"安装资产 {a.id} 失败：{e}"
+
+    return True, ""
+
+
+def _resolve_asset_target(asset: AssetSpec) -> Path:
+    """计算资产落点路径。"""
+    if asset.target:
+        target = Path(asset.target)
+        if not target.is_absolute():
+            target = _vermes_home() / asset.target
+    else:
+        target = _vermes_home() / "engines" / asset.id
+    return target
+
+
+def _is_asset_ready(asset: AssetSpec, target: Path) -> bool:
+    """检测资产是否已就绪。
+
+    策略：target 目录存在且非空，且（有 sha256 时）包含一个 marker 文件记录已校验的 sha。
+    """
+    if not target.exists() or not target.is_dir():
+        return False
+    # 检查是否有内容
+    children = list(target.iterdir())
+    if not children:
+        return False
+    # 检查 marker（install_module_asset 成功后写入）
+    marker = target / ".asset_ready"
+    if marker.exists():
+        try:
+            import json as _json
+            data = _json.loads(marker.read_text())
+            if data.get("sha256") == asset.sha256:
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+    # 无 marker 但目录有内容：如果资产无 sha256 要求，认为就绪
+    return not asset.sha256
