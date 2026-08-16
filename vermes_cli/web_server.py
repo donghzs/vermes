@@ -3433,3 +3433,266 @@ async def mfgcad_ai_assist(session_id: str, request: Request):
 
 
 mount_spa(app)
+
+# ── Phase D: 2D 工程图 / BOM / 3D 打印建议 ──────────────────
+
+@app.get("/api/mfgcad/sessions/{session_id}/drawing")
+async def mfgcad_drawing(session_id: str):
+    """生成 2D 工程图（三视图 + 尺寸标注）。
+
+    用 matplotlib 渲染 STL 的前视/顶视/侧视 + 等轴测，
+    标注关键尺寸（包围盒长宽高）。
+    """
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    sess_file = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id / "session.json"
+    if not sess_file.is_file():
+        return JSONResponse({"error": "session not found"}, status_code=404)
+
+    session = json.loads(sess_file.read_text(encoding="utf-8"))
+
+    # 找 STL 文件
+    output_dir = Path.home() / ".vermes" / "mfgcad" / "output" / session_id
+    stl_path = None
+    if output_dir.is_dir():
+        for f in output_dir.iterdir():
+            if f.suffix.lower() == ".stl":
+                stl_path = f
+                break
+    # 也看 session 记录
+    if not stl_path and session.get("stl_path"):
+        p = Path(session["stl_path"])
+        if p.is_file():
+            stl_path = p
+
+    if not stl_path:
+        return JSONResponse({"error": "no STL file found for this session"}, status_code=404)
+
+    try:
+        import struct
+        import numpy as np
+
+        # 解析二进制 STL
+        data = stl_path.read_bytes()
+        if len(data) < 84:
+            return JSONResponse({"error": "invalid STL file"}, status_code=400)
+
+        n_tris = struct.unpack_from("<I", data, 80)[0]
+        verts = []
+        for i in range(n_tris):
+            offset = 84 + i * 50
+            for j in range(3):
+                x, y, z = struct.unpack_from("<fff", data, offset + 12 + j * 12)
+                verts.append([x, y, z])
+
+        verts = np.array(verts)
+        # 包围盒
+        bbox_min = verts.min(axis=0)
+        bbox_max = verts.max(axis=0)
+        dims = bbox_max - bbox_min  # [x, y, z] = [长, 宽, 高]
+
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D
+
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        fig.suptitle(f"工程图 — {session.get('request', session_id)[:40]}", fontsize=14, fontproperties=__import__('matplotlib.font_manager').font_manager.FontProperties(fname=__find_cjk_font()))
+
+        # 投影函数
+        def project(ax, view: str, title: str):
+            if view == 'front':
+                xs, ys = verts[:, 0], verts[:, 2]
+                xl, yl = 'X (mm)', 'Z (mm)'
+            elif view == 'top':
+                xs, ys = verts[:, 0], verts[:, 1]
+                xl, yl = 'X (mm)', 'Y (mm)'
+            elif view == 'side':
+                xs, ys = verts[:, 1], verts[:, 2]
+                xl, yl = 'Y (mm)', 'Z (mm)'
+            else:  # iso
+                ax_3d = fig.add_subplot(2, 2, 4, projection='3d')
+                ax_3d.scatter(verts[::10, 0], verts[::10, 1], verts[::10, 2], s=0.1, c='steelblue', alpha=0.5)
+                ax_3d.set_xlabel('X'); ax_3d.set_ylabel('Y'); ax_3d.set_zlabel('Z')
+                ax_3d.set_title('等轴测', fontproperties=__cjk_font())
+                return
+
+            ax.scatter(xs[::10], ys[::10], s=0.1, c='steelblue', alpha=0.5)
+            ax.set_xlabel(xl); ax.set_ylabel(yl)
+            ax.set_title(title, fontproperties=__cjk_font())
+            ax.set_aspect('equal')
+            # 标注尺寸
+            if view == 'front':
+                ax.annotate(f'{dims[0]:.1f}', xy=(bbox_min[0], bbox_max[2]+2), xytext=(bbox_max[0], bbox_max[2]+2),
+                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='center')
+                ax.annotate(f'{dims[2]:.1f}', xy=(bbox_max[0]+2, bbox_min[2]), xytext=(bbox_max[0]+2, bbox_max[2]),
+                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='left')
+            elif view == 'top':
+                ax.annotate(f'{dims[0]:.1f}', xy=(bbox_min[0], bbox_max[1]+2), xytext=(bbox_max[0], bbox_max[1]+2),
+                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='center')
+                ax.annotate(f'{dims[1]:.1f}', xy=(bbox_max[0]+2, bbox_min[1]), xytext=(bbox_max[0]+2, bbox_max[1]),
+                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='left')
+            elif view == 'side':
+                ax.annotate(f'{dims[1]:.1f}', xy=(bbox_min[1], bbox_max[2]+2), xytext=(bbox_max[1], bbox_max[2]+2),
+                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='center')
+                ax.annotate(f'{dims[2]:.1f}', xy=(bbox_max[1]+2, bbox_min[2]), xytext=(bbox_max[1]+2, bbox_max[2]),
+                            arrowprops=dict(arrow='<->', color='red'), fontsize=8, color='red', ha='left')
+
+        project(axes[0, 0], 'front', '前视图')
+        project(axes[0, 1], 'top', '顶视图')
+        project(axes[1, 0], 'side', '侧视图')
+        project(None, 'iso', '等轴测')
+
+        # 保存
+        drawing_dir = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id
+        drawing_dir.mkdir(parents=True, exist_ok=True)
+        drawing_path = drawing_dir / "engineering_drawing.png"
+        fig.savefig(drawing_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
+        return JSONResponse({
+            "drawing_url": f"/api/mfgcad/files/{session_id}/engineering_drawing.png",
+            "dimensions": {
+                "length_mm": round(float(dims[0]), 2),
+                "width_mm": round(float(dims[1]), 2),
+                "height_mm": round(float(dims[2]), 2),
+            },
+            "volume_mm3": round(float(session.get("volume_mm3", 0)), 2),
+        })
+    except Exception as e:
+        return JSONResponse({"error": f"生成工程图失败: {e}"}, status_code=500)
+
+
+def __find_cjk_font():
+    """找系统中可用的 CJK 字体。"""
+    import matplotlib.font_manager as fm
+    for name in ['PingFang SC', 'Heiti SC', 'STHeiti', 'SimHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Arial Unicode MS']:
+        try:
+            fp = fm.findfont(fm.FontProperties(family=name))
+            if fp and 'LastResort' not in fp:
+                return fp
+        except Exception:
+            continue
+    return None
+
+def __cjk_font():
+    fp = __find_cjk_font()
+    if fp:
+        return __import__('matplotlib.font_manager').font_manager.FontProperties(fname=fp)
+    return None
+
+
+@app.get("/api/mfgcad/sessions/{session_id}/bom")
+async def mfgcad_bom(session_id: str):
+    """生成 BOM + 组装指南。"""
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    try:
+        from vermes_cli.mfgcad.bom import _load_session, _load_source, _load_parameters, _infer_material
+        session = _load_session(session_id)
+        if not session:
+            return JSONResponse({"error": "session not found"}, status_code=404)
+
+        source = _load_source(session_id)
+        params = _load_parameters(session_id)
+        request_text = session.get("request", "")
+        material = _infer_material(request_text)
+        volume = session.get("volume_mm3", 0)
+
+        # 构建 BOM 结构
+        parts = []
+        if params:
+            for p in params:
+                parts.append({
+                    "name": p.get("name", "未知"),
+                    "value": p.get("value", ""),
+                    "unit": p.get("unit", "mm"),
+                    "type": "参数化尺寸",
+                })
+
+        bom = {
+            "request": request_text,
+            "material": material,
+            "volume_mm3": volume,
+            "volume_cm3": round(volume / 1000, 2) if volume else 0,
+            "parts": parts,
+            "session_id": session_id,
+        }
+
+        # 如果有 API key，用 LLM 生成组装指南
+        try:
+            import httpx
+            from vermes_cli.mfgcad.tools import _resolve_mfgcad_service_creds
+            api_key, base_url, model_name = _resolve_mfgcad_service_creds()
+            if api_key:
+                param_desc = "\n".join([f"- {p['name']}: {p['value']} {p.get('unit', '')}" for p in parts]) or "无参数信息"
+                system_msg = f"你是制造工程师。根据以下 3D 模型信息生成简洁的 BOM 表和组装指南。\n\n模型: {request_text}\n材料: {material}\n体积: {volume} mm³\n参数:\n{param_desc}\n\n返回 Markdown 格式，包含：## BOM 表（表格）和 ## 组装步骤（编号列表）。"
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(
+                        f"{base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json={"model": model_name or "deepseek-chat", "messages": [{"role": "system", "content": system_msg}], "temperature": 0.3},
+                    )
+                    resp.raise_for_status()
+                    bom["assembly_guide"] = resp.json()["choices"][0]["message"]["content"]
+        except Exception:
+            bom["assembly_guide"] = None  # fail-open
+
+        return JSONResponse(bom)
+    except Exception as e:
+        return JSONResponse({"error": f"生成 BOM 失败: {e}"}, status_code=500)
+
+
+@app.get("/api/mfgcad/sessions/{session_id}/print-advice")
+async def mfgcad_print_advice(session_id: str):
+    """3D 打印参数建议。"""
+    import re
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    sess_file = Path.home() / ".vermes" / "mfgcad" / "sessions" / session_id / "session.json"
+    if not sess_file.is_file():
+        return JSONResponse({"error": "session not found"}, status_code=404)
+
+    session = json.loads(sess_file.read_text(encoding="utf-8"))
+    volume = session.get("volume_mm3", 0)
+    request_text = session.get("request", "")
+
+    # 基于体积和请求推断
+    advice = {
+        "volume_cm3": round(volume / 1000, 2) if volume else 0,
+        "estimated_weight_g": round(volume * 0.00125, 1) if volume else 0,  # PLA 密度 1.25 g/cm³
+        "recommendations": [],
+    }
+
+    v = volume / 1000  # cm³
+    if v > 0:
+        if v < 10:
+            advice["recommendations"].append("小模型，建议 0.12mm 层厚提高精度")
+            advice["recommendations"].append("填充率 20% 即可保证强度")
+            advice["estimate_time"] = "30min - 1h"
+        elif v < 100:
+            advice["recommendations"].append("中等模型，建议 0.16mm 层厚平衡速度与精度")
+            advice["recommendations"].append("填充率 15-20%，壁厚 1.2mm")
+            advice["estimate_time"] = "1-3h"
+        else:
+            advice["recommendations"].append("大模型，建议 0.20mm 层厚加快打印")
+            advice["recommendations"].append("填充率 10-15% 节省材料，壁厚 1.5mm")
+            advice["recommendations"].append("建议加支撑（悬垂 >45° 区域）")
+            advice["estimate_time"] = "3-8h"
+
+        advice["recommendations"].append(f"预计用料 ~{advice['estimated_weight_g']}g PLA")
+        advice["recommendations"].append("打印温度 200-210°C（PLA）/ 热床 60°C")
+        advice["recommendations"].append("不建议用 ABS（需封闭舱体 + 100°C 热床）")
+
+    return JSONResponse(advice)

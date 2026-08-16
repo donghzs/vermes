@@ -62,6 +62,95 @@ const showDimEditor = ref(false)
 // ── 模型尺寸标注（3D 视口上浮层） ──
 const dimensionLabels = ref([]) // [{text, x, y}]
 
+// ── Phase D: 导出菜单 / 工程图 / BOM / 打印建议 ──
+const showExportMenu = ref(false)
+const showDrawing = ref(false)
+const drawingUrl = ref('')
+const drawingDims = ref(null)
+const showBom = ref(false)
+const bomData = ref(null)
+const bomLoading = ref(false)
+const showPrintAdvice = ref(false)
+const printAdvice = ref(null)
+const printLoading = ref(false)
+const drawingLoading = ref(false)
+
+async function generateDrawing() {
+  if (!selectedSession.value) return
+  showExportMenu.value = false
+  drawingLoading.value = true
+  showDrawing.value = true
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${selectedSession.value.session_id}/drawing`)
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}))
+      throw new Error(err.error || `HTTP ${resp.status}`)
+    }
+    const data = await resp.json()
+    drawingUrl.value = data.drawing_url
+    drawingDims.value = data.dimensions
+  } catch (e) {
+    error.value = `工程图生成失败: ${e.message}`
+    showDrawing.value = false
+  } finally {
+    drawingLoading.value = false
+  }
+}
+
+async function generateBom() {
+  if (!selectedSession.value) return
+  showExportMenu.value = false
+  bomLoading.value = true
+  showBom.value = true
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${selectedSession.value.session_id}/bom`)
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}))
+      throw new Error(err.error || `HTTP ${resp.status}`)
+    }
+    bomData.value = await resp.json()
+  } catch (e) {
+    error.value = `BOM 生成失败: ${e.message}`
+    showBom.value = false
+  } finally {
+    bomLoading.value = false
+  }
+}
+
+async function generatePrintAdvice() {
+  if (!selectedSession.value) return
+  showExportMenu.value = false
+  printLoading.value = true
+  showPrintAdvice.value = true
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${selectedSession.value.session_id}/print-advice`)
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}))
+      throw new Error(err.error || `HTTP ${resp.status}`)
+    }
+    printAdvice.value = await resp.json()
+  } catch (e) {
+    error.value = `打印建议生成失败: ${e.message}`
+    showPrintAdvice.value = false
+  } finally {
+    printLoading.value = false
+  }
+}
+
+// 简易 markdown 渲染（避免引重依赖）
+function renderMarkdown(md) {
+  if (!md) return ''
+  return md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^## (.+)$/gm, '<h2 class="text-sm font-medium mt-3 mb-1">$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-xs font-medium mt-2 mb-1">$1</h3>')
+    .replace(/\|(.+)\|/g, (m) => '<table class="w-full text-xs my-2">' + m.split('|').filter(Boolean).map((c, i) => `<tr><td class="py-0.5 px-1 ${i === 0 ? 'font-medium text-gray-400' : ''}">${c.trim()}</td></tr>`).join('') + '</table>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 text-xs">$1</li>')
+    .replace(/^- (.+)$/gm, '<li class="ml-4 text-xs">$1</li>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>')
+}
+
 // ── 时间线 ──
 const timeline = ref([]) // [{ts, action, detail}]
 
@@ -547,6 +636,9 @@ onMounted(loadSessions)
       <button @click="toggleTool('pick')" class="p-1.5 rounded" :class="tool === 'pick' ? 'bg-orange-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="选择面">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
       </button>
+      <button @click="showExportMenu = !showExportMenu" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="导出">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
       <button @click="toggleTool('measure')" class="p-1.5 rounded" :class="tool === 'measure' ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'" title="测量">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7L8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><line x1="14" y1="6" x2="18" y2="10"/></svg>
       </button>
@@ -633,6 +725,110 @@ onMounted(loadSessions)
             <div class="flex items-center justify-center gap-3">
               <button @click="goChat" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600">💬 对话建模</button>
               <button @click="uploadRef?.click()" class="px-4 py-2 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600">📂 打开文件</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 导出菜单（Phase D） -->
+        <div v-if="showExportMenu" class="absolute top-12 right-32 z-30 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 min-w-56">
+          <div class="px-3 py-1.5 text-xs font-medium text-gray-400 border-b border-gray-100 dark:border-gray-700">导出 / 生成</div>
+          <button @click="generateDrawing" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+            📐 2D 工程图（三视图+尺寸）
+          </button>
+          <button @click="generateBom" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+            📋 BOM + 组装指南
+          </button>
+          <button @click="generatePrintAdvice" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+            🖨️ 3D 打印参数建议
+          </button>
+          <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+          <button v-if="selectedFile" @click="downloadFile(selectedFile)" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300">
+            💾 下载当前文件 ({{ selectedFile.ext.toUpperCase() }})
+          </button>
+        </div>
+
+        <!-- 工程图弹窗（Phase D） -->
+        <div v-if="showDrawing" class="absolute inset-0 z-40 bg-black/50 flex items-center justify-center" @click.self="showDrawing = false">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-3xl max-h-[90vh] overflow-auto p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">📐 2D 工程图</h3>
+              <button @click="showDrawing = false" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div v-if="drawingLoading" class="text-center py-12 text-gray-400 text-sm">生成中…</div>
+            <div v-else>
+              <img :src="drawingUrl" alt="工程图" class="w-full" />
+              <div v-if="drawingDims" class="mt-3 flex gap-4 text-xs text-gray-500">
+                <span>长: {{ drawingDims.length_mm }}mm</span>
+                <span>宽: {{ drawingDims.width_mm }}mm</span>
+                <span>高: {{ drawingDims.height_mm }}mm</span>
+                <span v-if="drawingDims.volume_mm3">体积: {{ drawingDims.volume_mm3 }}mm³</span>
+                <button @click="downloadFile({url: drawingUrl, name: 'engineering_drawing.png'})" class="ml-auto text-green-500 hover:underline">💾 下载 PNG</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOM 弹窗（Phase D） -->
+        <div v-if="showBom" class="absolute inset-0 z-40 bg-black/50 flex items-center justify-center" @click.self="showBom = false">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-2xl max-h-[90vh] overflow-auto p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">📋 BOM + 组装指南</h3>
+              <button @click="showBom = false" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div v-if="bomLoading" class="text-center py-12 text-gray-400 text-sm">生成中…</div>
+            <div v-else-if="bomData">
+              <div class="mb-3 text-xs text-gray-500 space-y-1">
+                <p>📝 {{ bomData.request }}</p>
+                <p>🔩 材料: {{ bomData.material }} | 体积: {{ bomData.volume_cm3 }}cm³</p>
+              </div>
+              <div v-if="bomData.parts?.length" class="mb-4">
+                <table class="w-full text-xs">
+                  <thead class="text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <tr><th class="text-left py-1">参数</th><th class="text-right py-1">值</th><th class="text-right py-1">单位</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(p, i) in bomData.parts" :key="i" class="border-b border-gray-100 dark:border-gray-700">
+                      <td class="py-1 text-gray-600 dark:text-gray-300 font-mono">{{ p.name }}</td>
+                      <td class="py-1 text-right text-gray-600 dark:text-gray-300">{{ p.value }}</td>
+                      <td class="py-1 text-right text-gray-400">{{ p.unit }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-if="bomData.assembly_guide" class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(bomData.assembly_guide)"></div>
+              <div v-else class="text-xs text-gray-400">未配置 API Key，仅显示参数清单。配置后在设置→服务中填入。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3D 打印建议弹窗（Phase D） -->
+        <div v-if="showPrintAdvice" class="absolute inset-0 z-40 bg-black/50 flex items-center justify-center" @click.self="showPrintAdvice = false">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md max-h-[90vh] overflow-auto p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">🖨️ 3D 打印参数建议</h3>
+              <button @click="showPrintAdvice = false" class="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div v-if="printLoading" class="text-center py-12 text-gray-400 text-sm">生成中…</div>
+            <div v-else-if="printAdvice">
+              <div class="grid grid-cols-3 gap-2 mb-3">
+                <div class="bg-gray-50 dark:bg-gray-700 rounded p-2 text-center">
+                  <div class="text-xs text-gray-400">体积</div>
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ printAdvice.volume_cm3 }}cm³</div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700 rounded p-2 text-center">
+                  <div class="text-xs text-gray-400">预计用料</div>
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ printAdvice.estimated_weight_g }}g</div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-700 rounded p-2 text-center">
+                  <div class="text-xs text-gray-400">预计时间</div>
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ printAdvice.estimate_time || '-' }}</div>
+                </div>
+              </div>
+              <ul class="space-y-1.5">
+                <li v-for="(r, i) in printAdvice.recommendations" :key="i" class="text-xs text-gray-600 dark:text-gray-300 flex items-start gap-1.5">
+                  <span class="text-green-500 flex-shrink-0">●</span> {{ r }}
+                </li>
+              </ul>
             </div>
           </div>
         </div>
