@@ -3809,4 +3809,26 @@ async def uninstall_module(name: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+@app.get("/api/modules/{name}/assets")
+async def list_module_assets_api(name: str):
+    """列出模块的重资产及就绪状态。"""
+    try:
+        from agent.module_catalog import list_module_assets
+        assets = list_module_assets(name)
+        return {"name": name, "assets": assets}
+    except Exception as e:
+        return JSONResponse({"name": name, "assets": [], "error": str(e)}, status_code=500)
+
+
+@app.post("/api/modules/{name}/assets/{asset_id}/install")
+async def install_module_asset_api(name: str, asset_id: str):
+    """安装模块的重资产。"""
+    try:
+        from agent.module_catalog import install_module_asset
+        result = install_module_asset(name, asset_id)
+        return {"ok": True, "name": name, "asset_id": asset_id, "target": str(result)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 mount_spa(app)
