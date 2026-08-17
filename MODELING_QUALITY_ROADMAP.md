@@ -1,79 +1,105 @@
-# Vermes 3D 模块 · 建模质量提升路线图
+# Vermes 3D 模块 · 建模质量提升路线图 v2
 
-> 状态：规划稿（2026-08-17）｜ 触发：真机测试反馈「细节/纹理不专业，未达生产级」
-> 配套已修项：设计会话历史可删除（`DELETE /api/mfgcad/sessions/{sid}` + 清空全部 + 前端按钮，见 `web_server.py` / `ThreeDStudio.vue`）
+> 状态：规划稿 v2（2026-08-17）｜ 触发：真机反馈「细节/纹理不专业」+ 战略讨论「直接桥接行业专业软件」
+> 配套文档：[`PRO_TOOL_ADAPTER_DESIGN.md`](./PRO_TOOL_ADAPTER_DESIGN.md)（FreeCAD 嵌入技术设计，团队对齐用）
+> 已修项：会话历史可删除（`web_server.py` DELETE 路由 + `ThreeDStudio.vue` 按钮）；prompt_toolkit 漏声明；STEP 上传/预览 f-string bug；两模块仓 README。
 
 ---
 
-## 0. 先校准预期：当前能力的真实天花板
+## 0. 一句话战略（v2 主轴变化）
 
-当前链路 = `自然语言 → MAC 引擎(run_mac.py 外部黑盒) → build123d 参数化 CAD 脚本 → STEP/STL`。
-这个范式的硬约束：
+**v1 思路**：纯 AI 一次出图 → 质量上限被「NL→CAD 黑盒」卡死，怎么调提示词都到不了专业级。
+**v2 思路**：Vermes 不做「又一个 AI CAD」，而做**行业专业软件的 AI 编排层**——自然语言进来，Vermes（agent）驱动用户已经在用的专业软件（FreeCAD / Fusion / Blender …）干活。AI 降门槛，专业内核定天花板，人做最后 20% 裁决。
+
+这把 Vermes 从「模型无关」自然扩展成「**模型无关 × 工具无关**」编排：专业软件 = agent 经脚本 API 调用的另一个后端。
+
+---
+
+## 1. 核心判断：为什么纯 AI 出图有天花板（保留，作为论证）
+
+链路 `自然语言 → MAC 引擎(run_mac.py 黑盒) → build123d CSG B-rep → STEP/STL` 的硬约束：
 
 | 能做（强项） | 做不了（天花板） |
 |---|---|
-| 功能机械件：笔筒/支架/法兰/齿轮/外壳 | 有机造型、人物/生物、雕刻感 |
-| 参数真可调、出工程图/BOM/打印建议 | 表面纹理（法线/凹凸贴图）——B-rep 实体没有「贴图」概念 |
-| 布尔运算、阵列、圆角（取决于 agent 翻得细不细） | 电影级细节、照片级渲染质感 |
+| 功能机械件：笔筒/支架/法兰/齿轮 | 有机造型、生物/雕刻感 |
+| 参数真可调、出工程图/BOM | 表面纹理（法线/凹凸贴图）——B-rep 无「贴图」概念 |
+| 布尔/阵列/圆角（取决于 agent 翻得细） | 电影级细节、照片级渲染质感 |
 
-**结论**：「细节纹理还不太行」一半是 bug（agent 翻得粗糙），一半是范式（build123d 本来就不产纹理）。
-纯改几行代码到不了「专业生产级细节纹理」——那条路要换引擎或加后处理。下面分三轨，按 ROI 排序。
-
----
-
-## 1. Track A：NL→CAD 拆解增强（机械件精细化）— 最高 ROI，不换引擎
-
-**目标**：让功能件自动更精细，逼近「工程可用」而非「玩具级」。
-
-- **A1 自动细节基元**：agent 拆解时默认补 圆角(fillet)/倒角(chamfer)/拔模(draft)/壁厚过渡，而不仅是单 primitives。
-- **A2 阵列/镜像/布尔精细化**：`PolarArray`/`LinearArray`/`mirror` + 多体布尔，减少「一个方块」式输出。
-- **A3 约束驱动建模**：从自然语言抽尺寸约束（配合/公差/干涉检查），出图前自检是否可装配。
-- **A4 草图反推（从参考图）**：上传图片/手绘 → 抽 2D 截面 → `make_face` → `extrude`，提升「照图建模」保真度。
-- **A5 prompt/评测闭环**：每出一张图用 QA(水密性/壁厚/干涉) 反向喂 agent 重生成，迭代到通过。
-
-落点：`vermes_cli/mfgcad/tools.py`（`_handle_mfg_text_to_cad` 的 NL→build123d 提示词与后处理）、`agent/prompt` 模板。
-快赢：A1+A2 改提示词即可，1–2 天；A4 中等。
+**结论**：质量上限被 MAC 黑盒 + NL→CAD 拆解双重限定。纯改代码到不了专业级。**换「桥接专业工具」才破天花板**——因为底层是真实参数化内核，人和 AI 加的圆角/阵列/拔模/纹理都是真专业的。
 
 ---
 
-## 2. Track B：有机造型 + 表面纹理（换范式）— 大工程，决定「纹理」能否有
+## 2. 战略框架：ProToolAdapter（行业专业工具适配）
 
-**目标**：让「细节纹理/有机感」成为可能。当前 Trellis 后端是工厂零可跑的 stub。
+每个行业真正常用的专业软件就 2–3 个（机械：SolidWorks/Fusion/FreeCAD/CATIA；3D 美术：Blender/Maya/ZBrush；AEC：Revit/Rhino/SketchUp；PCB：KiCad/Altium）。所以**不铺 50 个集成，只做一个 `ProToolAdapter` 抽象 + 每行业一参考实现**：
 
-- **B1 启用 Trellis 后端**：接入 text-to-3D 扩散（Trellis/InstantMesh），产出带表面细节的 mesh；需权重+本地资产落地 + 真机验证（当前只代码层+优雅降级）。
-- **B2 上传参考图→纹理**：用户给图，用图生纹理（diffusion）贴到已有 mesh（法线/凹凸/Albedo），经 Blender/trimesh 烘焙。
-- **B3 mesh 后处理链路**：`trimesh` 修复 → 水密 → 重拓扑 → 减面，喂给打印/预览。
+- **统一接口**：`open(doc)` / `create_doc()` / `run_script(code, lang)` / `get_feature_tree()` / `apply_edit_op(op)` / `export(formats)` / `is_available()`
+- **FreeCAD = 首个开源零授权参考后端**（Python 可脚本、原生 B-rep 参数化，契合现有 `subprocess` 模式）
+- **SolidWorks/Fusion/Blender =「自带授权」后端**：用户有 license + 本机装了软件，Vermes 驱动其 API（Fusion Python / SolidWorks COM / Blender bpy）
 
-落点：`vermes_cli/mfgcad/backends/trellis.py`（现有骨架）、新 `texturing.py`。
-诚实标注：B 是大工程，权重下载/显存/真机验证都未铺，预估数周级，且依赖外部模型可用性。
+**诚实坑（团队须知晓）**：各工具 API 不统一，适配器底层不可能 100% 一致；但**「编辑操作词汇表」可跨工具归一**——`fillet/draft/pattern/boolean/scale/split` 这套 op，每个工具都有对应原语，Vermes 翻成各 native 调用。用户与 AI 点同一套语义，底层谁执行无所谓。
 
----
-
-## 3. Track C：渲染质感与质检（体验层）— 中等，立竿见影于「看起来专业」
-
-- **C1 PBR 材质预览**：前端 `ModelViewer` 给金属/塑料/木材 PBR 预设，模型「看起来」专业（不改几何）。
-- **C2 可打印性报告增强**：自动支撑建议、悬垂角、最小壁厚红区标注（已在 BOM/print-advice 基础上加可视化）。
-- **C3 网格质量门禁**：导出前水密/法向/自交检查，fail 时给修复建议。
-
-落点：`frontend/src/components/ModelViewer.vue`、web_server 的 `print-advice`/`qa`。
-快赢：C1 纯前端，1 天可见效。
+> 详细接口契约、FreeCAD headless 桥协议、特征树存储、与现有代码衔接点见 `PRO_TOOL_ADAPTER_DESIGN.md`。
 
 ---
 
-## 4. 里程碑与排序（建议）
+## 3. Track 划分（v2 重排）
+
+### Track D（NEW · 主路径）：ProToolAdapter + FreeCAD M1 — 决定「能否达专业级」
+- **D1 FreeCAD headless 桥**：常驻 `vermes_freecad_bridge.py`（stdio/socket 收 edit-op JSON → 驱动 FreeCAD API → 回特征树 JSON + 导出 mesh）。复用现有 `subprocess` 引擎模式。
+- **D2 STEP 进 FreeCAD 特征树**：`mfg_text_to_cad` 产出的 STEP 作为 base body 导入 FreeCAD PartDesign Body，成为可编辑特征。
+- **D3 编辑操作词汇表落地**：`fillet/draft/pattern/boolean/scale/split` 在 FreeCAD 上的翻译表 + 前端编辑面板触发。
+- **D4 会话=特征树**：把现有「孤儿 JSON session」升级为「特征树 + 原生 .FCStd 源文件」——源文件即真相源，操作日志可回滚，堆积从缺点变资产（顺带根治历史 bug）。
+- **D5 引擎分发**：FreeCAD 作重资产模块，经 P6/P7 按需下载（`ensure_freecad_ready(auto_setup)` 复用 `engine_setup.py` 模式）。
+- **D6 高级模式**：「在 FreeCAD 中打开」按钮，detached 拉起真实 FreeCAD GUI 交给专业用户。
+
+落点（非重写，是增量）：`vermes_cli/mfgcad/backends/freecad_adapter.py` + `vermes_freecad_bridge.py`；`engine_setup.py` 加 `ensure_freecad_ready`；`web_server.py` 加 `POST /api/mfgcad/edit` + `GET .../feature-tree`；`ThreeDStudio.vue` 编辑面板 + 打开按钮；`toolsets.py` 加 `mfg_open_in_freecad`/`mfg_edit_feature`/`mfg_export_fcstd`；`vermes-mod-freecad-engine` 发 P7 catalog。
+周期估计：MVP（D1+D2+D3 单文件闭环）~1–2 周；D4–D6 ~再加 1–2 周。
+
+### Track A（降级为过渡快赢）：NL→CAD 拆解增强 — 不换引擎，给 base body 提质感
+- A1 自动圆角/倒角/拔模；A2 阵列/镜像/布尔精细化；A4 草图反推；A5 QA 评测闭环。
+- **定位变化**：不再是「达专业级」的主路径，而是给 FreeCAD 当 base body 的「快速粗模」提质感。A1+A2 改提示词 1–2 天即可。
+- 保留：作为「无 FreeCAD 时的轻量兜底」，让没装专业软件的小白也有更细的玩具级输出。
+
+### Track B：有机造型 + 表面纹理（Blender/Trellis 层）— 大工程
+- B1 启用 Trellis 后端（text-to-3D 扩散，当前零可跑）；B2 图生纹理贴已有 mesh；B3 mesh 后处理（水密/重拓扑/减面）。
+- 与 D 互补不替代：FreeCAD 管制造级 B-rep，Blender/Trellis 管可视化级有机/纹理。Round-trip B-rep→mesh→B-rep 有损，制造链以 FreeCAD 为真。
+
+### Track C：渲染质感与质检（体验层）— 立竿见影
+- C1 PBR 材质预览（金属/塑料预设）；C2 可打印性报告增强；C3 网格质量门禁。纯前端/轻后端，C1 1 天可见效。
+
+---
+
+## 4. 里程碑（v2 重排）
 
 | 阶段 | 内容 | 周期 | 产出 |
 |---|---|---|---|
-| M1（快赢） | A1+A2 提示词精细化 + C1 PBR 预览 | ~3 天 | 功能件明显更细、预览更专业 |
-| M2 | A4 草图反推 + A5 评测闭环 | ~1 周 | 「照图建模」保真度提升 |
-| M3 | B1 Trellis 真机落地 | 数周 | 有机造型/纹理成为可能 |
-| M4 | B2/B3 纹理后处理 | 数周 | 表面细节可达 |
+| M0（快赢·不阻塞） | A1+A2 提示词精细化 + C1 PBR 预览 | ~3 天 | 轻量兜底更细、预览更专业 |
+| **M1（主路径 MVP）** | **D1+D2+D3：FreeCAD headless 桥 + STEP 进特征树 + 编辑面板** | **~1–2 周** | **AI/人共编真专业件，达工程级** |
+| M2 | D4 会话=特征树 + D6 高级模式打开 GUI | ~1–2 周 | 可回滚工程历史 + 专业用户全 GUI |
+| M3 | D5 引擎按需分发（P6/P7） | ~数天 | FreeCAD 不塞基础 DMG，按需下载 |
+| M4 | B1 Trellis 真机 | 数周 | 有机/纹理成为可能 |
+| M5 | 第二后端（Blender bpy / Fusion BYO） | 按需求 | 跨工具编排 |
 
-**诚实建议**：先冲 M1（不碰引擎、零风险、肉眼可见），再 M2；B 轨是「纹理」真正解锁的前提，但工程大、依赖外部模型，单独排期、不阻塞 M1/M2。
+**诚实建议**：M0 先发（零风险、肉眼可见），同时开 M1。M1 是「达专业级」的真正钥匙，应优先投入。B 轨不阻塞 M0/M1。
 
-## 5. 验证方式（每步都真机闭环）
+---
 
-- 出图：`mv ~/.vermes/engines/mac/.venv .venv.backup` → 触发 auto_setup → `mfg_text_to_cad` → 真出 STEP → QA pass。
-- 细节评审：同一 prompt 改前/改后各出一张，人工比对圆角/阵列/壁厚细节是否更丰富。
-- 纹理（B 轨）：Trellis 出 mesh → 渲染带纹理预览 → 肉眼确认表面细节。
-- 回归：`.venv/bin/python -m pytest tests/mfgcad/ -p no:xdist -o addopts=""`（注意 sandbox 托管 venv 缺 pytest-asyncio，需在项目 .venv 跑）。
+## 5. 明确不做（MVP 边界，防 scope 膨胀）
+- ❌ **不把 FreeCAD 完整 Qt GUI 嵌进 Electron**（进程隔离/包体爆炸大坑）。MVP = headless 内核 + 受控编辑面板；完整 GUI 走「高级模式」detached 拉起。
+- ❌ 不为每个行业一次性接 50 个工具——只做 `ProToolAdapter` 抽象 + FreeCAD 参考实现，其余按需。
+- ❌ 不做 B-rep→mesh→B-rep 制造级往返（有损）。FreeCAD 制造真，Blender 仅可视化。
+- ❌ 不捆绑 SolidWorks/Fusion 等授权软件——只做「自带授权」后端接口，用户自备。
+
+---
+
+## 6. 验证方式（每步真机闭环，沿用纪律）
+- D 轨：装 FreeCAD → `ensure_freecad_ready(auto_setup)` 建引擎 → `mfg_text_to_cad` 出 STEP → 导入 FreeCAD 特征树 → 前端加 2mm 圆角（edit-op）→ 导出 STEP/STL → 比对特征树节点。
+- 历史根治：连续开 5 个文件 → 特征树列表 5 条 → 删 2 条 → 剩 3 条且 .FCStd 同步删。
+- 回归：项目 `.venv` 跑 `tests/mfgcad/ -p no:xdist -o addopts=""`（sandbox 托管 venv 缺 pytest-asyncio，勿用）。
+
+## 7. 给团队的决策清单
+1. FreeCAD 作首个参考后端是否同意？（开源零授权，风险最低）
+2. MVP 是否接受「headless 内核 + 受控编辑面板」，暂不做完整 GUI 嵌入？
+3. 第二后端优先级：Blender（纹理/有机）vs Fusion（机械主流）vs SolidWorks（机械主流）？
+4. FreeCAD 引擎分发走 P6/P7 按需下载，还是先本地集成验证？

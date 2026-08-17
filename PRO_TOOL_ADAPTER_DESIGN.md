@@ -1,0 +1,215 @@
+# ProToolAdapter 技术设计 · FreeCAD 嵌入参考实现
+
+> 配套：[`MODELING_QUALITY_ROADMAP.md`](./MODELING_QUALITY_ROADMAP.md) v2（战略/排序）
+> 目标：把 Vermes 3D 从「纯 AI 一次出图」升级为「AI 编排层 × 行业专业软件」，FreeCAD 作首个开源参考后端。
+> 读者：Vermes 团队 + `run_mac.py` 引擎作者（黑盒对齐用）。
+
+---
+
+## 1. 目标与范围（MVP）
+
+**做**：在现有 `mfg_text_to_cad` 产出（STEP/STL）之上，加一层 **FreeCAD headless 内核**，使 AI 与用户能对模型做**专业级参数化精修**（圆角/拔模/阵列/布尔），并把「查看历史」升级为**可回滚的特征树**（原生 .FCStd 为真相源）。
+
+**不做（MVP 边界）**：
+- 不嵌 FreeCAD 完整 Qt GUI 进 Electron（大坑）。
+- 不接 SolidWorks/Fusion 等授权软件（仅留 BYO 接口）。
+- 不做 B-rep↔mesh 制造级往返。
+
+---
+
+## 2. 架构总览
+
+```
+自然语言
+   │
+   ▼
+Vermes Agent (LLM, 模型无关)
+   │  tool_call: mfg_text_to_cad / mfg_edit_feature / mfg_open_in_freecad
+   ▼
+web_server.py  (Electron 主进程内 FastAPI)
+   │  POST /api/mfgcad/edit  {session_id, op}
+   │  GET  /api/mfgcad/sessions/{id}/feature-tree
+   ▼
+ProToolAdapter (abc)  ── FreeCADAdapter (参考实现)
+   │                      │  JSON over stdio/socket
+   ▼                      ▼
+            vermes_freecad_bridge.py  (常驻 headless FreeCAD 子进程)
+                              │  import FreeCAD, Part, PartDesign, Mesh
+                              ▼
+                    原生 .FCStd 文档 (真相源)  + 导出的 STEP/STL
+                              │
+                              ▼
+            ThreeDStudio.vue 查看器 + 编辑面板 (fillet 滑块/阵列/布尔)
+```
+
+**关键点**：FreeCAD 跑在**独立 headless 子进程**（bridge），不在 Electron 主进程、不在 GUI 线程。前端只发 edit-op JSON、收特征树 JSON + mesh 路径。这正是现有 `engine_setup.py` 里 `subprocess.run(build123d...)` 模式的延伸。
+
+---
+
+## 3. ProToolAdapter 接口契约（Python abc）
+
+```python
+# vermes_cli/mfgcad/backends/base.py
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Optional
+
+@dataclass
+class FeatureNode:
+    id: str                 # 稳定节点 id（session 内唯一）
+    kind: str               # "body"|"fillet"|"draft"|"pattern"|"boolean"|"sketch"|...
+    label: str
+    params: dict[str, Any] = field(default_factory=dict)
+    children: list["FeatureNode"] = field(default_factory=list)
+
+@dataclass
+class EditOp:
+    op: str                 # fillet|draft|pattern|boolean|scale|split|...
+    target: str             # "edges_all"|"edge:<id>"|"face:<id>"|"body:<id>"|"tool:<id>"
+    params: dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class AdapterResult:
+    ok: bool
+    feature_tree: Optional[list[FeatureNode]] = None
+    native_doc: Optional[Path] = None      # .FCStd
+    exports: dict[str, Path] = field(default_factory=dict)  # {"stl":..., "step":...}
+    error: Optional[str] = None
+
+class ProToolAdapter(ABC):
+    name: str = "abstract"
+
+    @abstractmethod
+    def is_available(self) -> bool: ...
+    @abstractmethod
+    def ensure_ready(self, auto_setup: bool = False) -> bool: ...
+    @abstractmethod
+    def create_doc(self, session_id: str) -> Path: ...
+    @abstractmethod
+    def open(self, doc_path: str) -> bool: ...
+    @abstractmethod
+    def import_step(self, session_id: str, step_path: str) -> AdapterResult: ...
+    @abstractmethod
+    def get_feature_tree(self, session_id: str) -> list[FeatureNode]: ...
+    @abstractmethod
+    def apply_edit_op(self, session_id: str, op: EditOp) -> AdapterResult: ...
+    @abstractmethod
+    def export(self, session_id: str, formats: list[str]) -> dict[str, Path]: ...
+    @abstractmethod
+    def close(self, session_id: str) -> None: ...
+```
+
+---
+
+## 4. FreeCADAdapter + headless bridge 设计
+
+### 4.1 桥进程 `vermes_freecad_bridge.py`
+- 启动方式：`freecadcmd -c vermes_freecad_bridge.py`（FreeCAD 自带无 GUI 解释器 `freecadcmd`，比 `python -c import FreeCAD` 更稳，避免导入顺序坑）。
+- 协议：从 stdin 读一行 JSON 请求 `{cmd, session_id, payload}`；写一行 JSON 响应。长驻、按 session_id 维护 `App.Document` 句柄表。**可选**升级为本地 Unix socket（多并发），MVP 用 stdin/stdout 单工足够。
+- 重入安全：`bridge` 由 `web_server` 懒启动（首 edit-op 时），`ensure_freecad_ready` 失败则返回「引擎未就绪」给前端提示去装。
+
+### 4.2 STEP 进特征树（D2）
+```python
+import Import, Part, PartDesign
+doc = App.newDocument(session_id)
+Import.insert(step_path, doc.Name)          # STEP → Part.Shape
+body = doc.addObject("PartDesign::Body", "BaseBody")
+body.BaseFeature = doc.Objects[-1]           # 包成 PartDesign Body，成为可编辑特征
+doc.recompute()
+```
+导出：`import Mesh; Mesh.export([body.Shape], stl_path)`；STEP 重导出：`Import.export([body], step_path)`。
+
+### 4.3 编辑操作词汇表 → FreeCAD 原语（D3 翻译表）
+| EditOp | FreeCAD 实现 | 备注 |
+|---|---|---|
+| `fillet` target=edges_all, radius | `body.addObject("PartDesign::Fillet", "Fillet")` + `Fillet.Radius=radius` + `Fillet.Base=body` + `Fillet.Edges=[(edge_i, radius)...]` | 全边圆角需枚举 `body.Shape.Edges` |
+| `draft` face, angle | `PartDesign::Draft` | 需中性面/拔模方向 |
+| `pattern` linear, count, dist | `PartDesign::LinearPattern` | 基于某特征 |
+| `pattern` circular, count | `PartDesign::PolarPattern` | |
+| `boolean` cut/fuse, tool | `PartDesign::Boolean` (Cut/Fuse/Common) | tool=另一 body |
+| `scale` factor | `Part::Scale` 或 `body.Shape.scale` | |
+| `split` | `PartDesign::Slice`/`Boolean` | |
+
+> 每个 op 翻译成一段 FreeCAD Python，经 bridge 执行。`apply_edit_op` 返回更新后的特征树，前端刷新面板。
+
+### 4.4 特征树提取（D4）
+遍历 `doc.Objects` → 对每个 `PartDesign::*`/特征对象取 `Name`/`Label`/`Type` + 关键 `params`（Fillet.Radius 等）→ 序列化为 `FeatureNode` 列表。前端据此渲染可点击/可改的树。
+
+---
+
+## 5. 会话 = 特征树（根治历史 bug，D4）
+
+**现状**：`POST /api/mfgcad/upload` 每次无脑新建 `sessions/<sid>/session.json` 孤儿文件，无删除（已修 DELETE 但仍是静态记录）。
+**目标**：
+- `sessions/<sid>/` 下存 `native.f cstd`（真相源，由 bridge 写回）+ `feature_tree.json`（Vermes 维护的可回滚操作日志）+ `meta.json`。
+- 删除 session ⇒ 同步删 `.FCStd` + `output/<sid>`（复用已写的 `_remove_mfgcad_session`）。
+- 「重新编辑」= 重新 `open(.FCStd)` → 追加 edit-op，特征树天然可回滚（FreeCAD 特征树本身可抑制某节点）。
+- 堆积从缺点变资产：这是专业人员的工程历史，本就该留；提供「清空全部」+ 单条删除（已做）。
+
+---
+
+## 6. 前端（ThreeDStudio.vue）
+
+- 编辑面板（新增右/左侧栏）：fillet 半径滑块、阵列数量/间距、布尔类型下拉、scale 因子——每个控件 `@change` → `POST /api/mfgcad/edit` → 刷新特征树 + 查看器。
+- 「在 FreeCAD 中打开」按钮（高级模式，D6）：detached 拉起 `freecad <doc.f cstd>`，用户得完整专业 GUI；Vermes 仅交还文件。
+- 复用现有 🗑 删除 + 清空（已落地）；删除时 confirm 提示「将同时删除 .FCStd 源文件」。
+
+---
+
+## 7. 引擎分发（D5 · 复用 P6/P7）
+
+FreeCAD 体量大（~1GB），不当塞基础 DMG：
+- 做成 `vermes-mod-freecad-engine` 重资产模块，经 P7 catalog 注册（code_sha256 + 下载 URL）。
+- `engine_setup.py` 加 `ensure_freecad_ready(auto_setup)`：查 `freecadcmd` 是否在 `~/.vermes/engines/freecad/` → 否则经模块系统下载/解包（复用 `provision_engine` + `safe_extract` 模式）。
+- 前端 ModuStore 显示「FreeCAD 引擎（按需下载）」，点装即装。
+
+---
+
+## 8. 与现有代码的衔接（增量，非重写）
+
+| 文件 | 改动 |
+|---|---|
+| `vermes_cli/mfgcad/backends/base.py` | **新增** `ProToolAdapter` abc + dataclasses |
+| `vermes_cli/mfgcad/backends/freecad_adapter.py` | **新增** FreeCAD 参考实现 |
+| `vermes_cli/mfgcad/vermes_freecad_bridge.py` | **新增** headless 桥进程 |
+| `vermes_cli/mfgcad/engine_setup.py` | **加** `ensure_freecad_ready()`（复用 provision 模式） |
+| `vermes_cli/web_server.py` | **加** `POST /api/mfgcad/edit`、`GET /api/mfgcad/sessions/{id}/feature-tree`；复用 `_remove_mfgcad_session` |
+| `frontend/src/components/ThreeDStudio.vue` | **加** 编辑面板 + 「在 FreeCAD 打开」按钮 |
+| `vermes_cli/mfgcad/toolsets.py` | **加** `mfg_open_in_freecad`/`mfg_edit_feature`/`mfg_export_fcstd` |
+| `vermes_cli/mfgcad/tools.py` | **加** 上述 handler（agent 也能调 edit-op） |
+| `vermes-mod-freecad-engine/` | **新增** 模块仓，发 P7 catalog |
+
+> 现有 `mfg_text_to_cad` / build123d / MAC 后端**全部保留**作「快速粗模」兜底（Track A）；FreeCAD 是「专业精修」叠加层。
+
+---
+
+## 9. 风险与缓解
+
+| 风险 | 缓解 |
+|---|---|
+| FreeCAD headless PartDesign 某些操作需 recompute / 有版本差异（0.21 vs 1.0） | 引擎模块**锁版本**（catalog 固定 FreeCAD 版本 + sha256）；每个 edit-op 后 `doc.recompute()` |
+| `freecadcmd` 导入顺序坑 | bridge 用 `freecadcmd -c` 而非裸 `python -c import FreeCAD` |
+| FreeCAD 体量大、首装慢 | 走 P6/P7 按需下载，`ensure_freecad_ready` 显示进度 |
+| 编辑 op 在 FreeCAD 失败（几何非法） | `apply_edit_op` 返回 `ok=False` + error；前端标红该节点，不破坏已有树 |
+| 用户机器无 FreeCAD（BYO 场景） | `is_available()` 返回 False → 前端提示装引擎或走 build123d 兜底 |
+| 特征树 JSON 与 .FCStd 不一致 | 以 .FCStd 为真，会话加载时 bridge 重新提取特征树覆盖 JSON |
+
+---
+
+## 10. M1 原型验证计划（1–2 周，给团队排期）
+
+1. **环境**：本机装 FreeCAD（锁 1.0），验证 `freecadcmd -c` 可 `import Part, PartDesign, Mesh`。
+2. **bridge PoC**：`vermes_freecad_bridge.py` 读 stdin JSON → `import_step` → 回特征树 JSON；手工喂一个现有 STEP（如 leaf_texture_v3.step）跑通。
+3. **edit-op PoC**：发 `{op:"fillet", target:"edges_all", radius:2.0}` → 回更新特征树 + 导出 STL；肉眼/QA 比对圆角生效。
+4. **接线 web_server**：`POST /api/mfgcad/edit` + `GET .../feature-tree`；用 curl 跑通端到端（不依赖前端）。
+5. **前端面板**：ThreeDStudio 加 fillet 滑块 → 真机点一下出圆角。
+6. **历史根治验证**：连开 5 文件→删 2→剩 3 且 .FCStd 同步删。
+7. **引擎分发 PoC**：`ensure_freecad_ready` 从模块下载一次（可先用本地 tarball 模拟 URL）。
+
+> 每个 PoC 都**真机跑**，不靠单测断言（参考本轮 STEP f-string bug 教训：动态脚本 bug 单测覆盖不到）。
+
+## 11. 给引擎作者（run_mac.py）的对齐问题
+- 黑盒现在吐 build123d 脚本；是否愿意增加「吐 FreeCAD API 调用」分支（或 Vermes 直接走 `freecad_adapter` 不经黑盒）？
+- base body 的 STEP 由谁产：继续黑盒 build123d 出 STEP，还是黑盒直接出 FreeCAD 脚本？建议前者（解耦、复用已验证出图链路）。
+- 特征树节点 id 稳定性：agent 多轮编辑需稳定 id，由 bridge 分配并回写。
