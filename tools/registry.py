@@ -213,21 +213,8 @@ class ToolRegistry:
                 find_module_for_tool,
                 is_module_installed,
             )
-            # 内置 catalog 缓存
-            from pathlib import Path
-            import sys
-            root = Path(__file__).resolve().parent.parent
-            cat = root / "vermes_cli" / "modules" / "catalog.json"
-            if not cat.exists():
-                # 用户缓存
-                try:
-                    from vermes_constants import get_vermes_home
-                    cat = Path(get_vermes_home()) / "modules" / "catalog.json"
-                except Exception:
-                    return None
-            if not cat.exists():
-                return None
-            mods = catalog_modules(load_catalog(str(cat)))
+            # P7 远程优先：远程官方 catalog → bundled → 用户缓存 → 空
+            mods = catalog_modules(load_catalog())
             mod = find_module_for_tool(tool_name, mods)
             if mod is None:
                 return None

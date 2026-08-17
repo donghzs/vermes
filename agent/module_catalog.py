@@ -24,12 +24,20 @@ import json
 import logging
 import os
 import tarfile
+import threading
+import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# 进程内 TTL 缓存：避免前端店铺每次请求都联网拉远程 catalog。
+_CATALOG_TTL_SECONDS = 120
+_catalog_cache: Optional[Dict[str, Any]] = None
+_catalog_cache_ts: float = 0.0
+_catalog_cache_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -82,20 +90,27 @@ def default_catalog_path() -> Path:
     return _modules_dir() / "catalog.json"
 
 
+def bundled_catalog_path() -> Path:
+    """打进 DMG / 安装包的 bundled catalog（vermes_cli/modules/catalog.json）。
+
+    作为远程 catalog 失败时的离线 fallback，保证出厂即带一份可用清单。
+    """
+    return Path(__file__).resolve().parent.parent / "vermes_cli" / "modules" / "catalog.json"
+
+
 def load_catalog(path_or_url: Optional[str] = None) -> Dict[str, Any]:
     """读取 catalog.json（本地文件或远程 URL）。
 
     fail-open：任何错误都返回 {"modules": [], "generated_at": None}，不抛异常。
+
+    不传 path_or_url 时走默认发现链（远程官方 → bundled → 用户缓存 → 空），
+    见 _discover_default_catalog()——这是 P7「模块发版即时触达所有 app 版本」的核心：
+    远程优先，不再 100% 绑死打进 DMG 的 bundled 清单。
+
+    显式传路径/URL 时直接加载该来源（测试与本地覆盖用），不走发现链、不读 TTL 缓存。
     """
     if path_or_url is None:
-        # 优先本地缓存，其次官方 URL；都失败则返回空。
-        local = default_catalog_path()
-        if local.exists():
-            try:
-                return _parse_catalog_file(local)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("load_catalog: local catalog parse failed: %s", e)
-        path_or_url = default_catalog_url()
+        return _discover_default_catalog()
 
     try:
         if _is_url(path_or_url):
@@ -111,6 +126,68 @@ def load_catalog(path_or_url: Optional[str] = None) -> Dict[str, Any]:
         logger.warning("load_catalog: malformed catalog (no 'modules' list)")
         return {"modules": [], "generated_at": None}
     return data
+
+
+def _store_catalog_cache(data: Dict[str, Any]) -> None:
+    """把一次成功解析的默认 catalog 写入进程内 TTL 缓存。"""
+    global _catalog_cache, _catalog_cache_ts
+    with _catalog_cache_lock:
+        _catalog_cache = data
+        _catalog_cache_ts = time.monotonic()
+
+
+def _discover_default_catalog() -> Dict[str, Any]:
+    """默认（不传路径）catalog 发现链。
+
+    远程官方 catalog 优先 → bundled（打进 DMG）→ 用户缓存（上次下载）→ 空。
+
+    远程优先保证「模块发版即时触达所有 app 版本」；bundled/用户缓存是离线降级层；
+    全失败返回空目录（fail-open，宿主照常以内置模块运行）。
+
+    命中进程内 TTL 缓存（120s）时直接返回，避免前端店铺每次请求都联网。
+    """
+    # 1) 进程内 TTL 缓存
+    with _catalog_cache_lock:
+        if _catalog_cache is not None and (time.monotonic() - _catalog_cache_ts) < _CATALOG_TTL_SECONDS:
+            return _catalog_cache
+
+    # 2) 远程官方 catalog（即时触达）
+    try:
+        data = _fetch_json(default_catalog_url())
+        modules = data.get("modules") if isinstance(data, dict) else None
+        if isinstance(modules, list) and modules:
+            _store_catalog_cache(data)
+            return data
+    except Exception as e:  # noqa: BLE001
+        logger.warning("load_catalog: remote catalog unreachable, trying fallbacks: %s", e)
+
+    # 3) bundled catalog（打进 DMG，离线可用）
+    bundled = bundled_catalog_path()
+    if bundled.exists():
+        try:
+            data = _parse_catalog_file(bundled)
+            modules = data.get("modules") if isinstance(data, dict) else None
+            if isinstance(modules, list):
+                _store_catalog_cache(data)
+                return data
+        except Exception as e:  # noqa: BLE001
+            logger.warning("load_catalog: bundled catalog parse failed: %s", e)
+
+    # 4) 用户缓存（上次成功下载的远程结果）
+    local = default_catalog_path()
+    if local.exists():
+        try:
+            data = _parse_catalog_file(local)
+            modules = data.get("modules") if isinstance(data, dict) else None
+            if isinstance(modules, list):
+                _store_catalog_cache(data)
+                return data
+        except Exception as e:  # noqa: BLE001
+            logger.warning("load_catalog: user cache catalog parse failed: %s", e)
+
+    # 5) 全失败 → 空目录（fail-open）
+    logger.warning("load_catalog: all catalog sources failed, returning empty catalog")
+    return {"modules": [], "generated_at": None}
 
 
 def _is_url(s: str) -> bool:

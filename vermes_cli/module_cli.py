@@ -178,15 +178,13 @@ def install_from_release(name: str):
         is_module_installed,
     )
 
-    # 1. 加载 catalog（默认从内置缓存或远程）
-    catalog_path = _default_catalog_path()
-    _info(f"加载模块目录: {catalog_path}")
-    data = load_catalog(str(catalog_path))
+    # 1. 加载 catalog（P7 远程优先：远程官方 → bundled → 用户缓存 → 空）
+    _info("加载模块目录（远程优先）")
+    data = load_catalog()
     mods = catalog_modules(data)
 
     if not mods:
-        _err("模块目录为空或加载失败")
-        _info(f"catalog 路径: {catalog_path}")
+        _err("模块目录为空或加载失败（远程/本地 catalog 均不可用）")
         return 1
 
     # 2. 查找目标模块
@@ -231,18 +229,6 @@ def install_from_release(name: str):
     return 0
 
 
-def _default_catalog_path() -> Path:
-    """默认 catalog.json 路径：内置缓存。"""
-    # 内置缓存: vermes_cli/modules/catalog.json
-    builtin = _PROJECT_ROOT / "vermes_cli" / "modules" / "catalog.json"
-    if builtin.exists():
-        return builtin
-    # 用户缓存: ~/.vermes/modules/catalog.json
-    from vermes_constants import get_vermes_home
-    user = Path(get_vermes_home()) / "modules" / "catalog.json"
-    return user
-
-
 def search(query: str):
     """搜索可用模块（P2 新增）。"""
     from agent.module_catalog import (
@@ -252,12 +238,11 @@ def search(query: str):
         is_module_installed,
     )
 
-    catalog_path = _default_catalog_path()
-    data = load_catalog(str(catalog_path))
+    data = load_catalog()
     mods = catalog_modules(data)
 
     if not mods:
-        _err("模块目录为空或加载失败")
+        _err("模块目录为空或加载失败（远程/本地 catalog 均不可用）")
         return 1
 
     # 关键词匹配
@@ -288,13 +273,11 @@ def list_available():
     """列出 catalog 中所有可用模块（P2 新增）。"""
     from agent.module_catalog import load_catalog, catalog_modules, is_module_installed
 
-    catalog_path = _default_catalog_path()
-    data = load_catalog(str(catalog_path))
+    data = load_catalog()
     mods = catalog_modules(data)
 
     if not mods:
-        _info("模块目录为空")
-        _info(f"catalog 路径: {catalog_path}")
+        _info("模块目录为空（远程/本地 catalog 均不可用）")
         return 0
 
     installed = {d.name for d in discover_modules()}

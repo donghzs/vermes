@@ -3787,19 +3787,9 @@ async def get_module_catalog():
     try:
         from agent.module_catalog import load_catalog, catalog_modules, is_module_installed
         from agent.module_loader import get_modules_dir
-        from pathlib import Path
 
-        # 内置 catalog
-        root = Path(__file__).resolve().parent.parent
-        cat_path = root / "vermes_cli" / "modules" / "catalog.json"
-        if not cat_path.exists():
-            try:
-                from vermes_constants import get_vermes_home
-                cat_path = Path(get_vermes_home()) / "modules" / "catalog.json"
-            except Exception:
-                pass
-
-        data = load_catalog(str(cat_path)) if cat_path.exists() else {"modules": []}
+        # P7 远程优先：远程官方 catalog → bundled → 用户缓存 → 空
+        data = load_catalog()
         mods = catalog_modules(data)
         modules_dir = get_modules_dir()
 
@@ -3832,18 +3822,9 @@ async def install_module(name: str):
             load_catalog, catalog_modules, install_module_code, is_module_installed
         )
         from agent.module_loader import get_modules_dir
-        from pathlib import Path
 
-        root = Path(__file__).resolve().parent.parent
-        cat_path = root / "vermes_cli" / "modules" / "catalog.json"
-        if not cat_path.exists():
-            try:
-                from vermes_constants import get_vermes_home
-                cat_path = Path(get_vermes_home()) / "modules" / "catalog.json"
-            except Exception:
-                pass
-
-        data = load_catalog(str(cat_path)) if cat_path.exists() else {"modules": []}
+        # P7 远程优先
+        data = load_catalog()
         mods = catalog_modules(data)
         mod = next((m for m in mods if m.name == name), None)
         if mod is None:

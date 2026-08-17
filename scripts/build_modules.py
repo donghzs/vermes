@@ -119,7 +119,17 @@ def pack_module(mod: dict) -> dict:
     }
 
 
-def main():
+def main(argv=None):
+    from argparse import ArgumentParser
+
+    ap = ArgumentParser(description="打包可插拔模块为 Release + 生成 catalog.json（P7）")
+    ap.add_argument("--push-catalog", action="store_true",
+                    help="打包后同步 catalog.json 到远程官方 catalog 仓（即时触达所有 app 版本）")
+    ap.add_argument("--repo", default="donghzs/vermes-modules-catalog", help="远程 catalog 仓 owner/name")
+    ap.add_argument("--branch", default="main", help="远程 catalog 仓分支")
+    ap.add_argument("--message", default="", help="远程同步 commit message（默认自动生成）")
+    args = ap.parse_args(argv)
+
     DIST.mkdir(parents=True, exist_ok=True)
 
     print("📦 打包可插拔模块...\n")
@@ -146,8 +156,30 @@ def main():
     (modules_dir / "catalog.json").write_text(
         json.dumps(catalog, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    print(f"   宿主缓存: {modules_dir / 'catalog.json'}")
+    print(f"   宿主缓存（bundled fallback）: {modules_dir / 'catalog.json'}")
+
+    # P7: 远程 catalog 同步（默认关闭，避免误推送；显式 --push-catalog 才推）
+    if getattr(args, "push_catalog", False):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from sync_remote_catalog import sync_catalog
+        msg = getattr(args, "message", "") or "release modules: " + ", ".join(
+            f"{e['name']} {e['latest']}" for e in entries
+        )
+        ok = sync_catalog(
+            source=modules_dir / "catalog.json",
+            repo=getattr(args, "repo", "donghzs/vermes-modules-catalog"),
+            branch=getattr(args, "branch", "main"),
+            message=msg,
+        )
+        if not ok:
+            print("[error] 远程同步失败，本地 catalog 已生成但未推送", file=sys.stderr)
+            return 1
+        print("\n✅ 远程 catalog 已更新，所有已发布的 Vermes app 版本将即时拉取新模块清单。")
+    else:
+        print("\nℹ️  本地 catalog 已生成（未推送远程）。如需即时触达所有 app 版本，运行：")
+        print(f"   python3 scripts/sync_remote_catalog.py --source {modules_dir / 'catalog.json'}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

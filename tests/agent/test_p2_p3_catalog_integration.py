@@ -56,12 +56,16 @@ def fake_catalog_with_tarball(tmp_path, monkeypatch):
     modules_dir = tmp_path / "modules"
     modules_dir.mkdir()
 
-    # monkeypatch _default_catalog_path 和 get_modules_dir
+    # monkeypatch 模块目录与 catalog 加载（P7：三命令改读 load_catalog() 远程优先）
     import vermes_cli.module_cli as cli
-    monkeypatch.setattr(cli, "_default_catalog_path", lambda: cat_path)
     monkeypatch.setattr(cli, "get_modules_dir", lambda: modules_dir)
-    # 也 monkeypatch module_catalog 的 _modules_dir
     import agent.module_catalog as mc
+    # 让默认 catalog 发现链返回本 fixture 的本地 catalog（模拟远程/Release 来源）
+    def _fake_load(path_or_url=None):
+        if path_or_url is None:
+            return json.loads(cat_path.read_text(encoding="utf-8"))
+        return mc.load_catalog(path_or_url)
+    monkeypatch.setattr(mc, "load_catalog", _fake_load)
     monkeypatch.setattr(mc, "_modules_dir", lambda: modules_dir)
 
     return cat_path, modules_dir, tar
