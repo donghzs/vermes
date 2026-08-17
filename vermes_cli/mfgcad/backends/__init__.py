@@ -11,5 +11,6 @@
 """
 
 from .base import AdapterResult, EditOp, FeatureNode, ProToolAdapter
+from .freecad_adapter import FreeCADAdapter
 
-__all__ = ["ProToolAdapter", "FeatureNode", "EditOp", "AdapterResult"]
+__all__ = ["ProToolAdapter", "FeatureNode", "EditOp", "AdapterResult", "FreeCADAdapter"]
