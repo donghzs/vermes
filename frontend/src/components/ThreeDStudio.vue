@@ -194,6 +194,38 @@ function selectSession(s) {
   measureResult.value = null
 }
 
+// ── 删除会话 ──
+async function deleteSession(sid) {
+  if (!sid) return
+  if (!confirm('删除该设计会话及其全部产物（STEP/STL 等）？此操作不可恢复。')) return
+  try {
+    const resp = await fetch(`/api/mfgcad/sessions/${sid}`, { method: 'DELETE' })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    if (selectedSession.value?.session_id === sid) {
+      selectedSession.value = null
+      selectedFile.value = null
+      timeline.value = []
+    }
+    await loadSessions()
+  } catch (e) {
+    error.value = `删除失败: ${e.message}`
+  }
+}
+
+async function clearAllSessions() {
+  if (!confirm('清空全部设计会话？此操作不可恢复。')) return
+  try {
+    const resp = await fetch('/api/mfgcad/sessions', { method: 'DELETE' })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    selectedSession.value = null
+    selectedFile.value = null
+    timeline.value = []
+    await loadSessions()
+  } catch (e) {
+    error.value = `清空失败: ${e.message}`
+  }
+}
+
 const availableFiles = computed(() => {
   if (!selectedSession.value?.files) return []
   return Object.entries(selectedSession.value.files).map(([key, url]) => {
@@ -764,7 +796,10 @@ onMounted(loadSessions)
     <div class="flex flex-1 overflow-hidden relative">
       <!-- 左侧：会话列表 -->
       <div v-if="leftPanelOpen" class="w-56 border-r border-gray-200 dark:border-gray-700 overflow-y-auto bg-white dark:bg-gray-800 flex-shrink-0">
-        <div class="px-3 py-2 text-xs font-medium text-gray-400 border-b border-gray-100 dark:border-gray-700">设计会话</div>
+        <div class="px-3 py-2 text-xs font-medium text-gray-400 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <span>设计会话</span>
+          <button v-if="sessions.length" @click="clearAllSessions()" @mouseenter="showTooltip($event, '清空全部设计会话（不可恢复）')" @mouseleave="hideTooltip" class="text-xs text-red-400 hover:text-red-600 px-1">清空</button>
+        </div>
         <div v-if="loading" class="p-4 text-center text-sm text-gray-400">加载中…</div>
         <div v-else-if="sessions.length === 0" class="p-4 text-center text-xs text-gray-400">
           暂无会话<br>对话中描述零件或点击「打开」
@@ -783,6 +818,7 @@ onMounted(loadSessions)
               <span class="text-xs">{{ s.ok ? '✅' : '❌' }}</span>
               <span v-if="s.has_parameters" class="text-xs text-blue-500">🎚️</span>
               <span class="text-xs text-gray-400 ml-auto">{{ fmtTime(s.ts) }}</span>
+              <button @click.stop="deleteSession(s.session_id)" @mouseenter="showTooltip($event, '删除该会话及全部产物')" @mouseleave="hideTooltip" class="text-xs text-red-400 hover:text-red-600 px-1" title="删除">🗑</button>
             </div>
             <p class="text-xs text-gray-600 dark:text-gray-300 truncate">{{ s.request }}</p>
           </div>

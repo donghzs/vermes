@@ -3015,6 +3015,7 @@ async def prometheus_metrics():
 
 _MFGCAD_ALLOWED_EXT = {".stl", ".glb", ".gltf", ".3mf", ".png", ".jpg", ".jpeg", ".step", ".stp", ".svg"}
 _MFGCAD_OUTPUT_DIR = Path.home() / ".vermes" / "mfgcad" / "output"
+_MFGCAD_SESSIONS_DIR = Path.home() / ".vermes" / "mfgcad" / "sessions"
 
 
 @app.get("/api/mfgcad/files/{session_id}/{filename}")
@@ -3234,6 +3235,61 @@ async def list_mfgcad_sessions():
             continue
 
     return JSONResponse({"sessions": sessions})
+
+
+def _remove_mfgcad_session(session_id: str) -> bool:
+    """删除单个设计会话：同时移除 sessions/<sid> 元数据与 output/<sid> 全部产物。
+
+    返回是否确实删除了内容（目录不存在则 False）。session_id 须为安全字符。
+    """
+    import re
+    import shutil
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return False
+    sess_path = (_MFGCAD_SESSIONS_DIR / session_id).resolve()
+    out_path = (_MFGCAD_OUTPUT_DIR / session_id).resolve()
+    # 防越界：必须严格落在各自根目录下
+    try:
+        sess_path.relative_to(_MFGCAD_SESSIONS_DIR.resolve())
+        out_path.relative_to(_MFGCAD_OUTPUT_DIR.resolve())
+    except ValueError:
+        return False
+    removed = False
+    for p in (sess_path, out_path):
+        if p.is_dir():
+            shutil.rmtree(p)
+            removed = True
+    return removed
+
+
+@app.delete("/api/mfgcad/sessions/{session_id}")
+async def delete_mfgcad_session(session_id: str):
+    """删除单个设计会话及其全部产物（STEP/STL/GLB/预览等）。"""
+    import re
+    import shutil
+    from fastapi.responses import JSONResponse
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+    removed = _remove_mfgcad_session(session_id)
+    return JSONResponse({"deleted": session_id, "removed": removed})
+
+
+@app.delete("/api/mfgcad/sessions")
+async def clear_mfgcad_sessions():
+    """清空全部设计会话（含产物）。调试/释放磁盘用，谨慎调用。"""
+    import re
+    import shutil
+    import time
+    from fastapi.responses import JSONResponse
+
+    removed = 0
+    if _MFGCAD_SESSIONS_DIR.is_dir():
+        for sf in _MFGCAD_SESSIONS_DIR.glob("*/session.json"):
+            sid = sf.parent.name
+            if _remove_mfgcad_session(sid):
+                removed += 1
+    return JSONResponse({"cleared": removed})
 
 
 @app.get("/api/mfgcad/sessions/{session_id}/parameters")
