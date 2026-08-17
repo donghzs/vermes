@@ -213,3 +213,20 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 - 黑盒现在吐 build123d 脚本；是否愿意增加「吐 FreeCAD API 调用」分支（或 Vermes 直接走 `freecad_adapter` 不经黑盒）？
 - base body 的 STEP 由谁产：继续黑盒 build123d 出 STEP，还是黑盒直接出 FreeCAD 脚本？建议前者（解耦、复用已验证出图链路）。
 - 特征树节点 id 稳定性：agent 多轮编辑需稳定 id，由 bridge 分配并回写。
+
+---
+
+## 12. 制造业模具变现：mold-ready 专属操作（FreeCAD 后端 · 变现关键路径）
+
+首个变现垂类 = 模具/注塑（用户自有产业链），故 FreeCAD 后端不是「第一个开源后端」而是**变现后端**。在 §4.3 通用词汇表上增补模具专属 EditOp：
+
+| EditOp | FreeCAD 实现 | 模具意义 |
+|---|---|---|
+| `draft` face, angle, direction | `PartDesign::Draft`（中性面+方向） | 出模角，防卡模 |
+| `scale` factor=收缩率 | `Part::Scale` 或 `body.Shape.scale` | 按材料收缩率补偿（ABS~1.005 / POM~1.020） |
+| `split`/parting | `PartDesign::Boolean` 或 `Part::Slice` 沿分型面切 | 分型/分模，求前后模 |
+| `wall_thick_check` | 遍历面算法 / 第三方 | 壁厚在区间内（防缩水/欠注） |
+| `undercut_check` | 拔模方向投影 | 有侧凹 → 需侧抽/行位 |
+| `boss`/`rib` | `PartDesign::Pad` / `Additive` | 加强筋/司筒柱 |
+
+**QA 闭环（M1 起须含模具专项）**：拔模角≥下限、无未处理侧凹、壁厚达标、收缩率已补偿、可出 2D 工程图 + BOM。交付物 = 「STEP + 2D 图 + BOM + 模具规格」包，作为可计费服务交付物（契合 Vermes 垂直交付 agent 定位）。
