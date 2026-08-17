@@ -237,6 +237,7 @@ TOOLSETS = {
             "mfg_slice_gcode",
             "mfg_send_print",
             "mfg_export_urdf",
+            "mfg_setup_engine",
         ],
         "includes": []
     },

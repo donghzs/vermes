@@ -235,4 +235,4 @@ class TestToolsetConsistency:
     def test_toolset_count_matches_17(self):
         import toolsets
         tools = toolsets.TOOLSETS["mfgcad"]["tools"]
-        assert len(tools) == 17, f"Expected 12 mfgcad tools, got {len(tools)}: {tools}"
+        assert len(tools) == 18, f"Expected 12 mfgcad tools, got {len(tools)}: {tools}"
