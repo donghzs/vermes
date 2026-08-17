@@ -366,3 +366,118 @@ async def ensure_mac_ready(
     if res["ok"]:
         return True, ""
     return False, format_setup_failure(res, ed)
+
+
+# ─────────────────────────────────────────────────────────────
+# FreeCAD 引擎就绪（M1-4 · ProToolAdapter 后端分发，复用 P6/P7）
+# ─────────────────────────────────────────────────────────────
+
+# FreeCAD 引擎作为重资产模块（M1-5 发布到 P7 catalog），其资产 `target` 即
+# ~/.vermes/engines/freecad，包内含 freecadcmd 可执行；install_module_asset
+# 下载 → sha256 校验 → safe_extract 解压到该目录，与 MAC 后端 provision 同构。
+FREECAD_ENGINE_MODULE = "vermes-mod-freecad-engine"
+FREECAD_ENGINE_ASSET_ID = "freecadcmd"  # catalog 中资产 id（tar.gz，含 freecadcmd）
+
+
+def get_freecad_engine_dir() -> Path:
+    """解析 FreeCAD 引擎目录（可被 VERMES_FREECAD_ENGINE_DIR 覆盖）。
+
+    与 FreeCADAdapter._DEFAULT_ENGINE_CMD 的父目录保持一致：~/.vermes/engines/freecad。
+    """
+    import os
+
+    return Path(
+        os.environ.get(
+            "VERMES_FREECAD_ENGINE_DIR",
+            str(Path.home() / ".vermes" / "engines" / "freecad"),
+        )
+    ).resolve()
+
+
+def _find_freecadcmd(engine_dir: Path) -> Optional[Path]:
+    """定位 freecadcmd：引擎目录下的 freecadcmd 可执行即视为就绪。"""
+    fc = Path(engine_dir) / "freecadcmd"
+    return fc if fc.exists() else None
+
+
+def _default_freecad_installer(engine_dir: Path, progress=None) -> tuple[bool, str]:
+    """经模块系统（P7 catalog）下载/解包 FreeCAD 引擎。
+
+    复用 agent.module_catalog.install_module_asset（download → sha256 → safe_extract）。
+    fail-open：任何异常都转成 (False, 引导文案)，绝不向上抛。
+    """
+    try:
+        from agent.module_catalog import install_module_asset
+    except Exception as e:  # noqa: BLE001
+        return False, (
+            f"⚠️ 无法加载模块系统以下载 FreeCAD 引擎：{type(e).__name__}: {e}\n"
+            f"请手动安装 FreeCAD（含 freecadcmd）到 {engine_dir}/，"
+            f"或到「模块商店」安装 {FREECAD_ENGINE_MODULE}。"
+        )
+    try:
+        install_module_asset(
+            FREECAD_ENGINE_MODULE, FREECAD_ENGINE_ASSET_ID, progress=progress
+        )
+        return True, ""
+    except ModuleNotFoundError:
+        return False, (
+            f"⚠️ catalog 尚未发布模块 {FREECAD_ENGINE_MODULE}（M1-5 待发布）。\n"
+            f"可先用本地 tarball 模拟：设 VERMES_FREECAD_ENGINE_DIR 指向已含 freecadcmd 的目录，"
+            f"或手动安装 FreeCAD 到 {engine_dir}/。"
+        )
+    except Exception as e:  # noqa: BLE001
+        return False, (
+            f"⚠️ FreeCAD 引擎自动安装失败：{type(e).__name__}: {e}\n"
+            f"可重试，或手动把含 freecadcmd 的 FreeCAD 放到 {engine_dir}/。"
+        )
+
+
+def ensure_freecad_ready(
+    engine_dir=None,
+    *,
+    auto_setup: bool = False,
+    progress: Optional[Callable[[str], None]] = None,
+    _installer=None,
+) -> tuple[bool, str]:
+    """FreeCAD 引擎就绪检查（M1-4）。
+
+    与 ensure_mac_ready 同构，返回 (ready, message)：
+    - ready=True：freecadcmd 已就位，可直接拉起 bridge；
+    - ready=False：message 是给 Agent/用户的引导（装引擎 / 走 build123d 兜底）。
+
+    flow：
+      1. freecadcmd 已在引擎目录 → True（BYO 或已装）；
+      2. 否则若 auto_setup → 经 P7 模块系统下载解包 → 复检；
+      3. 仍缺失 → False + 引导。
+
+    测试可注入 `_installer(engine_dir, progress) -> (bool, str)` 脱离网络验证逻辑。
+    """
+    ed = Path(engine_dir) if engine_dir else get_freecad_engine_dir()
+    if _find_freecadcmd(ed) is not None:
+        return True, ""
+
+    if not auto_setup:
+        return False, (
+            f"⚙️ 未检测到 FreeCAD 引擎（freecadcmd 不在 {ed}/）。\n"
+            f"请到「模块商店」安装 {FREECAD_ENGINE_MODULE}（按需下载），"
+            f"或手动安装 FreeCAD 后设 VERMES_FREECAD_ENGINE_DIR 指向其目录；"
+            f"或走 build123d 兜底（mfg_text_to_cad）完成粗模。"
+        )
+
+    installer = _installer or _default_freecad_installer
+    if progress:
+        try:
+            progress("⚙️ 首次配置 FreeCAD 引擎中，请稍候…（经模块系统下载，仅此一次）")
+        except Exception:  # noqa: BLE001
+            pass
+    ok, msg = installer(ed, progress=progress)
+    if not ok:
+        return False, msg
+
+    # 安装后复检（catalog 资产 target 即引擎目录，freecadcmd 应已就位）
+    if _find_freecadcmd(ed) is not None:
+        return True, ""
+    return False, (
+        f"⚠️ {FREECAD_ENGINE_MODULE} 已下载但 freecadcmd 未出现在 {ed}/。"
+        f"请检查模块资产布局，或手动把 freecadcmd 放到该目录。"
+    )

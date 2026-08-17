@@ -77,9 +77,10 @@ class FreeCADAdapter(ProToolAdapter):
             return True
         if auto_setup:
             try:
-                from ..engine_setup import ensure_freecad_ready  # M1-4 提供
+                from ..engine_setup import ensure_freecad_ready
 
-                return bool(ensure_freecad_ready(auto_setup=True))
+                ok, _msg = ensure_freecad_ready(auto_setup=True)
+                return bool(ok)
             except Exception:
                 return False
         return False
