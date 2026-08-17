@@ -3115,13 +3115,12 @@ async def tessellate_step_to_stl(session_id: str, filename: str):
         return {"ok": False, "error": "引擎 venv 未安装，请先调用 mfg_setup_engine"}, 503
 
     script = f'''
-import sys
 from build123d import import_step, export_stl
 from pathlib import Path
 
 shape = import_step(Path({str(src_path)!r}))
 export_stl(shape, Path({str(stl_path)!r}))
-print(f"OK: {{stl_path}}")
+print("OK")
 '''
 
     try:
@@ -3355,30 +3354,24 @@ async def upload_mfgcad_file(request: Request):
         content = await upload_file.read()
         f.write(content)
 
-    # 如果是 STEP，尝试生成 STL 预览
+    # 如果是 STEP，用 build123d 转 STL 预览（trimesh 不能读 STEP）
     stl_path = None
     if ext in (".step", ".stp"):
         stl_name = "model.stl"
-        # 尝试用 trimesh 转换（如果有）
         try:
             import subprocess
             venv_python = str(Path.home() / ".vermes" / "engines" / "mac" / ".venv" / "bin" / "python")
             if not Path(venv_python).exists():
                 venv_python = "python3"
             script = f'''
-import sys
-try:
-    import trimesh
-    mesh = trimesh.load("{file_path}")
-    if hasattr(mesh, "export"):
-        mesh.export("{output_dir / stl_name}")
-        print("OK")
-    else:
-        print("SKIP")
-except Exception as e:
-    print(f"ERR: {{e}}")
+from build123d import import_step, export_stl
+from pathlib import Path
+
+shape = import_step(Path({str(file_path)!r}))
+export_stl(shape, Path({str(output_dir / stl_name)!r}))
+print("OK")
 '''
-            result = subprocess.run([venv_python, "-c", script], capture_output=True, text=True, timeout=30)
+            result = subprocess.run([venv_python, "-c", script], capture_output=True, text=True, timeout=60)
             if result.returncode == 0 and "OK" in result.stdout:
                 stl_path = str(output_dir / stl_name)
         except Exception:
