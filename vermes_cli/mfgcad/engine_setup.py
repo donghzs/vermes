@@ -35,6 +35,7 @@ CORE_DEPS: list[str] = [
     "langgraph",       # multi_agent_cad 流水线
     "openai",          # nodes.py: from openai import OpenAI（MAC 的 LLM client）
     "pydantic",        # nodes.py / schemas.py
+    "prompt_toolkit",  # build123d→ipython→prompt_toolkit 间接依赖，显式声明防首跑缺失
 ]
 
 OPTIONAL_DEPS: list[str] = [
@@ -294,9 +295,13 @@ async def provision_engine(
     elif optional and not include_aider:
         log("⏭️ 跳过 aider（默认 original 工作流不需要；需要 aider 自修复时设 include_aider=true）")
 
-    # 6) 验证
+    # 6) 验证（含 1 次重试兜底，防首跑偶发缺包）
     log("🔍 验证关键模块可 import…")
     ok, err = await _verify_imports(vpy, verify_mods)
+    if not ok:
+        log("⏳ 首次验证未过，等待 3s 后重试一次…")
+        await asyncio.sleep(3)
+        ok, err = await _verify_imports(vpy, verify_mods)
     if not ok:
         return {"ok": False, "steps": steps, "step": "verify", "error": err}
 
