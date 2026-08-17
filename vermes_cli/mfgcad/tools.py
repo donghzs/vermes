@@ -113,6 +113,48 @@ def _mfg_home() -> Path:
     return Path.home() / ".vermes" / "mfgcad"
 
 
+# ── M1 FreeCAD 专业精修后端（ProToolAdapter 参考实现） ──
+# 把「模型无关 × 工具无关」的 ProToolAdapter 接入 agent 工具层。引擎缺失时优雅降级，
+# 不影响既有 build123d 粗模兜底（Track A）。详见 PRO_TOOL_ADAPTER_DESIGN.md。
+_FREECADE_ADAPTER = None
+
+
+def _get_freecad_adapter():
+    """返回（缓存的）FreeCADAdapter 单例，复用常驻 bridge 子进程。"""
+    global _FREECADE_ADAPTER
+    if _FREECADE_ADAPTER is None:
+        from vermes_cli.mfgcad.backends import FreeCADAdapter
+
+        _FREECADE_ADAPTER = FreeCADAdapter(sessions_root=str(_mfg_home() / "sessions"))
+    return _FREECADE_ADAPTER
+
+
+def _ensure_freecad_doc(adapter, session_id: str):
+    """打开已有 .FCStd（真相源），否则从会话内 STEP 导入；无模型返回 None。
+
+    实现 §5：session = 特征树，重新编辑即重新 open(.FCStd) 追加 edit-op，天然可回滚。
+    """
+    fcstd = _mfg_home() / "sessions" / session_id / "native.FCStd"
+    if fcstd.exists():
+        adapter.open(str(fcstd))
+        return fcstd
+    step = None
+    for base in (_mfg_home() / "sessions" / session_id, _mfg_home() / "output" / session_id):
+        if not base.is_dir():
+            continue
+        for ext in ("*.step", "*.stp"):
+            hits = sorted(base.glob(ext))
+            if hits:
+                step = hits[0]
+                break
+        if step is not None:
+            break
+    if step is None:
+        return None
+    res = adapter.import_step(session_id, str(step))
+    return str(res.native_doc) if res.ok else None
+
+
 def _write_session_record(session_id: str, record: dict) -> None:
     """把会话状态落到 sessions/<id>/session.json（自动合并 session_id/ts）。"""
     sess_dir = _mfg_home() / "sessions" / session_id
@@ -1341,3 +1383,155 @@ def register_tools(host_api=None):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("mfgcad project/template tools registration failed: %s", e)
+
+    # ── M1 FreeCAD 专业精修工具（ProToolAdapter 参考实现） ──
+    try:
+        MFG_OPEN_FREECAD_SCHEMA = {
+            "name": "mfg_open_in_freecad",
+            "description": (
+                "在 FreeCAD 专业 GUI 中打开当前会话的模型（.FCStd 真相源），交还文件给用户做专业精修（D6）。"
+                "若会话仅有 STEP/STL，会先导入为可编辑 .FCStd 再返回路径。"
+                "仅当 FreeCAD 引擎已就绪时可用；未安装则提示去 ModuStore 安装 vermes-mod-freecad-engine。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "设计会话 ID（由 mfg_text_to_cad / 上传产生）。"},
+                },
+                "required": ["session_id"],
+            },
+        }
+
+        MFG_EDIT_FEATURE_SCHEMA = {
+            "name": "mfg_edit_feature",
+            "description": (
+                "对当前会话模型施加一次专业级参数化编辑（圆角/拔模/阵列/布尔/缩放），"
+                "经 FreeCAD 后端作用在特征树上，返回更新后的特征树 + 预览 STL 路径。"
+                "适合「模型大体已生成，想加圆角/出模角/阵列」的精修场景（制造业模具变现关键路径）。"
+                "op.op∈{fillet,draft,pattern,boolean,scale}；op.target∈{edges_all,edge:<id>,face:<id>,body:<id>,tool:<id>}；"
+                "op.params 视 op 而定（如 fillet→{radius}，draft→{angle}，pattern→{mode,count,dist/angle}）。"
+                "FreeCAD 未就绪时返回引导，不影响已有模型。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "设计会话 ID。"},
+                    "op": {
+                        "type": "object",
+                        "description": "编辑操作：{op, target, params}。",
+                        "properties": {
+                            "op": {"type": "string", "description": "fillet|draft|pattern|boolean|scale"},
+                            "target": {"type": "string", "description": "edges_all|edge:<id>|face:<id>|body:<id>|tool:<id>"},
+                            "params": {"type": "object", "description": "操作参数，随 op 变化（radius/angle/count/dist 等）。"},
+                        },
+                        "required": ["op", "target"],
+                    },
+                },
+                "required": ["session_id", "op"],
+            },
+        }
+
+        MFG_EXPORT_FCSTD_SCHEMA = {
+            "name": "mfg_export_fcstd",
+            "description": (
+                "导出当前 FreeCAD 会话的模型为指定格式（step/stl），返回文件路径。"
+                "用于把精修后的模型交付下游（模具/量产）。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "设计会话 ID。"},
+                    "formats": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["step", "stl"]},
+                        "description": "导出格式，默认 [step, stl]。",
+                    },
+                },
+                "required": ["session_id"],
+            },
+        }
+
+        async def _handle_mfg_open_in_freecad(args: dict, **kw: Any) -> str:
+            session_id = (args.get("session_id") or "").strip()
+            if not session_id:
+                return "❌ 缺少必填参数 session_id。"
+            adapter = _get_freecad_adapter()
+            if not adapter.is_available():
+                return "⚠️ FreeCAD 引擎未就绪：请先安装 freecad 引擎（ModuStore 装 vermes-mod-freecad-engine，或 mfg_setup_engine），再在 FreeCAD 中打开模型做专业精修。"
+            doc = _ensure_freecad_doc(adapter, session_id)
+            if doc is None:
+                return "❌ 会话无模型：请先 mfg_text_to_cad 生成或上传 STEP，再在 FreeCAD 打开。"
+            return (
+                f"✅ 可在 FreeCAD 中打开：{doc}\n"
+                "（Vermes 仅交还文件，专业精修在 FreeCAD GUI 完成，D6）"
+            )
+
+        async def _handle_mfg_edit_feature(args: dict, **kw: Any) -> str:
+            session_id = (args.get("session_id") or "").strip()
+            op_dict = args.get("op") or {}
+            if not session_id:
+                return "❌ 缺少必填参数 session_id。"
+            if not op_dict.get("op") or not op_dict.get("target"):
+                return "❌ 缺少 op.op / op.target（编辑操作）。"
+            adapter = _get_freecad_adapter()
+            if not adapter.is_available():
+                return "⚠️ FreeCAD 引擎未就绪：请先安装 freecad 引擎再精修；或继续用 build123d 粗模兜底。"
+            doc = _ensure_freecad_doc(adapter, session_id)
+            if doc is None:
+                return "❌ 会话无模型：请先 mfg_text_to_cad 生成或上传 STEP。"
+            from vermes_cli.mfgcad.backends import EditOp
+
+            try:
+                result = adapter.apply_edit_op(session_id, EditOp.from_dict(op_dict))
+            except Exception as e:  # §9：几何非法 → ok=False+error，前端标红，不破坏已有树
+                return f"❌ 编辑调用失败：{e}"
+            if not result.ok:
+                return f"❌ 编辑失败：{result.error}（已有特征树未破坏，可重试其他参数）"
+            exports = adapter.export(session_id, ["stl"])
+            stl = exports.get("stl")
+            lines = [f"✅ 已对会话 {session_id} 施加编辑：{op_dict.get('op')} @ {op_dict.get('target')}"]
+            if result.feature_tree:
+                lines.append("特征树：")
+                for n in result.feature_tree:
+                    params = ",".join(f"{k}={v}" for k, v in n.params.items())
+                    lines.append(f"  • {n.kind}:{n.id} {('(' + params + ')') if params else ''}")
+            if stl:
+                lines.append(f"预览 STL：{stl}")
+            return "\n".join(lines)
+
+        async def _handle_mfg_export_fcstd(args: dict, **kw: Any) -> str:
+            session_id = (args.get("session_id") or "").strip()
+            if not session_id:
+                return "❌ 缺少必填参数 session_id。"
+            formats = args.get("formats") or ["step", "stl"]
+            adapter = _get_freecad_adapter()
+            if not adapter.is_available():
+                return "⚠️ FreeCAD 引擎未就绪：请先安装 freecad 引擎再导出。"
+            doc = _ensure_freecad_doc(adapter, session_id)
+            if doc is None:
+                return "❌ 会话无模型：请先 mfg_text_to_cad 生成或上传 STEP。"
+            try:
+                out = adapter.export(session_id, formats)
+            except Exception as e:
+                return f"❌ 导出失败：{e}"
+            if not out:
+                return "❌ 导出失败：无输出。"
+            return "✅ 导出完成：\n" + "\n".join(f"  • {k}: {v}" for k, v in out.items())
+
+        for _name, _schema, _handler, _emoji, _desc in (
+            ("mfg_open_in_freecad", MFG_OPEN_FREECAD_SCHEMA, _handle_mfg_open_in_freecad, "🧰", "在 FreeCAD 专业 GUI 打开当前会话模型（.FCStd 真相源）"),
+            ("mfg_edit_feature", MFG_EDIT_FEATURE_SCHEMA, _handle_mfg_edit_feature, "✏️", "FreeCAD 专业级参数化精修（圆角/拔模/阵列/布尔/缩放）"),
+            ("mfg_export_fcstd", MFG_EXPORT_FCSTD_SCHEMA, _handle_mfg_export_fcstd, "📦", "导出 FreeCAD 会话为 STEP/STL"),
+        ):
+            registry.register(
+                name=_name,
+                toolset="mfgcad",
+                schema=_schema,
+                handler=_handler,
+                is_async=True,
+                emoji=_emoji,
+                description=_desc,
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("mfgcad freecad tools registration failed: %s", e)

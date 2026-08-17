@@ -176,7 +176,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 | `vermes_cli/mfgcad/engine_setup.py` | **加** `ensure_freecad_ready()`（复用 provision 模式） |
 | `vermes_cli/web_server.py` | **加** `POST /api/mfgcad/edit`、`GET /api/mfgcad/sessions/{id}/feature-tree`；复用 `_remove_mfgcad_session` |
 | `frontend/src/components/ThreeDStudio.vue` | **加** 编辑面板 + 「在 FreeCAD 打开」按钮 |
-| `vermes_cli/mfgcad/toolsets.py` | **加** `mfg_open_in_freecad`/`mfg_edit_feature`/`mfg_export_fcstd` |
+| `vermes_cli/mfgcad/tools.py` | **加** `mfg_open_in_freecad`/`mfg_edit_feature`/`mfg_export_fcstd`（与既有 18 工具同文件注册，无独立 toolsets.py） |
 | `vermes_cli/mfgcad/tools.py` | **加** 上述 handler（agent 也能调 edit-op） |
 | `vermes-mod-freecad-engine/` | **新增** 模块仓，发 P7 catalog |
 

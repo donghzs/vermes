@@ -41,6 +41,9 @@ provides_tools:
   - mfg_slice_gcode
   - mfg_send_print
   - mfg_export_urdf
+  - mfg_open_in_freecad
+  - mfg_edit_feature
+  - mfg_export_fcstd
 
 keywords:
   - 3D

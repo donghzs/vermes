@@ -3828,6 +3828,75 @@ async def mfgcad_print_advice(session_id: str):
     return JSONResponse(advice)
 
 
+# ── mfgcad M1 FreeCAD 专业精修（ProToolAdapter 参考实现） ──
+
+@app.post("/api/mfgcad/edit")
+async def edit_mfgcad_feature(request: Request):
+    """对会话模型施加一次 FreeCAD 专业级编辑，返回更新后的特征树 + 预览 STL。
+
+    body: {"session_id": "...", "op": {"op":"fillet","target":"edges_all","params":{"radius":2.0}}}
+    """
+    import re
+    from fastapi.responses import JSONResponse
+    from vermes_cli.mfgcad import tools as mfgcad_tools
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json body"}, status_code=400)
+
+    session_id = (body or {}).get("session_id") or ""
+    op_dict = (body or {}).get("op") or {}
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+    if not op_dict.get("op") or not op_dict.get("target"):
+        return JSONResponse({"error": "missing op.op / op.target"}, status_code=400)
+
+    adapter = mfgcad_tools._get_freecad_adapter()
+    if not adapter.is_available():  # 优雅降级：不崩，给前端明确引导
+        return JSONResponse(
+            {"ok": False, "error": "FreeCAD 引擎未就绪：请安装 vermes-mod-freecad-engine（ModuStore）或走 build123d 兜底"},
+            status_code=409,
+        )
+    doc = mfgcad_tools._ensure_freecad_doc(adapter, session_id)
+    if doc is None:
+        return JSONResponse({"ok": False, "error": "会话无模型：请先 mfg_text_to_cad 生成或上传 STEP"}, status_code=404)
+
+    from vermes_cli.mfgcad.backends import EditOp
+
+    result = adapter.apply_edit_op(session_id, EditOp.from_dict(op_dict))
+    if not result.ok:
+        return JSONResponse({"ok": False, "error": result.error}, status_code=422)
+    exports = adapter.export(session_id, ["stl"])
+    stl_name = Path(exports["stl"]).name if exports.get("stl") else None
+    return JSONResponse({
+        "ok": True,
+        "feature_tree": [n.to_dict() for n in result.feature_tree],
+        "stl_url": f"/api/mfgcad/files/{session_id}/{stl_name}" if stl_name else None,
+        "native_doc": str(result.native_doc) if result.native_doc else None,
+    })
+
+
+@app.get("/api/mfgcad/sessions/{session_id}/feature-tree")
+async def get_mfgcad_feature_tree(session_id: str):
+    """返回会话当前特征树（FreeCAD .FCStd 真相源提取；无 .FCStd 则先由 STEP 导入）。"""
+    import re
+    from fastapi.responses import JSONResponse
+    from vermes_cli.mfgcad import tools as mfgcad_tools
+
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        return JSONResponse({"error": "invalid session_id"}, status_code=400)
+
+    adapter = mfgcad_tools._get_freecad_adapter()
+    if not adapter.is_available():
+        return JSONResponse({"ok": False, "error": "FreeCAD 引擎未就绪"}, status_code=409)
+    doc = mfgcad_tools._ensure_freecad_doc(adapter, session_id)
+    if doc is None:
+        return JSONResponse({"ok": True, "feature_tree": []})
+    tree = adapter.get_feature_tree(session_id)
+    return JSONResponse({"ok": True, "feature_tree": [n.to_dict() for n in tree]})
+
+
 # ── P4: 模块商店 API ──────────────────────────────────────────
 
 @app.get("/api/modules/catalog")
