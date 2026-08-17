@@ -241,6 +241,10 @@ def send_print(
 ) -> Dict[str, Any]:
     """推送 G-code 到 Bambu/拓竹打印机。
 
+    ⚠️ 当前状态：仅 dry_run=True 预览可用。真实推送需要完整的 HTTP multipart
+    实现（含 access_code 认证），尚未完成——非 dry_run 时返回「待后续完善」。
+    见 module.yaml / 对外文档：打印推送为预览就绪、真推送待做，请勿宣称已完工。
+
     Bambu Lab 打印机局域网 HTTP API：
       POST /api/1/print/project/file
       (需要 access_code 认证)

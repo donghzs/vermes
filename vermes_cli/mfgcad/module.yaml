@@ -1,9 +1,9 @@
 name: mfgcad
 display_name: 制造 CAD（3D 建模）
-version: 0.2.0
+version: 0.3.0
 author: Vermes Team
 homepage: https://github.com/donghzs/vermes-mod-mfgcad
-description: 自然语言→STEP 三维模型，参数化建模+制造链路
+description: 自然语言→STEP 三维模型，参数化建模+标准件库+制造链路(DXF/G-code)+机器人描述(URDF/SRDF/SDF)
 repository: donghzs/vermes-mod-mfgcad
 
 backend:
@@ -36,6 +36,11 @@ provides_tools:
   - mfg_project
   - mfg_template
   - mfg_setup_engine
+  - mfg_standard_part
+  - mfg_export_dxf
+  - mfg_slice_gcode
+  - mfg_send_print
+  - mfg_export_urdf
 
 keywords:
   - 3D
@@ -52,3 +57,15 @@ keywords:
   - 参数化
   - SolidWorks
   - Fusion
+  - 标准件
+  - 标准件库
+  - 螺钉
+  - 轴承
+  - DXF
+  - G-code
+  - 切片
+  - 打印推送
+  - 机器人
+  - URDF
+  - SRDF
+  - SDF

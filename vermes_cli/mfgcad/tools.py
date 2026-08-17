@@ -1221,7 +1221,7 @@ def register_tools(host_api=None):
 
         MFG_PRINT_SCHEMA = {
             "name": "mfg_send_print",
-            "description": "推送 G-code 到 Bambu/拓竹打印机",
+            "description": "推送 G-code 到 Bambu/拓竹打印机（当前仅 dry-run 预览，真推送待实现）",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1256,7 +1256,7 @@ def register_tools(host_api=None):
             handler=_handle_mfg_send_print,
             is_async=True,
             emoji="🚀",
-            description="推送 G-code 到打印机（Bambu/拓竹）",
+            description="推送 G-code 到打印机（当前仅 dry-run 预览，真推送待实现）",
         )
         # 机器人模型导出
         from .robot_export import RobotLink, RobotJoint, export_urdf, export_srdf, export_sdf

@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-08-16T09:16:00Z",
+  "generated_at": "2026-08-17T01:12:13Z",
   "modules": [
     {
       "name": "mfgcad",
       "display_name": "制造 CAD（3D 建模）",
-      "latest": "0.2.0",
+      "latest": "0.3.0",
       "vermes_min": "2.3.9",
-      "code_asset": "https://github.com/donghzs/vermes-mod-mfgcad/releases/download/v0.2.0/mfgcad-0.2.0.tar.gz",
-      "code_sha256": "3b1893cbcae99ddc36ad7eee86cad55da57c0424dd9c83d9159929b2f1a34c48",
-      "size_code": 51631,
+      "code_asset": "https://github.com/donghzs/vermes-mod-mfgcad/releases/download/v0.3.0/mfgcad-0.3.0.tar.gz",
+      "code_sha256": "d01e838187bbd23b505a7d7abac96480fff3b373c028e0590975a093b501929c",
+      "size_code": 64318,
       "assets": [],
       "provides_tools": [
         "mfg_text_to_cad",
@@ -23,7 +23,12 @@
         "mfg_generate_bom",
         "mfg_project",
         "mfg_template",
-        "mfg_setup_engine"
+        "mfg_setup_engine",
+        "mfg_standard_part",
+        "mfg_export_dxf",
+        "mfg_slice_gcode",
+        "mfg_send_print",
+        "mfg_export_urdf"
       ],
       "keywords": [
         "3D",
@@ -39,7 +44,19 @@
         "注塑",
         "参数化",
         "SolidWorks",
-        "Fusion"
+        "Fusion",
+        "标准件",
+        "标准件库",
+        "螺钉",
+        "轴承",
+        "DXF",
+        "G-code",
+        "切片",
+        "打印推送",
+        "机器人",
+        "URDF",
+        "SRDF",
+        "SDF"
       ],
       "repository": "donghzs/vermes-mod-mfgcad",
       "homepage": "https://github.com/donghzs/vermes-mod-mfgcad",
@@ -52,7 +69,7 @@
       "latest": "1.0.0",
       "vermes_min": "2.3.9",
       "code_asset": "https://github.com/donghzs/vermes-mod-scholarforge/releases/download/v1.0.0/scholarforge-1.0.0.tar.gz",
-      "code_sha256": "55db826d50242a834cc351e14addb31281c1b1dc5f561a1755a0d77dec31cf0b",
+      "code_sha256": "241edc7744e24e2322242bdeee1d0a740f0d8c5d98e6162104a09b996c100cc4",
       "size_code": 218627,
       "assets": [],
       "provides_tools": [

@@ -25,7 +25,7 @@ MODULES = [
         "name": "mfgcad",
         "display_name": "制造 CAD（3D 建模）",
         "source_dir": "vermes_cli/mfgcad",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "vermes_min": "2.3.9",
         "repository": "donghzs/vermes-mod-mfgcad",
         "homepage": "https://github.com/donghzs/vermes-mod-mfgcad",
@@ -67,13 +67,15 @@ def read_yaml_field(yaml_path: Path, field: str, default=None):
 def pack_module(mod: dict) -> dict:
     """打包单个模块为 tar.gz，返回 catalog 条目。"""
     name = mod["name"]
-    version = mod["version"]
     src = ROOT / mod["source_dir"]
 
-    # 读取 module.yaml 的 provides_tools 和 keywords
+    # 读取 module.yaml 的 provides_tools / keywords / version（module.yaml 为唯一真相源）
     yaml_path = src / "module.yaml"
+    version = read_yaml_field(yaml_path, "version", mod.get("version")) or mod.get("version")
     provides_tools = read_yaml_field(yaml_path, "provides_tools", []) or []
     keywords = read_yaml_field(yaml_path, "keywords", []) or []
+    if not version:
+        raise SystemExit(f"[build_modules] {name}: module.yaml 缺少 version 字段")
 
     tar_name = f"{name}-{version}.tar.gz"
     tar_path = DIST / tar_name
