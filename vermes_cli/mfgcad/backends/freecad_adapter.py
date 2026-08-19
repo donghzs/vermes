@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -63,7 +64,16 @@ class FreeCADAdapter(ProToolAdapter):
         if _DEFAULT_ENGINE_CMD.exists():
             return _DEFAULT_ENGINE_CMD
         on_path = shutil.which("freecadcmd")
-        return Path(on_path) if on_path else None
+        if on_path:
+            return Path(on_path)
+        # macOS 常见安装位置
+        for c in [
+            "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
+            "/opt/homebrew/opt/freecad/libexec/bin/freecadcmd",
+        ]:
+            if Path(c).exists():
+                return Path(c)
+        return None
 
     def is_available(self) -> bool:
         try:
@@ -88,19 +98,29 @@ class FreeCADAdapter(ProToolAdapter):
     # ── 桥进程管理 ────────────────────────────────────────
 
     def _bridge_script(self) -> Path:
-        return Path(__file__).with_name("vermes_freecad_bridge.py")
+        # bridge 脚本在 mfgcad/ 下（与 backends/ 同级），不在 backends/ 内
+        return Path(__file__).resolve().parent.parent / "vermes_freecad_bridge.py"
 
     def _start_bridge(self) -> None:
         cmd = self._locate_freecadcmd()
         if cmd is None:
             raise RuntimeError("freecadcmd 不可用：请安装 FreeCAD 引擎或走 build123d 兜底")
         self.sessions_root.mkdir(parents=True, exist_ok=True)
+        # FreeCAD 1.1 的 freecadcmd 把脚本路径当文件参数导入而非执行；
+        # 用 -c "exec(open(...).read())" 方式跑 bridge 脚本。
+        # PYTHONUTF8=1 解决 FreeCAD 内置 Python 默认 ascii 编码读不了中文注释的问题。
+        bridge = self._bridge_script()
+        env = os.environ.copy()
+        env["VERMES_MFG_SESSIONS_DIR"] = str(self.sessions_root)
+        env["PYTHONUTF8"] = "1"
+        inline = f"exec(open('{bridge}', encoding='utf-8').read())"
         self._proc = subprocess.Popen(
-            [str(cmd), str(self._bridge_script()), "--sessions-dir", str(self.sessions_root)],
+            [str(cmd), "-c", inline],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=env,
         )
         # 读启动就绪信号（容忍偶发 banner 行）
         self._read_json_line()

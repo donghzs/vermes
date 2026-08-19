@@ -395,9 +395,18 @@ def get_freecad_engine_dir() -> Path:
 
 
 def _find_freecadcmd(engine_dir: Path) -> Optional[Path]:
-    """定位 freecadcmd：引擎目录下的 freecadcmd 可执行即视为就绪。"""
+    """定位 freecadcmd：引擎目录优先，回退 macOS 常见安装位置。"""
     fc = Path(engine_dir) / "freecadcmd"
-    return fc if fc.exists() else None
+    if fc.exists():
+        return fc
+    # macOS 常见安装位置（用户已装 FreeCAD.app 但未走引擎目录）
+    for c in [
+        "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
+        "/opt/homebrew/opt/freecad/libexec/bin/freecadcmd",
+    ]:
+        if Path(c).exists():
+            return Path(c)
+    return None
 
 
 def _default_freecad_installer(engine_dir: Path, progress=None) -> tuple[bool, str]:

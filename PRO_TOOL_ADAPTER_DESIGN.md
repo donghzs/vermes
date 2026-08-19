@@ -189,7 +189,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 | 风险 | 缓解 |
 |---|---|
 | FreeCAD headless PartDesign 某些操作需 recompute / 有版本差异（0.21 vs 1.0） | 引擎模块**锁版本**（catalog 固定 FreeCAD 版本 + sha256）；每个 edit-op 后 `doc.recompute()` |
-| `freecadcmd` 启动形式坑 | bridge 用 `freecadcmd <脚本路径>`（argv 透传）而非裸 `python -c import FreeCAD`；freecadcmd 对脚本文件是 argv 透传，非 `-c`（M1-2 已勘误，与 CLI-Anything `run_macro` 同模式，见 §13） |
+| `freecadcmd` 启动形式坑 | FreeCAD 1.1 把脚本路径当**模块导入**而非执行，故 bridge 用 `freecadcmd -c "exec(open(bridge, encoding='utf-8').read())"` 强制脚本执行；旧版/CLI-Anything `run_macro` 用 `freecadcmd <脚本>` argv 透传。统一**不用**裸 `python -c import FreeCAD`。另设 `PYTHONUTF8=1` 防中文注释 ascii 报错（M1-6 真机，见 §13.4 H5） |
 | FreeCAD 体量大、首装慢 | 走 P6/P7 按需下载，`ensure_freecad_ready` 显示进度 |
 | 编辑 op 在 FreeCAD 失败（几何非法） | `apply_edit_op` 返回 `ok=False` + error；前端标红该节点，不破坏已有树 |
 | 用户机器无 FreeCAD（BYO 场景） | `is_available()` 返回 False → 前端提示装引擎或走 build123d 兜底 |
@@ -258,12 +258,14 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 - 保留已锁定的 M1-1~M1-5 手搓桥（领域逻辑坐其上），把 CLI-Anything 当 M1-6 无头传输层 hardening 参考，**不替换为它的 harness**（避免返工 + 它在我们的垂直层之上无增量）。
 - **设计验证**：CLI-Anything 用「每命令一次性 macro + `proj.json` 文件态」；我们是**持久桥进程 + .FCStd 会话真相源**。持久桥更契合 §5「会话=特征树 + 可回滚」，故 M1-6 保持持久桥设计。
 
-### 13.4 M1-6 hardening 清单（源自 `cli-anything-freecad/utils/freecad_backend.py` 实战模式）
-- **H1 macOS 引擎发现**：`freecad_adapter._locate_freecadcmd()` 增补 `/Applications/FreeCAD.app/Contents/MacOS/FreeCADCmd`（及 `FreeCAD` GUI 二进制）；支持 `FREECAD_PATH` 环境变量覆盖。`brew install --cask freecad` 装到 /Applications，缺此路径 M1-6 会误报不可用。（CLI-Anything `find_freecad` 同模式：env → which → 各 OS 标准路径）
+### 13.4 M1-6 hardening 清单（源自 `cli-anything-freecad/utils/freecad_backend.py` 实战模式 + 本机 FreeCAD 1.1 真机验证）
+- **H1 macOS 引擎发现（✅ 已在 M1-6 真机实施）**：`freecad_adapter._locate_freecadcmd()` 与 `engine_setup._find_freecadcmd()` 已增补回退路径 `/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd` 与 `/opt/homebrew/opt/freecad/libexec/bin/freecadcmd`（FreeCAD 1.1 .app 实际位置，**注意不是** `Contents/MacOS/FreeCADCmd`——CLI-Anything `find_freecad` 写的 `Contents/MacOS` 路径与实测不符，以本机实测为准）。支持 `FREECAD_PATH` 环境变量覆盖。
 - **H2 导出后文件存在性校验**：`vermes_freecad_bridge._export` 导出后 `assert os.path.isfile(out)`，缺失则 `ok=False`（CLI-Anything `export_headless` 同律：**「不要因为退出码 0 就信导出成功」**——对齐用户「测试全绿≠功能可用」纪律）。
 - **H3 子进程超时**：bridge 调 freecadcmd 加 `timeout`（CLI-Anything 默认 120s），防几何卡死挂起。
 - **H4 错误归一化**：freecadcmd 缺失/超时返回 `{ok:False, ...}` 而非抛（CLI-Anything `_run` 同律），已被 `adapter.is_available()` 优雅降级吸收。
-- 以上 H1–H4 为 M1-6 真机待实施项（用户机器跑），本回合仅落文档，不改代码（避免无真机验证的改动）。
+- **H5 launch 形式（✅ 已实施，重要版本坑）**：FreeCAD 1.1 的 `freecadcmd` 把脚本路径当**模块导入**而非执行，故 `_start_bridge` 改用 `[cmd, "-c", "exec(open(bridge, encoding='utf-8').read())"]`（强制以脚本执行）。⚠️ **纠正前文**：§9 / §10 / 本§13.2 写的「freecadcmd argv 透传非 `-c`」在 1.1 不成立——CLI-Anything `run_macro([freecad, script])` 的 argv 形式在 1.1 可能不执行，须按版本适配。另设 `PYTHONUTF8=1` 解决 FreeCAD 内置 Python 默认 ascii 读不了中文注释的报错；`VERMES_MFG_SESSIONS_DIR` 经 env 传入替 `--sessions-dir` argv（1.1 不吃该 argv）。
+- **H6 `_bridge_script()` 路径 bug（✅ 已修复）**：旧 `Path(__file__).with_name("vermes_freecad_bridge.py")` 在 `backends/` 下找 bridge（文件实际在 `mfgcad/`），M1-6 会直接找不到桥；已改为 `Path(__file__).resolve().parent.parent / "vermes_freecad_bridge.py"`。
+- 以上 H1–H6 中带 ✅ 的已在 M1-6 真机落地（未提交代码，本回合一并提交）；H2/H3 为后续待补的强度项。
 
 ### 13.5 下一个后端策略（最高 ROI 点）
 - 我们 v2 战略要接 Blender/Fusion/SolidWorks。CLI-Anything 已有 `cli-anything-blender`(208 命令) 等现成 harness —— 届时**直接当 `ProToolAdapter` 后端**，省掉手搓桥成本。即「工具无关」扩张走「现成 harness 适配」而非「从零写桥」。
