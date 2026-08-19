@@ -1,0 +1,33 @@
+name: vermes-mod-freecad-engine
+display_name: FreeCAD 引擎（专业精修后端）
+version: 0.1.0
+author: Vermes Team
+homepage: https://github.com/donghzs/vermes-mod-freecad-engine
+description: ProToolAdapter 的 FreeCAD 后端引擎（headless freecadcmd），承载 STEP→Body / 编辑翻译 / 特征树提取，专业精修叠加层
+repository: donghzs/vermes-mod-freecad-engine
+
+# 重资产模块：不含 Python 代码包，仅分发 FreeCAD 引擎 tarball（freecadcmd）。
+# M1-5 注册；真实 tarball 由 build_engine_asset.py 在用户机器装好 FreeCAD 1.0 后生成，M1-6 发布。
+asset_only: true
+
+# 重资产清单（与 install_module_asset 的 AssetSpec 对齐）。target 相对 ~/.vermes/，
+# 即落到 ~/.vermes/engines/freecad，与 engine_setup.get_freecad_engine_dir() 默认一致。
+assets:
+  - id: freecadcmd
+    label: FreeCAD 引擎（freecadcmd）
+    target: engines/freecad
+    release_asset: vermes-mod-freecad-engine-0.1.0.tar.gz
+
+provides_tools: []
+
+keywords:
+  - FreeCAD
+  - CAD
+  - 精修
+  - 特征树
+  - STEP
+  - 模具
+  - 注塑
+  - 制造
+  - PartDesign
+  - 参数化

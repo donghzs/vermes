@@ -43,6 +43,18 @@ MODULES = [
         "description": "AI 驱动的学术论文写作全链路",
         "recommended": True,
     },
+    {
+        "name": "vermes-mod-freecad-engine",
+        "display_name": "FreeCAD 引擎（专业精修后端）",
+        "source_dir": "vermes-mod-freecad-engine",
+        "version": "0.1.0",
+        "vermes_min": "2.3.9",
+        "repository": "donghzs/vermes-mod-freecad-engine",
+        "homepage": "https://github.com/donghzs/vermes-mod-freecad-engine",
+        "description": "ProToolAdapter 的 FreeCAD 后端引擎（headless freecadcmd），承载 STEP→Body / 编辑翻译 / 特征树提取",
+        "asset_only": True,  # 不含 Python 代码包，仅经 P7 catalog 分发 FreeCAD tarball（M1-5）
+        "recommended": False,
+    },
 ]
 
 
@@ -65,41 +77,72 @@ def read_yaml_field(yaml_path: Path, field: str, default=None):
 
 
 def pack_module(mod: dict) -> dict:
-    """打包单个模块为 tar.gz，返回 catalog 条目。"""
+    """打包单个模块为 tar.gz，返回 catalog 条目。
+
+    asset_only=True 的模块（如 vermes-mod-freecad-engine）不含 Python 代码包，
+    仅经 P7 catalog 分发重资产（FreeCAD tarball）；此时跳过代码 tarball，
+    仅产出含 pending 资产的 catalog 条目（url/sha256/size 由 M1-6 真机构建后回填）。
+    """
     name = mod["name"]
     src = ROOT / mod["source_dir"]
+    asset_only = bool(mod.get("asset_only", False))
 
-    # 读取 module.yaml 的 provides_tools / keywords / version（module.yaml 为唯一真相源）
+    # module.yaml 为唯一真相源：version / provides_tools / keywords / assets
     yaml_path = src / "module.yaml"
     version = read_yaml_field(yaml_path, "version", mod.get("version")) or mod.get("version")
     provides_tools = read_yaml_field(yaml_path, "provides_tools", []) or []
     keywords = read_yaml_field(yaml_path, "keywords", []) or []
+    assets_raw = read_yaml_field(yaml_path, "assets", []) or []
     if not version:
         raise SystemExit(f"[build_modules] {name}: module.yaml 缺少 version 字段")
 
-    tar_name = f"{name}-{version}.tar.gz"
-    tar_path = DIST / tar_name
+    # 重资产块：M1-5 注册时 url/sha256/size 留空（pending），M1-6 真机构建后回填
+    assets = []
+    for a in assets_raw:
+        if not isinstance(a, dict) or not a.get("id"):
+            continue
+        assets.append({
+            "id": a["id"],
+            "label": a.get("label", a["id"]),
+            "target": a.get("target", ""),
+            "release_asset": a.get("release_asset", ""),
+            "url": "",
+            "sha256": "",
+            "size": 0,
+            "optional": bool(a.get("optional", False)),
+        })
 
-    # 打包（tar.gz，顶层以模块名开头）
-    with tarfile.open(tar_path, "w:gz") as tf:
-        for item in src.rglob("*"):
-            if item.is_file():
-                # 排除 __pycache__、.pyc、tests
-                if "__pycache__" in item.name or item.suffix == ".pyc":
-                    continue
-                if "tests" in item.parts:
-                    continue
-                arcname = f"{name}/{item.relative_to(src)}"
-                tf.add(item, arcname=arcname)
+    if asset_only:
+        # 不打包代码；仅打印注册信息
+        print(f"  🔧 {name}-{version}: 重资产模块（asset_only），跳过代码打包，"
+              f"{len(assets)} 个 pending 资产待 M1-6 回填")
+        code_url = ""
+        sha = ""
+        size = 0
+    else:
+        tar_name = f"{name}-{version}.tar.gz"
+        tar_path = DIST / tar_name
 
-    size = tar_path.stat().st_size
-    sha = sha256_file(tar_path)
+        # 打包（tar.gz，顶层以模块名开头）
+        with tarfile.open(tar_path, "w:gz") as tf:
+            for item in src.rglob("*"):
+                if item.is_file():
+                    # 排除 __pycache__、.pyc、tests
+                    if "__pycache__" in item.name or item.suffix == ".pyc":
+                        continue
+                    if "tests" in item.parts:
+                        continue
+                    arcname = f"{name}/{item.relative_to(src)}"
+                    tf.add(item, arcname=arcname)
 
-    print(f"  ✅ {name}-{version}: {tar_name} ({size // 1024}KB, sha256={sha[:16]}...)")
+        size = tar_path.stat().st_size
+        sha = sha256_file(tar_path)
 
-    # GitHub Release URL 模板（实际发布后填真实 URL）
-    repo = mod["repository"]
-    code_url = f"https://github.com/{repo}/releases/download/v{version}/{tar_name}"
+        print(f"  ✅ {name}-{version}: {tar_name} ({size // 1024}KB, sha256={sha[:16]}...)")
+
+        # GitHub Release URL 模板（实际发布后填真实 URL）
+        repo = mod["repository"]
+        code_url = f"https://github.com/{repo}/releases/download/v{version}/{tar_name}"
 
     return {
         "name": name,
@@ -109,10 +152,10 @@ def pack_module(mod: dict) -> dict:
         "code_asset": code_url,
         "code_sha256": sha,
         "size_code": size,
-        "assets": [],  # 重资产（引擎/权重）后续 P6 填
+        "assets": assets,
         "provides_tools": provides_tools,
         "keywords": keywords,
-        "repository": repo,
+        "repository": mod["repository"],
         "homepage": mod["homepage"],
         "description": mod["description"],
         "recommended": mod.get("recommended", False),

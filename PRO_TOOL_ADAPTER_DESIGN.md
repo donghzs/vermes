@@ -173,12 +173,12 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 | `vermes_cli/mfgcad/backends/base.py` | **新增** `ProToolAdapter` abc + dataclasses |
 | `vermes_cli/mfgcad/backends/freecad_adapter.py` | **新增** FreeCAD 参考实现 |
 | `vermes_cli/mfgcad/vermes_freecad_bridge.py` | **新增** headless 桥进程 |
-| `vermes_cli/mfgcad/engine_setup.py` | **加** `ensure_freecad_ready()`（复用 provision 模式） |
+| `vermes_cli/mfgcad/engine_setup.py` | **加** `ensure_freecad_ready()`（复用 provision 模式）✅ M1-4 已落地 `c5a244b6b` |
 | `vermes_cli/web_server.py` | **加** `POST /api/mfgcad/edit`、`GET /api/mfgcad/sessions/{id}/feature-tree`；复用 `_remove_mfgcad_session` |
 | `frontend/src/components/ThreeDStudio.vue` | **加** 编辑面板 + 「在 FreeCAD 打开」按钮 |
 | `vermes_cli/mfgcad/tools.py` | **加** `mfg_open_in_freecad`/`mfg_edit_feature`/`mfg_export_fcstd`（与既有 18 工具同文件注册，无独立 toolsets.py） |
 | `vermes_cli/mfgcad/tools.py` | **加** 上述 handler（agent 也能调 edit-op） |
-| `vermes-mod-freecad-engine/` | **新增** 模块仓，发 P7 catalog |
+| `vermes-mod-freecad-engine/` | **新增** 模块仓（module.yaml + build_engine_asset.py）并入 P7 catalog ✅ M1-5 已落地（catalog 条目 pending，url/sha256 待 M1-6 真机构建回填） |
 
 > 现有 `mfg_text_to_cad` / build123d / MAC 后端**全部保留**作「快速粗模」兜底（Track A）；FreeCAD 是「专业精修」叠加层。
 
