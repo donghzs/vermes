@@ -267,6 +267,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 - **H6 `_bridge_script()` 路径 bug（✅ 已修复）**：旧 `Path(__file__).with_name("vermes_freecad_bridge.py")` 在 `backends/` 下找 bridge（文件实际在 `mfgcad/`），M1-6 会直接找不到桥；已改为 `Path(__file__).resolve().parent.parent / "vermes_freecad_bridge.py"`。
 - **H7 fillet 几何取形（✅ 已修复）**：FreeCAD 1.1 的 `PartDesign::Body.Shape` 返回 `PartDesign.Feature` 而非 `TopoDS Shape`，`fillet` 直接 `body.Shape.Edges` 拿空几何；已改为优先 `BaseFeature.Shape` → 回退 `TipShape` → 再 `body.Shape`（`vermes_freecad_bridge._apply_edit_op`）。
 - 以上 H1–H7 中带 ✅ 的已在 M1-6 真机落地（本回合一并提交）；H2/H3 为后续待补的强度项。
+- **H8 fillet 节点 kind 标签（⚠️ 已知副作用·P3）**：QClaw 的 1.1.3 修复把 fillet 产出从 `PartDesign::Fillet` 改为 `Part::Feature`（绕 DAG cycle + Tip shape empty），但 `_KIND_MAP` 只认 `PartDesign::Fillet → "fillet"`，故特征树里 fillet 节点被标成 `"feature"`。影响前端渲染 + agent 多轮锚定（§4.4 依赖 kind）；功能不受影响（仍可凭 `Label="Fillet"` 锚定）。后续增强 `_extract_feature_tree`：对 `Part::Feature` 按 `Name/Label` 推断语义 kind（fillet/draft/scale…）。**已真机验证**：本沙箱 FreeCAD 1.1 独立复跑核心链路（生成 box STEP → 真实 `FreeCADAdapter` import_step/fillet r=2/export STL），结果 ALL PASS：import STEP→Body、fillet 11→12 节点、STL=472684B(472KB，与报告逐字节量级吻合)、特征树 12 节点；274 passed 复核一致。commit `ac7b4a9a8` 已 push 并核实（`origin/feature/vermes-brand-fork` 同步）。
 
 ### 13.5 下一个后端策略（最高 ROI 点）
 - 我们 v2 战略要接 Blender/Fusion/SolidWorks。CLI-Anything 已有 `cli-anything-blender`(208 命令) 等现成 harness —— 届时**直接当 `ProToolAdapter` 后端**，省掉手搓桥成本。即「工具无关」扩张走「现成 harness 适配」而非「从零写桥」。
