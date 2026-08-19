@@ -97,19 +97,23 @@ def _extract_params(obj, tid: str) -> dict:
     p: dict = {}
     try:
         if tid == "PartDesign::Fillet":
-            p["radius"] = getattr(obj, "Radius", None)
+            r = getattr(obj, "Radius", None)
+            p["radius"] = float(r.getValueAs("mm")) if r is not None else None
         elif tid == "PartDesign::Draft":
-            p["angle"] = getattr(obj, "Angle", None)
+            a = getattr(obj, "Angle", None)
+            p["angle"] = float(a.getValueAs("deg")) if a is not None else None
         elif tid in ("PartDesign::LinearPattern", "PartDesign::PolarPattern"):
-            p["count"] = getattr(obj, "Count", None)
+            p["count"] = int(getattr(obj, "Count", 0))
             if tid == "PartDesign::LinearPattern":
-                p["length"] = getattr(obj, "Length", None)
+                l = getattr(obj, "Length", None)
+                p["length"] = float(l.getValueAs("mm")) if l is not None else None
             else:
-                p["angle"] = getattr(obj, "Angle", None)
+                a = getattr(obj, "Angle", None)
+                p["angle"] = float(a.getValueAs("deg")) if a is not None else None
         elif tid == "PartDesign::Boolean":
-            p["type"] = getattr(obj, "Type", None)
+            p["type"] = str(getattr(obj, "Type", ""))
         elif tid == "Part::Scale":
-            p["factor"] = getattr(obj, "Scale", None)
+            p["factor"] = float(getattr(obj, "Scale", 1.0))
     except Exception:
         pass
     return {k: v for k, v in p.items() if v is not None}
@@ -144,46 +148,23 @@ def _apply_edit_op(doc, op: dict):
     body = _find_body(doc)
     if body is None:
         raise RuntimeError("文档中无 PartDesign::Body，无法编辑")
-    # DEBUG: 打印 body 属性到 stderr
-    import sys as _sys
-    _bf = getattr(body, "BaseFeature", None)
-    _sys.stderr.write(f"DEBUG body.TypeId={body.TypeId} BaseFeature={_bf} BaseFeature.TypeId={getattr(_bf, 'TypeId', None)}\n")
-    if _bf is not None:
-        _s = getattr(_bf, "Shape", None)
-        _sys.stderr.write(f"DEBUG bf.Shape={_s} type={type(_s)} has_Edges={hasattr(_s, 'Edges') if _s else 'N/A'}\n")
 
     if name == "fillet":
         radius = float(params.get("radius", 1.0))
-        # FreeCAD 1.1: PartDesign::Body.Shape 可能返回 PartDesign.Feature 代理对象；
-        # 从 BaseFeature.Shape 或 TipShape 取真实 TopoDS 几何
-        shape = None
+        # FreeCAD 1.1: PartDesign::Fillet 对 STEP 导入的 BaseFeature 兼容性差（DAG/Tip Shape 空）；
+        # 改用 Part 几何操作 shape.makeFillet 直接生成倒角几何，包装为 Part::Feature
         bf = getattr(body, "BaseFeature", None)
-        if bf is not None:
-            if hasattr(bf, "Shape"):
-                shape = bf.Shape
-        if shape is None:
-            ts = getattr(body, "TipShape", None)
-            if ts is not None:
-                shape = ts
-        if shape is None:
-            s = getattr(body, "Shape", None)
-            if s is not None and hasattr(s, "Edges"):
-                shape = s
-        if shape is None or not hasattr(shape, "Edges"):
-            raise RuntimeError(
-                f"无法获取几何 Shape（body.TypeId={body.TypeId}, "
-                f"BaseFeature={bf}, Shape={getattr(body, 'Shape', None)}, "
-                f"TipShape={getattr(body, 'TipShape', None)}）"
-            )
-        edges = shape.Edges
-        f = doc.addObject("PartDesign::Fillet", "Fillet")
-        f.Base = body
-        f.Radius = radius
+        if bf is None or not hasattr(bf, "Shape"):
+            raise RuntimeError("Body 无 BaseFeature.Shape，无法做 fillet")
+        shape = bf.Shape
         if target.startswith("edge:"):
             idx = int(target.split(":", 1)[1])
-            f.Edges = [(idx, radius)]
+            edge_list = [shape.Edges[idx - 1]] if 0 < idx <= len(shape.Edges) else shape.Edges
         else:  # edges_all
-            f.Edges = [(i + 1, radius) for i in range(len(edges))]
+            edge_list = shape.Edges
+        fillet_shape = shape.makeFillet(radius, edge_list)
+        f = doc.addObject("Part::Feature", "Fillet")
+        f.Shape = fillet_shape
         doc.recompute()
 
     elif name == "draft":
@@ -248,20 +229,40 @@ def _apply_edit_op(doc, op: dict):
 
 
 def _export(doc, formats) -> dict:
-    body = _find_body(doc)
-    if body is None:
-        raise RuntimeError("无 Body 可导出")
+    # 找可导出的几何体：优先最后一个 Part::Feature（fillet 等几何操作产出），
+    # 否则 Body.BaseFeature.Shape（原始 STEP），否则 body.Shape
+    export_obj = None
+    for o in reversed(doc.Objects):
+        if o.TypeId == "Part::Feature" and hasattr(o, "Shape") and o.Shape is not None:
+            # 排除 STEP 导入的原始对象（有 BaseFeature 的 Body 里的）
+            if o.Name != "BaseFeature":
+                export_obj = o
+                break
+    if export_obj is None:
+        body = _find_body(doc)
+        if body is not None:
+            bf = getattr(body, "BaseFeature", None)
+            if bf is not None and hasattr(bf, "Shape"):
+                export_obj = bf
+            else:
+                export_obj = body
+    if export_obj is None:
+        raise RuntimeError("无可导出的几何体")
     sid = doc.Name
     out = {}
     for fmt in formats:
         if fmt == "stl":
             path = _SESSIONS_DIR / sid / "out.stl"
-            Mesh.export([body.Shape], str(path))
+            Mesh.export([export_obj], str(path))
             out["stl"] = str(path)
         elif fmt == "step":
             path = _SESSIONS_DIR / sid / "out.step"
-            Import.export([body], str(path))
+            Import.export([export_obj], str(path))
             out["step"] = str(path)
+        elif fmt == "fcstd":
+            path = _SESSIONS_DIR / sid / "native.FCStd"
+            doc.saveAs(str(path))
+            out["fcstd"] = str(path)
         else:
             raise RuntimeError(f"不支持的导出格式：{fmt}")
     return out
@@ -327,8 +328,6 @@ def _handle(req: dict) -> dict:
 
         return {"ok": False, "error": f"未知 cmd：{cmd}"}
     except Exception as e:  # §9：几何非法/版本差异 → ok=False + error，不破坏已有树
-        import traceback as _tb
-        sys.stderr.write(f"TRACEBACK: {_tb.format_exc()}\n")
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
