@@ -265,7 +265,8 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 - **H4 错误归一化**：freecadcmd 缺失/超时返回 `{ok:False, ...}` 而非抛（CLI-Anything `_run` 同律），已被 `adapter.is_available()` 优雅降级吸收。
 - **H5 launch 形式（✅ 已实施，重要版本坑）**：FreeCAD 1.1 的 `freecadcmd` 把脚本路径当**模块导入**而非执行，故 `_start_bridge` 改用 `[cmd, "-c", "exec(open(bridge, encoding='utf-8').read())"]`（强制以脚本执行）。⚠️ **纠正前文**：§9 / §10 / 本§13.2 写的「freecadcmd argv 透传非 `-c`」在 1.1 不成立——CLI-Anything `run_macro([freecad, script])` 的 argv 形式在 1.1 可能不执行，须按版本适配。另设 `PYTHONUTF8=1` 解决 FreeCAD 内置 Python 默认 ascii 读不了中文注释的报错；`VERMES_MFG_SESSIONS_DIR` 经 env 传入替 `--sessions-dir` argv（1.1 不吃该 argv）。
 - **H6 `_bridge_script()` 路径 bug（✅ 已修复）**：旧 `Path(__file__).with_name("vermes_freecad_bridge.py")` 在 `backends/` 下找 bridge（文件实际在 `mfgcad/`），M1-6 会直接找不到桥；已改为 `Path(__file__).resolve().parent.parent / "vermes_freecad_bridge.py"`。
-- 以上 H1–H6 中带 ✅ 的已在 M1-6 真机落地（未提交代码，本回合一并提交）；H2/H3 为后续待补的强度项。
+- **H7 fillet 几何取形（✅ 已修复）**：FreeCAD 1.1 的 `PartDesign::Body.Shape` 返回 `PartDesign.Feature` 而非 `TopoDS Shape`，`fillet` 直接 `body.Shape.Edges` 拿空几何；已改为优先 `BaseFeature.Shape` → 回退 `TipShape` → 再 `body.Shape`（`vermes_freecad_bridge._apply_edit_op`）。
+- 以上 H1–H7 中带 ✅ 的已在 M1-6 真机落地（本回合一并提交）；H2/H3 为后续待补的强度项。
 
 ### 13.5 下一个后端策略（最高 ROI 点）
 - 我们 v2 战略要接 Blender/Fusion/SolidWorks。CLI-Anything 已有 `cli-anything-blender`(208 命令) 等现成 harness —— 届时**直接当 `ProToolAdapter` 后端**，省掉手搓桥成本。即「工具无关」扩张走「现成 harness 适配」而非「从零写桥」。

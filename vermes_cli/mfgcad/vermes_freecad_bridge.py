@@ -144,10 +144,38 @@ def _apply_edit_op(doc, op: dict):
     body = _find_body(doc)
     if body is None:
         raise RuntimeError("文档中无 PartDesign::Body，无法编辑")
+    # DEBUG: 打印 body 属性到 stderr
+    import sys as _sys
+    _bf = getattr(body, "BaseFeature", None)
+    _sys.stderr.write(f"DEBUG body.TypeId={body.TypeId} BaseFeature={_bf} BaseFeature.TypeId={getattr(_bf, 'TypeId', None)}\n")
+    if _bf is not None:
+        _s = getattr(_bf, "Shape", None)
+        _sys.stderr.write(f"DEBUG bf.Shape={_s} type={type(_s)} has_Edges={hasattr(_s, 'Edges') if _s else 'N/A'}\n")
 
     if name == "fillet":
         radius = float(params.get("radius", 1.0))
-        edges = body.Shape.Edges
+        # FreeCAD 1.1: PartDesign::Body.Shape 可能返回 PartDesign.Feature 代理对象；
+        # 从 BaseFeature.Shape 或 TipShape 取真实 TopoDS 几何
+        shape = None
+        bf = getattr(body, "BaseFeature", None)
+        if bf is not None:
+            if hasattr(bf, "Shape"):
+                shape = bf.Shape
+        if shape is None:
+            ts = getattr(body, "TipShape", None)
+            if ts is not None:
+                shape = ts
+        if shape is None:
+            s = getattr(body, "Shape", None)
+            if s is not None and hasattr(s, "Edges"):
+                shape = s
+        if shape is None or not hasattr(shape, "Edges"):
+            raise RuntimeError(
+                f"无法获取几何 Shape（body.TypeId={body.TypeId}, "
+                f"BaseFeature={bf}, Shape={getattr(body, 'Shape', None)}, "
+                f"TipShape={getattr(body, 'TipShape', None)}）"
+            )
+        edges = shape.Edges
         f = doc.addObject("PartDesign::Fillet", "Fillet")
         f.Base = body
         f.Radius = radius
@@ -299,6 +327,8 @@ def _handle(req: dict) -> dict:
 
         return {"ok": False, "error": f"未知 cmd：{cmd}"}
     except Exception as e:  # §9：几何非法/版本差异 → ok=False + error，不破坏已有树
+        import traceback as _tb
+        _sys.stderr.write(f"TRACEBACK: {_tb.format_exc()}\n")
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 

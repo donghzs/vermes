@@ -394,16 +394,21 @@ def get_freecad_engine_dir() -> Path:
     ).resolve()
 
 
+# macOS 常见安装位置（用户已装 FreeCAD.app 但未走 P7 引擎目录）。
+# 抽成模块级常量便于测试 hermetic：monkeypatch 为 () 即可屏蔽系统 FreeCAD，
+# 避免「测试机装了 FreeCAD」导致 _find_freecadcmd 返回系统路径、破坏 absent 断言。
+FREECAD_SYSTEM_DIRS = (
+    "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
+    "/opt/homebrew/opt/freecad/libexec/bin/freecadcmd",
+)
+
+
 def _find_freecadcmd(engine_dir: Path) -> Optional[Path]:
     """定位 freecadcmd：引擎目录优先，回退 macOS 常见安装位置。"""
     fc = Path(engine_dir) / "freecadcmd"
     if fc.exists():
         return fc
-    # macOS 常见安装位置（用户已装 FreeCAD.app 但未走引擎目录）
-    for c in [
-        "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
-        "/opt/homebrew/opt/freecad/libexec/bin/freecadcmd",
-    ]:
+    for c in FREECAD_SYSTEM_DIRS:
         if Path(c).exists():
             return Path(c)
     return None

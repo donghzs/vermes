@@ -14,10 +14,20 @@ import pytest
 
 from vermes_cli.mfgcad.engine_setup import (
     FREECAD_ENGINE_MODULE,
+    FREECAD_SYSTEM_DIRS,
     _find_freecadcmd,
     ensure_freecad_ready,
     get_freecad_engine_dir,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_system_freecad(monkeypatch):
+    # 屏蔽系统 FreeCAD 发现，使测试不依赖「本机是否装了 FreeCAD」
+    # （本机确实装了 FreeCAD 1.1，否则 _find_freecadcmd 会返回系统路径破坏 absent 断言）
+    monkeypatch.setattr(
+        "vermes_cli.mfgcad.engine_setup.FREECAD_SYSTEM_DIRS", ()
+    )
 
 
 def _touch_freecadcmd(engine_dir: Path) -> Path:
@@ -37,6 +47,17 @@ def test_get_freecad_engine_dir_default(monkeypatch):
 def test_find_freecadcmd_present_and_absent(tmp_path):
     assert _find_freecadcmd(tmp_path / "none") is None
     fc = _touch_freecadcmd(tmp_path / "eng")
+    assert _find_freecadcmd(tmp_path / "eng") == fc
+
+
+def test_find_freecadcmd_falls_back_to_system_dirs(tmp_path, monkeypatch):
+    # 确定性覆盖系统发现分支：把 FREECAD_SYSTEM_DIRS 指向含 fake freecadcmd 的临时目录
+    sys_dir = tmp_path / "sysfreecad"
+    fc = _touch_freecadcmd(sys_dir)
+    monkeypatch.setattr(
+        "vermes_cli.mfgcad.engine_setup.FREECAD_SYSTEM_DIRS", (str(fc),)
+    )
+    # 引擎目录无 freecadcmd 时，应回退到系统目录（autouse fixture 已先置 ()，此处覆盖）
     assert _find_freecadcmd(tmp_path / "eng") == fc
 
 
