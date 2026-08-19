@@ -328,7 +328,7 @@ def _handle(req: dict) -> dict:
         return {"ok": False, "error": f"未知 cmd：{cmd}"}
     except Exception as e:  # §9：几何非法/版本差异 → ok=False + error，不破坏已有树
         import traceback as _tb
-        _sys.stderr.write(f"TRACEBACK: {_tb.format_exc()}\n")
+        sys.stderr.write(f"TRACEBACK: {_tb.format_exc()}\n")
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
