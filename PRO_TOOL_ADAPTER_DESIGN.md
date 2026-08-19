@@ -189,7 +189,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 | 风险 | 缓解 |
 |---|---|
 | FreeCAD headless PartDesign 某些操作需 recompute / 有版本差异（0.21 vs 1.0） | 引擎模块**锁版本**（catalog 固定 FreeCAD 版本 + sha256）；每个 edit-op 后 `doc.recompute()` |
-| `freecadcmd` 导入顺序坑 | bridge 用 `freecadcmd -c` 而非裸 `python -c import FreeCAD` |
+| `freecadcmd` 启动形式坑 | bridge 用 `freecadcmd <脚本路径>`（argv 透传）而非裸 `python -c import FreeCAD`；freecadcmd 对脚本文件是 argv 透传，非 `-c`（M1-2 已勘误，与 CLI-Anything `run_macro` 同模式，见 §13） |
 | FreeCAD 体量大、首装慢 | 走 P6/P7 按需下载，`ensure_freecad_ready` 显示进度 |
 | 编辑 op 在 FreeCAD 失败（几何非法） | `apply_edit_op` 返回 `ok=False` + error；前端标红该节点，不破坏已有树 |
 | 用户机器无 FreeCAD（BYO 场景） | `is_available()` 返回 False → 前端提示装引擎或走 build123d 兜底 |
@@ -199,7 +199,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 
 ## 10. M1 原型验证计划（1–2 周，给团队排期）
 
-1. **环境**：本机装 FreeCAD（锁 1.0），验证 `freecadcmd -c` 可 `import Part, PartDesign, Mesh`。
+1. **环境**：本机装 FreeCAD（锁 1.0），验证 `freecadcmd <脚本>` 可 `import Part, PartDesign, Mesh`（脚本文件 argv 透传，非 `-c`）。
 2. **bridge PoC**：`vermes_freecad_bridge.py` 读 stdin JSON → `import_step` → 回特征树 JSON；手工喂一个现有 STEP（如 leaf_texture_v3.step）跑通。
 3. **edit-op PoC**：发 `{op:"fillet", target:"edges_all", radius:2.0}` → 回更新特征树 + 导出 STL；肉眼/QA 比对圆角生效。
 4. **接线 web_server**：`POST /api/mfgcad/edit` + `GET .../feature-tree`；用 curl 跑通端到端（不依赖前端）。
@@ -230,3 +230,43 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 | `boss`/`rib` | `PartDesign::Pad` / `Additive` | 加强筋/司筒柱 |
 
 **QA 闭环（M1 起须含模具专项）**：拔模角≥下限、无未处理侧凹、壁厚达标、收缩率已补偿、可出 2D 工程图 + BOM。交付物 = 「STEP + 2D 图 + BOM + 模具规格」包，作为可计费服务交付物（契合 Vermes 垂直交付 agent 定位）。
+
+---
+
+## 13. 外部参考：CLI-Anything (HKUDS) 对照与 M1-6 hardening
+
+> 2026-08-19 用户分享，已 web 源码级核实（非二手描述）。定位：CLI-Anything 是「任意 GUI 软件 → Agent 原生 CLI」的**横向工具生成器**，与我们的垂直制造业壁垒互补，非竞争。
+
+### 13.1 核实事实
+- 真仓库 `HKUDS/CLI-Anything`（用户初给 `cli-anything/cli-anything` 为 **404**）。HKUDS = 香港大学数据智能实验室。
+- 许可证 **Apache 2.0**（仓库 badge + 页脚核实；网上有二手文误写 MIT，已排除）。Star 数网上乱写（34k/31.5k/2k 皆有），仓库页未显示确切值，**不当真**。
+- **已原生覆盖 FreeCAD**：`cli-anything-freecad` = 258 命令 / 17 组，覆盖全工作台（Part/Sketcher/PartDesign/Assembly/Mesh/TechDraw/Draft/FEM/CAM-CNC/Surface/Spreadsheet/Import/Export/Measure/Materials），无头导出 STEP/IGES/STL/OBJ/DXF/PDF/glTF/3MF；前置 `freecadcmd` 在 PATH（与 `engine_setup.get_freecad_engine_dir` / `_locate_freecadcmd` 查找点一致）。
+
+### 13.2 架构对照（我们的 M1 ↔ CLI-Anything）
+| 我们 M1 组件 | CLI-Anything 等价物 |
+|---|---|
+| `ProToolAdapter`(base.py 抽象契约) | 生成的 Click CLI 契约（每软件一套） |
+| `vermes_freecad_bridge.py`(持久无头子进程 + stdin JSON 行) | `cli-anything-freecad` + `<software>_backend.py`(每命令一次性 macro：temp .py → `freecadcmd <script>`) |
+| `FreeCADAdapter`(传输/解析，不 import FreeCAD) | CLI 调用层(`subprocess.run`) |
+| `EditOp` 词表(fillet/draft/pattern/boolean/scale/split) | Part/PartDesign 命令组（258 条，广得多） |
+| `.FCStd` = 会话真相源 + 可回滚（§5） | `--json -p proj.json` 项目文件（JSON 状态持久化，无状态每命令） |
+| **mold-ready 领域校验（拔模/分型/收缩率/壁厚/公差/BOM）** | **没有**（纯横向工具） |
+| P7 catalog + `ensure_freecad_ready`（重引擎分发） | `cli-hub install freecad`（它的包管理器，独立想到一块） |
+
+### 13.3 结论
+- **非威胁，是互补**：它横向生成工具，我们壁垒在垂直（mold-ready + 自有注塑厂飞轮）。连「重引擎分发」都和 P7 独立想到了一块。
+- 保留已锁定的 M1-1~M1-5 手搓桥（领域逻辑坐其上），把 CLI-Anything 当 M1-6 无头传输层 hardening 参考，**不替换为它的 harness**（避免返工 + 它在我们的垂直层之上无增量）。
+- **设计验证**：CLI-Anything 用「每命令一次性 macro + `proj.json` 文件态」；我们是**持久桥进程 + .FCStd 会话真相源**。持久桥更契合 §5「会话=特征树 + 可回滚」，故 M1-6 保持持久桥设计。
+
+### 13.4 M1-6 hardening 清单（源自 `cli-anything-freecad/utils/freecad_backend.py` 实战模式）
+- **H1 macOS 引擎发现**：`freecad_adapter._locate_freecadcmd()` 增补 `/Applications/FreeCAD.app/Contents/MacOS/FreeCADCmd`（及 `FreeCAD` GUI 二进制）；支持 `FREECAD_PATH` 环境变量覆盖。`brew install --cask freecad` 装到 /Applications，缺此路径 M1-6 会误报不可用。（CLI-Anything `find_freecad` 同模式：env → which → 各 OS 标准路径）
+- **H2 导出后文件存在性校验**：`vermes_freecad_bridge._export` 导出后 `assert os.path.isfile(out)`，缺失则 `ok=False`（CLI-Anything `export_headless` 同律：**「不要因为退出码 0 就信导出成功」**——对齐用户「测试全绿≠功能可用」纪律）。
+- **H3 子进程超时**：bridge 调 freecadcmd 加 `timeout`（CLI-Anything 默认 120s），防几何卡死挂起。
+- **H4 错误归一化**：freecadcmd 缺失/超时返回 `{ok:False, ...}` 而非抛（CLI-Anything `_run` 同律），已被 `adapter.is_available()` 优雅降级吸收。
+- 以上 H1–H4 为 M1-6 真机待实施项（用户机器跑），本回合仅落文档，不改代码（避免无真机验证的改动）。
+
+### 13.5 下一个后端策略（最高 ROI 点）
+- 我们 v2 战略要接 Blender/Fusion/SolidWorks。CLI-Anything 已有 `cli-anything-blender`(208 命令) 等现成 harness —— 届时**直接当 `ProToolAdapter` 后端**，省掉手搓桥成本。即「工具无关」扩张走「现成 harness 适配」而非「从零写桥」。
+
+### 13.6 「比 HuggingFace Agents 更适合跨软件流程」纠正
+- HF Agents 是 **agent 运行时（编排器）**，CLI-Anything 是**工具生成器**，两层东西。准确说法：接任意 GUI 软件时比手搓 HF tool wrapper 省力，互补非替代。
