@@ -77,6 +77,9 @@ def _find_tool_body(doc, tool_name: str):
 
 
 # 特征类型 → 语义 kind（供前端渲染 + agent 多轮锚定）
+# Part::Feature 几何操作包装的参数存储（obj.Name → {key: {params}}）
+_FEATURE_PARAMS: dict[str, dict] = {}
+
 _KIND_MAP = {
     "PartDesign::Body": "body",
     "PartDesign::Fillet": "fillet",
@@ -114,15 +117,46 @@ def _extract_params(obj, tid: str) -> dict:
             p["type"] = str(getattr(obj, "Type", ""))
         elif tid == "Part::Scale":
             p["factor"] = float(getattr(obj, "Scale", 1.0))
+        # Part::Feature 几何操作包装：参数存在全局 _FEATURE_PARAMS
+        if tid == "Part::Feature":
+            fp = _FEATURE_PARAMS.get(obj.Name)
+            if fp:
+                for _fv in fp.values():
+                    p.update(_fv)
     except Exception:
         pass
     return {k: v for k, v in p.items() if v is not None}
 
 
+def _infer_kind(obj) -> str:
+    """对 Part::Feature 等非 PartDesign 类型，按 Label 语义推断 kind。"""
+    tid = obj.TypeId
+    if tid in _KIND_MAP:
+        return _KIND_MAP[tid]
+    # Part::Feature 是几何操作的通用包装，按 Label 推断语义 kind
+    if tid == "Part::Feature":
+        label = (obj.Label or "").lower()
+        if "fillet" in label or "round" in label:
+            return "fillet"
+        if "chamfer" in label:
+            return "chamfer"
+        if "draft" in label:
+            return "draft"
+        if "pattern" in label or "array" in label:
+            return "pattern"
+        if "boolean" in label or "cut" in label or "fuse" in label:
+            return "boolean"
+        if "scale" in label:
+            return "scale"
+        if "split" in label or "slice" in label:
+            return "split"
+    return "feature"
+
+
 def _extract_feature_tree(doc) -> list:
     nodes = []
     for o in doc.Objects:
-        kind = _KIND_MAP.get(o.TypeId, "feature")
+        kind = _infer_kind(o)
         params = _extract_params(o, o.TypeId)
         nodes.append({"id": o.Name, "kind": kind, "label": o.Label, "params": params})
     return nodes
@@ -165,6 +199,7 @@ def _apply_edit_op(doc, op: dict):
         fillet_shape = shape.makeFillet(radius, edge_list)
         f = doc.addObject("Part::Feature", "Fillet")
         f.Shape = fillet_shape
+        _FEATURE_PARAMS[f.Name] = {"fillet": {"radius": radius}}
         doc.recompute()
 
     elif name == "draft":
