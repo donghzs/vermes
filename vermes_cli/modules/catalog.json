@@ -117,44 +117,6 @@
       "homepage": "https://github.com/donghzs/vermes-mod-scholarforge",
       "description": "AI 驱动的学术论文写作全链路",
       "recommended": true
-    },
-    {
-      "name": "vermes-mod-freecad-engine",
-      "display_name": "FreeCAD 引擎（专业精修后端）",
-      "latest": "0.1.0",
-      "vermes_min": "2.3.9",
-      "code_asset": "",
-      "code_sha256": "",
-      "size_code": 0,
-      "assets": [
-        {
-          "id": "freecadcmd",
-          "label": "FreeCAD 引擎（freecadcmd）",
-          "target": "engines/freecad",
-          "release_asset": "vermes-mod-freecad-engine-0.1.0.tar.gz",
-          "url": "",
-          "sha256": "",
-          "size": 0,
-          "optional": false
-        }
-      ],
-      "provides_tools": [],
-      "keywords": [
-        "FreeCAD",
-        "CAD",
-        "精修",
-        "特征树",
-        "STEP",
-        "模具",
-        "注塑",
-        "制造",
-        "PartDesign",
-        "参数化"
-      ],
-      "repository": "donghzs/vermes-mod-freecad-engine",
-      "homepage": "https://github.com/donghzs/vermes-mod-freecad-engine",
-      "description": "ProToolAdapter 的 FreeCAD 后端引擎（headless freecadcmd），承载 STEP→Body / 编辑翻译 / 特征树提取，专业精修叠加层",
-      "recommended": false
     }
   ]
 }

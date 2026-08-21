@@ -157,12 +157,16 @@ doc.recompute()
 
 ---
 
-## 7. 引擎分发（D5 · 复用 P6/P7）
+## 7. 引擎接入（discovery-first · 取代原 §7 分发方案）
 
-FreeCAD 体量大（~1GB），不当塞基础 DMG：
-- 做成 `vermes-mod-freecad-engine` 重资产模块，经 P7 catalog 注册（code_sha256 + 下载 URL）。
-- `engine_setup.py` 加 `ensure_freecad_ready(auto_setup)`：查 `freecadcmd` 是否在 `~/.vermes/engines/freecad/` → 否则经模块系统下载/解包（复用 `provision_engine` + `safe_extract` 模式）。
-- 前端 ModuStore 显示「FreeCAD 引擎（按需下载）」，点装即装。
+> **范式变更（commit `47825b405`）**：原「~2.5GB 重资产分发」方案已废弃。改为 **discovery-first**——用户自装 FreeCAD（成熟开源软件，易获取），Vermes 自动发现并连接，**不做自动下载分发**。此范式同时确立未来 ProToolAdapter 后端（SolidWorks/Fusion/Blender/Catia）的统一接入方式：用户自装，Vermes 发现。
+
+FreeCAD 发现路径（`engine_setup._find_freecadcmd`，按优先级）：
+1. 引擎目录 `~/.vermes/engines/freecad/freecadcmd`（用户手动放入，可选）
+2. 系统常见路径：macOS `/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd`、Linux `/usr/bin/freecadcmd`、Windows `C:\Program Files\FreeCAD*\bin\freecadcmd.exe`
+3. `PATH` 查找（`shutil.which("freecadcmd")`）
+
+缺失时 `ensure_freecad_ready` 返回**平台感知安装指引**（macOS `brew install --cask freecad` / DMG；Windows winget / 安装包；Linux `apt`/`dnf`/AppImage），不尝试下载。`auto_setup` 参数保留但已 deprecated（ignored）。
 
 ---
 
@@ -178,7 +182,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 | `frontend/src/components/ThreeDStudio.vue` | **加** 编辑面板 + 「在 FreeCAD 打开」按钮 |
 | `vermes_cli/mfgcad/tools.py` | **加** `mfg_open_in_freecad`/`mfg_edit_feature`/`mfg_export_fcstd`（与既有 18 工具同文件注册，无独立 toolsets.py） |
 | `vermes_cli/mfgcad/tools.py` | **加** 上述 handler（agent 也能调 edit-op） |
-| `vermes-mod-freecad-engine/` | **新增** 模块仓（module.yaml + build_engine_asset.py）并入 P7 catalog ✅ M1-5 已落地（catalog 条目 pending，url/sha256 待 M1-6 真机构建回填） |
+| `vermes-mod-freecad-engine/`（**已废弃 · `47825b405` 清理**） | M1-5 曾建重资产模块仓 + P7 catalog 条目做 ~2.5GB 自动分发；discovery-first 范式下该分发路径废弃，模块仓与 catalog 条目已删除（避免空 url 条目致模块商店「安装」报「资产没有 url」）。FreeCAD 改为用户自装 + Vermes 自动发现（见 §7）。 |
 
 > 现有 `mfg_text_to_cad` / build123d / MAC 后端**全部保留**作「快速粗模」兜底（Track A）；FreeCAD 是「专业精修」叠加层。
 
@@ -188,9 +192,9 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 
 | 风险 | 缓解 |
 |---|---|
-| FreeCAD headless PartDesign 某些操作需 recompute / 有版本差异（0.21 vs 1.0） | 引擎模块**锁版本**（catalog 固定 FreeCAD 版本 + sha256）；每个 edit-op 后 `doc.recompute()` |
+| FreeCAD headless PartDesign 某些操作需 recompute / 有版本差异（0.21 vs 1.1） | 用户自装 FreeCAD（发现路径见 §7），每个 edit-op 后 `doc.recompute()`；版本差异由 `_infer_kind`/几何取形兜底（见 §13.4 H7） |
 | `freecadcmd` 启动形式坑 | FreeCAD 1.1 把脚本路径当**模块导入**而非执行，故 bridge 用 `freecadcmd -c "exec(open(bridge, encoding='utf-8').read())"` 强制脚本执行；旧版/CLI-Anything `run_macro` 用 `freecadcmd <脚本>` argv 透传。统一**不用**裸 `python -c import FreeCAD`。另设 `PYTHONUTF8=1` 防中文注释 ascii 报错（M1-6 真机，见 §13.4 H5） |
-| FreeCAD 体量大、首装慢 | 走 P6/P7 按需下载，`ensure_freecad_ready` 显示进度 |
+| FreeCAD 体量大、首装慢 | **discovery-first**：用户自装（brew/DMG/winget/apt/dnf），Vermes 自动发现；不做分发下载（见 §7 范式变更 `47825b405`） |
 | 编辑 op 在 FreeCAD 失败（几何非法） | `apply_edit_op` 返回 `ok=False` + error；前端标红该节点，不破坏已有树 |
 | 用户机器无 FreeCAD（BYO 场景） | `is_available()` 返回 False → 前端提示装引擎或走 build123d 兜底 |
 | 特征树 JSON 与 .FCStd 不一致 | 以 .FCStd 为真，会话加载时 bridge 重新提取特征树覆盖 JSON |
@@ -205,7 +209,7 @@ FreeCAD 体量大（~1GB），不当塞基础 DMG：
 4. **接线 web_server**：`POST /api/mfgcad/edit` + `GET .../feature-tree`；用 curl 跑通端到端（不依赖前端）。
 5. **前端面板**：ThreeDStudio 加 fillet 滑块 → 真机点一下出圆角。
 6. **历史根治验证**：连开 5 文件→删 2→剩 3 且 .FCStd 同步删。
-7. **引擎分发 PoC**：`ensure_freecad_ready` 从模块下载一次（可先用本地 tarball 模拟 URL）。
+7. ~~**引擎分发 PoC**~~（已废弃）：原「`ensure_freecad_ready` 从模块下载」方案被 discovery-first 取代（`47825b405`），不再做分发。改为验证用户自装 FreeCAD 后 `is_available()` 自动发现。
 
 > 每个 PoC 都**真机跑**，不靠单测断言（参考本轮 STEP f-string bug 教训：动态脚本 bug 单测覆盖不到）。
 
