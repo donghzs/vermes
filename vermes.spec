@@ -20,6 +20,7 @@ block_cipher = None
 datas = [
     ('vermes_cli/web_dist', 'vermes_cli/web_dist'),
     ('vermes_cli/blueprints', 'vermes_cli/blueprints'),
+    ('vermes_cli/experts_catalog.json', 'vermes_cli'),
     ('vermes_cli/update_manager.py', 'vermes_cli'),
     ('migrations', 'migrations'),
     ('locales', 'locales'),
@@ -195,6 +196,19 @@ elif sys.platform == 'darwin':
     hiddenimports.extend([
         # macOS-specific if needed
     ])
+
+# L2 adapters（SoftwareAdapter 薄插槽 + 发现层 + 信任闸门 + 推荐层）
+hiddenimports.extend([
+    'vermes_cli.adapters',
+    'vermes_cli.adapters.software_adapter',
+    'vermes_cli.adapters.discovery',
+    'vermes_cli.adapters.discovery_registry',
+    'vermes_cli.adapters.trust_gate',
+    'vermes_cli.adapters.recommend',
+    'vermes_cli.adapters.bootstrap',
+    'vermes_cli.adapters.llm_chooser',
+    'vermes_cli.adapters.api',
+])
 
 # Main entry point
 a = Analysis(
