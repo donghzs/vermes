@@ -693,10 +693,11 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
         padding=(0, 2),
     )
 
-    console.logger.info()
+    _print = getattr(console, 'logger', None) or console.print
+    _print()
     term_width = shutil.get_terminal_size().columns
     if term_width >= 95:
         _logo = _bskin.banner_logo if _bskin and hasattr(_bskin, 'banner_logo') and _bskin.banner_logo else VERMES_AGENT_LOGO
-        console.logger.info(_logo)
-        console.logger.info()
-    console.logger.info(outer_panel)
+        _print(_logo)
+        _print()
+    _print(outer_panel)

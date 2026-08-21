@@ -198,17 +198,7 @@ elif sys.platform == 'darwin':
     ])
 
 # L2 adapters（SoftwareAdapter 薄插槽 + 发现层 + 信任闸门 + 推荐层）
-hiddenimports.extend([
-    'vermes_cli.adapters',
-    'vermes_cli.adapters.software_adapter',
-    'vermes_cli.adapters.discovery',
-    'vermes_cli.adapters.discovery_registry',
-    'vermes_cli.adapters.trust_gate',
-    'vermes_cli.adapters.recommend',
-    'vermes_cli.adapters.bootstrap',
-    'vermes_cli.adapters.llm_chooser',
-    'vermes_cli.adapters.api',
-])
+hiddenimports.extend(collect_submodules('vermes_cli.adapters'))
 
 # Main entry point
 a = Analysis(
