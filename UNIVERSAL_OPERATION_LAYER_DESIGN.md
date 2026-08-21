@@ -5,7 +5,7 @@
 > - [`MODELING_QUALITY_ROADMAP.md`](./MODELING_QUALITY_ROADMAP.md) — **制造业探索场内部路线图**，仍是 Vermes 的一手演示 / 飞轮验证，但不再是产品定义
 > - 锚定文章：[一切皆插件 · DeepSeek harness 哲学](https://mp.weixin.qq.com/s/-zYhHLInUKzEWOrbA5mM2A)
 >
-> 状态：**v1.5（战略基线 + 评审修订 + §13 spike 真实数据 + §14 发现层与信任闸门补完）**。本文件是战略北极星，不规定具体代码行号；具体实现以本文件为基线展开。
+> 状态：**v1.6（战略基线 + 评审修订 + §13 spike + §14 发现层/信任闸门 + §15 L2a/L2b 接口草案）**。本文件是战略北极星，不规定具体代码行号；具体实现以本文件为基线展开。
 > 读者：Vermes 团队 + 后续接入任意专业软件的后端作者。
 
 ---
@@ -221,20 +221,20 @@ class SoftwareAdapter:
 2. 跑 `--json` 确认 258 命令可枚举，**并统计其中 `--json` 输出稳定可内省的比例**（若大量命令返回非结构化文本，L2「自动注册」退化为手工适配 → 触发 §9 退化风险）。
 3. 选 5–10 个典型命令做**端到端链路验证**：参数传入 → CLI 执行 → `--json` 解析 → Vermes 工具返回。至少覆盖 1 个几何类（fillet/draft）、1 个 IO 类（import/export）、1 个查询类（feature-tree）。
 4. 写最小 `SoftwareAdapter.discover_tools()` 把验证过的命令挂进 `tools/registry`，跑通 1 条 LLM → 工具 → CLI → JSON 的完整闭环。
-5. **可用性阈值判定**：
-   - 若 **≥ 80%** 命令端到端可用 → 杠杆成立，L2 保持「薄」，手搓 18 工具进入**冻结**（§6）。
-   - 若 **< 80%** → L2 撑不住、需补垂直逻辑（回到老路）→ **暂停通用化**，先修 L3 覆盖或换生成器，回 §9 复盘。
+5. **可用性阈值判定（2026-08-21 用户修正）**：
+   - 不采用「≥80% 端到端可用」粗口径——273 命令里 80% 全通对「底板架构」无意义（B 桶门禁优先级最低，它只验证「这块积木能用多少格」，不影响底板）。
+   - **改为「5 个典型链路全通 = 可发布」**：建模 → 倒角(fillet) → 抽壳(thickness/shell) → 导出 STEP → 装配(assembly)。5 条全通即证明薄插槽 + L3 链路成立，手搓 18 工具进入**冻结**（§6）。
+   - 该验证随你机器装 FreeCAD **顺手验**，不必单独跑一轮；若 5 条中有 ≥1 条不达预期 → 局部 fallback 到手搓 18 工具对应项（§6 冻结安全网），不触发「暂停通用化」。
 6. **维护依赖检查**：确认 CLI-Anything 仓库活跃度；若已停更，L3 将变维护负担（与「杠杆」初衷矛盾）→ 记录风险，评估自维护 fork 成本。
 
-### 8.2 随后（P1-b 第二域证明 — 选型重议，评审修正）
+### 8.2 随后（P1-b 第二域证明 — **选型已拍板：Blender**）
 
 > 评审指出：第二域不只是验证技术通用性，更是**第一次对外讲故事的素材**，选型要看叙事强度。
 
 - **LibreOffice 叙事偏弱**：办公文档操作已是成熟红海（Notion AI / Google Workspace / WPS AI），Vermes 差异化不明显——**不首选**。
-- **建议候选（按叙事强度）**：
-  - **Blender（3D 创作）**：与 FreeCAD 同属 3D 但场景完全不同（设计 vs 创作），叙事最强——「同一个底座，设计/创作/办公都能接」。
-  - **VS Code（IDE 操作）**：程序员群体直接感知「我的编辑器也能被 Vermes 操作」，技术口碑传播快。
-- 选型标准：① CLI-Anything 已原生覆盖；② 与 FreeCAD 形成「跨场景」对比；③ 对外故事有记忆点。最终选型待你拍板（见 §10）。
+- **VS Code（IDE）**：程序员群体能感知「编辑器被操作」，但对你目标用户共鸣弱——**不首选**。
+- **✅ Blender（3D 创作）— 已拍板**：与 FreeCAD 同属 3D 但场景完全不同（设计 vs 创作），**一个底座接住两个 3D 子域**，叙事穿透力最强。验证动作：装 `cli-anything-blender` → `discover_tools()` 内省 → 证明薄插槽（§5）通用性（非 3D 形状）。
+- 选型标准：① CLI-Anything 已原生覆盖；② 与 FreeCAD 形成「跨场景」对比；③ 对外故事有记忆点。Blender 三项全中。
 
 ### 8.3 验收项（你机器，演示飞轮）
 - #1 前端真机对接、#5 tessellate 目视、#4-Gcode 真切片——随参考实现 A 一并 tick。
@@ -245,8 +245,8 @@ class SoftwareAdapter:
 
 | 风险 | 说明 | 缓解 |
 |---|---|---|
-| **#1 CLI-Anything 成熟度（最高优先级）** | Apache 2.0 ≠ 生产就绪。① FreeCAD 1.1.x API 兼容差距（它绑定哪个版本？）② 258 命令里多少 `--json` 稳定可内省（否则 L2 自动注册退化成手工适配）③ 维护依赖（若停更，L3 变你的维护负担，与杠杆初衷矛盾） | §8.1 spike 升级为**半天级硬门槛**：验 5–10 端到端链路 + 设 **≥80% 可用性阈值**；不达标则暂停通用化、先修 L3 覆盖或换生成器 |
-| **#2 L2 退化（薄→厚）** | 若 L3 覆盖不足（<80% 命令可用），L2 被迫补垂直逻辑 → 回到老路 | spike 阈值守门；domain_vocab 硬护栏（§5.3：v1 不做、全局 ≤50、纯映射禁逻辑） |
+| **#1 CLI-Anything 成熟度（最高优先级）** | Apache 2.0 ≠ 生产就绪。① FreeCAD 1.1.x API 兼容差距（它绑定哪个版本？）② 258 命令里多少 `--json` 稳定可内省（否则 L2 自动注册退化成手工适配）③ 维护依赖（若停更，L3 变你的维护负担，与杠杆初衷矛盾） | §8.1 spike 已执行（§13）：成熟度/--json 两项风险实测解除；阈值改为**5 典型链路全通=可发布**（§8.1 step5），不采 80% 粗口径；不达标则局部 fallback 到冻结的 18 工具（§6），不暂停通用化 |
+| **#2 L2 退化（薄→厚）** | 若 L3 覆盖不足，L2 被迫补垂直逻辑 → 回到老路 | 阈值守门（5 链路）；domain_vocab 硬护栏（§5.3：v1 不做、全局 ≤50、纯映射禁逻辑）；发现层 L2a 路由（§15）把「flat 注册表噪声选择」前置消化，进一步防退化 |
 | **#3 生态冷启动（Android 剧本前提缺失）** | 文章用 Android 类比（Google 不赢硬件、赢在让 app 跑在 Android 上），但 Android 有 10 亿+ 用户；Vermes 的 catalog 目前是空的，P7 + cli-hub 对齐方向对，但**冷启动是真实问题** | 见 **§12 积木来源**：冷启动的解不是顶部灌水，而是**用户即生态**——不同用户按各自行业搭不同积木喂回底座，叠加 §11.1 的自适应成长家底，形成供给侧飞轮；制造业探索场只是其中一个活案例 |
 | 薄插槽稳定性 | 透传 CLI 出错传播 / 版本漂移 | `invoke` 统一捕获 stderr + 结构化错误；CLI 版本进 catalog 记录 |
 | 词汇表是否必要 | 模型聪明后可能冗余 | 定为可选降级辅助（§5.3），非架构必需，v1 不做 |
@@ -258,9 +258,9 @@ class SoftwareAdapter:
 ## 10. 待你拍板的决策点
 
 1. **（已定调）自研 vs 杠杆 CLI-Anything** → 你已明确「能不重造轮子就不重造」，定为**杠杆**。
-2. **第二域选型（P1-b）**：LibreOffice 叙事弱，建议 **Blender（设计/创作同属 3D，叙事最强）** 或 **VS Code（IDE，程序员直接感知）**；标准=CLI-Anything 已覆盖 + 跨场景对比 + 对外故事有记忆点。待你拍板。
+2. **第二域选型（P1-b）** → **✅ 已拍板：Blender（3D 创作）**。理由：FreeCAD（设计）+ Blender（创作）同属 3D 但场景完全不同，一个底座接住两个 3D 子域，叙事穿透力最强；VS Code 对你目标用户共鸣弱、LibreOffice 红海，均不选。
 3. **手搓 18 工具处置**：定调为**冻结**（deprecated + fallback 安全网），非删代码、非彻底退休。
-4. **CLI-Anything spike 阈值与 fallback 触发**：是否认同 **≥80% 端到端可用** 作为杠杆成立门槛？不达标时的降级路径（修 L3 / 换生成器 / 局部补 L2）待你确认。
+4. **CLI-Anything spike 阈值** → **✅ 已拍板：5 典型链路全通 = 可发布**（建模→倒角→抽壳→导出 STEP→装配），不采 80% 粗口径；B 桶门禁优先级最低，随你机器装 FreeCAD 顺手验，不单独跑轮。
 5. **#8 M0 快赢取舍**：A1+A2 提示词 / C1 PBR 的范围，仍待你定。
 
 ---
@@ -332,10 +332,10 @@ GitHub API 实测：`HKUDS/CLI-Anything`，Apache-2.0，**最后 push 2026-08-13
 新增 `vermes_cli/adapters/software_adapter.py`（L2 唯一新增代码面）。`register()` 实跑**成功注册 273 工具进 `tools/registry`**（toolset=`freecad_adapter`），零报错；v1 强制 `domain_vocab={}`。
 
 ### 13.6 阈值判定（§8.1 step5）
-沙箱无 FreeCAD，**无法测「≥80% 端到端执行」阈值**；但用户最担心的两项风险已实测解除（成熟度 / --json）。薄插槽 + 状态层沙箱已端到端跑通 → **杠杆成立，L2 保持「薄」**。几何执行验证作为 B 桶门禁交用户机器。
+沙箱无 FreeCAD，**无法测几何端到端**；但用户最担心的两项风险已实测解除（成熟度 / --json），且阈值口径已修正为 **「5 典型链路全通 = 可发布」**（§8.1 step5，用户 2026-08-21 定调），不采 80% 粗口径。薄插槽 + 状态层沙箱已端到端跑通 → **杠杆成立，L2 保持「薄」**。几何 5 链路验证作为 **B 桶门禁（最低优先级）**，随用户机器装 FreeCAD 顺手验。
 
 ### 13.7 结论
-L3 轮子成熟、L2 自动注册 273 工具、状态层可跑 → 手搓 18 工具进入**冻结**（§6）。下一步：B 桶几何验证 + 第二域选型（§8.2）。
+L3 轮子成熟、L2 自动注册 273 工具、状态层可跑 → 手搓 18 工具进入**冻结**（§6）。下一步优先级（2026-08-21 用户定调）：**B 桶门禁最低**（随你机器顺手验，不单独跑轮）→ **L2a/L2b 接口草案现在开工**（与 FreeCAD 几何执行无依赖）→ **第二域 Blender spike**（验证薄插槽通用性，用户同步查 CLI-Anything 是否有 Blender 覆盖）。
 
 ---
 
@@ -394,12 +394,75 @@ L2 薄插槽（已交付，273 工具注册）  →  机器索引就位
 
 ---
 
-> 文档版本：v1.5（战略基线 · 评审修订 · §13 spike 真实数据 · §14 发现层与信任闸门补完）
-> 起草依据：用户战略转向指令（2026-08-21）+ 微信文章锚定 + CLI-Anything 实核 + Vermes 现有底座源码核实 + 沙箱 spike 实测 + v1.3 积木池量级跃迁推论。
-> 评审修订：spike 升级硬门槛(已执行) / L2 词汇表硬护栏 / 18 工具冻结非退休 / 第二域选型重议 / Android 冷启动前提 / 积木来源=全行业专业软件+用户生态 / **§14 发现层（第二薄层）+ 信任闸门（第三薄层）+ ∞ 上限 qualification**。
+## 15. L2a / L2b 接口形态草案（2026-08-21 开工）
+
+> 优先级（用户定调）：B 桶门禁最低 → **L2a/L2b 现在开工**（与 FreeCAD 几何执行无依赖）→ 第二域 Blender spike。两层均守「薄」，工程量可控。
+
+### 15.1 设计约束（守「薄」）
+- 不写垂直逻辑；L2a 只做路由/索引，L2b 只做权限/闸门。
+- 与现有 `SoftwareAdapter`（§5, `software_adapter.py`）契约对齐：消费 `discover_tools()` 注册结果，**不改造 L2**。
+- 退化防御：L2a 把「273×N 命令 flat 选择」前置成「toolset 粗筛 → tool 细选」，直接消化 argmax 无门槛反模式（§14.2）。
+
+### 15.2 L2a 发现层（两阶段路由）
+
+**阶段一 intent→toolset 粗筛（无 LLM，纯索引）**
+
+```python
+@dataclass
+class CapabilityIndex:
+    toolset: str                 # 例 "freecad_adapter"
+    domain: str                  # 例 "3d"
+    operation_mechanism: str     # cli_generated / gui_automation / official_api
+    intent_keywords: list[str]   # 倒排索引源
+    tools: list[ToolSummary]     # 该 toolset 内工具摘要
+
+def route_toolset(intent: str, index: list[CapabilityIndex]) -> list[ToolsetRef]:
+    """基于 intent_keywords 倒排 + domain 匹配，返回候选 toolset（可多命中）。无 LLM。"""
+```
+
+**阶段二 LLM tool_choice 细选（有 LLM）**
+
+```python
+def select_tool(tools: list[ToolSummary], intent: str, ctx) -> ToolChoice:
+    """候选 toolset 内的 tools 以 OpenAI tool_choice 形态交 LLM 选 1 个；
+    带最低相关阈值，不达阈值返回 NEEDS_CLARIFY（不静默选噪声）。"""
+```
+
+与 §14.2 一致：LLM-facing 发现 = 能力索引 + 路由 + 最低阈值，非 App Store 排行榜。
+
+### 15.3 L2b 信任闸门（权限声明 + 执行前 check）
+
+```python
+@dataclass
+class PermissionSpec:
+    reads_fs: bool
+    writes_fs: bool
+    network: bool
+    exec_external: bool
+    sandbox: str                 # "none" | "container" | "seccomp"
+    requires_explicit_consent: bool
+
+def check(spec: PermissionSpec, ctx) -> GateResult:
+    """执行前调用，返回 ALLOW / DENY / ASK_USER；DENY 带原因，ASK_USER 触发用户确认 UI。"""
+```
+
+- 每个 adapter / tool 在 `discover_tools()` 注册时附带 `PermissionSpec`。
+- **默认信任分级**：`cli_native`（纯 CLI 透传）= 低权信任：`exec_external=true` 但 `reads_fs/writes_fs` 受限、`network=false`、`requires_explicit_consent=false`；`sdk_bridge` 类（需加载外部 SDK / 长驻进程）= 默认 `requires_explicit_consent=true`。
+- 闸门位置：拦在 `SoftwareAdapter.invoke()` 之前（§5），**默认 deny-unless-declared**。
+
+### 15.4 与现有代码的关系
+- `software_adapter.py` 的 `invoke()` 当前无脑 `subprocess.run()`（§14.3 指出的生产缺口）→ L2b 在 `invoke()` 入口插入 `TrustGate.check()`。
+- L2a 的 `CapabilityIndex` 由 `discover_tools()` 注册时顺带 build（不改 L2 契约，仅扩展注册元数据）。
+
+### 15.5 开工顺序与验收
+1. **L2a**：`CapabilityIndex` 结构 + `route_toolset` 纯索引（无 LLM 可单测）+ `select_tool` 接 `runtime_provider` 的 LLM。
+2. **L2b**：`PermissionSpec` + `TrustGate.check` + 在 `invoke()` 插入（先 `cli_native` 默认 ALLOW，验证不阻断现有 273 工具）。
+3. **验收**：FreeCAD 273 + Blender N 双域下，intent「给这个盒子倒角 2mm」→ 粗筛到 `freecad_adapter` → LLM 细选 `fillet-3d` → `invoke` 前 `TrustGate` ALLOW（cli_native）→ 执行。
+
+---
+
+> 文档版本：v1.6（战略基线 · 评审修订 · §13 spike · §14 发现层+信任闸门 · §15 L2a/L2b 接口草案）
+> 起草依据：用户战略转向指令（2026-08-21）+ 微信文章锚定 + CLI-Anything 实核 + Vermes 现有底座源码核实 + 沙箱 spike 实测 + v1.3 积木池量级跃迁推论 + 2026-08-21 优先级定调。
+> 评审修订：spike 硬门槛(已执行) / L2 词汇表硬护栏 / 18 工具冻结 / 第二域=**Blender**(拍板) / Android 冷启动 / 积木来源=软件宇宙+用户生态 / §14 发现层+信任闸门 / **§15 L2a 两阶段路由 + L2b 信任闸门接口草案** / 阈值改「5 链路全通=可发布」(弃 80% 粗口径)。
 > 配套产物：`SPIKE_CLI_ANYTHING_2026-08-21.md`（spike 详细证据）+ `vermes_cli/adapters/software_adapter.py`（L2 薄插槽实现）。
-> 下一步：B 桶几何执行验证（用户机器）+ 拍板 §10 决策点（第二域选型 / ≥80% 阈值口径）+ §14 薄层①/② 何时开工。
-> 起草依据：用户战略转向指令（2026-08-21）+ 微信文章锚定 + CLI-Anything 实核 + Vermes 现有底座源码核实 + 沙箱 spike 实测。
-> 评审修订：spike 升级硬门槛(已执行) / L2 词汇表硬护栏 / 18 工具冻结非退休 / 第二域选型重议 / Android 冷启动前提 / 积木来源=全行业专业软件+用户生态。
-> 配套产物：`SPIKE_CLI_ANYTHING_2026-08-21.md`（spike 详细证据）+ `vermes_cli/adapters/software_adapter.py`（L2 薄插槽实现）。
-> 下一步：B 桶几何执行验证（用户机器）+ 拍板 §10 决策点（第二域选型 / ≥80% 阈值口径）。
+> 下一步：L2a/L2b 接口草案→实现（沙箱可做）+ 第二域 Blender spike（用户同步查 CLI-Anything 是否有 Blender 覆盖）+ B 桶 5 链路顺手验（用户机器，最低优先级）。
