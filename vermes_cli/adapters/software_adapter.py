@@ -305,11 +305,20 @@ class SoftwareAdapter:
         return count
 
     def _make_handler(self, tool: CLITool) -> Callable:
-        """返回一个接受 kwargs、调用 CLI 并返回 dict 的闭包。"""
+        """返回一个符合注册表契约 ``handler(args, **kw) -> str`` 的闭包。
+
+        与 tools/registry 的 handler 约定对齐：
+        - 接收位置参数 ``args``（工具入参 dict）+ 透传 ``**kw``。
+        - ``kw`` 中的 ``ctx``（由 model_tools.handle_function_call 注入）透传给
+          adapter.invoke()，使 L2b 信任闸门能消费会话上下文（session_id 等）。
+        - 返回 JSON 字符串（handler 契约），而非裸 dict。
+        """
         adapter = self
 
-        def _handler(**kwargs) -> dict:
-            return adapter.invoke(tool, kwargs)
+        def _handler(args: dict, **kwargs) -> str:
+            ctx = kwargs.get("ctx")
+            result = adapter.invoke(tool, args or {}, ctx=ctx)
+            return json.dumps(result, ensure_ascii=False)
 
         return _handler
 

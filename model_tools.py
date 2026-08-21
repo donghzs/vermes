@@ -986,6 +986,18 @@ def handle_function_call(
         # to wrap every tool manually.  We use monotonic() so the value is
         # unaffected by wall-clock adjustments during the call.
         _dispatch_start = time.monotonic()
+        # L2 ctx：把会话上下文作为 kwarg 注入 registry.dispatch，供
+        # SoftwareAdapter.invoke() 的 L2b 信任闸门（及未来 ASK_USER 同意流）消费。
+        # 现有 handler 均为 handler(args, **kw) 契约、忽略未知 kw，向后兼容。
+        ctx = {
+            "session_id": session_id,
+            "task_id": task_id,
+            "tool_call_id": tool_call_id,
+            "user_task": user_task,
+            "enabled_tools": enabled_tools,
+            "enabled_toolsets": enabled_toolsets,
+            "disabled_toolsets": disabled_toolsets,
+        }
         if function_name == "execute_code":
             # Prefer the caller-provided list so subagents can't overwrite
             # the parent's tool set via the process-global.
@@ -994,12 +1006,14 @@ def handle_function_call(
                 function_name, function_args,
                 task_id=task_id,
                 enabled_tools=sandbox_enabled,
+                ctx=ctx,
             )
         else:
             result = registry.dispatch(
                 function_name, function_args,
                 task_id=task_id,
                 user_task=user_task,
+                ctx=ctx,
             )
         duration_ms = int((time.monotonic() - _dispatch_start) * 1000)
 

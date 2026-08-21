@@ -487,19 +487,19 @@ def check(spec: PermissionSpec, ctx) -> GateResult:
 
 ### 15.5 开工顺序与验收（2026-08-21 已实现 · 沙箱实跑）
 
-> 状态：**L2a + L2b 已随 L2 薄插槽代码一并落地**，非停留在草案。新增 4 文件：`vermes_cli/adapters/discovery.py`（L2a）、`discovery_registry.py`（进程内索引）、`trust_gate.py`（L2b）、`tests/adapters/test_l2_discovery_trust.py`（20 passed）。
+> 状态：**L2a + L2b 已随 L2 薄插槽代码一并落地**，非停留在草案。新增 4 文件：`vermes_cli/adapters/discovery.py`（L2a）、`discovery_registry.py`（进程内索引）、`trust_gate.py`（L2b）、`tests/adapters/test_l2_discovery_trust.py`（21 passed）。
 
 1. **L2a** ✅：`CapabilityIndex` 结构 + `route_toolset` 纯倒排索引（无 LLM 可单测，含中文意图双语桥接）+ `select_tool` 接 LLM `tool_choice`（带 `MIN_TOOL_SCORE=0.2` 门槛，不达标返 `NEEDS_CLARIFY`）。`discover_tools()` 顺带 `build_capability_index()` 写入 `CAPABILITY_REGISTRY`。
 2. **L2b** ✅：`PermissionSpec` + `TrustGate.check()`（默认 deny-unless-declared）+ 在 `invoke()` 入口插入（`cli_native` 默认 ALLOW、不阻断 273/50 工具；`sdk_bridge` 默认 ASK_USER；`network=true` 且无 sandbox → DENY）。20 个单测全绿。
 3. **两层发现** ✅：`BackendLocator` 编码 Layer1 CLI 二进制 + Layer2 后端（freecadcmd/blender），macOS 双候选路径 + `FREECAD_PATH`/`BLENDER_PATH` 环境变量兜底；`invoke()` 注入后端路径 env。
 4. **验收（双域实证，§13.9）**：FreeCAD 273 + Blender 50 下，intent「给这个盒子倒角 2mm」→ 阶段一粗筛到 `freecad_adapter`（中文「倒角」命中）→ 阶段二 LLM 细选 `fillet-3d` → `invoke` 前 `TrustGate` ALLOW（cli_native）→ 执行。Blender 域同样跑通路由 + 阈值降级。
+5. **L2 ctx 最后一公里接线（2026-08-21 完成）** ✅：真实 seam 不在 `conversation_loop.py` 字面层，而在 `model_tools.handle_function_call` 的 `registry.dispatch` 调用点（两处：`execute_code` 分支与通用分支）。将 `ctx`（`session_id`/`task_id`/`tool_call_id`/`user_task`/`enabled_tools[ets]`/`disabled_toolsets`）作为 kwarg 注入，经 `dispatch(name,args,ctx=ctx)` → `entry.handler(args, **kw)` → `SoftwareAdapter._make_handler` 转发 → `invoke(tool,args,ctx=ctx)` → `TrustGate.check(spec, ctx)`。同时修正 `_make_handler` 与注册表契约不兼容：由 `_handler(**kwargs)` 改为 `handler(args, **kw) -> str`（收位置 `args` + 转发 `ctx` + `json.dumps` 返回 str）。真实生产 seam 探针通过：`handle_function_call(..., session_id, task_id)` → `TrustGate.check` 收到完整 ctx。
 
 ---
 
-> 文档版本：v1.7（战略基线 · 评审修订 · §13 spike · §13.8 B 桶关闭 · §13.9 Blender 双域实证 · §14 发现层+信任闸门 · §15 L2a/L2b 已落地）
+> 文档版本：v1.8（战略基线 · 评审修订 · §13 spike · §13.8 B 桶关闭 · §13.9 Blender 双域实证 · §14 发现层+信任闸门 · §15 L2a/L2b 已落地 · §15.5 L2 ctx 接线完成）
 > 起草依据：用户战略转向指令（2026-08-21）+ 微信文章锚定 + CLI-Anything 实核 + Vermes 现有底座源码核实 + 沙箱 spike 实测 + v1.3 积木池量级跃迁推论 + 2026-08-21 优先级定调。
 > 评审修订：spike 硬门槛(已执行) / L2 词汇表硬护栏 / 18 工具冻结 / 第二域=**Blender**(拍板) / Android 冷启动 / 积木来源=软件宇宙+用户生态 / §14 发现层+信任闸门 / §15 L2a 两阶段路由 + L2b 信任闸门接口草案 / 阈值改「5 链路全通=可发布」(弃 80% 粗口径)。
-> 实现落点（v1.7 新增）：`vermes_cli/adapters/discovery.py`(L2a) / `discovery_registry.py`(进程内索引) / `trust_gate.py`(L2b) / `software_adapter.py` 扩展(两层发现+闸门+索引) / `tests/adapters/test_l2_discovery_trust.py`(20 passed) / Blender spike 实跑 50 工具（§13.9）。B 桶 6/6 用户机器验收关闭（§13.8）。
-> 下一步：接 `runtime_provider` LLM 到 `select_tool`（阶段二生产化）+ `SoftwareAdapter.invoke()` 在 `conversation_loop` 接线点接 `ctx` + 第三域（office/ide）spike 扩展积木池广度。
+> 实现落点（v1.8 更新）：`vermes_cli/adapters/discovery.py`(L2a) / `discovery_registry.py`(进程内索引) / `trust_gate.py`(L2b) / `software_adapter.py` 扩展(两层发现+闸门+索引+handler 契约修正) / `tests/adapters/test_l2_discovery_trust.py`(21 passed) / `model_tools.handle_function_call` 注入 ctx / Blender spike 实跑 50 工具（§13.9）。B 桶 6/6 用户机器验收关闭（§13.8）。
+> 下一步：接 `runtime_provider` LLM 到 `select_tool`（阶段二生产化）+ 第三域（office/ide）spike 扩展积木池广度 + 生产化启动时把 `SoftwareAdapter.discover_tools()+register()` 接进 agent 启动（L2 工具进运行态）。`ctx` 接线已完成（§15.5 第 5 条，seam=`model_tools.handle_function_call`→`registry.dispatch`）。
 > 配套产物：`SPIKE_CLI_ANYTHING_2026-08-21.md`（spike 详细证据）+ `vermes_cli/adapters/software_adapter.py`（L2 薄插槽实现）。
-> 下一步：L2a/L2b 接口草案→实现（沙箱可做）+ 第二域 Blender spike（用户同步查 CLI-Anything 是否有 Blender 覆盖）+ B 桶 5 链路顺手验（用户机器，最低优先级）。

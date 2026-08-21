@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -36,6 +37,7 @@ from vermes_cli.adapters.trust_gate import (
     ALLOW,
     ASK_USER,
     DENY,
+    GateResult,
     PermissionSpec,
     TrustGate,
 )
@@ -313,4 +315,46 @@ def test_register_builds_capability_index():
     assert cap is not None
     assert cap.domain == "3d"
     assert cap.tools[0].name == "freecad_part_fillet_3d"
+    CAPABILITY_REGISTRY.clear()
+
+
+def test_ctx_threads_from_dispatch_to_invoke(monkeypatch):
+    """L2 最后一公里：model_tools 注入的 ctx 经 registry.dispatch → handler → invoke → TrustGate.check。"""
+    from tools.registry import registry
+
+    CAPABILITY_REGISTRY.clear()
+    spec = SoftwareAdapterSpec(
+        domain="3d", software="freecad", cli_bin="cli-anything-freecad",
+        backend="freecad", operation_mechanism=CLI_NATIVE,
+    )
+    adapter = SoftwareAdapter(spec)
+    adapter._backend = type("_B", (), {
+        "env_var": "FREECAD_PATH",
+        "env_value": "/opt/freecad/Resources/bin/freecadcmd",
+    })()
+    tool = CLITool("freecad_part_fillet_3d", ["part", "fillet-3d"], {}, "desc", "freecad_adapter")
+
+    seen_ctx = {}
+
+    def fake_check(spec, ctx=None):
+        seen_ctx["ctx"] = ctx
+        return GateResult(ALLOW, reason="allow")
+
+    monkeypatch.setattr(TrustGate, "check", staticmethod(fake_check))
+
+    def fake_run(cmd, **kwargs):
+        class _P:
+            stdout = '{"ok": true}'
+            returncode = 0
+        return _P()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert adapter.register([tool]) == 1
+    ctx = {"session_id": "sess-1", "task_id": "t-1", "enabled_tools": ["freecad_part_fillet_3d"]}
+    out = registry.dispatch("freecad_part_fillet_3d", {}, ctx=ctx)
+    assert json.loads(out) == {"ok": True}
+    assert seen_ctx["ctx"] == ctx
+
+    registry.deregister("freecad_part_fillet_3d")
     CAPABILITY_REGISTRY.clear()
