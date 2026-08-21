@@ -184,10 +184,12 @@ def recommend(
         scored[e.harness or e.name] = (e, score, matched)
 
     entries = [t[0] for t in scored.values()]
+    # 先按 keyword score 降序排好，再交给 rank_hook 重排——否则 rank_hook 收到的
+    # 是 scored dict 的插入序（= catalog 原始顺序），用它近似 keyword 排名会把
+    # 「文本匹配」污染成「catalog 顺序」（降级场景下排序颠倒）。
+    entries.sort(key=lambda e: scored[e.harness or e.name][1], reverse=True)
     if rank_hook is not None:
         entries = rank_hook(entries, {"intent": intent, "installed": installed})
-    else:
-        entries.sort(key=lambda e: scored[e.harness or e.name][1], reverse=True)
 
     out: list[Recommendation] = []
     for e in entries:
@@ -324,9 +326,8 @@ def usage_rank_hook(
     usage_order = sorted(entries, key=lambda e: usage_map.get(e.software, 0), reverse=True)
     usage_rank = {e.software: (n - i) for i, e in enumerate(usage_order)}
 
-    # 关键词得分排名（降序）——从 scored dict 提取
-    # 由于 rank_hook 在 recommend() 内部调用，scored 信息已丢失，
-    # 用 entries 原始顺序（recommend 已按 score 降序排过）做近似
+    # 关键词得分排名（降序）：recommend 已按 keyword score 降序排好 entries 再传入，
+    # 这里用序号近似 keyword 排名（第 0 个 = keyword 命中最高）。
     kw_rank = {e.software: (n - i) for i, e in enumerate(entries)}
 
     def _final(e: CatalogEntry) -> float:

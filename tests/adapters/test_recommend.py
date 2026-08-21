@@ -379,3 +379,24 @@ def test_recommend_with_usage_rank_hook(monkeypatch):
     assert len(recs) >= 2
     # freecad 因高 usage 应排在前面（60% 权重）
     assert recs[0].software == "freecad"
+
+
+def test_recommend_usage_hook_fallback_preserves_keyword_order(monkeypatch):
+    """降级场景（usage 缺失）应退化为纯 keyword 排序，而非 catalog 原始顺序。
+
+    反向验证：修复前 recommend 把 catalog 原始顺序传给 rank_hook，usage_rank_hook
+    用它近似 keyword 排名，导致 keyword 命中少的 blender 反而排前（bug）。
+    """
+    idx = _index(
+        _entry("blender", "graphics", ["blender", "fillet"]),          # 命中 fillet = 1
+        _entry("freecad", "graphics", ["freecad", "fillet", "chamfer", "draft"]),  # 命中 3
+    )
+    monkeypatch.setattr("agent.memory_fabric.get_usage_counts", lambda *a, **kw: [])
+    recs = recommend(
+        "apply a fillet chamfer draft",
+        installed=set(),
+        rank_hook=usage_rank_hook,
+        index=idx,
+    )
+    # freecad keyword 命中更多，降级时应排前（而非被 catalog 顺序颠倒）
+    assert [r.software for r in recs] == ["freecad", "blender"]
