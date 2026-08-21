@@ -19,11 +19,22 @@ spec_dir = os.path.dirname(os.path.abspath(_spec_arg)) if _spec_arg else os.getc
 # Collect data files — 与 vermes-gui.spec 共用路径
 datas = []
 for src, dst in [
+    # ── vermes_cli 子目录（全部）──
     ('vermes_cli/web_dist', 'vermes_cli/web_dist'),
     ('vermes_cli/blueprints', 'vermes_cli/blueprints'),
     ('vermes_cli/scholarforge', 'vermes_cli/scholarforge'),
     ('vermes_cli/mfgcad', 'vermes_cli/mfgcad'),
     ('vermes_cli/processors', 'vermes_cli/processors'),
+    ('vermes_cli/adapters', 'vermes_cli/adapters'),
+    ('vermes_cli/modules', 'vermes_cli/modules'),
+    ('vermes_cli/proxy', 'vermes_cli/proxy'),
+    ('vermes_cli/experts_catalog.json', 'vermes_cli'),
+    ('vermes_cli/__init__.py', 'vermes_cli'),
+    ('vermes_cli/web_server.py', 'vermes_cli'),
+    ('vermes_cli/banner.py', 'vermes_cli'),
+    ('vermes_cli/update_manager.py', 'vermes_cli'),
+    ('vermes_cli/win_adapter.py', 'vermes_cli'),
+    # ── 功能模块目录（全部）──
     ('locales', 'locales'),
     ('skills', 'skills'),
     ('optional-skills', 'optional-skills'),
@@ -35,6 +46,12 @@ for src, dst in [
     ('acp_registry', 'acp_registry'),
     ('gateway', 'gateway'),
     ('harness', 'harness'),
+    ('builtin-mcp', 'builtin-mcp'),
+    ('scripts', 'scripts'),
+    ('assets', 'assets'),
+    ('migrations', 'migrations'),
+    ('datagen-config-examples', 'datagen-config-examples'),
+    # ── 根级 .py 文件 ──
     ('vermes_constants.py', '.'),
     ('model_tools.py', '.'),
     ('run_agent.py', '.'),
@@ -45,7 +62,7 @@ for src, dst in [
     ('vermes_logging.py', '.'),
     ('vermes_state.py', '.'),
     ('vermes_time.py', '.'),
-    ('vermes_cli/__init__.py', 'vermes_cli'),
+    # ── 品牌/文档 ──
     ('README.md', '.'),
     ('BRAND.md', '.'),
     ('LICENSE', '.'),
@@ -335,11 +352,7 @@ try:
 except Exception as _e:
     print(f"[Vermes Backend] collect_submodules(vermes_cli.adapters) SKIP: {_e}")
 
-# ── experts_catalog.json 数据文件（专家目录）──
-datas.append((os.path.join(spec_dir, 'vermes_cli/experts_catalog.json'), 'vermes_cli'))
-
-# ── vermes_cli/adapters 数据文件（L2 模块的 __init__.py 等需要落盘）──
-datas.append((os.path.join(spec_dir, 'vermes_cli/adapters'), 'vermes_cli/adapters'))
+# experts_catalog.json 和 adapters 目录已在主 datas 列表中，无需追加
 
 a = Analysis(
     [os.path.join(spec_dir, 'backend_main.py')],
