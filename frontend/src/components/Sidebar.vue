@@ -9,7 +9,7 @@ import { loadMessagesFromIDB } from '../stores/chat-storage'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 
-import ExpertCatalog from './ExpertCatalog.vue'
+// ExpertCatalog 已迁至 ToolSkillDrawer 专家 tab
 import { useRightPanel } from '../composables/useRightPanel'
 // 生态模块前端动态加载已弃用，改为 Agent 工具集模式
 
@@ -23,7 +23,7 @@ function goMobileConnect() { router.push('/settings?tab=channels') }
 function goStudio() { router.push('/studio') }
 function goScholarForge() { router.push('/scholarforge') }
 function go3DStudio() { router.push('/3d-studio') }
-function goModuleStore() { router.push('/module-store') }
+// goModuleStore 已移除（模块商店归入 Agent 管理→软件 tab）
 
 // 点击会话项：切换会话 + 如果不在聊天页则跳回
 function switchAndGoChat(id) {
@@ -247,7 +247,7 @@ async function handleDelete(id) {
 const showTemplateMenu = ref(false)
 const showCustomPrompt = ref(false)
 const showKnowledgeBase = ref(false)  // 已迁至 Agent 管理面板
-const showExpert = ref(false)
+// showExpert 已移除（专家面板迁至 ToolSkillDrawer）
 const customPromptInput = ref('')
 const customPromptRef = ref(null)
 
@@ -519,17 +519,13 @@ async function handleImportFile(e) {
           <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span>
           <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
         </button>
-        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="open ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Agent 管理（技能/工具/MCP/记忆/知识库）">
+        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="open ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Agent 管理（技能/工具/软件/专家/MCP/记忆/知识库）">
           <span class="text-base">🤖</span>
           <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理</span>
         </button>
         <button @click="goMobileConnect()" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
           <span class="text-base">📱</span>
           <span class="sidebar-tooltip group-hover:opacity-100">移动接入</span>
-        </button>
-        <button @click="showExpert = !showExpert" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="showExpert ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="专家">
-          <span class="text-base">🎓</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">专家</span>
         </button>
         <button @click="goScholarForge()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/scholarforge' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="论文写作">
           <span class="text-base">📝</span>
@@ -539,18 +535,9 @@ async function handleImportFile(e) {
           <span class="text-base">🏭</span>
           <span class="sidebar-tooltip group-hover:opacity-100">3D 建模</span>
         </button>
-        <button @click="goModuleStore()" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="$route.path === '/module-store' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="模块商店">
-          <span class="text-base">🏪</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">模块商店</span>
-        </button>
         </div>
 
-      <!-- 知识库面板已迁至 Agent 管理右侧面板 -->
-      <!-- MCP / 技能 / 工具 管理已统一迁至右侧大面板 ToolSkillDrawer（点击底部按钮展开） -->
-      <!-- 专家面板 -->
-      <div v-if="showExpert" class="shrink-0 max-h-80 overflow-y-auto border-t border-gray-200 dark:border-gray-700 p-2">
-        <ExpertCatalog />
-      </div>
+      <!-- MCP / 技能 / 工具 / 软件 / 专家 管理已统一迁至右侧大面板 ToolSkillDrawer -->
       <!-- 进化系统面板 -->
       <div class="shrink-0 max-h-80 overflow-y-auto evolution-panel-wrapper">
         <EvolutionPanel />

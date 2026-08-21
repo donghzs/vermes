@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useRouter } from 'vue-router'
+import { useRightPanel } from '../composables/useRightPanel'
 import { toast } from '../utils/toast'
 import api from '../services/api.js'
 
@@ -94,10 +95,11 @@ const quickStarts = [
   { icon: '💻', text: '写一段Python代码' },
 ]
 
-// 专家能力（开箱即用的能力发现）
+// 专家能力——点击后打开 Agent 管理面板专家 tab
 const experts = ref([])
 const expertBusy = ref('')
 const recommendations = ref([])   // 你可能想用（按使用频次个性化）
+const { openPanel } = useRightPanel()
 
 function zh(obj, fallback = '') {
   if (!obj) return fallback
@@ -150,6 +152,10 @@ async function useExpert(expert, promptText) {
   } finally {
     expertBusy.value = ''
   }
+}
+
+function openExpertsPanel() {
+  openPanel('experts')
 }
 
 onMounted(() => {
@@ -236,6 +242,7 @@ onMounted(() => {
             <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ zh(expert.displayDescription) }}</div>
           </button>
         </div>
+        <button @click="openExpertsPanel" class="mt-2 w-full text-center text-xs text-green-500 hover:text-green-600 transition">查看全部专家 →</button>
       </div>
     </div>
 

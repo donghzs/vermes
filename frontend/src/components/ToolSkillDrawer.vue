@@ -5,6 +5,8 @@ import SkillManager from './SkillManager.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 import MCPManager from './MCPManager.vue'
 import MemoryBrowser from './MemoryBrowser.vue'
+import SoftwareDiscover from './SoftwareDiscover.vue'
+import ExpertCatalog from './ExpertCatalog.vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 
@@ -13,6 +15,8 @@ const { open, tab, closePanel, setTab } = useRightPanel()
 const tabs = [
   { id: 'skills', label: '技能', icon: '🧩' },
   { id: 'tools', label: '工具', icon: '🛠️' },
+  { id: 'software', label: '软件', icon: '📦' },
+  { id: 'experts', label: '专家', icon: '🎓' },
   { id: 'mcp', label: 'MCP', icon: '🔌' },
   { id: 'memory', label: '记忆', icon: '🧠' },
   { id: 'knowledge', label: '知识库', icon: '📚' },
@@ -95,9 +99,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 
           <!-- 工具：工具集总览与启停 -->
           <div v-else-if="tab === 'tools'" class="space-y-3">
-            <div class="flex items-center justify-between">
-              <p class="text-sm text-gray-500 dark:text-gray-400">工具按工具集组织，开启后对应能力在对话中可用。</p>
-            </div>
             <div v-if="toolsLoading" class="text-center py-10 text-sm text-gray-400 animate-pulse">加载工具集中…</div>
             <div v-else-if="toolsets.length === 0" class="text-center py-10 text-sm text-gray-400">
               <div class="text-3xl mb-2">🛠️</div>
@@ -134,6 +135,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
               </div>
             </div>
           </div>
+
+          <!-- 软件：L2c 发现+安装软件积木 -->
+          <SoftwareDiscover v-else-if="tab === 'software'" />
+
+          <!-- 专家：已装 skill 的用户友好封装 -->
+          <ExpertCatalog v-else-if="tab === 'experts'" />
 
           <!-- MCP：复用完整 MCPManager -->
           <MCPManager v-else-if="tab === 'mcp'" />

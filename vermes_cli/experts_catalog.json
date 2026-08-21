@@ -19,7 +19,7 @@
       { "zh": "把这节中文摘要润色成学术英语", "en": "Polish this abstract into academic English" },
       { "zh": "按 APA 格式整理论文的参考文献", "en": "Format my references in APA" }
     ],
-    "skills": ["scholarforge"],
+    "skills": ["research"],
     "prompt": "帮我写一篇关于大语言模型对齐的文献综述，先检索近三年的代表性论文。"
   },
   {
@@ -42,7 +42,7 @@
       { "zh": "抓取这个网页的正文并提炼要点", "en": "Extract the key points from this page" },
       { "zh": "帮我追踪某个话题的最新动态", "en": "Track the latest updates on a topic" }
     ],
-    "skills": ["web-browse"],
+    "skills": ["multi-search-engine"],
     "prompt": "帮我调研一下目前主流 AI 编程工具的特点，并整理成对比表。"
   },
   {
@@ -65,7 +65,7 @@
       { "zh": "把这个 PDF 的表格提取成 Excel", "en": "Extract PDF tables into Excel" },
       { "zh": "批量把 Word 转成 PDF", "en": "Batch convert Word to PDF" }
     ],
-    "skills": ["file-ops"],
+    "skills": ["docx", "pdf", "xlsx"],
     "prompt": "帮我把桌面上的截图按日期重命名，并归类到对应文件夹。"
   },
   {
@@ -88,7 +88,7 @@
       { "zh": "帮我看这段报错是什么原因", "en": "Explain this error traceback" },
       { "zh": "把这段逻辑改写成异步版本", "en": "Refactor this into async" }
     ],
-    "skills": ["code-runner"],
+    "skills": ["software-development"],
     "prompt": "用 Python 写一个批量把 Markdown 转成 HTML 的小工具。"
   },
   {
@@ -111,7 +111,7 @@
       { "zh": "给我生成一个简约风职业头像", "en": "A minimal professional avatar" },
       { "zh": "做一张公众号封面配图", "en": "A WeChat cover illustration" }
     ],
-    "skills": ["image-gen"],
+    "skills": ["agnes-shot-generator"],
     "prompt": "帮我画一张赛博朋克风格的城市夜景插画，横版 16:9。"
   },
   {
@@ -134,7 +134,7 @@
       { "zh": "我上次关于 XX 项目的结论是什么", "en": "What did I conclude about project XX" },
       { "zh": "帮我整理知识库里的会议纪要", "en": "Organize my meeting notes" }
     ],
-    "skills": ["knowledge-rag"],
+    "skills": [],
     "prompt": "基于我的知识库，总结一下关于产品路线图的要点。"
   }
 ]

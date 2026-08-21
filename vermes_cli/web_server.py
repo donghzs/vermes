@@ -2912,6 +2912,13 @@ blueprints.gateway_channels.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 
+# ── L2 adapters API（发现/推荐/安装软件积木）──
+try:
+    from vermes_cli.adapters.api import register_to as register_adapters
+    register_adapters(app)
+except Exception as _e:  # noqa: BLE001
+    logger.warning("adapters API 注册失败（不影响其他功能）: %s", _e)
+
 # ── 生态模块加载器（替代硬编码 ScholarForge 注册） ──
 # 必须在 mount_spa() 之前注册，否则 SPA catch-all 会拦截 /api/modules 路由
 try:
