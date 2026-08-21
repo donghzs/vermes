@@ -194,6 +194,16 @@ def test_select_tool_llm_chooser_above_threshold():
     assert choice.tool.name == "freecad_part_fillet_3d"
 
 
+def test_select_tool_llm_chooser_none_falls_back_to_heuristic():
+    """llm_chooser 返回 None（LLM 不可用/未配置）→ 降级启发式 argmax，而非 NEEDS_CLARIFY。"""
+    tools = _sample_index()[0].tools
+    choice = select_tool(
+        tools, "apply a 3d fillet", llm_chooser=lambda ts, intent, ctx: None
+    )
+    assert choice.decision == "allow_tool"
+    assert choice.tool.name == "freecad_part_fillet_3d"
+
+
 def test_select_tool_empty():
     """空候选工具集 → NEEDS_CLARIFY。"""
     choice = select_tool([], "anything")

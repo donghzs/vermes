@@ -260,6 +260,7 @@ def select_tool(
 
     - llm_chooser 提供时（接 runtime_provider LLM 的 tool_choice）：返回工具名，再用
       相关度阈值把关，消化 argmax 无门槛反模式。
+    - llm_chooser 返回 None = LLM 不可用（未配置/失败），降级到启发式 argmax 兜底。
     - 不提供时（沙箱/单测）：用启发式 argmax 兜底，但同样受最低阈值约束。
     - 相关度 < MIN_TOOL_SCORE → 返 NEEDS_CLARIFY（不静默选噪声）。
     """
@@ -271,16 +272,18 @@ def select_tool(
 
     if llm_chooser is not None:
         chosen_name = llm_chooser(tools, intent, ctx)
-        chosen = next((t for t in tools if t.name == chosen_name), None)
-        if chosen is None:
-            return ToolChoice(NEEDS_CLARIFY, reason=f"LLM 选中的工具 {chosen_name} 不在候选集")
-        score = scores[chosen_name]
-        if score < MIN_TOOL_SCORE:
-            return ToolChoice(
-                NEEDS_CLARIFY,
-                reason=f"LLM 选中 {chosen_name} 但相关度 {score:.2f} < 阈值 {MIN_TOOL_SCORE}",
-            )
-        return ToolChoice("allow_tool", tool=chosen, score=round(score, 3))
+        # 返回 None = LLM 不可用，降级到下方启发式 argmax（而非误判为选错）。
+        if chosen_name is not None:
+            chosen = next((t for t in tools if t.name == chosen_name), None)
+            if chosen is None:
+                return ToolChoice(NEEDS_CLARIFY, reason=f"LLM 选中的工具 {chosen_name} 不在候选集")
+            score = scores[chosen_name]
+            if score < MIN_TOOL_SCORE:
+                return ToolChoice(
+                    NEEDS_CLARIFY,
+                    reason=f"LLM 选中 {chosen_name} 但相关度 {score:.2f} < 阈值 {MIN_TOOL_SCORE}",
+                )
+            return ToolChoice("allow_tool", tool=chosen, score=round(score, 3))
 
     # 启发式兜底（无 LLM）：argmax + 最低阈值
     best = max(tools, key=lambda t: scores[t.name])
