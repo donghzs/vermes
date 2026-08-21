@@ -210,6 +210,20 @@ try:
 except Exception as e:
     logger.debug("Plugin discovery failed: %s", e)
 
+# L2 SoftwareAdapter 启动注册：扫描 PATH 上已安装的 CLI-Anything 适配器
+# (cli-anything-*)，复用 SoftwareAdapter.discover_tools()+register() 全链路把
+# L2 工具接进运行态 tools/registry。失败容错（单适配器 discover/register 失败
+# 仅记 warn，不阻塞启动）；--help 内省为本地快速 subprocess 且带 15s 超时，
+# 区别于被移出模块级的 MCP 网络发现（120s 阻塞风险）。
+try:
+    from vermes_cli.adapters.bootstrap import discover_l2_adapters
+    _l2_registered = discover_l2_adapters()
+    if _l2_registered:
+        _l2_ok = {k: v for k, v in _l2_registered.items() if v >= 0}
+        logger.info("L2 adapters registered: %s", _l2_ok or "none")
+except Exception as _l2_err:  # pragma: no cover - defensive
+    logger.warning("L2 adapter bootstrap skipped: %s", _l2_err)
+
 
 # =============================================================================
 # Backward-compat constants  (built once after discovery)

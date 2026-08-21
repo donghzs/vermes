@@ -69,12 +69,17 @@ _GROUP_LINE_RE = re.compile(r"^\s{2,}([a-z0-9_-]+)\s{2,}(.+)$")
 
 
 def _run_cli(cli_bin: str, args: list[str]) -> str:
-    """运行 CLI 子命令的 --help，返回 stdout。失败抛异常（由调用方处理）。"""
+    """运行 CLI 子命令的 --help，返回 stdout。失败抛异常（由调用方处理）。
+
+    --help 内省应秒回；加 timeout 防御损坏/挂起的 cli-anything-* 拖死启动
+    （挂起是 TimeoutExpired 异常、非静默，可被 bootstrap 层 try/except 捕获跳过）。
+    """
     proc = subprocess.run(
         [cli_bin, *args, "--help"],
         capture_output=True,
         text=True,
         check=False,
+        timeout=15,
     )
     return proc.stdout or proc.stderr
 
