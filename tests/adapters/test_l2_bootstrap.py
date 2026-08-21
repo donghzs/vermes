@@ -9,6 +9,8 @@ from __future__ import annotations
 import pytest
 
 from vermes_cli.adapters import bootstrap as boot
+from pathlib import Path
+
 from vermes_cli.adapters.discovery import CLI_NATIVE
 
 
@@ -88,3 +90,36 @@ def test_discover_l2_adapters_success_and_isolated_failure(monkeypatch):
     assert result == {"freecad": 3, "blender": 5, "broken": -1}
     # broken 的 discover 抛异常，register 从未被调；freecad/blender 正常注册
     assert register_calls == [("freecad", 3), ("blender", 5)]
+
+
+def test_derive_spec_non_standard_entry_point(tmp_path):
+    """非 cli-anything- 前缀的 entry_point 也能正确推导 spec。"""
+    from vermes_cli.adapters.bootstrap import _derive_spec, _NON_STD_ENTRY_POINTS
+
+    # 确认 sketch-cli 在非标准表里
+    assert "sketch-cli" in _NON_STD_ENTRY_POINTS
+
+    fake_cli = tmp_path / "sketch-cli"
+    fake_cli.write_text("#!/bin/sh\necho hello\n")
+    fake_cli.chmod(0o755)
+
+    spec = _derive_spec(str(fake_cli))
+    assert spec.software == "sketch-cli"
+    assert spec.domain == "design"  # 来自 _NON_STD_DOMAIN
+    assert spec.cli_bin == str(fake_cli)
+
+
+def test_iter_bins_finds_non_standard_entry(tmp_path):
+    """_iter_cli_anything_bins 也能发现非标准 entry_point 文件。"""
+    from vermes_cli.adapters.bootstrap import _iter_cli_anything_bins
+
+    # 创建一个 cli-anything- 和一个非标准 entry_point
+    (tmp_path / "cli-anything-freecad").write_text("#!/bin/sh\n")
+    (tmp_path / "cli-anything-freecad").chmod(0o755)
+    (tmp_path / "lark-cli").write_text("#!/bin/sh\n")
+    (tmp_path / "lark-cli").chmod(0o755)
+
+    found = _iter_cli_anything_bins(paths=[str(tmp_path)])
+    names = [Path(p).name for p in found]
+    assert "cli-anything-freecad" in names
+    assert "lark-cli" in names

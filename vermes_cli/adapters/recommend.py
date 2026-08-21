@@ -207,3 +207,133 @@ def recommend(
 
 # 模块级默认索引（空；调用方 add_source 后 recommend）
 CATALOG_INDEX = CatalogIndex()
+
+
+# ---------------------------------------------------------------------------
+# P1: 两步安装 + 装后触发 bootstrap
+# ---------------------------------------------------------------------------
+
+@dataclass
+class InstallResult:
+    """install() 的返回值。"""
+
+    software: str
+    adapter_installed: bool       # 第一步：adapter（cli-hub install）是否成功
+    adapter_message: str = ""    # 成功/失败消息
+    backend_ready: bool = False  # 第二步：本体后端是否就绪
+    backend_hint: str = ""      # 本体安装指引（requires 透传）
+    tools_registered: int = -1  # 装后 bootstrap 注册的工具数（-1 = 未触发）
+
+
+def install(
+    rec: Recommendation,
+    *,
+    cli_hub_bin: str = "cli-hub",
+    re_scan: bool = True,
+) -> InstallResult:
+    """两步安装：① adapter（cli-hub install）② 检查本体就绪 + 装后重扫注册。
+
+    - 第一步失败 → 直接返回，不尝试第二步。
+    - 第二步是检查（非安装）：用 BackendLocator 检查本体是否在 PATH/环境变量上。
+    - re_scan=True 时装后触发 discover_l2_adapters 重新扫描注册。
+    """
+    result = InstallResult(software=rec.software, adapter_installed=False, backend_hint=rec.backend_hint)
+
+    # 第一步：安装 adapter（cli-hub install <name>）
+    if not shutil.which(cli_hub_bin):
+        result.adapter_message = "cli-hub 未安装，无法自动安装 adapter"
+        return result
+    try:
+        # 从 adapter_install 提取短名："cli-hub install freecad" → "freecad"
+        parts = rec.adapter_install.split()
+        name = parts[-1] if parts else rec.software
+        proc = subprocess.run(
+            [cli_hub_bin, "install", name],
+            capture_output=True, text=True, check=False, timeout=120,
+        )
+        if proc.returncode == 0:
+            result.adapter_installed = True
+            result.adapter_message = proc.stdout.strip()[:200]
+        else:
+            result.adapter_message = f"安装失败 (rc={proc.returncode}): {proc.stderr.strip()[:200]}"
+            return result
+    except Exception as exc:  # noqa: BLE001
+        result.adapter_message = f"安装异常: {exc}"
+        return result
+
+    # 第二步：检查本体后端就绪
+    try:
+        from .discovery import BackendLocator
+        locator = BackendLocator()
+        target = locator.locate(rec.software)
+        result.backend_ready = target.backend_resolved is not None
+    except Exception:  # noqa: BLE001 — 本体检查失败不阻塞
+        pass
+
+    # 装后触发 bootstrap 重新扫描注册
+    if re_scan and result.adapter_installed:
+        try:
+            from .bootstrap import discover_l2_adapters
+            scan = discover_l2_adapters()
+            result.tools_registered = scan.get(rec.software, -1)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("install 后 bootstrap 重扫失败: %s", exc)
+            result.tools_registered = -1
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# P2: 认知层 rank_hook 信号接入
+# ---------------------------------------------------------------------------
+
+def usage_rank_hook(
+    entries: list[CatalogEntry],
+    ctx: dict,
+    *,
+    weight_usage: float = 0.6,
+    weight_score: float = 0.4,
+) -> list[CatalogEntry]:
+    """认知层 rank_hook：把 memory_fabric 的使用频率注入排序。
+
+    排序公式：final = weight_usage * usage_rank + weight_score * keyword_score_rank
+    - usage_rank：按 get_usage_counts(kind="adapter") 的 count 降序排列
+    - keyword_score_rank：按 recommend() 已计算的 keyword 得分降序排列
+    - 未见 usage 的适配器：usage_rank 排末尾（未知 ≠ 0 分）
+
+    默认权重 60% usage / 40% 关键词——「已验证好用」优先于「文本匹配高」。
+    """
+    try:
+        from agent.memory_fabric import get_usage_counts
+        usage_rows = get_usage_counts(kind="adapter", limit=100)
+    except Exception:  # noqa: BLE001 — 认知层不可用时降级到纯关键词
+        logger.debug("usage_rank_hook: memory_fabric 不可用，降级纯关键词")
+        return entries
+
+    # 构建 software → usage count 映射
+    usage_map: dict[str, int] = {}
+    for row in usage_rows:
+        sid = row.get("id", "")
+        # pointer 格式 "usage_adapter:<software>"
+        if ":" in sid:
+            sid = sid.split(":")[-1]
+        usage_map[sid] = row.get("count", 0)
+
+    # 按 usage count 排名（降序，未见排末尾）
+    n = len(entries)
+    usage_order = sorted(entries, key=lambda e: usage_map.get(e.software, 0), reverse=True)
+    usage_rank = {e.software: (n - i) for i, e in enumerate(usage_order)}
+
+    # 关键词得分排名（降序）——从 scored dict 提取
+    # 由于 rank_hook 在 recommend() 内部调用，scored 信息已丢失，
+    # 用 entries 原始顺序（recommend 已按 score 降序排过）做近似
+    kw_rank = {e.software: (n - i) for i, e in enumerate(entries)}
+
+    def _final(e: CatalogEntry) -> float:
+        u = usage_rank.get(e.software, 0)
+        k = kw_rank.get(e.software, 0)
+        max_u = max(usage_rank.values()) if usage_rank else 1
+        max_k = max(kw_rank.values()) if kw_rank else 1
+        return weight_usage * (u / max_u if max_u else 0) + weight_score * (k / max_k if max_k else 0)
+
+    return sorted(entries, key=_final, reverse=True)

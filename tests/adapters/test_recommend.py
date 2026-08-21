@@ -10,7 +10,11 @@ from vermes_cli.adapters.recommend import (
     CatalogEntry,
     CatalogIndex,
     CliAnythingHubSource,
+    InstallResult,
+    Recommendation,
+    install,
     recommend,
+    usage_rank_hook,
 )
 
 # 真实 cli-hub list --json 的样例（截取 2 条，含 name ≠ entry_point 前缀的边界 case）
@@ -203,3 +207,175 @@ def test_recommend_backend_hint_from_requires():
     recs = recommend("3d cad modeling", installed=set(), index=idx)
     assert recs[0].backend_hint == "FreeCAD >= 1.1"
     assert recs[0].adapter_install == "cli-hub install freecad"
+
+
+# ---------------------------------------------------------------------------
+# P1: install 两步链路
+# ---------------------------------------------------------------------------
+
+def _rec(software="freecad", adapter_install="cli-hub install freecad", backend_hint="FreeCAD >= 1.1"):
+    return Recommendation(
+        software=software,
+        domain="3d",
+        reason="命中关键词：cad",
+        matched_keywords=["cad"],
+        source="cli-anything-hub",
+        score=0.7,
+        adapter_install=adapter_install,
+        backend_hint=backend_hint,
+    )
+
+
+def test_install_adapter_success(monkeypatch):
+    """第一步 cli-hub install 成功 → adapter_installed=True。"""
+    import subprocess
+    monkeypatch.setattr("shutil.which", lambda *a, **kw: "/usr/bin/cli-hub")
+
+    class _OkProc:
+        returncode = 0
+        stdout = "Installing freecad...\n✓ Installed FreeCAD"
+        stderr = ""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _OkProc())
+    monkeypatch.setattr("vermes_cli.adapters.bootstrap.discover_l2_adapters", lambda *a, **kw: {"freecad": 273})
+    monkeypatch.setattr("vermes_cli.adapters.discovery.BackendLocator.locate", lambda *a, **kw: type("L", (), {"backend_resolved": None})())
+
+    result = install(_rec(), re_scan=True)
+    assert result.adapter_installed is True
+    assert result.tools_registered == 273
+
+
+def test_install_adapter_fail_no_cli_hub(monkeypatch):
+    """cli-hub 未装 → 第一步直接失败。"""
+    monkeypatch.setattr("shutil.which", lambda *a, **kw: None)
+    result = install(_rec())
+    assert result.adapter_installed is False
+    assert "cli-hub 未安装" in result.adapter_message
+    assert result.tools_registered == -1
+
+
+def test_install_adapter_fail_rc_nonzero(monkeypatch):
+    """cli-hub install 返回非零 → 第一步失败，不尝试第二步。"""
+    import subprocess
+    monkeypatch.setattr("shutil.which", lambda *a, **kw: "/usr/bin/cli-hub")
+
+    class _FailProc:
+        returncode = 1
+        stdout = ""
+        stderr = "Error: package not found"
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _FailProc())
+
+    result = install(_rec())
+    assert result.adapter_installed is False
+    assert "安装失败" in result.adapter_message
+
+
+def test_install_backend_check(monkeypatch):
+    """第二步 BackendLocator 检查本体就绪状态。"""
+    import subprocess
+    monkeypatch.setattr("shutil.which", lambda *a, **kw: "/usr/bin/cli-hub")
+
+    class _OkProc:
+        returncode = 0
+        stdout = "✓ Installed"
+        stderr = ""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _OkProc())
+    # 本体已就绪
+    monkeypatch.setattr("vermes_cli.adapters.discovery.BackendLocator.locate", lambda self, s: type("L", (), {"backend_resolved": "/usr/bin/freecadcmd"})())
+    monkeypatch.setattr("vermes_cli.adapters.bootstrap.discover_l2_adapters", lambda *a, **kw: {"freecad": 273})
+
+    result = install(_rec())
+    assert result.adapter_installed is True
+    assert result.backend_ready is True
+    assert result.tools_registered == 273
+
+
+def test_install_re_scan_disabled(monkeypatch):
+    """re_scan=False → 不触发 bootstrap 重扫。"""
+    import subprocess
+    monkeypatch.setattr("shutil.which", lambda *a, **kw: "/usr/bin/cli-hub")
+
+    class _OkProc:
+        returncode = 0
+        stdout = "✓ Installed"
+        stderr = ""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _OkProc())
+    monkeypatch.setattr("vermes_cli.adapters.discovery.BackendLocator.locate", lambda self, s: type("L", (), {"backend_resolved": None})())
+
+    result = install(_rec(), re_scan=False)
+    assert result.adapter_installed is True
+    assert result.tools_registered == -1  # 未触发重扫
+
+
+# ---------------------------------------------------------------------------
+# P2: usage_rank_hook 认知层信号
+# ---------------------------------------------------------------------------
+
+def test_usage_rank_hook_boosts_high_usage(monkeypatch):
+    """使用频率高的 software 排名提升（即使关键词得分较低）。"""
+    entries = [
+        _entry("blender", "3d", ["blender", "render"]),    # 高 usage
+        _entry("freecad", "3d", ["freecad", "cad"]),        # 低 usage
+    ]
+    # 模拟 memory_fabric：freecad 100 次、blender 5 次
+    fake_usage = [
+        {"kind": "adapter", "id": "freecad", "count": 100, "last_used": "2026-08-20"},
+        {"kind": "adapter", "id": "blender", "count": 5, "last_used": "2026-08-01"},
+    ]
+    monkeypatch.setattr("agent.memory_fabric.get_usage_counts", lambda *a, **kw: fake_usage)
+
+    result = usage_rank_hook(entries, {"intent": "3d modeling"})
+    # freecad usage 远高于 blender → 应排第一
+    assert result[0].software == "freecad"
+
+
+def test_usage_rank_hook_no_usage_data(monkeypatch):
+    """memory_fabric 无数据时降级到纯关键词排序（原序不变）。"""
+    entries = [
+        _entry("freecad", "3d", ["freecad", "cad"]),
+        _entry("blender", "3d", ["blender", "render"]),
+    ]
+    monkeypatch.setattr("agent.memory_fabric.get_usage_counts", lambda *a, **kw: [])
+    result = usage_rank_hook(entries, {"intent": "3d modeling"})
+    assert [e.software for e in result] == ["freecad", "blender"]  # 原序不变
+
+
+def test_usage_rank_hook_import_fails(monkeypatch):
+    """memory_fabric 导入失败时降级（不抛异常）。"""
+    entries = [_entry("freecad", "3d", ["freecad"])]
+    # 让 import 失败
+    import sys
+    orig = sys.modules.get("agent.memory_fabric")
+    sys.modules["agent.memory_fabric"] = None  # 触发 ImportError
+    try:
+        result = usage_rank_hook(entries, {"intent": "3d"})
+        assert result == entries  # 降级原序
+    finally:
+        if orig is not None:
+            sys.modules["agent.memory_fabric"] = orig
+        else:
+            sys.modules.pop("agent.memory_fabric", None)
+
+
+def test_recommend_with_usage_rank_hook(monkeypatch):
+    """recommend() 接入 usage_rank_hook 后端到端验证。"""
+    idx = _index(
+        _entry("freecad", "3d", ["freecad", "cad", "fillet"]),
+        _entry("blender", "3d", ["blender", "render", "mesh"]),
+    )
+    # blender 关键词得分更高（3 命中 vs 3 命中，但 blender 有 render 更贴）
+    # 但 usage 数据：freecad 调用 50 次，blender 2 次
+    fake_usage = [
+        {"kind": "adapter", "id": "freecad", "count": 50, "last_used": "2026-08-20"},
+        {"kind": "adapter", "id": "blender", "count": 2, "last_used": "2026-08-01"},
+    ]
+    monkeypatch.setattr("agent.memory_fabric.get_usage_counts", lambda *a, **kw: fake_usage)
+
+    recs = recommend(
+        "3d modeling render",
+        installed=set(),
+        rank_hook=usage_rank_hook,
+        index=idx,
+    )
+    assert len(recs) >= 2
+    # freecad 因高 usage 应排在前面（60% 权重）
+    assert recs[0].software == "freecad"

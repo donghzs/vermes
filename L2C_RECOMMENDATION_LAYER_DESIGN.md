@@ -1,6 +1,6 @@
-# L2c 推荐层设计（基线 v1.2）
+# L2c 推荐层设计（基线 v1.3）
 
-> 状态：**基线 v1.2，P0 已实现（recommend.py + test_recommend.py 10 passed + 真实 cli-hub 端到端探针），待评审**。
+> 状态：**P0/P1/P2 已完成，P3 待定，待评审**。
 > 依据：用户战略定调（2026-08-21）——Vermes 核心生存能力 = 动态认知记忆（知道什么最合适用户场景的技能/工具/插件/第三方垂直软件），非静态持有积木。L2c 是 L2（被动）与 L2a（路由）的上层建筑：从「有什么用什么」进化到「需要什么推荐什么」。
 > 纪律：与 L2a/L2b 一致——**薄**。不做推荐算法，做 intent→catalog 最短路径映射；让用户搜、让用户选，我们只负责把「搜到→安装→可用」做到零摩擦。
 
@@ -142,8 +142,8 @@ L2c 的 `rank_hook` 是唯一的认知信号入口。第一版默认 rank = 关�
 ## 9. 开工顺序
 
 - **P0（最小切片）** ✅：`CatalogIndex` 抽象 + `CliAnythingHubSource`（包 cli-hub list）+ `recommend`（倒排 + 差集）+ 单测。落点 `vermes_cli/adapters/recommend.py` + `tests/adapters/test_recommend.py`（10 passed + 真实 cli-hub 端到端探针）。
-- **P1**：`install` 两步链路（adapter + backend 指引）+ 装后触发 bootstrap + 单测。
-- **P2**：`rank_hook` 认知信号接入（usage/feedback）+ 单测。
+- **P1** ✅：`install` 两步链路（adapter + backend 指引）+ 装后触发 bootstrap + 单测（5 新增）。`InstallResult` 数据类 + BackendLocator 本体就绪检查 + bootstrap 重扫注册。
+- **P2** ✅：`usage_rank_hook` 认知信号接入（memory_fabric 使用频率 60% + 关键词得分 40% 加权排序）+ 单测（4 新增）。降级安全：memory_fabric 不可用时回退纯关键词排序。
 - **P3**：多源（module_catalog / 技能市场）+ 前端推荐卡片 UI。
 
 **已核实**（2026-08-21）：
