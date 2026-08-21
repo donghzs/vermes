@@ -7,17 +7,32 @@
 
 真实数据源：CLI-Anything 生成的 Click CLI（带全局 `--json` 结构化输出）。
 discover_tools() 内省 CLI schema → 自动注册为 Vermes 工具（tools/registry）。
+
+L2a/L2b 接入（§15）：
+- discover_tools() 顺带为每个工具派生 intent_keywords（供阶段二细选）。
+- register() 顺带 build CapabilityIndex 写入进程内 CAPABILITY_REGISTRY（供阶段一粗筛）。
+- invoke() 入口插 TrustGate.check()（默认 deny-unless-declared），并注入两层发现解析到的
+  后端路径环境变量（FREECAD_PATH / BLENDER_PATH）兜底 CLI-Anything 的 macOS 路径 bug。
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+from .discovery import (
+    CLI_NATIVE,
+    CapabilityIndex,
+    ToolSummary,
+)
+from .discovery_registry import CAPABILITY_REGISTRY
+from .trust_gate import ALLOW, TrustGate
 
 
 @dataclass
@@ -28,6 +43,8 @@ class SoftwareAdapterSpec:
     software: str  # "freecad" | "blender" | "libreoffice" | ...
     cli_bin: str  # PATH 中的 CLI 名，如 "cli-anything-freecad"
     domain_vocab: dict = field(default_factory=dict)  # v1 强制为空（§5.3 护栏）
+    backend: Optional[str] = None  # 目标软件后端（两层发现 Layer2）：freecad / blender / ...
+    operation_mechanism: str = CLI_NATIVE  # cli_native / sdk_bridge / ...
 
 
 @dataclass
@@ -39,6 +56,8 @@ class CLITool:
     json_schema: dict  # 从 CLI --help 内省得到的入参 schema
     description: str  # 从 CLI --help 抽取
     toolset: str  # 注册所属 toolset，如 "freecad_adapter"
+    operation_mechanism: str = CLI_NATIVE
+    intent_keywords: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -113,12 +132,26 @@ class SoftwareAdapter:
             )
         self.spec = spec
         self.toolset = f"{spec.software}_adapter"
+        self._backend = None  # 两层发现解析结果（懒缓存）
+
+    # -- 两层发现（L2 边界 case） ------------------------------------------
+    def resolve_backend(self):
+        """Layer1 发现 CLI 二进制 + Layer2 定位目标软件后端（含 macOS 双候选 + 环境变量兜底）。"""
+        if self._backend is not None:
+            return self._backend
+        if self.spec.backend:
+            from .discovery import BackendLocator
+
+            self._backend = BackendLocator().locate(self.spec.backend, self.spec.cli_bin)
+        return self._backend
 
     # -- 内省 ---------------------------------------------------------------
     def discover_tools(self) -> list[CLITool]:
         """内省 CLI schema → 自动注册 Vermes 工具。沙箱可跑（不需目标软件）。"""
         if not shutil.which(self.spec.cli_bin):
             raise FileNotFoundError(f"CLI 未安装: {self.spec.cli_bin}")
+        # 两层发现：解析后端路径（macOS bug 兜底），供 invoke() 注入环境变量
+        self.resolve_backend()
         tools: list[CLITool] = []
         top = _split_sections(_run_cli(self.spec.cli_bin, []))
         groups = top.get("commands", [])
@@ -136,28 +169,71 @@ class SoftwareAdapter:
                     sname, sdesc = s
                     opts = sub.get("options", [])
                     schema = self._build_schema(opts)
-                    tools.append(
-                        CLITool(
-                            name=f"{self.spec.software}_{gname}_{sname}",
-                            subcommand=[gname, sname],
-                            json_schema=schema,
-                            description=sdesc,
-                            toolset=self.toolset,
-                        )
+                    tool = CLITool(
+                        name=f"{self.spec.software}_{gname}_{sname}",
+                        subcommand=[gname, sname],
+                        json_schema=schema,
+                        description=sdesc,
+                        toolset=self.toolset,
+                        operation_mechanism=self.spec.operation_mechanism,
+                        intent_keywords=self._derive_tool_keywords(gname, sname, sdesc),
                     )
+                    tools.append(tool)
             else:  # 叶子命令（本身带 options）
                 opts = sub.get("options", [])
                 schema = self._build_schema(opts)
-                tools.append(
-                    CLITool(
-                        name=f"{self.spec.software}_{gname}",
-                        subcommand=[gname],
-                        json_schema=schema,
-                        description=gdesc,
-                        toolset=self.toolset,
-                    )
+                tool = CLITool(
+                    name=f"{self.spec.software}_{gname}",
+                    subcommand=[gname],
+                    json_schema=schema,
+                    description=gdesc,
+                    toolset=self.toolset,
+                    operation_mechanism=self.spec.operation_mechanism,
+                    intent_keywords=self._derive_tool_keywords(gname, "", gdesc),
                 )
+                tools.append(tool)
         return tools
+
+    @staticmethod
+    def _derive_tool_keywords(gname: str, sname: str, desc: str) -> list[str]:
+        """从 name/subcommand/description 派生意图关键词（供阶段二细选倒排）。"""
+        raw = f"{gname} {sname} {desc}".lower()
+        import re as _re
+
+        toks = _re.findall(r"[a-z0-9_]+", raw)
+        stop = {"the", "a", "an", "to", "of", "and", "or", "in", "on", "for", "with", "apply", "add"}
+        seen: list[str] = []
+        for t in toks:
+            if t in stop or len(t) < 2:
+                continue
+            if t not in seen:
+                seen.append(t)
+        return seen
+
+    def build_capability_index(self, tools: list[CLITool]) -> CapabilityIndex:
+        """discover 结果的 toolset 级能力索引（阶段一粗筛源）。"""
+        summaries = [
+            ToolSummary(
+                name=t.name,
+                description=t.description,
+                subcommand=t.subcommand,
+                toolset=t.toolset,
+                operation_mechanism=t.operation_mechanism,
+                intent_keywords=t.intent_keywords,
+            )
+            for t in tools
+        ]
+        keywords: set[str] = set()
+        for ts in summaries:
+            keywords.update(ts.intent_keywords)
+        keywords.update([self.spec.domain, self.spec.software])
+        return CapabilityIndex(
+            toolset=self.toolset,
+            domain=self.spec.domain,
+            operation_mechanism=self.spec.operation_mechanism,
+            intent_keywords=sorted(keywords),
+            tools=summaries,
+        )
 
     @staticmethod
     def _build_schema(opt_lines: list[str]) -> dict:
@@ -175,12 +251,27 @@ class SoftwareAdapter:
         return {"type": "object", "properties": props, "required": required}
 
     # -- 调用 ---------------------------------------------------------------
-    def invoke(self, tool: CLITool, args: dict) -> dict:
-        """subprocess 调 CLI（带 --json），解析结构化返回。"""
+    def invoke(self, tool: CLITool, args: dict, ctx: Optional[dict] = None) -> dict:
+        """subprocess 调 CLI（带 --json），解析结构化返回。
+
+        L2b 闸门：执行前 TrustGate.check()，默认 deny-unless-declared。
+        cli_native 默认 ALLOW（不阻断 273 工具）；sdk_bridge 默认 ASK_USER。
+        非 ALLOW 直接返回结构化结果，不执行。
+        """
+        spec = TrustGate.default_for_mechanism(self.spec.operation_mechanism)
+        gate = TrustGate.check(spec, ctx)
+        if gate.decision != ALLOW:
+            return {"gate": gate.decision, "reason": gate.reason}
+
         cmd = [self.spec.cli_bin, "--json", *tool.subcommand]
         for k, v in args.items():
             cmd += [f"--{k.replace('_', '-')}", str(v)]
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        env = dict(os.environ)
+        # L2 两层发现：注入后端路径环境变量兜底 CLI-Anything macOS 路径 bug
+        backend = self.resolve_backend()
+        if backend and backend.env_value:
+            env[backend.env_var] = backend.env_value
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)
         out = proc.stdout.strip()
         try:
             return json.loads(out) if out else {"ok": proc.returncode == 0}
@@ -189,7 +280,10 @@ class SoftwareAdapter:
 
     # -- 注册进 Vermes ------------------------------------------------------
     def register(self, tools: list[CLITool]) -> int:
-        """把内省出的工具注册进 tools/registry（懒导入，避免污染仓库导入）。"""
+        """把内省出的工具注册进 tools/registry（懒导入，避免污染仓库导入）。
+
+        顺带 build CapabilityIndex 写入 CAPABILITY_REGISTRY，供 L2a 阶段一粗筛。
+        """
         try:
             from tools.registry import registry
         except Exception as exc:  # pragma: no cover - 仅 spike 环境差异
@@ -206,6 +300,8 @@ class SoftwareAdapter:
                 description=t.description,
             )
             count += 1
+        if tools:
+            CAPABILITY_REGISTRY.add(self.build_capability_index(tools))
         return count
 
     def _make_handler(self, tool: CLITool) -> Callable:

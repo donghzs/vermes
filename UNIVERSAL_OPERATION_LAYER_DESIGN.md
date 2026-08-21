@@ -337,6 +337,37 @@ GitHub API 实测：`HKUDS/CLI-Anything`，Apache-2.0，**最后 push 2026-08-13
 ### 13.7 结论
 L3 轮子成熟、L2 自动注册 273 工具、状态层可跑 → 手搓 18 工具进入**冻结**（§6）。下一步优先级（2026-08-21 用户定调）：**B 桶门禁最低**（随你机器顺手验，不单独跑轮）→ **L2a/L2b 接口草案现在开工**（与 FreeCAD 几何执行无依赖）→ **第二域 Blender spike**（验证薄插槽通用性，用户同步查 CLI-Anything 是否有 Blender 覆盖）。
 
+### 13.8 B 桶门禁关闭（2026-08-21 用户机器验收 · 6/6 全通）
+
+> 用户机器 FreeCAD 实装后跑通 6 条典型链路，几何内核真实执行 + 合法文件导出，门禁关闭。
+
+| # | 链路 | 证据 | 结论 |
+|---|---|---|---|
+| ① | `document new` | 返回 JSON | ✅ |
+| ② | `part add box` + `part add cylinder` | 两体落库 | ✅ |
+| ③ | `part fillet-3d 0 --radius 2.0 --edges all` | **几何内核真实执行**（非状态层） | ✅ |
+| ④ | `part thickness 0 1.5 --faces all` | **几何内核真实执行**（抽壳） | ✅ |
+| ⑤ | `export render xxx.step --preset step` | 产出 **ISO-10303-21 合法** STEP（freecad-headless） | ✅ |
+| ⑥ | `document info` / `part list` | `parts_count=2` | ✅ |
+
+→ **杠杆成立证据链完整**：L3 轮子的几何执行真实可用，L2 薄插槽无需自研几何内核。B 桶门禁按用户定调「5 典型链路全通 = 可发布」，**不单独跑轮**，现关闭。
+
+**一个真实边界 case（L2 发现层）→ 两层发现**：用户报告 CLI-Anything 的 macOS discovery 路径写死 `Contents/MacOS/FreeCADCmd`，本机实际是 `Contents/Resources/bin/freecadcmd`，需设 `FREECAD_PATH` 环境变量才能找到后端。→ 这证明 `operation_mechanism=cli_native` 的适配器**不仅要发现 CLI 二进制（Layer1：cli-anything-freecad），还要定位目标软件后端（Layer2：freecadcmd/blender）**。已在 `discovery.py::BackendLocator` 编码：环境变量兜底 → PATH → macOS 双候选 app bundle 路径，并在 `invoke()` 注入 `FREECAD_PATH`/`BLENDER_PATH` 环境变量。详见 §15.4 / §15.2。
+
+### 13.9 第二域 Blender spike（沙箱实跑 · 薄插槽通用性证明）
+
+> 用户同步确认 CLI-Anything 有 Blender 覆盖（`blender/agent-harness`，entry `cli-anything-blender=cli_anything.blender.blender_cli:main`，经 `blender --background --python` 驱动）。沙箱实跑 `SoftwareAdapter.discover_tools()` 对 Blender 域复用**同一套 L2 薄插槽代码**：
+
+- **内省 50 个工具**（vs FreeCAD 273）——工具集形态由软件决定，**非 3D 形状**：含 `camera add/list/set`、`light add`、`animation fps/keyframe`、`material create`、`render execute`、`object transform` 等。→ **薄插槽 = 域无关**，第二域零新增逻辑面。
+- **CapabilityIndex 自动 build**：`toolset=blender_adapter` / `domain=3d` / `operation_mechanism=cli_native` / 派生 92 个 intent_keywords。
+- **L2a 两阶段路由实跑**（Blender 域）：
+  - 阶段一 `route_toolset("render the scene with a red material")` → `blender_adapter` score 0.7（命中 render/material/scene）。
+  - 跨语言：`route_toolset("给场景加一个红色材质并渲染")` → `blender_adapter` score 0.7（命中「渲染」，双语桥接生效，非失配）。
+  - 阶段二 `select_tool(..., "render the scene...")` → `allow_tool blender_render_execute` score 0.571；不相关意图 → `needs_clarify`（阈值降级，消化 argmax 无门槛反模式）。
+- **L2b 闸门接入**：`cli_native` 默认 `ALLOW`（不阻断 50 工具）；`sdk_bridge` 默认 `ASK_USER`。
+
+→ **结论**：薄插槽对 FreeCAD（273）+ Blender（50）双域零差异复用，L2a/L2b 已随 L2 代码一并落地（§15 标记为「已实现」）。战略「通用操作层底座」从架构推演转为**双域实证**。
+
 ---
 
 ## 14. 发现层与信任闸门：L2 之后的两个薄层（2026-08-21 用户战略补全）
@@ -454,15 +485,21 @@ def check(spec: PermissionSpec, ctx) -> GateResult:
 - `software_adapter.py` 的 `invoke()` 当前无脑 `subprocess.run()`（§14.3 指出的生产缺口）→ L2b 在 `invoke()` 入口插入 `TrustGate.check()`。
 - L2a 的 `CapabilityIndex` 由 `discover_tools()` 注册时顺带 build（不改 L2 契约，仅扩展注册元数据）。
 
-### 15.5 开工顺序与验收
-1. **L2a**：`CapabilityIndex` 结构 + `route_toolset` 纯索引（无 LLM 可单测）+ `select_tool` 接 `runtime_provider` 的 LLM。
-2. **L2b**：`PermissionSpec` + `TrustGate.check` + 在 `invoke()` 插入（先 `cli_native` 默认 ALLOW，验证不阻断现有 273 工具）。
-3. **验收**：FreeCAD 273 + Blender N 双域下，intent「给这个盒子倒角 2mm」→ 粗筛到 `freecad_adapter` → LLM 细选 `fillet-3d` → `invoke` 前 `TrustGate` ALLOW（cli_native）→ 执行。
+### 15.5 开工顺序与验收（2026-08-21 已实现 · 沙箱实跑）
+
+> 状态：**L2a + L2b 已随 L2 薄插槽代码一并落地**，非停留在草案。新增 4 文件：`vermes_cli/adapters/discovery.py`（L2a）、`discovery_registry.py`（进程内索引）、`trust_gate.py`（L2b）、`tests/adapters/test_l2_discovery_trust.py`（20 passed）。
+
+1. **L2a** ✅：`CapabilityIndex` 结构 + `route_toolset` 纯倒排索引（无 LLM 可单测，含中文意图双语桥接）+ `select_tool` 接 LLM `tool_choice`（带 `MIN_TOOL_SCORE=0.2` 门槛，不达标返 `NEEDS_CLARIFY`）。`discover_tools()` 顺带 `build_capability_index()` 写入 `CAPABILITY_REGISTRY`。
+2. **L2b** ✅：`PermissionSpec` + `TrustGate.check()`（默认 deny-unless-declared）+ 在 `invoke()` 入口插入（`cli_native` 默认 ALLOW、不阻断 273/50 工具；`sdk_bridge` 默认 ASK_USER；`network=true` 且无 sandbox → DENY）。20 个单测全绿。
+3. **两层发现** ✅：`BackendLocator` 编码 Layer1 CLI 二进制 + Layer2 后端（freecadcmd/blender），macOS 双候选路径 + `FREECAD_PATH`/`BLENDER_PATH` 环境变量兜底；`invoke()` 注入后端路径 env。
+4. **验收（双域实证，§13.9）**：FreeCAD 273 + Blender 50 下，intent「给这个盒子倒角 2mm」→ 阶段一粗筛到 `freecad_adapter`（中文「倒角」命中）→ 阶段二 LLM 细选 `fillet-3d` → `invoke` 前 `TrustGate` ALLOW（cli_native）→ 执行。Blender 域同样跑通路由 + 阈值降级。
 
 ---
 
-> 文档版本：v1.6（战略基线 · 评审修订 · §13 spike · §14 发现层+信任闸门 · §15 L2a/L2b 接口草案）
+> 文档版本：v1.7（战略基线 · 评审修订 · §13 spike · §13.8 B 桶关闭 · §13.9 Blender 双域实证 · §14 发现层+信任闸门 · §15 L2a/L2b 已落地）
 > 起草依据：用户战略转向指令（2026-08-21）+ 微信文章锚定 + CLI-Anything 实核 + Vermes 现有底座源码核实 + 沙箱 spike 实测 + v1.3 积木池量级跃迁推论 + 2026-08-21 优先级定调。
-> 评审修订：spike 硬门槛(已执行) / L2 词汇表硬护栏 / 18 工具冻结 / 第二域=**Blender**(拍板) / Android 冷启动 / 积木来源=软件宇宙+用户生态 / §14 发现层+信任闸门 / **§15 L2a 两阶段路由 + L2b 信任闸门接口草案** / 阈值改「5 链路全通=可发布」(弃 80% 粗口径)。
+> 评审修订：spike 硬门槛(已执行) / L2 词汇表硬护栏 / 18 工具冻结 / 第二域=**Blender**(拍板) / Android 冷启动 / 积木来源=软件宇宙+用户生态 / §14 发现层+信任闸门 / §15 L2a 两阶段路由 + L2b 信任闸门接口草案 / 阈值改「5 链路全通=可发布」(弃 80% 粗口径)。
+> 实现落点（v1.7 新增）：`vermes_cli/adapters/discovery.py`(L2a) / `discovery_registry.py`(进程内索引) / `trust_gate.py`(L2b) / `software_adapter.py` 扩展(两层发现+闸门+索引) / `tests/adapters/test_l2_discovery_trust.py`(20 passed) / Blender spike 实跑 50 工具（§13.9）。B 桶 6/6 用户机器验收关闭（§13.8）。
+> 下一步：接 `runtime_provider` LLM 到 `select_tool`（阶段二生产化）+ `SoftwareAdapter.invoke()` 在 `conversation_loop` 接线点接 `ctx` + 第三域（office/ide）spike 扩展积木池广度。
 > 配套产物：`SPIKE_CLI_ANYTHING_2026-08-21.md`（spike 详细证据）+ `vermes_cli/adapters/software_adapter.py`（L2 薄插槽实现）。
 > 下一步：L2a/L2b 接口草案→实现（沙箱可做）+ 第二域 Blender spike（用户同步查 CLI-Anything 是否有 Blender 覆盖）+ B 桶 5 链路顺手验（用户机器，最低优先级）。

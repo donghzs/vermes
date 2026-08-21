@@ -68,3 +68,35 @@ spike 达成预期：
 - 手搓 18 工具进入**冻结**（见设计文档 §6）。
 
 下一步：B 桶几何执行验证（你机器）+ 第二域选型（§8.2）。
+
+---
+
+## 8. 第二域 Blender spike（沙箱实跑 · 薄插槽通用性）
+
+> 对应：设计文档 §13.9。环境：managed Python 3.13.12 隔离 venv，安装 `blender/agent-harness`（`cli-anything-blender=cli_anything.blender.blender_cli:main`，经 `blender --background --python` 驱动），**未安装 Blender**。
+
+- **复用同一套 L2 薄插槽代码**（`SoftwareAdapter.discover_tools()`），零新增逻辑面。
+- 内省出 **50 个 leaf 工具**（vs FreeCAD 273）——工具形态由软件决定，**非 3D 形状**：`camera add/list/set`、`light add`、`animation fps/keyframe`、`material create`、`render execute`、`object transform` 等。
+- `build_capability_index()` 自动产出 `toolset=blender_adapter` / `domain=3d` / `operation_mechanism=cli_native` / 92 个派生 intent_keywords。
+- **L2a 两阶段路由实跑**：
+  - `route_toolset("render the scene with a red material")` → `blender_adapter` score 0.7（命中 render/material/scene）。
+  - 跨语言：`route_toolset("给场景加一个红色材质并渲染")` → `blender_adapter` score 0.7（命中「渲染」，双语桥接生效）。
+  - `select_tool(..., "render the scene...")` → `allow_tool blender_render_execute`（score 0.571）；不相关意图 → `needs_clarify`（阈值降级，消化 argmax 无门槛反模式）。
+- **L2b 闸门**：`cli_native` 默认 ALLOW（不阻断 50 工具）；`sdk_bridge` 默认 ASK_USER。
+
+→ **薄插槽域无关得到双域实证**（FreeCAD 273 + Blender 50）。战略「通用操作层底座」从架构推演转为工程事实。
+
+## 9. B 桶门禁关闭（用户机器验收 · 6/6 全通）
+
+> 对应：设计文档 §13.8。用户机器 FreeCAD 实装后跑通 6 条典型链路，几何内核真实执行 + 合法文件导出，门禁关闭。
+
+| # | 链路 | 结论 |
+|---|---|---|
+| ① | `document new`（JSON） | ✅ |
+| ② | `part add box` + `part add cylinder`（parts_count=2） | ✅ |
+| ③ | `part fillet-3d 0 --radius 2.0 --edges all`（几何内核真实执行） | ✅ |
+| ④ | `part thickness 0 1.5 --faces all`（抽壳真实执行） | ✅ |
+| ⑤ | `export render xxx.step --preset step`（ISO-10303-21 合法 STEP） | ✅ |
+| ⑥ | `document info` / `part list`（parts_count=2） | ✅ |
+
+**边界 case → 两层发现**：CLI-Anything macOS 写死 `Contents/MacOS/FreeCADCmd`，本机实际 `Contents/Resources/bin/freecadcmd`，需 `FREECAD_PATH` 环境变量兜底。`cli_native` 适配器须**两层发现**（Layer1 CLI 二进制 + Layer2 目标软件后端）——已在 `discovery.py::BackendLocator` 编码并注入 `invoke()` 环境变量。
