@@ -63,9 +63,6 @@ class FreeCADAdapter(ProToolAdapter):
             return self._freecadcmd_override if self._freecadcmd_override.exists() else None
         if _DEFAULT_ENGINE_CMD.exists():
             return _DEFAULT_ENGINE_CMD
-        on_path = shutil.which("freecadcmd")
-        if on_path:
-            return Path(on_path)
         # macOS 常见安装位置
         for c in [
             "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
@@ -73,6 +70,26 @@ class FreeCADAdapter(ProToolAdapter):
         ]:
             if Path(c).exists():
                 return Path(c)
+        # Linux 常见安装位置
+        for c in [
+            "/usr/bin/freecadcmd",
+            "/usr/local/bin/freecadcmd",
+        ]:
+            if Path(c).exists():
+                return Path(c)
+        # Windows 常见安装位置
+        for c in [
+            r"C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe",
+            r"C:\Program Files\FreeCAD\bin\freecadcmd.exe",
+            r"C:\Program Files (x86)\FreeCAD 1.0\bin\freecadcmd.exe",
+            r"C:\Program Files (x86)\FreeCAD\bin\freecadcmd.exe",
+        ]:
+            if Path(c).exists():
+                return Path(c)
+        # PATH 查找
+        on_path = shutil.which("freecadcmd")
+        if on_path:
+            return Path(on_path)
         return None
 
     def is_available(self) -> bool:

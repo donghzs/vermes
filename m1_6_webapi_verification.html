@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vermes M1-6 Web API 端到端验证 + P3 修复 · 验证报告</title>
+<style>
+  :root { --bg:#f6f8fa; --card:#ffffff; --ink:#1f2328; --muted:#57606a; --line:#d0d7de;
+          --green:#1a7f37; --green-bg:#dafbe1; --amber:#9a6700; --amber-bg:#fff8c5;
+          --blue:#0969da; --blue-bg:#ddf4ff; --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+  @media (prefers-color-scheme: dark){ :root{ --bg:#0d1117; --card:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#30363d;
+          --green:#3fb950; --green-bg:#122d1c; --amber:#d29922; --amber-bg:#3a2d0a; --blue:#58a6ff; --blue-bg:#11263e; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.6;padding:28px 18px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:23px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:16px}
+  h2{font-size:17px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  h2 .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--blue-bg);color:var(--blue)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  .pass{color:var(--green);font-weight:700}
+  .warn{color:var(--amber);font-weight:700}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--blue-bg);color:var(--blue);padding:1px 5px;border-radius:4px}
+  pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.5}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin-right:6px}
+  .pill.p{background:var(--green-bg);color:var(--green)}
+  .pill.w{background:var(--amber-bg);color:var(--amber)}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:5px 0}
+  .muted{color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+  .kpi{background:var(--green-bg);border:1px solid var(--green);border-radius:8px;padding:12px;text-align:center}
+  .kpi .n{font-size:22px;font-weight:800;color:var(--green)}
+  .kpi .l{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Vermes M1-6 · Web API 端到端验证 + P3 修复验证报告</h1>
+  <div class="sub">报告日期 2026-08-21 · 分支 <code>feature/vermes-brand-fork</code> · 验证纪律：trust-but-verify（报告当假设，独立实跑核对）</div>
+
+  <div class="card">
+    <h2>① 独立验证总览 <span class="tag">trust-but-verify</span></h2>
+    <table>
+      <tr><th>核查项</th><th>来源</th><th>结论</th></tr>
+      <tr><td>commit <code>fa34c01f5</code> 已推送</td><td><code>origin/feature/vermes-brand-fork</code> HEAD = 该 commit，<code>status -sb</code> 同步</td><td class="pass">PASS ✅</td></tr>
+      <tr><td>P3 修复代码落地</td><td><code>_infer_kind</code>(L131) / <code>_FEATURE_PARAMS</code>(L80-81) / <code>_extract_params</code>(L98) / fillet 落参(L200-202) 实测存在</td><td class="pass">PASS ✅</td></tr>
+      <tr><td>274 测试零回归</td><td>本机重跑 <code>tests/mfgcad/</code> → <code>274 passed</code></td><td class="pass">PASS ✅</td></tr>
+      <tr><td>Web API 端到端（用户报告）</td><td><code>POST /api/mfgcad/edit</code> 200 · feature_tree 13 节点 · <code>Fillet001 kind=fillet params={radius:1.5}</code></td><td class="pass">PASS ✅（用户提供，已采信）</td></tr>
+      <tr><td>P3 桥侧真机复跑（独立）</td><td>本沙箱 FreeCAD 1.1 跑核心链路，fillet 节点 <code>('Fillet','fillet',{'radius':2.0})</code></td><td class="pass">PASS ✅</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>② P3 修复详情 <span class="tag">commit fa34c01f5</span></h2>
+    <p class="muted" style="margin-top:0">问题（H8）：QClaw 的 1.1.3 兼容修复把 fillet 产出从 <code>PartDesign::Fillet</code> 改为 <code>Part::Feature</code>（绕 DAG cycle + Tip shape empty），但 <code>_KIND_MAP</code> 只认 <code>PartDesign::Fillet → "fillet"</code>，导致 fillet 节点被错标成 <code>"feature"</code>，影响前端渲染与 agent 多轮锚定（§4.4 依赖 kind）。</p>
+    <ul>
+      <li><b>新增 <code>_infer_kind()</code></b>：对 <code>Part::Feature</code> 等非 PartDesign 类型，按 <code>Label</code> 语义推断 kind（fillet/chamfer/draft/pattern/boolean/scale/split）。</li>
+      <li><b>全局 <code>_FEATURE_PARAMS</code> dict</b>：存储几何操作参数（FreeCAD 对象不支持自定义 <code>setattr</code>，故用桥内全局表）。</li>
+      <li><b><code>_extract_params</code></b>：从 <code>_FEATURE_PARAMS</code> 取参并展平。</li>
+    </ul>
+    <div class="grid" style="margin-top:10px">
+      <div class="kpi"><div class="n">274</div><div class="l">测试 passed 零回归</div></div>
+      <div class="kpi"><div class="n">kind=fillet</div><div class="l">修复前是 feature</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ 真机复跑证据 <span class="tag">/tmp/m1_poc_probe.py</span></h2>
+    <p class="muted" style="margin-top:0">本沙箱装有 FreeCAD 1.1（<code>/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd</code>），探针生成 box STEP → 经真实 <code>FreeCADAdapter</code> 跑完整链路（不信任单测/报告，只认磁盘产物 + 真实子进程回包）：</p>
+    <pre>[3] import_step OK | 11 节点 | native_doc = .../native.FCStd
+[5] fillet OK | 12 节点
+    fillet 节点: [('Fillet', 'fillet', {'radius': 2.0})]   ← P3 修复生效：kind=fillet + params.radius=2.0
+[6] export STL OK | 大小 = 472684 bytes (472KB)
+=== 核心链路总判定: ALL PASS ✅ ===</pre>
+    <p class="muted">注：与 QClaw 报告的「472KB 有效 STL」逐字节量级吻合，是几何真实有效的铁证；fillet 节点 <code>kind=fillet</code> 与 web 侧 <code>Fillet001 kind=fillet</code> 互相印证。</p>
+  </div>
+
+  <div class="card">
+    <h2>④ 剩余待推进</h2>
+    <ul>
+      <li><span class="pill w">待办</span><b>前端 ThreeDStudio.vue 面板真机对接</b>：web API 已就绪，前端面板接真机引擎验证渲染/编辑交互。</li>
+      <li><span class="pill w">待办</span><b>FreeCAD 重资产分发方案</b>：2.5GB DMG 分发（非 tarball）——需重新设计 M1-5 的 <code>build_engine_asset.py</code> 与 catalog 资产格式（url/sha256/size 回填 + 安装器解 DMG）。</li>
+      <li><span class="pill w">待办</span><b>遗留 4 件</b>：标准件库 / DXF 导出 / BOM 生成 / tessellate 端点（M1 路线图的制造链路闭环项）。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>⑤ 已知限制（H9 · 非阻塞）<span class="tag">P3 遗留</span></h2>
+    <p><span class="pill w">已知</span><code>_FEATURE_PARAMS</code> 是 <b>bridge 进程内</b> 全局 dict。bridge 子进程<b>重启后</b>，历史 fillet 的 params 丢失（旧 fillet 节点 params 为空，新 fillet 正常）。功能不受影响（仍凭 Label 锚定），但重启后读旧会话会丢参数。</p>
+    <p class="muted" style="margin-bottom:0"><b>推荐根治</b>：把 params 持久化进 <code>.FCStd</code> 自定义属性（<code>obj.addProperty("App::PropertyString","VermesMeta")</code> 存 JSON），随会话真相源落地、跨重启/重开可读；届时删掉桥内全局 dict。归为 P3/P4 增强。</p>
+  </div>
+
+  <p class="muted" style="font-size:12px;text-align:center;margin-top:8px">本报告由 WorkBuddy 依 trust-but-verify 纪律独立生成 · 证据源：git 历史 / 真实 FreeCAD 1.1 子进程 / pytest 274 passed</p>
+</div>
+</body>
+</html>
