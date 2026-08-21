@@ -313,6 +313,8 @@ for _pkg in [
     'ruamel.yaml',
     # 重试逻辑（渠道连接）
     'tenacity',
+    # L2 通用操作层（SoftwareAdapter + 发现层 + 信任闸门 + 推荐层）
+    # 'vermes_cli.adapters' 不是 PyPI 包，collect_all 会 fail，用 collect_submodules 单独处理
 ]:
     try:
         _d, _b, _h = collect_all(_pkg)
@@ -324,6 +326,20 @@ for _pkg in [
         print(f"[Vermes Backend] collect_all({_pkg}) SKIP: {_e}")
 
 hiddenimports.extend(_extra_hidden)
+
+# ── L2 adapters（vermes_cli.adapters 不是 PyPI 包，collect_all 不适用）──
+try:
+    _adapters_sub = collect_submodules('vermes_cli.adapters')
+    hiddenimports.extend(_adapters_sub)
+    print(f"[Vermes Backend] collect_submodules(vermes_cli.adapters) → {_adapters_sub}")
+except Exception as _e:
+    print(f"[Vermes Backend] collect_submodules(vermes_cli.adapters) SKIP: {_e}")
+
+# ── experts_catalog.json 数据文件（专家目录）──
+datas.append((os.path.join(spec_dir, 'vermes_cli/experts_catalog.json'), 'vermes_cli'))
+
+# ── vermes_cli/adapters 数据文件（L2 模块的 __init__.py 等需要落盘）──
+datas.append((os.path.join(spec_dir, 'vermes_cli/adapters'), 'vermes_cli/adapters'))
 
 a = Analysis(
     [os.path.join(spec_dir, 'backend_main.py')],
