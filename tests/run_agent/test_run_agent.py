@@ -3092,6 +3092,16 @@ class TestRunConversation:
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
+            # 隔离 operator-claim verifier：本测验证"压缩触发"，不测 verifier
+            # （它有独立测试面 tests/test_operator_claim_verifier_fixes.py）。
+            # 压缩 mock 抹掉了工具证据，verifier 会误判"本回合未调用任何工具"
+            # → 硬拒绝注入"正在自动重试" → Bug #2 修活的 auto-retry 递归
+            # run_conversation → side_effect 耗尽 StopIteration。pass-through
+            # 让本测只聚焦"压缩触发"这一个断言。
+            patch(
+                "agent.conversation_loop._apply_operator_claim_verifier",
+                side_effect=lambda ag, msgs, fr, intr: (fr, msgs),
+            ),
         ):
             # _compress_context should return (messages, system_prompt)
             mock_compress.return_value = (
