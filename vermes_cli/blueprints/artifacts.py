@@ -55,6 +55,25 @@ _MIME_MAP = {
     '.gif': 'image/gif',
     '.webp': 'image/webp',
     '.svg': 'image/svg+xml',
+    # 办公/ScholarForge
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.pdf': 'application/pdf',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.doc': 'application/msword',
+    '.xls': 'application/vnd.ms-excel',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    # 制造业/mfgcad
+    '.step': 'application/step',
+    '.stp': 'application/step',
+    '.stl': 'application/sla',
+    '.obj': 'application/wavefront-obj',
+    '.fcdoc': 'application/octet-stream',
+    '.dxf': 'application/dxf',
+    '.gcode': 'text/plain',
+    '.iges': 'application/iges',
+    '.3mf': 'model/3mf',
+    '.gltf': 'model/gltf+json',
 }
 
 _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB

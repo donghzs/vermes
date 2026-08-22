@@ -414,7 +414,7 @@ function cleanUserContent(content) {
 
 // ── 链接点击拦截（pywebview/浏览器兼容） ──
 // ── 产物文件扩展名 ──
-const ARTIFACT_EXTS = ['md', 'html', 'htm', 'json', 'csv', 'txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
+const ARTIFACT_EXTS = ['md', 'html', 'htm', 'json', 'csv', 'txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'docx', 'pdf', 'pptx', 'xlsx', 'doc', 'xls', 'ppt', 'step', 'stp', 'stl', 'obj', 'fcdoc', 'dxf', 'gcode', 'iges', '3mf', 'gltf']
 const ARTIFACT_EXTS_SET = new Set(ARTIFACT_EXTS)
 
 // 判断链接是否为产物文件（本地路径 + 已知扩展名）
@@ -451,7 +451,7 @@ function handleContentClick(e) {
       const path = extractArtifactPath(href)
       const title = a.dataset.title || path.split('/').pop()
       const ext = path.split('.').pop()?.toLowerCase()
-      const mimeMap = { md: 'text/markdown', html: 'text/html', htm: 'text/html', json: 'application/json', csv: 'text/csv', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
+      const mimeMap = { md: 'text/markdown', html: 'text/html', htm: 'text/html', json: 'application/json', csv: 'text/csv', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', pdf: 'application/pdf', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', doc: 'application/msword', xls: 'application/vnd.ms-excel', ppt: 'application/vnd.ms-powerpoint', step: 'application/step', stp: 'application/step', stl: 'application/sla', obj: 'application/wavefront-obj', fcdoc: 'application/octet-stream', dxf: 'application/dxf', gcode: 'text/plain', iges: 'application/iges', '3mf': 'model/3mf', gltf: 'model/gltf+json' }
       const mime = mimeMap[ext] || 'text/plain'
       if (window.__vermesArtifacts) {
         window.__vermesArtifacts.addArtifact({ path, title, mime, source: 'chat' })
