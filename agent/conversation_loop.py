@@ -4560,17 +4560,12 @@ def run_conversation(
                         messages, tools=agent.tools or None
                     )
 
-                if agent.compression_enabled and _compressor.should_compress(_real_tokens):
-                    agent._safe_print("  ⟳ compacting context...")
-                    messages, active_system_prompt = agent._compress_context(
-                        messages, system_message,
-                        approx_tokens=agent.context_compressor.last_prompt_tokens,
-                        task_id=effective_task_id,
+                from agent.conversation_compression import compaction_check_in_loop
+                messages, active_system_prompt, conversation_history = \
+                    compaction_check_in_loop(
+                        agent, messages, system_message, active_system_prompt,
+                        _real_tokens, effective_task_id, conversation_history,
                     )
-                    # Compression created a new session - clear history so
-                    # _flush_messages_to_session_db writes compressed messages
-                    # to the new session (see preflight compression comment).
-                    conversation_history = None
 
                 # Save session log incrementally (so progress is visible even if interrupted)
                 agent._session_messages = messages

@@ -881,6 +881,38 @@ def compaction_loop(
     return messages, active_system_prompt, approx_tokens, conversation_history
 
 
+def compaction_check_in_loop(
+    agent: Any,
+    messages: list,
+    system_message: str,
+    active_system_prompt: str,
+    real_tokens: int,
+    effective_task_id: str,
+    conversation_history,
+):
+    """In-loop compression check: if token count exceeds threshold, compress once.
+
+    Extracted from ``conversation_loop.py`` in-loop compression block (A2 step 2).
+    Returns ``(messages, active_system_prompt, conversation_history)`` —
+    ``conversation_history`` is reset to ``None`` when compression fires so the
+    next ``_flush_messages_to_session_db`` writes all compressed messages to
+    the new session.
+    """
+    _compressor = agent.context_compressor
+    if agent.compression_enabled and _compressor.should_compress(real_tokens):
+        agent._safe_print("  ⟳ compacting context...")
+        messages, active_system_prompt = agent._compress_context(
+            messages, system_message,
+            approx_tokens=agent.context_compressor.last_prompt_tokens,
+            task_id=effective_task_id,
+        )
+        # Compression created a new session - clear history so
+        # _flush_messages_to_session_db writes compressed messages
+        # to the new session (see preflight compression comment).
+        conversation_history = None
+    return messages, active_system_prompt, conversation_history
+
+
 def prune_context(
     agent: Any,
     messages: list,
