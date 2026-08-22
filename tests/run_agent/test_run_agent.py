@@ -2945,9 +2945,11 @@ class TestRunConversation:
 
         assert result["final_response"] == "(empty)"
         # Should have emitted retry statuses (3 retries) + final failure
-        retry_msgs = [m for m in status_messages if "retrying" in m.lower()]
+        # i18n: retry status emitted as "正在重试" (zh) or "retrying" (en)
+        retry_msgs = [m for m in status_messages if "retrying" in m.lower() or "正在重试" in m]
         assert len(retry_msgs) == 3, f"Expected 3 retry status messages, got {len(retry_msgs)}: {status_messages}"
-        failure_msgs = [m for m in status_messages if "no content" in m.lower() or "no fallback" in m.lower()]
+        # i18n: final failure status emitted as "无任何内容" (zh) or "no content" (en)
+        failure_msgs = [m for m in status_messages if "no content" in m.lower() or "no fallback" in m.lower() or "无任何内容" in m or "未配置备用" in m]
         assert len(failure_msgs) >= 1, f"Expected at least 1 failure status, got: {status_messages}"
 
     def test_partial_stream_recovery_uses_streamed_content(self, agent):
@@ -3002,10 +3004,11 @@ class TestRunConversation:
         assert result["final_response"] == "The answer to your question is that"
         assert result["api_calls"] == 1  # No wasted retries
         # Should emit the stream-interrupted status, NOT the empty-retry status
-        recovery_msgs = [m for m in status_messages if "stream interrupted" in m.lower()]
+        # i18n: stream recovery emitted as "流式响应中断" (zh) or "stream interrupted" (en)
+        recovery_msgs = [m for m in status_messages if "stream interrupted" in m.lower() or "流式响应中断" in m]
         assert len(recovery_msgs) >= 1, f"Expected stream recovery status, got: {status_messages}"
         # Should NOT have retry statuses
-        retry_msgs = [m for m in status_messages if "retrying" in m.lower()]
+        retry_msgs = [m for m in status_messages if "retrying" in m.lower() or "正在重试" in m]
         assert len(retry_msgs) == 0, f"Should not retry when stream content exists: {status_messages}"
 
     def test_partial_stream_recovery_preempts_prior_turn_fallback(self, agent):
@@ -3408,7 +3411,8 @@ class TestRunConversation:
         assert "output tokens" in result["error"].lower()
         # Should have a user-friendly response (not None)
         assert result["final_response"] is not None
-        assert "Thinking Budget Exhausted" in result["final_response"]
+        # i18n: "Thinking Budget Exhausted" (en) or "思考预算已用尽" (zh)
+        assert "Thinking Budget Exhausted" in result["final_response"] or "思考预算已用尽" in result["final_response"]
         assert "/thinkon" in result["final_response"]
 
     def test_length_empty_content_without_think_tags_retries_normally(self, agent):
