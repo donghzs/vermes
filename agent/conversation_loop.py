@@ -1233,6 +1233,7 @@ def _finalize_turn(
     original_user_message: str,
     _should_review_memory: bool,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
+    approx_tokens: int = 0,
 ) -> Dict[str, Any]:
     """Finalization — max-iterations summary, trajectory save, cleanup,
     session persist, turn logging, metrics, file mutation footer, operator claim
@@ -1310,35 +1311,11 @@ def _finalize_turn(
 
     _log_turn_exit(agent, messages, final_response, interrupted, _turn_exit_reason, api_call_count)
 
-    _record_turn_metrics(agent, messages, _scheduler, api_start_time, approx_tokens if 'approx_tokens' in dir() else 0)
+    _record_turn_metrics(agent, messages, _scheduler, api_start_time, approx_tokens)
 
     final_response = _apply_file_mutation_footer(agent, final_response, interrupted)
 
     final_response, messages = _apply_operator_claim_verifier(agent, messages, final_response, interrupted)
-
-    # 验证器硬拒绝后自动 retry 一次（不等用户发"继续"）
-    if (
-        final_response
-        and "正在自动重试" in final_response
-        and getattr(agent, "_operator_claim_rejection_count", 0) == 1
-        and not interrupted
-    ):
-        logger.info("operator-claim verifier: auto-retry after hard reject")
-        try:
-            _retry_result = run_conversation(
-                agent,
-                user_message,
-                system_message=system_message,
-                conversation_history=messages,
-                task_id=task_id,
-                stream_callback=stream_callback,
-                persist_user_message=persist_user_message,
-            )
-            if _retry_result and _retry_result.get("response"):
-                return _retry_result
-        except Exception as _retry_err:
-            logger.warning("operator-claim auto-retry failed: %s", _retry_err)
-        # retry 失败则继续返回原 final_response
 
     # Plugin hook: transform_llm_output
     # Fired once per turn after the tool-calling loop completes.
@@ -5019,7 +4996,36 @@ def run_conversation(
         effective_task_id, _turn_exit_reason, _scheduler, api_start_time,
         user_message, original_user_message, _should_review_memory,
         conversation_history,
+        approx_tokens=approx_tokens,
     )
+
+    # 验证器硬拒绝后自动 retry 一次（不等用户发"继续"）
+    # 从 _finalize_turn 移出到 run_conversation，消除 NameError（原引用
+    # system_message/task_id/stream_callback/persist_user_message 在
+    # _finalize_turn 作用域不可见，为死代码）。
+    if (
+        result
+        and result.get("final_response")
+        and "正在自动重试" in result["final_response"]
+        and getattr(agent, "_operator_claim_rejection_count", 0) == 1
+        and not interrupted
+    ):
+        logger.info("operator-claim verifier: auto-retry after hard reject")
+        try:
+            _retry_result = run_conversation(
+                agent,
+                user_message,
+                system_message=system_message,
+                conversation_history=result.get("messages", messages),
+                task_id=task_id,
+                stream_callback=stream_callback,
+                persist_user_message=persist_user_message,
+            )
+            if _retry_result and _retry_result.get("final_response"):
+                return _retry_result
+        except Exception as _retry_err:
+            logger.warning("operator-claim auto-retry failed: %s", _retry_err)
+        # retry 失败则继续返回原 result
 
     return result
 
