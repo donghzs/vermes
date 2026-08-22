@@ -400,32 +400,15 @@ def _record_turn_metrics(
     api_start_time: float | None,
     approx_tokens: int,
 ) -> None:
-    """Record turn metrics for the compression scheduler (best-effort)."""
-    try:
-        _api_latency = (time.time() - api_start_time) * 1000 if api_start_time else 0
-        _tool_names_this_turn = []
-        for m in messages:
-            if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls"):
-                for tc in (m.get("tool_calls") or []):
-                    _name = tc.get("function", {}).get("name")
-                    if _name:
-                        _tool_names_this_turn.append(_name)
-        _scheduler.record_turn(TurnMetrics(
-            turn_number=agent._user_turn_count,
-            api_latency_ms=_api_latency,
-            approx_tokens=approx_tokens,
-            tool_calls_this_turn=len(_tool_names_this_turn),
-            tool_names_this_turn=_tool_names_this_turn,
-        ))
-        agent._current_turn_tool_names = _tool_names_this_turn
-        agent._last_turn_tool_names = _tool_names_this_turn
-        # ── Route D metrics ──
-        from agent.metrics import record_turn_completed, record_tool_call
-        record_turn_completed()
-        for _tn in _tool_names_this_turn:
-            record_tool_call(_tn, _api_latency / max(len(_tool_names_this_turn), 1))
-    except Exception:
-        pass  # scheduler metrics are best-effort - never block turn completion
+    """Thin forwarder → agent.metrics_events.emit_turn_metrics_event.
+
+    A2 (§7.5 stage 2): the inline telemetry埋点 moved to
+    ``agent/metrics_events.py`` so the event contract is portable when
+    conversation_loop is later split into a turn/step/stream Service.
+    Call sites (e.g. line 1292) are unchanged.
+    """
+    from agent.metrics_events import emit_turn_metrics_event
+    emit_turn_metrics_event(agent, messages, _scheduler, api_start_time, approx_tokens)
 
 
 def _apply_file_mutation_footer(
