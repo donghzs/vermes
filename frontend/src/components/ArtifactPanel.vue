@@ -203,6 +203,19 @@ async function downloadArtifact(artifact) {
   }
 }
 
+// ── 在文件夹中显示（WorkBuddy 核心体验）──
+async function openInFolder(artifact) {
+  if (!artifact || !artifact.path || artifact.source === 'test') return
+  if (window.vermes?.showItemInFolder) {
+    const result = await window.vermes.showItemInFolder(artifact.path)
+    if (!result?.ok) console.error('[ArtifactPanel] showItemInFolder failed:', result?.err)
+  } else {
+    // Web fallback: 尝试打开所在目录
+    const dir = artifact.path.substring(0, artifact.path.lastIndexOf('/'))
+    window.open(`file://${dir}`)
+  }
+}
+
 // 暴露给全局供 MessageList / chat store 调用
 window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifacts }
 </script>
@@ -265,8 +278,16 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             >
               <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate pr-12">{{ a.title || a.path?.split('/').pop() }}</div>
               <div class="text-[10px] text-gray-400 mt-0.5">{{ a.source }} · {{ new Date(a.ts).toLocaleTimeString() }}</div>
-              <!-- hover 操作按钮 -->
+              <!-- hover 操作按钮（WorkBuddy 风格：打开文件夹 + 下载 + 删除） -->
               <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition" @click.stop>
+                <button
+                  v-if="a.source !== 'test' && a.path"
+                  @click="openInFolder(a)"
+                  class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-500"
+                  title="在文件夹中显示"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+                </button>
                 <button @click="downloadArtifact(a)" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="下载">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 </button>
@@ -278,32 +299,75 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
           </div>
 
           <!-- 右侧预览区 -->
-          <div class="flex-1 overflow-y-auto">
+          <div class="flex-1 flex flex-col overflow-y-auto">
+            <!-- 产物标题操作栏（WorkBuddy 风格） -->
+            <div
+              v-if="activeArtifact && !contentLoading && !contentError"
+              class="shrink-0 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-800/30"
+            >
+              <!-- 文件图标 -->
+              <span class="text-base">📄</span>
+              <!-- 文件名 -->
+              <span class="flex-1 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+                {{ activeArtifact.title || activeArtifact.path?.split('/').pop() || '未知文件' }}
+              </span>
+              <!-- 操作按钮组 -->
+              <div class="flex items-center gap-0.5">
+                <!-- 在文件夹中显示（WorkBuddy 核心体验） -->
+                <button
+                  v-if="activeArtifact.source !== 'test' && activeArtifact.path"
+                  @click="openInFolder(activeArtifact)"
+                  class="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
+                  title="在文件夹中显示"
+                >
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+                </button>
+                <!-- 复制路径 -->
+                <button
+                  v-if="activeArtifact.path"
+                  @click="() => { navigator.clipboard.writeText(activeArtifact.path).catch(() => {}); }"
+                  class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                  title="复制路径"
+                >
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <!-- 下载 -->
+                <button
+                  v-if="activeArtifact.source !== 'test'"
+                  @click="downloadArtifact(activeArtifact)"
+                  class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                  title="下载"
+                >
+                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                </button>
+              </div>
+            </div>
+
             <!-- 空状态 -->
-            <div v-if="!activeArtifact && artifacts.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400">
+            <div v-if="!activeArtifact && artifacts.length === 0" class="flex-1 flex flex-col items-center justify-center text-gray-400">
               <div class="text-5xl mb-3">📄</div>
               <div class="text-sm">暂无产物</div>
               <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">聊天中的文件链接或工具产物将显示在这里</div>
             </div>
 
             <!-- 加载中 -->
-            <div v-else-if="contentLoading" class="h-full flex items-center justify-center text-gray-400">
+            <div v-else-if="contentLoading" class="flex-1 flex items-center justify-center text-gray-400">
               <div class="animate-pulse text-sm">加载中…</div>
             </div>
 
             <!-- 加载错误 -->
-            <div v-else-if="contentError" class="h-full flex flex-col items-center justify-center text-red-400">
+            <div v-else-if="contentError" class="flex-1 flex flex-col items-center justify-center text-red-400">
               <div class="text-3xl mb-2">⚠️</div>
               <div class="text-sm">加载失败</div>
               <div class="text-xs mt-1 text-gray-400">{{ contentError }}</div>
             </div>
 
             <!-- Markdown -->
-            <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown p-5 prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(content)">
+            <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown flex-1 p-5 prose prose-sm dark:prose-invert max-w-none overflow-y-auto" v-html="renderMarkdown(content)">
             </div>
 
             <!-- HTML（iframe sandbox srcdoc） -->
-            <div v-else-if="rendererFor(activeArtifact) === 'html'" class="h-full">
+            <div v-else-if="rendererFor(activeArtifact) === 'html'" class="flex-1">
               <iframe
                 class="w-full h-full border-0 bg-white"
                 sandbox="allow-same-origin"
@@ -312,13 +376,13 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             </div>
 
             <!-- JSON -->
-            <div v-else-if="rendererFor(activeArtifact) === 'json'" class="p-5">
-              <pre class="text-sm text-gray-700 dark:text-gray-200 overflow-auto"><code>{{ formatJson(content) }}</code></pre>
+            <div v-else-if="rendererFor(activeArtifact) === 'json'" class="flex-1 p-5 overflow-auto">
+              <pre class="text-sm text-gray-700 dark:text-gray-200"><code>{{ formatJson(content) }}</code></pre>
             </div>
 
             <!-- CSV -->
-            <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="p-5 overflow-auto">
-              <table class="text-sm border-collapse">
+            <div v-else-if="rendererFor(activeArtifact) === 'csv'" class="flex-1 p-5 overflow-auto">
+              <table class="text-sm border-collapse w-full">
                 <tbody>
                   <tr v-for="(row, i) in parseCsv(content)" :key="i" :class="i === 0 ? 'font-semibold bg-gray-50 dark:bg-gray-800' : ''">
                     <td v-for="(cell, j) in row" :key="j" class="border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-gray-700 dark:text-gray-200">{{ cell }}</td>
@@ -328,17 +392,17 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             </div>
 
             <!-- Code -->
-            <div v-else-if="rendererFor(activeArtifact) === 'code'" class="p-5">
-              <pre class="text-sm text-gray-700 dark:text-gray-200 overflow-auto bg-gray-50 dark:bg-gray-800 rounded-lg p-4"><code>{{ content }}</code></pre>
+            <div v-else-if="rendererFor(activeArtifact) === 'code'" class="flex-1 p-5 overflow-auto">
+              <pre class="text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg p-4"><code>{{ content }}</code></pre>
             </div>
 
             <!-- Image -->
-            <div v-else-if="rendererFor(activeArtifact) === 'image'" class="h-full flex items-center justify-center p-5">
+            <div v-else-if="rendererFor(activeArtifact) === 'image'" class="flex-1 flex items-center justify-center p-5">
               <img :src="content" :alt="activeArtifact?.title || 'image'" class="max-w-full max-h-full object-contain rounded-lg" />
             </div>
 
             <!-- Unsupported -->
-            <div v-else class="h-full flex flex-col items-center justify-center text-gray-400">
+            <div v-else class="flex-1 flex flex-col items-center justify-center text-gray-400">
               <div class="text-3xl mb-2">📦</div>
               <div class="text-sm">暂不支持此格式</div>
               <div class="text-xs mt-1 text-gray-400">{{ activeArtifact?.path }}</div>

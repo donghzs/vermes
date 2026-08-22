@@ -1030,6 +1030,17 @@ ipcMain.handle('shell:openExternal', (e, url) => {
   safeOpenExternal(url);
 });
 
+// IPC: 打开文件所在文件夹（WorkBuddy 风格）
+ipcMain.handle('shell:showItemInFolder', (e, fullPath) => {
+  if (!fullPath || typeof fullPath !== 'string') return { ok: false, err: 'invalid path' }
+  try {
+    shell.showItemInFolder(fullPath)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, err: String(err) }
+  }
+});
+
 // IPC: Splash 重试初始化
 ipcMain.on('splash:retry', () => {
   console.log('[Vermes] 用户点击重试初始化');
