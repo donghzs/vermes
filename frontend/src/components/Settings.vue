@@ -44,11 +44,12 @@ const DEFAULT_BASE_URLS = {
   groq: 'https://api.groq.com/openai/v1',
   together: 'https://api.together.xyz/v1',
   agnes: 'https://apihub.agnes-ai.com/v1',
+  scnet: 'https://api.scnet.cn/api/llm/v1',
   anthropic: 'https://api.anthropic.com/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 }
 
-const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'deepseek', 'xiaomi', 'ollama']
+const RECOMMENDED_IDS_FALLBACK = ['vbit', 'agnes', 'scnet', 'deepseek', 'xiaomi', 'ollama']
 const CHINESE_IDS = ['xiaomi','qwen','baidu','xinghuo','minimax','ant-ling','stepfun','yi','baichuan','zhipu','hunyuan','moonshot']
 const INTERNATIONAL_IDS = ['openai','anthropic','gemini','openrouter','groq','together']
 
@@ -62,6 +63,7 @@ function getRecommendedIds() {
 const PROVIDER_EXTRAS = {
   vbit: { iconClass: 'bg-green-500 text-white w-10 h-10', iconText: 'V', isSpecial: true },
   agnes: { iconClass: 'bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400', iconText: 'A', description: '全球前十 AI Lab，文本/图片/视频全模态免费', linkUrl: 'https://platform.agnes-ai.com/', linkText: '→ 去 Agnes AI 官网获取 Key ↗' },
+  scnet: { iconClass: 'bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400', iconText: '超', description: '国家超算互联网平台，兼容 OpenAI 协议，支持多种模型', linkUrl: 'https://www.scnet.cn/ac/openapi/doc/2.0/moduleapi/tutorial/quickstart.html', linkText: '→ 去超算互联网获取 Key ↗' },
   deepseek: { iconClass: 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400', iconText: 'D', description: '国产高性价比，注册即送额度', linkUrl: 'https://platform.deepseek.com/', linkText: '→ 去 DeepSeek 官网获取 Key ↗' },
   xiaomi: { iconClass: 'bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400', iconText: 'Mi', description: '国产高性价比，注册即送额度', linkUrl: 'https://platform.xiaomimimo.com?ref=KE64RG', linkText: '→ 去小米 MiMo 官网获取 Key ↗' },
   zhipu: { iconClass: 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-400', iconText: '智', description: 'GLM 系列大模型，注册送免费额度', linkUrl: 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys', linkText: '→ 去智谱开放平台获取 Key ↗' },
@@ -75,6 +77,7 @@ const providers = ref([
   { id: 'deepseek', name: 'DeepSeek', key: '', baseUrl: DEFAULT_BASE_URLS.deepseek, models: [], syncing: false },
   { id: 'qwen', name: '通义千问', key: '', baseUrl: DEFAULT_BASE_URLS.qwen, models: [], syncing: false },
   { id: 'agnes', name: 'Agnes AI', key: '', baseUrl: DEFAULT_BASE_URLS.agnes, models: [], syncing: false },
+  { id: 'scnet', name: '国家超算互联网', key: '', baseUrl: DEFAULT_BASE_URLS.scnet, models: [], syncing: false },
   { id: 'openrouter', name: 'OpenRouter', key: '', baseUrl: DEFAULT_BASE_URLS.openrouter, models: [], syncing: false },
   { id: 'vbit', name: 'vbit.top', key: '', baseUrl: DEFAULT_BASE_URLS.vbit, models: [], syncing: false },
   { id: 'xiaomi', name: '小米 MiMo', key: '', baseUrl: DEFAULT_BASE_URLS.xiaomi, models: [], syncing: false },
@@ -1497,7 +1500,7 @@ async function toggleChannel(platformKey) {
 
           <!-- DeepSeek / Agnes / MiMo / Ollama — 使用 ProviderCard -->
           <ProviderCard
-            v-for="p in providers.filter(pr => ['deepseek','agnes','xiaomi','ollama'].includes(pr.id))"
+            v-for="p in providers.filter(pr => ['deepseek','agnes','scnet','xiaomi','ollama'].includes(pr.id))"
             :key="p.id"
             :provider="p"
             :expanded="isExpanded(p.id)"

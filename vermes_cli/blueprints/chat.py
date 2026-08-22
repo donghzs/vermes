@@ -622,6 +622,7 @@ PROVIDERS = {
     "groq": {"env_key": "GROQ_API_KEY", "base_url": "https://api.groq.com/openai/v1", "cloud": True, "free": False, "recommended": False},
     "together": {"env_key": "TOGETHER_API_KEY", "base_url": "https://api.together.xyz/v1", "cloud": True, "free": False, "recommended": False},
     "agnes": {"env_key": "AGNES_API_KEY", "base_url": "https://apihub.agnes-ai.com/v1", "cloud": True, "free": True, "recommended": True},
+    "scnet": {"env_key": "SCNET_API_KEY", "base_url": "https://api.scnet.cn/api/llm/v1", "cloud": True, "free": False, "recommended": True},
     "ollama": {"env_key": None, "base_url": "http://localhost:11434/v1", "cloud": False, "free": True, "recommended": True},
 }
 
