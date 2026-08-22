@@ -1996,6 +1996,14 @@ def run_conversation(
                         # Streaming stays N=1 (report §9.8 R6: sample-then-select
                         # contradicts show-while-generating). Fail-open: any error
                         # degrades to the single baseline call, loop unchanged.
+                        # IMPORTANT: the baseline `_interruptible_api_call`
+                        # (the non-TTC path) must sit OUTSIDE the TTC try/except.
+                        # A real API error (e.g. context-overflow 400) raised by
+                        # the baseline call was previously swallowed by the
+                        # fail-open `except Exception` and retried once here,
+                        # bypassing the main loop's error classifier and the
+                        # context-compression recovery path (#glm-400).
+                        _ttc_should_sample = False
                         try:
                             from harness.test_time_compute import (
                                 sample_best_of_n,
@@ -2003,7 +2011,15 @@ def run_conversation(
                                 DefaultJudge,
                             )
                             _ttc = get_test_time_config(agent)
-                            if _ttc.enabled and _ttc.n > 1:
+                            _ttc_should_sample = _ttc.enabled and _ttc.n > 1
+                        except Exception as _ttc_err:  # noqa: BLE001 - fail-open
+                            logger.debug(
+                                "test_time_compute disabled by error: %s", _ttc_err
+                            )
+                            _ttc_should_sample = False
+
+                        if _ttc_should_sample:
+                            try:
                                 # P2: 选 Judge — 默认 DefaultJudge（保守过滤器），
                                 # "critic" 走 CriticJudge（LLM 法官，复用主对话 provider，
                                 # 可经 test_time_compute.critic_model 指定更强模型）。
@@ -2031,13 +2047,13 @@ def run_conversation(
                                         ),
                                     },
                                 )[0]
-                            else:
+                            except Exception as _ttc_err:  # noqa: BLE001 - fail-open
+                                logger.debug(
+                                    "test_time_compute failed, baseline call: %s",
+                                    _ttc_err,
+                                )
                                 response = agent._interruptible_api_call(api_kwargs)
-                        except Exception as _ttc_err:  # noqa: BLE001 - fail-open
-                            logger.debug(
-                                "test_time_compute disabled by error, baseline call: %s",
-                                _ttc_err,
-                            )
+                        else:
                             response = agent._interruptible_api_call(api_kwargs)
 
                 api_duration = time.time() - api_start_time
