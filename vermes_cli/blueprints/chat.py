@@ -769,6 +769,37 @@ def _persist_web_turn_to_state_db(session_id: str, user_message: str, final_resp
         _log.debug(f"[web→state.db] persist skipped for {session_id}: {exc}")
 
 
+# ── 产物文件路径提取（阶段 3）──
+# 从工具结果 preview 中提取文件路径，推送到前端产物面板
+import re as _re
+_ARTIFACT_EXT_RE = _re.compile(
+    r'(?<!\w)(\.?\/(?:[\w\u4e00-\u9fff-]+\/)*[\w\u4e00-\u9fff.-]+\.'
+    r'(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg|png|jpg|jpeg|gif|webp|svg))'
+    r'(?=[\s)\]},"\'\u3000`?!，。、；：]|$)',
+    _re.IGNORECASE | _re.UNICODE,
+)
+
+def _extract_artifact_paths(preview: str, max_paths: int = 5):
+    """从工具结果文本中提取产物文件路径。"""
+    if not preview or len(preview) < 5:
+        return []
+    lines = preview.split('\n')
+    paths = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('```') or stripped.startswith('#'):
+            continue
+        for m in _ARTIFACT_EXT_RE.finditer(line):
+            p = m.group(1)
+            if p.startswith('http://') or p.startswith('https://'):
+                continue
+            if p not in paths:
+                paths.append(p)
+            if len(paths) >= max_paths:
+                return paths
+    return paths
+
+
 async def chat_completions(req: ChatRequest, request: Request):
     """Agent-powered chat: uses AIAgent with tool calling capabilities."""
     from run_agent import AIAgent
@@ -1226,6 +1257,14 @@ async def chat_completions(req: ChatRequest, request: Request):
                     "step_index": step_index,
                     "step_total": step_total,
                 }
+                # 阶段 3: 从结果中提取产物文件路径推送到前端
+                if preview and not kwargs.get("is_error", False):
+                    art_paths = _extract_artifact_paths(preview)
+                    if art_paths:
+                        event["artifacts"] = [
+                            {"path": p, "title": p.split("/")[-1], "source": tool_name}
+                            for p in art_paths
+                        ]
                 if tool_name == "todo" and preview:
                     try:
                         import json as _json

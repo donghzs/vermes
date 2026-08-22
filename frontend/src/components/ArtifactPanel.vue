@@ -62,32 +62,62 @@ function parseCsv(text) {
   return rows
 }
 
-// ── 产物列表（内存级持久，会话生命周期内不丢）──
+// ── 产物列表（localStorage 持久化，per-session）──
+const ARTIFACTS_STORAGE_KEY = 'vermes-artifacts'
 const artifacts = ref([])  // [{ id, path, title, mime, source, ts }]
 const activeId = ref(null)
 const isFullscreen = ref(false)
 
+// 从 localStorage 恢复
+function _loadArtifacts() {
+  try {
+    const raw = localStorage.getItem(ARTIFACTS_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        artifacts.value = parsed
+        if (parsed.length > 0) activeId.value = parsed[0].id
+      }
+    }
+  } catch {}
+}
+
+// 持久化到 localStorage
+function _persistArtifacts() {
+  try {
+    // 最多保留 20 条，避免无限增长
+    const toSave = artifacts.value.slice(0, 20)
+    localStorage.setItem(ARTIFACTS_STORAGE_KEY, JSON.stringify(toSave))
+  } catch {}
+}
+
+_loadArtifacts()
+
 function addArtifact(item) {
   const existing = artifacts.value.findIndex(a => a.path === item.path)
   if (existing >= 0) {
-    artifacts.value[existing] = { ...artifacts.value[existing], ...item }
+    artifacts.value[existing] = { ...artifacts.value[existing], ...item, ts: Date.now() }
     activeId.value = artifacts.value[existing].id
+    _persistArtifacts()
     return
   }
   const id = 'art-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
   artifacts.value.unshift({ id, ts: Date.now(), ...item })
   activeId.value = id
+  _persistArtifacts()
 }
 
 function removeArtifact(id) {
   const idx = artifacts.value.findIndex(a => a.id === id)
   if (idx >= 0) artifacts.value.splice(idx, 1)
   if (activeId.value === id) activeId.value = artifacts.value[0]?.id || null
+  _persistArtifacts()
 }
 
 function clearArtifacts() {
   artifacts.value = []
   activeId.value = null
+  _persistArtifacts()
 }
 
 const activeArtifact = computed(() => artifacts.value.find(a => a.id === activeId.value))
@@ -152,41 +182,25 @@ watch([open, tab], ([o, t]) => {
   }
 })
 
-// ── 测试入口（阶段 1 验收用，阶段 2 后移除）──
-function addTestArtifact() {
-  const testContent = `# 欢迎使用产物面板 📄
 
-这是 Vermes **产物面板**（Artifact Panel）的测试产物。
-
-## 功能
-- ✅ 右侧滑入面板，600px 默认宽度
-- ✅ 全屏切换（撑满右侧）
-- ✅ Markdown 渲染 + 代码高亮
-- ✅ 多产物列表切换
-
-## 代码高亮测试
-\`\`\`python
-def hello():
-    print("Hello from Vermes!")
-\`\`\`
-
-## 表格测试
-| 类型 | 格式 | 状态 |
-|------|------|------|
-| Markdown | .md | ✅ |
-| HTML | .html | ✅ |
-| Code | .py/.js | ✅ |
-| Image | .png | ✅ |
-
-> 提示：点击右上角「⤢」可切换全屏模式
-`
-  addArtifact({
-    path: 'test-welcome.md',
-    title: '欢迎使用产物面板',
-    mime: 'text/markdown',
-    source: 'test',
-    _content: testContent,
-  })
+// ── 下载产物（阶段 5）──
+async function downloadArtifact(artifact) {
+  if (!artifact || artifact.source === 'test') return
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}`)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = artifact.title || artifact.path.split('/').pop()
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('[ArtifactPanel] download failed:', e)
+  }
 }
 
 // 暴露给全局供 MessageList / chat store 调用
@@ -247,10 +261,19 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               :class="activeId === a.id
                 ? 'bg-green-50 dark:bg-green-900/20 border-l-2 border-green-500'
                 : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-l-2 border-transparent'"
-              class="w-full text-left px-3 py-2 transition"
+              class="group w-full text-left px-3 py-2 transition relative"
             >
-              <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{{ a.title || a.path?.split('/').pop() }}</div>
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate pr-12">{{ a.title || a.path?.split('/').pop() }}</div>
               <div class="text-[10px] text-gray-400 mt-0.5">{{ a.source }} · {{ new Date(a.ts).toLocaleTimeString() }}</div>
+              <!-- hover 操作按钮 -->
+              <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition" @click.stop>
+                <button @click="downloadArtifact(a)" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="下载">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                </button>
+                <button @click="removeArtifact(a.id)" class="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500" title="删除">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </div>
             </button>
           </div>
 
@@ -261,9 +284,6 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <div class="text-5xl mb-3">📄</div>
               <div class="text-sm">暂无产物</div>
               <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">聊天中的文件链接或工具产物将显示在这里</div>
-              <button @click="addTestArtifact" class="mt-4 px-3 py-1.5 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition">
-                🧪 添加测试产物
-              </button>
             </div>
 
             <!-- 加载中 -->

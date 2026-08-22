@@ -1014,6 +1014,20 @@ export const useChatStore = defineStore('chat', () => {
             }
             if (idx >= 0) list[idx] = done
             else list.push(done)
+            // 阶段 3: 自动提取产物到 ArtifactPanel
+            if (data.artifacts && data.artifacts.length > 0) {
+              const va = window.__vermesArtifacts
+              if (va && typeof va.addArtifact === 'function') {
+                data.artifacts.forEach(a => {
+                  va.addArtifact({
+                    path: a.path,
+                    title: a.title || a.path.split('/').pop(),
+                    mime: '',
+                    source: a.source || data.name || 'tool',
+                  })
+                })
+              }
+            }
           }
           acts[sid] = list
           sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }

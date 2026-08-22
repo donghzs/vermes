@@ -374,7 +374,7 @@ const api = {
               continue
             }
             if (json.type === 'tool_end') {
-              onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error, result_preview: json.result_preview || '' })
+              onTool?.({ type: 'tool_end', tool_call_id: json.tool_call_id, name: json.tool_name, duration: json.duration, is_error: json.is_error, result_preview: json.result_preview || '', artifacts: json.artifacts || [] })
               continue
             }
             // 工具调用（标准OpenAI格式）
