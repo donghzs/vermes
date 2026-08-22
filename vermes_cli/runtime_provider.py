@@ -9,6 +9,39 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _stamp_preset(
+    resolved: Dict[str, Any],
+    preset_spec: Optional[Dict[str, Any]],
+    preset_name: Optional[str],
+) -> Dict[str, Any]:
+    """A3: attach preset hints to a resolved runtime dict (fail-open).
+
+    Presets are *advisory*: they never override the credential-level facts
+    (provider / api_mode / base_url / api_key) that the resolver derived from
+    real secrets — overriding those would route calls to the wrong endpoint.
+    Instead we stamp the soft hints (toolset / context_budget / sandbox /
+    preferred_model) and a ``preset`` source marker so the caller (vertical
+    module / scheduler) can consume them.
+    """
+    if not preset_spec or not preset_name:
+        return resolved
+    out = dict(resolved)
+    out["preset"] = preset_name
+    for _hint in ("toolset", "context_budget", "sandbox", "preferred_model"):
+        _val = preset_spec.get(_hint)
+        if _val is not None:
+            out[_hint] = _val
+    _pref_model = preset_spec.get("model")
+    if _pref_model is not None:
+        # preferred_model is a hint; the resolver's hard `model` wins unless
+        # the caller explicitly asked for a model switch.
+        out.setdefault("preferred_model", _pref_model)
+    _src = out.get("source")
+    out["source"] = f"preset:{preset_name}" + (f"|{_src}" if _src else "")
+    return out
+
+
 from vermes_cli import auth as auth_mod
 from agent.credential_pool import CredentialPool, PooledCredential, get_custom_provider_pool_key, load_pool
 from vermes_cli.auth import (
@@ -1070,14 +1103,14 @@ def _resolve_explicit_runtime(
                 if detected:
                     api_mode = detected
 
-        return {
+        return _stamp_preset({
             "provider": provider,
             "api_mode": api_mode,
             "base_url": base_url.rstrip("/"),
             "api_key": api_key,
             "source": "explicit",
             "requested_provider": requested_provider,
-        }
+        })
 
     return None
 
@@ -1088,6 +1121,7 @@ def resolve_runtime_provider(
     explicit_api_key: Optional[str] = None,
     explicit_base_url: Optional[str] = None,
     target_model: Optional[str] = None,
+    preset: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Resolve runtime provider credentials for agent execution.
 
@@ -1098,8 +1132,32 @@ def resolve_runtime_provider(
     api_mode is derived from the model they are switching TO, not the stale
     persisted default. Other callers can leave it None to preserve existing
     behavior (api_mode derived from config).
+
+    preset: Optional declarative runtime preset name (取法 dsh
+    ``agent.cordis.yml``). When given and loadable, the preset's declared
+    fields (api_mode / model / toolset / context_budget / sandbox) are applied
+    on top of the derived runtime. Load failures are fail-open: the resolver
+    silently falls back to pure URL/provider derivation.
     """
     requested_provider = resolve_requested_provider(requested)
+
+    # ── A3 preset layer (fail-open) ────────────────────────────────────────
+    # Resolve the preset ONCE up front so we can stamp the resolved dict with a
+    # ``source`` marker and apply its hints at every early-return path below.
+    _active_preset: Optional[Dict[str, Any]] = None
+    _preset_name: Optional[str] = None
+    if preset:
+        try:
+            from vermes_cli.runtime_presets import load_preset
+
+            _spec = load_preset(preset)
+            if _spec is not None:
+                _active_preset = _spec
+                _preset_name = preset
+            else:
+                logger.debug("A3 preset %r unknown; falling back to derivation", preset)
+        except Exception as _preset_err:  # pragma: no cover - defensive
+            logger.warning("A3 preset load failed (fail-open): %s", _preset_err)
 
     # Azure Anthropic short-circuit: when explicitly targeting an Azure endpoint
     # with provider="anthropic", bypass _resolve_named_custom_runtime (which would
@@ -1112,14 +1170,14 @@ def resolve_runtime_provider(
             or os.getenv("AZURE_ANTHROPIC_KEY", "").strip()
             or os.getenv("ANTHROPIC_API_KEY", "").strip()
         )
-        return {
+        return _stamp_preset({
             "provider": "anthropic",
             "api_mode": "anthropic_messages",
             "base_url": _eff_base.rstrip("/"),
             "api_key": _azure_key,
             "source": "azure-explicit",
             "requested_provider": requested_provider,
-        }
+        })
 
     # Azure Foundry: user-configured endpoint with selectable API mode
     # (OpenAI-style chat_completions or Anthropic-style anthropic_messages).
@@ -1134,7 +1192,7 @@ def resolve_runtime_provider(
             explicit_base_url=explicit_base_url,
             target_model=target_model,
         )
-        return azure_runtime
+        return _stamp_preset(azure_runtime, _active_preset, _preset_name)
 
     custom_runtime = _resolve_named_custom_runtime(
         requested_provider=requested_provider,
@@ -1143,7 +1201,7 @@ def resolve_runtime_provider(
     )
     if custom_runtime:
         custom_runtime["requested_provider"] = requested_provider
-        return custom_runtime
+        return _stamp_preset(custom_runtime, _active_preset, _preset_name)
 
     provider = resolve_provider(
         requested_provider,
@@ -1159,7 +1217,7 @@ def resolve_runtime_provider(
         explicit_base_url=explicit_base_url,
     )
     if explicit_runtime:
-        return explicit_runtime
+        return _stamp_preset(explicit_runtime, _active_preset, _preset_name)
 
     should_use_pool = provider != "openrouter"
     if provider == "openrouter":
@@ -1211,13 +1269,17 @@ def resolve_runtime_provider(
                 logger.debug("Nous pool entry agent_key expired/missing, falling through to runtime resolution")
                 pool_api_key = ""
         if entry is not None and pool_api_key:
-            return _resolve_runtime_from_pool_entry(
-                provider=provider,
-                entry=entry,
-                requested_provider=requested_provider,
-                model_cfg=model_cfg,
-                pool=pool,
-                target_model=target_model,
+            return _stamp_preset(
+                _resolve_runtime_from_pool_entry(
+                    provider=provider,
+                    entry=entry,
+                    requested_provider=requested_provider,
+                    model_cfg=model_cfg,
+                    pool=pool,
+                    target_model=target_model,
+                ),
+                _active_preset,
+                _preset_name,
             )
 
     if provider == "nous":
@@ -1226,7 +1288,7 @@ def resolve_runtime_provider(
                 min_key_ttl_seconds=max(60, int(os.getenv("VERMES_NOUS_MIN_KEY_TTL_SECONDS", "1800"))),
                 timeout_seconds=float(os.getenv("VERMES_NOUS_TIMEOUT_SECONDS", "15")),
             )
-            return {
+            return _stamp_preset({
                 "provider": "nous",
                 "api_mode": "chat_completions",
                 "base_url": creds.get("base_url", "").rstrip("/"),
@@ -1234,7 +1296,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "portal"),
                 "expires_at": creds.get("expires_at"),
                 "requested_provider": requested_provider,
-            }
+            })
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1246,7 +1308,7 @@ def resolve_runtime_provider(
     if provider == "openai-codex":
         try:
             creds = resolve_codex_runtime_credentials()
-            return {
+            return _stamp_preset({
                 "provider": "openai-codex",
                 "api_mode": "codex_responses",
                 "base_url": creds.get("base_url", "").rstrip("/"),
@@ -1254,7 +1316,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "vermes-auth-store"),
                 "last_refresh": creds.get("last_refresh"),
                 "requested_provider": requested_provider,
-            }
+            })
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1266,7 +1328,7 @@ def resolve_runtime_provider(
     if provider == "xai-oauth":
         try:
             creds = resolve_xai_oauth_runtime_credentials()
-            return {
+            return _stamp_preset({
                 "provider": "xai-oauth",
                 "api_mode": "codex_responses",
                 "base_url": (creds.get("base_url") or "").rstrip("/") or DEFAULT_XAI_OAUTH_BASE_URL,
@@ -1274,7 +1336,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "vermes-auth-store"),
                 "last_refresh": creds.get("last_refresh"),
                 "requested_provider": requested_provider,
-            }
+            })
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1284,7 +1346,7 @@ def resolve_runtime_provider(
     if provider == "qwen-oauth":
         try:
             creds = resolve_qwen_runtime_credentials()
-            return {
+            return _stamp_preset({
                 "provider": "qwen-oauth",
                 "api_mode": "chat_completions",
                 "base_url": creds.get("base_url", "").rstrip("/"),
@@ -1292,7 +1354,7 @@ def resolve_runtime_provider(
                 "source": creds.get("source", "qwen-cli"),
                 "expires_at_ms": creds.get("expires_at_ms"),
                 "requested_provider": requested_provider,
-            }
+            })
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1304,19 +1366,19 @@ def resolve_runtime_provider(
         if pconfig and pconfig.auth_type == "oauth_minimax":
             from vermes_cli.auth import resolve_minimax_oauth_runtime_credentials
             creds = resolve_minimax_oauth_runtime_credentials()
-            return {
+            return _stamp_preset({
                 "provider": provider,
                 "api_mode": "anthropic_messages",
                 "base_url": creds["base_url"],
                 "api_key": creds["api_key"],
                 "source": creds.get("source", "oauth"),
                 "requested_provider": requested_provider,
-            }
+            })
 
     if provider == "google-gemini-cli":
         try:
             creds = resolve_gemini_oauth_runtime_credentials()
-            return {
+            return _stamp_preset({
                 "provider": "google-gemini-cli",
                 "api_mode": "chat_completions",
                 "base_url": creds.get("base_url", ""),
@@ -1326,7 +1388,7 @@ def resolve_runtime_provider(
                 "email": creds.get("email", ""),
                 "project_id": creds.get("project_id", ""),
                 "requested_provider": requested_provider,
-            }
+            })
         except AuthError:
             if requested_provider != "auto":
                 raise
@@ -1335,7 +1397,7 @@ def resolve_runtime_provider(
 
     if provider == "copilot-acp":
         creds = resolve_external_process_provider_credentials(provider)
-        return {
+        return _stamp_preset({
             "provider": "copilot-acp",
             "api_mode": "chat_completions",
             "base_url": creds.get("base_url", "").rstrip("/"),
@@ -1344,7 +1406,7 @@ def resolve_runtime_provider(
             "args": list(creds.get("args") or []),
             "source": creds.get("source", "process"),
             "requested_provider": requested_provider,
-        }
+        })
 
     # Anthropic (native Messages API)
     if provider == "anthropic":
@@ -1404,14 +1466,14 @@ def resolve_runtime_provider(
                     "No Anthropic credentials found. Set ANTHROPIC_TOKEN or ANTHROPIC_API_KEY, "
                     "run 'claude setup-token', or authenticate with 'claude /login'."
                 )
-        return {
+        return _stamp_preset({
             "provider": "anthropic",
             "api_mode": "anthropic_messages",
             "base_url": base_url,
             "api_key": token,
             "source": "env",
             "requested_provider": requested_provider,
-        }
+        })
 
     # AWS Bedrock (native Converse API via boto3)
     if provider == "bedrock":
@@ -1481,7 +1543,7 @@ def resolve_runtime_provider(
             }
         if guardrail_config:
             runtime["guardrail_config"] = guardrail_config
-        return runtime
+        return _stamp_preset(runtime, _active_preset, _preset_name)
 
     # API-key providers (z.ai/GLM, Kimi, MiniMax, MiniMax-CN)
     pconfig = PROVIDER_REGISTRY.get(provider)
