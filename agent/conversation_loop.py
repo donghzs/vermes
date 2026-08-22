@@ -3352,17 +3352,13 @@ def run_conversation(
 
                     compression_attempts += 1
                     if compression_attempts <= max_compression_attempts:
-                        original_len = len(messages)
-                        messages, active_system_prompt = agent._compress_context(
-                            messages, system_message,
-                            approx_tokens=approx_tokens,
-                            task_id=effective_task_id,
-                        )
-                        # Compression created a new session - clear history
-                        # so _flush_messages_to_session_db writes compressed
-                        # messages to the new session, not skipping them.
-                        conversation_history = None
-                        if len(messages) < original_len or old_ctx > _reduced_ctx:
+                        from agent.conversation_compression import error_recovery_compaction
+                        messages, active_system_prompt, conversation_history, _shrunk = \
+                            error_recovery_compaction(
+                                agent, messages, system_message, active_system_prompt,
+                                approx_tokens, effective_task_id, conversation_history,
+                            )
+                        if _shrunk or old_ctx > _reduced_ctx:
                             agent._emit_status(
                                 f"🗜️ 上下文已缩减至 {_reduced_ctx:,} tokens "
                                 f"（原为 {old_ctx:,}），正在重试……"
@@ -3555,16 +3551,14 @@ def run_conversation(
                     agent._emit_status(f"⚠️  请求体过大（413）—— 正在尝试压缩 {compression_attempts}/{max_compression_attempts}……")
 
                     original_len = len(messages)
-                    messages, active_system_prompt = agent._compress_context(
-                        messages, system_message, approx_tokens=approx_tokens,
-                        task_id=effective_task_id,
-                    )
-                    # Compression created a new session - clear history
-                    # so _flush_messages_to_session_db writes compressed
-                    # messages to the new session, not skipping them.
-                    conversation_history = None
+                    from agent.conversation_compression import error_recovery_compaction
+                    messages, active_system_prompt, conversation_history, _shrunk = \
+                        error_recovery_compaction(
+                            agent, messages, system_message, active_system_prompt,
+                            approx_tokens, effective_task_id, conversation_history,
+                        )
 
-                    if len(messages) < original_len:
+                    if _shrunk:
                         agent._emit_status(f"🗜️ 已压缩 {original_len} → {len(messages)} 条消息，正在重试……")
                         time.sleep(2)  # Brief pause between compression retries
                         restart_with_compressed_messages = True
@@ -3712,17 +3706,15 @@ def run_conversation(
                     agent._emit_status(f"🗜️ 上下文过大（约 {approx_tokens:,} tokens）—— 正在压缩（{compression_attempts}/{max_compression_attempts}）……")
 
                     original_len = len(messages)
-                    messages, active_system_prompt = agent._compress_context(
-                        messages, system_message, approx_tokens=approx_tokens,
-                        task_id=effective_task_id,
-                    )
-                    # Compression created a new session - clear history
-                    # so _flush_messages_to_session_db writes compressed
-                    # messages to the new session, not skipping them.
-                    conversation_history = None
+                    from agent.conversation_compression import error_recovery_compaction
+                    messages, active_system_prompt, conversation_history, _shrunk = \
+                        error_recovery_compaction(
+                            agent, messages, system_message, active_system_prompt,
+                            approx_tokens, effective_task_id, conversation_history,
+                        )
 
-                    if len(messages) < original_len or new_ctx and new_ctx < old_ctx:
-                        if len(messages) < original_len:
+                    if _shrunk or new_ctx and new_ctx < old_ctx:
+                        if _shrunk:
                             agent._emit_status(f"🗜️ 已压缩 {original_len} → {len(messages)} 条消息，正在重试……")
                         time.sleep(2)  # Brief pause between compression retries
                         restart_with_compressed_messages = True

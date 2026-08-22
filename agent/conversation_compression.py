@@ -953,6 +953,34 @@ def compaction_check_in_loop(
     return messages, active_system_prompt, conversation_history
 
 
+def error_recovery_compaction(
+    agent: Any,
+    messages: list,
+    system_message: str,
+    active_system_prompt: str,
+    approx_tokens: int,
+    effective_task_id: str,
+    conversation_history,
+):
+    """Compress context as part of error recovery (413/context-overflow/anthropic-long-context).
+
+    Extracted from three duplicate sites in ``conversation_loop.py`` (A2 step 4).
+    Returns ``(messages, active_system_prompt, conversation_history, shrunk: bool)``
+    where ``shrunk`` is True iff ``len(messages)`` actually decreased.
+    """
+    original_len = len(messages)
+    messages, active_system_prompt = agent._compress_context(
+        messages, system_message, approx_tokens=approx_tokens,
+        task_id=effective_task_id,
+    )
+    # Compression created a new session - clear history so
+    # _flush_messages_to_session_db writes compressed messages
+    # to the new session, not skipping them.
+    conversation_history = None
+    shrunk = len(messages) < original_len
+    return messages, active_system_prompt, conversation_history, shrunk
+
+
 def prune_context(
     agent: Any,
     messages: list,
