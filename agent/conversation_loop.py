@@ -114,10 +114,22 @@ def _compress_until_under_threshold(agent, messages, system_message, active_syst
     contract is locked by ``tests/agent/test_compress_until_under_threshold_contract.py``.
     """
     from agent.conversation_compression import compaction_loop
-    return compaction_loop(
-        agent, messages, system_message, active_system_prompt,
-        approx_tokens, effective_task_id, conversation_history,
-    )
+    from agent.observability import span
+
+    with span("turn.compress", attributes={
+        "approx_tokens": approx_tokens,
+        "task_id": effective_task_id or "",
+    }) as _sp:
+        _out = compaction_loop(
+            agent, messages, system_message, active_system_prompt,
+            approx_tokens, effective_task_id, conversation_history,
+        )
+        if _sp is not None and hasattr(_sp, "set_attribute"):
+            try:
+                _sp.set_attribute("compressed", _out is not None)
+            except Exception:
+                pass
+        return _out
 
 
 def _restore_or_build_system_prompt(agent, system_message, conversation_history):

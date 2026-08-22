@@ -517,10 +517,25 @@ class ToolRegistry:
                 name, gate_decision, gate_rule, gate_reason,
             )
         try:
-            if entry.is_async:
-                from model_tools import _run_async
-                return _run_async(entry.handler(args, **kwargs))
-            return entry.handler(args, **kwargs)
+            # ── A4 otel: span around the actual handler execution (fail-open) ──
+            from agent.observability import span
+
+            with span(f"tool.dispatch:{name}", attributes={
+                "tool": name,
+                "gate": gate_decision,
+                "async": entry.is_async,
+            }) as _sp:
+                if entry.is_async:
+                    from model_tools import _run_async
+                    _result = _run_async(entry.handler(args, **kwargs))
+                else:
+                    _result = entry.handler(args, **kwargs)
+                if _sp is not None and hasattr(_sp, "set_attribute"):
+                    try:
+                        _sp.set_attribute("result_len", len(_result) if isinstance(_result, str) else -1)
+                    except Exception:
+                        pass
+                return _result
         except Exception as e:
             logger.exception("Tool %s dispatch error: %s", name, e)
             # Route through the sanitizer so framing tokens / CDATA / fences
