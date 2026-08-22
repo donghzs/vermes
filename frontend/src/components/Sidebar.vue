@@ -523,6 +523,10 @@ async function handleImportFile(e) {
           <span class="text-base">🤖</span>
           <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理</span>
         </button>
+        <button @click="openPanel('artifacts')" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="产物面板">
+          <span class="text-base">📄</span>
+          <span class="sidebar-tooltip group-hover:opacity-100">产物面板</span>
+        </button>
         <button @click="goMobileConnect()" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
           <span class="text-base">📱</span>
           <span class="sidebar-tooltip group-hover:opacity-100">移动接入</span>

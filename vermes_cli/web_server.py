@@ -2911,6 +2911,7 @@ blueprints.status.register_to(app)
 blueprints.gateway_channels.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
+blueprints.artifacts.register_to(app)
 
 # ── L2 adapters API（发现/推荐/安装软件积木）──
 try:
