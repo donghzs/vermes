@@ -3143,6 +3143,35 @@ class TestRunConversation:
         assert result["final_response"] == "Recovered after compression"
         assert result["completed"] is True
 
+    def test_auto_retry_recurses_after_hard_reject(self, agent):
+        """Bug #2 行为测：verifier 硬拒绝（注入「正在自动重试」）时，run_conversation
+        层的 auto-retry 会递归调用 run_conversation 并返回重试结果。
+
+        修复前（344e2e9ff 之前）auto-retry 在 _finalize_turn 里是死代码（NameError
+        被吞），run_conversation 直接返回含「正在自动重试」的 result、不递归 → 本断言
+        失败。修复后 auto-retry 移到 run_conversation（变量可见），真正递归。
+        """
+        self._setup_agent(agent)
+        agent.client.chat.completions.create.return_value = _mock_response(
+            content="done", finish_reason="stop"
+        )
+        agent._operator_claim_rejection_count = 1
+        reject_result = {
+            "final_response": "⚠️ **操作链验证器拦截**\n\n正在自动重试，请稍候…",
+            "completed": False,
+            "messages": [],
+        }
+        retry_result = {"final_response": "retried answer", "completed": True, "messages": []}
+
+        with patch(
+            "agent.conversation_loop._finalize_turn",
+            side_effect=[reject_result, retry_result],
+        ):
+            result = agent.run_conversation("hello")
+
+        assert result["final_response"] == "retried answer"
+        assert result["completed"] is True
+
     def test_minimax_delta_overflow_keeps_known_context_length(self, agent):
         """MiniMax reports overflow deltas like 'limit (2013)' without the real window.
 
