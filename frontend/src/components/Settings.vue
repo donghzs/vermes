@@ -397,7 +397,7 @@ const internationalProviders = computed(() => {
 })
 const customProviders = computed(() => {
   const q = providerSearch.value.trim().toLowerCase()
-  return providers.value.filter(p => p.id === 'custom' && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
+  return providers.value.filter(p => (p.id === 'custom' || p.id.startsWith('custom-')) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)))
 })
 
 // ── Provider 操作 ──
