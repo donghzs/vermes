@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,6 +44,44 @@ class GateResult:
     decision: str  # ALLOW | DENY | ASK_USER
     reason: str = ""
     permission: Optional[PermissionSpec] = None
+    rule: str = ""  # 命中规则名（undeclared_deny / consent_required / network_no_sandbox / default_allow）
+
+
+# ---------------------------------------------------------------------------
+# 闸门命中率计数（fail-open 观测期数据，驱动 fail-closed 切换决策）
+# ---------------------------------------------------------------------------
+_gate_stats_lock = threading.Lock()
+_gate_stats: dict = {
+    "total": 0,
+    "decisions": {"allow": 0, "deny": 0, "ask_user": 0},
+    "rules": {},  # rule -> count
+}
+
+
+def record_gate_hit(decision: str, rule: str) -> None:
+    """线程安全的闸门命中计数。decision ∈ {allow,deny,ask_user}；rule 为命中规则名。"""
+    with _gate_stats_lock:
+        _gate_stats["total"] += 1
+        _gate_stats["decisions"][decision] = _gate_stats["decisions"].get(decision, 0) + 1
+        _gate_stats["rules"][rule] = _gate_stats["rules"].get(rule, 0) + 1
+
+
+def get_gate_stats() -> dict:
+    """返回观测期累计命中率。fail-open 结束后据此决定是否切 fail-closed。"""
+    with _gate_stats_lock:
+        return {
+            "total": _gate_stats["total"],
+            "decisions": dict(_gate_stats["decisions"]),
+            "rules": dict(_gate_stats["rules"]),
+        }
+
+
+def reset_gate_stats() -> None:
+    """清空计数（测试隔离 / 新观测期起点）。"""
+    with _gate_stats_lock:
+        _gate_stats["total"] = 0
+        _gate_stats["decisions"] = {"allow": 0, "deny": 0, "ask_user": 0}
+        _gate_stats["rules"] = {}
 
 
 class TrustGate:
@@ -76,15 +115,28 @@ class TrustGate:
         """执行前判定：ALLOW / DENY / ASK_USER。
 
         默认 deny-unless-declared：spec 为 None（未声明）直接 DENY。
+        每次判定都经 record_gate_hit 累计命中率（fail-open 观测数据）。
         """
         if spec is None:
-            return GateResult(DENY, "未声明 PermissionSpec（deny-unless-declared）")
+            res = GateResult(DENY, "未声明 PermissionSpec（deny-unless-declared）")
+            res.rule = "undeclared_deny"
+            record_gate_hit(DENY, "undeclared_deny")
+            return res
 
         if spec.requires_explicit_consent:
-            return GateResult(ASK_USER, "requires_explicit_consent=true，需用户显式授权", spec)
+            res = GateResult(ASK_USER, "requires_explicit_consent=true，需用户显式授权", spec)
+            res.rule = "consent_required"
+            record_gate_hit(ASK_USER, "consent_required")
+            return res
 
         # 网络访问必须落在沙箱内，否则拒绝（防止静默外联）
         if spec.network and spec.sandbox == SANDBOX_NONE:
-            return GateResult(DENY, "network=true 但 sandbox=none，拒绝未沙箱化的外联", spec)
+            res = GateResult(DENY, "network=true 但 sandbox=none，拒绝未沙箱化的外联", spec)
+            res.rule = "network_no_sandbox"
+            record_gate_hit(DENY, "network_no_sandbox")
+            return res
 
-        return GateResult(ALLOW, permission=spec)
+        res = GateResult(ALLOW, permission=spec)
+        res.rule = "default_allow"
+        record_gate_hit(ALLOW, "default_allow")
+        return res

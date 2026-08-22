@@ -18,6 +18,7 @@ import ast
 import importlib
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -81,13 +82,13 @@ class ToolEntry:
         "name", "toolset", "schema", "handler", "check_fn",
         "requires_env", "is_async", "description", "emoji",
         "max_result_size_chars", "dynamic_schema_overrides",
-        "verify_fn",
+        "verify_fn", "permission_spec",
     )
 
     def __init__(self, name, toolset, schema, handler, check_fn,
                  requires_env, is_async, description, emoji,
                  max_result_size_chars=None, dynamic_schema_overrides=None,
-                 verify_fn=None):
+                 verify_fn=None, permission_spec=None):
         self.name = name
         self.toolset = toolset
         self.schema = schema
@@ -114,6 +115,10 @@ class ToolEntry:
         # fail-open: if verify_fn raises, treated as (True, "verifier error: ...").
         # None = no verifier for this tool (default, backwards compatible).
         self.verify_fn = verify_fn
+        # Optional permission declaration for the A1 dispatch trust gate.
+        # None = undeclared → dispatch applies the conservative cli_native
+        # default (low-priv ALLOW) so existing 273 tools stay zero-regression.
+        self.permission_spec = permission_spec
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +180,11 @@ class ToolRegistry:
         # against it: a cache entry keyed on the generation is valid for as
         # long as the generation hasn't changed.
         self._generation: int = 0
+        # A1: 主执行点统一信任闸门模式。
+        # fail_open（默认，观测期）：记录命中率 + 告警但继续执行，273 工具零回归。
+        # fail_closed（VERMES_DISPATCH_GATE_MODE=fail_closed 或运行时设置）：
+        #   阻断非 ALLOW 决策（DENY / ASK_USER）。观测期结束、数据达标后切换。
+        self.dispatch_gate_mode = os.environ.get("VERMES_DISPATCH_GATE_MODE", "fail_open")
 
     def _snapshot_state(self) -> tuple[List[ToolEntry], Dict[str, Callable]]:
         """Return a coherent snapshot of registry entries and toolset checks."""
@@ -283,6 +293,7 @@ class ToolRegistry:
         max_result_size_chars: int | float | None = None,
         dynamic_schema_overrides: Callable = None,
         verify_fn: Callable = None,
+        permission_spec=None,
         override: bool = False,
     ):
         """Register a tool.  Called at module-import time by each tool file.
@@ -339,6 +350,7 @@ class ToolRegistry:
                 max_result_size_chars=max_result_size_chars,
                 dynamic_schema_overrides=dynamic_schema_overrides,
                 verify_fn=verify_fn,
+                permission_spec=permission_spec,
             )
             if check_fn and toolset not in self._toolset_checks:
                 self._toolset_checks[toolset] = check_fn
@@ -424,6 +436,36 @@ class ToolRegistry:
         return result
 
     # ------------------------------------------------------------------
+    # A1: 统一信任闸门评估（提级到主执行点）
+    # ------------------------------------------------------------------
+
+    def _evaluate_dispatch_gate(self, entry, kwargs):
+        """对单个工具调用 TrustGate.check，返回 (decision, reason, rule)。
+
+        fail-open 安全网：闸门模块不可用时降级放行（仍记录 gate_unavailable），
+        绝不因闸门故障阻断 273 工具。
+        """
+        try:
+            from vermes_cli.adapters.trust_gate import (
+                TrustGate, PermissionSpec, SANDBOX_NONE,
+            )
+        except Exception as exc:  # pragma: no cover - 仅依赖缺失场景
+            logger.warning("TrustGate 模块不可用，dispatch 降级放行: %s", exc)
+            return "allow", "trust_gate unavailable (fail-open)", "gate_unavailable"
+        ctx = kwargs.get("ctx")
+        spec = entry.permission_spec
+        if spec is None:
+            # 未声明权限的内置工具：默认 cli_native 低权信任（与 §15.3 一致），
+            # 观测期基线 = 100% ALLOW；后续逐步为真实工具挂 PermissionSpec。
+            spec = PermissionSpec(
+                reads_fs=True, writes_fs=True, network=False,
+                exec_external=True, sandbox=SANDBOX_NONE,
+                requires_explicit_consent=False,
+            )
+        result = TrustGate.check(spec, ctx)
+        return result.decision, result.reason, result.rule
+
+    # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
 
@@ -445,6 +487,29 @@ class ToolRegistry:
                     "hint": hint,
                 }, ensure_ascii=False)
             return json.dumps({"error": f"Unknown tool: {name}"})
+
+        # ---- A1: 统一信任闸门（提级到主执行点，对齐 Codex exec_policy）----
+        # fail-open（默认，观测期）：记录命中率 + 告警，但继续执行，保证 273 工具零回归。
+        # fail-closed：阻断非 ALLOW 决策（DENY / ASK_USER）。
+        from vermes_cli.adapters.trust_gate import ALLOW
+        gate_decision, gate_reason, gate_rule = self._evaluate_dispatch_gate(entry, kwargs)
+        if gate_decision != ALLOW:
+            if self.dispatch_gate_mode == "fail_closed":
+                logger.warning(
+                    "Dispatch gate BLOCKED (fail-closed): tool=%s decision=%s "
+                    "rule=%s reason=%s", name, gate_decision, gate_rule, gate_reason,
+                )
+                return json.dumps({
+                    "error": "permission denied by dispatch gate",
+                    "tool": name,
+                    "gate": gate_decision,
+                    "reason": gate_reason,
+                }, ensure_ascii=False)
+            logger.warning(
+                "Dispatch gate NON-ALLOW (fail-open, executing anyway): tool=%s "
+                "decision=%s rule=%s reason=%s",
+                name, gate_decision, gate_rule, gate_reason,
+            )
         try:
             if entry.is_async:
                 from model_tools import _run_async
