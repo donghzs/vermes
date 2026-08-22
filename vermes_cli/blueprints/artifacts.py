@@ -14,13 +14,16 @@ def _allowed_roots():
     """返回允许读取的根目录列表（每次调用动态获取 cwd）"""
     return [
         Path.cwd().resolve(),
-        Path.home() / '.vermes',
-        Path('/tmp'),
+        (Path.home() / '.vermes').resolve(),
+        Path('/tmp').resolve(),
     ]
 
 
 def _is_safe_path(path_str: str) -> Path:
     """路径安全校验：规范化 + 白名单根目录检查"""
+    # 先把 tmp/ 前缀映射到 /tmp/（URL path 丢失前导 / 的常见情况）
+    if path_str.startswith('tmp/') and not Path.cwd().joinpath('tmp').exists():
+        path_str = '/' + path_str
     raw = Path(path_str)
     # 如果是绝对路径直接 resolve，否则相对于 cwd
     resolved = raw.resolve() if raw.is_absolute() else (Path.cwd() / raw).resolve()

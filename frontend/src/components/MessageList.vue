@@ -1,6 +1,7 @@
 <script setup>
 import { ref, nextTick, watch, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarget } from '../stores/chat'
+import { useRightPanel } from '../composables/useRightPanel'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
@@ -19,6 +20,8 @@ import go from 'highlight.js/lib/languages/go'
 import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
+
+const { openPanel: openRightPanel } = useRightPanel()
 
 // 工具结果展开状态
 const expandedTools = ref(new Set())
@@ -269,9 +272,79 @@ const defaultLinkRenderer = md.renderer.rules.link_open || function(tokens, idx,
 }
 md.renderer.rules.link_open = function(tokens, idx, options, env, self) {
   const token = tokens[idx]
+  const href = token.attrGet('href') || ''
+  // 产物文件链接：加 📄 标记 + class，不改 target（handleContentClick 拦截）
+  if (isArtifactLink(href)) {
+    token.attrSet('data-artifact', 'true')
+    token.attrSet('data-title', href.split('/').pop())
+    // 不设 target=_blank，让 handleContentClick 处理
+    return defaultLinkRenderer(tokens, idx, options, env, self)
+  }
   token.attrSet('target', '_blank')
   token.attrSet('rel', 'noopener noreferrer')
   return defaultLinkRenderer(tokens, idx, options, env, self)
+}
+
+// ── 裸文件路径自动链接化 �─
+// 匹配文本中的 /path/to/file.ext 或 path/to/file.ext（至少含一个 /）
+const ARTIFACT_PATH_RE = /(?:^|[\s(\[{"'\u3000`])((?:\.?\/)?(?:[\w\u4e00-\u9fff-]+\/)*[\w\u4e00-\u9fff.-]+\.(?:md|html|htm|json|csv|txt|log|py|js|ts|sh|yaml|yml|toml|ini|cfg|png|jpg|jpeg|gif|webp|svg))(?=[\s)\]},"'\u3000`?!，。、；：]|$)/gi
+
+// 后处理：在 sanitize 之后的 HTML 中把裸路径转为产物链接
+// 比 markdown-it 内联规则更安全（在 DOMPurify 之后操作）
+function linkifyArtifactPaths(html) {
+  // 只替换不在 <a> 标签内、不在 <code> 标签内、不在 <pre> 标签内的裸路径
+  // 用一个简单的状态机扫描
+  let result = ''
+  let i = 0
+  let inTag = false
+  let tagName = ''
+  let inCodeOrPre = false
+  let inLink = false
+  
+  while (i < html.length) {
+    if (html[i] === '<') {
+      // 标签开始
+      const tagMatch = html.slice(i).match(/^<\/(\w+)>|^<(\w+)[^>]*>/)
+      if (tagMatch) {
+        const isClosing = !!html.slice(i).match(/^<\//)
+        const name = (isClosing ? tagMatch[1] : tagMatch[2]).toLowerCase()
+        if (isClosing) {
+          if (name === 'a') inLink = false
+          if (name === 'code' || name === 'pre') inCodeOrPre = false
+        } else {
+          if (name === 'a') inLink = true
+          if (name === 'code' || name === 'pre') inCodeOrPre = true
+        }
+        result += tagMatch[0]
+        i += tagMatch[0].length
+        continue
+      }
+    }
+    
+    // 只在普通文本区域（非标签内、非 code/pre 内、非链接内）做路径替换
+    if (!inCodeOrPre && !inLink) {
+      // 找到下一个标签开始
+      const nextTag = html.indexOf('<', i)
+      const textSegment = nextTag === -1 ? html.slice(i) : html.slice(i, nextTag)
+      
+      // 在文本段中替换裸路径
+      const replaced = textSegment.replace(ARTIFACT_PATH_RE, (match, path, offset, str) => {
+        // match 包含前导字符（空格/括号等），path 是纯路径
+        const prefix = match.slice(0, match.length - path.length)
+        const cleanPath = path.replace(/^\.?\//, '')
+        const fileName = cleanPath.split('/').pop()
+        return `${prefix}<a href="${cleanPath}" data-artifact="true" data-title="${fileName}" class="artifact-link">📄 ${path}</a>`
+      })
+      result += replaced
+      i = nextTag === -1 ? html.length : nextTag
+      continue
+    }
+    
+    result += html[i]
+    i++
+  }
+  
+  return result
 }
 
 const chat = useChatStore()
@@ -294,7 +367,9 @@ function renderMd(content) {
   if (!content) return ''
   try {
     const rawHtml = md.render(content)
-    return DOMPurify.sanitize(rawHtml, DOMPURIFY_BASE_CONFIG)
+    const sanitized = DOMPurify.sanitize(rawHtml, DOMPURIFY_BASE_CONFIG)
+    // 裸文件路径链接化（在 sanitize 之后，确保不引入未消毒 HTML）
+    return linkifyArtifactPaths(sanitized)
   } catch (e) {
     console.error('[DOMPurify] sanitize failed:', e)
     // 降级：纯文本转义
@@ -338,9 +413,53 @@ function cleanUserContent(content) {
 }
 
 // ── 链接点击拦截（pywebview/浏览器兼容） ──
+// ── 产物文件扩展名 ──
+const ARTIFACT_EXTS = ['md', 'html', 'htm', 'json', 'csv', 'txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
+const ARTIFACT_EXTS_SET = new Set(ARTIFACT_EXTS)
+
+// 判断链接是否为产物文件（本地路径 + 已知扩展名）
+function isArtifactLink(href) {
+  if (!href) return false
+  // 相对路径或绝对路径（非 http(s)://）
+  if (/^https?:\/\//.test(href)) return false
+  // 提取路径中的扩展名
+  const cleanPath = href.split('?')[0].split('#')[0]
+  const ext = cleanPath.split('.').pop()?.toLowerCase()
+  return ARTIFACT_EXTS_SET.has(ext)
+}
+
+// 从链接 href 提取产物路径（去掉浏览器 base URL 前缀）
+function extractArtifactPath(href) {
+  // 如果是完整 URL 但实际是本地路径（浏览器自动加了 http://localhost:port/ 前缀）
+  try {
+    const url = new URL(href, window.location.origin)
+    if (url.origin === window.location.origin) {
+      return url.pathname.slice(1) // 去掉前导 /
+    }
+  } catch {}
+  // 相对/绝对路径直接用
+  return href.replace(/^\.?\//, '')
+}
+
 function handleContentClick(e) {
   const a = e.target.closest('a[href]')
   if (a) {
+    const href = a.getAttribute('href') || ''
+    // 产物文件链接 → 打开产物面板
+    if (isArtifactLink(href)) {
+      e.preventDefault()
+      const path = extractArtifactPath(href)
+      const title = a.dataset.title || path.split('/').pop()
+      const ext = path.split('.').pop()?.toLowerCase()
+      const mimeMap = { md: 'text/markdown', html: 'text/html', htm: 'text/html', json: 'application/json', csv: 'text/csv', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
+      const mime = mimeMap[ext] || 'text/plain'
+      if (window.__vermesArtifacts) {
+        window.__vermesArtifacts.addArtifact({ path, title, mime, source: 'chat' })
+        openRightPanel('artifacts')
+      }
+      return
+    }
+    // 外部链接 → 新窗口
     e.preventDefault()
     const url = a.href
     if (window.pywebview?.api?.open_external_browser) {
@@ -967,6 +1086,9 @@ function streamElapsed(startTime) {
 .dark .vermes-md :deep(hr) { border-top-color: #374151; }
 .vermes-md :deep(a) { color: #16a34a; text-decoration: none; }
 .vermes-md :deep(a:hover) { text-decoration: underline; }
+/* 产物链接：绿色加粗 + 📄 图标 */
+.vermes-md :deep(a.artifact-link) { color: #16a34a; font-weight: 500; border-bottom: 1px dashed #22c55e; padding-bottom: 1px; }
+.vermes-md :deep(a.artifact-link:hover) { background: rgba(34,197,94,0.08); border-bottom-style: solid; cursor: pointer; }
 
 @keyframes blink {
   0%, 100% { opacity: 1; }

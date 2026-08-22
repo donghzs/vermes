@@ -14,7 +14,8 @@ export const DOMPURIFY_BASE_CONFIG = {
     'href', 'title', 'target', 'rel',
     'src', 'alt', 'width', 'height',
     'class', 'id',
-    'start'
+    'start',
+    'data-artifact', 'data-title'
   ],
   ALLOW_DATA_ATTR: false,
   SANITIZE_NAMED_PROPS: true,
@@ -22,10 +23,14 @@ export const DOMPURIFY_BASE_CONFIG = {
 }
 
 // 强制链接安全：noopener noreferrer + 拦截 javascript: 伪协议
+// 产物链接（data-artifact）不加 target=_blank，由 handleContentClick 拦截打开面板
 export function enforceLinkSecurity(node) {
   if (node.tagName === 'A') {
-    node.setAttribute('target', '_blank')
-    node.setAttribute('rel', 'noopener noreferrer')
+    const isArtifact = node.hasAttribute('data-artifact')
+    if (!isArtifact) {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
     const href = (node.getAttribute('href') || '').trim().toLowerCase()
     if (href.startsWith('javascript:') || href.startsWith('data:') || href.startsWith('vbscript:')) {
       node.removeAttribute('href')
