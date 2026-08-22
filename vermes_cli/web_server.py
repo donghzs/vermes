@@ -464,6 +464,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # 文献源注册表（只返回元数据：label/category/字段描述，不含凭证值）
     "/api/registered-services",
     "/api/literature-custom-sources",
+    # Artifact Panel 产物文件读取（桌面本地白名单路径，与 mfgcad 同源设计）
+    "/api/v1/artifacts",
 })
 
 
