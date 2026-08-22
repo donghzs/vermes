@@ -881,6 +881,46 @@ def compaction_loop(
     return messages, active_system_prompt, approx_tokens, conversation_history
 
 
+def scheduler_driven_compaction(
+    agent: Any,
+    messages: list,
+    system_message: str,
+    active_system_prompt: str,
+    sched_tokens: int,
+    effective_task_id: str,
+    conversation_history,
+    scheduler,
+):
+    """Scheduler-driven proactive compression execution.
+
+    Extracted from ``conversation_loop.py`` scheduler compression block (A2 step 3).
+    Handles the ``should_compress`` branch after the scheduler has decided.
+    Returns ``(messages, active_system_prompt, conversation_history)``.
+    """
+    agent._emit_status(
+        f"📦 主动压缩：约 {sched_tokens:,} tokens。"
+        "这可能需要一点时间。"
+    )
+    _orig_len = len(messages)
+    messages, active_system_prompt = agent._compress_context(
+        messages, system_message, approx_tokens=sched_tokens,
+        task_id=effective_task_id,
+    )
+    if len(messages) < _orig_len:
+        conversation_history = None
+        agent._empty_content_retries = 0
+        agent._thinking_prefill_retries = 0
+        scheduler.record_compression()
+        try:
+            from agent.metrics import record_compression as _metrics_record_compression
+            _metrics_record_compression()
+        except Exception:
+            pass  # metrics best-effort
+        logger.info("Scheduler compression complete: %d→%d messages",
+                    _orig_len, len(messages))
+    return messages, active_system_prompt, conversation_history
+
+
 def compaction_check_in_loop(
     agent: Any,
     messages: list,

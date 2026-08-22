@@ -1538,27 +1538,12 @@ def run_conversation(
             # B 硬容量护栏：超过压缩轮次上限则不再压缩
             logger.info("Scheduler proactive compression: mode=%s tokens=~%s reason=%s",
                         _sched_decision.mode, f"{_sched_tokens:,}", _sched_decision.reason)
-            agent._emit_status(
-                f"📦 主动压缩（{_sched_decision.mode}）：约 {_sched_tokens:,} tokens。"
-                "这可能需要一点时间。"
-            )
-            _orig_len = len(messages)
-            messages, active_system_prompt = agent._compress_context(
-                messages, system_message, approx_tokens=_sched_tokens,
-                task_id=effective_task_id,
-            )
-            if len(messages) < _orig_len:
-                conversation_history = None
-                agent._empty_content_retries = 0
-                agent._thinking_prefill_retries = 0
-                _scheduler.record_compression()
-                try:
-                    from agent.metrics import record_compression as _metrics_record_compression
-                    _metrics_record_compression()
-                except Exception:
-                    pass  # metrics best-effort
-                logger.info("Scheduler compression complete: %d→%d messages",
-                            _orig_len, len(messages))
+            from agent.conversation_compression import scheduler_driven_compaction
+            messages, active_system_prompt, conversation_history = \
+                scheduler_driven_compaction(
+                    agent, messages, system_message, active_system_prompt,
+                    _sched_tokens, effective_task_id, conversation_history, _scheduler,
+                )
 
     # Plugin hook: pre_llm_call
     # Fired once per turn before the tool-calling loop.  Plugins can
