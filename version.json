@@ -1,44 +1,41 @@
 {
-  "version": "2.3.7",
-  "buildDate": "2026-07-28",
+  "version": "2.4.1",
+  "buildDate": "2026-08-22",
   "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.7-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.3.7.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes-Setup-2.3.7.exe"
+    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.4.1-arm64.dmg",
+    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.4.1.dmg",
+    "windows_exe": "https://vbit.top/vermes/downloads/Vermes Setup 2.4.1.exe"
   },
   "sha256": {
-    "macos_arm64": "",
-    "macos_x64": "",
+    "macos_arm64": "beb4a8a03bcd7c16ba7068c16e4aa1b1ac41ccd8b925b375e762ddb717d29171",
+    "macos_x64": "28fc492cfc9ffaafd2602ea572912df712a1caffe3f4df619f9e93c1eae12ca9",
     "windows": ""
   },
   "macOS": {
     "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.7-arm64.dmg",
-      "size": "210 MB",
-      "sha256": ""
+      "dmg": "/vermes/downloads/Vermes-2.4.1-arm64.dmg",
+      "size": "241 MB",
+      "sha256": "beb4a8a03bcd7c16ba7068c16e4aa1b1ac41ccd8b925b375e762ddb717d29171"
     },
     "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.3.7.dmg",
-      "size": "215 MB",
-      "sha256": ""
+      "dmg": "/vermes/downloads/Vermes-2.4.1.dmg",
+      "size": "245 MB",
+      "sha256": "28fc492cfc9ffaafd2602ea572912df712a1caffe3f4df619f9e93c1eae12ca9"
     }
   },
   "windows": {
-    "exe": "/vermes/downloads/Vermes-Setup-2.3.7.exe",
-    "size": "208 MB",
+    "exe": "/vermes/downloads/Vermes Setup 2.4.1.exe",
+    "size": "",
     "sha256": ""
   },
   "changelog": [
-    "桌面端全渠道统一：左侧会话列表合并显示 TG/飞书/Discord/Slack 等全部渠道历史，带渠道徽标",
-    "send-from-desktop 桥：桌面可直接给任意渠道会话代发消息，回复经原渠道 adapter 发回用户手机",
-    "web/桌面会话回写 state.db：统一数据平面，web 会话不再孤立、可被代发与记忆摄入",
-    "§3.5 渠道还原元数据：origin_json 惰性列（对齐上游 #58899 格式），支持跨进程 relay 还原原渠道",
-    "记忆 scope 治理：跨渠道加权召回契约落地（加权前置 + 保涌现），激活面留作后续 PR",
-    "MCP 客户端层统一 URL 安全拦截 — SSRF 防护 + 密钥泄露防护，第三方 MCP server 自动带护栏",
-    "shutong/EmpireCMS 文献源登录修复 — 正确的登录端点与字段名",
-    "测试套件修复 — emergent_change 冷启动门 + literature_search 本地 provider mock",
-    "流式回复重复修复 — SequenceMatcher 替代 LCS",
-    "Electron Windows 启动崩溃修复 — 移除 dead electron-updater require",
-    "Windows 构建流程标准化 — build-win-ci.ps1 实战验证，A11 一键出包"
+    "📄 产物面板：工具产出自动推送到右侧面板（5 阶段全闭环）",
+    "📄 产物扩展名补全：docx/pdf/step/stl 等核心交付格式",
+    "🧪 国家超算互联网（SCNet）provider 前后端落地",
+    "🔧 自定义 Provider 添加修复",
+    "🛡️ 安全闸门提级 + 信任闸门 deny-unless-declared",
+    "🏗️ god-file 拆分：CompactionEngine + TurnService 抽取",
+    "📦 通用操作层 L2 完整闭环（SoftwareAdapter/发现层/推荐层）",
+    "💾 preset 化 + otel no-op 封装 + 跨会话常驻记忆"
   ]
 }
