@@ -7,20 +7,20 @@
     "windows_exe": "https://vbit.top/vermes/downloads/Vermes Setup 2.4.1.exe"
   },
   "sha256": {
-    "macos_arm64": "beb4a8a03bcd7c16ba7068c16e4aa1b1ac41ccd8b925b375e762ddb717d29171",
-    "macos_x64": "28fc492cfc9ffaafd2602ea572912df712a1caffe3f4df619f9e93c1eae12ca9",
+    "macos_arm64": "69566d4236a08da121597efacb5eaa9baacc7c55292c8fa709fe0ac23cc2cbf9",
+    "macos_x64": "e0c4d40d7a2da63e07f9a26aab38774df60026ca80290e25b9e673fb8b20c842",
     "windows": ""
   },
   "macOS": {
     "arm64": {
       "dmg": "/vermes/downloads/Vermes-2.4.1-arm64.dmg",
       "size": "241 MB",
-      "sha256": "beb4a8a03bcd7c16ba7068c16e4aa1b1ac41ccd8b925b375e762ddb717d29171"
+      "sha256": "69566d4236a08da121597efacb5eaa9baacc7c55292c8fa709fe0ac23cc2cbf9"
     },
     "x64": {
       "dmg": "/vermes/downloads/Vermes-2.4.1.dmg",
       "size": "245 MB",
-      "sha256": "28fc492cfc9ffaafd2602ea572912df712a1caffe3f4df619f9e93c1eae12ca9"
+      "sha256": "e0c4d40d7a2da63e07f9a26aab38774df60026ca80290e25b9e673fb8b20c842"
     }
   },
   "windows": {
