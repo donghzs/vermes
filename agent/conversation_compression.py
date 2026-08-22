@@ -834,6 +834,53 @@ def compress_context(
     return compressed, new_system_prompt
 
 
+def compaction_loop(
+    agent: Any,
+    messages: list,
+    system_message: str,
+    active_system_prompt: str,
+    approx_tokens: int,
+    effective_task_id: str,
+    conversation_history,
+):
+    """Compress up to 3 passes, stopping when under threshold or no further reduction.
+
+    Shared by the P1-2 hard-guard fallback and the normal pre-flight path so the
+    compress-loop body isn't duplicated (audit improvement #3).  Returns the
+    (possibly updated) messages, active_system_prompt, approx_tokens, and
+    conversation_history — the last is reset to None whenever a pass actually
+    shrinks the context, signalling a new session that must flush all messages.
+
+    Extracted from ``conversation_loop._compress_until_under_threshold`` as
+    the first step of A2 CompactionEngine extraction.  The loop-level contract
+    is locked by ``tests/agent/test_compress_until_under_threshold_contract.py``.
+    """
+    for _pass in range(3):
+        _orig_len = len(messages)
+        messages, active_system_prompt = agent._compress_context(
+            messages, system_message, approx_tokens=approx_tokens,
+            task_id=effective_task_id,
+        )
+        if len(messages) >= _orig_len:
+            break  # Cannot compress further
+        # Compression created a new session - drop the history reference so the
+        # flush writes ALL compressed messages (not just the delta).
+        conversation_history = None
+        agent._empty_content_retries = 0
+        agent._thinking_prefill_retries = 0
+        agent._last_content_with_tools = None
+        agent._last_content_tools_all_housekeeping = False
+        agent._mute_post_response = False
+        approx_tokens = estimate_request_tokens_rough(
+            messages,
+            system_prompt=active_system_prompt or "",
+            tools=agent.tools or None,
+        )
+        if approx_tokens < agent.context_compressor.threshold_tokens:
+            break
+    return messages, active_system_prompt, approx_tokens, conversation_history
+
+
 def prune_context(
     agent: Any,
     messages: list,
