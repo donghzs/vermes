@@ -77,8 +77,13 @@ def _find_tool_body(doc, tool_name: str):
 
 
 # 特征类型 → 语义 kind（供前端渲染 + agent 多轮锚定）
-# Part::Feature 几何操作包装的参数存储（obj.Name → {key: {params}}）
+# H9 根治：_FEATURE_PARAMS 仅做内存热缓存（子进程内），持久化靠 FreeCAD
+# 对象自定义属性 VermesMeta（JSON 字符串），子进程重启后从 .FCStd 恢复。
 _FEATURE_PARAMS: dict[str, dict] = {}
+
+# H9 持久化辅助函数从独立模块导入（不依赖 FreeCAD App，可独立测试）
+from vermes_cli.mfgcad.feature_params import save_vermes_meta as _save_vermes_meta
+from vermes_cli.mfgcad.feature_params import load_vermes_meta as _load_vermes_meta
 
 _KIND_MAP = {
     "PartDesign::Body": "body",
@@ -117,9 +122,9 @@ def _extract_params(obj, tid: str) -> dict:
             p["type"] = str(getattr(obj, "Type", ""))
         elif tid == "Part::Scale":
             p["factor"] = float(getattr(obj, "Scale", 1.0))
-        # Part::Feature 几何操作包装：参数存在全局 _FEATURE_PARAMS
+        # Part::Feature 几何操作包装：参数从 VermesMeta 自定义属性恢复（H9 根治）
         if tid == "Part::Feature":
-            fp = _FEATURE_PARAMS.get(obj.Name)
+            fp = _load_vermes_meta(obj) or _FEATURE_PARAMS.get(obj.Name)
             if fp:
                 for _fv in fp.values():
                     p.update(_fv)
@@ -199,6 +204,7 @@ def _apply_edit_op(doc, op: dict):
         fillet_shape = shape.makeFillet(radius, edge_list)
         f = doc.addObject("Part::Feature", "Fillet")
         f.Shape = fillet_shape
+        _save_vermes_meta(f, {"fillet": {"radius": radius}})
         _FEATURE_PARAMS[f.Name] = {"fillet": {"radius": radius}}
         doc.recompute()
 
