@@ -1,11 +1,11 @@
-"""状态交接不变量测试：_initialize_turn → _finalize_turn（A2 拆 Service 前的安全网）。
+"""状态交接不变量测试：_initialize_turn → finalize_turn（A2 §7.5 stage-3 收口后）。
 
 锁定的不变量（§7.4 (b)）：
 1. _initialize_turn 设置的状态字段有正确初始值（task_id 一致 / retry 归零 /
    stream_callback+persist_override 透传 / rejection_count 保留）。
-2. _finalize_turn 正确消费 initialize 设置的状态（effective_task_id →
-   _cleanup_task_resources；conversation_history → _persist_session；completed
-   语义正确）。
+2. finalize_turn（agent.turn_finalizer，原内联 _finalize_turn 已删）正确消费
+   initialize 设置的状态（effective_task_id → _cleanup_task_resources；
+   conversation_history → _persist_session；completed 语义正确）。
 
 拆 turn/step/stream Service 时，这些经 agent 对象隐式传递的状态交接不能被破坏。
 """
@@ -16,7 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent.conversation_loop import _finalize_turn, _initialize_turn
+from agent.conversation_loop import _initialize_turn
+from agent.turn_finalizer import finalize_turn
 
 
 def _make_agent():
@@ -130,50 +131,36 @@ def _call_finalize_turn(agent, **overrides):
     scheduler.evaluate = MagicMock(return_value=MagicMock(mode="none"))
     kwargs = dict(
         agent=agent,
-        messages=[{"role": "user", "content": "hi"}],
         final_response="done",
-        interrupted=False,
         api_call_count=1,
+        interrupted=False,
+        failed=False,
+        messages=[{"role": "user", "content": "hi"}],
+        conversation_history=None,
         effective_task_id="task-42",
-        _turn_exit_reason="normal",
-        _scheduler=scheduler,
-        api_start_time=0,
+        turn_id=None,
         user_message="hi",
         original_user_message="hi",
         _should_review_memory=False,
-        conversation_history=None,
+        _turn_exit_reason="normal",
+        _scheduler=scheduler,
+        api_start_time=0,
         approx_tokens=100,
     )
     kwargs.update(overrides)
-    return _finalize_turn(**kwargs)
+    return finalize_turn(**kwargs)
 
 
 class TestFinalizeTurnConsumesState:
     def test_effective_task_id_passed_to_cleanup(self):
         agent = _make_agent()
-        with (
-            patch("agent.conversation_loop._log_turn_exit"),
-            patch("agent.conversation_loop._record_turn_metrics"),
-            patch("agent.conversation_loop._apply_file_mutation_footer", return_value="done"),
-            patch("agent.conversation_loop._apply_operator_claim_verifier", return_value=("done", [])),
-            patch("agent.conversation_loop._run_post_llm_hooks"),
-            patch("agent.conversation_loop._build_conversation_result", return_value={"final_response": "done"}),
-        ):
-            _call_finalize_turn(agent, effective_task_id="task-42")
+        _call_finalize_turn(agent, effective_task_id="task-42")
         agent._cleanup_task_resources.assert_called_once_with("task-42")
 
     def test_conversation_history_passed_to_persist(self):
         agent = _make_agent()
         history = [{"role": "user", "content": "earlier"}]
-        with (
-            patch("agent.conversation_loop._log_turn_exit"),
-            patch("agent.conversation_loop._record_turn_metrics"),
-            patch("agent.conversation_loop._apply_file_mutation_footer", return_value="done"),
-            patch("agent.conversation_loop._apply_operator_claim_verifier", return_value=("done", [])),
-            patch("agent.conversation_loop._run_post_llm_hooks"),
-            patch("agent.conversation_loop._build_conversation_result", return_value={"final_response": "done"}),
-        ):
-            _call_finalize_turn(agent, conversation_history=history)
+        _call_finalize_turn(agent, conversation_history=history)
         # _persist_session 第二参是 conversation_history（位置参数）
         agent._persist_session.assert_called_once()
         _args, _kwargs = agent._persist_session.call_args
@@ -183,35 +170,14 @@ class TestFinalizeTurnConsumesState:
         """completed = final_response 非空 且 api_call_count < max_iterations。"""
         agent = _make_agent()
         agent.max_iterations = 10
-        captured = {}
-
-        def _capture(ag, msgs, fr, intr, apic, reason, orig, completed, rm, rs):
-            captured["completed"] = completed
-            return {"final_response": fr}
-
-        with (
-            patch("agent.conversation_loop._log_turn_exit"),
-            patch("agent.conversation_loop._record_turn_metrics"),
-            patch("agent.conversation_loop._apply_file_mutation_footer", return_value="done"),
-            patch("agent.conversation_loop._apply_operator_claim_verifier", return_value=("done", [])),
-            patch("agent.conversation_loop._run_post_llm_hooks"),
-            patch("agent.conversation_loop._build_conversation_result", side_effect=_capture),
-        ):
-            _call_finalize_turn(agent, final_response="done", api_call_count=5)
-        assert captured["completed"] is True
+        result = _call_finalize_turn(agent, final_response="done", api_call_count=5)
+        assert result["completed"] is True
 
         # api_call_count >= max_iterations → completed False
-        captured.clear()
-        with (
-            patch("agent.conversation_loop._log_turn_exit"),
-            patch("agent.conversation_loop._record_turn_metrics"),
-            patch("agent.conversation_loop._apply_file_mutation_footer", return_value="done"),
-            patch("agent.conversation_loop._apply_operator_claim_verifier", return_value=("done", [])),
-            patch("agent.conversation_loop._run_post_llm_hooks"),
-            patch("agent.conversation_loop._build_conversation_result", side_effect=_capture),
-        ):
-            _call_finalize_turn(agent, final_response="done", api_call_count=10)
-        assert captured["completed"] is False
+        agent2 = _make_agent()
+        agent2.max_iterations = 10
+        result2 = _call_finalize_turn(agent2, final_response="done", api_call_count=10)
+        assert result2["completed"] is False
 
 
 if __name__ == "__main__":

@@ -2754,7 +2754,13 @@ class TestRunConversation:
 
         mock_compress.assert_not_called()  # no compression triggered
         assert result["completed"] is True
-        assert result["final_response"] == "(empty)"
+        # A2 §7.5 stage-3 full-activation: the turn-completion explainer
+        # replaces the bare "(empty)" sentinel with a user-visible reason
+        # when retries are exhausted with no usable reply (#34452).  The
+        # outer surface (run_agent.py) never relied on the "(empty)" string,
+        # so this is the expected new behavior, not a regression.
+        assert result["final_response"] != "(empty)"
+        assert result["final_response"].startswith("⚠️ No reply:")
         assert result["api_calls"] == 6  # 1 original + 2 prefill + 3 retries
 
     def test_reasoning_only_response_prefill_then_empty(self, agent):
@@ -2774,7 +2780,9 @@ class TestRunConversation:
         ):
             result = agent.run_conversation("answer me")
         assert result["completed"] is True
-        assert result["final_response"] == "(empty)"
+        # A2 full-activation: explainer replaces "(empty)" sentinel.
+        assert result["final_response"] != "(empty)"
+        assert result["final_response"].startswith("⚠️ No reply:")
         assert result["api_calls"] == 6  # 1 original + 2 prefill + 3 retries
 
     def test_reasoning_only_prefill_succeeds_on_continuation(self, agent):
@@ -2821,7 +2829,9 @@ class TestRunConversation:
         ):
             result = agent.run_conversation("answer me")
         assert result["completed"] is True
-        assert result["final_response"] == "(empty)"
+        # A2 full-activation: explainer replaces "(empty)" sentinel.
+        assert result["final_response"] != "(empty)"
+        assert result["final_response"].startswith("⚠️ No reply:")
         assert result["api_calls"] == 4  # 1 original + 3 retries
 
     def test_truly_empty_response_succeeds_on_nudge(self, agent):
@@ -2917,7 +2927,9 @@ class TestRunConversation:
         ):
             result = agent.run_conversation("answer me")
         assert result["completed"] is True
-        assert result["final_response"] == "(empty)"
+        # A2 full-activation: explainer replaces "(empty)" sentinel.
+        assert result["final_response"] != "(empty)"
+        assert result["final_response"].startswith("⚠️ No reply:")
 
     def test_empty_response_emits_status_for_gateway(self, agent):
         """_emit_status is called during empty retries so gateway users see feedback."""
@@ -2943,7 +2955,11 @@ class TestRunConversation:
         ):
             result = agent.run_conversation("answer me")
 
-        assert result["final_response"] == "(empty)"
+        # A2 full-activation: explainer replaces "(empty)" sentinel with a
+        # user-visible reason; the retry/failure status channel below is
+        # unchanged and still the contract gateway users rely on.
+        assert result["final_response"] != "(empty)"
+        assert result["final_response"].startswith("⚠️ No reply:")
         # Should have emitted retry statuses (3 retries) + final failure
         # i18n: retry status emitted as "正在重试" (zh) or "retrying" (en)
         retry_msgs = [m for m in status_messages if "retrying" in m.lower() or "正在重试" in m]
@@ -3167,7 +3183,7 @@ class TestRunConversation:
         retry_result = {"final_response": "retried answer", "completed": True, "messages": []}
 
         with patch(
-            "agent.conversation_loop._finalize_turn",
+            "agent.turn_finalizer.finalize_turn",
             side_effect=[reject_result, retry_result],
         ):
             result = agent.run_conversation("hello")
@@ -3526,9 +3542,18 @@ class TestRunConversation:
         mock_handle_function_call.assert_not_called()
 
     def test_kanban_block_called_on_iteration_exhaustion(self, agent, monkeypatch):
-        """Regression: kanban worker must call kanban_block when iteration
+        """Regression: kanban worker must signal task failure when iteration
         budget is exhausted, otherwise the dispatcher sees a protocol
-        violation and gives up after 1 failure (issue #23216)."""
+        violation and gives up after 1 failure (issue #23216 / #29747).
+
+        A2 §7.5 stage-3 full-activation: the inline ``_finalize_turn`` path
+        routed exhausted-budget through ``kanban_block``; the extracted
+        ``turn_finalizer.finalize_turn`` routes through
+        ``vermes_cli.kanban_db._record_task_failure(outcome="timed_out")``
+        instead, so this counts toward the dispatcher's ``consecutive_failures``
+        circuit breaker.  We assert the new seam, not the old ``kanban_block``
+        hop.
+        """
         self._setup_agent(agent)
         agent.max_iterations = 2
 
@@ -3547,31 +3572,36 @@ class TestRunConversation:
             tool_resp, tool_resp, summary_resp,
         ]
 
+        recorded = []
+
+        def _capture_record_failure(conn, task_id, error, *, outcome="timed_out",
+                                     release_claim=False, end_run=False, **kw):
+            recorded.append((task_id, error, outcome))
+            return True
+
         with (
             patch("run_agent.handle_function_call", return_value="ok") as mock_hfc,
             patch.object(agent, "_persist_session"),
             patch.object(agent, "_save_trajectory"),
             patch.object(agent, "_cleanup_task_resources"),
+            patch("vermes_cli.kanban_db._record_task_failure",
+                  side_effect=_capture_record_failure) as mock_rf,
         ):
             result = agent.run_conversation("do the kanban work")
 
         # The agent should have reported the task as not completed.
         assert result["completed"] is False
 
-        # Among all handle_function_call invocations, one must be
-        # kanban_block with the correct task_id and a reason mentioning
-        # iteration exhaustion.
-        kanban_block_calls = [
-            c for c in mock_hfc.call_args_list
-            if c[0][0] == "kanban_block"
-        ]
-        assert len(kanban_block_calls) == 1, (
-            f"Expected exactly 1 kanban_block call, got {len(kanban_block_calls)}. "
-            f"All calls: {mock_hfc.call_args_list}"
+        # The extracted finalizer must record a timed-out task failure for
+        # the kanban task, with a reason mentioning iteration exhaustion —
+        # the A2 full-activation replacement for the old ``kanban_block`` hop.
+        assert mock_rf.call_count == 1, (
+            f"Expected exactly 1 _record_task_failure call, got {mock_rf.call_count}. "
+            f"Captured: {recorded}"
         )
-        call = kanban_block_calls[0]
-        assert call[0][1]["task_id"] == "t_test_task_123"
-        assert "Iteration budget exhausted" in call[0][1]["reason"]
+        assert recorded[0][0] == "t_test_task_123"
+        assert recorded[0][2] == "timed_out"
+        assert "Iteration budget exhausted" in recorded[0][1]
 
     def test_no_kanban_block_when_not_in_kanban_mode(self, agent, monkeypatch):
         """kanban_block must NOT be called when VERMES_KANBAN_TASK is unset."""

@@ -1,4 +1,5 @@
-"""Regression tests for two pre-existing bugs in _finalize_turn (fixed in 344e2e9ff).
+"""Regression tests for two pre-existing bugs in finalize_turn (fixed in 344e2e9ff,
+extracted to agent.turn_finalizer.finalize_turn in A2 §7.5 stage-3).
 
 Bug #1: approx_tokens always 0 — _finalize_turn used ``approx_tokens if 'approx_tokens' in dir() else 0``
         but approx_tokens was never a local variable, so dir() never contained it.
@@ -19,9 +20,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from agent.turn_finalizer import finalize_turn
+
 
 def _make_finalize_agent():
-    """构造 _finalize_turn 所需的最小 agent fake（MagicMock + 显式属性）。
+    """构造 finalize_turn 所需的最小 agent fake（MagicMock + 显式属性）。
 
     对齐 tests/agent/test_system_prompt_restore.py 的 MagicMock 模式：只设被测函数
     读取/写入的属性，协作方（_save_trajectory/_persist_session 等）用 MagicMock。
@@ -67,40 +70,38 @@ def _make_finalize_agent():
 
 
 def _call_finalize_turn(agent, *, final_response="done", approx_tokens=None):
-    """调 _finalize_turn，返回结果。"""
-    from agent.conversation_loop import _finalize_turn
-
+    """调 finalize_turn，返回结果。"""
     scheduler = MagicMock()
     scheduler.evaluate = MagicMock(return_value=MagicMock(mode="none"))
     kwargs = dict(
         agent=agent,
-        messages=[{"role": "user", "content": "hi"}],
         final_response=final_response,
-        interrupted=False,
         api_call_count=1,
+        interrupted=False,
+        failed=False,
+        messages=[{"role": "user", "content": "hi"}],
+        conversation_history=None,
         effective_task_id="task-1",
-        _turn_exit_reason="normal",
-        _scheduler=scheduler,
-        api_start_time=0,
+        turn_id=None,
         user_message="hi",
         original_user_message="hi",
         _should_review_memory=False,
-        conversation_history=None,
+        _turn_exit_reason="normal",
+        _scheduler=scheduler,
+        api_start_time=0,
     )
     if approx_tokens is not None:
         kwargs["approx_tokens"] = approx_tokens
-    return _finalize_turn(**kwargs)
+    return finalize_turn(**kwargs)
 
 
 class TestBug1ApproxTokensParam:
     """Bug #1: approx_tokens 是显式形参，且值正确传播到 _record_turn_metrics。"""
 
     def test_approx_tokens_is_function_parameter(self):
-        from agent.conversation_loop import _finalize_turn
-
-        sig = inspect.signature(_finalize_turn)
+        sig = inspect.signature(finalize_turn)
         assert "approx_tokens" in sig.parameters, \
-            "approx_tokens must be an explicit parameter of _finalize_turn"
+            "approx_tokens must be an explicit parameter of finalize_turn"
         assert sig.parameters["approx_tokens"].default == 0, \
             "approx_tokens should default to 0 for backward compatibility"
 
@@ -112,14 +113,7 @@ class TestBug1ApproxTokensParam:
         def _mock_metrics(ag, msgs, sched, start_time, approx_tokens):
             captured["approx_tokens"] = approx_tokens
 
-        with (
-            patch("agent.conversation_loop._record_turn_metrics", side_effect=_mock_metrics),
-            patch("agent.conversation_loop._apply_file_mutation_footer", return_value="done"),
-            patch("agent.conversation_loop._apply_operator_claim_verifier", return_value=("done", [])),
-            patch("agent.conversation_loop._run_post_llm_hooks"),
-            patch("agent.conversation_loop._build_conversation_result", return_value={"final_response": "done", "messages": []}),
-            patch("agent.conversation_loop._log_turn_exit"),
-        ):
+        with patch("agent.conversation_loop._record_turn_metrics", side_effect=_mock_metrics):
             _call_finalize_turn(agent, final_response="done", approx_tokens=42)
 
         assert captured["approx_tokens"] == 42, \
@@ -133,14 +127,7 @@ class TestBug1ApproxTokensParam:
         def _mock_metrics(ag, msgs, sched, start_time, approx_tokens):
             captured["approx_tokens"] = approx_tokens
 
-        with (
-            patch("agent.conversation_loop._record_turn_metrics", side_effect=_mock_metrics),
-            patch("agent.conversation_loop._apply_file_mutation_footer", return_value="done"),
-            patch("agent.conversation_loop._apply_operator_claim_verifier", return_value=("done", [])),
-            patch("agent.conversation_loop._run_post_llm_hooks"),
-            patch("agent.conversation_loop._build_conversation_result", return_value={"final_response": "done", "messages": []}),
-            patch("agent.conversation_loop._log_turn_exit"),
-        ):
+        with patch("agent.conversation_loop._record_turn_metrics", side_effect=_mock_metrics):
             _call_finalize_turn(agent, final_response="done")
 
         assert captured["approx_tokens"] == 0

@@ -45,6 +45,13 @@ def finalize_turn(
     original_user_message,
     _should_review_memory,
     _turn_exit_reason,
+    # A2 §7.5 stage-3 alignment: bring the signature in line with the
+    # inline ``_finalize_turn`` so run_conversation can call this directly
+    # (zero-behavior-change for the call site). Defaults keep the legacy
+    # ``finalize_turn(..., failed=, turn_id=)`` callers working.
+    _scheduler=None,
+    api_start_time=None,
+    approx_tokens=0,
 ):
     """Run the post-loop finalization and return the turn ``result`` dict.
 
@@ -214,6 +221,23 @@ def finalize_turn(
     else:
         logger.info(_diag_msg, *_diag_args)
 
+    # ── A2 §7.5 stage-3 alignment ─────────────────────────────────────
+    # The inline ``_finalize_turn`` recorded turn metrics and ran the
+    # operator-claim verifier here. Both were missing from this extracted
+    # version (a parallel fork that never got wired into run_conversation),
+    # so re-adding them restores the metrics event bus and the
+    # fabricated-claim hard-reject guard that the inline path already had.
+    # Lazy import avoids a conversation_loop <-> turn_finalizer import cycle.
+    from agent.conversation_loop import (
+        _apply_operator_claim_verifier,
+        _record_turn_metrics,
+    )
+    _record_turn_metrics(agent, messages, _scheduler, api_start_time, approx_tokens)
+
+    final_response, messages = _apply_operator_claim_verifier(
+        agent, messages, final_response, interrupted,
+    )
+
     # File-mutation verifier footer.
     # If one or more ``write_file`` / ``patch`` calls failed during this
     # turn and were never superseded by a successful write to the same
@@ -332,6 +356,23 @@ def finalize_turn(
             )
         except Exception as exc:
             logger.warning("post_llm_call hook failed: %s", exc)
+
+    # ── A2 §7.5 stage-3 alignment ─────────────────────────────────────
+    # P3-⑪: L1 auto-extraction — scan credentials/preferences at the end of
+    # every turn and commit to the L1 note layer. fail-open: any exception
+    # must never affect the main flow or the returned result. The inline
+    # ``_finalize_turn`` ran this here; this extracted version was missing it.
+    if not interrupted and final_response:
+        try:
+            from agent.l1_extractor import run_l1_extraction_for_turn
+
+            _committed = run_l1_extraction_for_turn(
+                original_user_message or user_message or "", final_response
+            )
+            if _committed:
+                logger.info("L1 auto-extract committed %d fact(s) this turn", _committed)
+        except Exception as _l1_err:
+            logger.warning("L1 auto-extract failed (non-fatal): %s", _l1_err)
 
     # Extract reasoning from the CURRENT turn only.  Walk backwards
     # but stop at the user message that started this turn — anything
