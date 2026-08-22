@@ -218,5 +218,39 @@ class TestThresholdBreakContract:
         assert conversation_history is None
 
 
+class TestCompactionLoopDirectContract:
+    """Direct lock on the *extracted* function (A2 阶段 2 第一步).
+
+    The forwarder-based tests above cover the call path transitively, but the
+    freshly-extracted ``compaction_loop`` is the unit most likely to regress
+    when the turn/step/stream Service split happens.  Lock it by name.
+    """
+
+    def test_importable_and_matches_forwarder_shape(self):
+        from agent.conversation_compression import compaction_loop
+
+        def _shrink(messages, system_message, *, approx_tokens=None, task_id="default"):
+            return messages[2:], "active"
+
+        # threshold 10: after first shrink to 4 msgs the re-estimated tokens
+        # drop under 10 -> stop (6 -> 4).  A huge threshold would keep shrinking
+        # to []; the loop breaks on `approx_tokens < threshold`, so small works.
+        agent = _make_agent(_shrink, threshold_tokens=10)
+        out = compaction_loop(
+            agent,
+            [_msg(i) for i in range(6)],
+            "system",
+            "active",
+            approx_tokens=100,
+            effective_task_id="t1",
+            conversation_history=[_msg(0), _msg(1)],
+        )
+        # Four-tuple shape preserved exactly (contract parity with forwarder).
+        assert isinstance(out, tuple) and len(out) == 4
+        messages, active_system_prompt, approx_tokens, conversation_history = out
+        assert conversation_history is None  # real shrink -> new-session marker
+        assert messages == [_msg(4), _msg(5)]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
