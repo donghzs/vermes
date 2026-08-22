@@ -1301,3 +1301,77 @@ def get_usage_counts(kind: Optional[str] = None, scope: str = "",
             "last_used": r["last"],
         })
     return out
+
+
+# ── A5: 跨会话常驻记忆（取法 Codex 常驻 curated memory 注入 system prompt）──
+# 常驻记忆是 L1 note 中**最稳健**的子集（decision / preference / reusable），
+# 每会话开场即注入 system prompt，使 agent "越用越懂用户"。volatile 类临时态
+# 不进入常驻（避免污染开场上下文）。
+_CURATED_STABLE_TAGS = ("decision", "preference", "reusable", "procedural")
+_CURATED_BLOCK_MARKER = "<<CURATED_MEMORY>>"
+
+
+def recall_curated_notes(limit: int = 6, max_chars: int = 1400) -> List[str]:
+    """召回最稳健的 L1 curated note 作为常驻记忆候选。
+
+    fail-open：任何 DB / 导入异常返回空列表（常驻注入是增强，不是必须）。
+    排序：稳定 tag 优先（decision/preference/reusable），同 tag 内按
+    updated_at 降序（近期修正的记忆优先）。
+    """
+    if limit <= 0:
+        return []
+    db_path = _get_index_db()
+    if not os.path.exists(str(db_path)):
+        return []
+    try:
+        with _LOCK:
+            conn = _get_conn(str(db_path))
+            try:
+                c = conn.cursor()
+                c.execute(
+                    "SELECT fts_content, lifecycle_tag, updated_at FROM memories "
+                    "WHERE source='note' AND layer=? "
+                    "ORDER BY (CASE lifecycle_tag "
+                    "  WHEN 'decision' THEN 0 "
+                    "  WHEN 'preference' THEN 1 "
+                    "  WHEN 'reusable' THEN 2 "
+                    "  WHEN 'procedural' THEN 3 "
+                    "  ELSE 4 END), updated_at DESC LIMIT ?",
+                    (L1_NOTE, limit * 4),  # 多取一些，过滤 volatile 后仍够用
+                )
+                rows = c.fetchall()
+            finally:
+                conn.close()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("recall_curated_notes failed (fail-open): %s", exc)
+        return []
+
+    out: List[str] = []
+    total = 0
+    for fts_content, tag, _updated in rows:
+        if tag not in _CURATED_STABLE_TAGS:
+            continue
+        text = (fts_content or "").strip()
+        if not text:
+            continue
+        if total + len(text) > max_chars:
+            # 容量预算：截断到预算内（优先保留已选的稳定条目）
+            break
+        out.append(text)
+        total += len(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def format_curated_system_block(notes: List[str]) -> str:
+    """把常驻记忆格式化为 system prompt 注入块（带标记，便于识别/去重）。"""
+    if not notes:
+        return ""
+    body = "\n".join(f"- {n}" for n in notes)
+    return (
+        f"\n\n{_CURATED_BLOCK_MARKER}\n"
+        f"The following curated memory is carried across sessions. "
+        f"Treat it as durable user/project context:\n{body}\n"
+        f"{_CURATED_BLOCK_MARKER}"
+    )

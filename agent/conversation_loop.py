@@ -204,6 +204,30 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
     # prompt) - build from scratch.
     agent._cached_system_prompt = agent._build_system_prompt(system_message)
 
+    # ── A5: 跨会话常驻记忆注入（取法 Codex 常驻 curated memory）──
+    # 仅在新会话开场（conversation_history 为空）注入，避免每轮重复拼接；
+    # 注入后 persist 到 session DB（下方 update_system_prompt），后续 turn
+    # 复用 stored_prompt 不再变化 → prefix-cache 稳定。fail-open：召回失败
+    # 或为空则不加。
+    if not conversation_history:
+        try:
+            from agent.memory_fabric import (
+                recall_curated_notes,
+                format_curated_system_block,
+            )
+            _notes = recall_curated_notes()
+            _block = format_curated_system_block(_notes)
+            if _block:
+                agent._cached_system_prompt = (
+                    agent._cached_system_prompt or ""
+                ) + _block
+                logger.info(
+                    "A5 curated memory injected into system prompt (%d note(s))",
+                    len(_notes),
+                )
+        except Exception as _cur_exc:
+            logger.warning("A5 curated memory injection failed (fail-open): %s", _cur_exc)
+
     # Plugin hook: on_session_start - fired once when a brand-new
     # session is created (not on continuation).  Plugins can use this
     # to initialise session-scoped state (e.g. warm a memory cache).
