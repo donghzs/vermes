@@ -439,6 +439,13 @@ class ToolRegistry:
     # A1: 统一信任闸门评估（提级到主执行点）
     # ------------------------------------------------------------------
 
+    # 放行常量。**故意用字面量**而非 `from ...trust_gate import ALLOW`：
+    # dispatch 是热路径且必须 fail-open —— 若在 dispatch 里 import 这个符号，
+    # trust_gate 不可用时会在 _evaluate_dispatch_gate 的降级逻辑生效**之前**
+    # 抛 ImportError，直接击穿 fail-open 把 273 个工具全打死。
+    # 漂移防护：tests/test_registry_dispatch_gate.py 断言本字面量 == trust_gate.ALLOW。
+    _GATE_ALLOW = "allow"
+
     def _evaluate_dispatch_gate(self, entry, kwargs):
         """对单个工具调用 TrustGate.check，返回 (decision, reason, rule)。
 
@@ -491,9 +498,8 @@ class ToolRegistry:
         # ---- A1: 统一信任闸门（提级到主执行点，对齐 Codex exec_policy）----
         # fail-open（默认，观测期）：记录命中率 + 告警，但继续执行，保证 273 工具零回归。
         # fail-closed：阻断非 ALLOW 决策（DENY / ASK_USER）。
-        from vermes_cli.adapters.trust_gate import ALLOW
         gate_decision, gate_reason, gate_rule = self._evaluate_dispatch_gate(entry, kwargs)
-        if gate_decision != ALLOW:
+        if gate_decision != self._GATE_ALLOW:
             if self.dispatch_gate_mode == "fail_closed":
                 logger.warning(
                     "Dispatch gate BLOCKED (fail-closed): tool=%s decision=%s "

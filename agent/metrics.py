@@ -58,6 +58,19 @@ class _MetricsState:
     # ── Error categories ─────────────────────────────────────────────
     error_counts: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
+    # ── A1: dispatch 信任闸门命中（fail-open 观测期数据）─────────────
+    # decision ∈ {allow, deny, ask_user}；rule = 命中规则名
+    # （undeclared_deny / consent_required / network_no_sandbox / default_allow）
+    gate_decisions_total: Dict[str, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    gate_rule_hits_total: Dict[str, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+
+    # ── Generic named counters (record_count) ────────────────────────
+    named_counts: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+
     # ── Metadata ─────────────────────────────────────────────────────
     start_time: float = field(default_factory=time.time)
 
@@ -83,6 +96,9 @@ class _MetricsState:
         self.tool_call_duration_ms.clear()
         self.llm_call_duration_ms.clear()
         self.error_counts.clear()
+        self.gate_decisions_total.clear()
+        self.gate_rule_hits_total.clear()
+        self.named_counts.clear()
         self.start_time = time.time()
 
 
@@ -176,6 +192,30 @@ def record_error(category: str) -> None:
         _state.error_counts[category] += 1
 
 
+def record_gate_decision(decision: str, rule: str = "") -> None:
+    """A1: 记录一次 dispatch 信任闸门判定。
+
+    观测期（fail-open）靠这两个计数器给出「切 fail-closed 是否安全」的真实数据，
+    经既有 /api/v1/metrics 端点暴露，无需新建可观测机制。
+    """
+    with _LOCK:
+        _state.gate_decisions_total[decision or "unknown"] += 1
+        if rule:
+            _state.gate_rule_hits_total[rule] += 1
+
+
+def record_count(key: str, value: int = 1) -> None:
+    """通用命名计数器。
+
+    历史缺口修复：``agent/memory_fabric.py`` 的容量退化告警一直
+    ``from agent.metrics import record_count``，但本模块从未定义该函数 →
+    ImportError 被外层 ``except Exception`` 吞成 debug 日志，
+    ``memory_capacity_degraded`` 自始至终没有被记录过（死指标）。此处补齐。
+    """
+    with _LOCK:
+        _state.named_counts[key] += value
+
+
 def render_prometheus() -> str:
     """Render metrics in Prometheus exposition text format."""
     with _LOCK:
@@ -228,6 +268,27 @@ def render_prometheus() -> str:
             lines.append(f'# HELP vermes_error_{cat} Errors in category {cat}')
             lines.append(f'# TYPE vermes_error_{cat} counter')
             lines.append(f'vermes_error_{cat} {cnt}')
+
+        # A1: dispatch 信任闸门命中率（fail-open 观测期 → fail-closed 切换依据）
+        if s.gate_decisions_total:
+            lines.append("# HELP vermes_gate_decisions_total Dispatch trust-gate decisions")
+            lines.append("# TYPE vermes_gate_decisions_total counter")
+            for decision, cnt in sorted(s.gate_decisions_total.items()):
+                lines.append(
+                    f'vermes_gate_decisions_total{{decision="{decision}"}} {cnt}'
+                )
+        if s.gate_rule_hits_total:
+            lines.append("# HELP vermes_gate_rule_hits_total Dispatch trust-gate rule hits")
+            lines.append("# TYPE vermes_gate_rule_hits_total counter")
+            for rule, cnt in sorted(s.gate_rule_hits_total.items()):
+                lines.append(f'vermes_gate_rule_hits_total{{rule="{rule}"}} {cnt}')
+
+        # Generic named counters (record_count)
+        for key, cnt in sorted(s.named_counts.items()):
+            safe = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in key)
+            lines.append(f'# HELP vermes_count_{safe} Named counter {key}')
+            lines.append(f'# TYPE vermes_count_{safe} counter')
+            lines.append(f'vermes_count_{safe} {cnt}')
 
         # LLM call latency stats
         if s.llm_call_duration_ms:
