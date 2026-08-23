@@ -1820,6 +1820,7 @@ class SessionDB:
         include_children: bool = False,
         project_compression_tips: bool = True,
         order_by_last_active: bool = False,
+        include_empty: bool = False,
     ) -> List[Dict[str, Any]]:
         """List sessions with preview (first user message) and last active timestamp.
 
@@ -1872,6 +1873,12 @@ class SessionDB:
             placeholders = ",".join("?" for _ in exclude_sources)
             where_clauses.append(f"s.source NOT IN ({placeholders})")
             params.extend(exclude_sources)
+
+        if not include_empty:
+            # 默认排除空壳会话（message_count=0，典型为渠道/webhook 批量预创建的
+            # 会话壳）。这些会话没有任何消息，却会污染「我的对话」列表、造成
+            # 「最近聊天记录消失」的视觉错觉。需保留时显式传 include_empty=True。
+            where_clauses.append("(s.message_count IS NULL OR s.message_count > 0)")
 
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         if order_by_last_active:
