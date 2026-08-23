@@ -11,7 +11,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { logger } from '../utils/logger'
 import { showToast } from '../utils/toast'
-import { useRightPanel } from '../composables/useRightPanel'
+import { useArtifactPanel } from '../composables/useArtifactPanel'
 import {
   SESSION_TEMPLATES,
   QUICK_START_SUGGESTIONS,
@@ -1105,10 +1105,10 @@ export const useChatStore = defineStore('chat', () => {
                 })
               }
               // P0-1: 首次有产物时自动展开产物工作台
-              const { autoOpenOnArtifact, openPanel, setArtifactTab } = useRightPanel()
-              if (autoOpenOnArtifact.value) {
+              const { autoOpen, openPanel, setTab } = useArtifactPanel()
+              if (autoOpen.value) {
                 openPanel('artifacts')
-                setArtifactTab('artifacts')
+                setTab('artifacts')
               }
             }
             // P1: 文件变更审计 — write_file/patch 推送到变更 tab

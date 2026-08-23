@@ -1,7 +1,7 @@
 <script setup>
 import { ref, nextTick, watch, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { useChatStore, QUICK_START_SUGGESTIONS, SESSION_TEMPLATES, setScrollTarget } from '../stores/chat'
-import { useRightPanel } from '../composables/useRightPanel'
+import { useArtifactPanel } from '../composables/useArtifactPanel'
 import { toast } from '../utils/toast'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
@@ -21,7 +21,7 @@ import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
 
-const { openPanel: openRightPanel, setArtifactTab } = useRightPanel()
+const { openPanel: openRightPanel, setTab: setArtifactTab } = useArtifactPanel()
 
 // ── 产物计数（用于底部「查看所有产物 (N)」链接）──
 const artifactCount = ref(0)

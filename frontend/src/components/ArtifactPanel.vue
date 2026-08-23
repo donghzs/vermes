@@ -5,7 +5,7 @@
  * 阶段 1：骨架 + Markdown/HTML/Code/Image/JSON/CSV 渲染器 + 全屏 toggle
  */
 import { ref, computed, watch } from 'vue'
-import { useRightPanel } from '../composables/useRightPanel'
+import { useArtifactPanel } from '../composables/useArtifactPanel'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -42,7 +42,7 @@ hljs.registerLanguage('sql', sql)
 hljs.registerLanguage('yaml', yaml)
 hljs.registerLanguage('yml', yaml)
 
-const { open, tab, artifactTab, autoOpenOnArtifact, panelWidth, openPanel, closePanel, setArtifactTab } = useRightPanel()
+const { open, tab: artifactTab, width: panelWidth, autoOpen, openPanel, closePanel, setTab: setArtifactTab } = useArtifactPanel()
 
 // ── 拖拽 resize ──
 const isResizing = ref(false)
@@ -128,7 +128,7 @@ function addChange(item) {
   changes.value.unshift({ id, ts: Date.now(), ...item })
   if (!activeChangeId.value) activeChangeId.value = id
   // 自动切换到变更 tab
-  if (autoOpenOnArtifact.value) {
+  if (autoOpen.value) {
     openPanel('artifacts')
     setArtifactTab('changes')
   }
@@ -406,7 +406,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
        类似 WorkBuddy：左侧聊天，右侧产物/文件实时渲染。 -->
   <transition name="drawer-slide">
     <aside
-      v-if="open && tab === 'artifacts'"
+      v-if="open && artifactTab === 'artifacts'"
       class="h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-200"
       :class="isFullscreen ? 'w-full' : ''"
       :style="!isFullscreen ? { width: panelWidth + 'px' } : {}"

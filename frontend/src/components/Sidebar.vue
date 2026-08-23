@@ -16,7 +16,7 @@ import { useRightPanel } from '../composables/useRightPanel'
 const chat = useChatStore()
 const router = useRouter()
 const route = useRoute()
-const { openPanel, open } = useRightPanel()
+const { openPanel } = useRightPanel()
 
 function goSettings() { router.push('/settings') }
 function goMobileConnect() { router.push('/settings?tab=channels') }
@@ -520,13 +520,9 @@ async function handleImportFile(e) {
           <span class="text-base">{{ chat.theme === 'dark' ? '☀️' : '🌙' }}</span>
           <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.theme === 'dark' ? '浅色模式' : '深色模式' }}</span>
         </button>
-        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition" :class="open ? 'bg-green-500 text-white' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'" title="Agent 管理（技能/工具/软件/专家/MCP/记忆/知识库）">
+        <button @click="openPanel('skills')" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="Agent 管理（技能/工具/软件/专家/MCP/记忆/知识库）">
           <span class="text-base">🤖</span>
           <span class="sidebar-tooltip group-hover:opacity-100">Agent 管理</span>
-        </button>
-        <button @click="openPanel('artifacts')" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="产物面板">
-          <span class="text-base">📄</span>
-          <span class="sidebar-tooltip group-hover:opacity-100">产物面板</span>
         </button>
         <button @click="goMobileConnect()" class="group relative px-3 py-2 rounded-lg text-sm transition bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600" title="移动接入">
           <span class="text-base">📱</span>

@@ -76,6 +76,7 @@ onMounted(async () => {
           <div class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
             <router-view />
           </div>
+          <!-- 产物右侧面板：与对话区并排，由 ChatHeader「详情面板」按钮控制 -->
           <ArtifactPanel />
         </div>
       </div>

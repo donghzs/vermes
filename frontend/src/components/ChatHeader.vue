@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
+import { useArtifactPanel } from '../composables/useArtifactPanel'
 import HelpGuide from './HelpGuide.vue'
 
 // ── 核心 store（必须在所有引用它的函数/computed 之前初始化） ──
 const chat = useChatStore()
+const { open: artifactOpen, togglePanel: toggleArtifactPanel } = useArtifactPanel()
 
 // ── 进化指示器 ──
 const evoStatus = ref(null)
@@ -313,6 +315,16 @@ function closeDropdowns() {
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
         {{ quotaDisplay.text }}
       </span>
+      <!-- 产物详情面板开关（WorkBuddy 风格：对话顶部右侧） -->
+      <button
+        @click="toggleArtifactPanel('artifacts')"
+        :class="artifactOpen ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+        class="ml-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
+        title="打开/关闭产物详情面板"
+      >
+        <span>📄</span>
+        <span>{{ artifactOpen ? '关闭详情' : '详情面板' }}</span>
+      </button>
     </div>
 
     <!-- 模型选择器 -->
