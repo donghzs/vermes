@@ -105,6 +105,45 @@ function clearChanges() {
   activeChangeId.value = null
 }
 window.__vermesChanges = { addChange, clearChanges, changes }
+
+// 预览 tab
+const previewUrl = ref('')
+const previewSrc = ref('')
+const previewLoaded = ref(false)
+function loadPreview() {
+  const url = previewUrl.value.trim()
+  if (!url) return
+  // 支持 file:// 和 http(s)://
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://')) {
+    previewSrc.value = url
+  } else {
+    // 尝试作为本地路径加载
+    previewSrc.value = `/api/v1/artifacts/${encodeURIComponent(url)}`
+  }
+  previewLoaded.value = true
+}
+function refreshPreview() {
+  if (previewSrc.value) {
+    const src = previewSrc.value
+    previewSrc.value = ''
+    setTimeout(() => { previewSrc.value = src }, 50)
+  }
+}
+function openPreviewExternal() {
+  if (previewSrc.value) {
+    if (window.vermes?.openExternal) {
+      window.vermes.openExternal(previewSrc.value)
+    } else {
+      window.open(previewSrc.value, '_blank')
+    }
+  }
+}
+// 暴露给产物 tab 点击 HTML 文件时切换到预览
+window.__vermesPreview = {
+  previewUrl,
+  loadPreview,
+  setUrl: (url) => { previewUrl.value = url; loadPreview() },
+}
 const isFullscreen = ref(false)
 
 // 从 localStorage 恢复
@@ -529,11 +568,54 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
         </div>
 
         <!-- ════ 预览 tab ════ -->
-        <div v-show="artifactTab === 'preview'" class="flex-1 flex items-center justify-center text-gray-400">
-          <div class="text-center">
-            <div class="text-5xl mb-3">🌐</div>
-            <div class="text-sm">网页预览</div>
-            <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">即将上线</div>
+        <div v-show="artifactTab === 'preview'" class="flex-1 flex flex-col overflow-hidden">
+          <!-- URL 工具栏 -->
+          <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
+            <input
+              v-model="previewUrl"
+              type="text"
+              placeholder="输入 URL 或选择 HTML 产物预览"
+              class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500/30"
+              @keydown.enter="loadPreview"
+            />
+            <button
+              @click="loadPreview"
+              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+              title="加载"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+            <button
+              @click="refreshPreview"
+              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+              title="刷新"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+            <button
+              @click="openPreviewExternal"
+              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+              title="在外部浏览器打开"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+            </button>
+          </div>
+          <!-- 预览内容 -->
+          <div class="flex-1 overflow-hidden relative">
+            <iframe
+              v-if="previewLoaded && previewSrc"
+              :src="previewSrc"
+              class="w-full h-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              referrerpolicy="no-referrer"
+            ></iframe>
+            <div v-else class="flex-1 flex items-center justify-center text-gray-400 h-full">
+              <div class="text-center">
+                <div class="text-5xl mb-3">🌐</div>
+                <div class="text-sm">网页预览</div>
+                <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">输入 URL 或点击 HTML 产物在此预览</div>
+              </div>
+            </div>
           </div>
         </div>
         </div>
