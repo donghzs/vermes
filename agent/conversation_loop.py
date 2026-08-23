@@ -623,7 +623,12 @@ def _apply_operator_claim_verifier(
                     # 本回合有工具调用且至少一个成功，重置拒绝计数器
                     agent._operator_claim_rejection_count = 0
         except Exception as _oc_err:
-            logger.debug("operator-claim verifier failed: %s", _oc_err)
+            logger.warning("operator-claim verifier failed: %s", _oc_err)
+            # 累计失败计数，复用 trust_gate 统计模式使失效可观测
+            _oc_fail_count = getattr(agent, '_oc_verifier_fail_count', 0) + 1
+            setattr(agent, '_oc_verifier_fail_count', _oc_fail_count)
+            if _oc_fail_count <= 3:
+                logger.warning("operator-claim verifier failure #%d (repeated failures mean anti-hallucination net is silently down)", _oc_fail_count)
     return final_response, messages
 
 

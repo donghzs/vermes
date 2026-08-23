@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 /**
- * 预览 tab 内置浏览器逻辑测试
+ * 预览 tab 内置浏览器逻辑测试 + sandbox 安全断言
  */
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 function setupPreview() {
   const previewUrl = ref('')
@@ -30,7 +30,16 @@ function setupPreview() {
     }
   }
 
-  return { previewUrl, previewSrc, previewLoaded, loadPreview, refreshPreview }
+  // sandbox 按来源区分：同源产物禁脚本（防 XSS），外部 URL 去 allow-same-origin
+  const previewSandbox = computed(() => {
+    const src = previewSrc.value || ''
+    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('file://')) {
+      return 'allow-scripts allow-popups'
+    }
+    return ''
+  })
+
+  return { previewUrl, previewSrc, previewLoaded, loadPreview, refreshPreview, previewSandbox }
 }
 
 describe('预览 tab 内置浏览器', () => {
@@ -82,5 +91,47 @@ describe('预览 tab 内置浏览器', () => {
     expect(previewSrc.value).toBe('') // 立即清空
     await new Promise(r => setTimeout(r, 100))
     expect(previewSrc.value).toBe('https://example.com') // 50ms 后恢复
+  })
+})
+
+describe('预览 tab sandbox 安全断言', () => {
+  beforeEach(() => {
+    global.__vermesPreview = setupPreview()
+  })
+
+  it('同源产物 URL → sandbox=""（禁脚本，防 XSS）', () => {
+    const { previewUrl, loadPreview, previewSandbox } = global.__vermesPreview
+    previewUrl.value = 'output/report.html'
+    loadPreview()
+    expect(previewSandbox.value).toBe('')
+  })
+
+  it('外部 https URL → 去 allow-same-origin（跑 opaque 源）', () => {
+    const { previewUrl, loadPreview, previewSandbox } = global.__vermesPreview
+    previewUrl.value = 'https://example.com'
+    loadPreview()
+    expect(previewSandbox.value).toBe('allow-scripts allow-popups')
+    expect(previewSandbox.value).not.toContain('allow-same-origin')
+  })
+
+  it('外部 http URL → 同样去 allow-same-origin', () => {
+    const { previewUrl, loadPreview, previewSandbox } = global.__vermesPreview
+    previewUrl.value = 'http://localhost:3000'
+    loadPreview()
+    expect(previewSandbox.value).toBe('allow-scripts allow-popups')
+    expect(previewSandbox.value).not.toContain('allow-same-origin')
+  })
+
+  it('file:// URL → 也去 allow-same-origin', () => {
+    const { previewUrl, loadPreview, previewSandbox } = global.__vermesPreview
+    previewUrl.value = 'file:///tmp/test.html'
+    loadPreview()
+    expect(previewSandbox.value).toBe('allow-scripts allow-popups')
+    expect(previewSandbox.value).not.toContain('allow-same-origin')
+  })
+
+  it('空 URL → sandbox 也为空（安全默认）', () => {
+    const { previewSandbox } = global.__vermesPreview
+    expect(previewSandbox.value).toBe('')
   })
 })

@@ -155,6 +155,17 @@ function loadPreview() {
   }
   previewLoaded.value = true
 }
+
+// sandbox 按来源区分：同源产物禁脚本（防 XSS），外部 URL 去 allow-same-origin（跑 opaque 源）
+const previewSandbox = computed(() => {
+  const src = previewSrc.value || ''
+  // 外部 URL：允许脚本但去掉同源，跑在 opaque 源无法触达父页
+  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('file://')) {
+    return 'allow-scripts allow-popups'
+  }
+  // 同源产物（/api/v1/artifacts/...）：完全沙箱，禁脚本执行
+  return ''
+})
 function refreshPreview() {
   if (previewSrc.value) {
     const src = previewSrc.value
@@ -561,11 +572,11 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             <div v-else-if="rendererFor(activeArtifact) === 'markdown'" class="artifact-markdown flex-1 p-5 prose prose-sm dark:prose-invert max-w-none overflow-y-auto" v-html="renderMarkdown(content)">
             </div>
 
-            <!-- HTML（iframe sandbox srcdoc） -->
+            <!-- HTML（iframe sandbox srcdoc，禁脚本防 XSS） -->
             <div v-else-if="rendererFor(activeArtifact) === 'html'" class="flex-1">
               <iframe
                 class="w-full h-full border-0 bg-white"
-                sandbox="allow-same-origin"
+                sandbox=""
                 :srcdoc="content"
               ></iframe>
             </div>
@@ -724,7 +735,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               v-if="previewLoaded && previewSrc"
               :src="previewSrc"
               class="w-full h-full border-0"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              :sandbox="previewSandbox"
               referrerpolicy="no-referrer"
             ></iframe>
             <div v-else class="flex-1 flex items-center justify-center text-gray-400 h-full">

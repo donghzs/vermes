@@ -19,6 +19,13 @@ def _allowed_roots():
     ]
 
 
+# 安全响应头：防嗅探 + CSP sandbox（防产物 HTML 内脚本执行）
+_SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+}
+
+
 def _is_safe_path(path_str: str) -> Path:
     """路径安全校验：规范化 + 白名单根目录检查"""
     # 先把 tmp/ 前缀映射到 /tmp/（URL path 丢失前导 / 的常见情况）
@@ -137,7 +144,7 @@ def register_to(app):
         # 图片直接返回二进制
         if mime.startswith('image/'):
             with open(safe_path, 'rb') as f:
-                return Response(content=f.read(), media_type=mime)
+                return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
 
         # 文本类返回内容
         try:
@@ -146,6 +153,6 @@ def register_to(app):
         except UnicodeDecodeError:
             # 二进制文件 fallback
             with open(safe_path, 'rb') as f:
-                return Response(content=f.read(), media_type=mime)
+                return Response(content=f.read(), media_type=mime, headers=_SECURITY_HEADERS)
 
-        return PlainTextResponse(content, media_type=mime)
+        return PlainTextResponse(content, media_type=mime, headers=_SECURITY_HEADERS)
