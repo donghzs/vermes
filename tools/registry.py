@@ -75,6 +75,173 @@ def discover_builtin_tools(tools_dir: Optional[Path] = None) -> List[str]:
     return imported
 
 
+# ------------------------------------------------------------------
+# Phase 1.1: 非联网工具批量挂 PermissionSpec
+# 集中声明，不动各工具文件。按工具实际行为分类。
+# ------------------------------------------------------------------
+
+# 纯读 FS + 无网络（安全）
+_SAFE_READ_SPECS = {
+    'read_file', 'search_files',              # file_tools 读操作
+    'memory',                                  # memory_tool
+    'session_search',                          # session_search_tool
+    'todo',                                    # todo_tool (读+写都在一个入口)
+    'kanban_list', 'kanban_show',              # kanban 读
+    'process',                                 # process_registry
+    'skills_list', 'skill_view',               # skills_tool 读
+    'present_files',                           # present_files_tool
+    'clarify',                                 # clarify_tool
+    'thumbs', 'submit_correction',             # feedback_tool
+    'feishu_doc_read',                         # feishu_doc 读
+    'feishu_drive_list_comments', 'feishu_drive_list_comment_replies',  # feishu_drive 读
+    'ha_get_state', 'ha_list_entities', 'ha_list_services',  # homeassistant 读
+}
+
+# 写 FS + 无网络
+_SAFE_WRITE_SPECS = {
+    'write_file', 'patch',                     # file_tools 写
+    'kanban_create', 'kanban_complete', 'kanban_block', 'kanban_unblock',  # kanban 写
+    'kanban_comment', 'kanban_link', 'kanban_heartbeat',  # kanban 其他
+    'self_modify',                             # self_modify_tool
+    'cronjob',                                 # cronjob_tools
+    'skill_manage',                            # skill_manager 写
+}
+
+# 有网络（需声明 network=True）
+_NETWORK_SPECS = {
+    'web_search', 'web_extract',               # web_tools
+    'image_generate',                          # image_generation_tool
+    'video_generate',                          # video_generation_tool
+    'literature_search',                       # literature_search_tool
+    'x_search',                                # x_search_tool
+    'yb_query_group_info', 'yb_query_group_members',          # yuanbao 读
+    'yb_search_sticker', 'yb_send_dm', 'yb_send_sticker',     # yuanbao 写
+    'send_message',                            # send_message_tool
+    'discord', 'discord_admin',                # discord_tool
+    'feishu_drive_add_comment', 'feishu_drive_reply_comment', # feishu_drive 写
+    'ha_call_service',                         # homeassistant 写
+}
+
+# 执行外部命令
+_EXEC_SPECS = {
+    'terminal',                                # terminal_tool
+    'execute_code',                            # code_execution_tool
+    'computer_use',                            # computer_use_tool
+}
+
+# 浏览器（有网络 + exec）
+_BROWSER_SPECS = {
+    'browser_navigate', 'browser_click', 'browser_type',
+    'browser_scroll', 'browser_press', 'browser_snapshot',
+    'browser_back', 'browser_console', 'browser_get_images',
+    'browser_vision', 'browser_dialog', 'browser_cdp',
+}
+
+# MCP / 委托（需显式授权）
+_DELEGATE_SPECS = {
+    'delegate_task', 'mixture_of_agents',
+}
+
+# TTS / 语音
+_TTS_SPECS = {
+    'text_to_speech',
+}
+
+# 视频分析
+_VISION_SPECS = {
+    'vision_analyze', 'video_analyze',
+}
+
+
+def apply_permission_specs(registry_instance=None):
+    """Phase 1.1: 为已注册工具批量挂 PermissionSpec。
+    
+    在 discover_builtin_tools() 之后调用。
+    未在此处声明的工具保持 permission_spec=None，走兜底默认 ALLOW。
+    """
+    if registry_instance is None:
+        registry_instance = registry
+    
+    try:
+        from vermes_cli.adapters.trust_gate import (
+            PermissionSpec, SANDBOX_NONE,
+        )
+    except Exception as exc:
+        logger.warning("Cannot apply permission specs: %s", exc)
+        return 0
+    
+    # spec 定义
+    specs = {
+        # 纯读：低权，无网络
+        **{name: PermissionSpec(
+            reads_fs=True, writes_fs=False, network=False,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _SAFE_READ_SPECS},
+        
+        # 写 FS：低权，无网络
+        **{name: PermissionSpec(
+            reads_fs=True, writes_fs=True, network=False,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _SAFE_WRITE_SPECS},
+        
+        # 有网络但无沙箱：声明 network=True，sandbox=none
+        # 闸门会 DENY（network_no_sandbox 规则），这是正确的——
+        # 联网工具需先有 sandbox（Phase 1.2）才能 ALLOW
+        **{name: PermissionSpec(
+            reads_fs=False, writes_fs=False, network=True,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _NETWORK_SPECS},
+        
+        # 执行外部命令
+        **{name: PermissionSpec(
+            reads_fs=True, writes_fs=True, network=False,
+            exec_external=True, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _EXEC_SPECS},
+        
+        # 浏览器：有网络 + exec
+        **{name: PermissionSpec(
+            reads_fs=True, writes_fs=True, network=True,
+            exec_external=True, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _BROWSER_SPECS},
+        
+        # 委托/MCP：需显式授权
+        **{name: PermissionSpec(
+            reads_fs=False, writes_fs=False, network=True,
+            exec_external=True, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=True,
+        ) for name in _DELEGATE_SPECS},
+        
+        # TTS：有网络（调 API）
+        **{name: PermissionSpec(
+            reads_fs=False, writes_fs=False, network=True,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _TTS_SPECS},
+        
+        # 视觉：有网络
+        **{name: PermissionSpec(
+            reads_fs=True, writes_fs=False, network=True,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ) for name in _VISION_SPECS},
+    }
+    
+    applied = 0
+    for name, spec in specs.items():
+        entry = registry_instance.get_entry(name)
+        if entry is not None:
+            entry.permission_spec = spec
+            applied += 1
+    
+    logger.info("apply_permission_specs: %d/%d tools got specs", applied, len(specs))
+    return applied
+
+
 class ToolEntry:
     """Metadata for a single registered tool."""
 

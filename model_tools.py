@@ -179,6 +179,10 @@ def _run_async(coro):
 
 discover_builtin_tools()
 
+# Phase 1.1: 为已注册工具批量挂 PermissionSpec（信任闸门输入）
+from tools.registry import apply_permission_specs
+apply_permission_specs()
+
 # Phase 2: register `kind: tool` processors (YAML-declared tools) into the
 # same registry. Lazy import + broad try so a tool-processor misconfiguration
 # can never break the core tool discovery above.
