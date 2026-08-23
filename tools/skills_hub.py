@@ -333,6 +333,10 @@ class GitHubSource(SkillSource):
         {"repo": "VoltAgent/awesome-agent-skills", "path": "skills/"},
         {"repo": "garrytan/gstack", "path": ""},
         {"repo": "MiniMax-AI/cli", "path": "skill/"},
+        # Hermes Agent 生态（SKILL.md 格式与 Vermes 兼容）
+        {"repo": "NousResearch/hermes-agent", "path": "skills/"},
+        {"repo": "NousResearch/hermes-agent", "path": "optional-skills/"},
+        {"repo": "Undermybelt/hermes-skills", "path": "skills/"},
     ]
 
     def __init__(self, auth: GitHubAuth, extra_taps: Optional[List[Dict]] = None):
@@ -3590,3 +3594,53 @@ def unified_search(query: str, sources: List[SkillSource],
     deduped = list(seen.values())
 
     return deduped[:limit]
+
+
+def search_trending_skills(limit: int = 20) -> List[SkillMeta]:
+    """Search GitHub for trending skill repositories by star count.
+
+    Uses GitHub search/repositories API with topic filters
+    (agent-skill / dsh-plugin / hermes-agent) sorted by stars.
+    """
+    import httpx
+    auth = GitHubAuth()
+    url = "https://api.github.com/search/repositories"
+    # 多 topic 搜索：DeepSeek Harness (dsh-plugin) + Hermes Agent (hermes-agent) + 通用 agent-skill
+    params = {
+        "q": "topic:agent-skill OR topic:dsh-plugin OR topic:hermes-agent",
+        "sort": "stars",
+        "order": "desc",
+        "per_page": min(max(limit, 1), 30),
+    }
+    try:
+        resp = httpx.get(url, headers=auth.get_headers(), params=params, timeout=15.0)
+        if resp.status_code != 200:
+            logger.warning("GitHub trending search returned %s", resp.status_code)
+            return []
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("GitHub trending search failed: %s", exc)
+        return []
+    items = data.get("items", [])
+    results: List[SkillMeta] = []
+    for repo in items:
+        full_name = repo.get("full_name", "")
+        if not full_name:
+            continue
+        name = full_name.split("/")[-1]
+        stars = repo.get("stargazers_count", 0)
+        results.append(SkillMeta(
+            name=name,
+            description=repo.get("description") or f"GitHub 仓库 · ⭐ {stars}",
+            source="github",
+            identifier=f"github:{full_name}",
+            trust_level="community",
+            repo=full_name,
+            extra={
+                "stars": stars,
+                "url": repo.get("html_url", ""),
+                "trending": True,
+                "topics": repo.get("topics", []),
+            },
+        ))
+    return results

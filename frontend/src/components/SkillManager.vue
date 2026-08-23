@@ -27,13 +27,42 @@ const installingName = ref('')
 const marketMsg = ref('')
 const marketMsgOk = ref(true)
 
+// GitHub 热门技能（按 star 排行）
+const trendingLoading = ref(false)
+
+async function searchTrending() {
+  trendingLoading.value = true
+  marketLoading.value = true
+  marketError.value = ''
+  marketMsg.value = ''
+  try {
+    const data = await api.getTrendingSkills()
+    if (data.error) {
+      marketError.value = data.error
+    } else {
+      marketItems.value = data.items || []
+      marketTotal.value = data.total || 0
+      marketSource.value = 'github'
+    }
+  } catch (e) {
+    marketError.value = String(e)
+  } finally {
+    trendingLoading.value = false
+    marketLoading.value = false
+  }
+}
+
 const sourceOptions = [
-  { id: 'all', label: '全部' },
-  { id: 'official', label: '官方' },
-  { id: 'clawhub', label: 'QClaw' },
-  { id: 'github', label: 'GitHub' },
-  { id: 'skillhub', label: 'Skillhub' },
-  { id: 'lobehub', label: 'LobeHub' },
+  { id: 'all', label: '全部', desc: '所有源' },
+  { id: 'official', label: 'Vermes 官方', desc: 'Vermes 内置精选技能' },
+  { id: 'github', label: 'GitHub', desc: 'GitHub 开源社区（含 Hermes Agent / DeepSeek Harness）' },
+  { id: 'clawhub', label: 'QClaw', desc: 'QClaw 技能市场' },
+  { id: 'skillhub', label: 'Skillhub', desc: 'skillhub.cn 中文技能商店' },
+  { id: 'claude-marketplace', label: 'Claude 市场', desc: 'Anthropic Claude 官方技能市场' },
+  { id: 'lobehub', label: 'LobeHub', desc: 'LobeHub 社区技能' },
+  { id: 'browse-sh', label: 'Browse.sh', desc: 'browse.sh 169+ 浏览器自动化技能' },
+  { id: 'skills-sh', label: 'Skills.sh', desc: 'skills.sh 社区索引' },
+  { id: 'well-known', label: 'Well-Known', desc: '.well-known 协议自动发现的技能' },
 ]
 
 const enabledCount = computed(() => skills.value.filter(s => s.enabled).length)
@@ -293,7 +322,12 @@ onMounted(() => {
                 class="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600">搜索</button>
       </div>
       <div class="flex flex-wrap gap-1">
+        <button @click="searchTrending()" :disabled="trendingLoading"
+                :class="trendingLoading ? 'opacity-50' : ''"
+                class="text-[10px] px-2 py-0.5 rounded-full bg-orange-500 text-white hover:bg-orange-600"
+                title="按 GitHub star 数排行浏览热门技能仓库">🔥 GitHub 热门</button>
         <button v-for="opt in sourceOptions" :key="opt.id" @click="marketSource = opt.id; searchMarket()"
+                :title="opt.desc"
                 :class="marketSource === opt.id ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'"
                 class="text-[10px] px-2 py-0.5 rounded-full">{{ opt.label }}</button>
       </div>

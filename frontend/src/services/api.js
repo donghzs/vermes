@@ -300,6 +300,10 @@ const api = {
   getInteractionMode(sessionId) { return this.get(`/sessions/${sessionId}/interaction-mode`) },
   setInteractionMode(sessionId, mode) { return this.put(`/sessions/${sessionId}/interaction-mode`, { mode }) },
 
+  // 技能市场
+  searchSkills(q, source, limit) { return this.get(`/skills/market?q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`) },
+  getTrendingSkills() { return this.get('/skills/market/trending') },
+
   // 发送消息（SSE 流式）
   async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id }) {
     // 新的非重试请求，重置重试计数器

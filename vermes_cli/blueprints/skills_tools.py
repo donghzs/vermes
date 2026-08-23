@@ -250,6 +250,18 @@ async def market_search(q: str = "", source: str = "all", limit: int = 24):
     return {"items": items, "total": len(items), "query": q, "source": source}
 
 
+async def market_trending():
+    """Get trending skill repositories from GitHub (sorted by stars)."""
+    from tools.skills_hub import search_trending_skills, _skill_meta_to_dict
+    try:
+        results = search_trending_skills(limit=20)
+    except Exception as exc:
+        _log.warning("Skills market trending failed: %s", exc)
+        return {"items": [], "total": 0, "error": str(exc)}
+    items = [_skill_meta_to_dict(r) for r in results]
+    return {"items": items, "total": len(items), "trending": True}
+
+
 async def market_install(body: SkillInstallRequest):
     """Install a skill non-interactively (quarantine + scan + install)."""
     from vermes_cli.skills_hub import do_install
@@ -329,6 +341,9 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/skills/market", market_search, methods=["GET"], name="market_search"
+    )
+    app.add_api_route(
+        "/api/skills/market/trending", market_trending, methods=["GET"], name="market_trending"
     )
     app.add_api_route(
         "/api/experts", get_experts, methods=["GET"], name="get_experts"
