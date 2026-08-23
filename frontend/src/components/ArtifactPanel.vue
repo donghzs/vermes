@@ -356,7 +356,7 @@ watch(activeId, () => {
   if (activeArtifact.value) loadContent(activeArtifact.value)
 })
 
-watch([open, tab], ([o, t]) => {
+watch([open, artifactTab], ([o, t]) => {
   if (o && t === 'artifacts' && !activeId.value && artifacts.value.length > 0) {
     activeId.value = artifacts.value[0].id
   }
