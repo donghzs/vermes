@@ -107,10 +107,17 @@ def register_to(app) -> None:
         for m in mods:
             out.append({
                 "id": m.name,
-                "name": m.display_name or m.name,
+                "name": m.name,
+                "display_name": m.display_name or m.name,
                 "version": m.latest,
                 "vermes_min": m.vermes_min,
                 "code_asset": m.code_asset,
+                "description": m.description,
+                "homepage": m.homepage,
+                "recommended": m.recommended,
+                "size_code": m.size_code,
+                "provides_tools": m.provides_tools,
+                "keywords": m.keywords,
                 "installed": is_module_installed(m.name, modules_dir=modules_dir),
             })
         return {"modules": out, "catalog_available": True}

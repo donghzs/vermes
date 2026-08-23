@@ -45,7 +45,7 @@
                 </span>
               </div>
               <p class="text-sm text-gray-400 mt-0.5">
-                {{ mod.name }} · v{{ mod.latest }} · {{ Math.round(mod.size_code / 1024) }}KB
+                {{ mod.name }} · v{{ mod.version }} · {{ mod.size_code ? Math.round(mod.size_code / 1024) + 'KB' : '' }}
               </p>
             </div>
             <span
@@ -144,7 +144,7 @@ function showMessage(text, type = 'info') {
 async function fetchCatalog() {
   loading.value = true
   try {
-    const res = await fetch('/api/modules/catalog')
+    const res = await fetch('/api/v1/modules/market')
     const data = await res.json()
     if (data.error) {
       showMessage(`目录加载失败: ${data.error}`, 'error')
@@ -161,13 +161,17 @@ async function installModule(mod) {
   installing.value = mod.name
   showMessage(`正在安装 ${mod.display_name}…`)
   try {
-    const res = await fetch(`/api/modules/install/${mod.name}`, { method: 'POST' })
+    const res = await fetch('/api/v1/modules/market/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: mod.id || mod.name }),
+    })
     const data = await res.json()
     if (data.ok) {
-      showMessage(`✅ ${mod.display_name} v${data.version} 安装成功`, 'success')
+      showMessage(`✅ ${mod.display_name} 安装成功`, 'success')
       mod.installed = true
     } else {
-      showMessage(`安装失败: ${data.error}`, 'error')
+      showMessage(`安装失败: ${data.detail || data.error}`, 'error')
     }
   } catch (e) {
     showMessage(`请求失败: ${e.message}`, 'error')
@@ -180,13 +184,17 @@ async function uninstallModule(mod) {
   installing.value = mod.name
   showMessage(`正在卸载 ${mod.display_name}…`)
   try {
-    const res = await fetch(`/api/modules/uninstall/${mod.name}`, { method: 'POST' })
+    const res = await fetch('/api/v1/modules/market/uninstall', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: mod.id || mod.name }),
+    })
     const data = await res.json()
     if (data.ok) {
       showMessage(`✅ ${mod.display_name} 已卸载`, 'success')
       mod.installed = false
     } else {
-      showMessage(`卸载失败: ${data.error}`, 'error')
+      showMessage(`卸载失败: ${data.detail || data.error}`, 'error')
     }
   } catch (e) {
     showMessage(`请求失败: ${e.message}`, 'error')

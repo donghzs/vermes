@@ -405,7 +405,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/dashboard/plugins/rescan",
     "/api/dashboard/plugins/hub",
     # Module system
-    "/api/modules",    # Analytics (optional)
+    "/api/modules",
+    "/api/v1/modules/market",    # Phase 3.2 市场后端中间层
+    # Analytics (optional)
     "/api/analytics/usage",
     "/api/analytics/models",
     # Vermes GUI 消息持久化
