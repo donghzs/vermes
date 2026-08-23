@@ -3479,16 +3479,31 @@ print("OK")
     })
 
 
+# 上传文件大小上限（50MB），防止 ~/.vermes/uploads/ 被撑爆
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+# 与下载端点共用的文件名归一化规则：仅保留 [单词字符 / - / .]，其余替换为 _
+_SAFE_NAME_RE = re.compile(r'[^\w\-\.]')
+
+
 @app.post("/api/upload")
 async def upload_file(request: Request):
     """通用文件上传端点。保存到 ~/.vermes/uploads/，返回可访问路径。"""
     from fastapi.responses import JSONResponse
-    import time
     import uuid
 
     content_type = request.headers.get("content-type", "")
     if not content_type.startswith("multipart/form-data"):
         return JSONResponse({"error": "expected multipart/form-data"}, status_code=400)
+
+    # 防御：未声明 content-length 或超上限直接拒绝
+    raw_len = request.headers.get("content-length")
+    if raw_len is not None:
+        try:
+            if int(raw_len) > _MAX_UPLOAD_BYTES:
+                return JSONResponse({"error": "file too large"}, status_code=413)
+        except ValueError:
+            pass
 
     form = await request.form()
     upload_file = form.get("file")
@@ -3496,17 +3511,23 @@ async def upload_file(request: Request):
         return JSONResponse({"error": "no file uploaded"}, status_code=400)
 
     filename = upload_file.filename
-    ext = Path(filename).suffix.lower()
 
     # 保存到 uploads 目录
     upload_id = str(uuid.uuid4())[:12]
     upload_dir = Path.home() / ".vermes" / "uploads" / upload_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = re.sub(r'[^\w\-\.]', '_', filename)
+    safe_name = _SAFE_NAME_RE.sub('_', filename)
     file_path = upload_dir / safe_name
+    content = await upload_file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        # 清理已创建的空目录，避免残留
+        try:
+            upload_dir.rmdir()
+        except OSError:
+            pass
+        return JSONResponse({"error": "file too large"}, status_code=413)
     with open(file_path, "wb") as f:
-        content = await upload_file.read()
         f.write(content)
 
     return JSONResponse({
@@ -3522,12 +3543,16 @@ async def upload_file(request: Request):
 async def get_uploaded_file(upload_id: str, filename: str):
     """下载已上传的文件。"""
     from fastapi.responses import FileResponse
-    import re
 
     if not re.match(r'^[a-zA-Z0-9\-]+$', upload_id):
         raise HTTPException(status_code=400, detail="invalid upload_id")
 
-    file_path = Path.home() / ".vermes" / "uploads" / upload_id / filename
+    # 文件名归一化须与上传端一致，避免「上传名改、下载用原名」绕过 relative_to 兜底
+    safe_filename = _SAFE_NAME_RE.sub('_', filename)
+    if safe_filename != filename:
+        raise HTTPException(status_code=400, detail="invalid filename")
+
+    file_path = Path.home() / ".vermes" / "uploads" / upload_id / safe_filename
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="file not found")
 
@@ -3538,7 +3563,7 @@ async def get_uploaded_file(upload_id: str, filename: str):
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid path")
 
-    return FileResponse(file_path, filename=filename)
+    return FileResponse(file_path, filename=safe_filename)
 
 
 @app.post("/api/mfgcad/sessions/{session_id}/ai-assist")

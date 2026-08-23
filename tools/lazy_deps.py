@@ -169,6 +169,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     "tool.dashboard": (
         "fastapi==0.133.1",
         "uvicorn[standard]==0.41.0",
+        "python-multipart==0.0.32",  # /api/upload 端点 request.form() 依赖，uvicorn[standard] 不含
     ),
 }
 
