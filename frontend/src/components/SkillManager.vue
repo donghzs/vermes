@@ -3,13 +3,18 @@ import { ref, onMounted, computed } from 'vue'
 import api from '../services/api.js'
 import { toast } from '../utils/toast'
 
+// 外部可指定初始 tab（如独立发现页路由默认打开 market）
+const props = defineProps({
+  defaultTab: { type: String, default: 'installed' },
+})
+
 const skills = ref([])
 const toolsets = ref([])
 const loading = ref(false)
 const showToolsets = ref(false)
 
 // tab: 'installed' | 'market'
-const tab = ref('installed')
+const tab = ref(props.defaultTab)
 
 // market state
 const marketQuery = ref('')

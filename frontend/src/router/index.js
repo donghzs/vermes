@@ -5,6 +5,7 @@ import StudioChat from '../components/StudioChat.vue'
 import ScholarForgePanel from '../components/ScholarForgePanel.vue'
 import ThreeDStudio from '../components/ThreeDStudio.vue'
 import ModuStore from '../components/ModuStore.vue'
+import SkillManager from '../components/SkillManager.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -13,6 +14,9 @@ const routes = [
   { path: '/scholarforge', component: ScholarForgePanel },
   { path: '/3d-studio', component: ThreeDStudio },
   { path: '/module-store', component: ModuStore },
+  // G2 技能市场发现页：复用 SkillManager 的完整发现 tab（搜索/来源筛选/一键装），
+  // 默认打开 market 而非 installed
+  { path: '/skill-market', component: SkillManager, props: { defaultTab: 'market' } },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/
