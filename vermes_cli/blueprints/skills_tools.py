@@ -42,7 +42,7 @@ class UsageRecord(BaseModel):
 
 async def get_skills():
     from tools.skills_tool import _find_all_skills
-    from vermes_cli.skills_config import get_disabled_skills
+    from vermes_cli.skills_config import get_disabled_skills, is_recommended_skill
     from vermes_cli.config import load_config
 
     config = load_config()
@@ -50,7 +50,31 @@ async def get_skills():
     skills = _find_all_skills(skip_disabled=True)
     for s in skills:
         s["enabled"] = s["name"] not in disabled
+        s["recommended"] = is_recommended_skill(s["name"])
     return skills
+
+
+async def get_recommended():
+    """开箱即用推荐技能（白名单内、且当前已安装/启用）。供引导页展示。"""
+    from tools.skills_tool import _find_all_skills
+    from vermes_cli.skills_config import (
+        get_disabled_skills,
+        get_recommended_skills,
+        is_recommended_skill,
+    )
+    from vermes_cli.config import load_config
+
+    config = load_config()
+    disabled = get_disabled_skills(config)
+    installed = {s["name"]: s for s in _find_all_skills(skip_disabled=True)}
+    out = []
+    for name in get_recommended_skills():
+        if name in installed:
+            s = dict(installed[name])
+            s["enabled"] = name not in disabled
+            s["recommended"] = True
+            out.append(s)
+    return out
 
 
 async def toggle_skill(body: SkillToggle):
@@ -290,6 +314,9 @@ def register_to(app):
     """Register skills & tools routes on the FastAPI app."""
     app.add_api_route(
         "/api/skills", get_skills, methods=["GET"], name="get_skills"
+    )
+    app.add_api_route(
+        "/api/skills/recommended", get_recommended, methods=["GET"], name="get_recommended"
     )
     app.add_api_route(
         "/api/skills/toggle", toggle_skill, methods=["PUT"], name="toggle_skill"

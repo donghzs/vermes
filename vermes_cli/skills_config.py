@@ -25,6 +25,37 @@ from vermes_cli.platforms import PLATFORMS as _PLATFORMS
 # working without changes to every call site.
 PLATFORMS = {k: info.label for k, info in _PLATFORMS.items() if k != "api_server"}
 
+# ─── Recommended skill whitelist (开箱即用推荐) ───────────────────────────────
+# 端侧 agent 场景下的"高频 + 零依赖（无需第三方 token）"技能，首次启动 /
+# 技能管理页推荐给用户。仅作推荐标记，不影响默认启用逻辑（启用仍为
+# disabled-list 模型：默认全开，靠 disabled 关）。
+#
+# 包含本会话新建的 4 个 daily 技能（meeting-minutes / table-analyzer /
+# web-research / translate）以及仓库内已有的高频零依赖技能。
+RECOMMENDED_SKILLS = [
+    # 本会话新建：大众日常零依赖（已核实在技能发现路径内）
+    "meeting-minutes",
+    "table-analyzer",
+    "web-research",
+    "translate",
+    # 仓库内已有的高频零依赖（已核实被 _find_all_skills 发现）
+    "chinese-content-marketing",
+    "apple-notes",
+    "docx",
+    "pdf",
+    "xlsx",
+]
+
+
+def get_recommended_skills() -> List[str]:
+    """返回推荐技能名列表（开箱即用白名单）。"""
+    return list(RECOMMENDED_SKILLS)
+
+
+def is_recommended_skill(name: str) -> bool:
+    """给定技能名是否在本会话的推荐白名单内。"""
+    return name in RECOMMENDED_SKILLS
+
 # ─── Config Helpers ───────────────────────────────────────────────────────────
 
 def get_disabled_skills(config: dict, platform: Optional[str] = None) -> Set[str]:
