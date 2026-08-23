@@ -11,6 +11,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { logger } from '../utils/logger'
 import { showToast } from '../utils/toast'
+import { useRightPanel } from '../composables/useRightPanel'
 import {
   SESSION_TEMPLATES,
   QUICK_START_SUGGESTIONS,
@@ -1014,7 +1015,7 @@ export const useChatStore = defineStore('chat', () => {
             }
             if (idx >= 0) list[idx] = done
             else list.push(done)
-            // 阶段 3: 自动提取产物到 ArtifactPanel
+            // 阶段 3: 自动提取产物到 ArtifactPanel + 自动展开右栏
             if (data.artifacts && data.artifacts.length > 0) {
               const va = window.__vermesArtifacts
               if (va && typeof va.addArtifact === 'function') {
@@ -1026,6 +1027,12 @@ export const useChatStore = defineStore('chat', () => {
                     source: a.source || data.name || 'tool',
                   })
                 })
+              }
+              // P0-1: 首次有产物时自动展开产物工作台
+              const { autoOpenOnArtifact, openPanel, setArtifactTab } = useRightPanel()
+              if (autoOpenOnArtifact.value) {
+                openPanel('artifacts')
+                setArtifactTab('artifacts')
               }
             }
           }
