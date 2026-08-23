@@ -85,14 +85,32 @@ export default defineConfig({
       output: {
         manualChunks: {
           'katex': ['katex', 'markdown-it-texmath'],
-          'vendor': ['vue', 'vue-router'],
+          'vendor': ['vue', 'vue-router', 'pinia'],
           'codemirror': [
             '@codemirror/state', '@codemirror/view', '@codemirror/commands',
             '@codemirror/language', '@codemirror/autocomplete', '@codemirror/search',
             '@codemirror/lang-markdown',
           ],
+          'markdown': ['markdown-it', 'dompurify'],
+          'highlight': [
+            'highlight.js/lib/core',
+            'highlight.js/lib/languages/javascript',
+            'highlight.js/lib/languages/python',
+            'highlight.js/lib/languages/bash',
+            'highlight.js/lib/languages/json',
+            'highlight.js/lib/languages/xml',
+            'highlight.js/lib/languages/css',
+            'highlight.js/lib/languages/markdown',
+            'highlight.js/lib/languages/typescript',
+            'highlight.js/lib/languages/go',
+            'highlight.js/lib/languages/rust',
+            'highlight.js/lib/languages/sql',
+            'highlight.js/lib/languages/yaml',
+          ],
+          'three': ['three'],
         }
       }
-    }
+    },
+    chunkSizeWarningLimit: 600,
   }
 })
