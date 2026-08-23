@@ -21,24 +21,37 @@ import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
 
-const { openPanel: openRightPanel } = useRightPanel()
+const { openPanel: openRightPanel, setArtifactTab } = useRightPanel()
 
 // ── 产物计数（用于底部「查看所有产物 (N)」链接）──
 const artifactCount = ref(0)
+// ── 变更计数（用于底部「查看所有变更 (N)」链接）──
+const changeCount = ref(0)
 function updateArtifactCount() {
   if (window.__vermesArtifacts?.artifacts) {
     artifactCount.value = window.__vermesArtifacts.artifacts.value?.length || 0
   }
 }
+function updateChangeCount() {
+  if (window.__vermesChanges?.changes) {
+    changeCount.value = window.__vermesChanges.changes.value?.length || 0
+  }
+}
 onMounted(() => {
   updateArtifactCount()
-  // 轮询检查 __vermesArtifacts 是否就绪
+  updateChangeCount()
+  // 轮询检查 __vermesArtifacts / __vermesChanges 是否就绪
   const checkReady = setInterval(() => {
     if (window.__vermesArtifacts?.artifacts) {
-      clearInterval(checkReady)
       updateArtifactCount()
-      // watch ref 变化
       watch(window.__vermesArtifacts.artifacts, updateArtifactCount, { deep: true })
+    }
+    if (window.__vermesChanges?.changes) {
+      updateChangeCount()
+      watch(window.__vermesChanges.changes, updateChangeCount, { deep: true })
+    }
+    if (window.__vermesArtifacts?.artifacts && window.__vermesChanges?.changes) {
+      clearInterval(checkReady)
     }
   }, 200)
   // 10s 后放弃
@@ -961,13 +974,22 @@ function streamElapsed(startTime) {
     </div>
   </div>
 
-  <!-- 查看所有产物 (N) 链接（WorkBuddy 风格：对话底部目录感） -->
-  <div v-if="artifactCount > 0" class="px-4 py-1.5 flex justify-start">
+  <!-- 查看所有产物 (N) / 查看所有变更 (N) 链接（WorkBuddy 风格：对话底部目录感） -->
+  <div v-if="artifactCount > 0 || changeCount > 0" class="px-4 py-1.5 flex justify-start gap-4">
     <button
+      v-if="artifactCount > 0"
       @click="openRightPanel('artifacts')"
       class="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition flex items-center gap-1"
     >
       <span>查看所有产物 ({{ artifactCount }})</span>
+      <span>›</span>
+    </button>
+    <button
+      v-if="changeCount > 0"
+      @click="openRightPanel('artifacts'); setArtifactTab('changes')"
+      class="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition flex items-center gap-1"
+    >
+      <span>查看所有变更 ({{ changeCount }})</span>
       <span>›</span>
     </button>
   </div>
