@@ -3479,6 +3479,68 @@ print("OK")
     })
 
 
+@app.post("/api/upload")
+async def upload_file(request: Request):
+    """通用文件上传端点。保存到 ~/.vermes/uploads/，返回可访问路径。"""
+    from fastapi.responses import JSONResponse
+    import time
+    import uuid
+
+    content_type = request.headers.get("content-type", "")
+    if not content_type.startswith("multipart/form-data"):
+        return JSONResponse({"error": "expected multipart/form-data"}, status_code=400)
+
+    form = await request.form()
+    upload_file = form.get("file")
+    if not upload_file or not hasattr(upload_file, "filename"):
+        return JSONResponse({"error": "no file uploaded"}, status_code=400)
+
+    filename = upload_file.filename
+    ext = Path(filename).suffix.lower()
+
+    # 保存到 uploads 目录
+    upload_id = str(uuid.uuid4())[:12]
+    upload_dir = Path.home() / ".vermes" / "uploads" / upload_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = re.sub(r'[^\w\-\.]', '_', filename)
+    file_path = upload_dir / safe_name
+    with open(file_path, "wb") as f:
+        content = await upload_file.read()
+        f.write(content)
+
+    return JSONResponse({
+        "id": upload_id,
+        "filename": safe_name,
+        "path": str(file_path),
+        "url": f"/api/uploads/{upload_id}/{safe_name}",
+        "size": len(content),
+    })
+
+
+@app.get("/api/uploads/{upload_id}/{filename}")
+async def get_uploaded_file(upload_id: str, filename: str):
+    """下载已上传的文件。"""
+    from fastapi.responses import FileResponse
+    import re
+
+    if not re.match(r'^[a-zA-Z0-9\-]+$', upload_id):
+        raise HTTPException(status_code=400, detail="invalid upload_id")
+
+    file_path = Path.home() / ".vermes" / "uploads" / upload_id / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+
+    # 安全检查：防止路径穿越
+    upload_root = Path.home() / ".vermes" / "uploads" / upload_id
+    try:
+        file_path.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid path")
+
+    return FileResponse(file_path, filename=filename)
+
+
 @app.post("/api/mfgcad/sessions/{session_id}/ai-assist")
 async def mfgcad_ai_assist(session_id: str, request: Request):
     """AI 协助修改：用户用自然语言描述修改需求，AI 调参重建。

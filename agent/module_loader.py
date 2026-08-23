@@ -250,7 +250,12 @@ def _synth_scholarforge_manifest(pkg_dir: Path) -> ModuleManifest:
     """为内置 ScholarForge 合成 manifest（无需 module.yaml 文件）。
 
     前端 entry 指向打包内 web_dist 下的模块前端（由 serve_module_frontend 处理）。
+    若前端目录不存在，则 frontend_entry=None，避免 ModuleHost 加载 404。
     """
+    # 检测前端目录是否存在（打包时打入 web_dist/modules/scholarforge/）
+    frontend_dir = pkg_dir / "frontend"
+    has_frontend = frontend_dir.is_dir()
+
     return ModuleManifest(
         name="scholarforge",
         display_name="ScholarForge 论文写作",
@@ -260,10 +265,10 @@ def _synth_scholarforge_manifest(pkg_dir: Path) -> ModuleManifest:
         homepage="https://vbit.top/vermes",
         backend_entry="blueprint.py",
         tools_entry="tools.py",
-        frontend_entry="entry.js",
-        frontend_route="/scholarforge",
+        frontend_entry="entry.js" if has_frontend else None,
+        frontend_route="/scholarforge" if has_frontend else None,
         frontend_icon="📝",
-        frontend_menu_title="论文",
+        frontend_menu_title="论文" if has_frontend else "",
         permissions=["llm_call", "file_read", "file_write", "web_search"],
         vermes_min="2.1.0",
         raw={},

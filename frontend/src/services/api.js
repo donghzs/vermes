@@ -448,7 +448,7 @@ const api = {
 
   // 配置
   getConfig() { return this.get('/config') },
-  getModels() { return this.get('/models') },
+  getModels() { return this.get('/model/options') },
 
   // ── RAG 知识库 ──
   ragListDocuments() { return this.get('/rag/documents') },
