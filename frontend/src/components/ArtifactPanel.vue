@@ -313,6 +313,10 @@ function rendererFor(artifact) {
   if (mime === 'application/json' || ext === 'json') return 'json'
   if (mime === 'text/csv' || ext === 'csv') return 'csv'
   if (mime.startsWith('text/') || ['txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg'].includes(ext)) return 'code'
+  // PDF：iframe 内嵌预览
+  if (mime === 'application/pdf' || ext === 'pdf') return 'pdf'
+  // Office 文档：无法前端直接渲染，提供下载入口
+  if (['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'].includes(ext)) return 'office'
   return 'unsupported'
 }
 
@@ -323,6 +327,13 @@ const contentError = ref('')
 
 async function loadContent(artifact) {
   if (!artifact) return
+  // PDF / Office：不需要预加载 content，模板直接用 iframe src 或下载按钮
+  const type = rendererFor(artifact)
+  if (type === 'pdf' || type === 'office') {
+    content.value = ''
+    contentLoading.value = false
+    return
+  }
   // 如果产物自带内容（tool_end SSE 推送或测试注入），直接使用
   if (artifact._content) {
     content.value = artifact._content
@@ -338,7 +349,6 @@ async function loadContent(artifact) {
       const d = await resp.json().catch(() => ({}))
       throw new Error(d.detail || `HTTP ${resp.status}`)
     }
-    const type = rendererFor(artifact)
     if (type === 'image') {
       const blob = await resp.blob()
       content.value = URL.createObjectURL(blob)
@@ -362,6 +372,31 @@ watch([open, artifactTab], ([o, t]) => {
   }
 })
 
+
+// ── 复制路径（安全兼容 Electron 无 navigator.clipboard 环境）──
+function copyPath(path) {
+  if (!path) return
+  // 优先 navigator.clipboard（HTTPS / Electron 安全上下文）
+  if (navigator?.clipboard?.writeText) {
+    navigator.clipboard.writeText(path).catch(() => fallbackCopy(path))
+  } else {
+    fallbackCopy(path)
+  }
+}
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  } catch (e) {
+    console.warn('[ArtifactPanel] copy failed:', e)
+  }
+}
 
 // ── 下载产物（阶段 5）──
 async function downloadArtifact(artifact) {
@@ -529,7 +564,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
                 <!-- 复制路径 -->
                 <button
                   v-if="activeArtifact.path"
-                  @click="() => { navigator.clipboard.writeText(activeArtifact.path).catch(() => {}); }"
+                  @click="copyPath(activeArtifact.path)"
                   class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
                   title="复制路径"
                 >
@@ -603,6 +638,26 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             <!-- Image -->
             <div v-else-if="rendererFor(activeArtifact) === 'image'" class="flex-1 flex items-center justify-center p-5">
               <img :src="content" :alt="activeArtifact?.title || 'image'" class="max-w-full max-h-full object-contain rounded-lg" />
+            </div>
+
+            <!-- PDF -->
+            <div v-else-if="rendererFor(activeArtifact) === 'pdf'" class="flex-1 flex flex-col">
+              <iframe
+                :src="`/api/v1/artifacts/${encodeURIComponent(activeArtifact.path)}`"
+                class="w-full flex-1 border-0 bg-white"
+                referrerpolicy="no-referrer"
+              ></iframe>
+            </div>
+
+            <!-- Office 文档（无法前端渲染，提供下载） -->
+            <div v-else-if="rendererFor(activeArtifact) === 'office'" class="flex-1 flex flex-col items-center justify-center text-gray-400">
+              <div class="text-5xl mb-3">📘</div>
+              <div class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ activeArtifact.title || activeArtifact.path?.split('/').pop() }}</div>
+              <div class="text-xs mt-1 text-gray-400">Office 文档无法在浏览器中直接预览</div>
+              <button @click="downloadArtifact(activeArtifact)" class="mt-4 px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition flex items-center gap-2">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                下载文件
+              </button>
             </div>
 
             <!-- Unsupported -->

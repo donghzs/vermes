@@ -16,6 +16,10 @@ def _allowed_roots():
         Path.cwd().resolve(),
         (Path.home() / '.vermes').resolve(),
         Path('/tmp').resolve(),
+        # 用户常用目录：产物文件常在 Desktop/Downloads/Documents
+        (Path.home() / 'Desktop').resolve(),
+        (Path.home() / 'Downloads').resolve(),
+        (Path.home() / 'Documents').resolve(),
     ]
 
 
