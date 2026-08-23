@@ -23,6 +23,28 @@ import yaml from 'highlight.js/lib/languages/yaml'
 
 const { openPanel: openRightPanel } = useRightPanel()
 
+// ── 产物计数（用于底部「查看所有产物 (N)」链接）──
+const artifactCount = ref(0)
+function updateArtifactCount() {
+  if (window.__vermesArtifacts?.artifacts) {
+    artifactCount.value = window.__vermesArtifacts.artifacts.value?.length || 0
+  }
+}
+onMounted(() => {
+  updateArtifactCount()
+  // 轮询检查 __vermesArtifacts 是否就绪
+  const checkReady = setInterval(() => {
+    if (window.__vermesArtifacts?.artifacts) {
+      clearInterval(checkReady)
+      updateArtifactCount()
+      // watch ref 变化
+      watch(window.__vermesArtifacts.artifacts, updateArtifactCount, { deep: true })
+    }
+  }, 200)
+  // 10s 后放弃
+  setTimeout(() => clearInterval(checkReady), 10000)
+})
+
 // 工具结果展开状态
 const expandedTools = ref(new Set())
 
@@ -333,7 +355,7 @@ function linkifyArtifactPaths(html) {
         const prefix = match.slice(0, match.length - path.length)
         const cleanPath = path.replace(/^\.?\//, '')
         const fileName = cleanPath.split('/').pop()
-        return `${prefix}<a href="${cleanPath}" data-artifact="true" data-title="${fileName}" class="artifact-link">📄 ${path}</a>`
+        return `${prefix}<a href="${cleanPath}" data-artifact="true" data-title="${fileName}" class="artifact-card-inline">📄 ${path}</a>`
       })
       result += replaced
       i = nextTag === -1 ? html.length : nextTag
@@ -939,6 +961,17 @@ function streamElapsed(startTime) {
     </div>
   </div>
 
+  <!-- 查看所有产物 (N) 链接（WorkBuddy 风格：对话底部目录感） -->
+  <div v-if="artifactCount > 0" class="px-4 py-1.5 flex justify-start">
+    <button
+      @click="openRightPanel('artifacts')"
+      class="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition flex items-center gap-1"
+    >
+      <span>查看所有产物 ({{ artifactCount }})</span>
+      <span>›</span>
+    </button>
+  </div>
+
   <!-- token 用量 -->
   <div v-if="chat.lastTokenUsage && !chat.loading" class="px-4 py-2 flex justify-end">
     <span class="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
@@ -1086,7 +1119,38 @@ function streamElapsed(startTime) {
 .dark .vermes-md :deep(hr) { border-top-color: #374151; }
 .vermes-md :deep(a) { color: #16a34a; text-decoration: none; }
 .vermes-md :deep(a:hover) { text-decoration: underline; }
-/* 产物链接：绿色加粗 + 📄 图标 */
+/* 产物卡片：WorkBuddy 风格圆角卡片（内联在文本中） */
+.vermes-md :deep(a.artifact-card-inline) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0f9ff;
+  color: #1e40af;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin: 2px 0;
+}
+.vermes-md :deep(a.artifact-card-inline:hover) {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  box-shadow: 0 1px 3px rgba(14, 165, 233, 0.15);
+}
+.dark .vermes-md :deep(a.artifact-card-inline) {
+  background: rgba(59, 130, 246, 0.1);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.dark .vermes-md :deep(a.artifact-card-inline:hover) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+/* 兼容旧类名 */
 .vermes-md :deep(a.artifact-link) { color: #16a34a; font-weight: 500; border-bottom: 1px dashed #22c55e; padding-bottom: 1px; }
 .vermes-md :deep(a.artifact-link:hover) { background: rgba(34,197,94,0.08); border-bottom-style: solid; cursor: pointer; }
 

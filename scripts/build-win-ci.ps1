@@ -37,7 +37,7 @@ if (-not $Root) {
 }
 
 $ErrorActionPreference = "Stop"
-$NODE = "C:\Program Files\nodejs"
+$NODE = "C:\Users\Administrator\AppData\Local\hermes\node"
 $env:PATH = "$NODE;$env:PATH"
 
 function Write-Step($n, $msg) {
@@ -117,7 +117,8 @@ Write-Host "  JS: $($js.Name)"
 Write-Step 5 "PyInstaller 后端"
 & $Python -m pip install --upgrade pip --quiet 2>$null | Select-Object -Last 1
 Write-Host "  安装 Windows 渠道依赖 + sqlite_vec + numpy..."
-& $Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi qrcode --quiet 2>$null | Select-Object -Last 1
+cmd /c "$Python -m pip install pyinstaller uvicorn fastapi starlette httpx pyyaml aiofiles pywin32 slack_bolt slack_sdk telegram discord mautrix cryptography dingtalk_stream alibabacloud_dingtalk coincurve mutagen pilk pynacl brotlicffi aiohttp_socks numpy multipart sqlite-vec ruamel.yaml tenacity markdown lark-oapi qrcode --quiet 2>NUL"
+if ($LASTEXITCODE -ne 0) { Write-Host "  pip install warnings (non-fatal)" }
 # PyInstaller 日志写文件；用 cmd /c 包裹让 cmd.exe 处理重定向，避免 PowerShell 把 stderr 当 NativeCommandError 中止
 cmd /c "$Python -m PyInstaller vermes-backend.spec --noconfirm > $Root\pyinstaller.log 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败 (exit $LASTEXITCODE)，见 $Root\pyinstaller.log" }

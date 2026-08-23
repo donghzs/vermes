@@ -9,7 +9,26 @@ import { useRightPanel } from '../composables/useRightPanel'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 
-const { open, tab, closePanel } = useRightPanel()
+const { open, tab, artifactTab, autoOpenOnArtifact, panelWidth, closePanel, setArtifactTab } = useRightPanel()
+
+// ── 拖拽 resize ──
+const isResizing = ref(false)
+function startResize(e) {
+  isResizing.value = true
+  const startX = e.clientX
+  const startW = panelWidth.value
+  const onMove = (ev) => {
+    const newW = startW + (startX - ev.clientX)
+    if (newW >= 360 && newW <= 800) panelWidth.value = newW
+  }
+  const onUp = () => {
+    isResizing.value = false
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
 
 // ── Markdown 渲染器（复用 MessageList 范式）──
 const md = new MarkdownIt({
@@ -143,9 +162,9 @@ const contentError = ref('')
 
 async function loadContent(artifact) {
   if (!artifact) return
-  // 测试产物（无真实路径）直接用内嵌内容
-  if (artifact.source === 'test') {
-    content.value = artifact._content || ''
+  // 如果产物自带内容（tool_end SSE 推送或测试注入），直接使用
+  if (artifact._content) {
+    content.value = artifact._content
     contentLoading.value = false
     return
   }
@@ -230,39 +249,65 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
       <aside
         v-if="open && tab === 'artifacts'"
         class="fixed top-0 right-0 z-[91] h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col transition-all duration-200"
-        :class="isFullscreen ? 'w-full' : 'w-[600px] max-w-[94vw]'"
+        :class="isFullscreen ? 'w-full' : 'max-w-[94vw]'"
+        :style="!isFullscreen ? { width: panelWidth + 'px' } : {}"
       >
-        <!-- 头部 -->
-        <header class="shrink-0 px-5 py-3.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">📄 产物</h2>
-            <span v-if="artifacts.length" class="text-xs text-gray-400">({{ artifacts.length }})</span>
+        <!-- 拖拽手柄（左边缘） -->
+        <div
+          v-if="!isFullscreen"
+          class="absolute top-0 -left-1 w-2 h-full cursor-col-resize z-10 group"
+          @mousedown="startResize"
+        >
+          <div class="absolute top-1/2 -translate-y-1/2 left-0 w-1 h-12 bg-gray-300 dark:bg-gray-600 rounded-full opacity-0 group-hover:opacity-100 transition"></div>
+        </div>
+
+        <!-- 头部 + 4-tab 导航 -->
+        <header class="shrink-0 border-b border-gray-200 dark:border-gray-700">
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">产物工作台</h2>
+            </div>
+            <div class="flex items-center gap-1">
+              <button
+                @click="isFullscreen = !isFullscreen"
+                class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+                :title="isFullscreen ? '退出全屏' : '全屏'"
+              >
+                <svg v-if="!isFullscreen" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                <svg v-else class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8V5a2 2 0 0 1 2-2h3m0 18H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3M21 8V5a2 2 0 0 0-2-2h-3"/></svg>
+              </button>
+              <button @click="closePanel" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="关闭 (Esc)">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
           </div>
-          <div class="flex items-center gap-1">
+          <!-- 4-tab 导航 -->
+          <div class="flex items-center gap-1 px-3 pb-2">
             <button
-              @click="isFullscreen = !isFullscreen"
-              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-              :title="isFullscreen ? '退出全屏' : '全屏'"
+              v-for="t in [
+                { id: 'artifacts', label: '产物', icon: '📄', count: artifacts.length },
+                { id: 'files', label: '文件', icon: '📁', count: 0 },
+                { id: 'changes', label: '变更', icon: '📝', count: 0 },
+                { id: 'preview', label: '预览', icon: '🌐', count: 0 }
+              ]"
+              :key="t.id"
+              @click="setArtifactTab(t.id)"
+              :class="artifactTab === t.id
+                ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-b-2 border-green-500'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border-b-2 border-transparent'"
+              class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition rounded-t-lg"
             >
-              <svg v-if="!isFullscreen" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-              <svg v-else class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8V5a2 2 0 0 1 2-2h3m0 18H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3M21 8V5a2 2 0 0 0-2-2h-3"/></svg>
-            </button>
-            <button
-              v-if="artifacts.length"
-              @click="clearArtifacts"
-              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition"
-              title="清空产物列表"
-            >
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-            <button @click="closePanel" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="关闭 (Esc)">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <span>{{ t.icon }}</span>
+              <span>{{ t.label }}</span>
+              <span v-if="t.count > 0" class="text-xs opacity-60">({{ t.count }})</span>
             </button>
           </div>
         </header>
 
-        <!-- 主体：左侧列表 + 右侧预览 -->
+        <!-- 主体：根据 artifactTab 切换 -->
         <div class="flex-1 flex overflow-hidden">
+          <!-- ════ 产物 tab ════ -->
+          <div v-show="artifactTab === 'artifacts'" class="flex-1 flex overflow-hidden">
           <!-- 左侧产物列表（多产物时显示） -->
           <div
             v-if="artifacts.length > 1"
@@ -281,7 +326,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <!-- hover 操作按钮（WorkBuddy 风格：打开文件夹 + 下载 + 删除） -->
               <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition" @click.stop>
                 <button
-                  v-if="a.source !== 'test' && a.path"
+                  v-if="a.path"
                   @click="openInFolder(a)"
                   class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-500"
                   title="在文件夹中显示"
@@ -298,7 +343,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
             </button>
           </div>
 
-          <!-- 右侧预览区 -->
+          <!-- 右侧预览区（产物 tab 内） -->
           <div class="flex-1 flex flex-col overflow-y-auto">
             <!-- 产物标题操作栏（WorkBuddy 风格） -->
             <div
@@ -315,7 +360,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <div class="flex items-center gap-0.5">
                 <!-- 在文件夹中显示（WorkBuddy 核心体验） -->
                 <button
-                  v-if="activeArtifact.source !== 'test' && activeArtifact.path"
+                  v-if="activeArtifact.path"
                   @click="openInFolder(activeArtifact)"
                   class="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
                   title="在文件夹中显示"
@@ -333,7 +378,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
                 </button>
                 <!-- 下载 -->
                 <button
-                  v-if="activeArtifact.source !== 'test'"
+                  v-if="activeArtifact.path"
                   @click="downloadArtifact(activeArtifact)"
                   class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
                   title="下载"
@@ -408,6 +453,34 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <div class="text-xs mt-1 text-gray-400">{{ activeArtifact?.path }}</div>
             </div>
           </div>
+        </div><!-- end 产物 tab -->
+
+        <!-- ════ 文件 tab ════ -->
+        <div v-show="artifactTab === 'files'" class="flex-1 flex items-center justify-center text-gray-400">
+          <div class="text-center">
+            <div class="text-5xl mb-3">📁</div>
+            <div class="text-sm">工作目录文件树</div>
+            <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">即将上线</div>
+          </div>
+        </div>
+
+        <!-- ════ 变更 tab ════ -->
+        <div v-show="artifactTab === 'changes'" class="flex-1 flex items-center justify-center text-gray-400">
+          <div class="text-center">
+            <div class="text-5xl mb-3">📝</div>
+            <div class="text-sm">文件变更审计</div>
+            <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">即将上线</div>
+          </div>
+        </div>
+
+        <!-- ════ 预览 tab ════ -->
+        <div v-show="artifactTab === 'preview'" class="flex-1 flex items-center justify-center text-gray-400">
+          <div class="text-center">
+            <div class="text-5xl mb-3">🌐</div>
+            <div class="text-sm">网页预览</div>
+            <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">即将上线</div>
+          </div>
+        </div>
         </div>
       </aside>
     </transition>
