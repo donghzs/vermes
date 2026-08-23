@@ -9,7 +9,7 @@ import { useRightPanel } from '../composables/useRightPanel'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 
-const { open, tab, artifactTab, autoOpenOnArtifact, panelWidth, closePanel, setArtifactTab } = useRightPanel()
+const { open, tab, artifactTab, autoOpenOnArtifact, panelWidth, openPanel, closePanel, setArtifactTab } = useRightPanel()
 
 // ── 拖拽 resize ──
 const isResizing = ref(false)
@@ -85,6 +85,26 @@ function parseCsv(text) {
 const ARTIFACTS_STORAGE_KEY = 'vermes-artifacts'
 const artifacts = ref([])  // [{ id, path, title, mime, source, ts }]
 const activeId = ref(null)
+// 变更列表
+const changes = ref([])  // [{ id, path, action, diff, ts }]
+const activeChangeId = ref(null)
+const activeChange = computed(() => changes.value.find(c => c.id === activeChangeId.value))
+
+function addChange(item) {
+  const id = `chg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  changes.value.unshift({ id, ts: Date.now(), ...item })
+  if (!activeChangeId.value) activeChangeId.value = id
+  // 自动切换到变更 tab
+  if (autoOpenOnArtifact.value) {
+    openPanel('artifacts')
+    setArtifactTab('changes')
+  }
+}
+function clearChanges() {
+  changes.value = []
+  activeChangeId.value = null
+}
+window.__vermesChanges = { addChange, clearChanges, changes }
 const isFullscreen = ref(false)
 
 // 从 localStorage 恢复
@@ -287,7 +307,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               v-for="t in [
                 { id: 'artifacts', label: '产物', icon: '📄', count: artifacts.length },
                 { id: 'files', label: '文件', icon: '📁', count: 0 },
-                { id: 'changes', label: '变更', icon: '📝', count: 0 },
+                { id: 'changes', label: '变更', icon: '📝', count: changes.length },
                 { id: 'preview', label: '预览', icon: '🌐', count: 0 }
               ]"
               :key="t.id"
@@ -465,11 +485,46 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
         </div>
 
         <!-- ════ 变更 tab ════ -->
-        <div v-show="artifactTab === 'changes'" class="flex-1 flex items-center justify-center text-gray-400">
-          <div class="text-center">
-            <div class="text-5xl mb-3">📝</div>
-            <div class="text-sm">文件变更审计</div>
-            <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">即将上线</div>
+        <div v-show="artifactTab === 'changes'" class="flex-1 flex overflow-hidden">
+          <!-- 左侧变更列表 -->
+          <div class="w-56 shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto py-2">
+            <div v-if="changes.length === 0" class="px-3 py-8 text-center text-gray-400 text-xs">
+              暂无文件变更
+            </div>
+            <button
+              v-for="c in changes" :key="c.id"
+              @click="activeChangeId = c.id"
+              :class="activeChangeId === c.id
+                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-l-2 border-blue-500'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 border-l-2 border-transparent'"
+              class="w-full text-left px-3 py-2 text-sm transition flex items-center gap-2"
+            >
+              <span class="shrink-0">{{ c.action === 'write' ? '✍️' : c.action === 'patch' ? '🔧' : '📄' }}</span>
+              <span class="truncate flex-1">{{ c.path.split('/').pop() }}</span>
+            </button>
+          </div>
+          <!-- 右侧 diff 预览 -->
+          <div class="flex-1 flex flex-col overflow-hidden">
+            <template v-if="activeChange">
+              <!-- 标题栏 -->
+              <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate flex-1">{{ activeChange.path }}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full" :class="activeChange.action === 'write' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'">{{ activeChange.action === 'write' ? '新建/覆盖' : '修改' }}</span>
+              </div>
+              <!-- diff 内容 -->
+              <div class="flex-1 overflow-auto p-3 text-sm">
+                <pre v-if="activeChange.diff" class="font-mono text-xs leading-relaxed whitespace-pre-wrap"><template v-for="(line, i) in activeChange.diff.split('\n')" :key="i"><span :class="line.startsWith('+') ? 'text-green-600 dark:text-green-400' : line.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'">{{ line }}
+</span></template></pre>
+                <div v-else class="text-gray-400 text-center py-8 text-xs">无 diff 内容</div>
+              </div>
+            </template>
+            <div v-else class="flex-1 flex items-center justify-center text-gray-400">
+              <div class="text-center">
+                <div class="text-5xl mb-3">📝</div>
+                <div class="text-sm">文件变更审计</div>
+                <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">Agent 修改文件后将在此显示 diff</div>
+              </div>
+            </div>
           </div>
         </div>
 

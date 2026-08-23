@@ -1035,6 +1035,18 @@ export const useChatStore = defineStore('chat', () => {
                 setArtifactTab('artifacts')
               }
             }
+            // P1: 文件变更审计 — write_file/patch 推送到变更 tab
+            if (data.file_change) {
+              const vc = window.__vermesChanges
+              if (vc && typeof vc.addChange === 'function') {
+                const fc = data.file_change
+                vc.addChange({
+                  path: fc.path,
+                  action: fc.action,
+                  diff: fc.preview || '',
+                })
+              }
+            }
           }
           acts[sid] = list
           sessionTodoStepActivities.value = { ...sessionTodoStepActivities.value, [sendSessionId]: acts }

@@ -1268,6 +1268,15 @@ async def chat_completions(req: ChatRequest, request: Request):
                             {"path": p, "title": p.split("/")[-1], "source": tool_name}
                             for p in art_paths
                         ]
+                # P1: 文件变更审计 — write_file/patch 成功后推 file_change 事件
+                if tool_name in ("write_file", "patch") and not kwargs.get("is_error", False):
+                    _file_path = args.get("path", "") if args else ""
+                    if _file_path:
+                        event["file_change"] = {
+                            "path": _file_path,
+                            "action": tool_name,
+                            "preview": preview or "",
+                        }
                 if tool_name == "todo" and preview:
                     try:
                         import json as _json
