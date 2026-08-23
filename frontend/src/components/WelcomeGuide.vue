@@ -131,6 +131,31 @@ async function loadRecommendations() {
   recommendations.value = recs
 }
 
+// 开箱即用推荐技能（零依赖高频）：首次引导展示，一键启用跳技能管理
+const recommendedSkills = ref([])
+const recBusy = ref('')
+async function loadRecommendedSkills() {
+  try {
+    const data = await api.getRecommendedSkills()
+    recommendedSkills.value = Array.isArray(data) ? data.slice(0, 6) : []
+  } catch (e) {
+    recommendedSkills.value = []
+  }
+}
+async function toggleRecommendedSkill(skill) {
+  recBusy.value = skill.name
+  try {
+    await api.toggleSkill(skill.name, !skill.enabled)
+    skill.enabled = !skill.enabled
+  } catch (e) { /* no-op */ }
+  finally {
+    recBusy.value = ''
+  }
+}
+function openSkillsPanel() {
+  openPanel('skills')
+}
+
 async function useExpert(expert, promptText) {
   expertBusy.value = expert.id
   try {
@@ -160,6 +185,7 @@ function openExpertsPanel() {
 
 onMounted(() => {
   loadExperts().then(loadRecommendations)
+  loadRecommendedSkills()
 })
 </script>
 
@@ -347,6 +373,31 @@ onMounted(() => {
             <span class="text-gray-700 dark:text-gray-300">"{{ item.text }}"</span>
           </div>
         </button>
+      </div>
+
+      <!-- 开箱即用推荐技能（零依赖高频） -->
+      <div v-if="recommendedSkills.length" class="mb-8">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-sm text-gray-400 dark:text-gray-500">🧩 开箱即用的技能（零依赖，一键启用）</p>
+          <button @click="openSkillsPanel" class="text-xs text-green-500 hover:text-green-600 transition">全部 →</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div v-for="skill in recommendedSkills" :key="skill.name"
+               class="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 transition">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{{ skill.name }}</span>
+              <button @click="toggleRecommendedSkill(skill)"
+                      :disabled="recBusy === skill.name"
+                      class="relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0"
+                      :class="skill.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+                      :title="skill.enabled ? '已启用，点击关闭' : '已关闭，点击启用'">
+                <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform"
+                      :class="skill.enabled ? 'translate-x-3.5' : 'translate-x-0.5'"></span>
+              </button>
+            </div>
+            <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ skill.description }}</div>
+          </div>
+        </div>
       </div>
 
       <!-- 底部说明 -->

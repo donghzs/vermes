@@ -484,6 +484,7 @@ const api = {
 
   // ── Skills 管理 ──
   getSkills() { return this.get('/skills') },
+  getRecommendedSkills() { return this.get('/skills/recommended') },
   toggleSkill(name, enabled) {
     return request('/skills/toggle', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, enabled }) }).then(r => r.json())
   },

@@ -252,7 +252,10 @@ onMounted(() => {
              class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750">
           <span class="text-sm flex-shrink-0">{{ skillIcon(skill.source) }}</span>
           <div class="flex-1 min-w-0">
-            <div class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ skill.name }}</div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{{ skill.name }}</span>
+              <span v-if="skill.recommended" class="text-[9px] px-1.5 py-0.5 rounded-full bg-green-900 text-green-300 flex-shrink-0">推荐</span>
+            </div>
             <div class="text-[10px] text-gray-400 truncate">{{ skill.description || skill.source || '' }}</div>
           </div>
           <button @click="toggleSkill(skill.name, !skill.enabled)"
