@@ -498,6 +498,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     display_name TEXT,
     session_key TEXT,
     origin_json TEXT,
+    interaction_mode TEXT DEFAULT 'craft',
     FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
 );
 
@@ -1401,6 +1402,31 @@ class SessionDB:
                 (model, session_id),
             )
         self._execute_write(_do)
+
+    def update_session_interaction_mode(self, session_id: str, mode: str) -> bool:
+        """Set per-session interaction mode (craft/plan/ask).
+
+        Returns True if a row was updated, False if session not found.
+        """
+        if mode not in ("craft", "plan", "ask"):
+            raise ValueError(f"invalid interaction_mode: {mode}")
+        def _do(conn):
+            cur = conn.execute(
+                "UPDATE sessions SET interaction_mode = ? WHERE id = ?",
+                (mode, session_id),
+            )
+            return cur.rowcount
+        rc = self._execute_write(_do)
+        return (rc or 0) > 0
+
+    def get_session_interaction_mode(self, session_id: str) -> str:
+        """Get per-session interaction mode, defaulting to 'craft'."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT interaction_mode FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        return row[0] if row and row[0] else "craft"
 
     def update_token_counts(
         self,

@@ -280,6 +280,15 @@ const api = {
     return resp.json()
   },
 
+  async put(path, data) {
+    const resp = await request(path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    return resp.json()
+  },
+
   async del(path) {
     const resp = await request(path, { method: 'DELETE' })
     return resp.json()
@@ -288,6 +297,8 @@ const api = {
   // 会话
   getSessions() { return this.get('/sessions') },
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
+  getInteractionMode(sessionId) { return this.get(`/sessions/${sessionId}/interaction-mode`) },
+  setInteractionMode(sessionId, mode) { return this.put(`/sessions/${sessionId}/interaction-mode`, { mode }) },
 
   // 发送消息（SSE 流式）
   async sendMessage({ model, messages, stream, signal, onChunk, onDone, onError, onTool, onStreamStart, onThinking, onStatus, provider, attachments, session_id }) {

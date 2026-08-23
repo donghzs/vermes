@@ -155,6 +155,28 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // ── 交互模式（Craft/Plan/Ask），per-session ──
+  // craft: 立即执行（默认）；plan: 先规划后执行；ask: 只问答不调用工具
+  // 与 gateMode（信任闸门三态）语义不同：gateMode 决定工具调用拦截策略，
+  // interactionMode 决定用户交互模式（工具调用的时机与方式）
+  const sessionInteractionMode = ref({})  // { [sessionId]: 'craft'|'plan'|'ask' }
+  const interactionMode = computed(
+    () => sessionInteractionMode.value[currentSessionId.value] || 'craft'
+  )
+  async function setInteractionMode(mode) {
+    const sid = currentSessionId.value
+    if (!sid || !['craft', 'plan', 'ask'].includes(mode)) return
+    sessionInteractionMode.value = { ...sessionInteractionMode.value, [sid]: mode }
+    try { await api.setInteractionMode(sid, mode) } catch (e) { /* 离线时仅本地 */ }
+  }
+  async function restoreInteractionMode(sid) {
+    if (!sid) return
+    try {
+      const data = await api.getInteractionMode(sid)
+      sessionInteractionMode.value = { ...sessionInteractionMode.value, [sid]: data.mode || 'craft' }
+    } catch (e) { /* 离线用默认 craft */ }
+  }
+
   // ── nextTurnSnapshot: 轮内模型一致性 ──
   // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
   // 当前轮 onDone 后，如果有 pendingModel 则自动切换
@@ -457,6 +479,8 @@ export const useChatStore = defineStore('chat', () => {
 
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
+    // 恢复该会话的交互模式（非阻塞，不影响切换速度）
+    restoreInteractionMode(id)
 
     // 恢复新会话的模型选择
     const newSession = sessions.value.find(s => s.id === id) || channelSessions.value.find(s => s.id === id)
@@ -1418,6 +1442,7 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
     reasoningEffort, searchEnabled, gateMode, toggleGateMode, initGateMode, searchMode, searchQuery,
+    interactionMode, setInteractionMode,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionActiveStreamIds, currentActiveStreamId,

@@ -111,6 +111,48 @@ async def get_session_detail(session_id: str):
         db.close()
 
 
+async def get_interaction_mode(session_id: str):
+    """GET /api/sessions/{id}/interaction-mode — 获取会话交互模式。"""
+    from vermes_state import SessionDB
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        mode = db.get_session_interaction_mode(sid)
+        return {"session_id": sid, "mode": mode}
+    finally:
+        db.close()
+
+
+async def set_interaction_mode(session_id: str, request: Request):
+    """PUT /api/sessions/{id}/interaction-mode — 设置会话交互模式（craft/plan/ask）。"""
+    from vermes_state import SessionDB
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+    mode = body.get("mode")
+    if mode not in ("craft", "plan", "ask"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid mode '{mode}', must be one of: craft, plan, ask",
+        )
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        updated = db.update_session_interaction_mode(sid, mode)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"session_id": sid, "mode": mode, "ok": True}
+    finally:
+        db.close()
+
+
 async def get_session_latest_descendant(session_id: str):
     latest, path = _session_latest_descendant(session_id)
     if not latest:
@@ -263,6 +305,18 @@ def register_to(app):
         get_session_detail,
         methods=["GET"],
         name="get_session_detail",
+    )
+    app.add_api_route(
+        "/api/sessions/{session_id}/interaction-mode",
+        get_interaction_mode,
+        methods=["GET"],
+        name="get_interaction_mode",
+    )
+    app.add_api_route(
+        "/api/sessions/{session_id}/interaction-mode",
+        set_interaction_mode,
+        methods=["PUT"],
+        name="set_interaction_mode",
     )
     app.add_api_route(
         "/api/sessions/{session_id}/latest-descendant",
