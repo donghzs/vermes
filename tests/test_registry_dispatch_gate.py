@@ -234,3 +234,107 @@ def test_record_count_revives_memory_fabric_dead_metric():
     record_count("memory_capacity_degraded")
     assert agent_metrics.get_state().named_counts["memory_capacity_degraded"] == 2
     assert "vermes_count_memory_capacity_degraded 2" in agent_metrics.render_prometheus()
+
+
+# ---------------------------------------------------------------------------
+# Phase 1.4：兜底 spec 可配置 + undeclared_deny 生效
+#
+# 反向验证设计：test_undeclared_deny_blocks_under_fail_closed 在 Phase 1.4 前
+# 必然失败——彼时 _evaluate_dispatch_gate 无条件把 None 替换成 cli_native
+# 允许 spec，TrustGate.check 永远收不到 None，rule=undeclared_deny 从不命中，
+# deny-unless-declared 被静默掏空。本组用例锁死该缺口已堵上。
+# ---------------------------------------------------------------------------
+
+
+def test_undeclared_deny_blocks_under_fail_closed():
+    """Phase 1.4 核心：policy=deny + fail_closed 下，未声明工具被 DENY。
+
+    反向验证：修复前（无 Phase 1.4）此用例必失败——None 被替换成允许 spec，
+    gate 返回 ALLOW 而非 DENY。现在必须命中 rule=undeclared_deny 并阻断。
+    """
+    reset_gate_stats()
+    reg = _make_registry("fail_closed")
+    reg.set_undeclared_tool_policy("deny")
+    reg.register(name="t_undeclared", toolset="ts",
+                 schema={"name": "t_undeclared"}, handler=_marker_handler)
+    out = reg.dispatch("t_undeclared", {})
+    blocked = json.loads(out)
+    assert blocked["error"] == "permission denied by dispatch gate"
+    assert blocked["gate"] == DENY
+    stats = get_gate_stats()
+    assert stats["decisions"]["deny"] == 1
+    assert stats["rules"]["undeclared_deny"] == 1
+
+
+def test_undeclared_deny_under_fail_open_still_executes():
+    """安全网：policy=deny + fail_open 下仍执行 handler（零回归保证）。
+
+    deny 激活 deny-unless-declared，但 fail_open 仍观测不阻断——
+    避免在 1.2/1.4 全就绪前误开 fail_closed 把联网/浏览器/委托工具瞬间打死。
+    DENY 必须被记录，但 handler 必须执行。
+    """
+    reset_gate_stats()
+    reg = _make_registry("fail_open")
+    reg.set_undeclared_tool_policy("deny")
+    reg.register(name="t_undeclared_open", toolset="ts",
+                 schema={"name": "t_undeclared_open"}, handler=_marker_handler)
+    out = reg.dispatch("t_undeclared_open", {})
+    assert json.loads(out)["ok"] is True  # 仍执行
+    stats = get_gate_stats()
+    assert stats["decisions"]["deny"] == 1  # 记录但不阻断
+    assert stats["rules"]["undeclared_deny"] == 1
+
+
+def test_default_allow_policy_undeclared_is_allow_no_regression():
+    """默认 policy=allow：未声明工具仍 ALLOW（零回归）。
+
+    Phase 1.4 不改变默认行为——只有显式 set_undeclared_tool_policy('deny')
+    或 VERMES_UNDECLARED_TOOL_POLICY=deny 才激活 deny-unless-declared。
+    """
+    reset_gate_stats()
+    reg = _make_registry("fail_open")  # 默认 policy=allow
+    assert reg.undeclared_tool_policy == "allow"
+    reg.register(name="t_default", toolset="ts",
+                 schema={"name": "t_default"}, handler=_marker_handler)
+    out = reg.dispatch("t_default", {})
+    assert json.loads(out)["ok"] is True
+    stats = get_gate_stats()
+    assert stats["decisions"]["allow"] == 1
+    assert stats["rules"]["default_allow"] == 1
+
+
+def test_set_undeclared_tool_policy_rejects_invalid():
+    """setter 只接受 allow/deny，防止拼写错误静默退回 allow。"""
+    reg = _make_registry("fail_open")
+    try:
+        reg.set_undeclared_tool_policy("Deny")  # 大小写敏感
+        raise AssertionError("应拒绝非法 policy 值")
+    except ValueError:
+        pass
+    assert reg.undeclared_tool_policy == "allow"  # 未被污染
+
+
+def test_declared_tool_unaffected_by_deny_policy():
+    """deny 策略只针对**未声明**工具；已挂 spec 的工具按自身 spec 判定。
+
+    防止 deny 策略误伤已正确声明权限的工具（如纯读工具应 ALLOW）。
+    """
+    reset_gate_stats()
+    reg = _make_registry("fail_closed")
+    reg.set_undeclared_tool_policy("deny")
+    reg.register(
+        name="t_readonly", toolset="ts", schema={"name": "t_readonly"},
+        handler=_marker_handler,
+        permission_spec=PermissionSpec(
+            reads_fs=True, writes_fs=False, network=False,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ),
+    )
+    out = reg.dispatch("t_readonly", {})
+    # 已声明纯读 spec → ALLOW，handler 执行
+    assert json.loads(out)["ok"] is True
+    stats = get_gate_stats()
+    assert stats["decisions"]["allow"] == 1
+    assert stats["rules"].get("undeclared_deny", 0) == 0  # 未走 undeclared 分支
+

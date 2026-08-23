@@ -352,6 +352,25 @@ class ToolRegistry:
         # fail_closed（VERMES_DISPATCH_GATE_MODE=fail_closed 或运行时设置）：
         #   阻断非 ALLOW 决策（DENY / ASK_USER）。观测期结束、数据达标后切换。
         self.dispatch_gate_mode = os.environ.get("VERMES_DISPATCH_GATE_MODE", "fail_open")
+        # Phase 1.4: 未声明工具（plugin / 未来新增工具）的兜底策略。
+        # allow（默认，观测期）：替换为 cli_native 低权信任 → 100% ALLOW（零回归）。
+        # deny：**不替换** → TrustGate.check(None) 以 rule=undeclared_deny 判 DENY，
+        #   让闸门自带的 deny-unless-declared 真正生效（需配合 fail_closed 才阻断）。
+        # Phase 1.1 已为 69/69 内置工具挂 spec，故 deny 仅影响未声明的 plugin/未来工具。
+        self.undeclared_tool_policy = os.environ.get(
+            "VERMES_UNDECLARED_TOOL_POLICY", "allow"
+        )
+
+    def set_undeclared_tool_policy(self, policy: str) -> None:
+        """Phase 1.4: 运行时切换未声明工具兜底策略。policy ∈ {"allow", "deny"}。
+
+        默认 allow 保留观测期零回归；deny 激活闸门 deny-unless-declared。
+        """
+        if policy not in ("allow", "deny"):
+            raise ValueError(
+                f"undeclared_tool_policy must be 'allow' or 'deny', got {policy!r}"
+            )
+        self.undeclared_tool_policy = policy
 
     def _snapshot_state(self) -> tuple[List[ToolEntry], Dict[str, Callable]]:
         """Return a coherent snapshot of registry entries and toolset checks."""
@@ -629,13 +648,19 @@ class ToolRegistry:
         ctx = kwargs.get("ctx")
         spec = entry.permission_spec
         if spec is None:
-            # 未声明权限的内置工具：默认 cli_native 低权信任（与 §15.3 一致），
-            # 观测期基线 = 100% ALLOW；后续逐步为真实工具挂 PermissionSpec。
-            spec = PermissionSpec(
-                reads_fs=True, writes_fs=True, network=False,
-                exec_external=True, sandbox=SANDBOX_NONE,
-                requires_explicit_consent=False,
-            )
+            # Phase 1.4: 兜底策略可配。
+            if self.undeclared_tool_policy == "deny":
+                # 保持 None → TrustGate.check(None) 以 rule=undeclared_deny 判 DENY。
+                # 不在此替换，否则会盖掉闸门自带的 deny-unless-declared。
+                pass
+            else:
+                # allow（默认）：未声明工具走 cli_native 低权信任
+                # （观测期基线 = 100% ALLOW；与 §15.3 一致）。
+                spec = PermissionSpec(
+                    reads_fs=True, writes_fs=True, network=False,
+                    exec_external=True, sandbox=SANDBOX_NONE,
+                    requires_explicit_consent=False,
+                )
         result = TrustGate.check(spec, ctx)
         return result.decision, result.reason, result.rule
 
