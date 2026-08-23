@@ -21,6 +21,18 @@ import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import yaml from 'highlight.js/lib/languages/yaml'
 
+// Office 文档预览库（动态加载，不阻塞首屏）
+let _xlsx = null
+let _mammoth = null
+async function loadXLSX() {
+  if (!_xlsx) _xlsx = await import('xlsx')
+  return _xlsx
+}
+async function loadMammoth() {
+  if (!_mammoth) _mammoth = await import('mammoth/mammoth.browser.js')
+  return _mammoth
+}
+
 // 注册常用语言
 hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
@@ -315,8 +327,12 @@ function rendererFor(artifact) {
   if (mime.startsWith('text/') || ['txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg'].includes(ext)) return 'code'
   // PDF：iframe 内嵌预览
   if (mime === 'application/pdf' || ext === 'pdf') return 'pdf'
-  // Office 文档：无法前端直接渲染，提供下载入口
-  if (['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls'].includes(ext)) return 'office'
+  // Excel：SheetJS 前端解析渲染表格
+  if (['xlsx', 'xls'].includes(ext)) return 'excel'
+  // Word：mammoth.js 前端渲染为 HTML
+  if (ext === 'docx') return 'docx'
+  // PPT 等：无法前端渲染，提供下载入口
+  if (['pptx', 'ppt', 'doc'].includes(ext)) return 'office'
   return 'unsupported'
 }
 
@@ -327,7 +343,7 @@ const contentError = ref('')
 
 async function loadContent(artifact) {
   if (!artifact) return
-  // PDF / Office：不需要预加载 content，模板直接用 iframe src 或下载按钮
+  // PDF / PPT：不需要预加载 content，模板直接用 iframe src 或下载按钮
   const type = rendererFor(artifact)
   if (type === 'pdf' || type === 'office') {
     content.value = ''
@@ -352,6 +368,25 @@ async function loadContent(artifact) {
     if (type === 'image') {
       const blob = await resp.blob()
       content.value = URL.createObjectURL(blob)
+    } else if (type === 'excel') {
+      // SheetJS 解析 Excel → HTML 表格
+      const XLSX = await loadXLSX()
+      const blob = await resp.blob()
+      const arrayBuffer = await blob.arrayBuffer()
+      const wb = XLSX.read(arrayBuffer, { type: 'array' })
+      const sheetsHtml = wb.SheetNames.map(name => {
+        const ws = wb.Sheets[name]
+        const html = XLSX.utils.sheet_to_html(ws, { editable: false })
+        return `<div class="excel-sheet"><div class="excel-sheet-name">📄 ${name}</div>${html}</div>`
+      }).join('')
+      content.value = sheetsHtml
+    } else if (type === 'docx') {
+      // mammoth.js 解析 docx → HTML
+      const mammoth = await loadMammoth()
+      const blob = await resp.blob()
+      const arrayBuffer = await blob.arrayBuffer()
+      const result = await mammoth.convertToHtml({ arrayBuffer })
+      content.value = result.value || '<p style="color:#999">文档内容为空</p>'
     } else {
       content.value = await resp.text()
     }
@@ -649,6 +684,16 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               ></iframe>
             </div>
 
+            <!-- Excel (SheetJS 渲染) -->
+            <div v-else-if="rendererFor(activeArtifact) === 'excel'" class="flex-1 overflow-auto p-3 bg-gray-50 dark:bg-gray-800/30">
+              <div v-if="content" class="excel-render" v-html="content"></div>
+            </div>
+
+            <!-- Word (mammoth.js 渲染) -->
+            <div v-else-if="rendererFor(activeArtifact) === 'docx'" class="flex-1 overflow-y-auto p-6 bg-white dark:bg-gray-900">
+              <div v-if="content" class="docx-render prose prose-sm max-w-none dark:prose-invert" v-html="content"></div>
+            </div>
+
             <!-- Office 文档（无法前端渲染，提供下载） -->
             <div v-else-if="rendererFor(activeArtifact) === 'office'" class="flex-1 flex flex-col items-center justify-center text-gray-400">
               <div class="text-5xl mb-3">📘</div>
@@ -828,4 +873,35 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
 .artifact-markdown :deep(code) { background: #f3f4f6; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }
 .artifact-markdown :deep(pre.hljs) { border-radius: 8px; padding: 1em; overflow-x: auto; margin: 0.5em 0; }
 .artifact-markdown :deep(pre code) { background: none; padding: 0; }
+
+/* Excel 渲染样式 */
+.excel-render .excel-sheet { margin-bottom: 1rem; }
+.excel-render .excel-sheet-name {
+  font-size: 0.875rem; font-weight: 600; color: #374151;
+  margin-bottom: 0.5rem; padding: 0.25rem 0.5rem;
+  background: #f3f4f6; border-radius: 4px; display: inline-block;
+}
+.dark .excel-render .excel-sheet-name { color: #d1d5db; background: #374151; }
+.excel-render table {
+  border-collapse: collapse; width: 100%; font-size: 0.8rem;
+}
+.excel-render td, .excel-render th {
+  border: 1px solid #e5e7eb; padding: 0.25rem 0.5rem;
+  color: #374151; white-space: nowrap;
+}
+.dark .excel-render td, .dark .excel-render th {
+  border-color: #4b5563; color: #d1d5db;
+}
+.excel-render tr:first-child td { font-weight: 600; background: #f9fafb; }
+.dark .excel-render tr:first-child td { background: #1f2937; }
+
+/* Word/docx 渲染样式 */
+.docx-render h1 { font-size: 1.5em; font-weight: 700; margin: 0.8em 0 0.4em; }
+.docx-render h2 { font-size: 1.25em; font-weight: 600; margin: 0.6em 0 0.3em; }
+.docx-render h3 { font-size: 1.1em; font-weight: 600; margin: 0.5em 0 0.3em; }
+.docx-render p { margin: 0.5em 0; line-height: 1.7; }
+.docx-render ul, .docx-render ol { margin: 0.5em 0; padding-left: 1.5em; }
+.docx-render table { width: 100%; border-collapse: collapse; margin: 0.5em 0; }
+.docx-render td, .docx-render th { border: 1px solid #e5e7eb; padding: 0.4em 0.6em; }
+.docx-render img { max-width: 100%; height: auto; border-radius: 4px; }
 </style>

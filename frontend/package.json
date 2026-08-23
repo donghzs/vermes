@@ -23,12 +23,14 @@
     "dompurify": "^3.4.7",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
+    "mammoth": "^1.12.1",
     "markdown-it": "^14.0.0",
     "markdown-it-texmath": "^1.0.0",
     "pinia": "^2.1.7",
     "three": "^0.160.0",
     "vue": "^3.4.0",
-    "vue-router": "^4.3.0"
+    "vue-router": "^4.3.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

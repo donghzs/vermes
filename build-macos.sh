@@ -42,6 +42,25 @@ if [[ ! -f "packaging/vermes.icns" ]]; then
     fi
 fi
 
+# ── 前端构建 + 同步到 web_dist（关键：dmg 不含前端改动的根因）──
+# vite 默认输出到 frontend/dist，但运行时 web_server 从 vermes_cli/web_dist
+# 读取静态文件（web_server.py: WEB_DIST = Path(__file__).parent / "web_dist"）。
+# 若此处不显式 build + 同步，dmg 会用旧 web_dist，导致前端改动（如技能市场
+# 生态接入）打不进安装包。故每次打 dmg 必须重编前端并同步。
+echo "🎨 Building frontend (vite)..."
+cd frontend
+if [[ ! -d "node_modules" ]]; then
+    echo "📦 Installing frontend deps..."
+    npm install
+fi
+npm run build
+cd ..
+
+echo "🔄 Syncing frontend/dist → vermes_cli/web_dist..."
+rm -rf vermes_cli/web_dist
+cp -R frontend/dist vermes_cli/web_dist
+echo "✅ web_dist synced (gitHash: $(cat vermes_cli/web_dist/frontend-build.json 2>/dev/null | grep gitHash | head -1))"
+
 # Build
 echo "🔨 Building Vermes.app (windowed)..."
 $VENV_PYINSTALLER vermes-gui.spec --noconfirm

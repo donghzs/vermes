@@ -108,6 +108,8 @@ export default defineConfig({
             'highlight.js/lib/languages/yaml',
           ],
           'three': ['three'],
+          // 'office' chunk 不在 manualChunks 里，改为运行时动态 import
+          // 'office': ['xlsx', 'mammoth/mammoth.browser.js'],
         }
       }
     },
