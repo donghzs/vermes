@@ -90,10 +90,25 @@ _MIME_MAP = {
 _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
+def _check_origin(request: Request):
+    """纵深防御：校验请求来源是否为本应用（挡掉跨站调用）"""
+    origin = request.headers.get('origin', '')
+    host = request.headers.get('host', '')
+    # Electron 无 origin（file:// 协议）或 origin 包含 host（同源）
+    if origin and host:
+        # 提取 origin 的 host 部分比对
+        from urllib.parse import urlparse
+        parsed = urlparse(origin)
+        if parsed.hostname and parsed.hostname not in ('localhost', '127.0.0.1', '0.0.0.0'):
+            raise HTTPException(status_code=403, detail="跨站请求被拒绝")
+    # 无 origin（Electron 内部请求）或 localhost 来源 → 放行
+
+
 def register_to(app):
     @app.get('/api/v1/workspace/tree')
-    async def workspace_tree(path: str = ''):
+    async def workspace_tree(path: str = '', request: Request = None):
         """列出工作目录文件树（单层），返回子项列表"""
+        _check_origin(request)
         if path:
             safe = _is_safe_path(path)
         else:
@@ -126,6 +141,7 @@ def register_to(app):
     @app.get('/api/v1/artifacts/{path:path}')
     async def serve_artifact(path: str, request: Request):
         """读取产物文件，返回对应 MIME 类型"""
+        _check_origin(request)
         safe_path = _is_safe_path(path)
 
         if not safe_path.exists():
