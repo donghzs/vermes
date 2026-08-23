@@ -2916,6 +2916,7 @@ blueprints.gateway_channels.register_to(app)
 blueprints.profiles.register_to(app)
 blueprints.oauth.register_to(app)
 blueprints.artifacts.register_to(app)
+blueprints.modules_market.register_to(app)  # Phase 3.2 市场后端中间层
 
 # ── L2 adapters API（发现/推荐/安装软件积木）──
 try:
