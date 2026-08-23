@@ -756,3 +756,80 @@ def get_raw_event_stats(db_path: str) -> Dict[str, Any]:
     except Exception:
         logger.debug("get_raw_event_stats failed", exc_info=True)
         return {"total": 0, "error": "stats unavailable"}
+
+
+# ── Phase 4.1: 会话重放（事件溯源读取侧闭环） ──────────────────────────────────
+
+@dataclass
+class ReplayState:
+    """一次会话重放后重建的可重放状态。
+
+    由 replay_session() 产出，是 append-only 事件层（raw_events）的读取侧闭环——
+    给定 session_id，按 turn_number 顺序重放全部工具事件，重建出调用序列与统计，
+    无需依赖任何运行时内存状态（崩溃后亦可无损重建）。
+    """
+
+    session_id: str
+    total_events: int
+    turns: int
+    success_count: int
+    error_count: int
+    tools_used: Dict[str, int]
+    timeline: List[Dict[str, Any]]  # [(turn, tool, success, duration, ts), ...]，按 turn 升序
+
+    @property
+    def success_rate(self) -> float:
+        if self.total_events == 0:
+            return 0.0
+        return round(self.success_count / self.total_events * 100, 1)
+
+    def summary(self) -> Dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "total_events": self.total_events,
+            "turns": self.turns,
+            "success_count": self.success_count,
+            "error_count": self.error_count,
+            "success_rate": self.success_rate,
+            "tools_used": self.tools_used,
+        }
+
+
+def replay_session(db_path: str, session_id: str) -> ReplayState:
+    """按 turn_number 升序重放某会话的全部工具事件，重建 ReplayState。
+
+    事件溯源读取闭环：纯函数式从 raw_events 重建，不依赖任何进程内状态。
+    排序以 turn_number 为主、timestamp 为辅，保证回合顺序稳定。
+    """
+    events = get_recent_raw_events(db_path, limit=10_000, session_id=session_id)
+    # 升序：turn_number 主序、timestamp 次序（防御同 turn 多事件）
+    events.sort(key=lambda e: (e.turn_number, e.timestamp))
+    tools_used: Dict[str, int] = {}
+    timeline: List[Dict[str, Any]] = []
+    success_count = 0
+    error_count = 0
+    max_turn = 0
+    for e in events:
+        tools_used[e.tool_name] = tools_used.get(e.tool_name, 0) + 1
+        if e.success:
+            success_count += 1
+        else:
+            error_count += 1
+        if e.turn_number > max_turn:
+            max_turn = e.turn_number
+        timeline.append({
+            "turn": e.turn_number,
+            "tool": e.tool_name,
+            "success": e.success,
+            "duration": e.duration,
+            "timestamp": e.timestamp,
+        })
+    return ReplayState(
+        session_id=session_id,
+        total_events=len(events),
+        turns=max_turn,
+        success_count=success_count,
+        error_count=error_count,
+        tools_used=tools_used,
+        timeline=timeline,
+    )

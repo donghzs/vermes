@@ -388,3 +388,71 @@ class TestCleanupRawEvents:
             str(conn.execute("PRAGMA database_list").fetchone()[2]),
         )
         assert deleted == 0
+
+
+# ───────────────────────── Phase 4.1: 会话重放（事件溯源读取闭环） ─────────────────────────
+class TestReplaySession:
+    def _insert(self, conn, ts, tool, session, turn, success=1):
+        conn.execute(
+            """INSERT INTO raw_events
+               (timestamp, tool_name, args_preview, result_preview, success, duration, session_id, turn_number)
+               VALUES (?, ?, 'a', 'r', ?, 0.1, ?, ?)""",
+            (ts, tool, success, session, turn),
+        )
+
+    def test_replay_reconstructs_call_sequence_and_stats(self, conn):
+        """重放可重建调用序列 + 成功/失败统计 + 工具计数。
+
+        这是 Phase 4.1 的核心不变量：从 append-only 事件无损重建会话状态。
+        """
+        self._insert(conn, "2026-01-01T00:00:00", "terminal", "S1", 1, 1)
+        self._insert(conn, "2026-01-01T00:00:01", "read_file", "S1", 2, 1)
+        self._insert(conn, "2026-01-01T00:00:02", "web_search", "S1", 3, 0)  # 失败
+        conn.commit()
+        from agent.raw_event import replay_session
+
+        st = replay_session(str(conn.execute("PRAGMA database_list").fetchone()[2]), "S1")
+        assert st.total_events == 3
+        assert st.turns == 3
+        assert st.success_count == 2
+        assert st.error_count == 1
+        assert st.success_rate == pytest.approx(66.7, abs=0.1)
+        assert st.tools_used == {"terminal": 1, "read_file": 1, "web_search": 1}
+        # timeline 按 turn 升序
+        assert [t["turn"] for t in st.timeline] == [1, 2, 3]
+        assert st.timeline[2]["success"] is False
+
+    def test_replay_is_turn_ordered_not_timestamp_desc(self, conn):
+        """replay_session 按 turn_number 升序（而非 get_recent_raw_events 的降序）。
+
+        反向不变量：若误用降序查询，timeline 顺序会反转 → 本用例失败。
+        """
+        # 故意让 timestamp 与 turn 反序写入
+        self._insert(conn, "2026-01-01T00:00:30", "a", "S2", 1, 1)
+        self._insert(conn, "2026-01-01T00:00:20", "b", "S2", 2, 1)
+        self._insert(conn, "2026-01-01T00:00:10", "c", "S2", 3, 1)
+        conn.commit()
+        from agent.raw_event import replay_session
+
+        st = replay_session(str(conn.execute("PRAGMA database_list").fetchone()[2]), "S2")
+        assert [t["tool"] for t in st.timeline] == ["a", "b", "c"]
+
+    def test_replay_isolates_session(self, conn):
+        """replay_session 只重建指定 session，不串台。"""
+        self._insert(conn, "2026-01-01T00:00:00", "terminal", "SA", 1, 1)
+        self._insert(conn, "2026-01-01T00:00:00", "terminal", "SB", 1, 1)
+        conn.commit()
+        from agent.raw_event import replay_session
+
+        st = replay_session(str(conn.execute("PRAGMA database_list").fetchone()[2]), "SA")
+        assert st.total_events == 1
+        assert st.session_id == "SA"
+
+    def test_replay_empty_session(self, conn):
+        """未知 session 重放返回零状态，不报错。"""
+        from agent.raw_event import replay_session
+
+        st = replay_session(str(conn.execute("PRAGMA database_list").fetchone()[2]), "NOPE")
+        assert st.total_events == 0
+        assert st.success_rate == 0.0
+        assert st.timeline == []
