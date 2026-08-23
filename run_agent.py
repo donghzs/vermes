@@ -69,6 +69,10 @@ from vermes_constants import get_vermes_home
 # `mock.patch("run_agent.<X>")`, `from run_agent import <X>` in production
 # siblings, or the `_ra().<X>` indirection in agent/system_prompt.py — none
 # of which ruff's in-module usage scan can see.
+from agent.claim_verifier import (  # Phase 2.2: 单一真相源
+    OPERATION_CLAIM_PATTERNS as _OC_PATTERNS,
+    detect_operation_claims as _detect_op_claims,
+)
 from agent.process_bootstrap import (
     OpenAI,  # noqa: F401  # re-exported for tests that mock.patch("run_agent.OpenAI")
     _SafeWriter,  # noqa: F401  # re-exported for tests that `from run_agent import _SafeWriter`
@@ -2332,78 +2336,17 @@ class AIAgent:
         # Unknown/diagnostic-only reasons — don't second-guess.
         return ""
     # ── 工具操作链验证系统（抗 Agent 编造）──────────────────────────────────
-    # 三个作用：
-    # 1. Layer1: 验证 AI 回复中声称的操作是否有 tool_call 支撑
-    # 2. Layer2: 生成工具操作的完整性签名
-    # 3. 跨回合验证：确保"已完成"的操作确实有执行记录
-
-    # 声称执行了操作的关键词模式
-    # 设计原则：
-    # - 匹配操作完成后的宣称（"已安装""训练完成"），而不是操作建议（"建议安装""需要修改"）
-    # - 排除常见误报："配置文件"、"已经知道答案了"、"配置完成"等
-    # - 优先匹配明确的过去完成时操作声称
-    _OPERATION_CLAIM_PATTERNS = [
-        # 安装/构建类 — 匹配"已安装""安装成功""构建完成"
-        r"(?:已|成功|刚刚)(?:安装|构建|编译|部署|生成)(?:了|成功|完成|完毕)?",
-        r"(?:安装|构建|编译|部署|生成)(?:成功|完成|完毕)(?:了)?",
-        # 文件修改类 — 避免匹配"配置文件"（普通名词）
-        r"(?:已|成功|刚刚)(?:覆盖|替换|删除|重命名|写入)(?:了|成功|完成)?",
-        r"(?:覆盖|替换|删除|重命名|写入)(?:成功)(?:了)?",
-        r"(?:已|成功|刚刚)修改(?:了)?(?!设置|参数|方案)",  # 排除"修改设置/方案"
-        r"修改完成(?:了)?",
-        # 训练/运行类 — "已训练""训练完成""运行成功"
-        # 注意：不含"正在/开始"（进行时/未来时不是完成声称）
-        # 注意：不含"验证"（"已验证"是确认状态不是操作声称）
-        # 注意：不含"测试"（"测试完成"常是正常状态描述非操作声称）
-        r"(?:已|刚刚)(?:训练|运行|执行|修复)(?:了|完成|成功|完毕)?",
-        r"(?:训练|运行|执行|修复)(?:完成|成功|完毕)(?:了)?",
-        r"(?:训练|运行|执行).{0,6}(?:进度)",
-        # 下载/获取类 — 包含"克隆成功"等无前缀匹配
-        r"(?:已|成功)(?:下载|克隆|拉取|导入|导出)(?:了|完成|成功)?",
-        r"(?:下载|克隆|拉取|导入|导出)(?:成功|完成)(?:了)?",
-        # pip/npm 命令类 — 精确匹配"pip install 已完成"等
-        r"(?:pip|npm|apt).{1,10}(?:完成|成功)",
-        r"(?:完成)(?:pip|npm|apt).{0,8}(?:安装)",
-        # 创建/更新类 — "保存成功"需排除UI提示语
-        r"(?:已|成功|刚刚)(?:创建|更新)(?:了|完成|成功)?",
-        r"(?:创建|更新)(?:完成|成功)(?:了)?",
-        r"(?:已|成功|刚刚)保存(?:了|完成|成功)?(?!设置|偏好|配置)",  # 排除"保存设置/偏好/配置"
-        r"保存成功(?!设置|偏好|配置)",  # "保存成功"无前缀匹配
-        # 口语化完成表达 — 高频口语声称
-        r"(?:已|已经|刚刚)(?:搞定|处理好?(?:了)?|做好?(?:了)?|跑完|配好?(?:了)?|修复|上传|启动|停掉|关掉|重启)(?:了)?",
-        r"(?:已|已经)(?:帮你|把|已).{0,6}(?:做好?了|搞定|发过去|发给你|发送完毕)",
-        r"(?:已经|已)(?:发过去|发给你|发给你了|发送完毕)",
-        r"(?:^|[。，！\n])(?:搞定|处理好?(?:了)?|做好?(?:了)?|跑完|配好?(?:了)?)(?:了)?",  # 无前缀口语化完成
-        # English completion claims
-        r"(?i)(?:I|I've|I have) (?:already )?(?:installed|built|compiled|deployed|generated|downloaded|created|updated|saved|uploaded|started|stopped|restarted|fixed|repaired|executed|ran|completed|finished|done|configured|set up)",
-        r"(?i)(?:successfully |just )?(?:installed|built|compiled|deployed|generated|downloaded|created|updated|saved|uploaded|started|stopped|restarted|fixed|executed|completed|finished|configured)",
-        r"(?i)(?:pip|npm|apt) (?:install|build|run) (?:has )?(?:completed|finished|succeeded)",
-        r"(?i)(?:done|finished|complete|all set|good to go)(?:[.!\n]|$)",
-    ]
+    # Phase 2.2: 操作声称模式已抽到 agent.claim_verifier.OPERATION_CLAIM_PATTERNS（单一真相源）。
+    # 保留 AIAgent._OPERATION_CLAIM_PATTERNS 别名以兼容旧调用方/测试。
+    _OPERATION_CLAIM_PATTERNS = _OC_PATTERNS
 
     @staticmethod
     def _detect_operation_claims(text: str) -> list[dict]:
-        """检测文本中是否有声称执行了操作的声明。
-        
-        返回 [{claim, start, end}]，空列表表示无操作声明。
-        仅在有多步骤工具调用的回合触发。
+        """检测文本中是否有声称执行了操作的声明（委托至 agent.claim_verifier）。
+
+        返回 [{claim, start, end, context}]，空列表表示无操作声明。
         """
-        if not text:
-            return []
-        claims = []
-        for pattern in AIAgent._OPERATION_CLAIM_PATTERNS:
-            for match in re.finditer(pattern, text):
-                # 取匹配前后文（最多前后 40 字）作为上下文
-                ctx_start = max(0, match.start() - 40)
-                ctx_end = min(len(text), match.end() + 40)
-                context = text[ctx_start:ctx_end].replace("\n", " ")
-                claims.append({
-                    "claim": match.group(),
-                    "start": match.start(),
-                    "end": match.end(),
-                    "context": context,
-                })
-        return claims
+        return _detect_op_claims(text)
 
     @staticmethod
     def _get_tool_call_count_in_window(messages: list, window: int = 20) -> int:

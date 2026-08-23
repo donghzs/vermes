@@ -471,12 +471,9 @@ def _apply_file_mutation_footer(
 
 
 def _any_keyword_in(text: str, keywords: set[str]) -> bool:
-    """检查 text 中是否包含 keywords 中任一关键词（子串匹配）。"""
-    text_lower = text.lower()
-    for kw in keywords:
-        if kw and kw.lower() in text_lower:
-            return True
-    return False
+    """委托至 agent.claim_verifier.any_keyword_in（Phase 2.2 单一真相源）。"""
+    from agent.claim_verifier import any_keyword_in as _impl
+    return _impl(text, keywords)
 
 
 def _apply_operator_claim_verifier(
@@ -485,151 +482,13 @@ def _apply_operator_claim_verifier(
     final_response: str | None,
     interrupted: bool,
 ) -> tuple[str | None, list[dict]]:
-    """Operator-chain verifier (Layer 1) — hard rejection mode.
+    """Operator-chain verifier (Layer 1) — 委托至 agent.claim_verifier（Phase 2.2 单一真相源）。
 
-    Detects fabricated operation claims in the AI response (claims of
-    having performed actions without actual tool calls). Returns the
-    potentially modified ``final_response`` and ``messages``.
-
-    Four blind spots fixed:
-    1. Claim-tool correspondence: checks if claimed operations map to actual tool names
-    2. Failed tool results: detects ❌ in tool results even if tools were called
-    3. First-turn trigger: no longer requires _tool_history > 0
-    4. English patterns: added English completion claims
-
-    - Hard reject (1st): replaces response with a rejection notice and
-      injects a system feedback message into ``messages".
-    - Soft reject (2nd+): appends a warning to the response.
-    - Resets rejection counter when the turn has real tool calls.
+    判定/拦截逻辑统一维护在 agent.claim_verifier.apply_operator_claim_verifier，
+    此处仅作薄封装，保证 turn_finalizer 等既有调用方零改动。
     """
-    if final_response and not interrupted:
-        try:
-            # 盲区5：判定维度修复。
-            # ``messages`` 是完整会话历史（``_prepare_messages`` 以
-            # ``list(conversation_history)`` 构造），并非单回合切片。因此：
-            #   - 旧的 reversed()+break 只看最后一条 assistant → 多轮工具执行后的
-            #     总结回复（最后一条无 tool_calls）几乎必被误杀；
-            #   - 但直接全量遍历又会把历史回合的工具调用误计入本回合 → 验证器失效。
-            # 正确边界：最后一条 user 消息之后的切片 == 本回合。等价于
-            # ``_prepare_messages`` 的 ``current_turn_user_idx + 1``，但刻意
-            # 就地计算：硬拒绝会注入一条 role="user" 反馈，让它成为新的回合
-            # 起点，与注入文案「直接调工具重新开始」的语义一致（重试只按重试
-            # 自身的工具证据判定，不继承被拒那半程）。
-            _turn_start = 0
-            for _i in range(len(messages) - 1, -1, -1):
-                _mi = messages[_i]
-                if isinstance(_mi, dict) and _mi.get("role") == "user":
-                    _turn_start = _i + 1
-                    break
-            _turn_msgs = messages[_turn_start:]
-
-            _turn_has_tool_calls = False
-            _turn_tool_names: set[str] = set()
-            _turn_failed_tools: set[str] = set()
-            _turn_succeeded_tools: set[str] = set()
-            # 本回合内累计：任一轮 assistant 有 tool_calls 即视为执行过工具
-            for _m in _turn_msgs:
-                if isinstance(_m, dict) and _m.get("role") == "assistant" and _m.get("tool_calls"):
-                    _turn_has_tool_calls = True
-                    for _tc in (_m.get("tool_calls") or []):
-                        try:
-                            _fn = _tc.get("function", {}).get("name", "")
-                            if _fn:
-                                _turn_tool_names.add(_fn)
-                        except Exception:
-                            pass
-            # 盲区2：检查 tool 结果是否有失败（❌ 开头）vs 成功。
-            # 同样必须限定在本回合内，否则历史回合的成功记录会永久压制失败判定。
-            for _m in _turn_msgs:
-                if isinstance(_m, dict) and _m.get("role") == "tool":
-                    _content = _m.get("content", "")
-                    _tname = _m.get("name", "")
-                    if isinstance(_content, str) and _content.strip().startswith("❌"):
-                        if _tname:
-                            _turn_failed_tools.add(_tname)
-                    else:
-                        if _tname:
-                            _turn_succeeded_tools.add(_tname)
-            if agent._operator_claim_verifier_enabled():
-                _claims = agent._detect_operation_claims(final_response)
-                if _claims:
-                    # 判定逻辑：
-                    # - 有 tool_calls 且至少一个成功 → 不拒绝（工具真的执行了）
-                    # - 有 tool_calls 但全部失败 → 拒绝（声称的操作没成功）
-                    # - 无 tool_calls → 拒绝（凭空声称）
-                    _should_reject = False
-                    _reject_reason = ""
-                    if not _turn_has_tool_calls:
-                        _should_reject = True
-                        _reject_reason = "本回合未调用任何工具"
-                    elif _turn_failed_tools and not _turn_succeeded_tools:
-                        # 所有工具调用都失败了
-                        _should_reject = True
-                        _reject_reason = f"所有工具调用都失败了（{', '.join(_turn_failed_tools)}）"
-                    elif _turn_failed_tools and _turn_succeeded_tools:
-                        # 部分失败 — 只有声称涉及失败工具时才拒绝
-                        _failed_claim_match = any(
-                            _claim.get("claim", "") and _any_keyword_in(_claim["claim"], _turn_failed_tools)
-                            for _claim in _claims
-                        )
-                        if _failed_claim_match:
-                            _should_reject = True
-                            _reject_reason = f"部分工具调用失败（{', '.join(_turn_failed_tools)}）且声称涉及失败操作"
-                    if _should_reject:
-                        agent._operator_claim_rejection_count += 1
-                        _first_claim = _claims[0]
-                        _failed_info = f"（{_reject_reason}）" if _reject_reason else ""
-                        if agent._operator_claim_rejection_count >= 2:
-                            # 降级：软拒绝（保留原回复 + 警告）
-                            final_response = final_response.rstrip() + (
-                                "\n\n⚠️ **操作链验证器警告**: 上述回答中有 "
-                                f"{len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
-                                f"但{_failed_info}。"
-                                "请确认这些操作是否真实完成。"
-                            )
-                            logger.info(
-                                "operator-claim verifier SOFT reject (count=%d) "
-                                "with %d claims (first: %s) reason=%s",
-                                agent._operator_claim_rejection_count,
-                                len(_claims), _first_claim['claim'], _reject_reason,
-                            )
-                        else:
-                            # 硬拒绝（第1次）：注入 system 反馈，自动 retry 而非等用户发"继续"
-                            _rejection = (
-                                "\n\n[System: 检测到你的回复中包含未经验证的操作声称"
-                                f"（如「{_first_claim['claim']}」），"
-                                f"但{_failed_info}。\n"
-                                "请在下一轮中调用对应的工具来实际执行这些操作，"
-                                "而不是在文本中声称完成。"
-                                "不要复述或继续上述回复的内容，直接调工具重新开始。]"
-                            )
-                            messages.append({
-                                "role": "user",
-                                "content": _rejection,
-                            })
-                            final_response = (
-                                "⚠️ **操作链验证器拦截**\n\n"
-                                f"检测到 {len(_claims)} 处操作声称（如「{_first_claim['claim']}」），"
-                                f"但{_failed_info}。\n\n"
-                                "正在自动重试，请稍候…"
-                            )
-                            logger.info(
-                                "operator-claim verifier HARD reject (count=%d) "
-                                "with %d claims (first: %s) reason=%s, injected retry",
-                                agent._operator_claim_rejection_count,
-                                len(_claims), _first_claim['claim'], _reject_reason,
-                            )
-                elif _turn_has_tool_calls and _turn_succeeded_tools:
-                    # 本回合有工具调用且至少一个成功，重置拒绝计数器
-                    agent._operator_claim_rejection_count = 0
-        except Exception as _oc_err:
-            logger.warning("operator-claim verifier failed: %s", _oc_err)
-            # 累计失败计数，复用 trust_gate 统计模式使失效可观测
-            _oc_fail_count = getattr(agent, '_oc_verifier_fail_count', 0) + 1
-            setattr(agent, '_oc_verifier_fail_count', _oc_fail_count)
-            if _oc_fail_count <= 3:
-                logger.warning("operator-claim verifier failure #%d (repeated failures mean anti-hallucination net is silently down)", _oc_fail_count)
-    return final_response, messages
+    from agent.claim_verifier import apply_operator_claim_verifier as _apply
+    return _apply(agent, messages, final_response, interrupted)
 
 
 def _prepare_api_messages(
