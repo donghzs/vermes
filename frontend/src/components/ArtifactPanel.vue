@@ -144,6 +144,64 @@ window.__vermesPreview = {
   loadPreview,
   setUrl: (url) => { previewUrl.value = url; loadPreview() },
 }
+
+// 文件 tab
+const fileItems = ref([])
+const fileLoading = ref(false)
+const fileCrumbs = ref('')
+const currentDir = ref('')
+
+async function loadFiles(dir = '') {
+  fileLoading.value = true
+  try {
+    const res = await fetch(`/api/v1/workspace/tree?path=${encodeURIComponent(dir)}`)
+    if (!res.ok) return
+    const data = await res.json()
+    fileItems.value = data.items || []
+    fileCrumbs.value = data.current || '工作目录'
+    currentDir.value = dir
+  } catch (e) {
+    console.error('loadFiles:', e)
+  } finally {
+    fileLoading.value = false
+  }
+}
+function onFileClick(item) {
+  if (item.is_dir) {
+    loadFiles(item.path)
+  } else {
+    previewFile(item)
+  }
+}
+function goUp() {
+  if (!currentDir.value) return
+  const parts = currentDir.value.split('/')
+  parts.pop()
+  loadFiles(parts.join('/'))
+}
+function fileIcon(ext) {
+  const map = { '.md': '📝', '.html': '🌐', '.json': '📋', '.csv': '📊', '.py': '🐍', '.js': '📜', '.ts': '📜', '.txt': '📄', '.pdf': '📕', '.docx': '📘', '.xlsx': '📗', '.pptx': '📙', '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️', '.step': '⚙️', '.stp': '⚙️', '.stl': '🖨️', '.gcode': '⚙️' }
+  return map[ext] || '📄'
+}
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + 'B'
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB'
+  return (bytes / 1048576).toFixed(1) + 'MB'
+}
+function previewFile(item) {
+  // 切到预览 tab 加载文件
+  setArtifactTab('preview')
+  const url = `/api/v1/artifacts/${item.path}`
+  previewUrl.value = item.path
+  previewSrc.value = url
+  previewLoaded.value = true
+}
+// 当切到文件 tab 时自动加载
+watch(artifactTab, (v) => {
+  if (v === 'files' && fileItems.value.length === 0 && !fileLoading.value) {
+    loadFiles('')
+  }
+})
 const isFullscreen = ref(false)
 
 // 从 localStorage 恢复
@@ -515,11 +573,38 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
         </div><!-- end 产物 tab -->
 
         <!-- ════ 文件 tab ════ -->
-        <div v-show="artifactTab === 'files'" class="flex-1 flex items-center justify-center text-gray-400">
-          <div class="text-center">
-            <div class="text-5xl mb-3">📁</div>
-            <div class="text-sm">工作目录文件树</div>
-            <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">即将上线</div>
+        <div v-show="artifactTab === 'files'" class="flex-1 flex flex-col overflow-hidden">
+          <!-- 路径面包屑 -->
+          <div class="flex items-center gap-1 px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 text-xs">
+            <button @click="goUp" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title="上级">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <span class="text-gray-500 dark:text-gray-400 truncate">{{ fileCrumbs || '工作目录' }}</span>
+          </div>
+          <!-- 文件列表 -->
+          <div class="flex-1 overflow-y-auto">
+            <div v-if="fileLoading" class="flex items-center justify-center py-8 text-gray-400 text-sm">加载中…</div>
+            <div v-else-if="fileItems.length === 0" class="flex items-center justify-center py-8 text-gray-400 text-sm">空目录</div>
+            <div v-else>
+              <button
+                v-for="item in fileItems"
+                :key="item.path"
+                @click="onFileClick(item)"
+                class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-left"
+              >
+                <span class="text-base shrink-0">{{ item.is_dir ? '📁' : fileIcon(item.ext) }}</span>
+                <span class="flex-1 truncate text-sm text-gray-700 dark:text-gray-200">{{ item.name }}</span>
+                <span v-if="!item.is_dir" class="text-[10px] text-gray-400 shrink-0">{{ formatSize(item.size) }}</span>
+                <button
+                  v-if="!item.is_dir"
+                  @click.stop="previewFile(item)"
+                  class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 shrink-0"
+                  title="预览"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </button>
+            </div>
           </div>
         </div>
 

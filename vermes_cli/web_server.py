@@ -466,6 +466,8 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/literature-custom-sources",
     # Artifact Panel 产物文件读取（桌面本地白名单路径，与 mfgcad 同源设计）
     "/api/v1/artifacts",
+    # 工作目录文件树浏览（文件 tab）
+    "/api/v1/workspace",
 })
 
 

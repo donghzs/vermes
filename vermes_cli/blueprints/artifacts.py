@@ -84,6 +84,38 @@ _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 def register_to(app):
+    @app.get('/api/v1/workspace/tree')
+    async def workspace_tree(path: str = ''):
+        """列出工作目录文件树（单层），返回子项列表"""
+        if path:
+            safe = _is_safe_path(path)
+        else:
+            safe = Path.cwd().resolve()
+        if not safe.exists():
+            raise HTTPException(status_code=404, detail=f"路径不存在: {path}")
+        if not safe.is_dir():
+            raise HTTPException(status_code=400, detail=f"不是目录: {path}")
+
+        items = []
+        try:
+            for entry in sorted(safe.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())):
+                # 跳过隐藏文件和常见忽略目录
+                if entry.name.startswith('.'):
+                    continue
+                if entry.is_dir() and entry.name in {'node_modules', '__pycache__', '.git', 'dist', 'build', '.venv', 'venv'}:
+                    continue
+                rel = str(entry.relative_to(Path.cwd().resolve())) if str(entry).startswith(str(Path.cwd().resolve())) else str(entry)
+                items.append({
+                    'name': entry.name,
+                    'path': rel,
+                    'is_dir': entry.is_dir(),
+                    'size': entry.stat().st_size if entry.is_file() else 0,
+                    'ext': entry.suffix.lower() if entry.is_file() else '',
+                })
+        except PermissionError:
+            raise HTTPException(status_code=403, detail="无权限读取该目录")
+        return {'items': items, 'current': str(safe.relative_to(Path.cwd().resolve())) if str(safe).startswith(str(Path.cwd().resolve())) else str(safe)}
+
     @app.get('/api/v1/artifacts/{path:path}')
     async def serve_artifact(path: str, request: Request):
         """读取产物文件，返回对应 MIME 类型"""
