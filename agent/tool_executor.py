@@ -111,6 +111,35 @@ def _get_tool_preview_length(tool_name: str) -> int:
     return _TOOL_RESULT_PREVIEW_LENGTHS.get(tool_name, _TOOL_RESULT_PREVIEW_LENGTHS["default"])
 
 
+def _build_tool_artifacts(tool_name: str, result: Any) -> list:
+    """从工具执行结果中提取结构化产物（供产物面板捕获，闭合 G3 生产端）。
+
+    写文件类工具（write_file/patch）成功后 result 为 JSON 字符串，含 path 字段；
+    其他工具可主动在 result dict 里带 artifacts 字段声明结构化产物。
+    返回的列表元素形如 {"path", "title", "source"}，透传给 tool_progress_callback
+    的 artifacts= kwarg，由 chat.py 的 tool_progress_handler 合并进 SSE 事件。
+    """
+    artifacts = []
+    if tool_name in ("write_file", "patch") and isinstance(result, str):
+        try:
+            data = json.loads(result.strip())
+            if isinstance(data, dict) and not data.get("error"):
+                p = data.get("path")
+                if p:
+                    artifacts.append({"path": p, "title": p.split("/")[-1], "source": tool_name})
+        except Exception:
+            pass
+    if isinstance(result, dict) and isinstance(result.get("artifacts"), list):
+        for a in result["artifacts"]:
+            if isinstance(a, dict) and a.get("path"):
+                artifacts.append({
+                    "path": a["path"],
+                    "title": a.get("title") or a["path"].split("/")[-1],
+                    "source": a.get("source") or tool_name,
+                })
+    return artifacts
+
+
 def _ra():
     """Lazy reference to ``run_agent`` so patches like ``run_agent._set_interrupt`` work."""
     import run_agent
@@ -647,6 +676,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     agent.tool_progress_callback(
                         "tool.completed", function_name, result_preview, None,
                         duration=tool_duration, is_error=is_error,
+                        artifacts=_build_tool_artifacts(function_name, function_result),
                     )
                 except Exception as cb_err:
                     logging.debug(f"Tool progress callback error: {cb_err}")
@@ -1243,6 +1273,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 agent.tool_progress_callback(
                     "tool.completed", function_name, None, None,
                     duration=tool_duration, is_error=_is_error_result,
+                    artifacts=_build_tool_artifacts(function_name, function_result),
                 )
             except Exception as cb_err:
                 logging.debug(f"Tool progress callback error: {cb_err}")
