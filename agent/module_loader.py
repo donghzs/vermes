@@ -642,6 +642,78 @@ def reload_module_tools(name: str) -> dict:
         return {"ok": True, "state": "reloaded", "error": None, "tools_loaded": len(new_names)}
 
 
+# ── Phase 4.2: 插件生命周期 —— 卸载（install/active/reload 已有，补 uninstall） ──
+
+from enum import Enum
+
+
+class ModuleLifecycle(str, Enum):
+    """插件生命周期状态机（Phase 4.2）。
+
+    - INSTALLED: 已落地 module 目录（install_module 完成）
+    - ACTIVE:    工具已注册进 registry（reload_module_tools 成功）
+    - RELOADING: 热重载进行中（_reload_lock 持有）
+    - UNINSTALLED: 已 deregister + 清缓存 + 删目录（uninstall_module 完成）
+    """
+    INSTALLED = "installed"
+    ACTIVE = "active"
+    RELOADING = "reloading"
+    UNINSTALLED = "uninstalled"
+
+
+def uninstall_module(name: str) -> dict:
+    """卸载插件：deregister 工具 → 清 sys.modules 缓存 → 清追踪映射 → 删目录。
+
+    与 reload_module_tools 对称：reload 是「原地替换」，uninstall 是「彻底移除」。
+    失败不抛异常、不新增信任面，仅透出诊断（删除目录失败可能是权限问题，
+    但不应让调用方崩溃）。返回 {"ok", "state", "error", "tools_removed"}。
+    """
+    with _reload_lock:
+        from tools.registry import registry
+
+        removed = 0
+        old_names = _module_tool_names.pop(name, set())
+        for tool_name in old_names:
+            try:
+                registry.deregister(tool_name)
+                removed += 1
+            except Exception as exc:  # 防御：单个 deregister 失败不阻断其余
+                logger.warning("uninstall %s: deregister %s failed: %s", name, tool_name, exc)
+        if removed:
+            logger.info("uninstall %s: deregistered %d tools", name, removed)
+
+        # 清 sys.modules 缓存（与 reload 同策略）
+        for key in list(sys.modules.keys()):
+            if key.startswith(f"_vermes_module_{name}"):
+                del sys.modules[key]
+        importlib.invalidate_caches()
+
+        # 删目录（卸载的物理动作）
+        mod_dir = get_modules_dir() / name
+        deleted = False
+        if mod_dir.exists():
+            try:
+                import shutil
+                shutil.rmtree(mod_dir)
+                deleted = True
+                logger.info("uninstall %s: removed module dir %s", name, mod_dir)
+            except Exception as exc:
+                logger.error("uninstall %s: rmtree failed: %s", name, exc)
+                return {
+                    "ok": False, "state": ModuleLifecycle.UNINSTALLED.value,
+                    "error": f"deregistered {removed} tools but rmtree failed: {exc}",
+                    "tools_removed": removed,
+                }
+
+        return {
+            "ok": True,
+            "state": ModuleLifecycle.UNINSTALLED.value,
+            "error": None,
+            "tools_removed": removed,
+            "dir_deleted": deleted,
+        }
+
+
 def mark_explicit_reload(name: str) -> None:
     """记录一次由 self_modify/apply_change 显式触发的 reload 时间戳。
 
