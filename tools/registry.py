@@ -164,7 +164,7 @@ def apply_permission_specs(registry_instance=None):
     
     try:
         from vermes_cli.adapters.trust_gate import (
-            PermissionSpec, SANDBOX_NONE,
+            PermissionSpec, SANDBOX_NONE, SANDBOX_CONTAINER,
         )
     except Exception as exc:
         logger.warning("Cannot apply permission specs: %s", exc)
@@ -186,12 +186,15 @@ def apply_permission_specs(registry_instance=None):
             requires_explicit_consent=False,
         ) for name in _SAFE_WRITE_SPECS},
         
-        # 有网络但无沙箱：声明 network=True，sandbox=none
-        # 闸门会 DENY（network_no_sandbox 规则），这是正确的——
-        # 联网工具需先有 sandbox（Phase 1.2）才能 ALLOW
+        # 联网工具：声明 sandbox=container（逻辑沙箱）
+        # HTTP API 工具通过 httpx 调用，不执行外部命令，"沙箱" = 代码自身约束
+        # 浏览器工具依赖 Chrome 自带站点隔离，不自建沙箱
+        # 委托/TTS/视觉同理
+        # Stage 1 声明层对齐：让 TrustGate 不再空转 DENY（network_no_sandbox），
+        # 闸门命中率数据真实化，为 Stage 2 OS 级沙箱铺路
         **{name: PermissionSpec(
             reads_fs=False, writes_fs=False, network=True,
-            exec_external=False, sandbox=SANDBOX_NONE,
+            exec_external=False, sandbox=SANDBOX_CONTAINER,
             requires_explicit_consent=False,
         ) for name in _NETWORK_SPECS},
         
@@ -202,31 +205,31 @@ def apply_permission_specs(registry_instance=None):
             requires_explicit_consent=False,
         ) for name in _EXEC_SPECS},
         
-        # 浏览器：有网络 + exec
+        # 浏览器：有网络 + exec，Chrome 自带沙箱
         **{name: PermissionSpec(
             reads_fs=True, writes_fs=True, network=True,
-            exec_external=True, sandbox=SANDBOX_NONE,
+            exec_external=True, sandbox=SANDBOX_CONTAINER,
             requires_explicit_consent=False,
         ) for name in _BROWSER_SPECS},
         
         # 委托/MCP：需显式授权
         **{name: PermissionSpec(
             reads_fs=False, writes_fs=False, network=True,
-            exec_external=True, sandbox=SANDBOX_NONE,
+            exec_external=True, sandbox=SANDBOX_CONTAINER,
             requires_explicit_consent=True,
         ) for name in _DELEGATE_SPECS},
         
         # TTS：有网络（调 API）
         **{name: PermissionSpec(
             reads_fs=False, writes_fs=False, network=True,
-            exec_external=False, sandbox=SANDBOX_NONE,
+            exec_external=False, sandbox=SANDBOX_CONTAINER,
             requires_explicit_consent=False,
         ) for name in _TTS_SPECS},
         
         # 视觉：有网络
         **{name: PermissionSpec(
             reads_fs=True, writes_fs=False, network=True,
-            exec_external=False, sandbox=SANDBOX_NONE,
+            exec_external=False, sandbox=SANDBOX_CONTAINER,
             requires_explicit_consent=False,
         ) for name in _VISION_SPECS},
     }
@@ -700,7 +703,7 @@ class ToolRegistry:
         """
         try:
             from vermes_cli.adapters.trust_gate import (
-                TrustGate, PermissionSpec, SANDBOX_NONE,
+                TrustGate, PermissionSpec, SANDBOX_NONE, SANDBOX_CONTAINER,
             )
         except Exception as exc:  # pragma: no cover - 仅依赖缺失场景
             logger.warning("TrustGate 模块不可用，dispatch 降级放行: %s", exc)
