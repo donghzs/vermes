@@ -154,6 +154,12 @@ PROVIDER_TEMPLATES = {
         "api_key_env": "GEMINI_API_KEY",
         "models": [],
     },
+    "scnet": {
+        "name": "国家超算互联网",
+        "base_url": "https://api.scnet.cn/api/llm/v1",
+        "api_key_env": "SCNET_API_KEY",
+        "models": [],
+    },
     "custom": {
         "name": "自定义提供商",
         "base_url": "",
@@ -284,7 +290,7 @@ async def provider_sync_models(request: Request):
     if not any(base_url.startswith(s) for s in _allowed_schemes):
         return {"ok": False, "error": "base_url must use https:// (or localhost for development)"}
 
-    headers = {}
+    headers = {"Accept": "application/json"}
     if api_key:
         _known_domains = [t.get("base_url", "") for t in PROVIDER_TEMPLATES.values()]
         _is_known = any(base_url.rstrip("/") == u.rstrip("/") for u in _known_domains if u)
@@ -308,8 +314,19 @@ async def provider_sync_models(request: Request):
                 model_list = [m for m in model_list if m]
                 if model_list:
                     return {"ok": True, "models": model_list}
+                # 200 但空列表：透传响应体便于诊断（如 scnet 返回了非预期结构）
+                return {"ok": False, "error": "API 返回 200 但模型列表为空",
+                        "detail": data if isinstance(data, dict) else str(data)[:500]}
             else:
-                return {"ok": False, "error": f"API returned {resp.status_code} from {base_url}/models"}
+                # 透传上游错误体，便于用户诊断（如 401 无权限 / 403 套餐不符）
+                _detail = ""
+                try:
+                    _detail = resp.json()
+                except Exception:
+                    _detail = resp.text[:500]
+                return {"ok": False,
+                        "error": f"API returned {resp.status_code} from {base_url}/models",
+                        "detail": _detail}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
