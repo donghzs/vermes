@@ -95,6 +95,32 @@ function currentRunningTool(tools) {
   return map[t.name] || t.name + '...'
 }
 
+// 汇总本条消息中所有产物（按 tool 收集去重）。工件产物的「点开会话内联」交互入口。
+function messageArtifacts(msg) {
+  const out = []
+  const seen = new Set()
+  const tools = msg?.toolInvocations || []
+  for (const t of tools) {
+    const arr = t.artifacts || []
+    for (const a of arr) {
+      if (!a || !a.path || seen.has(a.path)) continue
+      seen.add(a.path)
+      out.push(a)
+    }
+  }
+  return out
+}
+
+function openArtifactInPanel(a) {
+  const va = window.__vermesArtifacts
+  if (va && typeof va.addArtifact === 'function') {
+    const mime = a.mime || ''
+    va.addArtifact({ path: a.path, title: a.title, mime, source: a.source || 'tool' })
+  }
+  openRightPanel('artifacts')
+  setArtifactTab('preview')
+}
+
 // 工具结果预览模板化
 const _toolPreviewCache = new WeakMap()
 const _showAllTools = reactive({})
@@ -836,6 +862,15 @@ function streamElapsed(startTime) {
                       class="px-2 py-0.5 rounded-full text-green-500 cursor-pointer hover:bg-green-50 dark:hover:bg-green-900/20">
                   +{{ msg.toolInvocations.length - 5 }} 个工具
                 </span>
+              </div>
+              <!-- 产物文件行（WorkBuddy 风格）：消息流中可直接看到生成的产物文件，点击 → 右侧 drawer 渲染 -->
+              <div v-if="messageArtifacts(msg).length > 0" class="flex flex-wrap gap-1.5 mt-1.5">
+                <button v-for="a in messageArtifacts(msg)" :key="a.path"
+                        @click.stop="openArtifactInPanel(a)"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition cursor-pointer">
+                  <span>📄</span>
+                  <span class="truncate max-w-[180px]" :title="a.path">{{ a.title }}</span>
+                </button>
               </div>
               <!-- 可折叠的结果摘要 -->
               <template v-for="tool in msg.toolInvocations" :key="'preview-' + (tool.id || tool.name)">

@@ -27,7 +27,7 @@ import {
   getFirstMessage as _getFirstMessage,
   evictOldSessions as _evictOldSessions,
 } from './chat-session'
-import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI } from './chat-storage'
+import { loadFromStorage, saveToStorage, loadMessagesFromIDB, fileToBase64, listChannelSessionsFromAPI, loadChannelMessagesFromAPI, deleteChannelSessionFromAPI, sendFromDesktopAPI, getRelayStateAPI, loadMessagesFromAPI } from './chat-storage'
 import { uid, persistMessages } from './chat-session'
 import { scheduleScroll, flushScroll, setScrollTarget } from './chat-scroll'
 import { flushStorageWrites } from './chat-storage'
@@ -516,9 +516,15 @@ export const useChatStore = defineStore('chat', () => {
     // 渠道会话和 desktop 会话都从 state.db 加载消息
     const isRemoteChannel = isChannelSession(id)
     const isDesktopInStateDB = !isRemoteChannel && channelSessions.value.find(s => s.id === id && s.source === 'desktop')
-    const loaded = (isRemoteChannel || isDesktopInStateDB)
+    let loaded = (isRemoteChannel || isDesktopInStateDB)
       ? _mapChannelMessages(id, await loadChannelMessagesFromAPI(id))
       : await loadMessagesFromIDB(id)
+    // 修复：Electron 桌面端 IndexedDB 不持久化（每次启动都是空库）。
+    // 此前只走 IDB 路径导致历史会话「消息数 > 0 但主区空白」——本地会话必须 fallback 到 API JSON 持久化层。
+    if ((!loaded || loaded.length === 0) && !isRemoteChannel && !isDesktopInStateDB) {
+      const apiLoaded = await loadMessagesFromAPI(id)
+      if (apiLoaded && apiLoaded.length > 0) loaded = apiLoaded
+    }
     if (loaded && loaded.length > 0) {
       // 去重合并: 已在池中的跳过
       const existingIds = new Set(messages.value.map(m => m.id))
@@ -1078,6 +1084,10 @@ export const useChatStore = defineStore('chat', () => {
               duration: data.duration || 0,
               is_error: data.is_error || false,
               preview: data.result_preview || '',
+              // 把产物附加到该 tool（MessageList 会基于此渲染「产物文件」可点击 chip）
+              artifacts: data.artifacts && data.artifacts.length > 0
+                ? data.artifacts.map(a => ({ path: a.path, title: a.title || (a.path ? a.path.split('/').pop() : '产物'), mime: a.mime || '', source: a.source || data.name || 'tool' }))
+                : [],
             }
             if (idx >= 0) list[idx] = done
             else list.push(done)

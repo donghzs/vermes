@@ -72,15 +72,17 @@ onMounted(async () => {
     <ErrorBoundary>
       <div class="flex flex-1 overflow-hidden">
         <Sidebar />
-        <div class="flex-1 flex flex-col h-full overflow-hidden">
-          <router-view />
+        <div class="flex-1 flex flex-row h-full overflow-hidden min-w-0">
+          <div class="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+            <router-view />
+          </div>
+          <ArtifactPanel />
         </div>
       </div>
       <ToastContainer />
       <ApprovalDialog />
       <ConfirmDialog />
       <ToolSkillDrawer />
-      <ArtifactPanel />
     </ErrorBoundary>
   </div>
 </template>

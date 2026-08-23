@@ -401,18 +401,16 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
 </script>
 
 <template>
-  <Teleport to="body">
-    <!-- 背景遮罩 -->
-    <div v-if="open && tab === 'artifacts'" class="fixed inset-0 z-[90] bg-black/40" @click="closePanel"></div>
-
-    <!-- 右侧产物面板 -->
-    <transition name="drawer-slide">
-      <aside
-        v-if="open && tab === 'artifacts'"
-        class="fixed top-0 right-0 z-[91] h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col transition-all duration-200"
-        :class="isFullscreen ? 'w-full' : 'max-w-[94vw]'"
-        :style="!isFullscreen ? { width: panelWidth + 'px' } : {}"
-      >
+  <!-- 不再用 Teleport + fixed + 黑色遮罩：避免遮挡主聊天区。
+       改为内联在 App.vue 的 router-view 兄弟节点，与聊天流并排显示，
+       类似 WorkBuddy：左侧聊天，右侧产物/文件实时渲染。 -->
+  <transition name="drawer-slide">
+    <aside
+      v-if="open && tab === 'artifacts'"
+      class="h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-200"
+      :class="isFullscreen ? 'w-full' : ''"
+      :style="!isFullscreen ? { width: panelWidth + 'px' } : {}"
+    >
         <!-- 拖拽手柄（左边缘） -->
         <div
           v-if="!isFullscreen"
@@ -750,7 +748,6 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
         </div>
       </aside>
     </transition>
-  </Teleport>
 </template>
 
 <style scoped>

@@ -6,6 +6,7 @@ import ScholarForgePanel from '../components/ScholarForgePanel.vue'
 import ThreeDStudio from '../components/ThreeDStudio.vue'
 import ModuStore from '../components/ModuStore.vue'
 import SkillManager from '../components/SkillManager.vue'
+import SkillMarketPage from '../components/SkillMarketPage.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -16,7 +17,8 @@ const routes = [
   { path: '/module-store', component: ModuStore },
   // G2 技能市场发现页：复用 SkillManager 的完整发现 tab（搜索/来源筛选/一键装），
   // 默认打开 market 而非 installed
-  { path: '/skill-market', component: SkillManager, props: { defaultTab: 'market' } },
+  // 独立全屏版（高宽度利用率 + 中文映射 + 网格卡片），替代 SkillManager 紧凑布局
+  { path: '/skill-market', component: SkillMarketPage },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/
