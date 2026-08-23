@@ -955,6 +955,26 @@ async def chat_completions(req: ChatRequest, request: Request):
     _cache_key = f"{provider}:{model}:{_session_id}"
     agent = _agent_cache.get(_cache_key)
 
+    # ── 交互模式（Craft/Plan/Ask）：每次请求从 DB 读，缓存复用时变更即时生效 ──
+    _interaction_mode = "craft"
+    _mode_prompt = ""
+    try:
+        from vermes_state import SessionDB
+        _mode_db = SessionDB()
+        try:
+            _interaction_mode = _mode_db.get_session_interaction_mode(_session_id)
+        finally:
+            _mode_db.close()
+    except Exception:
+        pass
+    if _interaction_mode == "plan":
+        _mode_prompt = (
+            "【Plan 模式】请先输出执行计划（列出将调用的工具和预期步骤），"
+            "等用户确认后再执行工具调用。"
+        )
+    elif _interaction_mode == "ask":
+        _mode_prompt = "【Ask 模式】只回答问题，不调用任何工具。"
+
     # ── 联网搜索开关：ephemeral 提示，每次请求都按当前 req.web_search 重算 ──
     # 提到 if 外：保证缓存复用时开关变更即时生效（此前只在建 agent 时注入，
     # 复用后 req.web_search 改动不生效）。
@@ -1002,7 +1022,7 @@ async def chat_completions(req: ChatRequest, request: Request):
             except Exception:
                 pass
 
-            _combined_prompt = (_evo_prompt + "\n" + _search_prompt).strip() or None
+            _combined_prompt = (_evo_prompt + "\n" + _search_prompt + "\n" + _mode_prompt).strip() or None
 
             from vermes_cli.tools_config import get_effective_web_toolset_keys, _load_toolsets_for_web
             # Route web through the same governed toolset resolver used by the
@@ -1058,7 +1078,9 @@ async def chat_completions(req: ChatRequest, request: Request):
     # 保证同一会话中途切换联网开关即时生效（复用路径此前完全失效）。
     if agent is not None:
         _evo_base = getattr(agent, "_evo_base_prompt", "") or ""
-        agent.ephemeral_system_prompt = (_evo_base + "\n" + _search_prompt).strip() or None
+        agent.ephemeral_system_prompt = (_evo_base + "\n" + _search_prompt + "\n" + _mode_prompt).strip() or None
+        # 交互模式设到 agent 上，供 tool_executor 硬约束 Ask 模式（禁工具调用）
+        agent.interaction_mode = _interaction_mode
 
     if agent:
         from tools.approval import enable_session_yolo, set_current_session_key, register_gateway_notify, unregister_gateway_notify

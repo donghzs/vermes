@@ -224,6 +224,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             block_result = json.dumps({"error": block_message}, ensure_ascii=False)
         else:
             guardrail_decision = agent._tool_guardrails.before_call(function_name, function_args)
+            # G1 步骤2：Ask 模式硬约束——禁工具调用（system prompt 软约束的兜底）
+            if getattr(agent, "interaction_mode", "craft") == "ask" and guardrail_decision.allows_execution:
+                guardrail_decision = ToolGuardrailDecision(
+                    action="block",
+                    code="ask_mode_no_tools",
+                    message="Ask 模式：不调用工具，仅回答问题。请切换到 Craft 或 Plan 模式以启用工具。",
+                    tool_name=function_name,
+                )
             if not guardrail_decision.allows_execution:
                 block_result = agent._guardrail_block_result(guardrail_decision)
                 blocked_by_guardrail = True
@@ -807,6 +815,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
         _guardrail_block_decision: ToolGuardrailDecision | None = None
         if _block_msg is None:
             guardrail_decision = agent._tool_guardrails.before_call(function_name, function_args)
+            # G1 步骤2：Ask 模式硬约束——禁工具调用（system prompt 软约束的兜底）
+            if getattr(agent, "interaction_mode", "craft") == "ask" and guardrail_decision.allows_execution:
+                guardrail_decision = ToolGuardrailDecision(
+                    action="block",
+                    code="ask_mode_no_tools",
+                    message="Ask 模式：不调用工具，仅回答问题。请切换到 Craft 或 Plan 模式以启用工具。",
+                    tool_name=function_name,
+                )
             if not guardrail_decision.allows_execution:
                 _guardrail_block_decision = guardrail_decision
 
