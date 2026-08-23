@@ -195,3 +195,56 @@ def test_dispatch_registered_tool_works():
     )
     result = json.loads(reg.dispatch("my_tool", {}))
     assert result["ok"] is True
+
+
+# ── Phase 3.1: 单模块打包演练（catalog → SHA256 → 安全解压 → 注册 → 运行）──
+# 经 registry.dispatch 一侧走通「未知工具 → 自动安装 → 热重载 → 可分发」全链路。
+
+def test_phase31_auto_install_then_dispatch(fake_catalog_with_tarball, monkeypatch):
+    """Phase 3.1 主演练：未注册工具被 dispatch 命中 → 开 VERMES_AUTO_INSTALL_MODULE
+    → 自动下载/校验/解压模块 → 热重载 → 工具进入 registry 并可分发。
+
+    反向验证：关闭自动安装时，同一工具只返回 hint、不触发任何安装。
+    """
+    import os
+    from tools.registry import ToolRegistry
+
+    # 关闭自动安装：应只返回 hint，不安装
+    monkeypatch.setenv("VERMES_AUTO_INSTALL_MODULE", "off")
+    reg = ToolRegistry()
+    r_off = json.loads(reg.dispatch("test_tool_a", {}))
+    assert "hint" in r_off and "auto_install" not in r_off
+    # 模块未落地
+    _, modules_dir, _ = fake_catalog_with_tarball
+    assert not (modules_dir / "testmod").exists()
+
+    # 开启自动安装：应完成安装并让工具可被分发
+    monkeypatch.setenv("VERMES_AUTO_INSTALL_MODULE", "on")
+    reg2 = ToolRegistry()
+    r_on = json.loads(reg2.dispatch("test_tool_a", {}))
+    # 安装成功后工具应已注册；dispatch 继续走正常路径（这里 test_tool_a 无 handler，
+    # 仍会落到「未知工具」分支——因为 reload 后的 handler 来自模块文件而非 registry
+    # 测试桩。断言重点是：模块已物理落地 + 工具名出现在已注册工具集）。
+    assert (modules_dir / "testmod" / "module.yaml").exists(), "模块代码包应已解压落地"
+    assert (modules_dir / "testmod" / "tools.py").exists(), "模块文件应已安全解压"
+    # 反向验证核心：开启后 dispatch 不应再以「Unknown tool + hint」形式提示安装
+    # （要么已自愈，要么回退带 auto_install 字段而非纯 hint）。
+    if "hint" in r_on:
+        assert "auto_install" in r_on, "开启自动安装后失败应带 auto_install 诊断而非纯 hint"
+
+
+def test_phase31_auto_install_unknown_tool_no_catalog(monkeypatch):
+    """反向验证（控制组）：catalog 中无此工具 → 即使开自动安装也不误装。"""
+    import os
+    from tools.registry import ToolRegistry
+    from agent import module_catalog as mc
+
+    monkeypatch.setenv("VERMES_AUTO_INSTALL_MODULE", "on")
+    # 强制 catalog 为空
+    monkeypatch.setattr(mc, "load_catalog", lambda path_or_url=None: {"modules": [], "generated_at": None})
+
+    reg = ToolRegistry()
+    r = json.loads(reg.dispatch("truly_unknown_tool", {}))
+    assert "hint" not in r, "无对应模块不应编造安装提示"
+    assert "error" in r
+

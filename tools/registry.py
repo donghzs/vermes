@@ -428,6 +428,49 @@ class ToolRegistry:
         except Exception:
             return None
 
+    def _ensure_module_for_tool(self, tool_name: str) -> tuple[bool, str]:
+        """P3/P1 联动（Phase 3.1 主演练路径）：工具未注册但 catalog 中有模块提供时，
+        自动安装该模块代码包（sha256 校验 + 安全解压）→ 热重载工具 → 使工具可被分发。
+
+        返回 (ok, message)。失败原因（网络/校验/加载）经 message 透出，绝不抛异常；
+        调用方据此决定是否回退到「Unknown tool + hint」文案。
+
+        安全约束（沿用 module_catalog 既有原语，不新增信任面）：
+        - download_file 内含 sha256 供应链校验，不匹配则拒绝安装；
+        - safe_extract 逐条拒绝绝对路径 / '..' 穿越 / 越界符号链接；
+        - 仅当 manifest 解析 + reload_module_tools 成功，工具才进入 registry。
+        """
+        try:
+            from agent.module_catalog import (
+                load_catalog,
+                catalog_modules,
+                find_module_for_tool,
+                is_module_installed,
+                ensure_module_ready_sync,
+            )
+            mods = catalog_modules(load_catalog())
+            mod = find_module_for_tool(tool_name, mods)
+            if mod is None:
+                return False, f"catalog 中无模块提供工具 {tool_name!r}"
+            if is_module_installed(mod.name):
+                # 已安装但未注册——可能是加载失败，尝试热重载而非重装
+                try:
+                    from agent.module_loader import reload_module_tools
+                    res = reload_module_tools(mod.name)
+                    if res.get("ok"):
+                        return True, f"重新加载已安装模块 {mod.name}"
+                    return False, f"模块 {mod.name} 已安装但热重载失败：{res.get('error')}"
+                except Exception as _e:  # noqa: BLE001
+                    return False, f"模块 {mod.name} 已安装但热重载异常：{_e}"
+            # 未安装 → 按需下载安装 + 热重载（sync 包装，dispatch 是非 async 上下文）
+            ok, msg = ensure_module_ready_sync(mod.name, auto_install=True)
+            if not ok:
+                return False, msg or f"安装模块 {mod.name} 失败"
+            return True, f"已安装模块 {mod.name}"
+        except Exception as _e:  # noqa: BLE001
+            logger.warning("ensure_module_for_tool failed for %s: %s", tool_name, _e)
+            return False, f"自动安装模块失败：{_e}"
+
     def get_registered_toolset_names(self) -> List[str]:
         """Return sorted unique toolset names present in the registry."""
         return sorted({entry.toolset for entry in self._snapshot_entries()})
@@ -680,6 +723,29 @@ class ToolRegistry:
         if not entry:
             # P3: 查 catalog 是否有模块提供此工具
             hint = self._suggest_module_for_tool(name)
+            # Phase 3.1: 若开启自动安装（默认关，fail-open 零回归），先尝试一次性
+            # 安装缺失模块并热重载，再重试分发；失败则回退到上面的 hint 文案。
+            if hint and os.environ.get("VERMES_AUTO_INSTALL_MODULE", "").strip().lower() in {
+                "1", "true", "yes", "on"
+            }:
+                ok, msg = self._ensure_module_for_tool(name)
+                if ok:
+                    entry = self.get_entry(name)
+                    if entry:
+                        # 模块已就绪，继续走下方正常分发（含信任闸门）
+                        logger.info("auto-installed module for tool %s, retrying dispatch", name)
+                    else:
+                        return json.dumps({
+                            "error": f"Unknown tool: {name}",
+                            "hint": hint,
+                            "auto_install": msg,
+                        }, ensure_ascii=False)
+                else:
+                    return json.dumps({
+                        "error": f"Unknown tool: {name}",
+                        "hint": hint,
+                        "auto_install": msg,
+                    }, ensure_ascii=False)
             if hint:
                 return json.dumps({
                     "error": f"Unknown tool: {name}",
