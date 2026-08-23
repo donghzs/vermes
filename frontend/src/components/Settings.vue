@@ -2244,13 +2244,13 @@ async function toggleChannel(platformKey) {
             </div>
             <div class="flex justify-between font-medium pt-1 border-t border-gray-200 dark:border-gray-700">
               <span class="text-gray-600 dark:text-gray-400">命中率</span>
-              <span :class="hitRateColor(cacheMetrics.hit_rate || 0)">{{ (cacheMetrics.hit_rate || 0).toFixed(1) }}%</span>
+              <span :class="hitRateColor((cacheMetrics.hit_rate || 0) * 100)">{{ ((cacheMetrics.hit_rate || 0) * 100).toFixed(1) }}%</span>
             </div>
             <!-- 命中率进度条 -->
             <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div class="h-full rounded-full transition-all duration-500"
-                :class="(cacheMetrics.hit_rate || 0) >= 80 ? 'bg-green-500' : (cacheMetrics.hit_rate || 0) >= 50 ? 'bg-yellow-500' : 'bg-red-500'"
-                :style="{ width: (cacheMetrics.hit_rate || 0) + '%' }"></div>
+                :class="(cacheMetrics.hit_rate || 0) * 100 >= 80 ? 'bg-green-500' : (cacheMetrics.hit_rate || 0) * 100 >= 50 ? 'bg-yellow-500' : 'bg-red-500'"
+                :style="{ width: ((cacheMetrics.hit_rate || 0) * 100) + '%' }"></div>
             </div>
           </div>
           <div v-else class="text-xs text-gray-400 dark:text-gray-500 text-center">加载中...</div>
