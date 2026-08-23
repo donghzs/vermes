@@ -1,41 +1,24 @@
 {
-  "version": "2.4.1",
-  "buildDate": "2026-08-22",
-  "download_url": {
-    "macos_arm64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.4.1-arm64.dmg",
-    "macos_x64_dmg": "https://vbit.top/vermes/downloads/Vermes-2.4.1.dmg",
-    "windows_exe": "https://vbit.top/vermes/downloads/Vermes Setup 2.4.1.exe"
-  },
-  "sha256": {
-    "macos_arm64": "6440f5f633527bd81c909997c15bc1b046182f83c7e11a46340d6401fb6510fd",
-    "macos_x64": "4c83d03d2385430a661eea90a606b76ab8588f483a7ed8ca3d9605a8fa6a0b56",
-    "windows": "c7220349138d002c96236c80f0b5fa89f9b6f4a014f8f4a7a706b27d7595eb50"
-  },
-  "macOS": {
-    "arm64": {
-      "dmg": "/vermes/downloads/Vermes-2.4.1-arm64.dmg",
-      "size": "241 MB",
-      "sha256": "6440f5f633527bd81c909997c15bc1b046182f83c7e11a46340d6401fb6510fd"
+  "version": "2.4.2",
+  "releaseDate": "2026-08-23",
+  "notes": "安全加固 + 产物工作台 4-tab + 沙箱三态闸门 + 前端 chunk 优化",
+  "downloads": {
+    "mac": {
+      "arm64": {
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.2-arm64.dmg",
+        "sha256": "e30dd0c9055ac7328866594e9df9dfb009ca9a798e6b4e46b94175306273dc03",
+        "size": 273852263
+      },
+      "x64": {
+        "url": "https://vbit.top/vermes/downloads/Vermes-2.4.2.dmg",
+        "sha256": "7c1511f96ab3189f80bfb8d41273865bcf40e01dc90e9b1643b3b388bb2b07fa",
+        "size": 278982256
+      }
     },
-    "x64": {
-      "dmg": "/vermes/downloads/Vermes-2.4.1.dmg",
-      "size": "246 MB",
-      "sha256": "4c83d03d2385430a661eea90a606b76ab8588f483a7ed8ca3d9605a8fa6a0b56"
+    "windows": {
+      "url": "https://vbit.top/vermes/downloads/Vermes Setup 2.4.2.exe",
+      "sha256": "c58682fc2a6f7318e4f1da51c73c0b785e3f10339c8c286d2d9abbccfbd513df",
+      "size": 277714088
     }
-  },
-  "windows": {
-    "exe": "/vermes/downloads/Vermes Setup 2.4.1.exe",
-    "size": "263 MB",
-    "sha256": "c7220349138d002c96236c80f0b5fa89f9b6f4a014f8f4a7a706b27d7595eb50"
-  },
-  "changelog": [
-    "📄 产物面板：工具产出自动推送到右侧面板（5 阶段全闭环）",
-    "📄 产物扩展名补全：docx/pdf/step/stl 等核心交付格式",
-    "🧪 国家超算互联网（SCNet）provider 前后端落地",
-    "🔧 自定义 Provider 添加修复",
-    "🛡️ 安全闸门提级 + 信任闸门 deny-unless-declared",
-    "🏗️ god-file 拆分：CompactionEngine + TurnService 抽取",
-    "📦 通用操作层 L2 完整闭环（SoftwareAdapter/发现层/推荐层）",
-    "💾 preset 化 + otel no-op 封装 + 跨会话常驻记忆"
-  ]
+  }
 }
