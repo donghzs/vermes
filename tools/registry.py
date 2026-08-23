@@ -372,6 +372,23 @@ class ToolRegistry:
             )
         self.undeclared_tool_policy = policy
 
+    def set_dispatch_gate_mode(self, mode: str) -> None:
+        """Phase 3.4: 运行时切换统一信任闸门模式。mode ∈ {"fail_open", "fail_closed", "observe"}。
+
+        - fail_open（默认，观测期）：记录 NON-ALLOW 命中并告警，但继续执行，保证 273 工具零回归。
+        - observe（观测增强态）：与 fail_open 行为一致（记录 + 告警 + 执行），
+          但语义上明确"仅观测、不隐含放行基线"——用于观测期数据收集/告警调优，
+          与 fail_open 的可观测性区分由调用方日志/指标层体现。
+        - fail_closed：阻断非 ALLOW 决策（DENY / ASK_USER）。
+        三者均通过本方法或 env VERMES_DISPATCH_GATE_MODE 切换，构成统一三模式开关。
+        """
+        if mode not in ("fail_open", "fail_closed", "observe"):
+            raise ValueError(
+                f"dispatch_gate_mode must be one of "
+                f"'fail_open'/'fail_closed'/'observe', got {mode!r}"
+            )
+        self.dispatch_gate_mode = mode
+
     def _snapshot_state(self) -> tuple[List[ToolEntry], Dict[str, Callable]]:
         """Return a coherent snapshot of registry entries and toolset checks."""
         with self._lock:
@@ -759,6 +776,7 @@ class ToolRegistry:
         gate_decision, gate_reason, gate_rule = self._evaluate_dispatch_gate(entry, kwargs)
         if gate_decision != self._GATE_ALLOW:
             if self.dispatch_gate_mode == "fail_closed":
+                # 阻断非 ALLOW 决策（Phase 3.4：三模式之一）。
                 logger.warning(
                     "Dispatch gate BLOCKED (fail-closed): tool=%s decision=%s "
                     "rule=%s reason=%s", name, gate_decision, gate_rule, gate_reason,
@@ -769,9 +787,10 @@ class ToolRegistry:
                     "gate": gate_decision,
                     "reason": gate_reason,
                 }, ensure_ascii=False)
+            # fail_open 与 observe 均记录 + 告警 + 执行（Phase 3.4 统一语义）
             logger.warning(
-                "Dispatch gate NON-ALLOW (fail-open, executing anyway): tool=%s "
-                "decision=%s rule=%s reason=%s",
+                "Dispatch gate NON-ALLOW (fail-open/observe, executing anyway): "
+                "tool=%s decision=%s rule=%s reason=%s",
                 name, gate_decision, gate_rule, gate_reason,
             )
         try:

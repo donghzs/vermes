@@ -338,3 +338,68 @@ def test_declared_tool_unaffected_by_deny_policy():
     assert stats["decisions"]["allow"] == 1
     assert stats["rules"].get("undeclared_deny", 0) == 0  # 未走 undeclared 分支
 
+
+# ───────────────────────── Phase 3.4: 三模式统一开关 ─────────────────────────
+def test_observe_mode_executes_despite_non_allow():
+    """observe 态与 fail_open 同语义：NON-ALLOW 仍记录+告警+执行（不阻断）。
+
+    这是 Phase 3.4 的核心不变量：observe 是「观测增强态」，绝不隐含放行基线，
+    但在未达 fail_closed 前不阻断 273 工具。
+    """
+    reset_gate_stats()
+    reg = _make_registry("observe")
+    reg.register(
+        name="t_net", toolset="ts", schema={"name": "t_net"},
+        handler=_marker_handler,
+        permission_spec=PermissionSpec(
+            reads_fs=False, writes_fs=False, network=True,
+            exec_external=False, sandbox=SANDBOX_NONE,
+            requires_explicit_consent=False,
+        ),
+    )
+    out = reg.dispatch("t_net", {})  # network=True + sandbox=none → DENY
+    # observe 下仍执行（零回归），但决策记为 deny
+    assert json.loads(out)["ok"] is True
+    stats = get_gate_stats()
+    assert stats["decisions"]["deny"] == 1
+
+
+def test_set_dispatch_gate_mode_roundtrips_all_three():
+    """set_dispatch_gate_mode 三态切换 + 非法值拒绝。
+
+    反向控制：非法 mode 抛 ValueError 而非静默退化为 fail_open，
+    防止把 fail_closed 误写成 failclosed 后悄悄放开闸门。
+    """
+    reg = _make_registry("fail_open")
+    for m in ("fail_open", "fail_closed", "observe"):
+        reg.set_dispatch_gate_mode(m)
+        assert reg.dispatch_gate_mode == m
+    try:
+        reg.set_dispatch_gate_mode("failclosed")  # 拼写错误
+        raise AssertionError("应拒绝非法 mode")
+    except ValueError:
+        pass
+    assert reg.dispatch_gate_mode == "observe"  # 未被污染
+
+
+def test_observe_equals_fail_open_in_dispatch_behavior():
+    """observe 与 fail_open 在 dispatch 上的行为完全一致（同一条执行路径）。
+
+    仅语义标签不同（observe 用于观测期告警调优）。反向验证：
+    若误把 observe 接进 fail_closed 的阻断分支，本用例会失败。
+    """
+    reset_gate_stats()
+    reg_ob = _make_registry("observe")
+    reg_fo = _make_registry("fail_open")
+    spec = PermissionSpec(
+        reads_fs=False, writes_fs=False, network=True,
+        exec_external=False, sandbox=SANDBOX_NONE,
+        requires_explicit_consent=False,
+    )
+    for reg in (reg_ob, reg_fo):
+        reg.register(name="t_net", toolset="ts", schema={"name": "t_net"},
+                     handler=_marker_handler, permission_spec=spec)
+    ob = json.loads(reg_ob.dispatch("t_net", {}))
+    fo = json.loads(reg_fo.dispatch("t_net", {}))
+    assert ob["ok"] is True and fo["ok"] is True  # 两者都执行
+
