@@ -3479,11 +3479,13 @@ print("OK")
     })
 
 
-# 上传文件大小上限（50MB），防止 ~/.vermes/uploads/ 被撑爆
-_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+def _safe_upload_filename(name: str) -> str:
+    """上传文件名归一化：仅保留 [字母数字 / _ / . / -]，其余替换为 _。
 
-# 与下载端点共用的文件名归一化规则：仅保留 [单词字符 / - / .]，其余替换为 _
-_SAFE_NAME_RE = re.compile(r'[^\w\-\.]')
+    与 mfgcad 端点清洗字符集一致（web_server.py:3418），并保留扩展名点号。
+    下载端点须复用同一规则，避免「上传名改、下载用原名」绕过 relative_to 兜底。
+    """
+    return re.sub(r'[^a-zA-Z0-9_.\-]', '_', name)
 
 
 @app.post("/api/upload")
@@ -3492,15 +3494,18 @@ async def upload_file(request: Request):
     from fastapi.responses import JSONResponse
     import uuid
 
+    # 统一大小基线：web.max_upload_bytes（config.py），0 表示不限制
+    max_bytes = int(load_config().get("web", {}).get("max_upload_bytes", 52428800) or 0)
+
     content_type = request.headers.get("content-type", "")
     if not content_type.startswith("multipart/form-data"):
         return JSONResponse({"error": "expected multipart/form-data"}, status_code=400)
 
-    # 防御：未声明 content-length 或超上限直接拒绝
+    # 防御：content-length 超上限直接拒绝（max_bytes=0 时不限）
     raw_len = request.headers.get("content-length")
-    if raw_len is not None:
+    if raw_len is not None and max_bytes:
         try:
-            if int(raw_len) > _MAX_UPLOAD_BYTES:
+            if int(raw_len) > max_bytes:
                 return JSONResponse({"error": "file too large"}, status_code=413)
         except ValueError:
             pass
@@ -3517,10 +3522,10 @@ async def upload_file(request: Request):
     upload_dir = Path.home() / ".vermes" / "uploads" / upload_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = _SAFE_NAME_RE.sub('_', filename)
+    safe_name = _safe_upload_filename(filename)
     file_path = upload_dir / safe_name
     content = await upload_file.read()
-    if len(content) > _MAX_UPLOAD_BYTES:
+    if max_bytes and len(content) > max_bytes:
         # 清理已创建的空目录，避免残留
         try:
             upload_dir.rmdir()
@@ -3548,7 +3553,7 @@ async def get_uploaded_file(upload_id: str, filename: str):
         raise HTTPException(status_code=400, detail="invalid upload_id")
 
     # 文件名归一化须与上传端一致，避免「上传名改、下载用原名」绕过 relative_to 兜底
-    safe_filename = _SAFE_NAME_RE.sub('_', filename)
+    safe_filename = _safe_upload_filename(filename)
     if safe_filename != filename:
         raise HTTPException(status_code=400, detail="invalid filename")
 

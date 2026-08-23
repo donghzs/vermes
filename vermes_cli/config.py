@@ -734,6 +734,10 @@ DEFAULT_CONFIG = {
         "backend": "",           # shared fallback — applies to both search and extract
         "search_backend": "",    # per-capability override for web_search (e.g. "searxng")
         "extract_backend": "",   # per-capability override for web_extract (e.g. "native")
+        # 通用 HTTP 上传端点（/api/upload 等）的单文件字节上限。
+        # 全仓库上传基线统一来源；scholarforge 端点目前仍用自身字面量，待统一。
+        # 设为 0 表示不限制。Env override: VERMES_WEB_MAX_UPLOAD_BYTES。
+        "max_upload_bytes": 52428800,
     },
 
     "browser": {
