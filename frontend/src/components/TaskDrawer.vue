@@ -147,7 +147,21 @@ const EXAMPLES = [
       ⏸ 已暂停，已完成的步骤保留如下。
     </div>
 
-    <!-- 步骤列表 -->
+    <!-- 未分组工具调用（无 todo 步骤的多步任务实时流，基于 tool 事件实现） -->
+    <div v-if="(chat.todoStepActivities['__ungrouped__'] || []).length"
+         class="flex-1 overflow-y-auto px-3 py-2">
+      <div class="text-[11px] text-gray-400 mb-1 px-1">🔧 工具调用（未分组）</div>
+      <div class="space-y-1">
+        <div v-for="act in chat.todoStepActivities['__ungrouped__']" :key="act.id"
+             class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 pl-1">
+          <span v-if="act.status === 'running'" class="inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0"></span>
+          <span v-else-if="act.is_error" class="flex-shrink-0">⚠️</span>
+          <span v-else class="flex-shrink-0 text-green-500">✓</span>
+          <span class="truncate">{{ act.name }}</span>
+          <span v-if="act.status === 'done' && act.duration" class="flex-shrink-0 text-gray-400">· {{ act.duration < 1 ? '<1秒' : Math.round(act.duration) + '秒' }}</span>
+        </div>
+      </div>
+    </div>
     <div class="flex-1 overflow-y-auto px-3 py-2 space-y-2">
       <div v-if="!stats.total" class="flex flex-col items-center justify-center text-center py-10 px-4">
         <div class="text-4xl mb-3">🧭</div>

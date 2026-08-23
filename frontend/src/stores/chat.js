@@ -1033,8 +1033,11 @@ export const useChatStore = defineStore('chat', () => {
           // 方案 B: per-session 分片写入
           const items = sessionTodoItems.value[sendSessionId] || []
           const fallbackStep = items.find(i => i.status === 'in_progress')
-          const sid = data.step_id || (fallbackStep ? fallbackStep.id : null)
-          if (!sid) return
+          let sid = data.step_id || (fallbackStep ? fallbackStep.id : null)
+          // 无 todo 步骤的多步任务（用户已拍板不做任务制状态机，流式步骤
+          // 基于 tool 事件流实现）：工具事件不丢弃，挂到「未分组活动」区，
+          // 由 TaskDrawer 的「未分组工具调用」区块渲染。
+          if (!sid) sid = '__ungrouped__'
           const curActs = sessionTodoStepActivities.value[sendSessionId] || {}
           const acts = { ...curActs }
           const list = acts[sid] ? acts[sid].slice() : []

@@ -1261,13 +1261,28 @@ async def chat_completions(req: ChatRequest, request: Request):
                     "step_total": step_total,
                 }
                 # 阶段 3: 从结果中提取产物文件路径推送到前端
+                _artifacts = []
                 if preview and not kwargs.get("is_error", False):
                     art_paths = _extract_artifact_paths(preview)
                     if art_paths:
-                        event["artifacts"] = [
+                        _artifacts.extend([
                             {"path": p, "title": p.split("/")[-1], "source": tool_name}
                             for p in art_paths
-                        ]
+                        ])
+                # 合并工具 return 中携带的结构化 artifacts（如写文件类工具
+                # 通过 tool_progress_callback 透传的 kwargs["artifacts"]），
+                # 让结构化产物（不仅是文本路径字面量）也能进面板。
+                _structured = kwargs.get("artifacts") or []
+                if isinstance(_structured, list):
+                    for _a in _structured:
+                        if isinstance(_a, dict) and _a.get("path"):
+                            _artifacts.append({
+                                "path": _a["path"],
+                                "title": _a.get("title") or _a["path"].split("/")[-1],
+                                "source": _a.get("source") or tool_name,
+                            })
+                if _artifacts:
+                    event["artifacts"] = _artifacts
                 # P1: 文件变更审计 — write_file/patch 成功后推 file_change 事件
                 if tool_name in ("write_file", "patch") and not kwargs.get("is_error", False):
                     _file_path = args.get("path", "") if args else ""
