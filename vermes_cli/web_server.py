@@ -407,6 +407,7 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     # Module system
     "/api/modules",
     "/api/v1/modules/market",    # Phase 3.2 市场后端中间层
+    "/api/v1/trust-gate",        # Phase 1.2 信任闸门模式
     # Analytics (optional)
     "/api/analytics/usage",
     "/api/analytics/models",

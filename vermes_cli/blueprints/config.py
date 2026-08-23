@@ -856,6 +856,35 @@ async def reveal_env_var(body: EnvVarReveal, request: Request):
 
 # ── Registration ─────────────────────────────────────────────────────
 
+# ── Trust Gate Mode ─────────────────────────────────────────────────
+
+class GateModeUpdate(BaseModel):
+    mode: str  # "fail_open" | "fail_closed" | "observe"
+
+
+async def get_trust_gate_mode():
+    """GET /api/v1/trust-gate — 获取当前信任闸门模式。"""
+    try:
+        from tools.registry import registry
+        return {"mode": registry.dispatch_gate_mode}
+    except Exception:
+        return {"mode": "fail_open"}
+
+
+async def set_trust_gate_mode(body: GateModeUpdate):
+    """PUT /api/v1/trust-gate — 切换信任闸门模式。"""
+    try:
+        from tools.registry import registry
+        registry.set_dispatch_gate_mode(body.mode)
+        _log.info("Trust gate mode set to %s via API", body.mode)
+        return {"ok": True, "mode": registry.dispatch_gate_mode}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        _log.exception("Failed to set trust gate mode")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def register_to(app):
     """Register config/env/onboarding routes on the FastAPI app."""
     app.add_api_route("/api/onboarding", get_onboarding, methods=["GET"])
@@ -883,6 +912,10 @@ def register_to(app):
     app.add_api_route("/api/env", set_env_var, methods=["PUT"])
     app.add_api_route("/api/env", remove_env_var, methods=["DELETE"])
     app.add_api_route("/api/env/reveal", reveal_env_var, methods=["POST"])
+
+    # --- Trust Gate ---
+    app.add_api_route("/api/v1/trust-gate", get_trust_gate_mode, methods=["GET"])
+    app.add_api_route("/api/v1/trust-gate", set_trust_gate_mode, methods=["PUT"])
 
 
 blueprint = None  # no APIRouter; uses register_to(app) pattern

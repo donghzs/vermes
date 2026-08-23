@@ -38,6 +38,14 @@ function toggleSearch() {
   localStorage.setItem('vermes-search-enabled', String(chat.searchEnabled))
 }
 
+// ── 信任闸门开关（Phase 1.2 沙箱控制）──
+const gateModeConfig = {
+  fail_open:   { icon: '🔓', label: '沙箱 · 观测模式', color: 'border-gray-300 text-gray-500' },
+  fail_closed: { icon: '🔒', label: '沙箱 · 强制阻断', color: 'border-red-400 bg-red-50 text-red-600' },
+  observe:     { icon: '👁', label: '沙箱 · 仅观测', color: 'border-yellow-400 bg-yellow-50 text-yellow-600' },
+}
+const currentGateConfig = computed(() => gateModeConfig[chat.gateMode] || gateModeConfig.fail_open)
+
 // ── 常量 ──
 const MAX_SINGLE_FILE = 20 * 1024 * 1024   // 20MB
 const MAX_TOTAL_SIZE = 50 * 1024 * 1024     // 50MB
@@ -273,6 +281,12 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         <button @click="toggleSearch()" class="p-3 rounded-xl border transition text-base"
           :class="chat.searchEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'">🌐</button>
         <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.searchEnabled ? '联网搜索 · 已开启' : '联网搜索 · 已关闭' }}</span>
+      </div>
+      <!-- 信任闸门开关（Phase 1.2 沙箱控制）-->
+      <div class="relative group">
+        <button @click="chat.toggleGateMode()" class="p-3 rounded-xl border transition text-base"
+          :class="currentGateConfig.color + ' dark:bg-opacity-20'">{{ currentGateConfig.icon }}</button>
+        <span class="sidebar-tooltip group-hover:opacity-100">{{ currentGateConfig.label }}</span>
       </div>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"

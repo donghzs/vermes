@@ -116,6 +116,45 @@ export const useChatStore = defineStore('chat', () => {
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
   const searchEnabled = ref(localStorage.getItem('vermes-search-enabled') === 'true')
 
+  // ── 信任闸门模式（Phase 1.2 沙箱控制开关）──
+  // fail_open（默认）：观测期，记录但不阻断
+  // fail_closed：阻断非 ALLOW 决策
+  // observe：仅观测
+  const gateMode = ref(localStorage.getItem('vermes-gate-mode') || 'fail_open')
+  async function toggleGateMode() {
+    const modes = ['fail_open', 'fail_closed', 'observe']
+    const idx = modes.indexOf(gateMode.value)
+    const next = modes[(idx + 1) % modes.length]
+    try {
+      const res = await fetch('/api/v1/trust-gate', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: next }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        gateMode.value = data.mode || next
+        localStorage.setItem('vermes-gate-mode', gateMode.value)
+      }
+    } catch (e) {
+      // 后端不可用时仅切换本地状态
+      gateMode.value = next
+      localStorage.setItem('vermes-gate-mode', next)
+    }
+  }
+  async function initGateMode() {
+    try {
+      const res = await fetch('/api/v1/trust-gate')
+      if (res.ok) {
+        const data = await res.json()
+        gateMode.value = data.mode || 'fail_open'
+        localStorage.setItem('vermes-gate-mode', gateMode.value)
+      }
+    } catch (e) {
+      // 离线时用 localStorage 值
+    }
+  }
+
   // ── nextTurnSnapshot: 轮内模型一致性 ──
   // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
   // 当前轮 onDone 后，如果有 pendingModel 则自动切换
@@ -1375,7 +1414,7 @@ export const useChatStore = defineStore('chat', () => {
     sessions, channelSessions, loadChannelSessions, isChannelSession,
     currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
-    reasoningEffort, searchEnabled, searchMode, searchQuery,
+    reasoningEffort, searchEnabled, gateMode, toggleGateMode, initGateMode, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionActiveStreamIds, currentActiveStreamId,
