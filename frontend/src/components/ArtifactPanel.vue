@@ -525,18 +525,18 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <button
                 v-if="activeArtifact.path"
                 @click="openInFolder(activeArtifact)"
-                class="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
-                title="在文件夹中显示"
+                class="group relative p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
               >
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+                <span class="header-tooltip group-hover:opacity-100">在文件夹中显示</span>
               </button>
               <button
                 v-if="activeArtifact.path"
                 @click="downloadArtifact(activeArtifact)"
-                class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-                :title="isDesktop ? '另存为…' : '下载'"
+                class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
               >
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                <span class="header-tooltip group-hover:opacity-100">{{ isDesktop ? '另存为…' : '下载' }}</span>
               </button>
             </div>
           </div>
