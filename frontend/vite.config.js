@@ -22,9 +22,16 @@ function readVersion() {
 
 function readGitHash() {
   try {
-    return execSync('git rev-parse --short HEAD', {
+    // Build a dirty-aware hash: "b9facaf64a" (clean) or "b9facaf64a-dirty" (uncommitted).
+    // This prevents the build from silently recording a stale parent hash
+    // when `npm run build` runs before `git commit` (common workflow).
+    const hash = execSync('git rev-parse --short=12 HEAD', {
       encoding: 'utf-8', cwd: fileURLToPath(new URL('.', import.meta.url))
     }).trim()
+    const dirty = execSync('git status --porcelain', {
+      encoding: 'utf-8', cwd: fileURLToPath(new URL('.', import.meta.url))
+    }).trim()
+    return dirty ? `${hash}-dirty` : hash
   } catch {
     return 'unknown'
   }
