@@ -151,7 +151,7 @@ from vermes_cli.colors import Colors, color
 
 def print_header(title: str):
     """Print a section header."""
-    logger.info()
+    logger.info("")
     logger.info(color(f"◆ {title}", Colors.CYAN, Colors.BOLD))
 
 
@@ -176,21 +176,21 @@ def is_interactive_stdin() -> bool:
 
 def print_noninteractive_setup_guidance(reason: str | None = None) -> None:
     """Print guidance for headless/non-interactive setup flows."""
-    logger.info()
+    logger.info("")
     logger.info(color("✦ Vermes Setup — Non-interactive mode", Colors.CYAN, Colors.BOLD))
-    logger.info()
+    logger.info("")
     if reason:
         print_info(reason)
     print_info("The interactive wizard cannot be used here.")
-    logger.info()
+    logger.info("")
     print_info("Configure Vermes using environment variables or config commands:")
     print_info("  vermes config set model.provider custom")
     print_info("  vermes config set model.base_url http://localhost:8080/v1")
     print_info("  vermes config set model.default your-model-name")
-    logger.info()
+    logger.info("")
     print_info("Or set OPENROUTER_API_KEY / OPENAI_API_KEY in your environment.")
     print_info("Run 'vermes setup' in an interactive terminal to use the full wizard.")
-    logger.info()
+    logger.info("")
 
 
 def prompt(question: str, default: str = None, password: bool = False) -> str:
@@ -211,7 +211,7 @@ def prompt(question: str, default: str = None, password: bool = False) -> str:
         cleaned = _sanitize_pasted_input(value)
         return cleaned.strip() or default or ""
     except (KeyboardInterrupt, EOFError):
-        logger.info()
+        logger.info("")
         sys.exit(1)
 
 
@@ -242,9 +242,9 @@ def prompt_choice(question: str, choices: list, default: int = 0, description: s
     if idx >= 0:
         if idx == default:
             print_info("  Skipped (keeping current)")
-            logger.info()
+            logger.info("")
             return default
-        logger.info()
+        logger.info("")
         return idx
 
     logger.info(color(question, Colors.YELLOW))
@@ -271,7 +271,7 @@ def prompt_choice(question: str, choices: list, default: int = 0, description: s
         except ValueError:
             print_error("Please enter a number")
         except (KeyboardInterrupt, EOFError):
-            logger.info()
+            logger.info("")
             sys.exit(1)
 
 
@@ -287,7 +287,7 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
                 .lower()
             )
         except (KeyboardInterrupt, EOFError):
-            logger.info()
+            logger.info("")
             sys.exit(1)
 
         if not value:
@@ -335,14 +335,14 @@ def _prompt_api_key(var: dict):
     if len(tools) > 3:
         tools_str += f", +{len(tools) - 3} more"
 
-    logger.info()
+    logger.info("")
     logger.info(color(f"  ─── {var.get('description', var['name'])} ───", Colors.CYAN))
-    logger.info()
+    logger.info("")
     if tools_str:
         print_info(f"  Enables: {tools_str}")
     if var.get("url"):
         print_info(f"  Get your key at: {var['url']}")
-    logger.info()
+    logger.info("")
 
     if var.get("password"):
         value = prompt(f"  {var.get('prompt', var['name'])}", password=True)
@@ -359,7 +359,7 @@ def _prompt_api_key(var: dict):
 def _print_setup_summary(config: dict, VERMES_home):
     """Print the setup completion summary."""
     # Tool availability summary
-    logger.info()
+    logger.info("")
     print_header("Tool Availability Summary")
 
     tool_status = []
@@ -555,7 +555,7 @@ def _print_setup_summary(config: dict, VERMES_home):
     total_count = len(tool_status)
 
     print_info(f"{available_count}/{total_count} tool categories available:")
-    logger.info()
+    logger.info("")
 
     for name, available, missing_var in tool_status:
         if available:
@@ -565,7 +565,7 @@ def _print_setup_summary(config: dict, VERMES_home):
                 f"   {color('✗', Colors.RED)} {name} {color(f'(missing {missing_var})', Colors.DIM)}"
             )
 
-    logger.info()
+    logger.info("")
 
     disabled_tools = [(name, var) for name, avail, var in tool_status if not avail]
     if disabled_tools:
@@ -574,10 +574,10 @@ def _print_setup_summary(config: dict, VERMES_home):
         )
         from vermes_constants import display_vermes_home as _dhh
         print_warning(f"or edit {_dhh()}/.env directly to add the missing API keys.")
-        logger.info()
+        logger.info("")
 
     # Done banner
-    logger.info()
+    logger.info("")
     logger.info(
         color(
             "┌─────────────────────────────────────────────────────────┐", Colors.GREEN
@@ -593,56 +593,56 @@ def _print_setup_summary(config: dict, VERMES_home):
             "└─────────────────────────────────────────────────────────┘", Colors.GREEN
         )
     )
-    logger.info()
+    logger.info("")
 
     # Show file locations prominently
     from vermes_constants import display_vermes_home as _dhh
     logger.info(color(f"📁 All your files are in {_dhh()}/:", Colors.CYAN, Colors.BOLD))
-    logger.info()
+    logger.info("")
     logger.info(f"   {color('Settings:', Colors.YELLOW)}  {get_config_path()}")
     logger.info(f"   {color('API Keys:', Colors.YELLOW)}  {get_env_path()}")
     logger.info(
         f"   {color('Data:', Colors.YELLOW)}      {VERMES_home}/cron/, sessions/, logs/"
     )
-    logger.info()
+    logger.info("")
 
     logger.info(color("─" * 60, Colors.DIM))
-    logger.info()
+    logger.info("")
     logger.info(color("📝 To edit your configuration:", Colors.CYAN, Colors.BOLD))
-    logger.info()
+    logger.info("")
     logger.info(f"   {color('vermes setup', Colors.GREEN)}          Re-run the full wizard")
     logger.info(f"   {color('vermes setup model', Colors.GREEN)}    Change model/provider")
     logger.info(f"   {color('vermes setup terminal', Colors.GREEN)} Change terminal backend")
     logger.info(f"   {color('vermes setup gateway', Colors.GREEN)}  Configure messaging")
     logger.info(f"   {color('vermes setup tools', Colors.GREEN)}    Configure tool providers")
-    logger.info()
+    logger.info("")
     logger.info(f"   {color('vermes config', Colors.GREEN)}         View current settings")
     logger.info(
         f"   {color('vermes config edit', Colors.GREEN)}    Open config in your editor"
     )
     logger.info(f"   {color('vermes config set <key> <value>', Colors.GREEN)}")
     logger.info("                          Set a specific value")
-    logger.info()
+    logger.info("")
     logger.info("   Or edit the files directly:")
     logger.info(f"   {color(f'nano {get_config_path()}', Colors.DIM)}")
     logger.info(f"   {color(f'nano {get_env_path()}', Colors.DIM)}")
-    logger.info()
+    logger.info("")
 
     logger.info(color("─" * 60, Colors.DIM))
-    logger.info()
+    logger.info("")
     logger.info(color("🚀 Ready to go!", Colors.CYAN, Colors.BOLD))
-    logger.info()
+    logger.info("")
     logger.info(f"   {color('Vermes', Colors.GREEN)}              Start chatting")
     logger.info(f"   {color('vermes gateway', Colors.GREEN)}      Start messaging gateway")
     logger.info(f"   {color('vermes doctor', Colors.GREEN)}       Check for issues")
-    logger.info()
+    logger.info("")
 
 
 def _prompt_container_resources(config: dict):
     """Prompt for container resource settings (Docker, Singularity, Modal, Daytona)."""
     terminal = config.setdefault("terminal", {})
 
-    logger.info()
+    logger.info("")
     print_info("Container Resource Settings:")
 
     # Persistence
@@ -684,7 +684,7 @@ def _prompt_vercel_sandbox_settings(config: dict):
     """Prompt for Vercel Sandbox settings without exposing unsupported disk sizing."""
     terminal = config.setdefault("terminal", {})
 
-    logger.info()
+    logger.info("")
     print_info("Vercel Sandbox settings:")
     print_info("  Filesystem persistence uses Vercel snapshots.")
     print_info("  Snapshots restore files only; live processes do not continue after sandbox recreation.")
@@ -724,7 +724,7 @@ def _prompt_vercel_sandbox_settings(config: dict):
         print_warning("Vercel Sandbox does not support custom disk sizing; resetting container_disk to 51200.")
     terminal["container_disk"] = 51200
 
-    logger.info()
+    logger.info("")
     print_info("Vercel authentication:")
     print_info("  Use a long-lived Vercel access token plus project/team IDs.")
     linked_project = _read_nearest_vercel_project()
@@ -802,7 +802,7 @@ def setup_model_provider(config: dict, *, quick: bool = False):
     print_header("Inference Provider")
     print_info("Choose how to connect to your main chat model.")
     print_info(f"   Guide: {_DOCS_BASE}/integrations/providers")
-    logger.info()
+    logger.info("")
 
     # Delegate to the shared vermes model flow — handles provider picker,
     # credential prompting, model selection, and config persistence.
@@ -810,7 +810,7 @@ def setup_model_provider(config: dict, *, quick: bool = False):
     try:
         select_provider_and_model()
     except (SystemExit, KeyboardInterrupt):
-        logger.info()
+        logger.info("")
         print_info("Provider setup skipped.")
     except Exception as exc:
         logger.debug("select_provider_and_model error during setup: %s", exc)
@@ -845,7 +845,7 @@ def setup_model_provider(config: dict, *, quick: bool = False):
             entry_count = len(entries)
             manual_count = sum(1 for entry in entries if str(getattr(entry, "source", "")).startswith("manual"))
             auto_count = entry_count - manual_count
-            logger.info()
+            logger.info("")
             print_header("Same-Provider Fallback & Rotation")
             print_info(
                 "Vermes can keep multiple credentials for one provider and rotate between"
@@ -856,7 +856,7 @@ def setup_model_provider(config: dict, *, quick: bool = False):
             print_info(
                 "your primary provider while reducing interruptions from quota issues."
             )
-            logger.info()
+            logger.info("")
             if auto_count > 0:
                 print_info(
                     f"Current pooled credentials for {selected_provider}: {entry_count} "
@@ -942,12 +942,12 @@ def setup_model_provider(config: dict, *, quick: bool = False):
         }
         _prov_display = _prov_names.get(selected_provider, selected_provider or "your provider")
 
-        logger.info()
+        logger.info("")
         print_header("Vision & Image Analysis (optional)")
         print_info(f"Vision uses a separate multimodal backend. {_prov_display}")
         print_info("doesn't currently provide one Vermes can auto-use for vision,")
         print_info("so choose a backend now or skip and configure later.")
-        logger.info()
+        logger.info("")
 
         _vision_choices = [
             "OpenRouter — uses Gemini (free tier at openrouter.ai/keys)",
@@ -1022,7 +1022,7 @@ def _install_neutts_deps() -> bool:
 
     # Check espeak-ng
     if not _check_espeak_ng():
-        logger.info()
+        logger.info("")
         print_warning("NeuTTS requires espeak-ng for phonemization.")
         if sys.platform == "darwin":
             print_info("Install with: brew install espeak-ng")
@@ -1030,7 +1030,7 @@ def _install_neutts_deps() -> bool:
             print_info("Install with: choco install espeak-ng")
         else:
             print_info("Install with: sudo apt install espeak-ng")
-        logger.info()
+        logger.info("")
         if prompt_yes_no("Install espeak-ng now?", True):
             try:
                 if sys.platform == "darwin":
@@ -1048,10 +1048,10 @@ def _install_neutts_deps() -> bool:
             print_warning("espeak-ng is required for NeuTTS. Install it manually before using NeuTTS.")
 
     # Install neutts Python package
-    logger.info()
+    logger.info("")
     print_info("Installing neutts Python package...")
     print_info("This will also download the TTS model (~300MB) on first use.")
-    logger.info()
+    logger.info("")
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "-U", "neutts[all]", "--quiet"],
@@ -1074,9 +1074,9 @@ def _install_kittentts_deps() -> bool:
         "https://github.com/KittenML/KittenTTS/releases/download/"
         "0.8.1/kittentts-0.8.1-py3-none-any.whl"
     )
-    logger.info()
+    logger.info("")
     print_info("Installing kittentts Python package (~25-80MB model downloaded on first use)...")
-    logger.info()
+    logger.info("")
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "-U", wheel_url, "soundfile", "--quiet"],
@@ -1123,7 +1123,7 @@ def _run_xai_oauth_login_from_setup() -> bool:
         return False
 
     open_browser = not _is_remote_session()
-    logger.info()
+    logger.info("")
     print_info("Signing in to xAI Grok OAuth (SuperGrok Subscription)...")
     try:
         creds = _xai_oauth_loopback_login(open_browser=open_browser)
@@ -1161,10 +1161,10 @@ def _setup_tts_provider(config: dict):
     }
     current_label = provider_labels.get(current_provider, current_provider)
 
-    logger.info()
+    logger.info("")
     print_header("Text-to-Speech Provider (optional)")
     print_info(f"Current: {current_label}")
-    logger.info()
+    logger.info("")
 
     choices = []
     providers = []
@@ -1212,11 +1212,11 @@ def _setup_tts_provider(config: dict):
         if already_installed:
             print_success("NeuTTS is already installed")
         else:
-            logger.info()
+            logger.info("")
             print_info("NeuTTS requires:")
             print_info("  • Python package: neutts (~50MB install + ~300MB model on first use)")
             print_info("  • System package: espeak-ng (phonemizer)")
-            logger.info()
+            logger.info("")
             if prompt_yes_no("Install NeuTTS dependencies now?", True):
                 if not _install_neutts_deps():
                     print_warning("NeuTTS installation incomplete. Falling back to Edge TTS.")
@@ -1228,7 +1228,7 @@ def _setup_tts_provider(config: dict):
     elif selected == "elevenlabs":
         existing = get_env_value("ELEVENLABS_API_KEY")
         if not existing:
-            logger.info()
+            logger.info("")
             api_key = prompt("ElevenLabs API key", password=True)
             if api_key:
                 save_env_value("ELEVENLABS_API_KEY", api_key)
@@ -1240,7 +1240,7 @@ def _setup_tts_provider(config: dict):
     elif selected == "openai" and not selected_via_nous:
         existing = get_env_value("VOICE_TOOLS_OPENAI_KEY") or get_env_value("OPENAI_API_KEY")
         if not existing:
-            logger.info()
+            logger.info("")
             api_key = prompt("OpenAI API key for TTS", password=True)
             if api_key:
                 save_env_value("VOICE_TOOLS_OPENAI_KEY", api_key)
@@ -1265,7 +1265,7 @@ def _setup_tts_provider(config: dict):
         elif existing_api_key:
             print_success("xAI TTS will use your existing XAI_API_KEY")
         else:
-            logger.info()
+            logger.info("")
             choice_idx = prompt_choice(
                 "How do you want xAI TTS to authenticate?",
                 choices=[
@@ -1304,7 +1304,7 @@ def _setup_tts_provider(config: dict):
                 selected = "edge"
 
         if selected == "xai":
-            logger.info()
+            logger.info("")
             voice_id = prompt("xAI voice_id (Enter for 'eve', or paste a custom voice ID)")
             if voice_id and voice_id.strip():
                 config.setdefault("tts", {}).setdefault("xai", {})["voice_id"] = voice_id.strip()
@@ -1314,7 +1314,7 @@ def _setup_tts_provider(config: dict):
     elif selected == "minimax":
         existing = get_env_value("MINIMAX_API_KEY")
         if not existing:
-            logger.info()
+            logger.info("")
             api_key = prompt("MiniMax API key for TTS", password=True)
             if api_key:
                 save_env_value("MINIMAX_API_KEY", api_key)
@@ -1326,7 +1326,7 @@ def _setup_tts_provider(config: dict):
     elif selected == "mistral":
         existing = get_env_value("MISTRAL_API_KEY")
         if not existing:
-            logger.info()
+            logger.info("")
             api_key = prompt("Mistral API key for TTS", password=True)
             if api_key:
                 save_env_value("MISTRAL_API_KEY", api_key)
@@ -1338,7 +1338,7 @@ def _setup_tts_provider(config: dict):
     elif selected == "gemini":
         existing = get_env_value("GEMINI_API_KEY") or get_env_value("GOOGLE_API_KEY")
         if not existing:
-            logger.info()
+            logger.info("")
             print_info("Get a free API key at https://aistudio.google.com/app/apikey")
             api_key = prompt("Gemini API key for TTS", password=True)
             if api_key:
@@ -1359,10 +1359,10 @@ def _setup_tts_provider(config: dict):
         if already_installed:
             print_success("KittenTTS is already installed")
         else:
-            logger.info()
+            logger.info("")
             print_info("KittenTTS is lightweight (~25-80MB, CPU-only, no API key required).")
             print_info("Voices: Jasper, Bella, Luna, Bruno, Rosie, Hugo, Kiki, Leo")
-            logger.info()
+            logger.info("")
             if prompt_yes_no("Install KittenTTS now?", True):
                 if not _install_kittentts_deps():
                     print_warning("KittenTTS installation incomplete. Falling back to Edge TTS.")
@@ -1396,7 +1396,7 @@ def setup_terminal_backend(config: dict):
     print_info("Choose where Vermes runs shell commands and code.")
     print_info("This affects tool execution, file access, and isolation.")
     print_info(f"   Guide: {_DOCS_BASE}/developer-guide/environments")
-    logger.info()
+    logger.info("")
 
     current_backend = cfg_get(config, "terminal", "backend", default="local")
     is_linux = _platform.system() == "Linux"
@@ -1442,7 +1442,7 @@ def setup_terminal_backend(config: dict):
         print_info("Commands run directly on this machine.")
 
         # Gateway/cron working directory
-        logger.info()
+        logger.info("")
         print_info("Gateway working directory:")
         print_info("  Used by Telegram/Discord/cron sessions.")
         print_info("  CLI/TUI always uses your launch directory instead.")
@@ -1452,7 +1452,7 @@ def setup_terminal_backend(config: dict):
             config["terminal"]["cwd"] = cwd
 
         # Sudo support
-        logger.info()
+        logger.info("")
         existing_sudo = get_env_value("SUDO_PASSWORD")
         if existing_sudo:
             print_info("Sudo password: configured")
@@ -1579,7 +1579,7 @@ def setup_terminal_backend(config: dict):
                     print_warning("Install failed — run manually: pip install modal")
 
             # Modal token
-            logger.info()
+            logger.info("")
             print_info("Modal authentication:")
             print_info("  Get your token at: https://modal.com/settings")
             existing_token = get_env_value("MODAL_TOKEN_ID")
@@ -1636,7 +1636,7 @@ def setup_terminal_backend(config: dict):
                     print_info(f"  Error: {result.stderr.strip().splitlines()[-1]}")
 
         # Daytona API key
-        logger.info()
+        logger.info("")
         existing_key = get_env_value("DAYTONA_API_KEY")
         if existing_key:
             print_info("  Daytona API key: already configured")
@@ -1748,7 +1748,7 @@ def setup_terminal_backend(config: dict):
     if selected_backend == "vercel_sandbox":
         save_env_value("TERMINAL_VERCEL_RUNTIME", config["terminal"].get("vercel_runtime", "node24"))
     save_config(config)
-    logger.info()
+    logger.info("")
     print_success(f"Terminal backend set to: {selected_backend}")
 
 
@@ -1791,7 +1791,7 @@ def setup_agent_settings(config: dict):
 
     print_header("Agent Settings")
     print_info(f"   Guide: {_DOCS_BASE}/user-guide/configuration")
-    logger.info()
+    logger.info("")
 
     # ── Max Iterations ──
     # config.yaml is authoritative; read from there. If a legacy .env
@@ -1998,12 +1998,12 @@ def _setup_telegram():
     save_env_value("TELEGRAM_BOT_TOKEN", token)
     print_success("Telegram token saved")
 
-    logger.info()
+    logger.info("")
     print_info("🔒 Security: Restrict who can use your bot")
     print_info("   To find your Telegram user ID:")
     print_info("   1. Message @userinfobot on Telegram")
     print_info("   2. It will reply with your numeric ID (e.g., 123456789)")
-    logger.info()
+    logger.info("")
     allowed_users = prompt(
         "Allowed user IDs (comma-separated, leave empty for open access)"
     )
@@ -2013,7 +2013,7 @@ def _setup_telegram():
     else:
         print_info("⚠️  No allowlist set - anyone who finds your bot can use it!")
 
-    logger.info()
+    logger.info("")
     print_info("📬 Home Channel: where Vermes delivers cron job results,")
     print_info("   cross-platform messages, and notifications.")
     print_info("   For Telegram DMs, this is your user ID (same as above).")
@@ -2059,14 +2059,14 @@ def _setup_discord():
     save_env_value("DISCORD_BOT_TOKEN", token)
     print_success("Discord token saved")
 
-    logger.info()
+    logger.info("")
     print_info("🔒 Security: Restrict who can use your bot")
     print_info("   To find your Discord user ID:")
     print_info("   1. Enable Developer Mode in Discord settings")
     print_info("   2. Right-click your name → Copy ID")
-    logger.info()
+    logger.info("")
     print_info("   You can also use Discord usernames (resolved on gateway start).")
-    logger.info()
+    logger.info("")
     allowed_users = prompt(
         "Allowed user IDs or usernames (comma-separated, leave empty for open access)"
     )
@@ -2077,7 +2077,7 @@ def _setup_discord():
     else:
         print_info("⚠️  No allowlist set - anyone in servers with your bot can use it!")
 
-    logger.info()
+    logger.info("")
     print_info("📬 Home Channel: where Vermes delivers cron job results,")
     print_info("   cross-platform messages, and notifications.")
     print_info("   To get a channel ID: right-click a channel → Copy Channel ID")
@@ -2126,16 +2126,16 @@ def _setup_slack():
     print_info("      • Create an App-Level Token with 'connections:write' scope")
     print_info("   3. Install to Workspace: Settings → Install App")
     print_info("   4. After installing, invite the bot to channels: /invite @YourBot")
-    logger.info()
+    logger.info("")
     print_info("   Full guide: https://Vermes-agent.donghzs.com/docs/user-guide/messaging/slack/")
-    logger.info()
+    logger.info("")
 
     # Generate and write manifest up-front so the user can paste it into
     # the "Create from manifest" flow instead of clicking through scopes /
     # events / slash commands one at a time.
     _write_slack_manifest_and_instruct()
 
-    logger.info()
+    logger.info("")
     bot_token = prompt("Slack Bot Token (xoxb-...)", password=True)
     if not bot_token:
         return
@@ -2145,10 +2145,10 @@ def _setup_slack():
         save_env_value("SLACK_APP_TOKEN", app_token)
     print_success("Slack tokens saved")
 
-    logger.info()
+    logger.info("")
     print_info("🔒 Security: Restrict who can use your bot")
     print_info("   To find a Member ID: click a user's name → View full profile → ⋮ → Copy member ID")
-    logger.info()
+    logger.info("")
     allowed_users = prompt(
         "Allowed user IDs (comma-separated, leave empty to deny everyone except paired users)"
     )
@@ -2159,7 +2159,7 @@ def _setup_slack():
         print_warning("⚠️  No Slack allowlist set - unpaired users will be denied by default.")
         print_info("   Set SLACK_ALLOW_ALL_USERS=true or GATEWAY_ALLOW_ALL_USERS=true only if you intentionally want open workspace access.")
 
-    logger.info()
+    logger.info("")
     print_info("📬 Home Channel: where Vermes delivers cron job results,")
     print_info("   cross-platform messages, and notifications.")
     print_info("   To get a channel ID: open the channel in Slack, then right-click")
@@ -2225,12 +2225,12 @@ def _setup_matrix():
     print_info("Works with any Matrix homeserver (Synapse, Conduit, Dendrite, or matrix.org).")
     print_info("   1. Create a bot user on your homeserver, or use your own account")
     print_info("   2. Get an access token from Element, or provide user ID + password")
-    logger.info()
+    logger.info("")
     homeserver = prompt("Homeserver URL (e.g. https://matrix.example.org)")
     if homeserver:
         save_env_value("MATRIX_HOMESERVER", homeserver.rstrip("/"))
 
-    logger.info()
+    logger.info("")
     print_info("Auth: provide an access token (recommended), or user ID + password.")
     token = prompt("Access token (leave empty for password login)", password=True)
     if token:
@@ -2249,7 +2249,7 @@ def _setup_matrix():
             print_success("Matrix credentials saved")
 
     if token or get_env_value("MATRIX_PASSWORD"):
-        logger.info()
+        logger.info("")
         want_e2ee = prompt_yes_no("Enable end-to-end encryption (E2EE)?", False)
         if want_e2ee:
             save_env_value("MATRIX_ENCRYPTION", "true")
@@ -2279,10 +2279,10 @@ def _setup_matrix():
                 if result.stderr:
                     print_info(f"  Error: {result.stderr.strip().splitlines()[-1]}")
 
-        logger.info()
+        logger.info("")
         print_info("🔒 Security: Restrict who can use your bot")
         print_info("   Matrix user IDs look like @username:server")
-        logger.info()
+        logger.info("")
         allowed_users = prompt("Allowed user IDs (comma-separated, leave empty for open access)")
         if allowed_users:
             save_env_value("MATRIX_ALLOWED_USERS", allowed_users.replace(" ", ""))
@@ -2290,7 +2290,7 @@ def _setup_matrix():
         else:
             print_info("⚠️  No allowlist set - anyone who can message the bot can use it!")
 
-        logger.info()
+        logger.info("")
         print_info("📬 Home Room: where Vermes delivers cron job results and notifications.")
         print_info("   Room IDs look like !abc123:server (shown in Element room settings)")
         print_info("   You can also set this later by typing /set-home in a Matrix room.")
@@ -2311,7 +2311,7 @@ def _setup_mattermost():
     print_info("Works with any self-hosted Mattermost instance.")
     print_info("   1. In Mattermost: Integrations → Bot Accounts → Add Bot Account")
     print_info("   2. Copy the bot token")
-    logger.info()
+    logger.info("")
     mm_url = prompt("Mattermost server URL (e.g. https://mm.example.com)")
     if mm_url:
         save_env_value("MATTERMOST_URL", mm_url.rstrip("/"))
@@ -2321,11 +2321,11 @@ def _setup_mattermost():
     save_env_value("MATTERMOST_TOKEN", token)
     print_success("Mattermost token saved")
 
-    logger.info()
+    logger.info("")
     print_info("🔒 Security: Restrict who can use your bot")
     print_info("   To find your user ID: click your avatar → Profile")
     print_info("   or use the API: GET /api/v4/users/me")
-    logger.info()
+    logger.info("")
     allowed_users = prompt("Allowed user IDs (comma-separated, leave empty for open access)")
     if allowed_users:
         save_env_value("MATTERMOST_ALLOWED_USERS", allowed_users.replace(" ", ""))
@@ -2333,7 +2333,7 @@ def _setup_mattermost():
     else:
         print_info("⚠️  No allowlist set - anyone who can message the bot can use it!")
 
-    logger.info()
+    logger.info("")
     print_info("📬 Home Channel: where Vermes delivers cron job results and notifications.")
     print_info("   To get a channel ID: click channel name → View Info → copy the ID")
     print_info("   You can also set this later by typing /set-home in a Mattermost channel.")
@@ -2356,9 +2356,9 @@ def _setup_bluebubbles():
     print_info("macOS server that bridges iMessage to any device.")
     print_info("   Requires a Mac running BlueBubbles Server v1.0.0+")
     print_info("   Download: https://bluebubbles.app/")
-    logger.info()
+    logger.info("")
     print_info("In BlueBubbles Server → Settings → API, note your Server URL and Password.")
-    logger.info()
+    logger.info("")
 
     server_url = prompt("BlueBubbles server URL (e.g. http://192.168.1.10:1234)")
     if not server_url:
@@ -2373,10 +2373,10 @@ def _setup_bluebubbles():
     save_env_value("BLUEBUBBLES_PASSWORD", password)
     print_success("BlueBubbles credentials saved")
 
-    logger.info()
+    logger.info("")
     print_info("🔒 Security: Restrict who can message your bot")
     print_info("   Use iMessage addresses: email (user@icloud.com) or phone (+15551234567)")
-    logger.info()
+    logger.info("")
     allowed_users = prompt("Allowed iMessage addresses (comma-separated, leave empty for open access)")
     if allowed_users:
         save_env_value("BLUEBUBBLES_ALLOWED_USERS", allowed_users.replace(" ", ""))
@@ -2384,14 +2384,14 @@ def _setup_bluebubbles():
     else:
         print_info("⚠️  No allowlist set — anyone who can iMessage you can use the bot!")
 
-    logger.info()
+    logger.info("")
     print_info("📬 Home Channel: phone or email for cron job delivery and notifications.")
     print_info("   You can also set this later with /set-home in your iMessage chat.")
     home_channel = prompt("Home channel address (leave empty to set later)")
     if home_channel:
         save_env_value("BLUEBUBBLES_HOME_CHANNEL", home_channel)
 
-    logger.info()
+    logger.info("")
     print_info("Advanced settings (defaults are fine for most setups):")
     if prompt_yes_no("Configure webhook listener settings?", False):
         webhook_port = prompt("Webhook listener port (default: 8645)")
@@ -2402,7 +2402,7 @@ def _setup_bluebubbles():
             except ValueError:
                 print_warning("Invalid port number, using default 8645")
 
-    logger.info()
+    logger.info("")
     print_info("Requires the BlueBubbles Private API helper for typing indicators,")
     print_info("read receipts, and tapback reactions. Basic messaging works without it.")
     print_info("   Install: https://docs.bluebubbles.app/helper-bundle/installation")
@@ -2423,13 +2423,13 @@ def _setup_webhooks():
         if not prompt_yes_no("Reconfigure webhooks?", False):
             return
 
-    logger.info()
+    logger.info("")
     print_warning("⚠  Webhook and SMS platforms require exposing gateway ports to the")
     print_warning("   internet. For security, run the gateway in a sandboxed environment")
     print_warning("   (Docker, VM, etc.) to limit blast radius from prompt injection.")
-    logger.info()
+    logger.info("")
     print_info("   Full guide: https://Vermes-agent.donghzs.com/docs/user-guide/messaging/webhooks/")
-    logger.info()
+    logger.info("")
 
     port = prompt("Webhook port (default 8644)")
     if port:
@@ -2447,16 +2447,16 @@ def _setup_webhooks():
         print_warning("No secret set — you must configure per-route secrets in config.yaml")
 
     save_env_value("WEBHOOK_ENABLED", "true")
-    logger.info()
+    logger.info("")
     print_success("Webhooks enabled! Next steps:")
     from vermes_constants import display_vermes_home as _dhh
     print_info(f"   1. Define webhook routes in {_dhh()}/config.yaml")
     print_info("   2. Point your service (GitHub, GitLab, etc.) at:")
     print_info("      http://your-server:8644/webhooks/<route-name>")
-    logger.info()
+    logger.info("")
     print_info("   Route configuration guide:")
     print_info("   https://Vermes-agent.donghzs.com/docs/user-guide/messaging/webhooks/#configuring-routes")
-    logger.info()
+    logger.info("")
     print_info("   Open config in your editor:  vermes config edit")
     print_info("   Open config in your editor:  vermes config edit")
 
@@ -2468,7 +2468,7 @@ def setup_gateway(config: dict):
     print_header("Messaging Platforms")
     print_info("Connect to messaging platforms to chat with Vermes from anywhere.")
     print_info("Toggle with Space, confirm with Enter.")
-    logger.info()
+    logger.info("")
 
     platforms = _all_platforms()
 
@@ -2506,7 +2506,7 @@ def setup_gateway(config: dict):
         _is_progress(_platform_status(p)) for p in _all_platforms()
     )
     if any_messaging:
-        logger.info()
+        logger.info("")
         print_info("━" * 50)
         print_success("Messaging platforms configured!")
 
@@ -2530,7 +2530,7 @@ def setup_gateway(config: dict):
             missing_home.append("QQBot")
 
         if missing_home:
-            logger.info()
+            logger.info("")
             print_warning(f"No home channel set for: {', '.join(missing_home)}")
             print_info("   Without a home channel, cron jobs and cross-platform")
             print_info("   messages can't be delivered to those platforms.")
@@ -2572,14 +2572,14 @@ def setup_gateway(config: dict):
         supports_systemd = supports_systemd_services()
         supports_service_manager = supports_systemd or _is_macos or _is_windows
 
-        logger.info()
+        logger.info("")
         if supports_systemd and has_conflicting_systemd_units():
             print_systemd_scope_conflict_warning()
-            logger.info()
+            logger.info("")
 
         if supports_systemd and has_legacy_vermes_units():
             print_legacy_unit_warning()
-            logger.info()
+            logger.info("")
 
         if service_running:
             if supports_systemd and _system_scope_wizard_would_need_root():
@@ -2656,7 +2656,7 @@ def setup_gateway(config: dict):
                         gateway_windows.install(force=False)
                         did_install = True
                         started_inline = True
-                    logger.info()
+                    logger.info("")
                     if did_install and not started_inline and prompt_yes_no("  Start the service now?", True):
                         try:
                             if supports_systemd:
@@ -2854,7 +2854,7 @@ def _skip_configured_section(
     summary = _get_section_config_summary(config, section_key)
     if not summary:
         return False
-    logger.info()
+    logger.info("")
     print_success(f"  {label}: {summary}")
     return not prompt_yes_no(f"  Reconfigure {label.lower()}?", default=False)
 
@@ -2951,7 +2951,7 @@ def _print_migration_preview(report: dict):
             for keyword, warning in _HIGH_IMPACT_KIND_KEYWORDS.items():
                 if keyword in kind_lower or keyword in dest_lower:
                     warnings_shown.add(warning)
-        logger.info()
+        logger.info("")
 
     if conflict_items:
         logger.info(color("  Would overwrite (conflicts with existing Vermes config):", Colors.YELLOW))
@@ -2959,7 +2959,7 @@ def _print_migration_preview(report: dict):
             kind = item.get("kind", "unknown")
             reason = item.get("reason", "already exists")
             logger.info(f"      {kind:<22s}  {reason}")
-        logger.info()
+        logger.info("")
 
     if skipped_items:
         logger.info(color("  Would skip:", Colors.DIM))
@@ -2967,18 +2967,18 @@ def _print_migration_preview(report: dict):
             kind = item.get("kind", "unknown")
             reason = item.get("reason", "")
             logger.info(f"      {kind:<22s}  {reason}")
-        logger.info()
+        logger.info("")
 
     # Print collected warnings
     if warnings_shown:
         logger.info(color("  ── Warnings ──", Colors.YELLOW))
         for warning in sorted(warnings_shown):
             logger.info(color(f"    {warning}", Colors.YELLOW))
-        logger.info()
+        logger.info("")
         logger.info(color("  Note: OpenClaw config values may have different semantics in Vermes.", Colors.YELLOW))
         logger.info(color("  For example, OpenClaw's tool_call_execution: \"auto\" ≠ Vermes's yolo mode.", Colors.YELLOW))
         logger.info(color("  Instruction files (.md) from OpenClaw may contain incompatible procedures.", Colors.YELLOW))
-        logger.info()
+        logger.info("")
 
 
 def _offer_openclaw_migration(VERMES_home: Path) -> bool:
@@ -2996,11 +2996,11 @@ def _offer_openclaw_migration(VERMES_home: Path) -> bool:
     if not _OPENCLAW_SCRIPT.exists():
         return False
 
-    logger.info()
+    logger.info("")
     print_header("OpenClaw Installation Detected")
     print_info(f"Found OpenClaw data at {openclaw_dir}")
     print_info("Vermes can preview what would be imported before making any changes.")
-    logger.info()
+    logger.info("")
 
     if not prompt_yes_no("Would you like to see what can be imported?", default=True):
         print_info(
@@ -3049,14 +3049,14 @@ def _offer_openclaw_migration(VERMES_home: Path) -> bool:
     preview_count = preview_summary.get("migrated", 0)
 
     if preview_count == 0:
-        logger.info()
+        logger.info("")
         print_info("Nothing to import from OpenClaw.")
         return False
 
-    logger.info()
+    logger.info("")
     print_header(f"Migration Preview — {preview_count} item(s) would be imported")
     print_info("No changes have been made yet. Review the list below:")
-    logger.info()
+    logger.info("")
     _print_migration_preview(preview_report)
 
     # ── Phase 2: Confirm and execute ──
@@ -3096,7 +3096,7 @@ def _offer_openclaw_migration(VERMES_home: Path) -> bool:
     conflicts = summary.get("conflict", 0)
     errors = summary.get("error", 0)
 
-    logger.info()
+    logger.info("")
     if migrated:
         print_success(f"Imported {migrated} item(s) from OpenClaw.")
     if conflicts:
@@ -3188,7 +3188,7 @@ def run_setup_wizard(args):
     if section:
         for key, label, func in SETUP_SECTIONS:
             if key == section:
-                logger.info()
+                logger.info("")
                 logger.info(
                     color(
                         "┌─────────────────────────────────────────────────────────┐",
@@ -3204,7 +3204,7 @@ def run_setup_wizard(args):
                 )
                 func(config)
                 save_config(config)
-                logger.info()
+                logger.info("")
                 print_success(f"{label} configuration complete!")
                 return
 
@@ -3222,7 +3222,7 @@ def run_setup_wizard(args):
         or active_provider is not None
     )
 
-    logger.info()
+    logger.info("")
     logger.info(
         color(
             "┌─────────────────────────────────────────────────────────┐",
@@ -3269,7 +3269,7 @@ def run_setup_wizard(args):
             _run_quick_setup(config, VERMES_home)
             return
 
-        logger.info()
+        logger.info("")
         print_header("Reconfigure")
         print_success("You already have Vermes configured.")
         print_info("Running the full wizard — each prompt shows your current value.")
@@ -3282,13 +3282,13 @@ def run_setup_wizard(args):
         # is preserved for backwards compatibility but is a no-op here.
     else:
         # ── First-Time Setup ──
-        logger.info()
+        logger.info("")
 
         # --reconfigure / --quick on a fresh install are meaningless — fall
         # through to the normal first-time flow.
         if reconfigure_requested or quick_requested:
             print_info("No existing configuration found — running first-time setup.")
-            logger.info()
+            logger.info("")
 
         # Offer OpenClaw migration before configuration begins
         migration_ran = _offer_openclaw_migration(VERMES_home)
@@ -3310,11 +3310,11 @@ def run_setup_wizard(args):
     print_info(f"Secrets file: {get_env_path()}")
     print_info(f"Data folder:  {VERMES_home}")
     print_info(f"Install dir:  {PROJECT_ROOT}")
-    logger.info()
+    logger.info("")
     print_info("You can edit these files directly or use 'vermes config edit'")
 
     if migration_ran:
-        logger.info()
+        logger.info("")
         print_info("Settings were imported from OpenClaw.")
         print_info("Each section below will show what was imported — press Enter to keep,")
         print_info("or choose to reconfigure if needed.")
@@ -3366,7 +3366,7 @@ def _run_first_time_quick_setup(config: dict, VERMES_home, is_existing: bool):
     save_config(config)
 
     # Step 4: Offer messaging gateway setup
-    logger.info()
+    logger.info("")
     gateway_choice = prompt_choice(
         "Connect a messaging platform? (Telegram, Discord, etc.)",
         [
@@ -3380,13 +3380,13 @@ def _run_first_time_quick_setup(config: dict, VERMES_home, is_existing: bool):
         setup_gateway(config)
         save_config(config)
 
-    logger.info()
+    logger.info("")
     print_success("Setup complete! You're ready to go.")
-    logger.info()
+    logger.info("")
     print_info("  Configure all settings:    vermes setup")
     if gateway_choice != 0:
         print_info("  Connect Telegram/Discord:  vermes setup gateway")
-    logger.info()
+    logger.info("")
 
     _print_setup_summary(config, VERMES_home)
 
@@ -3399,7 +3399,7 @@ def _run_quick_setup(config: dict, VERMES_home):
         check_config_version,
     )
 
-    logger.info()
+    logger.info("")
     print_header("Quick Setup — Missing Items Only")
 
     # Check what's missing
@@ -3421,21 +3421,21 @@ def _run_quick_setup(config: dict, VERMES_home):
 
     if not has_anything_missing:
         print_success("Everything is configured! Nothing to do.")
-        logger.info()
+        logger.info("")
         print_info("Run 'vermes setup' and choose 'Full Setup' to reconfigure,")
         print_info("or pick a specific section from the menu.")
         return
 
     # Handle missing required env vars
     if missing_required:
-        logger.info()
+        logger.info("")
         print_info(f"{len(missing_required)} required setting(s) missing:")
         for var in missing_required:
             logger.info(f"     • {var['name']}")
-        logger.info()
+        logger.info("")
 
         for var in missing_required:
-            logger.info()
+            logger.info("")
             logger.info(color(f"  {var['name']}", Colors.CYAN))
             print_info(f"  {var.get('description', '')}")
             if var.get("url"):
@@ -3462,7 +3462,7 @@ def _run_quick_setup(config: dict, VERMES_home):
 
     # ── Tool API keys (checklist) ──
     if missing_tools:
-        logger.info()
+        logger.info("")
         print_header("Tool API Keys")
 
         checklist_labels = []
@@ -3482,7 +3482,7 @@ def _run_quick_setup(config: dict, VERMES_home):
 
     # ── Messaging platforms (checklist then prompt for selected) ──
     if missing_messaging:
-        logger.info()
+        logger.info("")
         print_header("Messaging Platforms")
         print_info("Connect Vermes to messaging apps to chat from anywhere.")
         print_info("You can configure these later with 'vermes setup gateway'.")
@@ -3522,9 +3522,9 @@ def _run_quick_setup(config: dict, VERMES_home):
             plat = platform_order[idx]
             vars_list = platforms[plat]
             emoji = {"Telegram": "📱", "Discord": "💬", "Slack": "💼"}.get(plat, "")
-            logger.info()
+            logger.info("")
             logger.info(color(f"  ─── {emoji} {plat} ───", Colors.CYAN))
-            logger.info()
+            logger.info("")
             for var in vars_list:
                 print_info(f"  {var.get('description', '')}")
                 if var.get("url"):
@@ -3538,11 +3538,11 @@ def _run_quick_setup(config: dict, VERMES_home):
                     print_success("  ✓ Saved")
                 else:
                     print_warning("  Skipped")
-                logger.info()
+                logger.info("")
 
     # Handle missing config fields
     if missing_config:
-        logger.info()
+        logger.info("")
         print_info(
             f"Adding {len(missing_config)} new config option(s) with defaults..."
         )

@@ -13,6 +13,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# CLI 输出模块——确保有 handler 输出到 stdout
+if not logging.getLogger("vermes_cli").handlers:
+    import sys as _sys
+    _h = logging.StreamHandler(_sys.stdout)
+    _h.setLevel(logging.INFO)
+    logging.getLogger("vermes_cli").addHandler(_h)
+    logging.getLogger("vermes_cli").setLevel(logging.INFO)
+
 
 
 # ─── Print Helpers ────────────────────────────────────────────────────────────
