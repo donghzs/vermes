@@ -5,6 +5,7 @@
 """
 import os
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response
@@ -35,15 +36,37 @@ def _is_safe_path(path_str: str) -> Path:
     # 先把 tmp/ 前缀映射到 /tmp/（URL path 丢失前导 / 的常见情况）
     if path_str.startswith('tmp/') and not Path.cwd().joinpath('tmp').exists():
         path_str = '/' + path_str
-    raw = Path(path_str)
-    # 如果是绝对路径直接 resolve，否则相对于 cwd
-    resolved = raw.resolve() if raw.is_absolute() else (Path.cwd() / raw).resolve()
-    for root in _allowed_roots():
-        try:
-            resolved.relative_to(root)
-            return resolved
-        except ValueError:
-            continue
+
+    def _check(p: str) -> Optional[Path]:
+        raw = Path(p)
+        resolved = raw.resolve() if raw.is_absolute() else (Path.cwd() / raw).resolve()
+        for root in _allowed_roots():
+            try:
+                resolved.relative_to(root)
+                return resolved
+            except ValueError:
+                continue
+        return None
+
+    ok = _check(path_str)
+    if ok is not None:
+        return ok
+
+    # 兜底：agent 常把桌面/下载/文档写成根级绝对路径（/Desktop/.. 而非 ~/Desktop/..），
+    # 这类路径明显是 home 同名目录的误写，重定向到 Path.home() 下再校验，避免前端读产物时 403。
+    # 仅精确匹配这三个根级目录名，不波及 /Desktopfoo 等。
+    home_redirects = {
+        '/Desktop': Path.home() / 'Desktop',
+        '/Downloads': Path.home() / 'Downloads',
+        '/Documents': Path.home() / 'Documents',
+    }
+    for prefix, target in home_redirects.items():
+        if path_str == prefix or path_str.startswith(prefix + '/'):
+            redirected = target / path_str[len(prefix):].lstrip('/')
+            ok = _check(str(redirected))
+            if ok is not None:
+                return ok
+
     raise HTTPException(status_code=403, detail=f"路径不在允许范围内: {path_str}")
 
 
