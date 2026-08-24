@@ -139,7 +139,6 @@ function addChange(item) {
   changes.value.unshift({ id, ts: Date.now(), ...item })
   if (!activeChangeId.value) activeChangeId.value = id
   // 文件变更不再自动弹右侧面板，避免 write_file/patch 这类高频操作打扰用户。
-  // 用户可手动通过顶部「详情面板」→「变更」查看 diff。
 }
 function clearChanges() {
   changes.value = []
