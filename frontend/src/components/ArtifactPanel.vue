@@ -1,8 +1,7 @@
 <script setup>
 /**
- * ArtifactPanel — 聊天右侧产物面板
- * 范式参照 ToolSkillDrawer（Teleport / 600px / drawer-slide）
- * 阶段 1：骨架 + Markdown/HTML/Code/Image/JSON/CSV 渲染器 + 全屏 toggle
+ * ArtifactPanel — 聊天右侧产物面板（WorkBuddy 风格）
+ * 核心体验：有最终交付物时右侧直接渲染内容，不弹复杂文件列表。
  */
 import { ref, computed, watch } from 'vue'
 import { useArtifactPanel } from '../composables/useArtifactPanel'
@@ -139,11 +138,8 @@ function addChange(item) {
   const id = `chg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
   changes.value.unshift({ id, ts: Date.now(), ...item })
   if (!activeChangeId.value) activeChangeId.value = id
-  // 自动切换到变更 tab
-  if (autoOpen.value) {
-    openPanel('artifacts')
-    setArtifactTab('changes')
-  }
+  // 文件变更不再自动弹右侧面板，避免 write_file/patch 这类高频操作打扰用户。
+  // 用户可手动通过顶部「详情面板」→「变更」查看 diff。
 }
 function clearChanges() {
   changes.value = []
@@ -151,113 +147,6 @@ function clearChanges() {
 }
 window.__vermesChanges = { addChange, clearChanges, changes }
 
-// 预览 tab
-const previewUrl = ref('')
-const previewSrc = ref('')
-const previewLoaded = ref(false)
-function loadPreview() {
-  const url = previewUrl.value.trim()
-  if (!url) return
-  // 支持 file:// 和 http(s)://
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://')) {
-    previewSrc.value = url
-  } else {
-    // 尝试作为本地路径加载
-    previewSrc.value = `/api/v1/artifacts/${encodeURIComponent(url)}`
-  }
-  previewLoaded.value = true
-}
-
-// sandbox 按来源区分：同源产物禁脚本（防 XSS），外部 URL 去 allow-same-origin（跑 opaque 源）
-const previewSandbox = computed(() => {
-  const src = previewSrc.value || ''
-  // 外部 URL：允许脚本但去掉同源，跑在 opaque 源无法触达父页
-  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('file://')) {
-    return 'allow-scripts allow-popups'
-  }
-  // 同源产物（/api/v1/artifacts/...）：完全沙箱，禁脚本执行
-  return ''
-})
-function refreshPreview() {
-  if (previewSrc.value) {
-    const src = previewSrc.value
-    previewSrc.value = ''
-    setTimeout(() => { previewSrc.value = src }, 50)
-  }
-}
-function openPreviewExternal() {
-  if (previewSrc.value) {
-    if (window.vermes?.openExternal) {
-      window.vermes.openExternal(previewSrc.value)
-    } else {
-      window.open(previewSrc.value, '_blank')
-    }
-  }
-}
-// 暴露给产物 tab 点击 HTML 文件时切换到预览
-window.__vermesPreview = {
-  previewUrl,
-  loadPreview,
-  setUrl: (url) => { previewUrl.value = url; loadPreview() },
-}
-
-// 文件 tab
-const fileItems = ref([])
-const fileLoading = ref(false)
-const fileCrumbs = ref('')
-const currentDir = ref('')
-
-async function loadFiles(dir = '') {
-  fileLoading.value = true
-  try {
-    const res = await fetch(`/api/v1/workspace/tree?path=${encodeURIComponent(dir)}`)
-    if (!res.ok) return
-    const data = await res.json()
-    fileItems.value = data.items || []
-    fileCrumbs.value = data.current || '工作目录'
-    currentDir.value = dir
-  } catch (e) {
-    console.error('loadFiles:', e)
-  } finally {
-    fileLoading.value = false
-  }
-}
-function onFileClick(item) {
-  if (item.is_dir) {
-    loadFiles(item.path)
-  } else {
-    previewFile(item)
-  }
-}
-function goUp() {
-  if (!currentDir.value) return
-  const parts = currentDir.value.split('/')
-  parts.pop()
-  loadFiles(parts.join('/'))
-}
-function fileIcon(ext) {
-  const map = { '.md': '📝', '.html': '🌐', '.json': '📋', '.csv': '📊', '.py': '🐍', '.js': '📜', '.ts': '📜', '.txt': '📄', '.pdf': '📕', '.docx': '📘', '.xlsx': '📗', '.pptx': '📙', '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️', '.step': '⚙️', '.stp': '⚙️', '.stl': '🖨️', '.gcode': '⚙️' }
-  return map[ext] || '📄'
-}
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + 'B'
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB'
-  return (bytes / 1048576).toFixed(1) + 'MB'
-}
-function previewFile(item) {
-  // 切到预览 tab 加载文件
-  setArtifactTab('preview')
-  const url = `/api/v1/artifacts/${item.path}`
-  previewUrl.value = item.path
-  previewSrc.value = url
-  previewLoaded.value = true
-}
-// 当切到文件 tab 时自动加载
-watch(artifactTab, (v) => {
-  if (v === 'files' && fileItems.value.length === 0 && !fileLoading.value) {
-    loadFiles('')
-  }
-})
 const isFullscreen = ref(false)
 
 // 从 localStorage 恢复
@@ -473,7 +362,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
 <template>
   <!-- 不再用 Teleport + fixed + 黑色遮罩：避免遮挡主聊天区。
        改为内联在 App.vue 的 router-view 兄弟节点，与聊天流并排显示，
-       类似 WorkBuddy：左侧聊天，右侧产物/文件实时渲染。 -->
+       类似 WorkBuddy：左侧聊天，右侧产物实时渲染。 -->
   <transition name="drawer-slide">
     <aside
       v-show="open"
@@ -490,138 +379,113 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
           <div class="absolute top-1/2 -translate-y-1/2 left-0 w-1 h-12 bg-gray-300 dark:bg-gray-600 rounded-full opacity-0 group-hover:opacity-100 transition"></div>
         </div>
 
-        <!-- 头部 + 4-tab 导航 -->
+        <!-- 头部工具栏：WorkBuddy 风格，简洁直接 -->
         <header class="shrink-0 border-b border-gray-200 dark:border-gray-700">
-          <div class="px-5 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">产物工作台</h2>
+          <div class="px-3 py-2 flex items-center gap-2">
+            <!-- 标题 -->
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="text-sm">📄</span>
+              <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">详情面板</span>
             </div>
-            <div class="flex items-center gap-1">
+
+            <!-- 产物切换条：仅在多产物时显示，单个产物时完全隐藏保持简洁 -->
+            <div
+              v-if="artifactTab === 'artifacts' && artifacts.length > 1"
+              class="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto"
+            >
+              <button
+                v-for="a in artifacts"
+                :key="a.id"
+                @click="activeId = a.id"
+                :class="activeId === a.id
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'"
+                class="shrink-0 px-2 py-1 rounded text-xs transition truncate max-w-[120px]"
+                :title="a.title || a.path"
+              >
+                {{ a.title || a.path?.split('/').pop() }}
+              </button>
+            </div>
+            <div v-else class="flex-1"></div>
+
+            <!-- 右侧：产物/变更切换 + 全屏 + 关闭 -->
+            <div class="flex items-center gap-0.5 shrink-0">
+              <button
+                @click="setArtifactTab('artifacts')"
+                :class="artifactTab === 'artifacts'
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                class="p-1.5 rounded-lg text-xs transition"
+                title="产物"
+              >
+                <span>📄</span>
+              </button>
+              <button
+                @click="setArtifactTab('changes')"
+                :class="artifactTab === 'changes'
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                class="p-1.5 rounded-lg text-xs transition flex items-center gap-1"
+                title="文件变更"
+              >
+                <span>📝</span>
+                <span v-if="changes.length > 0" class="text-[10px]">({{ changes.length }})</span>
+              </button>
               <button
                 @click="isFullscreen = !isFullscreen"
                 class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
                 :title="isFullscreen ? '退出全屏' : '全屏'"
               >
-                <svg v-if="!isFullscreen" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                <svg v-else class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8V5a2 2 0 0 1 2-2h3m0 18H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3M21 8V5a2 2 0 0 0-2-2h-3"/></svg>
+                <svg v-if="!isFullscreen" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8V5a2 2 0 0 1 2-2h3m0 18H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3M21 8V5a2 2 0 0 0-2-2h-3"/></svg>
               </button>
-              <button @click="closePanel" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="关闭 (Esc)">
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <button @click="closePanel" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition" title="关闭">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             </div>
-          </div>
-          <!-- 4-tab 导航 -->
-          <div class="flex items-center gap-1 px-3 pb-2">
-            <button
-              v-for="t in [
-                { id: 'artifacts', label: '产物', icon: '📄', count: artifacts.length },
-                { id: 'files', label: '文件', icon: '📁', count: 0 },
-                { id: 'changes', label: '变更', icon: '📝', count: changes.length },
-                { id: 'preview', label: '预览', icon: '🌐', count: 0 }
-              ]"
-              :key="t.id"
-              @click="setArtifactTab(t.id)"
-              :class="artifactTab === t.id
-                ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-b-2 border-green-500'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border-b-2 border-transparent'"
-              class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition rounded-t-lg"
-            >
-              <span>{{ t.icon }}</span>
-              <span>{{ t.label }}</span>
-              <span v-if="t.count > 0" class="text-xs opacity-60">({{ t.count }})</span>
-            </button>
           </div>
         </header>
 
         <!-- 主体：根据 artifactTab 切换 -->
         <div class="flex-1 flex overflow-hidden">
-          <!-- ════ 产物 tab ════ -->
-          <div v-show="artifactTab === 'artifacts'" class="flex-1 flex overflow-hidden">
-          <!-- 左侧产物列表（多产物时显示） -->
+        <!-- ════ 产物 tab ════ -->
+        <div v-show="artifactTab === 'artifacts'" class="flex-1 flex flex-col overflow-hidden">
+          <!-- 当前产物标题栏（WorkBuddy 风格：只保留文件名+核心操作） -->
           <div
-            v-if="artifacts.length > 1"
-            class="w-44 shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto py-2"
+            v-if="activeArtifact"
+            class="shrink-0 px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-800/30"
           >
-            <button
-              v-for="a in artifacts" :key="a.id"
-              @click="activeId = a.id"
-              :class="activeId === a.id
-                ? 'bg-green-50 dark:bg-green-900/20 border-l-2 border-green-500'
-                : 'hover:bg-gray-50 dark:hover:bg-gray-800 border-l-2 border-transparent'"
-              class="group w-full text-left px-3 py-2 transition relative"
-            >
-              <div class="text-sm font-medium text-gray-700 dark:text-gray-200 truncate pr-12">{{ a.title || a.path?.split('/').pop() }}</div>
-              <div class="text-[10px] text-gray-400 mt-0.5">{{ a.source }} · {{ new Date(a.ts).toLocaleTimeString() }}</div>
-              <!-- hover 操作按钮（WorkBuddy 风格：打开文件夹 + 下载 + 删除） -->
-              <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition" @click.stop>
-                <button
-                  v-if="a.path"
-                  @click="openInFolder(a)"
-                  class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-500"
-                  title="在文件夹中显示"
-                >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
-                </button>
-                <button @click="downloadArtifact(a)" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title="下载">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                </button>
-                <button @click="removeArtifact(a.id)" class="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500" title="删除">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
-              </div>
-            </button>
+            <span class="text-sm">📄</span>
+            <span class="flex-1 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+              {{ activeArtifact.title || activeArtifact.path?.split('/').pop() || '未知文件' }}
+            </span>
+            <div class="flex items-center gap-0.5">
+              <button
+                v-if="activeArtifact.path"
+                @click="openInFolder(activeArtifact)"
+                class="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
+                title="在文件夹中显示"
+              >
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+              </button>
+              <button
+                v-if="activeArtifact.path"
+                @click="downloadArtifact(activeArtifact)"
+                class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                title="下载"
+              >
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+              </button>
+            </div>
           </div>
 
-          <!-- 右侧预览区（产物 tab 内） -->
-          <div class="flex-1 flex flex-col overflow-y-auto">
-            <!-- 产物标题操作栏（WorkBuddy 风格） -->
-            <div
-              v-if="activeArtifact && !contentLoading && !contentError"
-              class="shrink-0 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-800/30"
-            >
-              <!-- 文件图标 -->
-              <span class="text-base">📄</span>
-              <!-- 文件名 -->
-              <span class="flex-1 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
-                {{ activeArtifact.title || activeArtifact.path?.split('/').pop() || '未知文件' }}
-              </span>
-              <!-- 操作按钮组 -->
-              <div class="flex items-center gap-0.5">
-                <!-- 在文件夹中显示（WorkBuddy 核心体验） -->
-                <button
-                  v-if="activeArtifact.path"
-                  @click="openInFolder(activeArtifact)"
-                  class="p-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition"
-                  title="在文件夹中显示"
-                >
-                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
-                </button>
-                <!-- 复制路径 -->
-                <button
-                  v-if="activeArtifact.path"
-                  @click="copyPath(activeArtifact.path)"
-                  class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-                  title="复制路径"
-                >
-                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
-                <!-- 下载 -->
-                <button
-                  v-if="activeArtifact.path"
-                  @click="downloadArtifact(activeArtifact)"
-                  class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-                  title="下载"
-                >
-                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                </button>
-              </div>
-            </div>
-
+          <!-- 主体内容区：直接渲染交付物 -->
+          <div class="flex-1 flex flex-col overflow-y-auto relative">
             <!-- 空状态 -->
             <div v-if="!activeArtifact && artifacts.length === 0" class="flex-1 flex flex-col items-center justify-center text-gray-400">
-              <div class="text-5xl mb-3">📄</div>
+              <div class="text-4xl mb-2">📄</div>
               <div class="text-sm">暂无产物</div>
-              <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">聊天中的文件链接或工具产物将显示在这里</div>
+              <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">最终交付物将自动显示在这里</div>
             </div>
 
             <!-- 加载中 -->
@@ -629,11 +493,11 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <div class="animate-pulse text-sm">加载中…</div>
             </div>
 
-            <!-- 加载错误 -->
-            <div v-else-if="contentError" class="flex-1 flex flex-col items-center justify-center text-red-400">
-              <div class="text-3xl mb-2">⚠️</div>
-              <div class="text-sm">加载失败</div>
-              <div class="text-xs mt-1 text-gray-400">{{ contentError }}</div>
+            <!-- 加载错误：轻提示，不抢占主区域 -->
+            <div v-else-if="contentError" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-white/80 dark:bg-gray-900/80 z-10">
+              <div class="text-2xl mb-1">⚠️</div>
+              <div class="text-sm text-red-400">加载失败</div>
+              <div class="text-xs mt-0.5 text-gray-400">{{ contentError }}</div>
             </div>
 
             <!-- Markdown -->
@@ -714,42 +578,6 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
           </div>
         </div><!-- end 产物 tab -->
 
-        <!-- ════ 文件 tab ════ -->
-        <div v-show="artifactTab === 'files'" class="flex-1 flex flex-col overflow-hidden">
-          <!-- 路径面包屑 -->
-          <div class="flex items-center gap-1 px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0 text-xs">
-            <button @click="goUp" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title="上级">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            </button>
-            <span class="text-gray-500 dark:text-gray-400 truncate">{{ fileCrumbs || '工作目录' }}</span>
-          </div>
-          <!-- 文件列表 -->
-          <div class="flex-1 overflow-y-auto">
-            <div v-if="fileLoading" class="flex items-center justify-center py-8 text-gray-400 text-sm">加载中…</div>
-            <div v-else-if="fileItems.length === 0" class="flex items-center justify-center py-8 text-gray-400 text-sm">空目录</div>
-            <div v-else>
-              <button
-                v-for="item in fileItems"
-                :key="item.path"
-                @click="onFileClick(item)"
-                class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-left"
-              >
-                <span class="text-base shrink-0">{{ item.is_dir ? '📁' : fileIcon(item.ext) }}</span>
-                <span class="flex-1 truncate text-sm text-gray-700 dark:text-gray-200">{{ item.name }}</span>
-                <span v-if="!item.is_dir" class="text-[10px] text-gray-400 shrink-0">{{ formatSize(item.size) }}</span>
-                <button
-                  v-if="!item.is_dir"
-                  @click.stop="previewFile(item)"
-                  class="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 shrink-0"
-                  title="预览"
-                >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- ════ 变更 tab ════ -->
         <div v-show="artifactTab === 'changes'" class="flex-1 flex overflow-hidden">
           <!-- 左侧变更列表 -->
@@ -794,57 +622,6 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
           </div>
         </div>
 
-        <!-- ════ 预览 tab ════ -->
-        <div v-show="artifactTab === 'preview'" class="flex-1 flex flex-col overflow-hidden">
-          <!-- URL 工具栏 -->
-          <div class="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
-            <input
-              v-model="previewUrl"
-              type="text"
-              placeholder="输入 URL 或选择 HTML 产物预览"
-              class="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500/30"
-              @keydown.enter="loadPreview"
-            />
-            <button
-              @click="loadPreview"
-              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-              title="加载"
-            >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-            <button
-              @click="refreshPreview"
-              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-              title="刷新"
-            >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            </button>
-            <button
-              @click="openPreviewExternal"
-              class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
-              title="在外部浏览器打开"
-            >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
-            </button>
-          </div>
-          <!-- 预览内容 -->
-          <div class="flex-1 overflow-hidden relative">
-            <iframe
-              v-if="previewLoaded && previewSrc"
-              :src="previewSrc"
-              class="w-full h-full border-0"
-              :sandbox="previewSandbox"
-              referrerpolicy="no-referrer"
-            ></iframe>
-            <div v-else class="flex-1 flex items-center justify-center text-gray-400 h-full">
-              <div class="text-center">
-                <div class="text-5xl mb-3">🌐</div>
-                <div class="text-sm">网页预览</div>
-                <div class="text-xs mt-1 text-gray-400 dark:text-gray-500">输入 URL 或点击 HTML 产物在此预览</div>
-              </div>
-            </div>
-          </div>
-        </div>
         </div>
       </aside>
     </transition>

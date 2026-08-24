@@ -40,6 +40,14 @@ const MESSAGES_KEY_PREFIX = 'vermes-messages-'
 const DEFAULT_MODEL_ID = localStorage.getItem('vermes-default-model') || ''
 const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || ''
 
+// ── 最终交付物判定：只有这些类型的新产物才自动展开右侧详情面板 ──
+// 避免 .txt 日志、临时文件、中间产物一产生就弹面板打扰用户。
+function isRenderableDeliverable(path) {
+  if (!path) return false
+  const ext = path.split('.').pop()?.toLowerCase()
+  return ['md', 'html', 'htm', 'docx', 'xlsx', 'xls', 'csv', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)
+}
+
 // ── 工具名 → 用户友好中文标签（任务清单聚合展示用）──
 // 内部名（以 _ 开头，如 _thinking）一律视为非工具，不展示。
 const TOOL_LABELS = {
@@ -1055,7 +1063,7 @@ export const useChatStore = defineStore('chat', () => {
             }
             if (idx >= 0) list[idx] = done
             else list.push(done)
-            // 阶段 3: 自动提取产物到 ArtifactPanel + 自动展开右栏
+            // 阶段 3: 自动提取产物到 ArtifactPanel；只有"最终交付物"才自动展开右栏
             if (data.artifacts && data.artifacts.length > 0) {
               const va = window.__vermesArtifacts
               if (va && typeof va.addArtifact === 'function') {
@@ -1068,9 +1076,10 @@ export const useChatStore = defineStore('chat', () => {
                   })
                 })
               }
-              // P0-1: 首次有产物时自动展开产物工作台
+              // 仅当产物含可渲染交付物(md/html/docx/xlsx/csv/pdf/图片)时才自动展开面板，
+              // 避免 .txt 日志、临时文件、中间产物频繁打扰。
               const { autoOpen, openPanel, setTab } = useArtifactPanel()
-              if (autoOpen.value) {
+              if (autoOpen.value && data.artifacts.some(a => isRenderableDeliverable(a.path))) {
                 openPanel('artifacts')
                 setTab('artifacts')
               }
