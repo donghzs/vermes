@@ -38,27 +38,6 @@ function toggleSearch() {
   localStorage.setItem('vermes-search-enabled', String(chat.searchEnabled))
 }
 
-// ── 信任闸门开关（Phase 1.2 沙箱控制）──
-const gateModeConfig = {
-  fail_open:   { icon: '🔓', label: '沙箱 · 观测模式', color: 'border-gray-300 text-gray-500' },
-  fail_closed: { icon: '🔒', label: '沙箱 · 强制阻断', color: 'border-red-400 bg-red-50 text-red-600' },
-  observe:     { icon: '👁', label: '沙箱 · 仅观测', color: 'border-yellow-400 bg-yellow-50 text-yellow-600' },
-}
-const currentGateConfig = computed(() => gateModeConfig[chat.gateMode] || gateModeConfig.fail_open)
-
-// ── 交互模式（Craft/Plan/Ask 对话级，per-session）──
-const interactionModeConfig = {
-  craft: { icon: '⚡', label: 'Craft · 立即执行', color: 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' },
-  plan:  { icon: '📋', label: 'Plan · 先规划后执行', color: 'border-blue-400 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' },
-  ask:   { icon: '💬', label: 'Ask · 只问答不调用工具', color: 'border-purple-400 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400' },
-}
-const currentModeConfig = computed(() => interactionModeConfig[chat.interactionMode] || interactionModeConfig.craft)
-function toggleInteractionMode() {
-  const modes = ['craft', 'plan', 'ask']
-  const idx = modes.indexOf(chat.interactionMode)
-  const next = modes[(idx + 1) % modes.length]
-  chat.setInteractionMode(next)
-}
 
 // ── 常量 ──
 const MAX_SINGLE_FILE = 20 * 1024 * 1024   // 20MB
@@ -295,18 +274,6 @@ defineExpose({ inputText, uploadedFiles, inputRef })
         <button @click="toggleSearch()" class="p-3 rounded-xl border transition text-base"
           :class="chat.searchEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'">🌐</button>
         <span class="sidebar-tooltip group-hover:opacity-100">{{ chat.searchEnabled ? '联网搜索 · 已开启' : '联网搜索 · 已关闭' }}</span>
-      </div>
-      <!-- 信任闸门开关（Phase 1.2 沙箱控制）-->
-      <div class="relative group">
-        <button @click="chat.toggleGateMode()" class="p-3 rounded-xl border transition text-base"
-          :class="currentGateConfig.color + ' dark:bg-opacity-20'">{{ currentGateConfig.icon }}</button>
-        <span class="sidebar-tooltip group-hover:opacity-100">{{ currentGateConfig.label }}</span>
-      </div>
-      <!-- 交互模式（Craft/Plan/Ask 对话级，per-session）-->
-      <div class="relative group">
-        <button @click="toggleInteractionMode()" class="p-3 rounded-xl border transition text-base"
-          :class="currentModeConfig.color + ' dark:bg-opacity-20'">{{ currentModeConfig.icon }}</button>
-        <span class="sidebar-tooltip group-hover:opacity-100">{{ currentModeConfig.label }}</span>
       </div>
       <textarea ref="inputRef" v-model="inputText" @keydown.enter.exact.prevent="send" @keydown.shift.enter="insertNewline"
         :placeholder="isEmptySession() ? '输入你的第一个问题…' : '问我任何问题…'" rows="1"

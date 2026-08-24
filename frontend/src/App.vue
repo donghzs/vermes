@@ -40,7 +40,6 @@ onMounted(async () => {
   backendConn.init()
   try {
     await chat.init()
-    chat.initGateMode()  // Phase 1.2: 初始化信任闸门模式（不阻塞加载）
   } catch(e) {
     console.error('chat.init() failed:', e)
   } finally {

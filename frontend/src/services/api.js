@@ -297,8 +297,6 @@ const api = {
   // 会话
   getSessions() { return this.get('/sessions') },
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
-  getInteractionMode(sessionId) { return this.get(`/sessions/${sessionId}/interaction-mode`) },
-  setInteractionMode(sessionId, mode) { return this.put(`/sessions/${sessionId}/interaction-mode`, { mode }) },
 
   // 技能市场
   searchSkills(q, source, limit) { return this.get(`/skills/market?q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`) },

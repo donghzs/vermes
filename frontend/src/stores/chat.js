@@ -116,67 +116,6 @@ export const useChatStore = defineStore('chat', () => {
   const reasoningEffort = ref(localStorage.getItem('vermes-reasoning-effort') || '') // '' = auto/default, 'low'/'medium'/'high'
   const searchEnabled = ref(localStorage.getItem('vermes-search-enabled') === 'true')
 
-  // ── 信任闸门模式（Phase 1.2 沙箱控制开关）──
-  // fail_open（默认）：观测期，记录但不阻断
-  // fail_closed：阻断非 ALLOW 决策
-  // observe：仅观测
-  const gateMode = ref(localStorage.getItem('vermes-gate-mode') || 'fail_open')
-  async function toggleGateMode() {
-    const modes = ['fail_open', 'fail_closed', 'observe']
-    const idx = modes.indexOf(gateMode.value)
-    const next = modes[(idx + 1) % modes.length]
-    try {
-      const res = await fetch('/api/v1/trust-gate', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: next }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        gateMode.value = data.mode || next
-        localStorage.setItem('vermes-gate-mode', gateMode.value)
-      }
-    } catch (e) {
-      // 后端不可用时仅切换本地状态
-      gateMode.value = next
-      localStorage.setItem('vermes-gate-mode', next)
-    }
-  }
-  async function initGateMode() {
-    try {
-      const res = await fetch('/api/v1/trust-gate')
-      if (res.ok) {
-        const data = await res.json()
-        gateMode.value = data.mode || 'fail_open'
-        localStorage.setItem('vermes-gate-mode', gateMode.value)
-      }
-    } catch (e) {
-      // 离线时用 localStorage 值
-    }
-  }
-
-  // ── 交互模式（Craft/Plan/Ask），per-session ──
-  // craft: 立即执行（默认）；plan: 先规划后执行；ask: 只问答不调用工具
-  // 与 gateMode（信任闸门三态）语义不同：gateMode 决定工具调用拦截策略，
-  // interactionMode 决定用户交互模式（工具调用的时机与方式）
-  const sessionInteractionMode = ref({})  // { [sessionId]: 'craft'|'plan'|'ask' }
-  const interactionMode = computed(
-    () => sessionInteractionMode.value[currentSessionId.value] || 'craft'
-  )
-  async function setInteractionMode(mode) {
-    const sid = currentSessionId.value
-    if (!sid || !['craft', 'plan', 'ask'].includes(mode)) return
-    sessionInteractionMode.value = { ...sessionInteractionMode.value, [sid]: mode }
-    try { await api.setInteractionMode(sid, mode) } catch (e) { /* 离线时仅本地 */ }
-  }
-  async function restoreInteractionMode(sid) {
-    if (!sid) return
-    try {
-      const data = await api.getInteractionMode(sid)
-      sessionInteractionMode.value = { ...sessionInteractionMode.value, [sid]: data.mode || 'craft' }
-    } catch (e) { /* 离线用默认 craft */ }
-  }
-
   // ── nextTurnSnapshot: 轮内模型一致性 ──
   // 当会话正在 streaming 时，用户改模型不会打断当前轮，而是存到 pendingModel
   // 当前轮 onDone 后，如果有 pendingModel 则自动切换
@@ -479,8 +418,6 @@ export const useChatStore = defineStore('chat', () => {
 
     currentSessionId.value = id
     localStorage.setItem('vermes-last-session', id)
-    // 恢复该会话的交互模式（非阻塞，不影响切换速度）
-    restoreInteractionMode(id)
 
     // 恢复新会话的模型选择
     const newSession = sessions.value.find(s => s.id === id) || channelSessions.value.find(s => s.id === id)
@@ -1451,8 +1388,7 @@ export const useChatStore = defineStore('chat', () => {
     sessions, channelSessions, loadChannelSessions, isChannelSession,
     currentSessionId, currentSession, messages, loading, filteredMessages,
     sessionLoading, sidebarOpen, theme, currentModel, currentProvider,
-    reasoningEffort, searchEnabled, gateMode, toggleGateMode, initGateMode, searchMode, searchQuery,
-    interactionMode, setInteractionMode,
+    reasoningEffort, searchEnabled, searchMode, searchQuery,
     uploading, showQuotaModal, quotaModalType, activeStreamId, compareModels,
     statusMessages, sessionStatusMessages, currentStatusMessages,
     sessionActiveStreamIds, currentActiveStreamId,
