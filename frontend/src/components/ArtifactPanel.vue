@@ -221,6 +221,7 @@ function clearArtifacts() {
 }
 
 const activeArtifact = computed(() => artifacts.value.find(a => a.id === activeId.value))
+const isDesktop = !!(window.vermes?.saveAs)
 
 // ── MIME → 渲染器映射 ──
 function rendererFor(artifact) {
@@ -341,9 +342,28 @@ function fallbackCopy(text) {
   }
 }
 
-// ── 下载产物（阶段 5）──
+// ── 下载产物 / 另存为（阶段 5）──
+// 桌面端：产物文件已在本地，"下载"改为"另存为"（复制到用户选择的位置）
+// Web 端：走 HTTP fetch + 浏览器下载
 async function downloadArtifact(artifact) {
   if (!artifact || artifact.source === 'test') return
+  // 桌面端：先 resolve 绝对路径，再调 saveAs
+  if (window.vermes?.saveAs) {
+    try {
+      const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}/resolve`)
+      if (resp.ok) {
+        const data = await resp.json()
+        const result = await window.vermes.saveAs(data.path, artifact.title || data.name)
+        if (!result?.ok && result?.err !== 'cancelled') {
+          console.error('[ArtifactPanel] saveAs failed:', result?.err)
+        }
+        return
+      }
+    } catch (e) {
+      console.error('[ArtifactPanel] desktop saveAs failed:', e)
+    }
+  }
+  // Web 回退：HTTP 下载
   try {
     const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -364,11 +384,30 @@ async function downloadArtifact(artifact) {
 // ── 在文件夹中显示（WorkBuddy 核心体验）──
 async function openInFolder(artifact) {
   if (!artifact || !artifact.path || artifact.source === 'test') return
+  // 先调 resolve 接口拿到绝对路径，解决裸文件名 / 相对路径问题
+  try {
+    const resp = await fetch(`/api/v1/artifacts/${encodeURIComponent(artifact.path)}/resolve`)
+    if (resp.ok) {
+      const data = await resp.json()
+      const absPath = data.path
+      if (window.vermes?.showItemInFolder) {
+        const result = await window.vermes.showItemInFolder(absPath)
+        if (!result?.ok) console.error('[ArtifactPanel] showItemInFolder failed:', result?.err)
+      } else {
+        // Web 回退：打开目录
+        const dir = absPath.substring(0, absPath.lastIndexOf('/'))
+        window.open(`file://${dir}`)
+      }
+      return
+    }
+  } catch (e) {
+    console.error('[ArtifactPanel] resolve artifact failed:', e)
+  }
+  // 回退：用原始 path 直接试
   if (window.vermes?.showItemInFolder) {
     const result = await window.vermes.showItemInFolder(artifact.path)
     if (!result?.ok) console.error('[ArtifactPanel] showItemInFolder failed:', result?.err)
   } else {
-    // Web fallback: 尝试打开所在目录
     const dir = artifact.path.substring(0, artifact.path.lastIndexOf('/'))
     window.open(`file://${dir}`)
   }
@@ -495,7 +534,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
                 v-if="activeArtifact.path"
                 @click="downloadArtifact(activeArtifact)"
                 class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
-                title="下载"
+                :title="isDesktop ? '另存为…' : '下载'"
               >
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
               </button>
@@ -588,7 +627,7 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               <div class="text-xs mt-1 text-gray-400">Office 文档无法在浏览器中直接预览</div>
               <button @click="downloadArtifact(activeArtifact)" class="mt-4 px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition flex items-center gap-2">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                下载文件
+                {{ isDesktop ? '另存为…' : '下载文件' }}
               </button>
             </div>
 

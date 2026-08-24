@@ -1041,6 +1041,24 @@ ipcMain.handle('shell:showItemInFolder', (e, fullPath) => {
   }
 });
 
+// IPC: 另存为（桌面端产物已在本地，"下载"改为复制到用户选择的位置）
+ipcMain.handle('shell:saveAs', async (e, srcPath, defaultName) => {
+  if (!srcPath || typeof srcPath !== 'string') return { ok: false, err: 'invalid path' }
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    if (!fs.existsSync(srcPath)) return { ok: false, err: '源文件不存在' };
+    const { canceled, filePath: dest } = await dialog.showSaveDialog({
+      defaultPath: defaultName || path.basename(srcPath),
+    });
+    if (canceled || !dest) return { ok: false, err: 'cancelled' };
+    fs.copyFileSync(srcPath, dest);
+    return { ok: true, dest };
+  } catch (err) {
+    return { ok: false, err: String(err) }
+  }
+});
+
 // IPC: Splash 重试初始化
 ipcMain.on('splash:retry', () => {
   console.log('[Vermes] 用户点击重试初始化');

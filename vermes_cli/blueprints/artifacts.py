@@ -176,6 +176,15 @@ def register_to(app):
             raise HTTPException(status_code=403, detail="无权限读取该目录")
         return {'items': items, 'current': str(safe.relative_to(Path.cwd().resolve())) if str(safe).startswith(str(Path.cwd().resolve())) else str(safe)}
 
+    @app.get('/api/v1/artifacts/{path:path}/resolve')
+    async def resolve_artifact(path: str, request: Request):
+        """返回产物文件的绝对路径，供桌面端 shell.showItemInFolder 使用"""
+        _check_origin(request)
+        safe_path = _is_safe_path(path)
+        if not safe_path.exists():
+            raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
+        return {'path': str(safe_path), 'name': safe_path.name, 'size': safe_path.stat().st_size}
+
     @app.get('/api/v1/artifacts/{path:path}')
     async def serve_artifact(path: str, request: Request):
         """读取产物文件，返回对应 MIME 类型"""
