@@ -120,6 +120,8 @@ const marketItems = ref([])
 const marketLoading = ref(false)
 const marketError = ref('')
 const marketTotal = ref(0)
+const auditData = ref({})          // { skillName: { entries, installed } } P0-3 审计详情
+const auditExpanded = ref({})      // { skillName: bool } 审计展开态
 const installingName = ref('')
 const marketPage = ref(1)
 const isTrending = ref(false)  // 🔥 热门模式
@@ -203,6 +205,29 @@ async function uninstallMarket(item) {
   } finally {
     installingName.value = ''
   }
+}
+
+// P0-3 供应链安全审计：按需拉取审计详情，点击展开
+async function toggleAudit(name) {
+  const isOpen = auditExpanded.value[name]
+  auditExpanded.value = { ...auditExpanded.value, [name]: !isOpen }
+  if (isOpen || auditData.value[name]) return
+  try {
+    auditData.value = { ...auditData.value, [name]: await api.auditSkill(name) }
+  } catch (e) {
+    auditData.value = { ...auditData.value, [name]: { entries: [], installed: null, error: e.message } }
+  }
+}
+
+function verdictLabel(v) {
+  return { safe: '安全', caution: '注意', dangerous: '危险', n_a: '—' }[v] || v || '—'
+}
+function verdictClass(v) {
+  return {
+    safe: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
+    caution: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400',
+    dangerous: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+  }[v] || 'bg-gray-100 dark:bg-gray-700 text-gray-500'
 }
 
 function setSource(id) {
@@ -342,22 +367,58 @@ onMounted(async () => {
               </span>
             </div>
 
-            <!-- 底部：作者 + 操作 -->
+            <!-- 底部：作者 + 操作 + 审计入口 -->
             <div class="mt-auto pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
               <div class="text-[11px] text-gray-400 truncate flex-1 min-w-0">
                 <span v-if="item.author">@{{ item.author }}</span>
                 <span v-else-if="item.source" class="capitalize">{{ item.source }}</span>
               </div>
-              <button v-if="!isInstalled(item.name)" @click="installMarket(item)"
-                      :disabled="installingName === item.name"
-                      class="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 transition flex-shrink-0">
-                {{ installingName === item.name ? '安装中…' : '+ 安装' }}
-              </button>
-              <button v-else @click="uninstallMarket(item)"
-                      :disabled="installingName === item.name"
-                      class="text-xs px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium hover:bg-red-100 hover:text-red-600 disabled:opacity-50 transition flex-shrink-0">
-                ✓ 已装
-              </button>
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <button v-if="isInstalled(item.name)" @click="toggleAudit(item.name)"
+                        class="text-[10px] px-2 py-1 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition">
+                  {{ auditExpanded[item.name] ? '▾' : '▸' }} 审计
+                </button>
+                <button v-if="!isInstalled(item.name)" @click="installMarket(item)"
+                        :disabled="installingName === item.name"
+                        class="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 transition">
+                  {{ installingName === item.name ? '安装中…' : '+ 安装' }}
+                </button>
+                <button v-else @click="uninstallMarket(item)"
+                        :disabled="installingName === item.name"
+                        class="text-xs px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium hover:bg-red-100 hover:text-red-600 disabled:opacity-50 transition">
+                  ✓ 已装
+                </button>
+              </div>
+            </div>
+
+            <!-- P0-3 供应链安全审计详情 -->
+            <div v-if="auditExpanded[item.name]" class="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700 text-xs">
+              <div v-if="!auditData[item.name]" class="text-gray-400 py-2">加载中…</div>
+              <div v-else-if="auditData[item.name].error" class="text-red-400 py-2">加载失败: {{ auditData[item.name].error }}</div>
+              <div v-else-if="!auditData[item.name].entries?.length && !auditData[item.name].installed" class="text-gray-400 py-2">暂无审计记录</div>
+              <div v-else class="space-y-1.5">
+                <!-- 当前安装快照 -->
+                <div v-if="auditData[item.name].installed" class="flex items-center gap-2 pb-1">
+                  <span class="text-gray-500">当前：</span>
+                  <span :class="verdictClass(auditData[item.name].installed.scan_verdict)" class="px-1.5 py-0.5 rounded font-medium">
+                    {{ verdictLabel(auditData[item.name].installed.scan_verdict) }}
+                  </span>
+                  <span class="text-gray-400 font-mono text-[10px]" :title="auditData[item.name].installed.skill_hash">
+                    sha: {{ auditData[item.name].installed.skill_hash?.slice(0, 12) || '—' }}…
+                  </span>
+                </div>
+                <!-- 历史记录 -->
+                <div v-if="auditData[item.name].entries?.length" class="space-y-1">
+                  <div class="text-gray-500 pb-0.5">审计历史 ({{ auditData[item.name].entries.length }})</div>
+                  <div v-for="(e, i) in auditData[item.name].entries.slice(0, 5)" :key="i" class="flex items-start gap-1.5 py-0.5">
+                    <span class="text-[10px] text-gray-400 font-mono flex-shrink-0 mt-0.5">{{ (e.ts || '').slice(5, 16) }}</span>
+                    <span :class="{ 'text-green-500': e.action === 'INSTALL', 'text-red-500': e.action === 'BLOCKED', 'text-gray-400': e.action === 'UNINSTALL' }" class="font-medium flex-shrink-0">{{ e.action }}</span>
+                    <span :class="verdictClass(e.verdict)" class="px-1 rounded text-[10px] flex-shrink-0">{{ verdictLabel(e.verdict) }}</span>
+                    <span v-if="e.findings?.length" class="text-amber-500 text-[10px]">{{ e.findings.length }} 项发现</span>
+                    <span v-if="e.scan_summary" class="text-gray-400 truncate" :title="e.scan_summary">{{ e.scan_summary }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

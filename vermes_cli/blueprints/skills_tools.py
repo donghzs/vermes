@@ -301,6 +301,33 @@ async def market_uninstall(name: str):
         return {"ok": False, "name": name, "message": str(exc)}
 
 
+async def skill_audit(name: str):
+    """GET /api/skills/audit/{name} — 返回某技能的供应链安全审计历史。
+
+    P0-3：供前端技能详情「安全审计」区消费。数据源是 ~/.vermes/.hub/audit.log
+    （结构化 jsonl，含 scan verdict/findings 摘要/sha256）。Fail-open：无记录返回空列表。
+    """
+    from tools.skills_hub import get_audit_entries, HubLockFile
+    try:
+        entries = get_audit_entries(skill_name=name, limit=20)
+        # 附带当前安装记录的 scan_verdict + skill_hash（来自 HubLockFile，最新快照）
+        lock = HubLockFile()
+        installed = lock.get_installed(name) or {}
+        return {
+            "name": name,
+            "entries": entries,
+            "installed": {
+                "scan_verdict": installed.get("scan_verdict", ""),
+                "skill_hash": installed.get("skill_hash", ""),
+                "source": installed.get("source", ""),
+                "trust_level": installed.get("trust_level", ""),
+                "install_path": installed.get("install_path", ""),
+            } if installed else None,
+        }
+    except Exception as exc:
+        return {"name": name, "entries": [], "installed": None, "error": str(exc)}
+
+
 # ── usage telemetry (越用越懂用户) ──────────────────────────────
 
 async def record_usage(body: UsageRecord):
@@ -358,6 +385,9 @@ def register_to(app):
     )
     app.add_api_route(
         "/api/skills/{name}", market_uninstall, methods=["DELETE"], name="market_uninstall"
+    )
+    app.add_api_route(
+        "/api/skills/audit/{name}", skill_audit, methods=["GET"], name="skill_audit"
     )
     app.add_api_route(
         "/api/usage", record_usage, methods=["POST"], name="record_usage"

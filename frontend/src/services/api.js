@@ -536,6 +536,9 @@ const api = {
   uninstallSkill(name) {
     return request(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(r => r.json())
   },
+  auditSkill(name) {
+    return this.get(`/skills/audit/${encodeURIComponent(name)}`)
+  },
 
   // ── 使用记录（越用越懂用户）──
   recordUsage(payload) {

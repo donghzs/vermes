@@ -541,7 +541,8 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         c.print(f"[bold red]Installation blocked:[/] {exc}\n")
         from tools.skills_hub import append_audit_log
         append_audit_log("BLOCKED", bundle.name, bundle.source,
-                         bundle.trust_level, "invalid_path", str(exc))
+                         bundle.trust_level, "invalid_path", str(exc),
+                         scan_summary=str(exc))
         return
     c.print(f"[dim]Quarantined to {q_path.relative_to(q_path.parent.parent.parent)}[/]")
 
@@ -560,7 +561,14 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         from tools.skills_hub import append_audit_log
         append_audit_log("BLOCKED", bundle.name, bundle.source,
                          bundle.trust_level, result.verdict,
-                         f"{len(result.findings)}_findings")
+                         f"{len(result.findings)}_findings",
+                         findings_summary=[
+                             {"pattern_id": f.pattern_id, "severity": f.severity,
+                              "category": f.category, "file": f.file, "line": f.line,
+                              "description": f.description}
+                             for f in (result.findings or [])
+                         ],
+                         scan_summary=reason)
         return
 
     if extra_metadata:
@@ -609,7 +617,8 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         shutil.rmtree(q_path, ignore_errors=True)
         from tools.skills_hub import append_audit_log
         append_audit_log("BLOCKED", bundle.name, bundle.source,
-                         bundle.trust_level, "invalid_path", str(exc))
+                         bundle.trust_level, "invalid_path", str(exc),
+                         scan_summary=str(exc))
         return
     from tools.skills_hub import SKILLS_DIR
     c.print(f"[bold green]Installed:[/] {install_dir.relative_to(SKILLS_DIR)}")

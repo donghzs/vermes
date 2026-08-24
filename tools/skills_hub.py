@@ -3023,19 +3023,80 @@ class TapsManager:
 # ---------------------------------------------------------------------------
 
 def append_audit_log(action: str, skill_name: str, source: str,
-                     trust_level: str, verdict: str, extra: str = "") -> None:
-    """Append a line to the audit log."""
+                     trust_level: str, verdict: str, extra: str = "",
+                     *, findings_summary: Optional[List[Dict[str, str]]] = None,
+                     scan_summary: str = "") -> None:
+    """Append a structured entry to the audit log (jsonl).
+
+    P0-3 升级：向后兼容旧调用（action/skill/source/trust/verdict/extra 仍传），
+    新增 findings_summary（findings 摘要列表）与 scan_summary（scan_skill.summary），
+    写成一行 jsonl，便于前端审计详情读取与渲染。
+
+    旧文本行（v2.4.2 之前）不迁移，读取时按行尝试 json.loads，失败则降级解析。
+    """
     AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    parts = [timestamp, action, skill_name, f"{source}:{trust_level}", verdict]
-    if extra:
-        parts.append(extra)
-    line = " ".join(parts) + "\n"
+    entry: Dict[str, Any] = {
+        "ts": timestamp,
+        "action": action,                # INSTALL | BLOCKED | UNINSTALL
+        "skill": skill_name,
+        "source": source,
+        "trust_level": trust_level,      # builtin | trusted | community
+        "verdict": verdict,              # safe | caution | dangerous | n/a
+        "extra": extra,                  # content_hash 或 notes
+    }
+    if findings_summary:
+        entry["findings"] = findings_summary
+    if scan_summary:
+        entry["scan_summary"] = scan_summary
+    line = json.dumps(entry, ensure_ascii=False) + "\n"
     try:
         with open(AUDIT_LOG, "a", encoding="utf-8") as f:
             f.write(line)
     except OSError as e:
         logger.debug("Could not write audit log: %s", e)
+
+
+def get_audit_entries(skill_name: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    """Read audit log entries, newest first.
+
+    P0-3：供 HTTP 端点 ``GET /api/skills/audit/{name}`` 使用。
+    向后兼容：旧文本行（非 json）降级解析为 {ts, action, skill, source, verdict, extra}。
+    Fail-open：读取/解析失败返回空列表。
+    """
+    if not AUDIT_LOG.exists():
+        return []
+    entries: List[Dict[str, Any]] = []
+    try:
+        with open(AUDIT_LOG, "r", encoding="utf-8") as f:
+            for raw in f:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except json.JSONDecodeError:
+                    # 旧文本行降级：`ts action skill source:trust verdict extra`
+                    parts = raw.split(" ", 5)
+                    if len(parts) >= 5:
+                        entry = {
+                            "ts": parts[0], "action": parts[1], "skill": parts[2],
+                            "source_trust": parts[3], "verdict": parts[4],
+                            "extra": parts[5] if len(parts) > 5 else "",
+                        }
+                        src_trust = entry.get("source_trust", "").split(":", 1)
+                        entry["source"] = src_trust[0]
+                        entry["trust_level"] = src_trust[1] if len(src_trust) > 1 else ""
+                    else:
+                        continue
+                entries.append(entry)
+    except OSError as e:
+        logger.debug("Could not read audit log: %s", e)
+        return []
+    if skill_name:
+        entries = [e for e in entries if e.get("skill") == skill_name]
+    entries.reverse()  # newest first
+    return entries[:limit]
 
 
 # ---------------------------------------------------------------------------
@@ -3140,6 +3201,13 @@ def install_from_quarantine(
         "INSTALL", safe_skill_name, bundle.source,
         bundle.trust_level, scan_result.verdict,
         content_hash(install_dir),
+        findings_summary=[
+            {"pattern_id": f.pattern_id, "severity": f.severity,
+             "category": f.category, "file": f.file, "line": f.line,
+             "description": f.description}
+            for f in (scan_result.findings or [])
+        ],
+        scan_summary=scan_result.summary or "",
     )
 
     return install_dir
