@@ -35,6 +35,7 @@ for src, dst in [
     ('vermes_time.py', '.'),
     ('vermes_cli/__init__.py', 'vermes_cli'),
     ('vermes_cli/scholarforge', 'vermes_cli/scholarforge'),
+    ('vermes_cli/experts_catalog.json', 'vermes_cli'),
     ('harness', 'harness'),
     ('README.md', '.'),
     ('BRAND.md', '.'),

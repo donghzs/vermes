@@ -178,11 +178,16 @@ async def get_experts():
     from vermes_cli.config import load_config
 
     catalog_path = Path(__file__).parent.parent / "experts_catalog.json"
+    catalog = []
+    catalog_error = None
     try:
         catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        _log.warning("Experts catalog missing — experts_catalog.json not bundled in build")
+        catalog_error = "catalog_missing"
     except Exception as exc:
         _log.warning("Failed to load experts catalog: %s", exc)
-        catalog = []
+        catalog_error = "load_failed"
 
     config = load_config()
     disabled = set(get_disabled_skills(config))
@@ -205,7 +210,7 @@ async def get_experts():
             })
         ready = all(s["installed"] for s in skills_status) if skills_status else True
         out.append({**e, "skills_status": skills_status, "ready": ready})
-    return out
+    return {"experts": out, "error": catalog_error}
 
 
 class _CaptureConsole:

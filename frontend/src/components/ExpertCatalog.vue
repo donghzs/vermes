@@ -4,6 +4,7 @@ import api from '../services/api.js'
 import { useChatStore } from '../stores/chat.js'
 
 const experts = ref([])
+const expertsError = ref(null)   // 'catalog_missing' | 'load_failed' | null
 const loading = ref(false)
 const busyId = ref('')
 const frequent = ref([])   // 常用来宾（按使用频次）
@@ -34,10 +35,13 @@ async function loadExperts() {
   loading.value = true
   try {
     const data = await api.getExperts()
-    experts.value = Array.isArray(data) ? data : []
+    const payload = data && typeof data === 'object' && 'experts' in data ? data : { experts: Array.isArray(data) ? data : [], error: null }
+    experts.value = Array.isArray(payload.experts) ? payload.experts : []
+    expertsError.value = payload.error || null
   } catch (e) {
     console.error('Failed to load experts:', e)
     experts.value = []
+    expertsError.value = 'load_failed'
   } finally {
     loading.value = false
   }
@@ -159,6 +163,11 @@ onMounted(() => {
       </div>
 
       <div v-if="loading" class="text-center py-4 text-xs text-gray-400 animate-pulse">加载中…</div>
+      <div v-else-if="expertsError" class="text-center py-6 text-xs text-orange-400">
+        <div class="text-2xl mb-1">⚠️</div>
+        <div>专家目录加载失败</div>
+        <div class="text-[10px] text-gray-400 mt-1">请重启应用或重新安装最新版本</div>
+      </div>
       <div v-else-if="experts.length === 0" class="text-center py-6 text-xs text-gray-400">
         <div class="text-2xl mb-1">🎓</div>
         <div>暂无专家</div>
