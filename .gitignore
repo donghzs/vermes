@@ -76,7 +76,6 @@ docs/superpowers/*
 build/
 dist/Vermes.app/
 dist/Vermes/
-frontend/dist/
 frontend/coverage/
 
 # Local release binaries (not committed)
