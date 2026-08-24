@@ -202,14 +202,41 @@ async def migration_preview(source: str = "hermes"):
         ]
         script = next((p for p in script_paths if p.exists()), None)
         if not script:
-            return {"error": "OpenClaw migration script not found"}
+            return {"error": "OpenClaw migration script not found. Install via: vermes claw migrate --dry-run"}
         spec = spec_from_file_location("openclaw_to_vermes", str(script))
         mod = module_from_spec(spec)
         sys.modules["openclaw_to_vermes"] = mod
         spec.loader.exec_module(mod)
-        migrator = mod.Migrator()
+        # Migrator 需要必参 source_root/target_root/execute 等
+        oc_home = Path.home() / ".openclaw"
+        if not oc_home.exists():
+            # 尝试其他目录名
+            for alt in [".clawdbot", ".moltbot"]:
+                alt_home = Path.home() / alt
+                if alt_home.exists():
+                    oc_home = alt_home
+                    break
+        if not oc_home.exists():
+            return {"error": "OpenClaw directory not found (~/.openclaw / ~/.clawdbot / ~/.moltbot)"}
+        vermes_home = Path.home() / ".vermes"
+        migrator = mod.Migrator(
+            source_root=oc_home,
+            target_root=vermes_home,
+            execute=False,
+            workspace_target=None,
+            overwrite=False,
+            migrate_secrets=False,
+            output_dir=None,
+        )
+        # 先执行 dry-run 迁移生成 items，再 build_report
+        migrator.migrate()
         report = migrator.build_report()
-        return {"summary": report.get("summary", {}), "items": report.get("items", [])[:20]}
+        return {
+            "summary": report.get("summary", {}),
+            "items": report.get("items", [])[:30],
+            "total": len(report.get("items", [])),
+            "dry_run": True,
+        }
     else:
         return {"error": f"Unknown source: {source}"}
 
@@ -226,7 +253,46 @@ async def migration_execute(source: str = "hermes"):
             "dry_run": False,
         }
     elif source == "openclaw":
-        return {"error": "OpenClaw migration via API not yet supported. Use CLI: vermes claw migrate"}
+        from importlib.util import spec_from_file_location, module_from_spec
+        import sys
+        script_paths = [
+            Path.home() / ".vermes" / "skills" / "migration" / "openclaw-migration" / "scripts" / "openclaw_to_vermes.py",
+            Path(__file__).parent.parent.parent / "optional-skills" / "migration" / "openclaw-migration" / "scripts" / "openclaw_to_vermes.py",
+        ]
+        script = next((p for p in script_paths if p.exists()), None)
+        if not script:
+            return {"error": "OpenClaw migration script not found"}
+        spec = spec_from_file_location("openclaw_to_vermes", str(script))
+        mod = module_from_spec(spec)
+        sys.modules["openclaw_to_vermes"] = mod
+        spec.loader.exec_module(mod)
+        oc_home = Path.home() / ".openclaw"
+        if not oc_home.exists():
+            for alt in [".clawdbot", ".moltbot"]:
+                alt_home = Path.home() / alt
+                if alt_home.exists():
+                    oc_home = alt_home
+                    break
+        if not oc_home.exists():
+            return {"error": "OpenClaw directory not found"}
+        vermes_home = Path.home() / ".vermes"
+        migrator = mod.Migrator(
+            source_root=oc_home,
+            target_root=vermes_home,
+            execute=True,
+            workspace_target=None,
+            overwrite=False,
+            migrate_secrets=False,
+            output_dir=None,
+        )
+        migrator.migrate()
+        report = migrator.build_report()
+        return {
+            "summary": report.get("summary", {}),
+            "items": report.get("items", [])[:30],
+            "total": len(report.get("items", [])),
+            "dry_run": False,
+        }
     else:
         return {"error": f"Unknown source: {source}"}
 

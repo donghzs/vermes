@@ -324,6 +324,11 @@ async def provider_sync_models(request: Request):
                     _detail = resp.json()
                 except Exception:
                     _detail = resp.text[:500]
+                # 431 Request Header Fields Too Large：部分国产 API 网关对 Authorization 头敏感
+                if resp.status_code == 431:
+                    return {"ok": False,
+                            "error": f"API returned 431 from {base_url}/models — 请求头过大被拒，可能是 API Key 无效或网关限制",
+                            "detail": _detail}
                 return {"ok": False,
                         "error": f"API returned {resp.status_code} from {base_url}/models",
                         "detail": _detail}
