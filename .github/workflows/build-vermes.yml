@@ -171,7 +171,10 @@ jobs:
   build-macos-arm64:
     name: Build macOS ARM64
     runs-on: macos-14
-    if: github.event_name == 'push'
+    # macOS 发布走手动构建（./build-macos.sh --clean → 本地打 DMG）。
+    # CI 自动打包的 DMG 命名/卷名与下载页 version.json 不匹配，且无法复现
+    # 本地验证过的完整链路（含 experts_catalog.json 等数据文件打包），故禁用。
+    if: false
     steps:
       - uses: actions/checkout@v4
 

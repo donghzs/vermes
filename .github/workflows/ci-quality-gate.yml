@@ -187,7 +187,10 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 45
     needs: test-baseline
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # macOS 发布走手动构建（./build-macos.sh --clean）。CI 无法复现本地验证过的
+    # 完整打包链路（含 experts_catalog.json 等数据文件），产物仅内部 artifact 不发布，
+    # 但为避免命名混乱与 CI 资源浪费，禁用本 job。
+    if: false
     steps:
       - uses: actions/checkout@v4
 

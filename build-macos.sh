@@ -70,10 +70,27 @@ if [[ -d "dist/Vermes.app" ]]; then
     echo ""
     echo "✅ Build successful!"
     echo "   Location: $(pwd)/dist/Vermes.app"
-    echo ""
-    echo "   To test: open dist/Vermes.app"
-    echo "   To distribute: zip -r Vermes-macos.zip dist/Vermes.app"
 else
     echo "❌ Build failed. Check the output above."
     exit 1
 fi
+
+# ── 打包 DMG（用版本号命名，对齐下载页 version.json）──
+# 读取版本号：优先 vermes_cli/__init__.py __version__，回退 version.json
+VERSION=$(grep -o '__version__ = "[^"]*"' vermes_cli/__init__.py | sed 's/__version__ = "//;s/"//')
+if [[ -z "$VERSION" ]]; then
+    VERSION=$(grep '"version"' version.json | head -1 | sed 's/.*: *"//;s/".*//')
+fi
+DMG_NAME="Vermes-${VERSION}-arm64.dmg"
+DMG_DIR="dist-electron"
+mkdir -p "$DMG_DIR"
+
+echo "💿 Creating DMG: $DMG_NAME (version $VERSION)"
+# 卸载可能残留的旧挂载
+for v in "Vermes ${VERSION}" "Vermes ${VERSION} 1" "Vermes ${VERSION} 2"; do
+    hdiutil detach "/Volumes/$v" -force -quiet 2>/dev/null || true
+done
+rm -f "$DMG_DIR/$DMG_NAME"
+hdiutil create -volname "Vermes ${VERSION}" -srcfolder dist/Vermes.app -ov -format UDZO "$DMG_DIR/$DMG_NAME"
+echo "✅ DMG created: $DMG_DIR/$DMG_NAME ($(du -h "$DMG_DIR/$DMG_NAME" | cut -f1))"
+echo "   SHA256: $(shasum -a 256 "$DMG_DIR/$DMG_NAME" | cut -d' ' -f1)"

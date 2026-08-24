@@ -6,8 +6,8 @@
     "mac": {
       "arm64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.4.2-arm64.dmg",
-        "sha256": "70a01434d58e5d94e116bb26f0a7dff1adff8f630e6ad390970bdde8bde647dd",
-        "size": 274017226
+        "sha256": "a696fb8f7262c73a9885bc6db4711d86b4f53bf2f9d7715edee7c885d7fe8b42",
+        "size": 172831806
       },
       "x64": {
         "url": "https://vbit.top/vermes/downloads/Vermes-2.4.2.dmg",
