@@ -312,22 +312,14 @@ function closeDropdowns() {
         <button @click="chat.searchMode = false; chat.searchQuery = ''" class="text-gray-400 hover:text-gray-600 text-xs">✕</button>
       </div>
       <button v-else @click="chat.searchMode = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="搜索消息 (⌘⇧S)">🔍<span class="header-tooltip group-hover:opacity-100">搜索消息 ⌘⇧S</span></button>
-      <!-- 进化指示器 -->
-      <div v-if="evoStatus?.active" @click="openEvolutionPanel()" 
-           class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-           :title="`进化系统: ${evoStatus.total_outcomes} 次调用, 成功率 ${evoStatus.success_rate}%`">
-        <span class="text-xs">🧠</span>
-        <span class="text-[10px] font-mono" :class="evoStatus.success_rate >= 80 ? 'text-green-500' : 'text-yellow-500'">{{ evoStatus.success_rate }}%</span>
-        <span class="header-tooltip group-hover:opacity-100">进化系统 · {{ evoStatus.total_outcomes }} 次调用 · 成功率 {{ evoStatus.success_rate }}%</span>
-      </div>
-      <!-- Memory 指示器 -->
-      <div v-if="memStatus?.active && memoryBlocksList.length > 0" 
+      <!-- Memory 指示器（始终显示） -->
+      <div 
            @click="showMemoryDetail = !showMemoryDetail"
            class="group relative flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-           :title="`已加载 ${memoryBlocksList.length} 个记忆块 (~${memStatus.total_tokens_est} tokens)`">
+           :title="`已加载 ${memoryBlocksList.length} 个记忆块 (~${memStatus?.total_tokens_est || 0} tokens)`">
         <span class="text-xs">📚</span>
-        <span class="text-[10px] font-mono text-green-500">{{ memoryBlocksList.length }}</span>
-        <span class="header-tooltip group-hover:opacity-100">已加载 {{ memoryBlocksList.length }} 个记忆块</span>
+        <span class="text-[10px] font-mono" :class="memoryBlocksList.length > 0 ? 'text-green-500' : 'text-gray-400'">{{ memoryBlocksList.length || '—' }}</span>
+        <span class="header-tooltip group-hover:opacity-100">记忆 · {{ memoryBlocksList.length }} 个记忆块</span>
       </div>
       <button @click="showHelp = true" class="group relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition text-sm" title="使用帮助">❓<span class="header-tooltip group-hover:opacity-100">使用帮助</span></button>
       <span v-if="quotaDisplay" class="text-xs px-2 py-0.5 rounded-full"
