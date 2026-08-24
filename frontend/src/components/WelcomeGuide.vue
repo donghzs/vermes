@@ -81,6 +81,25 @@ const quickStarts = [
   { icon: '💻', text: '写一段Python代码' },
 ]
 
+// 从其他 Agent 迁移（检测本机是否安装了 Hermes / OpenClaw）
+const migrationSource = ref(null) // 'hermes' | 'openclaw' | null
+async function detectMigrationSource() {
+  try {
+    // 后端提供检测接口；失败则静默
+    const data = await api.detectMigrationSources()
+    if (data && data.sources && data.sources.length) {
+      // 优先 Hermes（目录同构，迁移最完整）
+      migrationSource.value = data.sources.includes('hermes') ? 'hermes' : data.sources[0]
+    }
+  } catch (e) { /* no-op */ }
+}
+function migrateFromOther() {
+  if (!migrationSource.value) return
+  const label = migrationSource.value === 'hermes' ? 'Hermes' : 'OpenClaw'
+  // 直接发送消息让 agent 触发 migrate_agent 工具
+  quickSend(`帮我把 ${label} 的配置、记忆和技能迁移过来（先预演确认再执行）`)
+}
+
 // 专家能力——点击后打开 Agent 管理面板专家 tab
 const experts = ref([])
 const expertBusy = ref('')
@@ -172,6 +191,7 @@ function openExpertsPanel() {
 onMounted(() => {
   loadExperts().then(loadRecommendations)
   loadRecommendedSkills()
+  detectMigrationSource()
 })
 </script>
 
@@ -357,6 +377,25 @@ onMounted(() => {
           <div class="flex items-center gap-3">
             <span class="text-xl">{{ item.icon }}</span>
             <span class="text-gray-700 dark:text-gray-300">"{{ item.text }}"</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- 从其他 Agent 迁移 -->
+      <div v-if="migrationSource" class="mb-8">
+        <button @click="migrateFromOther()"
+                class="w-full p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl border border-amber-200 dark:border-amber-800 hover:border-amber-400 dark:hover:border-amber-600 transition text-left">
+          <div class="flex items-center gap-3">
+            <span class="text-xl">🔁</span>
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
+                检测到本机安装了 {{ migrationSource === 'hermes' ? 'Hermes' : 'OpenClaw' }}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                一键迁移配置、记忆和技能
+              </div>
+            </div>
+            <span class="text-xs text-amber-600 dark:text-amber-400 font-medium">迁移 →</span>
           </div>
         </button>
       </div>

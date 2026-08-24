@@ -310,10 +310,75 @@ def claw_command(args):
         logger.info("Run 'vermes claw <command> --help' for options.")
 
 
+def _cmd_migrate_hermes(args):
+    """Run the Hermes → Vermes migration (dedicated path)."""
+    from vermes_cli.hermes_migrate import (
+        _find_hermes_home,
+        format_result,
+        migrate_from_hermes,
+    )
+
+    dry_run = getattr(args, "dry_run", False)
+    overwrite = getattr(args, "overwrite", False)
+    migrate_secrets = getattr(args, "migrate_secrets", False)
+    no_skills = getattr(args, "no_skills", False)
+    migrate_skills = getattr(args, "migrate_skills", True) and not no_skills
+    auto_yes = getattr(args, "yes", False)
+
+    home = _find_hermes_home()
+    if home is None:
+        print_error("Hermes directory not found (~/.hermes).")
+        print_info("Install the official Hermes Agent first, or pass --source /path/to/.hermes")
+        return
+
+    # Preview first
+    result = migrate_from_hermes(
+        hermes_home=home,
+        dry_run=True,
+        overwrite=overwrite,
+        migrate_secrets=migrate_secrets,
+        migrate_skills=migrate_skills,
+    )
+    print(format_result(result))
+
+    if dry_run:
+        return
+
+    s = result.summary()
+    if s["migrated"] == 0 and s["conflict"] == 0:
+        print_info("Nothing to migrate from Hermes.")
+        return
+
+    if s["conflict"] > 0 and not overwrite:
+        print_info(f"{s['conflict']} conflict(s) will be skipped. Re-run with --overwrite to replace.")
+
+    if not auto_yes:
+        if not sys.stdin.isatty():
+            print_info("Non-interactive session — preview only. Re-run with --yes to execute.")
+            return
+        if not prompt_yes_no("Proceed with Hermes migration?", default=True):
+            print_info("Migration cancelled.")
+            return
+
+    result = migrate_from_hermes(
+        hermes_home=home,
+        dry_run=False,
+        overwrite=overwrite,
+        migrate_secrets=migrate_secrets,
+        migrate_skills=migrate_skills,
+    )
+    print(format_result(result))
+
+
 def _cmd_migrate(args):
-    """Run the OpenClaw → Vermes migration."""
-    # Check current and legacy OpenClaw directories
+    """Run a migration into Vermes (OpenClaw or Hermes)."""
+    # Hermes source: route to the dedicated Hermes migrator.
     explicit_source = getattr(args, "source", None)
+    if explicit_source and str(explicit_source).strip().lower() in {"hermes", "~/.hermes", ".hermes"}:
+        _cmd_migrate_hermes(args)
+        return
+
+    # Check current and legacy OpenClaw directories
     if explicit_source:
         source_dir = Path(explicit_source)
     else:

@@ -171,6 +171,17 @@ async def toggle_toolset(name: str, body: ToolsetToggle):
 
 # ── market handlers ────────────────────────────────────────────
 
+async def detect_migration_sources():
+    """Detect which other-agent footprints exist on this machine."""
+    home = Path.home()
+    sources = []
+    if (home / ".hermes").is_dir():
+        sources.append("hermes")
+    if (home / ".openclaw").is_dir() or (home / ".clawdbot").is_dir() or (home / ".moltbot").is_dir():
+        sources.append("openclaw")
+    return {"sources": sources}
+
+
 async def get_experts():
     """Curated expert catalog (qclaw-style) merged with live skill status."""
     from tools.skills_tool import _find_all_skills
@@ -380,6 +391,10 @@ def register_to(app):
     app.add_api_route(
         "/api/experts", get_experts, methods=["GET"], name="get_experts"
     )
+    app.add_api_route(
+        "/api/migration/sources", detect_migration_sources, methods=["GET"], name="detect_migration_sources"
+    )
+
     app.add_api_route(
         "/api/skills/install", market_install, methods=["POST"], name="market_install"
     )

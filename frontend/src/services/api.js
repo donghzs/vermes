@@ -523,6 +523,9 @@ const api = {
   // ── 专家目录 ──
   getExperts() { return this.get('/experts') },
 
+  // ── 迁移检测 ──
+  detectMigrationSources() { return this.get('/migration/sources') },
+
   // ── Route E-Reflection：记忆 flag ──
   getFlags() { return this.get('/flags') },
   getResolvedFlags() { return this.get('/flags/resolved') },

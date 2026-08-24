@@ -12478,12 +12478,14 @@ Examples:
     # claw migrate
     claw_migrate = claw_subparsers.add_parser(
         "migrate",
-        help="Migrate from OpenClaw to Vermes",
-        description="Import settings, memories, skills, and API keys from an OpenClaw installation. "
-        "Always shows a preview before making changes.",
+        help="Migrate from OpenClaw or Hermes to Vermes",
+        description="Import settings, memories, skills, and API keys from an OpenClaw or "
+        "Hermes installation. Always shows a preview before making changes.",
     )
     claw_migrate.add_argument(
-        "--source", help="Path to OpenClaw directory (default: ~/.openclaw)"
+        "--source",
+        help="Migration source: 'hermes' (official Hermes Agent) or a path to an "
+        "OpenClaw directory (default: ~/.openclaw)",
     )
     claw_migrate.add_argument(
         "--dry-run",
@@ -12526,6 +12528,17 @@ Examples:
     )
     claw_migrate.add_argument(
         "--yes", "-y", action="store_true", help="Skip confirmation prompts"
+    )
+    claw_migrate.add_argument(
+        "--migrate-skills",
+        action="store_true",
+        default=True,
+        help="Migrate missing skills (Hermes source only; default: enabled)",
+    )
+    claw_migrate.add_argument(
+        "--no-skills",
+        action="store_true",
+        help="Skip skill migration (Hermes source only)",
     )
 
     # claw cleanup
