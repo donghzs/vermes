@@ -6,6 +6,7 @@ import { toast } from '../utils/toast'
 import { useConfirm } from '../composables/useConfirm'
 const { confirm } = useConfirm()
 import { loadMessagesFromIDB } from '../stores/chat-storage'
+import api from '../services/api'
 import EvolutionPanel from './EvolutionPanel.vue'
 import KnowledgeBase from './KnowledgeBase.vue'
 
@@ -282,8 +283,29 @@ function cancelCustomPrompt() {
 }
 
 // ── 导出 ──
-function handleExport(id, format) {
-  chat.exportSession(id, format)
+async function handleExport(id, format) {
+  // md/html 走后端导出（含 tool_calls/完整消息），json 走前端本地
+  if (format === 'markdown' || format === 'html') {
+    try {
+      const fmt = format === 'html' ? 'html' : 'md'
+      const res = await api.exportSession(id, fmt)
+      const blob = await res.blob()
+      const session = chat.allSessions.find(s => s.id === id)
+      const name = session?.name || id.slice(0, 8)
+      const ext = fmt === 'html' ? 'html' : 'md'
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${name}.${ext}`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('后端导出失败，回退前端:', e)
+      chat.exportSession(id, 'md')
+    }
+  } else {
+    chat.exportSession(id, format)
+  }
   closeContextMenu()
 }
 
@@ -570,6 +592,7 @@ async function handleImportFile(e) {
       <button @click="handleDelete(contextMenu.session?.id)" class="w-full px-3 py-1.5 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition">🗑 删除会话</button>
       <div class="border-t border-gray-200 dark:border-gray-600 my-1"></div>
       <button @click="handleExport(contextMenu.session?.id, 'markdown')" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">📄 导出 Markdown</button>
+      <button @click="handleExport(contextMenu.session?.id, 'html')" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">🌐 导出 HTML</button>
       <button @click="handleExport(contextMenu.session?.id, 'json')" class="w-full px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">📋 导出 JSON</button>
     </div>
   </Teleport>

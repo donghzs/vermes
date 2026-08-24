@@ -85,7 +85,14 @@ def _get_mcp_servers(config: Optional[dict] = None) -> Dict[str, dict]:
 
 
 def _save_mcp_server(name: str, server_config: dict):
-    """Add or update a server entry in config.yaml."""
+    """Add or update a server entry in config.yaml.
+
+    P1-1: 安全校验在保存时拦截恶意 MCP 配置（hermes-0day shape）。
+    """
+    from vermes_cli.mcp_security import validate_mcp_server_entry
+    warnings = validate_mcp_server_entry(name, server_config)
+    if warnings:
+        raise ValueError(f"MCP 安全校验未通过: {'; '.join(warnings)}")
     config = load_config()
     config.setdefault("mcp_servers", {})[name] = server_config
     save_config(config)

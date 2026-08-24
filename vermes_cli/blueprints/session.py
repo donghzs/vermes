@@ -1,6 +1,6 @@
 """Blueprint: Session（会话历史管理）
 
-Session listing, searching, detail, and deletion endpoints.
+Session listing, searching, detail, deletion, export, and recovery endpoints.
 Uses vermes_state.SessionDB for persistence.
 """
 
@@ -9,8 +9,10 @@ import logging
 import re
 import time
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse, HTMLResponse
 
 from vermes_cli.blueprints.helpers import _session_latest_descendant
 
@@ -292,6 +294,180 @@ async def delete_session_endpoint(session_id: str):
         db.close()
 
 
+# ── P1-2: 会话资产化 — 导出 / 恢复 ─────────────────────────────
+
+async def export_session(session_id: str, format: str = "md"):
+    """导出会话为 Markdown 或 HTML 格式。
+
+    GET /api/sessions/{session_id}/export?format=md|html
+
+    复用 session_recap.build_recap 思路，但输出完整对话而非摘要。
+    """
+    from vermes_state import SessionDB
+    from vermes_cli.session_recap import build_recap
+
+    fmt = (format or "md").lower().strip()
+    if fmt not in ("md", "html"):
+        raise HTTPException(status_code=400, detail="format must be 'md' or 'html'")
+
+    db = SessionDB()
+    try:
+        sid = db.resolve_session_id(session_id)
+        if not sid:
+            raise HTTPException(status_code=404, detail="Session not found")
+        session = db.get_session(sid)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        messages = db.get_messages(sid)
+        title = session.get("title") or sid[:8]
+        source = session.get("source") or ""
+        created = session.get("created_at") or ""
+
+        if fmt == "md":
+            return _build_md_export(sid, title, source, created, messages)
+        else:
+            return HTMLResponse(content=_build_html_export(sid, title, source, created, messages))
+    finally:
+        db.close()
+
+
+def _build_md_export(sid: str, title: str, source: str, created: str, messages: list) -> PlainTextResponse:
+    """构建 Markdown 导出。"""
+    lines = [
+        f"# {title}",
+        "",
+        f"> Session ID: `{sid}`  ",
+        f"> Source: {source or '—'}  ",
+        f"> Created: {created or '—'}  ",
+        f"> Exported: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}  ",
+        f"> Messages: {len(messages)}",
+        "",
+        "---",
+        "",
+    ]
+    for msg in messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        ts = msg.get("timestamp", "")
+        role_label = {"user": "👤 User", "assistant": "🤖 Assistant", "system": "⚙️ System", "tool": "🔧 Tool"}.get(role, role)
+        lines.append(f"## {role_label}")
+        if ts:
+            lines.append(f"*{ts}*")
+        lines.append("")
+        # tool_calls
+        tool_calls = msg.get("tool_calls") or []
+        if tool_calls:
+            for tc in tool_calls:
+                fn = (tc.get("function") or {}).get("name", "unknown")
+                args = (tc.get("function") or {}).get("arguments", "")
+                lines.append(f"**🔧 Tool Call: `{fn}`**")
+                lines.append(f"```json\n{args}\n```")
+                lines.append("")
+        if content:
+            lines.append(str(content))
+            lines.append("")
+        # tool result
+        if role == "tool":
+            name = msg.get("name", "")
+            if name:
+                lines.append(f"*(Tool: {name})*")
+                lines.append("")
+        lines.append("---")
+        lines.append("")
+    return PlainTextResponse(content="\n".join(lines), media_type="text/markdown; charset=utf-8")
+
+
+def _build_html_export(sid: str, title: str, source: str, created: str, messages: list) -> str:
+    """构建 HTML 导出（独立可打开的页面）。"""
+    import html as _html
+    msg_html = []
+    for msg in messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        ts = msg.get("timestamp", "")
+        role_cls = {"user": "user", "assistant": "assistant", "system": "system", "tool": "tool"}.get(role, "other")
+        role_label = {"user": "You", "assistant": "Assistant", "system": "System", "tool": "Tool"}.get(role, role)
+        tool_calls_html = ""
+        for tc in (msg.get("tool_calls") or []):
+            fn = (tc.get("function") or {}).get("name", "unknown")
+            args = (tc.get("function") or {}).get("arguments", "")
+            tool_calls_html += f'<div class="tool-call"><span class="tool-name">🔧 {fn}</span><pre>{_html.escape(args)}</pre></div>'
+        content_html = _html.escape(str(content)) if content else ""
+        ts_html = f'<span class="ts">{_html.escape(ts)}</span>' if ts else ""
+        msg_html.append(f'''<div class="msg {role_cls}"><div class="msg-header">{role_label} {ts_html}</div>{tool_calls_html}<div class="msg-content">{content_html}</div></div>''')
+    return f'''<!DOCTYPE html><html><head><meta charset="utf-8"><title>{_html.escape(title)}</title><style>
+body {{ font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #fafafa; }}
+h1 {{ color: #333; }}
+.meta {{ color: #888; font-size: 13px; margin-bottom: 20px; }}
+.msg {{ margin: 16px 0; padding: 12px 16px; border-radius: 12px; }}
+.msg.user {{ background: #e3f2fd; }}
+.msg.assistant {{ background: #e8f5e9; }}
+.msg.system {{ background: #fff3e0; }}
+.msg.tool {{ background: #f3e5f5; }}
+.msg-header {{ font-weight: 600; font-size: 13px; margin-bottom: 8px; }}
+.msg-content {{ white-space: pre-wrap; word-break: break-word; }}
+.tool-call {{ margin: 8px 0; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 8px; }}
+.tool-name {{ font-weight: 600; }}
+.tool-call pre {{ font-size: 12px; overflow-x: auto; margin: 4px 0; }}
+.ts {{ color: #aaa; font-weight: 400; }}
+hr {{ border: none; border-top: 1px solid #eee; margin: 20px 0; }}
+</style></head><body>
+<h1>{_html.escape(title)}</h1><div class="meta">Session: <code>{sid}</code> · Source: {source or '—'} · Created: {created or '—'} · Exported: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · Messages: {len(messages)}</div><hr>{"".join(msg_html)}</body></html>'''
+
+
+async def session_recovery_check(session_id: str = ""):
+    """检查会话完整性 / 崩溃恢复。
+
+    GET /api/sessions/recovery?session_id=xxx
+    - 不传 session_id：扫描所有会话，返回损坏/中断的会话列表
+    - 传 session_id：检查指定会话是否完整（最后一条消息是否为 assistant 回复）
+    """
+    from vermes_state import SessionDB
+
+    db = SessionDB()
+    try:
+        if session_id:
+            sid = db.resolve_session_id(session_id)
+            if not sid:
+                raise HTTPException(status_code=404, detail="Session not found")
+            messages = db.get_messages(sid)
+            session = db.get_session(sid)
+            if not messages:
+                return {"session_id": sid, "status": "empty", "message": "会话无消息"}
+            last_msg = messages[-1] if messages else {}
+            last_role = last_msg.get("role", "")
+            # 崩溃特征：最后一条是 user 但没有 assistant 回复
+            is_interrupted = last_role == "user"
+            return {
+                "session_id": sid,
+                "title": (session or {}).get("title", ""),
+                "status": "interrupted" if is_interrupted else "complete",
+                "last_role": last_role,
+                "message_count": len(messages),
+                "recoverable": is_interrupted,
+                "last_user_message": last_msg.get("content", "")[:200] if is_interrupted else None,
+            }
+        else:
+            # 扫描所有会话
+            sessions = db.list_sessions(limit=100)
+            interrupted = []
+            for s in sessions:
+                sid = s.get("id") or s.get("session_id", "")
+                if not sid:
+                    continue
+                msgs = db.get_messages(sid)
+                if msgs and msgs[-1].get("role") == "user":
+                    interrupted.append({
+                        "session_id": sid,
+                        "title": s.get("title", ""),
+                        "message_count": len(msgs),
+                        "last_user_message": (msgs[-1].get("content") or "")[:200],
+                    })
+            return {"interrupted_count": len(interrupted), "sessions": interrupted}
+    finally:
+        db.close()
+
+
 # ── registration ───────────────────────────────────────────────
 
 def register_to(app):
@@ -347,6 +523,19 @@ def register_to(app):
         delete_session_endpoint,
         methods=["DELETE"],
         name="delete_session",
+    )
+    # P1-2: 会话资产化
+    app.add_api_route(
+        "/api/sessions/{session_id}/export",
+        export_session,
+        methods=["GET"],
+        name="export_session",
+    )
+    app.add_api_route(
+        "/api/sessions/recovery",
+        session_recovery_check,
+        methods=["GET"],
+        name="session_recovery_check",
     )
     # Vermes GUI 消息持久化
     app.add_api_route("/api/gui/messages/{session_id}", save_gui_messages, methods=["POST"], name="save_gui_messages")

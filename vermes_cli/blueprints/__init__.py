@@ -18,6 +18,8 @@ from . import oauth
 from . import storage
 from . import artifacts
 from . import modules_market
+from . import mcp_catalog
+from . import credential_lifecycle
 
 __all__ = [
     "quota_bp", "wechat_bp", "models_bp",
@@ -25,5 +27,5 @@ __all__ = [
     "chat", "config", "providers",
     "cron_jobs", "update", "skills_tools",
     "analytics", "status", "gateway_channels", "profiles",
-    "oauth", "storage", "artifacts", "modules_market",
+    "oauth", "storage", "artifacts", "modules_market", "mcp_catalog", "credential_lifecycle",
 ]

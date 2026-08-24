@@ -294,9 +294,23 @@ const api = {
     return resp.json()
   },
 
+  async del(path) {
+    const resp = await request(path, { method: 'DELETE' })
+    return resp.json()
+  },
+
   // 会话
   getSessions() { return this.get('/sessions') },
   getMessages(sessionId) { return this.get(`/sessions/${sessionId}/messages`) },
+  exportSession(sessionId, format = 'md') {
+    return fetch(`${this.baseURL}/sessions/${sessionId}/export?format=${format}`, {
+      headers: this._headers(),
+    })
+  },
+  checkRecovery(sessionId = '') {
+    const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+    return this.get(`/sessions/recovery${q}`)
+  },
 
   // 技能市场
   searchSkills(q, source, limit) { return this.get(`/skills/market?q=${encodeURIComponent(q)}&source=${source}&limit=${limit}`) },

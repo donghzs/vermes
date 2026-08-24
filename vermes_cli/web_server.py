@@ -2921,6 +2921,18 @@ blueprints.oauth.register_to(app)
 blueprints.artifacts.register_to(app)
 blueprints.modules_market.register_to(app)  # Phase 3.2 市场后端中间层
 
+# P1-1: MCP 目录 + 安全规格
+try:
+    blueprints.mcp_catalog.register_to(app)
+except Exception as _e:
+    logger.warning("mcp_catalog 注册失败: %s", _e)
+
+# P1-4: 凭证轮换 + approvals 协同
+try:
+    blueprints.credential_lifecycle.register_to(app)
+except Exception as _e:
+    logger.warning("credential_lifecycle 注册失败: %s", _e)
+
 # ── L2 adapters API（发现/推荐/安装软件积木）──
 try:
     from vermes_cli.adapters.api import register_to as register_adapters

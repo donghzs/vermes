@@ -109,7 +109,8 @@ watch(activeTab, (tab) => {
   if (tab === 'services' && Object.keys(serviceGroups.value).length === 0 && !servicesLoading.value) loadServices()
   if (tab === 'literature' && literaturePaid.value.length === 0 && literatureFree.value.length === 0 && literatureCustom.value.length === 0 && !literatureLoading.value) loadLiterature()
   if (tab === 'knowledge' && ragDocs.value.length === 0 && !ragLoading.value) fetchRagDocs()
-  if (tab === 'security') loadTierMode()
+  if (tab === 'security') { loadTierMode(); loadCredHealth() }
+  if (tab === 'mcp') { loadMcpCatalog(); loadMcpServers(); loadMcpSecurityRules() }
 })
 
 // ── 安全设置 ──
@@ -137,6 +138,95 @@ const TIER_MODES = [
 ]
 const tierMode = ref('balanced')
 const tierSaving = ref(false)
+
+// ── P1-1: MCP 目录 + 安全 ──
+const mcpServers = ref({})
+const mcpCatalog = ref([])
+const mcpCatalogLoading = ref(false)
+const mcpInstalling = ref('')
+const mcpSecurityRules = ref(null)
+
+// ── P1-4: 凭证健康 + TrustGate ──
+const credHealth = ref(null)
+const trustGateStrict = ref(false)
+
+async function loadCredHealth() {
+  try {
+    credHealth.value = await api.get('/credentials/health')
+    const tg = await api.get('/credentials/trust-gate')
+    trustGateStrict.value = tg.strict_mode
+  } catch { credHealth.value = null }
+}
+async function refreshCredential(provider) {
+  try {
+    await api.post(`/credentials/refresh/${provider}`, {})
+    toast.success(`✅ ${provider} 凭证已刷新`)
+    await loadCredHealth()
+  } catch (e) { toast.error(`刷新失败: ${e.message || e}`) }
+}
+async function rotateCredential(provider) {
+  if (!window.confirm(`确定轮换 ${provider} 的凭证？这将清除旧凭证，需要重新授权。`)) return
+  try {
+    await api.post(`/credentials/rotate/${provider}`, {})
+    toast.success(`已轮换 ${provider}，请重新授权`)
+    await loadCredHealth()
+  } catch (e) { toast.error(`轮换失败: ${e.message || e}`) }
+}
+async function toggleTrustGate() {
+  trustGateStrict.value = !trustGateStrict.value
+  try {
+    await api.post('/credentials/trust-gate', { strict: trustGateStrict.value })
+    toast.success(trustGateStrict.value ? '已开启严格模式' : '已关闭严格模式')
+  } catch { trustGateStrict.value = !trustGateStrict.value }
+}
+
+async function loadMcpServers() {
+  try {
+    mcpServers.value = await api.get('/mcp/servers') || {}
+  } catch { mcpServers.value = {} }
+}
+async function loadMcpCatalog() {
+  mcpCatalogLoading.value = true
+  try {
+    const data = await api.get('/mcp/catalog')
+    mcpCatalog.value = data.catalog || []
+  } catch { mcpCatalog.value = [] }
+  finally { mcpCatalogLoading.value = false }
+}
+async function loadMcpSecurityRules() {
+  try {
+    mcpSecurityRules.value = await api.get('/mcp/security/rules')
+  } catch { mcpSecurityRules.value = null }
+}
+async function installMcpFromCatalog(item) {
+  // 如果需要环境变量，弹窗输入
+  const envValues = {}
+  if (item.auth?.env?.length) {
+    for (const e of item.auth.env) {
+      const val = prompt(`${e.prompt || e.name}:`, '')
+      if (e.required && !val) return
+      if (val) envValues[e.name] = val
+    }
+  }
+  mcpInstalling.value = item.name
+  try {
+    await api.post('/mcp/catalog/install', { name: item.name, env_values: envValues })
+    toast.success(`✅ ${item.name} 安装成功`)
+    await loadMcpCatalog()
+    await loadMcpServers()
+  } catch (e) {
+    toast.error(`安装失败: ${e.message || e}`)
+  } finally { mcpInstalling.value = '' }
+}
+async function uninstallMcp(name) {
+  if (!window.confirm(`确定卸载 ${name}？`)) return
+  try {
+    await api.del(`/mcp/servers/${name}`)
+    toast.success(`已卸载 ${name}`)
+    await loadMcpServers()
+    await loadMcpCatalog()
+  } catch (e) { toast.error(`卸载失败: ${e.message || e}`) }
+}
 
 async function loadTierMode() {
   try {
@@ -1447,6 +1537,7 @@ async function toggleChannel(platformKey) {
       <button @click="activeTab = 'literature'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'literature' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📖 文献源</button>
       <button @click="activeTab = 'channels'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'channels' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📱 移动接入</button>
       <button @click="activeTab = 'security'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'security' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔒 安全</button>
+      <button @click="activeTab = 'mcp'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'mcp' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">🔌 MCP</button>
       <button @click="activeTab = 'knowledge'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'knowledge' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">📚 知识库</button>
       <button @click="activeTab = 'about'" class="px-4 py-2 text-sm font-medium border-b-2 transition" :class="activeTab === 'about' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">关于</button>
     </div>
@@ -2034,6 +2125,43 @@ async function toggleChannel(platformKey) {
             自动做过的调整都会出现在「进化」面板里，24 小时内可以一键撤回。
           </p>
         </div>
+
+        <!-- P1-4: 凭证健康 + TrustGate -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+          <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">🔑 凭证健康</h3>
+          <div v-if="!credHealth" class="text-xs text-gray-400 py-2">加载中…</div>
+          <div v-else-if="credHealth.total === 0" class="text-xs text-gray-400 py-2 text-center">暂无已存储的凭证</div>
+          <div v-else class="space-y-2">
+            <div v-for="cred in credHealth.credentials" :key="cred.provider" class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ cred.provider }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full" :class="{
+                    'bg-green-50 dark:bg-green-900/30 text-green-500': cred.status === 'healthy',
+                    'bg-amber-50 dark:bg-amber-900/30 text-amber-500': cred.status === 'expiring',
+                    'bg-red-50 dark:bg-red-900/30 text-red-500': cred.status === 'expired' || cred.status === 'error',
+                    'bg-gray-50 dark:bg-gray-700 text-gray-400': cred.status === 'missing',
+                  }">{{ cred.status }}</span>
+                </div>
+                <div class="text-[10px] text-gray-400 mt-0.5">{{ cred.recommendation }}</div>
+              </div>
+              <div class="flex items-center gap-1 flex-shrink-0 ml-2">
+                <button v-if="cred.can_auto_refresh" @click="refreshCredential(cred.provider)" class="text-[10px] px-2 py-1 rounded text-blue-400 hover:bg-blue-50 transition">刷新</button>
+                <button @click="rotateCredential(cred.provider)" class="text-[10px] px-2 py-1 rounded text-amber-400 hover:bg-amber-50 transition">轮换</button>
+              </div>
+            </div>
+          </div>
+          <!-- TrustGate -->
+          <div class="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
+            <div>
+              <div class="text-sm text-gray-800 dark:text-gray-200">TrustGate 严格模式</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">开启后，中高危操作直接拒绝（不给建议），低危放行</div>
+            </div>
+            <button @click="toggleTrustGate" class="relative inline-flex h-5 w-9 items-center rounded-full transition" :class="trustGateStrict ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'">
+              <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition" :class="trustGateStrict ? 'translate-x-5' : 'translate-x-1'" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- 知识库 -->
@@ -2178,6 +2306,70 @@ async function toggleChannel(platformKey) {
                 </div>
                 <p class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words leading-relaxed">{{ chunk.content }}</p>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MCP 目录 -->
+      <div v-if="activeTab === 'mcp'" class="max-w-3xl space-y-4">
+        <!-- 已安装服务器 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200">已安装 MCP 服务器</h3>
+            <button @click="loadMcpServers" class="text-xs px-2 py-1 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition">↻ 刷新</button>
+          </div>
+          <div v-if="!mcpServers || Object.keys(mcpServers).length === 0" class="text-sm text-gray-400 py-4 text-center">尚未安装任何 MCP 服务器</div>
+          <div v-else class="space-y-2">
+            <div v-for="(cfg, name) in mcpServers" :key="name" class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ name }}</div>
+                <div class="text-[11px] text-gray-400 font-mono truncate">{{ cfg.command }} {{ (cfg.args || []).join(' ') }}</div>
+              </div>
+              <button @click="uninstallMcp(name)" class="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-50 transition flex-shrink-0 ml-2">卸载</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 目录浏览 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">MCP 目录（一键安装）</h3>
+          <div v-if="mcpCatalogLoading" class="text-sm text-gray-400 py-4 text-center">加载目录中…</div>
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div v-for="item in mcpCatalog" :key="item.name" class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 flex flex-col">
+              <div class="flex items-start justify-between gap-2 mb-1">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ item.name }}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-500 flex-shrink-0">{{ item.category }}</span>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{{ item.description }}</p>
+                </div>
+              </div>
+              <!-- 环境变量提示 -->
+              <div v-if="item.auth?.env?.length" class="mt-2 space-y-1">
+                <div v-for="e in item.auth.env" :key="e.name" class="text-[10px] text-gray-400">
+                  🔑 {{ e.name }}<span v-if="e.required"> *必填</span>
+                </div>
+              </div>
+              <div class="mt-auto pt-3 flex items-center justify-between">
+                <a v-if="item.homepage" :href="item.homepage" target="_blank" class="text-[10px] text-gray-400 hover:text-blue-500">文档 ↗</a>
+                <button v-if="!item.installed" @click="installMcpFromCatalog(item)" :disabled="mcpInstalling === item.name"
+                  class="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 transition">{{ mcpInstalling === item.name ? '安装中…' : '+ 安装' }}</button>
+                <span v-else class="text-xs text-green-500 font-medium">✓ 已安装</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 安全校验信息 -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200 mb-3">🔒 MCP 安全校验</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">所有 MCP 服务器在保存和启动时都会经过安全校验，拦截已知的后门/外泄/持久化攻击模式。</p>
+          <div v-if="mcpSecurityRules" class="space-y-2">
+            <div v-for="rule in mcpSecurityRules.checks" :key="rule.id" class="flex items-start gap-2 text-xs">
+              <span class="text-green-500 flex-shrink-0">✅</span>
+              <div><span class="font-medium text-gray-700 dark:text-gray-300">{{ rule.name }}</span><span class="text-gray-400 ml-2">{{ rule.description }}</span></div>
             </div>
           </div>
         </div>
