@@ -1282,17 +1282,39 @@ async def chat_completions(req: ChatRequest, request: Request):
                     "step_index": step_index,
                     "step_total": step_total,
                 }
-                # 阶段 3: 从结果中提取产物文件路径推送到前端
+                # 阶段 3: 产物路径透传 — 优先用工具入参的 path（绝对路径），
+                # 不再依赖正则从结果文本猜路径（治本：无论文件在哪台电脑哪个目录都能渲染）
                 _artifacts = []
-                if preview and not kwargs.get("is_error", False):
-                    art_paths = _extract_artifact_paths(preview)
-                    if art_paths:
-                        _artifacts.extend([
-                            {"path": p, "title": p.split("/")[-1], "source": tool_name}
-                            for p in art_paths
-                        ])
-                # 合并工具 return 中携带的结构化 artifacts（如写文件类工具
-                # 通过 tool_progress_callback 透传的 kwargs["artifacts"]），
+                if not kwargs.get("is_error", False):
+                    # 3a) write_file / patch：工具入参就有完整 path，直接用
+                    if tool_name in ("write_file", "patch") and args:
+                        _raw_path = args.get("path", "")
+                        if _raw_path:
+                            try:
+                                from pathlib import Path as _P
+                                _abs = _P(_raw_path).resolve() if _P(_raw_path).is_absolute() else _P.cwd() / _raw_path
+                                _abs = str(_abs)
+                                _artifacts.append({
+                                    "path": _abs,
+                                    "title": _raw_path.split("/")[-1],
+                                    "source": tool_name,
+                                })
+                            except Exception:
+                                _artifacts.append({
+                                    "path": _raw_path,
+                                    "title": _raw_path.split("/")[-1],
+                                    "source": tool_name,
+                                })
+                    # 3b) 其他工具：从结果文本中正则提取路径作为补充
+                    if preview:
+                        art_paths = _extract_artifact_paths(preview)
+                        if art_paths:
+                            _artifacts.extend([
+                                {"path": p, "title": p.split("/")[-1], "source": tool_name}
+                                for p in art_paths
+                            ])
+                # 合并工具 return 中携带的结构化 artifacts（如 code_execution
+                # sandbox 内 write_file 通过 kwargs 透传的产物路径），
                 # 让结构化产物（不仅是文本路径字面量）也能进面板。
                 _structured = kwargs.get("artifacts") or []
                 if isinstance(_structured, list):
@@ -1303,6 +1325,9 @@ async def chat_completions(req: ChatRequest, request: Request):
                                 "title": _a.get("title") or _a["path"].split("/")[-1],
                                 "source": _a.get("source") or tool_name,
                             })
+                # 去重（同 path 只保留第一条）
+                _seen = set()
+                _artifacts = [_a for _a in _artifacts if not (_a["path"] in _seen or _seen.add(_a["path"]))]
                 if _artifacts:
                     event["artifacts"] = _artifacts
                 # P1: 文件变更审计 — write_file/patch 成功后推 file_change 事件

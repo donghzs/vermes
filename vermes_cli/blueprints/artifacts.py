@@ -57,10 +57,24 @@ def _is_safe_path(path_str: str) -> Path:
         # 而桌面端后端进程 cwd 可能是 /，导致按 cwd 解析不到真实文件）：
         # 依次在常见产物目录下找同名文件，找到即返回。
         if not path_str.startswith('/') and not path_str.startswith('~'):
+            # 1) 直接在常见产物根目录下找同名文件
             for fallback_root in (Path('/tmp'), Path.home() / '.vermes', Path.home()):
                 candidate = _check(str(fallback_root / path_str))
                 if candidate is not None and candidate.exists():
                     return candidate
+            # 2) 递归搜索子目录（agent 常写到 ~/.vermes/logs/ 等子目录，
+            #    但结果文本只报裸文件名如 agent.log）
+            bare_name = Path(path_str).name
+            for search_root in (Path.home() / '.vermes', Path('/tmp')):
+                try:
+                    for hit in search_root.rglob(bare_name):
+                        # 只取文件、且在白名单内、且不超过 3 层深度
+                        if hit.is_file():
+                            verified = _check(str(hit))
+                            if verified is not None and verified.exists():
+                                return verified
+                except (PermissionError, OSError):
+                    continue
         return ok
 
     # 兜底：agent 常把桌面/下载/文档写成根级绝对路径（/Desktop/.. 而非 ~/Desktop/..），

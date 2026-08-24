@@ -45,7 +45,17 @@ const DEFAULT_PROVIDER_ID = localStorage.getItem('vermes-default-provider') || '
 function isRenderableDeliverable(path) {
   if (!path) return false
   const ext = path.split('.').pop()?.toLowerCase()
-  return ['md', 'html', 'htm', 'docx', 'xlsx', 'xls', 'csv', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)
+  // 可渲染的交付物格式：文档 + 图片 + 代码/文本
+  return [
+    // 文档
+    'md', 'html', 'htm', 'docx', 'xlsx', 'xls', 'csv', 'pdf',
+    // 图片
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
+    // 代码/文本（常见 agent 产物）
+    'py', 'js', 'ts', 'sh', 'json', 'yaml', 'yml', 'toml', 'ini', 'cfg',
+    'txt', 'log', 'xml', 'sql', 'java', 'go', 'rs', 'c', 'cpp', 'h',
+    'rb', 'php', 'vue', 'css', 'scss', 'less',
+  ].includes(ext)
 }
 
 // ── 工具名 → 用户友好中文标签（任务清单聚合展示用）──

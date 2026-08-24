@@ -233,7 +233,7 @@ function rendererFor(artifact) {
   if (mime === 'text/markdown' || ext === 'md') return 'markdown'
   if (mime === 'application/json' || ext === 'json') return 'json'
   if (mime === 'text/csv' || ext === 'csv') return 'csv'
-  if (mime.startsWith('text/') || ['txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg'].includes(ext)) return 'code'
+  if (mime.startsWith('text/') || ['txt', 'log', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'xml', 'sql', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'rb', 'php', 'vue', 'css', 'scss', 'less'].includes(ext)) return 'code'
   // PDF：iframe 内嵌预览
   if (mime === 'application/pdf' || ext === 'pdf') return 'pdf'
   // Excel：SheetJS 前端解析渲染表格
