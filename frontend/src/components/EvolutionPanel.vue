@@ -14,6 +14,7 @@ const dagData = ref(null)
 const collapsed = ref(true) // 默认折叠为微型指示器，点击展开详情
 const emergenceData = ref(null)
 const skillsData = ref(null)
+const graphData = ref(null)        // 学习成长图谱（技能+记忆节点+边+时间线）
 const selfModifyHistory = ref([])
 const changes = ref([])          // T5 变更流水（L1 通知）
 const unreadCount = ref(0)
@@ -99,11 +100,30 @@ async function fetchSkills() {
   }
 }
 
+async function fetchGraph() {
+  // 学习成长图谱：技能+记忆节点 + tool_sequence 交集/词法边 + 成长时间线
+  try {
+    const r = await _fetchWithTimeout('/api/emergence/graph')
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    graphData.value = await r.json()
+  } catch (e) {
+    _fail('成长图谱', fetchGraph, e.message)
+  }
+}
+
+function timelineActionLabel(action) {
+  const m = {
+    extracted: '提取', auto_adopted: '自动采纳', confirmed: '确认',
+    rejected: '拒绝', promoted: '晋升', demoted: '降级', reactivated: '复活',
+  }
+  return m[action] || action || ''
+}
+
 async function confirmSkill(id) {
   try {
     const r = await _fetchWithTimeout(`/api/emergence/skill/${id}/confirm`, { method: 'POST' })
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
-    await fetchSkills()
+    await Promise.allSettled([fetchSkills(), fetchGraph(), fetchChanges()])
     toast.success('技能已确认')
   } catch (e) {
     _fail('确认技能', () => confirmSkill(id), e.message)
@@ -114,7 +134,7 @@ async function rejectSkill(id) {
   try {
     const r = await _fetchWithTimeout(`/api/emergence/skill/${id}/reject`, { method: 'POST' })
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
-    await fetchSkills()
+    await Promise.allSettled([fetchSkills(), fetchGraph(), fetchChanges()])
     toast.success('技能已拒绝')
   } catch (e) {
     _fail('拒绝技能', () => rejectSkill(id), e.message)
@@ -194,7 +214,7 @@ async function retractChange(c) {
     const r = await _fetchWithTimeout(_retractEndpoint(c), { method: 'POST' })
     const data = await r.json()
     if (data.ok) {
-      await Promise.allSettled([fetchChanges(), fetchSkills(), fetchProposals()])
+      await Promise.allSettled([fetchChanges(), fetchSkills(), fetchGraph(), fetchProposals()])
       toast.success(isSkill ? '已撤回，技能已停用' : '已撤回，配置已还原')
     } else {
       throw new Error(data.error || '未知错误')
@@ -317,6 +337,7 @@ async function _refreshAll() {
       fetchDag(),
       fetchEmergence(),
       fetchSkills(),
+      fetchGraph(),
       fetchSelfModifyHistory(),
       fetchChanges(),
       fetchProposals(),
@@ -681,6 +702,11 @@ const smTypeLabel = (t) => {
           <div class="evo-skill-info">
             <div class="evo-skill-name">{{ s.name }}</div>
             <div class="evo-skill-desc text-xs text-gray-400">{{ s.description }}</div>
+            <div v-if="s.reason" class="evo-skill-reason text-[11px] text-amber-500/80 mt-0.5">{{ s.reason }}</div>
+          </div>
+          <div class="evo-skill-meta">
+            <span v-if="s.usage_count" class="evo-skill-stat">×{{ s.usage_count }}</span>
+            <span v-if="s.success_rate" class="evo-skill-stat">{{ Math.round(s.success_rate * 100) }}%</span>
           </div>
           <div class="evo-skill-actions">
             <button class="evo-btn-confirm" @click="confirmSkill(s.id)">采纳</button>
@@ -692,9 +718,36 @@ const smTypeLabel = (t) => {
       <!-- 已激活技能列表 -->
       <div v-if="skillsData?.active?.length" class="evo-dag">
         <div class="evo-key mb-1">已激活技能 ({{ skillsData.active.length }})</div>
-        <div v-for="s in skillsData.active" :key="s.id" class="evo-edge">
-          <span class="evo-edge-src">⚡ {{ s.name }}</span>
-          <span class="evo-edge-count">{{ s.description?.slice(0, 40) }}</span>
+        <div v-for="s in skillsData.active" :key="s.id" class="evo-skill-row">
+          <span class="evo-skill-badge" :class="{ 'evo-badge-proven': s.grade === 'proven' }">
+            {{ s.grade === 'proven' ? '⚡proven' : '⚡' }}
+          </span>
+          <span class="evo-edge-src">{{ s.name }}</span>
+          <span v-if="s.usage_count" class="evo-skill-stat">×{{ s.usage_count }}</span>
+          <span v-if="s.success_rate" class="evo-skill-stat">{{ Math.round(s.success_rate * 100) }}%</span>
+          <span class="evo-edge-count">{{ s.description?.slice(0, 36) }}</span>
+        </div>
+      </div>
+
+      <!-- ── 学习成长图谱（技能+记忆节点，对标 learning_graph）── -->
+      <div v-if="graphData?.totals?.nodes" class="evo-dag evo-growth-graph">
+        <div class="evo-key mb-1">
+          成长图谱 ({{ graphData.totals.skills || 0 }} 技能 · {{ graphData.totals.memories || 0 }} 记忆 · {{ graphData.totals.edges || 0 }} 条关联)
+        </div>
+        <div class="evo-graph-nodes">
+          <div v-for="n in graphData.nodes" :key="n.id" class="evo-graph-node" :class="`evo-node-${n.kind}`">
+            <span class="evo-node-icon">{{ n.kind === 'skill' ? (n.grade === 'proven' ? '⚡' : (n.status === 'stale' ? '⚠️' : '💡')) : '🧠' }}</span>
+            <span class="evo-node-label">{{ n.label }}</span>
+            <span v-if="n.kind === 'skill' && n.usage_count" class="evo-node-stat">×{{ n.usage_count }}</span>
+          </div>
+        </div>
+        <div v-if="graphData.timeline?.length" class="evo-growth-timeline">
+          <div class="evo-key mb-1 mt-2">成长轨迹 ({{ graphData.timeline.length }})</div>
+          <div v-for="(t, i) in graphData.timeline.slice(0, 10)" :key="i" class="evo-timeline-row">
+            <span class="evo-timeline-action">{{ timelineActionLabel(t.action) }}</span>
+            <span class="evo-timeline-name">{{ t.skill_name }}</span>
+            <span v-if="t.detail" class="evo-timeline-detail text-gray-400">{{ t.detail.slice(0, 40) }}</span>
+          </div>
         </div>
       </div>
 
@@ -1061,6 +1114,91 @@ const smTypeLabel = (t) => {
   margin-top: 0.125rem;
   line-height: 1.2;
 }
+.evo-skill-reason { line-height: 1.3; }
+.evo-skill-meta {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.evo-skill-stat {
+  font-size: 0.625rem;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.12);
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+.dark .evo-skill-stat { color: #9ca3af; background: rgba(156, 163, 175, 0.12); }
+.evo-skill-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  padding: 0.25rem 0;
+  font-size: 0.7rem;
+}
+.evo-skill-badge {
+  font-size: 0.625rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.evo-badge-proven { color: #10b981; font-weight: 600; }
+.dark .evo-badge-proven { color: #34d399; }
+
+/* 学习成长图谱 */
+.evo-growth-graph { border-left: 2px solid #8b5cf6; padding-left: 0.5rem; }
+.evo-graph-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.evo-graph-node {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+.evo-node-skill { background: rgba(139, 92, 246, 0.06); }
+.dark .evo-node-skill { background: rgba(139, 92, 246, 0.12); }
+.evo-node-memory { background: rgba(16, 185, 129, 0.06); }
+.dark .evo-node-memory { background: rgba(16, 185, 129, 0.12); }
+.evo-node-icon { flex-shrink: 0; }
+.evo-node-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #374151;
+}
+.dark .evo-node-label { color: #d1d5db; }
+.evo-node-stat {
+  font-size: 0.625rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.dark .evo-node-stat { color: #9ca3af; }
+.evo-growth-timeline { margin-top: 0.5rem; }
+.evo-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.7rem;
+  padding: 0.125rem 0;
+}
+.evo-timeline-action {
+  color: #8b5cf6;
+  font-size: 0.625rem;
+  flex-shrink: 0;
+}
+.dark .evo-timeline-action { color: #a78bfa; }
+.evo-timeline-name { color: #374151; }
+.dark .evo-timeline-name { color: #d1d5db; }
+.evo-timeline-detail { font-size: 0.625rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .evo-skill-actions {
   display: flex;
   gap: 0.25rem;

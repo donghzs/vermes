@@ -2593,19 +2593,37 @@ async def emergence_skills():
         from agent.evolution_manager import get_self_model_db
         db_path = str(get_self_model_db())
 
-        from agent.skill_extractor import SkillExtractor
+        from agent.skill_extractor import SkillExtractor, should_auto_adopt
         extractor = SkillExtractor(db_path)
         pending = extractor.list_skills(status="pending")
         active = extractor.list_skills(status="active")
         rejected = extractor.list_skills(status="rejected")
 
         def _fmt(s):
+            # P0-2 采纳透明度：pending 卡附 should_auto_adopt 的 reason
+            # （「为何待确认」/「已达自动采纳门槛」），active 卡附 grade 徽章。
+            reason = ""
+            try:
+                if s.status == "pending":
+                    _, reason = should_auto_adopt(s)
+            except Exception:
+                reason = ""
+            grade = ""
+            try:
+                grade = (s.metadata or {}).get("grade", "")
+            except Exception:
+                grade = ""
             return {
                 "id": s.id,
                 "name": s.name,
                 "description": s.description,
                 "cluster_id": s.cluster_id,
                 "status": s.status,
+                "usage_count": s.usage_count,
+                "success_rate": round(s.success_rate, 3),
+                "grade": grade,                # proven | ""
+                "tool_sequence": s.tool_sequence or [],
+                "reason": reason,              # P0-2：门槛原因
                 "created_at": s.extracted_at,
                 "confirmed_at": s.confirmed_at,
             }
@@ -2638,6 +2656,27 @@ async def emergence_confirm_skill(skill_id: int, action: str = "confirm"):
             return {"error": f"Unknown action: {action}"}
     except Exception as e:
         return {"error": str(e)}
+
+
+async def emergence_graph():
+    """Return the learning-growth graph: skill + memory nodes, edges, timeline.
+
+    Complements ``/api/evolution/dag`` (which shows emergence-system relation
+    edges) by surfacing the user-visible "learning made visible" view:
+    extracted skills + curated L1 memory notes as first-class nodes, with
+    tool_sequence overlap and lexical edges, plus a skill-adoptions timeline
+    sourced from ``agent_changes``.
+
+    Fail-open: any sub-section failure returns empty sections, not 500.
+    """
+    try:
+        from agent.growth_graph import get_growth_graph_dict
+        return get_growth_graph_dict()
+    except Exception as e:
+        return {
+            "nodes": [], "edges": [], "timeline": [], "totals": {},
+            "error": str(e),
+        }
 
 
 async def variant_list(processor_id: str):
@@ -3205,6 +3244,12 @@ def register_to(app):
         emergence_confirm_skill,
         methods=["POST"],
         name="emergence_confirm_skill",
+    )
+    app.add_api_route(
+        "/api/emergence/graph",
+        emergence_graph,
+        methods=["GET"],
+        name="emergence_graph",
     )
     # Phase 3: Variant isolation endpoints
     app.add_api_route(
