@@ -7,6 +7,7 @@ import ThreeDStudio from '../components/ThreeDStudio.vue'
 import ModuStore from '../components/ModuStore.vue'
 import SkillManager from '../components/SkillManager.vue'
 import SkillMarketPage from '../components/SkillMarketPage.vue'
+import KanbanBoard from '../components/KanbanBoard.vue'
 
 const routes = [
   { path: '/', component: ChatView },
@@ -19,6 +20,8 @@ const routes = [
   // 默认打开 market 而非 installed
   // 独立全屏版（高宽度利用率 + 中文映射 + 网格卡片），替代 SkillManager 紧凑布局
   { path: '/skill-market', component: SkillMarketPage },
+  // 蜂群协作看板：Vermes 任务图可视化（多 Agent 并行执行）
+  { path: '/kanban', component: KanbanBoard },
 ]
 
 // Electron 桌面端加载在 /，Web 端加载在 /vermes/

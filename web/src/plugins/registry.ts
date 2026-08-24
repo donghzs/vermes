@@ -94,6 +94,14 @@ declare global {
       register: typeof registerPlugin;
       registerSlot: typeof registerSlot;
     };
+    // Legacy HERMES global names — mirrored from the __vermes_* globals in
+    // exposePluginSDK() so pre-rebrand bundles (e.g. the bundled `kanban`
+    // plugin) keep working without a rebuild.
+    __HERMES_PLUGIN_SDK__: unknown;
+    __HERMES_PLUGINS__: {
+      register: typeof registerPlugin;
+      registerSlot: typeof registerSlot;
+    };
   }
 }
 
@@ -146,4 +154,13 @@ export function exposePluginSDK() {
     // Hooks
     useI18n,
   };
+
+  // Backwards-compat alias for pre-rebrand plugin bundles that still read
+  // the old HERMES global names (e.g. the bundled `kanban` dashboard plugin
+  // shipped as a minified IIFE that does `const SDK = window.__HERMES_PLUGIN_SDK__;
+  // if (!SDK) return;` at the top). Those bundles have no source to rebuild,
+  // so we mirror the vermes globals onto the legacy names instead of editing
+  // the dist. New plugins should use the __vermes_* names directly.
+  window.__HERMES_PLUGINS__ = window.__vermes_PLUGINS__;
+  window.__HERMES_PLUGIN_SDK__ = window.__vermes_PLUGIN_SDK__;
 }

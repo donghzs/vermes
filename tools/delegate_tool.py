@@ -1966,6 +1966,7 @@ def delegate_task(
     acp_args: Optional[List[str]] = None,
     role: Optional[str] = None,
     background: bool = False,
+    kanban: bool = False,
     parent_agent=None,
 ) -> str:
     """
@@ -1980,7 +1981,16 @@ def delegate_task(
     toolset and can spawn its own workers, bounded by
     delegation.max_spawn_depth.  Per-task role beats the top-level one.
 
-    Returns JSON with results array, one entry per task.
+    When ``kanban=True`` and a batch of tasks is provided, the swarm is
+    also materialised as a durable task graph in the Kanban board
+    (``kanban_db``): a planning root, one ``ready`` worker card per task,
+    plus a verifier and synthesizer. The board UI at ``/kanban`` then
+    shows live per-worker status — turning the one-shot parallel fan-out
+    into a trackable multi-agent project. Single-task calls ignore this
+    flag (a graph needs ≥2 nodes to be meaningful).
+
+    Returns JSON with results array, one entry per task, plus a
+    ``kanban`` block (when tracked) pointing at the live board.
     """
     if parent_agent is None:
         return tool_error("delegate_task requires a parent agent context.")
@@ -2066,6 +2076,70 @@ def delegate_task(
 
     if not task_list:
         return tool_error("No tasks provided.")
+
+    # Optionally materialise the parallel fan-out as a durable Kanban swarm
+    # graph so the board UI (/kanban) can show live per-worker status.  Only
+    # meaningful for a batch (≥2 tasks); a single task has no topology to draw.
+    kanban_graph = None
+    if kanban and len(task_list) > 1:
+        try:
+            from vermes_cli import kanban_db, kanban_swarm
+
+            # connect() auto-runs init_db on first connection to a path,
+            # so we must NOT call init_db(conn) here — it expects a board
+            # path/name, not a live connection, and would raise.
+            conn = kanban_db.connect()
+            workers = [
+                kanban_swarm.SwarmWorkerSpec(
+                    profile=(t.get("role") or "leaf"),
+                    title=(t.get("goal") or f"Worker {i+1}")[:120],
+                    body=(
+                        (t.get("context") or "")
+                        + (
+                            f"\n\n[toolsets: {', '.join(t.get('toolsets'))}]"
+                            if t.get("toolsets")
+                            else ""
+                        )
+                    ),
+                    skills=[],
+                )
+                for i, t in enumerate(task_list)
+            ]
+            created = kanban_swarm.create_swarm(
+                conn,
+                goal=(
+                    task_list[0].get("goal")
+                    or f"Swarm of {len(task_list)} tasks"
+                ),
+                workers=workers,
+                verifier_assignee="verifier",
+                synthesizer_assignee="orchestrator",
+                created_by="delegate_task",
+            )
+            kanban_graph = {
+                "tracked": True,
+                "root_id": created.root_id,
+                "worker_ids": created.worker_ids,
+                "verifier_id": created.verifier_id,
+                "synthesizer_id": created.synthesizer_id,
+                "board_url": "/kanban",
+                "message": (
+                    f"已在蜂群看板建立任务图（{len(workers)} 个 worker + "
+                    f"verifier + synthesizer）。打开 /kanban 查看实时状态。"
+                ),
+            }
+            logger.info(
+                "[delegate_task] kanban swarm graph created: root=%s workers=%s",
+                created.root_id, created.worker_ids,
+            )
+        except Exception as exc:
+            # Never let board tracking break the actual delegation.
+            logger.warning("[delegate_task] kanban tracking failed: %s", exc)
+            kanban_graph = {
+                "tracked": False,
+                "error": str(exc),
+                "message": "看板建图失败（不影响任务执行），详见日志。",
+            }
 
     # Validate each task has a goal
     for i, task in enumerate(task_list):
@@ -2396,6 +2470,7 @@ def delegate_task(
         {
             "results": results,
             "total_duration_seconds": total_duration,
+            **({"kanban": kanban_graph} if kanban_graph is not None else {}),
         },
         ensure_ascii=False,
     )
@@ -2876,6 +2951,18 @@ DELEGATE_TASK_SCHEMA = {
                     "Useful for long-running tasks that don't need to block the conversation."
                 ),
             },
+            "kanban": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "If true AND a batch of ≥2 tasks is provided, also materialise the "
+                    "parallel fan-out as a durable Kanban swarm graph (root + one 'ready' "
+                    "worker card per task + verifier + synthesizer) so the board UI at "
+                    "/kanban shows live per-worker status. Set this when the user asks to "
+                    "'track on the board', 'use kanban swarm', or wants a visible task graph "
+                    "of the multi-agent run. Single-task calls ignore it."
+                ),
+            },
         },
         "required": [],
     },
@@ -2899,6 +2986,7 @@ registry.register(
         acp_args=args.get("acp_args"),
         role=args.get("role"),
         background=args.get("background", False),
+        kanban=args.get("kanban", False),
         parent_agent=kw.get("parent_agent"),
     ),
     check_fn=check_delegate_requirements,
