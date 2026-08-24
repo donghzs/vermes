@@ -29,7 +29,10 @@ const backendOffline = computed(() => backendConn.isOffline)
 function _fetchWithTimeout(url, opts = {}, ms = 3000) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
-  return fetch(url, { ...opts, signal: ctrl.signal })
+  const t = (typeof window !== 'undefined' && window.__VERMES_SESSION_TOKEN__) || ''
+  const headers = { ...opts.headers }
+  if (t) headers['X-Vermes-Session-Token'] = t
+  return fetch(url, { ...opts, headers, signal: ctrl.signal })
     .finally(() => clearTimeout(timer))
 }
 

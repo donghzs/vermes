@@ -1342,7 +1342,7 @@ const gatewayStarting = ref(false)
 
 async function checkGatewayStatus() {
   try {
-    const d = await api.default.get('/status')
+    const d = await api.get('/status')
     gatewayRunning.value = !!d.gateway_running
   } catch {}
 }
@@ -1394,7 +1394,7 @@ const channelCategories = computed(() => {
 async function loadChannels() {
   channelsLoading.value = true
   try {
-    const data = await api.default.listGatewayChannels()
+    const data = await api.listGatewayChannels()
     channelsData.value = data
     // 初始化表单数据
     for (const ch of data.channels || []) {
@@ -1420,7 +1420,7 @@ async function saveChannel(platformKey) {
     for (const [k, v] of Object.entries(form)) {
       if (v && v.trim()) fields[k] = v.trim()
     }
-    const result = await api.default.saveGatewayChannel(platformKey, fields)
+    const result = await api.saveGatewayChannel(platformKey, fields)
     if (result.ok) {
       // 更新 UI 状态
       if (channelsData.value) {
@@ -1465,7 +1465,7 @@ async function clearChannel(platformKey) {
   if (!ch) return
   if (!await confirm({ title: '清除渠道凭据', message: `确认清除 ${ch.label} 的凭据？`, confirmText: '清除', danger: true })) return
   try {
-    await api.default.clearGatewayChannel(platformKey)
+    await api.clearGatewayChannel(platformKey)
     // 更新 UI
     if (channelsData.value) {
       const idx = channelsData.value.channels.findIndex(c => c.key === platformKey)
@@ -1499,7 +1499,7 @@ async function clearChannel(platformKey) {
 
 async function toggleChannel(platformKey) {
   try {
-    const result = await api.default.toggleGatewayChannel(platformKey)
+    const result = await api.toggleGatewayChannel(platformKey)
     if (result.ok) {
       // 更新 UI
       if (channelsData.value) {
