@@ -88,6 +88,22 @@ function failText(t) {
   const c = t.consecutive_failures || 0
   return c > 0 ? `↻ ${c}` : null
 }
+// 优先级角标
+function priorityBadge(t) {
+  const p = t.priority || 0
+  if (p >= 10) return { icon: '⏫', cls: 'text-red-500' }
+  if (p >= 5) return { icon: '↑', cls: 'text-blue-500' }
+  if (p < 0) return { icon: '↓', cls: 'text-gray-400' }
+  return null
+}
+// 心跳时间（running 列专用）
+function heartbeatText(t) {
+  if (!t.last_heartbeat_at) return null
+  const age = Date.now() / 1000 - t.last_heartbeat_at
+  if (age < 10) return { text: '💚 活跃', cls: 'text-green-500' }
+  if (age < 60) return { text: `💓 ${Math.floor(age)}s前`, cls: 'text-amber-500' }
+  return { text: `💔 ${Math.floor(age / 60)}m前`, cls: 'text-red-500' }
+}
 function fmtTime(ts) {
   if (!ts) return ''
   const d = new Date(ts * 1000)
@@ -202,7 +218,7 @@ async function onDrop(e, colName) {
     const resp = await fetch(`/api/plugins/kanban/tasks/${encodeURIComponent(t.id)}`, {
       method: 'PATCH',
       headers: authHeaders(),
-      body: JSON.stringify({ status: colName }),
+      body: JSON.stringify({ status: colName, expected_status: t.status }),
     })
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}))
@@ -547,9 +563,12 @@ function goChat() { router.push('/') }
               <!-- 底部元数据行 -->
               <div class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400 flex-wrap">
                 <span class="font-mono">#{{ t.id }}</span>
+                <span v-if="priorityBadge(t)" :class="priorityBadge(t).cls">{{ priorityBadge(t).icon }}</span>
                 <span v-if="t.assignee" class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600">@{{ t.assignee }}</span>
+                <span v-if="t.comment_count" class="flex items-center gap-0.5">💬 {{ t.comment_count }}</span>
                 <span v-if="failText(t)" class="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300">{{ failText(t) }}</span>
                 <span v-if="warnBadge(t.warnings)" class="px-1.5 py-0.5 rounded" :class="warnBadge(t.warnings).cls">{{ warnBadge(t.warnings).text }}</span>
+                <span v-if="col.name === 'running' && heartbeatText(t)" :class="heartbeatText(t).cls">{{ heartbeatText(t).text }}</span>
                 <span class="ml-auto text-[10px]">{{ fmtTime(t.created_at) }}</span>
               </div>
             </div>

@@ -626,6 +626,11 @@ class UpdateTaskBody(BaseModel):
     # complete --summary ... --metadata ...``.
     summary: Optional[str] = None
     metadata: Optional[dict] = None
+    # Optimistic-lock guard for drag-drop: the client passes the status
+    # the task was in *before* the drag started. If it no longer matches
+    # (another worker / user moved it concurrently) we reject with 409
+    # so the UI can re-sync instead of clobbering.
+    expected_status: Optional[str] = None
 
 
 @router.patch("/tasks/{task_id}")
@@ -636,6 +641,14 @@ def update_task(task_id: str, payload: UpdateTaskBody, board: Optional[str] = Qu
         task = kanban_db.get_task(conn, task_id)
         if task is None:
             raise HTTPException(status_code=404, detail=f"task {task_id} not found")
+
+        # --- optimistic-lock guard (drag-drop concurrency) ---
+        if payload.expected_status is not None and payload.status is not None:
+            if task.status != payload.expected_status:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"任务状态已变更（当前: {task.status}，预期: {payload.expected_status}），请刷新看板",
+                )
 
         # --- assignee ----------------------------------------------------
         if payload.assignee is not None:
