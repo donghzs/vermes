@@ -2,7 +2,7 @@
 // 蜂群协作看板（Kanban）：消费后端 /api/plugins/kanban/board，
 // 渲染 Vermes 任务图（triage → todo → scheduled → ready → running → blocked → review → done）。
 // 这是文章承诺的"可读蜂群任务图"在桌面端（frontend/Vue）的真正落地入口。
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
