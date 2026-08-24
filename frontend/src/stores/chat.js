@@ -1094,6 +1094,19 @@ export const useChatStore = defineStore('chat', () => {
         onTaskComplete: (data) => {
           // 全部步骤完成 → 庆祝态（per-session）
           sessionTodoAllDone.value = { ...sessionTodoAllDone.value, [sendSessionId]: true }
+          // 兜底：一轮结束时，未分组活动里可能残留 running（tool_start 后无 tool_end，
+          // 如流式中断/连接断开/agent 在工具进行中结束回复）。强制归零，避免任务清单
+          // 永久挂“正在 XX…”。
+          const curActs = sessionTodoStepActivities.value[sendSessionId]
+          if (curActs && curActs['__ungrouped__']) {
+            const list = curActs['__ungrouped__'].map(a =>
+              a.status === 'running' ? { ...a, status: 'done' } : a
+            )
+            sessionTodoStepActivities.value = {
+              ...sessionTodoStepActivities.value,
+              [sendSessionId]: { ...curActs, '__ungrouped__': list },
+            }
+          }
         },
         onPlanCreated: (plan) => {
           // 任务规划已创建 → 填充当前会话的 todoItems 并自动打开抽屉

@@ -82,6 +82,12 @@ const EXAMPLES = [
 
 // ── 未分组工具流：聚合展示（避免逐条裸工具名刷屏）──
 const ungroupedActs = computed(() => chat.todoStepActivities['__ungrouped__'] || [])
+// 防御性：running 项若超过 30s 仍无 tool_end（流式中断/连接断开），视为已结束，不再显示“进行中”
+const RUNNING_STALE_MS = 30000
+function _isStaleRunning(a) {
+  // 用 now.value（每秒滴答）触发 computed 重算，使过期态能自动显现
+  return a.status === 'running' && (now.value - (a.start || 0)) > RUNNING_STALE_MS
+}
 // 按中文标签聚合计数（过滤内部名 _thinking 等）
 const ungroupedSummary = computed(() => {
   const counts = {}
@@ -90,7 +96,8 @@ const ungroupedSummary = computed(() => {
     const label = chat.toolLabel(a.name)
     if (!label) continue
     counts[label] = (counts[label] || 0) + 1
-    if (a.status === 'running') running = label
+    // 仅当仍在进行中且未过期，才标记为“正在 XX…”
+    if (a.status === 'running' && !_isStaleRunning(a)) running = label
   }
   return { counts, running, total: ungroupedActs.value.length }
 })
