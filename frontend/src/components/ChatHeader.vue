@@ -315,15 +315,14 @@ function closeDropdowns() {
         :class="quotaDisplay.remaining <= 10 ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">
         {{ quotaDisplay.text }}
       </span>
-      <!-- 产物详情面板开关（WorkBuddy 风格：对话顶部右侧） -->
+      <!-- 产物详情面板开关：极简 hover 提示，无常驻文字 -->
       <button
         @click="toggleArtifactPanel('artifacts')"
         :class="artifactOpen ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
-        class="ml-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5"
-        title="打开/关闭产物详情面板"
+        class="ml-1 px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1"
+        :title="artifactOpen ? '关闭右栏' : '展开右栏'"
       >
         <span>📄</span>
-        <span>{{ artifactOpen ? '关闭详情' : '详情面板' }}</span>
       </button>
     </div>
 

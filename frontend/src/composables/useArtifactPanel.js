@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 // 产物右侧面板独立状态（不与 Agent 管理抽屉 useRightPanel 共享）
-// WorkBuddy 风格：对话顶部「详情面板」按钮控制；消息流中点击产物/查看所有产物自动展开。
+// WorkBuddy 风格：hover 提示「展开右栏」，极简无常驻文字。
 const open = ref(false)
 const tab = ref('artifacts') // 'artifacts' | 'changes'
 const width = ref(420)

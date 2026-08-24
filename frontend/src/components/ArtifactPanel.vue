@@ -195,6 +195,26 @@ function removeArtifact(id) {
   _persistArtifacts()
 }
 
+// 自动关闭旧产物：只保留最新的 5 个，像浏览器标签一样管理
+function autoCloseOld() {
+  if (artifacts.value.length <= 5) return
+  // 按 ts 降序，保留前 5 个，其余关闭
+  const sorted = [...artifacts.value].sort((a, b) => b.ts - a.ts)
+  const keepIds = new Set(sorted.slice(0, 5).map(a => a.id))
+  const toRemove = artifacts.value.filter(a => !keepIds.has(a.id)).map(a => a.id)
+  toRemove.forEach(id => {
+    const idx = artifacts.value.findIndex(a => a.id === id)
+    if (idx >= 0) artifacts.value.splice(idx, 1)
+  })
+  if (activeId.value && toRemove.includes(activeId.value)) {
+    activeId.value = artifacts.value[0]?.id || null
+  }
+  if (toRemove.length > 0) _persistArtifacts()
+}
+
+// 每 60 秒自动清理一次旧产物
+setInterval(autoCloseOld, 60 * 1000)
+
 function clearArtifacts() {
   artifacts.value = []
   activeId.value = null
@@ -382,10 +402,9 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
         <!-- 头部工具栏：WorkBuddy 风格，简洁直接 -->
         <header class="shrink-0 border-b border-gray-200 dark:border-gray-700">
           <div class="px-3 py-2 flex items-center gap-2">
-            <!-- 标题 -->
+            <!-- 标题：极简，无常驻文字 -->
             <div class="flex items-center gap-1.5 shrink-0">
               <span class="text-sm">📄</span>
-              <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">详情面板</span>
             </div>
 
             <!-- 产物切换条：仅在多产物时显示，单个产物时完全隐藏保持简洁 -->
@@ -393,18 +412,23 @@ window.__vermesArtifacts = { addArtifact, removeArtifact, clearArtifacts, artifa
               v-if="artifactTab === 'artifacts' && artifacts.length > 1"
               class="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto"
             >
-              <button
+              <div
                 v-for="a in artifacts"
                 :key="a.id"
-                @click="activeId = a.id"
                 :class="activeId === a.id
                   ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800'
                   : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'"
-                class="shrink-0 px-2 py-1 rounded text-xs transition truncate max-w-[120px]"
+                class="shrink-0 group flex items-center gap-0.5 px-2 py-1 rounded text-xs transition truncate max-w-[140px] cursor-pointer"
                 :title="a.title || a.path"
+                @click="activeId = a.id"
               >
-                {{ a.title || a.path?.split('/').pop() }}
-              </button>
+                <span class="truncate">{{ a.title || a.path?.split('/').pop() }}</span>
+                <button
+                  @click.stop="removeArtifact(a.id)"
+                  class="opacity-0 group-hover:opacity-100 ml-0.5 w-4 h-4 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition text-[10px]"
+                  title="关闭"
+                >×</button>
+              </div>
             </div>
             <div v-else class="flex-1"></div>
 
